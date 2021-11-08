@@ -5,7 +5,7 @@ use std::process::Command;
 
 use clap::ArgMatches;
 
-use crate::resolve::resolve_urls;
+use crate::resolve::resolve_versions;
 
 #[cfg(target_os = "macos")]
 const R_ROOT: &str = "/Library/Frameworks/R.framework/Versions";
@@ -105,12 +105,11 @@ pub fn sc_system_forget() {
     }
 }
 
-#[allow(unused_variables)]
 #[cfg(target_os = "macos")]
 pub fn sc_resolve(args: &ArgMatches) {
     let str = args.value_of("str").unwrap().to_string();
-    let eps = vec![String::from("r-release-macos")];
-    let ver = resolve_urls(eps);
+    let eps = vec![str];
+    let ver = resolve_versions(eps, "macos".to_string());
     println!("{:#?}", ver);
 }
 

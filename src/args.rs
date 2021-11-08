@@ -41,7 +41,7 @@ pub fn parse_args() -> ArgMatches<'static> {
                     Arg::with_name("version")
                         .help("R versions to install (see 'rim available')")
                         .default_value("release")
-                        .multiple(true)
+                        .multiple(false) // TODO: install multiple versions
                 )
         )
         .subcommand(
