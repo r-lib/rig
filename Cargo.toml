@@ -7,3 +7,8 @@ edition = "2021"
 
 [dependencies]
 clap = "2.33.3"
+futures = "0.3.17"
+nix = "0.23.0"
+reqwest = { version = "0.11", features = ["json"] }
+tokio = { version = "1", features = ["full"] }
+serde_json = "1.0.69"
