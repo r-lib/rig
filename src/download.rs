@@ -22,13 +22,19 @@ pub async fn download_file(client: &reqwest::Client, url: String, opath: &str) {
         Err(err) => panic!("HTTP error at {}: {}", url, err.to_string())
     };
 
-    let dir = Path::new(&path).parent().unwrap();
-    match std::fs::create_dir_all(dir) {
-        Err(err) => {
-            let dir = dir.to_str().unwrap();
-            panic!("Cannot create directory {}: {}", dir, err.to_string())
-        },
-        _ => {}
+    // If dirname(path) is / then this is None
+    let dir = Path::new(&path).parent();
+    match dir {
+        Some(dir) => {
+            match std::fs::create_dir_all(dir) {
+                Err(err) => {
+                    let dir = dir.to_str().unwrap_or_else(|| "???");
+                    panic!("Cannot create directory {}: {}", dir, err.to_string())
+                },
+                _ => {}
+            };
+        }
+        None => {}
     };
     let file = File::create(&path);
     let mut file = match file {
