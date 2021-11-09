@@ -99,7 +99,6 @@ async fn resolve_minor(client: &reqwest::Client, ver: &String, os: &String) -> R
     let rvers = download_r_versions(client).await;
     let start = ver.to_owned() + ".0";
     let branch: Version = Version::parse(&start).unwrap();
-    let mut fullver: Version = Version::parse("0.0.0").unwrap();
     let mut out = String::from("");
     let mut ok = false;
 
@@ -111,7 +110,6 @@ async fn resolve_minor(client: &reqwest::Client, ver: &String, os: &String) -> R
         let vvv = Version::parse(&vv).unwrap();
         if vvv.major == branch.major && vvv.minor == branch.minor &&
             vvv.patch >= branch.patch {
-                fullver = vvv;
                 out = v.to_string();
                 ok = true;
             }
@@ -149,7 +147,6 @@ fn get_download_url(ver: &String, os: &String) -> Option<String> {
     }
 
     if os == "macos" {
-        let v325 = Version::parse("3.2.5").unwrap();
         let v340 = Version::parse("3.4.0").unwrap();
         let v400 = Version::parse("4.0.0").unwrap();
         let vv = Version::parse(ver).unwrap();

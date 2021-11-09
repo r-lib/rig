@@ -774,6 +774,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "futures",
+ "futures-util",
  "lazy_static",
  "nix",
  "regex",
