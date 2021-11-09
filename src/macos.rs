@@ -1,3 +1,4 @@
+#![cfg(target_os = "macos")]
 
 use std::io::ErrorKind;
 use std::path::Path;
@@ -10,13 +11,10 @@ use crate::rversion::Rversion;
 use crate::utils::*;
 use crate::download::download_file;
 
-#[cfg(target_os = "macos")]
 const R_ROOT: &str = "/Library/Frameworks/R.framework/Versions";
 
-#[cfg(target_os = "macos")]
 const R_CUR:  &str = "/Library/Frameworks/R.framework/Versions/Current";
 
-#[allow(unused_variables)]
 pub fn sc_add(args: &ArgMatches) {
     let version = get_resolve(args);
     let ver = version.version;
@@ -60,7 +58,6 @@ pub fn sc_add(args: &ArgMatches) {
     // TODO: create user libs
 }
 
-#[cfg(target_os = "macos")]
 pub fn sc_default(args: &ArgMatches) {
     if args.is_present("version") {
         let ver = args.value_of("version").unwrap().to_string();
@@ -70,7 +67,6 @@ pub fn sc_default(args: &ArgMatches) {
     }
 }
 
-#[cfg(target_os = "macos")]
 pub fn sc_list() {
     let vers = sc_get_list();
     for ver in vers {
@@ -83,27 +79,22 @@ pub fn sc_rm(args: &ArgMatches) {
     unimplemented!();
 }
 
-#[cfg(target_os = "macos")]
 pub fn sc_system_add_pak() {
     unimplemented!();
 }
 
-#[cfg(target_os = "macos")]
 pub fn sc_system_create_lib() {
     unimplemented!();
 }
 
-#[cfg(target_os = "macos")]
 pub fn sc_system_make_links() {
     unimplemented!();
 }
 
-#[cfg(target_os = "macos")]
 pub fn sc_system_make_orthogonal() {
     unimplemented!();
 }
 
-#[cfg(target_os = "macos")]
 pub fn sc_system_fix_permissions() {
     check_root();
     let vers = sc_get_list();
@@ -118,12 +109,10 @@ pub fn sc_system_fix_permissions() {
     }
 }
 
-#[cfg(target_os = "macos")]
 pub fn sc_system_clean_system_lib() {
     unimplemented!();
 }
 
-#[cfg(target_os = "macos")]
 pub fn sc_system_forget() {
     check_root();
     let out = Command::new("sh")
@@ -147,7 +136,6 @@ pub fn sc_system_forget() {
     }
 }
 
-#[cfg(target_os = "macos")]
 pub fn sc_resolve(args: &ArgMatches) {
     let version = get_resolve(args);
     let url: String = match version.url {
@@ -175,7 +163,6 @@ fn check_installed(ver: &String) -> bool {
     true
 }
 
-#[cfg(target_os = "macos")]
 fn sc_set_default(ver: String) {
     check_installed(&ver);
     let ret = std::fs::remove_file(R_CUR);
@@ -196,7 +183,6 @@ fn sc_set_default(ver: String) {
     };
 }
 
-#[cfg(target_os = "macos")]
 fn sc_show_default() {
     let tgt = std::fs::read_link(R_CUR);
     let tgtbuf = match tgt {
@@ -220,7 +206,6 @@ fn sc_show_default() {
     println!("{}", fname.to_str().unwrap());
 }
 
-#[cfg(target_os = "macos")]
 fn sc_get_list() -> Vec<String> {
     let paths = std::fs::read_dir(R_ROOT);
     assert!(paths.is_ok(), "Cannot list directory {}", R_ROOT);
@@ -238,7 +223,6 @@ fn sc_get_list() -> Vec<String> {
     vers
 }
 
-#[cfg(target_os = "macos")]
 fn check_root() {
     let euid = nix::unistd::geteuid();
     if ! euid.is_root() {
