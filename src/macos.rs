@@ -41,12 +41,16 @@ pub fn sc_add(args: &ArgMatches) {
 
     sc_system_forget();
 
-    let out = Command::new("installer")
+    let status = Command::new("installer")
         .args(["-pkg", &target_str, "-target", "/"])
         .spawn()
         .expect("Failed to run installer")
         .wait()
         .expect("Failed to run installer");
+
+    if ! status.success() {
+        println!("WARNING: installer exited with status {}", status.to_string());
+    }
 
     sc_system_forget();
     sc_system_fix_permissions();
