@@ -27,16 +27,33 @@ pub fn sc_add(args: &ArgMatches) {
     let filename = basename(&url).unwrap();
     let tmp_dir = std::env::temp_dir().join("rim");
     let target = tmp_dir.join(filename);
+    let target_str;
     if target.exists() {
-        let target_str = target.into_os_string().into_string().unwrap();
+        target_str = target.into_os_string().into_string().unwrap();
         println!("{} is cached at\n    {}", filename, target_str);
     } else {
-        let target_str = target.into_os_string().into_string().unwrap();
+        target_str = target.into_os_string().into_string().unwrap();
         println!("Downloading {} ->\n    {}", url, target_str);
         let client = reqwest::Client::new();
         let client = &client;
         download_file(client, url, &target_str);
     }
+
+    sc_system_forget();
+
+    let out = Command::new("installer")
+        .args(["-pkg", &target_str, "-target", "/"])
+        .spawn()
+        .expect("Failed to run installer")
+        .wait()
+        .expect("Failed to run installer");
+
+    sc_system_forget();
+    sc_system_fix_permissions();
+
+    // TODO: make orthogonal
+    // TODO: create quick links
+    // TODO: create user libs
 }
 
 #[cfg(target_os = "macos")]
