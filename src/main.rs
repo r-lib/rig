@@ -9,6 +9,7 @@ use macos::*;
 
 mod resolve;
 mod rversion;
+mod download;
 
 fn main() {
     let args = parse_args();
