@@ -147,11 +147,14 @@ fn get_download_url(ver: &String, os: &String) -> Option<String> {
     }
 
     if os == "macos" {
+        let v2100 = Version::parse("2.10.0").unwrap();
         let v340 = Version::parse("3.4.0").unwrap();
         let v400 = Version::parse("4.0.0").unwrap();
         let vv = Version::parse(ver).unwrap();
         if ver == "3.2.5" {
             Some(MACOS_325_URI.to_string())
+        } else if vv < v2100 {
+            None
         } else if vv < v340 {
             Some(rep(MACOS_OLD2_URI, ver))
         } else if vv < v400 {

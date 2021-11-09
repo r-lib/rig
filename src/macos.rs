@@ -32,8 +32,7 @@ pub fn sc_add(args: &ArgMatches) {
     } else {
         target_str = target.into_os_string().into_string().unwrap();
         println!("Downloading {} ->\n    {}", url, target_str);
-        let client = reqwest::Client::new();
-        let client = &client;
+        let client = &reqwest::Client::new();
         download_file(client, url, &target_str);
     }
 
