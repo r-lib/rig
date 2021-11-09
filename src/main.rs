@@ -8,6 +8,7 @@ mod macos;
 use macos::*;
 
 mod resolve;
+mod rversion;
 
 fn main() {
     let args = parse_args();

@@ -109,8 +109,13 @@ pub fn sc_system_forget() {
 pub fn sc_resolve(args: &ArgMatches) {
     let str = args.value_of("str").unwrap().to_string();
     let eps = vec![str];
-    let ver = resolve_versions(eps, "macos".to_string());
-    println!("{:?}", ver);
+    let version = resolve_versions(eps, "macos".to_string());
+    let ver = &version[0].version;
+    let url: String = match &version[0].url {
+        Some(s) => s.to_string(),
+        None => "NA".to_string()
+    };
+    println!("{} {}", ver, url);
 }
 
 // ------------------------------------------------------------------------
