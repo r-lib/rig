@@ -1,5 +1,5 @@
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct Rversion {
     pub version: String,
     pub url: Option<String>,

@@ -2,26 +2,16 @@
 use futures::future;
 use std::fs::File;
 use std::io::Write;
+use std::path::Path;
 use futures_util::StreamExt;
 
-pub async fn download_text(client: &reqwest::Client, url: String) -> String {
-    let resp = client.get(&url).send().await;
-    let body = match resp {
-        Ok(resp) => resp.error_for_status(),
-        Err(err) => panic!("HTTP error at {}: {}", url, err.to_string())
-    };
-    let body = match body {
-        Ok(content) => content,
-        Err(err) => panic!("HTTP error at {}: {}", url, err.to_string())
-    };
-    let body = body.text().await;
-    match body {
-        Ok(txt) => txt,
-        Err(err) => panic!("HTTP error at {}: {}", url, err.to_string())
-    }
-}
+// ------------------------------------------------------------------------
+// synchronous API
+// ------------------------------------------------------------------------
 
-pub async fn download_file(client: &reqwest::Client, url: String, path: &str) {
+#[tokio::main]
+pub async fn download_file(client: &reqwest::Client, url: String, opath: &str) {
+    let path = opath.to_string() + ".tmp";
     let resp = client.get(&url).send().await;
     let resp = match resp {
         Ok(resp) => resp.error_for_status(),
@@ -32,7 +22,15 @@ pub async fn download_file(client: &reqwest::Client, url: String, path: &str) {
         Err(err) => panic!("HTTP error at {}: {}", url, err.to_string())
     };
 
-    let file = File::create(path);
+    let dir = Path::new(&path).parent().unwrap();
+    match std::fs::create_dir_all(dir) {
+        Err(err) => {
+            let dir = dir.to_str().unwrap();
+            panic!("Cannot create directory {}: {}", dir, err.to_string())
+        },
+        _ => {}
+    };
+    let file = File::create(&path);
     let mut file = match file {
         Ok(file) => file,
         Err(err) => panic!("Cannot create file '{}': {}", path, err.to_string())
@@ -48,6 +46,32 @@ pub async fn download_file(client: &reqwest::Client, url: String, path: &str) {
             Err(err) => panic!("Failed to write to file {}: {}", path, err.to_string()),
             _ => {}
         };
+    }
+
+    match std::fs::rename(Path::new(&path), Path::new(&opath)) {
+        Err(err) => panic!("Failed to rename downloaded file: {}", err.to_string()),
+        _ => {}
+    };
+}
+
+// ------------------------------------------------------------------------
+// asynchronous API
+// ------------------------------------------------------------------------
+
+pub async fn download_text(client: &reqwest::Client, url: String) -> String {
+    let resp = client.get(&url).send().await;
+    let body = match resp {
+        Ok(resp) => resp.error_for_status(),
+        Err(err) => panic!("HTTP error at {}: {}", url, err.to_string())
+    };
+    let body = match body {
+        Ok(content) => content,
+        Err(err) => panic!("HTTP error at {}: {}", url, err.to_string())
+    };
+    let body = body.text().await;
+    match body {
+        Ok(txt) => txt,
+        Err(err) => panic!("HTTP error at {}: {}", url, err.to_string())
     }
 }
 

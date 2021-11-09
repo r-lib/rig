@@ -6,6 +6,9 @@ use std::process::Command;
 use clap::ArgMatches;
 
 use crate::resolve::resolve_versions;
+use crate::rversion::Rversion;
+use crate::utils::*;
+use crate::download::download_file;
 
 #[cfg(target_os = "macos")]
 const R_ROOT: &str = "/Library/Frameworks/R.framework/Versions";
@@ -15,7 +18,25 @@ const R_CUR:  &str = "/Library/Frameworks/R.framework/Versions/Current";
 
 #[allow(unused_variables)]
 pub fn sc_add(args: &ArgMatches) {
-    unimplemented!();
+    let version = get_resolve(args);
+    let ver = version.version;
+    let url: String = match version.url {
+        Some(s) => s.to_string(),
+        None => panic!("Cannot find a download url for R version {}", ver)
+    };
+    let filename = basename(&url).unwrap();
+    let tmp_dir = std::env::temp_dir().join("rim");
+    let target = tmp_dir.join(filename);
+    if target.exists() {
+        let target_str = target.into_os_string().into_string().unwrap();
+        println!("{} is cached at\n    {}", filename, target_str);
+    } else {
+        let target_str = target.into_os_string().into_string().unwrap();
+        println!("Downloading {} ->\n    {}", url, target_str);
+        let client = reqwest::Client::new();
+        let client = &client;
+        download_file(client, url, &target_str);
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -107,15 +128,19 @@ pub fn sc_system_forget() {
 
 #[cfg(target_os = "macos")]
 pub fn sc_resolve(args: &ArgMatches) {
-    let str = args.value_of("str").unwrap().to_string();
-    let eps = vec![str];
-    let version = resolve_versions(eps, "macos".to_string());
-    let ver = &version[0].version;
-    let url: String = match &version[0].url {
+    let version = get_resolve(args);
+    let url: String = match version.url {
         Some(s) => s.to_string(),
         None => "NA".to_string()
     };
-    println!("{} {}", ver, url);
+    println!("{} {}", version.version, url);
+}
+
+fn get_resolve(args: &ArgMatches) -> Rversion {
+    let str = args.value_of("str").unwrap().to_string();
+    let eps = vec![str];
+    let version = resolve_versions(eps, "macos".to_string());
+    version[0].to_owned()
 }
 
 // ------------------------------------------------------------------------
