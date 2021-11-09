@@ -110,7 +110,7 @@ pub fn sc_resolve(args: &ArgMatches) {
     let str = args.value_of("str").unwrap().to_string();
     let eps = vec![str];
     let ver = resolve_versions(eps, "macos".to_string());
-    println!("{:#?}", ver);
+    println!("{:?}", ver);
 }
 
 // ------------------------------------------------------------------------
