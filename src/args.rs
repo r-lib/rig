@@ -295,7 +295,7 @@ pub fn parse_args() -> ArgMatches<'static> {
                 .aliases(&["install"])
                 .arg(
                     Arg::with_name("arch")
-                        .help("Select macOS arch: arm64 or x86_64 (TODO)")
+                        .help("Select macOS arch: arm64 or x86_64")
                         .short("a")
                         .long("arch")
                         .required(false)
@@ -382,7 +382,7 @@ pub fn parse_args() -> ArgMatches<'static> {
                 )
                 .arg(
                     Arg::with_name("arch")
-                        .help("Select macOS arch: arm64 or x86_64 (TODO)")
+                        .help("Select macOS arch: arm64 or x86_64")
                         .short("a")
                         .long("arch")
                         .required(false)

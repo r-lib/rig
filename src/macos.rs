@@ -31,9 +31,9 @@ pub fn sc_add(args: &ArgMatches) {
         Some(s) => s.to_string(),
         None => panic!("Cannot find a download url for R version {}", ver)
     };
-    let filename = basename(&url).unwrap();
+    let filename = version.arch + "-" +  basename(&url).unwrap();
     let tmp_dir = std::env::temp_dir().join("rim");
-    let target = tmp_dir.join(filename);
+    let target = tmp_dir.join(&filename);
     let target_str;
     if target.exists() {
         target_str = target.into_os_string().into_string().unwrap();
@@ -55,7 +55,7 @@ pub fn sc_add(args: &ArgMatches) {
         .expect("Failed to run installer");
 
     if ! status.success() {
-        println!("WARNING: installer exited with status {}", status.to_string());
+        panic!("installer exited with status {}", status.to_string());
     }
 
     sc_system_forget();
@@ -268,12 +268,23 @@ pub fn sc_resolve(args: &ArgMatches) {
 
 fn get_resolve(args: &ArgMatches) -> Rversion {
     let str = args.value_of("str").unwrap().to_string();
+    let arch = match args.value_of("arch") {
+        Some(a) => a.to_string(),
+        None => "x86_64".to_string()
+    };
+    if ! valid_macos_archs().contains(&arch) {
+        panic!("Unknown macOS arch: {}", arch);
+    }
     let eps = vec![str];
-    let version = resolve_versions(eps, "macos".to_string());
+    let version = resolve_versions(eps, "macos".to_string(), arch);
     version[0].to_owned()
 }
 
 // ------------------------------------------------------------------------
+
+fn valid_macos_archs() -> Vec<String> {
+    vec!["x86_64".to_string(), "arm64".to_string()]
+}
 
 fn check_installed(ver: &String) -> bool {
     let inst = sc_get_list();
