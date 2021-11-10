@@ -3,6 +3,8 @@
 use std::io::ErrorKind;
 use std::path::Path;
 use std::process::Command;
+use regex::Regex;
+use std::os::unix::fs::symlink;
 
 use clap::ArgMatches;
 
@@ -91,7 +93,37 @@ pub fn sc_system_make_links() {
 }
 
 pub fn sc_system_make_orthogonal() {
-    unimplemented!();
+    let vers = sc_get_list();
+    let re = Regex::new("R[.]framework/Resources").unwrap();
+    let re2 = Regex::new("[-]F/Library/Frameworks/R[.]framework/[.][.]").unwrap();
+    for ver in vers {
+        println!("Making R {} orthogonal", ver);
+        let base = Path::new("/Library/Frameworks/R.framework/Versions/");
+        let sub = "R.framework/Versions/".to_string() + &ver + "/Resources";
+
+        let rfile = base.join(&ver).join("Resources/bin/R");
+        replace_in_file(&rfile, &re, &sub);
+
+        let efile = base.join(&ver).join("Resources/etc/Renviron");
+        replace_in_file(&efile, &re, &sub);
+
+        let ffile = base.join(&ver).join("Resources/fontconfig/fonts/fonts.conf");
+        replace_in_file(&ffile, &re, &sub);
+
+        let mfile = base.join(&ver).join("Resources/etc/Makeconf");
+        let sub = "-F/Library/Frameworks/R.framework/Versions/".to_string() + &ver;
+        replace_in_file(&mfile, &re2, &sub);
+
+        let fake = base.join(&ver).join("R.framework");
+        let fake = fake.as_path();
+        // TODO: only ignore failure if files already exist
+        std::fs::create_dir_all(&fake).ok();
+        symlink("../Headers", fake.join("Headers")).ok();
+        symlink("../Resources/lib", fake.join("Libraries")).ok();
+        symlink("../PrivateHeaders", fake.join("PrivateHeaders")).ok();
+        symlink("../R", fake.join("R")).ok();
+        symlink("../Resources", fake.join("Resources")).ok();
+    }
 }
 
 pub fn sc_system_fix_permissions() {
