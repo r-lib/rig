@@ -237,11 +237,11 @@ DESCRIPTION
     current platform, the URL is `NA`.
 
     An R version can be specified in various ways:
-    - `rim add devel` adds the latest available development version,
-    - `rim add release` adds the latest release.
-    - `rim add x.y.z` adds a specific version.
-    - `rim add x.y` adds the latest release within the `x.y` minor branch.
-    - `rim add oldrel/n` adds the latest release within the `n`th previous
+    - `rim resolve devel` is the latest available development version,
+    - `rim resolve release` is the latest release.
+    - `rim resolve x.y.z` is a specific version.
+    - `rim resolve x.y` is the latest release within the `x.y` minor branch.
+    - `rim resolve oldrel/n` is the latest release within the `n`th previous
       minor branch (`oldrel` is the same as `oldrel/1`).
 "#;
 
