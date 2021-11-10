@@ -3,18 +3,25 @@
 use std::io::ErrorKind;
 use std::path::Path;
 use std::process::Command;
-use regex::Regex;
 use std::os::unix::fs::symlink;
 
 use clap::ArgMatches;
+use nix::unistd::Gid;
+use nix::unistd::Uid;
+use regex::Regex;
 
 use crate::resolve::resolve_versions;
 use crate::rversion::Rversion;
 use crate::utils::*;
 use crate::download::download_file;
 
-const R_ROOT: &str = "/Library/Frameworks/R.framework/Versions";
+struct User {
+    user: String,
+    uid: u32,
+    gid: u32,
+}
 
+const R_ROOT: &str = "/Library/Frameworks/R.framework/Versions";
 const R_CUR:  &str = "/Library/Frameworks/R.framework/Versions/Current";
 
 pub fn sc_add(args: &ArgMatches) {
@@ -54,9 +61,8 @@ pub fn sc_add(args: &ArgMatches) {
     sc_system_forget();
     sc_system_fix_permissions();
     sc_system_make_orthogonal();
-
+    sc_system_create_lib();
     // TODO: create quick links
-    // TODO: create user libs
 }
 
 pub fn sc_default(args: &ArgMatches) {
@@ -85,7 +91,41 @@ pub fn sc_system_add_pak() {
 }
 
 pub fn sc_system_create_lib() {
-    unimplemented!();
+    let vers = sc_get_list();
+    let base = Path::new("/Library/Frameworks/R.framework/Versions");
+
+    let user = get_user();
+    for ver in vers {
+        let r = base.join(&ver).join("Resources/R");
+        let r = r.to_str().unwrap();
+        let out = Command::new(r)
+            .args(["--vanilla", "-s", "-e", "cat(Sys.getenv('R_LIBS_USER'))"])
+            .output()
+            .expect("Failed to run R to quert R_LIBS_USER");
+        let lib = match String::from_utf8(out.stdout) {
+            Ok(v) => v,
+            Err(err) => panic!("Cannot query R_LIBS_USER for R {}: {}", ver, err.to_string())
+        };
+
+        let lib = shellexpand::tilde(&lib.as_str()).to_string();
+        let lib = Path::new(&lib);
+        if ! lib.exists() {
+            println!("{}: creating library at {} for user {}",
+                     ver, lib.display(), user.user);
+            match std::fs::create_dir_all(&lib) {
+                Err(err) => panic!("Cannot create library at {}: {}", lib.display(), err.to_string()),
+                _ => {}
+            };
+            match nix::unistd::chown(lib,
+                                     Some(Uid::from_raw(user.uid)),
+                                     Some(Gid::from_raw(user.gid))) {
+                Err(err) => panic!("Cannot set owner on {}: {}", lib.display(), err.to_string()),
+                _ => {}
+            };
+        } else {
+            println!("{}: library at {} exists.", ver, lib.display());
+        }
+    }
 }
 
 pub fn sc_system_make_links() {
@@ -259,4 +299,38 @@ fn check_root() {
     if ! euid.is_root() {
         panic!("Not enough permissions, you probably need 'sudo'");
     }
+}
+
+fn get_user() -> User {
+    let uid;
+    let gid;
+    let user;
+
+    let euid = nix::unistd::geteuid();
+    let sudo_uid = std::env::var_os("SUDO_UID");
+    let sudo_gid = std::env::var_os("SUDO_GID");
+    let sudo_user = std::env::var_os("SUDO_USER");
+    if euid.is_root() && sudo_uid.is_some() && sudo_gid.is_some() &&
+        sudo_user.is_some() {
+            uid = match sudo_uid {
+                Some(x) => x.to_str().unwrap().parse::<u32>().unwrap(),
+                _ => { unreachable!(); }
+            };
+            gid = match sudo_gid {
+                Some(x) => x.to_str().unwrap().parse::<u32>().unwrap(),
+                _ => { unreachable!(); }
+            };
+            user = match sudo_user {
+                Some(x) => x.to_str().unwrap().to_string(),
+                _ => { unreachable!(); }
+            };
+        } else {
+            uid = nix::unistd::getuid().as_raw();
+            gid = nix::unistd::getgid().as_raw();
+            user = match std::env::var_os("USER") {
+                Some(x) => x.to_str().unwrap().to_string(),
+                None => "Current user".to_string()
+            };
+        }
+    User { user, uid, gid }
 }
