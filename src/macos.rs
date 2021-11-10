@@ -62,7 +62,7 @@ pub fn sc_add(args: &ArgMatches) {
     sc_system_fix_permissions();
     sc_system_make_orthogonal();
     sc_system_create_lib();
-    // TODO: create quick links
+    sc_system_make_links();
 }
 
 pub fn sc_default(args: &ArgMatches) {
@@ -83,7 +83,16 @@ pub fn sc_list() {
 
 #[allow(unused_variables)]
 pub fn sc_rm(args: &ArgMatches) {
-    unimplemented!();
+    let ver = args.value_of("version").unwrap().to_string();
+    check_installed(&ver);
+
+    let dir = Path::new("/Library/Frameworks/R.framework/Versions");
+    let dir = dir.join(&ver);
+    println!("Removing {}", dir.display());
+    match std::fs::remove_dir_all(&dir) {
+        Err(err) => panic!("Cannot remove {}: {}", dir.display(), err.to_string()),
+        _ => {}
+    };
 }
 
 pub fn sc_system_add_pak() {
@@ -129,7 +138,47 @@ pub fn sc_system_create_lib() {
 }
 
 pub fn sc_system_make_links() {
-    unimplemented!();
+    let vers = sc_get_list();
+    let base = Path::new("/Library/Frameworks/R.framework/Versions/");
+
+    // Create new links
+    for ver in vers {
+        let linkfile = Path::new("/usr/local/bin/").join("R-".to_string() + &ver);
+        let target = base.join(&ver).join("Resources/bin/R");
+        if ! linkfile.exists() {
+            println!("Adding {} -> {}", linkfile.display(), target.display());
+            match symlink(&target, &linkfile) {
+                Err(err) => panic!("Cannot create symlink {}: {}",
+                                   linkfile.display(), err.to_string()),
+                _ => {}
+            };
+        }
+    }
+
+    // Remove danglink links
+    let paths = std::fs::read_dir("/usr/local/bin").unwrap();
+    let re = Regex::new("^R-[0-9]+[.][0-9]+").unwrap();
+    for file in paths {
+        let path = file.unwrap().path();
+        let pathstr = path.to_str().unwrap();
+        let fnamestr = path.file_name().unwrap().to_str().unwrap();
+        if re.is_match(&fnamestr) {
+            match std::fs::read_link(&path) {
+                Err(_) => println!("{} is not a symlink", pathstr),
+                Ok(target) => {
+                    if ! target.exists() {
+                        let targetstr = target.to_str().unwrap();
+                        println!("Cleaning up {}", targetstr);
+                        match std::fs::remove_file(&path) {
+                            Err(err) => println!("Failed to remove {}: {}", pathstr, err.to_string()),
+                            _ => {}
+                        }
+                    }
+                }
+            };
+        }
+    }
+
 }
 
 pub fn sc_system_make_orthogonal() {
