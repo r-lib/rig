@@ -89,6 +89,7 @@ pub fn sc_rm(args: &ArgMatches) {
     let dir = Path::new("/Library/Frameworks/R.framework/Versions");
     let dir = dir.join(&ver);
     println!("Removing {}", dir.display());
+    sc_system_forget();
     match std::fs::remove_dir_all(&dir) {
         Err(err) => panic!("Cannot remove {}: {}", dir.display(), err.to_string()),
         _ => {}
