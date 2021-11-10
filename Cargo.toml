@@ -2,6 +2,15 @@
 name = "rim"
 version = "0.1.0"
 edition = "2021"
+authors = ["Gábor Csárdi <csardi.gabor@gmail.com"]
+license = "MIT"
+description = "Manage R installations"
+readme = "README.md"
+homepage = "https://github.com/gaborcsardi/rim"
+repository = "https://github.com/gaborcsardi/rim"
+keywords = ["R", "cli"]
+categories = ["command-line-utilities"]
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
