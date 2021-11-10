@@ -40,7 +40,7 @@ pub fn replace_in_file(path: &Path, re: &Regex, sub: &str)
         path2.set_extension(ext.to_owned() + "bak");
         let mut f = File::create(&path2).expect("Unable to create file");
         for line in &lines {
-            write!(f, "{}\n", line);
+            write!(f, "{}\n", line)?;
         }
 
         let perms = std::fs::metadata(path)?.permissions();

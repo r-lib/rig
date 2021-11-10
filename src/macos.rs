@@ -53,8 +53,8 @@ pub fn sc_add(args: &ArgMatches) {
 
     sc_system_forget();
     sc_system_fix_permissions();
+    sc_system_make_orthogonal();
 
-    // TODO: make orthogonal
     // TODO: create quick links
     // TODO: create user libs
 }
@@ -102,17 +102,17 @@ pub fn sc_system_make_orthogonal() {
         let sub = "R.framework/Versions/".to_string() + &ver + "/Resources";
 
         let rfile = base.join(&ver).join("Resources/bin/R");
-        replace_in_file(&rfile, &re, &sub);
+        replace_in_file(&rfile, &re, &sub).ok();
 
         let efile = base.join(&ver).join("Resources/etc/Renviron");
-        replace_in_file(&efile, &re, &sub);
+        replace_in_file(&efile, &re, &sub).ok();
 
         let ffile = base.join(&ver).join("Resources/fontconfig/fonts/fonts.conf");
-        replace_in_file(&ffile, &re, &sub);
+        replace_in_file(&ffile, &re, &sub).ok();
 
         let mfile = base.join(&ver).join("Resources/etc/Makeconf");
         let sub = "-F/Library/Frameworks/R.framework/Versions/".to_string() + &ver;
-        replace_in_file(&mfile, &re2, &sub);
+        replace_in_file(&mfile, &re2, &sub).ok();
 
         let fake = base.join(&ver).join("R.framework");
         let fake = fake.as_path();
