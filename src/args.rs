@@ -87,8 +87,13 @@ const HELP_ADD: &str = r#"
 DESCRIPTION
     Download and install an R version, from the official sources.
     It keeps the already installed R versions, except versions within the
-    same minor branch, see below. The newly added version can be specified
-    in various ways:
+    same minor branch, see below.
+
+    NOTE: it is best to quit from all currently running R sessions before
+    adding new R versions. THe newly added R version will be the default
+    after the installation, if you don't want that, call `rim default`.
+
+    The newly added version can be specified in various ways:
     - `rim add devel` adds the latest available development version,
     - `rim add release` adds the latest release.
     - `rim add x.y.z` adds a specific version.
