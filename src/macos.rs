@@ -1,19 +1,19 @@
 #![cfg(target_os = "macos")]
 
 use std::io::ErrorKind;
+use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::process::Command;
-use std::os::unix::fs::symlink;
 
 use clap::ArgMatches;
 use nix::unistd::Gid;
 use nix::unistd::Uid;
 use regex::Regex;
 
+use crate::download::download_file;
 use crate::resolve::resolve_versions;
 use crate::rversion::Rversion;
 use crate::utils::*;
-use crate::download::download_file;
 
 struct User {
     user: String,
@@ -22,16 +22,16 @@ struct User {
 }
 
 const R_ROOT: &str = "/Library/Frameworks/R.framework/Versions";
-const R_CUR:  &str = "/Library/Frameworks/R.framework/Versions/Current";
+const R_CUR: &str = "/Library/Frameworks/R.framework/Versions/Current";
 
 pub fn sc_add(args: &ArgMatches) {
     let version = get_resolve(args);
     let ver = version.version;
     let url: String = match version.url {
         Some(s) => s.to_string(),
-        None => panic!("Cannot find a download url for R version {}", ver)
+        None => panic!("Cannot find a download url for R version {}", ver),
     };
-    let filename = version.arch + "-" +  basename(&url).unwrap();
+    let filename = version.arch + "-" + basename(&url).unwrap();
     let tmp_dir = std::env::temp_dir().join("rim");
     let target = tmp_dir.join(&filename);
     let target_str;
@@ -54,7 +54,7 @@ pub fn sc_add(args: &ArgMatches) {
         .wait()
         .expect("Failed to run installer");
 
-    if ! status.success() {
+    if !status.success() {
         panic!("installer exited with status {}", status.to_string());
     }
 
@@ -114,21 +114,35 @@ pub fn sc_system_create_lib() {
             .expect("Failed to run R to quert R_LIBS_USER");
         let lib = match String::from_utf8(out.stdout) {
             Ok(v) => v,
-            Err(err) => panic!("Cannot query R_LIBS_USER for R {}: {}", ver, err.to_string())
+            Err(err) => panic!(
+                "Cannot query R_LIBS_USER for R {}: {}",
+                ver,
+                err.to_string()
+            ),
         };
 
         let lib = shellexpand::tilde(&lib.as_str()).to_string();
         let lib = Path::new(&lib);
-        if ! lib.exists() {
-            println!("{}: creating library at {} for user {}",
-                     ver, lib.display(), user.user);
+        if !lib.exists() {
+            println!(
+                "{}: creating library at {} for user {}",
+                ver,
+                lib.display(),
+                user.user
+            );
             match std::fs::create_dir_all(&lib) {
-                Err(err) => panic!("Cannot create library at {}: {}", lib.display(), err.to_string()),
+                Err(err) => panic!(
+                    "Cannot create library at {}: {}",
+                    lib.display(),
+                    err.to_string()
+                ),
                 _ => {}
             };
-            match nix::unistd::chown(lib,
-                                     Some(Uid::from_raw(user.uid)),
-                                     Some(Gid::from_raw(user.gid))) {
+            match nix::unistd::chown(
+                lib,
+                Some(Uid::from_raw(user.uid)),
+                Some(Gid::from_raw(user.gid)),
+            ) {
                 Err(err) => panic!("Cannot set owner on {}: {}", lib.display(), err.to_string()),
                 _ => {}
             };
@@ -146,11 +160,14 @@ pub fn sc_system_make_links() {
     for ver in vers {
         let linkfile = Path::new("/usr/local/bin/").join("R-".to_string() + &ver);
         let target = base.join(&ver).join("Resources/bin/R");
-        if ! linkfile.exists() {
+        if !linkfile.exists() {
             println!("Adding {} -> {}", linkfile.display(), target.display());
             match symlink(&target, &linkfile) {
-                Err(err) => panic!("Cannot create symlink {}: {}",
-                                   linkfile.display(), err.to_string()),
+                Err(err) => panic!(
+                    "Cannot create symlink {}: {}",
+                    linkfile.display(),
+                    err.to_string()
+                ),
                 _ => {}
             };
         }
@@ -167,11 +184,13 @@ pub fn sc_system_make_links() {
             match std::fs::read_link(&path) {
                 Err(_) => println!("{} is not a symlink", pathstr),
                 Ok(target) => {
-                    if ! target.exists() {
+                    if !target.exists() {
                         let targetstr = target.to_str().unwrap();
                         println!("Cleaning up {}", targetstr);
                         match std::fs::remove_file(&path) {
-                            Err(err) => println!("Failed to remove {}: {}", pathstr, err.to_string()),
+                            Err(err) => {
+                                println!("Failed to remove {}: {}", pathstr, err.to_string())
+                            }
                             _ => {}
                         }
                     }
@@ -179,7 +198,6 @@ pub fn sc_system_make_links() {
             };
         }
     }
-
 }
 
 pub fn sc_system_make_orthogonal() {
@@ -197,7 +215,9 @@ pub fn sc_system_make_orthogonal() {
         let efile = base.join(&ver).join("Resources/etc/Renviron");
         replace_in_file(&efile, &re, &sub).ok();
 
-        let ffile = base.join(&ver).join("Resources/fontconfig/fonts/fonts.conf");
+        let ffile = base
+            .join(&ver)
+            .join("Resources/fontconfig/fonts/fonts.conf");
         replace_in_file(&ffile, &re, &sub).ok();
 
         let mfile = base.join(&ver).join("Resources/etc/Makeconf");
@@ -243,7 +263,7 @@ pub fn sc_system_forget() {
 
     let output = match String::from_utf8(out.stdout) {
         Ok(v) => v,
-        Err(_) => panic!("Invalid UTF-8 output from pkgutil")
+        Err(_) => panic!("Invalid UTF-8 output from pkgutil"),
     };
 
     // TODO: this can fail, but if it fails it will still have exit
@@ -261,7 +281,7 @@ pub fn sc_resolve(args: &ArgMatches) {
     let version = get_resolve(args);
     let url: String = match version.url {
         Some(s) => s.to_string(),
-        None => "NA".to_string()
+        None => "NA".to_string(),
     };
     println!("{} {}", version.version, url);
 }
@@ -270,9 +290,9 @@ fn get_resolve(args: &ArgMatches) -> Rversion {
     let str = args.value_of("str").unwrap().to_string();
     let arch = match args.value_of("arch") {
         Some(a) => a.to_string(),
-        None => "x86_64".to_string()
+        None => "x86_64".to_string(),
     };
-    if ! valid_macos_archs().contains(&arch) {
+    if !valid_macos_archs().contains(&arch) {
         panic!("Unknown macOS arch: {}", arch);
     }
     let eps = vec![str];
@@ -291,7 +311,8 @@ fn check_installed(ver: &String) -> bool {
     assert!(
         inst.contains(&ver),
         "Version {} is not installed, see 'rim list'",
-        ver);
+        ver
+    );
     true
 }
 
@@ -301,8 +322,8 @@ fn sc_set_default(ver: String) {
     match ret {
         Err(err) => {
             panic!("Could not remove {}: {}", R_CUR, err)
-        },
-        Ok(()) => { }
+        }
+        Ok(()) => {}
     };
 
     let path = Path::new(R_ROOT).join(ver.as_str());
@@ -310,26 +331,24 @@ fn sc_set_default(ver: String) {
     match ret {
         Err(err) => {
             panic!("Could not create {}: {}", path.to_str().unwrap(), err)
-        },
-        Ok(()) => { }
+        }
+        Ok(()) => {}
     };
 }
 
 fn sc_show_default() {
     let tgt = std::fs::read_link(R_CUR);
     let tgtbuf = match tgt {
-        Err(err) => {
-            match err.kind() {
-                ErrorKind::NotFound => {
-                    panic!("File '{}' does not exist", R_CUR)
-                },
-                ErrorKind::InvalidInput => {
-                    panic!("File '{}' is not a symbolic link", R_CUR)
-                },
-                _ => panic!("Error resolving {}: {}", R_CUR, err),
+        Err(err) => match err.kind() {
+            ErrorKind::NotFound => {
+                panic!("File '{}' does not exist", R_CUR)
             }
+            ErrorKind::InvalidInput => {
+                panic!("File '{}' is not a symbolic link", R_CUR)
+            }
+            _ => panic!("Error resolving {}: {}", R_CUR, err),
         },
-        Ok(tgt) => tgt
+        Ok(tgt) => tgt,
     };
 
     // file_name() is only None if tgtbuf ends with "..", the we panic...
@@ -357,7 +376,7 @@ fn sc_get_list() -> Vec<String> {
 
 fn check_root() {
     let euid = nix::unistd::geteuid();
-    if ! euid.is_root() {
+    if !euid.is_root() {
         panic!("Not enough permissions, you probably need 'sudo'");
     }
 }
@@ -371,27 +390,32 @@ fn get_user() -> User {
     let sudo_uid = std::env::var_os("SUDO_UID");
     let sudo_gid = std::env::var_os("SUDO_GID");
     let sudo_user = std::env::var_os("SUDO_USER");
-    if euid.is_root() && sudo_uid.is_some() && sudo_gid.is_some() &&
-        sudo_user.is_some() {
-            uid = match sudo_uid {
-                Some(x) => x.to_str().unwrap().parse::<u32>().unwrap(),
-                _ => { unreachable!(); }
-            };
-            gid = match sudo_gid {
-                Some(x) => x.to_str().unwrap().parse::<u32>().unwrap(),
-                _ => { unreachable!(); }
-            };
-            user = match sudo_user {
-                Some(x) => x.to_str().unwrap().to_string(),
-                _ => { unreachable!(); }
-            };
-        } else {
-            uid = nix::unistd::getuid().as_raw();
-            gid = nix::unistd::getgid().as_raw();
-            user = match std::env::var_os("USER") {
-                Some(x) => x.to_str().unwrap().to_string(),
-                None => "Current user".to_string()
-            };
-        }
+    if euid.is_root() && sudo_uid.is_some() && sudo_gid.is_some() && sudo_user.is_some() {
+        uid = match sudo_uid {
+            Some(x) => x.to_str().unwrap().parse::<u32>().unwrap(),
+            _ => {
+                unreachable!();
+            }
+        };
+        gid = match sudo_gid {
+            Some(x) => x.to_str().unwrap().parse::<u32>().unwrap(),
+            _ => {
+                unreachable!();
+            }
+        };
+        user = match sudo_user {
+            Some(x) => x.to_str().unwrap().to_string(),
+            _ => {
+                unreachable!();
+            }
+        };
+    } else {
+        uid = nix::unistd::getuid().as_raw();
+        gid = nix::unistd::getgid().as_raw();
+        user = match std::env::var_os("USER") {
+            Some(x) => x.to_str().unwrap().to_string(),
+            None => "Current user".to_string(),
+        };
+    }
     User { user, uid, gid }
 }

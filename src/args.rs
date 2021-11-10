@@ -1,9 +1,8 @@
-
 // ------------------------------------------------------------------------
 // Arguemnt parsing
 // ------------------------------------------------------------------------
 
-use clap::{Arg, ArgMatches, App, AppSettings, SubCommand};
+use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 
 // ------------------------------------------------------------------------
 // macOS help
@@ -284,13 +283,13 @@ pub fn parse_args() -> ArgMatches<'static> {
                 .arg(
                     Arg::with_name("version")
                         .help("new default R version to set")
-                        .required(false)
-                )
+                        .required(false),
+                ),
         )
         .subcommand(
             SubCommand::with_name("list")
                 .about("List installed R versions")
-                .long_about(HELP_LIST)
+                .long_about(HELP_LIST),
         )
         .subcommand(
             SubCommand::with_name("add")
@@ -304,14 +303,14 @@ pub fn parse_args() -> ArgMatches<'static> {
                         .short("a")
                         .long("arch")
                         .required(false)
-                        .default_value("x86_64")
+                        .default_value("x86_64"),
                 )
                 .arg(
                     Arg::with_name("str")
                         .help("R versions to install (see 'rim available')")
                         .default_value("release")
-                        .multiple(false) // TODO: install multiple versions
-                )
+                        .multiple(false), // TODO: install multiple versions
+                ),
         )
         .subcommand(
             SubCommand::with_name("rm")
@@ -322,14 +321,14 @@ pub fn parse_args() -> ArgMatches<'static> {
                     Arg::with_name("version")
                         .help("versions to remove")
                         .multiple(true)
-                        .required(false)
+                        .required(false),
                 )
                 .arg(
                     Arg::with_name("all")
                         .help("remove all versions (TODO)")
                         .long("all")
-                        .required(false)
-                )
+                        .required(false),
+                ),
         )
         .subcommand(
             SubCommand::with_name("system")
@@ -338,42 +337,41 @@ pub fn parse_args() -> ArgMatches<'static> {
                 .subcommand(
                     SubCommand::with_name("make-orthogonal")
                         .about("Make installed versions orthogonal (macOS)")
-                        .long_about(HELP_SYSTEM_ORTHO)
+                        .long_about(HELP_SYSTEM_ORTHO),
                 )
                 .subcommand(
                     SubCommand::with_name("make-links")
                         .about("Create R-* quick links")
-                        .long_about(HELP_SYSTEM_LINKS)
+                        .long_about(HELP_SYSTEM_LINKS),
                 )
                 .subcommand(
                     SubCommand::with_name("create-lib")
                         .about("Create current user's package libraries")
-                        .long_about(HELP_SYSTEM_LIB)
+                        .long_about(HELP_SYSTEM_LIB),
                 )
                 .subcommand(
                     SubCommand::with_name("add-pak")
                         .about("Install or update pak for all R versions (TODO)")
-                        .long_about(HELP_SYSTEM_ADDPAK)
+                        .long_about(HELP_SYSTEM_ADDPAK),
                 )
                 .subcommand(
                     SubCommand::with_name("fix-permissions")
                         .about("Restrict permissions to admin")
-                        .long_about(HELP_SYSTEM_FIXPERMS)
+                        .long_about(HELP_SYSTEM_FIXPERMS),
                 )
                 .subcommand(
                     SubCommand::with_name("clean-sytem-lib")
                         .about("Clean system library from non-core packages (TODO)")
-                        .long_about(HELP_SYSTEM_CLEANSYSLIB)
+                        .long_about(HELP_SYSTEM_CLEANSYSLIB),
                 )
                 .subcommand(
                     SubCommand::with_name("forget")
                         .about("Make system forget about R installations (macOS)")
-                        .long_about(HELP_SYSTEM_FORGET)
-                )
+                        .long_about(HELP_SYSTEM_FORGET),
+                ),
         )
         .subcommand(
-            SubCommand::with_name("available")
-                .about("List R versions available to install (TODO)")
+            SubCommand::with_name("available").about("List R versions available to install (TODO)"),
         )
         .subcommand(
             SubCommand::with_name("resolve")
@@ -383,7 +381,7 @@ pub fn parse_args() -> ArgMatches<'static> {
                 .arg(
                     Arg::with_name("str")
                         .help("symbolic version string to resolve")
-                        .required(true)
+                        .required(true),
                 )
                 .arg(
                     Arg::with_name("arch")
@@ -391,8 +389,8 @@ pub fn parse_args() -> ArgMatches<'static> {
                         .short("a")
                         .long("arch")
                         .required(false)
-                        .default_value("x86_64")
-                )
+                        .default_value("x86_64"),
+                ),
         )
         .after_help(HELP_EXAMPLES)
         .get_matches()
