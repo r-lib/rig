@@ -1,6 +1,6 @@
 [package]
 name = "rim"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Gábor Csárdi <csardi.gabor@gmail.com"]
 license = "MIT"

@@ -83,17 +83,22 @@ pub fn sc_list() {
 
 #[allow(unused_variables)]
 pub fn sc_rm(args: &ArgMatches) {
-    let ver = args.value_of("version").unwrap().to_string();
-    check_installed(&ver);
+    let vers = args.values_of("version");
+    if vers.is_none() { return; }
+    let vers = vers.unwrap();
 
-    let dir = Path::new("/Library/Frameworks/R.framework/Versions");
-    let dir = dir.join(&ver);
-    println!("Removing {}", dir.display());
-    sc_system_forget();
-    match std::fs::remove_dir_all(&dir) {
-        Err(err) => panic!("Cannot remove {}: {}", dir.display(), err.to_string()),
-        _ => {}
-    };
+    for ver in vers {
+        check_installed(&ver.to_string());
+
+        let dir = Path::new("/Library/Frameworks/R.framework/Versions");
+        let dir = dir.join(&ver);
+        println!("Removing {}", dir.display());
+        sc_system_forget();
+        match std::fs::remove_dir_all(&dir) {
+            Err(err) => panic!("Cannot remove {}: {}", dir.display(), err.to_string()),
+            _ => {}
+        };
+    }
 }
 
 pub fn sc_system_add_pak() {
