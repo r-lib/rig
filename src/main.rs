@@ -31,7 +31,7 @@ fn sc_system(args: &ArgMatches) {
         ("add-pak", Some(_)) => sc_system_add_pak(),
         ("create-lib", Some(s)) => sc_system_create_lib(s),
         ("make-links", Some(_)) => sc_system_make_links(),
-        ("make-orthogonal", Some(_)) => sc_system_make_orthogonal(),
+        ("make-orthogonal", Some(s)) => sc_system_make_orthogonal(s),
         ("fix-permissions", Some(s)) => sc_system_fix_permissions(s),
         ("clean-system-lib", Some(_)) => sc_system_clean_system_lib(),
         ("forget", Some(_)) => sc_system_forget(),

@@ -62,7 +62,7 @@ pub fn sc_add(args: &ArgMatches) {
 
     sc_system_forget();
     system_fix_permissions(Some(vec![dirname.to_string()]));
-    sc_system_make_orthogonal();
+    system_make_orthogonal(Some(vec![dirname.to_string()]));
     system_create_lib(Some(vec![dirname.to_string()]));
     sc_system_make_links();
 }
@@ -100,6 +100,8 @@ pub fn sc_rm(args: &ArgMatches) {
             _ => {}
         };
     }
+
+    sc_system_make_links();
 }
 
 pub fn sc_system_add_pak() {
@@ -221,11 +223,28 @@ pub fn sc_system_make_links() {
     }
 }
 
-pub fn sc_system_make_orthogonal() {
-    let vers = sc_get_list();
+pub fn sc_system_make_orthogonal(args: &ArgMatches) {
+    check_root();
+    let vers = args.values_of("version");
+    if vers.is_none() {
+        system_make_orthogonal(None);
+        return;
+    } else {
+        let vers: Vec<String> = vers.unwrap().map(|v| v.to_string()).collect();
+        system_make_orthogonal(Some(vers));
+    }
+}
+
+fn system_make_orthogonal(vers: Option<Vec<String>>) {
+    let vers = match vers {
+        Some(x) => x,
+        None => sc_get_list()
+    };
+
     let re = Regex::new("R[.]framework/Resources").unwrap();
     let re2 = Regex::new("[-]F/Library/Frameworks/R[.]framework/[.][.]").unwrap();
     for ver in vers {
+        check_installed(&ver);
         println!("Making R {} orthogonal", ver);
         let base = Path::new("/Library/Frameworks/R.framework/Versions/");
         let sub = "R.framework/Versions/".to_string() + &ver + "/Resources";
