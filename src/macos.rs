@@ -9,6 +9,7 @@ use clap::ArgMatches;
 use nix::unistd::Gid;
 use nix::unistd::Uid;
 use regex::Regex;
+use semver::Version;
 
 use crate::download::download_file;
 use crate::resolve::resolve_versions;
@@ -85,7 +86,9 @@ pub fn sc_list() {
 
 pub fn sc_rm(args: &ArgMatches) {
     let vers = args.values_of("version");
-    if vers.is_none() { return; }
+    if vers.is_none() {
+        return;
+    }
     let vers = vers.unwrap();
 
     for ver in vers {
@@ -104,8 +107,57 @@ pub fn sc_rm(args: &ArgMatches) {
     sc_system_make_links();
 }
 
-pub fn sc_system_add_pak() {
-    unimplemented!();
+pub fn sc_system_add_pak(args: &ArgMatches) {
+    let devel = args.is_present("devel");
+    let all = args.is_present("all");
+    let vers = args.values_of("version");
+    if all {
+        system_add_pak(Some(sc_get_list()), devel);
+    } else if vers.is_none() {
+        system_add_pak(None, devel);
+        return;
+    } else {
+        let vers: Vec<String> = vers.unwrap().map(|v| v.to_string()).collect();
+        system_add_pak(Some(vers), devel);
+    }
+}
+
+fn system_add_pak(vers: Option<Vec<String>>, devel: bool) {
+    let vers = match vers {
+        Some(x) => x,
+        None => vec![sc_get_default()],
+    };
+
+    let base = Path::new("/Library/Frameworks/R.framework/Versions");
+    let re = Regex::new("[{][}]").unwrap();
+    let stream = if devel { "devel" } else { "stable" };
+
+    for ver in vers {
+        println!("Installing pak for R {}", ver);
+        check_installed(&ver);
+        check_has_pak(&ver);
+        let r = base.join(&ver).join("Resources/R");
+        let r = r.to_str().unwrap();
+        let cmd = r#"
+             dir.create(Sys.getenv('R_LIBS_USER'), showWarnings = FALSE, recursive = TRUE);
+             install.packages('pak', repos = 'https://r-lib.github.io/p/pak/{}/')
+        "#;
+        let cmd = re.replace(cmd, stream).to_string();
+        let cmd = Regex::new("[\n\r]")
+            .unwrap()
+            .replace_all(&cmd, "")
+            .to_string();
+        let status = Command::new(r)
+            .args(["--vanilla", "-s", "-e", &cmd])
+            .spawn()
+            .expect("Failed to run R to install pak")
+            .wait()
+            .expect("Failed to run R to install pak");
+
+        if !status.success() {
+            panic!("Failed to run R {} to install pak", ver);
+        }
+    }
 }
 
 pub fn sc_system_create_lib(args: &ArgMatches) {
@@ -122,7 +174,7 @@ pub fn sc_system_create_lib(args: &ArgMatches) {
 fn system_create_lib(vers: Option<Vec<String>>) {
     let vers = match vers {
         Some(x) => x,
-        None => sc_get_list()
+        None => sc_get_list(),
     };
     let base = Path::new("/Library/Frameworks/R.framework/Versions");
 
@@ -238,7 +290,7 @@ pub fn sc_system_make_orthogonal(args: &ArgMatches) {
 fn system_make_orthogonal(vers: Option<Vec<String>>) {
     let vers = match vers {
         Some(x) => x,
-        None => sc_get_list()
+        None => sc_get_list(),
     };
 
     let re = Regex::new("R[.]framework/Resources").unwrap();
@@ -291,7 +343,7 @@ pub fn sc_system_fix_permissions(args: &ArgMatches) {
 fn system_fix_permissions(vers: Option<Vec<String>>) {
     let vers = match vers {
         Some(x) => x,
-        None => sc_get_list()
+        None => sc_get_list(),
     };
 
     for ver in vers {
@@ -372,6 +424,15 @@ fn check_installed(ver: &String) -> bool {
     true
 }
 
+fn check_has_pak(ver: &String) -> bool {
+    let ver = Regex::new("-.*$").unwrap().replace(ver, "").to_string();
+    let ver = ver + ".0";
+    let v330 = Version::parse("3.2.0").unwrap();
+    let vv = Version::parse(&ver).unwrap();
+    assert!(vv > v330, "Pak is only available for R 3.3.0 or later");
+    true
+}
+
 fn sc_set_default(ver: String) {
     check_installed(&ver);
     let ret = std::fs::remove_file(R_CUR);
@@ -392,7 +453,7 @@ fn sc_set_default(ver: String) {
     };
 }
 
-fn sc_show_default() {
+fn sc_get_default() -> String {
     let tgt = std::fs::read_link(R_CUR);
     let tgtbuf = match tgt {
         Err(err) => match err.kind() {
@@ -410,7 +471,12 @@ fn sc_show_default() {
     // file_name() is only None if tgtbuf ends with "..", the we panic...
     let fname = tgtbuf.file_name().unwrap();
 
-    println!("{}", fname.to_str().unwrap());
+    fname.to_str().unwrap().to_string()
+}
+
+fn sc_show_default() {
+    let default = sc_get_default();
+    println!("{}", default);
 }
 
 fn sc_get_list() -> Vec<String> {

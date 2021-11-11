@@ -11,8 +11,8 @@ use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 #[cfg(target_os = "macos")]
 const HELP_ABOUT: &str = r#"
 DESCRIPTION
-    rim manages your R installations, on macOS and Windows. It can install
-    and set up multiple versions R, and it makes sure that they work together.
+    rim manages your R installations, on macOS. It can install and set up
+    multiple versions R, and it makes sure that they work together.
 
     On macOS R versions installed by rim do not interfere. You can run multiple
     versions at the same time. rim also makes sure that packages installed by
@@ -194,7 +194,14 @@ DESCRIPTION
 #[cfg(target_os = "macos")]
 const HELP_SYSTEM_ADDPAK: &str = r#"
 DESCRIPTION
-    Install/update pak for all current R versions. (TODO)
+    Install/update pak for one or more R versions.
+
+    * If `--all` is specified, then it installs pak for all current R
+      installations.
+    * If one or more R versions are specified, then it installs pak for
+      those.
+    * If no R versions are specified, then it installs pak for the default
+      R installation (see `rim default`).
 "#;
 
 #[cfg(target_os = "macos")]
@@ -363,8 +370,26 @@ pub fn parse_args() -> ArgMatches<'static> {
                 )
                 .subcommand(
                     SubCommand::with_name("add-pak")
-                        .about("Install or update pak for all R versions (TODO)")
-                        .long_about(HELP_SYSTEM_ADDPAK),
+                        .about("Install or update pak for an R version")
+                        .long_about(HELP_SYSTEM_ADDPAK)
+                        .arg(
+                            Arg::with_name("devel")
+                                .help("Install the development version of pak")
+                                .long("devel")
+                                .required(false),
+                        )
+                        .arg(
+                            Arg::with_name("all")
+                                .help("Install pak for all R versions")
+                                .long("all")
+                                .required(false),
+                        )
+                        .arg(
+                            Arg::with_name("version")
+                                .help("R versions to install/update pak for")
+                                .required(false)
+                                .multiple(true),
+                        ),
                 )
                 .subcommand(
                     SubCommand::with_name("fix-permissions")

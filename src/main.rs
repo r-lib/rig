@@ -28,7 +28,7 @@ fn main() {
 
 fn sc_system(args: &ArgMatches) {
     match args.subcommand() {
-        ("add-pak", Some(_)) => sc_system_add_pak(),
+        ("add-pak", Some(s)) => sc_system_add_pak(s),
         ("create-lib", Some(s)) => sc_system_create_lib(s),
         ("make-links", Some(_)) => sc_system_make_links(),
         ("make-orthogonal", Some(s)) => sc_system_make_orthogonal(s),
