@@ -3,8 +3,15 @@ use clap::ArgMatches;
 mod args;
 use args::parse_args;
 
+#[cfg(target_os = "macos")]
 mod macos;
+#[cfg(target_os = "macos")]
 use macos::*;
+
+#[cfg(target_os = "windows")]
+mod windows;
+#[cfg(target_os = "windows")]
+use windows::*;
 
 mod download;
 mod resolve;

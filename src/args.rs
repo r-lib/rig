@@ -4,25 +4,6 @@
 
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 
-// ------------------------------------------------------------------------
-// macOS help
-// ------------------------------------------------------------------------
-
-#[cfg(target_os = "macos")]
-const HELP_ABOUT: &str = r#"
-DESCRIPTION
-    rim manages your R installations, on macOS. It can install and set up
-    multiple versions R, and it makes sure that they work together.
-
-    On macOS R versions installed by rim do not interfere. You can run multiple
-    versions at the same time. rim also makes sure that packages installed by
-    the user go into a user package library, so reinstalling R will not wipe
-    out your installed packages.
-
-    rim is currently work in progress. Feedback is appreciated.
-    See https://github.com/gaborcsardi/rim for bug reports and more.
-"#;
-
 const HELP_EXAMPLES: &str = r#"EXAMPLES:
     # Add the latest development snapshot
     rim add devel
@@ -41,6 +22,59 @@ const HELP_EXAMPLES: &str = r#"EXAMPLES:
 
     # Set default version
     rim default 4.0
+"#;
+
+const HELP_RESOLVE: &str = r#"
+DESCRIPTION
+    Resolve R versions. Check the version number of an R version (e.g.
+    release, devel, etc.), and looks up the URL of the installer for it,
+    if an installer is available.
+
+    It prints the R version number, and after a space the URL of the
+    installer. If no installer is available for this R version and the
+    current platform, the URL is `NA`.
+
+    An R version can be specified in various ways:
+    - `rim resolve devel` is the latest available development version,
+    - `rim resolve release` is the latest release.
+    - `rim resolve x.y.z` is a specific version.
+    - `rim resolve x.y` is the latest release within the `x.y` minor branch.
+    - `rim resolve oldrel/n` is the latest release within the `n`th previous
+      minor branch (`oldrel` is the same as `oldrel/1`).
+"#;
+
+const HELP_RESOLVE_EXAMPLES: &str = r#"EXAMPLES
+    # Latest development snapshot
+    rim resolve devel
+
+    # Latest release (that has an installer available)
+    rim resolve release
+
+    # URL for a specific version
+    rim resolve 4.1.2
+
+    # Latest version within a minor branch
+    rim resolve 4.1
+"#;
+
+// ------------------------------------------------------------------------
+// macOS help
+// ------------------------------------------------------------------------
+
+#[cfg(target_os = "macos")]
+const HELP_ABOUT: &str = r#"
+DESCRIPTION
+    rim manages your R installations, on macOS and Windows. It can install
+    and set up multiple versions R, and it makes sure that they work
+    together.
+
+    On macOS R versions installed by rim do not interfere. You can run multiple
+    versions at the same time. rim also makes sure that packages installed by
+    the user go into a user package library, so reinstalling R will not wipe
+    out your installed packages.
+
+    rim is currently work in progress. Feedback is appreciated.
+    See https://github.com/gaborcsardi/rim for bug reports and more.
 "#;
 
 #[cfg(target_os = "macos")]
@@ -236,44 +270,140 @@ DESCRIPTION
     This command probably needs `sudo`: `sudo rim system forget`.
 "#;
 
-#[cfg(target_os = "macos")]
-const HELP_RESOLVE: &str = r#"
+// ------------------------------------------------------------------------
+// Windows help
+// ------------------------------------------------------------------------
+
+#[cfg(target_os = "windows")]
+const HELP_ABOUT: &str = r#"
 DESCRIPTION
-    Resolve R versions. Check the version number of an R version (e.g.
-    release, devel, etc.), and looks up the URL of the installer for it,
-    if an installer is available.
-
-    It prints the R version number, and after a space the URL of the
-    installer. If no installer is available for this R version and the
-    current platform, the URL is `NA`.
-
-    An R version can be specified in various ways:
-    - `rim resolve devel` is the latest available development version,
-    - `rim resolve release` is the latest release.
-    - `rim resolve x.y.z` is a specific version.
-    - `rim resolve x.y` is the latest release within the `x.y` minor branch.
-    - `rim resolve oldrel/n` is the latest release within the `n`th previous
-      minor branch (`oldrel` is the same as `oldrel/1`).
+    rim manages your R installations, on macOS and Windows. It can install
+    and set up multiple versions R, and it makes sure that they work
+    together.
 "#;
 
-#[cfg(target_os = "macos")]
-const HELP_RESOLVE_EXAMPLES: &str = r#"EXAMPLES
-    # Latest development snapshot
-    rim resolve devel
-
-    # Latest release (that has an installer available)
-    rim resolve release
-
-    # URL for a specific version
-    rim resolve 4.1.2
-
-    # Latest version within a minor branch
-    rim resolve 4.1
+#[cfg(target_os = "windows")]
+const HELP_DEFAULT: &str = r#"
+DESCRIPTION
+    Print or set the default R version.
 "#;
 
-// ------------------------------------------------------------------------
-// Windows help (TODO)
-// ------------------------------------------------------------------------
+#[cfg(target_os = "windows")]
+const HELP_DEFAULT_EXAMPLES: &str = r#"EXAMPLES:
+    # Query default R version
+    rim default
+
+    # Set the default version
+    rim default 4.1.2
+"#;
+
+#[cfg(target_os = "windows")]
+const HELP_LIST: &str = r#"
+DESCRIPTION
+    List installed R versions at `C:\Program Files\R`.
+    It does _not_ check if they are working properly.
+"#;
+
+#[cfg(target_os = "windows")]
+const HELP_ADD: &str = r#"
+DESCRIPTION
+    Download and install an R version, from the official sources.
+    It keeps the already installed R versions.
+"#;
+
+#[cfg(target_os = "windows")]
+const HELP_ADD_EXAMPLES: &str = r#"EXAMPLES
+    # Add the latest development snapshot
+    rim add devel
+
+    # Add the latest release
+    rim add release
+
+    # Install specific version
+    rim add 4.1.2
+
+    # Install latest version within a minor branch
+    rim add 4.1
+"#;
+
+#[cfg(target_os = "windows")]
+const HELP_RM: &str = r#"
+DESCRIPTION
+    Remove an R installation. It keeps the users' package libraries.
+"#;
+
+#[cfg(target_os = "windows")]
+const HELP_SYSTEM: &str = r#"
+DESCRIPTION
+    Various commands to modify and configure the installed R versions.
+    See their help pages for details. E.g. run `rim system make-links --help`.
+"#;
+
+#[cfg(target_os = "windows")]
+const HELP_SYSTEM_ORTHO: &str = r#"
+DESCRIPTION
+    Make the current R installations orthogonal. (macOS)
+
+    This command does nothing on Windows.
+"#;
+
+#[cfg(target_os = "windows")]
+const HELP_SYSTEM_LINKS: &str = r#"
+DESCRIPTION
+    Create quick links in `C:\Program Files\R\bin` for the current R
+    installations. This lets you directly run a specific R version. E.g.
+     `R-4.1` will start R 4.1.x.
+
+    `rim add` runs `rim system make-links`, so if you only use rim to
+    install R, then you do not need to run it manually.
+"#;
+
+#[cfg(target_os = "windows")]
+const HELP_SYSTEM_LIB: &str = r#"
+DESCRIPTION
+    Create directories for the current user's package libraries, for all
+    current R versions.
+
+    `rim add` runs `rim system create-lib`, so if you only use rim to
+    install R, then you do not need to run it manually.
+"#;
+
+#[cfg(target_os = "windows")]
+const HELP_SYSTEM_ADDPAK: &str = r#"
+DESCRIPTION
+    Install/update pak for one or more R versions.
+
+    * If `--all` is specified, then it installs pak for all current R
+      installations.
+    * If one or more R versions are specified, then it installs pak for
+      those.
+    * If no R versions are specified, then it installs pak for the default
+      R installation (see `rim default`).
+"#;
+
+#[cfg(target_os = "windows")]
+const HELP_SYSTEM_FIXPERMS: &str = r#"
+DESCRIPTION
+    Update the permissions of the current R versions, so only the
+    administrator can install R packages into the system library.
+
+    `rim add` runs `rim system fix-permissions`, so if you only use rim to
+    install R, then you do not need to run it manually.
+"#;
+
+#[cfg(target_os = "windows")]
+const HELP_SYSTEM_CLEANSYSLIB: &str = r#"
+DESCRIPTION
+    Remove non-core packages from the system libraries of the current R
+    versions. (TODO)
+"#;
+
+#[cfg(target_os = "windows")]
+const HELP_SYSTEM_FORGET: &str = r#"
+DESCRIPTION
+    Tell macOS to forget about the currently installed R versions.
+    This command does nothing on Windows.
+"#;
 
 pub fn parse_args() -> ArgMatches<'static> {
     App::new("RIM -- The R Installation Manager")
