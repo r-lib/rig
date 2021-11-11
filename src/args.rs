@@ -62,6 +62,12 @@ const HELP_RESOLVE_EXAMPLES: &str = r#"EXAMPLES
 // ------------------------------------------------------------------------
 
 #[cfg(target_os = "macos")]
+const HELP_ARCH: &str = "Select macOS arch: arm64 or x86_64";
+
+#[cfg(target_os = "macos")]
+const DEFAULT_ARCH: &str = "x86_64";
+
+#[cfg(target_os = "macos")]
 const HELP_ABOUT: &str = r#"
 DESCRIPTION
     rim manages your R installations, on macOS and Windows. It can install
@@ -275,6 +281,12 @@ DESCRIPTION
 // ------------------------------------------------------------------------
 
 #[cfg(target_os = "windows")]
+const HELP_ARCH: &str = "Select Windows arch: msvcrt or ucrt";
+
+#[cfg(target_os = "windows")]
+const DEFAULT_ARCH: &str = "msvcrt";
+
+#[cfg(target_os = "windows")]
 const HELP_ABOUT: &str = r#"
 DESCRIPTION
     rim manages your R installations, on macOS and Windows. It can install
@@ -437,11 +449,11 @@ pub fn parse_args() -> ArgMatches<'static> {
                 .aliases(&["install"])
                 .arg(
                     Arg::with_name("arch")
-                        .help("Select macOS arch: arm64 or x86_64")
+                        .help(HELP_ARCH)
                         .short("a")
                         .long("arch")
                         .required(false)
-                        .default_value("x86_64"),
+                        .default_value(DEFAULT_ARCH),
                 )
                 .arg(
                     Arg::with_name("str")
@@ -559,11 +571,11 @@ pub fn parse_args() -> ArgMatches<'static> {
                 )
                 .arg(
                     Arg::with_name("arch")
-                        .help("Select macOS arch: arm64 or x86_64")
+                        .help(HELP_ARCH)
                         .short("a")
                         .long("arch")
                         .required(false)
-                        .default_value("x86_64"),
+                        .default_value(DEFAULT_ARCH),
                 ),
         )
         .after_help(HELP_EXAMPLES)

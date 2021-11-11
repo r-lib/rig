@@ -49,3 +49,12 @@ fn sc_system(args: &ArgMatches) {
 fn sc_available() {
     unimplemented!();
 }
+
+fn sc_resolve(args: &ArgMatches) {
+    let version = get_resolve(args);
+    let url: String = match version.url {
+        Some(s) => s.to_string(),
+        None => "NA".to_string(),
+    };
+    println!("{} {}", version.version, url);
+}

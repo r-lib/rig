@@ -385,16 +385,7 @@ pub fn sc_system_forget() {
     }
 }
 
-pub fn sc_resolve(args: &ArgMatches) {
-    let version = get_resolve(args);
-    let url: String = match version.url {
-        Some(s) => s.to_string(),
-        None => "NA".to_string(),
-    };
-    println!("{} {}", version.version, url);
-}
-
-fn get_resolve(args: &ArgMatches) -> Rversion {
+pub fn get_resolve(args: &ArgMatches) -> Rversion {
     let str = args.value_of("str").unwrap().to_string();
     let arch = match args.value_of("arch") {
         Some(a) => a.to_string(),
