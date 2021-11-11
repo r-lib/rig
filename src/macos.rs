@@ -83,7 +83,6 @@ pub fn sc_list() {
     }
 }
 
-#[allow(unused_variables)]
 pub fn sc_rm(args: &ArgMatches) {
     let vers = args.values_of("version");
     if vers.is_none() { return; }
