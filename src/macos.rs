@@ -26,12 +26,12 @@ const R_CUR: &str = "/Library/Frameworks/R.framework/Versions/Current";
 
 pub fn sc_add(args: &ArgMatches) {
     let version = get_resolve(args);
-    let ver = version.version;
-    let url: String = match version.url {
+    let ver = version.version.to_owned();
+    let url: String = match &version.url {
         Some(s) => s.to_string(),
         None => panic!("Cannot find a download url for R version {}", ver),
     };
-    let filename = version.arch + "-" + basename(&url).unwrap();
+    let filename = version.arch.to_owned() + "-" + basename(&url).unwrap();
     let tmp_dir = std::env::temp_dir().join("rim");
     let target = tmp_dir.join(&filename);
     let target_str;
@@ -58,10 +58,12 @@ pub fn sc_add(args: &ArgMatches) {
         panic!("installer exited with status {}", status.to_string());
     }
 
+    let dirname = get_install_dir(&version);
+
     sc_system_forget();
     sc_system_fix_permissions();
     sc_system_make_orthogonal();
-    sc_system_create_lib();
+    system_create_lib(Some(vec![dirname]));
     sc_system_make_links();
 }
 
@@ -105,18 +107,33 @@ pub fn sc_system_add_pak() {
     unimplemented!();
 }
 
-pub fn sc_system_create_lib() {
-    let vers = sc_get_list();
+pub fn sc_system_create_lib(args: &ArgMatches) {
+    let vers = args.values_of("version");
+    if vers.is_none() {
+        system_create_lib(None);
+        return;
+    } else {
+        let vers: Vec<String> = vers.unwrap().map(|v| v.to_string()).collect();
+        system_create_lib(Some(vers));
+    }
+}
+
+fn system_create_lib(vers: Option<Vec<String>>) {
+    let vers = match vers {
+        Some(x) => x,
+        None => sc_get_list()
+    };
     let base = Path::new("/Library/Frameworks/R.framework/Versions");
 
     let user = get_user();
     for ver in vers {
+        check_installed(&ver);
         let r = base.join(&ver).join("Resources/R");
         let r = r.to_str().unwrap();
         let out = Command::new(r)
             .args(["--vanilla", "-s", "-e", "cat(Sys.getenv('R_LIBS_USER'))"])
             .output()
-            .expect("Failed to run R to quert R_LIBS_USER");
+            .expect("Failed to run R to query R_LIBS_USER");
         let lib = match String::from_utf8(out.stdout) {
             Ok(v) => v,
             Err(err) => panic!(
@@ -423,4 +440,20 @@ fn get_user() -> User {
         };
     }
     User { user, uid, gid }
+}
+
+fn get_install_dir(ver: &Rversion) -> String {
+    let minor = get_minor_version(&ver.version);
+    if ver.arch == "x86_64" {
+        minor
+    } else if ver.arch == "arm64" {
+        minor + "-arm64"
+    } else {
+        panic!("Unknown macOS arch: {}", ver.arch);
+    }
+}
+
+fn get_minor_version(ver: &str) -> String {
+    let re = Regex::new("[.][^.]*$").unwrap();
+    re.replace(ver, "").to_string()
 }

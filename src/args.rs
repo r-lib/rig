@@ -316,7 +316,7 @@ pub fn parse_args() -> ArgMatches<'static> {
             SubCommand::with_name("rm")
                 .about("Remove R versions")
                 .long_about(HELP_RM)
-                .aliases(&["del", "remote", "delete"])
+                .aliases(&["del", "remove", "delete"])
                 .arg(
                     Arg::with_name("version")
                         .help("versions to remove")
@@ -347,7 +347,13 @@ pub fn parse_args() -> ArgMatches<'static> {
                 .subcommand(
                     SubCommand::with_name("create-lib")
                         .about("Create current user's package libraries")
-                        .long_about(HELP_SYSTEM_LIB),
+                        .long_about(HELP_SYSTEM_LIB)
+                        .arg(
+                            Arg::with_name("version")
+                                .help("R versions to create the library for (default: all)")
+                                .required(false)
+                                .multiple(true),
+                        ),
                 )
                 .subcommand(
                     SubCommand::with_name("add-pak")

@@ -29,7 +29,7 @@ fn main() {
 fn sc_system(args: &ArgMatches) {
     match args.subcommand() {
         ("add-pak", Some(_)) => sc_system_add_pak(),
-        ("create-lib", Some(_)) => sc_system_create_lib(),
+        ("create-lib", Some(s)) => sc_system_create_lib(s),
         ("make-links", Some(_)) => sc_system_make_links(),
         ("make-orthogonal", Some(_)) => sc_system_make_orthogonal(),
         ("fix-permissions", Some(_)) => sc_system_fix_permissions(),
