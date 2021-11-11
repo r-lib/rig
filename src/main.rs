@@ -32,7 +32,7 @@ fn sc_system(args: &ArgMatches) {
         ("create-lib", Some(s)) => sc_system_create_lib(s),
         ("make-links", Some(_)) => sc_system_make_links(),
         ("make-orthogonal", Some(_)) => sc_system_make_orthogonal(),
-        ("fix-permissions", Some(_)) => sc_system_fix_permissions(),
+        ("fix-permissions", Some(s)) => sc_system_fix_permissions(s),
         ("clean-system-lib", Some(_)) => sc_system_clean_system_lib(),
         ("forget", Some(_)) => sc_system_forget(),
         _ => panic!("Usage: rim system [SUBCOMMAND], see help"),

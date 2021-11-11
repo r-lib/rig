@@ -58,12 +58,12 @@ pub fn sc_add(args: &ArgMatches) {
         panic!("installer exited with status {}", status.to_string());
     }
 
-    let dirname = get_install_dir(&version);
+    let dirname = &get_install_dir(&version);
 
     sc_system_forget();
-    sc_system_fix_permissions();
+    system_fix_permissions(Some(vec![dirname.to_string()]));
     sc_system_make_orthogonal();
-    system_create_lib(Some(vec![dirname]));
+    system_create_lib(Some(vec![dirname.to_string()]));
     sc_system_make_links();
 }
 
@@ -257,10 +257,26 @@ pub fn sc_system_make_orthogonal() {
     }
 }
 
-pub fn sc_system_fix_permissions() {
+pub fn sc_system_fix_permissions(args: &ArgMatches) {
     check_root();
-    let vers = sc_get_list();
+    let vers = args.values_of("version");
+    if vers.is_none() {
+        system_fix_permissions(None);
+        return;
+    } else {
+        let vers: Vec<String> = vers.unwrap().map(|v| v.to_string()).collect();
+        system_fix_permissions(Some(vers));
+    }
+}
+
+fn system_fix_permissions(vers: Option<Vec<String>>) {
+    let vers = match vers {
+        Some(x) => x,
+        None => sc_get_list()
+    };
+
     for ver in vers {
+        check_installed(&ver);
         let path = Path::new(R_ROOT).join(ver.as_str());
         let path = path.to_str().unwrap();
         println!("Fixing permissions in {}", path);

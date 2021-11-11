@@ -363,7 +363,13 @@ pub fn parse_args() -> ArgMatches<'static> {
                 .subcommand(
                     SubCommand::with_name("fix-permissions")
                         .about("Restrict permissions to admin")
-                        .long_about(HELP_SYSTEM_FIXPERMS),
+                        .long_about(HELP_SYSTEM_FIXPERMS)
+                        .arg(
+                            Arg::with_name("version")
+                                .help("R versions to update (default: all)")
+                                .required(false)
+                                .multiple(true),
+                        ),
                 )
                 .subcommand(
                     SubCommand::with_name("clean-sytem-lib")
