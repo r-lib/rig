@@ -1,4 +1,8 @@
 
+# rim 0.1.2 (unreleased)
+
+* `rim ls` is now a synonym of `rim list`.
+
 # rim 0.1.1
 
 * `rim rm now supports removing multiple versions.

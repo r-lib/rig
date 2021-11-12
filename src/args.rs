@@ -295,6 +295,7 @@ pub fn parse_args() -> ArgMatches<'static> {
         )
         .subcommand(
             SubCommand::with_name("list")
+                .aliases(&["ls"])
                 .about("List installed R versions")
                 .long_about(HELP_LIST),
         )
