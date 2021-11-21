@@ -1,5 +1,5 @@
 
-# rim 0.1.2 (unreleased)
+# rim 0.1.2
 
 * `rim ls` is now a synonym of `rim list`.
 
