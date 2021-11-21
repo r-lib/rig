@@ -1,0 +1,9 @@
+notarize {
+  path = "rim-{{ARCH}}-{{VERSION}}-macOS.pkg"
+  bundle_id = "com.gaborcsardi.rim"
+  staple = true
+}
+apple_id {
+  username = "csardi.gabor@gmail.com"
+  password = "@env:AC_PASSWORD"
+}

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<installer-gui-script minSpecVersion="1">
+    <title>rim</title>
+    <organization>com.gaborcsardi.rim</organization>
+    <domains enable_localSystem="true" enable_anywhere="true" />
+    <options customize="allow" require-scripts="false" rootVolumeOnly="false" />
+    <!-- Define documents displayed at various steps -->
+    <!-- <welcome    file="welcome.html"    mime-type="text/html" /> -->
+    <license    file="LICENSE"    mime-type="text/plain" />
+    <!-- <conclusion file="conclusion.html" mime-type="text/html" /> -->
+    <options hostArchitectures="{{ARCH}}" />
+    <!-- List all component packages -->
+    <pkg-ref id="com.gaborcsardi.rim"
+             version="{{VERSION}}"
+             auth="root">rim-{{ARCH}}.pkg</pkg-ref>
+    <!-- List them again here. They can now be organized
+         as a hierarchy if you want. -->
+    <choices-outline>
+        <line choice="com.gaborcsardi.rim"/>
+    </choices-outline>
+    <!-- Define each choice above -->
+    <choice
+        id="com.gaborcsardi.rim"
+        visible="false"
+        title="rim"
+        description="rim - R installation manager"
+        start_selected="true">
+      <pkg-ref id="com.gaborcsardi.rim"/>
+    </choice>
+</installer-gui-script>

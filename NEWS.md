@@ -3,6 +3,8 @@
 
 * `rim ls` is now a synonym of `rim list`.
 
+* We have macOS installers now, and they are signed and notarized.
+
 # rim 0.1.1
 
 * `rim rm now supports removing multiple versions.
