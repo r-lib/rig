@@ -1,9 +1,11 @@
 #![cfg(target_os = "windows")]
 
 use std::process::Command;
+use std::path::Path;
 
 use clap::ArgMatches;
 
+use crate::common::*;
 use crate::download::*;
 use crate::resolve::resolve_versions;
 use crate::rversion::Rversion;
@@ -22,19 +24,36 @@ pub fn sc_add(args: &ArgMatches) {
 	.expect("Failed to run installer");
 
     if !status.success() {
-	panic!("installer exited with status {}", status.to_string());
+	    panic!("installer exited with status {}", status.to_string());
     }
 
     // system_create_lib(Some(vec![version.version]));
     // sc_system_make_links();
 }
 
-pub fn sc_default(args: &ArgMatches) {
-    unimplemented!();
-}
-
 pub fn sc_rm(args: &ArgMatches) {
-    unimplemented!();
+    let vers = args.values_of("version");
+    if vers.is_none() {
+        return;
+    }
+    let vers = vers.unwrap();
+
+    for ver in vers {
+        check_installed(&ver.to_string());
+
+        let ver = "R-".to_string() + ver;
+        let dir = Path::new(R_ROOT);
+        let dir = dir.join(ver);
+        println!("Removing {}", dir.display());
+        use std::path::Path;
+        // TODO: remove from the registry as well
+        match std::fs::remove_dir_all(&dir) {
+            Err(err) => panic!("Cannot remove {}: {}", dir.display(), err.to_string()),
+            _ => {}
+        }
+    }
+
+    // sc_system_make_links();
 }
 
 pub fn sc_system_add_pak(args: &ArgMatches) {
@@ -113,4 +132,16 @@ pub fn sc_get_list() -> Vec<String> {
 
   vers.sort();
   vers
+}
+
+pub fn sc_set_default(ver: String) {
+    unimplemented!();
+}
+
+pub fn sc_get_default() -> String {
+    unimplemented!();
+}
+
+pub fn sc_show_default() -> String {
+    unimplemented!();
 }

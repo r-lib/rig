@@ -11,6 +11,7 @@ use nix::unistd::Uid;
 use regex::Regex;
 use semver::Version;
 
+use crate::common::*;
 use crate::download::*;
 use crate::resolve::resolve_versions;
 use crate::rversion::Rversion;
@@ -50,15 +51,6 @@ pub fn sc_add(args: &ArgMatches) {
     sc_system_make_links();
 }
 
-pub fn sc_default(args: &ArgMatches) {
-    if args.is_present("version") {
-        let ver = args.value_of("version").unwrap().to_string();
-        sc_set_default(ver);
-    } else {
-        sc_show_default();
-    }
-}
-
 pub fn sc_rm(args: &ArgMatches) {
     let vers = args.values_of("version");
     if vers.is_none() {
@@ -69,7 +61,7 @@ pub fn sc_rm(args: &ArgMatches) {
     for ver in vers {
         check_installed(&ver.to_string());
 
-        let dir = Path::new("/Library/Frameworks/R.framework/Versions");
+        let dir = Path::new(R_ROOT);
         let dir = dir.join(&ver);
         println!("Removing {}", dir.display());
         sc_system_forget();
@@ -380,16 +372,6 @@ fn valid_macos_archs() -> Vec<String> {
     vec!["x86_64".to_string(), "arm64".to_string()]
 }
 
-fn check_installed(ver: &String) -> bool {
-    let inst = sc_get_list();
-    assert!(
-        inst.contains(&ver),
-        "Version {} is not installed, see 'rim list'",
-        ver
-    );
-    true
-}
-
 fn check_has_pak(ver: &String) -> bool {
     let ver = Regex::new("-.*$").unwrap().replace(ver, "").to_string();
     let ver = ver + ".0";
@@ -419,7 +401,7 @@ fn sc_set_default(ver: String) {
     };
 }
 
-fn sc_get_default() -> String {
+pub fn sc_get_default() -> String {
     let tgt = std::fs::read_link(R_CUR);
     let tgtbuf = match tgt {
         Err(err) => match err.kind() {
@@ -440,7 +422,7 @@ fn sc_get_default() -> String {
     fname.to_str().unwrap().to_string()
 }
 
-fn sc_show_default() {
+pub fn sc_show_default() {
     let default = sc_get_default();
     println!("{}", default);
 }

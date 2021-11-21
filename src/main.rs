@@ -13,6 +13,7 @@ mod windows;
 #[cfg(target_os = "windows")]
 use windows::*;
 
+mod common;
 mod download;
 mod resolve;
 mod rversion;
@@ -63,5 +64,14 @@ fn sc_list() {
     let vers = sc_get_list();
     for ver in vers {
         println!("{}", ver);
+    }
+}
+
+fn sc_default(args: &ArgMatches) {
+    if args.is_present("version") {
+        let ver = args.value_of("version").unwrap().to_string();
+        sc_set_default(ver);
+    } else {
+        sc_show_default();
     }
 }
