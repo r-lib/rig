@@ -11,9 +11,9 @@ target/release/rim: $(SOURCES)
 target/x86_64-apple-darwin/release/rim: $(SOURCES)
 	cargo build --target x86_64-apple-darwin
 
-release: rim-arm64-$(VERSION)-macOS.pkg rim-x86_64-$(VERSION)-macOS.pkg
+release: rim-$(VERSION)-macOS-arm64.pkg rim-$(VERSION)-macOS-x86_64.pkg
 
-rim-%-$(VERSION)-macOS.pkg: rim-unnotarized-%.pkg gon.hcl.in
+rim-$(VERSION)-macOS-%.pkg: rim-unnotarized-%.pkg gon.hcl.in
 	cat gon.hcl.in | \
 		sed 's/{{VERSION}}/$(VERSION)/g' | \
 		sed 's/{{ARCH}}/$*/g' > gon.hcl
