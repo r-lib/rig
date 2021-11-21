@@ -1,12 +1,45 @@
+
+use clap::ArgMatches;
 use futures::future;
 use futures_util::StreamExt;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 
+#[cfg(target_os = "macos")]
+use crate::macos::*;
+#[cfg(target_os = "windows")]
+use crate::windows::*;
+use crate::rversion::Rversion;
+use crate::utils::*;
+
 // ------------------------------------------------------------------------
 // synchronous API
 // ------------------------------------------------------------------------
+
+pub fn download_r(args: &ArgMatches) -> (Rversion, String) {
+    let version = get_resolve(args);
+    let ver = version.version.to_owned();
+    let url: String = match &version.url {
+        Some(s) => s.to_string(),
+        None => panic!("Cannot find a download url for R version {}", ver),
+    };
+    let filename = version.arch.to_owned() + "-" + basename(&url).unwrap();
+    let tmp_dir = std::env::temp_dir().join("rim");
+    let target = tmp_dir.join(&filename);
+    let target_str;
+    if target.exists() {
+        target_str = target.into_os_string().into_string().unwrap();
+        println!("{} is cached at\n    {}", filename, target_str);
+    } else {
+        target_str = target.into_os_string().into_string().unwrap();
+        println!("Downloading {} ->\n    {}", url, target_str);
+        let client = &reqwest::Client::new();
+        download_file(client, url, &target_str);
+    }
+
+    (version, target_str)
+}
 
 #[tokio::main]
 pub async fn download_file(client: &reqwest::Client, url: String, opath: &str) {

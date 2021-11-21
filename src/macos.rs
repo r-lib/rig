@@ -11,7 +11,7 @@ use nix::unistd::Uid;
 use regex::Regex;
 use semver::Version;
 
-use crate::download::download_file;
+use crate::download::*;
 use crate::resolve::resolve_versions;
 use crate::rversion::Rversion;
 use crate::utils::*;
@@ -26,30 +26,12 @@ const R_ROOT: &str = "/Library/Frameworks/R.framework/Versions";
 const R_CUR: &str = "/Library/Frameworks/R.framework/Versions/Current";
 
 pub fn sc_add(args: &ArgMatches) {
-    let version = get_resolve(args);
-    let ver = version.version.to_owned();
-    let url: String = match &version.url {
-        Some(s) => s.to_string(),
-        None => panic!("Cannot find a download url for R version {}", ver),
-    };
-    let filename = version.arch.to_owned() + "-" + basename(&url).unwrap();
-    let tmp_dir = std::env::temp_dir().join("rim");
-    let target = tmp_dir.join(&filename);
-    let target_str;
-    if target.exists() {
-        target_str = target.into_os_string().into_string().unwrap();
-        println!("{} is cached at\n    {}", filename, target_str);
-    } else {
-        target_str = target.into_os_string().into_string().unwrap();
-        println!("Downloading {} ->\n    {}", url, target_str);
-        let client = &reqwest::Client::new();
-        download_file(client, url, &target_str);
-    }
+    let (version, target) = download_r(&args);
 
     sc_system_forget();
 
     let status = Command::new("installer")
-        .args(["-pkg", &target_str, "-target", "/"])
+        .args(["-pkg", &target, "-target", "/"])
         .spawn()
         .expect("Failed to run installer")
         .wait()
@@ -74,13 +56,6 @@ pub fn sc_default(args: &ArgMatches) {
         sc_set_default(ver);
     } else {
         sc_show_default();
-    }
-}
-
-pub fn sc_list() {
-    let vers = sc_get_list();
-    for ver in vers {
-        println!("{}", ver);
     }
 }
 
@@ -470,7 +445,7 @@ fn sc_show_default() {
     println!("{}", default);
 }
 
-fn sc_get_list() -> Vec<String> {
+pub fn sc_get_list() -> Vec<String> {
     let paths = std::fs::read_dir(R_ROOT);
     assert!(paths.is_ok(), "Cannot list directory {}", R_ROOT);
     let paths = paths.unwrap();

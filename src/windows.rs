@@ -1,21 +1,35 @@
 #![cfg(target_os = "windows")]
 
+use std::process::Command;
+
 use clap::ArgMatches;
 
+use crate::download::*;
 use crate::resolve::resolve_versions;
-
 use crate::rversion::Rversion;
+
+const R_ROOT: &str = "C:\\Program Files\\R";
 
 #[warn(unused_variables)]
 pub fn sc_add(args: &ArgMatches) {
-    unimplemented!();
+    let (version, target) = download_r(&args);
+
+    let status = Command::new(&target)
+	.args(["/VERYSILENT", "/SUPPRESSMSGBOXES"])
+	.spawn()
+	.expect("Failed to run installer")
+	.wait()
+	.expect("Failed to run installer");
+
+    if !status.success() {
+	panic!("installer exited with status {}", status.to_string());
+    }
+
+    // system_create_lib(Some(vec![version.version]));
+    // sc_system_make_links();
 }
 
 pub fn sc_default(args: &ArgMatches) {
-    unimplemented!();
-}
-
-pub fn sc_list() {
     unimplemented!();
 }
 
@@ -40,7 +54,7 @@ pub fn sc_system_make_orthogonal(_args: &ArgMatches) {
 }
 
 pub fn sc_system_fix_permissions(args: &ArgMatches) {
-    unimplemented!();
+    // Nothing to do on Windows
 }
 
 pub fn sc_system_clean_system_lib() {
@@ -79,4 +93,24 @@ fn valid_windows_archs() -> Vec<String> {
 	"ucrt".to_string(),
 	"default".to_string()
     ]
+}
+
+pub fn sc_get_list() -> Vec<String> {
+  let paths = std::fs::read_dir(R_ROOT);
+  assert!(paths.is_ok(), "Cannot list directory {}", R_ROOT);
+  let paths = paths.unwrap();
+
+  let mut vers = Vec::new();
+  for de in paths {
+    let path = de.unwrap().path();
+    let fname = path.file_name().unwrap();
+    let fname = fname.to_str().unwrap().to_string();
+    if &fname[0..2] == "R-" {
+        let v = fname[2..].to_string();
+        vers.push(v);
+    }
+  }
+
+  vers.sort();
+  vers
 }

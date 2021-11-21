@@ -396,11 +396,9 @@ DESCRIPTION
 #[cfg(target_os = "windows")]
 const HELP_SYSTEM_FIXPERMS: &str = r#"
 DESCRIPTION
-    Update the permissions of the current R versions, so only the
-    administrator can install R packages into the system library.
-
-    `rim add` runs `rim system fix-permissions`, so if you only use rim to
-    install R, then you do not need to run it manually.
+    Update the permissions of the current R versions.
+    This command does nothing on Windows, because the installer already
+    sets the correct permissions.
 "#;
 
 #[cfg(target_os = "windows")]

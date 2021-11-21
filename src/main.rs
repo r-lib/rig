@@ -58,3 +58,10 @@ fn sc_resolve(args: &ArgMatches) {
     };
     println!("{} {}", version.version, url);
 }
+
+fn sc_list() {
+    let vers = sc_get_list();
+    for ver in vers {
+        println!("{}", ver);
+    }
+}

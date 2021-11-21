@@ -17,11 +17,11 @@ const MACOS_OLD2_URI: &str = "https://cloud.r-project.org/bin/macosx/old/R-{}.pk
 const MACOS_OLD_URI: &str = "https://cloud.r-project.org/bin/macosx/R-{}.pkg";
 const MACOS_URI: &str = "https://cloud.r-project.org/bin/macosx/base/R-{}.pkg";
 const MACOS_ARM_URI: &str =
-    "https://cran.r-project.org/bin/macosx/big-sur-arm64/base/R-{}-arm64.pkg";
+    "https://cloud.r-project.org/bin/macosx/big-sur-arm64/base/R-{}-arm64.pkg";
 
-const WIN_DEVEL_URI: &str = "https://cran.r-project.org/bin/windows/base/R-devel-win.exe";
-const WIN_DEVEL_UCRT_URI: &str = "https://cran.r-project.org/bin/windows/testing/R-devel-ucrt.exe";
-const WIN_URI: &str = "https://cran.r-project.org/bin/windows/base/old/{}/R-{}-win.exe";
+const WIN_DEVEL_URI: &str = "https://cloud.r-project.org/bin/windows/base/R-devel-win.exe";
+const WIN_DEVEL_UCRT_URI: &str = "https://cloud.r-project.org/bin/windows/testing/R-devel-ucrt.exe";
+const WIN_URI: &str = "https://cloud.r-project.org/bin/windows/base/old/{}/R-{}-win.exe";
 
 const DEVEL_VERSION_URI: &str = "https://svn.r-project.org/R/trunk/VERSION";
 
