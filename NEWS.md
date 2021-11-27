@@ -1,4 +1,8 @@
 
+# rim 0.1.3 (unreleased)
+
+* `bash` and `zsh` completions out of the box, on macOS
+
 # rim 0.1.2
 
 * `rim ls` is now a synonym of `rim list`.

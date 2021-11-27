@@ -14,12 +14,17 @@ Install, remove, configure R versions.
 * On M1 macs select between x86_64 and arm64 versions or R, or install both.
 * Makes sure that installed packages are kept separete from the R
   installation.
+* Includes auto-complete for `zsh` and `bash`.
 
 ## ⬇️&nbsp; Installation
 
 Download the latest release from https://github.com/gaborcsardi/rim/releases.
-Unpack archive and move the `rim` file to `/usr/local/bin` or some other
-directory in your PATH.
+
+The macOS installer and also installs the `zsh` and `bash` completions.
+`zsh` completions work out of the box.
+For `bash` completions install the `bash-completion` package from Homebrew 
+and make sure it is loaded from your `.bashrc`. (You don't need to install
+`bash` from Homebrew, but you can if you like.)
 
 ## ⚙️&nbsp; Usage
 
