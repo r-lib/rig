@@ -1,5 +1,5 @@
 
-# rim 0.1.3 (unreleased)
+# rim 0.1.3
 
 * `bash` and `zsh` completions out of the box, on macOS
 
