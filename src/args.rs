@@ -281,7 +281,7 @@ const HELP_RESOLVE_EXAMPLES: &str = r#"EXAMPLES:
 pub fn rim_app() -> App<'static> {
 
     App::new("RIM -- The R Installation Manager")
-        .version("0.1.0")
+        .version("0.1.3")
         .license(clap::crate_license!())
         .about(HELP_ABOUT)
         .setting(AppSettings::ArgRequiredElseHelp)
