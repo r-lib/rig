@@ -26,13 +26,22 @@ const R_ROOT: &str = "/Library/Frameworks/R.framework/Versions";
 const R_CUR: &str = "/Library/Frameworks/R.framework/Versions/Current";
 
 pub fn sc_add(args: &ArgMatches) {
-    let version = get_resolve(args);
+    let mut version = get_resolve(args);
     let ver = version.version.to_owned();
+    let verstr = match ver {
+        Some(ref x) => x,
+        None => "???"
+    };
     let url: String = match &version.url {
         Some(s) => s.to_string(),
-        None => panic!("Cannot find a download url for R version {}", ver),
+        None => panic!("Cannot find a download url for R version {}", verstr),
     };
-    let filename = version.arch.to_owned() + "-" + basename(&url).unwrap();
+    let arch = version.arch.to_owned();
+    let prefix = match arch {
+        Some(x) => x,
+        None => calculate_hash(&url)
+    };
+    let filename = prefix + "-" + basename(&url).unwrap();
     let tmp_dir = std::env::temp_dir().join("rim");
     let target = tmp_dir.join(&filename);
     let target_str;
@@ -47,6 +56,16 @@ pub fn sc_add(args: &ArgMatches) {
     }
 
     sc_system_forget();
+
+    // If installed from URL, then we'll need to extract the version + arch
+    match ver {
+        Some(_) => { },
+        None => {
+            let fver = extract_pkg_version(&target_str);
+            version.version = fver.version;
+            version.arch = fver.arch;
+        }
+    };
 
     let status = Command::new("installer")
         .args(["-pkg", &target_str, "-target", "/"])
@@ -391,7 +410,11 @@ pub fn sc_resolve(args: &ArgMatches) {
         Some(s) => s.to_string(),
         None => "NA".to_string(),
     };
-    println!("{} {}", version.version, url);
+    let ver = match version.version {
+        Some(x) => x,
+        None => "???".to_string()
+    };
+    println!("{} {}", ver, url);
 }
 
 fn get_resolve(args: &ArgMatches) -> Rversion {
@@ -403,9 +426,17 @@ fn get_resolve(args: &ArgMatches) -> Rversion {
     if !valid_macos_archs().contains(&arch) {
         panic!("Unknown macOS arch: {}", arch);
     }
-    let eps = vec![str];
-    let version = resolve_versions(eps, "macos".to_string(), arch);
-    version[0].to_owned()
+    if &str[..7] == "http://" || &str[..8] == "https://" {
+        Rversion {
+            version: None,
+            url: Some(str.to_string()),
+            arch: None
+        }
+    } else {
+        let eps = vec![str];
+        let version = resolve_versions(eps, "macos".to_string(), arch);
+        version[0].to_owned()
+    }
 }
 
 // ------------------------------------------------------------------------
@@ -543,17 +574,56 @@ fn get_user() -> User {
 }
 
 fn get_install_dir(ver: &Rversion) -> String {
-    let minor = get_minor_version(&ver.version);
-    if ver.arch == "x86_64" {
+    let version = match &ver.version {
+        Some(x) => x,
+        None => panic!("Cannot calculate install dir for unknown R version")
+    };
+    let arch = match &ver.arch {
+        Some(x) => x,
+        None => panic!("Cannot calculate install dir for unknown arch")
+    };
+    let minor = get_minor_version(&version);
+    if arch == "x86_64" {
         minor
-    } else if ver.arch == "arm64" {
+    } else if arch == "arm64" {
         minor + "-arm64"
     } else {
-        panic!("Unknown macOS arch: {}", ver.arch);
+        panic!("Unknown macOS arch: {}", arch);
     }
 }
 
 fn get_minor_version(ver: &str) -> String {
     let re = Regex::new("[.][^.]*$").unwrap();
     re.replace(ver, "").to_string()
+}
+
+fn extract_pkg_version(filename: &str) -> Rversion {
+    let out = Command::new("installer")
+        .args(["-pkginfo", "-pkg", filename])
+        .output()
+        .expect("Failed to extract version from .pkg file");
+    let std = match String::from_utf8(out.stdout) {
+        Ok(v) => v,
+        Err(err) => panic!("Cannot extract version from .pkg file: {}", err.to_string())
+    };
+
+    let lines = std.lines();
+    let re = Regex::new("^R ([0-9]+[.][0-9]+[.][0-9])+.*$").unwrap();
+    let lines: Vec<&str> = lines.filter(|l| re.is_match(l)).collect();
+
+    if lines.len() == 0 {
+        panic!("Cannot extract version from .pkg file");
+    }
+
+    let arm64 = Regex::new("ARM64").unwrap();
+    let ver = re.replace(lines[0], "${1}");
+    let arch = if arm64.is_match(lines[0]) { "arm64" } else { "x86_64" };
+
+    let res = Rversion {
+        version: Some(ver.to_string()),
+        url: None,
+        arch: Some(arch.to_string())
+    };
+
+    res
 }

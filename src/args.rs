@@ -101,6 +101,7 @@ DESCRIPTION:
     - `rim add x.y` adds the latest release within the `x.y` minor branch.
     - `rim add oldrel/n` adds the latest release within the `n`th previous
       minor branch (`oldrel` is the same as `oldrel/1`).
+    - `rim add <url>` uses a `.pkg` installer from `<url>`.
 
     Usually you need to run this command with `sudo`: `sudo rim add ...`.
 

@@ -75,9 +75,9 @@ async fn resolve_release(client: &reqwest::Client, os: &String, arch: &String) -
     };
     let dlurl = get_download_url(&v, os, arch);
     Rversion {
-        version: v.to_string(),
+        version: Some(v.to_string()),
         url: dlurl,
-        arch: arch.to_string(),
+        arch: Some(arch.to_string()),
     }
 }
 
@@ -88,22 +88,22 @@ async fn resolve_devel(client: &reqwest::Client, os: &String, arch: &String) -> 
     if os == "macos" {
         if arch == "x86_64" {
             Rversion {
-                version: ver,
+                version: Some(ver),
                 url: Some(MACOS_DEVEL_URI.to_string()),
-                arch: arch.to_string(),
+                arch: Some(arch.to_string()),
             }
         } else {
             Rversion {
-                version: ver,
+                version: Some(ver),
                 url: Some(MACOS_DEVEL_ARM_URI.to_string()),
-                arch: arch.to_string(),
+                arch: Some(arch.to_string()),
             }
         }
     } else if os == "win" {
         Rversion {
-            version: ver,
+            version: Some(ver),
             url: Some(WIN_DEVEL_URI.to_string()),
-            arch: arch.to_string(),
+            arch: Some(arch.to_string()),
         }
     } else {
         panic!("Unknown OS: {}", os);
@@ -126,9 +126,9 @@ async fn resolve_oldrel(
 
     let dlurl = get_download_url(version, os, arch);
     Rversion {
-        version: version.to_string(),
+        version: Some(version.to_string()),
         url: dlurl,
-        arch: arch.to_string(),
+        arch: Some(arch.to_string()),
     }
 }
 
@@ -162,9 +162,9 @@ async fn resolve_minor(
 
     let dlurl = get_download_url(&out, os, arch);
     Rversion {
-        version: out,
+        version: Some(out),
         url: dlurl,
-        arch: arch.to_string(),
+        arch: Some(arch.to_string()),
     }
 }
 
@@ -180,9 +180,9 @@ async fn resolve_version(
     }
     let dlurl = get_download_url(ver, os, arch);
     Rversion {
-        version: ver.to_string(),
+        version: Some(ver.to_string()),
         url: dlurl,
-        arch: arch.to_string(),
+        arch: Some(arch.to_string()),
     }
 }
 
