@@ -426,7 +426,7 @@ fn get_resolve(args: &ArgMatches) -> Rversion {
     if !valid_macos_archs().contains(&arch) {
         panic!("Unknown macOS arch: {}", arch);
     }
-    if &str[..7] == "http://" || &str[..8] == "https://" {
+     if str.len() > 8 && (&str[..7] == "http://" || &str[..8] == "https://") {
         Rversion {
             version: None,
             url: Some(str.to_string()),
