@@ -1,1 +1,7 @@
 /target
+/Resources
+/build-arm64
+/build-x86_64
+/build.stamp
+/distribution.xml
+/*.pkg

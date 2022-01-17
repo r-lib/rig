@@ -1,4 +1,10 @@
 
+# rim 0.1.3
+
+* `bash` and `zsh` completions out of the box, on macOS
+
+* You can now pass URLs `.pkg` installers to `rim add` on macOS.
+
 # rim 0.1.2
 
 * `rim ls` is now a synonym of `rim list`.

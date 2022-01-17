@@ -2,7 +2,28 @@
 // Arguemnt parsing
 // ------------------------------------------------------------------------
 
-use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
+use clap::{App, AppSettings, Arg, ArgMatches};
+
+// ------------------------------------------------------------------------
+// macOS help
+// ------------------------------------------------------------------------
+
+#[cfg(target_os = "macos")]
+const HELP_ABOUT: &str = r#"NAME
+    rim - manage R installations
+
+DESCRIPTION
+    rim manages your R installations, on macOS. It can install and set up
+    multiple versions R, and it makes sure that they work together.
+
+    On macOS R versions installed by rim do not interfere. You can run multiple
+    versions at the same time. rim also makes sure that packages installed by
+    the user go into a user package library, so reinstalling R will not wipe
+    out your installed packages.
+
+    rim is currently work in progress. Feedback is appreciated.
+    See https://github.com/gaborcsardi/rim for bug reports and more.
+"#;
 
 const HELP_EXAMPLES: &str = r#"EXAMPLES:
     # Add the latest development snapshot
@@ -85,7 +106,7 @@ DESCRIPTION
 
 #[cfg(target_os = "macos")]
 const HELP_DEFAULT: &str = r#"
-DESCRIPTION
+DESCRIPTION:
     Print or set the default R version. The default R version is the one that
     is started with the `R` command, usually via the `/usr/local/bin/R`
      symbolic link.
@@ -116,14 +137,14 @@ const HELP_DEFAULT_EXAMPLES: &str = r#"EXAMPLES:
 
 #[cfg(target_os = "macos")]
 const HELP_LIST: &str = r#"
-DESCRIPTION
+DESCRIPTION:
     List installed R versions from `/Library/Framework/R.framework/versions`.
     It does _not_ check if they are working properly.
 "#;
 
 #[cfg(target_os = "macos")]
 const HELP_ADD: &str = r#"
-DESCRIPTION
+DESCRIPTION:
     Download and install an R version, from the official sources.
     It keeps the already installed R versions, except versions within the
     same minor branch, see below.
@@ -139,6 +160,7 @@ DESCRIPTION
     - `rim add x.y` adds the latest release within the `x.y` minor branch.
     - `rim add oldrel/n` adds the latest release within the `n`th previous
       minor branch (`oldrel` is the same as `oldrel/1`).
+    - `rim add <url>` uses a `.pkg` installer from `<url>`.
 
     Usually you need to run this command with `sudo`: `sudo rim add ...`.
 
@@ -158,7 +180,7 @@ DESCRIPTION
 "#;
 
 #[cfg(target_os = "macos")]
-const HELP_ADD_EXAMPLES: &str = r#"EXAMPLES
+const HELP_ADD_EXAMPLES: &str = r#"EXAMPLES:
     # Add the latest development snapshot
     rim add devel
 
@@ -174,7 +196,7 @@ const HELP_ADD_EXAMPLES: &str = r#"EXAMPLES
 
 #[cfg(target_os = "macos")]
 const HELP_RM: &str = r#"
-DESCRIPTION
+DESCRIPTION:
     Remove an R installation. It keeps the users' package libraries.
     It automatically calls `rm system forget` before removing the files.
 
@@ -183,14 +205,14 @@ DESCRIPTION
 
 #[cfg(target_os = "macos")]
 const HELP_SYSTEM: &str = r#"
-DESCRIPTION
+DESCRIPTION:
     Various commands to modify and configure the installed R versions.
     See their help pages for details. E.g. run `rim system make-links --help`.
 "#;
 
 #[cfg(target_os = "macos")]
 const HELP_SYSTEM_ORTHO: &str = r#"
-DESCRIPTION
+DESCRIPTION:
     Make the current R installations orthogonal. This allows running multiple
     R versions at the same time, as long as they are started with their
     quick links (see `rim system make-links --help`). For example you
@@ -210,7 +232,7 @@ DESCRIPTION
 
 #[cfg(target_os = "macos")]
 const HELP_SYSTEM_LINKS: &str = r#"
-DESCRIPTION
+DESCRIPTION:
     Create quick links in `/usr/local/bin` for the current R installations.
     This lets you directly run a specific R version. E.g. `R-4.1` will start
     R 4.1.x.
@@ -223,7 +245,7 @@ DESCRIPTION
 
 #[cfg(target_os = "macos")]
 const HELP_SYSTEM_LIB: &str = r#"
-DESCRIPTION
+DESCRIPTION:
     Create directories for the current user's package libraries, for all
     current R versions.
 
@@ -233,7 +255,7 @@ DESCRIPTION
 
 #[cfg(target_os = "macos")]
 const HELP_SYSTEM_ADDPAK: &str = r#"
-DESCRIPTION
+DESCRIPTION:
     Install/update pak for one or more R versions.
 
     * If `--all` is specified, then it installs pak for all current R
@@ -246,7 +268,7 @@ DESCRIPTION
 
 #[cfg(target_os = "macos")]
 const HELP_SYSTEM_FIXPERMS: &str = r#"
-DESCRIPTION
+DESCRIPTION:
     Update the permissions of the current R versions, so only the
     administrator can install R packages into the system library.
 
@@ -258,14 +280,14 @@ DESCRIPTION
 
 #[cfg(target_os = "macos")]
 const HELP_SYSTEM_CLEANSYSLIB: &str = r#"
-DESCRIPTION
+DESCRIPTION:
     Remove non-core packages from the system libraries of the current R
     versions. (TODO)
 "#;
 
 #[cfg(target_os = "macos")]
 const HELP_SYSTEM_FORGET: &str = r#"
-DESCRIPTION
+DESCRIPTION:
     Tell macOS to forget about the currently installed R versions.
     This is needed to have multiple R installations at the same time.
 
@@ -293,6 +315,12 @@ DESCRIPTION
     and set up multiple versions R, and it makes sure that they work
     together.
 "#;
+#[cfg(target_os = "macos")]
+const HELP_RESOLVE: &str = r#"
+DESCRIPTION:
+    Resolve R versions. Check the version number of an R version (e.g.
+    release, devel, etc.), and looks up the URL of the installer for it,
+    if an installer is available.
 
 #[cfg(target_os = "windows")]
 const HELP_DEFAULT: &str = r#"
@@ -315,6 +343,10 @@ DESCRIPTION
     List installed R versions at `C:\Program Files\R`.
     It does _not_ check if they are working properly.
 "#;
+#[cfg(target_os = "macos")]
+const HELP_RESOLVE_EXAMPLES: &str = r#"EXAMPLES:
+    # Latest development snapshot
+    rim resolve devel
 
 #[cfg(target_os = "windows")]
 const HELP_ADD: &str = r#"
@@ -415,32 +447,33 @@ DESCRIPTION
     This command does nothing on Windows.
 "#;
 
-pub fn parse_args() -> ArgMatches<'static> {
+pub fn rim_app() -> App<'static> {
+
     App::new("RIM -- The R Installation Manager")
-        .version("0.1.0")
-        .about("Install and manage R installations. See https://github.com/gaborcsardi/rim")
-        .long_about(HELP_ABOUT)
+        .version("0.1.3")
+        .license(clap::crate_license!())
+        .about(HELP_ABOUT)
         .setting(AppSettings::ArgRequiredElseHelp)
-        .set_term_width(80)
+        .term_width(80)
         .subcommand(
-            SubCommand::with_name("default")
+            App::new("default")
                 .about("Print or set default R version")
                 .long_about(HELP_DEFAULT)
                 .after_help(HELP_DEFAULT_EXAMPLES)
                 .arg(
-                    Arg::with_name("version")
-                        .help("new default R version to set")
+                    Arg::new("version")
+                        .about("new default R version to set")
                         .required(false),
                 ),
         )
         .subcommand(
-            SubCommand::with_name("list")
+            App::new("list")
                 .aliases(&["ls"])
                 .about("List installed R versions")
                 .long_about(HELP_LIST),
         )
         .subcommand(
-            SubCommand::with_name("add")
+            App::new("add")
                 .about("Install a new R version")
                 .long_about(HELP_ADD)
                 .after_help(HELP_ADD_EXAMPLES)
@@ -454,117 +487,115 @@ pub fn parse_args() -> ArgMatches<'static> {
                         .default_value(DEFAULT_ARCH),
                 )
                 .arg(
-                    Arg::with_name("str")
-                        .help("R versions to install (see 'rim available')")
+                    Arg::new("str")
+                        .about("R versions to install (see 'rim available')")
                         .default_value("release")
-                        .multiple(false), // TODO: install multiple versions
+                        .multiple_occurrences(false), // TODO: install multiple versions
                 ),
         )
         .subcommand(
-            SubCommand::with_name("rm")
+            App::new("rm")
                 .about("Remove R versions")
                 .long_about(HELP_RM)
                 .aliases(&["del", "remove", "delete"])
                 .arg(
-                    Arg::with_name("version")
-                        .help("versions to remove")
-                        .multiple(true)
+                    Arg::new("version")
+                        .about("versions to remove")
+                        .multiple_occurrences(true)
                         .required(false),
                 )
                 .arg(
-                    Arg::with_name("all")
-                        .help("remove all versions (TODO)")
+                    Arg::new("all")
+                        .about("remove all versions (TODO)")
                         .long("all")
                         .required(false),
                 ),
         )
         .subcommand(
-            SubCommand::with_name("system")
+            App::new("system")
                 .about("Manage current installations")
                 .long_about(HELP_SYSTEM)
                 .subcommand(
-                    SubCommand::with_name("make-orthogonal")
+                    App::new("make-orthogonal")
                         .about("Make installed versions orthogonal (macOS)")
                         .long_about(HELP_SYSTEM_ORTHO)
                         .arg(
-                            Arg::with_name("version")
-                                .help("R versions to update (default: all)")
+                            Arg::new("version")
+                                .about("R versions to update (default: all)")
                                 .required(false)
-                                .multiple(true),
+                                .multiple_occurrences(true),
                         ),
                 )
                 .subcommand(
-                    SubCommand::with_name("make-links")
+                    App::new("make-links")
                         .about("Create R-* quick links")
                         .long_about(HELP_SYSTEM_LINKS),
                 )
                 .subcommand(
-                    SubCommand::with_name("create-lib")
+                    App::new("create-lib")
                         .about("Create current user's package libraries")
                         .long_about(HELP_SYSTEM_LIB)
                         .arg(
-                            Arg::with_name("version")
-                                .help("R versions to create the library for (default: all)")
+                            Arg::new("version")
+                                .about("R versions to create the library for (default: all)")
                                 .required(false)
-                                .multiple(true),
+                                .multiple_occurrences(true),
                         ),
                 )
                 .subcommand(
-                    SubCommand::with_name("add-pak")
+                    App::new("add-pak")
                         .about("Install or update pak for an R version")
                         .long_about(HELP_SYSTEM_ADDPAK)
                         .arg(
-                            Arg::with_name("devel")
-                                .help("Install the development version of pak")
+                            Arg::new("devel")
+                                .about("Install the development version of pak")
                                 .long("devel")
                                 .required(false),
                         )
                         .arg(
-                            Arg::with_name("all")
-                                .help("Install pak for all R versions")
+                            Arg::new("all")
+                                .about("Install pak for all R versions")
                                 .long("all")
                                 .required(false),
                         )
                         .arg(
-                            Arg::with_name("version")
-                                .help("R versions to install/update pak for")
+                            Arg::new("version")
+                                .about("R versions to install/update pak for")
                                 .required(false)
-                                .multiple(true),
+                                .multiple_occurrences(true),
                         ),
                 )
                 .subcommand(
-                    SubCommand::with_name("fix-permissions")
+                    App::new("fix-permissions")
                         .about("Restrict permissions to admin")
                         .long_about(HELP_SYSTEM_FIXPERMS)
                         .arg(
-                            Arg::with_name("version")
-                                .help("R versions to update (default: all)")
+                            Arg::new("version")
+                                .about("R versions to update (default: all)")
                                 .required(false)
-                                .multiple(true),
+                                .multiple_occurrences(true),
                         ),
                 )
                 .subcommand(
-                    SubCommand::with_name("clean-sytem-lib")
+                    App::new("clean-sytem-lib")
                         .about("Clean system library from non-core packages (TODO)")
                         .long_about(HELP_SYSTEM_CLEANSYSLIB),
                 )
                 .subcommand(
-                    SubCommand::with_name("forget")
+                    App::new("forget")
                         .about("Make system forget about R installations (macOS)")
                         .long_about(HELP_SYSTEM_FORGET),
                 ),
         )
+        .subcommand(App::new("available").about("List R versions available to install (TODO)"))
         .subcommand(
-            SubCommand::with_name("available").about("List R versions available to install (TODO)"),
-        )
-        .subcommand(
-            SubCommand::with_name("resolve")
+            App::new("resolve")
                 .about("Resolve a symbolic R version")
                 .long_about(HELP_RESOLVE)
                 .after_help(HELP_RESOLVE_EXAMPLES)
                 .arg(
-                    Arg::with_name("str")
-                        .help("symbolic version string to resolve")
+                    Arg::new("str")
+                        .about("symbolic version string to resolve")
                         .required(true),
                 )
                 .arg(
@@ -577,5 +608,8 @@ pub fn parse_args() -> ArgMatches<'static> {
                 ),
         )
         .after_help(HELP_EXAMPLES)
-        .get_matches()
+}
+
+pub fn parse_args() -> ArgMatches {
+    rim_app().get_matches()
 }

@@ -3,6 +3,8 @@ use std::fs::File;
 use std::io::{prelude::*, BufReader};
 use std::path::Path;
 
+use sha2::{Digest, Sha256};
+
 pub fn basename(path: &str) -> Option<&str> {
     path.rsplitn(2, '/').next()
 }
@@ -58,4 +60,12 @@ pub fn replace_in_file(path: &Path, re: &Regex, sub: &str) -> Result<(), std::io
     }
 
     Ok(())
+}
+
+pub fn calculate_hash(s: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(s);
+    let hash = hasher.finalize();
+    let string = format!("{:x}", hash);
+    string
 }
