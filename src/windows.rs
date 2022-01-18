@@ -30,7 +30,7 @@ pub fn sc_add(args: &ArgMatches) {
     }
 
     // system_create_lib(Some(vec![version.version]));
-    // sc_system_make_links();
+    sc_system_make_links();
 }
 
 pub fn sc_rm(args: &ArgMatches) {
