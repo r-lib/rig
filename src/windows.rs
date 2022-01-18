@@ -142,33 +142,13 @@ pub fn sc_system_forget() {
 
 pub fn get_resolve(args: &ArgMatches) -> Rversion {
     let str = args.value_of("str").unwrap().to_string();
-    let arch = match args.value_of("arch") {
-        Some(a) => a.to_string(),
-        None => "default".to_string(),
-    };
-
-    if !valid_windows_archs().contains(&arch) {
-	panic!("Unknown Windows arch: {}", arch);
-    }
-    let arch = match arch.as_str() {
-	"default" => "msvcrt",
-	other => other,
-    }.to_string();
 
     let eps = vec![str];
-    let version = resolve_versions(eps, "win".to_string(), arch);
+    let version = resolve_versions(eps, "win".to_string(), "default".to_string());
     version[0].to_owned()
 }
 
 // ------------------------------------------------------------------------
-
-fn valid_windows_archs() -> Vec<String> {
-    vec![
-	"msvcrt".to_string(),
-	"ucrt".to_string(),
-	"default".to_string()
-    ]
-}
 
 pub fn sc_get_list() -> Vec<String> {
   let paths = std::fs::read_dir(R_ROOT);

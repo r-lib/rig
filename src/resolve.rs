@@ -20,7 +20,6 @@ const MACOS_ARM_URI: &str =
     "https://cloud.r-project.org/bin/macosx/big-sur-arm64/base/R-{}-arm64.pkg";
 
 const WIN_DEVEL_URI: &str = "https://cloud.r-project.org/bin/windows/base/R-devel-win.exe";
-const WIN_DEVEL_UCRT_URI: &str = "https://cloud.r-project.org/bin/windows/testing/R-devel-ucrt.exe";
 const WIN_URI: &str = "https://cloud.r-project.org/bin/windows/base/old/{}/R-{}-win.exe";
 
 const DEVEL_VERSION_URI: &str = "https://svn.r-project.org/R/trunk/VERSION";
@@ -223,17 +222,13 @@ fn get_download_url(ver: &String, os: &String, arch: &String) -> Option<String> 
             panic!("Unknown macOS arch: {}", arch);
         }
     } else if os == "win" {
-	if arch == "ucrt" {
-	    None
-	} else {
 	    let v2120 = Version::parse("2.12.0").unwrap();
 	    if vv < v2120 {
-		// The installer URL is different for these, so we just bail
-		None
+		    // The installer URL is different for these, so we just bail
+		    None
 	    } else {
-		Some(rep(WIN_URI, ver))
+		    Some(rep(WIN_URI, ver))
 	    }
-	}
     } else {
         panic!("Unknown OS: {}", os);
     }
