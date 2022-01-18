@@ -69,7 +69,7 @@ pub fn sc_add(args: &ArgMatches) {
     };
 
     let status = Command::new("installer")
-        .args(["-pkg", &target, "-target", "/"])
+        .args(["-pkg", &target_str, "-target", "/"])
         .spawn()
         .expect("Failed to run installer")
         .wait()
@@ -164,7 +164,7 @@ fn system_add_pak(vers: Option<Vec<String>>, devel: bool) {
     }
 }
 
-fn system_create_lib(vers: Option<Vec<String>>) {
+pub fn system_create_lib(vers: Option<Vec<String>>) {
     let vers = match vers {
         Some(x) => x,
         None => sc_get_list(),
@@ -378,20 +378,7 @@ pub fn sc_system_forget() {
     }
 }
 
-pub fn sc_resolve(args: &ArgMatches) {
-    let version = get_resolve(args);
-    let url: String = match version.url {
-        Some(s) => s.to_string(),
-        None => "NA".to_string(),
-    };
-    let ver = match version.version {
-        Some(x) => x,
-        None => "???".to_string()
-    };
-    println!("{} {}", ver, url);
-}
-
-fn get_resolve(args: &ArgMatches) -> Rversion {
+pub fn get_resolve(args: &ArgMatches) -> Rversion {
     let str = args.value_of("str").unwrap().to_string();
     let arch = match args.value_of("arch") {
         Some(a) => a.to_string(),
@@ -428,7 +415,7 @@ fn check_has_pak(ver: &String) -> bool {
     true
 }
 
-fn sc_set_default(ver: String) {
+pub fn sc_set_default(ver: String) {
     check_installed(&ver);
     let ret = std::fs::remove_file(R_CUR);
     match ret {

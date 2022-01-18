@@ -87,22 +87,6 @@ const HELP_ARCH: &str = "Select macOS arch: arm64 or x86_64";
 const DEFAULT_ARCH: &str = "x86_64";
 
 #[cfg(target_os = "macos")]
-const HELP_ABOUT: &str = r#"
-DESCRIPTION
-    rim manages your R installations, on macOS and Windows. It can install
-    and set up multiple versions R, and it makes sure that they work
-    together.
-
-    On macOS R versions installed by rim do not interfere. You can run multiple
-    versions at the same time. rim also makes sure that packages installed by
-    the user go into a user package library, so reinstalling R will not wipe
-    out your installed packages.
-
-    rim is currently work in progress. Feedback is appreciated.
-    See https://github.com/gaborcsardi/rim for bug reports and more.
-"#;
-
-#[cfg(target_os = "macos")]
 const HELP_DEFAULT: &str = r#"
 DESCRIPTION:
     Print or set the default R version. The default R version is the one that

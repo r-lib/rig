@@ -1,22 +1,25 @@
 
+#[cfg(target_os = "windows")]
 use clap::ArgMatches;
+
 use futures::future;
 use futures_util::StreamExt;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 
-#[cfg(target_os = "macos")]
-use crate::macos::*;
 #[cfg(target_os = "windows")]
 use crate::windows::*;
+#[cfg(target_os = "windows")]
 use crate::rversion::Rversion;
+#[cfg(target_os = "windows")]
 use crate::utils::*;
 
 // ------------------------------------------------------------------------
 // synchronous API
 // ------------------------------------------------------------------------
 
+#[cfg(target_os = "windows")]
 pub fn download_r(args: &ArgMatches) -> (Rversion, String) {
     let version = get_resolve(args);
     let ver = version.version.to_owned();
