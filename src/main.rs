@@ -57,7 +57,7 @@ fn sc_resolve(args: &ArgMatches) {
         Some(s) => s.to_string(),
         None => "NA".to_string(),
     };
-    println!("{} {}", version.version, url);
+    println!("{} {}", version.version.unwrap(), url);
 }
 
 fn sc_list() {

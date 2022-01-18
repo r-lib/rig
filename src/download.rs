@@ -22,9 +22,9 @@ pub fn download_r(args: &ArgMatches) -> (Rversion, String) {
     let ver = version.version.to_owned();
     let url: String = match &version.url {
         Some(s) => s.to_string(),
-        None => panic!("Cannot find a download url for R version {}", ver),
+        None => panic!("Cannot find a download url for R version {}", ver.unwrap()),
     };
-    let filename = version.arch.to_owned() + "-" + basename(&url).unwrap();
+    let filename = version.arch.to_owned().unwrap() + "-" + basename(&url).unwrap();
     let tmp_dir = std::env::temp_dir().join("rim");
     let target = tmp_dir.join(&filename);
     let target_str;

@@ -1,7 +1,6 @@
 #![cfg(target_os = "windows")]
 
 use std::process::Command;
-use std::path::Path;
 
 use clap::ArgMatches;
 

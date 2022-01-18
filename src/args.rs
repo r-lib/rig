@@ -45,6 +45,7 @@ const HELP_EXAMPLES: &str = r#"EXAMPLES:
     rim default 4.0
 "#;
 
+#[cfg(target_os = "macos")]
 const HELP_RESOLVE: &str = r#"
 DESCRIPTION
     Resolve R versions. Check the version number of an R version (e.g.
@@ -64,6 +65,7 @@ DESCRIPTION
       minor branch (`oldrel` is the same as `oldrel/1`).
 "#;
 
+#[cfg(target_os = "macos")]
 const HELP_RESOLVE_EXAMPLES: &str = r#"EXAMPLES
     # Latest development snapshot
     rim resolve devel
@@ -77,10 +79,6 @@ const HELP_RESOLVE_EXAMPLES: &str = r#"EXAMPLES
     # Latest version within a minor branch
     rim resolve 4.1
 "#;
-
-// ------------------------------------------------------------------------
-// macOS help
-// ------------------------------------------------------------------------
 
 #[cfg(target_os = "macos")]
 const HELP_ARCH: &str = "Select macOS arch: arm64 or x86_64";
@@ -303,19 +301,26 @@ DESCRIPTION:
 // ------------------------------------------------------------------------
 
 #[cfg(target_os = "windows")]
-const HELP_ARCH: &str = "Select Windows arch: msvcrt or ucrt";
-
-#[cfg(target_os = "windows")]
-const DEFAULT_ARCH: &str = "msvcrt";
-
-#[cfg(target_os = "windows")]
 const HELP_ABOUT: &str = r#"
 DESCRIPTION
     rim manages your R installations, on macOS and Windows. It can install
     and set up multiple versions R, and it makes sure that they work
     together.
 "#;
-#[cfg(target_os = "macos")]
+
+#[cfg(target_os = "windows")]
+const HELP_ARCH: &str = "Defunct on Windows";
+
+#[cfg(target_os = "windows")]
+const DEFAULT_ARCH: &str = "msvcrt";
+
+#[cfg(target_os = "windows")]
+const HELP_DEFAULT: &str = r#"
+DESCRIPTION:
+    TODO
+"#;
+
+#[cfg(target_os = "windows")]
 const HELP_RESOLVE: &str = r#"
 DESCRIPTION:
     Resolve R versions. Check the version number of an R version (e.g.
@@ -343,10 +348,12 @@ DESCRIPTION
     List installed R versions at `C:\Program Files\R`.
     It does _not_ check if they are working properly.
 "#;
-#[cfg(target_os = "macos")]
+
+#[cfg(target_os = "windows")]
 const HELP_RESOLVE_EXAMPLES: &str = r#"EXAMPLES:
     # Latest development snapshot
     rim resolve devel
+"#;
 
 #[cfg(target_os = "windows")]
 const HELP_ADD: &str = r#"
@@ -479,9 +486,9 @@ pub fn rim_app() -> App<'static> {
                 .after_help(HELP_ADD_EXAMPLES)
                 .aliases(&["install"])
                 .arg(
-                    Arg::with_name("arch")
-                        .help(HELP_ARCH)
-                        .short("a")
+                    Arg::new("arch")
+                        .about(HELP_ARCH)
+                        .short('a')
                         .long("arch")
                         .required(false)
                         .default_value(DEFAULT_ARCH),
@@ -599,9 +606,9 @@ pub fn rim_app() -> App<'static> {
                         .required(true),
                 )
                 .arg(
-                    Arg::with_name("arch")
-                        .help(HELP_ARCH)
-                        .short("a")
+                    Arg::new("arch")
+                        .about(HELP_ARCH)
+                        .short('a')
                         .long("arch")
                         .required(false)
                         .default_value(DEFAULT_ARCH),
