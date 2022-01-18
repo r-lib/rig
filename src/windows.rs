@@ -1,5 +1,8 @@
 #![cfg(target_os = "windows")]
 
+use std::fs::File;
+use std::io::Write;
+use std::path::Path;
 use std::process::Command;
 
 use clap::ArgMatches;
@@ -44,7 +47,6 @@ pub fn sc_rm(args: &ArgMatches) {
         let dir = Path::new(R_ROOT);
         let dir = dir.join(ver);
         println!("Removing {}", dir.display());
-        use std::path::Path;
         // TODO: remove from the registry as well
         match std::fs::remove_dir_all(&dir) {
             Err(err) => panic!("Cannot remove {}: {}", dir.display(), err.to_string()),
@@ -64,7 +66,19 @@ pub fn sc_system_create_lib(args: &ArgMatches) {
 }
 
 pub fn sc_system_make_links() {
-    unimplemented!();
+    let vers = sc_get_list();
+    let base = Path::new(R_ROOT);
+
+    for ver in vers {
+        let linkfile = base.join("bin").join("R-".to_string() + &ver + ".bat");
+        let target = base.join("R-".to_string() + &ver);
+        let op = if !linkfile.exists() { "Updating" } else { "Adding" };
+        println!("Adding R-{} -> {}", ver, target.display());
+        let mut file = File::create(linkfile).unwrap();
+        let cnt = "@\"C:\\Program Files\\R\\R-".to_string() +
+            &ver + "\\bin\\R\" %*\n";
+        file.write_all(cnt.as_bytes()).unwrap();
+    }
 }
 
 pub fn sc_system_make_orthogonal(_args: &ArgMatches) {
