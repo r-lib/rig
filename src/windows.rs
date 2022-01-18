@@ -29,7 +29,7 @@ pub fn sc_add(args: &ArgMatches) {
 	    panic!("installer exited with status {}", status.to_string());
     }
 
-    // system_create_lib(Some(vec![version.version]));
+    system_create_lib(None);
     sc_system_make_links();
 }
 
@@ -54,15 +54,58 @@ pub fn sc_rm(args: &ArgMatches) {
         }
     }
 
-    // sc_system_make_links();
+    sc_system_make_links();
 }
 
 pub fn sc_system_add_pak(args: &ArgMatches) {
     unimplemented!();
 }
 
-pub fn sc_system_create_lib(args: &ArgMatches) {
-    unimplemented!();
+pub fn system_create_lib(vers: Option<Vec<String>>) {
+    let vers = match vers {
+        Some(x) => x,
+        None => sc_get_list(),
+    };
+    let base = Path::new(R_ROOT);
+
+    for ver in vers {
+        check_installed(&ver);
+        let r = base.join("R-".to_string() + &ver).join("bin").join("R.exe");
+        let r = r.to_str().unwrap();
+        let out = Command::new(r)
+            .args(["--vanilla", "-s", "-e", "cat(Sys.getenv('R_LIBS_USER'))"])
+            .output()
+            .expect("Failed to run R to query R_LIBS_USER");
+        let lib = match String::from_utf8(out.stdout) {
+            Ok(v) => v,
+            Err(err) => panic!(
+                "Cannot query R_LIBS_USER for R {}: {}",
+                ver,
+                err.to_string()
+            ),
+        };
+
+        let lib = shellexpand::tilde(&lib.as_str()).to_string();
+        let lib = Path::new(&lib);
+        if !lib.exists() {
+            println!(
+                "{}: creating library at {}",
+                ver,
+                lib.display()
+            );
+            match std::fs::create_dir_all(&lib) {
+                Err(err) => panic!(
+                    "Cannot create library at {}: {}",
+                    lib.display(),
+                    err.to_string()
+                ),
+                _ => {}
+            };
+
+        } else {
+            println!("{}: library at {} exists.", ver, lib.display());
+        }
+    }
 }
 
 pub fn sc_system_make_links() {

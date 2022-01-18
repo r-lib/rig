@@ -75,3 +75,14 @@ fn sc_default(args: &ArgMatches) {
         sc_show_default();
     }
 }
+
+pub fn sc_system_create_lib(args: &ArgMatches) {
+    let vers = args.values_of("version");
+    if vers.is_none() {
+        system_create_lib(None);
+        return;
+    } else {
+        let vers: Vec<String> = vers.unwrap().map(|v| v.to_string()).collect();
+        system_create_lib(Some(vers));
+    }
+}
