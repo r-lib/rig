@@ -1,6 +1,7 @@
 #![cfg(target_os = "windows")]
 
 use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::io::Write;
 use std::path::Path;
 use std::process::Command;
@@ -171,13 +172,33 @@ pub fn sc_get_list() -> Vec<String> {
 }
 
 pub fn sc_set_default(ver: String) {
-    unimplemented!();
+    let base = Path::new(R_ROOT);
+    let linkfile = base.join("bin").join("R.bat");
+    let cnt = "::".to_string() + &ver + "\n" +
+        "@\"C:\\Program Files\\R\\R-" + &ver + "\\bin\\R\" %*\n";
+    let mut file = File::create(linkfile).unwrap();
+    file.write_all(cnt.as_bytes()).unwrap();
 }
 
 pub fn sc_get_default() -> String {
-    unimplemented!();
+    let base = Path::new(R_ROOT);
+    let linkfile = base.join("bin").join("R.bat");
+    if !linkfile.exists() {
+        panic!("No default version is set currently");
+    }
+    let file = File::open(linkfile).unwrap();
+    let reader = BufReader::new(file);
+
+    let mut first = "".to_string();
+    for line in reader.lines() {
+        first = line.unwrap().replace("::", "");
+        break;
+    }
+
+    first.to_string()
 }
 
-pub fn sc_show_default() -> String {
-    unimplemented!();
+pub fn sc_show_default() {
+    let default = sc_get_default();
+    println!("{}", default);
 }
