@@ -17,6 +17,10 @@ const R_ROOT: &str = "C:\\Program Files\\R";
 
 #[warn(unused_variables)]
 pub fn sc_add(args: &ArgMatches) {
+    let str = args.value_of("str").unwrap().to_string();
+    if &str[0..6] == "rtools" {
+        return add_rtools(str);
+    }
     let (version, target) = download_r(&args);
 
     let status = Command::new(&target)
@@ -32,6 +36,77 @@ pub fn sc_add(args: &ArgMatches) {
 
     system_create_lib(None);
     sc_system_make_links();
+    // TODO: patch for Rtools
+}
+
+fn add_rtools(version: String) {
+    let mut vers;
+    if version == "rtools" {
+        vers = get_rtools_needed();
+    } else {
+        vers = vec![version.replace("rtools", "")];
+    }
+    let client = &reqwest::Client::new();
+    for ver in vers {
+        let rtools4 = &ver[0..1] == "4";
+        let filename = if rtools4 {
+            format!("rtools{}-x86_64.exe", ver)
+        } else {
+            format!("Rtools{}.exe", ver)
+        };
+        let url = format!("https://cloud.r-project.org/bin/windows/Rtools/{}", filename);
+        let tmp_dir = std::env::temp_dir().join("rim");
+        let target = tmp_dir.join(&filename);
+        let target_str = target.into_os_string().into_string().unwrap();
+        println!("Downloading {} ->\n    {}", url, target_str);
+        download_file(client, url, &target_str);
+        println!("Installing\n    {}", target_str);
+        let status = Command::new(&target_str)
+            .args(["/VERYSILENT", "/SUPPRESSMSGBOXES"])
+            .spawn()
+            .expect("Failed to run Rtools installer")
+            .wait()
+            .expect("Failed to run RTools installer");
+
+        if !status.success() {
+            panic!("Rtools installer exited with status {}", status.to_string());
+        }
+    }
+}
+
+fn get_rtools_needed() -> Vec<String> {
+    let vers = sc_get_list();
+    let mut res: Vec<String> = vec![];
+    let base = Path::new(R_ROOT);
+
+    for ver in vers {
+        let r = base.join("R-".to_string() + &ver).join("bin").join("R.exe");
+        let r = r.to_str().unwrap();
+        let out = Command::new(r)
+            .args(["--vanilla", "-s", "-e", "cat(as.character(getRversion()))"])
+            .output()
+            .expect("Failed to run R to query R version");
+        let ver: String = match String::from_utf8(out.stdout) {
+            Ok(v) => v,
+            Err(err) => panic!(
+                "Cannot query R version for R-{}: {}",
+                ver,
+                err.to_string()
+            ),
+        };
+        let v35 = "35".to_string();
+        let v40 = "40".to_string();
+        if &ver[0..1] == "3" {
+            if ! res.contains(&v35) {
+                res.push(v35);
+            }
+        } else if &ver[0..1] == "4" {
+            if ! res.contains(&v40) {
+                res.push(v40);
+            }
+        }
+    }
+    res
 }
 
 pub fn sc_rm(args: &ArgMatches) {
