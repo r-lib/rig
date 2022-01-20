@@ -208,10 +208,6 @@ pub fn sc_system_fix_permissions(args: &ArgMatches) {
     // Nothing to do on Windows
 }
 
-pub fn sc_system_clean_system_lib() {
-    unimplemented!();
-}
-
 pub fn sc_system_forget() {
     // Nothing to do on Windows
 }

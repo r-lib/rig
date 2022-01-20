@@ -351,10 +351,6 @@ fn system_fix_permissions(vers: Option<Vec<String>>) {
     }
 }
 
-pub fn sc_system_clean_system_lib() {
-    unimplemented!();
-}
-
 pub fn sc_system_forget() {
     check_root();
     let out = Command::new("sh")
