@@ -53,7 +53,7 @@ pub fn rim_app() -> App<'static> {
         .about("List installed R versions")
         .long_about(HELP_LIST);
 
-    let cmd_add = App::new("add")
+    let mut cmd_add = App::new("add")
         .about("Install a new R version")
         .long_about(HELP_ADD)
         .after_help(HELP_ADD_EXAMPLES)
@@ -67,7 +67,7 @@ pub fn rim_app() -> App<'static> {
 
 #[cfg(target_os = "macos")]
 {
-    let cmd_add = cmd_add
+    cmd_add = cmd_add
         .arg(
             Arg::new("arch")
                 .help(HELP_ARCH)
@@ -98,19 +98,6 @@ pub fn rim_app() -> App<'static> {
     let mut cmd_system = App::new("system")
         .about("Manage current installations")
         .long_about(HELP_SYSTEM);
-
-#[cfg(target_os = "macos")]
-{
-    let cmd_system_ortho = App::new("make-orthogonal")
-        .about("Make installed versions orthogonal (macOS)")
-        .long_about(HELP_SYSTEM_ORTHO)
-        .arg(
-            Arg::new("version")
-                .help("R versions to update (default: all)")
-                .required(false)
-                .multiple_occurrences(true),
-        );
-}
 
     let cmd_system_links = App::new("make-links")
         .about("Create R-* quick links")
@@ -150,6 +137,16 @@ pub fn rim_app() -> App<'static> {
 
 #[cfg(target_os = "macos")]
 {
+    let cmd_system_ortho = App::new("make-orthogonal")
+        .about("Make installed versions orthogonal (macOS)")
+        .long_about(HELP_SYSTEM_ORTHO)
+        .arg(
+            Arg::new("version")
+                .help("R versions to update (default: all)")
+                .required(false)
+                .multiple_occurrences(true),
+        );
+
     let cmd_system_rights = App::new("fix-permissions")
         .about("Restrict permissions to admin")
         .long_about(HELP_SYSTEM_FIXPERMS)
@@ -163,10 +160,7 @@ pub fn rim_app() -> App<'static> {
     let cmd_system_forget = App::new("forget")
         .about("Make system forget about R installations (macOS)")
         .long_about(HELP_SYSTEM_FORGET);
-}
 
-#[cfg(target_os = "macos")]
-{
     cmd_system = cmd_system
         .subcommand(cmd_system_ortho)
         .subcommand(cmd_system_rights)
