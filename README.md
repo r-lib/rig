@@ -6,7 +6,7 @@ Install, remove, configure R versions.
 ## 🚀&nbsp; Features
 
 * Works on macOS. Windows and Linux versions are coming soon!
-* Install multiple R vresions, select the default one, run multiple
+* Install multiple R versions, select the default one, run multiple
   versions at the same time using quick links. E.g. `R-4.1` starts
   R 4.1.x.
 * Select R version to install using symbolic names: `devel`, `release`,

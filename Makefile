@@ -26,8 +26,8 @@ rim-unnotarized-%.pkg: build.stamp  distribution.xml.in
 	codesign --force \
 		--options runtime \
 		-s 8ADFF507AE8598B1792CF89213307C52FAFF3920 \
-		build-arm64/usr/local/bin/rim
-	pkgbuild --root build-arm64 \
+		build-$*/usr/local/bin/rim
+	pkgbuild --root build-$* \
 		--identifier com.gaborcsardi.rim \
 		--version $(VERSION) \
 		--ownership recommended \

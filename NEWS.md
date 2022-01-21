@@ -1,4 +1,8 @@
 
+# rim 0.1.4
+
+* `resolve` and `add` work again.
+
 # rim 0.1.3
 
 * `bash` and `zsh` completions out of the box, on macOS
