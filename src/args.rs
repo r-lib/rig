@@ -10,6 +10,26 @@ std::include!("help-macos.in");
 #[cfg(target_os = "windows")]
 std::include!("help-windows.in");
 
+const HELP_EXAMPLES: &str = r#"EXAMPLES:
+    # Add the latest development snapshot
+    rim add devel
+
+    # Add the latest release
+    rim add release
+
+    # Install specific version
+    rim add 4.1.2
+
+    # Install latest version within a minor branch
+    rim add 4.1
+
+    # List installed versions
+    rim list
+
+    # Set default version
+    rim default 4.0
+"#;
+
 pub fn rim_app() -> App<'static> {
 
     let rim = App::new("RIM -- The R Installation Manager")
@@ -46,6 +66,7 @@ pub fn rim_app() -> App<'static> {
         );
 
 #[cfg(target_os = "macos")]
+{
     let cmd_add = cmd_add
         .arg(
             Arg::new("arch")
@@ -55,6 +76,7 @@ pub fn rim_app() -> App<'static> {
                 .required(false)
                 .default_value(DEFAULT_ARCH)
         );
+}
 
     let cmd_rm = App::new("rm")
         .about("Remove R versions")
@@ -73,10 +95,12 @@ pub fn rim_app() -> App<'static> {
                 .required(false),
         );
 
-    let cmd_system = App::new("system")
+    let mut cmd_system = App::new("system")
         .about("Manage current installations")
         .long_about(HELP_SYSTEM);
 
+#[cfg(target_os = "macos")]
+{
     let cmd_system_ortho = App::new("make-orthogonal")
         .about("Make installed versions orthogonal (macOS)")
         .long_about(HELP_SYSTEM_ORTHO)
@@ -86,6 +110,7 @@ pub fn rim_app() -> App<'static> {
                 .required(false)
                 .multiple_occurrences(true),
         );
+}
 
     let cmd_system_links = App::new("make-links")
         .about("Create R-* quick links")
@@ -123,6 +148,8 @@ pub fn rim_app() -> App<'static> {
                 .multiple_occurrences(true),
         );
 
+#[cfg(target_os = "macos")]
+{
     let cmd_system_rights = App::new("fix-permissions")
         .about("Restrict permissions to admin")
         .long_about(HELP_SYSTEM_FIXPERMS)
@@ -136,19 +163,22 @@ pub fn rim_app() -> App<'static> {
     let cmd_system_forget = App::new("forget")
         .about("Make system forget about R installations (macOS)")
         .long_about(HELP_SYSTEM_FORGET);
+}
 
 #[cfg(target_os = "macos")]
-    let cmd_system = cmd_system
+{
+    cmd_system = cmd_system
         .subcommand(cmd_system_ortho)
         .subcommand(cmd_system_rights)
         .subcommand(cmd_system_forget);
+}
 
-    let cmd_system = cmd_system
+    cmd_system = cmd_system
         .subcommand(cmd_system_links)
         .subcommand(cmd_system_lib)
         .subcommand(cmd_system_pak);
 
-    let cmd_resolve = App::new("resolve")
+    let mut cmd_resolve = App::new("resolve")
         .about("Resolve a symbolic R version")
         .long_about(HELP_RESOLVE)
         .after_help(HELP_RESOLVE_EXAMPLES)
@@ -159,7 +189,8 @@ pub fn rim_app() -> App<'static> {
         );
 
 #[cfg(target_os = "macos")]
-    let cmd_resolve = cmd_resolve
+{
+    cmd_resolve = cmd_resolve
         .arg(
             Arg::new("arch")
                 .help(HELP_ARCH)
@@ -168,6 +199,7 @@ pub fn rim_app() -> App<'static> {
                 .required(false)
                 .default_value(DEFAULT_ARCH)
         );
+}
 
     rim
         .subcommand(cmd_default)

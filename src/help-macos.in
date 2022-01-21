@@ -20,26 +20,6 @@ DESCRIPTION
     See https://github.com/gaborcsardi/rim for bug reports and more.
 "#;
 
-const HELP_EXAMPLES: &str = r#"EXAMPLES:
-    # Add the latest development snapshot
-    rim add devel
-
-    # Add the latest release
-    rim add release
-
-    # Install specific version
-    rim add 4.1.2
-
-    # Install latest version within a minor branch
-    rim add 4.1
-
-    # List installed versions
-    rim list
-
-    # Set default version
-    rim default 4.0
-"#;
-
 const HELP_RESOLVE: &str = r#"
 DESCRIPTION
     Resolve R versions. Check the version number of an R version (e.g.
