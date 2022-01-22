@@ -11,7 +11,8 @@ use nix::unistd::Uid;
 use regex::Regex;
 use semver::Version;
 
-use crate::download::download_file;
+use crate::common::*;
+use crate::download::*;
 use crate::resolve::resolve_versions;
 use crate::rversion::Rversion;
 use crate::utils::*;
@@ -87,22 +88,6 @@ pub fn sc_add(args: &ArgMatches) {
     sc_system_make_links();
 }
 
-pub fn sc_default(args: &ArgMatches) {
-    if args.is_present("version") {
-        let ver = args.value_of("version").unwrap().to_string();
-        sc_set_default(ver);
-    } else {
-        sc_show_default();
-    }
-}
-
-pub fn sc_list() {
-    let vers = sc_get_list();
-    for ver in vers {
-        println!("{}", ver);
-    }
-}
-
 pub fn sc_rm(args: &ArgMatches) {
     let vers = args.values_of("version");
     if vers.is_none() {
@@ -113,7 +98,7 @@ pub fn sc_rm(args: &ArgMatches) {
     for ver in vers {
         check_installed(&ver.to_string());
 
-        let dir = Path::new("/Library/Frameworks/R.framework/Versions");
+        let dir = Path::new(R_ROOT);
         let dir = dir.join(&ver);
         println!("Removing {}", dir.display());
         sc_system_forget();
@@ -179,18 +164,7 @@ fn system_add_pak(vers: Option<Vec<String>>, devel: bool) {
     }
 }
 
-pub fn sc_system_create_lib(args: &ArgMatches) {
-    let vers = args.values_of("version");
-    if vers.is_none() {
-        system_create_lib(None);
-        return;
-    } else {
-        let vers: Vec<String> = vers.unwrap().map(|v| v.to_string()).collect();
-        system_create_lib(Some(vers));
-    }
-}
-
-fn system_create_lib(vers: Option<Vec<String>>) {
+pub fn system_create_lib(vers: Option<Vec<String>>) {
     let vers = match vers {
         Some(x) => x,
         None => sc_get_list(),
@@ -377,10 +351,6 @@ fn system_fix_permissions(vers: Option<Vec<String>>) {
     }
 }
 
-pub fn sc_system_clean_system_lib() {
-    unimplemented!();
-}
-
 pub fn sc_system_forget() {
     check_root();
     let out = Command::new("sh")
@@ -404,20 +374,7 @@ pub fn sc_system_forget() {
     }
 }
 
-pub fn sc_resolve(args: &ArgMatches) {
-    let version = get_resolve(args);
-    let url: String = match version.url {
-        Some(s) => s.to_string(),
-        None => "NA".to_string(),
-    };
-    let ver = match version.version {
-        Some(x) => x,
-        None => "???".to_string()
-    };
-    println!("{} {}", ver, url);
-}
-
-fn get_resolve(args: &ArgMatches) -> Rversion {
+pub fn get_resolve(args: &ArgMatches) -> Rversion {
     let str = args.value_of("str").unwrap().to_string();
     let arch = match args.value_of("arch") {
         Some(a) => a.to_string(),
@@ -445,16 +402,6 @@ fn valid_macos_archs() -> Vec<String> {
     vec!["x86_64".to_string(), "arm64".to_string()]
 }
 
-fn check_installed(ver: &String) -> bool {
-    let inst = sc_get_list();
-    assert!(
-        inst.contains(&ver),
-        "Version {} is not installed, see 'rim list'",
-        ver
-    );
-    true
-}
-
 fn check_has_pak(ver: &String) -> bool {
     let ver = Regex::new("-.*$").unwrap().replace(ver, "").to_string();
     let ver = ver + ".0";
@@ -464,7 +411,7 @@ fn check_has_pak(ver: &String) -> bool {
     true
 }
 
-fn sc_set_default(ver: String) {
+pub fn sc_set_default(ver: String) {
     check_installed(&ver);
     let ret = std::fs::remove_file(R_CUR);
     match ret {
@@ -484,7 +431,7 @@ fn sc_set_default(ver: String) {
     };
 }
 
-fn sc_get_default() -> String {
+pub fn sc_get_default() -> String {
     let tgt = std::fs::read_link(R_CUR);
     let tgtbuf = match tgt {
         Err(err) => match err.kind() {
@@ -505,12 +452,12 @@ fn sc_get_default() -> String {
     fname.to_str().unwrap().to_string()
 }
 
-fn sc_show_default() {
+pub fn sc_show_default() {
     let default = sc_get_default();
     println!("{}", default);
 }
 
-fn sc_get_list() -> Vec<String> {
+pub fn sc_get_list() -> Vec<String> {
     let paths = std::fs::read_dir(R_ROOT);
     assert!(paths.is_ok(), "Cannot list directory {}", R_ROOT);
     let paths = paths.unwrap();

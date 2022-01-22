@@ -1,3 +1,4 @@
+
 use futures::future;
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -16,9 +17,10 @@ const MACOS_OLD2_URI: &str = "https://cloud.r-project.org/bin/macosx/old/R-{}.pk
 const MACOS_OLD_URI: &str = "https://cloud.r-project.org/bin/macosx/R-{}.pkg";
 const MACOS_URI: &str = "https://cloud.r-project.org/bin/macosx/base/R-{}.pkg";
 const MACOS_ARM_URI: &str =
-    "https://cran.r-project.org/bin/macosx/big-sur-arm64/base/R-{}-arm64.pkg";
+    "https://cloud.r-project.org/bin/macosx/big-sur-arm64/base/R-{}-arm64.pkg";
 
-const WIN_DEVEL_URI: &str = "https://cran.r-project.org/bin/windows/base/R-devel-win.exe";
+const WIN_DEVEL_URI: &str = "https://cloud.r-project.org/bin/windows/base/R-devel-win.exe";
+const WIN_URI: &str = "https://cloud.r-project.org/bin/windows/base/old/{}/R-{}-win.exe";
 
 const DEVEL_VERSION_URI: &str = "https://svn.r-project.org/R/trunk/VERSION";
 
@@ -189,11 +191,11 @@ async fn resolve_version(
 fn get_download_url(ver: &String, os: &String, arch: &String) -> Option<String> {
     fn rep(tmpl: &str, sub: &str) -> String {
         let re = Regex::new("[{][}]").unwrap();
-        re.replace(tmpl, sub).to_string()
+        re.replace_all(tmpl, sub).to_string()
     }
 
+    let vv = Version::parse(ver).unwrap();
     if os == "macos" {
-        let vv = Version::parse(ver).unwrap();
         if arch == "x86_64" {
             let v2100 = Version::parse("2.10.0").unwrap();
             let v340 = Version::parse("3.4.0").unwrap();
@@ -220,7 +222,13 @@ fn get_download_url(ver: &String, os: &String, arch: &String) -> Option<String> 
             panic!("Unknown macOS arch: {}", arch);
         }
     } else if os == "win" {
-        Some(String::from("TODO"))
+	    let v2120 = Version::parse("2.12.0").unwrap();
+	    if vv < v2120 {
+		    // The installer URL is different for these, so we just bail
+		    None
+	    } else {
+		    Some(rep(WIN_URI, ver))
+	    }
     } else {
         panic!("Unknown OS: {}", os);
     }

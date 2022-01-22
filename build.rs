@@ -1,6 +1,6 @@
 
-use clap_generate::generators::Bash;
-use clap_generate::generators::Zsh;
+use clap_complete::shells::Bash;
+use clap_complete::shells::Zsh;
 use std::env;
 use std::io::Error;
 
@@ -15,10 +15,10 @@ fn main() -> Result<(), Error> {
     let mut app = rim_app();
     let name = "rim".to_string();
 
-    let path = clap_generate::generate_to(Bash, &mut app, &name, &outdir);
+    let path = clap_complete::generate_to(Bash, &mut app, &name, &outdir);
     println!("cargo:warning=bash completion file is generated: {:?}", path);
 
-    let path = clap_generate::generate_to(Zsh, &mut app, &name, &outdir);
+    let path = clap_complete::generate_to(Zsh, &mut app, &name, &outdir);
     println!("cargo:warning=zsh completion file is generated: {:?}", path);
 
     Ok(())
