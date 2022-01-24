@@ -57,7 +57,10 @@ rim-unnotarized-%.pkg: build.stamp  distribution.xml.in
 		--version $(VERSION) \
 		--sign "Developer ID Installer: Gabor Csardi" $@
 
-build.stamp: target/release/rim target/x86_64-apple-darwin/release/rim
+README.md: README.Rmd
+	R -q -e 'rmarkdown::render("README.Rmd")'
+
+build.stamp: target/release/rim target/x86_64-apple-darwin/release/rim README.md
 	rm -rf build-arm64 build-x86_64
 	# arm64
 	mkdir -p build-arm64/usr/local/bin
