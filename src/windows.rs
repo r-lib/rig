@@ -1,6 +1,7 @@
 #![cfg(target_os = "windows")]
 
 use std::fs::File;
+use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader};
 use std::io::Write;
 use std::path::Path;
@@ -36,7 +37,7 @@ pub fn sc_add(args: &ArgMatches) {
 
     system_create_lib(None);
     sc_system_make_links();
-    // TODO: patch for Rtools
+    patch_for_rtools();
 }
 
 fn add_rtools(version: String) {
@@ -71,6 +72,55 @@ fn add_rtools(version: String) {
         if !status.success() {
             panic!("Rtools installer exited with status {}", status.to_string());
         }
+    }
+}
+
+fn patch_for_rtools() {
+    let vers = sc_get_list();
+    let base = Path::new(R_ROOT);
+
+    for ver in vers {
+        let rtools4 = &ver[0..1] == "4";
+	let envfile = base
+	    .join("R-".to_string() + &ver)
+	    .join("etc")
+	    .join("Renviron.site");
+	let mut ok = envfile.exists();
+	if ok {
+	    ok = false;
+	    let file = File::open(&envfile).unwrap();
+	    let reader = BufReader::new(file);
+	    for line in reader.lines() {
+		let line2 = line.unwrap();
+		if line2.len() >= 14 && &line2[0..14] == "# added by rim" {
+		    ok = true;
+		    break;
+		}
+	    }
+	}
+	if !ok {
+	    let mut file = OpenOptions::new()
+		.create(true)
+		.write(true)
+		.append(true)
+		.open(&envfile)
+		.unwrap();
+
+	    let head = "\n".to_string() +
+		"# added by rim, do not update by hand-----\n";
+	    let tail = "\n".to_string() +
+		"# ----------------------------------------\n";
+	    let txt3 = head.to_owned() +
+		"PATH=\"C:\\Rtools\\bin;${PATH}\"" +
+		&tail;
+	    let txt4 = head.to_owned() +
+		"PATH=\"${RTOOLS40_HOME}\\ucrt64\\bin;${RTOOLS40_HOME}\\usr\\bin;${PATH}\"" +
+		&tail;
+
+	    if let Err(e) = writeln!(file, "{}", if rtools4 { txt4 } else { txt3 }) {
+		eprintln!("Couldn't write to Renviron.site file: {}", e);
+	    }
+	}
     }
 }
 
