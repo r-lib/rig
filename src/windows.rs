@@ -19,7 +19,7 @@ const R_ROOT: &str = "C:\\Program Files\\R";
 #[warn(unused_variables)]
 pub fn sc_add(args: &ArgMatches) {
     let str = args.value_of("str").unwrap().to_string();
-    if &str[0..6] == "rtools" {
+    if str.len() >= 6 && &str[0..6] == "rtools" {
         return add_rtools(str);
     }
     let (version, target) = download_r(&args);
@@ -49,7 +49,7 @@ fn add_rtools(version: String) {
     }
     let client = &reqwest::Client::new();
     for ver in vers {
-        let rtools4 = &ver[0..1] == "4";
+        let rtools4 = &ver[0..1] == "4" || ver == "devel";
         let filename = if rtools4 {
             format!("rtools{}-x86_64.exe", ver)
         } else {
@@ -80,7 +80,7 @@ fn patch_for_rtools() {
     let base = Path::new(R_ROOT);
 
     for ver in vers {
-        let rtools4 = &ver[0..1] == "4";
+        let rtools4 = &ver[0..1] == "4" || ver == "devel";
 	let envfile = base
 	    .join("R-".to_string() + &ver)
 	    .join("etc")
