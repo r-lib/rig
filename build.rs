@@ -1,6 +1,7 @@
 
 use clap_complete::shells::Bash;
 use clap_complete::shells::Zsh;
+use clap_complete::shells::PowerShell;
 use std::env;
 use std::io::Error;
 
@@ -20,6 +21,9 @@ fn main() -> Result<(), Error> {
 
     let path = clap_complete::generate_to(Zsh, &mut app, &name, &outdir);
     println!("cargo:warning=zsh completion file is generated: {:?}", path);
+
+    let path = clap_complete::generate_to(PowerShell, &mut app, &name, &outdir);
+    println!("cargo:warning=powershell completion file is generated: {:?}", path);
 
     Ok(())
 }

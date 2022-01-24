@@ -1,9 +1,26 @@
 
-# This is currently macOS specific, and works best on arm64 macOS.
-# We'll update it to support Windows once Windows support is added.
-
 VERSION=$(shell grep "^version" Cargo.toml | tr -cd '0-9.')
 SOURCES=$(wildcard src/*.rs)
+
+all:
+	@echo "Call 'make win' or 'make macos'"
+
+# -------------------------------------------------------------------------
+
+win: rim-$(VERSION).exe
+
+rim-$(VERSION).exe: target/release/rim.exe rim.iss
+	find target/release -name _rim.ps1 -exec cp \{\} _rim.ps1 \;
+	"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" rim.iss
+	cp output\mysetup.exe $@
+
+# -------------------------------------------------------------------------
+
+macos: release
+
+target/release/rim.exe: $(SOURCES)
+	rm -rf target/release/build/rim-*
+	cargo build --release
 
 target/release/rim: $(SOURCES)
 	rm -rf target/release/build/rim-*
@@ -64,7 +81,7 @@ build.stamp: target/release/rim target/x86_64-apple-darwin/release/rim
 	cp README.md NEWS.md LICENSE Resources/
 	touch $@
 
-.PHONY: release clean
+.PHONY: release clean all macos win
 
 clean:
-	rm -rf build.stamp build-* Resources *.pkg distribution.xml gon.hcl
+	rm -rf build.stamp build-* Resources *.pkg distribution.xml gon.hcl Output *.exe

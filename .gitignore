@@ -5,3 +5,6 @@
 /build.stamp
 /distribution.xml
 /*.pkg
+/rim-*.exe
+/Output
+_rim.ps1
