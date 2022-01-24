@@ -1,4 +1,8 @@
 
+# rim 0.1.5 (unreleased)
+
+* Experimental Windows version.
+
 # rim 0.1.4
 
 * `resolve` and `add` work again.

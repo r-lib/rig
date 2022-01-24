@@ -33,7 +33,7 @@ const HELP_EXAMPLES: &str = r#"EXAMPLES:
 pub fn rim_app() -> App<'static> {
 
     let rim = App::new("RIM -- The R Installation Manager")
-        .version("0.1.4")
+        .version("0.1.5")
         .about(HELP_ABOUT)
         .setting(AppSettings::ArgRequiredElseHelp)
         .term_width(80);

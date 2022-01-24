@@ -5,7 +5,7 @@ Install, remove, configure R versions.
 
 ## 🚀&nbsp; Features
 
-* Works on macOS. Windows and Linux versions are coming soon!
+* Works on macOS and Windows. Linux version is coming soon!
 * Install multiple R versions, select the default one, run multiple
   versions at the same time using quick links. E.g. `R-4.1` starts
   R 4.1.x.
@@ -15,10 +15,13 @@ Install, remove, configure R versions.
 * Makes sure that installed packages are kept separete from the R
   installation.
 * Includes auto-complete for `zsh` and `bash`.
+* Installs Rtools on Windows.
 
 ## ⬇️&nbsp; Installation
 
 Download the latest release from https://github.com/gaborcsardi/rim/releases.
+
+### Auto-complete
 
 The macOS installer and also installs the `zsh` and `bash` completions.
 `zsh` completions work out of the box.
