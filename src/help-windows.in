@@ -120,7 +120,7 @@ DESCRIPTION
 
     Usually you need to run this command from an administrator shell.
 
- KNOWN ISSUE:
+KNOWN ISSUE:
     - Rtools installation will fail if the same version of Rtools is
       already installed.
 "#;
