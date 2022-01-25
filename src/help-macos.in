@@ -8,21 +8,21 @@ const HELP_ABOUT: &str = r#"NAME
     rim - manage R installations
 
 DESCRIPTION
-    rim manages your R installations, on macOS and Windowss It can install
+    rim manages your R installations, on macOS and Windows. It can install
     and set up multiple versions R, and make sure that they work together.
 
-    On macOS R versions installed by rim do not interfere. You can run multiple
-    versions at the same time. rim also makes sure that packages installed by
-    the user go into a user package library, so reinstalling R will not wipe
-    out your installed packages.
+    On macOS, R versions installed by rim do not interfere. You can run
+    multiple versions at the same time. rim also makes sure that packages
+    are installed into a user package library, so reinstalling R will not
+    wipe out your installed packages.
 
-    rim is currently work in progress. Feedback is appreciated.
-    See https://github.com/gaborcsardi/rim for bug reports and more.
+    rim is currently experimental and work in progress. Feedback is much
+    appreciated. See https://github.com/gaborcsardi/rim for bug reports.
 "#;
 
 const HELP_RESOLVE: &str = r#"
 DESCRIPTION
-    Resolve R versions. Check the version number of an R version (e.g.
+    Resolve R versions. Checks the version number of an R version (e.g.
     release, devel, etc.), and looks up the URL of the installer for it,
     if an installer is available.
 
@@ -61,7 +61,7 @@ const HELP_DEFAULT: &str = r#"
 DESCRIPTION:
     Print or set the default R version. The default R version is the one that
     is started with the `R` command, usually via the `/usr/local/bin/R`
-     symbolic link.
+    symbolic link.
 
     Call without any arguments to see the current default. Call with the
     version number/name to set the default. Before setting a default, you
@@ -88,7 +88,7 @@ const HELP_DEFAULT_EXAMPLES: &str = r#"EXAMPLES:
 
 const HELP_LIST: &str = r#"
 DESCRIPTION:
-    List installed R versions from `/Library/Framework/R.framework/versions`.
+    List installed R versions from `/Library/Framework/R.framework/Versions`.
     It does _not_ check if they are working properly.
 "#;
 
@@ -99,10 +99,10 @@ DESCRIPTION:
     same minor branch, see below.
 
     NOTE: it is best to quit from all currently running R sessions before
-    adding new R versions. THe newly added R version will be the default
-    after the installation, if you don't want that, call `rim default`.
+    adding new R versions. The newly added R version will be the default
+    after the installation. If you don't want that, call `rim default`.
 
-    The newly added version can be specified in various ways:
+    The desired R version can be specified in various ways:
     - `rim add devel` adds the latest available development version,
     - `rim add release` adds the latest release.
     - `rim add x.y.z` adds a specific version.
@@ -145,7 +145,7 @@ const HELP_ADD_EXAMPLES: &str = r#"EXAMPLES:
 const HELP_RM: &str = r#"
 DESCRIPTION:
     Remove an R installation. It keeps the users' package libraries.
-    It automatically calls `rm system forget` before removing the files.
+    It automatically calls `rim system forget` before removing the files.
 
     Usually you need to run this command with `sudo`: `sudo rim rm ...`.
 "#;
@@ -178,7 +178,7 @@ DESCRIPTION:
 const HELP_SYSTEM_LINKS: &str = r#"
 DESCRIPTION:
     Create quick links in `/usr/local/bin` for the current R installations.
-    This lets you directly run a specific R version. E.g. `R-4.1` will start
+    These let you directly run a specific R version. E.g. `R-4.1` will start
     R 4.1.x.
 
     `rim add` runs `rim system make-links`, so if you only use rim to
@@ -190,7 +190,8 @@ DESCRIPTION:
 const HELP_SYSTEM_LIB: &str = r#"
 DESCRIPTION:
     Create directories for the current user's package libraries, for all
-    current R versions.
+    current R versions. It is better to keep packages in a user library,
+    because then they are not wiped out by a minor R (re)install.
 
     `rim add` runs `rim system create-lib`, so if you only use rim to
     install R, then you do not need to run it manually.
@@ -212,6 +213,8 @@ const HELP_SYSTEM_FIXPERMS: &str = r#"
 DESCRIPTION:
     Update the permissions of the current R versions, so only the
     administrator can install R packages into the system library.
+    Together with `rim system create-lib` this facilitates keeping
+    additional packages in a user library, instead of the system library.
 
     `rim add` runs `rim system fix-permissions`, so if you only use rim to
     install R, then you do not need to run it manually.
@@ -230,4 +233,3 @@ DESCRIPTION:
 
     This command probably needs `sudo`: `sudo rim system forget`.
 "#;
-

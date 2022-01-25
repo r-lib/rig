@@ -1,0 +1,80 @@
+---
+output: github_document
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  comment = "#>",
+  out.width = "100%"
+)
+```
+
+# The R Installation Manager
+
+Install, remove, configure R versions.
+
+## 🚀&nbsp; Features
+
+* Works on macOS and Windows. Linux version is coming soon!
+* Install multiple R versions, select the default one, run multiple
+  versions at the same time using quick links. E.g. `R-4.1` starts
+  R 4.1.x.
+* Select R version to install using symbolic names: `devel`, `release`,
+  `oldrel` and more.
+* On M1 macs select between x86_64 and arm64 versions or R, or install both.
+* Makes sure that installed packages are kept separete from the R
+  installation.
+* Includes auto-complete for `zsh` and `bash`.
+* Installs Rtools on Windows.
+
+## ⬇️&nbsp; Installation
+
+Download the latest release from https://github.com/gaborcsardi/rim/releases.
+
+### Auto-complete
+
+The macOS installer and also installs the `zsh` and `bash` completions.
+`zsh` completions work out of the box.
+For `bash` completions install the `bash-completion` package from Homebrew 
+and make sure it is loaded from your `.bashrc`. (You don't need to install
+`bash` from Homebrew, but you can if you like.)
+
+## ⚙️&nbsp; Usage
+
+Use `rim add` to add a new R installation:
+
+```
+rim add release
+```
+
+Use `rim list` to list the currently installed R versions, and `rim default`
+to set the default one.
+
+Run `rim` to see all commands and examples:
+
+```{bash, eval = FALSE}
+rim
+```
+
+```{bash, echo = FALSE, error = TRUE}
+./target/release/rim
+```
+
+Run `rim <subcommand> --help` for information about a subcommand:
+
+```{bash, eval = FALSE}
+rim default --help
+```
+
+```{bash, echo = FALSE}
+./target/release/rim default --help
+```
+
+## 🤝&nbsp; Feedback
+
+Please open an issue in our issue tracker at
+https://github.com/gaborcsardi/rim/issues
+
+## 📘&nbsp; License
+
+MIT 2021-2022 © RStudio Pbc.

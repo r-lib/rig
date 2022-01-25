@@ -9,6 +9,9 @@ DESCRIPTION
     rim manages your R installations, on macOS and Windows. It can install
     and set up multiple versions R, and it makes sure that they work
     together.
+
+    rim is currently experimental and work in progress. Feedback is much
+    appreciated. See https://github.com/gaborcsardi/rim for bug reports.
 "#;
 
 const HELP_RESOLVE: &str = r#"
@@ -16,11 +19,57 @@ DESCRIPTION:
     Resolve R versions. Check the version number of an R version (e.g.
     release, devel, etc.), and looks up the URL of the installer for it,
     if an installer is available.
+
+    It prints the R version number, and after a space the URL of the
+    installer. If no installer is available for this R version and the
+    current platform, the URL is `NA`.
+
+    An R version can be specified in various ways:
+    - `rim resolve devel` is the latest available development version,
+    - `rim resolve release` is the latest release.
+    - `rim resolve x.y.z` is a specific version.
+    - `rim resolve x.y` is the latest release within the `x.y` minor branch.
+    - `rim resolve oldrel/n` is the latest release within the `n`th previous
+      minor branch (`oldrel` is the same as `oldrel/1`).
+"#;
+
+const HELP_RESOLVE_EXAMPLES: &str = r#"EXAMPLES:
+    # Latest development snapshot
+    rim resolve devel
+
+    # Latest release (that has an installer available)
+    rim resolve release
+
+    # URL for a specific version
+    rim resolve 4.1.2
+
+    # Latest version within a minor branch
+    rim resolve 4.1
 "#;
 
 const HELP_DEFAULT: &str = r#"
 DESCRIPTION
-    Print or set the default R version.
+    Print or set the default R version. The default R version is the one
+    that can be started with the `R` and `RS` commands, via quick
+    batch files at `C:\Program Files\R\bin`.
+
+    Call without any arguments to see the current default. Call with the
+    version number/name to set the default. Before setting a default, you
+    can call `rim list` to see the installed R versions.
+
+    Potentially you need to run this command from an admininstrator shell
+    to change the current default.
+
+    You don't need to update the default R version to just run a non-default R
+    version. You can use the `R-<ver>` links, see `rim system make-links`.
+
+KNOWN ISSUES:
+    - If you don't call `rim system default <ver>` to set the default R
+      version then there is no default, and there are no `R` and `RS`
+      commands.
+    - If you delete the default R version with `rim rm` or another way,
+      then the `R` and `RS` commands will kept, but they will point to a
+      non-existing directory and fail.
 "#;
 
 const HELP_DEFAULT_EXAMPLES: &str = r#"EXAMPLES:
@@ -28,7 +77,7 @@ const HELP_DEFAULT_EXAMPLES: &str = r#"EXAMPLES:
     rim default
 
     # Set the default version
-    rim default 4.1.2
+    rim default 4.1
 "#;
 
 const HELP_LIST: &str = r#"
@@ -37,15 +86,43 @@ DESCRIPTION
     It does _not_ check if they are working properly.
 "#;
 
-const HELP_RESOLVE_EXAMPLES: &str = r#"EXAMPLES:
-    # Latest development snapshot
-    rim resolve devel
-"#;
-
 const HELP_ADD: &str = r#"
 DESCRIPTION
     Download and install an R version, from the official sources.
     It keeps the already installed R versions.
+
+    The desired R version can be specified in various ways:
+    - `rim add devel` adds the latest available development version,
+    - `rim add release` adds the latest release.
+    - `rim add x.y.z` adds a specific version.
+    - `rim add x.y` adds the latest release within the `x.y` minor branch.
+    - `rim add oldrel/n` adds the latest release within the `n`th previous
+      minor branch (`oldrel` is the same as `oldrel/1`).
+    - `rim add <url>` uses a `.pkg` installer from `<url>`.
+
+    `rim add` will call the following rim command after the installation,
+    to set up the newly installed version:
+    - `rim system create-lib`
+    - `rim system make-links`
+    See their help pages for details.
+
+    It will also update the sytem profile of all installed versions to add
+    the appropriate versions of Rtools to the system PATH.
+
+    You can use `rim add` to install Rtools:
+
+    rim add rtools
+
+    will install all Rtools versions that are needed for the currently
+    installed R versions. You can also request a specific Rtools version,
+    e.g. `rim add rtools40`. Rtools versions 3.x all install to `C:\Rtools`,
+    so only one of them can be installed at a time.
+
+    Usually you need to run this command from an administrator shell.
+
+KNOWN ISSUE:
+    - Rtools installation will fail if the same version of Rtools is
+      already installed.
 "#;
 
 const HELP_ADD_EXAMPLES: &str = r#"EXAMPLES
@@ -60,11 +137,22 @@ const HELP_ADD_EXAMPLES: &str = r#"EXAMPLES
 
     # Install latest version within a minor branch
     rim add 4.1
+
+    # Install all needed Rtools versions
+    rim add rtools
 "#;
 
 const HELP_RM: &str = r#"
 DESCRIPTION
     Remove an R installation. It keeps the users' package libraries.
+
+    Usually you need to run this command from an administrator shell.
+
+KNOWN ISSUE:
+    - `rim rm` currently does not remove quick link
+      (see `rim system make-links`) for the deleted R version.
+    - `rim rm` does not remove the deleted R version from the system
+      registry currently.
 "#;
 
 const HELP_SYSTEM: &str = r#"
@@ -77,16 +165,26 @@ const HELP_SYSTEM_LINKS: &str = r#"
 DESCRIPTION
     Create quick links in `C:\Program Files\R\bin` for the current R
     installations. This lets you directly run a specific R version. E.g.
-     `R-4.1` will start R 4.1.x.
+     `R-4.1.2` will start R 4.1.2.
+
+    It also adds an `R` and `RS` link that runs the default R version.
+    See `rim default`.
 
     `rim add` runs `rim system make-links`, so if you only use rim to
     install R, then you do not need to run it manually.
+
+    Usually you need to run this command from an administrator shell.
+
+KNOWN ISSUE:
+    - `rim system make-links` currently does not remove the links that
+      are not in use.
 "#;
 
 const HELP_SYSTEM_LIB: &str = r#"
 DESCRIPTION
     Create directories for the current user's package libraries, for all
-    current R versions.
+    current R versions. It is better to keep packages in a user library,
+    because then they are not wiped out by a minor R (re)install.
 
     `rim add` runs `rim system create-lib`, so if you only use rim to
     install R, then you do not need to run it manually.
@@ -101,5 +199,5 @@ DESCRIPTION
     * If one or more R versions are specified, then it installs pak for
       those.
     * If no R versions are specified, then it installs pak for the default
-      R installation (see `rim default`).
+      R installation, if there is one (see `rim default`).
 "#;
