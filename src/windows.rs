@@ -289,6 +289,9 @@ pub fn system_create_lib(vers: Option<Vec<String>>) {
 pub fn sc_system_make_links() {
     let vers = sc_get_list();
     let base = Path::new(R_ROOT);
+    let bin = base.join("bin");
+
+    std::fs::create_dir_all(bin).unwrap();
 
     for ver in vers {
         let linkfile = base.join("bin").join("R-".to_string() + &ver + ".bat");
