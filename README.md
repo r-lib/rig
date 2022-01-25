@@ -46,21 +46,21 @@ Run `rim` to see all commands and examples:
 rim
 ```
 
-    #> RIM -- The R Installation Manager 0.1.4
+    #> RIM -- The R Installation Manager 0.1.5
     #> NAME
     #>     rim - manage R installations
     #> 
     #> DESCRIPTION
-    #>     rim manages your R installations, on macOS and Windowss It can install
+    #>     rim manages your R installations, on macOS and Windows. It can install
     #>     and set up multiple versions R, and make sure that they work together.
     #> 
-    #>     On macOS R versions installed by rim do not interfere. You can run multiple
-    #>     versions at the same time. rim also makes sure that packages installed by
-    #>     the user go into a user package library, so reinstalling R will not wipe
-    #>     out your installed packages.
+    #>     On macOS, R versions installed by rim do not interfere. You can run
+    #>     multiple versions at the same time. rim also makes sure that packages
+    #>     are installed into a user package library, so reinstalling R will not
+    #>     wipe out your installed packages.
     #> 
-    #>     rim is currently work in progress. Feedback is appreciated.
-    #>     See https://github.com/gaborcsardi/rim for bug reports and more.
+    #>     rim is currently experimental and work in progress. Feedback is much
+    #>     appreciated. See https://github.com/gaborcsardi/rim for bug reports.
     #> 
     #> USAGE:
     #>     rim [SUBCOMMAND]
@@ -108,7 +108,7 @@ rim default --help
     #> DESCRIPTION:
     #>     Print or set the default R version. The default R version is the one that
     #>     is started with the `R` command, usually via the `/usr/local/bin/R`
-    #>      symbolic link.
+    #>     symbolic link.
     #> 
     #>     Call without any arguments to see the current default. Call with the
     #>     version number/name to set the default. Before setting a default, you
