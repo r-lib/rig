@@ -50,7 +50,7 @@ const HELP_RESOLVE_EXAMPLES: &str = r#"EXAMPLES:
 const HELP_DEFAULT: &str = r#"
 DESCRIPTION
     Print or set the default R version. The default R version is the one
-    that can be started with the `R` and `RD` commands, via quick
+    that can be started with the `R` and `RS` commands, via quick
     batch files at `C:\Program Files\R\bin`.
 
     Call without any arguments to see the current default. Call with the
@@ -65,10 +65,10 @@ DESCRIPTION
 
 KNOWN ISSUES:
     - If you don't call `rim system default <ver>` to set the default R
-      version then there is no default, and there are no `R` and `RD`
+      version then there is no default, and there are no `R` and `RS`
       commands.
     - If you delete the default R version with `rim rm` or another way,
-      then the `R` and `RD` commands will kept, but they will point to a
+      then the `R` and `RS` commands will kept, but they will point to a
       non-existing directory and fail.
 "#;
 
@@ -167,7 +167,7 @@ DESCRIPTION
     installations. This lets you directly run a specific R version. E.g.
      `R-4.1.2` will start R 4.1.2.
 
-    It also adds an `R` and `RD` link that runs the default R version.
+    It also adds an `R` and `RS` link that runs the default R version.
     See `rim default`.
 
     `rim add` runs `rim system make-links`, so if you only use rim to

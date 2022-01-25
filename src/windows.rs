@@ -351,6 +351,10 @@ pub fn sc_set_default(ver: String) {
         "@\"C:\\Program Files\\R\\R-" + &ver + "\\bin\\R\" %*\n";
     let mut file = File::create(linkfile).unwrap();
     file.write_all(cnt.as_bytes()).unwrap();
+
+    let linkfile2 = base.join("bin").join("RS.bat");
+    let mut file2 = File::create(linkfile2).unwrap();
+    file2.write_all(cnt.as_bytes()).unwrap();
 }
 
 pub fn sc_get_default() -> String {
