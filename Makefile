@@ -1,6 +1,6 @@
 
 VERSION=$(shell grep "^version" Cargo.toml | tr -cd '0-9.')
-SOURCES=$(wildcard src/*.rs)
+SOURCES=$(wildcard src/*.rs) $(wildcard src/*.in)
 
 all:
 	@echo "Call 'make win' or 'make macos'"
@@ -57,7 +57,8 @@ rim-unnotarized-%.pkg: build.stamp  distribution.xml.in
 		--version $(VERSION) \
 		--sign "Developer ID Installer: Gabor Csardi" $@
 
-README.md: README.Rmd
+README.md: README.Rmd $(SOURCES)
+	cargo build --release
 	R -q -e 'rmarkdown::render("README.Rmd")'
 
 build.stamp: target/release/rim target/x86_64-apple-darwin/release/rim README.md
