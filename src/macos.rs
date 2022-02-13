@@ -10,6 +10,7 @@ use nix::unistd::Gid;
 use nix::unistd::Uid;
 use regex::Regex;
 use semver::Version;
+use sudo::escalate_if_needed;
 
 use crate::common::*;
 use crate::download::*;
@@ -27,6 +28,7 @@ const R_ROOT: &str = "/Library/Frameworks/R.framework/Versions";
 const R_CUR: &str = "/Library/Frameworks/R.framework/Versions/Current";
 
 pub fn sc_add(args: &ArgMatches) {
+    escalate();
     let mut version = get_resolve(args);
     let ver = version.version.to_owned();
     let verstr = match ver {
@@ -89,6 +91,7 @@ pub fn sc_add(args: &ArgMatches) {
 }
 
 pub fn sc_rm(args: &ArgMatches) {
+    escalate();
     let vers = args.values_of("version");
     if vers.is_none() {
         return;
@@ -221,6 +224,7 @@ pub fn system_create_lib(vers: Option<Vec<String>>) {
 }
 
 pub fn sc_system_make_links() {
+    escalate();
     let vers = sc_get_list();
     let base = Path::new("/Library/Frameworks/R.framework/Versions/");
 
@@ -269,7 +273,7 @@ pub fn sc_system_make_links() {
 }
 
 pub fn sc_system_make_orthogonal(args: &ArgMatches) {
-    check_root();
+    escalate();
     let vers = args.values_of("version");
     if vers.is_none() {
         system_make_orthogonal(None);
@@ -322,7 +326,7 @@ fn system_make_orthogonal(vers: Option<Vec<String>>) {
 }
 
 pub fn sc_system_fix_permissions(args: &ArgMatches) {
-    check_root();
+    escalate();
     let vers = args.values_of("version");
     if vers.is_none() {
         system_fix_permissions(None);
@@ -352,7 +356,7 @@ fn system_fix_permissions(vers: Option<Vec<String>>) {
 }
 
 pub fn sc_system_forget() {
-    check_root();
+    escalate();
     let out = Command::new("sh")
         .args(["-c", "pkgutil --pkgs | grep -i r-project | grep -v clang"])
         .output()
@@ -474,13 +478,6 @@ pub fn sc_get_list() -> Vec<String> {
     vers
 }
 
-fn check_root() {
-    let euid = nix::unistd::geteuid();
-    if !euid.is_root() {
-        panic!("Not enough permissions, you probably need 'sudo'");
-    }
-}
-
 fn get_user() -> User {
     let uid;
     let gid;
@@ -573,4 +570,16 @@ fn extract_pkg_version(filename: &str) -> Rversion {
     };
 
     res
+}
+
+fn escalate() {
+    let need_sudo = match sudo::check() {
+        sudo::RunningAs::Root => { false },
+        sudo::RunningAs::User => { true },
+        sudo::RunningAs::Suid => { true }
+    };
+    if need_sudo {
+        println!("Sorry, rim needs your password for this.");
+        escalate_if_needed().unwrap();
+    }
 }

@@ -46,7 +46,7 @@ Run `rim` to see all commands and examples:
 rim
 ```
 
-    #> RIM -- The R Installation Manager 0.1.5
+    #> RIM -- The R Installation Manager 0.1.6
     #> NAME
     #>     rim - manage R installations
     #> 

@@ -111,7 +111,8 @@ DESCRIPTION:
       minor branch (`oldrel` is the same as `oldrel/1`).
     - `rim add <url>` uses a `.pkg` installer from `<url>`.
 
-    Usually you need to run this command with `sudo`: `sudo rim add ...`.
+    Usually you need to run this command with `sudo`: `sudo rim add ...`,
+    otherwise rim will need to ask for your password.
 
     On macOS rim cannot add multiple R versions from the same minor branch.
     E.g. it is not possible to have R 4.1.1 and R 4.1.2 installed at the
@@ -147,7 +148,8 @@ DESCRIPTION:
     Remove an R installation. It keeps the users' package libraries.
     It automatically calls `rim system forget` before removing the files.
 
-    Usually you need to run this command with `sudo`: `sudo rim rm ...`.
+    Usually you need to run this command with `sudo`: `sudo rim rm ...`,
+    otherwise rim will ask for your password.
 "#;
 
 const HELP_SYSTEM: &str = r#"
@@ -172,7 +174,8 @@ DESCRIPTION:
     `rim add` runs `rim system make-orthogonal`, so if you only use rim to
     install R, then you do not need to run it manually.
 
-    This command probably needs `sudo`: `sudo rim system make-orthogonal`.
+    This command probably needs `sudo`: `sudo rim system make-orthogonal`,
+    otherwise rim will aks for your password.
 "#;
 
 const HELP_SYSTEM_LINKS: &str = r#"
@@ -184,7 +187,8 @@ DESCRIPTION:
     `rim add` runs `rim system make-links`, so if you only use rim to
     install R, then you do not need to run it manually.
 
-    This command probably needs `sudo`: `sudo rim system make-links`.
+    This command probably needs `sudo`: `sudo rim system make-links`,
+    otherwise rim will ask for your password.
 "#;
 
 const HELP_SYSTEM_LIB: &str = r#"
@@ -219,7 +223,8 @@ DESCRIPTION:
     `rim add` runs `rim system fix-permissions`, so if you only use rim to
     install R, then you do not need to run it manually.
 
-    This command probably needs `sudo`: `sudo rim system fix-permissions`.
+    This command probably needs `sudo`: `sudo rim system fix-permissions`,
+    otherwise rim will ask for your password.
 "#;
 
 const HELP_SYSTEM_FORGET: &str = r#"
@@ -231,5 +236,6 @@ DESCRIPTION:
     so if you only use rim to install R, then you don't need to run this
     command manually.
 
-    This command probably needs `sudo`: `sudo rim system forget`.
+    This command probably needs `sudo`: `sudo rim system forget`, otherwise
+    rim will ask for your password.
 "#;
