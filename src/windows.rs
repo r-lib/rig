@@ -469,7 +469,14 @@ fn elevate() {
     if is_elevated::is_elevated() { return; }
     let args: Vec<String> = std::env::args().collect();
     println!("Re-running with administrator privileges...");
-    let code = std::process::Command::new("gsudo")
+    let exe = std::env::current_exe().unwrap();
+    let exedir =  Path::new(&exe).parent();
+    let instdir = match exedir {
+        Some(d) => d,
+        None    => Path::new("/")
+    };
+    let gsudo = instdir.join("gsudo.exe");
+    let code = std::process::Command::new(gsudo)
         .args(args)
         .status()
         .unwrap();

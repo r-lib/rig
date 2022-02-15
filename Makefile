@@ -9,10 +9,14 @@ all:
 
 win: rim-$(VERSION).exe
 
-rim-$(VERSION).exe: target/release/rim.exe rim.iss
-	find target/release -name _rim.ps1 -exec cp \{\} _rim.ps1 \;
+rim-$(VERSION).exe: target/release/rim.exe rim.iss gsudo.exe
+#	find target/release -name _rim.ps1 -exec cp \{\} _rim.ps1 \;
 	"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" rim.iss
 	cp output\mysetup.exe $@
+
+gsudo.exe:
+	Invoke-WebRequest https://github.com/gerardog/gsudo/releases/download/v1.0.2/gsudo.v1.0.2.zip -outfile gsudo.zip
+	unzip gsudo.zip
 
 # -------------------------------------------------------------------------
 
