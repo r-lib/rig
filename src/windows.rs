@@ -21,6 +21,7 @@ const R_ROOT: &str = "C:\\Program Files\\R";
 
 #[warn(unused_variables)]
 pub fn sc_add(args: &ArgMatches) {
+    elevate();
     sc_clean_registry();
     let str = args.value_of("str").unwrap().to_string();
     if str.len() >= 6 && &str[0..6] == "rtools" {
@@ -28,6 +29,7 @@ pub fn sc_add(args: &ArgMatches) {
     }
     let (_version, target) = download_r(&args);
 
+    println!("Installing {}", target);
     let status = Command::new(&target)
 	.args(["/VERYSILENT", "/SUPPRESSMSGBOXES"])
 	.spawn()
@@ -164,6 +166,7 @@ fn get_rtools_needed() -> Vec<String> {
 }
 
 pub fn sc_rm(args: &ArgMatches) {
+    elevate();
     let vers = args.values_of("version");
     if vers.is_none() {
         return;
@@ -291,6 +294,7 @@ pub fn system_create_lib(vers: Option<Vec<String>>) {
 }
 
 pub fn sc_system_make_links() {
+    elevate();
     let vers = sc_get_list();
     let base = Path::new(R_ROOT);
     let bin = base.join("bin");
@@ -352,6 +356,7 @@ pub fn sc_get_list() -> Vec<String> {
 }
 
 pub fn sc_set_default(ver: String) {
+    elevate();
     let base = Path::new(R_ROOT);
     let linkfile = base.join("bin").join("R.bat");
     let cnt = "::".to_string() + &ver + "\n" +
@@ -427,6 +432,7 @@ fn clean_registry_uninst(key: &RegKey) {
 }
 
 pub fn sc_clean_registry() {
+    elevate();
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
 
     let r64r = hklm.open_subkey("SOFTWARE\\R-core\\R");
@@ -457,4 +463,15 @@ pub fn sc_clean_registry() {
     if let Ok(x) = uninst { clean_registry_uninst(&x); };
     let uninst32 = hklm.open_subkey("SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
     if let Ok(x) = uninst32 { clean_registry_uninst(&x); };
+}
+
+fn elevate() {
+    if is_elevated::is_elevated() { return; }
+    let args: Vec<String> = std::env::args().collect();
+    println!("Re-running with administrator privileges...");
+    let code = std::process::Command::new("gsudo")
+        .args(args)
+        .status()
+        .unwrap();
+    std::process::exit(code.code().unwrap());
 }

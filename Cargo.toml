@@ -32,6 +32,7 @@ tokio = { version = "1", features = ["full"] }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.10"
+is_elevated = "0.1.2"
 
 [build-dependencies]
 clap = "3.0.10"
