@@ -29,6 +29,8 @@ sha2 = "0.9.8"
 shellexpand = "2.1.0"
 sudo = "0.6.0"
 tokio = { version = "1", features = ["full"] }
+
+[target.'cfg(windows)'.dependencies]
 winreg = "0.10"
 
 [build-dependencies]

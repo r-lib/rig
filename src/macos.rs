@@ -400,6 +400,10 @@ pub fn get_resolve(args: &ArgMatches) -> Rversion {
     }
 }
 
+pub fn sc_clean_registry() {
+    // Nothing to do on macOS
+}
+
 // ------------------------------------------------------------------------
 
 fn valid_macos_archs() -> Vec<String> {
