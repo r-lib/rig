@@ -4,6 +4,11 @@
 * On macOS rim now asks for your password for tasks that require admin
   access.
 
+* New `rim system clean-registry` command to remove leftover
+  registry entries.
+
+* `rim rm` now cleans the registry on Windows.
+
 # rim 0.1.5
 
 * Experimental Windows version.

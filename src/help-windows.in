@@ -201,3 +201,9 @@ DESCRIPTION
     * If no R versions are specified, then it installs pak for the default
       R installation, if there is one (see `rim default`).
 "#;
+
+const HELP_SYSTEM_CLEANREG: &str = r#"
+DESCRIPTION
+    Remove R and Rtools entries from the registry, if the corresponding
+    R or Rtools versions are not installed any more.
+"#;

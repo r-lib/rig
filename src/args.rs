@@ -135,6 +135,16 @@ pub fn rim_app() -> App<'static> {
                 .multiple_occurrences(true),
         );
 
+#[cfg(target_os = "windows")]
+{
+    let cmd_system_cleanreg = App::new("clean-registry")
+        .about("Clean the R related entries in the registry")
+        .long_about(HELP_SYSTEM_CLEANREG);
+
+    cmd_system = cmd_system
+        .subcommand(cmd_system_cleanreg)
+}
+
 #[cfg(target_os = "macos")]
 {
     let cmd_system_ortho = App::new("make-orthogonal")

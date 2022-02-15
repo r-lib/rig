@@ -36,6 +36,7 @@ fn main() {
 fn sc_system(args: &ArgMatches) {
     match args.subcommand() {
         Some(("add-pak", s)) => sc_system_add_pak(s),
+        Some(("clean-registry", _)) => sc_clean_registry(),
         Some(("create-lib", s)) => sc_system_create_lib(s),
         Some(("make-links", _)) => sc_system_make_links(),
         Some(("make-orthogonal", s)) => sc_system_make_orthogonal(s),

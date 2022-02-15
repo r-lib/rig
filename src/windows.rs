@@ -3,12 +3,15 @@
 use regex::Regex;
 use std::fs::File;
 use std::fs::OpenOptions;
+use std::io;
 use std::io::{BufRead, BufReader};
 use std::io::Write;
 use std::path::Path;
 use std::process::Command;
 
 use clap::ArgMatches;
+use winreg::enums::*;
+use winreg::RegKey;
 
 use crate::common::*;
 use crate::download::*;
@@ -19,6 +22,7 @@ const R_ROOT: &str = "C:\\Program Files\\R";
 
 #[warn(unused_variables)]
 pub fn sc_add(args: &ArgMatches) {
+    sc_clean_registry();
     let str = args.value_of("str").unwrap().to_string();
     if str.len() >= 6 && &str[0..6] == "rtools" {
         return add_rtools(str);
@@ -181,6 +185,7 @@ pub fn sc_rm(args: &ArgMatches) {
         }
     }
 
+    sc_clean_registry();
     sc_system_make_links();
 }
 
@@ -381,4 +386,76 @@ pub fn sc_get_default() -> String {
 pub fn sc_show_default() {
     let default = sc_get_default();
     println!("{}", default);
+}
+
+fn clean_registry_r(key: &RegKey) {
+    for nm in key.enum_keys() {
+        let nm = nm.unwrap();
+        let subkey = key.open_subkey(&nm).unwrap();
+        let path: String = subkey.get_value("InstallPath").unwrap();
+        let path2 = Path::new(&path);
+        if !path2.exists() {
+            println!("Cleaning registry: R {} (not in {})", &nm, path);
+            key.delete_subkey_all(nm).unwrap();
+        }
+    }
+}
+
+fn clean_registry_rtools(key: &RegKey) {
+    for nm in key.enum_keys() {
+        let nm = nm.unwrap();
+        let subkey = key.open_subkey(&nm).unwrap();
+        let path: String = subkey.get_value("InstallPath").unwrap();
+        let path2 = Path::new(&path);
+        if !path2.exists() {
+            println!("Cleaning registry: Rtools {} (not in {})", &nm, path);
+            key.delete_subkey_all(nm).unwrap();
+        }
+    }
+}
+
+fn clean_registry_uninst(key: &RegKey) {
+    for nm in key.enum_keys().map(|x| x.unwrap())
+        .filter(|x| x.starts_with("Rtools") || x.starts_with("R for Windows")) {
+            let subkey = key.open_subkey(&nm).unwrap();
+            let path: String = subkey.get_value("InstallLocation").unwrap();
+            let path2 = Path::new(&path);
+            if !path2.exists() {
+                println!("Cleaning registry (uninstaller): {}", nm);
+                key.delete_subkey_all(nm).unwrap();
+            }
+    }
+}
+
+pub fn sc_clean_registry() {
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+
+    let r64r = hklm.open_subkey("SOFTWARE\\R-core\\R");
+    if let Ok(x) = r64r { clean_registry_r(&x); };
+    let r64r64 = hklm.open_subkey("SOFTWARE\\R-core\\R64");
+    if let Ok(x) = r64r64 { clean_registry_r(&x); };
+    let r32r = hklm.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\R");
+    if let Ok(x) = r32r { clean_registry_r(&x); };
+    let r32r32 = hklm.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\R32");
+    if let Ok(x) = r32r32 { clean_registry_r(&x); };
+
+    let rtools64 = hklm.open_subkey("SOFTWARE\\R-core\\Rtools");
+    if let Ok(x) = rtools64 {
+        clean_registry_rtools(&x);
+        if x.enum_keys().count() == 0 {
+            hklm.delete_subkey("SOFTWARE\\R-core\\Rtools").unwrap();
+        }
+    };
+    let rtools32 = hklm.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\Rtools");
+    if let Ok(x) = rtools32 {
+        clean_registry_rtools(&x);
+        if x.enum_keys().count() == 0 {
+            hklm.delete_subkey("SOFTWARE\\WOW6432Node\\R-core\\Rtools").unwrap();
+        }
+    };
+
+    let uninst = hklm.open_subkey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
+    if let Ok(x) = uninst { clean_registry_uninst(&x); };
+    let uninst32 = hklm.open_subkey("SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
+    if let Ok(x) = uninst32 { clean_registry_uninst(&x); };
 }
