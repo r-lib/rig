@@ -57,13 +57,14 @@ pub fn rim_app() -> App<'static> {
         .about("Install a new R version")
         .long_about(HELP_ADD)
         .after_help(HELP_ADD_EXAMPLES)
-        .aliases(&["install"])
-        .arg(
-            Arg::new("str")
-                .help("R version to install")
-                .default_value("release")
-                .multiple_occurrences(false)
-        );
+        .aliases(&["install"]);
+
+    cmd_add = cmd_add.arg(
+        Arg::new("str")
+            .help("R version to install")
+            .default_value("release")
+            .multiple_occurrences(false)
+    );
 
 #[cfg(target_os = "macos")]
 {
@@ -185,12 +186,13 @@ pub fn rim_app() -> App<'static> {
     let mut cmd_resolve = App::new("resolve")
         .about("Resolve a symbolic R version")
         .long_about(HELP_RESOLVE)
-        .after_help(HELP_RESOLVE_EXAMPLES)
-        .arg(
-            Arg::new("str")
-                .help("symbolic version string to resolve")
-                .required(true),
-        );
+        .after_help(HELP_RESOLVE_EXAMPLES);
+
+    cmd_resolve = cmd_resolve.arg(
+        Arg::new("str")
+            .help("symbolic version string to resolve")
+            .required(true)
+    );
 
 #[cfg(target_os = "macos")]
 {

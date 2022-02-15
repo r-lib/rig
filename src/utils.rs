@@ -1,14 +1,20 @@
+#[cfg(target_os = "macos")]
 use regex::Regex;
+#[cfg(target_os = "macos")]
 use std::fs::File;
+#[cfg(target_os = "macos")]
 use std::io::{prelude::*, BufReader};
+#[cfg(target_os = "macos")]
 use std::path::Path;
 
+#[cfg(target_os = "macos")]
 use sha2::{Digest, Sha256};
 
 pub fn basename(path: &str) -> Option<&str> {
     path.rsplitn(2, '/').next()
 }
 
+#[cfg(target_os = "macos")]
 pub fn read_lines(path: &Path) -> Result<Vec<String>, std::io::Error> {
     let file = File::open(path)?;
     let buf = BufReader::new(file);
@@ -19,6 +25,7 @@ pub fn read_lines(path: &Path) -> Result<Vec<String>, std::io::Error> {
     Ok(lines)
 }
 
+#[cfg(target_os = "macos")]
 pub fn grep_lines(re: &Regex, lines: &Vec<String>) -> Vec<usize> {
     lines
         .iter()
@@ -34,6 +41,7 @@ pub fn grep_lines(re: &Regex, lines: &Vec<String>) -> Vec<usize> {
         .collect()
 }
 
+#[cfg(target_os = "macos")]
 pub fn replace_in_file(path: &Path, re: &Regex, sub: &str) -> Result<(), std::io::Error> {
     let mut lines = read_lines(path)?;
     let mch = grep_lines(re, &lines);
@@ -62,6 +70,7 @@ pub fn replace_in_file(path: &Path, re: &Regex, sub: &str) -> Result<(), std::io
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
 pub fn calculate_hash(s: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(s);

@@ -3,7 +3,6 @@
 use regex::Regex;
 use std::fs::File;
 use std::fs::OpenOptions;
-use std::io;
 use std::io::{BufRead, BufReader};
 use std::io::Write;
 use std::path::Path;
@@ -27,7 +26,7 @@ pub fn sc_add(args: &ArgMatches) {
     if str.len() >= 6 && &str[0..6] == "rtools" {
         return add_rtools(str);
     }
-    let (version, target) = download_r(&args);
+    let (_version, target) = download_r(&args);
 
     let status = Command::new(&target)
 	.args(["/VERYSILENT", "/SUPPRESSMSGBOXES"])
@@ -46,7 +45,7 @@ pub fn sc_add(args: &ArgMatches) {
 }
 
 fn add_rtools(version: String) {
-    let mut vers;
+    let vers;
     if version == "rtools" {
         vers = get_rtools_needed();
     } else {
@@ -302,7 +301,7 @@ pub fn sc_system_make_links() {
         let linkfile = base.join("bin").join("R-".to_string() + &ver + ".bat");
         let target = base.join("R-".to_string() + &ver);
         let op = if !linkfile.exists() { "Updating" } else { "Adding" };
-        println!("Adding R-{} -> {}", ver, target.display());
+        println!("{} R-{} -> {}", op, ver, target.display());
         let mut file = File::create(linkfile).unwrap();
         let cnt = "@\"C:\\Program Files\\R\\R-".to_string() +
             &ver + "\\bin\\R\" %*\n";
@@ -314,7 +313,7 @@ pub fn sc_system_make_orthogonal(_args: &ArgMatches) {
     // Nothing to do on Windows
 }
 
-pub fn sc_system_fix_permissions(args: &ArgMatches) {
+pub fn sc_system_fix_permissions(_args: &ArgMatches) {
     // Nothing to do on Windows
 }
 
