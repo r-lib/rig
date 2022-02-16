@@ -298,19 +298,45 @@ pub fn sc_system_make_links() {
     let vers = sc_get_list();
     let base = Path::new(R_ROOT);
     let bin = base.join("bin");
+    let mut new_links: Vec<String> = vec!["RS.bat".to_string(), "R.bat".to_string()];
 
     std::fs::create_dir_all(bin).unwrap();
 
     for ver in vers {
-        let linkfile = base.join("bin").join("R-".to_string() + &ver + ".bat");
+        let filename = "R-".to_string() + &ver + ".bat";
+        let linkfile = base.join("bin").join(&filename);
+        new_links.push(filename);
         let target = base.join("R-".to_string() + &ver);
-        let op = if !linkfile.exists() { "Updating" } else { "Adding" };
-        println!("{} R-{} -> {}", op, ver, target.display());
-        let mut file = File::create(linkfile).unwrap();
+
         let cnt = "@\"C:\\Program Files\\R\\R-".to_string() +
             &ver + "\\bin\\R\" %*\n";
+        let op;
+        if linkfile.exists() {
+            op = "Updating";
+            let orig = std::fs::read_to_string(&linkfile).unwrap();
+            if orig == cnt { continue; }
+        } else {
+            op = "Adding";
+        };
+        println!("{} R-{} -> {}", op, ver, target.display());
+        let mut file = File::create(&linkfile).unwrap();
         file.write_all(cnt.as_bytes()).unwrap();
     }
+
+    // Delete the ones we don't need
+    let old_links = std::fs::read_dir(base.join("bin")).unwrap();
+    for path in old_links {
+        let path = path.unwrap();
+        let filename = path.file_name();
+        let filename_str = filename.to_str().unwrap().to_string();
+        if !filename_str.ends_with(".bat") { continue; }
+        if !filename_str.starts_with("R-") { continue; }
+        if ! new_links.contains(&filename_str) {
+            println!("Deleting unused {}", filename_str);
+            std::fs::remove_file(path.path()).unwrap();
+        }
+    }
+
 }
 
 pub fn sc_system_make_orthogonal(_args: &ArgMatches) {
