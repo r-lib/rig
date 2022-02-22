@@ -1,20 +1,20 @@
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use regex::Regex;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::fs::File;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::io::{prelude::*, BufReader};
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::path::Path;
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use sha2::{Digest, Sha256};
 
 pub fn basename(path: &str) -> Option<&str> {
     path.rsplitn(2, '/').next()
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn read_lines(path: &Path) -> Result<Vec<String>, std::io::Error> {
     let file = File::open(path)?;
     let buf = BufReader::new(file);
@@ -25,7 +25,7 @@ pub fn read_lines(path: &Path) -> Result<Vec<String>, std::io::Error> {
     Ok(lines)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn grep_lines(re: &Regex, lines: &Vec<String>) -> Vec<usize> {
     lines
         .iter()

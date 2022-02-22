@@ -13,6 +13,11 @@ mod windows;
 #[cfg(target_os = "windows")]
 use windows::*;
 
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+use linux::*;
+
 mod common;
 mod download;
 mod resolve;

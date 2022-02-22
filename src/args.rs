@@ -10,6 +10,9 @@ std::include!("help-macos.in");
 #[cfg(target_os = "windows")]
 std::include!("help-windows.in");
 
+#[cfg(target_os = "linux")]
+std::include!("help-linux.in");
+
 const HELP_EXAMPLES: &str = r#"EXAMPLES:
     # Add the latest development snapshot
     rim add devel
