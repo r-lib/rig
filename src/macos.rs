@@ -84,6 +84,7 @@ pub fn sc_add(args: &ArgMatches) {
     let dirname = &get_install_dir(&version);
 
     sc_system_forget();
+    system_no_openmp(Some(vec![dirname.to_string()]));
     system_fix_permissions(Some(vec![dirname.to_string()]));
     system_make_orthogonal(Some(vec![dirname.to_string()]));
     system_create_lib(Some(vec![dirname.to_string()]));
@@ -397,6 +398,41 @@ pub fn get_resolve(args: &ArgMatches) -> Rversion {
         let eps = vec![str];
         let version = resolve_versions(eps, "macos".to_string(), arch);
         version[0].to_owned()
+    }
+}
+
+pub fn sc_system_no_openmp(args: &ArgMatches) {
+    escalate();
+    let vers = args.values_of("version");
+    if vers.is_none() {
+        system_no_openmp(None);
+        return;
+    } else {
+        let vers: Vec<String> = vers.unwrap().map(|v| v.to_string()).collect();
+        system_no_openmp(Some(vers));
+    }
+}
+
+fn system_no_openmp(vers: Option<Vec<String>>) {
+    let vers = match vers {
+        Some(x) => x,
+        None => sc_get_list(),
+    };
+    let re = Regex::new("[-]fopenmp").unwrap();
+
+    for ver in vers {
+        check_installed(&ver);
+        let path = Path::new(R_ROOT).join(ver.as_str());
+        let makevars = path.join("Resources/etc/Makeconf".to_string());
+        if ! makevars.exists() { continue; }
+
+        match replace_in_file(&makevars, &re, "") {
+            Ok(_) => { },
+            Err(err) => {
+                let spath = path.to_str().unwrap();
+                panic!("Failed to update {}: {}", spath, err);
+            }
+        };
     }
 }
 

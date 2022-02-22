@@ -172,10 +172,22 @@ pub fn rim_app() -> App<'static> {
         .about("Make system forget about R installations (macOS)")
         .long_about(HELP_SYSTEM_FORGET);
 
+
+    let cmd_system_noopenmp = App::new("no-openmp")
+        .about("Remove OpemMP (-fopenmp) option for Apple compilers")
+        .long_about(HELP_SYSTEM_NO_OPENMP)
+        .arg(
+            Arg::new("version")
+                .help("R versions to update (default: all)")
+                .required(false)
+                .multiple_occurrences(true)
+        );
+
     cmd_system = cmd_system
         .subcommand(cmd_system_ortho)
         .subcommand(cmd_system_rights)
-        .subcommand(cmd_system_forget);
+        .subcommand(cmd_system_forget)
+        .subcommand(cmd_system_noopenmp);
 }
 
     cmd_system = cmd_system

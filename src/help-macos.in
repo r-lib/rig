@@ -239,3 +239,17 @@ DESCRIPTION:
     This command probably needs `sudo`: `sudo rim system forget`, otherwise
     rim will ask for your password.
 "#;
+
+const HELP_SYSTEM_NO_OPENMP: &str = r#"
+DESCRIPTION:
+    Remove -fopenmp flags from the R configuration, to make R work with
+    the Apple compilers, instead of CRAN's custom compilers. This is only
+    needed for R 3.6.x and before.
+
+    `rim add` runs `rim system no-openmp` after the installation, so if
+    only use rim to install R, then you don't need to run this command
+    manually.
+
+    This command probably needs `sudo`: `sudo rim system no-openmp`,
+    otherwise rim will ask for your password.
+"#;

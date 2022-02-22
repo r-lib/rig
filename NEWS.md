@@ -8,8 +8,10 @@
   as needed, by re-running with gsudo. gsudo is now bundled in the
   Windows distribution.
 
-* New `rim system clean-registry` command to remove leftover
-  registry entries.
+* New `rim system clean-registry` command to remove leftover Windows
+  registry entries
+
+* New `rim system no-openmp` to use the Apple compilers on macOS.
 
 * `rim rm` now cleans the registry on Windows.
 

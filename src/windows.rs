@@ -351,6 +351,10 @@ pub fn sc_system_forget() {
     // Nothing to do on Windows
 }
 
+pub fn sc_system_no_openmp() {
+    // Nothing to do on Windows
+}
+
 pub fn get_resolve(args: &ArgMatches) -> Rversion {
     let str = args.value_of("str").unwrap().to_string();
 
