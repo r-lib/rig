@@ -92,7 +92,50 @@ fn add_deb(path: String) {
 }
 
 pub fn sc_rm(args: &ArgMatches) {
-    unimplemented!();
+    escalate();
+    let vers = args.values_of("version");
+    if vers.is_none() {
+        return;
+    }
+    let vers = vers.unwrap();
+
+    for ver in vers {
+        check_installed(&ver.to_string());
+
+	let pkgname = "r-".to_string() + ver;
+	let out = Command::new("dpkg")
+	    .args(["-s",  &pkgname])
+	    .output()
+	    .expect("Failed to run dpkg -s");
+
+	if out.status.success() {
+	    println!("Removing {} package", pkgname);
+	    let status = Command::new("apt-get")
+		.args(["remove", "-y", "--purge", &pkgname])
+		.spawn()
+		.expect("Failed to run apt-get remove")
+		.wait()
+		.expect("Failed to run apt-get remove");
+
+	    if !status.success() {
+		panic!("Failed to run apt-get remove");
+	    }
+	} else {
+	    println!("{} package is not installed", pkgname);
+	}
+
+        let dir = Path::new(R_ROOT);
+        let dir = dir.join(&ver);
+	if dir.exists() {
+            println!("Removing {}", dir.display());
+            match std::fs::remove_dir_all(&dir) {
+		Err(err) => panic!("Cannot remove {}: {}", dir.display(), err.to_string()),
+		_ => {}
+            };
+	}
+    }
+
+    sc_system_make_links();
 }
 
 pub fn sc_system_add_pak(args: &ArgMatches) {
