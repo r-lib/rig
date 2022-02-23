@@ -1,6 +1,7 @@
 #![cfg(target_os = "linux")]
 
 use regex::Regex;
+use std::io::ErrorKind;
 use std::path::Path;
 use std::process::Command;
 
@@ -9,9 +10,13 @@ use clap::ArgMatches;
 use crate::resolve::resolve_versions;
 use crate::rversion::*;
 
+use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
 use crate::utils::*;
+
+const R_ROOT: &str = "/opt/R";
+const R_CUR: &str = "/opt/R/current";
 
 pub fn sc_add(args: &ArgMatches) {
     escalate();
@@ -111,15 +116,67 @@ pub fn get_resolve(args: &ArgMatches) -> Rversion {
 }
 
 pub fn sc_get_list() -> Vec<String> {
-    unimplemented!();
+    let paths = std::fs::read_dir(R_ROOT);
+    assert!(paths.is_ok(), "Cannot list directory {}", R_ROOT);
+    let paths = paths.unwrap();
+
+    let mut vers = Vec::new();
+    for de in paths {
+	let path = de.unwrap().path();
+	let fname = path.file_name().unwrap();
+	if fname != "current" {
+	    vers.push(fname.to_str().unwrap().to_string());
+	}
+    }
+    vers.sort();
+    vers
 }
 
 pub fn sc_set_default(ver: String) {
-    unimplemented!();
+    escalate();
+    check_installed(&ver);
+    let ret = std::fs::remove_file(R_CUR);
+    match ret {
+        Err(err) => {
+            panic!("Could not remove {}: {}", R_CUR, err)
+        }
+        Ok(()) => {}
+    };
+
+    let path = Path::new(R_ROOT).join(ver.as_str());
+    let ret = std::os::unix::fs::symlink(&path, R_CUR);
+    match ret {
+        Err(err) => {
+            panic!("Could not create {}: {}", path.to_str().unwrap(), err)
+        }
+        Ok(()) => {}
+    };
+}
+
+pub fn sc_get_default() -> String {
+    let tgt = std::fs::read_link(R_CUR);
+    let tgtbuf = match tgt {
+        Err(err) => match err.kind() {
+            ErrorKind::NotFound => {
+                panic!("File '{}' does not exist", R_CUR)
+            }
+            ErrorKind::InvalidInput => {
+                panic!("File '{}' is not a symbolic link", R_CUR)
+            }
+            _ => panic!("Error resolving {}: {}", R_CUR, err),
+        },
+        Ok(tgt) => tgt,
+    };
+
+    // file_name() is only None if tgtbuf ends with "..", the we panic...
+    let fname = tgtbuf.file_name().unwrap();
+
+    fname.to_str().unwrap().to_string()
 }
 
 pub fn sc_show_default() {
-    unimplemented!();
+    let default = sc_get_default();
+    println!("{}", default);
 }
 
 pub fn sc_system_make_orthogonal(_args: &ArgMatches) {
