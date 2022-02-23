@@ -10,19 +10,13 @@ use nix::unistd::Gid;
 use nix::unistd::Uid;
 use regex::Regex;
 use semver::Version;
-use sudo::escalate_if_needed;
 
 use crate::common::*;
 use crate::download::*;
 use crate::resolve::resolve_versions;
-use crate::rversion::Rversion;
+use crate::rversion::*;
 use crate::utils::*;
-
-struct User {
-    user: String,
-    uid: u32,
-    gid: u32,
-}
+use crate::escalate::*;
 
 const R_ROOT: &str = "/Library/Frameworks/R.framework/Versions";
 const R_CUR: &str = "/Library/Frameworks/R.framework/Versions/Current";
@@ -396,7 +390,7 @@ pub fn get_resolve(args: &ArgMatches) -> Rversion {
         }
     } else {
         let eps = vec![str];
-        let version = resolve_versions(eps, "macos".to_string(), arch);
+        let version = resolve_versions(eps, "macos".to_string(), arch, None);
         version[0].to_owned()
     }
 }
@@ -518,45 +512,6 @@ pub fn sc_get_list() -> Vec<String> {
     vers
 }
 
-fn get_user() -> User {
-    let uid;
-    let gid;
-    let user;
-
-    let euid = nix::unistd::geteuid();
-    let sudo_uid = std::env::var_os("SUDO_UID");
-    let sudo_gid = std::env::var_os("SUDO_GID");
-    let sudo_user = std::env::var_os("SUDO_USER");
-    if euid.is_root() && sudo_uid.is_some() && sudo_gid.is_some() && sudo_user.is_some() {
-        uid = match sudo_uid {
-            Some(x) => x.to_str().unwrap().parse::<u32>().unwrap(),
-            _ => {
-                unreachable!();
-            }
-        };
-        gid = match sudo_gid {
-            Some(x) => x.to_str().unwrap().parse::<u32>().unwrap(),
-            _ => {
-                unreachable!();
-            }
-        };
-        user = match sudo_user {
-            Some(x) => x.to_str().unwrap().to_string(),
-            _ => {
-                unreachable!();
-            }
-        };
-    } else {
-        uid = nix::unistd::getuid().as_raw();
-        gid = nix::unistd::getgid().as_raw();
-        user = match std::env::var_os("USER") {
-            Some(x) => x.to_str().unwrap().to_string(),
-            None => "Current user".to_string(),
-        };
-    }
-    User { user, uid, gid }
-}
-
 fn get_install_dir(ver: &Rversion) -> String {
     let version = match &ver.version {
         Some(x) => x,
@@ -610,16 +565,4 @@ fn extract_pkg_version(filename: &str) -> Rversion {
     };
 
     res
-}
-
-fn escalate() {
-    let need_sudo = match sudo::check() {
-        sudo::RunningAs::Root => { false },
-        sudo::RunningAs::User => { true },
-        sudo::RunningAs::Suid => { true }
-    };
-    if need_sudo {
-        println!("Sorry, rim needs your password for this.");
-        escalate_if_needed().unwrap();
-    }
 }

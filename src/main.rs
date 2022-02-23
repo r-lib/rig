@@ -13,11 +13,19 @@ mod windows;
 #[cfg(target_os = "windows")]
 use windows::*;
 
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+use linux::*;
+
 mod common;
 mod download;
 mod resolve;
 mod rversion;
 mod utils;
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod escalate;
 
 fn main() {
     let args = parse_args();

@@ -1,20 +1,23 @@
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use regex::Regex;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::fs::File;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::io::{prelude::*, BufReader};
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::path::Path;
 
 #[cfg(target_os = "macos")]
 use sha2::{Digest, Sha256};
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use crate::rversion::User;
+
 pub fn basename(path: &str) -> Option<&str> {
     path.rsplitn(2, '/').next()
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn read_lines(path: &Path) -> Result<Vec<String>, std::io::Error> {
     let file = File::open(path)?;
     let buf = BufReader::new(file);
@@ -25,7 +28,7 @@ pub fn read_lines(path: &Path) -> Result<Vec<String>, std::io::Error> {
     Ok(lines)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn grep_lines(re: &Regex, lines: &Vec<String>) -> Vec<usize> {
     lines
         .iter()
@@ -77,4 +80,57 @@ pub fn calculate_hash(s: &str) -> String {
     let hash = hasher.finalize();
     let string = format!("{:x}", hash);
     string
+}
+
+#[cfg(target_os = "linux")]
+pub fn unquote(s: &str) -> String {
+    let l = s.len();
+    if l <= 2 { return s.to_string(); }
+    let first = &s[0..1];
+    let last = &s[l-1..l];
+    if first == last && (first == "'" || first == "\"") {
+	s[1..l-1].to_string()
+    } else {
+	s.to_string()
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub fn get_user() -> User {
+    let uid;
+    let gid;
+    let user;
+
+    let euid = nix::unistd::geteuid();
+    let sudo_uid = std::env::var_os("SUDO_UID");
+    let sudo_gid = std::env::var_os("SUDO_GID");
+    let sudo_user = std::env::var_os("SUDO_USER");
+    if euid.is_root() && sudo_uid.is_some() && sudo_gid.is_some() && sudo_user.is_some() {
+        uid = match sudo_uid {
+            Some(x) => x.to_str().unwrap().parse::<u32>().unwrap(),
+            _ => {
+                unreachable!();
+            }
+        };
+        gid = match sudo_gid {
+            Some(x) => x.to_str().unwrap().parse::<u32>().unwrap(),
+            _ => {
+                unreachable!();
+            }
+        };
+        user = match sudo_user {
+            Some(x) => x.to_str().unwrap().to_string(),
+            _ => {
+                unreachable!();
+            }
+        };
+    } else {
+        uid = nix::unistd::getuid().as_raw();
+        gid = nix::unistd::getgid().as_raw();
+        user = match std::env::var_os("USER") {
+            Some(x) => x.to_str().unwrap().to_string(),
+            None => "Current user".to_string(),
+        };
+    }
+    User { user, uid, gid }
 }
