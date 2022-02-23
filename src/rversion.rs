@@ -11,3 +11,10 @@ pub struct LinuxVersion {
     pub version: String,
     pub url: String
 }
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub struct User {
+    pub user: String,
+    pub uid: u32,
+    pub gid: u32,
+}

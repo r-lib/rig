@@ -14,15 +14,9 @@ use semver::Version;
 use crate::common::*;
 use crate::download::*;
 use crate::resolve::resolve_versions;
-use crate::rversion::Rversion;
+use crate::rversion::*;
 use crate::utils::*;
 use crate::escalate::*;
-
-struct User {
-    user: String,
-    uid: u32,
-    gid: u32,
-}
 
 const R_ROOT: &str = "/Library/Frameworks/R.framework/Versions";
 const R_CUR: &str = "/Library/Frameworks/R.framework/Versions/Current";
@@ -480,45 +474,6 @@ pub fn sc_get_list() -> Vec<String> {
     }
     vers.sort();
     vers
-}
-
-fn get_user() -> User {
-    let uid;
-    let gid;
-    let user;
-
-    let euid = nix::unistd::geteuid();
-    let sudo_uid = std::env::var_os("SUDO_UID");
-    let sudo_gid = std::env::var_os("SUDO_GID");
-    let sudo_user = std::env::var_os("SUDO_USER");
-    if euid.is_root() && sudo_uid.is_some() && sudo_gid.is_some() && sudo_user.is_some() {
-        uid = match sudo_uid {
-            Some(x) => x.to_str().unwrap().parse::<u32>().unwrap(),
-            _ => {
-                unreachable!();
-            }
-        };
-        gid = match sudo_gid {
-            Some(x) => x.to_str().unwrap().parse::<u32>().unwrap(),
-            _ => {
-                unreachable!();
-            }
-        };
-        user = match sudo_user {
-            Some(x) => x.to_str().unwrap().to_string(),
-            _ => {
-                unreachable!();
-            }
-        };
-    } else {
-        uid = nix::unistd::getuid().as_raw();
-        gid = nix::unistd::getgid().as_raw();
-        user = match std::env::var_os("USER") {
-            Some(x) => x.to_str().unwrap().to_string(),
-            None => "Current user".to_string(),
-        };
-    }
-    User { user, uid, gid }
 }
 
 fn get_install_dir(ver: &Rversion) -> String {

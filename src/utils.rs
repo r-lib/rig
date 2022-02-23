@@ -10,6 +10,14 @@ use std::path::Path;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use sha2::{Digest, Sha256};
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use nix::unistd::Gid;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use nix::unistd::Uid;
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use crate::rversion::User;
+
 pub fn basename(path: &str) -> Option<&str> {
     path.rsplitn(2, '/').next()
 }
@@ -89,4 +97,44 @@ pub fn unquote(s: &str) -> String {
     } else {
 	s.to_string()
     }
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub fn get_user() -> User {
+    let uid;
+    let gid;
+    let user;
+
+    let euid = nix::unistd::geteuid();
+    let sudo_uid = std::env::var_os("SUDO_UID");
+    let sudo_gid = std::env::var_os("SUDO_GID");
+    let sudo_user = std::env::var_os("SUDO_USER");
+    if euid.is_root() && sudo_uid.is_some() && sudo_gid.is_some() && sudo_user.is_some() {
+        uid = match sudo_uid {
+            Some(x) => x.to_str().unwrap().parse::<u32>().unwrap(),
+            _ => {
+                unreachable!();
+            }
+        };
+        gid = match sudo_gid {
+            Some(x) => x.to_str().unwrap().parse::<u32>().unwrap(),
+            _ => {
+                unreachable!();
+            }
+        };
+        user = match sudo_user {
+            Some(x) => x.to_str().unwrap().to_string(),
+            _ => {
+                unreachable!();
+            }
+        };
+    } else {
+        uid = nix::unistd::getuid().as_raw();
+        gid = nix::unistd::getgid().as_raw();
+        user = match std::env::var_os("USER") {
+            Some(x) => x.to_str().unwrap().to_string(),
+            None => "Current user".to_string(),
+        };
+    }
+    User { user, uid, gid }
 }

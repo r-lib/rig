@@ -7,6 +7,8 @@ use std::path::Path;
 use std::process::Command;
 
 use clap::ArgMatches;
+use nix::unistd::Gid;
+use nix::unistd::Uid;
 
 use crate::resolve::resolve_versions;
 use crate::rversion::*;
@@ -52,7 +54,7 @@ pub fn sc_add(args: &ArgMatches) {
 	add_deb(target_str);
     }
 
-    // system_create_lib(vec![ver]);
+    system_create_lib(Some(vec![verstr.to_string()]));
     sc_system_make_links();
 }
 
@@ -138,12 +140,117 @@ pub fn sc_rm(args: &ArgMatches) {
     sc_system_make_links();
 }
 
-pub fn sc_system_add_pak(args: &ArgMatches) {
-    unimplemented!();
+pub fn system_create_lib(vers: Option<Vec<String>>) {
+    let vers = match vers {
+        Some(x) => x,
+        None => sc_get_list(),
+    };
+    let base = Path::new(R_ROOT);
+
+    let user = get_user();
+    for ver in vers {
+        check_installed(&ver);
+        let r = base.join(&ver).join("bin/R");
+        let r = r.to_str().unwrap();
+        let out = Command::new(r)
+            .args(["--vanilla", "-s", "-e", "cat(Sys.getenv('R_LIBS_USER'))"])
+            .output()
+            .expect("Failed to run R to query R_LIBS_USER");
+        let lib = match String::from_utf8(out.stdout) {
+            Ok(v) => v,
+            Err(err) => panic!(
+                "Cannot query R_LIBS_USER for R {}: {}",
+                ver,
+                err.to_string()
+            ),
+        };
+
+	let re = Regex::new("^~").unwrap();
+	let home = match std::env::var("RIM_HOME") {
+	    Ok(x) => { x },
+	    Err(e) => { get_home() }
+	};
+	let lib = re.replace(&lib.as_str(), &home).to_string();
+        let lib = Path::new(&lib);
+        if !lib.exists() {
+            println!(
+                "{}: creating library at {} for user {}",
+                ver,
+                lib.display(),
+                user.user
+            );
+            match std::fs::create_dir_all(&lib) {
+                Err(err) => panic!(
+                    "Cannot create library at {}: {}",
+                    lib.display(),
+                    err.to_string()
+                ),
+                _ => {}
+            };
+            match nix::unistd::chown(
+                lib,
+                Some(Uid::from_raw(user.uid)),
+                Some(Gid::from_raw(user.gid)),
+            ) {
+                Err(err) => panic!("Cannot set owner on {}: {}", lib.display(), err.to_string()),
+                _ => {}
+            };
+        } else {
+            println!("{}: library at {} exists.", ver, lib.display());
+        }
+    }
 }
 
-pub fn system_create_lib(vers: Option<Vec<String>>) {
-    unimplemented!();
+pub fn sc_system_add_pak(args: &ArgMatches) {
+    let devel = args.is_present("devel");
+    let all = args.is_present("all");
+    let vers = args.values_of("version");
+    if all {
+        system_add_pak(Some(sc_get_list()), devel);
+    } else if vers.is_none() {
+        system_add_pak(None, devel);
+        return;
+    } else {
+        let vers: Vec<String> = vers.unwrap().map(|v| v.to_string()).collect();
+        system_add_pak(Some(vers), devel);
+    }
+}
+
+fn system_add_pak(vers: Option<Vec<String>>, devel: bool) {
+    let vers = match vers {
+        Some(x) => x,
+        None => vec![sc_get_default()],
+    };
+
+    let base = Path::new(R_ROOT);
+    let re = Regex::new("[{][}]").unwrap();
+    let stream = if devel { "devel" } else { "stable" };
+
+    for ver in vers {
+        println!("Installing pak for R {}", ver);
+        check_installed(&ver);
+        let r = base.join(&ver).join("bin/R");
+        let r = r.to_str().unwrap();
+        let cmd = r#"
+             dir.create(Sys.getenv('R_LIBS_USER'), showWarnings = FALSE, recursive = TRUE);
+             install.packages('pak', repos = 'https://r-lib.github.io/p/pak/{}/')
+        "#;
+        let cmd = re.replace(cmd, stream).to_string();
+        let cmd = Regex::new("[\n\r]")
+            .unwrap()
+            .replace_all(&cmd, "")
+            .to_string();
+        let status = Command::new(r)
+            .args(["--vanilla", "-s", "-e", &cmd])
+            .spawn()
+            .expect("Failed to run R to install pak")
+            .wait()
+            .expect("Failed to run R to install pak");
+
+        if !status.success() {
+            panic!("Failed to run R {} to install pak", ver);
+        }
+    }
 }
 
 pub fn sc_system_make_links() {
