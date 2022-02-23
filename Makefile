@@ -3,7 +3,7 @@ VERSION=$(shell grep "^version" Cargo.toml | tr -cd '0-9.')
 SOURCES=$(wildcard src/*.rs) $(wildcard src/*.in)
 
 all:
-	@echo "Call 'make win' or 'make macos'"
+	@echo "Call 'make win', 'make macos' or 'make linux'"
 
 # -------------------------------------------------------------------------
 
@@ -17,6 +17,19 @@ rim-$(VERSION).exe: target/release/rim.exe rim.iss gsudo.exe
 gsudo.exe:
 	Invoke-WebRequest https://github.com/gerardog/gsudo/releases/download/v1.0.2/gsudo.v1.0.2.zip -outfile gsudo.zip
 	unzip gsudo.zip
+
+# -------------------------------------------------------------------------
+
+linux: export OPENSSL_DIR = /usr/local/
+linux: export OPENSSL_INCLUDE_DIR = /usr/local/include/
+linux: export OPENSSL_LIB_DIR = /usr/local/lib/
+linux: export OPENSSL_STATIC = 1
+linux: export DEP_OPENSSL_INCLUDE = /usr/local/include/
+linux: rim
+
+rim: target/release/rim
+	cp target/release/rim rim
+	strip -x rim
 
 # -------------------------------------------------------------------------
 
@@ -89,7 +102,9 @@ build.stamp: target/release/rim target/x86_64-apple-darwin/release/rim README.md
 	cp README.md NEWS.md LICENSE Resources/
 	touch $@
 
-.PHONY: release clean all macos win
+# -------------------------------------------------------------------------
+
+.PHONY: release clean all macos win linux
 
 clean:
 	rm -rf build.stamp build-* Resources *.pkg distribution.xml gon.hcl Output *.exe
