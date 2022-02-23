@@ -49,7 +49,22 @@ const HELP_RESOLVE_EXAMPLES: &str = r#"EXAMPLES
 
 const HELP_DEFAULT: &str = r#"
 DESCRIPTION:
-    TODO
+    Print or set the default R version. The default R version is the one that
+    is started with the `R` command, via the `/usr/local/bin/R` symbolic link.
+
+    Call without any arguments to see the current default. Call with the
+    version number/name to set the default. Before setting a default, you
+    can call `rim list` to see the installed R versions.
+
+    The default R version is set by updating the symbolic link at
+    `/opt/R/current` and pointing it to the specified R version. If you have
+    never set the default version, then there is no default.
+
+    You need to run this command with `sudo` to change the default version:
+    `sudo rim default ...`.
+
+    You don't need to update the default R version to just run a non-default R
+    version. You can use the `R-<ver>` links, see `rim system make-links`.
 "#;
 
 const HELP_DEFAULT_EXAMPLES: &str = r#"EXAMPLES:
@@ -57,18 +72,40 @@ const HELP_DEFAULT_EXAMPLES: &str = r#"EXAMPLES:
     rim default
 
     # Set the default version
-    rim default 4.1
+    rim default 4.1.2
 "#;
 
 const HELP_LIST: &str = r#"
 DESCRIPTION:
-    TODO
+    List installed R versions from `/opt/R`. It does _not_ check if they are
+    working properly.
 "#;
 
 const HELP_ADD: &str = r#"
 DESCRIPTION:
     Download and install an R version, from the official sources.
     It keeps the already installed R versions.
+
+    rim uses the RStudio R builds from `https://github.com/rstudio/r-builds`
+    on Linux.
+
+    The desired R version can be specified in various ways:
+    - `rim add devel` adds the latest available development version,
+    - `rim add release` adds the latest release.
+    - `rim add x.y.z` adds a specific version.
+    - `rim add x.y` adds the latest release within the `x.y` minor branch.
+    - `rim add oldrel/n` adds the latest release within the `n`th previous
+      minor branch (`oldrel` is the same as `oldrel/1`).
+
+    You need to run this command with `sudo`: `sudo rim add ...`,
+    otherwise rim will need to ask for your password.
+
+    `rim add` will automatically call `rim system forget` before the
+    installation, to make sure that already installed R versions are kept.
+    `rim add` will also call the following rim command after the installation:
+    - `rim system create-lib`
+    - `rim system make-links`
+    See their help pages for details.
 "#;
 
 const HELP_ADD_EXAMPLES: &str = r#"EXAMPLES:
@@ -88,6 +125,9 @@ const HELP_ADD_EXAMPLES: &str = r#"EXAMPLES:
 const HELP_RM: &str = r#"
 DESCRIPTION:
     Remove an R installation. It keeps the users' package libraries.
+
+    Usually you need to run this command with `sudo`: `sudo rim rm ...`,
+    otherwise rim will ask for your password.
 "#;
 
 const HELP_SYSTEM: &str = r#"
@@ -99,8 +139,14 @@ DESCRIPTION:
 const HELP_SYSTEM_LINKS: &str = r#"
 DESCRIPTION:
     Create quick links in `/usr/local/bin` for the current R installations.
-    This lets you directly run a specific R version. E.g. `R-4.1` will start
-    R 4.1.x.
+    This lets you directly run a specific R version. E.g. `R-4.1.2` will start
+    R 4.1.2.
+
+    `rim add` runs `rim system make-links`, so if you only use rim to
+    install R, then you do not need to run it manually.
+
+    This command probably needs `sudo`: `sudo rim system make-links`,
+    otherwise rim will ask for your password.
 "#;
 
 const HELP_SYSTEM_LIB: &str = r#"
