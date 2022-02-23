@@ -10,13 +10,13 @@ use nix::unistd::Gid;
 use nix::unistd::Uid;
 use regex::Regex;
 use semver::Version;
-use sudo::escalate_if_needed;
 
 use crate::common::*;
 use crate::download::*;
 use crate::resolve::resolve_versions;
 use crate::rversion::Rversion;
 use crate::utils::*;
+use crate::escalate::*;
 
 struct User {
     user: String,
@@ -395,7 +395,7 @@ pub fn get_resolve(args: &ArgMatches) -> Rversion {
         }
     } else {
         let eps = vec![str];
-        let version = resolve_versions(eps, "macos".to_string(), arch);
+        let version = resolve_versions(eps, "macos".to_string(), arch, None);
         version[0].to_owned()
     }
 }
@@ -574,16 +574,4 @@ fn extract_pkg_version(filename: &str) -> Rversion {
     };
 
     res
-}
-
-fn escalate() {
-    let need_sudo = match sudo::check() {
-        sudo::RunningAs::Root => { false },
-        sudo::RunningAs::User => { true },
-        sudo::RunningAs::Suid => { true }
-    };
-    if need_sudo {
-        println!("Sorry, rim needs your password for this.");
-        escalate_if_needed().unwrap();
-    }
 }

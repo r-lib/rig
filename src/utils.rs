@@ -78,3 +78,15 @@ pub fn calculate_hash(s: &str) -> String {
     let string = format!("{:x}", hash);
     string
 }
+
+pub fn unquote(s: &str) -> String {
+    let l = s.len();
+    if l <= 2 { return s.to_string(); }
+    let first = &s[0..1];
+    let last = &s[l-1..l];
+    if first == last && (first == "'" || first == "\"") {
+	s[1..l-1].to_string()
+    } else {
+	s.to_string()
+    }
+}

@@ -329,7 +329,7 @@ pub fn get_resolve(args: &ArgMatches) -> Rversion {
     let str = args.value_of("str").unwrap().to_string();
 
     let eps = vec![str];
-    let version = resolve_versions(eps, "win".to_string(), "default".to_string());
+    let version = resolve_versions(eps, "win".to_string(), "default".to_string(), None);
     version[0].to_owned()
 }
 

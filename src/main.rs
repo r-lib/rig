@@ -24,6 +24,9 @@ mod resolve;
 mod rversion;
 mod utils;
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod escalate;
+
 fn main() {
     let args = parse_args();
 
