@@ -2,6 +2,7 @@
 
 use regex::Regex;
 use std::io::ErrorKind;
+use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::process::Command;
 
@@ -52,7 +53,7 @@ pub fn sc_add(args: &ArgMatches) {
     }
 
     // system_create_lib(vec![ver]);
-    // sc_system_make_links();
+    sc_system_make_links();
 }
 
 fn add_deb(path: String) {
@@ -103,7 +104,52 @@ pub fn system_create_lib(vers: Option<Vec<String>>) {
 }
 
 pub fn sc_system_make_links() {
-    unimplemented!();
+    escalate();
+    let vers = sc_get_list();
+    let base = Path::new(R_ROOT);
+
+    // Create new links
+    for ver in vers {
+	let linkfile = Path::new("/usr/local/bin").join("R-".to_string() + &ver);
+	let target = base.join(&ver).join("bin/R");
+	if !linkfile.exists() {
+            println!("Adding {} -> {}", linkfile.display(), target.display());
+            match symlink(&target, &linkfile) {
+                Err(err) => panic!(
+                    "Cannot create symlink {}: {}",
+                    linkfile.display(),
+                    err.to_string()
+                ),
+                _ => {}
+            };
+        }
+    }
+
+    // Remove dangling links
+    let paths = std::fs::read_dir("/usr/local/bin").unwrap();
+    let re = Regex::new("^R-[0-9]+[.][0-9]+").unwrap();
+    for file in paths {
+        let path = file.unwrap().path();
+        let pathstr = path.to_str().unwrap();
+        let fnamestr = path.file_name().unwrap().to_str().unwrap();
+        if re.is_match(&fnamestr) {
+            match std::fs::read_link(&path) {
+                Err(_) => println!("{} is not a symlink", pathstr),
+                Ok(target) => {
+                    if !target.exists() {
+                        let targetstr = target.to_str().unwrap();
+                        println!("Cleaning up {}", targetstr);
+                        match std::fs::remove_file(&path) {
+                            Err(err) => {
+                                println!("Failed to remove {}: {}", pathstr, err.to_string())
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            };
+        }
+    }
 }
 
 pub fn get_resolve(args: &ArgMatches) -> Rversion {
