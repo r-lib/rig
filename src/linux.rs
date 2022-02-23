@@ -135,19 +135,68 @@ pub fn sc_get_list() -> Vec<String> {
 pub fn sc_set_default(ver: String) {
     escalate();
     check_installed(&ver);
-    let ret = std::fs::remove_file(R_CUR);
-    match ret {
-        Err(err) => {
-            panic!("Could not remove {}: {}", R_CUR, err)
-        }
-        Ok(()) => {}
-    };
 
+    // Remove current link
+    if Path::new(R_CUR).exists() {
+	let ret = std::fs::remove_file(R_CUR);
+	match ret {
+            Err(err) => {
+		panic!("Could not remove {}: {}", R_CUR, err)
+            }
+            Ok(()) => {}
+	};
+    }
+
+    // Add current link
     let path = Path::new(R_ROOT).join(ver.as_str());
     let ret = std::os::unix::fs::symlink(&path, R_CUR);
     match ret {
         Err(err) => {
             panic!("Could not create {}: {}", path.to_str().unwrap(), err)
+        }
+        Ok(()) => {}
+    };
+
+    // Remove /usr/local/bin/R link
+    let r = Path::new("/usr/local/bin/R");
+    if r.exists() {
+	let ret = std::fs::remove_file(r);
+	match ret {
+            Err(err) => {
+		panic!("Could not remove {}: {}", r.to_str().unwrap(), err)
+            }
+            Ok(()) => {}
+	};
+    }
+
+    // Add /usr/local/bin/R link
+    let cr = Path::new("/opt/R/current/bin/R");
+    let ret = std::os::unix::fs::symlink(&cr, &r);
+    match ret {
+        Err(err) => {
+            panic!("Could not create {}: {}", r.to_str().unwrap(), err)
+        }
+        Ok(()) => {}
+    };
+
+    // Remove /usr/local/bin/Rscript link
+    let rs = Path::new("/usr/local/bin/Rscript");
+    if rs.exists() {
+	let ret = std::fs::remove_file(rs);
+	match ret {
+            Err(err) => {
+		panic!("Could not remove {}: {}", rs.to_str().unwrap(), err)
+            }
+            Ok(()) => {}
+	};
+    }
+
+    // Add /usr/local/bin/Rscript link
+    let crs = Path::new("/opt/R/current/bin/Rscript");
+    let ret = std::os::unix::fs::symlink(&crs, &rs);
+    match ret {
+        Err(err) => {
+            panic!("Could not create {}: {}", rs.to_str().unwrap(), err)
         }
         Ok(()) => {}
     };
