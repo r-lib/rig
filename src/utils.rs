@@ -82,6 +82,7 @@ pub fn calculate_hash(s: &str) -> String {
     string
 }
 
+#[cfg(target_os = "linux")]
 pub fn unquote(s: &str) -> String {
     let l = s.len();
     if l <= 2 { return s.to_string(); }
