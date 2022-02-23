@@ -7,6 +7,9 @@ use std::io::{prelude::*, BufReader};
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::path::Path;
 
+#[cfg(target_os = "macos")]
+use sha2::{Digest, Sha256};
+
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use crate::rversion::User;
 
@@ -72,7 +75,7 @@ pub fn replace_in_file(path: &Path, re: &Regex, sub: &str) -> Result<(), std::io
 
 #[cfg(target_os = "macos")]
 pub fn calculate_hash(s: &str) -> String {
-    let mut hasher = sha256::Sha256::new();
+    let mut hasher = Sha256::new();
     hasher.update(s);
     let hash = hasher.finalize();
     let string = format!("{:x}", hash);
