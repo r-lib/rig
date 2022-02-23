@@ -33,7 +33,7 @@ jobs:
     name: macOS
 
     steps:
-    
+
     - name: Checkout
       uses: actions/checkout@v2
       with:
@@ -46,4 +46,23 @@ jobs:
 
     - name: Build rim
       run: |
+        cargo build
+
+  windows:
+    runs-on: windows-latest
+    name: Windows
+
+    steps:
+
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: 10
+
+    - name: Install rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+
+    - run:
         cargo build
