@@ -26,7 +26,7 @@ pub fn escalate() {
 pub fn get_home() -> String {
     let home = match std::env::var("HOME") {
 	Ok(x) => { x },
-	Err(e) => { panic!("rim needs the HOME env var set"); }
+	Err(_) => { panic!("rim needs the HOME env var set"); }
     };
     home
 }

@@ -24,7 +24,7 @@ const R_CUR: &str = "/opt/R/current";
 pub fn sc_add(args: &ArgMatches) {
     escalate();
     let linux = detect_linux();
-    let mut version = get_resolve(args);
+    let version = get_resolve(args);
     let ver = version.version.to_owned();
     let verstr = match ver {
         Some(ref x) => x,
@@ -168,7 +168,7 @@ pub fn system_create_lib(vers: Option<Vec<String>>) {
 	let re = Regex::new("^~").unwrap();
 	let home = match std::env::var("RIM_HOME") {
 	    Ok(x) => { x },
-	    Err(e) => { get_home() }
+	    Err(_) => { get_home() }
 	};
 	let lib = re.replace(&lib.as_str(), &home).to_string();
         let lib = Path::new(&lib);
@@ -428,7 +428,7 @@ pub fn sc_system_make_orthogonal(_args: &ArgMatches) {
     // Nothing to do on Windows
 }
 
-pub fn sc_system_fix_permissions(args: &ArgMatches) {
+pub fn sc_system_fix_permissions(_args: &ArgMatches) {
     // Nothing to do on Windows
 }
 
@@ -440,7 +440,7 @@ fn detect_linux() -> LinuxVersion {
     let release_file = Path::new("/etc/os-release");
     let lines = match read_lines(release_file) {
         Ok(x) => { x },
-        Err(err) => { panic!("Unknown Linux, no /etc/os-release"); }
+        Err(_err) => { panic!("Unknown Linux, no /etc/os-release"); }
     };
 
     let re_id = Regex::new("^ID=").unwrap();
