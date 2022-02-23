@@ -1,0 +1,49 @@
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ 'dev', 'main' ]
+  schedule:
+  - cron: '30 6 * * *'
+
+jobs:
+  linux:
+    runs-on: ubuntu-18.04
+    name: Linux
+
+    steps:
+
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: 10
+
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v1
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v1
+
+    - name: Build rim
+      run: |
+        docker build -o out .
+
+  macos:
+    runs-on: macos-11
+    name: macOS
+
+    steps:
+    
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: 10
+
+    - name: Install rust
+      run: |
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rust.sh
+        sh rust.sh -y
+
+    - name: Build rim
+      run: |
+        cargo build
