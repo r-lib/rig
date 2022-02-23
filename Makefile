@@ -25,11 +25,17 @@ linux: export OPENSSL_INCLUDE_DIR = /usr/local/include/
 linux: export OPENSSL_LIB_DIR = /usr/local/lib/
 linux: export OPENSSL_STATIC = 1
 linux: export DEP_OPENSSL_INCLUDE = /usr/local/include/
-linux: rim
+linux: rim-$(VERSION).tar.gz
 
-rim: target/release/rim
-	cp target/release/rim rim
-	strip -x rim
+rim-$(VERSION).tar.gz: target/release/rim
+	strip -x target/release/rim
+	mkdir -p build/bin
+	mkdir -p build/share/bash-completion/completions
+	mkdir -p build/share/zsh/site-functions
+	cp target/release/rim build/bin
+	find target/release/build -name _rim -exec cp \{\} build/share/zsh/site-functions \; 
+	find target/release/build -name rim.bash -exec cp \{\} build/share/bash-completion/completions \; 
+	tar cz -C build -f $@ bin share
 
 # -------------------------------------------------------------------------
 
