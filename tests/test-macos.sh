@@ -35,6 +35,7 @@ teardown() {
     if ! rim ls | grep -q "^$devel\$"; then
         run sudo rim add devel
         [[ "$status" -eq 0 ]]
+        run rim ls
         echo "$output" | grep -q "^$devel\$"
     fi
     run R-${devel} -q -s -e 'cat(as.character(getRversion()))'
