@@ -351,7 +351,7 @@ pub fn sc_system_forget() {
     // Nothing to do on Windows
 }
 
-pub fn sc_system_no_openmp() {
+pub fn sc_system_no_openmp(_args: &ArgMatches) {
     // Nothing to do on Windows
 }
 
