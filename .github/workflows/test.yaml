@@ -1,4 +1,6 @@
 
+name: Test
+
 on:
   workflow_dispatch:
   push:
@@ -64,5 +66,9 @@ jobs:
       with:
         toolchain: stable
 
-    - run:
-        cargo build
+    - name: Install make
+      run: choco install make
+
+    - run: |
+        make win
+      shell: bash
