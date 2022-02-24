@@ -29,16 +29,19 @@ jobs:
         ls out
         cp out/rim* .
 
-    - uses: actions/upload-artifact@v2
+    - name: Upload build as artifact
+      uses: actions/upload-artifact@v2
       if: success()
       with:
         name: rim-linux
         path: 'rim-*.tar.gz'
 
+    - name: Install rim
+      run: |
+        sudo tar xzf rim-*.tar.gz -C /usr/local
 
   macos:
     runs-on: macos-11
-    if: false
     name: macOS
 
     steps:
@@ -63,10 +66,12 @@ jobs:
         name: rim-macos
         path: 'rim-*.pkg'
 
+    - name: Install rim
+      run: |
+        sudo installer -pkg rim-*.pkg -target /
 
   windows:
     runs-on: windows-latest
-    if: false
     name: Windows
 
     steps:
@@ -101,3 +106,7 @@ jobs:
       with:
         name: rim-windows
         path: 'rim-*.exe'
+
+    - name: Install rim
+      run: |
+        Start-Process .\rim-*.exe -ArgumentList "/verysilent /suppressmsgboxes" -Wait -NoNewWindow
