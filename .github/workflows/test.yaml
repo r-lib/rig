@@ -9,6 +9,7 @@ on:
   - cron: '30 6 * * *'
 
 jobs:
+
   linux:
     runs-on: ubuntu-18.04
     name: Linux
@@ -23,6 +24,13 @@ jobs:
     - name: Build rim
       run: |
         docker build -o out .
+
+    - uses: actions/upload-artifact@v2
+      if: success()
+      with:
+        name: rim-linux
+        path: 'rim-*.tar.gz'
+
 
   macos:
     runs-on: macos-11
@@ -43,6 +51,13 @@ jobs:
     - name: Build rim
       run: |
         make macos-unsigned-x86_64
+
+    - uses: actions/upload-artifact@v2
+      if: success()
+      with:
+        name: rim-linux
+        path: 'rim-*.pkg'
+
 
   windows:
     runs-on: windows-latest
@@ -74,3 +89,9 @@ jobs:
     - run: |
         make win
       shell: bash
+
+    - uses: actions/upload-artifact@v2
+      if: success()
+      with:
+        name: rim-linux
+        path: 'rim-*.exe'
