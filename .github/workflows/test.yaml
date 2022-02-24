@@ -69,6 +69,9 @@ jobs:
     - name: Install make
       run: choco install make
 
+    - name: Install curl
+      run: choco install curl
+
     - run: |
         make win
       shell: bash

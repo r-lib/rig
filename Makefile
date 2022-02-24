@@ -15,7 +15,7 @@ rim-$(VERSION).exe: target/release/rim.exe rim.iss gsudo.exe
 	cp output\mysetup.exe $@
 
 gsudo.exe:
-	Invoke-WebRequest https://github.com/gerardog/gsudo/releases/download/v1.0.2/gsudo.v1.0.2.zip -outfile gsudo.zip
+	curl https://github.com/gerardog/gsudo/releases/download/v1.0.2/gsudo.v1.0.2.zip -o gsudo.zip
 	unzip gsudo.zip
 
 # -------------------------------------------------------------------------
