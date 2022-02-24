@@ -80,6 +80,21 @@ rim-unnotarized-%.pkg: build.stamp  distribution.xml.in
 		--version $(VERSION) \
 		--sign "Developer ID Installer: Gabor Csardi" $@
 
+macos-unsigned: rim-$(VERSION)-macOS-unsigned-arm64.pkg rim-$(VERSION)-macOS-unsigned-x86_64.pkg
+
+macos-unsigned-x86_64: rim-$(VERSION)-macOS-unsigned-x86_64.pkg
+
+macos-unsigned-arm64: rim-$(VERSION)-macOS-unsigned-arm64.pkg
+
+rim-$(VERSION)-macOS-unsigned-%.pkg: build.stamp  distribution.xml.in
+	pkgbuild --root build-$* \
+		--identifier com.gaborcsardi.rim \
+		--version $(VERSION) \
+		--ownership recommended \
+		$@
+	cat distribution.xml.in | sed "s/{{VERSION}}/$(VERSION)/g" | \
+		 sed "s/{{ARCH}}/$*/g" > distribution.xml
+
 README.md: README.Rmd $(SOURCES)
 	cargo build --release
 	R -q -e 'rmarkdown::render("README.Rmd")'

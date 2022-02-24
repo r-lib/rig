@@ -44,7 +44,7 @@ jobs:
 
     - name: Build rim
       run: |
-        cargo build
+        make macos-unsigned-x86_64
 
   windows:
     runs-on: windows-latest
