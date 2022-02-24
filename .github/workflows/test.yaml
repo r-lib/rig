@@ -25,6 +25,10 @@ jobs:
       run: |
         docker build -o out .
 
+    - name: debug
+      run: |
+        ls -l
+
     - uses: actions/upload-artifact@v2
       if: success()
       with:
@@ -34,6 +38,7 @@ jobs:
 
   macos:
     runs-on: macos-11
+    if: false
     name: macOS
 
     steps:
@@ -61,6 +66,7 @@ jobs:
 
   windows:
     runs-on: windows-latest
+    if: false
     name: Windows
 
     steps:
