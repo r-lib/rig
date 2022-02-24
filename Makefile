@@ -10,7 +10,7 @@ all:
 win: rim-$(VERSION).exe
 
 rim-$(VERSION).exe: target/release/rim.exe rim.iss gsudo.exe
-#	find target/release -name _rim.ps1 -exec cp \{\} _rim.ps1 \;
+	find target/release -name _rim.ps1 -exec cp \{\} _rim.ps1 \;
 	"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" rim.iss
 	cp output\mysetup.exe $@
 
