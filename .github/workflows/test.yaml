@@ -21,11 +21,12 @@ jobs:
       with:
         fetch-depth: 10
 
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v1
+
     - name: Build rim
       run: |
         docker build -o out .
-      env:
-        DOCKER_BUILDKIT: 1
 
     - name: debug
       run: |
