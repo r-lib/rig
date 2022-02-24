@@ -436,6 +436,10 @@ pub fn sc_system_forget() {
     // Nothing to do on Windows
 }
 
+pub fn sc_system_no_openmp() {
+    // Nothing to do on Windows
+}
+
 fn detect_linux() -> LinuxVersion {
     let release_file = Path::new("/etc/os-release");
     let lines = match read_lines(release_file) {
