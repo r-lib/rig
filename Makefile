@@ -15,7 +15,7 @@ rim-$(VERSION).exe: target/release/rim.exe rim.iss gsudo.exe
 	cp output\mysetup.exe $@
 
 gsudo.exe:
-	curl https://github.com/gerardog/gsudo/releases/download/v1.0.2/gsudo.v1.0.2.zip -o gsudo.zip
+	curl -L https://github.com/gerardog/gsudo/releases/download/v1.0.2/gsudo.v1.0.2.zip -o gsudo.zip
 	unzip gsudo.zip
 
 # -------------------------------------------------------------------------
