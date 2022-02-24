@@ -39,3 +39,5 @@ RUN cd openssl-* &&                                 \
 RUN source $HOME/.cargo/env && cd rim && make linux
 
 RUN mkdir out && cp rim/rim-*.tar.gz out
+
+RUN ls -l out
