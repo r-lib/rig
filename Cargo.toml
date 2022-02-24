@@ -37,3 +37,9 @@ is_elevated = "0.1.2"
 [build-dependencies]
 clap = "3.0.10"
 clap_complete = "3.0.4"
+
+[target.'cfg(target_os = "macos")'.build-dependencies]
+clap_mangen = "0.1"
+
+[target.'cfg(target_os = "linux")'.build-dependencies]
+clap_mangen = "0.1"
