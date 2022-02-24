@@ -21,18 +21,13 @@ jobs:
       with:
         fetch-depth: 10
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v1
-      with:
-        install: true
-
     - name: Build rim
       run: |
-        docker build -o out .
-
-    - name: debug
-      run: |
-        ls -l
+        docker build -t rim:latest .
+        docker run --name quickrim rim:latest ls out
+        docker cp quickrim:out .
+        ls out
+        cp out/rim* .
 
     - uses: actions/upload-artifact@v2
       if: success()
