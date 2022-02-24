@@ -11,7 +11,6 @@ on:
 jobs:
   linux:
     runs-on: ubuntu-18.04
-    if: false
     name: Linux
 
     steps:
@@ -27,7 +26,6 @@ jobs:
 
   macos:
     runs-on: macos-11
-    if: false
     name: macOS
 
     steps:
