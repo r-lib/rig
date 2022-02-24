@@ -1,11 +1,7 @@
 
-FROM alpine:3.15 as copy
+FROM alpine:3.15
 
 COPY . rim
-
-FROM alpine:3.15 as build
-
-COPY --from=copy /rim /rim
 
 RUN apk add curl
 
