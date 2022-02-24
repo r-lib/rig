@@ -13,11 +13,19 @@ mod windows;
 #[cfg(target_os = "windows")]
 use windows::*;
 
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+use linux::*;
+
 mod common;
 mod download;
 mod resolve;
 mod rversion;
 mod utils;
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod escalate;
 
 fn main() {
     let args = parse_args();
@@ -36,6 +44,7 @@ fn main() {
 fn sc_system(args: &ArgMatches) {
     match args.subcommand() {
         Some(("add-pak", s)) => sc_system_add_pak(s),
+        Some(("clean-registry", _)) => sc_clean_registry(),
         Some(("create-lib", s)) => sc_system_create_lib(s),
         Some(("make-links", _)) => sc_system_make_links(),
         Some(("make-orthogonal", s)) => sc_system_make_orthogonal(s),

@@ -17,13 +17,13 @@ fn main() -> Result<(), Error> {
     let name = "rim".to_string();
 
     let path = clap_complete::generate_to(Bash, &mut app, &name, &outdir);
-    println!("cargo:warning=bash completion file is generated: {:?}", path);
+    println!("bash completion file is generated: {:?}", path);
 
     let path = clap_complete::generate_to(Zsh, &mut app, &name, &outdir);
-    println!("cargo:warning=zsh completion file is generated: {:?}", path);
+    println!("zsh completion file is generated: {:?}", path);
 
     let path = clap_complete::generate_to(PowerShell, &mut app, &name, &outdir);
-    println!("cargo:warning=powershell completion file is generated: {:?}", path);
+    println!("powershell completion file is generated: {:?}", path);
 
     Ok(())
 }

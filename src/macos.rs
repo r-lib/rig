@@ -14,19 +14,15 @@ use semver::Version;
 use crate::common::*;
 use crate::download::*;
 use crate::resolve::resolve_versions;
-use crate::rversion::Rversion;
+use crate::rversion::*;
 use crate::utils::*;
-
-struct User {
-    user: String,
-    uid: u32,
-    gid: u32,
-}
+use crate::escalate::*;
 
 const R_ROOT: &str = "/Library/Frameworks/R.framework/Versions";
 const R_CUR: &str = "/Library/Frameworks/R.framework/Versions/Current";
 
 pub fn sc_add(args: &ArgMatches) {
+    escalate();
     let mut version = get_resolve(args);
     let ver = version.version.to_owned();
     let verstr = match ver {
@@ -89,6 +85,7 @@ pub fn sc_add(args: &ArgMatches) {
 }
 
 pub fn sc_rm(args: &ArgMatches) {
+    escalate();
     let vers = args.values_of("version");
     if vers.is_none() {
         return;
@@ -221,6 +218,7 @@ pub fn system_create_lib(vers: Option<Vec<String>>) {
 }
 
 pub fn sc_system_make_links() {
+    escalate();
     let vers = sc_get_list();
     let base = Path::new("/Library/Frameworks/R.framework/Versions/");
 
@@ -269,7 +267,7 @@ pub fn sc_system_make_links() {
 }
 
 pub fn sc_system_make_orthogonal(args: &ArgMatches) {
-    check_root();
+    escalate();
     let vers = args.values_of("version");
     if vers.is_none() {
         system_make_orthogonal(None);
@@ -322,7 +320,7 @@ fn system_make_orthogonal(vers: Option<Vec<String>>) {
 }
 
 pub fn sc_system_fix_permissions(args: &ArgMatches) {
-    check_root();
+    escalate();
     let vers = args.values_of("version");
     if vers.is_none() {
         system_fix_permissions(None);
@@ -352,7 +350,7 @@ fn system_fix_permissions(vers: Option<Vec<String>>) {
 }
 
 pub fn sc_system_forget() {
-    check_root();
+    escalate();
     let out = Command::new("sh")
         .args(["-c", "pkgutil --pkgs | grep -i r-project | grep -v clang"])
         .output()
@@ -391,9 +389,13 @@ pub fn get_resolve(args: &ArgMatches) -> Rversion {
         }
     } else {
         let eps = vec![str];
-        let version = resolve_versions(eps, "macos".to_string(), arch);
+        let version = resolve_versions(eps, "macos".to_string(), arch, None);
         version[0].to_owned()
     }
+}
+
+pub fn sc_clean_registry() {
+    // Nothing to do on macOS
 }
 
 // ------------------------------------------------------------------------
@@ -472,52 +474,6 @@ pub fn sc_get_list() -> Vec<String> {
     }
     vers.sort();
     vers
-}
-
-fn check_root() {
-    let euid = nix::unistd::geteuid();
-    if !euid.is_root() {
-        panic!("Not enough permissions, you probably need 'sudo'");
-    }
-}
-
-fn get_user() -> User {
-    let uid;
-    let gid;
-    let user;
-
-    let euid = nix::unistd::geteuid();
-    let sudo_uid = std::env::var_os("SUDO_UID");
-    let sudo_gid = std::env::var_os("SUDO_GID");
-    let sudo_user = std::env::var_os("SUDO_USER");
-    if euid.is_root() && sudo_uid.is_some() && sudo_gid.is_some() && sudo_user.is_some() {
-        uid = match sudo_uid {
-            Some(x) => x.to_str().unwrap().parse::<u32>().unwrap(),
-            _ => {
-                unreachable!();
-            }
-        };
-        gid = match sudo_gid {
-            Some(x) => x.to_str().unwrap().parse::<u32>().unwrap(),
-            _ => {
-                unreachable!();
-            }
-        };
-        user = match sudo_user {
-            Some(x) => x.to_str().unwrap().to_string(),
-            _ => {
-                unreachable!();
-            }
-        };
-    } else {
-        uid = nix::unistd::getuid().as_raw();
-        gid = nix::unistd::getgid().as_raw();
-        user = match std::env::var_os("USER") {
-            Some(x) => x.to_str().unwrap().to_string(),
-            None => "Current user".to_string(),
-        };
-    }
-    User { user, uid, gid }
 }
 
 fn get_install_dir(ver: &Rversion) -> String {

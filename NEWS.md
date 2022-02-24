@@ -1,4 +1,18 @@
 
+# rim 0.1.6 (unreleased)
+
+* On macOS rim now asks for your password for tasks that require admin
+  access.
+
+* On Windows rim now automatically elevates to administrator privileges
+  as needed, by re-running with gsudo. gsudo is now bundled in the
+  Windows distribution.
+
+* New `rim system clean-registry` command to remove leftover
+  registry entries.
+
+* `rim rm` now cleans the registry on Windows.
+
 # rim 0.1.5
 
 * Experimental Windows version.

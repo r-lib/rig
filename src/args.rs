@@ -10,6 +10,9 @@ std::include!("help-macos.in");
 #[cfg(target_os = "windows")]
 std::include!("help-windows.in");
 
+#[cfg(target_os = "linux")]
+std::include!("help-linux.in");
+
 const HELP_EXAMPLES: &str = r#"EXAMPLES:
     # Add the latest development snapshot
     rim add devel
@@ -33,7 +36,7 @@ const HELP_EXAMPLES: &str = r#"EXAMPLES:
 pub fn rim_app() -> App<'static> {
 
     let rim = App::new("RIM -- The R Installation Manager")
-        .version("0.1.5")
+        .version("0.1.6")
         .about(HELP_ABOUT)
         .setting(AppSettings::ArgRequiredElseHelp)
         .term_width(80);
@@ -57,13 +60,14 @@ pub fn rim_app() -> App<'static> {
         .about("Install a new R version")
         .long_about(HELP_ADD)
         .after_help(HELP_ADD_EXAMPLES)
-        .aliases(&["install"])
-        .arg(
-            Arg::new("str")
-                .help("R version to install")
-                .default_value("release")
-                .multiple_occurrences(false)
-        );
+        .aliases(&["install"]);
+
+    cmd_add = cmd_add.arg(
+        Arg::new("str")
+            .help("R version to install")
+            .default_value("release")
+            .multiple_occurrences(false)
+    );
 
 #[cfg(target_os = "macos")]
 {
@@ -135,6 +139,16 @@ pub fn rim_app() -> App<'static> {
                 .multiple_occurrences(true),
         );
 
+#[cfg(target_os = "windows")]
+{
+    let cmd_system_cleanreg = App::new("clean-registry")
+        .about("Clean the R related entries in the registry")
+        .long_about(HELP_SYSTEM_CLEANREG);
+
+    cmd_system = cmd_system
+        .subcommand(cmd_system_cleanreg)
+}
+
 #[cfg(target_os = "macos")]
 {
     let cmd_system_ortho = App::new("make-orthogonal")
@@ -175,12 +189,13 @@ pub fn rim_app() -> App<'static> {
     let mut cmd_resolve = App::new("resolve")
         .about("Resolve a symbolic R version")
         .long_about(HELP_RESOLVE)
-        .after_help(HELP_RESOLVE_EXAMPLES)
-        .arg(
-            Arg::new("str")
-                .help("symbolic version string to resolve")
-                .required(true),
-        );
+        .after_help(HELP_RESOLVE_EXAMPLES);
+
+    cmd_resolve = cmd_resolve.arg(
+        Arg::new("str")
+            .help("symbolic version string to resolve")
+            .required(true)
+    );
 
 #[cfg(target_os = "macos")]
 {

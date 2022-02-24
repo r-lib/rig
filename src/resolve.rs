@@ -5,7 +5,7 @@ use regex::Regex;
 use semver::Version;
 
 use crate::download::*;
-use crate::rversion::Rversion;
+use crate::rversion::*;
 
 const API_URI: &str = "https://api.r-hub.io/rversions/";
 
@@ -31,40 +31,45 @@ lazy_static! {
 }
 
 #[tokio::main]
-pub async fn resolve_versions(vers: Vec<String>, os: String, arch: String) -> Vec<Rversion> {
+pub async fn resolve_versions(vers: Vec<String>, os: String, arch: String, linux: Option<LinuxVersion>) -> Vec<Rversion> {
     let client = reqwest::Client::new();
     let client = &client;
     let os = &os;
     let arch = &arch;
-    let out: Vec<Rversion> = future::join_all(vers.into_iter().map(|mut ver| async move {
-        if ver == "oldrel" {
-            ver = "oldrel/1".to_string();
-        }
-        if ver == "release" {
-            resolve_release(client, os, arch).await
-        } else if ver == "devel" {
-            resolve_devel(client, os, arch).await
-        } else if RE_OLDREL.is_match(&ver) {
-            resolve_oldrel(client, &ver, os, arch).await
-        } else if RE_MINOR.is_match(&ver) {
-            resolve_minor(client, &ver, os, arch).await
-        } else if RE_VERSION.is_match(&ver) {
-            resolve_version(client, &ver, os, arch).await
-        } else {
-            panic!("Unknown version specification: {}", ver);
-        }
+    let out: Vec<Rversion> = future::join_all(vers.into_iter().map(move |mut ver| {
+	let linux = linux.clone();
+	async move {
+            if ver == "oldrel" {
+		ver = "oldrel/1".to_string();
+            }
+            if ver == "release" {
+		resolve_release(client, os, arch, linux).await
+            } else if ver == "devel" {
+		resolve_devel(client, os, arch, linux).await
+            } else if RE_OLDREL.is_match(&ver) {
+		resolve_oldrel(client, &ver, os, arch, linux).await
+            } else if RE_MINOR.is_match(&ver) {
+		resolve_minor(client, &ver, os, arch, linux).await
+            } else if RE_VERSION.is_match(&ver) {
+		resolve_version(client, &ver, os, arch, linux).await
+            } else {
+		panic!("Unknown version specification: {}", ver);
+            }
+	}
     }))
     .await;
 
     out
 }
 
-async fn resolve_release(client: &reqwest::Client, os: &String, arch: &String) -> Rversion {
+async fn resolve_release(client: &reqwest::Client, os: &String, arch: &String, linux: Option<LinuxVersion>) -> Rversion {
     let url;
     if os == "macos" {
         url = API_URI.to_string() + "r-release-macos";
     } else if os == "win" {
         url = API_URI.to_string() + "r-release-win";
+    } else if os == "linux" {
+	url = API_URI.to_string() + "r-release";
     } else {
         panic!("Unknown OS: {}", os);
     }
@@ -75,7 +80,7 @@ async fn resolve_release(client: &reqwest::Client, os: &String, arch: &String) -
         serde_json::Value::String(s) => s,
         _ => panic!("Failed to parse response from rversions API"),
     };
-    let dlurl = get_download_url(&v, os, arch);
+    let dlurl = get_download_url(&v, os, arch, linux);
     Rversion {
         version: Some(v.to_string()),
         url: dlurl,
@@ -83,7 +88,7 @@ async fn resolve_release(client: &reqwest::Client, os: &String, arch: &String) -
     }
 }
 
-async fn resolve_devel(client: &reqwest::Client, os: &String, arch: &String) -> Rversion {
+async fn resolve_devel(client: &reqwest::Client, os: &String, arch: &String, linux: Option<LinuxVersion>) -> Rversion {
     let url = DEVEL_VERSION_URI.to_string();
     let txt = download_text(client, url).await;
     let ver = txt.split(" ").next().unwrap().to_string();
@@ -107,6 +112,18 @@ async fn resolve_devel(client: &reqwest::Client, os: &String, arch: &String) -> 
             url: Some(WIN_DEVEL_URI.to_string()),
             arch: Some(arch.to_string()),
         }
+    } else if os == "linux" {
+	fn rep(tmpl: &str, sub: &str) -> String {
+            let re = Regex::new("[{][}]").unwrap();
+            re.replace_all(tmpl, sub).to_string()
+	}
+	let linux = linux.unwrap();
+	let url = rep(&linux.url, "devel");
+	Rversion {
+	    version: Some(ver),
+	    url: Some(url),
+	    arch: None
+	}
     } else {
         panic!("Unknown OS: {}", os);
     }
@@ -117,6 +134,7 @@ async fn resolve_oldrel(
     ver: &String,
     os: &String,
     arch: &String,
+    linux: Option<LinuxVersion>
 ) -> Rversion {
     let url = API_URI.to_string() + "r-" + ver;
     let resp = download_json(client, vec![url]).await;
@@ -126,7 +144,7 @@ async fn resolve_oldrel(
         _ => panic!("Invalid JSON response from rversion API"),
     };
 
-    let dlurl = get_download_url(version, os, arch);
+    let dlurl = get_download_url(version, os, arch, linux);
     Rversion {
         version: Some(version.to_string()),
         url: dlurl,
@@ -139,6 +157,7 @@ async fn resolve_minor(
     ver: &String,
     os: &String,
     arch: &String,
+    linux: Option<LinuxVersion>
 ) -> Rversion {
     let rvers = download_r_versions(client).await;
     let start = ver.to_owned() + ".0";
@@ -162,7 +181,7 @@ async fn resolve_minor(
         panic!("Cannot resolve minor R version {}", ver);
     }
 
-    let dlurl = get_download_url(&out, os, arch);
+    let dlurl = get_download_url(&out, os, arch, linux);
     Rversion {
         version: Some(out),
         url: dlurl,
@@ -175,12 +194,13 @@ async fn resolve_version(
     ver: &String,
     os: &String,
     arch: &String,
+    linux: Option<LinuxVersion>
 ) -> Rversion {
     let rvers = download_r_versions(client).await;
     if !rvers.contains(&ver) {
         panic!("Cannot find R version {}", ver);
     }
-    let dlurl = get_download_url(ver, os, arch);
+    let dlurl = get_download_url(ver, os, arch, linux);
     Rversion {
         version: Some(ver.to_string()),
         url: dlurl,
@@ -188,7 +208,7 @@ async fn resolve_version(
     }
 }
 
-fn get_download_url(ver: &String, os: &String, arch: &String) -> Option<String> {
+fn get_download_url(ver: &String, os: &String, arch: &String, linux: Option<LinuxVersion>) -> Option<String> {
     fn rep(tmpl: &str, sub: &str) -> String {
         let re = Regex::new("[{][}]").unwrap();
         re.replace_all(tmpl, sub).to_string()
@@ -222,13 +242,16 @@ fn get_download_url(ver: &String, os: &String, arch: &String) -> Option<String> 
             panic!("Unknown macOS arch: {}", arch);
         }
     } else if os == "win" {
-	    let v2120 = Version::parse("2.12.0").unwrap();
-	    if vv < v2120 {
-		    // The installer URL is different for these, so we just bail
-		    None
-	    } else {
-		    Some(rep(WIN_URI, ver))
-	    }
+	let v2120 = Version::parse("2.12.0").unwrap();
+	if vv < v2120 {
+	    // The installer URL is different for these, so we just bail
+	    None
+	} else {
+	    Some(rep(WIN_URI, ver))
+	}
+    } else if os == "linux" {
+	let linux = linux.unwrap();
+	Some(rep(&linux.url, ver))
     } else {
         panic!("Unknown OS: {}", os);
     }

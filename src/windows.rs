@@ -9,6 +9,8 @@ use std::path::Path;
 use std::process::Command;
 
 use clap::ArgMatches;
+use winreg::enums::*;
+use winreg::RegKey;
 
 use crate::common::*;
 use crate::download::*;
@@ -19,12 +21,15 @@ const R_ROOT: &str = "C:\\Program Files\\R";
 
 #[warn(unused_variables)]
 pub fn sc_add(args: &ArgMatches) {
+    elevate();
+    sc_clean_registry();
     let str = args.value_of("str").unwrap().to_string();
     if str.len() >= 6 && &str[0..6] == "rtools" {
         return add_rtools(str);
     }
-    let (version, target) = download_r(&args);
+    let (_version, target) = download_r(&args);
 
+    println!("Installing {}", target);
     let status = Command::new(&target)
 	.args(["/VERYSILENT", "/SUPPRESSMSGBOXES"])
 	.spawn()
@@ -42,7 +47,7 @@ pub fn sc_add(args: &ArgMatches) {
 }
 
 fn add_rtools(version: String) {
-    let mut vers;
+    let vers;
     if version == "rtools" {
         vers = get_rtools_needed();
     } else {
@@ -161,6 +166,7 @@ fn get_rtools_needed() -> Vec<String> {
 }
 
 pub fn sc_rm(args: &ArgMatches) {
+    elevate();
     let vers = args.values_of("version");
     if vers.is_none() {
         return;
@@ -181,6 +187,7 @@ pub fn sc_rm(args: &ArgMatches) {
         }
     }
 
+    sc_clean_registry();
     sc_system_make_links();
 }
 
@@ -287,14 +294,18 @@ pub fn system_create_lib(vers: Option<Vec<String>>) {
 }
 
 pub fn sc_system_make_links() {
+    elevate();
     let vers = sc_get_list();
     let base = Path::new(R_ROOT);
+    let bin = base.join("bin");
+
+    std::fs::create_dir_all(bin).unwrap();
 
     for ver in vers {
         let linkfile = base.join("bin").join("R-".to_string() + &ver + ".bat");
         let target = base.join("R-".to_string() + &ver);
         let op = if !linkfile.exists() { "Updating" } else { "Adding" };
-        println!("Adding R-{} -> {}", ver, target.display());
+        println!("{} R-{} -> {}", op, ver, target.display());
         let mut file = File::create(linkfile).unwrap();
         let cnt = "@\"C:\\Program Files\\R\\R-".to_string() +
             &ver + "\\bin\\R\" %*\n";
@@ -306,7 +317,7 @@ pub fn sc_system_make_orthogonal(_args: &ArgMatches) {
     // Nothing to do on Windows
 }
 
-pub fn sc_system_fix_permissions(args: &ArgMatches) {
+pub fn sc_system_fix_permissions(_args: &ArgMatches) {
     // Nothing to do on Windows
 }
 
@@ -318,7 +329,7 @@ pub fn get_resolve(args: &ArgMatches) -> Rversion {
     let str = args.value_of("str").unwrap().to_string();
 
     let eps = vec![str];
-    let version = resolve_versions(eps, "win".to_string(), "default".to_string());
+    let version = resolve_versions(eps, "win".to_string(), "default".to_string(), None);
     version[0].to_owned()
 }
 
@@ -345,6 +356,7 @@ pub fn sc_get_list() -> Vec<String> {
 }
 
 pub fn sc_set_default(ver: String) {
+    elevate();
     let base = Path::new(R_ROOT);
     let linkfile = base.join("bin").join("R.bat");
     let cnt = "::".to_string() + &ver + "\n" +
@@ -378,4 +390,95 @@ pub fn sc_get_default() -> String {
 pub fn sc_show_default() {
     let default = sc_get_default();
     println!("{}", default);
+}
+
+fn clean_registry_r(key: &RegKey) {
+    for nm in key.enum_keys() {
+        let nm = nm.unwrap();
+        let subkey = key.open_subkey(&nm).unwrap();
+        let path: String = subkey.get_value("InstallPath").unwrap();
+        let path2 = Path::new(&path);
+        if !path2.exists() {
+            println!("Cleaning registry: R {} (not in {})", &nm, path);
+            key.delete_subkey_all(nm).unwrap();
+        }
+    }
+}
+
+fn clean_registry_rtools(key: &RegKey) {
+    for nm in key.enum_keys() {
+        let nm = nm.unwrap();
+        let subkey = key.open_subkey(&nm).unwrap();
+        let path: String = subkey.get_value("InstallPath").unwrap();
+        let path2 = Path::new(&path);
+        if !path2.exists() {
+            println!("Cleaning registry: Rtools {} (not in {})", &nm, path);
+            key.delete_subkey_all(nm).unwrap();
+        }
+    }
+}
+
+fn clean_registry_uninst(key: &RegKey) {
+    for nm in key.enum_keys().map(|x| x.unwrap())
+        .filter(|x| x.starts_with("Rtools") || x.starts_with("R for Windows")) {
+            let subkey = key.open_subkey(&nm).unwrap();
+            let path: String = subkey.get_value("InstallLocation").unwrap();
+            let path2 = Path::new(&path);
+            if !path2.exists() {
+                println!("Cleaning registry (uninstaller): {}", nm);
+                key.delete_subkey_all(nm).unwrap();
+            }
+    }
+}
+
+pub fn sc_clean_registry() {
+    elevate();
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+
+    let r64r = hklm.open_subkey("SOFTWARE\\R-core\\R");
+    if let Ok(x) = r64r { clean_registry_r(&x); };
+    let r64r64 = hklm.open_subkey("SOFTWARE\\R-core\\R64");
+    if let Ok(x) = r64r64 { clean_registry_r(&x); };
+    let r32r = hklm.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\R");
+    if let Ok(x) = r32r { clean_registry_r(&x); };
+    let r32r32 = hklm.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\R32");
+    if let Ok(x) = r32r32 { clean_registry_r(&x); };
+
+    let rtools64 = hklm.open_subkey("SOFTWARE\\R-core\\Rtools");
+    if let Ok(x) = rtools64 {
+        clean_registry_rtools(&x);
+        if x.enum_keys().count() == 0 {
+            hklm.delete_subkey("SOFTWARE\\R-core\\Rtools").unwrap();
+        }
+    };
+    let rtools32 = hklm.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\Rtools");
+    if let Ok(x) = rtools32 {
+        clean_registry_rtools(&x);
+        if x.enum_keys().count() == 0 {
+            hklm.delete_subkey("SOFTWARE\\WOW6432Node\\R-core\\Rtools").unwrap();
+        }
+    };
+
+    let uninst = hklm.open_subkey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
+    if let Ok(x) = uninst { clean_registry_uninst(&x); };
+    let uninst32 = hklm.open_subkey("SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
+    if let Ok(x) = uninst32 { clean_registry_uninst(&x); };
+}
+
+fn elevate() {
+    if is_elevated::is_elevated() { return; }
+    let args: Vec<String> = std::env::args().collect();
+    println!("Re-running with administrator privileges...");
+    let exe = std::env::current_exe().unwrap();
+    let exedir =  Path::new(&exe).parent();
+    let instdir = match exedir {
+        Some(d) => d,
+        None    => Path::new("/")
+    };
+    let gsudo = instdir.join("gsudo.exe");
+    let code = std::process::Command::new(gsudo)
+        .args(args)
+        .status()
+        .unwrap();
+    std::process::exit(code.code().unwrap());
 }
