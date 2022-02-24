@@ -11,6 +11,7 @@ on:
 jobs:
   linux:
     runs-on: ubuntu-18.04
+    if: false
     name: Linux
 
     steps:
@@ -26,6 +27,7 @@ jobs:
 
   macos:
     runs-on: macos-11
+    if: false
     name: macOS
 
     steps:
@@ -49,6 +51,11 @@ jobs:
     name: Windows
 
     steps:
+
+    - name: find
+      run: |
+        find --help
+      shell: bash
 
     - name: Checkout
       uses: actions/checkout@v2
