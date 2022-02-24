@@ -55,7 +55,7 @@ jobs:
     - uses: actions/upload-artifact@v2
       if: success()
       with:
-        name: rim-linux
+        name: rim-macos
         path: 'rim-*.pkg'
 
 
@@ -93,5 +93,5 @@ jobs:
     - uses: actions/upload-artifact@v2
       if: success()
       with:
-        name: rim-linux
+        name: rim-windows
         path: 'rim-*.exe'
