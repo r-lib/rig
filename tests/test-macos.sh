@@ -1,7 +1,9 @@
 #!/usr/bin/env bats
 
 setup() {
-    true
+    DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" >/dev/null 2>&1 && pwd )"
+    # make executables in src/ visible to PATH
+    PATH="$DIR/../target/debug:$PATH"
 }
 
 teardown() {
@@ -12,6 +14,7 @@ teardown() {
     if ! rim ls | grep -q '^4.1$'; then
         run sudo rim add 4.1
         [[ "$status" -eq 0 ]]
+        run rim ls
         echo "$output" | grep -q "^4.1$"
     fi
     run R-4.1 -q -s -e 'cat(as.character(getRversion()))'
