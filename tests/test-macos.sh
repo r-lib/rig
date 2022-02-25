@@ -24,6 +24,7 @@ teardown() {
     if ! rim ls | grep -q '^4.0$'; then
         run sudo rim add 4.0
         [[ "$status" -eq 0 ]]
+        run rim ls
         echo "$output" | grep -q "^4.0$"
     fi
     run R-4.0 -q -s -e 'cat(as.character(getRversion()))'
