@@ -496,11 +496,15 @@ pub fn sc_show_default() {
 }
 
 pub fn sc_get_list() -> Vec<String> {
+    let mut vers = Vec::new();
+    if ! Path::new(R_ROOT).exists() {
+        return vers
+    }
+
     let paths = std::fs::read_dir(R_ROOT);
     assert!(paths.is_ok(), "Cannot list directory {}", R_ROOT);
     let paths = paths.unwrap();
 
-    let mut vers = Vec::new();
     for de in paths {
         let path = de.unwrap().path();
         let fname = path.file_name().unwrap();
