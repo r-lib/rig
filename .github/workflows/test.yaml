@@ -40,6 +40,14 @@ jobs:
       run: |
         sudo tar xzf rim-*.tar.gz -C /usr/local
 
+    - name: Install bats
+      run: |
+        sudo apt-get update && sudo apt-get install bats
+
+    - name: Run tests
+      run: |
+        bats tests/tests-linux.sh
+
   macos:
     runs-on: macos-11
     name: macOS
