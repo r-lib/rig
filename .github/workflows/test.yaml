@@ -46,7 +46,7 @@ jobs:
 
     - name: Run tests
       run: |
-        bats tests/tests-linux.sh
+        bats tests/test-linux.sh
 
   macos:
     runs-on: macos-11
