@@ -125,3 +125,12 @@ jobs:
     - name: Install rim
       run: |
         Start-Process .\rim-*.exe -ArgumentList "/verysilent /suppressmsgboxes" -Wait -NoNewWindow
+
+    - name: Install bats
+      run: |
+        npm install -g bats
+
+    - name: Run tests
+      run: |
+        bats tests/test-macos.sh
+      shell: bash
