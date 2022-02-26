@@ -19,7 +19,7 @@ pub fn escalate() {
 
     if need_sudo {
         println!("Sorry, rim needs your password for this.");
-        with_env(&["RIM_HOME"]).unwrap();
+        with_env(&["RIM_HOME", "RUST_BACKTRACE"]).unwrap();
     }
 }
 
