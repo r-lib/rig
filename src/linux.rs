@@ -54,7 +54,7 @@ pub fn sc_add(args: &ArgMatches) {
 	add_deb(target_str);
     }
 
-    system_create_lib(Some(vec![verstr.to_string()]));
+    system_create_lib(None);
     sc_system_make_links();
 }
 
@@ -152,8 +152,8 @@ pub fn system_create_lib(vers: Option<Vec<String>>) {
         check_installed(&ver);
         let r = base.join(&ver).join("bin/R");
         let r = r.to_str().unwrap();
-        let out = Command::new(r)
-            .args(["--vanilla", "-s", "-e", "cat(Sys.getenv('R_LIBS_USER'))"])
+        let out = Command::new("su")
+            .args([&user.user, "--", r, "--vanilla", "-s", "-e", "cat(Sys.getenv('R_LIBS_USER'))"])
             .output()
             .expect("Failed to run R to query R_LIBS_USER");
         let lib = match String::from_utf8(out.stdout) {
@@ -166,11 +166,7 @@ pub fn system_create_lib(vers: Option<Vec<String>>) {
         };
 
 	let re = Regex::new("^~").unwrap();
-	let home = match std::env::var("RIM_HOME") {
-	    Ok(x) => { x },
-	    Err(_) => { get_home() }
-	};
-	let lib = re.replace(&lib.as_str(), &home).to_string();
+	let lib = re.replace(&lib.as_str(), &user.dir).to_string();
         let lib = Path::new(&lib);
         if !lib.exists() {
             println!(

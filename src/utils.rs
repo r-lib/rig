@@ -132,5 +132,9 @@ pub fn get_user() -> User {
             None => "Current user".to_string(),
         };
     }
-    User { user, uid, gid }
+
+    let user_record = nix::unistd::User::from_uid(nix::unistd::Uid::from_raw(uid)).unwrap().unwrap();
+    let dir = user_record.dir.into_os_string().into_string().unwrap();
+
+    User { user, uid, gid, dir }
 }
