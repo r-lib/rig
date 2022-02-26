@@ -122,6 +122,7 @@ jobs:
     - name: Install rim
       run: |
         Start-Process .\rim-*.exe -ArgumentList "/verysilent /suppressmsgboxes" -Wait -NoNewWindow
+        echo "C:\Program Files\rim" | Out-File -Append -FilePath $env:GITHUB_PATH
 
     - name: Install bats
       run: |
