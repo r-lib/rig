@@ -103,15 +103,15 @@ jobs:
         which bats
       shell: bash
 
-    - name: Run tests
-      run: |
-        bats tests/test-windows.sh
-      shell: bash
-
     - name: Checkout
       uses: actions/checkout@v2
       with:
         fetch-depth: 10
+
+    - name: Run tests
+      run: |
+        bats tests/test-windows.sh
+      shell: bash
 
     - name: Install rust
       uses: actions-rs/toolchain@v1
