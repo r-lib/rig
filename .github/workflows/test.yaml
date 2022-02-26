@@ -103,6 +103,11 @@ jobs:
         which bats
       shell: bash
 
+    - name: Run tests
+      run: |
+        bats tests/test-windows.sh
+      shell: bash
+
     - name: Checkout
       uses: actions/checkout@v2
       with:
