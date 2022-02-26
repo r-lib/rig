@@ -100,12 +100,14 @@ pub fn get_user() -> User {
     let uid;
     let gid;
     let user;
+    let sudo;
 
     let euid = nix::unistd::geteuid();
     let sudo_uid = std::env::var_os("SUDO_UID");
     let sudo_gid = std::env::var_os("SUDO_GID");
     let sudo_user = std::env::var_os("SUDO_USER");
     if euid.is_root() && sudo_uid.is_some() && sudo_gid.is_some() && sudo_user.is_some() {
+	sudo = true;
         uid = match sudo_uid {
             Some(x) => x.to_str().unwrap().parse::<u32>().unwrap(),
             _ => {
@@ -125,6 +127,7 @@ pub fn get_user() -> User {
             }
         };
     } else {
+	sudo = false;
         uid = nix::unistd::getuid().as_raw();
         gid = nix::unistd::getgid().as_raw();
         user = match std::env::var_os("USER") {
@@ -136,5 +139,5 @@ pub fn get_user() -> User {
     let user_record = nix::unistd::User::from_uid(nix::unistd::Uid::from_raw(uid)).unwrap().unwrap();
     let dir = user_record.dir.into_os_string().into_string().unwrap();
 
-    User { user, uid, gid, dir }
+    User { user, uid, gid, dir, sudo }
 }

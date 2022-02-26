@@ -152,10 +152,18 @@ pub fn system_create_lib(vers: Option<Vec<String>>) {
         check_installed(&ver);
         let r = base.join(&ver).join("bin/R");
         let r = r.to_str().unwrap();
-        let out = Command::new("su")
-            .args([&user.user, "--", r, "--vanilla", "-s", "-e", "cat(Sys.getenv('R_LIBS_USER'))"])
-            .output()
-            .expect("Failed to run R to query R_LIBS_USER");
+	let out;
+	if user.sudo {
+            out = Command::new("su")
+		.args([&user.user, "--", r, "--vanilla", "-s", "-e", "cat(Sys.getenv('R_LIBS_USER'))"])
+		.output()
+		.expect("Failed to run R to query R_LIBS_USER");
+	} else {
+            out = Command::new(r)
+		.args(["--vanilla", "-s", "-e", "cat(Sys.getenv('R_LIBS_USER'))"])
+		.output()
+		.expect("Failed to run R to query R_LIBS_USER");
+	}
         let lib = match String::from_utf8(out.stdout) {
             Ok(v) => v,
             Err(err) => panic!(

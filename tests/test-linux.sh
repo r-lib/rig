@@ -20,7 +20,7 @@ teardown() {
 	run sudo rim add 4.1.2
 	[[ "$status" -eq 0 ]]
 	run rim ls
-	echo "$output" | grep -q "^4.1$"
+	echo "$output" | grep -q "^4.1.2$"
     fi
     run R-4.1.2 -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
@@ -30,7 +30,7 @@ teardown() {
 	run sudo rim add 4.0
 	[[ "$status" -eq 0 ]]
 	run rim ls
-	echo "$output" | grep -q "^4.1$"
+	echo "$output" | grep -q "^4.0.5$"
     fi
     run R-4.0.5 -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
@@ -49,8 +49,9 @@ teardown() {
 }
 
 @test "default" {
+    # no default initially
     run rim default
-    [[ "$status" -eq 0 ]]
+    [[ ! "$status" -eq 0 ]]
     run sudo rim default 4.1.2
     [[ "$status" -eq 0 ]]
     run rim default
@@ -104,14 +105,18 @@ teardown() {
 }
 
 @test "system create-lib" {
-    run rim system create-lib
-    [[ $status -eq 0 ]]
+    # Must already exist
     run R-4.1.2 -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
+    [[ $status -eq 0 ]]
+    [[ "$output" = "[1] TRUE" ]]
+    run R-devel -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
     [[ $status -eq 0 ]]
     [[ "$output" = "[1] TRUE" ]]
     run R-4.0.5 -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
     [[ $status -eq 0 ]]
     [[ "$output" = "[1] TRUE" ]]
+    run rim system create-lib
+    [[ $status -eq 0 ]]
 }
 
 @test "system add-pak" {
