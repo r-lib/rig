@@ -12,6 +12,7 @@ jobs:
 
   linux:
     runs-on: ubuntu-18.04
+    if: false
     name: Linux
 
     steps:
@@ -50,6 +51,7 @@ jobs:
 
   macos:
     runs-on: macos-11
+    if: false
     name: macOS
 
     steps:
@@ -91,9 +93,14 @@ jobs:
 
     steps:
 
-    - name: find
+    - name: Install bats
       run: |
-        find --help
+        npm install -g bats
+        where.exe bats
+
+    - name: bats ok
+      run: |
+        which bats
       shell: bash
 
     - name: Checkout
