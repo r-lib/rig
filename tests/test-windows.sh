@@ -21,10 +21,10 @@ teardown() {
 }
 
 @test "add" {
-    if ! rim.exe ls | grep -q '^4.1.2$'; then
-	run rim.exe add 4.1.2
+    if ! cmd.exe /c rim ls | grep -q '^4.1.2$'; then
+	run cmd.exe /c rim add 4.1.2
 	[[ "$status" -eq 0 ]]
-	run rim.exe ls
+	run cmd.exe /c rim ls
 	echo "$output" | grep -q "^4.1.2$"
     fi
     run cmd.exe /c "R-4.1.2.bat -q -s -e cat(as.character(getRversion()))"
