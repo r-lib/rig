@@ -127,6 +127,15 @@ jobs:
       run: |
         npm install -g bats
 
+    - name: test rim is in path
+      run: |
+        rim --help
+
+    - name: rim with bash
+      run: |
+        rim --help
+      shell: bash
+
     - name: Run tests
       run: |
         bats tests/test-windows.sh

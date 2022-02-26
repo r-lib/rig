@@ -11,44 +11,44 @@ teardown() {
 }
 
 @test "empty" {
-    rim.exe ls
+    run rim ls
     [[ "$status" -eq 0 ]]
     # no default initially
     if [[ ! -e "/mnt/c/Program Files/R/bin/RS.bat" ]]; then
-	run rim.exe default
+	run rim default
 	[[ ! "$status" -eq 0 ]]
     fi
 }
 
 @test "add" {
-    if ! cmd.exe /c rim ls | grep -q '^4.1.2$'; then
-	run cmd.exe /c rim add 4.1.2
+    if ! rim ls | grep -q '^4.1.2$'; then
+	run rim add 4.1.2
 	[[ "$status" -eq 0 ]]
-	run cmd.exe /c rim ls
+	run rim ls
 	echo "$output" | grep -q "^4.1.2$"
     fi
-    run cmd.exe /c "R-4.1.2.bat -q -s -e cat(as.character(getRversion()))"
+    run R-4.1.2 -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^4[.]1[.]2$"
 
-    if ! rim.exe ls | grep -q '^4.0.5$'; then
-	run rim.exe add 4.0
+    if ! rim ls | grep -q '^4.0.5$'; then
+	run rim add 4.0
 	[[ "$status" -eq 0 ]]
-	run rim.exe ls
+	run rim ls
 	echo "$output" | grep -q "^4.0.5$"
     fi
-    run cmd.exe /c "R-4.0.5.bat -q -s -e cat(as.character(getRversion()))"
+    run R-4.0.5.bat -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^4[.]0[.]5$"
 
-    devel=$(rim.exe resolve devel | cut -f1 -d" ")
-    if ! rim.exe ls | grep -q '^devel$'; then
-	run rim.exe add devel
+    devel=$(rim resolve devel | cut -f1 -d" ")
+    if ! rim ls | grep -q '^devel$'; then
+	run rim add devel
 	[[ "$status" -eq 0 ]]
-	run rim.exe ls
+	run rim ls
 	echo "$output" | grep -q "^devel$"
     fi
-    run cmd.exe /c "R-devel.bat -q -s -e cat(as.character(getRversion()))"
+    run R-devel -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^$devel$"
 }
