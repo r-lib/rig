@@ -17,7 +17,7 @@ teardown() {
 
 @test "add" {
     if ! rim ls | grep -q '^4.1.2$'; then
-	run sudo rim add 4.1.2
+	run rim add 4.1.2
 	[[ "$status" -eq 0 ]]
 	run rim ls
 	echo "$output" | grep -q "^4.1.2$"
@@ -27,7 +27,7 @@ teardown() {
     echo "$output" | grep -q "^4[.]1[.]2$"
 
     if ! rim ls | grep -q '^4.0.5$'; then
-	run sudo rim add 4.0
+	run rim add 4.0
 	[[ "$status" -eq 0 ]]
 	run rim ls
 	echo "$output" | grep -q "^4.0.5$"
@@ -38,7 +38,7 @@ teardown() {
 
     devel=$(rim resolve devel | cut -f1 -d" ")
     if ! rim ls | grep -q '^devel$'; then
-	run sudo rim add devel
+	run rim add devel
 	[[ "$status" -eq 0 ]]
 	run rim ls
 	echo "$output" | grep -q "^devel$"
@@ -50,13 +50,15 @@ teardown() {
 
 @test "default" {
     # no default initially
-    run rim default
-    [[ ! "$status" -eq 0 ]]
-    run sudo rim default 4.1.2
+    if [[ ! -e /opt/R/current ]]; then
+	run rim default
+	[[ ! "$status" -eq 0 ]]
+    fi
+    run rim default 4.1.2
     [[ "$status" -eq 0 ]]
     run rim default
     [[ "$output" = "4.1.2" ]]
-    run sudo rim default 1.0
+    run rim default 1.0
     [[ ! "$status" -eq 0 ]]
     echo $output | grep -q "is not installed"
 }
@@ -93,12 +95,12 @@ teardown() {
 
 @test "rm" {
     if ! rim ls | grep -q '^3.3.3$'; then
-        run sudo rim add 3.3
+        run rim add 3.3
         [[ "$status" -eq 0 ]]
         run rim ls
         echo "$output" | grep -q "^3[.]3[.]3$"
     fi
-    run sudo rim rm 3.3.3
+    run rim rm 3.3.3
     [[ "$status" -eq 0 ]]
     run rim list
     echo $output | grep -vq "^3.3.3$"
@@ -120,7 +122,7 @@ teardown() {
 }
 
 @test "system add-pak" {
-    run sudo rim default 4.1.2
+    run rim default 4.1.2
     [[ "$status" -eq 0 ]]
     run rim system add-pak
     echo $output | grep -q "Installing pak for R 4.1.2"
