@@ -42,11 +42,14 @@ Download the latest releast from
 
     sudo tar xzf rim-0.2.0.tar.gz -C /usr/local
 
-Supported Linux distributions: - Ubuntu from
-[r-builds](https://github.com/rstudio/r-builds#r-builds), currently
-18.04, 20.04, 22.04. - Debian from
-[r-builds](https://github.com/rstudio/r-builds#r-builds), currently 9
-and 10.
+Supported Linux distributions:
+
+-   Ubuntu from
+    [r-builds](https://github.com/rstudio/r-builds#r-builds), currently
+    18.04, 20.04, 22.04.
+-   Debian from
+    [r-builds](https://github.com/rstudio/r-builds#r-builds), currently
+    9 and 10.
 
 Other Linux distributions are coming soon.
 
