@@ -66,3 +66,28 @@ begin
   { Pos() returns 0 if not found }
   Result := Pos(';' + Param + ';', ';' + OrigPath + ';') = 0;
 end;
+
+function GHPath(): boolean;
+var
+  fileName : string;
+  lines : TArrayOfString;
+begin
+  Result := true;
+  fileName := GetEnv('GITHUB_PATH');
+  if fileName <> '' then
+    begin
+      SetArrayLength(lines, 2);
+       lines[0] := ExpandConstant('{autopf}\rim');
+       lines[1] := ExpandConstant('{autopf}\R\bin');
+       Result := SaveStringsToFile(fileName, lines, true);
+    end;
+  exit;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep=ssDone then
+    begin
+         GHPath();
+    end
+end;
