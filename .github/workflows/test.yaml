@@ -122,7 +122,11 @@ jobs:
     - name: Install rim
       run: |
         Start-Process .\rim-*.exe -ArgumentList "/verysilent /suppressmsgboxes" -Wait -NoNewWindow
-        echo "C:\Program Files\rim" | Out-File -Append -FilePath $env:GITHUB_PATH
+
+    - name: PATH
+      run: |
+        echo $PATH
+      shell: bash
 
     - name: Install bats
       run: |
@@ -135,6 +139,19 @@ jobs:
     - name: rim with bash
       run: |
         rim --help
+      shell: bash
+
+    - name: Install R
+      run: |
+        rim add 4.1.2
+
+    - name: Test R
+      run: |
+        R-4.1.2 -q -e "getRversion()"
+
+    - name: Test R in bash
+      run: |
+        R-4.1.2 -q -e "getRversion()"
       shell: bash
 
     - name: Run tests
