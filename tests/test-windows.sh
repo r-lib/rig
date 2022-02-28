@@ -29,7 +29,7 @@ teardown() {
     fi
     run R-4.1.1.bat -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
-    echo "$output" | grep -q "^4[.]1[.]2$"
+    echo "$output" | grep -q "^4[.]1[.]1$"
 
     if ! rim ls | grep -q '^4.0.5$'; then
 	run rim add 4.0
