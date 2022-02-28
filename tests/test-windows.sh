@@ -58,7 +58,7 @@ teardown() {
 
 @test "default" {
     # no default initially
-    if ! RS.bat; then
+    if [[ ! -e "/mnt/c/Program Files/R/bin/RS.bat" ]]; then
 	run rim default
 	[[ ! "$status" -eq 0 ]]
     fi
@@ -134,7 +134,7 @@ teardown() {
     [[ "$status" -eq 0 ]]
     run rim system add-pak
     echo $output | grep -q "Installing pak for R 4.1.1"
-    run R-4.1.1.bar -q -s -e 'pak::lib_status()'
+    run R-4.1.1.bat -q -s -e 'pak::lib_status()'
     [[ "$status" -eq 0 ]]
 }
 
