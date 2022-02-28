@@ -27,7 +27,7 @@ teardown() {
 	run rim ls
 	echo "$output" | grep -q "^4.1.2$"
     fi
-    run R-4.1.2 -q -s -e 'cat(as.character(getRversion()))'
+    run R-4.1.2.bat -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^4[.]1[.]2$"
 
@@ -48,7 +48,7 @@ teardown() {
 	run rim ls
 	echo "$output" | grep -q "^devel$"
     fi
-    run R-devel -q -s -e 'cat(as.character(getRversion()))'
+    run R-devel.bat -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^$devel$"
 }

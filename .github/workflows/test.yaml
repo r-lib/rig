@@ -123,45 +123,9 @@ jobs:
       run: |
         Start-Process .\rim-*.exe -ArgumentList "/verysilent /suppressmsgboxes" -Wait -NoNewWindow
 
-    - name: PATH
-      run: |
-        echo $PATH
-      shell: bash
-
     - name: Install bats
       run: |
         npm install -g bats
-
-    - name: test rim is in path
-      run: |
-        rim --help
-
-    - name: rim with bash
-      run: |
-        rim --help
-      shell: bash
-
-    - name: Install R
-      run: |
-        rim add 4.1.2
-
-    - name: Test R
-      run: |
-        R-4.1.2 -q -e "getRversion()"
-
-    - name: Test R in bash
-      run: |
-        R-4.1.2.bat -q -e "getRversion()"
-      shell: bash
-
-    - name: Try cmd
-      run: |
-        cp "c:\program files\R\bin\R-4.1.2.bat" "c:\program files\R\bin\R-4.1.2.cmd"
-
-    - name: Test R in bash
-      run: |
-        R-4.1.2 -q -e "getRversion()"
-      shell: bash
 
     - name: Run tests
       run: |
