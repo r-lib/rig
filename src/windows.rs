@@ -390,6 +390,7 @@ pub fn sc_get_list() -> Vec<String> {
 }
 
 pub fn sc_set_default(ver: String) {
+    check_installed(&ver);
     elevate("setting the default R version");
     let base = Path::new(R_ROOT);
     let linkfile = base.join("bin").join("R.bat");
