@@ -151,6 +151,15 @@ jobs:
 
     - name: Test R in bash
       run: |
+        R-4.1.2.bat -q -e "getRversion()"
+      shell: bash
+
+    - name: Try cmd
+      run: |
+        cp "c:\program files\R\bin\R-4.1.2.bat" "c:\program files\R\bin\R-4.1.2.cmd"
+
+    - name: Test R in bash
+      run: |
         R-4.1.2 -q -e "getRversion()"
       shell: bash
 
