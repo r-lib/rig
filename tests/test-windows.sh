@@ -10,11 +10,15 @@ teardown() {
     true
 }
 
+# Need to test for both path forms, one from within bash, the other
+# from a PowerShell Windows Terminal.
+
 @test "empty" {
     run rim ls
     [[ "$status" -eq 0 ]]
     # no default initially
-    if [[ ! -e "/mnt/c/Program Files/R/bin/RS.bat" ]]; then
+    if [[ ! -e "/mnt/c/Program Files/R/bin/RS.bat" &&
+	  ! -e "C:/Program Files/R/bin/RS.bat" ]]; then
 	run rim default
 	[[ ! "$status" -eq 0 ]]
     fi
@@ -58,7 +62,8 @@ teardown() {
 
 @test "default" {
     # no default initially
-    if [[ ! -e "/mnt/c/Program Files/R/bin/RS.bat" ]]; then
+    if [[ ! -e "/mnt/c/Program Files/R/bin/RS.bat" &&
+	  ! -e "C:/Program Files/R/bin/RS.bat" ]]; then
 	run rim default
 	[[ ! "$status" -eq 0 ]]
     fi
@@ -114,17 +119,23 @@ teardown() {
     echo $output | grep -vq "^3.3.3$"
 }
 
+# The quoting is very tricky here. We avoid double quotes because they
+# change the Windows parsing rules.
+
+# For the output we take the last line, in case there are warnings at
+# startup. (This does happen in bash for R 4.1.1.)
+
 @test "system create-lib" {
     # Must already exist
-    run R-4.1.1.bat -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
+    run R-4.1.1.bat -q -s -e suppressWarnings\(file.exists\(Sys.getenv\(\'R_LIBS_USER\'\)\)\)
     [[ $status -eq 0 ]]
-    [[ "$output" = "[1] TRUE" ]]
-    run R-devel.bat -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
+    [[ "${lines[-1]}" = "[1] TRUE" ]]
+    run R-devel.bat -q -s -e file.exists\(Sys.getenv\(\'R_LIBS_USER\'\)\)
     [[ $status -eq 0 ]]
-    [[ "$output" = "[1] TRUE" ]]
-    run R-4.0.5.bat -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
+    [[ "${lines[-1]}" = "[1] TRUE" ]]
+    run R-4.0.5.bat -q -s -e file.exists\(Sys.getenv\(\'R_LIBS_USER\'\)\)
     [[ $status -eq 0 ]]
-    [[ "$output" = "[1] TRUE" ]]
+    [[ "${lines[-1]}" = "[1] TRUE" ]]
     run rim system create-lib
     [[ $status -eq 0 ]]
 }
