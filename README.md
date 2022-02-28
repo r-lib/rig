@@ -40,7 +40,7 @@ Download the latest releast from
 <https://github.com/gaborcsardi/rim/releases> and uncompress it to
 `/usr/local`
 
-    sudo tar xzf rim-0.2.0.tar.gz -C /usr/local
+    sudo tar xzf rim-linux-0.2.0.tar.gz -C /usr/local
 
 Supported Linux distributions:
 
