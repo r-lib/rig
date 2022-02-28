@@ -20,6 +20,9 @@ teardown() {
     fi
 }
 
+# We use 4.1.1 because currently 4.1.2 is already installed on the GHA
+# VM, but without the rim goodies.
+
 @test "add" {
     if ! rim ls | grep -q '^4.1.1$'; then
 	run rim add 4.1.1
@@ -54,32 +57,93 @@ teardown() {
 }
 
 @test "default" {
-    true
+    # no default initially
+    if ! RS.bat; then
+	run rim default
+	[[ ! "$status" -eq 0 ]]
+    fi
+    run rim default 4.1.1
+    [[ "$status" -eq 0 ]]
+    run rim default
+    [[ "$output" = "4.1.1" ]]
+    run rim default 1.0
+    [[ ! "$status" -eq 0 ]]
+    echo $output | grep -q "is not installed"
 }
 
 @test "list" {
-    true
+    run rim list
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "^4.1.1$"
+    run rim ls
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "^4.0.5$"
 }
 
 @test "resolve" {
-    true
+    run rim resolve devel
+    [[ "$status" -eq 0 ]]
+    echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
+    run rim resolve release
+    [[ "$status" -eq 0 ]]
+    echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
+    run rim resolve oldrel
+    [[ "$status" -eq 0 ]]
+    echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
+    run rim resolve oldrel/3
+    [[ "$status" -eq 0 ]]
+    echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
+    run rim resolve 4.1.1
+    [[ "$status" -eq 0 ]]
+    echo $output | grep -q "4[.]1[.]1 https://"
+    run rim resolve 4.0
+    [[ "$status" -eq 0 ]]
+    echo $output | grep -q "4[.]0[.]5 https://"
 }
 
 @test "rm" {
-    true
+    if ! rim ls | grep -q '^3.3.3$'; then
+        run rim add 3.3
+        [[ "$status" -eq 0 ]]
+        run rim ls
+        echo "$output" | grep -q "^3[.]3[.]3$"
+    fi
+    run rim rm 3.3.3
+    [[ "$status" -eq 0 ]]
+    run rim list
+    echo $output | grep -vq "^3.3.3$"
 }
 
 @test "system create-lib" {
-    true
+    # Must already exist
+    run R-4.1.1.bat -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
+    [[ $status -eq 0 ]]
+    [[ "$output" = "[1] TRUE" ]]
+    run R-devel.bat -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
+    [[ $status -eq 0 ]]
+    [[ "$output" = "[1] TRUE" ]]
+    run R-4.0.5.bat -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
+    [[ $status -eq 0 ]]
+    [[ "$output" = "[1] TRUE" ]]
+    run rim system create-lib
+    [[ $status -eq 0 ]]
 }
 
 @test "system add-pak" {
-    true
+    run rim default 4.1.1
+    [[ "$status" -eq 0 ]]
+    run rim system add-pak
+    echo $output | grep -q "Installing pak for R 4.1.1"
+    run R-4.1.1.bar -q -s -e 'pak::lib_status()'
+    [[ "$status" -eq 0 ]]
 }
 
 @test "system clean-registry" {
-    true
+    run rim system clean-registry
+    [[ "$status" -eq 0 ]]
 }
+
+# This is tested implicitly
 
 @test "system make-links" {
     true
