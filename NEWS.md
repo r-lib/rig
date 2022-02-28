@@ -1,5 +1,5 @@
 
-# rim 0.1.6 (unreleased)
+# rim 0.2.0 (unreleased)
 
 * On macOS rim now asks for your password for tasks that require admin
   access.
