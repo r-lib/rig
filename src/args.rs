@@ -13,26 +13,6 @@ std::include!("help-windows.in");
 #[cfg(target_os = "linux")]
 std::include!("help-linux.in");
 
-const HELP_EXAMPLES: &str = r#"EXAMPLES:
-    # Add the latest development snapshot
-    rim add devel
-
-    # Add the latest release
-    rim add release
-
-    # Install specific version
-    rim add 4.1.2
-
-    # Install latest version within a minor branch
-    rim add 4.1
-
-    # List installed versions
-    rim list
-
-    # Set default version
-    rim default 4.0
-"#;
-
 pub fn rim_app() -> App<'static> {
 
     let rim = App::new("RIM -- The R Installation Manager")
