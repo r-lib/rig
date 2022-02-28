@@ -1,6 +1,8 @@
 
 # rim 0.2.0 (unreleased)
 
+* New Linux version.
+
 * On macOS rim now asks for your password for tasks that require admin
   access.
 
@@ -14,6 +16,13 @@
 * New `rim system no-openmp` to use the Apple compilers on macOS.
 
 * `rim rm` now cleans the registry on Windows.
+
+* The Windows rim installer adds rim and R to the PATH on GitHub Actions.
+
+* `rim list` does not error any more if no R versions are installed.
+
+* macOS now has `rim system no-openmp` to fix the conpiler configurations
+  for the Apple compilers.
 
 # rim 0.1.5
 
