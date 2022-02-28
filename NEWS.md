@@ -1,5 +1,5 @@
 
-# rim 0.2.0 (unreleased)
+# rim 0.2.0
 
 * New Linux version.
 
