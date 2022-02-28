@@ -15,29 +15,59 @@ Install, remove, configure R versions.
 
 ## 🚀&nbsp; Features
 
-* Works on macOS and Windows. Linux version is coming soon!
-* Install multiple R versions, select the default one, run multiple
-  versions at the same time using quick links. E.g. `R-4.1` starts
-  R 4.1.x.
+* Works on macOS, Windows and Linux (Ubuntu and Debian).
+* Install multiple R versions, select the default one.
 * Select R version to install using symbolic names: `devel`, `release`,
-  `oldrel` and more.
+  `oldrel`, etc.
+* Run multiple versions _at the same_ time using quick links.
+  E.g. `R-4.1` or `R-4.1.2` starts R 4.1.x. Quick links are automatically
+  added to the user's path.
 * On M1 macs select between x86_64 and arm64 versions or R, or install both.
-* Makes sure that installed packages are kept separete from the R
-  installation.
-* Includes auto-complete for `zsh` and `bash`.
-* Installs Rtools on Windows.
+* Creates and configures user level package libraries.
+* Restricts permissions to the system library.
+  (On macOS, not needed on Windows and Linux).
+* Includes auto-complete for `zsh` and `bash`, on macOS and Linux.
+* Installs the appropriate Rtools versions on Windows and sets them up.
+* Cleans up stale R-related entries from the Windows registry.
+* Switches to root/administrator user as needed.
 
 ## ⬇️&nbsp; Installation
 
-Download the latest release from https://github.com/gaborcsardi/rim/releases.
+### Windows and macOS
+
+Download the latest release from https://github.com/gaborcsardi/rim/releases
+and install it the usual way.
+
+`rim` adds itself to the user's path, but you might need to restart your
+terminal after the installation on Windows.
+
+### Linux
+
+Download the latest releast from https://github.com/gaborcsardi/rim/releases
+and uncompress it to `/usr/local`
+
+```
+sudo tar xzf rim-0.2.0.tar.gz -C /usr/local
+```
+
+Supported Linux distributions:
+- Ubuntu from [r-builds](https://github.com/rstudio/r-builds#r-builds),
+  currently 18.04, 20.04, 22.04.
+- Debian from [r-builds](https://github.com/rstudio/r-builds#r-builds),
+  currently 9 and 10.
+
+Other Linux distributions are coming soon.
 
 ### Auto-complete
 
-The macOS installer and also installs the `zsh` and `bash` completions.
+The macOS and Linux installers also install completion files for `zsh`
+and `bash`.
+
 `zsh` completions work out of the box.
-For `bash` completions install the `bash-completion` package from Homebrew 
-and make sure it is loaded from your `.bashrc`. (You don't need to install
-`bash` from Homebrew, but you can if you like.)
+
+For `bash` completions install the `bash-completion` package from Homebrew
+or your Linux distribution and make sure it is loaded from your `.bashrc`.
+(You don't need to install `bash` from Homebrew, but you can if you like.)
 
 ## ⚙️&nbsp; Usage
 
@@ -50,24 +80,50 @@ rim add release
 Use `rim list` to list the currently installed R versions, and `rim default`
 to set the default one.
 
-Run `rim` to see all commands and examples:
+Run `rim` to see all commands and examples.
 
-```{bash, eval = FALSE}
-rim
+### Command list:
+
+```
+rim add        -- install a new R version
+rim default    -- print or set default R version
+rim list       -- list installed R versions
+rim resolve    -- resolve a symbolic R version
+rim rm         -- remove R versions
+rim system     -- manage current installations
 ```
 
-```{bash, echo = FALSE, error = TRUE}
-./target/release/rim
+Run `rim <subcommand> --help` for information about a subcommand.
+
+
+### macOS `rim system` subcommands
+
+```
+rim system add-pak           -- install or update pak for an R version
+rim system create-lib        -- create current user's package libraries
+rim system fix-permissions   -- restrict system library permissions to admin
+rim system forget            -- make system forget about R installations
+rim system make-links        -- create R-* quick links
+rim system make-orthogonal   -- make installed versions orthogonal
+rim system no-openmp         -- remove OpemMP (-fopenmp) option for Apple compilers
 ```
 
-Run `rim <subcommand> --help` for information about a subcommand:
+### Windows `rim system` subcommands
 
-```{bash, eval = FALSE}
-rim default --help
+```
+rim system add-pak           -- install or update pak for an R version
+rim system clean-registry    -- clean stale R related entries in the registry
+rim system create-lib        -- create current user's package libraries
+rim system make-links        -- create R-* quick links
+
 ```
 
-```{bash, echo = FALSE}
-./target/release/rim default --help
+### Linux `rim system` subcommands
+
+```
+rim system add-pak           -- install or update pak for an R version
+rim system create-lib        -- create current user's package libraries
+rim system make-links        -- create R-* quick links
 ```
 
 ## 🤝&nbsp; Feedback

@@ -122,7 +122,7 @@ pub fn rim_app() -> App<'static> {
 #[cfg(target_os = "windows")]
 {
     let cmd_system_cleanreg = App::new("clean-registry")
-        .about("Clean the R related entries in the registry")
+        .about("clean stale R related entries in the registry")
         .long_about(HELP_SYSTEM_CLEANREG);
 
     cmd_system = cmd_system
@@ -142,7 +142,7 @@ pub fn rim_app() -> App<'static> {
         );
 
     let cmd_system_rights = App::new("fix-permissions")
-        .about("Restrict permissions to admin")
+        .about("Restrict system library permissions to admin")
         .long_about(HELP_SYSTEM_FIXPERMS)
         .arg(
             Arg::new("version")
