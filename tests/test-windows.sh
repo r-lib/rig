@@ -21,13 +21,13 @@ teardown() {
 }
 
 @test "add" {
-    if ! rim ls | grep -q '^4.1.2$'; then
-	run rim add 4.1.2
+    if ! rim ls | grep -q '^4.1.1$'; then
+	run rim add 4.1.1
 	[[ "$status" -eq 0 ]]
 	run rim ls
-	echo "$output" | grep -q "^4.1.2$"
+	echo "$output" | grep -q "^4.1.1$"
     fi
-    run R-4.1.2.bat -q -s -e 'cat(as.character(getRversion()))'
+    run R-4.1.1.bat -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^4[.]1[.]2$"
 
