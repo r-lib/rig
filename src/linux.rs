@@ -22,7 +22,7 @@ const R_ROOT: &str = "/opt/R";
 const R_CUR: &str = "/opt/R/current";
 
 pub fn sc_add(args: &ArgMatches) {
-    escalate();
+    escalate("adding new R versions");
     let linux = detect_linux();
     let version = get_resolve(args);
     let ver = version.version.to_owned();
@@ -94,7 +94,7 @@ fn add_deb(path: String) {
 }
 
 pub fn sc_rm(args: &ArgMatches) {
-    escalate();
+    escalate("removing R versions");
     let vers = args.values_of("version");
     if vers.is_none() {
         return;
@@ -258,7 +258,7 @@ fn system_add_pak(vers: Option<Vec<String>>, devel: bool) {
 }
 
 pub fn sc_system_make_links() {
-    escalate();
+    escalate("making R-* quick links");
     let vers = sc_get_list();
     let base = Path::new(R_ROOT);
 
@@ -337,7 +337,7 @@ pub fn sc_get_list() -> Vec<String> {
 }
 
 pub fn sc_set_default(ver: String) {
-    escalate();
+    escalate("setting the default R version");
     check_installed(&ver);
 
     // Remove current link

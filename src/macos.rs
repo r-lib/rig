@@ -22,7 +22,7 @@ const R_ROOT: &str = "/Library/Frameworks/R.framework/Versions";
 const R_CUR: &str = "/Library/Frameworks/R.framework/Versions/Current";
 
 pub fn sc_add(args: &ArgMatches) {
-    escalate();
+    escalate("adding new R versions");
     let mut version = get_resolve(args);
     let ver = version.version.to_owned();
     let verstr = match ver {
@@ -86,7 +86,7 @@ pub fn sc_add(args: &ArgMatches) {
 }
 
 pub fn sc_rm(args: &ArgMatches) {
-    escalate();
+    escalate("removing R versions");
     let vers = args.values_of("version");
     if vers.is_none() {
         return;
@@ -219,7 +219,7 @@ pub fn system_create_lib(vers: Option<Vec<String>>) {
 }
 
 pub fn sc_system_make_links() {
-    escalate();
+    escalate("making R-* quick links");
     let vers = sc_get_list();
     let base = Path::new("/Library/Frameworks/R.framework/Versions/");
 
@@ -268,7 +268,7 @@ pub fn sc_system_make_links() {
 }
 
 pub fn sc_system_make_orthogonal(args: &ArgMatches) {
-    escalate();
+    escalate("updating the R installations");
     let vers = args.values_of("version");
     if vers.is_none() {
         system_make_orthogonal(None);
@@ -321,7 +321,7 @@ fn system_make_orthogonal(vers: Option<Vec<String>>) {
 }
 
 pub fn sc_system_fix_permissions(args: &ArgMatches) {
-    escalate();
+    escalate("changing system library permissions");
     let vers = args.values_of("version");
     if vers.is_none() {
         system_fix_permissions(None);
@@ -351,7 +351,7 @@ fn system_fix_permissions(vers: Option<Vec<String>>) {
 }
 
 pub fn sc_system_forget() {
-    escalate();
+    escalate("forgetting R versions");
     let out = Command::new("sh")
         .args(["-c", "pkgutil --pkgs | grep -i r-project | grep -v clang"])
         .output()
@@ -396,7 +396,7 @@ pub fn get_resolve(args: &ArgMatches) -> Rversion {
 }
 
 pub fn sc_system_no_openmp(args: &ArgMatches) {
-    escalate();
+    escalate("updating R compiler configuration");
     let vers = args.values_of("version");
     if vers.is_none() {
         system_no_openmp(None);

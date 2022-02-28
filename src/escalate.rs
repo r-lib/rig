@@ -2,7 +2,7 @@
 
 use sudo::with_env;
 
-pub fn escalate() {
+pub fn escalate(task: &str) {
     let need_sudo = match sudo::check() {
         sudo::RunningAs::Root => { false },
         sudo::RunningAs::User => { true },
@@ -18,7 +18,7 @@ pub fn escalate() {
     };
 
     if need_sudo {
-        println!("Sorry, rim needs your password for this.");
+        println!("Running `sudo` for {}. This might need your password.", task);
         with_env(&["RIM_HOME", "RUST_BACKTRACE"]).unwrap();
     }
 }

@@ -21,7 +21,7 @@ const R_ROOT: &str = "C:\\Program Files\\R";
 
 #[warn(unused_variables)]
 pub fn sc_add(args: &ArgMatches) {
-    elevate();
+    elevate("adding new R version");
     sc_clean_registry();
     let str = args.value_of("str").unwrap().to_string();
     if str.len() >= 6 && &str[0..6] == "rtools" {
@@ -166,7 +166,7 @@ fn get_rtools_needed() -> Vec<String> {
 }
 
 pub fn sc_rm(args: &ArgMatches) {
-    elevate();
+    elevate("removing R versions");
     let vers = args.values_of("version");
     if vers.is_none() {
         return;
@@ -294,7 +294,7 @@ pub fn system_create_lib(vers: Option<Vec<String>>) {
 }
 
 pub fn sc_system_make_links() {
-    elevate();
+    elevate("making R-* quick shortcuts");
     let vers = sc_get_list();
     let base = Path::new(R_ROOT);
     let bin = base.join("bin");
@@ -390,7 +390,7 @@ pub fn sc_get_list() -> Vec<String> {
 }
 
 pub fn sc_set_default(ver: String) {
-    elevate();
+    elevate("setting the default R version");
     let base = Path::new(R_ROOT);
     let linkfile = base.join("bin").join("R.bat");
     let cnt = "::".to_string() + &ver + "\n" +
@@ -466,7 +466,7 @@ fn clean_registry_uninst(key: &RegKey) {
 }
 
 pub fn sc_clean_registry() {
-    elevate();
+    elevate("cleaning up the Windows registry");
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
 
     let r64r = hklm.open_subkey("SOFTWARE\\R-core\\R");
@@ -499,10 +499,10 @@ pub fn sc_clean_registry() {
     if let Ok(x) = uninst32 { clean_registry_uninst(&x); };
 }
 
-fn elevate() {
+fn elevate(task: &str) {
     if is_elevated::is_elevated() { return; }
     let args: Vec<String> = std::env::args().collect();
-    println!("Re-running with administrator privileges...");
+    println!("Re-running rim as aministrator for {}.", task);
     let exe = std::env::current_exe().unwrap();
     let exedir =  Path::new(&exe).parent();
     let instdir = match exedir {
