@@ -13,6 +13,8 @@ jobs:
   linux:
     runs-on: ubuntu-18.04
     name: Linux
+    env:
+      RUST_BACKTRACE: 1
 
     steps:
 
@@ -51,6 +53,8 @@ jobs:
   macos:
     runs-on: macos-11
     name: macOS
+    env:
+      RUST_BACKTRACE: 1
 
     steps:
 
@@ -88,6 +92,8 @@ jobs:
   windows:
     runs-on: windows-latest
     name: Windows
+    env:
+      RUST_BACKTRACE: 1
 
     steps:
 
