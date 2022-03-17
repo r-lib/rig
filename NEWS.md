@@ -1,4 +1,9 @@
 
+# rim 0.2.0.1 (unreleased)
+
+* Fix resolution of older Windows installers, they were moved to
+  another URL.
+
 # rim 0.2.0
 
 * New Linux version.

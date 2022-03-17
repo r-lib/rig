@@ -21,6 +21,7 @@ const MACOS_ARM_URI: &str =
 
 const WIN_DEVEL_URI: &str = "https://cloud.r-project.org/bin/windows/base/R-devel-win.exe";
 const WIN_URI: &str = "https://cloud.r-project.org/bin/windows/base/old/{}/R-{}-win.exe";
+const WIN_OLD: &str = "https://cran-archive.r-project.org/bin/windows/base/old/{}/R-{}-win.exe";
 
 const DEVEL_VERSION_URI: &str = "https://svn.r-project.org/R/trunk/VERSION";
 
@@ -242,10 +243,9 @@ fn get_download_url(ver: &String, os: &String, arch: &String, linux: Option<Linu
             panic!("Unknown macOS arch: {}", arch);
         }
     } else if os == "win" {
-	let v2120 = Version::parse("2.12.0").unwrap();
-	if vv < v2120 {
-	    // The installer URL is different for these, so we just bail
-	    None
+	let v340 = Version::parse("3.4.0").unwrap();
+	if vv < v340 {
+	    Some(rep(WIN_OLD, ver))
 	} else {
 	    Some(rep(WIN_URI, ver))
 	}
