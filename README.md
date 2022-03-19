@@ -25,7 +25,27 @@ Install, remove, configure R versions.
 
 ## ⬇️  Installation
 
-### Windows and macOS
+### macOS (installer)
+
+Download the latest release from
+<https://github.com/gaborcsardi/rim/releases> and install it the usual
+way.
+
+### macOS (Homebrew)
+
+If you use Homebrew (Intel or Arm version), you can install rim from our
+tap:
+
+``` sh
+brew tap gaborcsardi/rim
+brew install --cask rim
+```
+
+You can use x86_64 rim on Arm macs, and it will be able to install Arm
+builds of R. But you cannot use Arm rim on Intel macs. If you use both
+brew versions, only install rim with one of them.
+
+### Windows
 
 Download the latest release from
 <https://github.com/gaborcsardi/rim/releases> and install it the usual
@@ -40,6 +60,7 @@ Download the latest releast from
 <https://github.com/gaborcsardi/rim/releases> and uncompress it to
 `/usr/local`
 
+    curl -OL https://github.com/gaborcsardi/rim/releases/download/v0.2.0/rim-linux-0.2.0.tar.gz
     sudo tar xzf rim-linux-0.2.0.tar.gz -C /usr/local
 
 Supported Linux distributions:
