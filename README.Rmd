@@ -27,6 +27,8 @@ Install, remove, configure R versions.
 * Restricts permissions to the system library.
   (On macOS, not needed on Windows and Linux).
 * Includes auto-complete for `zsh` and `bash`, on macOS and Linux.
+* Updates R installations to allow debugging with `lldb`, and to allow
+  core dumps, on macOS.
 * Installs the appropriate Rtools versions on Windows and sets them up.
 * Cleans up stale R-related entries from the Windows registry.
 * Switches to root/administrator user as needed.
