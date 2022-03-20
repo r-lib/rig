@@ -279,9 +279,13 @@ pub fn sc_system_allow_core_dumps(args: &ArgMatches) {
 
 pub fn sc_system_allow_debugger(args: &ArgMatches) {
     escalate("updating code signature of R");
+    let all = args.is_present("all");
     let vers = args.values_of("version");
-    let vers: Vec<String> = if vers.is_none() {
+
+    let vers: Vec<String> = if all {
         sc_get_list()
+    } else if vers.is_none() {
+        vec![sc_get_default()]
     } else {
         vers.unwrap().map(|v| v.to_string()).collect()
     };

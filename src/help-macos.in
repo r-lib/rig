@@ -286,7 +286,7 @@ DESCRIPTION:
     https://github.com/gaborcsardi/rim/issues if it does not work as
     expected.
 
-    This command probably needs `sudo`: `sudo rim system no-openmp`,
+    This command probably needs `sudo`: `sudo rim system allow-debugger`,
     otherwise rim will ask for your password.
 "#;
 
@@ -302,6 +302,6 @@ DESCRIPTION:
     https://github.com/gaborcsardi/rim/issues if it does not work as
     expected.
 
-    This command probably needs `sudo`: `sudo rim system no-openmp`,
+    This command probably needs `sudo`: `sudo rim system allow-core-dumps`,
     otherwise rim will ask for your password.
 "#;

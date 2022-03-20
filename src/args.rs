@@ -170,8 +170,14 @@ pub fn rim_app() -> App<'static> {
         .about("Allow debugging R with lldb and gdb")
         .long_about(HELP_SYSTEM_ALLOW_DEBUGGER)
         .arg(
+            Arg::new("all")
+                .help("Update all R versions")
+                .long("all")
+                .required(false),
+        )
+        .arg(
             Arg::new("version")
-                .help("R version to update (default: all)")
+                .help("R versions to update (default is the default R version)")
                 .required(false)
                 .multiple_occurrences(true)
         );
@@ -180,8 +186,14 @@ pub fn rim_app() -> App<'static> {
         .about("Allow creating core dumps when R crashes")
         .long_about(HELP_SYSTEM_ALLOW_CORE_DUMPS)
         .arg(
+            Arg::new("all")
+                .help("Update all R versions")
+                .long("all")
+                .required(false),
+        )
+        .arg(
             Arg::new("version")
-                .help("R version to update (default: all)")
+                .help("R versions to update (default is the default R version)")
                 .required(false)
                 .multiple_occurrences(true)
         );
