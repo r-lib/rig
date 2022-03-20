@@ -432,6 +432,14 @@ pub fn sc_show_default() {
     println!("{}", default);
 }
 
+pub fn sc_system_allow_core_dumps(_args: &ArgMatches) {
+    // Nothing to do on Linux
+}
+
+pub fn sc_system_allow_debugger(_args: &ArgMatches) {
+    // Nothing to do on Linux
+}
+
 pub fn sc_system_make_orthogonal(_args: &ArgMatches) {
     // Nothing to do on Windows
 }

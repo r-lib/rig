@@ -267,6 +267,96 @@ pub fn sc_system_make_links() {
     }
 }
 
+pub fn sc_system_allow_core_dumps(args: &ArgMatches) {
+    escalate("updating code signature of R and /cores permissions");
+    sc_system_allow_debugger(args);
+    println!("Updating permissions of /cores");
+    Command::new("chmod")
+        .args(["1777", "/cores"])
+        .output()
+        .expect("Failed to update /cores permissions");
+}
+
+pub fn sc_system_allow_debugger(args: &ArgMatches) {
+    escalate("updating code signature of R");
+    let vers = args.values_of("version");
+    let vers: Vec<String> = if vers.is_none() {
+        sc_get_list()
+    } else {
+        vers.unwrap().map(|v| v.to_string()).collect()
+    };
+
+    let tmp_dir = std::env::temp_dir().join("rim");
+    match std::fs::create_dir_all(&tmp_dir) {
+        Err(err) => {
+            let dir = tmp_dir.to_str().unwrap_or_else(|| "???");
+            panic!("Cannot craete temporary file in {}: {}", dir, err.to_string());
+        }
+        _ => {}
+    };
+
+    for ver in vers {
+        check_installed(&ver);
+        let path = Path::new(R_ROOT)
+            .join(ver.as_str())
+            .join("Resources/bin/exec/R");
+        let path = path.to_str().unwrap();
+        println!("Updating entitlements of {}", path);
+
+        let out = Command::new("codesign")
+            .args(["-d", "--xml", "--entitlements", "-", path])
+            .output()
+            .expect("Failed to query entitlements");
+        if ! out.status.success() {
+            let stderr = match std::str::from_utf8(&out.stderr) {
+                Ok(v) => v,
+                Err(e) => panic!("Invalid UTF-8 output from codesign: {}", e),
+            };
+            if stderr.contains("is not signed") {
+                println!("    not signed");
+            } else {
+                panic!("Cannot query entitlements:\n   {}", stderr);
+            }
+            continue;
+        }
+
+        let titles = tmp_dir.join("r.entitlements");
+        let titles_str = titles.to_str().unwrap();
+        std::fs::write(&titles, out.stdout)
+            .expect("Unable to write entitlement file");
+
+        let out = Command::new("/usr/libexec/PlistBuddy")
+            .args(["-c", "Add :com.apple.security.get-task-allow bool true",
+                   titles_str])
+            .output()
+            .expect("Cannot update entitlements");
+
+        if ! out.status.success() {
+            let stderr = match std::str::from_utf8(&out.stderr) {
+                Ok(v) => v,
+                Err(e) => panic!("Invalid UTF-8 output from codesign: {}", e),
+            };
+            if stderr.contains("Entry Already Exists") {
+                println!("    already allows debugging");
+                continue;
+            } else {
+                panic!("Cannot update entitlements: {}", stderr);
+            }
+        }
+
+        let out = Command::new("codesign")
+            .args(["-s", "-", "-f", "--entitlements", titles_str, path])
+            .output()
+            .expect("Cannot update entitlements");
+
+        if ! out.status.success() {
+            panic!("Cannot update entitlements");
+        } else {
+            println!("    updated entitlements");
+        }
+    }
+}
+
 pub fn sc_system_make_orthogonal(args: &ArgMatches) {
     escalate("updating the R installations");
     let vers = args.values_of("version");

@@ -1,6 +1,10 @@
 
 # rim 0.2.1 (unreleased)
 
+* New macOS `rim system` commands to allow debugging:
+  `rim system allow-debugger`; and to allow core dumps:
+  `rim system allow-core-dumps`.
+
 * Fix resolution of older Windows installers, they were moved to
   another URL.
 

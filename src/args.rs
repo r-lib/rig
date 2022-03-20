@@ -166,11 +166,33 @@ pub fn rim_app() -> App<'static> {
                 .multiple_occurrences(true)
         );
 
+    let cmd_system_allow_debugger = App::new("allow-debugger")
+        .about("Allow debugging R with lldb and gdb")
+        .long_about(HELP_SYSTEM_ALLOW_DEBUGGER)
+        .arg(
+            Arg::new("version")
+                .help("R version to update (default: all)")
+                .required(false)
+                .multiple_occurrences(true)
+        );
+
+    let cmd_system_allow_core_dumps = App::new("allow-core-dumps")
+        .about("Allow creating core dumps when R crashes")
+        .long_about(HELP_SYSTEM_ALLOW_CORE_DUMPS)
+        .arg(
+            Arg::new("version")
+                .help("R version to update (default: all)")
+                .required(false)
+                .multiple_occurrences(true)
+        );
+
     cmd_system = cmd_system
         .subcommand(cmd_system_ortho)
         .subcommand(cmd_system_rights)
         .subcommand(cmd_system_forget)
-        .subcommand(cmd_system_noopenmp);
+        .subcommand(cmd_system_noopenmp)
+        .subcommand(cmd_system_allow_debugger)
+        .subcommand(cmd_system_allow_core_dumps);
 }
 
     cmd_system = cmd_system

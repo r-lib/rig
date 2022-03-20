@@ -273,3 +273,35 @@ DESCRIPTION:
     This command probably needs `sudo`: `sudo rim system no-openmp`,
     otherwise rim will ask for your password.
 "#;
+
+const HELP_SYSTEM_ALLOW_DEBUGGER: &str = r#"
+DESCRIPTION:
+    Update the entitlements of the R process to allow debuggers. It adds
+    the `get-task-allow` entitlement to the R binary. This is only needed
+    for R installers 3.6 and later, previous versions are not signed.
+    Call `R -d lldb` to start `lldb` on `R`. (Or `R-x.y -d lldb` if you
+    want a non-default version.)
+
+    This command is experimental. Please let us know at
+    https://github.com/gaborcsardi/rim/issues if it does not work as
+    expected.
+
+    This command probably needs `sudo`: `sudo rim system no-openmp`,
+    otherwise rim will ask for your password.
+"#;
+
+const HELP_SYSTEM_ALLOW_CORE_DUMPS: &str = r#"
+DESCRIPTION:
+    Update the entitlements of the R process to allow core dumps. This
+    command is similar to `rim system allow-debugger` but it also makes
+    sure that the `/cores` directory of core dumps is writeable by the
+    current user. Don't forget to call `ulimit -c unlimited` from the
+    same shell before starting R.
+
+    This command is experimental. Please let us know at
+    https://github.com/gaborcsardi/rim/issues if it does not work as
+    expected.
+
+    This command probably needs `sudo`: `sudo rim system no-openmp`,
+    otherwise rim will ask for your password.
+"#;

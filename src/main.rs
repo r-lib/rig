@@ -44,6 +44,8 @@ fn main() {
 fn sc_system(args: &ArgMatches) {
     match args.subcommand() {
         Some(("add-pak", s)) => sc_system_add_pak(s),
+        Some(("allow-core-dumps", s)) => sc_system_allow_core_dumps(s),
+        Some(("allow-debugger", s)) => sc_system_allow_debugger(s),
         Some(("clean-registry", _)) => sc_clean_registry(),
         Some(("create-lib", s)) => sc_system_create_lib(s),
         Some(("make-links", _)) => sc_system_make_links(),

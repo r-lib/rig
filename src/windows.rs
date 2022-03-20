@@ -339,6 +339,14 @@ pub fn sc_system_make_links() {
 
 }
 
+pub fn sc_system_allow_core_dumps(_args: &ArgMatches) {
+    // Nothing to do on Windows
+}
+
+pub fn sc_system_allow_debugger(_args: &ArgMatches) {
+    // Nothing to do on Windows
+}
+
 pub fn sc_system_make_orthogonal(_args: &ArgMatches) {
     // Nothing to do on Windows
 }
