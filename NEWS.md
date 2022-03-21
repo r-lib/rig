@@ -1,6 +1,9 @@
 
 # rim 0.2.1 (unreleased)
 
+* rim now supports arm64 Linux, currently the following distributions:
+  Ubuntu 18.04, 20.04 & 22.04 and Debian 9 & 10.
+
 * New macOS `rim system` commands to allow debugging:
   `rim system allow-debugger`; and to allow core dumps:
   `rim system allow-core-dumps`.

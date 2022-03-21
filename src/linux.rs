@@ -21,6 +21,28 @@ use crate::utils::*;
 const R_ROOT: &str = "/opt/R";
 const R_CUR: &str = "/opt/R/current";
 
+#[cfg(target_arch = "x86_64")]
+const UBUNTU_1804_URL: &str = "https://cdn.rstudio.com/r/ubuntu-1804/pkgs/r-{}_1_amd64.deb";
+#[cfg(target_arch = "x86_64")]
+const UBUNTU_2004_URL: &str = "https://cdn.rstudio.com/r/ubuntu-2004/pkgs/r-{}_1_amd64.deb";
+#[cfg(target_arch = "x86_64")]
+const UBUNTU_2204_URL: &str = "https://cdn.rstudio.com/r/ubuntu-2204/pkgs/r-{}_1_amd64.deb";
+#[cfg(target_arch = "x86_64")]
+const DEBIAN_9_URL: &str = "https://cdn.rstudio.com/r/debian-9/pkgs/r-{}_1_amd64.deb";
+#[cfg(target_arch = "x86_64")]
+const DEBIAN_10_URL: &str = "https://cdn.rstudio.com/r/debian-10/pkgs/r-{}_1_amd64.deb";
+
+#[cfg(target_arch = "aarch64")]
+const UBUNTU_1804_URL: &str = "https://github.com/r-hub/R/releases/download/v{}/R-rstudio-ubuntu-1804-{}_1_arm64.deb";
+#[cfg(target_arch = "aarch64")]
+const UBUNTU_2004_URL: &str = "https://github.com/r-hub/R/releases/download/v{}/R-rstudio-ubuntu-2004-{}_1_arm64.deb";
+#[cfg(target_arch = "aarch64")]
+const UBUNTU_2204_URL: &str = "https://github.com/r-hub/R/releases/download/v{}/R-rstudio-ubuntu-2204-{}_1_arm64.deb";
+#[cfg(target_arch = "aarch64")]
+const DEBIAN_9_URL: &str = "https://github.com/r-hub/R/releases/download/v{}/R-rstudio-debian-9-{}_1_arm64.deb";
+#[cfg(target_arch = "aarch64")]
+const DEBIAN_10_URL: &str = "https://github.com/r-hub/R/releases/download/v{}/R-rstudio-debian-10-{}_1_arm64.deb";
+
 pub fn sc_add(args: &ArgMatches) {
     escalate("adding new R versions");
     let linux = detect_linux();
@@ -510,19 +532,19 @@ fn list_supported_distros() -> Vec<LinuxVersion> {
     vec![
 	LinuxVersion { distro: "ubuntu".to_string(),
 		       version: "18.04".to_string(),
-		       url: "https://cdn.rstudio.com/r/ubuntu-1804/pkgs/r-{}_1_amd64.deb".to_string() },
+		       url: UBUNTU_1804_URL.to_string() },
 	LinuxVersion { distro: "ubuntu".to_string(),
 		       version: "20.04".to_string(),
-		       url: "https://cdn.rstudio.com/r/ubuntu-2004/pkgs/r-{}_1_amd64.deb".to_string() },
+		       url: UBUNTU_2004_URL.to_string() },
 	LinuxVersion { distro: "ubuntu".to_string(),
 		       version: "22.04".to_string(),
-		       url: "https://cdn.rstudio.com/r/ubuntu-2204/pkgs/r-{}_1_amd64.deb".to_string() },
+		       url: UBUNTU_2204_URL.to_string() },
 	LinuxVersion { distro: "debian".to_string(),
 		       version: "9".to_string(),
-		       url: "https://cdn.rstudio.com/r/debian-9/pkgs/r-${}_1_amd64.deb".to_string() },
+		       url: DEBIAN_9_URL.to_string() },
 	LinuxVersion { distro: "debian".to_string(),
 		       version: "10".to_string(),
-		       url: "https://cdn.rstudio.com/r/debian-9/pkgs/r-${}_1_amd64.deb".to_string() },
+		       url: DEBIAN_10_URL.to_string() },
     ]
 }
 
