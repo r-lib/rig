@@ -226,7 +226,7 @@ fn system_add_pak(vers: Option<Vec<String>>, devel: bool) {
         let r = r.to_str().unwrap();
         let cmd = r#"
              dir.create(Sys.getenv('R_LIBS_USER'), showWarnings = FALSE, recursive = TRUE);
-             install.packages('pak', repos = 'https://r-lib.github.io/p/pak/{}/')
+             install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/{}/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))
         "#;
         let cmd = re.replace(cmd, stream).to_string();
         let cmd = Regex::new("[\n\r]")
