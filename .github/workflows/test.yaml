@@ -50,6 +50,36 @@ jobs:
       run: |
         bats tests/test-linux.sh
 
+  linux-arm:
+    runs-on: [self-hosted, Linux, arm64]
+    name: Linux-aaarch
+    env:
+      RUST_BACKTRACE: 1
+
+    steps:
+
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: 10
+
+    - name: Build rim
+      run: |
+        docker build -t rim:latest .
+        docker run --name quickrim rim:latest ls out
+        docker cp quickrim:out .
+        ls out
+        cp out/rim* .
+
+    - name: Upload build as artifact
+      uses: actions/upload-artifact@v2
+      if: success()
+      with:
+        name: rim-linux-aarch64
+        path: 'rim-*.tar.gz'
+
+# TODO: run tests in Docker container
+
   macos:
     runs-on: macos-11
     name: macOS
