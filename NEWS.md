@@ -1,5 +1,5 @@
 
-# rim 0.2.1 (unreleased)
+# rim 0.2.1
 
 ## Linux
 
