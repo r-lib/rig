@@ -31,6 +31,8 @@ const UBUNTU_2204_URL: &str = "https://cdn.rstudio.com/r/ubuntu-2204/pkgs/r-{}_1
 const DEBIAN_9_URL: &str = "https://cdn.rstudio.com/r/debian-9/pkgs/r-{}_1_amd64.deb";
 #[cfg(target_arch = "x86_64")]
 const DEBIAN_10_URL: &str = "https://cdn.rstudio.com/r/debian-10/pkgs/r-{}_1_amd64.deb";
+#[cfg(target_arch = "x86_64")]
+const DEBIAN_11_URL: &str = "https://cdn.rstudio.com/r/debian-11/pkgs/r-{}_1_amd64.deb";
 
 #[cfg(target_arch = "aarch64")]
 const UBUNTU_1804_URL: &str = "https://github.com/r-hub/R/releases/download/v{}/R-rstudio-ubuntu-1804-{}_1_arm64.deb";
@@ -42,6 +44,8 @@ const UBUNTU_2204_URL: &str = "https://github.com/r-hub/R/releases/download/v{}/
 const DEBIAN_9_URL: &str = "https://github.com/r-hub/R/releases/download/v{}/R-rstudio-debian-9-{}_1_arm64.deb";
 #[cfg(target_arch = "aarch64")]
 const DEBIAN_10_URL: &str = "https://github.com/r-hub/R/releases/download/v{}/R-rstudio-debian-10-{}_1_arm64.deb";
+#[cfg(target_arch = "aarch64")]
+const DEBIAN_11_URL: &str = "https://github.com/r-hub/R/releases/download/v{}/R-rstudio-debian-11-{}_1_arm64.deb";
 
 pub fn sc_add(args: &ArgMatches) {
     escalate("adding new R versions");
@@ -545,6 +549,9 @@ fn list_supported_distros() -> Vec<LinuxVersion> {
 	LinuxVersion { distro: "debian".to_string(),
 		       version: "10".to_string(),
 		       url: DEBIAN_10_URL.to_string() },
+	LinuxVersion { distro: "debian".to_string(),
+		       version: "11".to_string(),
+		       url: DEBIAN_11_URL.to_string() },
     ]
 }
 
