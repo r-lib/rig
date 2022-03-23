@@ -1,24 +1,30 @@
 
 # rim 0.2.1 (unreleased)
 
-* rim now supports Rtools42 on Windows: `rim add rtools42`.
+## Linux
 
 * rim now supports arm64 Linux, currently the following distributions:
   Ubuntu 18.04, 20.04 & 22.04 and Debian 9, 10 & 11.
 
-* rim now supports Debian 11.
+* rim now supports Debian 11, on arm64 and x86_64.
+
+## macOS
 
 * New macOS `rim system` commands to allow debugging:
   `rim system allow-debugger`; and to allow core dumps:
   `rim system allow-core-dumps`.
 
+* rim now uses better R-devel URLs on macOS, that do not fail if the daily
+  build failed on mac.r-project.org.
+
+## Windows
+
+* rim now supports Rtools42 on Windows: `rim add rtools42`.
+
 * Fix resolution of older Windows installers, they were moved to
   another URL.
 
 * rim can now delete Rtools on Windows, e.g.: `rim rm rtools42`.
-
-* rim now uses better R-devel URLs on macOS, that do not fail if the daily
-  build failed on mac.r-project.org.
 
 # rim 0.2.0
 
