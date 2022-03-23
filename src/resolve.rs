@@ -9,8 +9,8 @@ use crate::rversion::*;
 
 const API_URI: &str = "https://api.r-hub.io/rversions/";
 
-const MACOS_DEVEL_URI: &str = "https://mac.r-project.org/high-sierra/R-devel/R-devel.pkg";
-const MACOS_DEVEL_ARM_URI: &str = "https://mac.r-project.org/big-sur/R-devel/R-devel.pkg";
+const MACOS_DEVEL_URI: &str = "https://mac.R-project.org/high-sierra/last-success/R-devel-x86_64.pkg";
+const MACOS_DEVEL_ARM_URI: &str = "https://mac.r-project.org/big-sur/last-success/R-devel-arm64.pkg";
 
 const MACOS_325_URI: &str = "https://cloud.r-project.org/bin/macosx/old/R-3.2.4-revised.pkg";
 const MACOS_OLD2_URI: &str = "https://cloud.r-project.org/bin/macosx/old/R-{}.pkg";

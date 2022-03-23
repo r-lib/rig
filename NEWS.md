@@ -11,6 +11,9 @@
 * Fix resolution of older Windows installers, they were moved to
   another URL.
 
+* rim now uses better R-devel URLs on macOS, that do not fail if the daily
+  build failed on mac.r-project.org.
+
 # rim 0.2.0
 
 * New Linux version.
