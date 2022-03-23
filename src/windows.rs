@@ -55,13 +55,20 @@ fn add_rtools(version: String) {
     }
     let client = &reqwest::Client::new();
     for ver in vers {
+	let rtools42 = &ver[0..2] == "42";
         let rtools4 = &ver[0..1] == "4" || ver == "devel";
-        let filename = if rtools4 {
-            format!("rtools{}-x86_64.exe", ver)
+	let filename: String;
+	let url: String;
+        if rtools42 {
+	    filename = "rtools42.exe".to_string();
+	    url = "https://github.com/r-hub/rtools42/releases/download/latest/rtools42.exe".to_string();
+	} else if rtools4 {
+            filename = format!("rtools{}-x86_64.exe", ver);
+	    url = format!("https://cloud.r-project.org/bin/windows/Rtools/{}", filename);
         } else {
-            format!("Rtools{}.exe", ver)
+            filename = format!("Rtools{}.exe", ver);
+	    url = format!("https://cloud.r-project.org/bin/windows/Rtools/{}", filename);
         };
-        let url = format!("https://cloud.r-project.org/bin/windows/Rtools/{}", filename);
         let tmp_dir = std::env::temp_dir().join("rim");
         let target = tmp_dir.join(&filename);
         let target_str = target.into_os_string().into_string().unwrap();
@@ -86,6 +93,12 @@ fn patch_for_rtools() {
     let base = Path::new(R_ROOT);
 
     for ver in vers {
+	let rtools42 = &ver[0..1] == "42";
+	// rtools42 does not need any updates
+	if rtools42 {
+	    continue;
+	}
+
         let rtools4 = &ver[0..1] == "4" || ver == "devel";
 	let envfile = base
 	    .join("R-".to_string() + &ver)
@@ -180,7 +193,6 @@ pub fn sc_rm(args: &ArgMatches) {
         let dir = Path::new(R_ROOT);
         let dir = dir.join(ver);
         println!("Removing {}", dir.display());
-        // TODO: remove from the registry as well
         match std::fs::remove_dir_all(&dir) {
             Err(err) => panic!("Cannot remove {}: {}", dir.display(), err.to_string()),
             _ => {}

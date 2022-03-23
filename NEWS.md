@@ -1,6 +1,8 @@
 
 # rim 0.2.1 (unreleased)
 
+* rim now supports Rtools42 on Windows: `rim add rtools42`.
+
 * rim now supports arm64 Linux, currently the following distributions:
   Ubuntu 18.04, 20.04 & 22.04 and Debian 9, 10 & 11.
 
