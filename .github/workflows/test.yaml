@@ -66,6 +66,7 @@ jobs:
     - name: Build rim
       run: |
         docker build -t rim:latest .
+        docker rm quickrim 2>/dev/null || true
         docker run --name quickrim rim:latest ls out
         docker cp quickrim:out .
         ls out
