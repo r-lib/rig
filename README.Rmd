@@ -123,6 +123,8 @@ Run `rim <subcommand> --help` for information about a subcommand.
 
 ```
 rim system add-pak           -- install or update pak for an R version
+rim system allow-debugger    -- allow debugging R with lldb and gdb
+rim system allow-core-dumps  -- allow creating core dumps when R crashes
 rim system create-lib        -- create current user's package libraries
 rim system fix-permissions   -- restrict system library permissions to admin
 rim system forget            -- make system forget about R installations
