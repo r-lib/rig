@@ -65,6 +65,11 @@ Download the latest releast from
     curl -OL https://github.com/gaborcsardi/rim/releases/download/v0.2.1/rim-linux-0.2.1.tar.gz
     sudo tar xzf rim-linux-0.2.1.tar.gz -C /usr/local
 
+If you are running Linux on arm64, download the arm64 build:
+
+    curl -OL https://github.com/gaborcsardi/rim/releases/download/v0.2.1/rim-linux-arm64-0.2.1.tar.gz
+    sudo tar xzf rim-linux-arm64-0.2.1.tar.gz -C /usr/local
+
 Supported Linux distributions:
 
 -   Ubuntu from
