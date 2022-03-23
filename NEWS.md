@@ -15,6 +15,8 @@
 * Fix resolution of older Windows installers, they were moved to
   another URL.
 
+* rim can now delete Rtools on Windows, e.g.: `rim rm rtools42`.
+
 * rim now uses better R-devel URLs on macOS, that do not fail if the daily
   build failed on mac.r-project.org.
 

@@ -31,6 +31,7 @@ sudo = "0.6.0"
 tokio = { version = "1", features = ["full"] }
 
 [target.'cfg(windows)'.dependencies]
+remove_dir_all = "0.7.0"
 winreg = "0.10"
 is_elevated = "0.1.2"
 

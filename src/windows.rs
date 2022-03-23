@@ -9,6 +9,7 @@ use std::path::Path;
 use std::process::Command;
 
 use clap::ArgMatches;
+use remove_dir_all::remove_dir_all;
 use winreg::enums::*;
 use winreg::RegKey;
 
@@ -187,13 +188,18 @@ pub fn sc_rm(args: &ArgMatches) {
     let vers = vers.unwrap();
 
     for ver in vers {
-        check_installed(&ver.to_string());
+	let verstr = ver.to_string();
+	if verstr.len() >= 6 && &verstr[0..6] == "rtools" {
+	    rm_rtools(verstr);
+	    continue;
+	}
+        check_installed(&verstr);
 
         let ver = "R-".to_string() + ver;
         let dir = Path::new(R_ROOT);
         let dir = dir.join(ver);
         println!("Removing {}", dir.display());
-        match std::fs::remove_dir_all(&dir) {
+        match remove_dir_all(&dir) {
             Err(err) => panic!("Cannot remove {}: {}", dir.display(), err.to_string()),
             _ => {}
         }
@@ -201,6 +207,30 @@ pub fn sc_rm(args: &ArgMatches) {
 
     sc_clean_registry();
     sc_system_make_links();
+}
+
+fn rm_rtools(ver: String) {
+    let dir = Path::new("C:\\").join(ver);
+    println!("Removing {}", dir.display());
+    match remove_dir_all(&dir) {
+        Err(_err) => {
+	    let cmd = format!("del -recurse -force {}", dir.display());
+	    let out = Command::new("powershell")
+		.args(["-command", &cmd])
+		.output()
+		.expect("Failed to run powershell");
+	    let stderr = match std::str::from_utf8(&out.stderr) {
+                Ok(v) => v,
+		Err(_v) => "cannot parse stderr"
+	    };
+	    if ! out.status.success() {
+		panic!("Cannot remove {}: {}", dir.display(), stderr);
+	    }
+	},
+        _ => {}
+    }
+
+    sc_clean_registry();
 }
 
 pub fn sc_system_add_pak(args: &ArgMatches) {
