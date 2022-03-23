@@ -68,8 +68,8 @@ Download the latest releast from https://github.com/gaborcsardi/rim/releases
 and uncompress it to `/usr/local`
 
 ```
-curl -OL https://github.com/gaborcsardi/rim/releases/download/v0.2.0/rim-linux-0.2.0.tar.gz
-sudo tar xzf rim-linux-0.2.0.tar.gz -C /usr/local
+curl -OL https://github.com/gaborcsardi/rim/releases/download/v0.2.1/rim-linux-0.2.1.tar.gz
+sudo tar xzf rim-linux-0.2.1.tar.gz -C /usr/local
 ```
 
 Supported Linux distributions:
