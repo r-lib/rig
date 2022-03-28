@@ -11,7 +11,7 @@ RUN apk add linux-headers bash gcc musl-dev g++ pkgconf make
 
 # zlib --------------------------------------------------------------------
 
-RUN curl -O https://www.zlib.net/zlib-1.2.11.tar.gz
+RUN curl -O https://downloads.sourceforge.net/project/libpng/zlib/1.2.11/zlib-1.2.11.tar.gz
 RUN tar xzf zlib-*.tar.gz && rm zlib-*.tar.gz
 RUN cd zlib-* &&                                    \
     CFLAGS=-fPIC ./configure --static &&            \
