@@ -6,6 +6,7 @@ use semver::Version;
 
 use crate::download::*;
 use crate::rversion::*;
+use crate::utils::*;
 
 const API_URI: &str = "https://api.r-hub.io/rversions/";
 
@@ -47,6 +48,8 @@ pub async fn resolve_versions(vers: Vec<String>, os: String, arch: String, linux
 		resolve_release(client, os, arch, linux).await
             } else if ver == "devel" {
 		resolve_devel(client, os, arch, linux).await
+            } else if ver == "next" {
+                resolve_next(client, os, arch, linux).await
             } else if RE_OLDREL.is_match(&ver) {
 		resolve_oldrel(client, &ver, os, arch, linux).await
             } else if RE_MINOR.is_match(&ver) {
@@ -128,6 +131,45 @@ async fn resolve_devel(client: &reqwest::Client, os: &String, arch: &String, lin
     } else {
         panic!("Unknown OS: {}", os);
     }
+}
+
+async fn resolve_next(
+    client: &reqwest::Client,
+    os: &String,
+    arch: &String,
+    _linux: Option<LinuxVersion>
+) -> Rversion {
+
+    let ep: String;
+    if os == "win" {
+        ep = "/r-next-win".to_string();
+    } else if os == "macos" {
+        ep = "/r-next-macos-".to_string() + arch;
+    } else if os == "linux" {
+        ep = "/r-next".to_string();
+    } else {
+        panic!("Unknown OS:{}", os);
+    }
+
+    let url = API_URI.to_string() + &ep;
+    let resp = download_json(client, vec![url]).await;
+    let resp = &resp[0];
+
+    let version: String = unquote(&resp["version"].to_string());
+    let url: Option<String>;
+
+    if os == "linux" {
+        url = None;
+    } else {
+        url = Some(unquote(&resp["URL"].to_string()));
+    }
+
+    Rversion {
+        version: Some(version),
+        url: url,
+        arch: Some(arch.to_string())
+    }
+
 }
 
 async fn resolve_oldrel(
