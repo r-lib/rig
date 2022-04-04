@@ -137,7 +137,7 @@ async fn resolve_next(
     client: &reqwest::Client,
     os: &String,
     arch: &String,
-    _linux: Option<LinuxVersion>
+    linux: Option<LinuxVersion>
 ) -> Rversion {
 
     let ep: String;
@@ -159,7 +159,12 @@ async fn resolve_next(
     let url: Option<String>;
 
     if os == "linux" {
-        url = None;
+	fn rep(tmpl: &str, sub: &str) -> String {
+            let re = Regex::new("[{][}]").unwrap();
+            re.replace_all(tmpl, sub).to_string()
+	}
+	let linux = linux.unwrap();
+	url = Some(rep(&linux.url, "next"));
     } else {
         url = Some(unquote(&resp["URL"].to_string()));
     }
