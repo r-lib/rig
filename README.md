@@ -7,7 +7,7 @@ Install, remove, configure R versions.
 
 -   Works on macOS, Windows and Linux (Ubuntu and Debian).
 -   Install multiple R versions, select the default one.
--   Select R version to install using symbolic names: `devel`,
+-   Select R version to install using symbolic names: `devel`, `next`,
     `release`, `oldrel`, etc.
 -   Run multiple versions *at the same* time using quick links. E.g.
     `R-4.1` or `R-4.1.2` starts R 4.1.x. Quick links are automatically
