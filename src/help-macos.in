@@ -52,6 +52,7 @@ DESCRIPTION
 
     An R version can be specified in various ways:
     - `rim resolve devel` is the latest available development version,
+    - `rim resolve next` is the next (patched, alpha, beta, etc.) version,
     - `rim resolve release` is the latest release.
     - `rim resolve x.y.z` is a specific version.
     - `rim resolve x.y` is the latest release within the `x.y` minor branch.
@@ -124,6 +125,7 @@ DESCRIPTION:
 
     The desired R version can be specified in various ways:
     - `rim add devel` adds the latest available development version,
+    - `rim add next` is the next version (patched, alpha, beta, rc, etc.),
     - `rim add release` adds the latest release.
     - `rim add x.y.z` adds a specific version.
     - `rim add x.y` adds the latest release within the `x.y` minor branch.
