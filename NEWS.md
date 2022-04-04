@@ -1,5 +1,13 @@
 
-# rim 0.2.2 (unreleased)
+# rim 0.2.2
+
+* rim now supports the next version of R:
+  ```
+  rim resolve next
+  rim add next
+  ```
+  The next version of R is R-alpha, R-beta, R-rc or R-prerelease if there
+  is an active R release process, and it is R-patched otherwise.
 
 # rim 0.2.1
 
