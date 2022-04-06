@@ -62,13 +62,13 @@ Download the latest releast from
 <https://github.com/gaborcsardi/rim/releases> and uncompress it to
 `/usr/local`
 
-    curl -OL https://github.com/gaborcsardi/rim/releases/download/v0.2.2/rim-linux-0.2.2.tar.gz
-    sudo tar xzf rim-linux-0.2.2.tar.gz -C /usr/local
+    curl -OL https://github.com/gaborcsardi/rim/releases/download/v0.2.3/rim-linux-0.2.3.tar.gz
+    sudo tar xzf rim-linux-0.2.3.tar.gz -C /usr/local
 
 If you are running Linux on arm64, download the arm64 build:
 
-    curl -OL https://github.com/gaborcsardi/rim/releases/download/v0.2.2/rim-linux-arm64-0.2.2.tar.gz
-    sudo tar xzf rim-linux-arm64-0.2.2.tar.gz -C /usr/local
+    curl -OL https://github.com/gaborcsardi/rim/releases/download/v0.2.3/rim-linux-arm64-0.2.3.tar.gz
+    sudo tar xzf rim-linux-arm64-0.2.3.tar.gz -C /usr/local
 
 Supported Linux distributions:
 
