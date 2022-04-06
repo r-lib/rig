@@ -1,4 +1,9 @@
 
+# rim 0.2.3
+
+* `rim system allow-debugger` and `rim system allow-core-dumps` now work on
+  macOS Big Sur.
+
 # rim 0.2.2
 
 * rim now supports the next version of R:
