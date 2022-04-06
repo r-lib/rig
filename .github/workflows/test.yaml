@@ -122,7 +122,9 @@ jobs:
         sudo installer -pkg rim-*.pkg -target /
 
     - name: Install bats
-      run: brew install bats-core
+      run: |
+        brew unlink bats || true
+        brew install bats-core
 
     - name: Run tests
       run: |
