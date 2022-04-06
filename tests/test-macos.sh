@@ -162,3 +162,15 @@ teardown() {
     run grep -q fopenmp /Library/Frameworks/R.framework/Versions/4.1/Resources/etc/Makeconf
     [[ $status -eq 1 ]]
 }
+
+@test "system allow-debugger" {
+    run sudo rim default 4.1
+    [[ "$status" -eq 0 ]]
+    run sudo rim system allow-debugger
+    if [[ "$(uname -r | cut -d. -f1)" -lt "21" ]]; then
+	run codesign -d --entitlements :- /Library/Frameworks/R.framework/Versions/4.1/Resources/bin/exec/R
+    else
+	run codesign -d --entitlements :- /Library/Frameworks/R.framework/Versions/4.1/Resources/bin/exec/R
+    fi
+    echo $output | grep -q -- "com.apple.security.get-task-allow"
+}
