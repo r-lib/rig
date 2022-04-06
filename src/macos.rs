@@ -308,7 +308,7 @@ pub fn sc_system_allow_debugger(args: &ArgMatches) {
         println!("Updating entitlements of {}", path);
 
         let out = Command::new("codesign")
-            .args(["-d", "--xml", "--entitlements", "-", path])
+            .args(["-d", "--entitlements", ":-", path])
             .output()
             .expect("Failed to query entitlements");
         if ! out.status.success() {
