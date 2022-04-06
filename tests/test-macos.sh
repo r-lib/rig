@@ -17,6 +17,8 @@ teardown() {
         run rim ls
         echo "$output" | grep -q "^4.1$"
     fi
+    run sudo rim system make-links
+    [[ "$status" -eq 0 ]]
     run R-4.1 -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^4[.]1[.][0-9]$"
@@ -27,6 +29,8 @@ teardown() {
         run rim ls
         echo "$output" | grep -q "^4.0$"
     fi
+    run sudo rim system make-links
+    [[ "$status" -eq 0 ]]
     run R-4.0 -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^4[.]0[.]5$"
@@ -38,6 +42,8 @@ teardown() {
         run rim ls
         echo "$output" | grep -q "^$devel\$"
     fi
+    run sudo rim system make-links
+    [[ "$status" -eq 0 ]]
     run R-${devel} -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
     echo $output
