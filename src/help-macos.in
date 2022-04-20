@@ -8,15 +8,16 @@ const HELP_ABOUT: &str = r#"NAME
     rim - manage R installations
 
 DESCRIPTION
-    rim manages your R installations, on macOS and Windows. It can install
-    and set up multiple versions R, and make sure that they work together.
+    rim manages your R installations, on macOS, Windows, and Linux. It can
+    install and set up multiple versions R, and make sure that they work
+    together.
 
     On macOS, R versions installed by rim do not interfere. You can run
     multiple versions at the same time. rim also makes sure that packages
     are installed into a user package library, so reinstalling R will not
     wipe out your installed packages.
 
-    rim is currently experimental and work in progress. Feedback is much
+    rim is currently experimental and is a work in progress. Feedback is much
     appreciated. See https://github.com/gaborcsardi/rim for bug reports.
 "#;
 
