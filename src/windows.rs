@@ -553,7 +553,7 @@ pub fn sc_clean_registry() {
 fn elevate(task: &str) {
     if is_elevated::is_elevated() { return; }
     let args: Vec<String> = std::env::args().collect();
-    println!("Re-running rim as aministrator for {}.", task);
+    println!("Re-running rim as administrator for {}.", task);
     let exe = std::env::current_exe().unwrap();
     let exedir =  Path::new(&exe).parent();
     let instdir = match exedir {
