@@ -99,7 +99,7 @@ README.md: README.Rmd $(SOURCES)
 	cargo build --release
 	R -q -e 'rmarkdown::render("README.Rmd")'
 
-build.stamp: target/release/rim target/x86_64-apple-darwin/release/rim README.md
+build.stamp: target/release/rim target/x86_64-apple-darwin/release/rim
 	rm -rf build-arm64 build-x86_64
 	# arm64
 	mkdir -p build-arm64/usr/local/bin
