@@ -16,7 +16,7 @@ std::include!("help-linux.in");
 pub fn rim_app() -> App<'static> {
 
     let rim = App::new("RIM -- The R Installation Manager")
-        .version("0.2.3")
+        .version("0.2.4")
         .about(HELP_ABOUT)
         .setting(AppSettings::ArgRequiredElseHelp)
         .term_width(80);
@@ -236,6 +236,22 @@ pub fn rim_app() -> App<'static> {
         );
 }
 
+    let cmd_rstudio = App::new("rstudio")
+        .about("Start RStudio with specified R version")
+        .long_about(HELP_RSTUDIO)
+        .arg(
+            Arg::new("version")
+                .help("R version to start")
+                .multiple_occurrences(false)
+                .required(false)
+        )
+        .arg(
+            Arg::new("project-file")
+                .help("RStudio project file (.Rproj) to open")
+                .multiple_occurrences(false)
+                .required(false)
+        );
+
     rim
         .subcommand(cmd_default)
         .subcommand(cmd_list)
@@ -243,6 +259,7 @@ pub fn rim_app() -> App<'static> {
         .subcommand(cmd_rm)
         .subcommand(cmd_system)
         .subcommand(cmd_resolve)
+        .subcommand(cmd_rstudio)
         .after_help(HELP_EXAMPLES)
 }
 

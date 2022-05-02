@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "rim -- The R Installation Manager"
-#define MyAppVersion "0.2.3"
+#define MyAppVersion "0.2.4"
 #define MyAppPublisher "Gabor Csardi"
 #define MyAppURL "https://github.com/gaborcsardi/rim"
 #define MyAppExeName "rim.exe"

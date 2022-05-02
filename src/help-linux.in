@@ -193,3 +193,8 @@ DESCRIPTION:
     * If no R versions are specified, then it installs pak for the default
       R installation (see `rim default`).
 "#;
+
+const HELP_RSTUDIO: &str = r#"
+DESCRIPTION:
+    Start RStudio with the specified R version (not implemented yet).
+"#;

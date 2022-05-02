@@ -550,6 +550,10 @@ pub fn sc_clean_registry() {
     if let Ok(x) = uninst32 { clean_registry_uninst(&x); };
 }
 
+pub fn sc_rstudio(_args: &ArgMatches) {
+    unimplemented!("not implemented on Windows yet");
+}
+
 fn elevate(task: &str) {
     if is_elevated::is_elevated() { return; }
     let args: Vec<String> = std::env::args().collect();

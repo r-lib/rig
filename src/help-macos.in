@@ -308,3 +308,22 @@ DESCRIPTION:
     This command probably needs `sudo`: `sudo rim system allow-core-dumps`,
     otherwise rim will ask for your password.
 "#;
+
+const HELP_RSTUDIO: &str = r#"
+DESCRIPTION:
+    Start RStudio with the specified R version.
+
+EXAMPLES:
+    # With default R version
+    rim rstudio
+
+    # With another R version
+    rim rstudio 4.0
+
+    # Open project with default R version
+    rim rstudio cli.Rproj
+
+    # Open RStudio project with specified R version, either is good
+    rim rstudio 4.0 cli.Rproj
+    rim rstudio cli.Rproj 4.0
+"#;

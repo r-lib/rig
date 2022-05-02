@@ -528,6 +528,47 @@ pub fn sc_clean_registry() {
     // Nothing to do on macOS
 }
 
+pub fn sc_rstudio(args: &ArgMatches) {
+    let mut ver = args.value_of("version");
+    let mut prj = args.value_of("project-file");
+
+    // If the first argument is an R project file, and the second is not,
+    // then we switch the two
+    if ver.is_some() && ver.unwrap().ends_with(".Rproj") {
+        ver = args.value_of("project-file");
+        prj = args.value_of("version");
+    }
+
+    let mut args = match prj {
+        None => vec!["-n", "-a", "RStudio"],
+        Some(p) => vec!["-n", p]
+    };
+    let path;
+
+    if !ver.is_none() {
+        let ver = ver.unwrap().to_string();
+        check_installed(&ver);
+        path = "RSTUDIO_WHICH_R=".to_string() + R_ROOT +
+            "/" + &ver + "/Resources/R";
+        let mut args2 = vec!["--env", &path];
+        args.append(&mut args2);
+    }
+
+    println!("Running open {}", args.join(" "));
+
+    let status = Command::new("open")
+        .args(args)
+        .spawn()
+        .expect("Failed to start Rstudio")
+        .wait()
+        .expect("Failed to start RStudio");
+
+
+    if !status.success() {
+        panic!("`open` exited with status {}", status.to_string());
+    }
+}
+
 // ------------------------------------------------------------------------
 
 fn valid_macos_archs() -> Vec<String> {

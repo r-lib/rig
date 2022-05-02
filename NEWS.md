@@ -1,4 +1,9 @@
 
+# rim 0.2.4 (not released yet)
+
+* New `rim rstudio` command to open a project in RStudio with the specified
+  R version.
+
 # rim 0.2.3
 
 * `rim system allow-debugger` and `rim system allow-core-dumps` now work on

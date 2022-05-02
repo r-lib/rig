@@ -37,6 +37,7 @@ fn main() {
         Some(("rm", sub)) => sc_rm(sub),
         Some(("system", sub)) => sc_system(sub),
         Some(("resolve", sub)) => sc_resolve(sub),
+        Some(("rstudio", sub)) => sc_rstudio(sub),
         _ => {} // unreachable
     }
 }

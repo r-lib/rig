@@ -229,3 +229,8 @@ DESCRIPTION
     Remove R and Rtools entries from the registry, if the corresponding
     R or Rtools versions are not installed any more.
 "#;
+
+const HELP_RSTUDIO: &str = r#"
+DESCRIPTION:
+    Start RStudio with the specified R version (not implemented yet).
+"#;

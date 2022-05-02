@@ -558,3 +558,7 @@ fn list_supported_distros() -> Vec<LinuxVersion> {
 pub fn sc_clean_registry() {
     // Nothing to do on Linux
 }
+
+pub fn sc_rstudio(_args: &ArgMatches) {
+    unimplemented!("not implemented on Linux yet");
+}
