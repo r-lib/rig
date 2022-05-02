@@ -4,6 +4,11 @@
 * New `rim rstudio` command to open a project in RStudio with the specified
   R version.
 
+* On Windows `rim default <version>` now sets the default R version in the
+  Windows Registry as well, which changes the default for RStudio.
+  (Make sure you set the R version in RStudio to the machine's default
+  version in Tools -> Global Options -> Basic -> General -> R version.)
+
 # rim 0.2.3
 
 * `rim system allow-debugger` and `rim system allow-core-dumps` now work on

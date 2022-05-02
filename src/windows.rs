@@ -452,6 +452,8 @@ pub fn sc_set_default(ver: String) {
     let linkfile2 = base.join("bin").join("RS.bat");
     let mut file2 = File::create(linkfile2).unwrap();
     file2.write_all(cnt.as_bytes()).unwrap();
+
+    update_registry_default();
 }
 
 pub fn sc_get_default() -> String {
@@ -548,6 +550,39 @@ pub fn sc_clean_registry() {
     if let Ok(x) = uninst { clean_registry_uninst(&x); };
     let uninst32 = hklm.open_subkey("SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
     if let Ok(x) = uninst32 { clean_registry_uninst(&x); };
+}
+
+fn update_registry_default1(key: &RegKey, ver: &String) {
+    match key.set_value("Current Version", ver) {
+	Ok(_) => { },
+	Err(err) => {
+	    panic!("Cannot set default in registry: {}", err.to_string());
+	}
+    };
+    let inst = R_ROOT.to_string() + "\\R-" + ver;
+
+    match key.set_value("InstallPath", &inst) {
+	Ok(_) => { },
+	Err(err) => {
+	    panic!("Cannot set default in registry: {}", err.to_string());
+	}
+    }
+}
+
+fn update_registry_default() {
+    elevate("Update registry default");
+    let default = sc_get_default();
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let r64r = hklm.create_subkey("SOFTWARE\\R-core\\R");
+    if let Ok(x) = r64r {
+	let (key, _) = x;
+	update_registry_default1(&key, &default);
+    }
+    let r64r64 = hklm.create_subkey("SOFTWARE\\R-core\\R64");
+    if let Ok(x) = r64r64 {
+	let (key, _) = x;
+	update_registry_default1(&key, &default);
+    }
 }
 
 pub fn sc_rstudio(_args: &ArgMatches) {
