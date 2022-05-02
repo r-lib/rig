@@ -4,7 +4,7 @@ use regex::Regex;
 use std::io::ErrorKind;
 use std::os::unix::fs::symlink;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use clap::ArgMatches;
 use nix::unistd::Gid;
@@ -559,6 +559,44 @@ pub fn sc_clean_registry() {
     // Nothing to do on Linux
 }
 
-pub fn sc_rstudio(_args: &ArgMatches) {
-    unimplemented!("not implemented on Linux yet");
+pub fn sc_rstudio(args: &ArgMatches) {
+    let mut ver = args.value_of("version");
+    let mut prj = args.value_of("project-file");
+
+    // If the first argument is an R project file, and the second is not,
+    // then we switch the two
+    if ver.is_some() && ver.unwrap().ends_with(".Rproj") {
+        ver = args.value_of("project-file");
+        prj = args.value_of("version");
+    }
+
+    let cmd;
+    let args;
+    if prj.is_none() {
+        cmd = "rstudio";
+        args = vec![];
+    } else {
+        cmd = "xdg-open";
+        args = vec![prj.unwrap()];
+    }
+
+    let mut envname = "dummy";
+    let mut path = "".to_string();
+    if !ver.is_none() {
+        let ver = ver.unwrap().to_string();
+        check_installed(&ver);
+        envname = "RSTUDIO_WHICH_R";
+        path = R_ROOT.to_string() + "/" + &ver + "/bin/R"
+    }
+
+    println!("Running {} {}", cmd, args.join(" "));
+
+    Command::new(cmd)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .env(envname, &path)
+        .spawn()
+        .expect("Failed to start Rstudio");
 }
