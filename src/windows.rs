@@ -7,6 +7,7 @@ use std::io::{BufRead, BufReader};
 use std::io::Write;
 use std::path::Path;
 use std::process::Command;
+use std::{thread, time};
 
 use clap::ArgMatches;
 use remove_dir_all::remove_dir_all;
@@ -457,6 +458,16 @@ pub fn sc_set_default(ver: String) {
     update_registry_default();
 }
 
+fn maybe_get_default() -> Option<String> {
+    let base = Path::new(R_ROOT);
+    let linkfile = base.join("bin").join("R.bat");
+    if !linkfile.exists() {
+        None
+    } else {
+	Some(sc_get_default())
+    }
+}
+
 pub fn sc_get_default() -> String {
     let base = Path::new(R_ROOT);
     let linkfile = base.join("bin").join("R.bat");
@@ -578,9 +589,7 @@ fn update_registry_default1(key: &RegKey, ver: &String) {
     }
 }
 
-fn update_registry_default() {
-    elevate("Update registry default");
-    let default = sc_get_default();
+fn update_registry_default_to(default: &String) {
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     let r64r = hklm.create_subkey("SOFTWARE\\R-core\\R");
     if let Ok(x) = r64r {
@@ -594,8 +603,66 @@ fn update_registry_default() {
     }
 }
 
-pub fn sc_rstudio(_args: &ArgMatches) {
-    unimplemented!("not implemented on Windows yet");
+fn update_registry_default() {
+    elevate("Update registry default");
+    let default = sc_get_default();
+    update_registry_default_to(&default);
+}
+
+pub fn sc_rstudio(args: &ArgMatches) {
+    let mut ver = args.value_of("version");
+    let mut prj = args.value_of("project-file");
+
+    // If the first argument is an R project file, and the second is not,
+    // then we switch the two
+    if ver.is_some() && ver.unwrap().ends_with(".Rproj") {
+        ver = args.value_of("project-file");
+        prj = args.value_of("version");
+    }
+
+    // we only need to restore if 'ver' is given, there is a default and
+    // they are different
+    let def = maybe_get_default();
+    let restore = !ver.is_none() && !def.is_none() &&
+	def.unwrap() != ver.unwrap();
+
+    if !ver.is_none() {
+	elevate("updating default version in registry");
+    }
+
+    let args = match prj {
+	None => vec!["/c", "start", "/b", "rstudio"],
+	Some(p) => vec!["/c", "start", "/b", p]
+    };
+
+    if !ver.is_none() {
+	let ver = ver.unwrap().to_string();
+	check_installed(&ver);
+	update_registry_default_to(&ver);
+    }
+
+    println!("Running cmd.exe {}", args.join(" "));
+
+    let status = Command::new("cmd.exe")
+	.args(args)
+	.spawn()
+	.expect("Failed to start RStudio")
+	.wait()
+	.expect("Failed to start RStusio");
+
+    // Restore registry (well, set default), if we changed it
+    // temporarily
+    if restore {
+	println!("Waiting for RStudio to start");
+	let twosecs = time::Duration::from_secs(2);
+	thread::sleep(twosecs);
+	println!("Restoring default R version in registry");
+	maybe_update_registry_default();
+    }
+
+    if !status.success() {
+        panic!("`open` exited with status {}", status.to_string());
+    }
 }
 
 fn elevate(task: &str) {

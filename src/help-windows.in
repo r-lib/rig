@@ -232,5 +232,24 @@ DESCRIPTION
 
 const HELP_RSTUDIO: &str = r#"
 DESCRIPTION:
-    Start RStudio with the specified R version (not implemented yet).
+    Start RStudio with the specified R version.
+
+    Note that you need to set the default R version in RStudio to
+    "Use your machine's default version", either 64 bit (recommended) or
+    32 bit. This setting is in Tools -> Global Options -> Basic ->
+    General -> R version.
+
+EXAMPLES:
+    # With default R version
+    rim rstudio
+
+    # With another R version
+    rim rstudio 4.0.5
+
+    # Open project with default R version
+    rim rstudio cli\cli.Rproj
+
+    # Open RStudio project with specified R version, either is good
+    rim rstudio 4.0.5 cli.Rproj
+    rim rstudio cli.Rproj 4.0.5
 "#;
