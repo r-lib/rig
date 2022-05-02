@@ -45,6 +45,7 @@ pub fn sc_add(args: &ArgMatches) {
     system_create_lib(None);
     sc_system_make_links();
     patch_for_rtools();
+    maybe_update_registry_default();
 }
 
 fn add_rtools(version: String) {
@@ -550,6 +551,14 @@ pub fn sc_clean_registry() {
     if let Ok(x) = uninst { clean_registry_uninst(&x); };
     let uninst32 = hklm.open_subkey("SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
     if let Ok(x) = uninst32 { clean_registry_uninst(&x); };
+}
+
+fn maybe_update_registry_default() {
+    let base = Path::new(R_ROOT);
+    let linkfile = base.join("bin").join("R.bat");
+    if linkfile.exists() {
+	update_registry_default();
+    }
 }
 
 fn update_registry_default1(key: &RegKey, ver: &String) {
