@@ -289,7 +289,7 @@ pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool) {
         } else {
             cmd = r#"
               dir.create(Sys.getenv('R_LIBS_USER'), showWarnings = FALSE, recursive = TRUE);
-              if (!requireNamespace("pak", quietly = TRUE)) {
+              if (!requireNamespace('pak', quietly = TRUE)) {
                 install.packages('pak', repos = sprintf('https://r-lib.github.io/p/pak/{}/%s/%s/%s', .Platform$pkgType, R.Version()$os, R.Version()$arch))
               }
            "#;
