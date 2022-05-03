@@ -76,15 +76,46 @@ pub fn sc_add(args: &ArgMatches) {
         download_file(client, url, &target_str);
     }
 
+    let dirname;
     if linux.distro == "ubuntu" || linux.distro == "debian" {
-	add_deb(target_str);
+	add_deb(&target_str);
+        dirname = get_install_dir_deb(&target_str);
+    } else {
+        panic!("Only Ubuntu and Debian Linux are supported currently");
     }
 
-    system_create_lib(None);
+    system_create_lib(Some(vec![dirname.to_string()]));
     sc_system_make_links();
+
+    if !args.is_present("no-pak") {
+        system_add_pak(
+            Some(vec![dirname.to_string()]),
+            args.value_of("pak-version").unwrap(),
+            // If this is specified then we always re-install
+            args.occurrences_of("pak-version") > 0
+        );
+    }
 }
 
-fn add_deb(path: String) {
+fn get_install_dir_deb(path: &str) -> String {
+    let out = Command::new("dpkg")
+        .args(["-I", path])
+        .output()
+        .expect("Failed to run dpkg -I on DEB package");
+    let std = match String::from_utf8(out.stdout) {
+        Ok(v) => v,
+        Err(err) => panic!("Cannot extract version from .deb file: {}", err.to_string())
+    };
+
+    let lines = std.lines();
+    let re = Regex::new("^[ ]*Package: r-(.*)$").unwrap();
+    let lines: Vec<&str> = lines.filter(|l| re.is_match(l)).collect();
+    let ver = re.replace(lines[0], "${1}");
+
+    ver.to_string()
+}
+
+fn add_deb(path: &str) {
     let status = Command::new("apt-get")
 	.args(["update"])
 	.spawn()
@@ -108,7 +139,7 @@ fn add_deb(path: String) {
     }
 
     let status = Command::new("gdebi")
-	.args(["-n", &path])
+	.args(["-n", path])
 	.spawn()
 	.expect("Failed to run gdebi")
 	.wait()
@@ -231,22 +262,7 @@ pub fn system_create_lib(vers: Option<Vec<String>>) {
     }
 }
 
-pub fn sc_system_add_pak(args: &ArgMatches) {
-    let devel = args.is_present("devel");
-    let all = args.is_present("all");
-    let vers = args.values_of("version");
-    if all {
-        system_add_pak(Some(sc_get_list()), devel);
-    } else if vers.is_none() {
-        system_add_pak(None, devel);
-        return;
-    } else {
-        let vers: Vec<String> = vers.unwrap().map(|v| v.to_string()).collect();
-        system_add_pak(Some(vers), devel);
-    }
-}
-
-fn system_add_pak(vers: Option<Vec<String>>, devel: bool) {
+pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool) {
     let vers = match vers {
         Some(x) => x,
         None => vec![sc_get_default()],
@@ -254,17 +270,30 @@ fn system_add_pak(vers: Option<Vec<String>>, devel: bool) {
 
     let base = Path::new(R_ROOT);
     let re = Regex::new("[{][}]").unwrap();
-    let stream = if devel { "devel" } else { "stable" };
 
     for ver in vers {
-        println!("Installing pak for R {}", ver);
         check_installed(&ver);
+        if update {
+            println!("Installing pak for R {}", ver);
+        } else {
+            println!("Installing pak for R {} (if not installed yet)", ver);
+        }
         let r = base.join(&ver).join("bin/R");
         let r = r.to_str().unwrap();
-        let cmd = r#"
-             dir.create(Sys.getenv('R_LIBS_USER'), showWarnings = FALSE, recursive = TRUE);
-             install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/{}/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))
-        "#;
+        let cmd;
+        if update {
+            cmd = r#"
+              dir.create(Sys.getenv('R_LIBS_USER'), showWarnings = FALSE, recursive = TRUE);
+              install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/{}/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))
+            "#;
+        } else {
+            cmd = r#"
+              dir.create(Sys.getenv('R_LIBS_USER'), showWarnings = FALSE, recursive = TRUE);
+              if (!requireNamespace("pak", quietly = TRUE)) {
+                install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/{}/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))
+              }
+            "#;
+        }
         let cmd = re.replace(cmd, stream).to_string();
         let cmd = Regex::new("[\n\r]")
             .unwrap()

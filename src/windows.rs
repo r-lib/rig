@@ -18,6 +18,7 @@ use crate::common::*;
 use crate::download::*;
 use crate::resolve::resolve_versions;
 use crate::rversion::Rversion;
+use crate::utils::basename;
 
 const R_ROOT: &str = "C:\\Program Files\\R";
 
@@ -43,10 +44,33 @@ pub fn sc_add(args: &ArgMatches) {
 	    panic!("installer exited with status {}", status.to_string());
     }
 
-    system_create_lib(None);
+    let dirname = get_latest_install_path();
+
+    println!("{:?}", dirname);
+
+    if dirname.is_none() {
+	system_create_lib(None);
+    } else {
+	let rdirname = dirname.as_ref().unwrap();
+	system_create_lib(Some(vec![rdirname.to_string()]));
+    }
     sc_system_make_links();
     patch_for_rtools();
     maybe_update_registry_default();
+
+    if !args.is_present("no-pak") {
+	if dirname.is_none() {
+	    println!("Cannot install pak, cannot determine installation directory");
+	} else {
+	    let rdirname = dirname.unwrap();
+	    system_add_pak(
+		Some(vec![rdirname.to_string()]),
+		args.value_of("pak-version").unwrap(),
+		// If this is specified then we always re-install
+		args.occurrences_of("pak-version") > 0
+            );
+	}
+    }
 }
 
 fn add_rtools(version: String) {
@@ -235,22 +259,7 @@ fn rm_rtools(ver: String) {
     sc_clean_registry();
 }
 
-pub fn sc_system_add_pak(args: &ArgMatches) {
-    let devel = args.is_present("devel");
-    let all = args.is_present("all");
-    let vers = args.values_of("version");
-    if all {
-        system_add_pak(Some(sc_get_list()), devel);
-    } else if vers.is_none() {
-        system_add_pak(None, devel);
-        return;
-    } else {
-        let vers: Vec<String> = vers.unwrap().map(|v| v.to_string()).collect();
-        system_add_pak(Some(vers), devel);
-    }
-}
-
-fn system_add_pak(vers: Option<Vec<String>>, devel: bool) {
+pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool) {
     let vers = match vers {
         Some(x) => x,
         None => vec![sc_get_default()],
@@ -258,20 +267,33 @@ fn system_add_pak(vers: Option<Vec<String>>, devel: bool) {
 
     let base = Path::new(R_ROOT);
     let re = Regex::new("[{][}]").unwrap();
-    let stream = if devel { "devel" } else { "stable" };
 
     for ver in vers {
-        println!("Installing pak for R {}", ver);
         check_installed(&ver);
+        if update {
+            println!("Installing pak for R {}", ver);
+        } else {
+            println!("Installing pak for R {} (if not installed yet)", ver);
+        }
         let r = base
 	    .join("R-".to_string() + &ver)
 	    .join("bin")
 	    .join("R.exe");
         let r = r.to_str().unwrap();
-        let cmd = r#"
-             dir.create(Sys.getenv('R_LIBS_USER'), showWarnings = FALSE, recursive = TRUE);
-             install.packages('pak', repos = sprintf('https://r-lib.github.io/p/pak/{}/%s/%s/%s', .Platform$pkgType, R.Version()$os, R.Version()$arch))
-        "#;
+        let cmd;
+        if update {
+            cmd = r#"
+              dir.create(Sys.getenv('R_LIBS_USER'), showWarnings = FALSE, recursive = TRUE);
+              install.packages('pak', repos = sprintf('https://r-lib.github.io/p/pak/{}/%s/%s/%s', .Platform$pkgType, R.Version()$os, R.Version()$arch))
+           "#;
+        } else {
+            cmd = r#"
+              dir.create(Sys.getenv('R_LIBS_USER'), showWarnings = FALSE, recursive = TRUE);
+              if (!requireNamespace('pak', quietly = TRUE)) {
+                install.packages('pak', repos = sprintf('https://r-lib.github.io/p/pak/{}/%s/%s/%s', .Platform$pkgType, R.Version()$os, R.Version()$arch))
+              }
+           "#;
+        }
         let cmd = re.replace(cmd, stream).to_string();
         let cmd = Regex::new("[\n\r]")
             .unwrap()
@@ -607,6 +629,22 @@ fn update_registry_default() {
     elevate("Update registry default");
     let default = sc_get_default();
     update_registry_default_to(&default);
+}
+
+fn get_latest_install_path() -> Option<String> {
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let r64r64 = hklm.open_subkey("SOFTWARE\\R-core\\R64");
+    if let Ok(key) = r64r64 {
+	let ip: Result<String, _> = key.get_value("InstallPath");
+	if let Ok(fp) = ip {
+	    let ufp = fp.replace("\\", "/");
+	    let p = basename(&ufp).unwrap();
+	    let re = Regex::new("^R-").unwrap();
+	    let v = re.replace(p, "").to_string();
+	    return Some(v)
+	}
+    }
+    None
 }
 
 pub fn sc_rstudio(args: &ArgMatches) {

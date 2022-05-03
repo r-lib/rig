@@ -93,3 +93,30 @@ pub fn sc_system_create_lib(args: &ArgMatches) {
         system_create_lib(Some(vers));
     }
 }
+
+pub fn sc_system_add_pak(args: &ArgMatches) {
+    let devel = args.is_present("devel");
+    let all = args.is_present("all");
+    let vers = args.values_of("version");
+    let mut pakver = args.value_of("pak-version").unwrap();
+    let pakverx = args.occurrences_of("pak-version") > 0;
+
+    // --devel is deprecated
+    if devel && !pakverx {
+        println!("Note: --devel is now deprecated, use --pak-version instead");
+        println!("Selecting 'devel' version");
+        pakver = "devel";
+    }
+    if devel && pakverx {
+        println!("Note: --devel is ignored in favor of --pak-version");
+    }
+    if all {
+        system_add_pak(Some(sc_get_list()), pakver, true);
+    } else if vers.is_none() {
+        system_add_pak(None, pakver, true);
+        return;
+    } else {
+        let vers: Vec<String> = vers.unwrap().map(|v| v.to_string()).collect();
+        system_add_pak(Some(vers), pakver, true);
+    }
+}
