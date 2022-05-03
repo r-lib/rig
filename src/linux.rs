@@ -76,15 +76,46 @@ pub fn sc_add(args: &ArgMatches) {
         download_file(client, url, &target_str);
     }
 
+    let dirname;
     if linux.distro == "ubuntu" || linux.distro == "debian" {
-	add_deb(target_str);
+	add_deb(&target_str);
+        dirname = get_install_dir_deb(&target_str);
+    } else {
+        panic!("Only Ubuntu and Debian Linux are supported currently");
     }
 
-    system_create_lib(None);
+    system_create_lib(Some(vec![dirname.to_string()]));
     sc_system_make_links();
+
+    if !args.is_present("no-pak") {
+        system_add_pak(
+            Some(vec![dirname.to_string()]),
+            args.value_of("pak-version").unwrap(),
+            // If this is specified then we always re-install
+            args.occurrences_of("pak-version") > 0
+        );
+    }
 }
 
-fn add_deb(path: String) {
+fn get_install_dir_deb(path: &str) -> String {
+    let out = Command::new("dpkg")
+        .args(["-I", path])
+        .output()
+        .expect("Failed to run dpkg -I on DEB package");
+    let std = match String::from_utf8(out.stdout) {
+        Ok(v) => v,
+        Err(err) => panic!("Cannot extract version from .deb file: {}", err.to_string())
+    };
+
+    let lines = std.lines();
+    let re = Regex::new("^[ ]*Package: r-(.*)$").unwrap();
+    let lines: Vec<&str> = lines.filter(|l| re.is_match(l)).collect();
+    let ver = re.replace(lines[0], "${1}");
+
+    ver.to_string()
+}
+
+fn add_deb(path: &str) {
     let status = Command::new("apt-get")
 	.args(["update"])
 	.spawn()
@@ -108,7 +139,7 @@ fn add_deb(path: String) {
     }
 
     let status = Command::new("gdebi")
-	.args(["-n", &path])
+	.args(["-n", path])
 	.spawn()
 	.expect("Failed to run gdebi")
 	.wait()
