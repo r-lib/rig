@@ -18,6 +18,7 @@ use crate::common::*;
 use crate::download::*;
 use crate::resolve::resolve_versions;
 use crate::rversion::Rversion;
+use crate::utils::basename;
 
 const R_ROOT: &str = "C:\\Program Files\\R";
 
@@ -43,10 +44,33 @@ pub fn sc_add(args: &ArgMatches) {
 	    panic!("installer exited with status {}", status.to_string());
     }
 
-    system_create_lib(None);
+    let dirname = get_latest_install_path();
+
+    println!("{:?}", dirname);
+
+    if dirname.is_none() {
+	system_create_lib(None);
+    } else {
+	let rdirname = dirname.as_ref().unwrap();
+	system_create_lib(Some(vec![rdirname.to_string()]));
+    }
     sc_system_make_links();
     patch_for_rtools();
     maybe_update_registry_default();
+
+    if !args.is_present("no-pak") {
+	if dirname.is_none() {
+	    println!("Cannot install pak, cannot determine installation directory");
+	} else {
+	    let rdirname = dirname.unwrap();
+	    system_add_pak(
+		Some(vec![rdirname.to_string()]),
+		args.value_of("pak-version").unwrap(),
+		// If this is specified then we always re-install
+		args.occurrences_of("pak-version") > 0
+            );
+	}
+    }
 }
 
 fn add_rtools(version: String) {
@@ -605,6 +629,22 @@ fn update_registry_default() {
     elevate("Update registry default");
     let default = sc_get_default();
     update_registry_default_to(&default);
+}
+
+fn get_latest_install_path() -> Option<String> {
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let r64r64 = hklm.open_subkey("SOFTWARE\\R-core\\R64");
+    if let Ok(key) = r64r64 {
+	let ip: Result<String, _> = key.get_value("InstallPath");
+	if let Ok(fp) = ip {
+	    let ufp = fp.replace("\\", "/");
+	    let p = basename(&ufp).unwrap();
+	    let re = Regex::new("^R-").unwrap();
+	    let v = re.replace(p, "").to_string();
+	    return Some(v)
+	}
+    }
+    None
 }
 
 pub fn sc_rstudio(args: &ArgMatches) {
