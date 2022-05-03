@@ -9,6 +9,14 @@
   (Make sure you set the R version in RStudio to the machine's default
   version in Tools -> Global Options -> Basic -> General -> R version.)
 
+* `rim system add-pak` now has a new option `--pak-version` to specify the
+  pak version to install (stable, rc or devel). Its `--devel` option is
+  now deprecated.
+
+* `rim add` now installs pak for the newly added R version, it is wasn't
+  installed before. You can opt out of this with the `--no-pak` option.
+  You can select the pak version to install with `--pak-version`.
+
 # rim 0.2.3
 
 * `rim system allow-debugger` and `rim system allow-core-dumps` now work on

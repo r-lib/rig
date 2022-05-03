@@ -235,22 +235,7 @@ fn rm_rtools(ver: String) {
     sc_clean_registry();
 }
 
-pub fn sc_system_add_pak(args: &ArgMatches) {
-    let devel = args.is_present("devel");
-    let all = args.is_present("all");
-    let vers = args.values_of("version");
-    if all {
-        system_add_pak(Some(sc_get_list()), devel);
-    } else if vers.is_none() {
-        system_add_pak(None, devel);
-        return;
-    } else {
-        let vers: Vec<String> = vers.unwrap().map(|v| v.to_string()).collect();
-        system_add_pak(Some(vers), devel);
-    }
-}
-
-fn system_add_pak(vers: Option<Vec<String>>, devel: bool) {
+pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool) {
     let vers = match vers {
         Some(x) => x,
         None => vec![sc_get_default()],
@@ -258,20 +243,33 @@ fn system_add_pak(vers: Option<Vec<String>>, devel: bool) {
 
     let base = Path::new(R_ROOT);
     let re = Regex::new("[{][}]").unwrap();
-    let stream = if devel { "devel" } else { "stable" };
 
     for ver in vers {
-        println!("Installing pak for R {}", ver);
         check_installed(&ver);
+        if update {
+            println!("Installing pak for R {}", ver);
+        } else {
+            println!("Installing pak for R {} (if not installed yet)", ver);
+        }
         let r = base
 	    .join("R-".to_string() + &ver)
 	    .join("bin")
 	    .join("R.exe");
         let r = r.to_str().unwrap();
-        let cmd = r#"
-             dir.create(Sys.getenv('R_LIBS_USER'), showWarnings = FALSE, recursive = TRUE);
-             install.packages('pak', repos = sprintf('https://r-lib.github.io/p/pak/{}/%s/%s/%s', .Platform$pkgType, R.Version()$os, R.Version()$arch))
-        "#;
+        let cmd;
+        if update {
+            cmd = r#"
+              dir.create(Sys.getenv('R_LIBS_USER'), showWarnings = FALSE, recursive = TRUE);
+              install.packages('pak', repos = sprintf('https://r-lib.github.io/p/pak/{}/%s/%s/%s', .Platform$pkgType, R.Version()$os, R.Version()$arch))
+           "#;
+        } else {
+            cmd = r#"
+              dir.create(Sys.getenv('R_LIBS_USER'), showWarnings = FALSE, recursive = TRUE);
+              if (!requireNamespace("pak", quietly = TRUE)) {
+                install.packages('pak', repos = sprintf('https://r-lib.github.io/p/pak/{}/%s/%s/%s', .Platform$pkgType, R.Version()$os, R.Version()$arch))
+              }
+           "#;
+        }
         let cmd = re.replace(cmd, stream).to_string();
         let cmd = Regex::new("[\n\r]")
             .unwrap()

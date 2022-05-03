@@ -42,12 +42,27 @@ pub fn rim_app() -> App<'static> {
         .after_help(HELP_ADD_EXAMPLES)
         .aliases(&["install"]);
 
-    cmd_add = cmd_add.arg(
-        Arg::new("str")
-            .help("R version to install")
-            .default_value("release")
-            .multiple_occurrences(false)
-    );
+    cmd_add = cmd_add
+        .arg(
+            Arg::new("str")
+                .help("R version to install")
+                .default_value("release")
+                .multiple_occurrences(false)
+        )
+        .arg(
+            Arg::new("no-pak")
+                .help("Do not install pak.")
+                .long("no-pak")
+                .required(false)
+        )
+        .arg(
+            Arg::new("pak-version")
+                .help("pak version to install.")
+                .long("pak-version")
+                .required(false)
+                .possible_values(["stable", "rc", "devel"])
+                .default_value("stable")
+        );
 
 #[cfg(target_os = "macos")]
 {
@@ -102,9 +117,17 @@ pub fn rim_app() -> App<'static> {
         .long_about(HELP_SYSTEM_ADDPAK)
         .arg(
             Arg::new("devel")
-                .help("Install the development version of pak")
+                .help("Install the development version of pak (deprecated)")
                 .long("devel")
                 .required(false),
+        )
+        .arg(
+            Arg::new("pak-version")
+                .help("pak version to install.")
+                .long("pak-version")
+                .required(false)
+                .possible_values(["stable", "rc", "devel"])
+                .default_value("stable")
         )
         .arg(
             Arg::new("all")
