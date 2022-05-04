@@ -1,6 +1,7 @@
 #![cfg(target_os = "windows")]
 
 use regex::Regex;
+use std::error::Error;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader};
@@ -262,7 +263,7 @@ fn rm_rtools(ver: String) {
 pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool) {
     let vers = match vers {
         Some(x) => x,
-        None => vec![sc_get_default()],
+        None => vec![sc_get_default_or_fail()],
     };
 
     let base = Path::new(R_ROOT);
@@ -480,37 +481,22 @@ pub fn sc_set_default(ver: String) {
     update_registry_default();
 }
 
-fn maybe_get_default() -> Option<String> {
+pub fn sc_get_default_() -> Result<Option<String>, Box<dyn Error>> {
     let base = Path::new(R_ROOT);
     let linkfile = base.join("bin").join("R.bat");
     if !linkfile.exists() {
-        None
-    } else {
-	Some(sc_get_default())
+	return Ok(None);
     }
-}
-
-pub fn sc_get_default() -> String {
-    let base = Path::new(R_ROOT);
-    let linkfile = base.join("bin").join("R.bat");
-    if !linkfile.exists() {
-        panic!("No default version is set currently");
-    }
-    let file = File::open(linkfile).unwrap();
+    let file = File::open(linkfile)?;
     let reader = BufReader::new(file);
 
     let mut first = "".to_string();
     for line in reader.lines() {
-        first = line.unwrap().replace("::", "");
+        first = line?.replace("::", "");
         break;
     }
 
-    first.to_string()
-}
-
-pub fn sc_show_default() {
-    let default = sc_get_default();
-    println!("{}", default);
+    Ok(Some(first.to_string()))
 }
 
 fn clean_registry_r(key: &RegKey) {
@@ -627,7 +613,7 @@ fn update_registry_default_to(default: &String) {
 
 fn update_registry_default() {
     elevate("Update registry default");
-    let default = sc_get_default();
+    let default = sc_get_default_or_fail();
     update_registry_default_to(&default);
 }
 
@@ -660,7 +646,7 @@ pub fn sc_rstudio(args: &ArgMatches) {
 
     // we only need to restore if 'ver' is given, there is a default and
     // they are different
-    let def = maybe_get_default();
+    let def = sc_get_default();
     let restore = !ver.is_none() && !def.is_none() &&
 	def.unwrap() != ver.unwrap();
 
