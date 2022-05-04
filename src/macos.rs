@@ -615,39 +615,9 @@ pub fn sc_set_default(ver: String) {
 
 // -- query default version -----------------------------------------------
 
-// Good example of how errors should be handled.
-// * The implementation (function with `_` suffix), and it forwards the
-//   errors upstream. If there is no error, we return an Option<String>,
-//   because there might not be a default set.
-// * `sc_get_default()` will panic on error.
-// * `sc_get_default_or_fail()` will also panic if no default is set.
-
-pub fn sc_show_default() {
-    let default = sc_get_default_or_fail();
-    println!("{}", default);
-}
-
-pub fn sc_get_default_or_fail() -> String {
-    match sc_get_default() {
-        None => {
-            panic!("No default R version is set, call `rim default <version>`");
-        },
-        Some(x) => x
-    }
-}
-
-pub fn sc_get_default() -> Option<String> {
-    match sc_get_default_() {
-        Err(err) => {
-            panic!("Cannot query default R version: {}", err.to_string());
-        },
-        Ok(res) => res
-    }
-}
-
 // If the link does not exist, then None, otherwise Some<String>
 
-fn sc_get_default_() -> Result<Option<String>,Box<dyn Error>> {
+pub fn sc_get_default_() -> Result<Option<String>,Box<dyn Error>> {
     let linkpath = Path::new(R_CUR);
     if !linkpath.exists() {
         return Ok(None);
