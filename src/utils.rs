@@ -164,3 +164,23 @@ pub fn read_version_link(path: &str) -> Result<Option<String>,Box<dyn Error>> {
 
     Ok(Some(fname))
 }
+
+pub fn not_too_old(path: &std::path::PathBuf) -> bool {
+    let meta = std::fs::metadata(path);
+    if !meta.is_ok() {
+        return false;
+    }
+    let mtime = meta.unwrap().modified();
+    if !mtime.is_ok() {
+        return false;
+    }
+    let now = std::time::SystemTime::now();
+    let age = now.duration_since(mtime.unwrap());
+    if !age.is_ok() {
+        return false;
+    }
+
+    let day = std::time::Duration::from_secs(60 * 60 * 24);
+
+    age.unwrap() < day
+}

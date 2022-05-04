@@ -19,6 +19,8 @@
 
 * `rim list` now marks the default R version (if any) with `(default)` (#38).
 
+* `rim add ` now only caches downloaded files for a day.
+
 # rim 0.2.3
 
 * `rim system allow-debugger` and `rim system allow-core-dumps` now work on

@@ -42,7 +42,7 @@ pub fn sc_add(args: &ArgMatches) {
     let tmp_dir = std::env::temp_dir().join("rim");
     let target = tmp_dir.join(&filename);
     let target_str;
-    if target.exists() {
+    if target.exists() && not_too_old(&target) {
         target_str = target.into_os_string().into_string().unwrap();
         println!("{} is cached at\n    {}", filename, target_str);
     } else {
