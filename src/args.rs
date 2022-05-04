@@ -2,7 +2,7 @@
 // Arguemnt parsing
 // ------------------------------------------------------------------------
 
-use clap::{App, AppSettings, Arg, ArgMatches};
+use clap::{Command, Arg, ArgMatches};
 
 #[cfg(target_os = "macos")]
 std::include!("help-macos.in");
@@ -13,15 +13,15 @@ std::include!("help-windows.in");
 #[cfg(target_os = "linux")]
 std::include!("help-linux.in");
 
-pub fn rim_app() -> App<'static> {
+pub fn rim_app() -> Command<'static> {
 
-    let rim = App::new("RIM -- The R Installation Manager")
+    let rim = Command::new("RIM -- The R Installation Manager")
         .version("0.2.4")
         .about(HELP_ABOUT)
-        .setting(AppSettings::ArgRequiredElseHelp)
+        .arg_required_else_help(true)
         .term_width(80);
 
-    let cmd_default = App::new("default")
+    let cmd_default = Command::new("default")
         .about("Print or set default R version")
         .aliases(&["switch"])
         .long_about(HELP_DEFAULT)
@@ -32,12 +32,12 @@ pub fn rim_app() -> App<'static> {
                 .required(false),
         );
 
-    let cmd_list = App::new("list")
+    let cmd_list = Command::new("list")
         .aliases(&["ls"])
         .about("List installed R versions")
         .long_about(HELP_LIST);
 
-    let mut cmd_add = App::new("add")
+    let mut cmd_add = Command::new("add")
         .about("Install a new R version")
         .long_about(HELP_ADD)
         .after_help(HELP_ADD_EXAMPLES)
@@ -78,7 +78,7 @@ pub fn rim_app() -> App<'static> {
         );
 }
 
-    let cmd_rm = App::new("rm")
+    let cmd_rm = Command::new("rm")
         .about("Remove R versions")
         .long_about(HELP_RM)
         .aliases(&["del", "remove", "delete"])
@@ -95,16 +95,16 @@ pub fn rim_app() -> App<'static> {
                 .required(false),
         );
 
-    let mut cmd_system = App::new("system")
+    let mut cmd_system = Command::new("system")
         .about("Manage current installations")
         .long_about(HELP_SYSTEM)
-        .setting(AppSettings::ArgRequiredElseHelp);
+        .arg_required_else_help(true);
 
-    let cmd_system_links = App::new("make-links")
+    let cmd_system_links = Command::new("make-links")
         .about("Create R-* quick links")
         .long_about(HELP_SYSTEM_LINKS);
 
-    let cmd_system_lib = App::new("create-lib")
+    let cmd_system_lib = Command::new("create-lib")
         .about("Create current user's package libraries")
         .long_about(HELP_SYSTEM_LIB)
         .arg(
@@ -114,7 +114,7 @@ pub fn rim_app() -> App<'static> {
                 .multiple_occurrences(true),
         );
 
-    let cmd_system_pak = App::new("add-pak")
+    let cmd_system_pak = Command::new("add-pak")
         .about("Install or update pak for an R version")
         .long_about(HELP_SYSTEM_ADDPAK)
         .arg(
@@ -146,7 +146,7 @@ pub fn rim_app() -> App<'static> {
 
 #[cfg(target_os = "windows")]
 {
-    let cmd_system_cleanreg = App::new("clean-registry")
+    let cmd_system_cleanreg = Command::new("clean-registry")
         .about("clean stale R related entries in the registry")
         .long_about(HELP_SYSTEM_CLEANREG);
 
@@ -156,7 +156,7 @@ pub fn rim_app() -> App<'static> {
 
 #[cfg(target_os = "macos")]
 {
-    let cmd_system_ortho = App::new("make-orthogonal")
+    let cmd_system_ortho = Command::new("make-orthogonal")
         .about("Make installed versions orthogonal")
         .long_about(HELP_SYSTEM_ORTHO)
         .arg(
@@ -166,7 +166,7 @@ pub fn rim_app() -> App<'static> {
                 .multiple_occurrences(true),
         );
 
-    let cmd_system_rights = App::new("fix-permissions")
+    let cmd_system_rights = Command::new("fix-permissions")
         .about("Restrict system library permissions to admin")
         .long_about(HELP_SYSTEM_FIXPERMS)
         .arg(
@@ -176,12 +176,12 @@ pub fn rim_app() -> App<'static> {
                 .multiple_occurrences(true),
         );
 
-    let cmd_system_forget = App::new("forget")
+    let cmd_system_forget = Command::new("forget")
         .about("Make system forget about R installations")
         .long_about(HELP_SYSTEM_FORGET);
 
 
-    let cmd_system_noopenmp = App::new("no-openmp")
+    let cmd_system_noopenmp = Command::new("no-openmp")
         .about("Remove OpemMP (-fopenmp) option for Apple compilers")
         .long_about(HELP_SYSTEM_NO_OPENMP)
         .arg(
@@ -191,7 +191,7 @@ pub fn rim_app() -> App<'static> {
                 .multiple_occurrences(true)
         );
 
-    let cmd_system_allow_debugger = App::new("allow-debugger")
+    let cmd_system_allow_debugger = Command::new("allow-debugger")
         .about("Allow debugging R with lldb and gdb")
         .long_about(HELP_SYSTEM_ALLOW_DEBUGGER)
         .arg(
@@ -207,7 +207,7 @@ pub fn rim_app() -> App<'static> {
                 .multiple_occurrences(true)
         );
 
-    let cmd_system_allow_core_dumps = App::new("allow-core-dumps")
+    let cmd_system_allow_core_dumps = Command::new("allow-core-dumps")
         .about("Allow creating core dumps when R crashes")
         .long_about(HELP_SYSTEM_ALLOW_CORE_DUMPS)
         .arg(
@@ -237,7 +237,7 @@ pub fn rim_app() -> App<'static> {
         .subcommand(cmd_system_lib)
         .subcommand(cmd_system_pak);
 
-    let mut cmd_resolve = App::new("resolve")
+    let mut cmd_resolve = Command::new("resolve")
         .about("Resolve a symbolic R version")
         .long_about(HELP_RESOLVE)
         .after_help(HELP_RESOLVE_EXAMPLES);
@@ -261,7 +261,7 @@ pub fn rim_app() -> App<'static> {
         );
 }
 
-    let cmd_rstudio = App::new("rstudio")
+    let cmd_rstudio = Command::new("rstudio")
         .about("Start RStudio with specified R version")
         .long_about(HELP_RSTUDIO)
         .arg(
