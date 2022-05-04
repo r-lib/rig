@@ -17,6 +17,8 @@
   installed before. You can opt out of this with the `--no-pak` option.
   You can select the pak version to install with `--pak-version`.
 
+* `rim list` now marks the default R version (if any) with `(default)` (#38).
+
 # rim 0.2.3
 
 * `rim system allow-debugger` and `rim system allow-core-dumps` now work on
