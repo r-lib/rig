@@ -10,7 +10,6 @@ use nix::unistd::Gid;
 use nix::unistd::Uid;
 use regex::Regex;
 use semver::Version;
-use simple_error::bail;
 
 use crate::common::*;
 use crate::download::*;
@@ -613,29 +612,9 @@ pub fn sc_set_default(ver: String) {
     };
 }
 
-// -- query default version -----------------------------------------------
-
-// If the link does not exist, then None, otherwise Some<String>
-
 pub fn sc_get_default_() -> Result<Option<String>,Box<dyn Error>> {
-    let linkpath = Path::new(R_CUR);
-    if !linkpath.exists() {
-        return Ok(None);
-    }
-
-    let tgt = std::fs::read_link(R_CUR)?;
-
-    // file_name() might be None if tgt ends with ".."
-    let fname = match tgt.file_name() {
-        None => bail!("Symlink for default version is invalid"),
-        // to_str() fails if file name is invalid in Unicode, cannot happen?
-        Some(f) => f.to_str().unwrap().to_string()
-    };
-
-    Ok(Some(fname))
+    read_version_link(R_CUR)
 }
-
-// ------------------------------------------------------------------------
 
 pub fn sc_get_list() -> Vec<String> {
     let mut vers = Vec::new();

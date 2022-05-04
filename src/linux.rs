@@ -1,7 +1,7 @@
 #![cfg(target_os = "linux")]
 
 use regex::Regex;
-use std::io::ErrorKind;
+use std::error::Error;
 use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -265,7 +265,7 @@ pub fn system_create_lib(vers: Option<Vec<String>>) {
 pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool) {
     let vers = match vers {
         Some(x) => x,
-        None => vec![sc_get_default()],
+        None => vec![sc_get_default_or_fail()],
     };
 
     let base = Path::new(R_ROOT);
@@ -461,30 +461,8 @@ pub fn sc_set_default(ver: String) {
     };
 }
 
-pub fn sc_get_default() -> String {
-    let tgt = std::fs::read_link(R_CUR);
-    let tgtbuf = match tgt {
-        Err(err) => match err.kind() {
-            ErrorKind::NotFound => {
-                panic!("File '{}' does not exist", R_CUR)
-            }
-            ErrorKind::InvalidInput => {
-                panic!("File '{}' is not a symbolic link", R_CUR)
-            }
-            _ => panic!("Error resolving {}: {}", R_CUR, err),
-        },
-        Ok(tgt) => tgt,
-    };
-
-    // file_name() is only None if tgtbuf ends with "..", the we panic...
-    let fname = tgtbuf.file_name().unwrap();
-
-    fname.to_str().unwrap().to_string()
-}
-
-pub fn sc_show_default() {
-    let default = sc_get_default();
-    println!("{}", default);
+pub fn sc_get_default_() -> Result<Option<String>,Box<dyn Error>> {
+    read_version_link(R_CUR)
 }
 
 pub fn sc_system_allow_core_dumps(_args: &ArgMatches) {
