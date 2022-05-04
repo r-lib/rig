@@ -16,7 +16,8 @@ Install, remove, configure R versions.
 ## 🚀&nbsp; Features
 
 * Works on macOS, Windows and Linux (Ubuntu and Debian).
-* Install multiple R versions, select the default one.
+* Install multiple R versions.
+* Select the default R version, for the terminal and RStudio.
 * Select R version to install using symbolic names: `devel`, `next`,
   `release`, `oldrel`, etc.
 * Run multiple versions _at the same_ time using quick links.
@@ -119,6 +120,7 @@ rim default    -- print or set default R version
 rim list       -- list installed R versions
 rim resolve    -- resolve a symbolic R version
 rim rm         -- remove R versions
+rim rstudio    -- start RStudio with the specified R version
 rim system     -- manage current installations
 ```
 
