@@ -40,7 +40,7 @@ teardown() {
         run sudo rim add devel
         [[ "$status" -eq 0 ]]
         run rim ls
-        echo "$output" | grep -q "^$devel\$"
+        echo "$output" | grep -q "^$devel"
     fi
     run sudo rim system make-links
     [[ "$status" -eq 0 ]]
@@ -54,7 +54,7 @@ teardown() {
             run sudo rim add 4.1 --arch arm64
             [[ "$status" -eq 0 ]]
             run rim ls
-            echo "$output" | grep -q "^4.1-arm64$"
+            echo "$output" | grep -q "^4.1-arm64"
         fi
     fi
 }
