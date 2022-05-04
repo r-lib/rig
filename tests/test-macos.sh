@@ -27,7 +27,7 @@ teardown() {
         run sudo rim add 4.0
         [[ "$status" -eq 0 ]]
         run rim ls
-        echo "$output" | grep -q "^4.0$"
+        echo "$output" | grep -q "^4.0"
     fi
     run sudo rim system make-links
     [[ "$status" -eq 0 ]]
