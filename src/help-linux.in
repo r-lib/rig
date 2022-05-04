@@ -88,6 +88,8 @@ DESCRIPTION:
 
     You don't need to update the default R version to just run a non-default R
     version. You can use the `R-<ver>` links, see `rim system make-links`.
+
+    `rim switch` is an alias of `rim default`.
 "#;
 
 const HELP_DEFAULT_EXAMPLES: &str = r#"EXAMPLES:
@@ -102,6 +104,8 @@ const HELP_LIST: &str = r#"
 DESCRIPTION:
     List installed R versions from `/opt/R`. It does _not_ check if they are
     working properly.
+
+    `rim ls` is an alias.
 "#;
 
 const HELP_ADD: &str = r#"

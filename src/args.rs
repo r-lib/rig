@@ -23,6 +23,7 @@ pub fn rim_app() -> App<'static> {
 
     let cmd_default = App::new("default")
         .about("Print or set default R version")
+        .aliases(&["switch"])
         .long_about(HELP_DEFAULT)
         .after_help(HELP_DEFAULT_EXAMPLES)
         .arg(
