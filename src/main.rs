@@ -69,8 +69,16 @@ fn sc_resolve(args: &ArgMatches) {
 
 fn sc_list() {
     let vers = sc_get_list();
+    let def = match sc_get_default() {
+        None => "".to_string(),
+        Some(v) => v
+    };
     for ver in vers {
-        println!("{}", ver);
+        if def == ver {
+            println!("{} (default)", ver)
+        } else {
+            println!("{}", ver);
+        }
     }
 }
 
