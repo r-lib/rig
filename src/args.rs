@@ -97,7 +97,8 @@ pub fn rim_app() -> App<'static> {
 
     let mut cmd_system = App::new("system")
         .about("Manage current installations")
-        .long_about(HELP_SYSTEM);
+        .long_about(HELP_SYSTEM)
+        .setting(AppSettings::ArgRequiredElseHelp);
 
     let cmd_system_links = App::new("make-links")
         .about("Create R-* quick links")
