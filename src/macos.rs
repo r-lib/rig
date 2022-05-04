@@ -651,7 +651,7 @@ pub fn sc_get_list() -> Vec<String> {
     for de in paths {
         let path = de.unwrap().path();
         let fname = path.file_name().unwrap();
-        if fname != "Current" {
+        if fname != "Current" && fname != ".DS_Store" {
             vers.push(fname.to_str().unwrap().to_string());
         }
     }
