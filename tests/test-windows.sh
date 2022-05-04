@@ -103,7 +103,7 @@ teardown() {
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
-    echo "$output" | grep -q "^4.1.1$"
+    echo "$output" | grep -q "^4.1.1 [(]default[)]$"
     run rim ls
     echo "status = ${status}"
     echo "output = ${output}"
