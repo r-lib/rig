@@ -1,6 +1,6 @@
 #![cfg(target_os = "macos")]
 
-use std::io::ErrorKind;
+use std::error::Error;
 use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::process::Command;
@@ -121,7 +121,7 @@ pub fn sc_rm(args: &ArgMatches) {
 pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool) {
     let vers = match vers {
         Some(x) => x,
-        None => vec![sc_get_default()],
+        None => vec![sc_get_default_or_fail()]
     };
 
     let base = Path::new("/Library/Frameworks/R.framework/Versions");
@@ -293,7 +293,7 @@ pub fn sc_system_allow_debugger(args: &ArgMatches) {
     let vers: Vec<String> = if all {
         sc_get_list()
     } else if vers.is_none() {
-        vec![sc_get_default()]
+        vec![sc_get_default_or_fail()]
     } else {
         vers.unwrap().map(|v| v.to_string()).collect()
     };
@@ -350,6 +350,9 @@ pub fn sc_system_allow_debugger(args: &ArgMatches) {
             };
             if stderr.contains("Entry Already Exists") {
                 println!("    already allows debugging");
+                continue;
+            } else if stderr.contains("zero-length data") {
+                println!("    not signed");
                 continue;
             } else {
                 panic!("Cannot update entitlements: {}", stderr);
@@ -612,30 +615,8 @@ pub fn sc_set_default(ver: String) {
     };
 }
 
-pub fn sc_get_default() -> String {
-    let tgt = std::fs::read_link(R_CUR);
-    let tgtbuf = match tgt {
-        Err(err) => match err.kind() {
-            ErrorKind::NotFound => {
-                panic!("File '{}' does not exist", R_CUR)
-            }
-            ErrorKind::InvalidInput => {
-                panic!("File '{}' is not a symbolic link", R_CUR)
-            }
-            _ => panic!("Error resolving {}: {}", R_CUR, err),
-        },
-        Ok(tgt) => tgt,
-    };
-
-    // file_name() is only None if tgtbuf ends with "..", the we panic...
-    let fname = tgtbuf.file_name().unwrap();
-
-    fname.to_str().unwrap().to_string()
-}
-
-pub fn sc_show_default() {
-    let default = sc_get_default();
-    println!("{}", default);
+pub fn sc_get_default_() -> Result<Option<String>,Box<dyn Error>> {
+    read_version_link(R_CUR)
 }
 
 pub fn sc_get_list() -> Vec<String> {

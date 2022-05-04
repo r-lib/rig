@@ -13,6 +13,11 @@ use sha2::{Digest, Sha256};
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use crate::rversion::User;
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use std::error::Error;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use simple_error::bail;
+
 pub fn basename(path: &str) -> Option<&str> {
     path.rsplitn(2, '/').next()
 }
@@ -139,4 +144,23 @@ pub fn get_user() -> User {
     let dir = user_record.dir.into_os_string().into_string().unwrap();
 
     User { user, uid, gid, dir, sudo }
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub fn read_version_link(path: &str) -> Result<Option<String>,Box<dyn Error>> {
+    let linkpath = Path::new(path);
+    if !linkpath.exists() {
+        return Ok(None);
+    }
+
+    let tgt = std::fs::read_link(path)?;
+
+    // file_name() might be None if tgt ends with ".."
+    let fname = match tgt.file_name() {
+        None => bail!("Symlink for default version is invalid"),
+        // to_str() fails if file name is invalid in Unicode, cannot happen?
+        Some(f) => f.to_str().unwrap().to_string()
+    };
+
+    Ok(Some(fname))
 }
