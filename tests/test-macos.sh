@@ -11,11 +11,11 @@ teardown() {
 }
 
 @test "add" {
-    if ! rim ls | grep -q '^4.1$'; then
+    if ! rim ls | grep -q '^4.1'; then
         run sudo rim add 4.1
         [[ "$status" -eq 0 ]]
         run rim ls
-        echo "$output" | grep -q "^4.1$"
+        echo "$output" | grep -q "^4.1"
     fi
     run sudo rim system make-links
     [[ "$status" -eq 0 ]]
@@ -23,7 +23,7 @@ teardown() {
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^4[.]1[.][0-9]$"
 
-    if ! rim ls | grep -q '^4.0$'; then
+    if ! rim ls | grep -q '^4.0'; then
         run sudo rim add 4.0
         [[ "$status" -eq 0 ]]
         run rim ls
@@ -36,7 +36,7 @@ teardown() {
     echo "$output" | grep -q "^4[.]0[.]5$"
 
     devel=$(rim resolve devel | cut -f1 -d" " | sed 's/\.[^..]*$//')
-    if ! rim ls | grep -q "^$devel\$"; then
+    if ! rim ls | grep -q "^$devel"; then
         run sudo rim add devel
         [[ "$status" -eq 0 ]]
         run rim ls
@@ -50,7 +50,7 @@ teardown() {
     echo "$output" | grep -q "^$devel[.][0-9]\$"
 
     if [[ "$(arch)" = "arm64" ]]; then
-        if ! rim ls | grep -q '^4.1$'; then
+        if ! rim ls | grep -q '^4.1'; then
             run sudo rim add 4.1 --arch arm64
             [[ "$status" -eq 0 ]]
             run rim ls
@@ -77,7 +77,7 @@ teardown() {
     echo "$output" | grep -q "^4.1 [(]default[)]$"
     run rim ls
     [[ "$status" -eq 0 ]]
-    echo "$output" | grep -q "^4.0$"
+    echo "$output" | grep -q "^4.0"
 }
 
 @test "resolve" {
@@ -105,11 +105,11 @@ teardown() {
 }
 
 @test "rm" {
-    if ! rim ls | grep -q '^3.3$'; then
+    if ! rim ls | grep -q '^3.3'; then
         run sudo rim add 3.3
         [[ "$status" -eq 0 ]]
         run rim ls
-        echo "$output" | grep -q "^3[.]3$"
+        echo "$output" | grep -q "^3[.]3"
     fi
     run sudo rim rm 3.3
     [[ "$status" -eq 0 ]]
