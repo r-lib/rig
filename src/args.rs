@@ -157,7 +157,7 @@ pub fn rim_app() -> App<'static> {
 #[cfg(target_os = "macos")]
 {
     let cmd_system_ortho = App::new("make-orthogonal")
-        .about("Make installed versions orthogonal (macOS)")
+        .about("Make installed versions orthogonal")
         .long_about(HELP_SYSTEM_ORTHO)
         .arg(
             Arg::new("version")
@@ -177,7 +177,7 @@ pub fn rim_app() -> App<'static> {
         );
 
     let cmd_system_forget = App::new("forget")
-        .about("Make system forget about R installations (macOS)")
+        .about("Make system forget about R installations")
         .long_about(HELP_SYSTEM_FORGET);
 
 
