@@ -59,7 +59,7 @@ pub fn sc_add(args: &ArgMatches) {
     patch_for_rtools();
     maybe_update_registry_default();
 
-    if !args.is_present("no-pak") {
+    if !args.is_present("without-pak") {
 	if dirname.is_none() {
 	    println!("Cannot install pak, cannot determine installation directory");
 	} else {

@@ -51,9 +51,9 @@ pub fn rim_app() -> App<'static> {
                 .multiple_occurrences(false)
         )
         .arg(
-            Arg::new("no-pak")
+            Arg::new("without-pak")
                 .help("Do not install pak.")
-                .long("no-pak")
+                .long("without-pak")
                 .required(false)
         )
         .arg(

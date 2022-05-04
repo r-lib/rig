@@ -87,7 +87,7 @@ pub fn sc_add(args: &ArgMatches) {
     system_create_lib(Some(vec![dirname.to_string()]));
     sc_system_make_links();
 
-    if !args.is_present("no-pak") {
+    if !args.is_present("without-pak") {
         system_add_pak(
             Some(vec![dirname.to_string()]),
             args.value_of("pak-version").unwrap(),

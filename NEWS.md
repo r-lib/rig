@@ -14,7 +14,7 @@
   now deprecated.
 
 * `rim add` now installs pak for the newly added R version, it is wasn't
-  installed before. You can opt out of this with the `--no-pak` option.
+  installed before. You can opt out of this with the `--without-pak` option.
   You can select the pak version to install with `--pak-version`.
 
 * `rim list` now marks the default R version (if any) with `(default)` (#38).
