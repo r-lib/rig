@@ -34,6 +34,14 @@ Install, remove, configure R versions.
 * Cleans up stale R-related entries from the Windows registry.
 * Switches to root/administrator user as needed.
 
+## 🐞&nbsp; Known Issues
+
+* On macOS, `rim add` changes the default R version.
+* On macOS, R.app often does not work if you install multiple R versions.
+
+Found another issue? Please report it in our
+[issue tracker](https://github.com/gaborcsardi/rim/issues).
+
 ## ⬇️&nbsp; Installation
 
 ### macOS (installer)
