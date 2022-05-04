@@ -148,7 +148,7 @@ pub fn get_user() -> User {
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn read_version_link(path: &str) -> Result<Option<String>,Box<dyn Error>> {
-    let linkpath = std::fs::read_link(path)?;
+    let linkpath = Path::new(path);
     if !linkpath.exists() {
         return Ok(None);
     }
