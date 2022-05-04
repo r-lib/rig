@@ -351,6 +351,9 @@ pub fn sc_system_allow_debugger(args: &ArgMatches) {
             if stderr.contains("Entry Already Exists") {
                 println!("    already allows debugging");
                 continue;
+            } else if stderr.contains("zero-length data") {
+                println!("    not signed");
+                continue;
             } else {
                 panic!("Cannot update entitlements: {}", stderr);
             }
