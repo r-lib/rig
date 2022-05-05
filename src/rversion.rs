@@ -10,7 +10,8 @@ pub struct Rversion {
 pub struct LinuxVersion {
     pub distro: String,
     pub version: String,
-    pub url: String
+    pub url: String,
+    pub rspm: bool
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]

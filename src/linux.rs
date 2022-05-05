@@ -93,6 +93,10 @@ pub fn sc_add(args: &ArgMatches) {
         set_cloud_mirror(Some(vec![dirname.to_string()]));
     }
 
+    if !args.is_present("without-rspm") {
+        set_rspm(Some(vec![dirname.to_string()]), linux);
+    }
+
     if !args.is_present("without-pak") {
         system_add_pak(
             Some(vec![dirname.to_string()]),
@@ -496,6 +500,10 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) {
     }
 }
 
+fn set_rspm(vers: Option<Vec<String>>, linux: LinuxVersion) {
+    print!("{} {}", linux.distro, linux.version);
+}
+
 pub fn sc_system_allow_core_dumps(_args: &ArgMatches) {
     // Nothing to do on Linux
 }
@@ -547,7 +555,8 @@ fn detect_linux() -> LinuxVersion {
 
     let mut mine = LinuxVersion { distro: id.to_owned(),
 				  version: ver.to_owned(),
-				  url: "".to_string() };
+				  url: "".to_string(),
+                                  rspm: false };
 
     let supported = list_supported_distros();
 
@@ -574,22 +583,28 @@ fn list_supported_distros() -> Vec<LinuxVersion> {
     vec![
 	LinuxVersion { distro: "ubuntu".to_string(),
 		       version: "18.04".to_string(),
-		       url: UBUNTU_1804_URL.to_string() },
+		       url: UBUNTU_1804_URL.to_string(),
+                       rspm: true },
 	LinuxVersion { distro: "ubuntu".to_string(),
 		       version: "20.04".to_string(),
-		       url: UBUNTU_2004_URL.to_string() },
+		       url: UBUNTU_2004_URL.to_string(),
+                       rspm: true },
 	LinuxVersion { distro: "ubuntu".to_string(),
 		       version: "22.04".to_string(),
-		       url: UBUNTU_2204_URL.to_string() },
+		       url: UBUNTU_2204_URL.to_string(),
+                       rspm: true },
 	LinuxVersion { distro: "debian".to_string(),
 		       version: "9".to_string(),
-		       url: DEBIAN_9_URL.to_string() },
+		       url: DEBIAN_9_URL.to_string(),
+                       rspm: false},
 	LinuxVersion { distro: "debian".to_string(),
 		       version: "10".to_string(),
-		       url: DEBIAN_10_URL.to_string() },
+		       url: DEBIAN_10_URL.to_string(),
+                       rspm: false },
 	LinuxVersion { distro: "debian".to_string(),
 		       version: "11".to_string(),
-		       url: DEBIAN_11_URL.to_string() },
+		       url: DEBIAN_11_URL.to_string(),
+                       rspm: false },
     ]
 }
 
