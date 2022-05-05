@@ -89,6 +89,10 @@ pub fn sc_add(args: &ArgMatches) {
     system_create_lib(Some(vec![dirname.to_string()]));
     sc_system_make_links();
 
+    if !args.is_present("without-cran-mirror") {
+        set_cloud_mirror(Some(vec![dirname.to_string()]));
+    }
+
     if !args.is_present("without-pak") {
         system_add_pak(
             Some(vec![dirname.to_string()]),
@@ -465,6 +469,31 @@ pub fn sc_set_default(ver: String) {
 
 pub fn sc_get_default_() -> Result<Option<String>,Box<dyn Error>> {
     read_version_link(R_CUR)
+}
+
+fn set_cloud_mirror(vers: Option<Vec<String>>) {
+    let vers = match vers {
+        Some(x) => x,
+        None => sc_get_list(),
+    };
+
+    for ver in vers {
+        check_installed(&ver);
+        let path = Path::new(R_ROOT).join(ver.as_str());
+        let profile = path.join("lib/R/library/base/R/Rprofile".to_string());
+        if ! profile.exists() { continue; }
+
+        match append_to_file(
+            &profile,
+            vec!["options(repos = c(CRAN = \"https://cloud.r-project.org\"))".to_string()]
+        ) {
+            Ok(_) => { },
+            Err(err) => {
+                let spath = path.to_str().unwrap();
+                panic!("Failed to update {}: {}", spath, err);
+            }
+        };
+    }
 }
 
 pub fn sc_system_allow_core_dumps(_args: &ArgMatches) {

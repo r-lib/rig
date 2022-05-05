@@ -19,7 +19,7 @@ use crate::common::*;
 use crate::download::*;
 use crate::resolve::resolve_versions;
 use crate::rversion::Rversion;
-use crate::utils::basename;
+use crate::utils::*;
 
 const R_ROOT: &str = "C:\\Program Files\\R";
 
@@ -57,6 +57,15 @@ pub fn sc_add(args: &ArgMatches) {
     sc_system_make_links();
     patch_for_rtools();
     maybe_update_registry_default();
+
+    if !args.is_present("without-cran-mirror") {
+	if dirname.is_none() {
+	    println!("Cannot set CRAN mirror, cannoe determine installation directory");
+	} else {
+	    let rdirname = dirname.as_ref().unwrap();
+            set_cloud_mirror(Some(vec![rdirname.to_string()]));
+	}
+    }
 
     if !args.is_present("without-pak") {
 	if dirname.is_none() {
@@ -107,7 +116,7 @@ fn add_rtools(version: String) {
             .spawn()
             .expect("Failed to run Rtools installer")
             .wait()
-            .expect("Failed to run RTools installer");
+            .expect("Failed to run Rtools installer");
 
         if !status.success() {
             panic!("Rtools installer exited with status {}", status.to_string());
@@ -203,6 +212,31 @@ fn get_rtools_needed() -> Vec<String> {
         }
     }
     res
+}
+
+fn set_cloud_mirror(vers: Option<Vec<String>>) {
+    let vers = match vers {
+        Some(x) => x,
+        None => sc_get_list(),
+    };
+
+    for ver in vers {
+        check_installed(&ver);
+        let path = Path::new(R_ROOT).join("R-".to_string() + ver.as_str());
+        let profile = path.join("library/base/R/Rprofile".to_string());
+        if ! profile.exists() { continue; }
+
+        match append_to_file(
+            &profile,
+            vec!["options(repos = c(CRAN = \"https://cloud.r-project.org\"))".to_string()]
+        ) {
+            Ok(_) => { },
+            Err(err) => {
+                let spath = path.to_str().unwrap();
+                panic!("Failed to update {}: {}", spath, err);
+            }
+        };
+    }
 }
 
 pub fn sc_rm(args: &ArgMatches) {
