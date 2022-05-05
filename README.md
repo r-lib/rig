@@ -5,8 +5,11 @@ Install, remove, configure R versions.
 
 ## 🚀  Features
 
--   Works on macOS, Windows and Linux (Ubuntu and Debian).
--   Install multiple R versions, select the default one.
+-   Works on macOS, Windows and Linux (Ubuntu and Debian, x86_64 and
+    aarch64).
+-   Easy installation and update, no system requirements on any
+    platform.
+-   Install multiple R versions.
 -   Select R version to install using symbolic names: `devel`, `next`,
     `release`, `oldrel`, etc.
 -   Run multiple versions *at the same* time using quick links. E.g.
@@ -24,6 +27,15 @@ Install, remove, configure R versions.
     up.
 -   Cleans up stale R-related entries from the Windows registry.
 -   Switches to root/administrator user as needed.
+
+## 🐞  Known Issues
+
+-   On macOS, `rim add` changes the default R version.
+-   On macOS, R.app often does not work if you install multiple R
+    versions.
+
+Found another issue? Please report it in our [issue
+tracker](https://github.com/gaborcsardi/rim/issues).
 
 ## ⬇️  Installation
 
@@ -47,6 +59,12 @@ You can use x86_64 rim on Arm macs, and it will be able to install Arm
 builds of R. But you cannot use Arm rim on Intel macs. If you use both
 brew versions, only install rim with one of them.
 
+To update rim you can run
+
+``` sh
+brew upgrade --cask rim
+```
+
 ### Windows
 
 Download the latest release from
@@ -62,13 +80,13 @@ Download the latest releast from
 <https://github.com/gaborcsardi/rim/releases> and uncompress it to
 `/usr/local`
 
-    curl -OL https://github.com/gaborcsardi/rim/releases/download/v0.2.3/rim-linux-0.2.3.tar.gz
-    sudo tar xzf rim-linux-0.2.3.tar.gz -C /usr/local
+    curl -Ls https://github.com/gaborcsardi/rim/releases/download/v0.2.3/rim-linux-0.2.3.tar.gz |
+      sudo tar xz -C /usr/local
 
 If you are running Linux on arm64, download the arm64 build:
 
-    curl -OL https://github.com/gaborcsardi/rim/releases/download/v0.2.3/rim-linux-arm64-0.2.3.tar.gz
-    sudo tar xzf rim-linux-arm64-0.2.3.tar.gz -C /usr/local
+    curl -Ls https://github.com/gaborcsardi/rim/releases/download/v0.2.3/rim-linux-arm64-0.2.3.tar.gz |
+      sudo tar xz -C /usr/local
 
 Supported Linux distributions:
 
