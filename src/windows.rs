@@ -107,7 +107,7 @@ fn add_rtools(version: String) {
             .spawn()
             .expect("Failed to run Rtools installer")
             .wait()
-            .expect("Failed to run RTools installer");
+            .expect("Failed to run Rtools installer");
 
         if !status.success() {
             panic!("Rtools installer exited with status {}", status.to_string());

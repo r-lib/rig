@@ -51,6 +51,12 @@ pub fn rim_app() -> Command<'static> {
                 .multiple_occurrences(false)
         )
         .arg(
+            Arg::new("without-cran-mirror")
+                .help("Do not set the cloud CRAN mirror")
+                .long("without-cran-mirror")
+                .required(false)
+        )
+        .arg(
             Arg::new("without-pak")
                 .help("Do not install pak.")
                 .long("without-pak")

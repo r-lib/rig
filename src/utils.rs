@@ -78,6 +78,31 @@ pub fn replace_in_file(path: &Path, re: &Regex, sub: &str) -> Result<(), std::io
     Ok(())
 }
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub fn append_to_file(path: &Path, extra: Vec<String>) -> Result<(), std::io::Error> {
+    println!("Updating {:?}", path);
+    let lines = read_lines(path)?;
+    let mut path2 = path.to_owned();
+    let ext = path
+        .extension()
+        .unwrap_or_else(|| std::ffi::OsStr::new(""))
+        .to_str()
+        .unwrap();
+    path2.set_extension(ext.to_owned() + "bak");
+    let mut f = File::create(&path2).expect("Unable to create file");
+    for line in &lines {
+        write!(f, "{}\n", line)?;
+    }
+    for line in &extra {
+        write!(f, "{}\n", line)?;
+    }
+    let perms = std::fs::metadata(path)?.permissions();
+    std::fs::set_permissions(&path2, perms)?;
+    std::fs::rename(path2, path)?;
+
+    Ok(())
+}
+
 #[cfg(target_os = "macos")]
 pub fn calculate_hash(s: &str) -> String {
     let mut hasher = Sha256::new();

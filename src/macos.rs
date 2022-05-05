@@ -88,6 +88,10 @@ pub fn sc_add(args: &ArgMatches) {
     system_create_lib(Some(vec![dirname.to_string()]));
     sc_system_make_links();
 
+    if !args.is_present("without-cran-mirror") {
+        set_cloud_mirror(Some(vec![dirname.to_string()]));
+    }
+
     if !args.is_present("without-pak") {
         system_add_pak(
             Some(vec![dirname.to_string()]),
@@ -530,6 +534,31 @@ fn system_no_openmp(vers: Option<Vec<String>>) {
         if ! makevars.exists() { continue; }
 
         match replace_in_file(&makevars, &re, "") {
+            Ok(_) => { },
+            Err(err) => {
+                let spath = path.to_str().unwrap();
+                panic!("Failed to update {}: {}", spath, err);
+            }
+        };
+    }
+}
+
+fn set_cloud_mirror(vers: Option<Vec<String>>) {
+    let vers = match vers {
+        Some(x) => x,
+        None => sc_get_list(),
+    };
+
+    for ver in vers {
+        check_installed(&ver);
+        let path = Path::new(R_ROOT).join(ver.as_str());
+        let profile = path.join("Resources/library/base/R/Rprofile".to_string());
+        if ! profile.exists() { continue; }
+
+        match append_to_file(
+            &profile,
+            vec!["options(repos = c(CRAN = \"https://cloud.r-project.org\"))".to_string()]
+        ) {
             Ok(_) => { },
             Err(err) => {
                 let spath = path.to_str().unwrap();
