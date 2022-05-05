@@ -77,6 +77,10 @@ pub fn sc_add(args: &ArgMatches) {
 
     let dirname = &get_install_dir(&version);
 
+    // This should not happen currently on macOS, a .pkg installer
+    // sets the default, but prepare for the future
+    set_default_if_none(dirname.to_string());
+
     sc_system_forget();
     system_no_openmp(Some(vec![dirname.to_string()]));
     system_fix_permissions(Some(vec![dirname.to_string()]));

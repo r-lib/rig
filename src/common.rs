@@ -50,4 +50,11 @@ pub fn sc_get_default() -> Option<String> {
     }
 }
 
+pub fn set_default_if_none(ver: String) {
+    let cur = sc_get_default();
+    if cur.is_none() {
+        sc_set_default(ver);
+    }
+}
+
 // ------------------------------------------------------------------------

@@ -47,13 +47,12 @@ pub fn sc_add(args: &ArgMatches) {
 
     let dirname = get_latest_install_path();
 
-    println!("{:?}", dirname);
-
     if dirname.is_none() {
 	system_create_lib(None);
     } else {
-	let rdirname = dirname.as_ref().unwrap();
-	system_create_lib(Some(vec![rdirname.to_string()]));
+        let rdirname = dirname.as_ref().unwrap();
+        set_default_if_none(rdirname);
+        system_create_lib(Some(vec![rdirname.to_string()]));
     }
     sc_system_make_links();
     patch_for_rtools();
