@@ -1,0 +1,46 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>rim</id>
+    <version>0.2.3</version>
+    <packageSourceUrl>https://github.com/r-lib/rim</packageSourceUrl>
+    <owners>Gábor Csárdi</owners>
+    <title>rim</title>
+    <authors>Gábor Csárdi</authors>
+    <projectUrl>https://github.com/r-lib/rim</projectUrl>
+    <copyright>2022, RStudio</copyright>
+    <licenseUrl>https://github.com/r-lib/rim/blob/main/LICENSE</licenseUrl>
+    <projectSourceUrl>https://github.com/r-lib/rim</projectSourceUrl>
+    <docsUrl>https://github.com/r-lib/rim#readme</docsUrl>
+    <bugTrackerUrl>https://github.com/r-lib/rim/issues</bugTrackerUrl>
+    <tags>rim R rstats installer installation manager</tags>
+    <summary>R Installation Manager</summary>
+    <description>
+# Install, remove, configure multiple R versions.
+
+## Features
+
+* Works on macOS, Windows and Linux (Ubuntu and Debian).
+* Install multiple R versions, select the default one.
+* Select R version to install using symbolic names: devel, next, release, oldrel, etc.
+* Run multiple versions at the same time using quick links. E.g. R-4.1 or R-4.1.2 starts R 4.1.x. Quick links are automatically added to the user’s path.
+* On M1 macs select between x86_64 and arm64 versions or R, or install both.
+* Creates and configures user level package libraries.
+* Restricts permissions to the system library. (On macOS, not needed on Windows and Linux).
+* Includes auto-complete for zsh and bash, on macOS and Linux.
+* Updates R installations to allow debugging with lldb, and to allow core dumps, on macOS.
+* Installs the appropriate Rtools versions on Windows and sets them up.
+* Cleans up stale R-related entries from the Windows registry.
+* Switches to root/administrator user as needed.
+
+## Feedback
+Please open an issue in our issue tracker at https://github.com/gaborcsardi/rim/issues
+    </description>
+    <releaseNotes>
+## rim v0.2.3
+
+* rim system allow-debugger and rim system allow-core-dumps now work on
+macOS Big Sur.
+    </releaseNotes>
+  </metadata>
+</package>
