@@ -76,14 +76,16 @@ terminal after the installation on Windows.
 
 ### Windows (Scoop)
 
-If you use Scoop (https://scoop.sh/) package manager, you can install rim from scoop bucket [`cderv/r-bucket`](https://github.com/cderv/r-bucket#r-installation-manager-rim)
+If you use Scoop (<https://scoop.sh/>), you can install rim from the
+scoop bucket at
+[`cderv/r-bucket`](https://github.com/cderv/r-bucket#r-installation-manager-rim):
 
 ``` powershell
 scoop bucket add r-bucket https://github.com/cderv/r-bucket.git
 scoop install rim
 ```
 
-To update rim you can then run
+To update run
 
 ``` powershell
 scoop update rim
