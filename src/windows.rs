@@ -467,7 +467,17 @@ pub fn sc_set_default(ver: String) {
     check_installed(&ver);
     elevate("setting the default R version");
     let base = Path::new(R_ROOT);
-    let linkfile = base.join("bin").join("R.bat");
+    let bin = base.join("bin");
+    match std::fs::create_dir_all(&bin) {
+        Err(err) => panic!(
+            "Cannot create library at {}: {}",
+            bin.display(),
+            err.to_string()
+        ),
+        _ => {}
+    };
+
+    let linkfile = bin.join("R.bat");
     let cnt = "::".to_string() + &ver + "\n" +
         "@\"C:\\Program Files\\R\\R-" + &ver + "\\bin\\R\" %*\n";
     let mut file = File::create(linkfile).unwrap();
