@@ -51,7 +51,7 @@ pub fn sc_add(args: &ArgMatches) {
 	system_create_lib(None);
     } else {
         let rdirname = dirname.as_ref().unwrap();
-        set_default_if_none(rdirname);
+        set_default_if_none(rdirname.to_string());
         system_create_lib(Some(vec![rdirname.to_string()]));
     }
     sc_system_make_links();
