@@ -16,21 +16,21 @@ teardown() {
 }
 
 @test "add" {
-    if ! rim ls | grep -q '^4.1.2$'; then
+    if ! rim ls | grep -q '^4.1.2'; then
 	run rim add 4.1.2
 	[[ "$status" -eq 0 ]]
 	run rim ls
-	echo "$output" | grep -q "^4.1.2$"
+	echo "$output" | grep -q "^4.1.2"
     fi
     run R-4.1.2 -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^4[.]1[.]2$"
 
-    if ! rim ls | grep -q '^4.0.5$'; then
+    if ! rim ls | grep -q '^4.0.5'; then
 	run rim add 4.0
 	[[ "$status" -eq 0 ]]
 	run rim ls
-	echo "$output" | grep -q "^4.0.5$"
+	echo "$output" | grep -q "^4.0.5"
     fi
     run R-4.0.5 -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
@@ -41,7 +41,7 @@ teardown() {
 	run rim add devel
 	[[ "$status" -eq 0 ]]
 	run rim ls
-	echo "$output" | grep -q "^devel$"
+	echo "$output" | grep -q "^devel"
     fi
     run R-devel -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
@@ -69,7 +69,7 @@ teardown() {
     echo "$output" | grep -q "^4.1.2 [(]default[)]"
     run rim ls
     [[ "$status" -eq 0 ]]
-    echo "$output" | grep -q "^4.0.5$"
+    echo "$output" | grep -q "^4.0.5"
 }
 
 @test "resolve" {
@@ -98,12 +98,12 @@ teardown() {
         run rim add 3.3
         [[ "$status" -eq 0 ]]
         run rim ls
-        echo "$output" | grep -q "^3[.]3[.]3$"
+        echo "$output" | grep -q "^3[.]3[.]3"
     fi
     run rim rm 3.3.3
     [[ "$status" -eq 0 ]]
     run rim list
-    echo $output | grep -vq "^3.3.3$"
+    echo $output | grep -vq "^3.3.3"
 }
 
 @test "system create-lib" {

@@ -38,7 +38,7 @@ teardown() {
 	echo "output = ${output}"
 	[[ "$status" -eq 0 ]]
 	run rim ls
-	echo "$output" | grep -q "^4.1.1$"
+	echo "$output" | grep -q "^4.1.1"
     fi
     run R-4.1.1.bat -q -s -e 'cat(as.character(getRversion()))'
     echo "status = ${status}"
@@ -52,7 +52,7 @@ teardown() {
 	echo "output = ${output}"
 	[[ "$status" -eq 0 ]]
 	run rim ls
-	echo "$output" | grep -q "^4.0.5$"
+	echo "$output" | grep -q "^4.0.5"
     fi
     run R-4.0.5.bat -q -s -e 'cat(as.character(getRversion()))'
     echo "status = ${status}"
@@ -67,7 +67,7 @@ teardown() {
 	echo "output = ${output}"
 	[[ "$status" -eq 0 ]]
 	run rim ls
-	echo "$output" | grep -q "^devel$"
+	echo "$output" | grep -q "^devel"
     fi
     run R-devel.bat -q -s -e 'cat(as.character(getRversion()))'
     echo "status = ${status}"
@@ -151,14 +151,14 @@ teardown() {
 	echo "output = ${output}"
         [[ "$status" -eq 0 ]]
         run rim ls
-        echo "$output" | grep -q "^3[.]3[.]3$"
+        echo "$output" | grep -q "^3[.]3[.]3"
     fi
     run rim rm 3.3.3
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
     run rim list
-    echo $output | grep -vq "^3.3.3$"
+    echo $output | grep -vq "^3.3.3"
 }
 
 # The quoting is very tricky here. We avoid double quotes because they
