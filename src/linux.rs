@@ -84,6 +84,8 @@ pub fn sc_add(args: &ArgMatches) {
         panic!("Only Ubuntu and Debian Linux are supported currently");
     }
 
+    set_default_if_none(dirname.to_string());
+
     system_create_lib(Some(vec![dirname.to_string()]));
     sc_system_make_links();
 

@@ -19,7 +19,10 @@
 
 * `rim list` now marks the default R version (if any) with `(default)` (#38).
 
-* `rim add ` now only caches downloaded files for a day.
+* `rim add` now only caches downloaded files for a day.
+
+* `rim add` now sets the default R version after installation to the newly
+  installed version, if no default is set.
 
 # rim 0.2.3
 
