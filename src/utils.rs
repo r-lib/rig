@@ -1,11 +1,9 @@
+use std::path::Path;
+use std::fs::File;
+use std::io::{prelude::*, BufReader};
+
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use regex::Regex;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-use std::fs::File;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-use std::io::{prelude::*, BufReader};
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-use std::path::Path;
 
 #[cfg(target_os = "macos")]
 use sha2::{Digest, Sha256};
@@ -22,7 +20,6 @@ pub fn basename(path: &str) -> Option<&str> {
     path.rsplitn(2, '/').next()
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn read_lines(path: &Path) -> Result<Vec<String>, std::io::Error> {
     let file = File::open(path)?;
     let buf = BufReader::new(file);
@@ -78,7 +75,6 @@ pub fn replace_in_file(path: &Path, re: &Regex, sub: &str) -> Result<(), std::io
     Ok(())
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn append_to_file(path: &Path, extra: Vec<String>) -> Result<(), std::io::Error> {
     println!("Updating {:?}", path);
     let lines = read_lines(path)?;
