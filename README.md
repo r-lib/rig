@@ -65,7 +65,7 @@ To update rim you can run
 brew upgrade --cask rim
 ```
 
-### Windows
+### Windows (installer)
 
 Download the latest release from
 <https://github.com/gaborcsardi/rim/releases> and install it the usual
@@ -73,6 +73,21 @@ way.
 
 `rim` adds itself to the user’s path, but you might need to restart your
 terminal after the installation on Windows.
+
+### Windows (Scoop)
+
+If you use Scoop (https://scoop.sh/) package manager, you can install rim from scoop bucket [`cderv/r-bucket`](https://github.com/cderv/r-bucket#r-installation-manager-rim)
+
+``` powershell
+scoop bucket add r-bucket https://github.com/cderv/r-bucket.git
+scoop install rim
+```
+
+To update rim you can then run
+
+``` powershell
+scoop update rim
+```
 
 ### Linux
 
