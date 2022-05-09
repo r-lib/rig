@@ -4,29 +4,34 @@
 * New `rim rstudio` command to open a project in RStudio with the specified
   R version.
 
+* `rim add` now performs additonal tasks, to give you an R installation that
+  is ready to use:
+
+  - It installs pak for the newly added R version, it is wasn't
+    installed before. You can opt out of this with the `--without-pak` option.
+    You can select the pak version to install with `--pak-version`.
+
+  - Sets the default R version after installation to the newly
+    installed version, if no default is set.
+
+  - Sets the default CRAN mirror to the cloud mirror in the
+    system profile, after installation (#11).
+
+  - Sets up RStudio Package Manager (RSPM) as the default repository, if
+    your system is supported. See
+    https://packagemanager.rstudio.com for more about RSPM. The systems that
+    are supported by both RSPM and rim are Windows, and Ubuntu Linux
+    18.04, 20.04 and 22.04, all of them on x86_64 architectures only (#15).
+
+* `rim add` now only caches downloaded files for a day.
+
 * `rim system add-pak` now has a new option `--pak-version` to specify the
   pak version to install (stable, rc or devel). Its `--devel` option is
   now deprecated.
 
-* `rim add` now installs pak for the newly added R version, it is wasn't
-  installed before. You can opt out of this with the `--without-pak` option.
-  You can select the pak version to install with `--pak-version`.
-
 * `rim list` now marks the default R version (if any) with `(default)` (#38).
 
-* `rim add` now only caches downloaded files for a day.
-
-* `rim add` now sets the default R version after installation to the newly
-  installed version, if no default is set.
-
-* `rim add` now sets the default CRAN mirror to the cloud mirror in the
-  system profile, after installation (#11).
-
-* `rim add` now sets up RStudio Package Manager (RSPM) as the default
-  repository, if your system is supported. See
-  https://packagemanager.rstudio.com for more about RSPM. The systems that
-  are supported by both RSPM and rim are Windows, and Ubuntu Linux
-  18.04, 20.04 and 22.04, all of them on x86_64 architectures only (#15).
+## Windows
 
 * rim has a Chocolatey package now, so on Windows you can install it with
   `choco install rim` and upgrade it with `choco upgrade rim`.
@@ -35,6 +40,8 @@
   Windows Registry as well, which changes the default for RStudio.
   (Make sure you set the R version in RStudio to the machine's default
   version in Tools -> Global Options -> Basic -> General -> R version.)
+
+## macOS
 
 * On macOS `rim system fix-permissions` now sets the permissions and group
   of the `Current` link. Also, `rim add` now calls `rim system fix-permissions`
