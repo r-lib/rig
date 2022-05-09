@@ -24,6 +24,15 @@
 * `rim add` now sets the default R version after installation to the newly
   installed version, if no default is set.
 
+* `rim add` now sets the default CRAN mirror to the cloud mirror in the
+  system profile, after installation (#11).
+
+* `rim add` now sets up RStudio Package Manager (RSPM) as the default
+  repository, if your system is supported. See
+  https://packagemanager.rstudio.com for more about RSPM. The systems that
+  are supported by both RSPM and rim are Windows, and Ubuntu Linux
+  18.04, 20.04 and 22.04, all of them on x86_64 architectures only (#15).
+
 # rim 0.2.3
 
 * `rim system allow-debugger` and `rim system allow-core-dumps` now work on
