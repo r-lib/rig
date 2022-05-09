@@ -28,6 +28,9 @@
   are supported by both RSPM and rim are Windows, and Ubuntu Linux
   18.04, 20.04 and 22.04, all of them on x86_64 architectures only (#15).
 
+* rim has a Chocolatey package now, so on Windows you can install it with
+  `choco install rim` and upgrade it with `choco upgrade rim`.
+
 * On Windows `rim default <version>` now sets the default R version in the
   Windows Registry as well, which changes the default for RStudio.
   (Make sure you set the R version in RStudio to the machine's default
