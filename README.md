@@ -10,7 +10,6 @@ Install, remove, configure R versions.
 -   Easy installation and update, no system requirements on any
     platform.
 -   Install multiple R versions.
--   Select the default R version, for the terminal and RStudio.
 -   Select R version to install using symbolic names: `devel`, `next`,
     `release`, `oldrel`, etc.
 -   Run multiple versions *at the same* time using quick links. E.g.
@@ -98,12 +97,12 @@ Download the latest releast from
 <https://github.com/gaborcsardi/rim/releases> and uncompress it to
 `/usr/local`
 
-    curl -Ls https://github.com/gaborcsardi/rim/releases/download/v0.3.0/rim-linux-0.3.0.tar.gz |
+    curl -Ls https://github.com/gaborcsardi/rim/releases/download/v0.2.3/rim-linux-0.2.3.tar.gz |
       sudo tar xz -C /usr/local
 
 If you are running Linux on arm64, download the arm64 build:
 
-    curl -Ls https://github.com/gaborcsardi/rim/releases/download/v0.3.0/rim-linux-arm64-0.3.0.tar.gz |
+    curl -Ls https://github.com/gaborcsardi/rim/releases/download/v0.2.3/rim-linux-arm64-0.2.3.tar.gz |
       sudo tar xz -C /usr/local
 
 Supported Linux distributions:
@@ -147,7 +146,6 @@ Run `rim` to see all commands and examples.
     rim list       -- list installed R versions
     rim resolve    -- resolve a symbolic R version
     rim rm         -- remove R versions
-    rim rstudio    -- start RStudio with the specified R version
     rim system     -- manage current installations
 
 Run `rim <subcommand> --help` for information about a subcommand.
