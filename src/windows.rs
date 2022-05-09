@@ -67,6 +67,15 @@ pub fn sc_add(args: &ArgMatches) {
 	}
     }
 
+    if !args.is_present("without-rspm") {
+	if dirname.is_none() {
+	    println!("Cannot set up RSPM, cannoe determine installation directory");
+	} else {
+	    let rdirname = dirname.as_ref().unwrap();
+            set_rspm(Some(vec![rdirname.to_string()]));
+	}
+    }
+
     if !args.is_present("without-pak") {
 	if dirname.is_none() {
 	    println!("Cannot install pak, cannot determine installation directory");
@@ -230,6 +239,38 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) {
             &profile,
             vec!["options(repos = c(CRAN = \"https://cloud.r-project.org\"))".to_string()]
         ) {
+            Ok(_) => { },
+            Err(err) => {
+                let spath = path.to_str().unwrap();
+                panic!("Failed to update {}: {}", spath, err);
+            }
+        };
+    }
+}
+
+fn set_rspm(vers: Option<Vec<String>>) {
+    let arch = std::env::consts::ARCH;
+    if arch != "x86_64" {
+	println!("RSPM does not support this architecture: {}", arch);
+	return;
+    }
+
+    let vers = match vers {
+        Some(x) => x,
+        None => sc_get_list(),
+    };
+
+    let rcode = r#"
+options(repos = c(RSPM="https://packagemanager.rstudio.com/all/latest", getOption("repos")))
+"#;
+
+    for ver in vers {
+        check_installed(&ver);
+        let path = Path::new(R_ROOT).join("R-".to_string() + ver.as_str());
+        let profile = path.join("library/base/R/Rprofile".to_string());
+        if ! profile.exists() { continue; }
+
+        match append_to_file(&profile, vec![rcode.to_string()]) {
             Ok(_) => { },
             Err(err) => {
                 let spath = path.to_str().unwrap();

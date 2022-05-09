@@ -71,6 +71,17 @@ pub fn rim_app() -> Command<'static> {
                 .default_value("stable")
         );
 
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+{
+        cmd_add = cmd_add
+        .arg(
+            Arg::new("without-rspm")
+                .help("Do not set up RSPM.")
+                .long("without-rspm")
+                .required(false)
+        );
+}
+
 #[cfg(target_os = "macos")]
 {
     cmd_add = cmd_add

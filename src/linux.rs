@@ -47,6 +47,10 @@ const DEBIAN_10_URL: &str = "https://github.com/r-hub/R/releases/download/v{}/R-
 #[cfg(target_arch = "aarch64")]
 const DEBIAN_11_URL: &str = "https://github.com/r-hub/R/releases/download/v{}/R-rstudio-debian-11-{}_1_arm64.deb";
 
+const UBUNTU_1804_RSPM: &str = "https://packagemanager.rstudio.com/all/__linux__/bionic/latest";
+const UBUNTU_2004_RSPM: &str = "https://packagemanager.rstudio.com/all/__linux__/focal/latest";
+const UBUNTU_2204_RSPM: &str = "https://packagemanager.rstudio.com/all/__linux__/jammy/latest";
+
 pub fn sc_add(args: &ArgMatches) {
     escalate("adding new R versions");
     let linux = detect_linux();
@@ -91,6 +95,10 @@ pub fn sc_add(args: &ArgMatches) {
 
     if !args.is_present("without-cran-mirror") {
         set_cloud_mirror(Some(vec![dirname.to_string()]));
+    }
+
+    if !args.is_present("without-rspm") {
+        set_rspm(Some(vec![dirname.to_string()]), linux);
     }
 
     if !args.is_present("without-pak") {
@@ -496,6 +504,50 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) {
     }
 }
 
+fn set_rspm(vers: Option<Vec<String>>, linux: LinuxVersion) {
+    let arch = std::env::consts::ARCH;
+    if arch != "x86_64" {
+	println!("RSPM does not support this architecture: {}", arch);
+	return;
+    }
+
+    if !linux.rspm {
+	println!(
+	    "RSPM (or rim) does not support this distro: {} {}",
+	    linux.distro,
+	    linux.version
+	);
+	return;
+    }
+
+    let vers = match vers {
+        Some(x) => x,
+        None => sc_get_list(),
+    };
+
+    let rcode = r#"
+options(repos = c(RSPM="%url%", getOption("repos")))
+options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(getRversion(), R.version$platform, R.version$arch, R.version$os)))
+"#;
+
+    let rcode = rcode.to_string().replace("%url%", &linux.rspm_url);
+
+    for ver in vers {
+        check_installed(&ver);
+        let path = Path::new(R_ROOT).join(ver.as_str());
+        let profile = path.join("lib/R/library/base/R/Rprofile".to_string());
+        if ! profile.exists() { continue; }
+
+        match append_to_file(&profile, vec![rcode.to_string()]) {
+            Ok(_) => { },
+            Err(err) => {
+                let spath = path.to_str().unwrap();
+                panic!("Failed to update {}: {}", spath, err);
+            }
+        };
+    }
+}
+
 pub fn sc_system_allow_core_dumps(_args: &ArgMatches) {
     // Nothing to do on Linux
 }
@@ -547,7 +599,9 @@ fn detect_linux() -> LinuxVersion {
 
     let mut mine = LinuxVersion { distro: id.to_owned(),
 				  version: ver.to_owned(),
-				  url: "".to_string() };
+				  url: "".to_string(),
+                                  rspm: false,
+				  rspm_url: "".to_string() };
 
     let supported = list_supported_distros();
 
@@ -555,6 +609,8 @@ fn detect_linux() -> LinuxVersion {
     for dis in supported {
 	if dis.distro == mine.distro && dis.version == mine.version {
 	    mine.url = dis.url;
+	    mine.rspm = dis.rspm;
+	    mine.rspm_url = dis.rspm_url;
 	    good = true;
 	}
     }
@@ -574,22 +630,34 @@ fn list_supported_distros() -> Vec<LinuxVersion> {
     vec![
 	LinuxVersion { distro: "ubuntu".to_string(),
 		       version: "18.04".to_string(),
-		       url: UBUNTU_1804_URL.to_string() },
+		       url: UBUNTU_1804_URL.to_string(),
+                       rspm: true,
+		       rspm_url: UBUNTU_1804_RSPM.to_string() },
 	LinuxVersion { distro: "ubuntu".to_string(),
 		       version: "20.04".to_string(),
-		       url: UBUNTU_2004_URL.to_string() },
+		       url: UBUNTU_2004_URL.to_string(),
+                       rspm: true,
+		       rspm_url: UBUNTU_2004_RSPM.to_string() },
 	LinuxVersion { distro: "ubuntu".to_string(),
 		       version: "22.04".to_string(),
-		       url: UBUNTU_2204_URL.to_string() },
+		       url: UBUNTU_2204_URL.to_string(),
+                       rspm: true,
+		       rspm_url: UBUNTU_2204_RSPM.to_string() },
 	LinuxVersion { distro: "debian".to_string(),
 		       version: "9".to_string(),
-		       url: DEBIAN_9_URL.to_string() },
+		       url: DEBIAN_9_URL.to_string(),
+                       rspm: false,
+		       rspm_url: "".to_string() },
 	LinuxVersion { distro: "debian".to_string(),
 		       version: "10".to_string(),
-		       url: DEBIAN_10_URL.to_string() },
+		       url: DEBIAN_10_URL.to_string(),
+                       rspm: false,
+		       rspm_url: "".to_string() },
 	LinuxVersion { distro: "debian".to_string(),
 		       version: "11".to_string(),
-		       url: DEBIAN_11_URL.to_string() },
+		       url: DEBIAN_11_URL.to_string(),
+                       rspm: false,
+		       rspm_url: "".to_string() },
     ]
 }
 
