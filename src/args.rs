@@ -16,7 +16,7 @@ std::include!("help-linux.in");
 pub fn rim_app() -> Command<'static> {
 
     let rim = Command::new("RIM -- The R Installation Manager")
-        .version("0.2.4")
+        .version("0.3.0")
         .about(HELP_ABOUT)
         .arg_required_else_help(true)
         .term_width(80);
