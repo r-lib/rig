@@ -83,7 +83,7 @@ pub fn sc_add(args: &ArgMatches) {
 
     sc_system_forget();
     system_no_openmp(Some(vec![dirname.to_string()]));
-    system_fix_permissions(Some(vec![dirname.to_string()]));
+    system_fix_permissions(None);
     system_make_orthogonal(Some(vec![dirname.to_string()]));
     system_create_lib(Some(vec![dirname.to_string()]));
     sc_system_make_links();
@@ -456,10 +456,41 @@ fn system_fix_permissions(vers: Option<Vec<String>>) {
         let path = Path::new(R_ROOT).join(ver.as_str());
         let path = path.to_str().unwrap();
         println!("Fixing permissions in {}", path);
-        Command::new("chmod")
+        let status = Command::new("chmod")
             .args(["-R", "g-w", path])
-            .output()
+            .spawn()
+            .expect("Failed to update permissions")
+            .wait()
             .expect("Failed to update permissions");
+
+        if !status.success() {
+            println!("Failed to update permissions :(");
+        }
+    }
+
+    let current = Path::new(R_ROOT).join("Current");
+    let current = current.to_str().unwrap();
+    println!("Fixing permissions and group of {}", current);
+    let status = Command::new("chmod")
+        .args(["-R", "775", &current])
+        .spawn()
+        .expect("Failed to update permissions")
+        .wait()
+        .expect("Failed to update permissions");
+
+    if !status.success() {
+        println!("Failed to update permissions :(");
+    }
+
+    let status = Command::new("chgrp")
+        .args(["admin", &current])
+        .spawn()
+        .expect("Failed to update group")
+        .wait()
+        .expect("Failed to update group");
+
+    if !status.success() {
+        println!("Failed to update group :(");
     }
 }
 

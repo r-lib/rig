@@ -4,11 +4,6 @@
 * New `rim rstudio` command to open a project in RStudio with the specified
   R version.
 
-* On Windows `rim default <version>` now sets the default R version in the
-  Windows Registry as well, which changes the default for RStudio.
-  (Make sure you set the R version in RStudio to the machine's default
-  version in Tools -> Global Options -> Basic -> General -> R version.)
-
 * `rim system add-pak` now has a new option `--pak-version` to specify the
   pak version to install (stable, rc or devel). Its `--devel` option is
   now deprecated.
@@ -23,6 +18,16 @@
 
 * `rim add` now sets the default R version after installation to the newly
   installed version, if no default is set.
+
+* On Windows `rim default <version>` now sets the default R version in the
+  Windows Registry as well, which changes the default for RStudio.
+  (Make sure you set the R version in RStudio to the machine's default
+  version in Tools -> Global Options -> Basic -> General -> R version.)
+
+* On macOS `rim system fix-permissions` now sets the permissions and group
+  of the `Current` link. Also, `rim add` now calls `rim system fix-permissions`
+  for all installed R versions, because the R installed changes the
+  permissions of all of them.
 
 # rim 0.2.3
 

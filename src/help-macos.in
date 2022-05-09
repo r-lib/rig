@@ -93,8 +93,9 @@ DESCRIPTION:
     `/Library/Frameworks/R.framework/Versions/Current` and pointing it to the
     specified R version.
 
-    Potentially you need to run this command with `sudo` to change the
-    default version: `sudo rim default ...`.
+    This command can change the default version without `sudo` as long as
+    the user is in the `admin` group. Otherwise you need to run it as
+    `sudo rim default ...`.
 
     You don't need to update the default R version to just run a non-default R
     version. You can use the `R-<ver>` links, see `rim system make-links`.
