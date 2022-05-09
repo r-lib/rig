@@ -75,9 +75,24 @@ way.
 `rim` adds itself to the user’s path, but you might need to restart your
 terminal after the installation on Windows.
 
+### Windows (Chocolatey)
+
+If you use [Chocolatey](https://chocolatey.org/) (e.g. on GitHub
+Actions) you can install `rim` with
+
+``` powershell
+choco install rim
+```
+
+and upgrade to the latest version with
+
+``` powershell
+choco upgrade rim
+```
+
 ### Windows (Scoop)
 
-If you use Scoop (<https://scoop.sh/>), you can install rim from the
+If you use [Scoop](https://scoop.sh/), you can install rim from the
 scoop bucket at
 [`cderv/r-bucket`](https://github.com/cderv/r-bucket#r-installation-manager-rim):
 
