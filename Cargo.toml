@@ -39,3 +39,4 @@ is_elevated = "0.1.2"
 [build-dependencies]
 clap = "3.0.10"
 clap_complete = "3.0.4"
+static_vcruntime = "2.0"

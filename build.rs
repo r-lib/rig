@@ -13,6 +13,12 @@ fn main() -> Result<(), Error> {
         Some(outdir) => outdir,
     };
 
+
+#[cfg(target_os = "windows")]
+{
+    static_vcruntime::metabuild();
+}
+
     let mut app = rim_app();
     let name = "rim".to_string();
 
