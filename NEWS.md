@@ -1,4 +1,6 @@
 
+# rim 0.3.1 (not released yet)
+
 # rim 0.3.0
 
 * New `rim rstudio` command to open a project in RStudio with the specified
