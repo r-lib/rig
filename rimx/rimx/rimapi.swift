@@ -7,13 +7,18 @@
 
 import Foundation
 
-func rimDefault() -> String {
+func rimDefault() -> String? {
     var buffer = Data(count: 1024)
     let n = buffer.count
+    var err: Int32 = 0
     buffer.withUnsafeMutableBytes({(p: UnsafeMutablePointer<CChar>) -> Void in
-        rim_get_default(p, n)
-        // TODO: error
+        err = rim_get_default(p, n)
     })
+    if err != 0 {
+        return nil
+    }
+    // TODO: error
+
     let def = String(data: buffer.prefix(while: { $0 != 0 }), encoding: .utf8)!
 
     return def
@@ -24,7 +29,6 @@ func rimSetDefault(version: String) {
     buffer.append(0)
     buffer.withUnsafeMutableBytes({(p: UnsafeMutablePointer<CChar>) -> Void in
         let err = rim_set_default(p)
-        print(err)
         // TODO: error
     })
 }

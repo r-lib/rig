@@ -9,19 +9,31 @@ import Foundation
 import AppKit
 
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+
     // keep status item and menu separate
     var statusBarItem: NSStatusItem!
     var statusBarMenu: NSMenu!
+    var watcher: DirectoryWatcher?
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         let statusBar = NSStatusBar.system
         statusBarItem = statusBar.statusItem(withLength: NSStatusItem.variableLength)
-        statusBarItem.button?.title = "R " + rimDefault()
+        let def = rimDefault()
+        if def == nil {
+            statusBarItem.button?.title = "R"
+        } else {
+            statusBarItem.button?.title = "R " + def!
+        }
 
         statusBarItem.button?.action = #selector(self.statusBarButtonClicked(sender:))
         statusBarItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
 
-        statusBarMenu = setupMenus()
+        watcher = DirectoryWatcher(withPath: "/Library/Frameworks/R.framework/Versions", callback: { directoryWatcher in
+            let def = rimDefault()
+            if def != nil {
+                self.statusBarItem.button?.title = "R " + def!
+            }
+        })
     }
 
     @objc func setupMenus() -> NSMenu {
@@ -64,6 +76,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func selectVersion(_ sender: NSMenuItem?) {
         let ver = String(sender!.title.dropFirst(2))
         rimSetDefault(version: ver)
-        statusBarItem.button?.title = "R " + rimDefault()
+        // the directory watcher will update this, but nevertheless we update it as well
+        let newver = rimDefault()
+        if newver != nil {
+            statusBarItem.button?.title = "R " + newver!
+        }
     }
 }
