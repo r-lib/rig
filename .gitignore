@@ -8,3 +8,10 @@
 /rim-*.exe
 /Output
 _rim.ps1
+/0.3.0
+/README.html
+/a.out
+/gon.hcl
+/test.c
+/rimx/build
+/rimx/rimx.xcodeproj/project.xcworkspace/xcuserdata/

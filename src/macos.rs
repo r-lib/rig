@@ -683,15 +683,13 @@ pub fn sc_get_default_() -> Result<Option<String>,Box<dyn Error>> {
     read_version_link(R_CUR)
 }
 
-pub fn sc_get_list() -> Vec<String> {
+pub fn sc_get_list_() -> Result<Vec<String>, Box<dyn Error>> {
     let mut vers = Vec::new();
     if ! Path::new(R_ROOT).exists() {
-        return vers
+        return Ok(vers);
     }
 
-    let paths = std::fs::read_dir(R_ROOT);
-    assert!(paths.is_ok(), "Cannot list directory {}", R_ROOT);
-    let paths = paths.unwrap();
+    let paths = std::fs::read_dir(R_ROOT)?;
 
     for de in paths {
         let path = de.unwrap().path();
@@ -701,7 +699,7 @@ pub fn sc_get_list() -> Vec<String> {
         }
     }
     vers.sort();
-    vers
+    Ok(vers)
 }
 
 fn get_install_dir(ver: &Rversion) -> String {

@@ -57,4 +57,15 @@ pub fn set_default_if_none(ver: String) {
     }
 }
 
+// -- rim list ------------------------------------------------------------
+
+pub fn sc_get_list() -> Vec<String> {
+    match sc_get_list_() {
+        Err(err) => {
+            panic!("Cannot list installed R versions: {}", err.to_string());
+        },
+        Ok(res) => res
+    }
+}
+
 // ------------------------------------------------------------------------
