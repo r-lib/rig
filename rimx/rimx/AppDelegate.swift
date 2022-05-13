@@ -5,26 +5,50 @@
 //  Created by Gabor Csardi on 5/13/22.
 //
 
+import Foundation
 import AppKit
 
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
-
-    private var statusItem: NSStatusItem!
-    private var menu: NSMenu!
+    // keep status item and menu separate
+    var statusBarItem: NSStatusItem!
+    var statusBarMenu: NSMenu!
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
+        let statusBar = NSStatusBar.system
+        statusBarItem = statusBar.statusItem(withLength: NSStatusItem.variableLength)
+        statusBarItem.button?.title = "R 4.2 (arm)"
 
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.title = "R 4.2 (arm)"
+        statusBarItem.button?.action = #selector(self.statusBarButtonClicked(sender:))
+        statusBarItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
 
-        statusItem.button?.action = #selector(self.statusBarButtonClicked(sender:))
-        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        statusBarMenu = setupMenus()
     }
 
-    func setupMenus() -> NSMenu {
+    @objc func setupMenus() -> NSMenu {
         let menu = NSMenu()
+        menu.delegate = self
 
-        let one = NSMenuItem(title: "R 4.1", action: #selector(didTapOne) , keyEquivalent: "1")
+        var buffer = Data(count: 1024)
+        var n = buffer.count
+        buffer.withUnsafeMutableBytes({(p: UnsafeMutablePointer<CChar>) -> Void in
+            rim_get_default(p, n)
+            // TODO: error
+        })
+        var current = String(data: buffer.filter({ $0 != 0 }), encoding: .utf8)!
+
+        print(current.count)
+
+        buffer.withUnsafeMutableBytes({(p: UnsafeMutablePointer<CChar>) -> Void in
+            rim_list(p, n)
+            // TODO: error
+        })
+
+        var list = String(data: buffer.filter({ $0 != 0 }), encoding: .utf8)!
+
+        print(list)
+        print(list.count)
+
+        let one = NSMenuItem(title: "R " + current, action: #selector(didTapOne) , keyEquivalent: "1")
         menu.addItem(one)
 
         let two = NSMenuItem(title: "R 4.2", action: #selector(didTapTwo) , keyEquivalent: "2")
@@ -43,32 +67,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func statusBarButtonClicked(sender: NSStatusBarButton) {
         let event = NSApp.currentEvent!
         if event.type ==  NSEvent.EventType.leftMouseUp {
-            statusItem.menu = setupMenus()
-            statusItem.button?.performClick(nil)
+            statusBarItem.menu = setupMenus()
+            statusBarItem.button?.performClick(nil)
         } else {
-            // what should we do for right click?
+            // TODO: what should we do for right click
         }
     }
 
     @objc func menuDidClose(_ menu: NSMenu) {
-        statusItem.menu = nil // remove menu so button works as before
-    }
-
-    private func changeStatusBarButton(number: Int) {
-        if let button = statusItem.button {
-            button.image = NSImage(named: NSImage.Name("gear"))
-        }
+        statusBarItem.menu = nil // remove menu so button works as before
     }
 
     @objc func didTapOne() {
-        changeStatusBarButton(number: 1)
+        print("1")
     }
 
     @objc func didTapTwo() {
-        changeStatusBarButton(number: 2)
+        print("2")
     }
 
     @objc func didTapThree() {
-        changeStatusBarButton(number: 3)
+        print("3")
     }
 }
