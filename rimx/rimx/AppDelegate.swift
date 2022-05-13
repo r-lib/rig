@@ -16,7 +16,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         let statusBar = NSStatusBar.system
         statusBarItem = statusBar.statusItem(withLength: NSStatusItem.variableLength)
-        statusBarItem.button?.title = "R 4.2 (arm)"
+        statusBarItem.button?.title = "R " + rimDefault()
 
         statusBarItem.button?.action = #selector(self.statusBarButtonClicked(sender:))
         statusBarItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -28,34 +28,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let menu = NSMenu()
         menu.delegate = self
 
-        var buffer = Data(count: 1024)
-        var n = buffer.count
-        buffer.withUnsafeMutableBytes({(p: UnsafeMutablePointer<CChar>) -> Void in
-            rim_get_default(p, n)
-            // TODO: error
-        })
-        var current = String(data: buffer.filter({ $0 != 0 }), encoding: .utf8)!
+        let def = rimDefault()
+        let list = rimList()
 
-        print(current.count)
-
-        buffer.withUnsafeMutableBytes({(p: UnsafeMutablePointer<CChar>) -> Void in
-            rim_list(p, n)
-            // TODO: error
-        })
-
-        var list = String(data: buffer.filter({ $0 != 0 }), encoding: .utf8)!
-
-        print(list)
-        print(list.count)
-
-        let one = NSMenuItem(title: "R " + current, action: #selector(didTapOne) , keyEquivalent: "1")
-        menu.addItem(one)
-
-        let two = NSMenuItem(title: "R 4.2", action: #selector(didTapTwo) , keyEquivalent: "2")
-        menu.addItem(two)
-
-        let three = NSMenuItem(title: "R 4.2 (arm)", action: #selector(didTapThree) , keyEquivalent: "3")
-        menu.addItem(three)
+        for v in list {
+            let item = NSMenuItem(title: "R " + v, action: #selector(dummy), keyEquivalent: "")
+            menu.addItem(item)
+        }
 
         menu.addItem(NSMenuItem.separator())
 
@@ -78,15 +57,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusBarItem.menu = nil // remove menu so button works as before
     }
 
-    @objc func didTapOne() {
-        print("1")
-    }
-
-    @objc func didTapTwo() {
-        print("2")
-    }
-
-    @objc func didTapThree() {
-        print("3")
+    @objc func dummy() {
+        print("selected")
     }
 }
