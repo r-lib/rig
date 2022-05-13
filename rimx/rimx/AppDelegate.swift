@@ -32,7 +32,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let list = rimList()
 
         for v in list {
-            let item = NSMenuItem(title: "R " + v, action: #selector(dummy), keyEquivalent: "")
+            let label = v == def ? "R " + v + " (default)" : "R " + v
+            let item = NSMenuItem(title: label, action: #selector(dummy), keyEquivalent: "")
             menu.addItem(item)
         }
 
