@@ -19,6 +19,16 @@ func rimDefault() -> String {
     return def
 }
 
+func rimSetDefault(version: String) {
+    var buffer = version.data(using: .utf8)!
+    buffer.append(0)
+    buffer.withUnsafeMutableBytes({(p: UnsafeMutablePointer<CChar>) -> Void in
+        let err = rim_set_default(p)
+        print(err)
+        // TODO: error
+    })
+}
+
 func rimList() -> Array<String> {
     var buffer = Data(count: 1024)
     let n = buffer.count

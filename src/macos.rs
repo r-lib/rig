@@ -659,24 +659,12 @@ fn check_has_pak(ver: &String) -> bool {
     true
 }
 
-pub fn sc_set_default(ver: String) {
-    check_installed(&ver);
-    let ret = std::fs::remove_file(R_CUR);
-    match ret {
-        Err(err) => {
-            panic!("Could not remove {}: {}", R_CUR, err)
-        }
-        Ok(()) => {}
-    };
-
-    let path = Path::new(R_ROOT).join(ver.as_str());
-    let ret = std::os::unix::fs::symlink(&path, R_CUR);
-    match ret {
-        Err(err) => {
-            panic!("Could not create {}: {}", path.to_str().unwrap(), err)
-        }
-        Ok(()) => {}
-    };
+pub fn sc_set_default_(ver: &str) -> Result<(), Box<dyn Error>> {
+    check_installed(&ver.to_string());
+    std::fs::remove_file(R_CUR)?;
+    let path = Path::new(R_ROOT).join(ver);
+    std::os::unix::fs::symlink(&path, R_CUR)?;
+    Ok(())
 }
 
 pub fn sc_get_default_() -> Result<Option<String>,Box<dyn Error>> {

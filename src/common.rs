@@ -57,6 +57,15 @@ pub fn set_default_if_none(ver: String) {
     }
 }
 
+pub fn sc_set_default(ver: String) {
+    match sc_set_default_(&ver) {
+        Err(err) => {
+            panic!("Failed to set R version {}: {}", &ver, err.to_string());
+        },
+        Ok(_) => { }
+    };
+}
+
 // -- rim list ------------------------------------------------------------
 
 pub fn sc_get_list() -> Vec<String> {

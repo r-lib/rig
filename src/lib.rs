@@ -29,10 +29,11 @@ lazy_static! {
     static ref LAST_ERROR: Mutex<String> = Mutex::new(String::from(""));
 }
 
-static SUCCESS:              libc::c_int =  0;
-static ERROR_NO_DEFAULT:     libc::c_int = -1;
-static ERROR_DEFAULT_FAILED: libc::c_int = -2;
-static ERROR_BUFFER_SHORT:   libc::c_int = -3;
+static SUCCESS:                  libc::c_int =  0;
+static ERROR_NO_DEFAULT:         libc::c_int = -1;
+static ERROR_DEFAULT_FAILED:     libc::c_int = -2;
+static ERROR_BUFFER_SHORT:       libc::c_int = -3;
+static ERROR_SET_DEFAULT_FAILED: libc::c_int = -4;
 
 // ------------------------------------------------------------------------
 
@@ -90,10 +91,10 @@ fn set_c_strings(from: Vec<String>, ptr: *mut libc::c_char, size: libc::size_t)
             idx += 1;
         }
         ptr2[idx] = 0;
-        Ok(SUCCESS)            
+        Ok(SUCCESS)
     } else {
         bail!("String buffer too short")
-    }            
+    }
 }
 
 // ------------------------------------------------------------------------
@@ -101,11 +102,11 @@ fn set_c_strings(from: Vec<String>, ptr: *mut libc::c_char, size: libc::size_t)
 #[no_mangle]
 pub extern "C" fn rim_get_default(
     ptr: *mut libc::c_char,
-    size: libc::size_t    
+    size: libc::size_t
 ) -> libc::c_int {
 
     let def = sc_get_default_();
-    
+
     match def {
         Ok(x) => {
             match x {
@@ -135,7 +136,7 @@ pub extern "C" fn rim_get_default(
 #[no_mangle]
 pub extern "C" fn rim_list(
     ptr: *mut libc::c_char,
-    size: libc::size_t    
+    size: libc::size_t
 ) -> libc::c_int {
 
     let vers = sc_get_list_();
@@ -154,6 +155,28 @@ pub extern "C" fn rim_list(
             let msg = e.to_string();
             set_error(&msg);
             ERROR_DEFAULT_FAILED
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn rim_set_default(
+    ptr: *const libc::c_char) -> libc::c_int {
+    let ver: &str;
+
+    unsafe {
+        let cver = std::ffi::CStr::from_ptr(ptr);
+        ver = cver.to_str().unwrap();
+    }
+
+    match sc_set_default_(ver) {
+        Ok(_) => {
+            SUCCESS
+        },
+        Err(e) => {
+            let msg = e.to_string();
+            set_error(&msg);
+            ERROR_SET_DEFAULT_FAILED
         }
     }
 }

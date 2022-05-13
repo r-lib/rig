@@ -6,8 +6,9 @@ all:
 	@echo "Call 'make win', 'make macos' or 'make linux'"
 
 rimx:
-	cargo build --release
-	cargo build --target x86_64-apple-darwin --release
+	cargo build --lib --release
+	cargo build --lib --target x86_64-apple-darwin --release
+	cbindgen -l c > include/rim.h > rimx/rimx/rim.h
 	mkdir -p rimx/lib
 	lipo target/release/librimlib.a \
 		target/x86_64-apple-darwin/release/librimlib.a \

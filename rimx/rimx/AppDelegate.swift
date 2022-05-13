@@ -33,7 +33,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         for v in list {
             let label = "R " + v
-            let item = NSMenuItem(title: label, action: #selector(dummy), keyEquivalent: "")
+            let item = NSMenuItem(title: label, action: #selector(selectVersion), keyEquivalent: "")
             if v == def {
                 item.state = NSControl.StateValue.on
             }
@@ -61,7 +61,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusBarItem.menu = nil // remove menu so button works as before
     }
 
-    @objc func dummy() {
-        print("selected")
+    @objc func selectVersion(_ sender: NSMenuItem?) {
+        let ver = String(sender!.title.dropFirst(2))
+        rimSetDefault(version: ver)
+        statusBarItem.button?.title = "R " + rimDefault()
     }
 }
