@@ -1,4 +1,6 @@
 
+use clap::ArgMatches;
+
 #[cfg(target_os = "macos")]
 use crate::macos::*;
 
@@ -75,6 +77,27 @@ pub fn sc_get_list() -> Vec<String> {
         },
         Ok(res) => res
     }
+}
+
+// -- rim rstudio ---------------------------------------------------------
+
+pub fn sc_rstudio(args: &ArgMatches) {
+    let mut ver = args.value_of("version");
+    let mut prj = args.value_of("project-file");
+
+    // If the first argument is an R project file, and the second is not,
+    // then we switch the two
+    if ver.is_some() && ver.unwrap().ends_with(".Rproj") {
+        ver = args.value_of("project-file");
+        prj = args.value_of("version");
+    }
+
+    match sc_rstudio_(ver, prj) {
+        Ok(_) => { },
+        Err(err) => {
+            panic!("{}", err.to_string());
+        }
+    };
 }
 
 // ------------------------------------------------------------------------

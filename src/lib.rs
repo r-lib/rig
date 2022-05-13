@@ -162,6 +162,7 @@ pub extern "C" fn rim_list(
 #[no_mangle]
 pub extern "C" fn rim_set_default(
     ptr: *const libc::c_char) -> libc::c_int {
+
     let ver: &str;
 
     unsafe {
@@ -170,6 +171,29 @@ pub extern "C" fn rim_set_default(
     }
 
     match sc_set_default_(ver) {
+        Ok(_) => {
+            SUCCESS
+        },
+        Err(e) => {
+            let msg = e.to_string();
+            set_error(&msg);
+            ERROR_SET_DEFAULT_FAILED
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn rim_start_rstudio(
+    ptr: *const libc::c_char) -> libc::c_int {
+
+    let ver: &str;
+
+    unsafe {
+        let cver = std::ffi::CStr::from_ptr(ptr);
+        ver = cver.to_str().unwrap();
+    }
+
+    match sc_rstudio_(Some(ver), None) {
         Ok(_) => {
             SUCCESS
         },

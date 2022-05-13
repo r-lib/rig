@@ -43,6 +43,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let def = rimDefault()
         let list = rimList()
 
+        let rstudioMenu = NSMenu()
+        rstudioMenu.addItem(NSMenuItem(title: "Default", action: #selector(startRStudio), keyEquivalent: ""))
+        rstudioMenu.addItem(NSMenuItem.separator())
+        for v in list {
+            let label = "R " + v
+            let item = NSMenuItem(title: label, action: #selector(startRStudio), keyEquivalent: "")
+            rstudioMenu.addItem(item)
+        }
+        let rstudio = NSMenuItem(title: "RStudio", action: nil, keyEquivalent: "")
+        rstudio.submenu = rstudioMenu
+        menu.addItem(NSMenuItem(title: "Start", action: nil, keyEquivalent: ""))
+        menu.addItem(rstudio)
+        menu.addItem(NSMenuItem.separator())
+
+        menu.addItem(NSMenuItem(title: "Current R Version", action: nil, keyEquivalent: ""))
         for v in list {
             let label = "R " + v
             let item = NSMenuItem(title: label, action: #selector(selectVersion), keyEquivalent: "")
@@ -81,5 +96,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if newver != nil {
             statusBarItem.button?.title = "R " + newver!
         }
+    }
+
+    @objc func startRStudio(_ sender: NSMenuItem?) {
+        var ver = String(sender!.title.dropFirst(2))
+        if ver == "fault" { ver = rimDefault()! }
+        rimStartRStudio(version: ver)
     }
 }
