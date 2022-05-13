@@ -5,6 +5,15 @@ SOURCES=$(wildcard src/*.rs) $(wildcard src/*.in)
 all:
 	@echo "Call 'make win', 'make macos' or 'make linux'"
 
+rimx:
+	cargo build --release
+	cargo build --target x86_64-apple-darwin --release
+	mkdir -p rimx/lib
+	lipo target/release/librimlib.a \
+		target/x86_64-apple-darwin/release/librimlib.a \
+		-create -output rimx/lib/librimlib.a
+	cd rimx && xcodebuild
+
 # -------------------------------------------------------------------------
 
 win: rim-$(VERSION).exe
@@ -125,7 +134,7 @@ build.stamp: target/release/rim target/x86_64-apple-darwin/release/rim
 
 # -------------------------------------------------------------------------
 
-.PHONY: release clean all macos win linux
+.PHONY: release clean all macos win linux rimx
 
 clean:
 	rm -rf build.stamp build-* Resources *.pkg distribution.xml gon.hcl Output *.exe
