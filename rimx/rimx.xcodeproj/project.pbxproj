@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		C5A5531B282E46C100438D16 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5A5531A282E46C100438D16 /* AppDelegate.swift */; };
-		C5A5531D282E46C100438D16 /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5A5531C282E46C100438D16 /* ViewController.swift */; };
 		C5A55320282E46C100438D16 /* rimx.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = C5A5531E282E46C100438D16 /* rimx.xcdatamodeld */; };
 		C5A55322282E46C100438D16 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C5A55321282E46C100438D16 /* Assets.xcassets */; };
 		C5A55330282E46C200438D16 /* rimxTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5A5532F282E46C200438D16 /* rimxTests.swift */; };
@@ -37,7 +36,6 @@
 /* Begin PBXFileReference section */
 		C5A55317282E46C100438D16 /* rimx.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = rimx.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C5A5531A282E46C100438D16 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-		C5A5531C282E46C100438D16 /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
 		C5A5531F282E46C100438D16 /* rimx.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = rimx.xcdatamodel; sourceTree = "<group>"; };
 		C5A55321282E46C100438D16 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		C5A55326282E46C200438D16 /* rimx.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = rimx.entitlements; sourceTree = "<group>"; };
@@ -101,7 +99,6 @@
 				C5EDDDDD282E4AB00098F3AB /* Info.plist */,
 				C5A5531A282E46C100438D16 /* AppDelegate.swift */,
 				C5EDDDDB282E480F0098F3AB /* main.swift */,
-				C5A5531C282E46C100438D16 /* ViewController.swift */,
 				C5A55321282E46C100438D16 /* Assets.xcassets */,
 				C5A55326282E46C200438D16 /* rimx.entitlements */,
 				C5A5531E282E46C100438D16 /* rimx.xcdatamodeld */,
@@ -255,7 +252,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				C5A5531D282E46C100438D16 /* ViewController.swift in Sources */,
 				C5A5531B282E46C100438D16 /* AppDelegate.swift in Sources */,
 				C5EDDDDC282E480F0098F3AB /* main.swift in Sources */,
 				C5A55320282E46C100438D16 /* rimx.xcdatamodeld in Sources */,
@@ -425,7 +421,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 10.13;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.gaborcsardi.rimx;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -451,7 +447,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 10.13;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.gaborcsardi.rimx;
 				PRODUCT_NAME = "$(TARGET_NAME)";
