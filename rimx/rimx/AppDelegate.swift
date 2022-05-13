@@ -32,8 +32,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let list = rimList()
 
         for v in list {
-            let label = v == def ? "R " + v + " (default)" : "R " + v
+            let label = "R " + v
             let item = NSMenuItem(title: label, action: #selector(dummy), keyEquivalent: "")
+            if v == def {
+                item.state = NSControl.StateValue.on
+            }
             menu.addItem(item)
         }
 
