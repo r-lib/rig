@@ -67,12 +67,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             for p in projects! {
                 if p == "" { continue }
                 let fileName = String((p as NSString).lastPathComponent.split(separator: ".").first!)
+                let submenu = NSMenu()
+                let defitem = NSMenuItem(title: "Default", action: #selector(startRStudio2), keyEquivalent: "")
+                defitem.representedObject = [p, "default"]
+                submenu.addItem(defitem)
+                submenu.addItem(NSMenuItem.separator())
+                for v in list {
+                    let label = "R " + v
+                    let subitem = NSMenuItem(title: label, action: #selector(startRStudio2), keyEquivalent: "")
+                    subitem.representedObject = [p, v]
+                    submenu.addItem(subitem)
+                }
                 let item = NSMenuItem(title: fileName, action: #selector(startRStudio2), keyEquivalent: "")
+                item.submenu = submenu
                 item.representedObject = p
                 cnt += 1;
                 projectMenu.addItem(item)
             }
-            let projects = NSMenuItem(title: "Recent Projects", action: nil, keyEquivalent: "")
+            let projects = NSMenuItem(title: "Recent Project", action: nil, keyEquivalent: "")
             projects.submenu = projectMenu
             menu.addItem(projects)
         }
@@ -127,7 +139,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc func startRStudio2(_ sender: NSMenuItem?) {
-        var proj = sender!.representedObject!
-        rimStartRStudio(version: nil, project: proj as! String)
+        var msg = sender!.representedObject! as! Array<String>
+        var proj = msg[0] as! String
+        var rver = msg[1] as! String
+        if rver == "default" { rver = rimDefault()! }
+        rimStartRStudio(version: rver, project: proj)
     }
 }
