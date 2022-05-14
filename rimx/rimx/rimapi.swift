@@ -60,11 +60,21 @@ func rimList() -> Array<String> {
     return result
 }
 
-func rimStartRStudio(version: String) {
-    var buffer = version.data(using: .utf8)!
-    buffer.append(0)
-    buffer.withUnsafeMutableBytes({(p: UnsafeMutablePointer<CChar>) -> Void in
-        let err = rim_start_rstudio(p)
-        // TODO: error
+func rimStartRStudio(version: String?, project: String?) {
+    var version2: String = version ?? ""
+    var project2: String = project ?? ""
+
+    var bversion = version2.data(using: .utf8)!
+    bversion.append(0)
+    var bproject = project2.data(using: .utf8)!
+    bproject.append(0)
+
+    bversion.withUnsafeMutableBytes({(p: UnsafeMutablePointer<CChar>) -> Void in
+        bproject.withUnsafeMutableBytes({(q: UnsafeMutablePointer<CChar>) -> Void in
+            let err = rim_start_rstudio(p, q)
+            // TODO: error
+        })
     })
+
+
 }

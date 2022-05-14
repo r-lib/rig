@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		C50C1E71282E648A00C23175 /* librimlib.a in Frameworks */ = {isa = PBXBuildFile; fileRef = C50C1E70282E648A00C23175 /* librimlib.a */; };
 		C5A0C679282EBB980014313C /* DirectoryWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5A0C678282EBB980014313C /* DirectoryWatcher.swift */; };
+		C5A0C67B282F1B0B0014313C /* RStudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5A0C67A282F1B0B0014313C /* RStudio.swift */; };
 		C5A5531B282E46C100438D16 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5A5531A282E46C100438D16 /* AppDelegate.swift */; };
 		C5A55320282E46C100438D16 /* rimx.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = C5A5531E282E46C100438D16 /* rimx.xcdatamodeld */; };
 		C5A55322282E46C100438D16 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C5A55321282E46C100438D16 /* Assets.xcassets */; };
@@ -40,6 +41,7 @@
 		C50C1E6F282E647500C23175 /* rim.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = rim.h; sourceTree = "<group>"; };
 		C50C1E70282E648A00C23175 /* librimlib.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = librimlib.a; path = lib/librimlib.a; sourceTree = SOURCE_ROOT; };
 		C5A0C678282EBB980014313C /* DirectoryWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectoryWatcher.swift; sourceTree = "<group>"; };
+		C5A0C67A282F1B0B0014313C /* RStudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RStudio.swift; sourceTree = "<group>"; };
 		C5A55317282E46C100438D16 /* rimx.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = rimx.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C5A5531A282E46C100438D16 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		C5A5531F282E46C100438D16 /* rimx.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = rimx.xcdatamodel; sourceTree = "<group>"; };
@@ -107,6 +109,7 @@
 			children = (
 				C5EDDDDD282E4AB00098F3AB /* Info.plist */,
 				C5A5531A282E46C100438D16 /* AppDelegate.swift */,
+				C5A0C67A282F1B0B0014313C /* RStudio.swift */,
 				C5A0C678282EBB980014313C /* DirectoryWatcher.swift */,
 				C5B09AB0282E84A500649453 /* rimapi.swift */,
 				C5E8EBFD282E7283009D8601 /* main.swift */,
@@ -266,6 +269,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C5A0C67B282F1B0B0014313C /* RStudio.swift in Sources */,
 				C5A0C679282EBB980014313C /* DirectoryWatcher.swift in Sources */,
 				C5A5531B282E46C100438D16 /* AppDelegate.swift in Sources */,
 				C5B09AB1282E84A500649453 /* rimapi.swift in Sources */,

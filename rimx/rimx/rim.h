@@ -11,4 +11,4 @@ int rim_list(char *ptr, size_t size);
 
 int rim_set_default(const char *ptr);
 
-int rim_start_rstudio(const char *ptr);
+int rim_start_rstudio(const char *pversion, const char *pproject);

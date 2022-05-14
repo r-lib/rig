@@ -43,6 +43,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let def = rimDefault()
         let list = rimList()
 
+        // -- rstudio menu -----------------------------------------------------------------------------------------------------
+
         let rstudioMenu = NSMenu()
         rstudioMenu.addItem(NSMenuItem(title: "Default", action: #selector(startRStudio), keyEquivalent: ""))
         rstudioMenu.addItem(NSMenuItem.separator())
@@ -51,12 +53,33 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let item = NSMenuItem(title: label, action: #selector(startRStudio), keyEquivalent: "")
             rstudioMenu.addItem(item)
         }
-        let rstudio = NSMenuItem(title: "RStudio", action: nil, keyEquivalent: "")
+        let rstudio = NSMenuItem(title: "RStudio", action: #selector(startRStudio), keyEquivalent: "")
         rstudio.submenu = rstudioMenu
         menu.addItem(NSMenuItem(title: "Start", action: nil, keyEquivalent: ""))
         menu.addItem(rstudio)
-        menu.addItem(NSMenuItem.separator())
 
+        // -- project menu -----------------------------------------------------------------------------------------------------
+
+        let projects = recentRStudioProjects()
+        if projects != nil {
+            var cnt = 0
+            let projectMenu = NSMenu()
+            for p in projects! {
+                if p == "" { continue }
+                let fileName = String((p as NSString).lastPathComponent.split(separator: ".").first!)
+                let item = NSMenuItem(title: fileName, action: #selector(startRStudio2), keyEquivalent: "")
+                item.representedObject = p
+                cnt += 1;
+                projectMenu.addItem(item)
+            }
+            let projects = NSMenuItem(title: "Recent Projects", action: nil, keyEquivalent: "")
+            projects.submenu = projectMenu
+            menu.addItem(projects)
+        }
+
+        // -- version menu ------------------------------------------------------------------------------------------------------
+
+        menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Current R Version", action: nil, keyEquivalent: ""))
         for v in list {
             let label = "R " + v
@@ -68,7 +91,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         menu.addItem(NSMenuItem.separator())
-
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
 
         return menu
@@ -100,7 +122,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func startRStudio(_ sender: NSMenuItem?) {
         var ver = String(sender!.title.dropFirst(2))
-        if ver == "fault" { ver = rimDefault()! }
-        rimStartRStudio(version: ver)
+        if ver == "fault" || ver == "tudio" { ver = rimDefault()! }
+        rimStartRStudio(version: ver, project: nil)
+    }
+
+    @objc func startRStudio2(_ sender: NSMenuItem?) {
+        var proj = sender!.representedObject!
+        rimStartRStudio(version: nil, project: proj as! String)
     }
 }

@@ -184,16 +184,23 @@ pub extern "C" fn rim_set_default(
 
 #[no_mangle]
 pub extern "C" fn rim_start_rstudio(
-    ptr: *const libc::c_char) -> libc::c_int {
+    pversion: *const libc::c_char,
+    pproject: *const libc::c_char) -> libc::c_int {
 
     let ver: &str;
+    let prj: &str;
 
     unsafe {
-        let cver = std::ffi::CStr::from_ptr(ptr);
+        let cver = std::ffi::CStr::from_ptr(pversion);
         ver = cver.to_str().unwrap();
+        let cprj = std::ffi::CStr::from_ptr(pproject);
+        prj = cprj.to_str().unwrap();
     }
 
-    match sc_rstudio_(Some(ver), None) {
+    let ver = if ver == "" { None } else { Some(ver) };
+    let prj = if prj == "" { None } else { Some(prj) };
+
+    match sc_rstudio_(ver, prj) {
         Ok(_) => {
             SUCCESS
         },
