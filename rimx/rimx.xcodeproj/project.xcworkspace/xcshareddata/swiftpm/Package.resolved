@@ -1,0 +1,23 @@
+{
+  "pins" : [
+    {
+      "identity" : "launchatlogin",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/sindresorhus/LaunchAtLogin",
+      "state" : {
+        "branch" : "main",
+        "revision" : "e8171b3e38a2816f579f58f3dac1522aa39efe41"
+      }
+    },
+    {
+      "identity" : "preferences",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/sindresorhus/Preferences",
+      "state" : {
+        "branch" : "main",
+        "revision" : "ffeaaad1def45d0625720dc1adae3789cd9c167d"
+      }
+    }
+  ],
+  "version" : 2
+}

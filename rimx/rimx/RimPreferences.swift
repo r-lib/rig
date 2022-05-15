@@ -7,6 +7,7 @@
 
 import AppKit
 import Preferences
+import LaunchAtLogin
 
 extension Preferences.PaneIdentifier {
     static let general = Self("general")
@@ -20,9 +21,11 @@ final class GeneralPreferenceViewController: NSViewController, PreferencePane {
     override var nibName: NSNib.Name? { "GeneralPreferenceViewController" }
 
     override func loadView() {
+        let launchAtLoginButton = NSButton(checkboxWithTitle: "", target: nil, action: #selector(setLaunchAtLogin))
+        launchAtLoginButton.state = LaunchAtLogin.isEnabled ? NSControl.StateValue.on : NSControl.StateValue.off
         let grid = NSGridView(views: [
             [NSTextField(labelWithString: ""), NSTextField(labelWithString: ""), NSTextField(labelWithString: "    ")],
-            [NSTextField(labelWithString: "    Launch at login"), NSButton(checkboxWithTitle: "", target: nil, action: nil)],
+            [NSTextField(labelWithString: "    Launch at login"), launchAtLoginButton],
             [NSTextField(labelWithString: ""), NSTextField(labelWithString: ""), NSTextField(labelWithString: "    ")],
         ])
         grid.column(at: 0).xPlacement = NSGridCell.Placement.trailing
@@ -32,6 +35,10 @@ final class GeneralPreferenceViewController: NSViewController, PreferencePane {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        // self.preferredContentSize = CGSize(width: 200, height: 200)
+        self.preferredContentSize = NSSize(width: 200, height: 70)
+    }
+
+    @objc func setLaunchAtLogin(_ sender: NSButton?) {
+        LaunchAtLogin.isEnabled = sender!.state == NSControl.StateValue.on
     }
 }

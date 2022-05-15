@@ -13,7 +13,7 @@ rimx:
 	lipo target/release/librimlib.a \
 		target/x86_64-apple-darwin/release/librimlib.a \
 		-create -output rimx/lib/librimlib.a
-	cd rimx && xcodebuild
+	cd rimx && xcodebuild -configuration Release -scheme rimx
 
 # -------------------------------------------------------------------------
 
