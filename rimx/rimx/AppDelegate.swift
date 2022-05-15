@@ -7,6 +7,8 @@
 
 import Foundation
 import AppKit
+import Cocoa
+import Preferences
 
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
@@ -14,6 +16,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var statusBarItem: NSStatusItem!
     var statusBarMenu: NSMenu!
     var watcher: DirectoryWatcher?
+
+    private var window: NSWindow!
+
+    private lazy var preferencesWindowController = PreferencesWindowController(
+        preferencePanes: [
+            GeneralPreferenceViewController()
+        ],
+        style: .segmentedControl
+    )
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         let statusBar = NSStatusBar.system
@@ -34,6 +45,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.statusBarItem.button?.title = "R " + def!
             }
         })
+    }
+
+    @objc func preferencesMenuItemActionHandler(_ sender: NSMenuItem) {
+        preferencesWindowController.show()
     }
 
     @objc func setupMenus() -> NSMenu {
@@ -103,6 +118,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         menu.addItem(NSMenuItem.separator())
+        menu.addItem(NSMenuItem(title: "Preferences...", action: #selector(preferencesMenuItemActionHandler), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
 
         return menu
