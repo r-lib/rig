@@ -384,95 +384,59 @@ pub fn get_resolve(args: &ArgMatches) -> Rversion {
     version[0].to_owned()
 }
 
-pub fn sc_get_list() -> Vec<String> {
+pub fn sc_get_list_() -> Result<Vec<String>, Box<dyn Error>> {
     let mut vers = Vec::new();
     if ! Path::new(R_ROOT).exists() {
-        return vers
+        return Ok(vers)
     }
 
-    let paths = std::fs::read_dir(R_ROOT);
-    assert!(paths.is_ok(), "Cannot list directory {}", R_ROOT);
-    let paths = paths.unwrap();
+    let paths = std::fs::read_dir(R_ROOT)?;
 
     for de in paths {
-	let path = de.unwrap().path();
+	let path = de?.path();
 	let fname = path.file_name().unwrap();
 	if fname != "current" {
 	    vers.push(fname.to_str().unwrap().to_string());
 	}
     }
     vers.sort();
-    vers
+    Ok(vers)
 }
 
-pub fn sc_set_default(ver: String) {
+pub fn sc_set_default_(ver: &str) -> Result<(), Box<dyn Error>> {
     escalate("setting the default R version");
-    check_installed(&ver);
+    check_installed(&ver.to_string());
 
     // Remove current link
     if Path::new(R_CUR).exists() {
-	let ret = std::fs::remove_file(R_CUR);
-	match ret {
-            Err(err) => {
-		panic!("Could not remove {}: {}", R_CUR, err)
-            }
-            Ok(()) => {}
-	};
+        std::fs::remove_file(R_CUR)?;
     }
 
     // Add current link
-    let path = Path::new(R_ROOT).join(ver.as_str());
-    let ret = std::os::unix::fs::symlink(&path, R_CUR);
-    match ret {
-        Err(err) => {
-            panic!("Could not create {}: {}", path.to_str().unwrap(), err)
-        }
-        Ok(()) => {}
-    };
+    let path = Path::new(R_ROOT).join(ver);
+    std::os::unix::fs::symlink(&path, R_CUR)?;
 
     // Remove /usr/local/bin/R link
     let r = Path::new("/usr/local/bin/R");
     if r.exists() {
-	let ret = std::fs::remove_file(r);
-	match ret {
-            Err(err) => {
-		panic!("Could not remove {}: {}", r.to_str().unwrap(), err)
-            }
-            Ok(()) => {}
-	};
+	std::fs::remove_file(r)?;
     }
 
     // Add /usr/local/bin/R link
     let cr = Path::new("/opt/R/current/bin/R");
-    let ret = std::os::unix::fs::symlink(&cr, &r);
-    match ret {
-        Err(err) => {
-            panic!("Could not create {}: {}", r.to_str().unwrap(), err)
-        }
-        Ok(()) => {}
-    };
+    std::os::unix::fs::symlink(&cr, &r)?;
 
     // Remove /usr/local/bin/Rscript link
     let rs = Path::new("/usr/local/bin/Rscript");
     if rs.exists() {
-	let ret = std::fs::remove_file(rs);
-	match ret {
-            Err(err) => {
-		panic!("Could not remove {}: {}", rs.to_str().unwrap(), err)
-            }
-            Ok(()) => {}
-	};
+	std::fs::remove_file(rs)?;
     }
 
     // Add /usr/local/bin/Rscript link
     let crs = Path::new("/opt/R/current/bin/Rscript");
-    let ret = std::os::unix::fs::symlink(&crs, &rs);
-    match ret {
-        Err(err) => {
-            panic!("Could not create {}: {}", rs.to_str().unwrap(), err)
-        }
-        Ok(()) => {}
-    };
+    std::os::unix::fs::symlink(&crs, &rs)?;
+
+    Ok(())
 }
 
 pub fn sc_get_default_() -> Result<Option<String>,Box<dyn Error>> {
@@ -665,31 +629,22 @@ pub fn sc_clean_registry() {
     // Nothing to do on Linux
 }
 
-pub fn sc_rstudio(args: &ArgMatches) {
-    let mut ver = args.value_of("version");
-    let mut prj = args.value_of("project-file");
-
-    // If the first argument is an R project file, and the second is not,
-    // then we switch the two
-    if ver.is_some() && ver.unwrap().ends_with(".Rproj") {
-        ver = args.value_of("project-file");
-        prj = args.value_of("version");
-    }
-
+pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>)
+                   -> Result<(), Box<dyn Error>> {
     let cmd;
     let args;
-    if prj.is_none() {
+    if project.is_none() {
         cmd = "rstudio";
         args = vec![];
     } else {
         cmd = "xdg-open";
-        args = vec![prj.unwrap()];
+        args = vec![project.unwrap()];
     }
 
     let mut envname = "dummy";
     let mut path = "".to_string();
-    if !ver.is_none() {
-        let ver = ver.unwrap().to_string();
+    if !version.is_none() {
+        let ver = version.unwrap().to_string();
         check_installed(&ver);
         envname = "RSTUDIO_WHICH_R";
         path = R_ROOT.to_string() + "/" + &ver + "/bin/R"
@@ -703,6 +658,7 @@ pub fn sc_rstudio(args: &ArgMatches) {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .env(envname, &path)
-        .spawn()
-        .expect("Failed to start Rstudio");
+        .spawn()?;
+
+    Ok(())
 }
