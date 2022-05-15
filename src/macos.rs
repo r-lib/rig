@@ -10,6 +10,7 @@ use nix::unistd::Gid;
 use nix::unistd::Uid;
 use regex::Regex;
 use semver::Version;
+use simple_error::bail;
 
 use crate::common::*;
 use crate::download::*;
@@ -603,25 +604,17 @@ pub fn sc_clean_registry() {
     // Nothing to do on macOS
 }
 
-pub fn sc_rstudio(args: &ArgMatches) {
-    let mut ver = args.value_of("version");
-    let mut prj = args.value_of("project-file");
+pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>)
+                   -> Result<(), Box<dyn Error>> {
 
-    // If the first argument is an R project file, and the second is not,
-    // then we switch the two
-    if ver.is_some() && ver.unwrap().ends_with(".Rproj") {
-        ver = args.value_of("project-file");
-        prj = args.value_of("version");
-    }
-
-    let mut args = match prj {
+    let mut args = match project {
         None => vec!["-n", "-a", "RStudio"],
         Some(p) => vec!["-n", p]
     };
     let path;
 
-    if !ver.is_none() {
-        let ver = ver.unwrap().to_string();
+    if !version.is_none() {
+        let ver = version.unwrap().to_string();
         check_installed(&ver);
         path = "RSTUDIO_WHICH_R=".to_string() + R_ROOT +
             "/" + &ver + "/Resources/R";
@@ -633,14 +626,13 @@ pub fn sc_rstudio(args: &ArgMatches) {
 
     let status = Command::new("open")
         .args(args)
-        .spawn()
-        .expect("Failed to start Rstudio")
-        .wait()
-        .expect("Failed to start RStudio");
-
+        .spawn()?
+        .wait()?;
 
     if !status.success() {
-        panic!("`open` exited with status {}", status.to_string());
+        bail!("RStudio failed with status {}", status.to_string());
+    } else {
+        Ok(())
     }
 }
 
@@ -659,39 +651,25 @@ fn check_has_pak(ver: &String) -> bool {
     true
 }
 
-pub fn sc_set_default(ver: String) {
-    check_installed(&ver);
-    let ret = std::fs::remove_file(R_CUR);
-    match ret {
-        Err(err) => {
-            panic!("Could not remove {}: {}", R_CUR, err)
-        }
-        Ok(()) => {}
-    };
-
-    let path = Path::new(R_ROOT).join(ver.as_str());
-    let ret = std::os::unix::fs::symlink(&path, R_CUR);
-    match ret {
-        Err(err) => {
-            panic!("Could not create {}: {}", path.to_str().unwrap(), err)
-        }
-        Ok(()) => {}
-    };
+pub fn sc_set_default_(ver: &str) -> Result<(), Box<dyn Error>> {
+    check_installed(&ver.to_string());
+    std::fs::remove_file(R_CUR)?;
+    let path = Path::new(R_ROOT).join(ver);
+    std::os::unix::fs::symlink(&path, R_CUR)?;
+    Ok(())
 }
 
 pub fn sc_get_default_() -> Result<Option<String>,Box<dyn Error>> {
     read_version_link(R_CUR)
 }
 
-pub fn sc_get_list() -> Vec<String> {
+pub fn sc_get_list_() -> Result<Vec<String>, Box<dyn Error>> {
     let mut vers = Vec::new();
     if ! Path::new(R_ROOT).exists() {
-        return vers
+        return Ok(vers);
     }
 
-    let paths = std::fs::read_dir(R_ROOT);
-    assert!(paths.is_ok(), "Cannot list directory {}", R_ROOT);
-    let paths = paths.unwrap();
+    let paths = std::fs::read_dir(R_ROOT)?;
 
     for de in paths {
         let path = de.unwrap().path();
@@ -701,7 +679,7 @@ pub fn sc_get_list() -> Vec<String> {
         }
     }
     vers.sort();
-    vers
+    Ok(vers)
 }
 
 fn get_install_dir(ver: &Rversion) -> String {

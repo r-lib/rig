@@ -514,18 +514,16 @@ pub fn get_resolve(args: &ArgMatches) -> Rversion {
 
 // ------------------------------------------------------------------------
 
-pub fn sc_get_list() -> Vec<String> {
+pub fn sc_get_list_() -> Result<Vec<String>, Box<dyn Error>> {
   let mut vers = Vec::new();
   if ! Path::new(R_ROOT).exists() {
-      return vers
+      return Ok(vers)
   }
 
-  let paths = std::fs::read_dir(R_ROOT);
-  assert!(paths.is_ok(), "Cannot list directory {}", R_ROOT);
-  let paths = paths.unwrap();
+  let paths = std::fs::read_dir(R_ROOT)?;
 
   for de in paths {
-    let path = de.unwrap().path();
+    let path = de?.path();
     let fname = path.file_name().unwrap();
     let fname = fname.to_str().unwrap().to_string();
     if &fname[0..2] == "R-" {
@@ -535,34 +533,29 @@ pub fn sc_get_list() -> Vec<String> {
   }
 
   vers.sort();
-  vers
+  Ok(vers)
 }
 
-pub fn sc_set_default(ver: String) {
-    check_installed(&ver);
+pub fn sc_set_default_(ver: &str) -> Result<(), Box<dyn Error>> {
+    check_installed(&ver.to_string());
     elevate("setting the default R version");
     let base = Path::new(R_ROOT);
     let bin = base.join("bin");
-    match std::fs::create_dir_all(&bin) {
-        Err(err) => panic!(
-            "Cannot create library at {}: {}",
-            bin.display(),
-            err.to_string()
-        ),
-        _ => {}
-    };
+    std::fs::create_dir_all(&bin)?;
 
     let linkfile = bin.join("R.bat");
     let cnt = "::".to_string() + &ver + "\n" +
         "@\"C:\\Program Files\\R\\R-" + &ver + "\\bin\\R\" %*\n";
-    let mut file = File::create(linkfile).unwrap();
-    file.write_all(cnt.as_bytes()).unwrap();
+    let mut file = File::create(linkfile)?;
+    file.write_all(cnt.as_bytes())?;
 
     let linkfile2 = base.join("bin").join("RS.bat");
-    let mut file2 = File::create(linkfile2).unwrap();
-    file2.write_all(cnt.as_bytes()).unwrap();
+    let mut file2 = File::create(linkfile2)?;
+    file2.write_all(cnt.as_bytes())?;
 
     update_registry_default();
+
+    Ok(())
 }
 
 pub fn sc_get_default_() -> Result<Option<String>, Box<dyn Error>> {
@@ -717,34 +710,26 @@ fn get_latest_install_path() -> Option<String> {
     None
 }
 
-pub fn sc_rstudio(args: &ArgMatches) {
-    let mut ver = args.value_of("version");
-    let mut prj = args.value_of("project-file");
-
-    // If the first argument is an R project file, and the second is not,
-    // then we switch the two
-    if ver.is_some() && ver.unwrap().ends_with(".Rproj") {
-        ver = args.value_of("project-file");
-        prj = args.value_of("version");
-    }
+pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>)
+                   -> Result<(), Box<dyn Error>> {
 
     // we only need to restore if 'ver' is given, there is a default and
     // they are different
     let def = sc_get_default();
-    let restore = !ver.is_none() && !def.is_none() &&
-	def.unwrap() != ver.unwrap();
+    let restore = !version.is_none() && !def.is_none() &&
+	def.unwrap() != version.unwrap();
 
-    if !ver.is_none() {
+    if !version.is_none() {
 	elevate("updating default version in registry");
     }
 
-    let args = match prj {
+    let args = match project {
 	None => vec!["/c", "start", "/b", "rstudio"],
 	Some(p) => vec!["/c", "start", "/b", p]
     };
 
-    if !ver.is_none() {
-	let ver = ver.unwrap().to_string();
+    if !version.is_none() {
+	let ver = version.unwrap().to_string();
 	check_installed(&ver);
 	update_registry_default_to(&ver);
     }
@@ -771,6 +756,8 @@ pub fn sc_rstudio(args: &ArgMatches) {
     if !status.success() {
         panic!("`open` exited with status {}", status.to_string());
     }
+
+    Ok(())
 }
 
 fn elevate(task: &str) {

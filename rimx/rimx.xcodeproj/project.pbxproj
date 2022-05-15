@@ -1,0 +1,458 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 55;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		C50C1E71282E648A00C23175 /* librimlib.a in Frameworks */ = {isa = PBXBuildFile; fileRef = C50C1E70282E648A00C23175 /* librimlib.a */; };
+		C5A0C679282EBB980014313C /* DirectoryWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5A0C678282EBB980014313C /* DirectoryWatcher.swift */; };
+		C5A0C67B282F1B0B0014313C /* RStudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5A0C67A282F1B0B0014313C /* RStudio.swift */; };
+		C5A0C67E2830D58E0014313C /* Preferences in Frameworks */ = {isa = PBXBuildFile; productRef = C5A0C67D2830D58E0014313C /* Preferences */; };
+		C5A0C6822830DBA30014313C /* RimPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5A0C6812830DBA30014313C /* RimPreferences.swift */; };
+		C5A0C6852830F1DF0014313C /* LaunchAtLogin in Frameworks */ = {isa = PBXBuildFile; productRef = C5A0C6842830F1DF0014313C /* LaunchAtLogin */; };
+		C5A5531B282E46C100438D16 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5A5531A282E46C100438D16 /* AppDelegate.swift */; };
+		C5A55320282E46C100438D16 /* rimx.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = C5A5531E282E46C100438D16 /* rimx.xcdatamodeld */; };
+		C5A55322282E46C100438D16 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C5A55321282E46C100438D16 /* Assets.xcassets */; };
+		C5B09AB1282E84A500649453 /* rimapi.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B09AB0282E84A500649453 /* rimapi.swift */; };
+		C5E8EBFE282E7283009D8601 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5E8EBFD282E7283009D8601 /* main.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		C50C1E6F282E647500C23175 /* rim.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = rim.h; sourceTree = "<group>"; };
+		C50C1E70282E648A00C23175 /* librimlib.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = librimlib.a; path = lib/librimlib.a; sourceTree = SOURCE_ROOT; };
+		C5A0C678282EBB980014313C /* DirectoryWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectoryWatcher.swift; sourceTree = "<group>"; };
+		C5A0C67A282F1B0B0014313C /* RStudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RStudio.swift; sourceTree = "<group>"; };
+		C5A0C6812830DBA30014313C /* RimPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RimPreferences.swift; sourceTree = "<group>"; };
+		C5A55317282E46C100438D16 /* rimx.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = rimx.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C5A5531A282E46C100438D16 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		C5A5531F282E46C100438D16 /* rimx.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = rimx.xcdatamodel; sourceTree = "<group>"; };
+		C5A55321282E46C100438D16 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		C5A55326282E46C200438D16 /* rimx.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = rimx.entitlements; sourceTree = "<group>"; };
+		C5B09AB0282E84A500649453 /* rimapi.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = rimapi.swift; sourceTree = "<group>"; };
+		C5E8EBFD282E7283009D8601 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		C5EDDDDD282E4AB00098F3AB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		C5F14200282E65D600523C04 /* rim-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "rim-Bridging-Header.h"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		C5A55314282E46C000438D16 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C5A0C6852830F1DF0014313C /* LaunchAtLogin in Frameworks */,
+				C50C1E71282E648A00C23175 /* librimlib.a in Frameworks */,
+				C5A0C67E2830D58E0014313C /* Preferences in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		C5A5530E282E46C000438D16 = {
+			isa = PBXGroup;
+			children = (
+				C5A55319282E46C100438D16 /* rimx */,
+				C5A55318282E46C100438D16 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		C5A55318282E46C100438D16 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				C5A55317282E46C100438D16 /* rimx.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		C5A55319282E46C100438D16 /* rimx */ = {
+			isa = PBXGroup;
+			children = (
+				C5EDDDDD282E4AB00098F3AB /* Info.plist */,
+				C5A5531A282E46C100438D16 /* AppDelegate.swift */,
+				C5A0C678282EBB980014313C /* DirectoryWatcher.swift */,
+				C5A0C6812830DBA30014313C /* RimPreferences.swift */,
+				C5A0C67A282F1B0B0014313C /* RStudio.swift */,
+				C5B09AB0282E84A500649453 /* rimapi.swift */,
+				C5E8EBFD282E7283009D8601 /* main.swift */,
+				C50C1E70282E648A00C23175 /* librimlib.a */,
+				C5F14200282E65D600523C04 /* rim-Bridging-Header.h */,
+				C50C1E6F282E647500C23175 /* rim.h */,
+				C5A55321282E46C100438D16 /* Assets.xcassets */,
+				C5A55326282E46C200438D16 /* rimx.entitlements */,
+				C5A5531E282E46C100438D16 /* rimx.xcdatamodeld */,
+			);
+			path = rimx;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		C5A55316282E46C000438D16 /* rimx */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C5A5533F282E46C200438D16 /* Build configuration list for PBXNativeTarget "rimx" */;
+			buildPhases = (
+				C5A55313282E46C000438D16 /* Sources */,
+				C5A55314282E46C000438D16 /* Frameworks */,
+				C5A55315282E46C000438D16 /* Resources */,
+				C5A0C6862830F2300014313C /* ShellScript */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = rimx;
+			packageProductDependencies = (
+				C5A0C67D2830D58E0014313C /* Preferences */,
+				C5A0C6842830F1DF0014313C /* LaunchAtLogin */,
+			);
+			productName = rimx;
+			productReference = C5A55317282E46C100438D16 /* rimx.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		C5A5530F282E46C000438D16 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = NO;
+				LastSwiftUpdateCheck = 1330;
+				LastUpgradeCheck = 1330;
+				TargetAttributes = {
+					C5A55316282E46C000438D16 = {
+						CreatedOnToolsVersion = 13.3;
+					};
+				};
+			};
+			buildConfigurationList = C5A55312282E46C000438D16 /* Build configuration list for PBXProject "rimx" */;
+			compatibilityVersion = "Xcode 13.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = C5A5530E282E46C000438D16;
+			packageReferences = (
+				C5A0C67C2830D58E0014313C /* XCRemoteSwiftPackageReference "Preferences" */,
+				C5A0C6832830F1DF0014313C /* XCRemoteSwiftPackageReference "LaunchAtLogin" */,
+			);
+			productRefGroup = C5A55318282E46C100438D16 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				C5A55316282E46C000438D16 /* rimx */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		C5A55315282E46C000438D16 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C5A55322282E46C100438D16 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		C5A0C6862830F2300014313C /* ShellScript */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\n\"${BUILT_PRODUCTS_DIR}/LaunchAtLogin_LaunchAtLogin.bundle/Contents/Resources/copy-helper-swiftpm.sh\"\n\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		C5A55313282E46C000438D16 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C5A0C67B282F1B0B0014313C /* RStudio.swift in Sources */,
+				C5A0C679282EBB980014313C /* DirectoryWatcher.swift in Sources */,
+				C5A5531B282E46C100438D16 /* AppDelegate.swift in Sources */,
+				C5A0C6822830DBA30014313C /* RimPreferences.swift in Sources */,
+				C5B09AB1282E84A500649453 /* rimapi.swift in Sources */,
+				C5A55320282E46C100438D16 /* rimx.xcdatamodeld in Sources */,
+				C5E8EBFE282E7283009D8601 /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		C5A5533D282E46C200438D16 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = "$(ARCHS_STANDARD)";
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		C5A5533E282E46C200438D16 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = "$(ARCHS_STANDARD)";
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = NO;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+			};
+			name = Release;
+		};
+		C5A55340282E46C200438D16 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = rimx/rimx.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5CK56ZU9YH;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = rimx/Info.plist;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/lib",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.13;
+				MARKETING_VERSION = 1.0;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gaborcsardi.rimx;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "rimx/rim-Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		C5A55341282E46C200438D16 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = rimx/rimx.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 5CK56ZU9YH;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = rimx/Info.plist;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/lib",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.13;
+				MARKETING_VERSION = 1.0;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gaborcsardi.rimx;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "rimx/rim-Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		C5A55312282E46C000438D16 /* Build configuration list for PBXProject "rimx" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C5A5533D282E46C200438D16 /* Debug */,
+				C5A5533E282E46C200438D16 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C5A5533F282E46C200438D16 /* Build configuration list for PBXNativeTarget "rimx" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C5A55340282E46C200438D16 /* Debug */,
+				C5A55341282E46C200438D16 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		C5A0C67C2830D58E0014313C /* XCRemoteSwiftPackageReference "Preferences" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sindresorhus/Preferences";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+		C5A0C6832830F1DF0014313C /* XCRemoteSwiftPackageReference "LaunchAtLogin" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sindresorhus/LaunchAtLogin";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		C5A0C67D2830D58E0014313C /* Preferences */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C5A0C67C2830D58E0014313C /* XCRemoteSwiftPackageReference "Preferences" */;
+			productName = Preferences;
+		};
+		C5A0C6842830F1DF0014313C /* LaunchAtLogin */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C5A0C6832830F1DF0014313C /* XCRemoteSwiftPackageReference "LaunchAtLogin" */;
+			productName = LaunchAtLogin;
+		};
+/* End XCSwiftPackageProductDependency section */
+
+/* Begin XCVersionGroup section */
+		C5A5531E282E46C100438D16 /* rimx.xcdatamodeld */ = {
+			isa = XCVersionGroup;
+			children = (
+				C5A5531F282E46C100438D16 /* rimx.xcdatamodel */,
+			);
+			currentVersion = C5A5531F282E46C100438D16 /* rimx.xcdatamodel */;
+			path = rimx.xcdatamodeld;
+			sourceTree = "<group>";
+			versionGroupType = wrapper.xcdatamodel;
+		};
+/* End XCVersionGroup section */
+	};
+	rootObject = C5A5530F282E46C000438D16 /* Project object */;
+}

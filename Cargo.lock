@@ -965,6 +965,7 @@ dependencies = [
  "futures-util",
  "is_elevated",
  "lazy_static",
+ "libc",
  "nix",
  "regex",
  "remove_dir_all 0.7.0",
