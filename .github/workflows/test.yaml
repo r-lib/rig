@@ -25,24 +25,24 @@ jobs:
       with:
         fetch-depth: 10
 
-    - name: Build rim
+    - name: Build rig
       run: |
-        docker build -t rim:latest .
-        docker run --name quickrim rim:latest ls out
-        docker cp quickrim:out .
+        docker build -t rig:latest .
+        docker run --name quickrig rig:latest ls out
+        docker cp quickrig:out .
         ls out
-        cp out/rim* .
+        cp out/rig* .
 
     - name: Upload build as artifact
       uses: actions/upload-artifact@v2
       if: success()
       with:
-        name: rim-linux
-        path: 'rim-*.tar.gz'
+        name: rig-linux
+        path: 'rig-*.tar.gz'
 
-    - name: Install rim
+    - name: Install rig
       run: |
-        sudo tar xzf rim-*.tar.gz -C /usr/local
+        sudo tar xzf rig-*.tar.gz -C /usr/local
 
     - name: Install bats
       run: |
@@ -65,22 +65,22 @@ jobs:
       with:
         fetch-depth: 10
 
-    - name: Build rim
+    - name: Build rig
       run: |
         docker system prune -f
-        docker build -t rim:latest .
-        docker rm quickrim 2>/dev/null || true
-        docker run --name quickrim rim:latest ls out
-        docker cp quickrim:out .
+        docker build -t rig:latest .
+        docker rm quickrig 2>/dev/null || true
+        docker run --name quickrig rig:latest ls out
+        docker cp quickrig:out .
         ls out
-        cp out/rim* .
+        cp out/rig* .
 
     - name: Upload build as artifact
       uses: actions/upload-artifact@v2
       if: success()
       with:
-        name: rim-linux-aarch64
-        path: 'rim-*.tar.gz'
+        name: rig-linux-aarch64
+        path: 'rig-*.tar.gz'
 
 # TODO: run tests in Docker container
 
@@ -109,19 +109,19 @@ jobs:
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rust.sh
         sh rust.sh -y
 
-    - name: Build rim
+    - name: Build rig
       run: |
         make macos-unsigned-x86_64
 
     - uses: actions/upload-artifact@v2
       if: success()
       with:
-        name: rim-${{ matrix.config.os }}
-        path: 'rim-*.pkg'
+        name: rig-${{ matrix.config.os }}
+        path: 'rig-*.pkg'
 
-    - name: Install rim
+    - name: Install rig
       run: |
-        sudo installer -pkg rim-*.pkg -target /
+        sudo installer -pkg rig-*.pkg -target /
 
     - name: Install bats
       run: |
@@ -163,12 +163,12 @@ jobs:
     - uses: actions/upload-artifact@v2
       if: success()
       with:
-        name: rim-windows
-        path: 'rim-*.exe'
+        name: rig-windows
+        path: 'rig-*.exe'
 
-    - name: Install rim
+    - name: Install rig
       run: |
-        Start-Process .\rim-*.exe -ArgumentList "/verysilent /suppressmsgboxes" -Wait -NoNewWindow
+        Start-Process .\rig-*.exe -ArgumentList "/verysilent /suppressmsgboxes" -Wait -NoNewWindow
 
     - name: Install bats
       run: |
