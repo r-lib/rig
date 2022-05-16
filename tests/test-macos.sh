@@ -11,38 +11,38 @@ teardown() {
 }
 
 @test "add" {
-    if ! rim ls | grep -q '^4.1'; then
-        run sudo rim add 4.1
+    if ! rig ls | grep -q '^4.1'; then
+        run sudo rig add 4.1
         [[ "$status" -eq 0 ]]
-        run rim ls
+        run rig ls
         echo "$output" | grep -q "^4.1"
     fi
-    run sudo rim system make-links
+    run sudo rig system make-links
     [[ "$status" -eq 0 ]]
     run R-4.1 -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^4[.]1[.][0-9]$"
 
-    if ! rim ls | grep -q '^4.0'; then
-        run sudo rim add 4.0
+    if ! rig ls | grep -q '^4.0'; then
+        run sudo rig add 4.0
         [[ "$status" -eq 0 ]]
-        run rim ls
+        run rig ls
         echo "$output" | grep -q "^4.0"
     fi
-    run sudo rim system make-links
+    run sudo rig system make-links
     [[ "$status" -eq 0 ]]
     run R-4.0 -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^4[.]0[.]5$"
 
-    devel=$(rim resolve devel | cut -f1 -d" " | sed 's/\.[^..]*$//')
-    if ! rim ls | grep -q "^$devel"; then
-        run sudo rim add devel
+    devel=$(rig resolve devel | cut -f1 -d" " | sed 's/\.[^..]*$//')
+    if ! rig ls | grep -q "^$devel"; then
+        run sudo rig add devel
         [[ "$status" -eq 0 ]]
-        run rim ls
+        run rig ls
         echo "$output" | grep -q "^$devel"
     fi
-    run sudo rim system make-links
+    run sudo rig system make-links
     [[ "$status" -eq 0 ]]
     run R-${devel} -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
@@ -50,75 +50,75 @@ teardown() {
     echo "$output" | grep -q "^$devel[.][0-9]\$"
 
     if [[ "$(arch)" = "arm64" ]]; then
-        if ! rim ls | grep -q '^4.1'; then
-            run sudo rim add 4.1 --arch arm64
+        if ! rig ls | grep -q '^4.1'; then
+            run sudo rig add 4.1 --arch arm64
             [[ "$status" -eq 0 ]]
-            run rim ls
+            run rig ls
             echo "$output" | grep -q "^4.1-arm64"
         fi
     fi
 }
 
 @test "default" {
-    run rim default
+    run rig default
     [[ "$status" -eq 0 ]]
-    run sudo rim default 4.1
+    run sudo rig default 4.1
     [[ "$status" -eq 0 ]]
-    run rim default
+    run rig default
     [[ "$output" = "4.1" ]]
-    run sudo rim default 1.0
+    run sudo rig default 1.0
     [[ ! "$status" -eq 0 ]]
     echo $output | grep -q "is not installed"
 }
 
 @test "list" {
-    run rim list
+    run rig list
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^4.1 [(]default[)]$"
-    run rim ls
+    run rig ls
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^4.0"
 }
 
 @test "resolve" {
-    run rim resolve devel
+    run rig resolve devel
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
-    run rim resolve release
+    run rig resolve release
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
-    run rim resolve devel -a arm64
+    run rig resolve devel -a arm64
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
-    run rim resolve oldrel
+    run rig resolve oldrel
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
-    run rim resolve oldrel/3
+    run rig resolve oldrel/3
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
-    run rim resolve 4.1.1
+    run rig resolve 4.1.1
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "4[.]1[.]1 https://"
-    run rim resolve 4.0
+    run rig resolve 4.0
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "4[.]0[.]5 https://"
 }
 
 @test "rm" {
-    if ! rim ls | grep -q '^3.3'; then
-        run sudo rim add 3.3
+    if ! rig ls | grep -q '^3.3'; then
+        run sudo rig add 3.3
         [[ "$status" -eq 0 ]]
-        run rim ls
+        run rig ls
         echo "$output" | grep -q "^3[.]3"
     fi
-    run sudo rim rm 3.3
+    run sudo rig rm 3.3
     [[ "$status" -eq 0 ]]
-    run rim list
+    run rig list
     echo $output | grep -vq "^3.3$"
 }
 
 @test "system create-lib" {
-    run rim system create-lib
+    run rig system create-lib
     [[ $status -eq 0 ]]
     run R-4.1 -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
     [[ $status -eq 0 ]]
@@ -129,16 +129,16 @@ teardown() {
 }
 
 @test "system add-pak" {
-    run sudo rim default 4.1
+    run sudo rig default 4.1
     [[ "$status" -eq 0 ]]
-    run rim system add-pak
+    run rig system add-pak
     echo $output | grep -q "Installing pak for R 4.1"
     run R-4.1 -q -s -e 'pak::lib_status()'
     [[ "$status" -eq 0 ]]
 }
 
 @test "system fix-permissions" {
-    run sudo rim system fix-permissions
+    run sudo rig system fix-permissions
     [[ "$status" -eq 0 ]]
     run ls -l /Library/Frameworks/R.framework/Versions/4.1/Resources/Rscript
     [[ "$status" -eq 0 ]]
@@ -147,7 +147,7 @@ teardown() {
 
 
 @test "system forget" {
-    run sudo rim system forget
+    run sudo rig system forget
     [[ $status -eq 0 ]]
     function pkgs {
         pkgutil --pkgs | grep -i r-project | grep -v clang
@@ -158,21 +158,21 @@ teardown() {
 }
 
 @test "system make-orthogonal" {
-    run sudo rim system make-orthogonal
+    run sudo rig system make-orthogonal
     [[ $status -eq 0 ]]
 }
 
 @test "system no-openmp" {
-    run sudo rim system no-openmp
+    run sudo rig system no-openmp
     [[ $status -eq 0 ]]
     run grep -q fopenmp /Library/Frameworks/R.framework/Versions/4.1/Resources/etc/Makeconf
     [[ $status -eq 1 ]]
 }
 
 @test "system allow-debugger" {
-    run sudo rim default 4.1
+    run sudo rig default 4.1
     [[ "$status" -eq 0 ]]
-    run sudo rim system allow-debugger
+    run sudo rig system allow-debugger
     if [[ "$(uname -r | cut -d. -f1)" -lt "21" ]]; then
 	run codesign -d --entitlements :- /Library/Frameworks/R.framework/Versions/4.1/Resources/bin/exec/R
     else

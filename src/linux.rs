@@ -67,7 +67,7 @@ pub fn sc_add(args: &ArgMatches) {
     };
 
     let filename = basename(&url).unwrap();
-    let tmp_dir = std::env::temp_dir().join("rim");
+    let tmp_dir = std::env::temp_dir().join("rig");
     let target = tmp_dir.join(&filename);
     let target_str;
     if target.exists() && not_too_old(&target) {
@@ -477,7 +477,7 @@ fn set_rspm(vers: Option<Vec<String>>, linux: LinuxVersion) {
 
     if !linux.rspm {
 	println!(
-	    "RSPM (or rim) does not support this distro: {} {}",
+	    "RSPM (or rig) does not support this distro: {} {}",
 	    linux.distro,
 	    linux.version
 	);
@@ -581,7 +581,7 @@ fn detect_linux() -> LinuxVersion {
 
     if ! good {
 	panic!(
-	    "Unsupported distro: {} {}, see rim list-supported",
+	    "Unsupported distro: {} {}, see rig list-supported",
 	    &id,
 	    &ver
 	);

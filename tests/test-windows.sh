@@ -14,14 +14,14 @@ teardown() {
 # from a PowerShell Windows Terminal.
 
 @test "empty" {
-    run rim ls
+    run rig ls
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
     # no default initially
     if [[ ! -e "/mnt/c/Program Files/R/bin/RS.bat" &&
 	  ! -e "C:/Program Files/R/bin/RS.bat" ]]; then
-	run rim default
+	run rig default
 	echo "status = ${status}"
 	echo "output = ${output}"
 	[[ ! "$status" -eq 0 ]]
@@ -29,15 +29,15 @@ teardown() {
 }
 
 # We use 4.1.1 because currently 4.1.2 is already installed on the GHA
-# VM, but without the rim goodies.
+# VM, but without the rig goodies.
 
 @test "add" {
-    if ! rim ls | grep -q '^4.1.1$'; then
-	run rim add 4.1.1
+    if ! rig ls | grep -q '^4.1.1$'; then
+	run rig add 4.1.1
 	echo "status = ${status}"
 	echo "output = ${output}"
 	[[ "$status" -eq 0 ]]
-	run rim ls
+	run rig ls
 	echo "$output" | grep -q "^4.1.1"
     fi
     run R-4.1.1.bat -q -s -e 'cat(as.character(getRversion()))'
@@ -46,12 +46,12 @@ teardown() {
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^4[.]1[.]1$"
 
-    if ! rim ls | grep -q '^4.0.5$'; then
-	run rim add 4.0
+    if ! rig ls | grep -q '^4.0.5$'; then
+	run rig add 4.0
 	echo "status = ${status}"
 	echo "output = ${output}"
 	[[ "$status" -eq 0 ]]
-	run rim ls
+	run rig ls
 	echo "$output" | grep -q "^4.0.5"
     fi
     run R-4.0.5.bat -q -s -e 'cat(as.character(getRversion()))'
@@ -60,13 +60,13 @@ teardown() {
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^4[.]0[.]5$"
 
-    devel=$(rim resolve devel | cut -f1 -d" ")
-    if ! rim ls | grep -q '^devel$'; then
-	run rim add devel
+    devel=$(rig resolve devel | cut -f1 -d" ")
+    if ! rig ls | grep -q '^devel$'; then
+	run rig add devel
 	echo "status = ${status}"
 	echo "output = ${output}"
 	[[ "$status" -eq 0 ]]
-	run rim ls
+	run rig ls
 	echo "$output" | grep -q "^devel"
     fi
     run R-devel.bat -q -s -e 'cat(as.character(getRversion()))'
@@ -80,18 +80,18 @@ teardown() {
     # no default initially
     if [[ ! -e "/mnt/c/Program Files/R/bin/RS.bat" &&
 	  ! -e "C:/Program Files/R/bin/RS.bat" ]]; then
-	run rim default
+	run rig default
 	echo "status = ${status}"
 	echo "output = ${output}"
 	[[ ! "$status" -eq 0 ]]
     fi
-    run rim default 4.1.1
+    run rig default 4.1.1
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
-    run rim default
+    run rig default
     [[ "$output" = "4.1.1" ]]
-    run rim default 1.0
+    run rig default 1.0
     echo "status = ${status}"
     echo "output = ${output}"
     [[ ! "$status" -eq 0 ]]
@@ -99,12 +99,12 @@ teardown() {
 }
 
 @test "list" {
-    run rim list
+    run rig list
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^4.1.1 [(]default[)]$"
-    run rim ls
+    run rig ls
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
@@ -112,32 +112,32 @@ teardown() {
 }
 
 @test "resolve" {
-    run rim resolve devel
+    run rig resolve devel
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
-    run rim resolve release
+    run rig resolve release
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
-    run rim resolve oldrel
+    run rig resolve oldrel
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
-    run rim resolve oldrel/3
+    run rig resolve oldrel/3
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
-    run rim resolve 4.1.1
+    run rig resolve 4.1.1
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "4[.]1[.]1 https://"
-    run rim resolve 4.0
+    run rig resolve 4.0
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
@@ -145,19 +145,19 @@ teardown() {
 }
 
 @test "rm" {
-    if ! rim ls | grep -q '^3.3.3$'; then
-        run rim add 3.3
+    if ! rig ls | grep -q '^3.3.3$'; then
+        run rig add 3.3
 	echo "status = ${status}"
 	echo "output = ${output}"
         [[ "$status" -eq 0 ]]
-        run rim ls
+        run rig ls
         echo "$output" | grep -q "^3[.]3[.]3"
     fi
-    run rim rm 3.3.3
+    run rig rm 3.3.3
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
-    run rim list
+    run rig list
     echo $output | grep -vq "^3.3.3"
 }
 
@@ -184,18 +184,18 @@ teardown() {
     echo "output = ${output}"
     [[ $status -eq 0 ]]
     [[ "${lines[-1]}" = "[1] TRUE" ]]
-    run rim system create-lib
+    run rig system create-lib
     echo "status = ${status}"
     echo "output = ${output}"
     [[ $status -eq 0 ]]
 }
 
 @test "system add-pak" {
-    run rim default 4.1.1
+    run rig default 4.1.1
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
-    run rim system add-pak
+    run rig system add-pak
     echo $output | grep -q "Installing pak for R 4.1.1"
     run R-4.1.1.bat -q -s -e 'pak::lib_status()'
     echo "status = ${status}"
@@ -204,7 +204,7 @@ teardown() {
 }
 
 @test "system clean-registry" {
-    run rim system clean-registry
+    run rig system clean-registry
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]

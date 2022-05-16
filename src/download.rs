@@ -28,7 +28,7 @@ pub fn download_r(args: &ArgMatches) -> (Rversion, String) {
         None => panic!("Cannot find a download url for R version {}", ver.unwrap()),
     };
     let filename = version.arch.to_owned().unwrap() + "-" + basename(&url).unwrap();
-    let tmp_dir = std::env::temp_dir().join("rim");
+    let tmp_dir = std::env::temp_dir().join("rig");
     let target = tmp_dir.join(&filename);
     let target_str;
     if target.exists() && not_too_old(&target) {

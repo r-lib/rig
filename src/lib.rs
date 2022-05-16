@@ -40,7 +40,7 @@ static ERROR_SET_DEFAULT_FAILED: libc::c_int = -4;
 // Caller must free this
 
 #[no_mangle]
-pub extern "C" fn rim_last_error() -> *const libc::c_char {
+pub extern "C" fn rig_last_error() -> *const libc::c_char {
     let str = LAST_ERROR.lock().unwrap();
     let bytes = Box::new(str.as_bytes());
     let ptr = bytes.as_ptr();
@@ -100,7 +100,7 @@ fn set_c_strings(from: Vec<String>, ptr: *mut libc::c_char, size: libc::size_t)
 // ------------------------------------------------------------------------
 
 #[no_mangle]
-pub extern "C" fn rim_get_default(
+pub extern "C" fn rig_get_default(
     ptr: *mut libc::c_char,
     size: libc::size_t
 ) -> libc::c_int {
@@ -134,7 +134,7 @@ pub extern "C" fn rim_get_default(
 }
 
 #[no_mangle]
-pub extern "C" fn rim_list(
+pub extern "C" fn rig_list(
     ptr: *mut libc::c_char,
     size: libc::size_t
 ) -> libc::c_int {
@@ -160,7 +160,7 @@ pub extern "C" fn rim_list(
 }
 
 #[no_mangle]
-pub extern "C" fn rim_set_default(
+pub extern "C" fn rig_set_default(
     ptr: *const libc::c_char) -> libc::c_int {
 
     let ver: &str;
@@ -183,7 +183,7 @@ pub extern "C" fn rim_set_default(
 }
 
 #[no_mangle]
-pub extern "C" fn rim_start_rstudio(
+pub extern "C" fn rig_start_rstudio(
     pversion: *const libc::c_char,
     pproject: *const libc::c_char) -> libc::c_int {
 

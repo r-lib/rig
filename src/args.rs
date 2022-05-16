@@ -13,9 +13,9 @@ std::include!("help-windows.in");
 #[cfg(target_os = "linux")]
 std::include!("help-linux.in");
 
-pub fn rim_app() -> Command<'static> {
+pub fn rig_app() -> Command<'static> {
 
-    let rim = Command::new("RIM -- The R Installation Manager")
+    let rig = Command::new("RIG -- The R Installation Manager")
         .version("0.3.1")
         .about(HELP_ABOUT)
         .arg_required_else_help(true)
@@ -294,7 +294,7 @@ pub fn rim_app() -> Command<'static> {
                 .required(false)
         );
 
-    rim
+    rig
         .subcommand(cmd_default)
         .subcommand(cmd_list)
         .subcommand(cmd_add)
@@ -306,5 +306,5 @@ pub fn rim_app() -> Command<'static> {
 }
 
 pub fn parse_args() -> ArgMatches {
-    rim_app().get_matches()
+    rig_app().get_matches()
 }

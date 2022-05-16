@@ -4,7 +4,7 @@
   - Cargo.toml
   - Cargo.lock (run cargo build)
   - src/args.rs
-  - rim.iss
+  - rig.iss
   - NEWS file
   - README.Rmd
 - [ ] Make sure CI is OK

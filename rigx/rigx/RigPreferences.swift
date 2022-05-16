@@ -1,6 +1,6 @@
 //
 //  GeneralPreferenceViewController.swift
-//  rimx
+//  rigx
 //
 //  Created by Gabor Csardi on 5/15/22.
 //

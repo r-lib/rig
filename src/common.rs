@@ -14,13 +14,13 @@ pub fn check_installed(ver: &String) -> bool {
     let inst = sc_get_list();
     assert!(
         inst.contains(&ver),
-        "Version {} is not installed, see 'rim list'",
+        "Version {} is not installed, see 'rig list'",
         ver
     );
     true
 }
 
-// -- rim default ---------------------------------------------------------
+// -- rig default ---------------------------------------------------------
 
 // Good example of how errors should be handled.
 // * The implementation (function with `_` suffix), and it forwards the
@@ -37,7 +37,7 @@ pub fn sc_show_default() {
 pub fn sc_get_default_or_fail() -> String {
     match sc_get_default() {
         None => {
-            panic!("No default R version is set, call `rim default <version>`");
+            panic!("No default R version is set, call `rig default <version>`");
         },
         Some(x) => x
     }
@@ -68,7 +68,7 @@ pub fn sc_set_default(ver: String) {
     };
 }
 
-// -- rim list ------------------------------------------------------------
+// -- rig list ------------------------------------------------------------
 
 pub fn sc_get_list() -> Vec<String> {
     match sc_get_list_() {
@@ -79,7 +79,7 @@ pub fn sc_get_list() -> Vec<String> {
     }
 }
 
-// -- rim rstudio ---------------------------------------------------------
+// -- rig rstudio ---------------------------------------------------------
 
 pub fn sc_rstudio(args: &ArgMatches) {
     let mut ver = args.value_of("version");

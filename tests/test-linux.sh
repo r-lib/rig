@@ -11,36 +11,36 @@ teardown() {
 }
 
 @test "empty" {
-    run rim ls
+    run rig ls
     [[ "$status" -eq 0 ]]
 }
 
 @test "add" {
-    if ! rim ls | grep -q '^4.1.2'; then
-	run rim add 4.1.2
+    if ! rig ls | grep -q '^4.1.2'; then
+	run rig add 4.1.2
 	[[ "$status" -eq 0 ]]
-	run rim ls
+	run rig ls
 	echo "$output" | grep -q "^4.1.2"
     fi
     run R-4.1.2 -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^4[.]1[.]2$"
 
-    if ! rim ls | grep -q '^4.0.5'; then
-	run rim add 4.0
+    if ! rig ls | grep -q '^4.0.5'; then
+	run rig add 4.0
 	[[ "$status" -eq 0 ]]
-	run rim ls
+	run rig ls
 	echo "$output" | grep -q "^4.0.5"
     fi
     run R-4.0.5 -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^4[.]0[.]5$"
 
-    devel=$(rim resolve devel | cut -f1 -d" ")
-    if ! rim ls | grep -q '^devel$'; then
-	run rim add devel
+    devel=$(rig resolve devel | cut -f1 -d" ")
+    if ! rig ls | grep -q '^devel$'; then
+	run rig add devel
 	[[ "$status" -eq 0 ]]
-	run rim ls
+	run rig ls
 	echo "$output" | grep -q "^devel"
     fi
     run R-devel -q -s -e 'cat(as.character(getRversion()))'
@@ -51,58 +51,58 @@ teardown() {
 @test "default" {
     # no default initially
     if [[ ! -e /opt/R/current ]]; then
-	run rim default
+	run rig default
 	[[ ! "$status" -eq 0 ]]
     fi
-    run rim default 4.1.2
+    run rig default 4.1.2
     [[ "$status" -eq 0 ]]
-    run rim default
+    run rig default
     [[ "$output" = "4.1.2" ]]
-    run rim default 1.0
+    run rig default 1.0
     [[ ! "$status" -eq 0 ]]
     echo $output | grep -q "is not installed"
 }
 
 @test "list" {
-    run rim list
+    run rig list
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^4.1.2 [(]default[)]"
-    run rim ls
+    run rig ls
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^4.0.5"
 }
 
 @test "resolve" {
-    run rim resolve devel
+    run rig resolve devel
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
-    run rim resolve release
+    run rig resolve release
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
-    run rim resolve oldrel
+    run rig resolve oldrel
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
-    run rim resolve oldrel/3
+    run rig resolve oldrel/3
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
-    run rim resolve 4.1.1
+    run rig resolve 4.1.1
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "4[.]1[.]1 https://"
-    run rim resolve 4.0
+    run rig resolve 4.0
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "4[.]0[.]5 https://"
 }
 
 @test "rm" {
-    if ! rim ls | grep -q '^3.3.3$'; then
-        run rim add 3.3
+    if ! rig ls | grep -q '^3.3.3$'; then
+        run rig add 3.3
         [[ "$status" -eq 0 ]]
-        run rim ls
+        run rig ls
         echo "$output" | grep -q "^3[.]3[.]3"
     fi
-    run rim rm 3.3.3
+    run rig rm 3.3.3
     [[ "$status" -eq 0 ]]
-    run rim list
+    run rig list
     echo $output | grep -vq "^3.3.3"
 }
 
@@ -117,14 +117,14 @@ teardown() {
     run R-4.0.5 -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
     [[ $status -eq 0 ]]
     [[ "$output" = "[1] TRUE" ]]
-    run rim system create-lib
+    run rig system create-lib
     [[ $status -eq 0 ]]
 }
 
 @test "system add-pak" {
-    run rim default 4.1.2
+    run rig default 4.1.2
     [[ "$status" -eq 0 ]]
-    run rim system add-pak
+    run rig system add-pak
     echo $output | grep -q "Installing pak for R 4.1.2"
     run R-4.1.2 -q -s -e 'pak::lib_status()'
     [[ "$status" -eq 0 ]]

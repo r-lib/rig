@@ -1,24 +1,24 @@
 
 [package]
-name = "rim"
+name = "rig"
 version = "0.3.1"
 edition = "2021"
 authors = ["Gábor Csárdi <csardi.gabor@gmail.com"]
 license = "MIT"
 description = "Manage R installations"
 readme = "README.md"
-homepage = "https://github.com/gaborcsardi/rim"
-repository = "https://github.com/gaborcsardi/rim"
+homepage = "https://github.com/gaborcsardi/rig"
+repository = "https://github.com/gaborcsardi/rig"
 keywords = ["R", "cli"]
 categories = ["command-line-utilities"]
 
 [lib]
-name = "rimlib"
+name = "riglib"
 crate-type = ["staticlib"]
 path = "src/lib.rs"
 
 [[bin]]
-name = "rim"
+name = "rig"
 path = "src/main.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

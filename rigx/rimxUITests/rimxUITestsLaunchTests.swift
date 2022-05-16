@@ -1,13 +1,13 @@
 //
-//  rimxUITestsLaunchTests.swift
-//  rimxUITests
+//  rigxUITestsLaunchTests.swift
+//  rigxUITests
 //
 //  Created by Gabor Csardi on 5/13/22.
 //
 
 import XCTest
 
-class rimxUITestsLaunchTests: XCTestCase {
+class rigxUITestsLaunchTests: XCTestCase {
 
     override class var runsForEachTargetApplicationUIConfiguration: Bool {
         true

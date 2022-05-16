@@ -956,7 +956,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rim"
+name = "rig"
 version = "0.3.1"
 dependencies = [
  "clap",

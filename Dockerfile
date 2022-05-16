@@ -1,7 +1,7 @@
 
 FROM alpine:3.15
 
-COPY . rim
+COPY . rig
 
 RUN apk add curl
 
@@ -30,10 +30,10 @@ RUN cd openssl-* &&                                 \
     rm -rf /usr/local/bin/openssl                   \
        /usr/local/share/{man/doc}
 
-# build rim ---------------------------------------------------------------
+# build rig ---------------------------------------------------------------
 
-RUN source $HOME/.cargo/env && cd rim && make linux
+RUN source $HOME/.cargo/env && cd rig && make linux
 
-RUN mkdir out && cp rim/rim-*.tar.gz out
+RUN mkdir out && cp rig/rig-*.tar.gz out
 
 RUN ls -l out

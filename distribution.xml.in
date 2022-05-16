@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8" standalone="no"?>
 <installer-gui-script minSpecVersion="1">
-    <title>rim</title>
-    <organization>com.gaborcsardi.rim</organization>
+    <title>rig</title>
+    <organization>com.gaborcsardi.rig</organization>
     <domains enable_localSystem="true" enable_anywhere="true" />
     <options customize="allow" require-scripts="false" rootVolumeOnly="false" />
     <!-- Define documents displayed at various steps -->
@@ -10,21 +10,21 @@
     <!-- <conclusion file="conclusion.html" mime-type="text/html" /> -->
     <options hostArchitectures="{{ARCH}}" />
     <!-- List all component packages -->
-    <pkg-ref id="com.gaborcsardi.rim"
+    <pkg-ref id="com.gaborcsardi.rig"
              version="{{VERSION}}"
-             auth="root">rim-{{ARCH}}.pkg</pkg-ref>
+             auth="root">rig-{{ARCH}}.pkg</pkg-ref>
     <!-- List them again here. They can now be organized
          as a hierarchy if you want. -->
     <choices-outline>
-        <line choice="com.gaborcsardi.rim"/>
+        <line choice="com.gaborcsardi.rig"/>
     </choices-outline>
     <!-- Define each choice above -->
     <choice
-        id="com.gaborcsardi.rim"
+        id="com.gaborcsardi.rig"
         visible="false"
-        title="rim"
-        description="rim - R installation manager"
+        title="rig"
+        description="rig - R installation manager"
         start_selected="true">
-      <pkg-ref id="com.gaborcsardi.rim"/>
+      <pkg-ref id="com.gaborcsardi.rig"/>
     </choice>
 </installer-gui-script>

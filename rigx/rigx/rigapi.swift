@@ -1,18 +1,18 @@
 //
-//  rimapi.swift
-//  rimx
+//  rigapi.swift
+//  rigx
 //
 //  Created by Gabor Csardi on 5/13/22.
 //
 
 import Foundation
 
-func rimDefault() -> String? {
+func rigDefault() -> String? {
     var buffer = Data(count: 1024)
     let n = buffer.count
     var err: Int32 = 0
     buffer.withUnsafeMutableBytes({(p: UnsafeMutablePointer<CChar>) -> Void in
-        err = rim_get_default(p, n)
+        err = rig_get_default(p, n)
     })
     if err != 0 {
         return nil
@@ -24,20 +24,20 @@ func rimDefault() -> String? {
     return def
 }
 
-func rimSetDefault(version: String) {
+func rigSetDefault(version: String) {
     var buffer = version.data(using: .utf8)!
     buffer.append(0)
     buffer.withUnsafeMutableBytes({(p: UnsafeMutablePointer<CChar>) -> Void in
-        let err = rim_set_default(p)
+        let err = rig_set_default(p)
         // TODO: error
     })
 }
 
-func rimList() -> Array<String> {
+func rigList() -> Array<String> {
     var buffer = Data(count: 1024)
     let n = buffer.count
     buffer.withUnsafeMutableBytes({(p: UnsafeMutablePointer<CChar>) -> Void in
-        rim_list(p, n)
+        rig_list(p, n)
         // TODO: error
     })
 
@@ -60,7 +60,7 @@ func rimList() -> Array<String> {
     return result
 }
 
-func rimStartRStudio(version: String?, project: String?) {
+func rigStartRStudio(version: String?, project: String?) {
     var version2: String = version ?? ""
     var project2: String = project ?? ""
 
@@ -71,7 +71,7 @@ func rimStartRStudio(version: String?, project: String?) {
 
     bversion.withUnsafeMutableBytes({(p: UnsafeMutablePointer<CChar>) -> Void in
         bproject.withUnsafeMutableBytes({(q: UnsafeMutablePointer<CChar>) -> Void in
-            let err = rim_start_rstudio(p, q)
+            let err = rig_start_rstudio(p, q)
             // TODO: error
         })
     })

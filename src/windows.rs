@@ -114,7 +114,7 @@ fn add_rtools(version: String) {
             filename = format!("Rtools{}.exe", ver);
 	    url = format!("https://cloud.r-project.org/bin/windows/Rtools/{}", filename);
         };
-        let tmp_dir = std::env::temp_dir().join("rim");
+        let tmp_dir = std::env::temp_dir().join("rig");
         let target = tmp_dir.join(&filename);
         let target_str = target.into_os_string().into_string().unwrap();
         println!("Downloading {} ->\n    {}", url, target_str);
@@ -156,7 +156,7 @@ fn patch_for_rtools() {
 	    let reader = BufReader::new(file);
 	    for line in reader.lines() {
 		let line2 = line.unwrap();
-		if line2.len() >= 14 && &line2[0..14] == "# added by rim" {
+		if line2.len() >= 14 && &line2[0..14] == "# added by rig" {
 		    ok = true;
 		    break;
 		}
@@ -171,7 +171,7 @@ fn patch_for_rtools() {
 		.unwrap();
 
 	    let head = "\n".to_string() +
-		"# added by rim, do not update by hand-----\n";
+		"# added by rig, do not update by hand-----\n";
 	    let tail = "\n".to_string() +
 		"# ----------------------------------------\n";
 	    let txt3 = head.to_owned() +
@@ -763,7 +763,7 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>)
 fn elevate(task: &str) {
     if is_elevated::is_elevated() { return; }
     let args: Vec<String> = std::env::args().collect();
-    println!("Re-running rim as administrator for {}.", task);
+    println!("Re-running rig as administrator for {}.", task);
     let exe = std::env::current_exe().unwrap();
     let exedir =  Path::new(&exe).parent();
     let instdir = match exedir {

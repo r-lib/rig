@@ -1,6 +1,6 @@
 notarize {
-  path = "rim-{{VERSION}}-macOS-{{ARCH}}.pkg"
-  bundle_id = "com.gaborcsardi.rim"
+  path = "rig-{{VERSION}}-macOS-{{ARCH}}.pkg"
+  bundle_id = "com.gaborcsardi.rig"
   staple = true
 }
 apple_id {

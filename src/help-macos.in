@@ -5,40 +5,40 @@
 // ------------------------------------------------------------------------
 
 const HELP_ABOUT: &str = r#"NAME
-    rim - manage R installations
+    rig - manage R installations
 
 DESCRIPTION
-    rim manages your R installations, on macOS, Windows, and Linux. It can
+    rig manages your R installations, on macOS, Windows, and Linux. It can
     install and set up multiple versions R, and make sure that they work
     together.
 
-    On macOS, R versions installed by rim do not interfere. You can run
-    multiple versions at the same time. rim also makes sure that packages
+    On macOS, R versions installed by rig do not interfere. You can run
+    multiple versions at the same time. rig also makes sure that packages
     are installed into a user package library, so reinstalling R will not
     wipe out your installed packages.
 
-    rim is currently experimental and is a work in progress. Feedback is much
-    appreciated. See https://github.com/gaborcsardi/rim for bug reports.
+    rig is currently experigental and is a work in progress. Feedback is much
+    appreciated. See https://github.com/gaborcsardi/rig for bug reports.
 "#;
 
 const HELP_EXAMPLES: &str = r#"EXAMPLES:
     # Add the latest development snapshot
-    rim add devel
+    rig add devel
 
     # Add the latest release
-    rim add release
+    rig add release
 
     # Install specific version
-    rim add 4.1.2
+    rig add 4.1.2
 
     # Install latest version within a minor branch
-    rim add 4.1
+    rig add 4.1
 
     # List installed versions
-    rim list
+    rig list
 
     # Set default version
-    rim default 4.0
+    rig default 4.0
 "#;
 
 const HELP_RESOLVE: &str = r#"
@@ -52,27 +52,27 @@ DESCRIPTION
     current platform, the URL is `NA`.
 
     An R version can be specified in various ways:
-    - `rim resolve devel` is the latest available development version,
-    - `rim resolve next` is the next (patched, alpha, beta, etc.) version,
-    - `rim resolve release` is the latest release.
-    - `rim resolve x.y.z` is a specific version.
-    - `rim resolve x.y` is the latest release within the `x.y` minor branch.
-    - `rim resolve oldrel/n` is the latest release within the `n`th previous
+    - `rig resolve devel` is the latest available development version,
+    - `rig resolve next` is the next (patched, alpha, beta, etc.) version,
+    - `rig resolve release` is the latest release.
+    - `rig resolve x.y.z` is a specific version.
+    - `rig resolve x.y` is the latest release within the `x.y` minor branch.
+    - `rig resolve oldrel/n` is the latest release within the `n`th previous
       minor branch (`oldrel` is the same as `oldrel/1`).
 "#;
 
 const HELP_RESOLVE_EXAMPLES: &str = r#"EXAMPLES
     # Latest development snapshot
-    rim resolve devel
+    rig resolve devel
 
     # Latest release (that has an installer available)
-    rim resolve release
+    rig resolve release
 
     # URL for a specific version
-    rim resolve 4.1.2
+    rig resolve 4.1.2
 
     # Latest version within a minor branch
-    rim resolve 4.1
+    rig resolve 4.1
 "#;
 
 const HELP_ARCH: &str = "Select macOS arch: arm64 or x86_64";
@@ -87,7 +87,7 @@ DESCRIPTION:
 
     Call without any arguments to see the current default. Call with the
     version number/name to set the default. Before setting a default, you
-    can call `rim list` to see the installed R versions.
+    can call `rig list` to see the installed R versions.
 
     The default R version is set by updating the symbolic link at
     `/Library/Frameworks/R.framework/Versions/Current` and pointing it to the
@@ -95,20 +95,20 @@ DESCRIPTION:
 
     This command can change the default version without `sudo` as long as
     the user is in the `admin` group. Otherwise you need to run it as
-    `sudo rim default ...`.
+    `sudo rig default ...`.
 
     You don't need to update the default R version to just run a non-default R
-    version. You can use the `R-<ver>` links, see `rim system make-links`.
+    version. You can use the `R-<ver>` links, see `rig system make-links`.
 
-    `rim switch` is an alias of `rim default`.
+    `rig switch` is an alias of `rig default`.
 "#;
 
 const HELP_DEFAULT_EXAMPLES: &str = r#"EXAMPLES:
     # Query default R version
-    rim default
+    rig default
 
     # Set the default version
-    rim default 4.1
+    rig default 4.1
 "#;
 
 const HELP_LIST: &str = r#"
@@ -116,7 +116,7 @@ DESCRIPTION:
     List installed R versions from `/Library/Framework/R.framework/Versions`.
     It does _not_ check if they are working properly.
 
-    `rim ls` is an alias.
+    `rig ls` is an alias.
 "#;
 
 const HELP_ADD: &str = r#"
@@ -127,70 +127,70 @@ DESCRIPTION:
 
     NOTE: it is best to quit from all currently running R sessions before
     adding new R versions. The newly added R version will be the default
-    after the installation. If you don't want that, call `rim default`.
+    after the installation. If you don't want that, call `rig default`.
 
     The desired R version can be specified in various ways:
-    - `rim add devel` adds the latest available development version,
-    - `rim add next` is the next version (patched, alpha, beta, rc, etc.),
-    - `rim add release` adds the latest release.
-    - `rim add x.y.z` adds a specific version.
-    - `rim add x.y` adds the latest release within the `x.y` minor branch.
-    - `rim add oldrel/n` adds the latest release within the `n`th previous
+    - `rig add devel` adds the latest available development version,
+    - `rig add next` is the next version (patched, alpha, beta, rc, etc.),
+    - `rig add release` adds the latest release.
+    - `rig add x.y.z` adds a specific version.
+    - `rig add x.y` adds the latest release within the `x.y` minor branch.
+    - `rig add oldrel/n` adds the latest release within the `n`th previous
       minor branch (`oldrel` is the same as `oldrel/1`).
-    - `rim add <url>` uses a `.pkg` installer from `<url>`.
+    - `rig add <url>` uses a `.pkg` installer from `<url>`.
 
-    Usually you need to run this command with `sudo`: `sudo rim add ...`,
-    otherwise rim will need to ask for your password.
+    Usually you need to run this command with `sudo`: `sudo rig add ...`,
+    otherwise rig will need to ask for your password.
 
-    On macOS rim cannot add multiple R versions from the same minor branch.
+    On macOS rig cannot add multiple R versions from the same minor branch.
     E.g. it is not possible to have R 4.1.1 and R 4.1.2 installed at the
     same time. Adding one of them will automatically remove the other.
 
-    `rim add` will automatically call `rim system forget` before the
+    `rig add` will automatically call `rig system forget` before the
     installation, to make sure that already installed R versions are kept.
-    It will also call the following rim command after the installation:
-    - `rim system forget`
-    - `rim system fix-permissions`
-    - `rim system make-orthogonal`
-    - `rim system create-lib`
-    - `rim system make-links`
+    It will also call the following rig command after the installation:
+    - `rig system forget`
+    - `rig system fix-permissions`
+    - `rig system make-orthogonal`
+    - `rig system create-lib`
+    - `rig system make-links`
     See their help pages for details.
 "#;
 
 const HELP_ADD_EXAMPLES: &str = r#"EXAMPLES:
     # Add the latest development snapshot
-    rim add devel
+    rig add devel
 
     # Add the latest release
-    rim add release
+    rig add release
 
     # Install specific version
-    rim add 4.1.2
+    rig add 4.1.2
 
     # Install latest version within a minor branch
-    rim add 4.1
+    rig add 4.1
 "#;
 
 const HELP_RM: &str = r#"
 DESCRIPTION:
     Remove an R installation. It keeps the users' package libraries.
-    It automatically calls `rim system forget` before removing the files.
+    It automatically calls `rig system forget` before removing the files.
 
-    Usually you need to run this command with `sudo`: `sudo rim rm ...`,
-    otherwise rim will ask for your password.
+    Usually you need to run this command with `sudo`: `sudo rig rm ...`,
+    otherwise rig will ask for your password.
 "#;
 
 const HELP_SYSTEM: &str = r#"
 DESCRIPTION:
     Various commands to modify and configure the installed R versions.
-    See their help pages for details. E.g. run `rim system make-links --help`.
+    See their help pages for details. E.g. run `rig system make-links --help`.
 "#;
 
 const HELP_SYSTEM_ORTHO: &str = r#"
 DESCRIPTION:
     Make the current R installations orthogonal. This allows running multiple
     R versions at the same time, as long as they are started with their
-    quick links (see `rim system make-links --help`). For example you
+    quick links (see `rig system make-links --help`). For example you
     can run a script using R 4.1.x in one terminal:
 
     R-4.1 -q -f script1.R
@@ -199,11 +199,11 @@ DESCRIPTION:
 
     R-4.0 -q -f script2.R
 
-    `rim add` runs `rim system make-orthogonal`, so if you only use rim to
+    `rig add` runs `rig system make-orthogonal`, so if you only use rig to
     install R, then you do not need to run it manually.
 
-    This command probably needs `sudo`: `sudo rim system make-orthogonal`,
-    otherwise rim will aks for your password.
+    This command probably needs `sudo`: `sudo rig system make-orthogonal`,
+    otherwise rig will aks for your password.
 "#;
 
 const HELP_SYSTEM_LINKS: &str = r#"
@@ -212,11 +212,11 @@ DESCRIPTION:
     These let you directly run a specific R version. E.g. `R-4.1` will start
     R 4.1.x.
 
-    `rim add` runs `rim system make-links`, so if you only use rim to
+    `rig add` runs `rig system make-links`, so if you only use rig to
     install R, then you do not need to run it manually.
 
-    This command probably needs `sudo`: `sudo rim system make-links`,
-    otherwise rim will ask for your password.
+    This command probably needs `sudo`: `sudo rig system make-links`,
+    otherwise rig will ask for your password.
 "#;
 
 const HELP_SYSTEM_LIB: &str = r#"
@@ -225,7 +225,7 @@ DESCRIPTION:
     current R versions. It is better to keep packages in a user library,
     because then they are not wiped out by a minor R (re)install.
 
-    `rim add` runs `rim system create-lib`, so if you only use rim to
+    `rig add` runs `rig system create-lib`, so if you only use rig to
     install R, then you do not need to run it manually.
 "#;
 
@@ -238,21 +238,21 @@ DESCRIPTION:
     * If one or more R versions are specified, then it installs pak for
       those.
     * If no R versions are specified, then it installs pak for the default
-      R installation (see `rim default`).
+      R installation (see `rig default`).
 "#;
 
 const HELP_SYSTEM_FIXPERMS: &str = r#"
 DESCRIPTION:
     Update the permissions of the current R versions, so only the
     administrator can install R packages into the system library.
-    Together with `rim system create-lib` this facilitates keeping
+    Together with `rig system create-lib` this facilitates keeping
     additional packages in a user library, instead of the system library.
 
-    `rim add` runs `rim system fix-permissions`, so if you only use rim to
+    `rig add` runs `rig system fix-permissions`, so if you only use rig to
     install R, then you do not need to run it manually.
 
-    This command probably needs `sudo`: `sudo rim system fix-permissions`,
-    otherwise rim will ask for your password.
+    This command probably needs `sudo`: `sudo rig system fix-permissions`,
+    otherwise rig will ask for your password.
 "#;
 
 const HELP_SYSTEM_FORGET: &str = r#"
@@ -260,12 +260,12 @@ DESCRIPTION:
     Tell macOS to forget about the currently installed R versions.
     This is needed to have multiple R installations at the same time.
 
-    `rim add` runs `rim system forget` before and after the installation,
-    so if you only use rim to install R, then you don't need to run this
+    `rig add` runs `rig system forget` before and after the installation,
+    so if you only use rig to install R, then you don't need to run this
     command manually.
 
-    This command probably needs `sudo`: `sudo rim system forget`, otherwise
-    rim will ask for your password.
+    This command probably needs `sudo`: `sudo rig system forget`, otherwise
+    rig will ask for your password.
 "#;
 
 const HELP_SYSTEM_NO_OPENMP: &str = r#"
@@ -274,12 +274,12 @@ DESCRIPTION:
     the Apple compilers, instead of CRAN's custom compilers. This is only
     needed for R 3.6.x and before.
 
-    `rim add` runs `rim system no-openmp` after the installation, so if
-    only use rim to install R, then you don't need to run this command
+    `rig add` runs `rig system no-openmp` after the installation, so if
+    only use rig to install R, then you don't need to run this command
     manually.
 
-    This command probably needs `sudo`: `sudo rim system no-openmp`,
-    otherwise rim will ask for your password.
+    This command probably needs `sudo`: `sudo rig system no-openmp`,
+    otherwise rig will ask for your password.
 "#;
 
 const HELP_SYSTEM_ALLOW_DEBUGGER: &str = r#"
@@ -290,28 +290,28 @@ DESCRIPTION:
     Call `R -d lldb` to start `lldb` on `R`. (Or `R-x.y -d lldb` if you
     want a non-default version.)
 
-    This command is experimental. Please let us know at
-    https://github.com/gaborcsardi/rim/issues if it does not work as
+    This command is experigental. Please let us know at
+    https://github.com/gaborcsardi/rig/issues if it does not work as
     expected.
 
-    This command probably needs `sudo`: `sudo rim system allow-debugger`,
-    otherwise rim will ask for your password.
+    This command probably needs `sudo`: `sudo rig system allow-debugger`,
+    otherwise rig will ask for your password.
 "#;
 
 const HELP_SYSTEM_ALLOW_CORE_DUMPS: &str = r#"
 DESCRIPTION:
     Update the entitlements of the R process to allow core dumps. This
-    command is similar to `rim system allow-debugger` but it also makes
+    command is similar to `rig system allow-debugger` but it also makes
     sure that the `/cores` directory of core dumps is writeable by the
     current user. Don't forget to call `ulimit -c unlimited` from the
     same shell before starting R.
 
-    This command is experimental. Please let us know at
-    https://github.com/gaborcsardi/rim/issues if it does not work as
+    This command is experigental. Please let us know at
+    https://github.com/gaborcsardi/rig/issues if it does not work as
     expected.
 
-    This command probably needs `sudo`: `sudo rim system allow-core-dumps`,
-    otherwise rim will ask for your password.
+    This command probably needs `sudo`: `sudo rig system allow-core-dumps`,
+    otherwise rig will ask for your password.
 "#;
 
 const HELP_RSTUDIO: &str = r#"
@@ -320,15 +320,15 @@ DESCRIPTION:
 
 EXAMPLES:
     # With default R version
-    rim rstudio
+    rig rstudio
 
     # With another R version
-    rim rstudio 4.0
+    rig rstudio 4.0
 
     # Open project with default R version
-    rim rstudio cli.Rproj
+    rig rstudio cli.Rproj
 
     # Open RStudio project with specified R version, either is good
-    rim rstudio 4.0 cli.Rproj
-    rim rstudio cli.Rproj 4.0
+    rig rstudio 4.0 cli.Rproj
+    rig rstudio cli.Rproj 4.0
 "#;

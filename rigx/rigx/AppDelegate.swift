@@ -1,6 +1,6 @@
 //
 //  AppDelegate.swift
-//  rimx
+//  rigx
 //
 //  Created by Gabor Csardi on 5/13/22.
 //
@@ -29,7 +29,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         let statusBar = NSStatusBar.system
         statusBarItem = statusBar.statusItem(withLength: NSStatusItem.variableLength)
-        let def = rimDefault()
+        let def = rigDefault()
         if def == nil {
             statusBarItem.button?.title = "R"
         } else {
@@ -40,7 +40,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusBarItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
 
         watcher = DirectoryWatcher(withPath: "/Library/Frameworks/R.framework/Versions", callback: { directoryWatcher in
-            let def = rimDefault()
+            let def = rigDefault()
             if def != nil {
                 self.statusBarItem.button?.title = "R " + def!
             }
@@ -55,8 +55,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let menu = NSMenu()
         menu.delegate = self
 
-        let def = rimDefault()
-        let list = rimList()
+        let def = rigDefault()
+        let list = rigList()
 
         // -- rstudio menu -----------------------------------------------------------------------------------------------------
 
@@ -140,9 +140,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func selectVersion(_ sender: NSMenuItem?) {
         let ver = String(sender!.title.dropFirst(2))
-        rimSetDefault(version: ver)
+        rigSetDefault(version: ver)
         // the directory watcher will update this, but nevertheless we update it as well
-        let newver = rimDefault()
+        let newver = rigDefault()
         if newver != nil {
             statusBarItem.button?.title = "R " + newver!
         }
@@ -150,15 +150,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func startRStudio(_ sender: NSMenuItem?) {
         var ver = String(sender!.title.dropFirst(2))
-        if ver == "fault" || ver == "tudio" { ver = rimDefault()! }
-        rimStartRStudio(version: ver, project: nil)
+        if ver == "fault" || ver == "tudio" { ver = rigDefault()! }
+        rigStartRStudio(version: ver, project: nil)
     }
 
     @objc func startRStudio2(_ sender: NSMenuItem?) {
         var msg = sender!.representedObject! as! Array<String>
         var proj = msg[0] as! String
         var rver = msg[1] as! String
-        if rver == "default" { rver = rimDefault()! }
-        rimStartRStudio(version: rver, project: proj)
+        if rver == "default" { rver = rigDefault()! }
+        rigStartRStudio(version: rver, project: proj)
     }
 }

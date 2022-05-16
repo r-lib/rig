@@ -9,24 +9,24 @@ pub fn escalate(task: &str) {
         sudo::RunningAs::Suid => { true }
     };
 
-    match std::env::var("RIM_HOME") {
+    match std::env::var("RIG_HOME") {
 	Ok(_) => { },
 	Err(_) => {
 	    let home = get_home();
-	    std::env::set_var("RIM_HOME", home);
+	    std::env::set_var("RIG_HOME", home);
 	}
     };
 
     if need_sudo {
         println!("Running `sudo` for {}. This might need your password.", task);
-        with_env(&["RIM_HOME", "RUST_BACKTRACE"]).unwrap();
+        with_env(&["RIG_HOME", "RUST_BACKTRACE"]).unwrap();
     }
 }
 
 pub fn get_home() -> String {
     let home = match std::env::var("HOME") {
 	Ok(x) => { x },
-	Err(_) => { panic!("rim needs the HOME env var set"); }
+	Err(_) => { panic!("rig needs the HOME env var set"); }
     };
     home
 }

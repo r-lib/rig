@@ -40,7 +40,7 @@ pub fn sc_add(args: &ArgMatches) {
         None => calculate_hash(&url)
     };
     let filename = prefix + "-" + basename(&url).unwrap();
-    let tmp_dir = std::env::temp_dir().join("rim");
+    let tmp_dir = std::env::temp_dir().join("rig");
     let target = tmp_dir.join(&filename);
     let target_str;
     if target.exists() && not_too_old(&target) {
@@ -307,7 +307,7 @@ pub fn sc_system_allow_debugger(args: &ArgMatches) {
         vers.unwrap().map(|v| v.to_string()).collect()
     };
 
-    let tmp_dir = std::env::temp_dir().join("rim");
+    let tmp_dir = std::env::temp_dir().join("rig");
     match std::fs::create_dir_all(&tmp_dir) {
         Err(err) => {
             let dir = tmp_dir.to_str().unwrap_or_else(|| "???");

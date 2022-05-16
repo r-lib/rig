@@ -6,32 +6,32 @@
 
 const HELP_ABOUT: &str = r#"
 DESCRIPTION
-    rim manages your R installations, on macOS, Windows, and Linux. It can
+    rig manages your R installations, on macOS, Windows, and Linux. It can
     install and set up multiple versions R, and make sure that they work
     together.
 
-    rim is currently experimental and is a work in progress. Feedback is much
-    appreciated. See https://github.com/gaborcsardi/rim for bug reports.
+    rig is currently experigental and is a work in progress. Feedback is much
+    appreciated. See https://github.com/gaborcsardi/rig for bug reports.
 "#;
 
 const HELP_EXAMPLES: &str = r#"EXAMPLES:
     # Add the latest development snapshot
-    rim add devel
+    rig add devel
 
     # Add the latest release
-    rim add release
+    rig add release
 
     # Install specific version
-    rim add 4.1.2
+    rig add 4.1.2
 
     # Install latest version within a minor branch
-    rim add 4.1
+    rig add 4.1
 
     # List installed versions
-    rim list
+    rig list
 
     # Set default version
-    rim default 4.1.2
+    rig default 4.1.2
 "#;
 
 const HELP_RESOLVE: &str = r#"
@@ -45,27 +45,27 @@ DESCRIPTION:
     current platform, the URL is `NA`.
 
     An R version can be specified in various ways:
-    - `rim resolve devel` is the latest available development version,
-    - `rim resolve next` is the next (patched, alpha, beta, etc.) version,
-    - `rim resolve release` is the latest release.
-    - `rim resolve x.y.z` is a specific version.
-    - `rim resolve x.y` is the latest release within the `x.y` minor branch.
-    - `rim resolve oldrel/n` is the latest release within the `n`th previous
+    - `rig resolve devel` is the latest available development version,
+    - `rig resolve next` is the next (patched, alpha, beta, etc.) version,
+    - `rig resolve release` is the latest release.
+    - `rig resolve x.y.z` is a specific version.
+    - `rig resolve x.y` is the latest release within the `x.y` minor branch.
+    - `rig resolve oldrel/n` is the latest release within the `n`th previous
       minor branch (`oldrel` is the same as `oldrel/1`).
 "#;
 
 const HELP_RESOLVE_EXAMPLES: &str = r#"EXAMPLES:
     # Latest development snapshot
-    rim resolve devel
+    rig resolve devel
 
     # Latest release (that has an installer available)
-    rim resolve release
+    rig resolve release
 
     # URL for a specific version
-    rim resolve 4.1.2
+    rig resolve 4.1.2
 
     # Latest version within a minor branch
-    rim resolve 4.1
+    rig resolve 4.1
 "#;
 
 const HELP_DEFAULT: &str = r#"
@@ -76,31 +76,31 @@ DESCRIPTION
 
     Call without any arguments to see the current default. Call with the
     version number/name to set the default. Before setting a default, you
-    can call `rim list` to see the installed R versions.
+    can call `rig list` to see the installed R versions.
 
     Potentially you need to run this command from an admininstrator shell
     to change the current default.
 
     You don't need to update the default R version to just run a non-default R
-    version. You can use the `R-<ver>` links, see `rim system make-links`.
+    version. You can use the `R-<ver>` links, see `rig system make-links`.
 
-    `rim switch` is an alias of `rim default`.
+    `rig switch` is an alias of `rig default`.
 
 KNOWN ISSUES:
-    - If you don't call `rim system default <ver>` to set the default R
+    - If you don't call `rig system default <ver>` to set the default R
       version then there is no default, and there are no `R` and `RS`
       commands.
-    - If you delete the default R version with `rim rm` or another way,
+    - If you delete the default R version with `rig rm` or another way,
       then the `R` and `RS` commands will kept, but they will point to a
       non-existing directory and fail.
 "#;
 
 const HELP_DEFAULT_EXAMPLES: &str = r#"EXAMPLES:
     # Query default R version
-    rim default
+    rig default
 
     # Set the default version
-    rim default 4.1
+    rig default 4.1
 "#;
 
 const HELP_LIST: &str = r#"
@@ -108,7 +108,7 @@ DESCRIPTION
     List installed R versions at `C:\Program Files\R`.
     It does _not_ check if they are working properly.
 
-    `rim ls` is an alias.
+    `rig ls` is an alias.
 "#;
 
 const HELP_ADD: &str = r#"
@@ -117,31 +117,31 @@ DESCRIPTION
     It keeps the already installed R versions.
 
     The desired R version can be specified in various ways:
-    - `rim add devel` adds the latest available development version,
-    - `rim add next` is the next version (patched, alpha, beta, rc, etc.),
-    - `rim add release` adds the latest release.
-    - `rim add x.y.z` adds a specific version.
-    - `rim add x.y` adds the latest release within the `x.y` minor branch.
-    - `rim add oldrel/n` adds the latest release within the `n`th previous
+    - `rig add devel` adds the latest available development version,
+    - `rig add next` is the next version (patched, alpha, beta, rc, etc.),
+    - `rig add release` adds the latest release.
+    - `rig add x.y.z` adds a specific version.
+    - `rig add x.y` adds the latest release within the `x.y` minor branch.
+    - `rig add oldrel/n` adds the latest release within the `n`th previous
       minor branch (`oldrel` is the same as `oldrel/1`).
-    - `rim add <url>` uses a `.pkg` installer from `<url>`.
+    - `rig add <url>` uses a `.pkg` installer from `<url>`.
 
-    `rim add` will call the following rim command after the installation,
+    `rig add` will call the following rig command after the installation,
     to set up the newly installed version:
-    - `rim system create-lib`
-    - `rim system make-links`
+    - `rig system create-lib`
+    - `rig system make-links`
     See their help pages for details.
 
     It will also update the sytem profile of all installed versions to add
     the appropriate versions of Rtools to the system PATH.
 
-    You can use `rim add` to install Rtools:
+    You can use `rig add` to install Rtools:
 
-    rim add rtools
+    rig add rtools
 
     will install all Rtools versions that are needed for the currently
     installed R versions. You can also request a specific Rtools version,
-    e.g. `rim add rtools40`. Rtools versions 3.x all install to `C:\Rtools`,
+    e.g. `rig add rtools40`. Rtools versions 3.x all install to `C:\Rtools`,
     so only one of them can be installed at a time.
 
     Usually you need to run this command from an administrator shell.
@@ -153,19 +153,19 @@ KNOWN ISSUE:
 
 const HELP_ADD_EXAMPLES: &str = r#"EXAMPLES
     # Add the latest development snapshot
-    rim add devel
+    rig add devel
 
     # Add the latest release
-    rim add release
+    rig add release
 
     # Install specific version
-    rim add 4.1.2
+    rig add 4.1.2
 
     # Install latest version within a minor branch
-    rim add 4.1
+    rig add 4.1
 
     # Install all needed Rtools versions
-    rim add rtools
+    rig add rtools
 "#;
 
 const HELP_RM: &str = r#"
@@ -175,16 +175,16 @@ DESCRIPTION
     Usually you need to run this command from an administrator shell.
 
 KNOWN ISSUE:
-    - `rim rm` currently does not remove quick link
-      (see `rim system make-links`) for the deleted R version.
-    - `rim rm` does not remove the deleted R version from the system
+    - `rig rm` currently does not remove quick link
+      (see `rig system make-links`) for the deleted R version.
+    - `rig rm` does not remove the deleted R version from the system
       registry currently.
 "#;
 
 const HELP_SYSTEM: &str = r#"
 DESCRIPTION
     Various commands to modify and configure the installed R versions.
-    See their help pages for details. E.g. run `rim system make-links --help`.
+    See their help pages for details. E.g. run `rig system make-links --help`.
 "#;
 
 const HELP_SYSTEM_LINKS: &str = r#"
@@ -194,15 +194,15 @@ DESCRIPTION
      `R-4.1.2` will start R 4.1.2.
 
     It also adds an `R` and `RS` link that runs the default R version.
-    See `rim default`.
+    See `rig default`.
 
-    `rim add` runs `rim system make-links`, so if you only use rim to
+    `rig add` runs `rig system make-links`, so if you only use rig to
     install R, then you do not need to run it manually.
 
     Usually you need to run this command from an administrator shell.
 
 KNOWN ISSUE:
-    - `rim system make-links` currently does not remove the links that
+    - `rig system make-links` currently does not remove the links that
       are not in use.
 "#;
 
@@ -212,7 +212,7 @@ DESCRIPTION
     current R versions. It is better to keep packages in a user library,
     because then they are not wiped out by a minor R (re)install.
 
-    `rim add` runs `rim system create-lib`, so if you only use rim to
+    `rig add` runs `rig system create-lib`, so if you only use rig to
     install R, then you do not need to run it manually.
 "#;
 
@@ -225,7 +225,7 @@ DESCRIPTION
     * If one or more R versions are specified, then it installs pak for
       those.
     * If no R versions are specified, then it installs pak for the default
-      R installation, if there is one (see `rim default`).
+      R installation, if there is one (see `rig default`).
 "#;
 
 const HELP_SYSTEM_CLEANREG: &str = r#"
@@ -245,15 +245,15 @@ DESCRIPTION:
 
 EXAMPLES:
     # With default R version
-    rim rstudio
+    rig rstudio
 
     # With another R version
-    rim rstudio 4.0.5
+    rig rstudio 4.0.5
 
     # Open project with default R version
-    rim rstudio cli\cli.Rproj
+    rig rstudio cli\cli.Rproj
 
     # Open RStudio project with specified R version, either is good
-    rim rstudio 4.0.5 cli.Rproj
-    rim rstudio cli.Rproj 4.0.5
+    rig rstudio 4.0.5 cli.Rproj
+    rig rstudio cli.Rproj 4.0.5
 "#;

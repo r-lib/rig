@@ -1,19 +1,19 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
-    <id>rim</id>
+    <id>rig</id>
     <version>0.3.0</version>
-    <packageSourceUrl>https://github.com/r-lib/rim</packageSourceUrl>
+    <packageSourceUrl>https://github.com/r-lib/rig</packageSourceUrl>
     <owners>Gábor Csárdi</owners>
-    <title>rim</title>
+    <title>rig</title>
     <authors>Gábor Csárdi</authors>
-    <projectUrl>https://github.com/r-lib/rim</projectUrl>
+    <projectUrl>https://github.com/r-lib/rig</projectUrl>
     <copyright>2022, RStudio</copyright>
-    <licenseUrl>https://github.com/r-lib/rim/blob/main/LICENSE</licenseUrl>
-    <projectSourceUrl>https://github.com/r-lib/rim</projectSourceUrl>
-    <docsUrl>https://github.com/r-lib/rim#readme</docsUrl>
-    <bugTrackerUrl>https://github.com/r-lib/rim/issues</bugTrackerUrl>
-    <tags>rim R rstats installer installation manager</tags>
+    <licenseUrl>https://github.com/r-lib/rig/blob/main/LICENSE</licenseUrl>
+    <projectSourceUrl>https://github.com/r-lib/rig</projectSourceUrl>
+    <docsUrl>https://github.com/r-lib/rig#readme</docsUrl>
+    <bugTrackerUrl>https://github.com/r-lib/rig/issues</bugTrackerUrl>
+    <tags>rig R rstats installer installation manager</tags>
     <summary>R Installation Manager</summary>
     <description>
 # Install, remove, configure multiple R versions.
@@ -34,12 +34,12 @@
 * Switches to root/administrator user as needed.
 
 ## Feedback
-Please open an issue in our issue tracker at https://github.com/gaborcsardi/rim/issues
+Please open an issue in our issue tracker at https://github.com/gaborcsardi/rig/issues
     </description>
     <releaseNotes>
-## rim v0.3.0
+## rig v0.3.0
 
-* rim system allow-debugger and rim system allow-core-dumps now work on
+* rig system allow-debugger and rig system allow-core-dumps now work on
 macOS Big Sur.
     </releaseNotes>
   </metadata>

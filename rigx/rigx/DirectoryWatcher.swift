@@ -1,6 +1,6 @@
 //
 //  DirectoryWatcher.swift
-//  rimx
+//  rigx
 //
 //  Created by Gabor Csardi on 5/13/22.
 //

@@ -1,6 +1,10 @@
 
 # rim 0.3.1 (not released yet)
 
+## NEW NAME
+
+`rim` is now known as `rig`.
+
 # rim 0.3.0
 
 * New `rim rstudio` command to open a project in RStudio with the specified

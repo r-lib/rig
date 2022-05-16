@@ -19,8 +19,8 @@ fn main() -> Result<(), Error> {
     static_vcruntime::metabuild();
 }
 
-    let mut app = rim_app();
-    let name = "rim".to_string();
+    let mut app = rig_app();
+    let name = "rig".to_string();
 
     let path = clap_complete::generate_to(Bash, &mut app, &name, &outdir);
     println!("bash completion file is generated: {:?}", path);
