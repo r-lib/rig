@@ -13,8 +13,10 @@ rigx:
 	lipo target/release/libriglib.a \
 		target/x86_64-apple-darwin/release/libriglib.a \
 		-create -output rigx/lib/libriglib.a
-	cd rigx && xcodebuild -configuration Release -scheme rigx -derivedDataPath build-x86_64 -arch x86_64
-	cd rigx && xcodebuild -configuration Release -scheme rigx -derivedDataPath build-arm64 -arch arm64
+	cd rigx && xcodebuild -configuration Release -scheme rigx -derivedDataPath build-x86_64 -arch x86_64 clean build
+	cd rigx && xcodebuild -configuration Release -scheme rigx -derivedDataPath build-arm64 -arch arm64 clean build
+
+rigx/build-arm64/Build/Products/Release/rigx.app: rigx
 
 # -------------------------------------------------------------------------
 
@@ -77,6 +79,10 @@ rig-unnotarized-%.pkg: build.stamp  distribution.xml.in
 	codesign --force \
 		--options runtime \
 		-s 8ADFF507AE8598B1792CF89213307C52FAFF3920 \
+		build-$*/Applications/rigx.app
+	codesign --force \
+		--options runtime \
+		-s 8ADFF507AE8598B1792CF89213307C52FAFF3920 \
 		build-$*/usr/local/bin/rig
 	pkgbuild --root build-$* \
 		--identifier com.gaborcsardi.rig \
@@ -97,7 +103,7 @@ macos-unsigned-x86_64: rig-$(VERSION)-macOS-unsigned-x86_64.pkg
 
 macos-unsigned-arm64: rig-$(VERSION)-macOS-unsigned-arm64.pkg
 
-rig-$(VERSION)-macOS-unsigned-%.pkg: build.stamp  distribution.xml.in
+rig-$(VERSION)-macOS-unsigned-%.pkg: build.stamp distribution.xml.in
 	pkgbuild --root build-$* \
 		--identifier com.gaborcsardi.rig \
 		--version $(VERSION) \
@@ -110,7 +116,9 @@ README.md: README.Rmd $(SOURCES)
 	cargo build --release
 	R -q -e 'rmarkdown::render("README.Rmd")'
 
-build.stamp: target/release/rig target/x86_64-apple-darwin/release/rig
+build.stamp: target/release/rig target/x86_64-apple-darwin/release/rig \
+	     rigx/build-arm64/Build/Products/Release/rigx.app \
+	     rigx/build-x86_64/Build/Products/Release/rigx.app
 	rm -rf build-arm64 build-x86_64
 	# arm64
 	mkdir -p build-arm64/usr/local/bin
@@ -127,7 +135,14 @@ build.stamp: target/release/rig target/x86_64-apple-darwin/release/rig
 	cp target/x86_64-apple-darwin/release/rig build-x86_64/usr/local/bin/
 	strip -x build-x86_64/usr/local/bin/rig
 	find target/release/build -name _rig -exec cp \{\} build-x86_64/usr/local/share/zsh/site-functions \; 
-	find target/release/build -name rig.bash -exec cp \{\} build-x86_64/opt/homebrew/etc/bash_completion.d \; 
+	find target/release/build -name rig.bash -exec cp \{\} build-x86_64/opt/homebrew/etc/bash_completion.d \;
+	# rigx
+	mkdir build-arm64/Applications
+	mkdir build-x86_64/Applications
+	cp -r rigx/build-arm64/Build/Products/Release/rigx.app build-arm64/Applications/
+	rm -rf build-arm64/Applications/rigx.app/Contents/Resources/LaunchAtLogin_LaunchAtLogin.bundle
+	cp -r rigx/build-x86_64/Build/Products/Release/rigx.app build-x86_64/Applications/
+	rm -rf build-x86_64/Applications/rigx.app/Contents/Resources/LaunchAtLogin_LaunchAtLogin.bundle
 	# Resources
 	rm -rf Resources
 	mkdir Resources
