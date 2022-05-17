@@ -111,17 +111,11 @@ jobs:
 
     - name: Build rig
       run: |
-        make macos-unsigned-x86_64
-
-    - uses: actions/upload-artifact@v2
-      if: success()
-      with:
-        name: rig-${{ matrix.config.os }}
-        path: 'rig-*.pkg'
+        cargo build --release
 
     - name: Install rig
       run: |
-        sudo installer -pkg rig-*.pkg -target /
+        sudo cp target/release/rig /usr/local/bin/
 
     - name: Install bats
       run: |
