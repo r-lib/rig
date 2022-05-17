@@ -98,7 +98,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
                 let item = NSMenuItem(title: fileName, action: #selector(startRStudio2), keyEquivalent: "")
                 item.submenu = submenu
-                item.representedObject = p
+                item.representedObject = [p, "default"]
                 projectMenu.addItem(item)
             }
             let projects = NSMenuItem(title: "Recent RStudio Project", action: nil, keyEquivalent: "")
