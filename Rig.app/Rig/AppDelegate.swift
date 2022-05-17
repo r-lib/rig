@@ -81,7 +81,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let projects = recentRStudioProjects()
         if projects != nil {
-            var cnt = 0
             let projectMenu = NSMenu()
             for p in projects! {
                 if p == "" { continue }
@@ -100,7 +99,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 let item = NSMenuItem(title: fileName, action: #selector(startRStudio2), keyEquivalent: "")
                 item.submenu = submenu
                 item.representedObject = p
-                cnt += 1;
                 projectMenu.addItem(item)
             }
             let projects = NSMenuItem(title: "Recent Project", action: nil, keyEquivalent: "")
