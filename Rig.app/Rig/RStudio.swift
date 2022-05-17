@@ -1,6 +1,6 @@
 //
 //  RStudio.swift
-//  rigx
+//  Rig
 //
 //  Created by Gabor Csardi on 5/14/22.
 //

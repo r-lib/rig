@@ -5,18 +5,18 @@ SOURCES=$(wildcard src/*.rs) $(wildcard src/*.in)
 all:
 	@echo "Call 'make win', 'make macos' or 'make linux'"
 
-rigx:
+Rig.app:
 	cargo build --lib --release
 	cargo build --lib --target x86_64-apple-darwin --release
-	cbindgen -l c > include/rig.h > rigx/rigx/rig.h
-	mkdir -p rigx/lib
+	cbindgen -l c > Rig.App/Rig/rig.h
+	mkdir -p Rig.app/lib
 	lipo target/release/libriglib.a \
 		target/x86_64-apple-darwin/release/libriglib.a \
-		-create -output rigx/lib/libriglib.a
-	cd rigx && xcodebuild -configuration Release -scheme rigx -derivedDataPath build-x86_64 -arch x86_64 clean build
-	cd rigx && xcodebuild -configuration Release -scheme rigx -derivedDataPath build-arm64 -arch arm64 clean build
+		-create -output Rig.app/lib/libriglib.a
+	cd Rig.app && xcodebuild -configuration Release -scheme Rig -derivedDataPath build-x86_64 -arch x86_64 clean build
+	cd Rig.app && xcodebuild -configuration Release -scheme Rig -derivedDataPath build-arm64 -arch arm64 clean build
 
-rigx/build-arm64/Build/Products/Release/rigx.app: rigx
+Rig.app/build-arm64/Build/Products/Release/Rig.app: Rig.app
 
 # -------------------------------------------------------------------------
 
@@ -79,7 +79,7 @@ rig-unnotarized-%.pkg: build.stamp  distribution.xml.in
 	codesign --force \
 		--options runtime \
 		-s 8ADFF507AE8598B1792CF89213307C52FAFF3920 \
-		build-$*/Applications/rigx.app
+		build-$*/Applications/Rig.app
 	codesign --force \
 		--options runtime \
 		-s 8ADFF507AE8598B1792CF89213307C52FAFF3920 \
@@ -117,8 +117,8 @@ README.md: README.Rmd $(SOURCES)
 	R -q -e 'rmarkdown::render("README.Rmd")'
 
 build.stamp: target/release/rig target/x86_64-apple-darwin/release/rig \
-	     rigx/build-arm64/Build/Products/Release/rigx.app \
-	     rigx/build-x86_64/Build/Products/Release/rigx.app
+	     Rig.app/build-arm64/Build/Products/Release/Rig.app \
+	     Rig.app/build-x86_64/Build/Products/Release/Rig.app
 	rm -rf build-arm64 build-x86_64
 	# arm64
 	mkdir -p build-arm64/usr/local/bin
@@ -136,13 +136,13 @@ build.stamp: target/release/rig target/x86_64-apple-darwin/release/rig \
 	strip -x build-x86_64/usr/local/bin/rig
 	find target/release/build -name _rig -exec cp \{\} build-x86_64/usr/local/share/zsh/site-functions \; 
 	find target/release/build -name rig.bash -exec cp \{\} build-x86_64/opt/homebrew/etc/bash_completion.d \;
-	# rigx
+	# Rig.app
 	mkdir build-arm64/Applications
 	mkdir build-x86_64/Applications
-	cp -r rigx/build-arm64/Build/Products/Release/rigx.app build-arm64/Applications/
-	rm -rf build-arm64/Applications/rigx.app/Contents/Resources/LaunchAtLogin_LaunchAtLogin.bundle
-	cp -r rigx/build-x86_64/Build/Products/Release/rigx.app build-x86_64/Applications/
-	rm -rf build-x86_64/Applications/rigx.app/Contents/Resources/LaunchAtLogin_LaunchAtLogin.bundle
+	cp -r Rig.app/build-arm64/Build/Products/Release/Rig.app build-arm64/Applications/
+	rm -rf build-arm64/Applications/Rig.app/Contents/Resources/LaunchAtLogin_LaunchAtLogin.bundle
+	cp -r Rig.app/build-x86_64/Build/Products/Release/Rig.app build-x86_64/Applications/
+	rm -rf build-x86_64/Applications/Rig.app/Contents/Resources/LaunchAtLogin_LaunchAtLogin.bundle
 	# Resources
 	rm -rf Resources
 	mkdir Resources
@@ -151,7 +151,7 @@ build.stamp: target/release/rig target/x86_64-apple-darwin/release/rig \
 
 # -------------------------------------------------------------------------
 
-.PHONY: release clean all macos win linux rigx
+.PHONY: release clean all macos win linux Rig.app
 
 clean:
 	rm -rf build.stamp build-* Resources *.pkg distribution.xml gon.hcl Output *.exe

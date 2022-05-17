@@ -1,6 +1,6 @@
 //
 //  DirectoryWatcher.swift
-//  rigx
+//  Rig
 //
 //  Created by Gabor Csardi on 5/13/22.
 //
