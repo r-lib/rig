@@ -101,7 +101,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 item.representedObject = p
                 projectMenu.addItem(item)
             }
-            let projects = NSMenuItem(title: "Recent Project", action: nil, keyEquivalent: "")
+            let projects = NSMenuItem(title: "Recent RStudio Project", action: nil, keyEquivalent: "")
             projects.submenu = projectMenu
             menu.addItem(projects)
         }
