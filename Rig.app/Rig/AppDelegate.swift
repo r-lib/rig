@@ -39,12 +39,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusBarItem.button?.action = #selector(self.statusBarButtonClicked(sender:))
         statusBarItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
 
-        watcher = DirectoryWatcher(withPath: "/Library/Frameworks/R.framework/Versions", callback: { directoryWatcher in
-            let def = rigDefault()
-            if def != nil {
-                self.statusBarItem.button?.title = "R " + def!
-            }
-        })
+        let fileManager = FileManager.default
+        let versions = "/Library/Frameworks/R.framework/Versions"
+        if fileManager.fileExists(atPath: versions) {
+            watcher = DirectoryWatcher(withPath: versions, callback: { directoryWatcher in
+                let def = rigDefault()
+                if def != nil {
+                    self.statusBarItem.button?.title = "R " + def!
+                }
+            })
+        }
     }
 
     @objc func preferencesMenuItemActionHandler(_ sender: NSMenuItem) {
