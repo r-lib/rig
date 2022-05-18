@@ -15,6 +15,38 @@ std::include!("help-linux.in");
 
 pub fn rig_app() -> Command<'static> {
 
+#[allow(dead_code)]
+    let arch_x86_64: &'static str = "x86_64";
+#[allow(dead_code)]
+    let arch_arm64: &'static str = "arm64";
+#[allow(dead_code)]
+    let mut default_arch: &'static str = "";
+
+#[cfg(target_os = "macos")]
+{
+    let proc = std::process::Command::new("arch")
+        .args(["-arm64", "true"])
+        .spawn();
+
+    if proc.is_ok() {
+        let out = proc.unwrap().wait();
+        if out.is_ok() {
+            if out.unwrap().success() {
+                default_arch = arch_arm64;
+            } else {
+                default_arch = arch_x86_64;
+            }
+        }
+    } else {
+        default_arch = arch_x86_64;
+    }
+
+    if default_arch == "" {
+        println!("Failed to detect arch, default is 'x86_64'.");
+        default_arch = arch_x86_64;
+    };
+}
+
     let rig = Command::new("RIG -- The R Installation Manager")
         .version("0.3.1")
         .about(HELP_ABOUT)
@@ -91,7 +123,8 @@ pub fn rig_app() -> Command<'static> {
                 .short('a')
                 .long("arch")
                 .required(false)
-                .default_value(DEFAULT_ARCH)
+                .default_value(&default_arch)
+                .possible_values(["arm64", "x86_64"])
         );
 }
 
@@ -274,7 +307,8 @@ pub fn rig_app() -> Command<'static> {
                 .short('a')
                 .long("arch")
                 .required(false)
-                .default_value(DEFAULT_ARCH)
+                .default_value(&default_arch)
+                .possible_values(["arm64", "x86_64"])
         );
 }
 

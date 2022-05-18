@@ -77,8 +77,6 @@ const HELP_RESOLVE_EXAMPLES: &str = r#"EXAMPLES
 
 const HELP_ARCH: &str = "Select macOS arch: arm64 or x86_64";
 
-const DEFAULT_ARCH: &str = "x86_64";
-
 const HELP_DEFAULT: &str = r#"
 DESCRIPTION:
     Print or set the default R version. The default R version is the one that
@@ -169,6 +167,12 @@ const HELP_ADD_EXAMPLES: &str = r#"EXAMPLES:
 
     # Install latest version within a minor branch
     rig add 4.1
+
+    # Install arm64 build of R (default on arm64 macs)
+    rig add -a arm64 release
+
+    # Install x86_64 build of R (default on x86_64 macs)
+    rig add -a x86_64 release
 "#;
 
 const HELP_RM: &str = r#"

@@ -1,9 +1,15 @@
 
-# rim 0.3.1 (not released yet)
+
+# rig 0.3.1 (not released yet)
 
 ## NEW NAME
 
 `rim` is now known as `rig`.
+
+## macOS
+
+* On arm64 computers, `rig add` installs arm64 R by default now.
+  (This is also true for the x86_64 build of `rig`.
 
 # rim 0.3.0
 
