@@ -7,6 +7,11 @@
 
 import Foundation
 
+struct InstalledVersion {
+    var name: String
+    var version: String
+}
+
 func rigDefault() -> String? {
     var buffer = Data(count: 1024)
     let n = buffer.count
@@ -33,15 +38,15 @@ func rigSetDefault(version: String) {
     })
 }
 
-func rigList() -> Array<String> {
+func rigList() -> Array<InstalledVersion> {
     var buffer = Data(count: 1024)
     let n = buffer.count
     buffer.withUnsafeMutableBytes({(p: UnsafeMutablePointer<CChar>) -> Void in
-        rig_list(p, n)
+        rig_list_with_versions(p, n)
         // TODO: error
     })
 
-    var result: Array<String> = []
+    var result: Array<InstalledVersion> = []
     var i = 0
     while i < buffer.count && buffer[i] != 0 {
         if buffer[i] == 0 { break }
@@ -52,7 +57,9 @@ func rigList() -> Array<String> {
         let end = i
         if end > start {
             let v = String(data: buffer.subdata(in: start..<end), encoding: .utf8)
-            result.append(v!)
+            let vs = v!.components(separatedBy: "|") 
+            let iv = InstalledVersion(name: vs[0], version: vs[1])
+            result.append(iv)
         }
         i += 1;
     }

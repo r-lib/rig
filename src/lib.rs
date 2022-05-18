@@ -160,6 +160,37 @@ pub extern "C" fn rig_list(
 }
 
 #[no_mangle]
+pub extern "C" fn rig_list_with_versions(
+    ptr: *mut libc::c_char,
+    size: libc::size_t
+) -> libc::c_int {
+
+    let vers = sc_get_list_with_versions();
+
+    match vers {
+        Ok(x) => {
+            let mut vers: Vec<String> = vec![];
+            for it in x {
+                let r = it.name + "|" + &it.version.unwrap_or("".to_string());
+                vers.push(r)
+            }
+            match set_c_strings(vers, ptr, size) {
+                Ok(x) => x,
+                Err(_) => {
+                    set_error("Buffer too short for R version");
+                    return ERROR_BUFFER_SHORT
+                }
+            }
+        },
+        Err(e) => {
+            let msg = e.to_string();
+            set_error(&msg);
+            ERROR_DEFAULT_FAILED
+        }
+    }
+}
+    
+#[no_mangle]
 pub extern "C" fn rig_set_default(
     ptr: *const libc::c_char) -> libc::c_int {
 

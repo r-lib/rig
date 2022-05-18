@@ -68,8 +68,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         rstudioMenu.addItem(NSMenuItem(title: "Default", action: #selector(startRStudio), keyEquivalent: ""))
         rstudioMenu.addItem(NSMenuItem.separator())
         for v in list {
-            let label = "R " + v
+            let label = "R " + v.name
             let item = NSMenuItem(title: label, action: #selector(startRStudio), keyEquivalent: "")
+            item.representedObject = v.name
             rstudioMenu.addItem(item)
         }
         let rstudio = NSMenuItem(title: "RStudio", action: #selector(startRStudio), keyEquivalent: "")
@@ -91,9 +92,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 submenu.addItem(defitem)
                 submenu.addItem(NSMenuItem.separator())
                 for v in list {
-                    let label = "R " + v
+                    let label = "R " + v.name
                     let subitem = NSMenuItem(title: label, action: #selector(startRStudio2), keyEquivalent: "")
-                    subitem.representedObject = [p, v]
+                    subitem.representedObject = [p, v.name]
                     submenu.addItem(subitem)
                 }
                 let item = NSMenuItem(title: fileName, action: #selector(startRStudio2), keyEquivalent: "")
@@ -111,9 +112,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Current R Version", action: nil, keyEquivalent: ""))
         for v in list {
-            let label = "R " + v
-            let item = NSMenuItem(title: label, action: #selector(selectVersion), keyEquivalent: "")
-            if v == def {
+            let mark = NSAttributedString(
+                string: v.version == "" ? " (broken?)" : (" (R " + v.version + ")"),
+                attributes: [ NSAttributedString.Key.foregroundColor: NSColor.systemGray]
+            )
+            let label = NSMutableAttributedString(string: "R " + v.name + "  ")
+            label.append(mark)
+            let item = NSMenuItem()
+            item.attributedTitle = label
+            item.action = #selector(selectVersion)
+            item.keyEquivalent = ""
+            item.representedObject = v.name
+            if v.name == def {
                 item.state = NSControl.StateValue.on
             }
             menu.addItem(item)
@@ -141,7 +151,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc func selectVersion(_ sender: NSMenuItem?) {
-        let ver = String(sender!.title.dropFirst(2))
+        let ver = sender!.representedObject as! String
         rigSetDefault(version: ver)
         // the directory watcher will update this, but nevertheless we update it as well
         let newver = rigDefault()
@@ -151,9 +161,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc func startRStudio(_ sender: NSMenuItem?) {
-        var ver = String(sender!.title.dropFirst(2))
-        if ver == "fault" || ver == "tudio" { ver = rigDefault()! }
-        rigStartRStudio(version: ver, project: nil)
+        var ver = String(sender!.title)
+        if ver == "Default" || ver == "RStudio" {
+            ver = rigDefault()!
+        } else {
+          ver = sender!.representedObject as! String
+        }
+        rigStartRStudio(version: ver , project: nil)
     }
 
     @objc func startRStudio2(_ sender: NSMenuItem?) {

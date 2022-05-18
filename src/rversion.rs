@@ -6,6 +6,12 @@ pub struct Rversion {
     pub arch: Option<String>,
 }
 
+#[derive(Default, Debug, Clone)]
+pub struct InstalledVersion {
+    pub name: String,
+    pub version: Option<String>
+}
+
 #[derive(PartialEq, Clone)]
 pub struct LinuxVersion {
     pub distro: String,
