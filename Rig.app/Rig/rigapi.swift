@@ -26,17 +26,19 @@ func rigLastError() -> String {
     return msg
 }
 
-func rigDefault() -> String? {
+func rigDefault() throws -> String? {
     var buffer = Data(count: 1024)
     let n = buffer.count
     var err: Int32 = 0
     buffer.withUnsafeMutableBytes({(p: UnsafeMutablePointer<CChar>) -> Void in
         err = rig_get_default(p, n)
     })
-    if err != 0 {
+    if err == -1 {
+        // no default is set
         return nil
+    } else if err != 0 {
+        throw RigError.error(msg: rigLastError())
     }
-    // TODO: error
 
     let def = String(data: buffer.prefix(while: { $0 != 0 }), encoding: .utf8)!
 
@@ -55,13 +57,17 @@ func rigSetDefault(version: String) throws {
     }
 }
 
-func rigList() -> Array<InstalledVersion> {
+func rigList() throws -> Array<InstalledVersion> {
     var buffer = Data(count: 1024)
     let n = buffer.count
+    var err: Int32 = 0
     buffer.withUnsafeMutableBytes({(p: UnsafeMutablePointer<CChar>) -> Void in
-        rig_list_with_versions(p, n)
-        // TODO: error
+        err = rig_list_with_versions(p, n)
     })
+
+    if err != 0 {
+        throw RigError.error(msg: rigLastError())
+    }
 
     var result: Array<InstalledVersion> = []
     var i = 0
@@ -74,7 +80,7 @@ func rigList() -> Array<InstalledVersion> {
         let end = i
         if end > start {
             let v = String(data: buffer.subdata(in: start..<end), encoding: .utf8)
-            let vs = v!.components(separatedBy: "|") 
+            let vs = v!.components(separatedBy: "|")
             let iv = InstalledVersion(name: vs[0], version: vs[1])
             result.append(iv)
         }
@@ -84,7 +90,7 @@ func rigList() -> Array<InstalledVersion> {
     return result
 }
 
-func rigStartRStudio(version: String?, project: String?) {
+func rigStartRStudio(version: String?, project: String?) throws {
     var version2: String = version ?? ""
     var project2: String = project ?? ""
 
@@ -93,12 +99,15 @@ func rigStartRStudio(version: String?, project: String?) {
     var bproject = project2.data(using: .utf8)!
     bproject.append(0)
 
+    var err: Int32 = 0
     bversion.withUnsafeMutableBytes({(p: UnsafeMutablePointer<CChar>) -> Void in
         bproject.withUnsafeMutableBytes({(q: UnsafeMutablePointer<CChar>) -> Void in
-            let err = rig_start_rstudio(p, q)
-            // TODO: error
+            err = rig_start_rstudio(p, q)
         })
     })
 
+    if err != 0 {
+        throw RigError.error(msg: rigLastError())
+    }
 
 }

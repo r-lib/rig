@@ -29,7 +29,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         let statusBar = NSStatusBar.system
         statusBarItem = statusBar.statusItem(withLength: NSStatusItem.variableLength)
-        let def = rigDefault()
+        let def = try? rigDefault()
         if def == nil {
             statusBarItem.button?.title = "R"
         } else {
@@ -43,7 +43,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let versions = "/Library/Frameworks/R.framework/Versions"
         if fileManager.fileExists(atPath: versions) {
             watcher = DirectoryWatcher(withPath: versions, callback: { directoryWatcher in
-                let def = rigDefault()
+                let def = try? rigDefault()
                 if def != nil {
                     self.statusBarItem.button?.title = "R " + def!
                 }
@@ -59,8 +59,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let menu = NSMenu()
         menu.delegate = self
 
-        let def = rigDefault()
-        let list = rigList()
+        let def = try? rigDefault() ?? ""
+        let list: Array<InstalledVersion> = (try? rigList()) ?? []
 
         // -- rstudio menu -----------------------------------------------------------------------------------------------------
 
@@ -152,39 +152,77 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func selectVersion(_ sender: NSMenuItem?) {
         let ver = sender!.representedObject as! String
+        let info = """
+Check if you have write permissions tp
+/Library/Frameworks/R.frameworks/Versions/Current
+and its parent directory. You can also run
+rig system fix-permissions
+from a shell. (It will need an admin password.)
+"""
         do {
             try rigSetDefault(version: ver)
             // the directory watcher will update this, but nevertheless we update it as well
-            let newver = rigDefault()
+            let newver = try? rigDefault()
             if newver != nil {
                 statusBarItem.button?.title = "R " + newver!
             }
         } catch RigError.error(let msg) {
-            setNote(msg: "Failed to set default, error message: \(msg)")
+            setError(msg: "Failed to set default: \(msg)", info: info)
         } catch {
-            setNote(msg: "Unknown error")
+            setError(msg: "Failed to set default, unknown error", info: info)
         }
-    }
-
-    @objc func startRStudio(_ sender: NSMenuItem?) {
-        var ver = String(sender!.title)
-        if ver == "Default" || ver == "RStudio" {
-            ver = rigDefault()!
-        } else {
-          ver = sender!.representedObject as! String
-        }
-        rigStartRStudio(version: ver , project: nil)
     }
 
     @objc func startRStudio2(_ sender: NSMenuItem?) {
         var msg = sender!.representedObject! as! Array<String>
         var proj = msg[0] as! String
         var rver = msg[1] as! String
-        if rver == "default" { rver = rigDefault()! }
-        rigStartRStudio(version: rver, project: proj)
+        if rver == "default" { rver = (try? rigDefault()) ?? "" }
+        startRStudio_(project: proj, version: rver)
     }
 
-    func setNote(msg: String) {
-        // TODO
+    @objc func startRStudio(_ sender: NSMenuItem?) {
+        var ver = String(sender!.title)
+        if ver == "Default" || ver == "RStudio" {
+            ver = (try? rigDefault()) ?? ""
+        } else {
+          ver = sender!.representedObject as! String
+        }
+
+        startRStudio_(project: nil, version: ver)
+    }
+
+    func startRStudio_(project: String?, version: String) {
+        let info = """
+Make sure that RStudio is installed and can start up.
+You can try running
+open -a RStudio
+from a terminal.
+"""
+        do {
+            try rigStartRStudio(version: version , project: project)
+        } catch RigError.error(let msg) {
+            setError(msg: "Failed to start RStudio: \(msg)", info: info)
+        } catch {
+            setError(msg: "Failed to start RStudio, unknown error", info: info)
+        }
+    }
+
+    func setError(msg: String, info: String) {
+        let alert = NSAlert()
+        alert.alertStyle = .critical
+        alert.messageText = "Rig error"
+        alert.informativeText = msg
+
+        let txt = NSTextField(wrappingLabelWithString: info)
+        let stackView = NSStackView(views: [txt])
+        let width = txt.frame.width + stackView.spacing * 2
+        let height = txt.frame.height + stackView.spacing
+        stackView.setFrameSize(NSSize(width: width, height: height))
+        stackView.translatesAutoresizingMaskIntoConstraints = true
+        stackView.orientation = .vertical
+        alert.accessoryView = stackView
+
+        alert.runModal()
     }
 }
