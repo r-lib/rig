@@ -40,12 +40,21 @@ static ERROR_SET_DEFAULT_FAILED: libc::c_int = -4;
 // Caller must free this
 
 #[no_mangle]
-pub extern "C" fn rig_last_error() -> *const libc::c_char {
+pub extern "C" fn rig_last_error(
+    ptr: *mut libc::c_char,
+    size: libc::size_t
+) -> libc::c_int {
     let str = LAST_ERROR.lock().unwrap();
-    let bytes = Box::new(str.as_bytes());
-    let ptr = bytes.as_ptr();
-    std::mem::forget(bytes);
-    ptr as *const libc::c_char
+    let str2;
+    if size <= str.len() {
+        str2 = str[..(size-1)].to_string() + "\0";
+    } else {
+        str2 = str.to_string()
+    }
+    match set_c_string(&str2, ptr, size) {
+        Ok(x) => x,
+        Err(_) => ERROR_BUFFER_SHORT
+    }
 }
 
 fn set_error(str: &str) {

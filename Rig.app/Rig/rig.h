@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-const char *rig_last_error(void);
+int rig_last_error(char *ptr, size_t size);
 
 int rig_get_default(char *ptr, size_t size);
 
