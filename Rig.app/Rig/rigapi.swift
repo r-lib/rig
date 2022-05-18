@@ -12,6 +12,20 @@ struct InstalledVersion {
     var version: String
 }
 
+enum RigError: Error {
+    case error(msg: String)
+}
+
+func rigLastError() -> String {
+    var buffer = Data(count: 4096)
+    let n = buffer.count
+    buffer.withUnsafeMutableBytes({(p: UnsafeMutablePointer<CChar>) -> Void in
+        var err = rig_last_error(p, n)
+    })
+    let msg = String(data: buffer.prefix(while: { $0 != 0 }), encoding: .utf8)!
+    return msg
+}
+
 func rigDefault() -> String? {
     var buffer = Data(count: 1024)
     let n = buffer.count
@@ -29,13 +43,16 @@ func rigDefault() -> String? {
     return def
 }
 
-func rigSetDefault(version: String) {
+func rigSetDefault(version: String) throws {
     var buffer = version.data(using: .utf8)!
     buffer.append(0)
+    var err: Int32 = 0;
     buffer.withUnsafeMutableBytes({(p: UnsafeMutablePointer<CChar>) -> Void in
-        let err = rig_set_default(p)
-        // TODO: error
+        err = rig_set_default(p)
     })
+    if err != 0 {
+        throw RigError.error(msg: rigLastError())
+    }
 }
 
 func rigList() -> Array<InstalledVersion> {

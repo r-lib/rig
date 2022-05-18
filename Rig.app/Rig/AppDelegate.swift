@@ -152,11 +152,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func selectVersion(_ sender: NSMenuItem?) {
         let ver = sender!.representedObject as! String
-        rigSetDefault(version: ver)
-        // the directory watcher will update this, but nevertheless we update it as well
-        let newver = rigDefault()
-        if newver != nil {
-            statusBarItem.button?.title = "R " + newver!
+        do {
+            try rigSetDefault(version: ver)
+            // the directory watcher will update this, but nevertheless we update it as well
+            let newver = rigDefault()
+            if newver != nil {
+                statusBarItem.button?.title = "R " + newver!
+            }
+        } catch RigError.error(let msg) {
+            setNote(msg: "Failed to set default, error message: \(msg)")
+        } catch {
+            setNote(msg: "Unknown error")
         }
     }
 
@@ -176,5 +182,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         var rver = msg[1] as! String
         if rver == "default" { rver = rigDefault()! }
         rigStartRStudio(version: rver, project: proj)
+    }
+
+    func setNote(msg: String) {
+        // TODO
     }
 }
