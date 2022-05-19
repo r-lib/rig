@@ -93,7 +93,7 @@ teardown() {
     run rig resolve oldrel
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
-    run rig resolve oldrel/3
+    run rig resolve -a x86_64 oldrel/3
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
     run rig resolve 4.1.1
@@ -106,7 +106,7 @@ teardown() {
 
 @test "rm" {
     if ! rig ls | grep -q '^3.3'; then
-        run sudo rig add 3.3
+        run sudo rig add -a x86_64 3.3
         [[ "$status" -eq 0 ]]
         run rig ls
         echo "$output" | grep -q "^3[.]3"
