@@ -99,7 +99,7 @@ teardown() {
     run rig resolve 4.1.1
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "4[.]1[.]1 https://"
-    run rig resolve 4.0
+    run rig resolve -a x86_64 4.0
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "4[.]0[.]5 https://"
 }
