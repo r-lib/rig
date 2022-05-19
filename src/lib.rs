@@ -114,7 +114,7 @@ pub extern "C" fn rig_get_default(
     size: libc::size_t
 ) -> libc::c_int {
 
-    let def = sc_get_default_();
+    let def = sc_get_default();
 
     match def {
         Ok(x) => {
@@ -148,7 +148,7 @@ pub extern "C" fn rig_list(
     size: libc::size_t
 ) -> libc::c_int {
 
-    let vers = sc_get_list_();
+    let vers = sc_get_list();
 
     match vers {
         Ok(x) => {
@@ -210,7 +210,7 @@ pub extern "C" fn rig_set_default(
         ver = cver.to_str().unwrap();
     }
 
-    match sc_set_default_(ver) {
+    match sc_set_default(ver) {
         Ok(_) => {
             SUCCESS
         },

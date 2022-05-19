@@ -1,5 +1,8 @@
 
+use std::error::Error;
+
 use clap::ArgMatches;
+use simple_error::bail;
 
 #[cfg(target_os = "macos")]
 use crate::macos::*;
@@ -10,14 +13,12 @@ use crate::windows::*;
 #[cfg(target_os = "linux")]
 use crate::linux::*;
 
-pub fn check_installed(ver: &String) -> bool {
-    let inst = sc_get_list();
-    assert!(
-        inst.contains(&ver),
-        "Version {} is not installed, see 'rig list'",
-        ver
-    );
-    true
+pub fn check_installed(ver: &String) -> Result<bool, Box<dyn Error>> {
+    let inst = sc_get_list()?;
+    if ! inst.contains(&ver) {
+        bail!("R version {} is not installed", &ver);
+    }
+    Ok(true)
 }
 
 // -- rig default ---------------------------------------------------------
@@ -29,59 +30,34 @@ pub fn check_installed(ver: &String) -> bool {
 // * `sc_get_default()` will panic on error.
 // * `sc_get_default_or_fail()` will also panic if no default is set.
 
-pub fn sc_show_default() {
-    let default = sc_get_default_or_fail();
-    println!("{}", default);
-}
-
-pub fn sc_get_default_or_fail() -> String {
-    match sc_get_default() {
-        None => {
-            panic!("No default R version is set, call `rig default <version>`");
-        },
-        Some(x) => x
+pub fn sc_get_default_or_fail() -> Result<String, Box<dyn Error>> {
+    let default = sc_get_default()?;
+    match default {
+        None => bail!("No default version is set"),
+        Some(d) => Ok(d)
     }
 }
 
-pub fn sc_get_default() -> Option<String> {
-    match sc_get_default_() {
-        Err(err) => {
-            panic!("Cannot query default R version: {}", err.to_string());
-        },
-        Ok(res) => res
-    }
-}
-
-pub fn set_default_if_none(ver: String) {
-    let cur = sc_get_default();
-    if cur.is_none() {
-        sc_set_default(ver);
-    }
-}
-
-pub fn sc_set_default(ver: String) {
-    match sc_set_default_(&ver) {
-        Err(err) => {
-            panic!("Failed to set R version {}: {}", &ver, err.to_string());
-        },
-        Ok(_) => { }
+pub fn sc_show_default() -> Result<(), Box<dyn Error>> {
+    let default = sc_get_default()?;
+    match default {
+        None => bail!("No default version is set"),
+        Some(d) => println!("{}", d)
     };
+    Ok(())
 }
 
-// -- rig list ------------------------------------------------------------
-
-pub fn sc_get_list() -> Vec<String> {
-    match sc_get_list_() {
-        Err(err) => {
-            panic!("Cannot list installed R versions: {}", err.to_string());
-        },
-        Ok(res) => res
+pub fn set_default_if_none(ver: String) -> Result<(), Box<dyn Error>> {
+    let cur = sc_get_default()?;
+    if cur.is_none() {
+        sc_set_default(&ver)?;
     }
+    Ok(())
 }
 
 // -- rig rstudio ---------------------------------------------------------
 
-pub fn sc_rstudio(args: &ArgMatches) {
+pub fn sc_rstudio(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let mut ver = args.value_of("version");
     let mut prj = args.value_of("project-file");
 
@@ -98,6 +74,8 @@ pub fn sc_rstudio(args: &ArgMatches) {
             panic!("{}", err.to_string());
         }
     };
+
+    Ok(())
 }
 
 // ------------------------------------------------------------------------

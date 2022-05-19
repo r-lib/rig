@@ -22,7 +22,7 @@ use crate::escalate::*;
 const R_ROOT: &str = "/Library/Frameworks/R.framework/Versions";
 const R_CUR: &str = "/Library/Frameworks/R.framework/Versions/Current";
 
-pub fn sc_add(args: &ArgMatches) {
+pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("adding new R versions");
     let mut version = get_resolve(args);
     let ver = version.version.to_owned();
@@ -53,7 +53,7 @@ pub fn sc_add(args: &ArgMatches) {
         download_file(client, url, &target_str);
     }
 
-    sc_system_forget();
+    sc_system_forget()?;
 
     // If installed from URL, then we'll need to extract the version + arch
     match ver {
@@ -80,17 +80,17 @@ pub fn sc_add(args: &ArgMatches) {
 
     // This should not happen currently on macOS, a .pkg installer
     // sets the default, but prepare for the future
-    set_default_if_none(dirname.to_string());
+    set_default_if_none(dirname.to_string())?;
 
-    sc_system_forget();
-    system_no_openmp(Some(vec![dirname.to_string()]));
-    system_fix_permissions(None);
-    system_make_orthogonal(Some(vec![dirname.to_string()]));
-    system_create_lib(Some(vec![dirname.to_string()]));
-    sc_system_make_links();
+    sc_system_forget()?;
+    system_no_openmp(Some(vec![dirname.to_string()]))?;
+    system_fix_permissions(None)?;
+    system_make_orthogonal(Some(vec![dirname.to_string()]))?;
+    system_create_lib(Some(vec![dirname.to_string()]))?;
+    sc_system_make_links()?;
 
     if !args.is_present("without-cran-mirror") {
-        set_cloud_mirror(Some(vec![dirname.to_string()]));
+        set_cloud_mirror(Some(vec![dirname.to_string()]))?;
     }
 
     if !args.is_present("without-pak") {
@@ -99,45 +99,50 @@ pub fn sc_add(args: &ArgMatches) {
             args.value_of("pak-version").unwrap(),
             // If this is specified then we always re-install
             args.occurrences_of("pak-version") > 0
-        );
+        )?;
     }
+
+    Ok(())
 }
 
-pub fn sc_rm(args: &ArgMatches) {
+pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("removing R versions");
     let vers = args.values_of("version");
     if vers.is_none() {
-        return;
+        return Ok(());
     }
     let vers = vers.unwrap();
 
     for ver in vers {
-        check_installed(&ver.to_string());
+        check_installed(&ver.to_string())?;
 
         let dir = Path::new(R_ROOT);
         let dir = dir.join(&ver);
         println!("Removing {}", dir.display());
-        sc_system_forget();
+        sc_system_forget()?;
         match std::fs::remove_dir_all(&dir) {
             Err(err) => panic!("Cannot remove {}: {}", dir.display(), err.to_string()),
             _ => {}
         };
     }
 
-    sc_system_make_links();
+    sc_system_make_links()?;
+
+    Ok(())
 }
 
-pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool) {
+pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool)
+                      -> Result<(), Box<dyn Error>> {
     let vers = match vers {
         Some(x) => x,
-        None => vec![sc_get_default_or_fail()]
+        None => vec![sc_get_default_or_fail()?]
     };
 
     let base = Path::new("/Library/Frameworks/R.framework/Versions");
     let re = Regex::new("[{][}]").unwrap();
 
     for ver in vers {
-        check_installed(&ver);
+        check_installed(&ver)?;
         if update {
             println!("Installing pak for R {}", ver);
         } else {
@@ -177,18 +182,20 @@ pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool) {
             panic!("Failed to run R {} to install pak", ver);
         }
     }
+
+    Ok(())
 }
 
-pub fn system_create_lib(vers: Option<Vec<String>>) {
+pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     let vers = match vers {
         Some(x) => x,
-        None => sc_get_list(),
+        None => sc_get_list()?,
     };
     let base = Path::new("/Library/Frameworks/R.framework/Versions");
 
     let user = get_user();
     for ver in vers {
-        check_installed(&ver);
+        check_installed(&ver)?;
         let r = base.join(&ver).join("Resources/R");
         let r = r.to_str().unwrap();
         let out = Command::new(r)
@@ -233,11 +240,13 @@ pub fn system_create_lib(vers: Option<Vec<String>>) {
             println!("{}: library at {} exists.", ver, lib.display());
         }
     }
+
+    Ok(())
 }
 
-pub fn sc_system_make_links() {
+pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     escalate("making R-* quick links");
-    let vers = sc_get_list();
+    let vers = sc_get_list()?;
     let base = Path::new("/Library/Frameworks/R.framework/Versions/");
 
     // Create new links
@@ -282,27 +291,30 @@ pub fn sc_system_make_links() {
             };
         }
     }
+
+    Ok(())
 }
 
-pub fn sc_system_allow_core_dumps(args: &ArgMatches) {
+pub fn sc_system_allow_core_dumps(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("updating code signature of R and /cores permissions");
-    sc_system_allow_debugger(args);
+    sc_system_allow_debugger(args)?;
     println!("Updating permissions of /cores");
     Command::new("chmod")
         .args(["1777", "/cores"])
         .output()
         .expect("Failed to update /cores permissions");
+    Ok(())
 }
 
-pub fn sc_system_allow_debugger(args: &ArgMatches) {
+pub fn sc_system_allow_debugger(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("updating code signature of R");
     let all = args.is_present("all");
     let vers = args.values_of("version");
 
     let vers: Vec<String> = if all {
-        sc_get_list()
+        sc_get_list()?
     } else if vers.is_none() {
-        vec![sc_get_default_or_fail()]
+        vec![sc_get_default_or_fail()?]
     } else {
         vers.unwrap().map(|v| v.to_string()).collect()
     };
@@ -317,7 +329,7 @@ pub fn sc_system_allow_debugger(args: &ArgMatches) {
     };
 
     for ver in vers {
-        check_installed(&ver);
+        check_installed(&ver)?;
         let path = Path::new(R_ROOT)
             .join(ver.as_str())
             .join("Resources/bin/exec/R");
@@ -379,30 +391,31 @@ pub fn sc_system_allow_debugger(args: &ArgMatches) {
             println!("    updated entitlements");
         }
     }
+
+    Ok(())
 }
 
-pub fn sc_system_make_orthogonal(args: &ArgMatches) {
+pub fn sc_system_make_orthogonal(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("updating the R installations");
     let vers = args.values_of("version");
     if vers.is_none() {
-        system_make_orthogonal(None);
-        return;
+        system_make_orthogonal(None)
     } else {
         let vers: Vec<String> = vers.unwrap().map(|v| v.to_string()).collect();
-        system_make_orthogonal(Some(vers));
+        system_make_orthogonal(Some(vers))
     }
 }
 
-fn system_make_orthogonal(vers: Option<Vec<String>>) {
+fn system_make_orthogonal(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     let vers = match vers {
         Some(x) => x,
-        None => sc_get_list(),
+        None => sc_get_list()?,
     };
 
     let re = Regex::new("R[.]framework/Resources").unwrap();
     let re2 = Regex::new("[-]F/Library/Frameworks/R[.]framework/[.][.]").unwrap();
     for ver in vers {
-        check_installed(&ver);
+        check_installed(&ver)?;
         println!("Making R {} orthogonal", ver);
         let base = Path::new("/Library/Frameworks/R.framework/Versions/");
         let sub = "R.framework/Versions/".to_string() + &ver + "/Resources";
@@ -432,28 +445,29 @@ fn system_make_orthogonal(vers: Option<Vec<String>>) {
         symlink("../R", fake.join("R")).ok();
         symlink("../Resources", fake.join("Resources")).ok();
     }
+
+    Ok(())
 }
 
-pub fn sc_system_fix_permissions(args: &ArgMatches) {
+pub fn sc_system_fix_permissions(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("changing system library permissions");
     let vers = args.values_of("version");
     if vers.is_none() {
-        system_fix_permissions(None);
-        return;
+        system_fix_permissions(None)
     } else {
         let vers: Vec<String> = vers.unwrap().map(|v| v.to_string()).collect();
-        system_fix_permissions(Some(vers));
+        system_fix_permissions(Some(vers))
     }
 }
 
-fn system_fix_permissions(vers: Option<Vec<String>>) {
+fn system_fix_permissions(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     let vers = match vers {
         Some(x) => x,
-        None => sc_get_list(),
+        None => sc_get_list()?,
     };
 
     for ver in vers {
-        check_installed(&ver);
+        check_installed(&ver)?;
         let path = Path::new(R_ROOT).join(ver.as_str());
         let path = path.to_str().unwrap();
         println!("Fixing permissions in {}", path);
@@ -493,9 +507,11 @@ fn system_fix_permissions(vers: Option<Vec<String>>) {
     if !status.success() {
         println!("Failed to update group :(");
     }
+
+    Ok(())
 }
 
-pub fn sc_system_forget() {
+pub fn sc_system_forget() -> Result<(), Box<dyn Error>> {
     escalate("forgetting R versions");
     let out = Command::new("sh")
         .args(["-c", "pkgutil --pkgs | grep -i r-project | grep -v clang"])
@@ -516,6 +532,8 @@ pub fn sc_system_forget() {
             .output()
             .expect("pkgutil failed --forget call");
     }
+
+    Ok(())
 }
 
 pub fn get_resolve(args: &ArgMatches) -> Rversion {
@@ -540,27 +558,26 @@ pub fn get_resolve(args: &ArgMatches) -> Rversion {
     }
 }
 
-pub fn sc_system_no_openmp(args: &ArgMatches) {
+pub fn sc_system_no_openmp(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("updating R compiler configuration");
     let vers = args.values_of("version");
     if vers.is_none() {
-        system_no_openmp(None);
-        return;
+        system_no_openmp(None)
     } else {
         let vers: Vec<String> = vers.unwrap().map(|v| v.to_string()).collect();
-        system_no_openmp(Some(vers));
+        system_no_openmp(Some(vers))
     }
 }
 
-fn system_no_openmp(vers: Option<Vec<String>>) {
+fn system_no_openmp(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     let vers = match vers {
         Some(x) => x,
-        None => sc_get_list(),
+        None => sc_get_list()?,
     };
     let re = Regex::new("[-]fopenmp").unwrap();
 
     for ver in vers {
-        check_installed(&ver);
+        check_installed(&ver)?;
         let path = Path::new(R_ROOT).join(ver.as_str());
         let makevars = path.join("Resources/etc/Makeconf".to_string());
         if ! makevars.exists() { continue; }
@@ -573,16 +590,18 @@ fn system_no_openmp(vers: Option<Vec<String>>) {
             }
         };
     }
+
+    Ok(())
 }
 
-fn set_cloud_mirror(vers: Option<Vec<String>>) {
+fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     let vers = match vers {
         Some(x) => x,
-        None => sc_get_list(),
+        None => sc_get_list()?,
     };
 
     for ver in vers {
-        check_installed(&ver);
+        check_installed(&ver)?;
         let path = Path::new(R_ROOT).join(ver.as_str());
         let profile = path.join("Resources/library/base/R/Rprofile".to_string());
         if ! profile.exists() { continue; }
@@ -598,10 +617,13 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) {
             }
         };
     }
+
+    Ok(())
 }
 
-pub fn sc_clean_registry() {
+pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
     // Nothing to do on macOS
+    Ok(())
 }
 
 pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>)
@@ -615,7 +637,7 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>)
 
     if !version.is_none() {
         let ver = version.unwrap().to_string();
-        check_installed(&ver);
+        check_installed(&ver)?;
         path = "RSTUDIO_WHICH_R=".to_string() + R_ROOT +
             "/" + &ver + "/Resources/R";
         let mut args2 = vec!["--env", &path];
@@ -651,19 +673,19 @@ fn check_has_pak(ver: &String) -> bool {
     true
 }
 
-pub fn sc_set_default_(ver: &str) -> Result<(), Box<dyn Error>> {
-    check_installed(&ver.to_string());
+pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
+    check_installed(&ver.to_string())?;
     std::fs::remove_file(R_CUR)?;
     let path = Path::new(R_ROOT).join(ver);
     std::os::unix::fs::symlink(&path, R_CUR)?;
     Ok(())
 }
 
-pub fn sc_get_default_() -> Result<Option<String>,Box<dyn Error>> {
+pub fn sc_get_default() -> Result<Option<String>,Box<dyn Error>> {
     read_version_link(R_CUR)
 }
 
-pub fn sc_get_list_() -> Result<Vec<String>, Box<dyn Error>> {
+pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
     let mut vers = Vec::new();
     if ! Path::new(R_ROOT).exists() {
         return Ok(vers);
@@ -686,7 +708,7 @@ pub fn sc_get_list_() -> Result<Vec<String>, Box<dyn Error>> {
 pub fn sc_get_list_with_versions()
        -> Result<Vec<InstalledVersion>, Box<dyn Error>> {
 
-    let names = sc_get_list_()?;
+    let names = sc_get_list()?;
     let mut res: Vec<InstalledVersion> = vec![];
     let re = Regex::new("^Version:[ ]?").unwrap();
 
