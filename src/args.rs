@@ -3,6 +3,8 @@
 // ------------------------------------------------------------------------
 
 use clap::{Command, Arg, ArgMatches};
+
+#[cfg(target_os = "macos")]
 use simplelog::*;
 
 #[cfg(target_os = "macos")]
@@ -16,12 +18,9 @@ std::include!("help-linux.in");
 
 pub fn rig_app() -> Command<'static> {
 
-#[allow(dead_code)]
-    let arch_x86_64: &'static str = "x86_64";
-#[allow(dead_code)]
-    let arch_arm64: &'static str = "arm64";
-#[allow(dead_code)]
-    let mut default_arch: &'static str = "";
+    let _arch_x86_64: &'static str = "x86_64";
+    let _arch_arm64: &'static str = "arm64";
+    let mut _default_arch: &'static str = "";
 
 #[cfg(target_os = "macos")]
 {
@@ -33,18 +32,18 @@ pub fn rig_app() -> Command<'static> {
         let out = proc.wait();
         if let Ok(out) = out {
             if out.success() {
-                default_arch = arch_arm64;
+                _default_arch = _arch_arm64;
             } else {
-                default_arch = arch_x86_64;
+                _default_arch = _arch_x86_64;
             }
         }
     } else {
-        default_arch = arch_x86_64;
+        _default_arch = _arch_x86_64;
     }
 
-    if default_arch == "" {
+    if _default_arch == "" {
         warn!("<magenta>[WARN]</> Failed to detect arch, default is 'x86_64'.");
-        default_arch = arch_x86_64;
+        _default_arch = _arch_x86_64;
     };
 }
 
