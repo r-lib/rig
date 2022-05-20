@@ -2,6 +2,7 @@
 
 use regex::Regex;
 use std::error::Error;
+use std::ffi::OsStr;
 use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -51,10 +52,10 @@ const UBUNTU_1804_RSPM: &str = "https://packagemanager.rstudio.com/all/__linux__
 const UBUNTU_2004_RSPM: &str = "https://packagemanager.rstudio.com/all/__linux__/focal/latest";
 const UBUNTU_2204_RSPM: &str = "https://packagemanager.rstudio.com/all/__linux__/jammy/latest";
 
-pub fn sc_add(args: &ArgMatches) {
-    escalate("adding new R versions");
+pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    escalate("adding new R versions")?;
     let linux = detect_linux();
-    let version = get_resolve(args);
+    let version = get_resolve(args)?;
     let ver = version.version.to_owned();
     let verstr = match ver {
         Some(ref x) => x,
@@ -69,36 +70,33 @@ pub fn sc_add(args: &ArgMatches) {
     let filename = basename(&url).unwrap();
     let tmp_dir = std::env::temp_dir().join("rig");
     let target = tmp_dir.join(&filename);
-    let target_str;
     if target.exists() && not_too_old(&target) {
-        target_str = target.into_os_string().into_string().unwrap();
-        println!("{} is cached at\n    {}", filename, target_str);
+        println!("{} is cached at\n    {}", filename, target.display());
     } else {
-        target_str = target.into_os_string().into_string().unwrap();
-        println!("Downloading {} ->\n    {}", url, target_str);
+        println!("Downloading {} ->\n    {}", url, target.display());
         let client = &reqwest::Client::new();
-        download_file(client, url, &target_str);
+        download_file(client, url, &target.as_os_str())?;
     }
 
     let dirname;
     if linux.distro == "ubuntu" || linux.distro == "debian" {
-	add_deb(&target_str);
-        dirname = get_install_dir_deb(&target_str);
+	add_deb(&target.as_os_str());
+        dirname = get_install_dir_deb(&target.as_os_str());
     } else {
         panic!("Only Ubuntu and Debian Linux are supported currently");
     }
 
-    set_default_if_none(dirname.to_string());
+    set_default_if_none(dirname.to_string())?;
 
-    system_create_lib(Some(vec![dirname.to_string()]));
-    sc_system_make_links();
+    system_create_lib(Some(vec![dirname.to_string()]))?;
+    sc_system_make_links()?;
 
     if !args.is_present("without-cran-mirror") {
-        set_cloud_mirror(Some(vec![dirname.to_string()]));
+        set_cloud_mirror(Some(vec![dirname.to_string()]))?;
     }
 
     if !args.is_present("without-rspm") {
-        set_rspm(Some(vec![dirname.to_string()]), linux);
+        set_rspm(Some(vec![dirname.to_string()]), linux)?;
     }
 
     if !args.is_present("without-pak") {
@@ -107,13 +105,16 @@ pub fn sc_add(args: &ArgMatches) {
             args.value_of("pak-version").unwrap(),
             // If this is specified then we always re-install
             args.occurrences_of("pak-version") > 0
-        );
+        )?;
     }
+
+    Ok(())
 }
 
-fn get_install_dir_deb(path: &str) -> String {
+fn get_install_dir_deb(path: &OsStr) -> String {
     let out = Command::new("dpkg")
-        .args(["-I", path])
+        .arg("-I")
+	.arg(path)
         .output()
         .expect("Failed to run dpkg -I on DEB package");
     let std = match String::from_utf8(out.stdout) {
@@ -129,7 +130,7 @@ fn get_install_dir_deb(path: &str) -> String {
     ver.to_string()
 }
 
-fn add_deb(path: &str) {
+fn add_deb(path: &OsStr) {
     let status = Command::new("apt-get")
 	.args(["update"])
 	.spawn()
@@ -153,7 +154,8 @@ fn add_deb(path: &str) {
     }
 
     let status = Command::new("gdebi")
-	.args(["-n", path])
+	.arg("-n")
+	.arg(path)
 	.spawn()
 	.expect("Failed to run gdebi")
 	.wait()
@@ -164,16 +166,16 @@ fn add_deb(path: &str) {
    }
 }
 
-pub fn sc_rm(args: &ArgMatches) {
-    escalate("removing R versions");
+pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    escalate("removing R versions")?;
     let vers = args.values_of("version");
     if vers.is_none() {
-        return;
+        return Ok(());
     }
     let vers = vers.unwrap();
 
     for ver in vers {
-        check_installed(&ver.to_string());
+        check_installed(&ver.to_string())?;
 
 	let pkgname = "r-".to_string() + ver;
 	let out = Command::new("dpkg")
@@ -208,19 +210,21 @@ pub fn sc_rm(args: &ArgMatches) {
 	}
     }
 
-    sc_system_make_links();
+    sc_system_make_links()?;
+
+    Ok(())
 }
 
-pub fn system_create_lib(vers: Option<Vec<String>>) {
+pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     let vers = match vers {
         Some(x) => x,
-        None => sc_get_list(),
+        None => sc_get_list()?,
     };
     let base = Path::new(R_ROOT);
 
     let user = get_user();
     for ver in vers {
-        check_installed(&ver);
+        check_installed(&ver)?;
         let r = base.join(&ver).join("bin/R");
         let r = r.to_str().unwrap();
 	let out;
@@ -274,19 +278,21 @@ pub fn system_create_lib(vers: Option<Vec<String>>) {
             println!("{}: library at {} exists.", ver, lib.display());
         }
     }
+    Ok(())
 }
 
-pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool) {
+pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool)
+		      -> Result<(), Box<dyn Error>> {
     let vers = match vers {
         Some(x) => x,
-        None => vec![sc_get_default_or_fail()],
+        None => vec![sc_get_default_or_fail()?],
     };
 
     let base = Path::new(R_ROOT);
     let re = Regex::new("[{][}]").unwrap();
 
     for ver in vers {
-        check_installed(&ver);
+        check_installed(&ver)?;
         if update {
             println!("Installing pak for R {}", ver);
         } else {
@@ -324,11 +330,12 @@ pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool) {
             panic!("Failed to run R {} to install pak", ver);
         }
     }
+    Ok(())
 }
 
-pub fn sc_system_make_links() {
-    escalate("making R-* quick links");
-    let vers = sc_get_list();
+pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
+    escalate("making R-* quick links")?;
+    let vers = sc_get_list()?;
     let base = Path::new(R_ROOT);
 
     // Create new links
@@ -373,18 +380,19 @@ pub fn sc_system_make_links() {
             };
         }
     }
+    Ok(())
 }
 
-pub fn get_resolve(args: &ArgMatches) -> Rversion {
+pub fn get_resolve(args: &ArgMatches) -> Result<Rversion, Box<dyn Error>> {
     let str = args.value_of("str").unwrap().to_string();
 
     let eps = vec![str];
     let me = detect_linux();
-    let version = resolve_versions(eps, "linux".to_string(), "default".to_string(), Some(me));
-    version[0].to_owned()
+    let version = resolve_versions(eps, "linux".to_string(), "default".to_string(), Some(me))?;
+    Ok(version[0].to_owned())
 }
 
-pub fn sc_get_list_() -> Result<Vec<String>, Box<dyn Error>> {
+pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
     let mut vers = Vec::new();
     if ! Path::new(R_ROOT).exists() {
         return Ok(vers)
@@ -403,9 +411,9 @@ pub fn sc_get_list_() -> Result<Vec<String>, Box<dyn Error>> {
     Ok(vers)
 }
 
-pub fn sc_set_default_(ver: &str) -> Result<(), Box<dyn Error>> {
-    escalate("setting the default R version");
-    check_installed(&ver.to_string());
+pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
+    escalate("setting the default R version")?;
+    check_installed(&ver.to_string())?;
 
     // Remove current link
     if Path::new(R_CUR).exists() {
@@ -439,18 +447,18 @@ pub fn sc_set_default_(ver: &str) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn sc_get_default_() -> Result<Option<String>,Box<dyn Error>> {
+pub fn sc_get_default() -> Result<Option<String>,Box<dyn Error>> {
     read_version_link(R_CUR)
 }
 
-fn set_cloud_mirror(vers: Option<Vec<String>>) {
+fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     let vers = match vers {
         Some(x) => x,
-        None => sc_get_list(),
+        None => sc_get_list()?,
     };
 
     for ver in vers {
-        check_installed(&ver);
+        check_installed(&ver)?;
         let path = Path::new(R_ROOT).join(ver.as_str());
         let profile = path.join("lib/R/library/base/R/Rprofile".to_string());
         if ! profile.exists() { continue; }
@@ -466,13 +474,15 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) {
             }
         };
     }
+    Ok(())
 }
 
-fn set_rspm(vers: Option<Vec<String>>, linux: LinuxVersion) {
+fn set_rspm(vers: Option<Vec<String>>, linux: LinuxVersion)
+	    -> Result<(), Box<dyn Error>> {
     let arch = std::env::consts::ARCH;
     if arch != "x86_64" {
 	println!("RSPM does not support this architecture: {}", arch);
-	return;
+	return Ok(());
     }
 
     if !linux.rspm {
@@ -481,12 +491,12 @@ fn set_rspm(vers: Option<Vec<String>>, linux: LinuxVersion) {
 	    linux.distro,
 	    linux.version
 	);
-	return;
+	return Ok(());
     }
 
     let vers = match vers {
         Some(x) => x,
-        None => sc_get_list(),
+        None => sc_get_list()?,
     };
 
     let rcode = r#"
@@ -497,7 +507,7 @@ options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(getRversion(
     let rcode = rcode.to_string().replace("%url%", &linux.rspm_url);
 
     for ver in vers {
-        check_installed(&ver);
+        check_installed(&ver)?;
         let path = Path::new(R_ROOT).join(ver.as_str());
         let profile = path.join("lib/R/library/base/R/Rprofile".to_string());
         if ! profile.exists() { continue; }
@@ -510,30 +520,42 @@ options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(getRversion(
             }
         };
     }
+    Ok(())
 }
 
-pub fn sc_system_allow_core_dumps(_args: &ArgMatches) {
+pub fn sc_system_allow_core_dumps(_args: &ArgMatches)
+				  -> Result<(), Box<dyn Error>> {
     // Nothing to do on Linux
+    Ok(())
 }
 
-pub fn sc_system_allow_debugger(_args: &ArgMatches) {
+pub fn sc_system_allow_debugger(_args: &ArgMatches)
+				-> Result<(), Box<dyn Error>> {
     // Nothing to do on Linux
+    Ok(())
 }
 
-pub fn sc_system_make_orthogonal(_args: &ArgMatches) {
+pub fn sc_system_make_orthogonal(_args: &ArgMatches)
+				 -> Result<(), Box<dyn Error>> {
     // Nothing to do on Windows
+    Ok(())
 }
 
-pub fn sc_system_fix_permissions(_args: &ArgMatches) {
+pub fn sc_system_fix_permissions(_args: &ArgMatches)
+				 -> Result<(), Box<dyn Error>> {
     // Nothing to do on Windows
+    Ok(())
 }
 
-pub fn sc_system_forget() {
+pub fn sc_system_forget() -> Result<(), Box<dyn Error>> {
     // Nothing to do on Windows
+    Ok(())
 }
 
-pub fn sc_system_no_openmp(_args: &ArgMatches) {
+pub fn sc_system_no_openmp(_args: &ArgMatches)
+			   -> Result<(), Box<dyn Error>> {
     // Nothing to do on Windows
+    Ok(())
 }
 
 fn detect_linux() -> LinuxVersion {
@@ -625,8 +647,9 @@ fn list_supported_distros() -> Vec<LinuxVersion> {
     ]
 }
 
-pub fn sc_clean_registry() {
+pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
     // Nothing to do on Linux
+    Ok(())
 }
 
 pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>)
@@ -645,7 +668,7 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>)
     let mut path = "".to_string();
     if !version.is_none() {
         let ver = version.unwrap().to_string();
-        check_installed(&ver);
+        check_installed(&ver)?;
         envname = "RSTUDIO_WHICH_R";
         path = R_ROOT.to_string() + "/" + &ver + "/bin/R"
     }

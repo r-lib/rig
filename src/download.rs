@@ -2,7 +2,9 @@
 use futures::future;
 use futures_util::StreamExt;
 use std::error::Error;
-use std::ffi::{OsStr,OsString};
+use std::ffi::OsStr;
+#[cfg(target_os = "windows")]
+use std::ffi::OsString;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
@@ -11,6 +13,7 @@ use std::path::Path;
 use clap::ArgMatches;
 
 use simple_error::bail;
+#[cfg(target_os = "windows")]
 use simplelog::info;
 
 #[cfg(target_os = "windows")]
