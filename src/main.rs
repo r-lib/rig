@@ -160,7 +160,7 @@ fn sc_list() -> Result<(), Box<dyn Error>> {
 fn sc_default(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     if args.is_present("version") {
         let ver = args.value_of("version")
-            .ok_or(SimpleError::new("Internal error"))?.to_string();
+            .ok_or(SimpleError::new("Internal argument error"))?.to_string();
         sc_set_default(&ver)
     } else {
         let default = sc_get_default_or_fail()?;
@@ -177,7 +177,7 @@ pub fn sc_system_create_lib(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         system_create_lib(None)
     } else {
         let vers: Vec<String> = vers
-            .ok_or(SimpleError::new("Internal error"))?
+            .ok_or(SimpleError::new("Internal argument error"))?
             .map(|v| v.to_string()).collect();
         system_create_lib(Some(vers))
     }
@@ -190,7 +190,7 @@ pub fn sc_system_add_pak(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let all = args.is_present("all");
     let vers = args.values_of("version");
     let mut pakver = args.value_of("pak-version")
-        .ok_or(SimpleError::new("Internal error"))?;
+        .ok_or(SimpleError::new("Internal argument error"))?;
     let pakverx = args.occurrences_of("pak-version") > 0;
 
     // --devel is deprecated
@@ -208,7 +208,7 @@ pub fn sc_system_add_pak(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         system_add_pak(None, pakver, true)?;
     } else {
         let vers: Vec<String> = vers
-            .ok_or(SimpleError::new("Internal error"))?
+            .ok_or(SimpleError::new("Internal argument error"))?
             .map(|v| v.to_string()).collect();
         system_add_pak(Some(vers), pakver, true)?;
     }

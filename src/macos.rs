@@ -100,7 +100,8 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     if !args.is_present("without-pak") {
         system_add_pak(
             Some(vec![dirname.to_string()]),
-            args.value_of("pak-version").ok_or(SimpleError::new("Internal error"))?,
+            args.value_of("pak-version")
+                .ok_or(SimpleError::new("Internal argument error"))?,
             // If this is specified then we always re-install
             args.occurrences_of("pak-version") > 0
         )?;
@@ -115,7 +116,7 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     if vers.is_none() {
         return Ok(());
     }
-    let vers = vers.ok_or(SimpleError::new("Internal error"))?;
+    let vers = vers.ok_or(SimpleError::new("Internal argument error"))?;
 
     for ver in vers {
         check_installed(&ver.to_string())?;
@@ -154,7 +155,6 @@ pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool)
         }
         check_has_pak(&ver)?;
         let r = base.join(&ver).join("Resources/R");
-        let r = r.to_str().ok_or(SimpleError::new("Internal error"))?;
         let cmd;
         if update {
             cmd = r#"
@@ -200,7 +200,6 @@ pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>
     for ver in vers {
         check_installed(&ver)?;
         let r = base.join(&ver).join("Resources/R");
-        let r = r.to_str().ok_or(SimpleError::new("Non-Unicode path"))?;
         let out = Command::new(r)
             .args(["--vanilla", "-s", "-e", "cat(Sys.getenv('R_LIBS_USER'))"])
             .output()?;
@@ -273,19 +272,25 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     let re = Regex::new("^R-[0-9]+[.][0-9]+")?;
     for file in paths {
         let path = file?.path();
-        let pathstr = path.to_str().ok_or(SimpleError::new("Non-unicode path"))?;
-        let fnamestr = path.file_name().ok_or(SimpleError::new("Non-unicode path"))?
-            .to_str().ok_or(SimpleError::new("Non-Unicode path"))?;
+        // If no path name, then path ends with ..., so we can skip
+        let fnamestr = match path.file_name() {
+            Some(x) => x,
+            None => continue
+        };
+        // If the path is not UTF-8, we'll skip it, this should not happen
+        let fnamestr = match fnamestr.to_str() {
+            Some(x) => x,
+            None => continue
+        };
         if re.is_match(&fnamestr) {
             match std::fs::read_link(&path) {
-                Err(_) => info!("<cyan>[INFO]</> {} is not a symlink", pathstr),
+                Err(_) => info!("<cyan>[INFO]</> {} is not a symlink", path.display()),
                 Ok(target) => {
                     if !target.exists() {
-                        let targetstr = target.to_str().ok_or(SimpleError::new("Non-unicode path"))?;
-                        info!("<cyan>[INFO]</> Cleaning up {}", targetstr);
+                        info!("<cyan>[INFO]</> Cleaning up {}", target.display());
                         match std::fs::remove_file(&path) {
                             Err(err) => {
-                                warn!("<magenta>[WARN]</> Failed to remove {}: {}", pathstr, err.to_string())
+                                warn!("<magenta>[WARN]</> Failed to remove {}: {}", path.display(), err.to_string())
                             }
                             _ => {}
                         }
@@ -318,7 +323,8 @@ pub fn sc_system_allow_debugger(args: &ArgMatches) -> Result<(), Box<dyn Error>>
     } else if vers.is_none() {
         vec![sc_get_default_or_fail()?]
     } else {
-        vers.ok_or(SimpleError::new("Internal error"))?.map(|v| v.to_string()).collect()
+        vers.ok_or(SimpleError::new("Internal argument error"))?
+            .map(|v| v.to_string()).collect()
     };
 
     let tmp_dir = std::env::temp_dir().join("rig");
@@ -335,11 +341,11 @@ pub fn sc_system_allow_debugger(args: &ArgMatches) -> Result<(), Box<dyn Error>>
         let path = Path::new(R_ROOT)
             .join(ver.as_str())
             .join("Resources/bin/exec/R");
-        let path = path.to_str().ok_or(SimpleError::new("Non-unicode path"))?;
-        info!("<cyan>[INFO]</> Updating entitlements of {}", path);
+        info!("<cyan>[INFO]</> Updating entitlements of {}", path.display());
 
         let out = Command::new("codesign")
-            .args(["-d", "--entitlements", ":-", path])
+            .args(["-d", "--entitlements", ":-"])
+            .arg(&path)
             .output()?;
         if ! out.status.success() {
             let stderr = match std::str::from_utf8(&out.stderr) {
@@ -355,12 +361,11 @@ pub fn sc_system_allow_debugger(args: &ArgMatches) -> Result<(), Box<dyn Error>>
         }
 
         let titles = tmp_dir.join("r.entitlements");
-        let titles_str = titles.to_str().ok_or(SimpleError::new("Non-unicode path"))?;
         std::fs::write(&titles, out.stdout)?;
 
         let out = Command::new("/usr/libexec/PlistBuddy")
-            .args(["-c", "Add :com.apple.security.get-task-allow bool true",
-                   titles_str])
+            .args(["-c", "Add :com.apple.security.get-task-allow bool true"])
+            .arg(&titles)
             .output()?;
 
         if ! out.status.success() {
@@ -380,7 +385,9 @@ pub fn sc_system_allow_debugger(args: &ArgMatches) -> Result<(), Box<dyn Error>>
         }
 
         let out = Command::new("codesign")
-            .args(["-s", "-", "-f", "--entitlements", titles_str, path])
+            .args(["-s", "-", "-f", "--entitlements"])
+            .arg(&titles)
+            .arg(&path)
             .output()?;
 
         if ! out.status.success() {
@@ -400,7 +407,7 @@ pub fn sc_system_make_orthogonal(args: &ArgMatches) -> Result<(), Box<dyn Error>
         system_make_orthogonal(None)
     } else {
         let vers: Vec<String> = vers
-            .ok_or(SimpleError::new("Internal error"))?
+            .ok_or(SimpleError::new("Internal argument error"))?
             .map(|v| v.to_string()).collect();
         system_make_orthogonal(Some(vers))
     }
@@ -456,7 +463,7 @@ pub fn sc_system_fix_permissions(args: &ArgMatches) -> Result<(), Box<dyn Error>
         system_fix_permissions(None)
     } else {
         let vers: Vec<String> = vers
-            .ok_or(SimpleError::new("Internal error"))?
+            .ok_or(SimpleError::new("Internal argument error"))?
             .map(|v| v.to_string()).collect();
         system_fix_permissions(Some(vers))
     }
@@ -471,10 +478,10 @@ fn system_fix_permissions(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
     for ver in vers {
         check_installed(&ver)?;
         let path = Path::new(R_ROOT).join(ver.as_str());
-        let path = path.to_str().ok_or(SimpleError::new("Non-unicode path"))?;
-        info!("<cyan>[INFO]</> Fixing permissions in {}", path);
+        info!("<cyan>[INFO]</> Fixing permissions in {}", path.display());
         let status = Command::new("chmod")
-            .args(["-R", "g-w", path])
+            .args(["-R", "g-w"])
+            .arg(path)
             .spawn()?
             .wait()?;
 
@@ -484,10 +491,10 @@ fn system_fix_permissions(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
     }
 
     let current = Path::new(R_ROOT).join("Current");
-    let current = current.to_str().ok_or(SimpleError::new("Non-unicode path"))?;
-    info!("<cyan>[INFO]</> Fixing permissions and group of {}", current);
+    info!("<cyan>[INFO]</> Fixing permissions and group of {}", current.display());
     let status = Command::new("chmod")
-        .args(["-R", "775", &current])
+        .args(["-R", "775"])
+        .arg(&current)
         .spawn()?
         .wait()?;
 
@@ -496,7 +503,8 @@ fn system_fix_permissions(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
     }
 
     let status = Command::new("chgrp")
-        .args(["admin", &current])
+        .args(["admin"])
+        .arg(&current)
         .spawn()?
         .wait()?;
 
@@ -532,9 +540,9 @@ pub fn sc_system_forget() -> Result<(), Box<dyn Error>> {
 
 pub fn get_resolve(args: &ArgMatches) -> Result<Rversion, Box<dyn Error>> {
     let str = args.value_of("str")
-        .ok_or(SimpleError::new("Internal error"))?.to_string();
+        .ok_or(SimpleError::new("Internal argument error"))?.to_string();
     let arch = args.value_of("arch")
-        .ok_or(SimpleError::new("Internal error"))?;
+        .ok_or(SimpleError::new("Internal argument error"))?;
 
     if str.len() > 8 && (&str[..7] == "http://" || &str[..8] == "https://") {
         Ok(Rversion {
@@ -556,7 +564,7 @@ pub fn sc_system_no_openmp(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         system_no_openmp(None)
     } else {
         let vers: Vec<String> = vers
-            .ok_or(SimpleError::new("Internal error"))?
+            .ok_or(SimpleError::new("Internal argument error"))?
             .map(|v| v.to_string()).collect();
         system_no_openmp(Some(vers))
     }
@@ -578,9 +586,7 @@ fn system_no_openmp(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
         match replace_in_file(&makevars, &re, "") {
             Ok(_) => { },
             Err(err) => {
-                let spath = path.to_str()
-                    .ok_or(SimpleError::new("Non-unicode path"))?;
-                bail!("Failed to update {}: {}", spath, err);
+                bail!("Failed to update {}: {}", path.display(), err);
             }
         };
     }
@@ -606,9 +612,7 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
         ) {
             Ok(_) => { },
             Err(err) => {
-                let spath = path.to_str()
-                    .ok_or(SimpleError::new("Non-unicode path"))?;
-                bail!("Failed to update {}: {}", spath, err);
+                bail!("Failed to update {}: {}", path.display(), err);
             }
         };
     }
@@ -688,9 +692,18 @@ pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
 
     for de in paths {
         let path = de?.path();
-        let fname = path.file_name().ok_or(SimpleError::new("Non-unicode path"))?;
-        if fname != "Current" && fname != ".DS_Store" {
-            vers.push(fname.to_str().ok_or(SimpleError::new("Non-unicode path"))?.to_string());
+        // If no path name, then path ends with ..., so we can skip
+        let fnamestr = match path.file_name() {
+            Some(x) => x,
+            None => continue
+        };
+        // If the path is not UTF-8, we'll skip it, this should not happen
+        let fnamestr = match fnamestr.to_str() {
+            Some(x) => x,
+            None => continue
+        };
+        if fnamestr != "Current" && fnamestr != ".DS_Store" {
+            vers.push(fnamestr.to_string());
         }
     }
     vers.sort();
