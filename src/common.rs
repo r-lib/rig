@@ -16,35 +16,21 @@ use crate::linux::*;
 pub fn check_installed(ver: &String) -> Result<bool, Box<dyn Error>> {
     let inst = sc_get_list()?;
     if ! inst.contains(&ver) {
-        bail!("R version {} is not installed", &ver);
+        bail!("R version <b>{}</b> is not installed", &ver);
     }
     Ok(true)
 }
 
 // -- rig default ---------------------------------------------------------
 
-// Good example of how errors should be handled.
-// * The implementation (function with `_` suffix), and it forwards the
-//   errors upstream. If there is no error, we return an Option<String>,
-//   because there might not be a default set.
-// * `sc_get_default()` will panic on error.
-// * `sc_get_default_or_fail()` will also panic if no default is set.
+// Fail if no default is set
 
 pub fn sc_get_default_or_fail() -> Result<String, Box<dyn Error>> {
     let default = sc_get_default()?;
     match default {
-        None => bail!("No default version is set"),
+        None => bail!("No default R version is set, call <b>rig default <version></b>"),
         Some(d) => Ok(d)
     }
-}
-
-pub fn sc_show_default() -> Result<(), Box<dyn Error>> {
-    let default = sc_get_default()?;
-    match default {
-        None => bail!("No default version is set"),
-        Some(d) => println!("{}", d)
-    };
-    Ok(())
 }
 
 pub fn set_default_if_none(ver: String) -> Result<(), Box<dyn Error>> {
@@ -68,14 +54,7 @@ pub fn sc_rstudio(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         prj = args.value_of("version");
     }
 
-    match sc_rstudio_(ver, prj) {
-        Ok(_) => { },
-        Err(err) => {
-            panic!("{}", err.to_string());
-        }
-    };
-
-    Ok(())
+    sc_rstudio_(ver, prj)
 }
 
 // ------------------------------------------------------------------------

@@ -27,6 +27,7 @@ use macos::*;
 
 lazy_static! {
     static ref LAST_ERROR: Mutex<String> = Mutex::new(String::from(""));
+    static ref LAST_ERROR2: Mutex<i32> = Mutex::new(0);
 }
 
 static SUCCESS:                  libc::c_int =  0;
@@ -34,6 +35,7 @@ static ERROR_NO_DEFAULT:         libc::c_int = -1;
 static ERROR_DEFAULT_FAILED:     libc::c_int = -2;
 static ERROR_BUFFER_SHORT:       libc::c_int = -3;
 static ERROR_SET_DEFAULT_FAILED: libc::c_int = -4;
+static ERROR_INVALID_INPUT:      libc::c_int = -5;
 
 // ------------------------------------------------------------------------
 
@@ -44,7 +46,11 @@ pub extern "C" fn rig_last_error(
     ptr: *mut libc::c_char,
     size: libc::size_t
 ) -> libc::c_int {
-    let str = LAST_ERROR.lock().unwrap();
+    let str: String = match LAST_ERROR.try_lock() {
+        Ok(x) => x.to_owned(),
+        Err(_) => "Unknown error".to_string()
+    };
+
     let str2;
     if size <= str.len() {
         str2 = str[..(size-1)].to_string() + "\0";
@@ -58,9 +64,15 @@ pub extern "C" fn rig_last_error(
 }
 
 fn set_error(str: &str) {
-    let mut err = LAST_ERROR.lock().unwrap();
-    err.clear();
-    err.insert_str(0, str);
+    match LAST_ERROR.try_lock() {
+        Ok(mut x) => {
+            x.clear();
+            x.insert_str(0, str);
+        },
+        Err(_) => {
+            // cannot save error message, not much we can do
+        }
+    };
 }
 
 fn set_c_string(from: &str, ptr: *mut libc::c_char, size: libc::size_t)
@@ -198,17 +210,23 @@ pub extern "C" fn rig_list_with_versions(
         }
     }
 }
-    
+
 #[no_mangle]
 pub extern "C" fn rig_set_default(
     ptr: *const libc::c_char) -> libc::c_int {
 
-    let ver: &str;
+    let cver;
 
     unsafe {
-        let cver = std::ffi::CStr::from_ptr(ptr);
-        ver = cver.to_str().unwrap();
+        cver = std::ffi::CStr::from_ptr(ptr);
     }
+
+    let ver = match cver.to_str() {
+        Ok(x) => x,
+        Err(_) => {
+            return ERROR_INVALID_INPUT
+        }
+    };
 
     match sc_set_default(ver) {
         Ok(_) => {
@@ -227,15 +245,27 @@ pub extern "C" fn rig_start_rstudio(
     pversion: *const libc::c_char,
     pproject: *const libc::c_char) -> libc::c_int {
 
-    let ver: &str;
-    let prj: &str;
+    let cver;
+    let cprj;
 
     unsafe {
-        let cver = std::ffi::CStr::from_ptr(pversion);
-        ver = cver.to_str().unwrap();
-        let cprj = std::ffi::CStr::from_ptr(pproject);
-        prj = cprj.to_str().unwrap();
+        cver = std::ffi::CStr::from_ptr(pversion);
+        cprj = std::ffi::CStr::from_ptr(pproject);
     }
+
+    let ver = match cver.to_str() {
+        Ok(x) => x,
+        Err(_) => {
+            return ERROR_INVALID_INPUT;
+        }
+    };
+
+    let prj = match cprj.to_str() {
+        Ok(x) => x,
+        Err(_) => {
+            return ERROR_INVALID_INPUT;
+        }
+    };
 
     let ver = if ver == "" { None } else { Some(ver) };
     let prj = if prj == "" { None } else { Some(prj) };

@@ -2,6 +2,8 @@
 use std::error::Error;
 
 use clap::ArgMatches;
+use simple_error::SimpleError;
+use simplelog::*;
 
 mod args;
 use args::parse_args;
@@ -32,19 +34,63 @@ use crate::common::*;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod escalate;
 
+// ------------------------------------------------------------------------
+
 fn main() {
-    match main_() {
-        Ok(_) => { },
+    let exit_code = main_();
+    std::process::exit(exit_code);
+}
+
+fn main_() -> i32 {
+
+    let args = parse_args();
+
+    // -- set up logger output --------------------------------------------
+
+    let mut loglevel = match args.occurrences_of("verbose") {
+        0 => LevelFilter::Info,
+        1 => LevelFilter::Debug,
+        _ => LevelFilter::Trace
+    };
+
+    if args.is_present("quiet") {
+        loglevel = LevelFilter::Off;
+    }
+
+    let config = ConfigBuilder::new()
+        .set_max_level(LevelFilter::Trace)
+        .set_time_level(LevelFilter::Trace)
+        .set_level_color(Level::Error, Some(Color::Magenta))
+        .set_level_color(Level::Warn, Some(Color::Yellow))
+        .set_level_color(Level::Info, Some(Color::Blue))
+        .set_level_color(Level::Debug, None)
+        .set_level_color(Level::Trace, None)
+        .build();
+
+    match TermLogger::init(
+        loglevel,
+        config,
+        TerminalMode::Stderr,
+        ColorChoice::Auto)  {
+        Err(e) => {
+            eprintln!("Fatal error, cannot set up logger: {}", e.to_string());
+            return 2;
+        },
+        _ => { }
+    };
+
+    // --------------------------------------------------------------------
+
+    match main__(&args) {
+        Ok(_) => { return 0; },
         Err(err) => {
-            println!("Error: {}", err.to_string());
-            std::process::exit(1);
+            error!("<magenta>[ERROR]</> {}", err.to_string());
+            return 1;
         }
     }
 }
 
-fn main_() -> Result<(), Box<dyn Error>> {
-    let args = parse_args();
-
+fn main__(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
         Some(("add", sub)) => sc_add(sub),
         Some(("default", sub)) => sc_default(sub),
@@ -73,16 +119,24 @@ fn sc_system(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     }
 }
 
+// ------------------------------------------------------------------------
+
 fn sc_resolve(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    let version = get_resolve(args);
+    let version = get_resolve(args)?;
     let url: String = match version.url {
         Some(s) => s.to_string(),
         None => "NA".to_string(),
     };
-    println!("{} {}", version.version.unwrap(), url);
+    let version: String = match version.version {
+        Some(s) => s.to_string(),
+        None => "???".to_string()
+    };
+    println!("{} {}", version, url);
 
     Ok(())
 }
+
+// ------------------------------------------------------------------------
 
 fn sc_list() -> Result<(), Box<dyn Error>> {
     let vers = sc_get_list()?;
@@ -101,47 +155,61 @@ fn sc_list() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+// ------------------------------------------------------------------------
+
 fn sc_default(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     if args.is_present("version") {
-        let ver = args.value_of("version").unwrap().to_string();
+        let ver = args.value_of("version")
+            .ok_or(SimpleError::new("Internal error"))?.to_string();
         sc_set_default(&ver)
     } else {
-        sc_show_default()
+        let default = sc_get_default_or_fail()?;
+        println!("{}", default);
+        Ok(())
     }
 }
+
+// ------------------------------------------------------------------------
 
 pub fn sc_system_create_lib(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let vers = args.values_of("version");
     if vers.is_none() {
         system_create_lib(None)
     } else {
-        let vers: Vec<String> = vers.unwrap().map(|v| v.to_string()).collect();
+        let vers: Vec<String> = vers
+            .ok_or(SimpleError::new("Internal error"))?
+            .map(|v| v.to_string()).collect();
         system_create_lib(Some(vers))
     }
 }
+
+// ------------------------------------------------------------------------
 
 pub fn sc_system_add_pak(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let devel = args.is_present("devel");
     let all = args.is_present("all");
     let vers = args.values_of("version");
-    let mut pakver = args.value_of("pak-version").unwrap();
+    let mut pakver = args.value_of("pak-version")
+        .ok_or(SimpleError::new("Internal error"))?;
     let pakverx = args.occurrences_of("pak-version") > 0;
 
     // --devel is deprecated
     if devel && !pakverx {
-        println!("Note: --devel is now deprecated, use --pak-version instead");
-        println!("Selecting 'devel' version");
+        info!("<cyan>[INFO]</> Note: --devel is now deprecated, use --pak-version instead");
+        info!("<cyan>[INFO]</> Selecting 'devel' version");
         pakver = "devel";
     }
     if devel && pakverx {
-        println!("Note: --devel is ignored in favor of --pak-version");
+        info!("<cyan>[INFO]</> Note: --devel is ignored in favor of --pak-version");
     }
     if all {
         system_add_pak(Some(sc_get_list()?), pakver, true)?;
     } else if vers.is_none() {
         system_add_pak(None, pakver, true)?;
     } else {
-        let vers: Vec<String> = vers.unwrap().map(|v| v.to_string()).collect();
+        let vers: Vec<String> = vers
+            .ok_or(SimpleError::new("Internal error"))?
+            .map(|v| v.to_string()).collect();
         system_add_pak(Some(vers), pakver, true)?;
     }
 

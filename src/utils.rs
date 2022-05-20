@@ -1,4 +1,5 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::ffi::OsString;
 use std::fs::File;
 use std::io::{prelude::*, BufReader};
 
@@ -16,18 +17,15 @@ use std::error::Error;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use simple_error::bail;
 
+use simplelog::*;
+
 pub fn basename(path: &str) -> Option<&str> {
     path.rsplitn(2, '/').next()
 }
 
 pub fn read_lines(path: &Path) -> Result<Vec<String>, std::io::Error> {
     let file = File::open(path)?;
-    let buf = BufReader::new(file);
-    let lines = buf
-        .lines()
-        .map(|l| l.expect("Could not parse line"))
-        .collect();
-    Ok(lines)
+    BufReader::new(file).lines().collect()
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -46,23 +44,29 @@ pub fn grep_lines(re: &Regex, lines: &Vec<String>) -> Vec<usize> {
         .collect()
 }
 
+fn bak_file(path: &Path) -> PathBuf {
+    let mut path2 = path.to_owned();
+    let ext = path
+        .extension()
+        .unwrap_or_else(|| std::ffi::OsStr::new(""));
+    let mut new_ext = OsString::new();
+    new_ext.push(ext);
+    new_ext.push("bak");
+    path2.set_extension(new_ext);
+    path2
+}
+
 #[cfg(target_os = "macos")]
 pub fn replace_in_file(path: &Path, re: &Regex, sub: &str) -> Result<(), std::io::Error> {
     let mut lines = read_lines(path)?;
     let mch = grep_lines(re, &lines);
     if mch.len() > 0 {
-        println!("Updating {:?}", path);
+        info!("<cyan>[INFO]</> Updating {:?}", path);
         for m in mch {
             lines[m] = re.replace(&lines[m], sub).to_string();
         }
-        let mut path2 = path.to_owned();
-        let ext = path
-            .extension()
-            .unwrap_or_else(|| std::ffi::OsStr::new(""))
-            .to_str()
-            .unwrap();
-        path2.set_extension(ext.to_owned() + "bak");
-        let mut f = File::create(&path2).expect("Unable to create file");
+        let path2 = bak_file(path);
+        let mut f = File::create(&path2)?;
         for line in &lines {
             write!(f, "{}\n", line)?;
         }
@@ -76,16 +80,10 @@ pub fn replace_in_file(path: &Path, re: &Regex, sub: &str) -> Result<(), std::io
 }
 
 pub fn append_to_file(path: &Path, extra: Vec<String>) -> Result<(), std::io::Error> {
-    println!("Updating {:?}", path);
+    info!("<cyan>[INFO]</> Updating {:?}", path);
     let lines = read_lines(path)?;
-    let mut path2 = path.to_owned();
-    let ext = path
-        .extension()
-        .unwrap_or_else(|| std::ffi::OsStr::new(""))
-        .to_str()
-        .unwrap();
-    path2.set_extension(ext.to_owned() + "bak");
-    let mut f = File::create(&path2).expect("Unable to create file");
+    let path2 = bak_file(path);
+    let mut f = File::create(&path2)?;
     for line in &lines {
         write!(f, "{}\n", line)?;
     }
@@ -122,43 +120,32 @@ pub fn unquote(s: &str) -> String {
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn get_user() -> User {
-    let uid;
-    let gid;
+    let uid: u32;
+    let gid: u32;
     let user;
     let sudo;
 
+    fn parse_uid(str: Option<std::ffi::OsString>) -> Option<u32> {
+        str.and_then(|x| x.into_string().ok())
+            .and_then(|x| x.parse::<u32>().ok())
+    }
+
     let euid = nix::unistd::geteuid();
-    let sudo_uid = std::env::var_os("SUDO_UID");
-    let sudo_gid = std::env::var_os("SUDO_GID");
-    let sudo_user = std::env::var_os("SUDO_USER");
+    let sudo_uid: Option<u32> = parse_uid(std::env::var_os("SUDO_UID"));
+    let sudo_gid: Option<u32> = parse_uid(std::env::var_os("SUDO_GID"));
+    let sudo_user = std::env::var_os("SUDO_USER").and_then(|x| x.into_string().ok());
     if euid.is_root() && sudo_uid.is_some() && sudo_gid.is_some() && sudo_user.is_some() {
 	sudo = true;
-        uid = match sudo_uid {
-            Some(x) => x.to_str().unwrap().parse::<u32>().unwrap(),
-            _ => {
-                unreachable!();
-            }
-        };
-        gid = match sudo_gid {
-            Some(x) => x.to_str().unwrap().parse::<u32>().unwrap(),
-            _ => {
-                unreachable!();
-            }
-        };
-        user = match sudo_user {
-            Some(x) => x.to_str().unwrap().to_string(),
-            _ => {
-                unreachable!();
-            }
-        };
+        uid = sudo_uid.unwrap_or_else(|| unreachable!());
+        gid = sudo_gid.unwrap_or_else(|| unreachable!());
+        user = sudo_user.unwrap_or_else(|| unreachable!());
     } else {
 	sudo = false;
         uid = nix::unistd::getuid().as_raw();
         gid = nix::unistd::getgid().as_raw();
-        user = match std::env::var_os("USER") {
-            Some(x) => x.to_str().unwrap().to_string(),
-            None => "Current user".to_string(),
-        };
+        user = std::env::var_os("USER")
+            .and_then(|x: OsString| x.into_string().ok())
+            .unwrap_or_else(|| "Current user".to_string());
     }
 
     let user_record = nix::unistd::User::from_uid(nix::unistd::Uid::from_raw(uid)).unwrap().unwrap();

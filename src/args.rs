@@ -3,6 +3,7 @@
 // ------------------------------------------------------------------------
 
 use clap::{Command, Arg, ArgMatches};
+use simplelog::*;
 
 #[cfg(target_os = "macos")]
 std::include!("help-macos.in");
@@ -28,10 +29,10 @@ pub fn rig_app() -> Command<'static> {
         .args(["-arm64", "true"])
         .spawn();
 
-    if proc.is_ok() {
-        let out = proc.unwrap().wait();
-        if out.is_ok() {
-            if out.unwrap().success() {
+    if let Ok(mut proc) = proc {
+        let out = proc.wait();
+        if let Ok(out) = out {
+            if out.success() {
                 default_arch = arch_arm64;
             } else {
                 default_arch = arch_x86_64;
@@ -42,7 +43,7 @@ pub fn rig_app() -> Command<'static> {
     }
 
     if default_arch == "" {
-        println!("Failed to detect arch, default is 'x86_64'.");
+        warn!("<magenta>[WARN]</> Failed to detect arch, default is 'x86_64'.");
         default_arch = arch_x86_64;
     };
 }
@@ -329,6 +330,19 @@ pub fn rig_app() -> Command<'static> {
         );
 
     rig
+        .arg(
+            Arg::new("quiet")
+                .help("Suppress output (overrides `--verbose`)")
+                .short('q')
+                .long("quiet")
+                .required(false))
+        .arg(
+            Arg::new("verbose")
+                .help("Verbose output")
+                .short('v')
+                .long("verbose")
+                .required(false)
+                .multiple_occurrences(true))
         .subcommand(cmd_default)
         .subcommand(cmd_list)
         .subcommand(cmd_add)

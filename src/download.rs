@@ -1,12 +1,15 @@
 
-#[cfg(target_os = "windows")]
-use clap::ArgMatches;
-
 use futures::future;
 use futures_util::StreamExt;
+use std::error::Error;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
+
+#[cfg(target_os = "windows")]
+use clap::ArgMatches;
+
+use simple_error::bail;
 
 #[cfg(target_os = "windows")]
 use crate::windows::*;
@@ -20,23 +23,21 @@ use crate::utils::*;
 // ------------------------------------------------------------------------
 
 #[cfg(target_os = "windows")]
-pub fn download_r(args: &ArgMatches) -> (Rversion, String) {
+pub fn download_r(args: &ArgMatches) -> Result<(Rversion, String), Box<dyn Error>> {
     let version = get_resolve(args);
-    let ver = version.version.to_owned();
+    let ver = version.version;
     let url: String = match &version.url {
         Some(s) => s.to_string(),
-        None => panic!("Cannot find a download url for R version {}", ver.unwrap()),
+        None => bail!("Cannot find a download url for R version {}", ver.unwrap_or("???")),
     };
-    let filename = version.arch.to_owned().unwrap() + "-" + basename(&url).unwrap();
+    let filename = version.arch.unwrap_or("") + "-" + basename(&url).unwrap_or("foo");
     let tmp_dir = std::env::temp_dir().join("rig");
     let target = tmp_dir.join(&filename);
-    let target_str;
+    let target_str = target.display();
     if target.exists() && not_too_old(&target) {
-        target_str = target.into_os_string().into_string().unwrap();
-        println!("{} is cached at\n    {}", filename, target_str);
+        info!("<cyan>[INFO]</> {} is cached at\n    {}", filename, target_str);
     } else {
-        target_str = target.into_os_string().into_string().unwrap();
-        println!("Downloading {} ->\n    {}", url, target_str);
+        info!("<cyan>[INFO]</> Downloading {} ->\n    {}", url, target_str);
         let client = &reqwest::Client::new();
         download_file(client, url, &target_str);
     }
@@ -45,16 +46,17 @@ pub fn download_r(args: &ArgMatches) -> (Rversion, String) {
 }
 
 #[tokio::main]
-pub async fn download_file(client: &reqwest::Client, url: String, opath: &str) {
+pub async fn download_file(client: &reqwest::Client, url: String, opath: &str)
+                           -> Result<(), Box<dyn Error>> {
     let path = opath.to_string() + ".tmp";
     let resp = client.get(&url).send().await;
     let resp = match resp {
         Ok(resp) => resp.error_for_status(),
-        Err(err) => panic!("HTTP error at {}: {}", url, err.to_string()),
+        Err(err) => bail!("HTTP error at {}: {}", url, err.to_string()),
     };
     let resp = match resp {
         Ok(resp) => resp,
-        Err(err) => panic!("HTTP error at {}: {}", url, err.to_string()),
+        Err(err) => bail!("HTTP error at {}: {}", url, err.to_string()),
     };
 
     // If dirname(path) is / then this is None
@@ -64,7 +66,7 @@ pub async fn download_file(client: &reqwest::Client, url: String, opath: &str) {
             match std::fs::create_dir_all(dir) {
                 Err(err) => {
                     let dir = dir.to_str().unwrap_or_else(|| "???");
-                    panic!("Cannot create directory {}: {}", dir, err.to_string())
+                    bail!("Cannot create directory {}: {}", dir, err.to_string())
                 }
                 _ => {}
             };
@@ -74,61 +76,74 @@ pub async fn download_file(client: &reqwest::Client, url: String, opath: &str) {
     let file = File::create(&path);
     let mut file = match file {
         Ok(file) => file,
-        Err(err) => panic!("Cannot create file '{}': {}", path, err.to_string()),
+        Err(err) => bail!("Cannot create file '{}': {}", path, err.to_string()),
     };
     let mut stream = resp.bytes_stream();
 
     while let Some(item) = stream.next().await {
         let chunk = match item {
             Ok(chunk) => chunk,
-            Err(err) => panic!("HTTP error at {}: {}", url, err.to_string()),
+            Err(err) => bail!("HTTP error at {}: {}", url, err.to_string()),
         };
         match file.write(&chunk) {
-            Err(err) => panic!("Failed to write to file {}: {}", path, err.to_string()),
+            Err(err) => bail!("Failed to write to file {}: {}", path, err.to_string()),
             _ => {}
         };
     }
 
     match std::fs::rename(Path::new(&path), Path::new(&opath)) {
-        Err(err) => panic!("Failed to rename downloaded file: {}", err.to_string()),
+        Err(err) => bail!("Failed to rename downloaded file: {}", err.to_string()),
         _ => {}
     };
+
+    Ok(())
 }
 
 // ------------------------------------------------------------------------
 // asynchronous API
 // ------------------------------------------------------------------------
 
-pub async fn download_text(client: &reqwest::Client, url: String) -> String {
+pub async fn download_text(client: &reqwest::Client, url: String)
+                           -> Result<String, Box<dyn Error>> {
     let resp = client.get(&url).send().await;
     let body = match resp {
         Ok(resp) => resp.error_for_status(),
-        Err(err) => panic!("HTTP error at {}: {}", url, err.to_string()),
+        Err(err) => bail!("HTTP error at {}: {}", url, err.to_string()),
     };
     let body = match body {
         Ok(content) => content,
-        Err(err) => panic!("HTTP error at {}: {}", url, err.to_string()),
+        Err(err) => bail!("HTTP error at {}: {}", url, err.to_string()),
     };
     let body = body.text().await;
     match body {
-        Ok(txt) => txt,
-        Err(err) => panic!("HTTP error at {}: {}", url, err.to_string()),
+        Ok(txt) => Ok(txt),
+        Err(err) => bail!("HTTP error at {}: {}", url, err.to_string()),
     }
 }
 
-pub async fn download_json(client: &reqwest::Client, urls: Vec<String>) -> Vec<serde_json::Value> {
-    let vers: Vec<serde_json::Value> = future::join_all(urls.into_iter().map(|url| async move {
-        let resp = client
-            .get(url)
-            .send()
-            .await
-            .expect("Cannot query R versions API")
-            .error_for_status()
-            .expect("HTTP error on the R versions API");
-        let json: serde_json::Value = resp.json().await.expect("Cannot parse JSON response");
-        json
+pub async fn download_json(client: &reqwest::Client, urls: Vec<String>)
+                           -> Result<Vec<serde_json::Value>, Box<dyn Error>> {
+    let vers: Vec<Result<serde_json::Value, Box<dyn Error>>> =
+        future::join_all(urls.into_iter().map(|url| async move {
+            let json = client
+                .get(url)
+                .send()
+                .await?
+                .error_for_status()?
+                .json()
+                .await?;
+            Ok(json)
     }))
     .await;
 
-    vers
+    let mut vers2: Vec<serde_json::Value> = vec![];
+
+    for v in vers {
+        match v {
+            Ok(v) => vers2.push(v),
+            Err(e) => bail!("Cannot download JSON: {}", e.to_string())
+        };
+    }
+
+    Ok(vers2)
 }
