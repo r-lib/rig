@@ -58,7 +58,6 @@ fn main_() -> i32 {
     }
 
     let config = ConfigBuilder::new()
-        .set_max_level(LevelFilter::Trace)
         .set_time_level(LevelFilter::Trace)
         .set_level_color(Level::Error, Some(Color::Magenta))
         .set_level_color(Level::Warn, Some(Color::Yellow))
@@ -84,7 +83,7 @@ fn main_() -> i32 {
     match main__(&args) {
         Ok(_) => { return 0; },
         Err(err) => {
-            error!("<magenta>[ERROR]</> {}", err.to_string());
+            error!("{}", err.to_string());
             return 1;
         }
     }
@@ -195,12 +194,12 @@ pub fn sc_system_add_pak(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     // --devel is deprecated
     if devel && !pakverx {
-        info!("<cyan>[INFO]</> Note: --devel is now deprecated, use --pak-version instead");
-        info!("<cyan>[INFO]</> Selecting 'devel' version");
+        info!("Note: --devel is now deprecated, use --pak-version instead");
+        info!("Selecting 'devel' version");
         pakver = "devel";
     }
     if devel && pakverx {
-        info!("<cyan>[INFO]</> Note: --devel is ignored in favor of --pak-version");
+        info!("Note: --devel is ignored in favor of --pak-version");
     }
     if all {
         system_add_pak(Some(sc_get_list()?), pakver, true)?;

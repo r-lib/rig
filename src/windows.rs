@@ -37,7 +37,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let (_version, target) = download_r(&args)?;
     let target_path = Path::new(&target);
 
-    info!("<cyan>[INFO]</> Installing {}", target_path.display());
+    info!("Installing {}", target_path.display());
     println!("--nnn-- Start of installer output -----------------");
     let status = Command::new(&target)
 	.args(["/VERYSILENT", "/SUPPRESSMSGBOXES"])
@@ -65,7 +65,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     if !args.is_present("without-cran-mirror") {
 	match dirname {
 	    None => {
-		warn!("<magenta>[WARN]</> Cannot set CRAN mirror, cannot determine installation directory");
+		warn!("Cannot set CRAN mirror, cannot determine installation directory");
 	    },
 	    Some(ref dirname) => {
 		set_cloud_mirror(Some(vec![dirname.to_string()]))?;
@@ -76,7 +76,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     if !args.is_present("without-rspm") {
 	match dirname {
 	    None => {
-		warn!("<magenta>[WARN]</> Cannot set up RSPM, cannoe determine installation directory");
+		warn!("Cannot set up RSPM, cannoe determine installation directory");
 	    },
 	    Some(ref dirname) => {
 		set_rspm(Some(vec![dirname.to_string()]))?;
@@ -87,7 +87,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     if !args.is_present("without-pak") {
 	match dirname {
 	    None => {
-		warn!("<magenta>[WARN]</> Cannot install pak, cannot determine installation directory");
+		warn!("Cannot install pak, cannot determine installation directory");
 	    },
 	    Some(ref dirname) => {
 		system_add_pak(
@@ -129,9 +129,9 @@ fn add_rtools(version: String) -> Result<(), Box<dyn Error>> {
         };
         let tmp_dir = std::env::temp_dir().join("rig");
         let target = tmp_dir.join(&filename);
-        info!("<cyan>[INFO]</> Downloading {} ->\n    {}", url, target.display());
+        info!("Downloading {} ->\n    {}", url, target.display());
         download_file(client, url, &target.as_os_str())?;
-        info!("<cyan>[INFO]</> Installing\n    {}", target.display());
+        info!("Installing\n    {}", target.display());
 	println!("--nnn-- Start of installer output -----------------");
         let status = Command::new(target.as_os_str())
             .args(["/VERYSILENT", "/SUPPRESSMSGBOXES"])
@@ -195,7 +195,7 @@ fn patch_for_rtools() -> Result<(), Box<dyn Error>> {
 		&tail;
 
 	    if let Err(e) = writeln!(file, "{}", if rtools4 { txt4 } else { txt3 }) {
-		warn!("<magenta>[WARN]</> Couldn't write to Renviron.site file: {}", e);
+		warn!("Couldn't write to Renviron.site file: {}", e);
 	    }
 	}
     }
@@ -253,7 +253,7 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
 fn set_rspm(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     let arch = std::env::consts::ARCH;
     if arch != "x86_64" {
-	warn!("<magenta>[WARN]</> RSPM does not support this architecture: {}", arch);
+	warn!("RSPM does not support this architecture: {}", arch);
 	return Ok(());
     }
 
@@ -297,7 +297,7 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         let ver = "R-".to_string() + ver;
         let dir = Path::new(R_ROOT);
         let dir = dir.join(ver);
-        info!("<cyan>[INFO]</cyan> Removing {}", dir.display());
+        info!("Removing {}", dir.display());
         remove_dir_all(&dir)?;
     }
 
@@ -309,7 +309,7 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
 fn rm_rtools(ver: String) -> Result<(), Box<dyn Error>> {
     let dir = Path::new("C:\\").join(ver);
-    info!("<cyan>[INFO]</> Removing {}", dir.display());
+    info!("Removing {}", dir.display());
     match remove_dir_all(&dir) {
         Err(_err) => {
 	    let cmd = format!("del -recurse -force {}", dir.display());
@@ -345,9 +345,9 @@ pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool)
     for ver in vers {
         check_installed(&ver)?;
         if update {
-            info!("<cyan>[INFO]</> Installing pak for R {}", ver);
+            info!("Installing pak for R {}", ver);
         } else {
-            info!("<cyan>[INFO]</> Installing pak for R {} (if not installed yet)", ver);
+            info!("Installing pak for R {} (if not installed yet)", ver);
         }
         let r = base
 	    .join("R-".to_string() + &ver)
@@ -405,14 +405,14 @@ pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>
         let lib = Path::new(&lib);
         if !lib.exists() {
             info!(
-                "<cyan>[INFO]</> {}: creating library at {}",
+                "{}: creating library at {}",
                 ver,
                 lib.display()
             );
             std::fs::create_dir_all(&lib)?;
 
         } else {
-            info!("<cyan>[INFO]</> {}: library at {} exists.", ver, lib.display());
+            info!("{}: library at {} exists.", ver, lib.display());
         }
     }
 
@@ -444,7 +444,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         } else {
             op = "Adding";
         };
-        info!("<cyan>[INFO]</> {} R-{} -> {}", op, ver, target.display());
+        info!("{} R-{} -> {}", op, ver, target.display());
         let mut file = File::create(&linkfile)?;
         file.write_all(cnt.as_bytes())?;
     }
@@ -459,11 +459,11 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
 		if !filename.ends_with(".bat") { continue; }
 		if !filename.starts_with("R-") { continue; }
 		if ! new_links.contains(&filename) {
-		    info!("<cyan>[INFO]</> Deleting unused {}", filename);
+		    info!("Deleting unused {}", filename);
 		    match std::fs::remove_file(path.path()) {
 			Ok(_) => { },
 			Err(e) => {
-			    warn!("<magenta>[WARN]</> Faild to remove {}: {}", filename, e.to_string());
+			    warn!("Faild to remove {}: {}", filename, e.to_string());
 			}
 		    }
 		}
@@ -592,7 +592,7 @@ fn clean_registry_r(key: &RegKey) -> Result<(), Box<dyn Error>> {
         let path: String = subkey.get_value("InstallPath")?;
         let path2 = Path::new(&path);
         if !path2.exists() {
-            info!("<cyan>[INFO]</> Cleaning registry: R {} (not in {})", &nm, path);
+            info!("Cleaning registry: R {} (not in {})", &nm, path);
             key.delete_subkey_all(nm)?;
         }
     }
@@ -606,7 +606,7 @@ fn clean_registry_rtools(key: &RegKey) -> Result<(), Box<dyn Error>> {
         let path: String = subkey.get_value("InstallPath")?;
         let path2 = Path::new(&path);
         if !path2.exists() {
-            info!("<cyan>[INFO]</> Cleaning registry: Rtools {} (not in {})", &nm, path);
+            info!("Cleaning registry: Rtools {} (not in {})", &nm, path);
             key.delete_subkey_all(nm)?;
         }
     }
@@ -620,7 +620,7 @@ fn clean_registry_uninst(key: &RegKey) -> Result<(), Box<dyn Error>> {
             let path: String = subkey.get_value("InstallLocation").unwrap();
             let path2 = Path::new(&path);
             if !path2.exists() {
-                info!("<cyan>[INFO]</> Cleaning registry (uninstaller): {}", nm);
+                info!("Cleaning registry (uninstaller): {}", nm);
                 key.delete_subkey_all(nm).unwrap();
             }
 	}
@@ -745,7 +745,7 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>)
 	update_registry_default_to(&ver)?;
     }
 
-    info!("<cyan>[INFO]</> Running cmd.exe {}", args.join(" "));
+    info!("Running cmd.exe {}", args.join(" "));
 
     let status = Command::new("cmd.exe")
 	.args(args)
@@ -755,10 +755,10 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>)
     // Restore registry (well, set default), if we changed it
     // temporarily
     if restore {
-	info!("<cyan>[INFO]</> Waiting for RStudio to start");
+	info!("Waiting for RStudio to start");
 	let twosecs = time::Duration::from_secs(2);
 	thread::sleep(twosecs);
-	info!("<cyan>[INFO]</> Restoring default R version in registry");
+	info!("Restoring default R version in registry");
 	maybe_update_registry_default()?;
     }
 
@@ -772,7 +772,7 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>)
 fn elevate(task: &str) -> Result<(), Box<dyn Error>> {
     if is_elevated::is_elevated() { return Ok(()); }
     let args: Vec<String> = std::env::args().collect();
-    info!("<cyan>[INFO]</cyan> Re-running rig as administrator for {}.", task);
+    info!("Re-running rig as administrator for {}.", task);
     let exe = std::env::current_exe()?;
     let exedir =  Path::new(&exe).parent();
     let instdir = match exedir {

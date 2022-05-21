@@ -64,7 +64,7 @@ pub fn replace_in_file(path: &Path, re: &Regex, sub: &str) -> Result<(), std::io
     let mut lines = read_lines(path)?;
     let mch = grep_lines(re, &lines);
     if mch.len() > 0 {
-        info!("<cyan>[INFO]</> Updating {:?}", path);
+        debug!("Updating {:?}", path);
         for m in mch {
             lines[m] = re.replace(&lines[m], sub).to_string();
         }
@@ -83,7 +83,7 @@ pub fn replace_in_file(path: &Path, re: &Regex, sub: &str) -> Result<(), std::io
 }
 
 pub fn append_to_file(path: &Path, extra: Vec<String>) -> Result<(), std::io::Error> {
-    info!("<cyan>[INFO]</> Updating {:?}", path);
+    debug!("Updating {:?}", path);
     let lines = read_lines(path)?;
     let path2 = bak_file(path);
     let mut f = File::create(&path2)?;
