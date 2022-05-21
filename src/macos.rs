@@ -1,6 +1,7 @@
 #![cfg(target_os = "macos")]
 
 use std::error::Error;
+use std::ffi::OsStr;
 use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::process::Command;
@@ -44,15 +45,12 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let tmp_dir = std::env::temp_dir().join("rig");
     let target = tmp_dir.join(&filename);
     let cache = target.exists() && not_too_old(&target);
-
-    let target_str = match target.into_os_string().into_string() {
-        Ok(x) => x,
-        Err(_x) => bail!("Invalid UTF-8 path for download target")
-    };
+    let target_str = target.to_owned().into_os_string();
+    let target_dsp = target.display();
     if cache {
-        info!("<cyan>[INFO]</> {} is cached at {}", filename, target_str);
+        info!("<cyan>[INFO]</> {} is cached at {}", filename, target_dsp);
     } else {
-        info!("<cyan>[INFO]</> Downloading {} -> {}", url, target_str);
+        info!("<cyan>[INFO]</> Downloading {} -> {}", url, target_dsp);
         let client = &reqwest::Client::new();
         download_file(client, url, &target_str)?;
     }
@@ -71,7 +69,9 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     println!("--nnn-- Start of installer output -----------------");
     let status = Command::new("installer")
-        .args(["-pkg", &target_str, "-target", "/"])
+        .arg("-pkg")
+        .arg(&target)
+        .args(["-target", "/"])
         .spawn()?
         .wait()?;
     println!("--uuu-- End of installer output -------------------");
@@ -760,9 +760,10 @@ fn get_minor_version(ver: &str) -> Result<String, Box<dyn Error>> {
     Ok(re.replace(ver, "").to_string())
 }
 
-fn extract_pkg_version(filename: &str) -> Result<Rversion, Box<dyn Error>> {
+fn extract_pkg_version(filename: &OsStr) -> Result<Rversion, Box<dyn Error>> {
     let out = Command::new("installer")
-        .args(["-pkginfo", "-pkg", filename])
+        .args(["-pkginfo", "-pkg"])
+        .arg(filename)
         .output()?;
     let std = match String::from_utf8(out.stdout) {
         Ok(v) => v,

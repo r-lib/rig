@@ -123,7 +123,7 @@ pub fn rig_app() -> Command<'static> {
                 .short('a')
                 .long("arch")
                 .required(false)
-                .default_value(&default_arch)
+                .default_value(&_default_arch)
                 .possible_values(["arm64", "x86_64"])
         );
 }
@@ -307,7 +307,7 @@ pub fn rig_app() -> Command<'static> {
                 .short('a')
                 .long("arch")
                 .required(false)
-                .default_value(&default_arch)
+                .default_value(&_default_arch)
                 .possible_values(["arm64", "x86_64"])
         );
 }
