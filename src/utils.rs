@@ -149,13 +149,13 @@ pub fn get_user() -> User {
     }
 
     let user_record = nix::unistd::User::from_uid(nix::unistd::Uid::from_raw(uid)).unwrap().unwrap();
-    let dir = user_record.dir.into_os_string().into_string().unwrap();
+    let dir = user_record.dir;
 
     User { user, uid, gid, dir, sudo }
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
-pub fn read_version_link(path: &str) -> Result<Option<String>,Box<dyn Error>> {
+pub fn read_version_link(path: &str) -> Result<Option<OsString>,Box<dyn Error>> {
     let linkpath = Path::new(path);
     if !linkpath.exists() {
         return Ok(None);
@@ -166,8 +166,7 @@ pub fn read_version_link(path: &str) -> Result<Option<String>,Box<dyn Error>> {
     // file_name() might be None if tgt ends with ".."
     let fname = match tgt.file_name() {
         None => bail!("Symlink for default version is invalid"),
-        // to_str() fails if file name is invalid in Unicode, cannot happen?
-        Some(f) => f.to_str().unwrap().to_string()
+        Some(f) => f
     };
 
     Ok(Some(fname))
@@ -175,20 +174,20 @@ pub fn read_version_link(path: &str) -> Result<Option<String>,Box<dyn Error>> {
 
 pub fn not_too_old(path: &std::path::PathBuf) -> bool {
     let meta = std::fs::metadata(path);
-    if !meta.is_ok() {
-        return false;
+    match meta {
+	Err(_) => return false,
+	Ok(meta) => {
+	    let mtime = match meta.modified() {
+		Err(_) => return false,
+		Ok(mtime) => mtime
+	    };
+	    let now = std::time::SystemTime::now();
+	    let age = match now.duration_since(mtime) {
+		Err(_) => return false,
+		Ok(age) => age
+	    };
+	    let day = std::time::Duration::from_secs(60 * 60 * 24);
+	    age < day
+	}
     }
-    let mtime = meta.unwrap().modified();
-    if !mtime.is_ok() {
-        return false;
-    }
-    let now = std::time::SystemTime::now();
-    let age = now.duration_since(mtime.unwrap());
-    if !age.is_ok() {
-        return false;
-    }
-
-    let day = std::time::Duration::from_secs(60 * 60 * 24);
-
-    age.unwrap() < day
 }

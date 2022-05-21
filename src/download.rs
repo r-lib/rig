@@ -48,7 +48,7 @@ pub fn download_r(args: &ArgMatches) -> Result<(Rversion, OsString), Box<dyn Err
     } else {
         info!("<cyan>[INFO]</> Downloading {} ->\n    {}", url, target.display());
         let client = &reqwest::Client::new();
-        download_file(client, url, target.as_os_str());
+        download_file(client, url, target.as_os_str())?;
     }
 
     Ok((version, target.into_os_string()))
