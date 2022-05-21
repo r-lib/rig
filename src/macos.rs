@@ -5,6 +5,7 @@ use std::ffi::OsStr;
 use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::process::Command;
+use rand::Rng;
 
 use clap::ArgMatches;
 use nix::unistd::Gid;
@@ -67,20 +68,10 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         }
     };
 
-    println!("--nnn-- Start of installer output -----------------");
-    let status = Command::new("installer")
-        .arg("-pkg")
-        .arg(&target)
-        .args(["-target", "/"])
-        .spawn()?
-        .wait()?;
-    println!("--uuu-- End of installer output -------------------");
-
-    if !status.success() {
-        bail!("installer exited with status {}", status.to_string());
-    }
-
     let dirname = &get_install_dir(&version)?;
+
+    // Install without changing default
+    safe_install(target, dirname)?;
 
     // This should not happen currently on macOS, a .pkg installer
     // sets the default, but prepare for the future
@@ -105,6 +96,104 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             // If this is specified then we always re-install
             args.occurrences_of("pak-version") > 0
         )?;
+    }
+
+    Ok(())
+}
+
+fn random_string() -> String {
+    const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
+                            abcdefghijklmnopqrstuvwxyz";
+    const PASSWORD_LEN: usize = 10;
+    let mut rng = rand::thread_rng();
+
+    let password: String = (0..PASSWORD_LEN)
+        .map(|_| {
+            let idx = rng.gen_range(0..CHARSET.len());
+            CHARSET[idx] as char
+        })
+        .collect();
+
+    password
+}
+
+fn safe_install(target: std::path::PathBuf, ver: &str) -> Result<(), Box<dyn Error>> {
+
+    let dir = target.parent().ok_or(SimpleError::new("Internal error"))?;
+    let tmpf = random_string();
+    let tmp = dir.join(tmpf);
+    if tmp.exists() { std::fs::remove_dir_all(&tmp)?; }
+    let output = Command::new("pkgutil")
+        .arg("--expand")
+        .arg(&target)
+        .arg(&tmp)
+        .output()?;
+    if !output.status.success() {
+        bail!("pkgutil exited with {}", output.status.to_string());
+    }
+
+    let wd = tmp.join("R-fw.pkg");
+    let output = Command::new("sh")
+        .current_dir(&wd)
+        .args(["-c", "gzip -dcf Payload | cpio -i"])
+        .output()?;
+    if !output.status.success() {
+        bail!("Failed to extract installer: {}", output.status.to_string());
+    }
+
+    let link = wd.join("R.framework").join("Versions").join("Current");
+    make_orthogonal_(&link, ver)?;
+
+    std::fs::remove_file(&link)?;
+
+    let output = Command::new("sh")
+        .current_dir(&wd)
+        .args(["-c", "find R.framework | cpio -oz > Payload"])
+        .output()?;
+    if !output.status.success() {
+        bail!("Failed to re-package installer (cpio): {}", output.status.to_string());
+    }
+
+    let rf = wd.join("R.framework");
+    std::fs::remove_dir_all(&rf)?;
+
+    let pkgf = random_string() + ".pkg";
+    let pkg = dir.join(pkgf);
+    let output = Command::new("pkgutil")
+        .arg("--flatten")
+        .arg(&tmp)
+        .arg(&pkg)
+        .output()?;
+    if !output.status.success() {
+        bail!("Failed to re-package installer (pkgutil): {}", output.status.to_string());
+    }
+
+    println!("--nnn-- Start of installer output -----------------");
+    let status = Command::new("installer")
+        .arg("-pkg")
+        .arg(&pkg)
+        .args(["-target", "/"])
+        .spawn()?
+        .wait()?;
+    println!("--uuu-- End of installer output -------------------");
+
+    if !status.success() {
+        bail!("installer exited with status {}", status.to_string());
+    }
+
+    if let Err(err) = std::fs::remove_file(&pkg) {
+        warn!(
+            "<magenta>[WARN]</> Failed to remove temporary file {}: {}",
+            pkg.display(),
+            err.to_string()
+        );
+    }
+    if let Err(err) = std::fs::remove_dir_all(&tmp) {
+        warn!(
+            "<magenta>[WARN]</> Failed to remove temporary directory {}: {}",
+            tmp.display(),
+            err.to_string()
+        );
     }
 
     Ok(())
