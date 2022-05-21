@@ -10,6 +10,9 @@ use regex::Regex;
 use sha2::{Digest, Sha256};
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+use simple_error::SimpleError;
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use crate::rversion::User;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -119,7 +122,7 @@ pub fn unquote(s: &str) -> String {
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
-pub fn get_user() -> User {
+pub fn get_user() -> Result<User, Box<dyn Error>> {
     let uid: u32;
     let gid: u32;
     let user;
@@ -148,14 +151,16 @@ pub fn get_user() -> User {
             .unwrap_or_else(|| "Current user".to_string());
     }
 
-    let user_record = nix::unistd::User::from_uid(nix::unistd::Uid::from_raw(uid)).unwrap().unwrap();
-    let dir = user_record.dir;
+    let ouid = nix::unistd::Uid::from_raw(uid);
+    let user_record = nix::unistd::User::from_uid(ouid)?
+        .ok_or(SimpleError::new("Failed to find user HOME"))?;
+    let dir = user_record.dir.into_os_string();
 
-    User { user, uid, gid, dir, sudo }
+    Ok(User { user, uid, gid, dir, sudo })
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
-pub fn read_version_link(path: &str) -> Result<Option<OsString>,Box<dyn Error>> {
+pub fn read_version_link(path: &str) -> Result<Option<String>,Box<dyn Error>> {
     let linkpath = Path::new(path);
     if !linkpath.exists() {
         return Ok(None);
@@ -167,6 +172,14 @@ pub fn read_version_link(path: &str) -> Result<Option<OsString>,Box<dyn Error>> 
     let fname = match tgt.file_name() {
         None => bail!("Symlink for default version is invalid"),
         Some(f) => f
+    };
+
+    let fname = match fname.to_os_string().into_string() {
+        Ok(x) => x,
+        Err(x) => {
+            let fpath = Path::new(&x);
+            bail!("Default version is not a Unicode string: {}", fpath.display());
+        }
     };
 
     Ok(Some(fname))

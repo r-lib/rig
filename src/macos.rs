@@ -196,7 +196,7 @@ pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>
     };
     let base = Path::new("/Library/Frameworks/R.framework/Versions");
 
-    let user = get_user();
+    let user = get_user()?;
     for ver in vers {
         check_installed(&ver)?;
         let r = base.join(&ver).join("Resources/R");
