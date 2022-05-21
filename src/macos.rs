@@ -80,7 +80,6 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     sc_system_forget()?;
     system_no_openmp(Some(vec![dirname.to_string()]))?;
     system_fix_permissions(None)?;
-    system_make_orthogonal(Some(vec![dirname.to_string()]))?;
     system_create_lib(Some(vec![dirname.to_string()]))?;
     sc_system_make_links()?;
 
@@ -122,7 +121,7 @@ fn safe_install(target: std::path::PathBuf, ver: &str) -> Result<(), Box<dyn Err
     let dir = target.parent().ok_or(SimpleError::new("Internal error"))?;
     let tmpf = random_string();
     let tmp = dir.join(tmpf);
-    if tmp.exists() { std::fs::remove_dir_all(&tmp)?; }
+
     let output = Command::new("pkgutil")
         .arg("--expand")
         .arg(&target)
@@ -132,7 +131,15 @@ fn safe_install(target: std::path::PathBuf, ver: &str) -> Result<(), Box<dyn Err
         bail!("pkgutil exited with {}", output.status.to_string());
     }
 
-    let wd = tmp.join("R-fw.pkg");
+    let wd1 = tmp.join("r.pkg");
+    let wd2 = tmp.join("R-fw.pkg");
+    let wd = if wd2.exists() {
+        wd2
+    } else if wd1.exists() {
+        wd1
+    } else {
+        bail!("Failed to patch installer, could not find framework");
+    };
     let output = Command::new("sh")
         .current_dir(&wd)
         .args(["-c", "gzip -dcf Payload | cpio -i"])
