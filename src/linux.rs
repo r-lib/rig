@@ -222,7 +222,7 @@ pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>
     };
     let base = Path::new(R_ROOT);
 
-    let user = get_user();
+    let user = get_user()?;
     for ver in vers {
         check_installed(&ver)?;
         let r = base.join(&ver).join("bin/R");
@@ -240,8 +240,10 @@ pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>
 	}
         let lib = String::from_utf8(out.stdout)?;
 
+	let userdir = user.dir.to_str()
+	    .ok_or(SimpleError::new("User HOME is not a Unicode string"))?;
 	let re = Regex::new("^~")?;
-	let lib = re.replace(&lib.as_str(), &user.dir).to_string();
+	let lib = re.replace(&lib.as_str(), userdir).to_string();
         let lib = Path::new(&lib);
         if !lib.exists() {
             info!(
