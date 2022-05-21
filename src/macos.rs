@@ -419,39 +419,44 @@ fn system_make_orthogonal(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
         None => sc_get_list()?,
     };
 
-    let re = Regex::new("R[.]framework/Resources")?;
-    let re2 = Regex::new("[-]F/Library/Frameworks/R[.]framework/[.][.]")?;
     for ver in vers {
         check_installed(&ver)?;
         info!("<cyan>[INFO]</> Making R {} orthogonal", ver);
-        let base = Path::new("/Library/Frameworks/R.framework/Versions/");
-        let sub = "R.framework/Versions/".to_string() + &ver + "/Resources";
-
-        let rfile = base.join(&ver).join("Resources/bin/R");
-        replace_in_file(&rfile, &re, &sub).ok();
-
-        let efile = base.join(&ver).join("Resources/etc/Renviron");
-        replace_in_file(&efile, &re, &sub).ok();
-
-        let ffile = base
-            .join(&ver)
-            .join("Resources/fontconfig/fonts/fonts.conf");
-        replace_in_file(&ffile, &re, &sub).ok();
-
-        let mfile = base.join(&ver).join("Resources/etc/Makeconf");
-        let sub = "-F/Library/Frameworks/R.framework/Versions/".to_string() + &ver;
-        replace_in_file(&mfile, &re2, &sub).ok();
-
-        let fake = base.join(&ver).join("R.framework");
-        let fake = fake.as_path();
-        // TODO: only ignore failure if files already exist
-        std::fs::create_dir_all(&fake).ok();
-        symlink("../Headers", fake.join("Headers")).ok();
-        symlink("../Resources/lib", fake.join("Libraries")).ok();
-        symlink("../PrivateHeaders", fake.join("PrivateHeaders")).ok();
-        symlink("../R", fake.join("R")).ok();
-        symlink("../Resources", fake.join("Resources")).ok();
+        let base = Path::new("/Library/Frameworks/R.framework/Versions/").join(&ver);
+        make_orthogonal_(&base, &ver)?;
     }
+
+    Ok(())
+}
+
+fn make_orthogonal_(base: &Path, ver: &str) -> Result<(), Box<dyn Error>> {
+    let re = Regex::new("R[.]framework/Resources")?;
+    let re2 = Regex::new("[-]F/Library/Frameworks/R[.]framework/[.][.]")?;
+
+    let sub = "R.framework/Versions/".to_string() + &ver + "/Resources";
+
+    let rfile = base.join("Resources/bin/R");
+    replace_in_file(&rfile, &re, &sub).ok();
+
+    let efile = base.join("Resources/etc/Renviron");
+    replace_in_file(&efile, &re, &sub).ok();
+
+    let ffile = base.join("Resources/fontconfig/fonts/fonts.conf");
+    replace_in_file(&ffile, &re, &sub).ok();
+
+    let mfile = base.join("Resources/etc/Makeconf");
+    let sub = "-F/Library/Frameworks/R.framework/Versions/".to_string() + &ver;
+    replace_in_file(&mfile, &re2, &sub).ok();
+
+    let fake = base.join("R.framework");
+    let fake = fake.as_path();
+    // TODO: only ignore failure if files already exist
+    std::fs::create_dir_all(&fake).ok();
+    symlink("../Headers", fake.join("Headers")).ok();
+    symlink("../Resources/lib", fake.join("Libraries")).ok();
+    symlink("../PrivateHeaders", fake.join("PrivateHeaders")).ok();
+    symlink("../R", fake.join("R")).ok();
+    symlink("../Resources", fake.join("Resources")).ok();
 
     Ok(())
 }
