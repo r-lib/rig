@@ -26,6 +26,8 @@ pub fn rig_app() -> Command<'static> {
 {
     let proc = std::process::Command::new("arch")
         .args(["-arm64", "true"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .spawn();
 
     if let Ok(mut proc) = proc {
