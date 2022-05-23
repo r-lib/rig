@@ -22,7 +22,7 @@ pub fn escalate(task: &str) -> Result<(), Box<dyn Error>> {
     };
 
     if need_sudo {
-        info!("<cyan>[INFO]</> Running `sudo` for {}. This might need your password.", task);
+        info!("Running `sudo` for {}. This might need your password.", task);
         with_env(&["RIG_HOME", "RUST_BACKTRACE"])?;
     }
 

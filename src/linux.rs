@@ -11,7 +11,7 @@ use clap::ArgMatches;
 use nix::unistd::Gid;
 use nix::unistd::Uid;
 use simple_error::{bail,SimpleError};
-use simplelog::{info,warn};
+use simplelog::{debug,info,warn};
 
 use crate::resolve::resolve_versions;
 use crate::rversion::*;
@@ -73,9 +73,9 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let tmp_dir = std::env::temp_dir().join("rig");
     let target = tmp_dir.join(&filename);
     if target.exists() && not_too_old(&target) {
-        info!("<cyan>[INFO]</> {} is cached at\n    {}", filename, target.display());
+        info!("{} is cached at\n    {}", filename, target.display());
     } else {
-        info!("<cyan>[INFO]</> Downloading {} ->\n    {}", url, target.display());
+        info!("Downloading {} ->\n    {}", url, target.display());
         let client = &reqwest::Client::new();
         download_file(client, url, &target.as_os_str())?;
     }
@@ -130,7 +130,7 @@ fn get_install_dir_deb(path: &OsStr) -> Result<String, Box<dyn Error>> {
 }
 
 fn add_deb(path: &OsStr) -> Result<(), Box<dyn Error>> {
-    info!("<cyan>[INFO]</> Running apt-get update");
+    info!("Running apt-get update");
     println!("--nnn-- Start of apt-get output -------------------");
     let status = Command::new("apt-get")
 	.args(["update"])
@@ -142,7 +142,7 @@ fn add_deb(path: &OsStr) -> Result<(), Box<dyn Error>> {
 	bail!("apt-get install exited with status {}", status.to_string());
     }
 
-    info!("<cyan>[INFO]</> Running apt-get install");
+    info!("Running apt-get install");
     println!("--nnn-- Start of apt-get output -------------------");
     let status = Command::new("apt-get")
 	.args(["install", "-y", "gdebi-core"])
@@ -154,7 +154,7 @@ fn add_deb(path: &OsStr) -> Result<(), Box<dyn Error>> {
         bail!("apt-get exited with status {}", status.to_string());
     }
 
-    info!("<cyan>[INFO]</> Running gdebi");
+    info!("Running gdebi");
     println!("--nnn-- Start of gdebi output ---------------------");
     let status = Command::new("gdebi")
 	.arg("-n")
@@ -187,7 +187,7 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 	    .output()?;
 
 	if out.status.success() {
-	    info!("<cyan>[INFO]</> Removing {} package", pkgname);
+	    info!("Removing {} package", pkgname);
 	    println!("--nnn-- Start of apt-get output -------------------");
 	    let status = Command::new("apt-get")
 		.args(["remove", "-y", "--purge", &pkgname])
@@ -199,13 +199,13 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 		bail!("Failed to run apt-get remove");
 	    }
 	} else {
-	    info!("<cyan>[INFO]</> {} package is not installed", pkgname);
+	    info!("{} package is not installed", pkgname);
 	}
 
         let dir = Path::new(R_ROOT);
         let dir = dir.join(&ver);
 	if dir.exists() {
-            info!("<cyan>[INFO]</> Removing {}", dir.display());
+            info!("Removing {}", dir.display());
             std::fs::remove_dir_all(&dir)?;
 	}
     }
@@ -247,7 +247,7 @@ pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>
         let lib = Path::new(&lib);
         if !lib.exists() {
             info!(
-                "<cyan>[INFO]</> {}: creating library at {} for user {}",
+                "{}: creating library at {} for user {}",
                 ver,
                 lib.display(),
                 user.user
@@ -259,7 +259,7 @@ pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>
                 Some(Gid::from_raw(user.gid)),
             )?;
         } else {
-            info!("<cyan>[INFO]</> {}: library at {} exists.", ver, lib.display());
+            debug!("{}: library at {} exists.", ver, lib.display());
         }
     }
     Ok(())
@@ -278,9 +278,9 @@ pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool)
     for ver in vers {
         check_installed(&ver)?;
         if update {
-            info!("<cyan>[INFO]</> Installing pak for R {}", ver);
+            info!("Installing pak for R {}", ver);
         } else {
-            info!("<cyan>[INFO]</> Installing pak for R {} (if not installed yet)", ver);
+            info!("Installing pak for R {} (if not installed yet)", ver);
         }
         let r = base.join(&ver).join("bin/R");
         let cmd;
@@ -323,7 +323,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
 	let linkfile = Path::new("/usr/local/bin").join("R-".to_string() + &ver);
 	let target = base.join(&ver).join("bin/R");
 	if !linkfile.exists() {
-            info!("<cyan>[INFO]</> Adding {} -> {}", linkfile.display(), target.display());
+            info!("Adding {} -> {}", linkfile.display(), target.display());
             symlink(&target, &linkfile)?;
         }
     }
@@ -348,10 +348,10 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                 Err(_) => warn!("<magenra>[WARN]</> {} is not a symlink", path.display()),
                 Ok(target) => {
                     if !target.exists() {
-                        info!("<cyan>[INFO]</> Cleaning up {}", target.display());
+                        info!("Cleaning up {}", target.display());
                         match std::fs::remove_file(&path) {
                             Err(err) => {
-                                warn!("<magenta>[WARN]</> Failed to remove {}: {}", path.display(), err.to_string())
+                                warn!("Failed to remove {}: {}", path.display(), err.to_string())
                             }
                             _ => {}
                         }
@@ -454,6 +454,8 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
         None => sc_get_list()?,
     };
 
+    info!("Setting default CRAN mirror");
+
     for ver in vers {
         check_installed(&ver)?;
         let path = Path::new(R_ROOT).join(ver.as_str());
@@ -472,18 +474,20 @@ fn set_rspm(vers: Option<Vec<String>>, linux: LinuxVersion)
 	    -> Result<(), Box<dyn Error>> {
     let arch = std::env::consts::ARCH;
     if arch != "x86_64" {
-	info!("<cyan>[INFO]</> RSPM does not support this architecture: {}", arch);
+	info!("RSPM does not support this architecture: {}", arch);
 	return Ok(());
     }
 
     if !linux.rspm {
 	info!(
-	    "<cyan>[INFO]</> RSPM (or rig) does not support this distro: {} {}",
+	    "RSPM (or rig) does not support this distro: {} {}",
 	    linux.distro,
 	    linux.version
 	);
 	return Ok(());
     }
+
+    info!("Setting up RSPM");
 
     let vers = match vers {
         Some(x) => x,
@@ -650,7 +654,7 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>)
         path = R_ROOT.to_string() + "/" + &ver + "/bin/R"
     };
 
-    info!("<cyan>[INFO]</> Running {} {}", cmd, args.join(" "));
+    info!("Running {} {}", cmd, args.join(" "));
 
     Command::new(cmd)
         .args(args)

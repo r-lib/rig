@@ -44,9 +44,9 @@ pub fn download_r(args: &ArgMatches) -> Result<(Rversion, OsString), Box<dyn Err
     let tmp_dir = std::env::temp_dir().join("rig");
     let target = tmp_dir.join(&filename);
     if target.exists() && not_too_old(&target) {
-        info!("<cyan>[INFO]</> {} is cached at\n    {}", filename_path.display(), target.display());
+        info!("{} is cached at\n    {}", filename_path.display(), target.display());
     } else {
-        info!("<cyan>[INFO]</> Downloading {} ->\n    {}", url, target.display());
+        info!("Downloading {} ->\n    {}", url, target.display());
         let client = &reqwest::Client::new();
         download_file(client, url, target.as_os_str())?;
     }

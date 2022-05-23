@@ -13,7 +13,7 @@ use nix::unistd::Uid;
 use regex::Regex;
 use semver::Version;
 use simple_error::{bail, SimpleError};
-use simplelog::{info,warn};
+use simplelog::{debug,info,warn};
 
 use crate::common::*;
 use crate::download::*;
@@ -49,9 +49,9 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let target_str = target.to_owned().into_os_string();
     let target_dsp = target.display();
     if cache {
-        info!("<cyan>[INFO]</> {} is cached at {}", filename, target_dsp);
+        info!("{} is cached at {}", filename, target_dsp);
     } else {
-        info!("<cyan>[INFO]</> Downloading {} -> {}", url, target_dsp);
+        info!("Downloading {} -> {}", url, target_dsp);
         let client = &reqwest::Client::new();
         download_file(client, url, &target_str)?;
     }
@@ -190,14 +190,14 @@ fn safe_install(target: std::path::PathBuf, ver: &str) -> Result<(), Box<dyn Err
 
     if let Err(err) = std::fs::remove_file(&pkg) {
         warn!(
-            "<magenta>[WARN]</> Failed to remove temporary file {}: {}",
+            "Failed to remove temporary file {}: {}",
             pkg.display(),
             err.to_string()
         );
     }
     if let Err(err) = std::fs::remove_dir_all(&tmp) {
         warn!(
-            "<magenta>[WARN]</> Failed to remove temporary directory {}: {}",
+            "Failed to remove temporary directory {}: {}",
             tmp.display(),
             err.to_string()
         );
@@ -219,7 +219,7 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
         let dir = Path::new(R_ROOT);
         let dir = dir.join(&ver);
-        info!("<cyan>[INFO]</> Removing {}", dir.display());
+        info!("Removing {}", dir.display());
         sc_system_forget()?;
         match std::fs::remove_dir_all(&dir) {
             Err(err) => bail!("Cannot remove {}: {}", dir.display(), err.to_string()),
@@ -245,9 +245,9 @@ pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool)
     for ver in vers {
         check_installed(&ver)?;
         if update {
-            info!("<cyan>[INFO]</> Installing pak for R {}", ver);
+            info!("Installing pak for R {}", ver);
         } else {
-            info!("<cyan>[INFO]</> Installing pak for R {} (if not installed yet)", ver);
+            info!("Installing pak for R {} (if not installed yet)", ver);
         }
         check_has_pak(&ver)?;
         let r = base.join(&ver).join("Resources/R");
@@ -312,7 +312,7 @@ pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>
         let lib = Path::new(&lib);
         if !lib.exists() {
             info!(
-                "<cyan>[INFO]</> {}: creating library at {} for user {}",
+                "{}: creating library at {} for user {}",
                 ver,
                 lib.display(),
                 user.user
@@ -334,7 +334,7 @@ pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>
                 _ => {}
             };
         } else {
-            info!("<cyan>[INFO]</> {}: library at {} exists.", ver, lib.display());
+            debug!("[DEBUG] {}: library at {} exists.", ver, lib.display());
         }
     }
 
@@ -346,12 +346,14 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     let vers = sc_get_list()?;
     let base = Path::new("/Library/Frameworks/R.framework/Versions/");
 
+    info!("Adding R-* quick links (if needed)");
+
     // Create new links
     for ver in vers {
         let linkfile = Path::new("/usr/local/bin/").join("R-".to_string() + &ver);
         let target = base.join(&ver).join("Resources/bin/R");
         if !linkfile.exists() {
-            info!("<cyan>[INFO]</> Adding {} -> {}", linkfile.display(), target.display());
+            debug!("[DEBUG] Adding {} -> {}", linkfile.display(), target.display());
             match symlink(&target, &linkfile) {
                 Err(err) => bail!(
                     "Cannot create symlink {}: {}",
@@ -380,13 +382,13 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         };
         if re.is_match(&fnamestr) {
             match std::fs::read_link(&path) {
-                Err(_) => info!("<cyan>[INFO]</> {} is not a symlink", path.display()),
+                Err(_) => debug!("[DEBUG] {} is not a symlink", path.display()),
                 Ok(target) => {
                     if !target.exists() {
-                        info!("<cyan>[INFO]</> Cleaning up {}", target.display());
+                        debug!("[DEBUG] Cleaning up {}", target.display());
                         match std::fs::remove_file(&path) {
                             Err(err) => {
-                                warn!("<magenta>[WARN]</> Failed to remove {}: {}", path.display(), err.to_string())
+                                warn!("Failed to remove {}: {}", path.display(), err.to_string())
                             }
                             _ => {}
                         }
@@ -402,7 +404,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
 pub fn sc_system_allow_core_dumps(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("updating code signature of R and /cores permissions")?;
     sc_system_allow_debugger(args)?;
-    info!("<cyan>[INFO]</> Updating permissions of /cores");
+    info!("Updating permissions of /cores");
     Command::new("chmod")
         .args(["1777", "/cores"])
         .output()?;
@@ -437,7 +439,7 @@ pub fn sc_system_allow_debugger(args: &ArgMatches) -> Result<(), Box<dyn Error>>
         let path = Path::new(R_ROOT)
             .join(ver.as_str())
             .join("Resources/bin/exec/R");
-        info!("<cyan>[INFO]</> Updating entitlements of {}", path.display());
+        info!("Updating entitlements of {}", path.display());
 
         let out = Command::new("codesign")
             .args(["-d", "--entitlements", ":-"])
@@ -449,7 +451,7 @@ pub fn sc_system_allow_debugger(args: &ArgMatches) -> Result<(), Box<dyn Error>>
                 Err(e) => bail!("Invalid UTF-8 output from codesign: {}", e),
             };
             if stderr.contains("is not signed") {
-                info!("<cyan>[INFO]</>     not signed");
+                info!("    not signed");
             } else {
                 bail!("Cannot query entitlements:\n   {}", stderr);
             }
@@ -470,10 +472,10 @@ pub fn sc_system_allow_debugger(args: &ArgMatches) -> Result<(), Box<dyn Error>>
                 Err(e) => bail!("Invalid UTF-8 output from codesign: {}", e),
             };
             if stderr.contains("Entry Already Exists") {
-                info!("<cyan>[INFO]</>     already allows debugging");
+                info!("    already allows debugging");
                 continue;
             } else if stderr.contains("zero-length data") {
-                info!("<cyan>[INFO]</>     not signed");
+                info!("    not signed");
                 continue;
             } else {
                 bail!("Cannot update entitlements: {}", stderr);
@@ -489,7 +491,7 @@ pub fn sc_system_allow_debugger(args: &ArgMatches) -> Result<(), Box<dyn Error>>
         if ! out.status.success() {
             bail!("Cannot update entitlements");
         } else {
-            info!("<cyan>[INFO]</>     updated entitlements");
+            info!("    updated entitlements");
         }
     }
 
@@ -511,13 +513,23 @@ pub fn sc_system_make_orthogonal(args: &ArgMatches) -> Result<(), Box<dyn Error>
 
 fn system_make_orthogonal(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     let vers = match vers {
-        Some(x) => x,
-        None => sc_get_list()?,
+        Some(x) => {
+            let str = x.join(", ");
+            info!(
+                "Making R version{} {} orthogonal",
+                if x.len() > 1 { "s" } else { "" },
+                str
+            );
+            x
+        },
+        None => {
+            info!("Making all R versions orthogonal");
+            sc_get_list()?},
     };
 
     for ver in vers {
         check_installed(&ver)?;
-        info!("<cyan>[INFO]</> Making R {} orthogonal", ver);
+        debug!("Making R {} orthogonal", ver);
         let base = Path::new("/Library/Frameworks/R.framework/Versions/").join(&ver);
         make_orthogonal_(&base, &ver)?;
     }
@@ -576,10 +588,12 @@ fn system_fix_permissions(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
         None => sc_get_list()?,
     };
 
+    info!("Fixing permissions");
+
     for ver in vers {
         check_installed(&ver)?;
         let path = Path::new(R_ROOT).join(ver.as_str());
-        info!("<cyan>[INFO]</> Fixing permissions in {}", path.display());
+        debug!("[DEBUG] Fixing permissions in {}", path.display());
         let status = Command::new("chmod")
             .args(["-R", "g-w"])
             .arg(path)
@@ -592,7 +606,7 @@ fn system_fix_permissions(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
     }
 
     let current = Path::new(R_ROOT).join("Current");
-    info!("<cyan>[INFO]</> Fixing permissions and group of {}", current.display());
+    debug!("[DEBUG] Fixing permissions and group of {}", current.display());
     let status = Command::new("chmod")
         .args(["-R", "775"])
         .arg(&current)
@@ -627,10 +641,14 @@ pub fn sc_system_forget() -> Result<(), Box<dyn Error>> {
         Err(_) => bail!("Invalid UTF-8 output from pkgutil"),
     };
 
+    if output.lines().count() > 0 {
+        info!("Forgetting installed versions");
+    }
+
     // TODO: this can fail, but if it fails it will still have exit
     // status 0, so we would need to check stderr to see if it failed.
     for line in output.lines() {
-        info!("<cyan>[INFO]</> Calling pkgutil --forget {}", line.trim());
+        debug!("[DEBUG] Calling pkgutil --forget {}", line.trim());
         Command::new("pkgutil")
             .args(["--forget", line.trim()])
             .output()?;
@@ -701,6 +719,8 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
         None => sc_get_list()?,
     };
 
+    info!("Setting default CRAN mirror");
+
     for ver in vers {
         check_installed(&ver)?;
         let path = Path::new(R_ROOT).join(ver.as_str());
@@ -743,7 +763,7 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>)
         args.append(&mut args2);
     }
 
-    info!("<cyan>[INFO]</> Running open {}", args.join(" "));
+    info!("Running open {}", args.join(" "));
 
     let status = Command::new("open")
         .args(args)

@@ -44,7 +44,7 @@ pub fn rig_app() -> Command<'static> {
     }
 
     if _default_arch == "" {
-        warn!("<magenta>[WARN]</> Failed to detect arch, default is 'x86_64'.");
+        warn!("Failed to detect arch, default is 'x86_64'.");
         _default_arch = _arch_x86_64;
     };
 }
