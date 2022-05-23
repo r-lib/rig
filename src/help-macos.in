@@ -17,7 +17,7 @@ DESCRIPTION
     are installed into a user package library, so reinstalling R will not
     wipe out your installed packages.
 
-    rig is currently experigental and is a work in progress. Feedback is much
+    rig is currently experimental and is a work in progress. Feedback is much
     appreciated. See https://github.com/gaborcsardi/rig for bug reports.
 "#;
 
@@ -294,7 +294,7 @@ DESCRIPTION:
     Call `R -d lldb` to start `lldb` on `R`. (Or `R-x.y -d lldb` if you
     want a non-default version.)
 
-    This command is experigental. Please let us know at
+    This command is experimental. Please let us know at
     https://github.com/gaborcsardi/rig/issues if it does not work as
     expected.
 
@@ -310,7 +310,7 @@ DESCRIPTION:
     current user. Don't forget to call `ulimit -c unlimited` from the
     same shell before starting R.
 
-    This command is experigental. Please let us know at
+    This command is experimental. Please let us know at
     https://github.com/gaborcsardi/rig/issues if it does not work as
     expected.
 

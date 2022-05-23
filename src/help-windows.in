@@ -10,7 +10,7 @@ DESCRIPTION
     install and set up multiple versions R, and make sure that they work
     together.
 
-    rig is currently experigental and is a work in progress. Feedback is much
+    rig is currently experimental and is a work in progress. Feedback is much
     appreciated. See https://github.com/gaborcsardi/rig for bug reports.
 "#;
 
