@@ -259,7 +259,7 @@ pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>
                 Some(Gid::from_raw(user.gid)),
             )?;
         } else {
-            info!("{}: library at {} exists.", ver, lib.display());
+            debug!("{}: library at {} exists.", ver, lib.display());
         }
     }
     Ok(())
@@ -447,6 +447,8 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
         None => sc_get_list()?,
     };
 
+    info!("Setting default CRAN mirror");
+
     for ver in vers {
         check_installed(&ver)?;
         let path = Path::new(R_ROOT).join(ver.as_str());
@@ -477,6 +479,8 @@ fn set_rspm(vers: Option<Vec<String>>, linux: LinuxVersion)
 	);
 	return Ok(());
     }
+
+    info!("Setting up RSPM");
 
     let vers = match vers {
         Some(x) => x,

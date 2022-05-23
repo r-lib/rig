@@ -513,13 +513,23 @@ pub fn sc_system_make_orthogonal(args: &ArgMatches) -> Result<(), Box<dyn Error>
 
 fn system_make_orthogonal(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     let vers = match vers {
-        Some(x) => x,
-        None => sc_get_list()?,
+        Some(x) => {
+            let str = x.join(", ");
+            info!(
+                "Making R version{} {} orthogonal",
+                if x.len() > 1 { "s" } else { "" },
+                str
+            );
+            x
+        },
+        None => {
+            info!("Making all R versions orthogonal");
+            sc_get_list()?},
     };
 
     for ver in vers {
         check_installed(&ver)?;
-        info!("Making R {} orthogonal", ver);
+        debug!("Making R {} orthogonal", ver);
         let base = Path::new("/Library/Frameworks/R.framework/Versions/").join(&ver);
         make_orthogonal_(&base, &ver)?;
     }
@@ -708,6 +718,8 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
         Some(x) => x,
         None => sc_get_list()?,
     };
+
+    info!("Setting default CRAN mirror");
 
     for ver in vers {
         check_installed(&ver)?;

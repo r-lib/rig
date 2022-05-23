@@ -235,6 +235,8 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
         None => sc_get_list()?,
     };
 
+    info!("Setting default CRAN mirror");
+
     for ver in vers {
         check_installed(&ver)?;
         let path = Path::new(R_ROOT).join("R-".to_string() + ver.as_str());
@@ -412,7 +414,7 @@ pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>
             std::fs::create_dir_all(&lib)?;
 
         } else {
-            info!("{}: library at {} exists.", ver, lib.display());
+            debug!("{}: library at {} exists.", ver, lib.display());
         }
     }
 
@@ -592,7 +594,7 @@ fn clean_registry_r(key: &RegKey) -> Result<(), Box<dyn Error>> {
         let path: String = subkey.get_value("InstallPath")?;
         let path2 = Path::new(&path);
         if !path2.exists() {
-            info!("Cleaning registry: R {} (not in {})", &nm, path);
+            debug!("Cleaning registry: R {} (not in {})", &nm, path);
             key.delete_subkey_all(nm)?;
         }
     }
@@ -606,7 +608,7 @@ fn clean_registry_rtools(key: &RegKey) -> Result<(), Box<dyn Error>> {
         let path: String = subkey.get_value("InstallPath")?;
         let path2 = Path::new(&path);
         if !path2.exists() {
-            info!("Cleaning registry: Rtools {} (not in {})", &nm, path);
+            debug!("Cleaning registry: Rtools {} (not in {})", &nm, path);
             key.delete_subkey_all(nm)?;
         }
     }
@@ -620,7 +622,7 @@ fn clean_registry_uninst(key: &RegKey) -> Result<(), Box<dyn Error>> {
             let path: String = subkey.get_value("InstallLocation").unwrap();
             let path2 = Path::new(&path);
             if !path2.exists() {
-                info!("Cleaning registry (uninstaller): {}", nm);
+                debug!("Cleaning registry (uninstaller): {}", nm);
                 key.delete_subkey_all(nm).unwrap();
             }
 	}
@@ -629,6 +631,9 @@ fn clean_registry_uninst(key: &RegKey) -> Result<(), Box<dyn Error>> {
 
 pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
     elevate("cleaning up the Windows registry")?;
+
+    info!("Cleaning leftover registry entries");
+
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
 
     let r64r = hklm.open_subkey("SOFTWARE\\R-core\\R");
@@ -755,10 +760,10 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>)
     // Restore registry (well, set default), if we changed it
     // temporarily
     if restore {
-	info!("Waiting for RStudio to start");
+	debug!("Waiting for RStudio to start");
 	let twosecs = time::Duration::from_secs(2);
 	thread::sleep(twosecs);
-	info!("Restoring default R version in registry");
+	debug!("Restoring default R version in registry");
 	maybe_update_registry_default()?;
     }
 
@@ -772,7 +777,7 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>)
 fn elevate(task: &str) -> Result<(), Box<dyn Error>> {
     if is_elevated::is_elevated() { return Ok(()); }
     let args: Vec<String> = std::env::args().collect();
-    info!("Re-running rig as administrator for {}.", task);
+    debug!("Re-running rig as administrator for {}.", task);
     let exe = std::env::current_exe()?;
     let exedir =  Path::new(&exe).parent();
     let instdir = match exedir {
