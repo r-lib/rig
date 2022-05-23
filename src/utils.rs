@@ -54,7 +54,7 @@ pub fn bak_file(path: &Path) -> PathBuf {
         .unwrap_or_else(|| std::ffi::OsStr::new(""));
     let mut new_ext = OsString::new();
     new_ext.push(ext);
-    new_ext.push("bak");
+    new_ext.push(".bak");
     path2.set_extension(new_ext);
     path2
 }
@@ -78,6 +78,22 @@ pub fn replace_in_file(path: &Path, re: &Regex, sub: &str) -> Result<(), std::io
         std::fs::set_permissions(&path2, perms)?;
         std::fs::rename(path2, path)?;
     }
+
+    Ok(())
+}
+
+pub fn update_file(path: &Path, lines: &Vec<String>)
+                   -> Result<(), Box<dyn Error>> {
+
+    let path2 = bak_file(path);
+    let mut f = File::create(&path2)?;
+    for line in lines {
+        write!(f, "{}\n", line)?;
+    }
+
+    let perms = std::fs::metadata(path)?.permissions();
+    std::fs::set_permissions(&path2, perms)?;
+    std::fs::rename(path2, path)?;
 
     Ok(())
 }

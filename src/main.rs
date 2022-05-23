@@ -23,6 +23,9 @@ mod linux;
 #[cfg(target_os = "linux")]
 use linux::*;
 
+mod library;
+use library::*;
+
 mod common;
 mod download;
 mod resolve;
@@ -98,6 +101,7 @@ fn main__(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         Some(("system", sub)) => sc_system(sub),
         Some(("resolve", sub)) => sc_resolve(sub, args),
         Some(("rstudio", sub)) => sc_rstudio(sub),
+        Some(("library", sub)) => sc_library(sub),
         _ => { Ok(()) } // unreachable
     }
 }
@@ -114,6 +118,16 @@ fn sc_system(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         Some(("fix-permissions", s)) => sc_system_fix_permissions(s),
         Some(("forget", _)) => sc_system_forget(),
         Some(("no-openmp", s)) => sc_system_no_openmp(s),
+        _ => { Ok(()) } // unreachable
+    }
+}
+
+fn sc_library(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    match args.subcommand() {
+        Some(("list", _)) => sc_library_ls(),
+        Some(("add", s)) => sc_library_add(s),
+        Some(("rm", s)) => sc_library_rm(s),
+        Some(("default", s)) => sc_library_default(s),
         _ => { Ok(()) } // unreachable
     }
 }
