@@ -12,6 +12,8 @@ use std::{thread, time};
 
 use clap::ArgMatches;
 use remove_dir_all::remove_dir_all;
+use simple_error::{bail,SimpleError};
+use simplelog::{info,warn};
 use winreg::enums::*;
 use winreg::RegKey;
 
@@ -24,77 +26,88 @@ use crate::utils::*;
 const R_ROOT: &str = "C:\\Program Files\\R";
 
 #[warn(unused_variables)]
-pub fn sc_add(args: &ArgMatches) {
-    elevate("adding new R version");
-    sc_clean_registry();
-    let str = args.value_of("str").unwrap().to_string();
+pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    elevate("adding new R version")?;
+    sc_clean_registry()?;
+    let str = args.value_of("str")
+	.ok_or(SimpleError::new("Internal argument error"))?.to_string();
     if str.len() >= 6 && &str[0..6] == "rtools" {
         return add_rtools(str);
     }
-    let (_version, target) = download_r(&args);
+    let (_version, target) = download_r(&args)?;
+    let target_path = Path::new(&target);
 
-    println!("Installing {}", target);
+    info!("<cyan>[INFO]</> Installing {}", target_path.display());
+    println!("--nnn-- Start of installer output -----------------");
     let status = Command::new(&target)
 	.args(["/VERYSILENT", "/SUPPRESSMSGBOXES"])
-	.spawn()
-	.expect("Failed to run installer")
-	.wait()
-	.expect("Failed to run installer");
+	.spawn()?
+	.wait()?;
+    println!("--uuu-- End of installer output -------------------");
 
     if !status.success() {
-	    panic!("installer exited with status {}", status.to_string());
+	bail!("installer exited with status {}", status.to_string());
     }
 
-    let dirname = get_latest_install_path();
+    let dirname = get_latest_install_path()?;
 
-    if dirname.is_none() {
-	system_create_lib(None);
-    } else {
-        let rdirname = dirname.as_ref().unwrap();
-        set_default_if_none(rdirname.to_string());
-        system_create_lib(Some(vec![rdirname.to_string()]));
-    }
-    sc_system_make_links();
-    patch_for_rtools();
-    maybe_update_registry_default();
+    match dirname {
+	None => system_create_lib(None)?,
+	Some(ref dirname) => {
+            set_default_if_none(dirname.to_string())?;
+            system_create_lib(Some(vec![dirname.to_string()]))?;
+	}
+    };
+    sc_system_make_links()?;
+    patch_for_rtools()?;
+    maybe_update_registry_default()?;
 
     if !args.is_present("without-cran-mirror") {
-	if dirname.is_none() {
-	    println!("Cannot set CRAN mirror, cannoe determine installation directory");
-	} else {
-	    let rdirname = dirname.as_ref().unwrap();
-            set_cloud_mirror(Some(vec![rdirname.to_string()]));
+	match dirname {
+	    None => {
+		warn!("<magenta>[WARN]</> Cannot set CRAN mirror, cannot determine installation directory");
+	    },
+	    Some(ref dirname) => {
+		set_cloud_mirror(Some(vec![dirname.to_string()]))?;
+	    }
 	}
     }
 
     if !args.is_present("without-rspm") {
-	if dirname.is_none() {
-	    println!("Cannot set up RSPM, cannoe determine installation directory");
-	} else {
-	    let rdirname = dirname.as_ref().unwrap();
-            set_rspm(Some(vec![rdirname.to_string()]));
-	}
+	match dirname {
+	    None => {
+		warn!("<magenta>[WARN]</> Cannot set up RSPM, cannoe determine installation directory");
+	    },
+	    Some(ref dirname) => {
+		set_rspm(Some(vec![dirname.to_string()]))?;
+	    }
+	};
     }
 
     if !args.is_present("without-pak") {
-	if dirname.is_none() {
-	    println!("Cannot install pak, cannot determine installation directory");
-	} else {
-	    let rdirname = dirname.unwrap();
-	    system_add_pak(
-		Some(vec![rdirname.to_string()]),
-		args.value_of("pak-version").unwrap(),
-		// If this is specified then we always re-install
-		args.occurrences_of("pak-version") > 0
-            );
+	match dirname {
+	    None => {
+		warn!("<magenta>[WARN]</> Cannot install pak, cannot determine installation directory");
+	    },
+	    Some(ref dirname) => {
+		system_add_pak(
+		    Some(vec![dirname.to_string()]),
+		    args.value_of("pak-version")
+			.ok_or(SimpleError::new("Internal argument error"))?,
+		    // If this is specified then we always re-install
+		    args.occurrences_of("pak-version") > 0
+		)?;
+	    }
 	}
     }
+
+    Ok(())
 }
 
-fn add_rtools(version: String) {
+fn add_rtools(version: String) -> Result<(), Box<dyn Error>> {
     let vers;
     if version == "rtools" {
-        vers = get_rtools_needed();
+        vers = get_rtools_needed()?;
     } else {
         vers = vec![version.replace("rtools", "")];
     }
@@ -116,25 +129,26 @@ fn add_rtools(version: String) {
         };
         let tmp_dir = std::env::temp_dir().join("rig");
         let target = tmp_dir.join(&filename);
-        let target_str = target.into_os_string().into_string().unwrap();
-        println!("Downloading {} ->\n    {}", url, target_str);
-        download_file(client, url, &target_str);
-        println!("Installing\n    {}", target_str);
-        let status = Command::new(&target_str)
+        info!("<cyan>[INFO]</> Downloading {} ->\n    {}", url, target.display());
+        download_file(client, url, &target.as_os_str())?;
+        info!("<cyan>[INFO]</> Installing\n    {}", target.display());
+	println!("--nnn-- Start of installer output -----------------");
+        let status = Command::new(target.as_os_str())
             .args(["/VERYSILENT", "/SUPPRESSMSGBOXES"])
-            .spawn()
-            .expect("Failed to run Rtools installer")
-            .wait()
-            .expect("Failed to run Rtools installer");
+            .spawn()?
+            .wait()?;
+	println!("--uuu-- End of installer output -------------------");
 
         if !status.success() {
-            panic!("Rtools installer exited with status {}", status.to_string());
+            bail!("Rtools installer exited with status {}", status.to_string());
         }
     }
+
+    Ok(())
 }
 
-fn patch_for_rtools() {
-    let vers = sc_get_list();
+fn patch_for_rtools() -> Result<(), Box<dyn Error>> {
+    let vers = sc_get_list()?;
     let base = Path::new(R_ROOT);
 
     for ver in vers {
@@ -152,10 +166,10 @@ fn patch_for_rtools() {
 	let mut ok = envfile.exists();
 	if ok {
 	    ok = false;
-	    let file = File::open(&envfile).unwrap();
+	    let file = File::open(&envfile)?;
 	    let reader = BufReader::new(file);
 	    for line in reader.lines() {
-		let line2 = line.unwrap();
+		let line2 = line?;
 		if line2.len() >= 14 && &line2[0..14] == "# added by rig" {
 		    ok = true;
 		    break;
@@ -167,8 +181,7 @@ fn patch_for_rtools() {
 		.create(true)
 		.write(true)
 		.append(true)
-		.open(&envfile)
-		.unwrap();
+		.open(&envfile)?;
 
 	    let head = "\n".to_string() +
 		"# added by rig, do not update by hand-----\n";
@@ -182,32 +195,25 @@ fn patch_for_rtools() {
 		&tail;
 
 	    if let Err(e) = writeln!(file, "{}", if rtools4 { txt4 } else { txt3 }) {
-		eprintln!("Couldn't write to Renviron.site file: {}", e);
+		warn!("<magenta>[WARN]</> Couldn't write to Renviron.site file: {}", e);
 	    }
 	}
     }
+
+    Ok(())
 }
 
-fn get_rtools_needed() -> Vec<String> {
-    let vers = sc_get_list();
+fn get_rtools_needed() -> Result<Vec<String>, Box<dyn Error>> {
+    let vers = sc_get_list()?;
     let mut res: Vec<String> = vec![];
     let base = Path::new(R_ROOT);
 
     for ver in vers {
         let r = base.join("R-".to_string() + &ver).join("bin").join("R.exe");
-        let r = r.to_str().unwrap();
         let out = Command::new(r)
             .args(["--vanilla", "-s", "-e", "cat(as.character(getRversion()))"])
-            .output()
-            .expect("Failed to run R to query R version");
-        let ver: String = match String::from_utf8(out.stdout) {
-            Ok(v) => v,
-            Err(err) => panic!(
-                "Cannot query R version for R-{}: {}",
-                ver,
-                err.to_string()
-            ),
-        };
+            .output()?;
+        let ver: String = String::from_utf8(out.stdout)?;
         let v35 = "35".to_string();
         let v40 = "40".to_string();
         if &ver[0..1] == "3" {
@@ -220,44 +226,40 @@ fn get_rtools_needed() -> Vec<String> {
             }
         }
     }
-    res
+    Ok(res)
 }
 
-fn set_cloud_mirror(vers: Option<Vec<String>>) {
+fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     let vers = match vers {
         Some(x) => x,
-        None => sc_get_list(),
+        None => sc_get_list()?,
     };
 
     for ver in vers {
-        check_installed(&ver);
+        check_installed(&ver)?;
         let path = Path::new(R_ROOT).join("R-".to_string() + ver.as_str());
         let profile = path.join("library/base/R/Rprofile".to_string());
         if ! profile.exists() { continue; }
 
-        match append_to_file(
+        append_to_file(
             &profile,
             vec!["options(repos = c(CRAN = \"https://cloud.r-project.org\"))".to_string()]
-        ) {
-            Ok(_) => { },
-            Err(err) => {
-                let spath = path.to_str().unwrap();
-                panic!("Failed to update {}: {}", spath, err);
-            }
-        };
+        )?;
     }
+
+    Ok(())
 }
 
-fn set_rspm(vers: Option<Vec<String>>) {
+fn set_rspm(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     let arch = std::env::consts::ARCH;
     if arch != "x86_64" {
-	println!("RSPM does not support this architecture: {}", arch);
-	return;
+	warn!("<magenta>[WARN]</> RSPM does not support this architecture: {}", arch);
+	return Ok(());
     }
 
     let vers = match vers {
         Some(x) => x,
-        None => sc_get_list(),
+        None => sc_get_list()?,
     };
 
     let rcode = r#"
@@ -265,96 +267,92 @@ options(repos = c(RSPM="https://packagemanager.rstudio.com/all/latest", getOptio
 "#;
 
     for ver in vers {
-        check_installed(&ver);
+        check_installed(&ver)?;
         let path = Path::new(R_ROOT).join("R-".to_string() + ver.as_str());
         let profile = path.join("library/base/R/Rprofile".to_string());
         if ! profile.exists() { continue; }
 
-        match append_to_file(&profile, vec![rcode.to_string()]) {
-            Ok(_) => { },
-            Err(err) => {
-                let spath = path.to_str().unwrap();
-                panic!("Failed to update {}: {}", spath, err);
-            }
-        };
+        append_to_file(&profile, vec![rcode.to_string()])?;
     }
+
+    Ok(())
 }
 
-pub fn sc_rm(args: &ArgMatches) {
-    elevate("removing R versions");
+pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    elevate("removing R versions")?;
     let vers = args.values_of("version");
     if vers.is_none() {
-        return;
+        return Ok(());
     }
-    let vers = vers.unwrap();
+    let vers = vers.ok_or(SimpleError::new("Internal argument error"))?;
 
     for ver in vers {
 	let verstr = ver.to_string();
 	if verstr.len() >= 6 && &verstr[0..6] == "rtools" {
-	    rm_rtools(verstr);
+	    rm_rtools(verstr)?;
 	    continue;
 	}
-        check_installed(&verstr);
+        check_installed(&verstr)?;
 
         let ver = "R-".to_string() + ver;
         let dir = Path::new(R_ROOT);
         let dir = dir.join(ver);
-        println!("Removing {}", dir.display());
-        match remove_dir_all(&dir) {
-            Err(err) => panic!("Cannot remove {}: {}", dir.display(), err.to_string()),
-            _ => {}
-        }
+        info!("<cyan>[INFO]</cyan> Removing {}", dir.display());
+        remove_dir_all(&dir)?;
     }
 
-    sc_clean_registry();
-    sc_system_make_links();
+    sc_clean_registry()?;
+    sc_system_make_links()?;
+
+    Ok(())
 }
 
-fn rm_rtools(ver: String) {
+fn rm_rtools(ver: String) -> Result<(), Box<dyn Error>> {
     let dir = Path::new("C:\\").join(ver);
-    println!("Removing {}", dir.display());
+    info!("<cyan>[INFO]</> Removing {}", dir.display());
     match remove_dir_all(&dir) {
         Err(_err) => {
 	    let cmd = format!("del -recurse -force {}", dir.display());
 	    let out = Command::new("powershell")
 		.args(["-command", &cmd])
-		.output()
-		.expect("Failed to run powershell");
+		.output()?;
 	    let stderr = match std::str::from_utf8(&out.stderr) {
                 Ok(v) => v,
 		Err(_v) => "cannot parse stderr"
 	    };
 	    if ! out.status.success() {
-		panic!("Cannot remove {}: {}", dir.display(), stderr);
+		bail!("Cannot remove {}: {}", dir.display(), stderr);
 	    }
 	},
         _ => {}
     }
 
-    sc_clean_registry();
+    sc_clean_registry()?;
+
+    Ok(())
 }
 
-pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool) {
+pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool)
+		      -> Result<(), Box<dyn Error>> {
     let vers = match vers {
         Some(x) => x,
-        None => vec![sc_get_default_or_fail()],
+        None => vec![sc_get_default_or_fail()?],
     };
 
     let base = Path::new(R_ROOT);
-    let re = Regex::new("[{][}]").unwrap();
+    let re = Regex::new("[{][}]")?;
 
     for ver in vers {
-        check_installed(&ver);
+        check_installed(&ver)?;
         if update {
-            println!("Installing pak for R {}", ver);
+            info!("<cyan>[INFO]</> Installing pak for R {}", ver);
         } else {
-            println!("Installing pak for R {} (if not installed yet)", ver);
+            info!("<cyan>[INFO]</> Installing pak for R {} (if not installed yet)", ver);
         }
         let r = base
 	    .join("R-".to_string() + &ver)
 	    .join("bin")
 	    .join("R.exe");
-        let r = r.to_str().unwrap();
         let cmd;
         if update {
             cmd = r#"
@@ -370,78 +368,65 @@ pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool) {
            "#;
         }
         let cmd = re.replace(cmd, stream).to_string();
-        let cmd = Regex::new("[\n\r]")
-            .unwrap()
+        let cmd = Regex::new("[\n\r]")?
             .replace_all(&cmd, "")
             .to_string();
+	println!("--nnn-- Start of R output -------------------------");
         let status = Command::new(r)
             .args(["--vanilla", "-s", "-e", &cmd])
-            .spawn()
-            .expect("Failed to run R to install pak")
-            .wait()
-            .expect("Failed to run R to install pak");
+            .spawn()?
+            .wait()?;
+	println!("--uuu-- End of R output ---------------------------");
 
         if !status.success() {
-            panic!("Failed to run R {} to install pak", ver);
+            bail!("Failed to run R {} to install pak", ver);
         }
     }
+
+    Ok(())
 }
 
-pub fn system_create_lib(vers: Option<Vec<String>>) {
+pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     let vers = match vers {
         Some(x) => x,
-        None => sc_get_list(),
+        None => sc_get_list()?,
     };
     let base = Path::new(R_ROOT);
 
     for ver in vers {
-        check_installed(&ver);
+        check_installed(&ver)?;
         let r = base.join("R-".to_string() + &ver).join("bin").join("R.exe");
-        let r = r.to_str().unwrap();
         let out = Command::new(r)
             .args(["--vanilla", "-s", "-e", "cat(Sys.getenv('R_LIBS_USER'))"])
-            .output()
-            .expect("Failed to run R to query R_LIBS_USER");
-        let lib = match String::from_utf8(out.stdout) {
-            Ok(v) => v,
-            Err(err) => panic!(
-                "Cannot query R_LIBS_USER for R {}: {}",
-                ver,
-                err.to_string()
-            ),
-        };
+            .output()?;
+        let lib = String::from_utf8(out.stdout)?;
 
         let lib = shellexpand::tilde(&lib.as_str()).to_string();
         let lib = Path::new(&lib);
         if !lib.exists() {
-            println!(
-                "{}: creating library at {}",
+            info!(
+                "<cyan>[INFO]</> {}: creating library at {}",
                 ver,
                 lib.display()
             );
-            match std::fs::create_dir_all(&lib) {
-                Err(err) => panic!(
-                    "Cannot create library at {}: {}",
-                    lib.display(),
-                    err.to_string()
-                ),
-                _ => {}
-            };
+            std::fs::create_dir_all(&lib)?;
 
         } else {
-            println!("{}: library at {} exists.", ver, lib.display());
+            info!("<cyan>[INFO]</> {}: library at {} exists.", ver, lib.display());
         }
     }
+
+    Ok(())
 }
 
-pub fn sc_system_make_links() {
-    elevate("making R-* quick shortcuts");
-    let vers = sc_get_list();
+pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
+    elevate("making R-* quick shortcuts")?;
+    let vers = sc_get_list()?;
     let base = Path::new(R_ROOT);
     let bin = base.join("bin");
     let mut new_links: Vec<String> = vec!["RS.bat".to_string(), "R.bat".to_string()];
 
-    std::fs::create_dir_all(bin).unwrap();
+    std::fs::create_dir_all(bin)?;
 
     for ver in vers {
         let filename = "R-".to_string() + &ver + ".bat";
@@ -454,67 +439,83 @@ pub fn sc_system_make_links() {
         let op;
         if linkfile.exists() {
             op = "Updating";
-            let orig = std::fs::read_to_string(&linkfile).unwrap();
+            let orig = std::fs::read_to_string(&linkfile)?;
             if orig == cnt { continue; }
         } else {
             op = "Adding";
         };
-        println!("{} R-{} -> {}", op, ver, target.display());
-        let mut file = File::create(&linkfile).unwrap();
-        file.write_all(cnt.as_bytes()).unwrap();
+        info!("<cyan>[INFO]</> {} R-{} -> {}", op, ver, target.display());
+        let mut file = File::create(&linkfile)?;
+        file.write_all(cnt.as_bytes())?;
     }
 
     // Delete the ones we don't need
-    let old_links = std::fs::read_dir(base.join("bin")).unwrap();
+    let old_links = std::fs::read_dir(base.join("bin"))?;
     for path in old_links {
-        let path = path.unwrap();
-        let filename = path.file_name();
-        let filename_str = filename.to_str().unwrap().to_string();
-        if !filename_str.ends_with(".bat") { continue; }
-        if !filename_str.starts_with("R-") { continue; }
-        if ! new_links.contains(&filename_str) {
-            println!("Deleting unused {}", filename_str);
-            std::fs::remove_file(path.path()).unwrap();
-        }
+	let path = path?;
+	match path.file_name().into_string() {
+	    Err(_) => continue,
+	    Ok(filename) => {
+		if !filename.ends_with(".bat") { continue; }
+		if !filename.starts_with("R-") { continue; }
+		if ! new_links.contains(&filename) {
+		    info!("<cyan>[INFO]</> Deleting unused {}", filename);
+		    match std::fs::remove_file(path.path()) {
+			Ok(_) => { },
+			Err(e) => {
+			    warn!("<magenta>[WARN]</> Faild to remove {}: {}", filename, e.to_string());
+			}
+		    }
+		}
+	    }
+        };
     }
 
+    Ok(())
 }
 
-pub fn sc_system_allow_core_dumps(_args: &ArgMatches) {
+pub fn sc_system_allow_core_dumps(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // Nothing to do on Windows
+    Ok(())
 }
 
-pub fn sc_system_allow_debugger(_args: &ArgMatches) {
+pub fn sc_system_allow_debugger(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // Nothing to do on Windows
+    Ok(())
 }
 
-pub fn sc_system_make_orthogonal(_args: &ArgMatches) {
+pub fn sc_system_make_orthogonal(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // Nothing to do on Windows
+    Ok(())
 }
 
-pub fn sc_system_fix_permissions(_args: &ArgMatches) {
+pub fn sc_system_fix_permissions(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // Nothing to do on Windows
+    Ok(())
 }
 
-pub fn sc_system_forget() {
+pub fn sc_system_forget() -> Result<(), Box<dyn Error>> {
     // Nothing to do on Windows
+    Ok(())
 }
 
-pub fn sc_system_no_openmp(_args: &ArgMatches) {
+pub fn sc_system_no_openmp(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // Nothing to do on Windows
+    Ok(())
 }
 
-pub fn get_resolve(args: &ArgMatches) -> Rversion {
-    let str = args.value_of("str").unwrap().to_string();
+pub fn get_resolve(args: &ArgMatches) -> Result<Rversion, Box<dyn Error>> {
+    let str = args.value_of("str")
+	.ok_or(SimpleError::new("Internal argument error"))?.to_string();
 
     let eps = vec![str];
-    let version = resolve_versions(eps, "win".to_string(), "default".to_string(), None);
-    version[0].to_owned()
+    let version = resolve_versions(eps, "win".to_string(), "default".to_string(), None)?;
+    Ok(version[0].to_owned())
 }
 
 // ------------------------------------------------------------------------
 
-pub fn sc_get_list_() -> Result<Vec<String>, Box<dyn Error>> {
+pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
   let mut vers = Vec::new();
   if ! Path::new(R_ROOT).exists() {
       return Ok(vers)
@@ -523,22 +524,30 @@ pub fn sc_get_list_() -> Result<Vec<String>, Box<dyn Error>> {
   let paths = std::fs::read_dir(R_ROOT)?;
 
   for de in paths {
-    let path = de?.path();
-    let fname = path.file_name().unwrap();
-    let fname = fname.to_str().unwrap().to_string();
-    if &fname[0..2] == "R-" {
-        let v = fname[2..].to_string();
-        vers.push(v);
-    }
+      let path = de?.path();
+      match path.file_name() {
+	  None => continue,
+	  Some(fname) => {
+	      match fname.to_str() {
+		  None => continue,
+		  Some(fname) => {
+		      if &fname[0..2] == "R-" {
+			  let v = fname[2..].to_string();
+			  vers.push(v);
+		      }
+		  }
+	      };
+	  }
+      }
   }
 
   vers.sort();
   Ok(vers)
 }
 
-pub fn sc_set_default_(ver: &str) -> Result<(), Box<dyn Error>> {
-    check_installed(&ver.to_string());
-    elevate("setting the default R version");
+pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
+    check_installed(&ver.to_string())?;
+    elevate("setting the default R version")?;
     let base = Path::new(R_ROOT);
     let bin = base.join("bin");
     std::fs::create_dir_all(&bin)?;
@@ -553,12 +562,12 @@ pub fn sc_set_default_(ver: &str) -> Result<(), Box<dyn Error>> {
     let mut file2 = File::create(linkfile2)?;
     file2.write_all(cnt.as_bytes())?;
 
-    update_registry_default();
+    update_registry_default()?;
 
     Ok(())
 }
 
-pub fn sc_get_default_() -> Result<Option<String>, Box<dyn Error>> {
+pub fn sc_get_default() -> Result<Option<String>, Box<dyn Error>> {
     let base = Path::new(R_ROOT);
     let linkfile = base.join("bin").join("R.bat");
     if !linkfile.exists() {
@@ -576,138 +585,138 @@ pub fn sc_get_default_() -> Result<Option<String>, Box<dyn Error>> {
     Ok(Some(first.to_string()))
 }
 
-fn clean_registry_r(key: &RegKey) {
+fn clean_registry_r(key: &RegKey) -> Result<(), Box<dyn Error>> {
     for nm in key.enum_keys() {
-        let nm = nm.unwrap();
-        let subkey = key.open_subkey(&nm).unwrap();
-        let path: String = subkey.get_value("InstallPath").unwrap();
+        let nm = nm?;
+        let subkey = key.open_subkey(&nm)?;
+        let path: String = subkey.get_value("InstallPath")?;
         let path2 = Path::new(&path);
         if !path2.exists() {
-            println!("Cleaning registry: R {} (not in {})", &nm, path);
-            key.delete_subkey_all(nm).unwrap();
+            info!("<cyan>[INFO]</> Cleaning registry: R {} (not in {})", &nm, path);
+            key.delete_subkey_all(nm)?;
         }
     }
+    Ok(())
 }
 
-fn clean_registry_rtools(key: &RegKey) {
+fn clean_registry_rtools(key: &RegKey) -> Result<(), Box<dyn Error>> {
     for nm in key.enum_keys() {
-        let nm = nm.unwrap();
-        let subkey = key.open_subkey(&nm).unwrap();
-        let path: String = subkey.get_value("InstallPath").unwrap();
+        let nm = nm?;
+        let subkey = key.open_subkey(&nm)?;
+        let path: String = subkey.get_value("InstallPath")?;
         let path2 = Path::new(&path);
         if !path2.exists() {
-            println!("Cleaning registry: Rtools {} (not in {})", &nm, path);
-            key.delete_subkey_all(nm).unwrap();
+            info!("<cyan>[INFO]</> Cleaning registry: Rtools {} (not in {})", &nm, path);
+            key.delete_subkey_all(nm)?;
         }
     }
+    Ok(())
 }
 
-fn clean_registry_uninst(key: &RegKey) {
+fn clean_registry_uninst(key: &RegKey) -> Result<(), Box<dyn Error>> {
     for nm in key.enum_keys().map(|x| x.unwrap())
         .filter(|x| x.starts_with("Rtools") || x.starts_with("R for Windows")) {
             let subkey = key.open_subkey(&nm).unwrap();
             let path: String = subkey.get_value("InstallLocation").unwrap();
             let path2 = Path::new(&path);
             if !path2.exists() {
-                println!("Cleaning registry (uninstaller): {}", nm);
+                info!("<cyan>[INFO]</> Cleaning registry (uninstaller): {}", nm);
                 key.delete_subkey_all(nm).unwrap();
             }
-    }
+	}
+    Ok(())
 }
 
-pub fn sc_clean_registry() {
-    elevate("cleaning up the Windows registry");
+pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
+    elevate("cleaning up the Windows registry")?;
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
 
     let r64r = hklm.open_subkey("SOFTWARE\\R-core\\R");
-    if let Ok(x) = r64r { clean_registry_r(&x); };
+    if let Ok(x) = r64r { clean_registry_r(&x)?; };
     let r64r64 = hklm.open_subkey("SOFTWARE\\R-core\\R64");
-    if let Ok(x) = r64r64 { clean_registry_r(&x); };
+    if let Ok(x) = r64r64 { clean_registry_r(&x)?; };
     let r32r = hklm.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\R");
-    if let Ok(x) = r32r { clean_registry_r(&x); };
+    if let Ok(x) = r32r { clean_registry_r(&x)?; };
     let r32r32 = hklm.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\R32");
-    if let Ok(x) = r32r32 { clean_registry_r(&x); };
+    if let Ok(x) = r32r32 { clean_registry_r(&x)?; };
 
     let rtools64 = hklm.open_subkey("SOFTWARE\\R-core\\Rtools");
     if let Ok(x) = rtools64 {
-        clean_registry_rtools(&x);
+        clean_registry_rtools(&x)?;
         if x.enum_keys().count() == 0 {
-            hklm.delete_subkey("SOFTWARE\\R-core\\Rtools").unwrap();
+            hklm.delete_subkey("SOFTWARE\\R-core\\Rtools")?;
         }
     };
     let rtools32 = hklm.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\Rtools");
     if let Ok(x) = rtools32 {
-        clean_registry_rtools(&x);
+        clean_registry_rtools(&x)?;
         if x.enum_keys().count() == 0 {
-            hklm.delete_subkey("SOFTWARE\\WOW6432Node\\R-core\\Rtools").unwrap();
+            hklm.delete_subkey("SOFTWARE\\WOW6432Node\\R-core\\Rtools")?;
         }
     };
 
     let uninst = hklm.open_subkey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
-    if let Ok(x) = uninst { clean_registry_uninst(&x); };
+    if let Ok(x) = uninst { clean_registry_uninst(&x)?; };
     let uninst32 = hklm.open_subkey("SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
-    if let Ok(x) = uninst32 { clean_registry_uninst(&x); };
+    if let Ok(x) = uninst32 { clean_registry_uninst(&x)?; };
+
+    Ok(())
 }
 
-fn maybe_update_registry_default() {
+fn maybe_update_registry_default() -> Result<(), Box<dyn Error>> {
     let base = Path::new(R_ROOT);
     let linkfile = base.join("bin").join("R.bat");
     if linkfile.exists() {
-	update_registry_default();
+	update_registry_default()?;
     }
+    Ok(())
 }
 
-fn update_registry_default1(key: &RegKey, ver: &String) {
-    match key.set_value("Current Version", ver) {
-	Ok(_) => { },
-	Err(err) => {
-	    panic!("Cannot set default in registry: {}", err.to_string());
-	}
-    };
+fn update_registry_default1(key: &RegKey, ver: &String) -> Result<(), Box<dyn Error>> {
+    key.set_value("Current Version", ver)?;
     let inst = R_ROOT.to_string() + "\\R-" + ver;
-
-    match key.set_value("InstallPath", &inst) {
-	Ok(_) => { },
-	Err(err) => {
-	    panic!("Cannot set default in registry: {}", err.to_string());
-	}
-    }
+    key.set_value("InstallPath", &inst)?;
+    Ok(())
 }
 
-fn update_registry_default_to(default: &String) {
+fn update_registry_default_to(default: &String) -> Result<(), Box<dyn Error>> {
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     let r64r = hklm.create_subkey("SOFTWARE\\R-core\\R");
     if let Ok(x) = r64r {
 	let (key, _) = x;
-	update_registry_default1(&key, &default);
+	update_registry_default1(&key, &default)?;
     }
     let r64r64 = hklm.create_subkey("SOFTWARE\\R-core\\R64");
     if let Ok(x) = r64r64 {
 	let (key, _) = x;
-	update_registry_default1(&key, &default);
+	update_registry_default1(&key, &default)?;
     }
+    Ok(())
 }
 
-fn update_registry_default() {
-    elevate("Update registry default");
-    let default = sc_get_default_or_fail();
-    update_registry_default_to(&default);
+fn update_registry_default() -> Result<(), Box<dyn Error>> {
+    elevate("Update registry default")?;
+    let default = sc_get_default_or_fail()?;
+    update_registry_default_to(&default)
 }
 
-fn get_latest_install_path() -> Option<String> {
+fn get_latest_install_path() -> Result<Option<String>, Box<dyn Error>> {
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     let r64r64 = hklm.open_subkey("SOFTWARE\\R-core\\R64");
     if let Ok(key) = r64r64 {
 	let ip: Result<String, _> = key.get_value("InstallPath");
 	if let Ok(fp) = ip {
 	    let ufp = fp.replace("\\", "/");
-	    let p = basename(&ufp).unwrap();
-	    let re = Regex::new("^R-").unwrap();
+	    let p = match basename(&ufp) {
+		None => return Ok(None),
+		Some(p) => p
+	    };
+	    let re = Regex::new("^R-")?;
 	    let v = re.replace(p, "").to_string();
-	    return Some(v)
+	    return Ok(Some(v))
 	}
     }
-    None
+    Ok(None)
 }
 
 pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>)
@@ -715,12 +724,14 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>)
 
     // we only need to restore if 'ver' is given, there is a default and
     // they are different
-    let def = sc_get_default();
-    let restore = !version.is_none() && !def.is_none() &&
-	def.unwrap() != version.unwrap();
+    let def = sc_get_default()?;
+    let restore = match (version, def) {
+	(Some(v), Some(d)) => v == d,
+	_ => false
+    };
 
-    if !version.is_none() {
-	elevate("updating default version in registry");
+    if let Some(_) = version {
+	elevate("updating default version in registry")?;
     }
 
     let args = match project {
@@ -728,43 +739,41 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>)
 	Some(p) => vec!["/c", "start", "/b", p]
     };
 
-    if !version.is_none() {
-	let ver = version.unwrap().to_string();
-	check_installed(&ver);
-	update_registry_default_to(&ver);
+    if let Some(version) = version {
+	let ver = version.to_string();
+	check_installed(&ver)?;
+	update_registry_default_to(&ver)?;
     }
 
-    println!("Running cmd.exe {}", args.join(" "));
+    info!("<cyan>[INFO]</> Running cmd.exe {}", args.join(" "));
 
     let status = Command::new("cmd.exe")
 	.args(args)
-	.spawn()
-	.expect("Failed to start RStudio")
-	.wait()
-	.expect("Failed to start RStusio");
+	.spawn()?
+	.wait()?;
 
     // Restore registry (well, set default), if we changed it
     // temporarily
     if restore {
-	println!("Waiting for RStudio to start");
+	info!("<cyan>[INFO]</> Waiting for RStudio to start");
 	let twosecs = time::Duration::from_secs(2);
 	thread::sleep(twosecs);
-	println!("Restoring default R version in registry");
-	maybe_update_registry_default();
+	info!("<cyan>[INFO]</> Restoring default R version in registry");
+	maybe_update_registry_default()?;
     }
 
     if !status.success() {
-        panic!("`open` exited with status {}", status.to_string());
+        bail!("`open` exited with status {}", status.to_string());
     }
 
     Ok(())
 }
 
-fn elevate(task: &str) {
-    if is_elevated::is_elevated() { return; }
+fn elevate(task: &str) -> Result<(), Box<dyn Error>> {
+    if is_elevated::is_elevated() { return Ok(()); }
     let args: Vec<String> = std::env::args().collect();
-    println!("Re-running rig as administrator for {}.", task);
-    let exe = std::env::current_exe().unwrap();
+    info!("<cyan>[INFO]</cyan> Re-running rig as administrator for {}.", task);
+    let exe = std::env::current_exe()?;
     let exedir =  Path::new(&exe).parent();
     let instdir = match exedir {
         Some(d) => d,
@@ -773,7 +782,6 @@ fn elevate(task: &str) {
     let gsudo = instdir.join("gsudo.exe");
     let code = std::process::Command::new(gsudo)
         .args(args)
-        .status()
-        .unwrap();
+        .status()?;
     std::process::exit(code.code().unwrap());
 }

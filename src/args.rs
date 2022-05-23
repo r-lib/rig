@@ -5,6 +5,9 @@
 use clap::{Command, Arg, ArgMatches};
 
 #[cfg(target_os = "macos")]
+use simplelog::*;
+
+#[cfg(target_os = "macos")]
 std::include!("help-macos.in");
 
 #[cfg(target_os = "windows")]
@@ -15,35 +18,34 @@ std::include!("help-linux.in");
 
 pub fn rig_app() -> Command<'static> {
 
-#[allow(dead_code)]
-    let arch_x86_64: &'static str = "x86_64";
-#[allow(dead_code)]
-    let arch_arm64: &'static str = "arm64";
-#[allow(dead_code)]
-    let mut default_arch: &'static str = "";
+    let _arch_x86_64: &'static str = "x86_64";
+    let _arch_arm64: &'static str = "arm64";
+    let mut _default_arch: &'static str = "";
 
 #[cfg(target_os = "macos")]
 {
     let proc = std::process::Command::new("arch")
         .args(["-arm64", "true"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .spawn();
 
-    if proc.is_ok() {
-        let out = proc.unwrap().wait();
-        if out.is_ok() {
-            if out.unwrap().success() {
-                default_arch = arch_arm64;
+    if let Ok(mut proc) = proc {
+        let out = proc.wait();
+        if let Ok(out) = out {
+            if out.success() {
+                _default_arch = _arch_arm64;
             } else {
-                default_arch = arch_x86_64;
+                _default_arch = _arch_x86_64;
             }
         }
     } else {
-        default_arch = arch_x86_64;
+        _default_arch = _arch_x86_64;
     }
 
-    if default_arch == "" {
-        println!("Failed to detect arch, default is 'x86_64'.");
-        default_arch = arch_x86_64;
+    if _default_arch == "" {
+        warn!("<magenta>[WARN]</> Failed to detect arch, default is 'x86_64'.");
+        _default_arch = _arch_x86_64;
     };
 }
 
@@ -123,7 +125,7 @@ pub fn rig_app() -> Command<'static> {
                 .short('a')
                 .long("arch")
                 .required(false)
-                .default_value(&default_arch)
+                .default_value(&_default_arch)
                 .possible_values(["arm64", "x86_64"])
         );
 }
@@ -307,7 +309,7 @@ pub fn rig_app() -> Command<'static> {
                 .short('a')
                 .long("arch")
                 .required(false)
-                .default_value(&default_arch)
+                .default_value(&_default_arch)
                 .possible_values(["arm64", "x86_64"])
         );
 }
@@ -329,6 +331,19 @@ pub fn rig_app() -> Command<'static> {
         );
 
     rig
+        .arg(
+            Arg::new("quiet")
+                .help("Suppress output (overrides `--verbose`)")
+                .short('q')
+                .long("quiet")
+                .required(false))
+        .arg(
+            Arg::new("verbose")
+                .help("Verbose output")
+                .short('v')
+                .long("verbose")
+                .required(false)
+                .multiple_occurrences(true))
         .subcommand(cmd_default)
         .subcommand(cmd_list)
         .subcommand(cmd_add)
