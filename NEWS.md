@@ -16,6 +16,10 @@
 
 * On macOS `rig add` does not change the default R version any more (#2).
 
+* rig now supports Linux distros based on Ubuntu Bionic 18.04, Focal 20.04
+  and Jammy 22.04. They need to have a proper `UBUNTU_CODENAME` entry in
+  `/etc/os-release` (#34).
+
 # rim 0.3.0
 
 * New `rim rstudio` command to open a project in RStudio with the specified

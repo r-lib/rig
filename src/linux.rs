@@ -553,21 +553,23 @@ fn detect_linux() -> Result<LinuxVersion, Box<dyn Error>> {
 
     let re_id = Regex::new("^ID=")?;
     let wid_line = grep_lines(&re_id, &lines);
-    if wid_line.len() == 0 {
-        bail!("Unknown Linux distribution");
-    }
-    let id_line = &lines[wid_line[0]];
-    let id = re_id.replace(&id_line, "").to_string();
-    let id = unquote(&id);
+    let mut id = if wid_line.len() == 0 {
+	"".to_string()
+    } else {
+	let id_line = &lines[wid_line[0]];
+	let id = re_id.replace(&id_line, "").to_string();
+	unquote(&id)
+    };
 
     let re_ver = Regex::new("^VERSION_ID=")?;
     let wver_line = grep_lines(&re_ver, &lines);
-    if wver_line.len() == 0 {
-        bail!("Unknown {} Linux version", id);
-    }
-    let ver_line = &lines[wver_line[0]];
-    let ver = re_ver.replace(&ver_line, "").to_string();
-    let ver = unquote(&ver);
+    let mut ver = if wver_line.len() == 0 {
+	"".to_string()
+    } else {
+	let ver_line = &lines[wver_line[0]];
+	let ver = re_ver.replace(&ver_line, "").to_string();
+	unquote(&ver)
+    };
 
     let mut mine = LinuxVersion { distro: id.to_owned(),
 				  version: ver.to_owned(),
@@ -578,20 +580,50 @@ fn detect_linux() -> Result<LinuxVersion, Box<dyn Error>> {
     let supported = list_supported_distros();
 
     let mut good = false;
-    for dis in supported {
+    for dis in &supported {
 	if dis.distro == mine.distro && dis.version == mine.version {
-	    mine.url = dis.url;
-	    mine.rspm = dis.rspm;
-	    mine.rspm_url = dis.rspm_url;
+	    mine.url = dis.url.to_owned();
+	    mine.rspm = dis.rspm.to_owned();
+	    mine.rspm_url = dis.rspm_url.to_owned();
 	    good = true;
+	}
+    }
+
+    // Maybe an Ubuntu-like distro
+    if ! good {
+	let re_codename = Regex::new("^UBUNTU_CODENAME=")?;
+	let codename_line = grep_lines(&re_codename, &lines);
+	if codename_line.len() != 0 {
+	    let codename_line = &lines[codename_line[0]];
+	    let codename = re_codename.replace(&codename_line, "").to_string();
+
+	    (id, ver) = match &codename[..] {
+		"bionic" => ("ubuntu".to_string(), "18.04".to_string()),
+		"focal" => ("ubuntu".to_string(), "20.04".to_string()),
+		"jammy" => ("ubuntu".to_string(), "22.04".to_string()),
+		_ => ("".to_string(), "".to_string())
+	    };
+
+	    mine.distro = id.to_owned();
+	    mine.version = ver.to_owned();
+	    println!("{:?}", mine);
+	    for dis in &supported {
+		if dis.distro == mine.distro && dis.version == mine.version {
+		    mine.url = dis.url.to_owned();
+		    mine.rspm = dis.rspm.to_owned();
+		    mine.rspm_url = dis.rspm_url.to_owned();
+		    good = true;
+		}
+	    }
 	}
     }
 
     if ! good {
 	bail!(
-	    "Unsupported distro: {} {}, see rig list-supported",
+	    "Unsupported distro: {} {}, only {} are supported currently",
 	    &id,
-	    &ver
+	    &ver,
+	    "Ubuntu 18.04, 20.04, 22.04 and Debian 9-11"
 	);
     }
 

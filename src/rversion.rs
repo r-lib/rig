@@ -15,7 +15,7 @@ pub struct InstalledVersion {
     pub version: Option<String>
 }
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug)]
 pub struct LinuxVersion {
     pub distro: String,
     pub version: String,
