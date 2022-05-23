@@ -13,7 +13,7 @@ use std::{thread, time};
 use clap::ArgMatches;
 use remove_dir_all::remove_dir_all;
 use simple_error::{bail,SimpleError};
-use simplelog::{info,warn};
+use simplelog::{debug,info,warn};
 use winreg::enums::*;
 use winreg::RegKey;
 

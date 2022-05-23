@@ -11,7 +11,7 @@ use clap::ArgMatches;
 use nix::unistd::Gid;
 use nix::unistd::Uid;
 use simple_error::{bail,SimpleError};
-use simplelog::{info,warn};
+use simplelog::{debug,info,warn};
 
 use crate::resolve::resolve_versions;
 use crate::rversion::*;
