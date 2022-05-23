@@ -6,12 +6,15 @@
 
 `rim` is now known as `rig`.
 
-## macOS
+## New features
 
-* On arm64 computers, `rig add` installs arm64 R by default now.
+* Better messages. rig has a `-v` and `-vv` flag now, for extra debug and
+  trace messages.
+
+* On arm64 macOS, `rig add` installs arm64 R by default now.
   (This is also true for the x86_64 build of `rig`.
 
-* On macOS `rim add` does not change the default R version any more (#2).
+* On macOS `rig add` does not change the default R version any more (#2).
 
 # rim 0.3.0
 
