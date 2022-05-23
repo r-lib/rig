@@ -306,11 +306,18 @@ pub fn rig_app() -> Command<'static> {
         .long_about(HELP_RESOLVE)
         .after_help(HELP_RESOLVE_EXAMPLES);
 
-    cmd_resolve = cmd_resolve.arg(
-        Arg::new("str")
-            .help("symbolic version string to resolve")
-            .required(true)
-    );
+    cmd_resolve = cmd_resolve
+        .arg(
+            Arg::new("str")
+                .help("symbolic version string to resolve")
+                .required(true)
+        )
+        .arg(
+            Arg::new("json")
+                .help("JSON output")
+                .long("json")
+                .required(false)
+        );
 
 #[cfg(target_os = "macos")]
 {
