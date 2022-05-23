@@ -803,9 +803,17 @@ pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
             Some(x) => x,
             None => continue
         };
-        if fnamestr != "Current" && fnamestr != ".DS_Store" {
-            vers.push(fnamestr.to_string());
+        if fnamestr == "Current" || fnamestr == ".DS_Store" {
+            continue;
         }
+        // If there is no Resources/bin/R, then this is not an R installation
+        let rbin = path.join("Resources").join("bin").join("R");
+        if !rbin.exists() {
+            continue;
+        }
+
+        // Ok
+        vers.push(fnamestr.to_string());
     }
     vers.sort();
     Ok(vers)

@@ -393,9 +393,16 @@ pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
             Some(x) => x,
             None => continue
         };
-	if fname != "current" {
-	    vers.push(fname.to_string());
-	}
+	if fname == "current" {
+            continue;
+        }
+        // If there is no bin/R, then this is not an R installation
+        let rbin = path.join("bin").join("R");
+        if !rbin.exists() {
+            continue;
+        }
+
+	vers.push(fname.to_string());
     }
     vers.sort();
     Ok(vers)
