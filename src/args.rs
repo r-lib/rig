@@ -56,7 +56,7 @@ pub fn rig_app() -> Command<'static> {
         .term_width(80);
 
     let cmd_default = Command::new("default")
-        .about("Print or set default R version")
+        .about("Print or set default R version [alias: switch]")
         .aliases(&["switch"])
         .long_about(HELP_DEFAULT)
         .after_help(HELP_DEFAULT_EXAMPLES)
@@ -68,11 +68,11 @@ pub fn rig_app() -> Command<'static> {
 
     let cmd_list = Command::new("list")
         .aliases(&["ls"])
-        .about("List installed R versions")
+        .about("List installed R versions [alias: ls]")
         .long_about(HELP_LIST);
 
     let mut cmd_add = Command::new("add")
-        .about("Install a new R version")
+        .about("Install a new R version [alias: install]")
         .long_about(HELP_ADD)
         .after_help(HELP_ADD_EXAMPLES)
         .aliases(&["install"]);
@@ -131,7 +131,7 @@ pub fn rig_app() -> Command<'static> {
 }
 
     let cmd_rm = Command::new("rm")
-        .about("Remove R versions")
+        .about("Remove R versions [aliases: del, remove, delete]")
         .long_about(HELP_RM)
         .aliases(&["del", "remove", "delete"])
         .arg(
