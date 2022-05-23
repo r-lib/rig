@@ -225,6 +225,7 @@ pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>
     let user = get_user()?;
     for ver in vers {
         check_installed(&ver)?;
+        let lib = get_library_path(&ver)?.1; // default
         let r = base.join(&ver).join("bin/R");
 	let out;
 	if user.sudo {
@@ -606,7 +607,6 @@ fn detect_linux() -> Result<LinuxVersion, Box<dyn Error>> {
 
 	    mine.distro = id.to_owned();
 	    mine.version = ver.to_owned();
-	    println!("{:?}", mine);
 	    for dis in &supported {
 		if dis.distro == mine.distro && dis.version == mine.version {
 		    mine.url = dis.url.to_owned();
