@@ -47,7 +47,7 @@ pub fn grep_lines(re: &Regex, lines: &Vec<String>) -> Vec<usize> {
         .collect()
 }
 
-fn bak_file(path: &Path) -> PathBuf {
+pub fn bak_file(path: &Path) -> PathBuf {
     let mut path2 = path.to_owned();
     let ext = path
         .extension()

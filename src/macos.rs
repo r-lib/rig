@@ -5,6 +5,7 @@ use std::ffi::OsStr;
 use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::process::Command;
+use rand::Rng;
 
 use clap::ArgMatches;
 use nix::unistd::Gid;
@@ -67,20 +68,10 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         }
     };
 
-    println!("--nnn-- Start of installer output -----------------");
-    let status = Command::new("installer")
-        .arg("-pkg")
-        .arg(&target)
-        .args(["-target", "/"])
-        .spawn()?
-        .wait()?;
-    println!("--uuu-- End of installer output -------------------");
-
-    if !status.success() {
-        bail!("installer exited with status {}", status.to_string());
-    }
-
     let dirname = &get_install_dir(&version)?;
+
+    // Install without changing default
+    safe_install(target, dirname)?;
 
     // This should not happen currently on macOS, a .pkg installer
     // sets the default, but prepare for the future
@@ -89,7 +80,6 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     sc_system_forget()?;
     system_no_openmp(Some(vec![dirname.to_string()]))?;
     system_fix_permissions(None)?;
-    system_make_orthogonal(Some(vec![dirname.to_string()]))?;
     system_create_lib(Some(vec![dirname.to_string()]))?;
     sc_system_make_links()?;
 
@@ -105,6 +95,112 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             // If this is specified then we always re-install
             args.occurrences_of("pak-version") > 0
         )?;
+    }
+
+    Ok(())
+}
+
+fn random_string() -> String {
+    const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
+                            abcdefghijklmnopqrstuvwxyz";
+    const PASSWORD_LEN: usize = 10;
+    let mut rng = rand::thread_rng();
+
+    let password: String = (0..PASSWORD_LEN)
+        .map(|_| {
+            let idx = rng.gen_range(0..CHARSET.len());
+            CHARSET[idx] as char
+        })
+        .collect();
+
+    password
+}
+
+fn safe_install(target: std::path::PathBuf, ver: &str) -> Result<(), Box<dyn Error>> {
+
+    let dir = target.parent().ok_or(SimpleError::new("Internal error"))?;
+    let tmpf = random_string();
+    let tmp = dir.join(tmpf);
+
+    let output = Command::new("pkgutil")
+        .arg("--expand")
+        .arg(&target)
+        .arg(&tmp)
+        .output()?;
+    if !output.status.success() {
+        bail!("pkgutil exited with {}", output.status.to_string());
+    }
+
+    let wd1 = tmp.join("r.pkg");
+    let wd2 = tmp.join("R-fw.pkg");
+    let wd = if wd2.exists() {
+        wd2
+    } else if wd1.exists() {
+        wd1
+    } else {
+        bail!("Failed to patch installer, could not find framework");
+    };
+    let output = Command::new("sh")
+        .current_dir(&wd)
+        .args(["-c", "gzip -dcf Payload | cpio -i"])
+        .output()?;
+    if !output.status.success() {
+        bail!("Failed to extract installer: {}", output.status.to_string());
+    }
+
+    let link = wd.join("R.framework").join("Versions").join("Current");
+    make_orthogonal_(&link, ver)?;
+
+    std::fs::remove_file(&link)?;
+
+    let output = Command::new("sh")
+        .current_dir(&wd)
+        .args(["-c", "find R.framework | cpio -oz > Payload"])
+        .output()?;
+    if !output.status.success() {
+        bail!("Failed to re-package installer (cpio): {}", output.status.to_string());
+    }
+
+    let rf = wd.join("R.framework");
+    std::fs::remove_dir_all(&rf)?;
+
+    let pkgf = random_string() + ".pkg";
+    let pkg = dir.join(pkgf);
+    let output = Command::new("pkgutil")
+        .arg("--flatten")
+        .arg(&tmp)
+        .arg(&pkg)
+        .output()?;
+    if !output.status.success() {
+        bail!("Failed to re-package installer (pkgutil): {}", output.status.to_string());
+    }
+
+    println!("--nnn-- Start of installer output -----------------");
+    let status = Command::new("installer")
+        .arg("-pkg")
+        .arg(&pkg)
+        .args(["-target", "/"])
+        .spawn()?
+        .wait()?;
+    println!("--uuu-- End of installer output -------------------");
+
+    if !status.success() {
+        bail!("installer exited with status {}", status.to_string());
+    }
+
+    if let Err(err) = std::fs::remove_file(&pkg) {
+        warn!(
+            "<magenta>[WARN]</> Failed to remove temporary file {}: {}",
+            pkg.display(),
+            err.to_string()
+        );
+    }
+    if let Err(err) = std::fs::remove_dir_all(&tmp) {
+        warn!(
+            "<magenta>[WARN]</> Failed to remove temporary directory {}: {}",
+            tmp.display(),
+            err.to_string()
+        );
     }
 
     Ok(())
@@ -419,39 +515,44 @@ fn system_make_orthogonal(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
         None => sc_get_list()?,
     };
 
-    let re = Regex::new("R[.]framework/Resources")?;
-    let re2 = Regex::new("[-]F/Library/Frameworks/R[.]framework/[.][.]")?;
     for ver in vers {
         check_installed(&ver)?;
         info!("<cyan>[INFO]</> Making R {} orthogonal", ver);
-        let base = Path::new("/Library/Frameworks/R.framework/Versions/");
-        let sub = "R.framework/Versions/".to_string() + &ver + "/Resources";
-
-        let rfile = base.join(&ver).join("Resources/bin/R");
-        replace_in_file(&rfile, &re, &sub).ok();
-
-        let efile = base.join(&ver).join("Resources/etc/Renviron");
-        replace_in_file(&efile, &re, &sub).ok();
-
-        let ffile = base
-            .join(&ver)
-            .join("Resources/fontconfig/fonts/fonts.conf");
-        replace_in_file(&ffile, &re, &sub).ok();
-
-        let mfile = base.join(&ver).join("Resources/etc/Makeconf");
-        let sub = "-F/Library/Frameworks/R.framework/Versions/".to_string() + &ver;
-        replace_in_file(&mfile, &re2, &sub).ok();
-
-        let fake = base.join(&ver).join("R.framework");
-        let fake = fake.as_path();
-        // TODO: only ignore failure if files already exist
-        std::fs::create_dir_all(&fake).ok();
-        symlink("../Headers", fake.join("Headers")).ok();
-        symlink("../Resources/lib", fake.join("Libraries")).ok();
-        symlink("../PrivateHeaders", fake.join("PrivateHeaders")).ok();
-        symlink("../R", fake.join("R")).ok();
-        symlink("../Resources", fake.join("Resources")).ok();
+        let base = Path::new("/Library/Frameworks/R.framework/Versions/").join(&ver);
+        make_orthogonal_(&base, &ver)?;
     }
+
+    Ok(())
+}
+
+fn make_orthogonal_(base: &Path, ver: &str) -> Result<(), Box<dyn Error>> {
+    let re = Regex::new("R[.]framework/Resources")?;
+    let re2 = Regex::new("[-]F/Library/Frameworks/R[.]framework/[.][.]")?;
+
+    let sub = "R.framework/Versions/".to_string() + &ver + "/Resources";
+
+    let rfile = base.join("Resources/bin/R");
+    replace_in_file(&rfile, &re, &sub).ok();
+
+    let efile = base.join("Resources/etc/Renviron");
+    replace_in_file(&efile, &re, &sub).ok();
+
+    let ffile = base.join("Resources/fontconfig/fonts/fonts.conf");
+    replace_in_file(&ffile, &re, &sub).ok();
+
+    let mfile = base.join("Resources/etc/Makeconf");
+    let sub = "-F/Library/Frameworks/R.framework/Versions/".to_string() + &ver;
+    replace_in_file(&mfile, &re2, &sub).ok();
+
+    let fake = base.join("R.framework");
+    let fake = fake.as_path();
+    // TODO: only ignore failure if files already exist
+    std::fs::create_dir_all(&fake).ok();
+    symlink("../Headers", fake.join("Headers")).ok();
+    symlink("../Resources/lib", fake.join("Libraries")).ok();
+    symlink("../PrivateHeaders", fake.join("PrivateHeaders")).ok();
+    symlink("../R", fake.join("R")).ok();
+    symlink("../Resources", fake.join("Resources")).ok();
 
     Ok(())
 }
