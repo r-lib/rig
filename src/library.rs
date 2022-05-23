@@ -11,14 +11,10 @@ use simplelog::info;
 use crate::macos::*;
 
 #[cfg(target_os = "windows")]
-mod windows;
-#[cfg(target_os = "windows")]
-use windows::*;
+use crate::windows::*;
 
 #[cfg(target_os = "linux")]
-mod linux;
-#[cfg(target_os = "linux")]
-use linux::*;
+use crate::linux::*;
 
 use crate::escalate::*;
 use crate::rversion::*;

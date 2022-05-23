@@ -4,7 +4,7 @@ use regex::Regex;
 use std::error::Error;
 use std::ffi::OsStr;
 use std::os::unix::fs::symlink;
-use std::path::Path;
+use std::path::{Path,PathBuf};
 use std::process::{Command, Stdio};
 
 use clap::ArgMatches;
@@ -220,30 +220,11 @@ pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>
         Some(x) => x,
         None => sc_get_list()?,
     };
-    let base = Path::new(R_ROOT);
 
     let user = get_user()?;
     for ver in vers {
         check_installed(&ver)?;
-        let r = base.join(&ver).join("bin/R");
-	let out;
-	if user.sudo {
-            out = Command::new("su")
-		.args([&user.user, "--"])
-		.arg(r)
-		.args(["--vanilla", "-s", "-e", "cat(Sys.getenv('R_LIBS_USER'))"])
-		.output()?;
-	} else {
-            out = Command::new(r)
-		.args(["--vanilla", "-s", "-e", "cat(Sys.getenv('R_LIBS_USER'))"])
-		.output()?;
-	}
-        let lib = String::from_utf8(out.stdout)?;
-
-	let userdir = user.dir.to_str()
-	    .ok_or(SimpleError::new("User HOME is not a Unicode string"))?;
-	let re = Regex::new("^~")?;
-	let lib = re.replace(&lib.as_str(), userdir).to_string();
+        let lib = get_library_path(&ver)?.1; // default
         let lib = Path::new(&lib);
         if !lib.exists() {
             info!(
@@ -696,4 +677,50 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>)
         .spawn()?;
 
     Ok(())
+}
+
+pub fn get_library_path(rver: &str) -> Result<(PathBuf, PathBuf), Box<dyn Error>> {
+    let user = get_user()?;
+    let base = Path::new(R_ROOT);
+    let r = base.join(&rver).join("bin/R");
+    let out;
+    if user.sudo {
+        out = Command::new("su")
+	    .args([&user.user, "--"])
+	    .arg(r)
+	    .args(["--vanilla", "-s", "-e", "cat(Sys.getenv('R_LIBS_USER'))"])
+	    .output()?;
+    } else {
+            out = Command::new(r)
+	    .args(["--vanilla", "-s", "-e", "cat(Sys.getenv('R_LIBS_USER'))"])
+	    .output()?;
+    }
+    let lib = String::from_utf8(out.stdout)?;
+
+    let userdir = user.dir.to_str()
+	.ok_or(SimpleError::new("User HOME is not a Unicode string"))?;
+	let re = Regex::new("^~")?;
+    let defaultstr = re.replace(&lib.as_str(), userdir).to_string();
+
+    let default = Path::new(&defaultstr);
+    let mut main = Path::new(&defaultstr);
+
+    // If it ends with a __dir component, then drop that
+    if let Some(last) = main.file_name() {
+        let last = last.to_str();
+        if let Some(last) = last {
+            if &last[..2] == "__" {
+                if let Some(dirn) = main.parent() {
+                    main = Path::new(dirn);
+                }
+            }
+        }
+    }
+
+    Ok((main.to_path_buf(), default.to_path_buf()))
+}
+
+pub fn get_system_renviron(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
+    let renviron = Path::new(R_ROOT).join(rver).join("lib/R/etc/Renviron");
+    Ok(renviron)
 }
