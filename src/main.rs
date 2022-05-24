@@ -92,11 +92,11 @@ fn main_() -> i32 {
 fn main__(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
         Some(("add", sub)) => sc_add(sub),
-        Some(("default", sub)) => sc_default(sub),
-        Some(("list", _)) => sc_list(),
+        Some(("default", sub)) => sc_default(sub, args),
+        Some(("list", sub)) => sc_list(sub, args),
         Some(("rm", sub)) => sc_rm(sub),
         Some(("system", sub)) => sc_system(sub),
-        Some(("resolve", sub)) => sc_resolve(sub),
+        Some(("resolve", sub)) => sc_resolve(sub, args),
         Some(("rstudio", sub)) => sc_rstudio(sub),
         _ => { Ok(()) } // unreachable
     }
@@ -120,7 +120,8 @@ fn sc_system(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
 // ------------------------------------------------------------------------
 
-fn sc_resolve(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+fn sc_resolve(args: &ArgMatches, mainargs: &ArgMatches)
+              -> Result<(), Box<dyn Error>> {
     let version = get_resolve(args)?;
     let url: String = match version.url {
         Some(s) => s.to_string(),
@@ -130,24 +131,50 @@ fn sc_resolve(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         Some(s) => s.to_string(),
         None => "???".to_string()
     };
-    println!("{} {}", version, url);
+
+    if args.is_present("json") || mainargs.is_present("json") {
+        println!("[");
+        println!("  {{");
+        println!("     \"version\": \"{}\",", version);
+        println!("     \"url\": \"{}\"", url);
+        println!("  }}");
+        println!("]");
+    } else {
+        println!("{} {}", version, url);
+    }
 
     Ok(())
 }
 
 // ------------------------------------------------------------------------
 
-fn sc_list() -> Result<(), Box<dyn Error>> {
+fn sc_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let vers = sc_get_list()?;
     let def = match sc_get_default()? {
         None => "".to_string(),
         Some(v) => v
     };
-    for ver in vers {
-        if def == ver {
-            println!("{} (default)", ver)
-        } else {
-            println!("{}", ver);
+
+    if args.is_present("json") || mainargs.is_present("json") {
+        println!("[");
+        let num = vers.len();
+        for (idx, ver) in vers.iter().enumerate() {
+            println!("  {{");
+            println!("    \"name\": \"{}\",", ver);
+            println!(
+                "    \"default\": {}",
+                if &def == ver { "true" } else { "false" }
+            );
+            println!("  }}{}", if idx == num - 1 { "" } else { "," });
+        }
+        println!("]");
+    } else {
+        for ver in vers {
+            if def == ver {
+                println!("{} (default)", ver)
+            } else {
+                println!("{}", ver);
+            }
         }
     }
 
@@ -156,14 +183,21 @@ fn sc_list() -> Result<(), Box<dyn Error>> {
 
 // ------------------------------------------------------------------------
 
-fn sc_default(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+fn sc_default(args: &ArgMatches, mainargs: &ArgMatches)
+              -> Result<(), Box<dyn Error>> {
     if args.is_present("version") {
         let ver = args.value_of("version")
             .ok_or(SimpleError::new("Internal argument error"))?.to_string();
         sc_set_default(&ver)
     } else {
         let default = sc_get_default_or_fail()?;
-        println!("{}", default);
+        if args.is_present("json") || mainargs.is_present("json") {
+            println!("{{");
+            println!("  \"name\": \"{}\"", default);
+            println!("}}");
+        } else {
+            println!("{}", default);
+        }
         Ok(())
     }
 }

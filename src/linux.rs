@@ -606,7 +606,6 @@ fn detect_linux() -> Result<LinuxVersion, Box<dyn Error>> {
 
 	    mine.distro = id.to_owned();
 	    mine.version = ver.to_owned();
-	    println!("{:?}", mine);
 	    for dis in &supported {
 		if dis.distro == mine.distro && dis.version == mine.version {
 		    mine.url = dis.url.to_owned();

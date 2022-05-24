@@ -64,12 +64,24 @@ pub fn rig_app() -> Command<'static> {
             Arg::new("version")
                 .help("new default R version to set")
                 .required(false),
+        )
+        .arg(
+            Arg::new("json")
+                .help("JSON output")
+                .long("json")
+                .required(false)
         );
 
     let cmd_list = Command::new("list")
         .aliases(&["ls"])
         .about("List installed R versions [alias: ls]")
-        .long_about(HELP_LIST);
+        .long_about(HELP_LIST)
+        .arg(
+            Arg::new("json")
+                .help("JSON output")
+                .long("json")
+                .required(false)
+        );
 
     let mut cmd_add = Command::new("add")
         .about("Install a new R version [alias: install]")
@@ -294,11 +306,18 @@ pub fn rig_app() -> Command<'static> {
         .long_about(HELP_RESOLVE)
         .after_help(HELP_RESOLVE_EXAMPLES);
 
-    cmd_resolve = cmd_resolve.arg(
-        Arg::new("str")
-            .help("symbolic version string to resolve")
-            .required(true)
-    );
+    cmd_resolve = cmd_resolve
+        .arg(
+            Arg::new("str")
+                .help("symbolic version string to resolve")
+                .required(true)
+        )
+        .arg(
+            Arg::new("json")
+                .help("JSON output")
+                .long("json")
+                .required(false)
+        );
 
 #[cfg(target_os = "macos")]
 {
@@ -344,6 +363,12 @@ pub fn rig_app() -> Command<'static> {
                 .long("verbose")
                 .required(false)
                 .multiple_occurrences(true))
+        .arg(
+            Arg::new("json")
+                .help("Output JSON")
+                .long("json")
+                .required(false)
+        )
         .subcommand(cmd_default)
         .subcommand(cmd_list)
         .subcommand(cmd_add)
