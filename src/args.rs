@@ -128,6 +128,17 @@ pub fn rig_app() -> Command<'static> {
         );
 }
 
+#[cfg(target_os = "linux")]
+{
+        cmd_add = cmd_add
+        .arg(
+            Arg::new("without-sysreqs")
+                .help("Do not set up system requirements installation.")
+                .long("without-sysreqs")
+                .required(false)
+        );
+}
+
 #[cfg(target_os = "macos")]
 {
     cmd_add = cmd_add
