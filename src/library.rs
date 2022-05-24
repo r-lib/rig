@@ -11,16 +11,21 @@ use simplelog::info;
 use crate::macos::*;
 
 #[cfg(target_os = "windows")]
-use crate::windows::*;
+mod windows;
+#[cfg(target_os = "windows")]
+use windows::*;
 
 #[cfg(target_os = "linux")]
-use crate::linux::*;
+mod linux;
+#[cfg(target_os = "linux")]
+use linux::*;
 
 use crate::escalate::*;
 use crate::rversion::*;
 use crate::utils::*;
 
-pub fn sc_library_ls() -> Result<(), Box<dyn Error>> {
+pub fn sc_library_ls(args: &ArgMatches, libargs: &ArgMatches, mainargs: &ArgMatches)
+                     -> Result<(), Box<dyn Error>> {
     let libs = sc_library_get_list(None)?;
     let mut names: Vec<String> = libs.iter().map(|x| {
         if x.default {
@@ -31,9 +36,27 @@ pub fn sc_library_ls() -> Result<(), Box<dyn Error>> {
     }).collect();
     names.sort();
 
-    for name in names {
-        println!("{}", name);
-    }
+    if args.is_present("json") || libargs.is_present("json") ||
+        mainargs.is_present("json") {
+            println!("[");
+            let num = libs.len();
+            for (idx, lib) in libs.iter().enumerate() {
+                println!("  {{");
+                println!("    \"name\": \"{}\",", lib.name);
+                println!("    \"path\": \"{}\",", lib.path.display());
+                println!(
+                    "    \"default\": {}",
+                    if lib.default { "true" } else { "false" }
+                );
+                println!("  }}{}", if idx == num - 1 { "" } else { "," });
+            }
+            println!("]");
+
+        } else {
+            for name in names {
+                println!("{}", name);
+            }
+        }
 
     Ok(())
 }
@@ -167,14 +190,24 @@ pub fn sc_library_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn sc_library_default(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+pub fn sc_library_default(args: &ArgMatches, libargs: &ArgMatches,
+                          mainargs: &ArgMatches)
+                          -> Result<(), Box<dyn Error>> {
     if args.is_present("lib-name") {
         let name = args.value_of("lib-name")
             .ok_or(SimpleError::new("Internal argument error"))?.to_string();
         sc_library_set_default(&name)
     } else {
         let default = sc_library_get_default()?;
-        println!("{}", default.name);
+        if args.is_present("json") || libargs.is_present("json") ||
+            mainargs.is_present("json") {
+            println!("{{");
+            println!("  \"name\": \"{}\",", default.name);
+            println!("  \"path\": \"{}\"", default.path.display());
+            println!("}}");
+        } else {
+            println!("{}", default.name);
+        }
         Ok(())
     }
 }

@@ -355,10 +355,22 @@ pub fn rig_app() -> Command<'static> {
         .long_about("TODO")
         .aliases(&["lib"])
         .arg_required_else_help(true)
+        .arg(
+            Arg::new("json")
+                .help("JSON output")
+                .long("json")
+                .required(false)
+        )
         .subcommand(
             Command::new("list")
                 .aliases(&["ls"])
                 .about("List libraries [alias: ls]")
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .required(false)
+                )
         )
         .subcommand(
             Command::new("add")
@@ -384,6 +396,12 @@ pub fn rig_app() -> Command<'static> {
                 .arg(
                     Arg::new("lib-name")
                         .help("library name to set as default")
+                        .required(false)
+                )
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
                         .required(false)
                 )
         );

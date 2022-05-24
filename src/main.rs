@@ -101,7 +101,7 @@ fn main__(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         Some(("system", sub)) => sc_system(sub),
         Some(("resolve", sub)) => sc_resolve(sub, args),
         Some(("rstudio", sub)) => sc_rstudio(sub),
-        Some(("library", sub)) => sc_library(sub),
+        Some(("library", sub)) => sc_library(sub, args),
         _ => { Ok(()) } // unreachable
     }
 }
@@ -122,12 +122,13 @@ fn sc_system(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     }
 }
 
-fn sc_library(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+fn sc_library(args: &ArgMatches, mainargs: &ArgMatches)
+              -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
-        Some(("list", _)) => sc_library_ls(),
+        Some(("list", s)) => sc_library_ls(s, args, mainargs),
         Some(("add", s)) => sc_library_add(s),
         Some(("rm", s)) => sc_library_rm(s),
-        Some(("default", s)) => sc_library_default(s),
+        Some(("default", s)) => sc_library_default(s, args, mainargs),
         _ => { Ok(()) } // unreachable
     }
 }
