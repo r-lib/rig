@@ -101,6 +101,10 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         set_rspm(Some(vec![dirname.to_string()]), linux)?;
     }
 
+    if !args.is_present("without-sysreqs") {
+        set_sysreqs(Some(vec![dirname.to_string()]), linux)?;
+    }
+
     if !args.is_present("without-pak") {
         system_add_pak(
             Some(vec![dirname.to_string()]),
@@ -481,6 +485,40 @@ options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(getRversion(
 "#;
 
     let rcode = rcode.to_string().replace("%url%", &linux.rspm_url);
+
+    for ver in vers {
+        check_installed(&ver)?;
+        let path = Path::new(R_ROOT).join(ver.as_str());
+        let profile = path.join("lib/R/library/base/R/Rprofile".to_string());
+        if ! profile.exists() { continue; }
+
+        append_to_file(&profile, vec![rcode.to_string()])?;
+    }
+    Ok(())
+}
+
+fn set_sysreqs(vers: Option<Vec<String>>, linux: LinuxVersion)
+	    -> Result<(), Box<dyn Error>> {
+
+    if linux.distro != "ubuntu" || !linux.rspm {
+	info!(
+	    "No system requirements support this distro: {} {} :(",
+	    linux.distro,
+	    linux.version
+	);
+	return Ok(());
+    }
+
+    info!("Setting up automatic system requirements installation.");
+
+    let vers = match vers {
+        Some(x) => x,
+        None => sc_get_list()?,
+    };
+
+    let rcode = r#"
+Sys.setenv(PKG_SYSREQS = "true")
+"#;
 
     for ver in vers {
         check_installed(&ver)?;
