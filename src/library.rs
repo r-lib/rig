@@ -11,14 +11,10 @@ use simplelog::info;
 use crate::macos::*;
 
 #[cfg(target_os = "windows")]
-mod windows;
-#[cfg(target_os = "windows")]
-use windows::*;
+use crate::windows::*;
 
 #[cfg(target_os = "linux")]
-mod linux;
-#[cfg(target_os = "linux")]
-use linux::*;
+use crate::linux::*;
 
 use crate::escalate::*;
 use crate::rversion::*;
@@ -41,9 +37,10 @@ pub fn sc_library_ls(args: &ArgMatches, libargs: &ArgMatches, mainargs: &ArgMatc
             println!("[");
             let num = libs.len();
             for (idx, lib) in libs.iter().enumerate() {
+		let path = lib.path.display().to_string();
                 println!("  {{");
                 println!("    \"name\": \"{}\",", lib.name);
-                println!("    \"path\": \"{}\",", lib.path.display());
+                println!("    \"path\": \"{}\",", path.replace("\\", "/"));
                 println!(
                     "    \"default\": {}",
                     if lib.default { "true" } else { "false" }
@@ -201,13 +198,14 @@ pub fn sc_library_default(args: &ArgMatches, libargs: &ArgMatches,
         let default = sc_library_get_default()?;
         if args.is_present("json") || libargs.is_present("json") ||
             mainargs.is_present("json") {
-            println!("{{");
-            println!("  \"name\": \"{}\",", default.name);
-            println!("  \"path\": \"{}\"", default.path.display());
-            println!("}}");
-        } else {
-            println!("{}", default.name);
-        }
+		let path = default.path.display().to_string();
+		println!("{{");
+		println!("  \"name\": \"{}\",", default.name);
+		println!("  \"path\": \"{}\"", path.replace("\\", "/"));
+		println!("}}");
+            } else {
+		println!("{}", default.name);
+            }
         Ok(())
     }
 }

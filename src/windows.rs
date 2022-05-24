@@ -779,7 +779,7 @@ pub fn get_library_path(rver: &str) -> Result<(PathBuf, PathBuf), Box<dyn Error>
     let base = Path::new(R_ROOT);
     let r = base.join("R-".to_string() + rver).join("bin").join("R.exe");
     let out = Command::new(r)
-        .args(["--vanilla", "-s", "-e", "cat(Sys.getenv('R_LIBS_USER'))"])
+        .args(["--vanilla", "-s", "-e", "cat(normalizePath(Sys.getenv('R_LIBS_USER'), '/'))"])
         .output()?;
     let lib = match String::from_utf8(out.stdout) {
         Ok(v) => v,
