@@ -3,7 +3,6 @@ use std::ffi::OsString;
 use std::fs::File;
 use std::io::{prelude::*, BufReader};
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
 use regex::Regex;
 
 #[cfg(target_os = "macos")]
@@ -15,7 +14,6 @@ use simple_error::SimpleError;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use crate::rversion::User;
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::error::Error;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use simple_error::bail;
@@ -31,7 +29,6 @@ pub fn read_lines(path: &Path) -> Result<Vec<String>, std::io::Error> {
     BufReader::new(file).lines().collect()
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn grep_lines(re: &Regex, lines: &Vec<String>) -> Vec<usize> {
     lines
         .iter()

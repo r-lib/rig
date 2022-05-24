@@ -240,6 +240,7 @@ fn sc_library_get_default() -> Result<PkgLibrary, Box<dyn Error>> {
     })
 }
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn sc_library_set_default(name: &str) -> Result<(), Box<dyn Error>> {
     escalate("updating default library")?;
     let rver = match sc_get_default()? {
@@ -325,6 +326,91 @@ fn sc_library_set_default(name: &str) -> Result<(), Box<dyn Error>> {
             }
 
             update_file(&renviron, &lines2)?;
+        }
+    }
+
+    Ok(())
+}
+
+
+#[cfg(target_os = "windows")]
+fn sc_library_set_default(name: &str) -> Result<(), Box<dyn Error>> {
+    escalate("updating default library")?;
+    let rver = match sc_get_default()? {
+        Some(x) => x,
+        None => {
+            bail!("Need to set default R version for `rig library`.")
+        }
+    };
+    let libs = sc_library_get_list(Some(rver.to_string()))?;
+
+    let mut path: Option<PathBuf> = None;
+    for lib in libs {
+        if lib.name == name {
+            path = Some(lib.path);
+        }
+    }
+
+    match path {
+        None => bail!("No such library: {}, for R {}", name, rver),
+        Some(_path) => {
+
+            let name = if name == "main" {
+                "".to_string()
+            } else {
+                "/__".to_string() + name
+            };
+
+	    let newlines = format!(r#"
+## rig R_LIBS_USER start
+local({{
+  deflib <- Sys.getenv("R_LIBS_USER")
+  selected  <- Sys.getenv("R_LIBS_USER_SELECTED", "{}")
+  Sys.setenv("R_LIBS_USER_SELECTED" = selected)
+  if (!grepl("^__", basename(deflib))) {{
+    new <- paste0(deflib, selected)
+    Sys.setenv("R_LIBS_USER" = new)
+    libs <- .libPaths()
+    wh <- which(normalizePath(deflib, "/") == normalizePath(libs, "/"))[1]
+    if (!is.na(wh)) {{
+      libs[wh] <- normalizePath(new, "/")
+      .libPaths(libs)
+    }}
+  }}
+}})
+## rig R_LIBS_USER end
+"#, name);
+
+            let rprofile = get_system_profile(&rver)?;
+            let lines = read_lines(&rprofile)?;
+            let re_start = Regex::new("^## rig R_LIBS_USER start")?;
+            let re_end = Regex::new("^## rig R_LIBS_USER end")?;
+            let idx_start = grep_lines(&re_start, &lines);
+            let idx_end = grep_lines(&re_end, &lines);
+            let nmarkers = idx_start.len() + idx_end.len();
+            if nmarkers != 0 && nmarkers != 2 {
+                bail!("Invalid system Rprofile file at {}. Must include a \
+                       single pair of '## rig R_LIBS_USER start' and \
+                       '## rig R_LIBS_USER end'", rprofile.display());
+            }
+
+            if nmarkers == 0 {
+		append_to_file(&rprofile, vec![newlines])?;
+
+            } else {
+
+		let mut lines2: Vec<String>;
+
+                let idx1 = idx_start[0];
+                let idx2 = idx_end[0];
+                lines2 = lines[..idx1].to_vec();
+                lines2.append(&mut vec![newlines]);
+		if idx2 + 1 < lines.len() {
+                    lines2.append(&mut lines[(idx2+1)..].to_vec());
+		}
+
+		update_file(&rprofile, &lines2)?;
+            }
         }
     }
 

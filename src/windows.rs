@@ -6,7 +6,7 @@ use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader};
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path,PathBuf};
 use std::process::Command;
 use std::{thread, time};
 
@@ -19,6 +19,7 @@ use winreg::RegKey;
 
 use crate::common::*;
 use crate::download::*;
+use crate::escalate::*;
 use crate::resolve::resolve_versions;
 use crate::rversion::Rversion;
 use crate::utils::*;
@@ -27,7 +28,7 @@ const R_ROOT: &str = "C:\\Program Files\\R";
 
 #[warn(unused_variables)]
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    elevate("adding new R version")?;
+    escalate("adding new R version")?;
     sc_clean_registry()?;
     let str = args.value_of("str")
 	.ok_or(SimpleError::new("Internal argument error"))?.to_string();
@@ -281,7 +282,7 @@ options(repos = c(RSPM="https://packagemanager.rstudio.com/all/latest", getOptio
 }
 
 pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    elevate("removing R versions")?;
+    escalate("removing R versions")?;
     let vers = args.values_of("version");
     if vers.is_none() {
         return Ok(());
@@ -422,7 +423,7 @@ pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>
 }
 
 pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
-    elevate("making R-* quick shortcuts")?;
+    escalate("making R-* quick shortcuts")?;
     let vers = sc_get_list()?;
     let base = Path::new(R_ROOT);
     let bin = base.join("bin");
@@ -549,7 +550,7 @@ pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
 
 pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
     check_installed(&ver.to_string())?;
-    elevate("setting the default R version")?;
+    escalate("setting the default R version")?;
     let base = Path::new(R_ROOT);
     let bin = base.join("bin");
     std::fs::create_dir_all(&bin)?;
@@ -630,7 +631,7 @@ fn clean_registry_uninst(key: &RegKey) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
-    elevate("cleaning up the Windows registry")?;
+    escalate("cleaning up the Windows registry")?;
 
     info!("Cleaning leftover registry entries");
 
@@ -700,7 +701,7 @@ fn update_registry_default_to(default: &String) -> Result<(), Box<dyn Error>> {
 }
 
 fn update_registry_default() -> Result<(), Box<dyn Error>> {
-    elevate("Update registry default")?;
+    escalate("Update registry default")?;
     let default = sc_get_default_or_fail()?;
     update_registry_default_to(&default)
 }
@@ -736,7 +737,7 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>)
     };
 
     if let Some(_) = version {
-	elevate("updating default version in registry")?;
+	escalate("updating default version in registry")?;
     }
 
     let args = match project {
@@ -774,19 +775,42 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>)
     Ok(())
 }
 
-fn elevate(task: &str) -> Result<(), Box<dyn Error>> {
-    if is_elevated::is_elevated() { return Ok(()); }
-    let args: Vec<String> = std::env::args().collect();
-    debug!("Re-running rig as administrator for {}.", task);
-    let exe = std::env::current_exe()?;
-    let exedir =  Path::new(&exe).parent();
-    let instdir = match exedir {
-        Some(d) => d,
-        None    => Path::new("/")
+pub fn get_library_path(rver: &str) -> Result<(PathBuf, PathBuf), Box<dyn Error>> {
+    let base = Path::new(R_ROOT);
+    let r = base.join("R-".to_string() + rver).join("bin").join("R.exe");
+    let out = Command::new(r)
+        .args(["--vanilla", "-s", "-e", "cat(Sys.getenv('R_LIBS_USER'))"])
+        .output()?;
+    let lib = match String::from_utf8(out.stdout) {
+        Ok(v) => v,
+        Err(err) => bail!(
+            "Cannot query R_LIBS_USER for R {}: {}",
+            rver,
+            err.to_string()
+        ),
     };
-    let gsudo = instdir.join("gsudo.exe");
-    let code = std::process::Command::new(gsudo)
-        .args(args)
-        .status()?;
-    std::process::exit(code.code().unwrap());
+
+    let defaultstr = shellexpand::tilde(&lib.as_str()).to_string();
+    let default = Path::new(&defaultstr);
+    let mut main = Path::new(&defaultstr);
+
+    // If it ends with a __dir component, then drop that
+    if let Some(last) = main.file_name() {
+        let last = last.to_str();
+        if let Some(last) = last {
+            if &last[..2] == "__" {
+                if let Some(dirn) = main.parent() {
+                    main = Path::new(dirn);
+                }
+            }
+        }
+    }
+
+    Ok((main.to_path_buf(), default.to_path_buf()))
+}
+
+pub fn get_system_profile(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
+    let path = Path::new(R_ROOT).join("R-".to_string() + rver);
+    let profile = path.join("library/base/R/Rprofile");
+    Ok(profile)
 }

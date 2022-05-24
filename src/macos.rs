@@ -906,7 +906,7 @@ fn extract_pkg_version(filename: &OsStr) -> Result<Rversion, Box<dyn Error>> {
 }
 
 pub fn get_library_path(rver: &str) -> Result<(PathBuf, PathBuf), Box<dyn Error>> {
-    let base = Path::new("/Library/Frameworks/R.framework/Versions");
+    let base = Path::new(R_ROOT);
     let r = base.join(&rver).join("Resources/R");
     let out = Command::new(r)
         .args(["--vanilla", "-s", "-e", "cat(Sys.getenv('R_LIBS_USER'))"])
