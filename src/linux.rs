@@ -502,7 +502,7 @@ fn set_sysreqs(vers: Option<Vec<String>>, linux: &LinuxVersion)
 
     if linux.distro != "ubuntu" || !linux.rspm {
 	info!(
-	    "No system requirements support this distro: {} {} :(",
+	    "No system requirements support for this distro: {} {} :(",
 	    linux.distro,
 	    linux.version
 	);
