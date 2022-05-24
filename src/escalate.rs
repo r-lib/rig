@@ -1,11 +1,18 @@
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-
 use std::error::Error;
+use std::path::Path;
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use simple_error::bail;
-use simplelog::info;
+
+#[cfg(target_os = "windows")]
+use simplelog::{debug};
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use simplelog::{info,debug};
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use sudo::with_env;
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn escalate(task: &str) -> Result<(), Box<dyn Error>> {
     let need_sudo = match sudo::check() {
         sudo::RunningAs::Root => { false },
@@ -29,10 +36,29 @@ pub fn escalate(task: &str) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn get_home() -> Result<String, Box<dyn Error>> {
     let home = match std::env::var("HOME") {
 	Ok(x) => { Ok(x) },
 	Err(_) => { bail!("rig needs the HOME env var set"); }
     };
     home
+}
+
+#[cfg(target_os = "windows")]
+pub fn escalate(task: &str) -> Result<(), Box<dyn Error>> {
+    if is_elevated::is_elevated() { return Ok(()); }
+    let args: Vec<String> = std::env::args().collect();
+    debug!("Re-running rig as administrator for {}.", task);
+    let exe = std::env::current_exe()?;
+    let exedir =  Path::new(&exe).parent();
+    let instdir = match exedir {
+        Some(d) => d,
+        None    => Path::new("/")
+    };
+    let gsudo = instdir.join("gsudo.exe");
+    let code = std::process::Command::new(gsudo)
+        .args(args)
+        .status()?;
+    std::process::exit(code.code().unwrap());
 }

@@ -33,3 +33,11 @@ pub struct User {
     pub dir: OsString,
     pub sudo: bool,
 }
+
+#[derive(PartialEq, Clone, Debug)]
+pub struct PkgLibrary {
+    pub rversion: String,
+    pub name: String,
+    pub path: std::path::PathBuf,
+    pub default: bool
+}

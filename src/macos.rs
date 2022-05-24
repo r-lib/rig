@@ -3,7 +3,7 @@
 use std::error::Error;
 use std::ffi::OsStr;
 use std::os::unix::fs::symlink;
-use std::path::Path;
+use std::path::{Path,PathBuf};
 use std::process::Command;
 use rand::Rng;
 
@@ -290,26 +290,11 @@ pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>
         Some(x) => x,
         None => sc_get_list()?,
     };
-    let base = Path::new("/Library/Frameworks/R.framework/Versions");
 
     let user = get_user()?;
     for ver in vers {
         check_installed(&ver)?;
-        let r = base.join(&ver).join("Resources/R");
-        let out = Command::new(r)
-            .args(["--vanilla", "-s", "-e", "cat(Sys.getenv('R_LIBS_USER'))"])
-            .output()?;
-        let lib = match String::from_utf8(out.stdout) {
-            Ok(v) => v,
-            Err(err) => bail!(
-                "Cannot query R_LIBS_USER for R {}: {}",
-                ver,
-                err.to_string()
-            ),
-        };
-
-        let lib = shellexpand::tilde(&lib.as_str()).to_string();
-        let lib = Path::new(&lib);
+        let lib = get_library_path(&ver)?.1; // default
         if !lib.exists() {
             info!(
                 "{}: creating library at {} for user {}",
@@ -326,7 +311,7 @@ pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>
                 _ => {}
             };
             match nix::unistd::chown(
-                lib,
+                &lib,
                 Some(Uid::from_raw(user.uid)),
                 Some(Gid::from_raw(user.gid)),
             ) {
@@ -918,4 +903,43 @@ fn extract_pkg_version(filename: &OsStr) -> Result<Rversion, Box<dyn Error>> {
     };
 
     Ok(res)
+}
+
+pub fn get_library_path(rver: &str) -> Result<(PathBuf, PathBuf), Box<dyn Error>> {
+    let base = Path::new(R_ROOT);
+    let r = base.join(&rver).join("Resources/R");
+    let out = Command::new(r)
+        .args(["--vanilla", "-s", "-e", "cat(Sys.getenv('R_LIBS_USER'))"])
+        .output()?;
+    let lib = match String::from_utf8(out.stdout) {
+        Ok(v) => v,
+        Err(err) => bail!(
+            "Cannot query R_LIBS_USER for R {}: {}",
+            rver,
+            err.to_string()
+        ),
+    };
+
+    let defaultstr = shellexpand::tilde(&lib.as_str()).to_string();
+    let default = Path::new(&defaultstr);
+    let mut main = Path::new(&defaultstr);
+
+    // If it ends with a __dir component, then drop that
+    if let Some(last) = main.file_name() {
+        let last = last.to_str();
+        if let Some(last) = last {
+            if &last[..2] == "__" {
+                if let Some(dirn) = main.parent() {
+                    main = Path::new(dirn);
+                }
+            }
+        }
+    }
+
+    Ok((main.to_path_buf(), default.to_path_buf()))
+}
+
+pub fn get_system_renviron(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
+    let renviron = Path::new(R_ROOT).join(rver).join("Resources/etc/Renviron");
+    Ok(renviron)
 }

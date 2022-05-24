@@ -349,6 +349,63 @@ pub fn rig_app() -> Command<'static> {
                 .required(false)
         );
 
+
+    let cmd_library = Command::new("library")
+        .about("Manage package libraries [alias: lib] (experimental)")
+        .long_about("TODO")
+        .aliases(&["lib"])
+        .arg_required_else_help(true)
+        .arg(
+            Arg::new("json")
+                .help("JSON output")
+                .long("json")
+                .required(false)
+        )
+        .subcommand(
+            Command::new("list")
+                .aliases(&["ls"])
+                .about("List libraries [alias: ls]")
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .required(false)
+                )
+        )
+        .subcommand(
+            Command::new("add")
+                .about("Add a new library")
+                .arg(
+                    Arg::new("lib-name")
+                        .help("name of new library")
+                        .required(true)
+                )
+        )
+        .subcommand(
+            Command::new("rm")
+                .about("Remove a library")
+                .arg(
+                    Arg::new("lib-name")
+                        .help("name of library to remove")
+                        .required(true)
+                )
+        )
+        .subcommand(
+            Command::new("default")
+                .about("Set the default library")
+                .arg(
+                    Arg::new("lib-name")
+                        .help("library name to set as default")
+                        .required(false)
+                )
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .required(false)
+                )
+        );
+
     rig
         .arg(
             Arg::new("quiet")
@@ -376,6 +433,7 @@ pub fn rig_app() -> Command<'static> {
         .subcommand(cmd_system)
         .subcommand(cmd_resolve)
         .subcommand(cmd_rstudio)
+        .subcommand(cmd_library)
         .after_help(HELP_EXAMPLES)
 }
 
