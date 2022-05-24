@@ -1,4 +1,6 @@
 use std::error::Error;
+
+#[cfg(target_os = "windows")]
 use std::path::Path;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -7,7 +9,7 @@ use simple_error::bail;
 #[cfg(target_os = "windows")]
 use simplelog::{debug};
 #[cfg(any(target_os = "macos", target_os = "linux"))]
-use simplelog::{info,debug};
+use simplelog::{info};
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use sudo::with_env;
