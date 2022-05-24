@@ -20,6 +20,11 @@
   and Jammy 22.04. They need to have a proper `UBUNTU_CODENAME` entry in
   `/etc/os-release` (#34).
 
+* rig now sets up automated system requirements installation with pak on Linux
+  distributions that support it: Ubuntu 18.04, 20.04 and 22.04 (on distros
+  based on these), on both x86_64 and aarch64. (This currently needs
+  passwordless `sudo` or a root account.)
+
 # rim 0.3.0
 
 * New `rim rstudio` command to open a project in RStudio with the specified

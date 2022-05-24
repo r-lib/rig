@@ -98,11 +98,11 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     }
 
     if !args.is_present("without-rspm") {
-        set_rspm(Some(vec![dirname.to_string()]), linux)?;
+        set_rspm(Some(vec![dirname.to_string()]), &linux)?;
     }
 
     if !args.is_present("without-sysreqs") {
-        set_sysreqs(Some(vec![dirname.to_string()]), linux)?;
+        set_sysreqs(Some(vec![dirname.to_string()]), &linux)?;
     }
 
     if !args.is_present("without-pak") {
@@ -455,7 +455,7 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn set_rspm(vers: Option<Vec<String>>, linux: LinuxVersion)
+fn set_rspm(vers: Option<Vec<String>>, linux: &LinuxVersion)
 	    -> Result<(), Box<dyn Error>> {
     let arch = std::env::consts::ARCH;
     if arch != "x86_64" {
@@ -497,7 +497,7 @@ options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(getRversion(
     Ok(())
 }
 
-fn set_sysreqs(vers: Option<Vec<String>>, linux: LinuxVersion)
+fn set_sysreqs(vers: Option<Vec<String>>, linux: &LinuxVersion)
 	    -> Result<(), Box<dyn Error>> {
 
     if linux.distro != "ubuntu" || !linux.rspm {
