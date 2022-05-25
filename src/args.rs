@@ -257,7 +257,7 @@ pub fn rig_app() -> Command<'static> {
 
 
     let cmd_system_noopenmp = Command::new("no-openmp")
-        .about("Remove OpemMP (-fopenmp) option for Apple compilers")
+        .about("Remove OpenMP (-fopenmp) option for Apple compilers")
         .long_about(HELP_SYSTEM_NO_OPENMP)
         .arg(
             Arg::new("version")

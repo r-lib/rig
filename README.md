@@ -177,7 +177,7 @@ Run `rim <subcommand> --help` for information about a subcommand.
     rim system forget            -- make system forget about R installations
     rim system make-links        -- create R-* quick links
     rim system make-orthogonal   -- make installed versions orthogonal
-    rim system no-openmp         -- remove OpemMP (-fopenmp) option for Apple compilers
+    rim system no-openmp         -- remove OpenMP (-fopenmp) option for Apple compilers
 
 ### Windows `rim system` subcommands
 
