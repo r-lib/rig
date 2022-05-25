@@ -36,14 +36,14 @@ Install, remove, configure R versions.
     versions.
 
 Found another issue? Please report it in our [issue
-tracker](https://github.com/gaborcsardi/rim/issues).
+tracker](https://github.com/r-lib/rim/issues).
 
 ## ⬇️  Installation
 
 ### macOS (installer)
 
 Download the latest release from
-<https://github.com/gaborcsardi/rim/releases> and install it the usual
+<https://github.com/r-lib/rim/releases> and install it the usual
 way.
 
 ### macOS (Homebrew)
@@ -52,7 +52,7 @@ If you use Homebrew (Intel or Arm version), you can install rim from our
 tap:
 
 ``` sh
-brew tap gaborcsardi/rim
+brew tap r-lib/rim
 brew install --cask rim
 ```
 
@@ -69,7 +69,7 @@ brew upgrade --cask rim
 ### Windows (installer)
 
 Download the latest release from
-<https://github.com/gaborcsardi/rim/releases> and install it the usual
+<https://github.com/r-lib/rim/releases> and install it the usual
 way.
 
 `rim` adds itself to the user’s path, but you might need to restart your
@@ -110,15 +110,15 @@ scoop update rim
 ### Linux
 
 Download the latest releast from
-<https://github.com/gaborcsardi/rim/releases> and uncompress it to
+<https://github.com/r-lib/rim/releases> and uncompress it to
 `/usr/local`
 
-    curl -Ls https://github.com/gaborcsardi/rim/releases/download/v0.3.0/rim-linux-0.3.0.tar.gz |
+    curl -Ls https://github.com/r-lib/rim/releases/download/v0.3.0/rim-linux-0.3.0.tar.gz |
       sudo tar xz -C /usr/local
 
 If you are running Linux on arm64, download the arm64 build:
 
-    curl -Ls https://github.com/gaborcsardi/rim/releases/download/v0.3.0/rim-linux-arm64-0.3.0.tar.gz |
+    curl -Ls https://github.com/r-lib/rim/releases/download/v0.3.0/rim-linux-arm64-0.3.0.tar.gz |
       sudo tar xz -C /usr/local
 
 Supported Linux distributions:
@@ -195,7 +195,7 @@ Run `rim <subcommand> --help` for information about a subcommand.
 ## 🤝  Feedback
 
 Please open an issue in our issue tracker at
-<https://github.com/gaborcsardi/rim/issues>
+<https://github.com/r-lib/rim/issues>
 
 ## 📘  License
 

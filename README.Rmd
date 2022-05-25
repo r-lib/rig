@@ -41,13 +41,13 @@ Install, remove, configure R versions.
 * On macOS, R.app often does not work if you install multiple R versions.
 
 Found another issue? Please report it in our
-[issue tracker](https://github.com/gaborcsardi/rig/issues).
+[issue tracker](https://github.com/r-lib/rig/issues).
 
 ## ⬇️&nbsp; Installation
 
 ### macOS (installer)
 
-Download the latest release from https://github.com/gaborcsardi/rig/releases
+Download the latest release from https://github.com/r-lib/rig/releases
 and install it the usual way.
 
 ### macOS (Homebrew)
@@ -56,7 +56,7 @@ If you use Homebrew (Intel or Arm version), you can install rig from our
 tap:
 
 ```sh
-brew tap gaborcsardi/rig
+brew tap r-lib/rig
 brew install --cask rig
 ```
 
@@ -72,7 +72,7 @@ brew upgrade --cask rig
 
 ### Windows (installer)
 
-Download the latest release from https://github.com/gaborcsardi/rig/releases
+Download the latest release from https://github.com/r-lib/rig/releases
 and install it the usual way.
 
 `rig` adds itself to the user's path, but you might need to restart your
@@ -112,17 +112,17 @@ scoop update rig
 
 ### Linux
 
-Download the latest releast from https://github.com/gaborcsardi/rig/releases
+Download the latest releast from https://github.com/r-lib/rig/releases
 and uncompress it to `/usr/local`
 
 ```
-curl -Ls https://github.com/gaborcsardi/rig/releases/download/v0.3.1/rig-linux-0.3.1.tar.gz |
+curl -Ls https://github.com/r-lib/rig/releases/download/v0.3.1/rig-linux-0.3.1.tar.gz |
   sudo tar xz -C /usr/local
 ```
 
 If you are running Linux on arm64, download the arm64 build:
 ```
-curl -Ls https://github.com/gaborcsardi/rig/releases/download/v0.3.1/rig-linux-arm64-0.3.1.tar.gz |
+curl -Ls https://github.com/r-lib/rig/releases/download/v0.3.1/rig-linux-arm64-0.3.1.tar.gz |
   sudo tar xz -C /usr/local
 ```
 
@@ -209,7 +209,7 @@ rig system make-links        -- create R-* quick links
 ## 🤝&nbsp; Feedback
 
 Please open an issue in our issue tracker at
-https://github.com/gaborcsardi/rig/issues
+https://github.com/r-lib/rig/issues
 
 ## 📘&nbsp; License
 

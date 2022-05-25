@@ -11,7 +11,7 @@ DESCRIPTION
     together.
 
     rig is currently experimental and is a work in progress. Feedback is much
-    appreciated. See https://github.com/gaborcsardi/rig for bug reports.
+    appreciated. See https://github.com/r-lib/rig for bug reports.
 "#;
 
 const HELP_EXAMPLES: &str = r#"EXAMPLES:
