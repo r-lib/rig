@@ -16,7 +16,6 @@ use simple_error::{bail, SimpleError};
 use simplelog::{debug,info,warn};
 
 use crate::common::*;
-use crate::config::*;
 use crate::download::*;
 use crate::library::*;
 use crate::resolve::resolve_versions;
