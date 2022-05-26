@@ -20,6 +20,7 @@ use winreg::RegKey;
 use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
+use crate::library::*;
 use crate::resolve::resolve_versions;
 use crate::rversion::Rversion;
 use crate::utils::*;
@@ -359,12 +360,10 @@ pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool)
         let cmd;
         if update {
             cmd = r#"
-              dir.create(Sys.getenv('R_LIBS_USER'), showWarnings = FALSE, recursive = TRUE);
               install.packages('pak', repos = sprintf('https://r-lib.github.io/p/pak/{}/%s/%s/%s', .Platform$pkgType, R.Version()$os, R.Version()$arch))
            "#;
         } else {
             cmd = r#"
-              dir.create(Sys.getenv('R_LIBS_USER'), showWarnings = FALSE, recursive = TRUE);
               if (!requireNamespace('pak', quietly = TRUE)) {
                 install.packages('pak', repos = sprintf('https://r-lib.github.io/p/pak/{}/%s/%s/%s', .Platform$pkgType, R.Version()$os, R.Version()$arch))
               }
@@ -394,18 +393,10 @@ pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>
         Some(x) => x,
         None => sc_get_list()?,
     };
-    let base = Path::new(R_ROOT);
 
     for ver in vers {
         check_installed(&ver)?;
-        let r = base.join("R-".to_string() + &ver).join("bin").join("R.exe");
-        let out = Command::new(r)
-            .args(["--vanilla", "-s", "-e", "cat(Sys.getenv('R_LIBS_USER'))"])
-            .output()?;
-        let lib = String::from_utf8(out.stdout)?;
-
-        let lib = shellexpand::tilde(&lib.as_str()).to_string();
-        let lib = Path::new(&lib);
+        let (_main, lib) = get_library_path(&ver, false)?;
         if !lib.exists() {
             info!(
                 "{}: creating library at {}",
@@ -417,6 +408,13 @@ pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>
         } else {
             debug!("{}: library at {} exists.", ver, lib.display());
         }
+
+        match library_update_rprofile(&ver) {
+            Err(e) => warn!(
+                "Could not update user library configuration, multiple libraries won't work: {}", e.to_string()
+            ),
+            Ok(_) => debug!("Updated library configuration")
+        };
     }
 
     Ok(())
@@ -775,42 +773,19 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>)
     Ok(())
 }
 
-pub fn get_library_path(rver: &str) -> Result<(PathBuf, PathBuf), Box<dyn Error>> {
-    let base = Path::new(R_ROOT);
-    let r = base.join("R-".to_string() + rver).join("bin").join("R.exe");
-    let out = Command::new(r)
-        .args(["--vanilla", "-s", "-e", "cat(normalizePath(Sys.getenv('R_LIBS_USER'), '/'))"])
-        .output()?;
-    let lib = match String::from_utf8(out.stdout) {
-        Ok(v) => v,
-        Err(err) => bail!(
-            "Cannot query R_LIBS_USER for R {}: {}",
-            rver,
-            err.to_string()
-        ),
-    };
-
-    let defaultstr = shellexpand::tilde(&lib.as_str()).to_string();
-    let default = Path::new(&defaultstr);
-    let mut main = Path::new(&defaultstr);
-
-    // If it ends with a __dir component, then drop that
-    if let Some(last) = main.file_name() {
-        let last = last.to_str();
-        if let Some(last) = last {
-            if &last[..2] == "__" {
-                if let Some(dirn) = main.parent() {
-                    main = Path::new(dirn);
-                }
-            }
-        }
-    }
-
-    Ok((main.to_path_buf(), default.to_path_buf()))
-}
-
 pub fn get_system_profile(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
     let path = Path::new(R_ROOT).join("R-".to_string() + rver);
     let profile = path.join("library/base/R/Rprofile");
     Ok(profile)
+}
+
+pub fn get_r_binary(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
+    debug!("Finding R {} binary", rver);
+    let base = Path::new(R_ROOT);
+    let bin = base
+	.join("R-".to_string() + &rver)
+	.join("bin")
+	.join("R.exe");
+    debug!("R {} binary: {}", rver, bin.display());
+    Ok(bin)
 }

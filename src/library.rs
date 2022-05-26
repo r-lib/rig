@@ -1,11 +1,12 @@
 
 use regex::Regex;
 use std::error::Error;
-use std::path::PathBuf;
+use std::path::{Path,PathBuf};
+use std::process::Command;
 
 use clap::ArgMatches;
 use simple_error::{bail,SimpleError};
-use simplelog::info;
+use simplelog::{debug,info,warn};
 
 #[cfg(target_os = "macos")]
 use crate::macos::*;
@@ -16,6 +17,7 @@ use crate::windows::*;
 #[cfg(target_os = "linux")]
 use crate::linux::*;
 
+use crate::config::*;
 use crate::escalate::*;
 use crate::rversion::*;
 use crate::utils::*;
@@ -333,4 +335,92 @@ local({
     }
 
     Ok(())
+}
+
+pub fn get_library_path(rver: &str, cache: bool)
+                        -> Result<(PathBuf, PathBuf), Box<dyn Error>> {
+
+    match cache {
+        true => get_library_path_cache(rver),
+        false => get_library_path_nocache(rver)
+    }
+}
+
+pub fn get_library_path_cache(rver: &str)
+                              -> Result<(PathBuf, PathBuf), Box<dyn Error>> {
+
+    debug!("Finding library path (R {}) in cache", rver);
+    let default = get_config(rver, "userlibrary");
+    let main = match default {
+        Err(e) => {
+            info!("Failed to read location of library from cache: {}", e.to_string());
+            return get_library_path_nocache(rver)
+        },
+        Ok(main) => {
+            match main {
+                None => {
+                    return get_library_path_nocache(rver)
+                },
+                Some(main) => main
+            }
+        }
+    };
+
+    let main_path = Path::new(&main);
+    let config_path = main_path.join("___default");
+    if !main_path.exists() || !config_path.exists() {
+        return Ok((main_path.to_path_buf(), main_path.to_path_buf()));
+    }
+
+    let conf_lines = read_lines(&config_path)?;
+    let def_path = main_path.join(&conf_lines[0]);
+    if ! def_path.exists() {
+        Ok((main_path.to_path_buf(), main_path.to_path_buf()))
+    } else {
+        Ok((main_path.to_path_buf(), def_path.to_path_buf()))
+    }
+}
+
+pub fn get_library_path_nocache(rver: &str)
+                        -> Result<(PathBuf, PathBuf), Box<dyn Error>> {
+
+    debug!("Finding library path (R {}) without cache", rver);
+    let r = get_r_binary(rver)?;
+    let out = Command::new(r)
+        .args(["--vanilla", "-s", "-e",
+               "cat(strsplit(Sys.getenv('R_LIBS_USER'), .Platform$path.sep)[[1]][1])"])
+        .output()?;
+    let lib = match String::from_utf8(out.stdout) {
+        Ok(v) => v,
+        Err(err) => bail!(
+            "Cannot query R_LIBS_USER for R {}: {}",
+            rver,
+            err.to_string()
+        ),
+    };
+
+    let defaultstr = shellexpand::tilde(&lib.as_str()).to_string();
+    let default = Path::new(&defaultstr);
+    let mut main = Path::new(&defaultstr);
+
+    // If it ends with a __dir component, then drop that
+    if let Some(last) = main.file_name() {
+        let last = last.to_str();
+        if let Some(last) = last {
+            if &last[..2] == "__" {
+                if let Some(dirn) = main.parent() {
+                    main = Path::new(dirn);
+                }
+            }
+        }
+    }
+
+    let mainstr = main.to_owned().into_os_string().into_string();
+    match mainstr {
+        Ok(mainstr) => save_config(rver, "userlibrary", Some(&mainstr))?,
+        Err(_) => warn!("Failed to save non-UTF-8 location of library: {}", main.display())
+    };
+
+    debug!("R library path: main: {}, default: {}", main.display(), default.display());
+    Ok((main.to_path_buf(), default.to_path_buf()))
 }

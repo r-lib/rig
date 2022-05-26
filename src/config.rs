@@ -4,7 +4,7 @@ use std::error::Error;
 use std::path::PathBuf;
 
 use directories::ProjectDirs;
-use simple_error::bail;
+use simple_error::{bail,SimpleError};
 
 use serde_derive::Serialize;
 use serde_derive::Deserialize;
@@ -48,6 +48,9 @@ impl Config {
     fn save(&self) -> Result<(), Box<dyn Error>> {
         let str = serde_json::to_string_pretty(self)?;
         let config_file = rig_config_file()?;
+	let parent = config_file.parent()
+	    .ok_or(SimpleError::new("Invalid config file directory"))?;
+	std::fs::create_dir_all(&parent)?;
         std::fs::write(config_file, str)?;
         Ok(())
     }
