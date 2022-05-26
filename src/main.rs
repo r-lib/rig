@@ -27,6 +27,7 @@ mod library;
 use library::*;
 
 mod common;
+mod config;
 mod download;
 mod resolve;
 mod rversion;

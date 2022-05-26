@@ -24,6 +24,11 @@ pub fn basename(path: &str) -> Option<&str> {
     path.rsplitn(2, '/').next()
 }
 
+pub fn read_file_string(path: &Path) -> Result<String, Box<dyn Error>> {
+    let data = std::fs::read_to_string(path)?;
+    Ok(data)
+}
+
 pub fn read_lines(path: &Path) -> Result<Vec<String>, std::io::Error> {
     let file = File::open(path)?;
     BufReader::new(file).lines().collect()
@@ -75,22 +80,6 @@ pub fn replace_in_file(path: &Path, re: &Regex, sub: &str) -> Result<(), std::io
         std::fs::set_permissions(&path2, perms)?;
         std::fs::rename(path2, path)?;
     }
-
-    Ok(())
-}
-
-pub fn update_file(path: &Path, lines: &Vec<String>)
-                   -> Result<(), Box<dyn Error>> {
-
-    let path2 = bak_file(path);
-    let mut f = File::create(&path2)?;
-    for line in lines {
-        write!(f, "{}\n", line)?;
-    }
-
-    let perms = std::fs::metadata(path)?.permissions();
-    std::fs::set_permissions(&path2, perms)?;
-    std::fs::rename(path2, path)?;
 
     Ok(())
 }

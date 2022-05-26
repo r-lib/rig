@@ -16,7 +16,9 @@ use simple_error::{bail, SimpleError};
 use simplelog::{debug,info,warn};
 
 use crate::common::*;
+use crate::config::*;
 use crate::download::*;
+use crate::library::*;
 use crate::resolve::resolve_versions;
 use crate::rversion::*;
 use crate::utils::*;
@@ -254,12 +256,10 @@ pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool)
         let cmd;
         if update {
             cmd = r#"
-               dir.create(Sys.getenv('R_LIBS_USER'), showWarnings = FALSE, recursive = TRUE);
                install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/{}/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))
              "#;
         } else {
             cmd = r#"
-               dir.create(Sys.getenv('R_LIBS_USER'), showWarnings = FALSE, recursive = TRUE);
                if (!requireNamespace("pak", quietly = TRUE)) {
                  install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/{}/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))
                }
@@ -294,7 +294,7 @@ pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>
     let user = get_user()?;
     for ver in vers {
         check_installed(&ver)?;
-        let lib = get_library_path(&ver)?.1; // default
+        let (_main, lib) = get_library_path(&ver, false)?;
         if !lib.exists() {
             info!(
                 "{}: creating library at {} for user {}",
@@ -321,6 +321,13 @@ pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>
         } else {
             debug!("[DEBUG] {}: library at {} exists.", ver, lib.display());
         }
+
+        match library_update_rprofile(&ver) {
+            Err(e) => warn!(
+                "Could not update user library configuration, multiple libraries won't work: {}", e.to_string()
+            ),
+            Ok(_) => debug!("Updated library configuration")
+        };
     }
 
     Ok(())
@@ -905,11 +912,57 @@ fn extract_pkg_version(filename: &OsStr) -> Result<Rversion, Box<dyn Error>> {
     Ok(res)
 }
 
-pub fn get_library_path(rver: &str) -> Result<(PathBuf, PathBuf), Box<dyn Error>> {
+pub fn get_library_path(rver: &str, cache: bool)
+                        -> Result<(PathBuf, PathBuf), Box<dyn Error>> {
+
+    match cache {
+        true => get_library_path_cache(rver),
+        false => get_library_path_nocache(rver)
+    }
+}
+
+pub fn get_library_path_cache(rver: &str)
+                              -> Result<(PathBuf, PathBuf), Box<dyn Error>> {
+
+    let default = get_config(rver, "userlibrary");
+    let main = match default {
+        Err(e) => {
+            info!("Failed to read location of library from cache: {}", e.to_string());
+            return get_library_path_nocache(rver)
+        },
+        Ok(main) => {
+            match main {
+                None => {
+                    return get_library_path_nocache(rver)
+                },
+                Some(main) => main
+            }
+        }
+    };
+
+    let main_path = Path::new(&main);
+    let config_path = main_path.join("___default");
+    if !main_path.exists() || !config_path.exists() {
+        return Ok((main_path.to_path_buf(), main_path.to_path_buf()));
+    }
+
+    let conf_lines = read_lines(&config_path)?;
+    let def_path = main_path.join(&conf_lines[0]);
+    if ! def_path.exists() {
+        Ok((main_path.to_path_buf(), main_path.to_path_buf()))
+    } else {
+        Ok((main_path.to_path_buf(), def_path.to_path_buf()))
+    }
+}
+
+pub fn get_library_path_nocache(rver: &str)
+                        -> Result<(PathBuf, PathBuf), Box<dyn Error>> {
+
     let base = Path::new(R_ROOT);
     let r = base.join(&rver).join("Resources/R");
     let out = Command::new(r)
-        .args(["--vanilla", "-s", "-e", "cat(Sys.getenv('R_LIBS_USER'))"])
+        .args(["--vanilla", "-s", "-e",
+               "cat(strsplit(Sys.getenv('R_LIBS_USER'), .Platform$path.sep)[[1]][1])"])
         .output()?;
     let lib = match String::from_utf8(out.stdout) {
         Ok(v) => v,
@@ -936,10 +989,22 @@ pub fn get_library_path(rver: &str) -> Result<(PathBuf, PathBuf), Box<dyn Error>
         }
     }
 
+    let mainstr = main.to_owned().into_os_string().into_string();
+    match mainstr {
+        Ok(mainstr) => save_config(rver, "userlibrary", Some(&mainstr))?,
+        Err(_) => warn!("Failed to save non-UTF-8 location of library: {}", main.display())
+    };
+
     Ok((main.to_path_buf(), default.to_path_buf()))
 }
 
+#[allow(dead_code)]
 pub fn get_system_renviron(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
     let renviron = Path::new(R_ROOT).join(rver).join("Resources/etc/Renviron");
     Ok(renviron)
+}
+
+pub fn get_system_profile(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
+    let profile = Path::new(R_ROOT).join(rver).join("Resources/library/base/R/Rprofile");
+    Ok(profile)
 }

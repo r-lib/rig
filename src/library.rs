@@ -22,7 +22,7 @@ use crate::utils::*;
 
 pub fn sc_library_ls(args: &ArgMatches, libargs: &ArgMatches, mainargs: &ArgMatches)
                      -> Result<(), Box<dyn Error>> {
-    let libs = sc_library_get_list(None)?;
+    let libs = sc_library_get_list(None, false)?;
     let mut names: Vec<String> = libs.iter().map(|x| {
         if x.default {
             x.name.to_owned() + " (default)"
@@ -58,7 +58,8 @@ pub fn sc_library_ls(args: &ArgMatches, libargs: &ArgMatches, mainargs: &ArgMatc
     Ok(())
 }
 
-fn sc_library_get_list(rver: Option<String>) -> Result<Vec<PkgLibrary>, Box<dyn Error>> {
+fn sc_library_get_list(rver: Option<String>, cache: bool)
+                       -> Result<Vec<PkgLibrary>, Box<dyn Error>> {
     let rver = match rver {
         Some(x) => x,
         None => {
@@ -71,7 +72,7 @@ fn sc_library_get_list(rver: Option<String>) -> Result<Vec<PkgLibrary>, Box<dyn 
         }
     };
 
-    let (main, default) = get_library_path(&rver)?;
+    let (main, default) = get_library_path(&rver, cache)?;
     let paths = std::fs::read_dir(&main)?;
 
     let mut libs = Vec::new();
@@ -101,6 +102,10 @@ fn sc_library_get_list(rver: Option<String>) -> Result<Vec<PkgLibrary>, Box<dyn 
             continue;
         }
 
+        if fnamestr == "___default" {
+            continue;
+        }
+
         if fnamestr.len() < 3 {
             continue;
         }
@@ -127,7 +132,7 @@ pub fn sc_library_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             bail!("Need to set default R version for `rig library`.")
         }
     };
-    let libs = sc_library_get_list(Some(rver.to_string()))?;
+    let libs = sc_library_get_list(Some(rver.to_string()), false)?;
     let names: Vec<String> = libs.iter().map(|x| x.name.to_owned()).collect();
     if names.contains(&new) {
         bail!("Library '{}' already exists for R {}", new, rver);
@@ -164,7 +169,7 @@ pub fn sc_library_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             bail!("Need to set default R version for `rig library`.")
         }
     };
-    let libs = sc_library_get_list(Some(rver.to_string()))?;
+    let libs = sc_library_get_list(Some(rver.to_string()), false)?;
 
     let mut dir: Option<PathBuf> = None;
     for lib in libs {
@@ -218,7 +223,7 @@ fn sc_library_get_default() -> Result<PkgLibrary, Box<dyn Error>> {
         }
     };
 
-    let (_main, default) = get_library_path(&rver)?;
+    let (_main, default) = get_library_path(&rver, false)?;
     let mut name = "main".to_string();
 
     if let Some(last) = default.file_name() {
@@ -238,16 +243,14 @@ fn sc_library_get_default() -> Result<PkgLibrary, Box<dyn Error>> {
     })
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn sc_library_set_default(name: &str) -> Result<(), Box<dyn Error>> {
-    escalate("updating default library")?;
     let rver = match sc_get_default()? {
         Some(x) => x,
         None => {
             bail!("Need to set default R version for `rig library`.")
         }
     };
-    let libs = sc_library_get_list(Some(rver.to_string()))?;
+    let libs = sc_library_get_list(Some(rver.to_string()), false)?;
 
     let mut path: Option<PathBuf> = None;
     for lib in libs {
@@ -256,160 +259,77 @@ fn sc_library_set_default(name: &str) -> Result<(), Box<dyn Error>> {
         }
     }
 
-    match path {
+    let mut path = match path {
         None => bail!("No such library: {}, for R {}", name, rver),
-        Some(_path) => {
+        Some(x) => x
+    };
 
-            let mut pre_lines: Vec<String> = vec![
-                "## rig R_LIBS_USER start".to_string(),
-                "R_LIBS_USER_ORIG=${R_LIBS_USER}".to_string()
-            ];
-
-            let name = if name == "main" {
-                "".to_string()
-            } else {
-                "/__".to_string() + name
-            };
-
-            let mut post_lines: Vec<String> = vec![
-                "R_LIBS_USER_DEFAULT=${R_LIBS_USER}".to_string(),
-                format!("R_LIBS_USER_SELECTED=${{R_LIBS_USER_SELECTED-\"{}\"}}", name),
-                "R_LIBS_USER_SELECTED_FULL=${R_LIBS_USER}${R_LIBS_USER_SELECTED}".to_string(),
-                "R_LIBS_USER=${R_LIBS_USER_ORIG-${R_LIBS_USER_SELECTED_FULL}}".to_string(),
-                "## rig R_LIBS_USER end".to_string()
-            ];
-
-            let renviron = get_system_renviron(&rver)?;
-            let lines = read_lines(&renviron)?;
-            let re_start = Regex::new("^## rig R_LIBS_USER start")?;
-            let re_end = Regex::new("^## rig R_LIBS_USER end")?;
-            let re_def = Regex::new("^R_LIBS_USER=\\$\\{R_LIBS_USER:?\\-")?;
-            let idx_start = grep_lines(&re_start, &lines);
-            let idx_end = grep_lines(&re_end, &lines);
-            let nmarkers = idx_start.len() + idx_end.len();
-            let idx_def = grep_lines(&re_def, &lines);
-            if nmarkers != 0 && nmarkers != 2 {
-                bail!("Invalid system Renviron file at {}. Must include a \
-                       single pair of '## rig R_LIBS_USER start' and \
-                       '## rig R_LIBS_USER end'", renviron.display());
+    // Create ___default file in the library
+    if let Some(last) = path.file_name() {
+        let last = last.to_str();
+        if let Some(last) = last {
+            if &last[..2] == "__" {
+                path = path.parent().unwrap().to_path_buf();
             }
-
-            let mut lines2: Vec<String>;
-
-            if nmarkers == 0 {
-                if idx_def.len() != 1 {
-                    bail!("Invalid system Renviron file at {}, Must \
-                           include exactly one line single line that \
-                           sets `R_LIBS_USER`.");
-                }
-
-                let idx = idx_def[0];
-                lines2 = lines[..idx].to_vec();
-                lines2.append(&mut pre_lines);
-                lines2.push(lines[idx].to_string());
-                lines2.append(&mut post_lines);
-                lines2.append(&mut lines[(idx+1)..].to_vec());
-
-            } else {
-
-                let idx = idx_def[0];
-                let idx1 = idx_start[0];
-                let idx2 = idx_end[0];
-                lines2 = lines[..idx1].to_vec();
-                lines2.append(&mut pre_lines);
-                lines2.push(lines[idx].to_string());
-                lines2.append(&mut post_lines);
-                lines2.append(&mut lines[(idx2+1)..].to_vec());
-
-            }
-
-            update_file(&renviron, &lines2)?;
         }
+    }
+
+    let def_file = path.join("___default");
+    std::fs::write(def_file, name)?;
+
+    // Update the R installation if needed
+    let rprofile = get_system_profile(&rver)?;
+    let lines = read_lines(&rprofile)?;
+    let re_start = Regex::new("^## rig R_LIBS_USER start")?;
+    let idx_start = grep_lines(&re_start, &lines);
+    if idx_start.len() == 0 {
+        bail!("Library config not set up yet, call `rig system create-lib`");
     }
 
     Ok(())
 }
 
+pub fn library_update_rprofile(rver: &str) -> Result<(), Box<dyn Error>> {
+    escalate("updating user library configuration")?;
 
-#[cfg(target_os = "windows")]
-fn sc_library_set_default(name: &str) -> Result<(), Box<dyn Error>> {
-    escalate("updating default library")?;
-    let rver = match sc_get_default()? {
-        Some(x) => x,
-        None => {
-            bail!("Need to set default R version for `rig library`.")
-        }
-    };
-    let libs = sc_library_get_list(Some(rver.to_string()))?;
-
-    let mut path: Option<PathBuf> = None;
-    for lib in libs {
-        if lib.name == name {
-            path = Some(lib.path);
-        }
+    let rprofile = get_system_profile(&rver)?;
+    let lines = read_lines(&rprofile)?;
+    let re_start = Regex::new("^## rig R_LIBS_USER start")?;
+    let re_end = Regex::new("^## rig R_LIBS_USER end")?;
+    let idx_start = grep_lines(&re_start, &lines);
+    let idx_end = grep_lines(&re_end, &lines);
+    let nmarkers = idx_start.len() + idx_end.len();
+    if nmarkers != 0 && nmarkers != 2 {
+        bail!("Invalid system Rprofile file at {}. Must include a \
+               single pair of '## rig R_LIBS_USER start' and \
+               '## rig R_LIBS_USER end'", rprofile.display());
     }
 
-    match path {
-        None => bail!("No such library: {}, for R {}", name, rver),
-        Some(_path) => {
-
-            let name = if name == "main" {
-                "".to_string()
-            } else {
-                "/__".to_string() + name
-            };
-
-	    let newlines = format!(r#"
+    if nmarkers == 0 {
+        let newlines = r#"
 ## rig R_LIBS_USER start
-local({{
-  deflib <- Sys.getenv("R_LIBS_USER")
-  selected  <- Sys.getenv("R_LIBS_USER_SELECTED", "{}")
-  Sys.setenv("R_LIBS_USER_SELECTED" = selected)
-  if (!grepl("^__", basename(deflib))) {{
-    new <- paste0(deflib, selected)
-    Sys.setenv("R_LIBS_USER" = new)
-    libs <- .libPaths()
-    wh <- which(normalizePath(deflib, "/") == normalizePath(libs, "/"))[1]
-    if (!is.na(wh)) {{
-      libs[wh] <- normalizePath(new, "/")
-      .libPaths(libs)
-    }}
-  }}
-}})
+local({
+  userlibs <- strsplit(Sys.getenv("R_LIBS_USER"), .Platform$path.sep)[[1]]
+  if (userlibs[[1]] == "NULL") return()
+  userlib1 <- userlibs[1]
+  dir.create(userlib1, recursive = TRUE, showWarnings = FALSE)
+  deffile <- file.path(userlib1, "___default", fsep = "/")
+  if (file.exists(deffile)) {
+    def <- readLines(deffile, warn = FALSE)
+    def <- if (def == "main") "" else paste0("/__", def)
+    userlibs[1] <- file.path(userlib1, def, fsep = "/")
+    dir.create(userlibs[1], recursive = TRUE, showWarnings = FALSE)
+    Sys.setenv("R_LIBS_USER" = paste(userlibs, collapse = .Platform$path.sep))
+    invisible(.libPaths(c(
+      unlist(strsplit(Sys.getenv("R_LIBS"), .Platform$path.sep)),
+      userlibs
+    )))
+  }
+})
 ## rig R_LIBS_USER end
-"#, name);
+"#;
 
-            let rprofile = get_system_profile(&rver)?;
-            let lines = read_lines(&rprofile)?;
-            let re_start = Regex::new("^## rig R_LIBS_USER start")?;
-            let re_end = Regex::new("^## rig R_LIBS_USER end")?;
-            let idx_start = grep_lines(&re_start, &lines);
-            let idx_end = grep_lines(&re_end, &lines);
-            let nmarkers = idx_start.len() + idx_end.len();
-            if nmarkers != 0 && nmarkers != 2 {
-                bail!("Invalid system Rprofile file at {}. Must include a \
-                       single pair of '## rig R_LIBS_USER start' and \
-                       '## rig R_LIBS_USER end'", rprofile.display());
-            }
-
-            if nmarkers == 0 {
-		append_to_file(&rprofile, vec![newlines])?;
-
-            } else {
-
-		let mut lines2: Vec<String>;
-
-                let idx1 = idx_start[0];
-                let idx2 = idx_end[0];
-                lines2 = lines[..idx1].to_vec();
-                lines2.append(&mut vec![newlines]);
-		if idx2 + 1 < lines.len() {
-                    lines2.append(&mut lines[(idx2+1)..].to_vec());
-		}
-
-		update_file(&rprofile, &lines2)?;
-            }
-        }
+	append_to_file(&rprofile, vec![newlines.to_string()])?;
     }
 
     Ok(())

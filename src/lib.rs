@@ -15,8 +15,10 @@ use libc;
 use simple_error::bail;
 
 mod common;
+mod config;
 mod download;
 mod escalate;
+mod library;
 mod macos;
 mod resolve;
 mod rversion;
