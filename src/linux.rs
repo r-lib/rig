@@ -722,7 +722,9 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>)
 }
 
 pub fn get_r_binary(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
+    debug!("Finding R binary for R {}", rver);
     let bin = Path::new(R_ROOT).join(rver).join("bin/R");
+    debug!("R {} binary is at {}", rver, bin.display());
     Ok(bin)
 }
 

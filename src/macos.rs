@@ -911,7 +911,9 @@ fn extract_pkg_version(filename: &OsStr) -> Result<Rversion, Box<dyn Error>> {
 }
 
 pub fn get_r_binary(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
+    debug!("Finding R binary for R {}", rver);
     let bin = Path::new(R_ROOT).join(rver).join("Resources/R");
+    debug!("R {} binary is at {}", rver, bin.display());
     Ok(bin)
 }
 
