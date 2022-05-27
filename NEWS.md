@@ -8,6 +8,14 @@
 
 ## New features
 
+* Experimental multi-library support. See `rig library --help` for the
+  details.
+
+* On macOS rig now includes a menu bar app that show the default R version,
+  lets you choose between R versions and libraries, and lets you start
+  RStudio with a specific R version, and/or a recent RStudio project.
+  Start the app with `open -a Rig`.
+
 * Better messages. rig has a `-v` and `-vv` flag now, for extra debug and
   trace messages.
 

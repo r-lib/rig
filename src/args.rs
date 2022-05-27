@@ -35,6 +35,9 @@ DESCRIPTION
     root password is needed to add, set or delete them. If you delete an
     R installation, the user package libraries and their configurations are
     kept for all users on the system.
+
+    `rig library` is currently experimental, and might change in future
+    versions. Feedback is appreciated.
 "#;
 
 pub fn rig_app() -> Command<'static> {
