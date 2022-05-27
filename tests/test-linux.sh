@@ -117,7 +117,7 @@ teardown() {
     run R-4.0.5 -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
     [[ $status -eq 0 ]]
     [[ "$output" = "[1] TRUE" ]]
-    run rig system create-lib
+    run rig -vv system create-lib
     echo $output
     [[ $status -eq 0 ]]
 }
