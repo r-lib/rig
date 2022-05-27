@@ -386,7 +386,8 @@ pub fn rig_app() -> Command<'static> {
 
 
     let cmd_library = Command::new("library")
-        .about(HELP_LIBRARY)
+        .about("Manage package libraries [alias: lib] (experimental)")
+        .long_about(HELP_LIBRARY)
         .aliases(&["lib"])
         .arg_required_else_help(true)
         .arg(
