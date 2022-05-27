@@ -118,6 +118,7 @@ teardown() {
     [[ $status -eq 0 ]]
     [[ "$output" = "[1] TRUE" ]]
     run rig system create-lib
+    echo $output
     [[ $status -eq 0 ]]
 }
 
