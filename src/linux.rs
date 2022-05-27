@@ -19,6 +19,7 @@ use crate::rversion::*;
 use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
+use crate::library::*;
 use crate::utils::*;
 
 const R_ROOT: &str = "/opt/R";
@@ -228,8 +229,7 @@ pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>
     let user = get_user()?;
     for ver in vers {
         check_installed(&ver)?;
-        let lib = get_library_path(&ver)?.1; // default
-        let lib = Path::new(&lib);
+        let (_main, lib) = get_library_path(&ver, false)?;
         if !lib.exists() {
             info!(
                 "{}: creating library at {} for user {}",
@@ -239,13 +239,19 @@ pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>
             );
             std::fs::create_dir_all(&lib)?;
             nix::unistd::chown(
-                lib,
+                &lib,
                 Some(Uid::from_raw(user.uid)),
                 Some(Gid::from_raw(user.gid)),
             )?;
         } else {
             debug!("{}: library at {} exists.", ver, lib.display());
         }
+        match library_update_rprofile(&ver) {
+            Err(e) => warn!(
+                "Could not update user library configuration, multiple libraries won't work: {}", e.to_string()
+            ),
+            Ok(_) => debug!("Updated library configuration")
+        };
     }
     Ok(())
 }
@@ -271,12 +277,10 @@ pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool)
         let cmd;
         if update {
             cmd = r#"
-              dir.create(Sys.getenv('R_LIBS_USER'), showWarnings = FALSE, recursive = TRUE);
               install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/{}/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))
             "#;
         } else {
             cmd = r#"
-              dir.create(Sys.getenv('R_LIBS_USER'), showWarnings = FALSE, recursive = TRUE);
               if (!requireNamespace("pak", quietly = TRUE)) {
                 install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/{}/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))
               }
@@ -717,48 +721,18 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>)
     Ok(())
 }
 
-pub fn get_library_path(rver: &str) -> Result<(PathBuf, PathBuf), Box<dyn Error>> {
-    let user = get_user()?;
-    let base = Path::new(R_ROOT);
-    let r = base.join(&rver).join("bin/R");
-    let out;
-    if user.sudo {
-        out = Command::new("su")
-	    .args([&user.user, "--"])
-	    .arg(r)
-	    .args(["--vanilla", "-s", "-e", "cat(Sys.getenv('R_LIBS_USER'))"])
-	    .output()?;
-    } else {
-            out = Command::new(r)
-	    .args(["--vanilla", "-s", "-e", "cat(Sys.getenv('R_LIBS_USER'))"])
-	    .output()?;
-    }
-    let lib = String::from_utf8(out.stdout)?;
-
-    let userdir = user.dir.to_str()
-	.ok_or(SimpleError::new("User HOME is not a Unicode string"))?;
-	let re = Regex::new("^~")?;
-    let defaultstr = re.replace(&lib.as_str(), userdir).to_string();
-
-    let default = Path::new(&defaultstr);
-    let mut main = Path::new(&defaultstr);
-
-    // If it ends with a __dir component, then drop that
-    if let Some(last) = main.file_name() {
-        let last = last.to_str();
-        if let Some(last) = last {
-            if &last[..2] == "__" {
-                if let Some(dirn) = main.parent() {
-                    main = Path::new(dirn);
-                }
-            }
-        }
-    }
-
-    Ok((main.to_path_buf(), default.to_path_buf()))
+pub fn get_r_binary(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
+    let bin = Path::new(R_ROOT).join(rver).join("bin/R");
+    Ok(bin)
 }
 
+#[allow(dead_code)]
 pub fn get_system_renviron(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
     let renviron = Path::new(R_ROOT).join(rver).join("lib/R/etc/Renviron");
     Ok(renviron)
+}
+
+pub fn get_system_profile(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
+    let profile = Path::new(R_ROOT).join(rver).join("lib/R/library/base/R/Rprofile");
+    Ok(profile)
 }
