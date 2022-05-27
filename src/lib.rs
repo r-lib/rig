@@ -23,6 +23,7 @@ mod macos;
 mod resolve;
 mod rversion;
 mod utils;
+use library::*;
 use macos::*;
 
 // ------------------------------------------------------------------------
@@ -280,6 +281,37 @@ pub extern "C" fn rig_start_rstudio(
             let msg = e.to_string();
             set_error(&msg);
             ERROR_SET_DEFAULT_FAILED
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn rig_library_list(
+    ptr: *mut libc::c_char,
+    size: libc::size_t
+) -> libc::c_int {
+
+    let vers = sc_library_get_list(None, true);
+
+    match vers {
+        Ok(x) => {
+            let mut vers: Vec<String> = vec![];
+            for it in x {
+                let nm = it.name + if it.default { "*" } else { "" };
+                vers.push(nm)
+            }
+            match set_c_strings(vers, ptr, size) {
+                Ok(x) => x,
+                Err(_) => {
+                    set_error("Buffer too short for R libraries");
+                    return ERROR_BUFFER_SHORT
+                }
+            }
+        },
+        Err(e) => {
+            let msg = e.to_string();
+            set_error(&msg);
+            ERROR_DEFAULT_FAILED
         }
     }
 }

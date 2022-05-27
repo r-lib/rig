@@ -60,7 +60,7 @@ pub fn sc_library_ls(args: &ArgMatches, libargs: &ArgMatches, mainargs: &ArgMatc
     Ok(())
 }
 
-fn sc_library_get_list(rver: Option<String>, cache: bool)
+pub fn sc_library_get_list(rver: Option<String>, cache: bool)
                        -> Result<Vec<PkgLibrary>, Box<dyn Error>> {
     let rver = match rver {
         Some(x) => x,
@@ -373,7 +373,7 @@ pub fn get_library_path_cache(rver: &str)
     }
 
     let conf_lines = read_lines(&config_path)?;
-    let def_path = main_path.join(&conf_lines[0]);
+    let def_path = main_path.join("__".to_string() + &conf_lines[0]);
     if ! def_path.exists() {
         Ok((main_path.to_path_buf(), main_path.to_path_buf()))
     } else {

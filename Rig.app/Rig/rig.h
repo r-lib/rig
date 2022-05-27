@@ -14,3 +14,5 @@ int rig_list_with_versions(char *ptr, size_t size);
 int rig_set_default(const char *ptr);
 
 int rig_start_rstudio(const char *pversion, const char *pproject);
+
+int rig_library_list(char *ptr, size_t size);
