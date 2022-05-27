@@ -383,7 +383,16 @@ pub fn get_library_path_cache(rver: &str)
     }
 
     let conf_lines = read_lines(&config_path)?;
-    let def_path = main_path.join("__".to_string() + &conf_lines[0]);
+    let def_path = if conf_lines.len() > 0 {
+        if conf_lines[0] == "main" {
+            main_path.to_path_buf()
+        } else {
+            main_path.join("__".to_string() + &conf_lines[0])
+        }
+    } else {
+        warn!("Defaults library setup is broken, selecting main library");
+        main_path.to_path_buf()
+    };
     if ! def_path.exists() {
         Ok((main_path.to_path_buf(), main_path.to_path_buf()))
     } else {
