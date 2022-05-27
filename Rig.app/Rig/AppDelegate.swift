@@ -134,6 +134,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // -- library version menu ----------------------------------------------------------------------------------------------
 
+        if libs.count > 1 {
+            menu.addItem(NSMenuItem.separator())
+            menu.addItem(NSMenuItem(title: "Curent library", action: nil, keyEquivalent: ""))
+            for lib in libs {
+                let item = NSMenuItem()
+                var label = lib
+                if label.last != nil && label.last! == "*" {
+                    label.removeLast()
+                    item.state = NSControl.StateValue.on
+                }
+                item.title = label
+                item.action = #selector(selectLibrary)
+                item.keyEquivalent = ""
+                menu.addItem(item)
+            }
+        }
+
+        // ----------------------------------------------------------------------------------------------------------------------
+
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Preferences...", action: #selector(preferencesMenuItemActionHandler), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
@@ -172,6 +191,23 @@ from a shell. (It will need an admin password.)
             setError(msg: "Failed to set default: \(msg)", info: info)
         } catch {
             setError(msg: "Failed to set default, unknown error", info: info)
+        }
+    }
+
+    @objc func selectLibrary(_ sender: NSMenuItem?) {
+        let lib = sender!.title
+        let info = """
+Check if `rig lib default` works form the command line.
+Consider reporting a bug at https://github.com/r-lib/rig/issues.
+Thank you!
+"""
+        do {
+            try rigLibSetDefault(library: lib)
+            self.setStatusBarTitle()
+        } catch RigError.error(let msg) {
+            setError(msg: "Failed to set default library: \(msg)", info: info)
+        } catch {
+            setError(msg: "Failed to set default library, unknown error", info: info)
         }
     }
 

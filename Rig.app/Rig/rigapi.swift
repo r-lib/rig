@@ -108,6 +108,18 @@ func rigLibDefault() throws -> String {
     }
 }
 
+func rigLibSetDefault(library: String) throws {
+    var buffer = library.data(using: .utf8)!
+    buffer.append(0)
+    var err: Int32 = 0;
+    buffer.withUnsafeMutableBytes({(p: UnsafeMutablePointer<CChar>) -> Void in
+        err = rig_lib_set_default(p)
+    })
+    if err != 0 {
+        throw RigError.error(msg: rigLastError())
+    }
+}
+
 func rigLibList() throws -> Array<String> {
     var buffer = Data(count: 1024)
     let n = buffer.count

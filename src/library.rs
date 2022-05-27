@@ -245,7 +245,7 @@ fn sc_library_get_default() -> Result<PkgLibrary, Box<dyn Error>> {
     })
 }
 
-fn sc_library_set_default(name: &str) -> Result<(), Box<dyn Error>> {
+pub fn sc_library_set_default(name: &str) -> Result<(), Box<dyn Error>> {
     let rver = match sc_get_default()? {
         Some(x) => x,
         None => {
@@ -286,6 +286,16 @@ fn sc_library_set_default(name: &str) -> Result<(), Box<dyn Error>> {
     let idx_start = grep_lines(&re_start, &lines);
     if idx_start.len() == 0 {
         bail!("Library config not set up yet, call `rig system create-lib`");
+    }
+
+    // This if for the Rig.app, to update the title in the status bar.
+    // It watches the current version, so we change that to trigger an update.
+    #[cfg(target_os = "macos")]
+    {
+        match sc_set_default(&rver) {
+            Err(_) => { },
+            Ok(_) => { }
+        };
     }
 
     Ok(())

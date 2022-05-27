@@ -315,3 +315,32 @@ pub extern "C" fn rig_library_list(
         }
     }
 }
+
+#[no_mangle]
+pub extern "C" fn rig_lib_set_default(
+    ptr: *const libc::c_char) -> libc::c_int {
+
+    let cver;
+
+    unsafe {
+        cver = std::ffi::CStr::from_ptr(ptr);
+    }
+
+    let ver = match cver.to_str() {
+        Ok(x) => x,
+        Err(_) => {
+            return ERROR_INVALID_INPUT
+        }
+    };
+
+    match sc_library_set_default(ver) {
+        Ok(_) => {
+            SUCCESS
+        },
+        Err(e) => {
+            let msg = e.to_string();
+            set_error(&msg);
+            ERROR_SET_DEFAULT_FAILED
+        }
+    }
+}
