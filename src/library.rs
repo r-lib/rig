@@ -302,8 +302,6 @@ pub fn sc_library_set_default(name: &str) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn library_update_rprofile(rver: &str) -> Result<(), Box<dyn Error>> {
-    escalate("updating user library configuration")?;
-
     let rprofile = get_system_profile(&rver)?;
     let lines = read_lines(&rprofile)?;
     let re_start = Regex::new("^## rig R_LIBS_USER start")?;
@@ -318,6 +316,7 @@ pub fn library_update_rprofile(rver: &str) -> Result<(), Box<dyn Error>> {
     }
 
     if nmarkers == 0 {
+        escalate("updating user library configuration")?;
         let newlines = r#"
 ## rig R_LIBS_USER start
 local({

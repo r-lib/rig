@@ -396,6 +396,12 @@ pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>
 
     for ver in vers {
         check_installed(&ver)?;
+        match library_update_rprofile(&ver) {
+            Err(e) => warn!(
+                "Could not update user library configuration, multiple libraries won't work: {}", e.to_string()
+            ),
+            Ok(_) => debug!("Updated library configuration")
+        };
         let (_main, lib) = get_library_path(&ver, false)?;
         if !lib.exists() {
             info!(
@@ -408,13 +414,6 @@ pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>
         } else {
             debug!("{}: library at {} exists.", ver, lib.display());
         }
-
-        match library_update_rprofile(&ver) {
-            Err(e) => warn!(
-                "Could not update user library configuration, multiple libraries won't work: {}", e.to_string()
-            ),
-            Ok(_) => debug!("Updated library configuration")
-        };
     }
 
     Ok(())
