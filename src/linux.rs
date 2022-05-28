@@ -1,6 +1,7 @@
 #![cfg(target_os = "linux")]
 
 use regex::Regex;
+use std::{file,line};
 use std::error::Error;
 use std::ffi::OsStr;
 use std::os::unix::fs::symlink;
@@ -10,7 +11,7 @@ use std::process::{Command, Stdio};
 use clap::ArgMatches;
 use nix::unistd::Gid;
 use nix::unistd::Uid;
-use simple_error::{bail,SimpleError};
+use simple_error::*;
 use simplelog::{debug,info,warn};
 
 use crate::resolve::resolve_versions;
@@ -109,8 +110,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     if !args.is_present("without-pak") {
         system_add_pak(
             Some(vec![dirname.to_string()]),
-            args.value_of("pak-version")
-		.ok_or(SimpleError::new("Internal argument error"))?,
+            require_with!(args.value_of("pak-version"), "clap error"),
             // If this is specified then we always re-install
             args.occurrences_of("pak-version") > 0
         )?;
@@ -120,12 +120,20 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 }
 
 fn get_install_dir_deb(path: &OsStr) -> Result<String, Box<dyn Error>> {
-    let out = Command::new("dpkg")
-        .arg("-I")
-	.arg(path)
-        .output()?;
-    let std = String::from_utf8(out.stdout)?;
-
+    let path2 = Path::new(path);
+    let out = try_with!(
+	Command::new("dpkg")
+            .arg("-I")
+	    .arg(path)
+            .output(),
+	"Failed to run dpkg -I {} @{}:{}",
+	path2.display(), file!(), line!()
+    );
+    let std = try_with!(
+	String::from_utf8(out.stdout),
+	"Non-UTF-8 output from dpkg -I {} @{}:{}",
+	path2.display(), file!(), line!()
+    );
     let lines = std.lines();
     let re = Regex::new("^[ ]*Package: r-(.*)$")?;
     let lines: Vec<&str> = lines.filter(|l| re.is_match(l)).collect();
@@ -137,10 +145,13 @@ fn get_install_dir_deb(path: &OsStr) -> Result<String, Box<dyn Error>> {
 fn add_deb(path: &OsStr) -> Result<(), Box<dyn Error>> {
     info!("Running apt-get update");
     println!("--nnn-- Start of apt-get output -------------------");
-    let status = Command::new("apt-get")
-	.args(["update"])
-	.spawn()?
-	.wait()?;
+    let status = try_with!(
+	Command::new("apt-get")
+	    .args(["update"])
+	    .status(),
+	"Failed to run apt-get update @{}:{}",
+	file!(), line!()
+    );
     println!("--uuu-- End of apt-get output ---------------------");
 
     if !status.success() {
@@ -149,10 +160,13 @@ fn add_deb(path: &OsStr) -> Result<(), Box<dyn Error>> {
 
     info!("Running apt-get install");
     println!("--nnn-- Start of apt-get output -------------------");
-    let status = Command::new("apt-get")
-	.args(["install", "-y", "gdebi-core"])
-	.spawn()?
-	.wait()?;
+    let status = try_with!(
+	Command::new("apt-get")
+	    .args(["install", "-y", "gdebi-core"])
+	    .status(),
+	"Failed to run apt-get install @{}:{}",
+	file!(), line!()
+    );
     println!("--uuu-- End of apt-get output ---------------------");
 
     if !status.success() {
@@ -161,11 +175,14 @@ fn add_deb(path: &OsStr) -> Result<(), Box<dyn Error>> {
 
     info!("Running gdebi");
     println!("--nnn-- Start of gdebi output ---------------------");
-    let status = Command::new("gdebi")
-	.arg("-n")
-	.arg(path)
-	.spawn()?
-	.wait()?;
+    let status = try_with!(
+	Command::new("gdebi")
+	    .arg("-n")
+	    .arg(path)
+	    .status(),
+	"Failed to run gdebi @{}:{}",
+	file!(), line!()
+    );
     println!("--uuu-- End of gdebi output -----------------------");
 
     if !status.success() {
@@ -181,23 +198,30 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     if vers.is_none() {
         return Ok(());
     }
-    let vers = vers.ok_or(SimpleError::new("Internal argument error"))?;
+    let vers = require_with!(vers, "clap error");
 
     for ver in vers {
         check_installed(&ver.to_string())?;
 
 	let pkgname = "r-".to_string() + ver;
-	let out = Command::new("dpkg")
-	    .args(["-s",  &pkgname])
-	    .output()?;
+	let out = try_with!(
+	    Command::new("dpkg")
+		.args(["-s",  &pkgname])
+		.output(),
+	    "Failed to run dpkg -s {} @{}:{}",
+	    pkgname, file!(), line!()
+	);
 
 	if out.status.success() {
 	    info!("Removing {} package", pkgname);
 	    println!("--nnn-- Start of apt-get output -------------------");
-	    let status = Command::new("apt-get")
-		.args(["remove", "-y", "--purge", &pkgname])
-		.spawn()?
-		.wait()?;
+	    let status = try_with!(
+		Command::new("apt-get")
+		    .args(["remove", "-y", "--purge", &pkgname])
+		    .status(),
+		"Failed to run apt-get remove @{}:{}",
+		file!(), line!()
+	    );
 	    println!("--uuu-- End of apt-get output ---------------------");
 
 	    if !status.success() {
@@ -211,7 +235,11 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         let dir = dir.join(&ver);
 	if dir.exists() {
             info!("Removing {}", dir.display());
-            std::fs::remove_dir_all(&dir)?;
+            try_with!(
+		std::fs::remove_dir_all(&dir),
+		"Failed to remove {} @{}:{}",
+		dir.display(), file!(), line!()
+	    );
 	}
     }
 
@@ -226,7 +254,12 @@ pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>
         None => sc_get_list()?,
     };
 
-    let user = get_user()?;
+    let user: User = match get_user() {
+	Ok(x) => x,
+	Err(e) => {
+	    bail!("Failed to query username @{}:{}, {}", file!(), line!(), e.to_string());
+	}
+    };
     for ver in vers {
         check_installed(&ver)?;
         match library_update_rprofile(&ver) {
