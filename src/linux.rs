@@ -56,6 +56,13 @@ const UBUNTU_2204_RSPM: &str = "https://packagemanager.rstudio.com/all/__linux__
 
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("adding new R versions")?;
+
+    // This is needed to fix statix linking on Arm Linux :(
+    let uid = nix::unistd::getuid().as_raw();
+    if false {
+      println!("{}", uid);
+    }
+
     let linux = detect_linux()?;
     let version = get_resolve(args)?;
     let ver = version.version.to_owned();
