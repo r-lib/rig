@@ -34,7 +34,7 @@
 * Switches to root/administrator user as needed.
 
 ## Feedback
-Please open an issue in our issue tracker at https://github.com/gaborcsardi/rig/issues
+Please open an issue in our issue tracker at https://github.com/r-lib/rig/issues
     </description>
     <releaseNotes>
 ## rig v0.3.0

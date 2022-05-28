@@ -285,7 +285,7 @@ DESCRIPTION:
     want a non-default version.)
 
     This command is experimental. Please let us know at
-    https://github.com/gaborcsardi/rig/issues if it does not work as
+    https://github.com/r-lib/rig/issues if it does not work as
     expected.
 
     This command probably needs `sudo`: `sudo rig system allow-debugger`,
@@ -301,7 +301,7 @@ DESCRIPTION:
     same shell before starting R.
 
     This command is experimental. Please let us know at
-    https://github.com/gaborcsardi/rig/issues if it does not work as
+    https://github.com/r-lib/rig/issues if it does not work as
     expected.
 
     This command probably needs `sudo`: `sudo rig system allow-core-dumps`,

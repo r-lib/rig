@@ -4,7 +4,7 @@
 #define MyAppName "rig -- The R Installation Manager"
 #define MyAppVersion "0.3.1"
 #define MyAppPublisher "Gabor Csardi"
-#define MyAppURL "https://github.com/gaborcsardi/rig"
+#define MyAppURL "https://github.com/r-lib/rig"
 #define MyAppExeName "rig.exe"
 
 [Setup]
