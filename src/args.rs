@@ -48,13 +48,13 @@ const HELP_ABOUT_PRE: &str = r#"NAME
 
 DESCRIPTION
     rig manages your R installations, on macOS, Windows, and Linux. It can
-    install and set up multiple versions R, and make sure that they work
+    install and set up multiple versions of R, and make sure that they work
     together.
 "#;
 
 const HELP_ABOUT_POST: &str = r#"
     rig is currently experimental and is a work in progress. Feedback is much
-    appreciated. See https://github.com/gaborcsardi/rig for bug reports.
+    appreciated. See https://github.com/r-lib/rig for bug reports.
 "#;
 
 lazy_static! {
