@@ -62,6 +62,7 @@ fn main_() -> i32 {
 
     let config = ConfigBuilder::new()
         .set_time_level(LevelFilter::Trace)
+        .set_location_level(LevelFilter::Debug)
         .set_level_color(Level::Error, Some(Color::Magenta))
         .set_level_color(Level::Warn, Some(Color::Yellow))
         .set_level_color(Level::Info, Some(Color::Blue))
