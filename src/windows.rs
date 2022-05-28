@@ -54,10 +54,15 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let dirname = get_latest_install_path()?;
 
     match dirname {
-	None => system_create_lib(None)?,
+	None => {
+            let vers = sc_get_list()?;
+            for ver in vers {
+                library_update_rprofile(&ver)?;
+            }
+        },
 	Some(ref dirname) => {
             set_default_if_none(dirname.to_string())?;
-            system_create_lib(Some(vec![dirname.to_string()]))?;
+            library_update_rprofile(&dirname.to_string())?;
 	}
     };
     sc_system_make_links()?;
@@ -382,37 +387,6 @@ pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool)
 
         if !status.success() {
             bail!("Failed to run R {} to install pak", ver);
-        }
-    }
-
-    Ok(())
-}
-
-pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
-    let vers = match vers {
-        Some(x) => x,
-        None => sc_get_list()?,
-    };
-
-    for ver in vers {
-        check_installed(&ver)?;
-        match library_update_rprofile(&ver) {
-            Err(e) => warn!(
-                "Could not update user library configuration, multiple libraries won't work: {}", e.to_string()
-            ),
-            Ok(_) => debug!("Updated library configuration")
-        };
-        let (_main, lib) = get_library_path(&ver, false)?;
-        if !lib.exists() {
-            info!(
-                "{}: creating library at {}",
-                ver,
-                lib.display()
-            );
-            std::fs::create_dir_all(&lib)?;
-
-        } else {
-            debug!("{}: library at {} exists.", ver, lib.display());
         }
     }
 

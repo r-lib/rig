@@ -8,8 +8,6 @@ use std::process::Command;
 use rand::Rng;
 
 use clap::ArgMatches;
-use nix::unistd::Gid;
-use nix::unistd::Uid;
 use regex::Regex;
 use semver::Version;
 use simple_error::{bail, SimpleError};
@@ -81,7 +79,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     sc_system_forget()?;
     system_no_openmp(Some(vec![dirname.to_string()]))?;
     system_fix_permissions(None)?;
-    system_create_lib(Some(vec![dirname.to_string()]))?;
+    library_update_rprofile(&dirname.to_string())?;
     sc_system_make_links()?;
 
     if !args.is_present("without-cran-mirror") {
@@ -278,53 +276,6 @@ pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool)
 
         if !status.success() {
             bail!("Failed to run R {} to install pak", ver);
-        }
-    }
-
-    Ok(())
-}
-
-pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
-    let vers = match vers {
-        Some(x) => x,
-        None => sc_get_list()?,
-    };
-
-    let user = get_user()?;
-    for ver in vers {
-        check_installed(&ver)?;
-        match library_update_rprofile(&ver) {
-            Err(e) => warn!(
-                "Could not update user library configuration, multiple libraries won't work: {}", e.to_string()
-            ),
-            Ok(_) => debug!("Updated library configuration")
-        };
-        let (_main, lib) = get_library_path(&ver, false)?;
-        if !lib.exists() {
-            info!(
-                "{}: creating library at {} for user {}",
-                ver,
-                lib.display(),
-                user.user
-            );
-            match std::fs::create_dir_all(&lib) {
-                Err(err) => bail!(
-                    "Cannot create library at {}: {}",
-                    lib.display(),
-                    err.to_string()
-                ),
-                _ => {}
-            };
-            match nix::unistd::chown(
-                &lib,
-                Some(Uid::from_raw(user.uid)),
-                Some(Gid::from_raw(user.gid)),
-            ) {
-                Err(err) => bail!("Cannot set owner on {}: {}", lib.display(), err.to_string()),
-                _ => {}
-            };
-        } else {
-            debug!("[DEBUG] {}: library at {} exists.", ver, lib.display());
         }
     }
 

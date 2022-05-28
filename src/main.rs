@@ -2,7 +2,7 @@
 use std::error::Error;
 
 use clap::ArgMatches;
-use simple_error::SimpleError;
+use simple_error::*;
 use simplelog::*;
 
 mod args;
@@ -222,14 +222,17 @@ fn sc_default(args: &ArgMatches, mainargs: &ArgMatches)
 
 pub fn sc_system_create_lib(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let vers = args.values_of("version");
-    if vers.is_none() {
-        system_create_lib(None)
-    } else {
-        let vers: Vec<String> = vers
-            .ok_or(SimpleError::new("Internal argument error"))?
-            .map(|v| v.to_string()).collect();
-        system_create_lib(Some(vers))
+    let vers: Vec<String> = match vers {
+        None => sc_get_list()?,
+        Some(vers) => {
+            vers.map(|v| v.to_string()).collect()
+        }
+    };
+
+    for ver in vers {
+        library_update_rprofile(&ver)?;
     }
+    Ok(())
 }
 
 // ------------------------------------------------------------------------

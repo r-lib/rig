@@ -226,11 +226,11 @@ pub fn rig_app() -> Command<'static> {
         .long_about(HELP_SYSTEM_LINKS);
 
     let cmd_system_lib = Command::new("create-lib")
-        .about("Create current user's package libraries")
+        .about("Set up automatic user package libraries")
         .long_about(HELP_SYSTEM_LIB)
         .arg(
             Arg::new("version")
-                .help("R versions to create the library for (default: all)")
+                .help("R versions (default: all)")
                 .required(false)
                 .multiple_occurrences(true),
         );
