@@ -4,21 +4,11 @@
 // macOS help
 // ------------------------------------------------------------------------
 
-const HELP_ABOUT: &str = r#"NAME
-    rig - manage R installations
-
-DESCRIPTION
-    rig manages your R installations, on macOS, Windows, and Linux. It can
-    install and set up multiple versions R, and make sure that they work
-    together.
-
+const HELP_ABOUT: &str = r#"
     On macOS, R versions installed by rig do not interfere. You can run
     multiple versions at the same time. rig also makes sure that packages
     are installed into a user package library, so reinstalling R will not
     wipe out your installed packages.
-
-    rig is currently experimental and is a work in progress. Feedback is much
-    appreciated. See https://github.com/gaborcsardi/rig for bug reports.
 "#;
 
 const HELP_EXAMPLES: &str = r#"EXAMPLES:

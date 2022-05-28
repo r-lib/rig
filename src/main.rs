@@ -6,7 +6,7 @@ use simple_error::SimpleError;
 use simplelog::*;
 
 mod args;
-use args::parse_args;
+use args::*;
 
 #[cfg(target_os = "macos")]
 mod macos;

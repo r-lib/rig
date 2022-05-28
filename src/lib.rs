@@ -14,6 +14,7 @@ use lazy_static::lazy_static;
 use libc;
 use simple_error::bail;
 
+mod args;
 mod common;
 mod config;
 mod download;

@@ -2,7 +2,10 @@
 // Arguemnt parsing
 // ------------------------------------------------------------------------
 
+// crates used here need to go in build-dependencies as well !!!
+
 use clap::{Command, Arg, ArgMatches};
+use lazy_static::lazy_static;
 
 #[cfg(target_os = "macos")]
 use simplelog::*;
@@ -40,6 +43,25 @@ DESCRIPTION
     versions. Feedback is appreciated.
 "#;
 
+const HELP_ABOUT_PRE: &str = r#"NAME
+    rig - manage R installations
+
+DESCRIPTION
+    rig manages your R installations, on macOS, Windows, and Linux. It can
+    install and set up multiple versions R, and make sure that they work
+    together.
+"#;
+
+const HELP_ABOUT_POST: &str = r#"
+    rig is currently experimental and is a work in progress. Feedback is much
+    appreciated. See https://github.com/gaborcsardi/rig for bug reports.
+"#;
+
+lazy_static! {
+    static ref HELP_ABOUT_REAL: String =
+        HELP_ABOUT_PRE.to_string() + HELP_ABOUT + HELP_ABOUT_POST;
+}
+
 pub fn rig_app() -> Command<'static> {
 
     let _arch_x86_64: &'static str = "x86_64";
@@ -75,7 +97,7 @@ pub fn rig_app() -> Command<'static> {
 
     let rig = Command::new("RIG -- The R Installation Manager")
         .version("0.3.1")
-        .about(HELP_ABOUT)
+        .about(HELP_ABOUT_REAL.as_str())
         .arg_required_else_help(true)
         .term_width(80);
 
