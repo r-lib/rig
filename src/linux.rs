@@ -9,8 +9,6 @@ use std::path::{Path,PathBuf};
 use std::process::{Command, Stdio};
 
 use clap::ArgMatches;
-use nix::unistd::Gid;
-use nix::unistd::Uid;
 use simple_error::*;
 use simplelog::{debug,info,warn};
 
@@ -92,7 +90,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     set_default_if_none(dirname.to_string())?;
 
-    library_udpate_rprofile(&dirname.to_string())?;
+    library_update_rprofile(&dirname.to_string())?;
     sc_system_make_links()?;
 
     if !args.is_present("without-cran-mirror") {
