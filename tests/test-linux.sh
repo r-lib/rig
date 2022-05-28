@@ -119,7 +119,6 @@ teardown() {
     [[ "$output" = "[1] TRUE" ]]
     run rig -vv system create-lib
     echo "$output"
-    find $HOME/R/ | xargs ls -ld
     [[ $status -eq 0 ]]
 }
 

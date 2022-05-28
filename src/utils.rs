@@ -1,3 +1,5 @@
+
+use std::{file,line};
 use std::path::{Path, PathBuf};
 use std::ffi::OsString;
 use std::fs::File;
@@ -15,8 +17,7 @@ use simple_error::SimpleError;
 use crate::rversion::User;
 
 use std::error::Error;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-use simple_error::bail;
+use simple_error::*;
 
 use simplelog::*;
 
@@ -29,9 +30,14 @@ pub fn read_file_string(path: &Path) -> Result<String, Box<dyn Error>> {
     Ok(data)
 }
 
-pub fn read_lines(path: &Path) -> Result<Vec<String>, std::io::Error> {
+pub fn read_lines(path: &Path) -> Result<Vec<String>, Box<dyn Error>> {
     let file = File::open(path)?;
-    BufReader::new(file).lines().collect()
+    let mut result: Vec<String> = vec![];
+    let lines = BufReader::new(file).lines();
+    for line in lines {
+        result.push(try_with!(line, "read failed"));
+    }
+    Ok(result)
 }
 
 pub fn grep_lines(re: &Regex, lines: &Vec<String>) -> Vec<usize> {
@@ -62,7 +68,7 @@ pub fn bak_file(path: &Path) -> PathBuf {
 }
 
 #[cfg(target_os = "macos")]
-pub fn replace_in_file(path: &Path, re: &Regex, sub: &str) -> Result<(), std::io::Error> {
+pub fn replace_in_file(path: &Path, re: &Regex, sub: &str) -> Result<(), Box<dyn Error>> {
     let mut lines = read_lines(path)?;
     let mch = grep_lines(re, &lines);
     if mch.len() > 0 {
@@ -84,7 +90,7 @@ pub fn replace_in_file(path: &Path, re: &Regex, sub: &str) -> Result<(), std::io
     Ok(())
 }
 
-pub fn append_to_file(path: &Path, extra: Vec<String>) -> Result<(), std::io::Error> {
+pub fn append_to_file(path: &Path, extra: Vec<String>) -> Result<(), Box<dyn Error>> {
     debug!("Updating {:?}", path);
     let lines = read_lines(path)?;
     let path2 = bak_file(path);

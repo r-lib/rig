@@ -1,11 +1,12 @@
 
 use regex::Regex;
+use std::{file,line};
 use std::error::Error;
 use std::path::{Path,PathBuf};
 use std::process::Command;
 
 use clap::ArgMatches;
-use simple_error::{bail,SimpleError};
+use simple_error::*;
 use simplelog::{debug,info,warn};
 
 #[cfg(target_os = "macos")]
@@ -75,7 +76,11 @@ pub fn sc_library_get_list(rver: Option<String>, cache: bool)
     };
 
     let (main, default) = get_library_path(&rver, cache)?;
-    let paths = std::fs::read_dir(&main)?;
+    let paths = try_with!(
+        std::fs::read_dir(&main),
+        "Cannot read directory {} @{}:{}",
+        main.display(), file!(), line!()
+    );
 
     let mut libs = Vec::new();
 
@@ -87,7 +92,11 @@ pub fn sc_library_get_list(rver: Option<String>, cache: bool)
     });
 
     for de in paths {
-        let path = de?.path();
+        let path = try_with!(
+            de,
+            "Cannot read directory {} @{}:{}",
+            main.display(), file!(), line!()
+        ).path();
 
         // If no path name, then path ends with ..., so we can skip
         let fnamestr = match path.file_name() {
@@ -125,9 +134,7 @@ pub fn sc_library_get_list(rver: Option<String>, cache: bool)
 }
 
 pub fn sc_library_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    let new = args.value_of("lib-name")
-        .ok_or(SimpleError::new("Internal argument error"))?.to_string();
-
+    let new = require_with!(args.value_of("lib-name"), "clap error").to_string();
     let rver = match sc_get_default()? {
         Some(x) => x,
         None => {
@@ -150,7 +157,11 @@ pub fn sc_library_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         None => bail!("Internal error, no main library for R {}", rver),
         Some(main) => {
             let dir = main.as_path().join("__".to_string() + &new);
-            std::fs::create_dir_all(&dir)?;
+            try_with!(
+                std::fs::create_dir_all(&dir),
+                "Cannot create directory {} @{}:{}",
+                dir.display(), file!(), line!()
+            );
         }
     };
 
@@ -158,9 +169,7 @@ pub fn sc_library_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn sc_library_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    let torm = args.value_of("lib-name")
-        .ok_or(SimpleError::new("Internal argument error"))?.to_string();
-
+    let torm = require_with!(args.value_of("lib-name"), "clap error").to_string();
     if torm == "main" {
         bail!("Cannot remove the main library");
     }
@@ -187,7 +196,11 @@ pub fn sc_library_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         None => bail!("Library {} does not exist for R {}", torm, rver),
         Some(dir) => {
             info!("Deleting library {} for R {}", torm, rver);
-            std::fs::remove_dir_all(&dir.as_path())?;
+            try_with!(
+                std::fs::remove_dir_all(&dir.as_path()),
+                "Cannot delete directory {} @ {}:{}",
+                dir.display(), file!(), line!()
+            );
         }
     };
 
@@ -198,8 +211,7 @@ pub fn sc_library_default(args: &ArgMatches, libargs: &ArgMatches,
                           mainargs: &ArgMatches)
                           -> Result<(), Box<dyn Error>> {
     if args.is_present("lib-name") {
-        let name = args.value_of("lib-name")
-            .ok_or(SimpleError::new("Internal argument error"))?.to_string();
+        let name = require_with!(args.value_of("lib-name"), "clap error").to_string();
         sc_library_set_default(&name)
     } else {
         let default = sc_library_get_default()?;
@@ -277,11 +289,21 @@ pub fn sc_library_set_default(name: &str) -> Result<(), Box<dyn Error>> {
     }
 
     let def_file = path.join("___default");
-    std::fs::write(def_file, name)?;
+    try_with!(
+        std::fs::write(&def_file, name),
+        "Cannot write file {} @{}:{}",
+        def_file.display(), file!(), line!()
+    );
 
     // Update the R installation if needed
     let rprofile = get_system_profile(&rver)?;
-    let lines = read_lines(&rprofile)?;
+    let lines = match read_lines(&rprofile) {
+        Ok(x) => x,
+        Err(e) => {
+            bail!("Cannot read lines from file {} @{}:{}, {}",
+                  rprofile.display(), file!(), line!(), e.to_string())
+        }
+    };
     let re_start = Regex::new("^## rig R_LIBS_USER start")?;
     let idx_start = grep_lines(&re_start, &lines);
     if idx_start.len() == 0 {
@@ -303,7 +325,13 @@ pub fn sc_library_set_default(name: &str) -> Result<(), Box<dyn Error>> {
 
 pub fn library_update_rprofile(rver: &str) -> Result<(), Box<dyn Error>> {
     let rprofile = get_system_profile(&rver)?;
-    let lines = read_lines(&rprofile)?;
+    let lines = match read_lines(&rprofile) {
+        Ok(x) => x,
+        Err(e) => {
+            bail!("Cannot read lines from file {} @{}:{}, {}",
+                  rprofile.display(), file!(), line!(), e.to_string())
+        }
+    };
     let re_start = Regex::new("^## rig R_LIBS_USER start")?;
     let re_end = Regex::new("^## rig R_LIBS_USER end")?;
     let idx_start = grep_lines(&re_start, &lines);
@@ -340,7 +368,14 @@ local({
 ## rig R_LIBS_USER end
 "#;
 
-	append_to_file(&rprofile, vec![newlines.to_string()])?;
+	match append_to_file(&rprofile, vec![newlines.to_string()]) {
+            Err(e) => {
+                bail!("Cannot update file {} @{}:{}, {}",
+                      rprofile.display(), file!(), line!(), e.to_string()
+                );
+            },
+            _ => { }
+        };
     }
 
     Ok(())
@@ -381,7 +416,13 @@ pub fn get_library_path_cache(rver: &str)
         return Ok((main_path.to_path_buf(), main_path.to_path_buf()));
     }
 
-    let conf_lines = read_lines(&config_path)?;
+    let conf_lines = match read_lines(&config_path) {
+        Ok(x) => x,
+        Err(e) => {
+            bail!("Cannot read lines from file {} @{}:{}, {}",
+                  config_path.display(), file!(), line!(), e.to_string())
+        }
+    };
     let def_path = if conf_lines.len() > 0 {
         if conf_lines[0] == "main" {
             main_path.to_path_buf()
@@ -404,10 +445,14 @@ pub fn get_library_path_nocache(rver: &str)
 
     debug!("Finding library path (R {}) without cache", rver);
     let r = get_r_binary(rver)?;
-    let out = Command::new(r)
-        .args(["--vanilla", "-s", "-e",
-               "cat(strsplit(Sys.getenv('R_LIBS_USER'), .Platform$path.sep)[[1]][1])"])
-        .output()?;
+    let out = try_with!(
+        Command::new(r)
+            .args(["--vanilla", "-s", "-e",
+                   "cat(strsplit(Sys.getenv('R_LIBS_USER'), .Platform$path.sep)[[1]][1])"])
+            .output(),
+        "Failed to run R {} to get library path @{}:{}",
+        rver, file!(), line!()
+    );
     let lib = match String::from_utf8(out.stdout) {
         Ok(v) => v,
         Err(err) => bail!(
@@ -435,7 +480,17 @@ pub fn get_library_path_nocache(rver: &str)
 
     let mainstr = main.to_owned().into_os_string().into_string();
     match mainstr {
-        Ok(mainstr) => save_config(rver, "userlibrary", Some(&mainstr))?,
+        Ok(mainstr) => {
+            match save_config(rver, "userlibrary", Some(&mainstr)) {
+                Ok(x) => x,
+                Err(e) => {
+                    bail!(
+                        "Failed to save config @{}:{}, {}",
+                        file!(), line!(), e.to_string()
+                    );
+                }
+            };
+        },
         Err(_) => warn!("Failed to save non-UTF-8 location of library: {}", main.display())
     };
 
