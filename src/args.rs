@@ -62,6 +62,15 @@ lazy_static! {
         HELP_ABOUT_PRE.to_string() + HELP_ABOUT + HELP_ABOUT_POST;
 }
 
+const HELP_SYSTEM_LIB: &str = r#"
+DESCRIPTION:
+    Set up R to create user package libraries when started, by default for
+    installed R versions.
+
+    `rig add` runs `rig system create-lib`, so if you only use rig to
+    install R, then you do not need to run it manually.
+"#;
+
 pub fn rig_app() -> Command<'static> {
 
     let _arch_x86_64: &'static str = "x86_64";
@@ -225,9 +234,10 @@ pub fn rig_app() -> Command<'static> {
         .about("Create R-* quick links")
         .long_about(HELP_SYSTEM_LINKS);
 
-    let cmd_system_lib = Command::new("create-lib")
-        .about("Set up automatic user package libraries")
+    let cmd_system_lib = Command::new("setup-user-lib")
+        .about("Set up automatic user package libraries [alias: create-lib]")
         .long_about(HELP_SYSTEM_LIB)
+        .aliases(&["create-lib"])
         .arg(
             Arg::new("version")
                 .help("R versions (default: all)")

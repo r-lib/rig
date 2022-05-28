@@ -198,15 +198,6 @@ KNOWN ISSUE:
       are not in use.
 "#;
 
-const HELP_SYSTEM_LIB: &str = r#"
-DESCRIPTION
-    Set up R to create user package libraries when started, by default for
-    installed R versions.
-
-    `rig add` runs `rig system create-lib`, so if you only use rig to
-    install R, then you do not need to run it manually.
-"#;
-
 const HELP_SYSTEM_ADDPAK: &str = r#"
 DESCRIPTION
     Install/update pak for one or more R versions.

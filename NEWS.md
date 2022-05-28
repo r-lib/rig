@@ -16,6 +16,10 @@
   RStudio with a specific R version, and/or a recent RStudio project.
   Start the app with `open -a Rig`.
 
+* New subcommand `rig system setup-user-lib` to update the R config to create
+  the user package library when R starts up, if it does not exist. The old
+  `rig system create-lib` subcommand is now an alias of this.
+
 * Better messages. rig has a `-v` and `-vv` flag now, for extra debug and
   trace messages.
 
