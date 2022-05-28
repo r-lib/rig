@@ -90,6 +90,67 @@ func rigList() throws -> Array<InstalledVersion> {
     return result
 }
 
+func rigLibDefault() throws -> String {
+    let libs = try rigLibList()
+    if libs.count <= 1 {
+        return "main"
+    } else {
+        var def = "main"
+        for lib in libs {
+            let star = lib.last
+            if star != nil && star! == "*" {
+                def = lib
+                def.removeLast()
+                break
+            }
+        }
+        return def
+    }
+}
+
+func rigLibSetDefault(library: String) throws {
+    var buffer = library.data(using: .utf8)!
+    buffer.append(0)
+    var err: Int32 = 0;
+    buffer.withUnsafeMutableBytes({(p: UnsafeMutablePointer<CChar>) -> Void in
+        err = rig_lib_set_default(p)
+    })
+    if err != 0 {
+        throw RigError.error(msg: rigLastError())
+    }
+}
+
+func rigLibList() throws -> Array<String> {
+    var buffer = Data(count: 1024)
+    let n = buffer.count
+    var err: Int32 = 0
+    buffer.withUnsafeMutableBytes({(p: UnsafeMutablePointer<CChar>) -> Void in
+        err = rig_library_list(p, n)
+    })
+
+    if err != 0 {
+        throw RigError.error(msg: rigLastError())
+    }
+
+    var result: Array<String> = []
+    var i = 0
+    while i < buffer.count && buffer[i] != 0 {
+        if buffer[i] == 0 { break }
+        let start = i
+        while i < buffer.count && buffer[i] != 0 {
+            i += 1;
+        }
+        let end = i
+        if end > start {
+            let v = String(data: buffer.subdata(in: start..<end), encoding: .utf8)
+            result.append(v!)
+        }
+        i += 1;
+    }
+
+    return result
+}
+
 func rigStartRStudio(version: String?, project: String?) throws {
     var version2: String = version ?? ""
     var project2: String = project ?? ""

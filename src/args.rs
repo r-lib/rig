@@ -2,7 +2,10 @@
 // Arguemnt parsing
 // ------------------------------------------------------------------------
 
+// crates used here need to go in build-dependencies as well !!!
+
 use clap::{Command, Arg, ArgMatches};
+use lazy_static::lazy_static;
 
 #[cfg(target_os = "macos")]
 use simplelog::*;
@@ -15,6 +18,49 @@ std::include!("help-windows.in");
 
 #[cfg(target_os = "linux")]
 std::include!("help-linux.in");
+
+const HELP_LIBRARY: &str = r#"
+DESCRIPTION
+    Manage package libraries [alias: lib] (experimental)
+
+    rig supports multiple user package libraries. The usual user library is
+    called "main".
+
+    `rig library default` shows or sets the default library for the
+     current R version.
+    `rig library list` lists all libraries for the current R version.
+    `rig library add` adds a new library for the current R version.
+    `rig library rm` deletes a library, including all packages in it.
+    It is not possible to delete the current default library, and it is not
+    possible to delete the main library.
+
+    User libraries are implemented at the user level, no administrator or
+    root password is needed to add, set or delete them. If you delete an
+    R installation, the user package libraries and their configurations are
+    kept for all users on the system.
+
+    `rig library` is currently experimental, and might change in future
+    versions. Feedback is appreciated.
+"#;
+
+const HELP_ABOUT_PRE: &str = r#"NAME
+    rig - manage R installations
+
+DESCRIPTION
+    rig manages your R installations, on macOS, Windows, and Linux. It can
+    install and set up multiple versions of R, and make sure that they work
+    together.
+"#;
+
+const HELP_ABOUT_POST: &str = r#"
+    rig is currently experimental and is a work in progress. Feedback is much
+    appreciated. See https://github.com/r-lib/rig for bug reports.
+"#;
+
+lazy_static! {
+    static ref HELP_ABOUT_REAL: String =
+        HELP_ABOUT_PRE.to_string() + HELP_ABOUT + HELP_ABOUT_POST;
+}
 
 pub fn rig_app() -> Command<'static> {
 
@@ -51,7 +97,7 @@ pub fn rig_app() -> Command<'static> {
 
     let rig = Command::new("RIG -- The R Installation Manager")
         .version("0.3.1")
-        .about(HELP_ABOUT)
+        .about(HELP_ABOUT_REAL.as_str())
         .arg_required_else_help(true)
         .term_width(80);
 
@@ -180,11 +226,11 @@ pub fn rig_app() -> Command<'static> {
         .long_about(HELP_SYSTEM_LINKS);
 
     let cmd_system_lib = Command::new("create-lib")
-        .about("Create current user's package libraries")
+        .about("Set up automatic user package libraries")
         .long_about(HELP_SYSTEM_LIB)
         .arg(
             Arg::new("version")
-                .help("R versions to create the library for (default: all)")
+                .help("R versions (default: all)")
                 .required(false)
                 .multiple_occurrences(true),
         );
@@ -363,7 +409,7 @@ pub fn rig_app() -> Command<'static> {
 
     let cmd_library = Command::new("library")
         .about("Manage package libraries [alias: lib] (experimental)")
-        .long_about("TODO")
+        .long_about(HELP_LIBRARY)
         .aliases(&["lib"])
         .arg_required_else_help(true)
         .arg(

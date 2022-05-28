@@ -26,16 +26,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         style: .segmentedControl
     )
 
-    func applicationDidFinishLaunching(_ aNotification: Notification) {
-        let statusBar = NSStatusBar.system
-        statusBarItem = statusBar.statusItem(withLength: NSStatusItem.variableLength)
+    func setStatusBarTitle() {
         let def = try? rigDefault()
         if def == nil {
             statusBarItem.button?.title = "R"
         } else {
-            statusBarItem.button?.title = "R " + def!
+            let lib = try? rigLibDefault()
+            let libstr = (lib == nil || lib! == "main") ? "" : " (" + lib!  + ")"
+            statusBarItem.button?.title = "R " + def! + libstr
         }
+    }
 
+    func applicationDidFinishLaunching(_ aNotification: Notification) {
+        let statusBar = NSStatusBar.system
+        statusBarItem = statusBar.statusItem(withLength: NSStatusItem.variableLength)
+        setStatusBarTitle()
         statusBarItem.button?.action = #selector(self.statusBarButtonClicked(sender:))
         statusBarItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
 
@@ -43,10 +48,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let versions = "/Library/Frameworks/R.framework/Versions"
         if fileManager.fileExists(atPath: versions) {
             watcher = DirectoryWatcher(withPath: versions, callback: { directoryWatcher in
-                let def = try? rigDefault()
-                if def != nil {
-                    self.statusBarItem.button?.title = "R " + def!
-                }
+                self.setStatusBarTitle()
             })
         }
     }
@@ -61,6 +63,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let def = try? rigDefault() ?? ""
         let list: Array<InstalledVersion> = (try? rigList()) ?? []
+        let libs: Array<String> = (try? rigLibList()) ?? []
 
         // -- rstudio menu -----------------------------------------------------------------------------------------------------
 
@@ -129,6 +132,27 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(item)
         }
 
+        // -- library version menu ----------------------------------------------------------------------------------------------
+
+        if libs.count > 1 {
+            menu.addItem(NSMenuItem.separator())
+            menu.addItem(NSMenuItem(title: "Curent library", action: nil, keyEquivalent: ""))
+            for lib in libs {
+                let item = NSMenuItem()
+                var label = lib
+                if label.last != nil && label.last! == "*" {
+                    label.removeLast()
+                    item.state = NSControl.StateValue.on
+                }
+                item.title = label
+                item.action = #selector(selectLibrary)
+                item.keyEquivalent = ""
+                menu.addItem(item)
+            }
+        }
+
+        // ----------------------------------------------------------------------------------------------------------------------
+
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Preferences...", action: #selector(preferencesMenuItemActionHandler), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
@@ -162,14 +186,28 @@ from a shell. (It will need an admin password.)
         do {
             try rigSetDefault(version: ver)
             // the directory watcher will update this, but nevertheless we update it as well
-            let newver = try? rigDefault()
-            if newver != nil {
-                statusBarItem.button?.title = "R " + newver!
-            }
+            self.setStatusBarTitle()
         } catch RigError.error(let msg) {
             setError(msg: "Failed to set default: \(msg)", info: info)
         } catch {
             setError(msg: "Failed to set default, unknown error", info: info)
+        }
+    }
+
+    @objc func selectLibrary(_ sender: NSMenuItem?) {
+        let lib = sender!.title
+        let info = """
+Check if `rig lib default` works form the command line.
+Consider reporting a bug at https://github.com/r-lib/rig/issues.
+Thank you!
+"""
+        do {
+            try rigLibSetDefault(library: lib)
+            self.setStatusBarTitle()
+        } catch RigError.error(let msg) {
+            setError(msg: "Failed to set default library: \(msg)", info: info)
+        } catch {
+            setError(msg: "Failed to set default library, unknown error", info: info)
         }
     }
 

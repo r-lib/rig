@@ -1,6 +1,7 @@
 #![cfg(target_os = "linux")]
 
 use regex::Regex;
+use std::{file,line};
 use std::error::Error;
 use std::ffi::OsStr;
 use std::os::unix::fs::symlink;
@@ -8,9 +9,7 @@ use std::path::{Path,PathBuf};
 use std::process::{Command, Stdio};
 
 use clap::ArgMatches;
-use nix::unistd::Gid;
-use nix::unistd::Uid;
-use simple_error::{bail,SimpleError};
+use simple_error::*;
 use simplelog::{debug,info,warn};
 
 use crate::resolve::resolve_versions;
@@ -19,6 +18,7 @@ use crate::rversion::*;
 use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
+use crate::library::*;
 use crate::utils::*;
 
 const R_ROOT: &str = "/opt/R";
@@ -56,6 +56,13 @@ const UBUNTU_2204_RSPM: &str = "https://packagemanager.rstudio.com/all/__linux__
 
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("adding new R versions")?;
+
+    // This is needed to fix statix linking on Arm Linux :(
+    let uid = nix::unistd::getuid().as_raw();
+    if false {
+      println!("{}", uid);
+    }
+
     let linux = detect_linux()?;
     let version = get_resolve(args)?;
     let ver = version.version.to_owned();
@@ -90,7 +97,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     set_default_if_none(dirname.to_string())?;
 
-    system_create_lib(Some(vec![dirname.to_string()]))?;
+    library_update_rprofile(&dirname.to_string())?;
     sc_system_make_links()?;
 
     if !args.is_present("without-cran-mirror") {
@@ -108,8 +115,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     if !args.is_present("without-pak") {
         system_add_pak(
             Some(vec![dirname.to_string()]),
-            args.value_of("pak-version")
-		.ok_or(SimpleError::new("Internal argument error"))?,
+            require_with!(args.value_of("pak-version"), "clap error"),
             // If this is specified then we always re-install
             args.occurrences_of("pak-version") > 0
         )?;
@@ -119,12 +125,20 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 }
 
 fn get_install_dir_deb(path: &OsStr) -> Result<String, Box<dyn Error>> {
-    let out = Command::new("dpkg")
-        .arg("-I")
-	.arg(path)
-        .output()?;
-    let std = String::from_utf8(out.stdout)?;
-
+    let path2 = Path::new(path);
+    let out = try_with!(
+	Command::new("dpkg")
+            .arg("-I")
+	    .arg(path)
+            .output(),
+	"Failed to run dpkg -I {} @{}:{}",
+	path2.display(), file!(), line!()
+    );
+    let std = try_with!(
+	String::from_utf8(out.stdout),
+	"Non-UTF-8 output from dpkg -I {} @{}:{}",
+	path2.display(), file!(), line!()
+    );
     let lines = std.lines();
     let re = Regex::new("^[ ]*Package: r-(.*)$")?;
     let lines: Vec<&str> = lines.filter(|l| re.is_match(l)).collect();
@@ -136,10 +150,13 @@ fn get_install_dir_deb(path: &OsStr) -> Result<String, Box<dyn Error>> {
 fn add_deb(path: &OsStr) -> Result<(), Box<dyn Error>> {
     info!("Running apt-get update");
     println!("--nnn-- Start of apt-get output -------------------");
-    let status = Command::new("apt-get")
-	.args(["update"])
-	.spawn()?
-	.wait()?;
+    let status = try_with!(
+	Command::new("apt-get")
+	    .args(["update"])
+	    .status(),
+	"Failed to run apt-get update @{}:{}",
+	file!(), line!()
+    );
     println!("--uuu-- End of apt-get output ---------------------");
 
     if !status.success() {
@@ -148,10 +165,13 @@ fn add_deb(path: &OsStr) -> Result<(), Box<dyn Error>> {
 
     info!("Running apt-get install");
     println!("--nnn-- Start of apt-get output -------------------");
-    let status = Command::new("apt-get")
-	.args(["install", "-y", "gdebi-core"])
-	.spawn()?
-	.wait()?;
+    let status = try_with!(
+	Command::new("apt-get")
+	    .args(["install", "-y", "gdebi-core"])
+	    .status(),
+	"Failed to run apt-get install @{}:{}",
+	file!(), line!()
+    );
     println!("--uuu-- End of apt-get output ---------------------");
 
     if !status.success() {
@@ -160,11 +180,14 @@ fn add_deb(path: &OsStr) -> Result<(), Box<dyn Error>> {
 
     info!("Running gdebi");
     println!("--nnn-- Start of gdebi output ---------------------");
-    let status = Command::new("gdebi")
-	.arg("-n")
-	.arg(path)
-	.spawn()?
-	.wait()?;
+    let status = try_with!(
+	Command::new("gdebi")
+	    .arg("-n")
+	    .arg(path)
+	    .status(),
+	"Failed to run gdebi @{}:{}",
+	file!(), line!()
+    );
     println!("--uuu-- End of gdebi output -----------------------");
 
     if !status.success() {
@@ -180,23 +203,30 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     if vers.is_none() {
         return Ok(());
     }
-    let vers = vers.ok_or(SimpleError::new("Internal argument error"))?;
+    let vers = require_with!(vers, "clap error");
 
     for ver in vers {
         check_installed(&ver.to_string())?;
 
 	let pkgname = "r-".to_string() + ver;
-	let out = Command::new("dpkg")
-	    .args(["-s",  &pkgname])
-	    .output()?;
+	let out = try_with!(
+	    Command::new("dpkg")
+		.args(["-s",  &pkgname])
+		.output(),
+	    "Failed to run dpkg -s {} @{}:{}",
+	    pkgname, file!(), line!()
+	);
 
 	if out.status.success() {
 	    info!("Removing {} package", pkgname);
 	    println!("--nnn-- Start of apt-get output -------------------");
-	    let status = Command::new("apt-get")
-		.args(["remove", "-y", "--purge", &pkgname])
-		.spawn()?
-		.wait()?;
+	    let status = try_with!(
+		Command::new("apt-get")
+		    .args(["remove", "-y", "--purge", &pkgname])
+		    .status(),
+		"Failed to run apt-get remove @{}:{}",
+		file!(), line!()
+	    );
 	    println!("--uuu-- End of apt-get output ---------------------");
 
 	    if !status.success() {
@@ -210,43 +240,16 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         let dir = dir.join(&ver);
 	if dir.exists() {
             info!("Removing {}", dir.display());
-            std::fs::remove_dir_all(&dir)?;
+            try_with!(
+		std::fs::remove_dir_all(&dir),
+		"Failed to remove {} @{}:{}",
+		dir.display(), file!(), line!()
+	    );
 	}
     }
 
     sc_system_make_links()?;
 
-    Ok(())
-}
-
-pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
-    let vers = match vers {
-        Some(x) => x,
-        None => sc_get_list()?,
-    };
-
-    let user = get_user()?;
-    for ver in vers {
-        check_installed(&ver)?;
-        let lib = get_library_path(&ver)?.1; // default
-        let lib = Path::new(&lib);
-        if !lib.exists() {
-            info!(
-                "{}: creating library at {} for user {}",
-                ver,
-                lib.display(),
-                user.user
-            );
-            std::fs::create_dir_all(&lib)?;
-            nix::unistd::chown(
-                lib,
-                Some(Uid::from_raw(user.uid)),
-                Some(Gid::from_raw(user.gid)),
-            )?;
-        } else {
-            debug!("{}: library at {} exists.", ver, lib.display());
-        }
-    }
     Ok(())
 }
 
@@ -271,12 +274,10 @@ pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool)
         let cmd;
         if update {
             cmd = r#"
-              dir.create(Sys.getenv('R_LIBS_USER'), showWarnings = FALSE, recursive = TRUE);
               install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/{}/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))
             "#;
         } else {
             cmd = r#"
-              dir.create(Sys.getenv('R_LIBS_USER'), showWarnings = FALSE, recursive = TRUE);
               if (!requireNamespace("pak", quietly = TRUE)) {
                 install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/{}/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))
               }
@@ -717,48 +718,20 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>)
     Ok(())
 }
 
-pub fn get_library_path(rver: &str) -> Result<(PathBuf, PathBuf), Box<dyn Error>> {
-    let user = get_user()?;
-    let base = Path::new(R_ROOT);
-    let r = base.join(&rver).join("bin/R");
-    let out;
-    if user.sudo {
-        out = Command::new("su")
-	    .args([&user.user, "--"])
-	    .arg(r)
-	    .args(["--vanilla", "-s", "-e", "cat(Sys.getenv('R_LIBS_USER'))"])
-	    .output()?;
-    } else {
-            out = Command::new(r)
-	    .args(["--vanilla", "-s", "-e", "cat(Sys.getenv('R_LIBS_USER'))"])
-	    .output()?;
-    }
-    let lib = String::from_utf8(out.stdout)?;
-
-    let userdir = user.dir.to_str()
-	.ok_or(SimpleError::new("User HOME is not a Unicode string"))?;
-	let re = Regex::new("^~")?;
-    let defaultstr = re.replace(&lib.as_str(), userdir).to_string();
-
-    let default = Path::new(&defaultstr);
-    let mut main = Path::new(&defaultstr);
-
-    // If it ends with a __dir component, then drop that
-    if let Some(last) = main.file_name() {
-        let last = last.to_str();
-        if let Some(last) = last {
-            if &last[..2] == "__" {
-                if let Some(dirn) = main.parent() {
-                    main = Path::new(dirn);
-                }
-            }
-        }
-    }
-
-    Ok((main.to_path_buf(), default.to_path_buf()))
+pub fn get_r_binary(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
+    debug!("Finding R binary for R {}", rver);
+    let bin = Path::new(R_ROOT).join(rver).join("bin/R");
+    debug!("R {} binary is at {}", rver, bin.display());
+    Ok(bin)
 }
 
+#[allow(dead_code)]
 pub fn get_system_renviron(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
     let renviron = Path::new(R_ROOT).join(rver).join("lib/R/etc/Renviron");
     Ok(renviron)
+}
+
+pub fn get_system_profile(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
+    let profile = Path::new(R_ROOT).join(rver).join("lib/R/library/base/R/Rprofile");
+    Ok(profile)
 }

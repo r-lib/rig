@@ -1,3 +1,5 @@
+
+use std::{file,line};
 use std::path::{Path, PathBuf};
 use std::ffi::OsString;
 use std::fs::File;
@@ -8,15 +10,8 @@ use regex::Regex;
 #[cfg(target_os = "macos")]
 use sha2::{Digest, Sha256};
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-use simple_error::SimpleError;
-
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-use crate::rversion::User;
-
 use std::error::Error;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-use simple_error::bail;
+use simple_error::*;
 
 use simplelog::*;
 
@@ -24,9 +19,19 @@ pub fn basename(path: &str) -> Option<&str> {
     path.rsplitn(2, '/').next()
 }
 
-pub fn read_lines(path: &Path) -> Result<Vec<String>, std::io::Error> {
+pub fn read_file_string(path: &Path) -> Result<String, Box<dyn Error>> {
+    let data = std::fs::read_to_string(path)?;
+    Ok(data)
+}
+
+pub fn read_lines(path: &Path) -> Result<Vec<String>, Box<dyn Error>> {
     let file = File::open(path)?;
-    BufReader::new(file).lines().collect()
+    let mut result: Vec<String> = vec![];
+    let lines = BufReader::new(file).lines();
+    for line in lines {
+        result.push(try_with!(line, "read failed"));
+    }
+    Ok(result)
 }
 
 pub fn grep_lines(re: &Regex, lines: &Vec<String>) -> Vec<usize> {
@@ -57,7 +62,7 @@ pub fn bak_file(path: &Path) -> PathBuf {
 }
 
 #[cfg(target_os = "macos")]
-pub fn replace_in_file(path: &Path, re: &Regex, sub: &str) -> Result<(), std::io::Error> {
+pub fn replace_in_file(path: &Path, re: &Regex, sub: &str) -> Result<(), Box<dyn Error>> {
     let mut lines = read_lines(path)?;
     let mch = grep_lines(re, &lines);
     if mch.len() > 0 {
@@ -79,23 +84,7 @@ pub fn replace_in_file(path: &Path, re: &Regex, sub: &str) -> Result<(), std::io
     Ok(())
 }
 
-pub fn update_file(path: &Path, lines: &Vec<String>)
-                   -> Result<(), Box<dyn Error>> {
-
-    let path2 = bak_file(path);
-    let mut f = File::create(&path2)?;
-    for line in lines {
-        write!(f, "{}\n", line)?;
-    }
-
-    let perms = std::fs::metadata(path)?.permissions();
-    std::fs::set_permissions(&path2, perms)?;
-    std::fs::rename(path2, path)?;
-
-    Ok(())
-}
-
-pub fn append_to_file(path: &Path, extra: Vec<String>) -> Result<(), std::io::Error> {
+pub fn append_to_file(path: &Path, extra: Vec<String>) -> Result<(), Box<dyn Error>> {
     debug!("Updating {:?}", path);
     let lines = read_lines(path)?;
     let path2 = bak_file(path);
@@ -132,44 +121,6 @@ pub fn unquote(s: &str) -> String {
     } else {
 	s.to_string()
     }
-}
-
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-pub fn get_user() -> Result<User, Box<dyn Error>> {
-    let uid: u32;
-    let gid: u32;
-    let user;
-    let sudo;
-
-    fn parse_uid(str: Option<std::ffi::OsString>) -> Option<u32> {
-        str.and_then(|x| x.into_string().ok())
-            .and_then(|x| x.parse::<u32>().ok())
-    }
-
-    let euid = nix::unistd::geteuid();
-    let sudo_uid: Option<u32> = parse_uid(std::env::var_os("SUDO_UID"));
-    let sudo_gid: Option<u32> = parse_uid(std::env::var_os("SUDO_GID"));
-    let sudo_user = std::env::var_os("SUDO_USER").and_then(|x| x.into_string().ok());
-    if euid.is_root() && sudo_uid.is_some() && sudo_gid.is_some() && sudo_user.is_some() {
-	sudo = true;
-        uid = sudo_uid.unwrap_or_else(|| unreachable!());
-        gid = sudo_gid.unwrap_or_else(|| unreachable!());
-        user = sudo_user.unwrap_or_else(|| unreachable!());
-    } else {
-	sudo = false;
-        uid = nix::unistd::getuid().as_raw();
-        gid = nix::unistd::getgid().as_raw();
-        user = std::env::var_os("USER")
-            .and_then(|x: OsString| x.into_string().ok())
-            .unwrap_or_else(|| "Current user".to_string());
-    }
-
-    let ouid = nix::unistd::Uid::from_raw(uid);
-    let user_record = nix::unistd::User::from_uid(ouid)?
-        .ok_or(SimpleError::new("Failed to find user HOME"))?;
-    let dir = user_record.dir.into_os_string();
-
-    Ok(User { user, uid, gid, dir, sudo })
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]

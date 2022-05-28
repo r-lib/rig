@@ -8,8 +8,6 @@ use std::process::Command;
 use rand::Rng;
 
 use clap::ArgMatches;
-use nix::unistd::Gid;
-use nix::unistd::Uid;
 use regex::Regex;
 use semver::Version;
 use simple_error::{bail, SimpleError};
@@ -17,6 +15,7 @@ use simplelog::{debug,info,warn};
 
 use crate::common::*;
 use crate::download::*;
+use crate::library::*;
 use crate::resolve::resolve_versions;
 use crate::rversion::*;
 use crate::utils::*;
@@ -80,7 +79,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     sc_system_forget()?;
     system_no_openmp(Some(vec![dirname.to_string()]))?;
     system_fix_permissions(None)?;
-    system_create_lib(Some(vec![dirname.to_string()]))?;
+    library_update_rprofile(&dirname.to_string())?;
     sc_system_make_links()?;
 
     if !args.is_present("without-cran-mirror") {
@@ -254,12 +253,10 @@ pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool)
         let cmd;
         if update {
             cmd = r#"
-               dir.create(Sys.getenv('R_LIBS_USER'), showWarnings = FALSE, recursive = TRUE);
                install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/{}/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))
              "#;
         } else {
             cmd = r#"
-               dir.create(Sys.getenv('R_LIBS_USER'), showWarnings = FALSE, recursive = TRUE);
                if (!requireNamespace("pak", quietly = TRUE)) {
                  install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/{}/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))
                }
@@ -279,47 +276,6 @@ pub fn system_add_pak(vers: Option<Vec<String>>, stream: &str, update: bool)
 
         if !status.success() {
             bail!("Failed to run R {} to install pak", ver);
-        }
-    }
-
-    Ok(())
-}
-
-pub fn system_create_lib(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
-    let vers = match vers {
-        Some(x) => x,
-        None => sc_get_list()?,
-    };
-
-    let user = get_user()?;
-    for ver in vers {
-        check_installed(&ver)?;
-        let lib = get_library_path(&ver)?.1; // default
-        if !lib.exists() {
-            info!(
-                "{}: creating library at {} for user {}",
-                ver,
-                lib.display(),
-                user.user
-            );
-            match std::fs::create_dir_all(&lib) {
-                Err(err) => bail!(
-                    "Cannot create library at {}: {}",
-                    lib.display(),
-                    err.to_string()
-                ),
-                _ => {}
-            };
-            match nix::unistd::chown(
-                &lib,
-                Some(Uid::from_raw(user.uid)),
-                Some(Gid::from_raw(user.gid)),
-            ) {
-                Err(err) => bail!("Cannot set owner on {}: {}", lib.display(), err.to_string()),
-                _ => {}
-            };
-        } else {
-            debug!("[DEBUG] {}: library at {} exists.", ver, lib.display());
         }
     }
 
@@ -905,41 +861,20 @@ fn extract_pkg_version(filename: &OsStr) -> Result<Rversion, Box<dyn Error>> {
     Ok(res)
 }
 
-pub fn get_library_path(rver: &str) -> Result<(PathBuf, PathBuf), Box<dyn Error>> {
-    let base = Path::new(R_ROOT);
-    let r = base.join(&rver).join("Resources/R");
-    let out = Command::new(r)
-        .args(["--vanilla", "-s", "-e", "cat(Sys.getenv('R_LIBS_USER'))"])
-        .output()?;
-    let lib = match String::from_utf8(out.stdout) {
-        Ok(v) => v,
-        Err(err) => bail!(
-            "Cannot query R_LIBS_USER for R {}: {}",
-            rver,
-            err.to_string()
-        ),
-    };
-
-    let defaultstr = shellexpand::tilde(&lib.as_str()).to_string();
-    let default = Path::new(&defaultstr);
-    let mut main = Path::new(&defaultstr);
-
-    // If it ends with a __dir component, then drop that
-    if let Some(last) = main.file_name() {
-        let last = last.to_str();
-        if let Some(last) = last {
-            if &last[..2] == "__" {
-                if let Some(dirn) = main.parent() {
-                    main = Path::new(dirn);
-                }
-            }
-        }
-    }
-
-    Ok((main.to_path_buf(), default.to_path_buf()))
+pub fn get_r_binary(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
+    debug!("Finding R binary for R {}", rver);
+    let bin = Path::new(R_ROOT).join(rver).join("Resources/R");
+    debug!("R {} binary is at {}", rver, bin.display());
+    Ok(bin)
 }
 
+#[allow(dead_code)]
 pub fn get_system_renviron(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
     let renviron = Path::new(R_ROOT).join(rver).join("Resources/etc/Renviron");
     Ok(renviron)
+}
+
+pub fn get_system_profile(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
+    let profile = Path::new(R_ROOT).join(rver).join("Resources/library/base/R/Rprofile");
+    Ok(profile)
 }

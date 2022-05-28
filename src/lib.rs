@@ -14,13 +14,17 @@ use lazy_static::lazy_static;
 use libc;
 use simple_error::bail;
 
+mod args;
 mod common;
+mod config;
 mod download;
 mod escalate;
+mod library;
 mod macos;
 mod resolve;
 mod rversion;
 mod utils;
+use library::*;
 use macos::*;
 
 // ------------------------------------------------------------------------
@@ -271,6 +275,66 @@ pub extern "C" fn rig_start_rstudio(
     let prj = if prj == "" { None } else { Some(prj) };
 
     match sc_rstudio_(ver, prj) {
+        Ok(_) => {
+            SUCCESS
+        },
+        Err(e) => {
+            let msg = e.to_string();
+            set_error(&msg);
+            ERROR_SET_DEFAULT_FAILED
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn rig_library_list(
+    ptr: *mut libc::c_char,
+    size: libc::size_t
+) -> libc::c_int {
+
+    let vers = sc_library_get_list(None, true);
+
+    match vers {
+        Ok(x) => {
+            let mut vers: Vec<String> = vec![];
+            for it in x {
+                let nm = it.name + if it.default { "*" } else { "" };
+                vers.push(nm)
+            }
+            match set_c_strings(vers, ptr, size) {
+                Ok(x) => x,
+                Err(_) => {
+                    set_error("Buffer too short for R libraries");
+                    return ERROR_BUFFER_SHORT
+                }
+            }
+        },
+        Err(e) => {
+            let msg = e.to_string();
+            set_error(&msg);
+            ERROR_DEFAULT_FAILED
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn rig_lib_set_default(
+    ptr: *const libc::c_char) -> libc::c_int {
+
+    let cver;
+
+    unsafe {
+        cver = std::ffi::CStr::from_ptr(ptr);
+    }
+
+    let ver = match cver.to_str() {
+        Ok(x) => x,
+        Err(_) => {
+            return ERROR_INVALID_INPUT
+        }
+    };
+
+    match sc_library_set_default(ver) {
         Ok(_) => {
             SUCCESS
         },

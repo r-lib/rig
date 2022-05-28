@@ -2,11 +2,11 @@
 use std::error::Error;
 
 use clap::ArgMatches;
-use simple_error::SimpleError;
+use simple_error::*;
 use simplelog::*;
 
 mod args;
-use args::parse_args;
+use args::*;
 
 #[cfg(target_os = "macos")]
 mod macos;
@@ -27,6 +27,7 @@ mod library;
 use library::*;
 
 mod common;
+mod config;
 mod download;
 mod resolve;
 mod rversion;
@@ -61,6 +62,7 @@ fn main_() -> i32 {
 
     let config = ConfigBuilder::new()
         .set_time_level(LevelFilter::Trace)
+        .set_location_level(LevelFilter::Debug)
         .set_level_color(Level::Error, Some(Color::Magenta))
         .set_level_color(Level::Warn, Some(Color::Yellow))
         .set_level_color(Level::Info, Some(Color::Blue))
@@ -220,14 +222,17 @@ fn sc_default(args: &ArgMatches, mainargs: &ArgMatches)
 
 pub fn sc_system_create_lib(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let vers = args.values_of("version");
-    if vers.is_none() {
-        system_create_lib(None)
-    } else {
-        let vers: Vec<String> = vers
-            .ok_or(SimpleError::new("Internal argument error"))?
-            .map(|v| v.to_string()).collect();
-        system_create_lib(Some(vers))
+    let vers: Vec<String> = match vers {
+        None => sc_get_list()?,
+        Some(vers) => {
+            vers.map(|v| v.to_string()).collect()
+        }
+    };
+
+    for ver in vers {
+        library_update_rprofile(&ver)?;
     }
+    Ok(())
 }
 
 // ------------------------------------------------------------------------
