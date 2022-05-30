@@ -37,6 +37,9 @@
   based on these), on both x86_64 and aarch64. (This currently needs
   passwordless `sudo` or a root account.)
 
+* All OSes create an `Rscript` link now that runs the default R
+  version (#20).
+
 # rim 0.3.0
 
 * New `rim rstudio` command to open a project in RStudio with the specified

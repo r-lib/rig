@@ -398,7 +398,11 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     let vers = sc_get_list()?;
     let base = Path::new(R_ROOT);
     let bin = base.join("bin");
-    let mut new_links: Vec<String> = vec!["RS.bat".to_string(), "R.bat".to_string()];
+    let mut new_links: Vec<String> = vec![
+	"RS.bat".to_string(),
+	"R.bat".to_string(),
+	"Rscript.bat".to_string()
+    ];
 
     std::fs::create_dir_all(bin)?;
 
@@ -535,6 +539,12 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
     let linkfile2 = base.join("bin").join("RS.bat");
     let mut file2 = File::create(linkfile2)?;
     file2.write_all(cnt.as_bytes())?;
+
+    let linkfile3 = base.join("bin").join("Rscript.bat");
+    let mut file3 = File::create(linkfile3)?;
+    let cnt3 = "::".to_string() + &ver + "\n" +
+	"@\"C:\\Program Files\\R\\R-" + &ver + "\\bin\\Rscript\" %*\n";
+    file3.write_all(cnt3.as_bytes())?;
 
     update_registry_default()?;
 
