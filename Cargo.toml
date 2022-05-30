@@ -24,7 +24,7 @@ path = "src/main.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = "3.1.15"
+clap = { version = "3.1.18", features = ["cargo"] }
 directories = "4.0.1"
 futures = "0.3.17"
 futures-util = "0.3.14"
@@ -54,8 +54,8 @@ remove_dir_all = "0.7.0"
 winreg = "0.10"
 
 [build-dependencies]
-clap = "3.0.10"
-clap_complete = "3.0.4"
+clap = { version = "3.1.18", features = ["cargo"] }
+clap_complete = "3.1.4"
 lazy_static = "1.4.0"
 simplelog = { version = "^0.12.0", features = ["paris"] }
 static_vcruntime = "2.0"
