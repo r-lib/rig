@@ -1,5 +1,5 @@
 
-# rig 0.4.0 (not released yet)
+# rig 0.4.0
 
 ## NEW NAME
 
