@@ -37,8 +37,18 @@ Install, remove, configure R versions.
 
 ## 🐞&nbsp; Known Issues
 
-* On macOS, `rig add` changes the default R version.
 * On macOS, R.app often does not work if you install multiple R versions.
+* On Windows you need to restart your shell or terminal after installing
+  Rtools, for the changes to take effect.
+* On Windows, `rig rstudio` changes the R version in the registry
+  temporarily before starting RStudio and then changes it back after a
+  short wait. If RStudio starts up very slowly, then the wait might be
+  too short, and it might start up with the wrong R version.
+* If you delete the default R version with `rig rm` or another way,
+  then the `R` and `RS` commands will kept, but they will point to a
+  non-existing directory and fail.
+* On Windows Rtools installation will fail if the same version of Rtools is
+  already installed.
 
 Found another issue? Please report it in our
 [issue tracker](https://github.com/r-lib/rig/issues).

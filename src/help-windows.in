@@ -78,10 +78,7 @@ DESCRIPTION
 
     `rig switch` is an alias of `rig default`.
 
-KNOWN ISSUES:
-    - If you don't call `rig system default <ver>` to set the default R
-      version then there is no default, and there are no `R` and `RS`
-      commands.
+KNOWN ISSUE:
     - If you delete the default R version with `rig rm` or another way,
       then the `R` and `RS` commands will kept, but they will point to a
       non-existing directory and fail.
@@ -136,7 +133,7 @@ DESCRIPTION
     e.g. `rig add rtools40`. Rtools versions 3.x all install to `C:\Rtools`,
     so only one of them can be installed at a time.
 
-    Usually you need to run this command from an administrator shell.
+    You need an administrator account to run this command.
 
 KNOWN ISSUE:
     - Rtools installation will fail if the same version of Rtools is
@@ -164,13 +161,7 @@ const HELP_RM: &str = r#"
 DESCRIPTION
     Remove an R installation. It keeps the users' package libraries.
 
-    Usually you need to run this command from an administrator shell.
-
-KNOWN ISSUE:
-    - `rig rm` currently does not remove quick link
-      (see `rig system make-links`) for the deleted R version.
-    - `rig rm` does not remove the deleted R version from the system
-      registry currently.
+    You need an administrator account to run this command.
 "#;
 
 const HELP_SYSTEM: &str = r#"
@@ -191,11 +182,7 @@ DESCRIPTION
     `rig add` runs `rig system make-links`, so if you only use rig to
     install R, then you do not need to run it manually.
 
-    Usually you need to run this command from an administrator shell.
-
-KNOWN ISSUE:
-    - `rig system make-links` currently does not remove the links that
-      are not in use.
+    You need an administrator account to run this command.
 "#;
 
 const HELP_SYSTEM_ADDPAK: &str = r#"
