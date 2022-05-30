@@ -122,7 +122,7 @@ Run `rig` to see all commands and examples.
 ```
 rig add        -- install a new R version
 rig default    -- print or set default R version
-library        -- Manage package libraries [alias: lib] (experimental)
+rig library    -- Manage package libraries [alias: lib] (experimental)
 rig list       -- list installed R versions
 rig resolve    -- resolve a symbolic R version
 rig rm         -- remove R versions
