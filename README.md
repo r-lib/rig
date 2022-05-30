@@ -83,6 +83,23 @@ and install it the usual way.
 `rig` adds itself to the user’s path, but you might need to restart your
 terminal after the installation on Windows.
 
+### Windows (Scoop)
+
+If you use [Scoop](https://scoop.sh/), you can install rig from the
+scoop bucket at
+[`cderv/r-bucket`](https://github.com/cderv/r-bucket#r-installation-manager-rig):
+
+``` powershell
+scoop bucket add r-bucket https://github.com/cderv/r-bucket.git
+scoop install rig
+```
+
+To update run
+
+``` powershell
+scoop update rig
+```
+
 ### Linux
 
 Download the latest releast from <https://github.com/r-lib/rig/releases>
