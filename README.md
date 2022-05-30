@@ -55,6 +55,26 @@ tracker](https://github.com/r-lib/rig/issues).
 Download the latest release from <https://github.com/r-lib/rig/releases>
 and install it the usual way.
 
+### macOS (Homebrew)
+
+If you use Homebrew (Intel or Arm version), you can install rig from our
+tap:
+
+``` sh
+brew tap r-lib/rig
+brew install --cask rig
+```
+
+You can use x86_64 rig on Arm macs, and it will be able to install Arm
+builds of R. But you cannot use Arm rig on Intel macs. If you use both
+brew versions, only install rig with one of them.
+
+To update rig you can run
+
+``` sh
+brew upgrade --cask rig
+```
+
 ### Windows (installer)
 
 Download the latest release from <https://github.com/r-lib/rig/releases>
