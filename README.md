@@ -31,94 +31,49 @@ Install, remove, configure R versions.
 
 ## 🐞  Known Issues
 
--   On macOS, `rim add` changes the default R version.
 -   On macOS, R.app often does not work if you install multiple R
     versions.
+-   On Windows you need to restart your shell or terminal after
+    installing Rtools, for the changes to take effect.
+-   On Windows, `rig rstudio` changes the R version in the registry
+    temporarily before starting RStudio and then changes it back after a
+    short wait. If RStudio starts up very slowly, then the wait might be
+    too short, and it might start up with the wrong R version.
+-   If you delete the default R version with `rig rm` or another way,
+    then the `R` and `RS` commands will kept, but they will point to a
+    non-existing directory and fail.
+-   On Windows Rtools installation will fail if the same version of
+    Rtools is already installed.
 
 Found another issue? Please report it in our [issue
-tracker](https://github.com/r-lib/rim/issues).
+tracker](https://github.com/r-lib/rig/issues).
 
 ## ⬇️  Installation
 
 ### macOS (installer)
 
-Download the latest release from
-<https://github.com/r-lib/rim/releases> and install it the usual
-way.
-
-### macOS (Homebrew)
-
-If you use Homebrew (Intel or Arm version), you can install rim from our
-tap:
-
-``` sh
-brew tap r-lib/rim
-brew install --cask rim
-```
-
-You can use x86_64 rim on Arm macs, and it will be able to install Arm
-builds of R. But you cannot use Arm rim on Intel macs. If you use both
-brew versions, only install rim with one of them.
-
-To update rim you can run
-
-``` sh
-brew upgrade --cask rim
-```
+Download the latest release from <https://github.com/r-lib/rig/releases>
+and install it the usual way.
 
 ### Windows (installer)
 
-Download the latest release from
-<https://github.com/r-lib/rim/releases> and install it the usual
-way.
+Download the latest release from <https://github.com/r-lib/rig/releases>
+and install it the usual way.
 
-`rim` adds itself to the user’s path, but you might need to restart your
+`rig` adds itself to the user’s path, but you might need to restart your
 terminal after the installation on Windows.
-
-### Windows (Chocolatey)
-
-If you use [Chocolatey](https://chocolatey.org/) (e.g. on GitHub
-Actions) you can install `rim` with
-
-``` powershell
-choco install rim
-```
-
-and upgrade to the latest version with
-
-``` powershell
-choco upgrade rim
-```
-
-### Windows (Scoop)
-
-If you use [Scoop](https://scoop.sh/), you can install rim from the
-scoop bucket at
-[`cderv/r-bucket`](https://github.com/cderv/r-bucket#r-installation-manager-rim):
-
-``` powershell
-scoop bucket add r-bucket https://github.com/cderv/r-bucket.git
-scoop install rim
-```
-
-To update run
-
-``` powershell
-scoop update rim
-```
 
 ### Linux
 
-Download the latest releast from
-<https://github.com/r-lib/rim/releases> and uncompress it to
-`/usr/local`
+Download the latest releast from <https://github.com/r-lib/rig/releases>
+and uncompress it to `/usr/local`
 
-    curl -Ls https://github.com/r-lib/rim/releases/download/v0.3.0/rim-linux-0.3.0.tar.gz |
+    curl -Ls https://github.com/r-lib/rig/releases/download/v0.4.0/rig-linux-0.4.0.tar.gz |
       sudo tar xz -C /usr/local
 
 If you are running Linux on arm64, download the arm64 build:
 
-    curl -Ls https://github.com/r-lib/rim/releases/download/v0.3.0/rim-linux-arm64-0.3.0.tar.gz |
+    curl -Ls https://github.com/r-lib/rig/releases/download/v0.4.0/rig-linux-arm64-0.4.0.tar.gz |
       sudo tar xz -C /usr/local
 
 Supported Linux distributions:
@@ -146,56 +101,57 @@ if you like.)
 
 ## ⚙️  Usage
 
-Use `rim add` to add a new R installation:
+Use `rig add` to add a new R installation:
 
-    rim add release
+    rig add release
 
-Use `rim list` to list the currently installed R versions, and
-`rim default` to set the default one.
+Use `rig list` to list the currently installed R versions, and
+`rig default` to set the default one.
 
-Run `rim` to see all commands and examples.
+Run `rig` to see all commands and examples.
 
 ### Command list:
 
-    rim add        -- install a new R version
-    rim default    -- print or set default R version
-    rim list       -- list installed R versions
-    rim resolve    -- resolve a symbolic R version
-    rim rm         -- remove R versions
-    rim rstudio    -- start RStudio with the specified R version
-    rim system     -- manage current installations
+    rig add        -- install a new R version
+    rig default    -- print or set default R version
+    library        -- Manage package libraries [alias: lib] (experimental)
+    rig list       -- list installed R versions
+    rig resolve    -- resolve a symbolic R version
+    rig rm         -- remove R versions
+    rig rstudio    -- start RStudio with the specified R version
+    rig system     -- manage current installations
 
-Run `rim <subcommand> --help` for information about a subcommand.
+Run `rig <subcommand> --help` for information about a subcommand.
 
-### macOS `rim system` subcommands
+### macOS `rig system` subcommands
 
-    rim system add-pak           -- install or update pak for an R version
-    rim system allow-debugger    -- allow debugging R with lldb and gdb
-    rim system allow-core-dumps  -- allow creating core dumps when R crashes
-    rim system create-lib        -- create current user's package libraries
-    rim system fix-permissions   -- restrict system library permissions to admin
-    rim system forget            -- make system forget about R installations
-    rim system make-links        -- create R-* quick links
-    rim system make-orthogonal   -- make installed versions orthogonal
-    rim system no-openmp         -- remove OpenMP (-fopenmp) option for Apple compilers
+    rig system add-pak           -- install or update pak for an R version
+    rig system allow-debugger    -- allow debugging R with lldb and gdb
+    rig system allow-core-dumps  -- allow creating core dumps when R crashes
+    rig system fix-permissions   -- restrict system library permissions to admin
+    rig system forget            -- make system forget about R installations
+    rig system make-links        -- create R-* quick links
+    rig system make-orthogonal   -- make installed versions orthogonal
+    rig system no-openmp         -- remove OpenMP (-fopenmp) option for Apple compilers
+    rig system setup-user-lib    -- Set up automatic user package libraries
 
-### Windows `rim system` subcommands
+### Windows `rig system` subcommands
 
-    rim system add-pak           -- install or update pak for an R version
-    rim system clean-registry    -- clean stale R related entries in the registry
-    rim system create-lib        -- create current user's package libraries
-    rim system make-links        -- create R-* quick links
+    rig system add-pak           -- install or update pak for an R version
+    rig system clean-registry    -- clean stale R related entries in the registry
+    rig system make-links        -- create R-* quick links
+    rig system setup-user-lib    -- Set up automatic user package libraries
 
-### Linux `rim system` subcommands
+### Linux `rig system` subcommands
 
-    rim system add-pak           -- install or update pak for an R version
-    rim system create-lib        -- create current user's package libraries
-    rim system make-links        -- create R-* quick links
+    rig system add-pak           -- install or update pak for an R version
+    rig system make-links        -- create R-* quick links
+    rig system setup-user-lib    -- Set up automatic user package libraries
 
 ## 🤝  Feedback
 
 Please open an issue in our issue tracker at
-<https://github.com/r-lib/rim/issues>
+<https://github.com/r-lib/rig/issues>
 
 ## 📘  License
 
