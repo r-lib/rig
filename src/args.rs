@@ -54,7 +54,7 @@ pub fn rig_app() -> Command<'static> {
 }
 
     let rig = Command::new("RIG -- The R Installation Manager")
-        .version("0.3.1")
+        .version("0.4.0")
         .about(HELP_ABOUT_REAL.as_str())
         .arg_required_else_help(true)
         .term_width(80);
