@@ -1,17 +1,16 @@
-
-use std::{file,line};
-use std::path::{Path, PathBuf};
 use std::ffi::OsString;
 use std::fs::File;
 use std::io::{prelude::*, BufReader};
+use std::path::{Path, PathBuf};
+use std::{file, line};
 
 use regex::Regex;
 
 #[cfg(target_os = "macos")]
 use sha2::{Digest, Sha256};
 
-use std::error::Error;
 use simple_error::*;
+use std::error::Error;
 
 use simplelog::*;
 
@@ -51,9 +50,7 @@ pub fn grep_lines(re: &Regex, lines: &Vec<String>) -> Vec<usize> {
 
 pub fn bak_file(path: &Path) -> PathBuf {
     let mut path2 = path.to_owned();
-    let ext = path
-        .extension()
-        .unwrap_or_else(|| std::ffi::OsStr::new(""));
+    let ext = path.extension().unwrap_or_else(|| std::ffi::OsStr::new(""));
     let mut new_ext = OsString::new();
     new_ext.push(ext);
     new_ext.push(".bak");
@@ -113,18 +110,20 @@ pub fn calculate_hash(s: &str) -> String {
 
 pub fn unquote(s: &str) -> String {
     let l = s.len();
-    if l <= 2 { return s.to_string(); }
+    if l <= 2 {
+        return s.to_string();
+    }
     let first = &s[0..1];
-    let last = &s[l-1..l];
+    let last = &s[l - 1..l];
     if first == last && (first == "'" || first == "\"") {
-	s[1..l-1].to_string()
+        s[1..l - 1].to_string()
     } else {
-	s.to_string()
+        s.to_string()
     }
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
-pub fn read_version_link(path: &str) -> Result<Option<String>,Box<dyn Error>> {
+pub fn read_version_link(path: &str) -> Result<Option<String>, Box<dyn Error>> {
     let linkpath = Path::new(path);
     if !linkpath.exists() {
         return Ok(None);
@@ -135,14 +134,17 @@ pub fn read_version_link(path: &str) -> Result<Option<String>,Box<dyn Error>> {
     // file_name() might be None if tgt ends with ".."
     let fname = match tgt.file_name() {
         None => bail!("Symlink for default version is invalid"),
-        Some(f) => f
+        Some(f) => f,
     };
 
     let fname = match fname.to_os_string().into_string() {
         Ok(x) => x,
         Err(x) => {
             let fpath = Path::new(&x);
-            bail!("Default version is not a Unicode string: {}", fpath.display());
+            bail!(
+                "Default version is not a Unicode string: {}",
+                fpath.display()
+            );
         }
     };
 
@@ -152,19 +154,19 @@ pub fn read_version_link(path: &str) -> Result<Option<String>,Box<dyn Error>> {
 pub fn not_too_old(path: &std::path::PathBuf) -> bool {
     let meta = std::fs::metadata(path);
     match meta {
-	Err(_) => return false,
-	Ok(meta) => {
-	    let mtime = match meta.modified() {
-		Err(_) => return false,
-		Ok(mtime) => mtime
-	    };
-	    let now = std::time::SystemTime::now();
-	    let age = match now.duration_since(mtime) {
-		Err(_) => return false,
-		Ok(age) => age
-	    };
-	    let day = std::time::Duration::from_secs(60 * 60 * 24);
-	    age < day
-	}
+        Err(_) => return false,
+        Ok(meta) => {
+            let mtime = match meta.modified() {
+                Err(_) => return false,
+                Ok(mtime) => mtime,
+            };
+            let now = std::time::SystemTime::now();
+            let age = match now.duration_since(mtime) {
+                Err(_) => return false,
+                Ok(age) => age,
+            };
+            let day = std::time::Duration::from_secs(60 * 60 * 24);
+            age < day
+        }
     }
 }

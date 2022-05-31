@@ -1,4 +1,3 @@
-
 use std::error::Error;
 
 use clap::ArgMatches;
@@ -45,7 +44,6 @@ fn main() {
 }
 
 fn main_() -> i32 {
-
     let args = parse_args();
 
     // -- set up logger output --------------------------------------------
@@ -53,7 +51,7 @@ fn main_() -> i32 {
     let mut loglevel = match args.occurrences_of("verbose") {
         0 => LevelFilter::Info,
         1 => LevelFilter::Debug,
-        _ => LevelFilter::Trace
+        _ => LevelFilter::Trace,
     };
 
     if args.is_present("quiet") {
@@ -70,22 +68,20 @@ fn main_() -> i32 {
         .set_level_color(Level::Trace, None)
         .build();
 
-    match TermLogger::init(
-        loglevel,
-        config,
-        TerminalMode::Stderr,
-        ColorChoice::Auto)  {
+    match TermLogger::init(loglevel, config, TerminalMode::Stderr, ColorChoice::Auto) {
         Err(e) => {
             eprintln!("Fatal error, cannot set up logger: {}", e.to_string());
             return 2;
-        },
-        _ => { }
+        }
+        _ => {}
     };
 
     // --------------------------------------------------------------------
 
     match main__(&args) {
-        Ok(_) => { return 0; },
+        Ok(_) => {
+            return 0;
+        }
         Err(err) => {
             error!("{}", err.to_string());
             return 1;
@@ -103,7 +99,7 @@ fn main__(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         Some(("resolve", sub)) => sc_resolve(sub, args),
         Some(("rstudio", sub)) => sc_rstudio(sub),
         Some(("library", sub)) => sc_library(sub, args),
-        _ => { Ok(()) } // unreachable
+        _ => Ok(()), // unreachable
     }
 }
 
@@ -119,25 +115,23 @@ fn sc_system(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         Some(("fix-permissions", s)) => sc_system_fix_permissions(s),
         Some(("forget", _)) => sc_system_forget(),
         Some(("no-openmp", s)) => sc_system_no_openmp(s),
-        _ => { Ok(()) } // unreachable
+        _ => Ok(()), // unreachable
     }
 }
 
-fn sc_library(args: &ArgMatches, mainargs: &ArgMatches)
-              -> Result<(), Box<dyn Error>> {
+fn sc_library(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
         Some(("list", s)) => sc_library_ls(s, args, mainargs),
         Some(("add", s)) => sc_library_add(s),
         Some(("rm", s)) => sc_library_rm(s),
         Some(("default", s)) => sc_library_default(s, args, mainargs),
-        _ => { Ok(()) } // unreachable
+        _ => Ok(()), // unreachable
     }
 }
 
 // ------------------------------------------------------------------------
 
-fn sc_resolve(args: &ArgMatches, mainargs: &ArgMatches)
-              -> Result<(), Box<dyn Error>> {
+fn sc_resolve(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let version = get_resolve(args)?;
     let url: String = match version.url {
         Some(s) => s.to_string(),
@@ -145,7 +139,7 @@ fn sc_resolve(args: &ArgMatches, mainargs: &ArgMatches)
     };
     let version: String = match version.version {
         Some(s) => s.to_string(),
-        None => "???".to_string()
+        None => "???".to_string(),
     };
 
     if args.is_present("json") || mainargs.is_present("json") {
@@ -168,7 +162,7 @@ fn sc_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error
     let vers = sc_get_list()?;
     let def = match sc_get_default()? {
         None => "".to_string(),
-        Some(v) => v
+        Some(v) => v,
     };
 
     if args.is_present("json") || mainargs.is_present("json") {
@@ -199,11 +193,12 @@ fn sc_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error
 
 // ------------------------------------------------------------------------
 
-fn sc_default(args: &ArgMatches, mainargs: &ArgMatches)
-              -> Result<(), Box<dyn Error>> {
+fn sc_default(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     if args.is_present("version") {
-        let ver = args.value_of("version")
-            .ok_or(SimpleError::new("Internal argument error"))?.to_string();
+        let ver = args
+            .value_of("version")
+            .ok_or(SimpleError::new("Internal argument error"))?
+            .to_string();
         sc_set_default(&ver)
     } else {
         let default = sc_get_default_or_fail()?;
@@ -224,9 +219,7 @@ pub fn sc_system_create_lib(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let vers = args.values_of("version");
     let vers: Vec<String> = match vers {
         None => sc_get_list()?,
-        Some(vers) => {
-            vers.map(|v| v.to_string()).collect()
-        }
+        Some(vers) => vers.map(|v| v.to_string()).collect(),
     };
 
     for ver in vers {
@@ -241,7 +234,8 @@ pub fn sc_system_add_pak(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let devel = args.is_present("devel");
     let all = args.is_present("all");
     let vers = args.values_of("version");
-    let mut pakver = args.value_of("pak-version")
+    let mut pakver = args
+        .value_of("pak-version")
         .ok_or(SimpleError::new("Internal argument error"))?;
     let pakverx = args.occurrences_of("pak-version") > 0;
 
@@ -261,7 +255,8 @@ pub fn sc_system_add_pak(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     } else {
         let vers: Vec<String> = vers
             .ok_or(SimpleError::new("Internal argument error"))?
-            .map(|v| v.to_string()).collect();
+            .map(|v| v.to_string())
+            .collect();
         system_add_pak(Some(vers), pakver, true)?;
     }
 

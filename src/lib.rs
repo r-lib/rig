@@ -34,36 +34,33 @@ lazy_static! {
     static ref LAST_ERROR2: Mutex<i32> = Mutex::new(0);
 }
 
-static SUCCESS:                  libc::c_int =  0;
-static ERROR_NO_DEFAULT:         libc::c_int = -1;
-static ERROR_DEFAULT_FAILED:     libc::c_int = -2;
-static ERROR_BUFFER_SHORT:       libc::c_int = -3;
+static SUCCESS: libc::c_int = 0;
+static ERROR_NO_DEFAULT: libc::c_int = -1;
+static ERROR_DEFAULT_FAILED: libc::c_int = -2;
+static ERROR_BUFFER_SHORT: libc::c_int = -3;
 static ERROR_SET_DEFAULT_FAILED: libc::c_int = -4;
-static ERROR_INVALID_INPUT:      libc::c_int = -5;
+static ERROR_INVALID_INPUT: libc::c_int = -5;
 
 // ------------------------------------------------------------------------
 
 // Caller must free this
 
 #[no_mangle]
-pub extern "C" fn rig_last_error(
-    ptr: *mut libc::c_char,
-    size: libc::size_t
-) -> libc::c_int {
+pub extern "C" fn rig_last_error(ptr: *mut libc::c_char, size: libc::size_t) -> libc::c_int {
     let str: String = match LAST_ERROR.try_lock() {
         Ok(x) => x.to_owned(),
-        Err(_) => "Unknown error".to_string()
+        Err(_) => "Unknown error".to_string(),
     };
 
     let str2;
     if size <= str.len() {
-        str2 = str[..(size-1)].to_string() + "\0";
+        str2 = str[..(size - 1)].to_string() + "\0";
     } else {
         str2 = str.to_string()
     }
     match set_c_string(&str2, ptr, size) {
         Ok(x) => x,
-        Err(_) => ERROR_BUFFER_SHORT
+        Err(_) => ERROR_BUFFER_SHORT,
     }
 }
 
@@ -72,15 +69,18 @@ fn set_error(str: &str) {
         Ok(mut x) => {
             x.clear();
             x.insert_str(0, str);
-        },
+        }
         Err(_) => {
             // cannot save error message, not much we can do
         }
     };
 }
 
-fn set_c_string(from: &str, ptr: *mut libc::c_char, size: libc::size_t)
-                -> Result<libc::c_int, Box<dyn Error>> {
+fn set_c_string(
+    from: &str,
+    ptr: *mut libc::c_char,
+    size: libc::size_t,
+) -> Result<libc::c_int, Box<dyn Error>> {
     let from = from.to_string() + "\0";
     let bts = from.as_bytes();
     let n = from.bytes().count();
@@ -96,8 +96,11 @@ fn set_c_string(from: &str, ptr: *mut libc::c_char, size: libc::size_t)
     }
 }
 
-fn set_c_strings(from: Vec<String>, ptr: *mut libc::c_char, size: libc::size_t)
-                 -> Result<libc::c_int, Box<dyn Error>> {
+fn set_c_strings(
+    from: Vec<String>,
+    ptr: *mut libc::c_char,
+    size: libc::size_t,
+) -> Result<libc::c_int, Box<dyn Error>> {
     let mut n = from.len() + 1; // terminating \0 plus ultimate temrinating \0
     for s in &from {
         n += s.len();
@@ -110,7 +113,7 @@ fn set_c_strings(from: Vec<String>, ptr: *mut libc::c_char, size: libc::size_t)
         }
         for s in &from {
             let l = s.len();
-            ptr2[idx..(idx+l)].clone_from_slice(s.as_bytes());
+            ptr2[idx..(idx + l)].clone_from_slice(s.as_bytes());
             idx += l;
             ptr2[idx] = 0;
             idx += 1;
@@ -125,29 +128,21 @@ fn set_c_strings(from: Vec<String>, ptr: *mut libc::c_char, size: libc::size_t)
 // ------------------------------------------------------------------------
 
 #[no_mangle]
-pub extern "C" fn rig_get_default(
-    ptr: *mut libc::c_char,
-    size: libc::size_t
-) -> libc::c_int {
-
+pub extern "C" fn rig_get_default(ptr: *mut libc::c_char, size: libc::size_t) -> libc::c_int {
     let def = sc_get_default();
 
     match def {
-        Ok(x) => {
-            match x {
-                Some(xx) => {
-                    match set_c_string(&xx, ptr, size) {
-                        Ok(x) => x,
-                        Err(_) => {
-                            set_error("Buffer too short for R version");
-                            ERROR_BUFFER_SHORT
-                        }
-                    }
-                },
-                None => {
-                    set_error("No default R version is set currently");
-                    ERROR_NO_DEFAULT
+        Ok(x) => match x {
+            Some(xx) => match set_c_string(&xx, ptr, size) {
+                Ok(x) => x,
+                Err(_) => {
+                    set_error("Buffer too short for R version");
+                    ERROR_BUFFER_SHORT
                 }
+            },
+            None => {
+                set_error("No default R version is set currently");
+                ERROR_NO_DEFAULT
             }
         },
         Err(e) => {
@@ -159,21 +154,15 @@ pub extern "C" fn rig_get_default(
 }
 
 #[no_mangle]
-pub extern "C" fn rig_list(
-    ptr: *mut libc::c_char,
-    size: libc::size_t
-) -> libc::c_int {
-
+pub extern "C" fn rig_list(ptr: *mut libc::c_char, size: libc::size_t) -> libc::c_int {
     let vers = sc_get_list();
 
     match vers {
-        Ok(x) => {
-            match set_c_strings(x, ptr, size) {
-                Ok(x) => x,
-                Err(_) => {
-                    set_error("Buffer too short for R version");
-                    ERROR_BUFFER_SHORT
-                }
+        Ok(x) => match set_c_strings(x, ptr, size) {
+            Ok(x) => x,
+            Err(_) => {
+                set_error("Buffer too short for R version");
+                ERROR_BUFFER_SHORT
             }
         },
         Err(e) => {
@@ -187,9 +176,8 @@ pub extern "C" fn rig_list(
 #[no_mangle]
 pub extern "C" fn rig_list_with_versions(
     ptr: *mut libc::c_char,
-    size: libc::size_t
+    size: libc::size_t,
 ) -> libc::c_int {
-
     let vers = sc_get_list_with_versions();
 
     match vers {
@@ -203,10 +191,10 @@ pub extern "C" fn rig_list_with_versions(
                 Ok(x) => x,
                 Err(_) => {
                     set_error("Buffer too short for R version");
-                    return ERROR_BUFFER_SHORT
+                    return ERROR_BUFFER_SHORT;
                 }
             }
-        },
+        }
         Err(e) => {
             let msg = e.to_string();
             set_error(&msg);
@@ -216,9 +204,7 @@ pub extern "C" fn rig_list_with_versions(
 }
 
 #[no_mangle]
-pub extern "C" fn rig_set_default(
-    ptr: *const libc::c_char) -> libc::c_int {
-
+pub extern "C" fn rig_set_default(ptr: *const libc::c_char) -> libc::c_int {
     let cver;
 
     unsafe {
@@ -227,15 +213,11 @@ pub extern "C" fn rig_set_default(
 
     let ver = match cver.to_str() {
         Ok(x) => x,
-        Err(_) => {
-            return ERROR_INVALID_INPUT
-        }
+        Err(_) => return ERROR_INVALID_INPUT,
     };
 
     match sc_set_default(ver) {
-        Ok(_) => {
-            SUCCESS
-        },
+        Ok(_) => SUCCESS,
         Err(e) => {
             let msg = e.to_string();
             set_error(&msg);
@@ -247,8 +229,8 @@ pub extern "C" fn rig_set_default(
 #[no_mangle]
 pub extern "C" fn rig_start_rstudio(
     pversion: *const libc::c_char,
-    pproject: *const libc::c_char) -> libc::c_int {
-
+    pproject: *const libc::c_char,
+) -> libc::c_int {
     let cver;
     let cprj;
 
@@ -275,9 +257,7 @@ pub extern "C" fn rig_start_rstudio(
     let prj = if prj == "" { None } else { Some(prj) };
 
     match sc_rstudio_(ver, prj) {
-        Ok(_) => {
-            SUCCESS
-        },
+        Ok(_) => SUCCESS,
         Err(e) => {
             let msg = e.to_string();
             set_error(&msg);
@@ -287,11 +267,7 @@ pub extern "C" fn rig_start_rstudio(
 }
 
 #[no_mangle]
-pub extern "C" fn rig_library_list(
-    ptr: *mut libc::c_char,
-    size: libc::size_t
-) -> libc::c_int {
-
+pub extern "C" fn rig_library_list(ptr: *mut libc::c_char, size: libc::size_t) -> libc::c_int {
     let vers = sc_library_get_list(None, true);
 
     match vers {
@@ -305,10 +281,10 @@ pub extern "C" fn rig_library_list(
                 Ok(x) => x,
                 Err(_) => {
                     set_error("Buffer too short for R libraries");
-                    return ERROR_BUFFER_SHORT
+                    return ERROR_BUFFER_SHORT;
                 }
             }
-        },
+        }
         Err(e) => {
             let msg = e.to_string();
             set_error(&msg);
@@ -318,9 +294,7 @@ pub extern "C" fn rig_library_list(
 }
 
 #[no_mangle]
-pub extern "C" fn rig_lib_set_default(
-    ptr: *const libc::c_char) -> libc::c_int {
-
+pub extern "C" fn rig_lib_set_default(ptr: *const libc::c_char) -> libc::c_int {
     let cver;
 
     unsafe {
@@ -329,15 +303,11 @@ pub extern "C" fn rig_lib_set_default(
 
     let ver = match cver.to_str() {
         Ok(x) => x,
-        Err(_) => {
-            return ERROR_INVALID_INPUT
-        }
+        Err(_) => return ERROR_INVALID_INPUT,
     };
 
     match sc_library_set_default(ver) {
-        Ok(_) => {
-            SUCCESS
-        },
+        Ok(_) => SUCCESS,
         Err(e) => {
             let msg = e.to_string();
             set_error(&msg);
