@@ -1,4 +1,9 @@
 
+# rig 0.4.1 (not released yet)
+
+* `rig rstudio <version>` and `rig rstudio <version> <project>` work properly
+  again (#77).
+
 # rig 0.4.0
 
 ## NEW NAME

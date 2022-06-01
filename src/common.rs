@@ -48,9 +48,11 @@ pub fn sc_rstudio(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     // If the first argument is an R project file, and the second is not,
     // then we switch the two
-    if let Some(_) = ver {
-        ver = args.value_of("project-file");
-        prj = args.value_of("version");
+    if let Some(ver2) = ver {
+        if ver2.ends_with(".Rproj") {
+            ver = args.value_of("project-file");
+            prj = args.value_of("version");
+        }
     }
 
     sc_rstudio_(ver, prj)
