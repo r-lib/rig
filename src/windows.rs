@@ -745,7 +745,7 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>) -> Result<(), B
     // they are different
     let def = sc_get_default()?;
     let restore = match (version, def) {
-        (Some(v), Some(d)) => v == d,
+        (Some(v), Some(d)) => v != d,
         _ => false,
     };
 

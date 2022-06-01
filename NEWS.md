@@ -4,6 +4,9 @@
 * `rig rstudio <version>` and `rig rstudio <version> <project>` work properly
   again (#77).
 
+* On Windows, `rig rstudio` now properly restores the default version after
+  starting RStudio, if a non-default version was specified.
+
 # rig 0.4.0
 
 ## NEW NAME
