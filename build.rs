@@ -1,7 +1,6 @@
-
 use clap_complete::shells::Bash;
-use clap_complete::shells::Zsh;
 use clap_complete::shells::PowerShell;
+use clap_complete::shells::Zsh;
 use std::env;
 use std::io::Error;
 
@@ -13,11 +12,10 @@ fn main() -> Result<(), Error> {
         Some(outdir) => outdir,
     };
 
-
-#[cfg(target_os = "windows")]
-{
-    static_vcruntime::metabuild();
-}
+    #[cfg(target_os = "windows")]
+    {
+        static_vcruntime::metabuild();
+    }
 
     let mut app = rig_app();
     let name = "rig".to_string();

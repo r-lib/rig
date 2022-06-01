@@ -1,4 +1,3 @@
-
 use std::error::Error;
 
 use clap::ArgMatches;
@@ -15,7 +14,7 @@ use crate::linux::*;
 
 pub fn check_installed(ver: &String) -> Result<bool, Box<dyn Error>> {
     let inst = sc_get_list()?;
-    if ! inst.contains(&ver) {
+    if !inst.contains(&ver) {
         bail!("R version <b>{}</b> is not installed", &ver);
     }
     Ok(true)
@@ -29,7 +28,7 @@ pub fn sc_get_default_or_fail() -> Result<String, Box<dyn Error>> {
     let default = sc_get_default()?;
     match default {
         None => bail!("No default R version is set, call <b>rig default <version></b>"),
-        Some(d) => Ok(d)
+        Some(d) => Ok(d),
     }
 }
 
