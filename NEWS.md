@@ -1,8 +1,11 @@
 
 # rig 0.4.2
 
-* rig now handles that code that sets up user libraries better. In
+* rig is now more robust when setting up the user library. In
   particular R will not fail to start in renv projects (#81, @krlmlr).
+
+* On macOS `rig add` now does not fail if it is started from an x86_64
+  shell, when adding an arm64 R version on M1 Macs (#79).
 
 # rig 0.4.1
 

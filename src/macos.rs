@@ -38,7 +38,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     };
     let arch = version.arch.to_owned();
     let prefix = match arch {
-        Some(x) => x,
+        Some(ref x) => x.to_owned(),
         None => calculate_hash(&url),
     };
     let filename = prefix + "-" + basename(&url).unwrap_or("foo");
@@ -70,7 +70,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let dirname = &get_install_dir(&version)?;
 
     // Install without changing default
-    safe_install(target, dirname)?;
+    safe_install(target, dirname, arch)?;
 
     // This should not happen currently on macOS, a .pkg installer
     // sets the default, but prepare for the future
@@ -115,7 +115,8 @@ fn random_string() -> String {
     password
 }
 
-fn safe_install(target: std::path::PathBuf, ver: &str) -> Result<(), Box<dyn Error>> {
+fn safe_install(target: std::path::PathBuf, ver: &str, arch: Option<String>)
+                -> Result<(), Box<dyn Error>> {
     let dir = target.parent().ok_or(SimpleError::new("Internal error"))?;
     let tmpf = random_string();
     let tmp = dir.join(tmpf);
@@ -179,13 +180,27 @@ fn safe_install(target: std::path::PathBuf, ver: &str) -> Result<(), Box<dyn Err
         );
     }
 
+    let mut cmd = "installer";
+    let mut args: Vec<&str> = vec![];
+
+    match arch {
+        Some(arch) => {
+            if arch == "arm64" {
+                cmd = "arch";
+                args = vec!["-arm64", "installer"];
+            }
+        },
+        None => { }
+    };
+
     println!("--nnn-- Start of installer output -----------------");
-    let status = Command::new("installer")
-        .arg("-pkg")
-        .arg(&pkg)
-        .args(["-target", "/"])
-        .spawn()?
-        .wait()?;
+    let status = Command::new(cmd)
+            .args(args)
+            .arg("-pkg")
+            .arg(&pkg)
+            .args(["-target", "/"])
+            .spawn()?
+            .wait()?;
     println!("--uuu-- End of installer output -------------------");
 
     if !status.success() {
