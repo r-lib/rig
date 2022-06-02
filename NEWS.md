@@ -1,5 +1,5 @@
 
-# rig 0.4.1 (not released yet)
+# rig 0.4.1
 
 * `rig rstudio <version>` and `rig rstudio <version> <project>` work properly
   again (#77).
