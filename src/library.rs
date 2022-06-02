@@ -377,6 +377,7 @@ pub fn library_update_rprofile(rver: &str) -> Result<(), Box<dyn Error>> {
 ## rig R_LIBS_USER start
 local({
   userlibs <- strsplit(Sys.getenv("R_LIBS_USER"), .Platform$path.sep)[[1]]
+  if (length(userlibs) == 0) return()
   if (userlibs[[1]] == "NULL") return()
   userlib1 <- userlibs[1]
   dir.create(userlib1, recursive = TRUE, showWarnings = FALSE)
