@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "rig -- The R Installation Manager"
-#define MyAppVersion "0.4.1"
+#define MyAppVersion "0.4.2"
 #define MyAppPublisher "Gabor Csardi"
 #define MyAppURL "https://github.com/r-lib/rig"
 #define MyAppExeName "rig.exe"

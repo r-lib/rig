@@ -1,4 +1,9 @@
 
+# rig 0.4.2
+
+* rig now handles that code that sets up user libraries better. In
+  particular R will not fail to start in renv projects (#81, @krlmlr).
+
 # rig 0.4.1
 
 * `rig rstudio <version>` and `rig rstudio <version> <project>` work properly
