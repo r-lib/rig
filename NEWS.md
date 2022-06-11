@@ -1,5 +1,5 @@
 
-# rig 0.4.2
+# rig 0.4.2 (pre-release)
 
 * rig is now more robust when setting up the user library. In
   particular R will not fail to start in renv projects (#81, @krlmlr).
@@ -10,6 +10,9 @@
 * `rig list` now prints the result as a table, and it prints the R version
   number as well. `rig list --json` includes the version number, the path
   to the installation, and the path to the R binary.
+
+* On macOS and Linux `rig add` now creates the user library with the right
+  permissions, if it does not exist and pak is installed (#84).
 
 # rig 0.4.1
 

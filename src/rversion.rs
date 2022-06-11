@@ -1,3 +1,5 @@
+use std::ffi::OsString;
+
 #[derive(Default, Debug, Clone)]
 pub struct Rversion {
     pub version: Option<String>,
@@ -28,4 +30,14 @@ pub struct PkgLibrary {
     pub name: String,
     pub path: std::path::PathBuf,
     pub default: bool,
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[derive(Default, Debug)]
+pub struct User {
+    pub user: String,
+    pub uid: u32,
+    pub gid: u32,
+    pub dir: OsString,
+    pub sudo: bool,
 }
