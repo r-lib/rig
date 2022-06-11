@@ -32,13 +32,13 @@ teardown() {
 # VM, but without the rig goodies.
 
 @test "add" {
-    if ! rig ls | grep -q '^4.1.1$'; then
+    if ! rig ls | grep -q '^[* ] 4.1.1$'; then
 	run rig add 4.1.1
 	echo "status = ${status}"
 	echo "output = ${output}"
 	[[ "$status" -eq 0 ]]
 	run rig ls
-	echo "$output" | grep -q "^4.1.1"
+	echo "$output" | grep -q "^[* ] 4.1.1"
     fi
     run R-4.1.1.bat -q -s -e 'cat(as.character(getRversion()))'
     echo "status = ${status}"
@@ -46,13 +46,13 @@ teardown() {
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^4[.]1[.]1$"
 
-    if ! rig ls | grep -q '^4.0.5$'; then
+    if ! rig ls | grep -q '^[* ] 4.0.5$'; then
 	run rig add 4.0
 	echo "status = ${status}"
 	echo "output = ${output}"
 	[[ "$status" -eq 0 ]]
 	run rig ls
-	echo "$output" | grep -q "^4.0.5"
+	echo "$output" | grep -q "^[* ] 4.0.5"
     fi
     run R-4.0.5.bat -q -s -e 'cat(as.character(getRversion()))'
     echo "status = ${status}"
@@ -61,13 +61,13 @@ teardown() {
     echo "$output" | grep -q "^4[.]0[.]5$"
 
     devel=$(rig resolve devel | cut -f1 -d" ")
-    if ! rig ls | grep -q '^devel$'; then
+    if ! rig ls | grep -q '^[* ] devel$'; then
 	run rig add devel
 	echo "status = ${status}"
 	echo "output = ${output}"
 	[[ "$status" -eq 0 ]]
 	run rig ls
-	echo "$output" | grep -q "^devel"
+	echo "$output" | grep -q "^[* ] devel"
     fi
     run R-devel.bat -q -s -e 'cat(as.character(getRversion()))'
     echo "status = ${status}"
@@ -103,12 +103,12 @@ teardown() {
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
-    echo "$output" | grep -q "^4.1.1 [(]default[)]$"
+    echo "$output" | grep -q "^[*] 4.1.1$"
     run rig ls
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
-    echo "$output" | grep -q "^4.0.5$"
+    echo "$output" | grep -q "^  4.0.5$"
 }
 
 @test "resolve" {
@@ -145,20 +145,20 @@ teardown() {
 }
 
 @test "rm" {
-    if ! rig ls | grep -q '^3.4.4$'; then
+    if ! rig ls | grep -q '^[* ] 3.4.4$'; then
         run rig add 3.4
 	echo "status = ${status}"
 	echo "output = ${output}"
         [[ "$status" -eq 0 ]]
         run rig ls
-        echo "$output" | grep -q "^3[.]4[.]4"
+        echo "$output" | grep -q "^[* ] 3[.]4[.]4"
     fi
     run rig rm 3.4.4
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
     run rig list
-    echo $output | grep -vq "^3.4.4"
+    echo $output | grep -vq "^[* ] 3.4.4"
 }
 
 # The quoting is very tricky here. We avoid double quotes because they
