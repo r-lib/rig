@@ -75,7 +75,7 @@ teardown() {
     run rig default 4.1
     run rig list
     [[ "$status" -eq 0 ]]
-    echo "$output" | grep -q "^[*] 4.1 [(]R 4[.]1[.][0-9][)]$"
+    echo "$output" | grep -q "^[*] 4.1[ ]*[(]R 4[.]1[.][0-9][)]$"
     run rig ls
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^  4.0"

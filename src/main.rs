@@ -3,6 +3,7 @@ use std::error::Error;
 use clap::ArgMatches;
 use simple_error::*;
 use simplelog::*;
+use tabular::*;
 
 mod args;
 use args::*;
@@ -187,19 +188,24 @@ fn sc_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error
         }
         println!("]");
     } else {
+
+        let mut tab = Table::new("{:<} {:<}  {:<}");
         for ver in vers {
-            if def == ver.name {
-                print!("* ");
-            } else {
-                print!("  ");
-            }
-            print!("{}", ver.name);
-            match ver.version {
-                None => print!(" (broken?)"),
-                Some(v) => if v != ver.name { print!(" (R {})", v); }
+            let dflt = if def == ver.name { "*" } else { " " };
+            let note = match ver.version {
+                None => " (broken?)".to_string(),
+                Some(v) => {
+                    if v != ver.name {
+                        format!(" (R {})", v)
+                    } else {
+                        "".to_string()
+                    }
+                }
             };
-            println!("");
+            tab.add_row(row!(dflt, ver.name, note));
         }
+
+        print!("{}", tab);
     }
 
     Ok(())
