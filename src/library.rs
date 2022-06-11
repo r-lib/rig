@@ -388,11 +388,11 @@ local({
     userlibs[1] <- file.path(userlib1, def, fsep = "/")
     dir.create(userlibs[1], recursive = TRUE, showWarnings = FALSE)
     Sys.setenv("R_LIBS_USER" = paste(userlibs, collapse = .Platform$path.sep))
-    invisible(.libPaths(c(
-      unlist(strsplit(Sys.getenv("R_LIBS"), .Platform$path.sep)),
-      userlibs
-    )))
   }
+  invisible(.libPaths(c(
+    unlist(strsplit(Sys.getenv("R_LIBS"), .Platform$path.sep)),
+    userlibs
+  )))
 })
 ## rig R_LIBS_USER end
 "#;
