@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
     <id>rig</id>
-    <version>0.4.0</version>
+    <version>0.4.1</version>
     <packageSourceUrl>https://github.com/r-lib/rig</packageSourceUrl>
     <owners>Gábor Csárdi</owners>
     <title>rig</title>
@@ -20,8 +20,10 @@
 
 ## Features
 
-* Works on macOS, Windows and Linux (Ubuntu and Debian).
-* Install multiple R versions, select the default one.
+* Works on macOS, Windows and Linux (Ubuntu and Debian, x86_64 and aarch64).
+* Easy installation and update, no system requirements on any platform.
+* Install multiple R versions.
+* Select the default R version, for the terminal and RStudio.
 * Select R version to install using symbolic names: devel, next, release, oldrel, etc.
 * Run multiple versions at the same time using quick links. E.g. R-4.1 or R-4.1.2 starts R 4.1.x. Quick links are automatically added to the user’s path.
 * On M1 macs select between x86_64 and arm64 versions or R, or install both.
@@ -37,45 +39,14 @@
 Please open an issue in our issue tracker at https://github.com/r-lib/rig/issues
     </description>
     <releaseNotes>
-# rig 0.4.0
+# rig 0.4.1
 
-## NEW NAME
+* `rig rstudio [version]` and `rig rstudio [version] [project]` work properly
+  again (#77).
 
-`rim` is now known as `rig`.
+* On Windows, `rig rstudio` now properly restores the default version after
+  starting RStudio, if a non-default version was specified.
 
-## New features
-
-* Experimental multi-library support. See `rig library --help` for the
-  details.
-
-* On macOS rig now includes a menu bar app that show the default R version,
-  lets you choose between R versions and libraries, and lets you start
-  RStudio with a specific R version, and/or a recent RStudio project.
-  Start the app with `open -a Rig`.
-
-* New subcommand `rig system setup-user-lib` to update the R config to create
-  the user package library when R starts up, if it does not exist. The old
-  `rig system create-lib` subcommand is now an alias of this.
-
-* Better messages. rig has a `-v` and `-vv` flag now, for extra debug and
-  trace messages.
-
-* On arm64 macOS, `rig add` installs arm64 R by default now.
-  (This is also true for the x86_64 build of `rig`.
-
-* On macOS `rig add` does not change the default R version any more (#2).
-
-* rig now supports Linux distros based on Ubuntu Bionic 18.04, Focal 20.04
-  and Jammy 22.04. They need to have a proper `UBUNTU_CODENAME` entry in
-  `/etc/os-release` (#34).
-
-* rig now sets up automated system requirements installation with pak on Linux
-  distributions that support it: Ubuntu 18.04, 20.04 and 22.04 (on distros
-  based on these), on both x86_64 and aarch64. (This currently needs
-  passwordless `sudo` or a root account.)
-
-* All OSes create an `Rscript` link now that runs the default R
-  version (#20).
     </releaseNotes>
   </metadata>
 </package>
