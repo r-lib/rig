@@ -105,6 +105,24 @@ To update run
 scoop update rig
 ```
 
+### Windows (Chocolatey)
+
+If you use [Chocolatey](https://chocolatey.org/) (e.g. on GitHub
+Actions) you can install `rig` with
+
+``` powershell
+choco install rig
+```
+
+and upgrade to the latest version with
+
+``` powershell
+choco upgrade rig
+```
+
+Note that a new rig version might take a week or two to publish on
+Chocolatey, so the installer and the version in Scoop might be newer.
+
 ### Linux
 
 Download the latest releast from https://github.com/r-lib/rig/releases
