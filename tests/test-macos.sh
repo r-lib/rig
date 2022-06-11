@@ -11,11 +11,11 @@ teardown() {
 }
 
 @test "add" {
-    if ! rig ls | grep -q '^4.1'; then
+    if ! rig ls | grep -q '^[* ] 4.1'; then
         run sudo rig add 4.1
         [[ "$status" -eq 0 ]]
         run rig ls
-        echo "$output" | grep -q "^4.1"
+        echo "$output" | grep -q "^[* ] 4.1"
     fi
     run sudo rig system make-links
     [[ "$status" -eq 0 ]]
@@ -23,11 +23,11 @@ teardown() {
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^4[.]1[.][0-9]$"
 
-    if ! rig ls | grep -q '^4.0'; then
+    if ! rig ls | grep -q '^[* ] 4.0'; then
         run sudo rig add 4.0
         [[ "$status" -eq 0 ]]
         run rig ls
-        echo "$output" | grep -q "^4.0"
+        echo "$output" | grep -q "^[* ] 4.0"
     fi
     run sudo rig system make-links
     [[ "$status" -eq 0 ]]
@@ -36,11 +36,11 @@ teardown() {
     echo "$output" | grep -q "^4[.]0[.]5$"
 
     devel=$(rig resolve devel | cut -f1 -d" " | sed 's/\.[^..]*$//')
-    if ! rig ls | grep -q "^$devel"; then
+    if ! rig ls | grep -q "^[* ] $devel"; then
         run sudo rig add devel
         [[ "$status" -eq 0 ]]
         run rig ls
-        echo "$output" | grep -q "^$devel"
+        echo "$output" | grep -q "^[* ] $devel"
     fi
     run sudo rig system make-links
     [[ "$status" -eq 0 ]]
@@ -50,11 +50,11 @@ teardown() {
     echo "$output" | grep -q "^$devel[.][0-9]\$"
 
     if [[ "$(arch)" = "arm64" ]]; then
-        if ! rig ls | grep -q '^4.1'; then
+        if ! rig ls | grep -q '^[* ] 4.1'; then
             run sudo rig add 4.1 --arch arm64
             [[ "$status" -eq 0 ]]
             run rig ls
-            echo "$output" | grep -q "^4.1-arm64"
+            echo "$output" | grep -q "^[* ] 4.1-arm64"
         fi
     fi
 }
@@ -72,12 +72,13 @@ teardown() {
 }
 
 @test "list" {
+    run rig default 4.1
     run rig list
     [[ "$status" -eq 0 ]]
-    echo "$output" | grep -q "^4.1 [(]default[)]$"
+    echo "$output" | grep -q "^[*] 4.1[ ]*[(]R 4[.]1[.][0-9][)]"
     run rig ls
     [[ "$status" -eq 0 ]]
-    echo "$output" | grep -q "^4.0"
+    echo "$output" | grep -q "^  4.0"
 }
 
 @test "resolve" {
@@ -105,16 +106,16 @@ teardown() {
 }
 
 @test "rm" {
-    if ! rig ls | grep -q '^3.3'; then
+    if ! rig ls | grep -q '^[* ] 3.3'; then
         run sudo rig add -a x86_64 3.3
         [[ "$status" -eq 0 ]]
         run rig ls
-        echo "$output" | grep -q "^3[.]3"
+        echo "$output" | grep -q "[* ] 3[.]3"
     fi
     run sudo rig rm 3.3
     [[ "$status" -eq 0 ]]
     run rig list
-    echo $output | grep -vq "^3.3$"
+    echo $output | grep -vq "^[* ] 3.3$"
 }
 
 @test "system create-lib" {

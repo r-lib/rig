@@ -21,7 +21,10 @@ use crate::resolve::resolve_versions;
 use crate::rversion::*;
 use crate::utils::*;
 
-const R_ROOT: &str = "/Library/Frameworks/R.framework/Versions";
+pub const R_ROOT: &str = "/Library/Frameworks/R.framework/Versions";
+pub const R_VERSIONDIR: &str = "{}";
+pub const R_SYSLIBPATH: &str = "{}/Resources/library";
+pub const R_BINPATH: &str = "{}/Resources/R";
 const R_CUR: &str = "/Library/Frameworks/R.framework/Versions/Current";
 
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
@@ -816,35 +819,6 @@ pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
     }
     vers.sort();
     Ok(vers)
-}
-
-#[allow(dead_code)]
-pub fn sc_get_list_with_versions() -> Result<Vec<InstalledVersion>, Box<dyn Error>> {
-    let names = sc_get_list()?;
-    let mut res: Vec<InstalledVersion> = vec![];
-    let re = Regex::new("^Version:[ ]?")?;
-
-    for name in names {
-        let desc = Path::new(R_ROOT)
-            .join(&name)
-            .join("Resources/library/base/DESCRIPTION");
-        let lines = match read_lines(&desc) {
-            Ok(x) => x,
-            Err(_) => vec![],
-        };
-        let idx = grep_lines(&re, &lines);
-        let version: Option<String> = if idx.len() == 0 {
-            None
-        } else {
-            Some(re.replace(&lines[idx[0]], "").to_string())
-        };
-        res.push(InstalledVersion {
-            name: name.to_string(),
-            version: version,
-        });
-    }
-
-    Ok(res)
 }
 
 fn get_install_dir(ver: &Rversion) -> Result<String, Box<dyn Error>> {

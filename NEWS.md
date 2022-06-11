@@ -7,6 +7,10 @@
 * On macOS `rig add` now does not fail if it is started from an x86_64
   shell, when adding an arm64 R version on M1 Macs (#79).
 
+* `rig list` now prints the result as a table, and it prints the R version
+  number as well. `rig list --json` includes the version number, the path
+  to the installation, and the path to the R binary.
+
 # rig 0.4.1
 
 * `rig rstudio <version>` and `rig rstudio <version> <project>` work properly

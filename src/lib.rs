@@ -24,6 +24,7 @@ mod macos;
 mod resolve;
 mod rversion;
 mod utils;
+use common::*;
 use library::*;
 use macos::*;
 
@@ -178,7 +179,7 @@ pub extern "C" fn rig_list_with_versions(
     ptr: *mut libc::c_char,
     size: libc::size_t,
 ) -> libc::c_int {
-    let vers = sc_get_list_with_versions();
+    let vers = sc_get_list_details();
 
     match vers {
         Ok(x) => {

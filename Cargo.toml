@@ -43,6 +43,7 @@ shellexpand = "2.1.0"
 simple-error = "0.2.3"
 simplelog = { version = "^0.12.0", features = ["paris"] }
 sudo = "0.6.0"
+tabular = "0.2.0"
 tokio = { version = "1", features = ["full"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
