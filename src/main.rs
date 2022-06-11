@@ -3,6 +3,7 @@ use std::error::Error;
 use clap::ArgMatches;
 use simple_error::*;
 use simplelog::*;
+use tabular::*;
 
 mod args;
 use args::*;
@@ -159,33 +160,52 @@ fn sc_resolve(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Er
 // ------------------------------------------------------------------------
 
 fn sc_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    let vers = sc_get_list()?;
+    let vers = sc_get_list_details()?;
     let def = match sc_get_default()? {
         None => "".to_string(),
         Some(v) => v,
     };
 
+    fn or_null(x: &Option<String>) -> String {
+        match x {
+            None => "null".to_string(),
+            Some(x) => x.to_string()
+        }
+    }
+
     if args.is_present("json") || mainargs.is_present("json") {
         println!("[");
         let num = vers.len();
         for (idx, ver) in vers.iter().enumerate() {
+            let dflt = if def == ver.name { "true" } else { "false" };
             println!("  {{");
-            println!("    \"name\": \"{}\",", ver);
-            println!(
-                "    \"default\": {}",
-                if &def == ver { "true" } else { "false" }
-            );
+            println!("    \"name\": \"{}\",", ver.name);
+            println!("    \"default\": {},", dflt);
+            println!("    \"version\": \"{}\",", or_null(&ver.version));
+            println!("    \"path\": \"{}\",", or_null(&ver.path));
+            println!("    \"binary\": \"{}\"", or_null(&ver.binary));
             println!("  }}{}", if idx == num - 1 { "" } else { "," });
         }
         println!("]");
     } else {
+
+        let mut tab = Table::new("{:<} {:<}  {:<}");
         for ver in vers {
-            if def == ver {
-                println!("{} (default)", ver)
-            } else {
-                println!("{}", ver);
-            }
+            let dflt = if def == ver.name { "*" } else { " " };
+            let note = match ver.version {
+                None => " (broken?)".to_string(),
+                Some(v) => {
+                    if v != ver.name {
+                        format!(" (R {})", v)
+                    } else {
+                        "".to_string()
+                    }
+                }
+            };
+            tab.add_row(row!(dflt, ver.name, note));
         }
+
+        print!("{}", tab);
     }
 
     Ok(())

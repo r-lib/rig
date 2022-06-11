@@ -9,6 +9,8 @@ pub struct Rversion {
 pub struct InstalledVersion {
     pub name: String,
     pub version: Option<String>,
+    pub path: Option<String>,
+    pub binary: Option<String>
 }
 
 #[derive(PartialEq, Clone, Debug)]
