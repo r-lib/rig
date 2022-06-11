@@ -103,12 +103,12 @@ teardown() {
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
-    echo "$output" | grep -q "^[*] 4.1.1$"
+    echo "$output" | grep -q "^[*] 4.1.1"
     run rig ls
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
-    echo "$output" | grep -q "^  4.0.5$"
+    echo "$output" | grep -q "^  4.0.5"
 }
 
 @test "resolve" {

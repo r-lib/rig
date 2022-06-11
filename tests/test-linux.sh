@@ -66,7 +66,7 @@ teardown() {
 @test "list" {
     run rig list
     [[ "$status" -eq 0 ]]
-    echo "$output" | grep -q "^[*] 4.1.2$"
+    echo "$output" | grep -q "^[*] 4.1.2"
     run rig ls
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^  4.0.5"
