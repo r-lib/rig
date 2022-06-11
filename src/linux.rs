@@ -22,8 +22,9 @@ use crate::library::*;
 use crate::utils::*;
 
 pub const R_ROOT: &str = "/opt/R";
-pub const R_SYSLIBPATH: &str = "lib/R/library";
-pub const R_BINPATH: &str = "bin/R";
+pub const R_VERSIONDIR: &str = "{}";
+pub const R_SYSLIBPATH: &str = "{}/lib/R/library";
+pub const R_BINPATH: &str = "{}/bin/R";
 const R_CUR: &str = "/opt/R/current";
 
 #[cfg(target_arch = "x86_64")]

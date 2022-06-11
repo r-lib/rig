@@ -25,7 +25,10 @@ use crate::resolve::resolve_versions;
 use crate::rversion::Rversion;
 use crate::utils::*;
 
-const R_ROOT: &str = "C:\\Program Files\\R";
+pub const R_ROOT: &str = "C:\\Program Files\\R";
+pub const R_VERSIONDIR: &str = "R-{}";
+pub const R_SYSLIBPATH: &str = "R-{}\\library";
+pub const R_BINPATH: &str = "R-{}\\bin\\R.exe";
 
 #[warn(unused_variables)]
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {

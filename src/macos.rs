@@ -22,8 +22,9 @@ use crate::rversion::*;
 use crate::utils::*;
 
 pub const R_ROOT: &str = "/Library/Frameworks/R.framework/Versions";
-pub const R_SYSLIBPATH: &str = "Resources/library";
-pub const R_BINPATH: &str = "Resources/R";
+pub const R_VERSIONDIR: &str = "{}";
+pub const R_SYSLIBPATH: &str = "{}/Resources/library";
+pub const R_BINPATH: &str = "{}/Resources/R";
 const R_CUR: &str = "/Library/Frameworks/R.framework/Versions/Current";
 
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {

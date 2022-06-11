@@ -55,8 +55,7 @@ pub fn sc_get_list_details() -> Result<Vec<InstalledVersion>, Box<dyn Error>> {
 
     for name in names {
         let desc = Path::new(R_ROOT)
-            .join(&name)
-            .join(R_SYSLIBPATH)
+            .join(R_SYSLIBPATH.replace("{}", &name))
             .join("base/DESCRIPTION");
         let lines = match read_lines(&desc) {
             Ok(x) => x,
@@ -68,8 +67,8 @@ pub fn sc_get_list_details() -> Result<Vec<InstalledVersion>, Box<dyn Error>> {
         } else {
             Some(re.replace(&lines[idx[0]], "").to_string())
         };
-        let path = Path::new(R_ROOT).join(&name);
-        let binary = Path::new(R_ROOT).join(&name).join(R_BINPATH);
+        let path = Path::new(R_ROOT).join(R_VERSIONDIR.replace("{}", &name));
+        let binary = Path::new(R_ROOT).join(R_BINPATH.replace("{}", &name));
         res.push(InstalledVersion {
             name: name.to_string(),
             version: version,
