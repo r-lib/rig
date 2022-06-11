@@ -188,14 +188,16 @@ fn sc_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error
         println!("]");
     } else {
         for ver in vers {
+            if def == ver.name {
+                print!("* ");
+            } else {
+                print!("  ");
+            }
             print!("{}", ver.name);
             match ver.version {
                 None => print!(" (broken?)"),
-                Some(v) => if v != ver.name { print!(" ({})", v); }
+                Some(v) => if v != ver.name { print!(" (R {})", v); }
             };
-            if def == ver.name {
-                print!(" (default)");
-            }
             println!("");
         }
     }

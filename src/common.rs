@@ -1,4 +1,7 @@
+
+use regex::Regex;
 use std::error::Error;
+use std::path::Path;
 
 use clap::ArgMatches;
 use simple_error::bail;
@@ -11,6 +14,9 @@ use crate::windows::*;
 
 #[cfg(target_os = "linux")]
 use crate::linux::*;
+
+use crate::rversion::*;
+use crate::utils::*;
 
 pub fn check_installed(ver: &String) -> Result<bool, Box<dyn Error>> {
     let inst = sc_get_list()?;
@@ -38,6 +44,41 @@ pub fn set_default_if_none(ver: String) -> Result<(), Box<dyn Error>> {
         sc_set_default(&ver)?;
     }
     Ok(())
+}
+
+// -- rig list ------------------------------------------------------------
+
+pub fn sc_get_list_details() -> Result<Vec<InstalledVersion>, Box<dyn Error>> {
+    let names = sc_get_list()?;
+    let mut res: Vec<InstalledVersion> = vec![];
+    let re = Regex::new("^Version:[ ]?")?;
+
+    for name in names {
+        let desc = Path::new(R_ROOT)
+            .join(&name)
+            .join(R_SYSLIBPATH)
+            .join("base/DESCRIPTION");
+        let lines = match read_lines(&desc) {
+            Ok(x) => x,
+            Err(_) => vec![],
+        };
+        let idx = grep_lines(&re, &lines);
+        let version: Option<String> = if idx.len() == 0 {
+            None
+        } else {
+            Some(re.replace(&lines[idx[0]], "").to_string())
+        };
+        let path = Path::new(R_ROOT).join(&name);
+        let binary = Path::new(R_ROOT).join(&name).join(R_BINPATH);
+        res.push(InstalledVersion {
+            name: name.to_string(),
+            version: version,
+            path: path.to_str().and_then(|x| Some(x.to_string())),
+            binary: binary.to_str().and_then(|x| Some(x.to_string()))
+        });
+    }
+
+    Ok(res)
 }
 
 // -- rig rstudio ---------------------------------------------------------

@@ -24,6 +24,7 @@ mod macos;
 mod resolve;
 mod rversion;
 mod utils;
+use common::*;
 use library::*;
 use macos::*;
 
