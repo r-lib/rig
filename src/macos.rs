@@ -818,8 +818,7 @@ pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
     Ok(vers)
 }
 
-#[allow(dead_code)]
-pub fn sc_get_list_with_versions() -> Result<Vec<InstalledVersion>, Box<dyn Error>> {
+pub fn sc_get_list_details() -> Result<Vec<InstalledVersion>, Box<dyn Error>> {
     let names = sc_get_list()?;
     let mut res: Vec<InstalledVersion> = vec![];
     let re = Regex::new("^Version:[ ]?")?;
@@ -838,9 +837,13 @@ pub fn sc_get_list_with_versions() -> Result<Vec<InstalledVersion>, Box<dyn Erro
         } else {
             Some(re.replace(&lines[idx[0]], "").to_string())
         };
+        let path = Path::new(R_ROOT).join(&name);
+        let binary = Path::new(R_ROOT).join(&name).join("Resources/R");
         res.push(InstalledVersion {
             name: name.to_string(),
             version: version,
+            path: path.to_str().and_then(|x| Some(x.to_string())),
+            binary: binary.to_str().and_then(|x| Some(x.to_string()))
         });
     }
 
