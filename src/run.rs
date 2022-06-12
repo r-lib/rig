@@ -45,8 +45,10 @@ pub fn r(version: &str, command: &str)
     let cmdline = Regex::new("[\n\r]")?.replace_all(&command, "").to_string();
 
     if user.sudo {
+	debug!("Sudo detected, using 'su' to act as user {:?}", user.user);
         r_sudo(&version, &cmdline, &user)
     } else {
+	debug!("No sudo detected, can call R directly");
         r_nosudo(&version, &cmdline)
     }
 }
@@ -70,7 +72,22 @@ fn r_sudo(version: &str, command: &str, user: &User)
     )
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(target_os = "linux")]
+fn r_sudo(version: &str, command: &str, user: &User)
+          -> Result<(), Box<dyn Error>> {
+
+    let rbin = R_ROOT.to_string() + "/" + &R_BINPATH.replace("{}", version);
+    let username = user.user.to_string();
+
+    run(
+        "su".into(),
+        vec![username.into(), "--".into(), rbin.into(), "-s".into(),
+             "-e".into(), command.into()],
+        &("R ".to_string() + version)
+    )
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn r_nosudo(version: &str, command: &str)
             -> Result<(), Box<dyn Error>> {
 

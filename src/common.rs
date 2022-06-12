@@ -5,6 +5,7 @@ use std::path::Path;
 
 use clap::ArgMatches;
 use simple_error::bail;
+use simplelog::*;
 
 #[cfg(target_os = "macos")]
 use crate::macos::*;
@@ -16,6 +17,7 @@ use crate::windows::*;
 use crate::linux::*;
 
 use crate::rversion::*;
+use crate::run::*;
 use crate::utils::*;
 
 pub fn check_installed(ver: &String) -> Result<bool, Box<dyn Error>> {
@@ -78,6 +80,59 @@ pub fn sc_get_list_details() -> Result<Vec<InstalledVersion>, Box<dyn Error>> {
     }
 
     Ok(res)
+}
+
+// -- rig system add-pak (implementation) ---------------------------------
+
+pub fn system_add_pak(
+    vers: Option<Vec<String>>,
+    stream: &str,
+    update: bool,
+) -> Result<(), Box<dyn Error>> {
+    let vers = match vers {
+        Some(x) => x,
+        None => vec![sc_get_default_or_fail()?],
+    };
+
+    for ver in vers {
+        check_installed(&ver)?;
+        if update {
+            info!("Installing pak for R {}", ver);
+        } else {
+            info!("Installing pak for R {} (if not installed yet)", ver);
+        }
+        check_has_pak(&ver)?;
+
+        // We do this to create the user library, because currently there
+        // is a bug in the system profile code that creates it, and it is
+        // only added after a restart.
+        match r(&ver, "invisible()") {
+            Ok(_) => {},
+            Err(x) => bail!("Failed to to install pak for R {}: {}", ver, x.to_string())
+        };
+
+        // The actual pak installation
+        let cmd;
+        if update {
+            cmd = r#"
+                install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/{}/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))
+            "#;
+        } else {
+            cmd = r#"
+                if (!requireNamespace("pak", quietly = TRUE)) {
+                    install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/{}/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))
+                }
+            "#;
+        };
+        let cmd = cmd.replace("{}", stream);
+
+        match r(&ver, &cmd) {
+            Ok(_) => {},
+            Err(x) => bail!("Failed to install pak for R {}: {}", ver, x.to_string())
+        };
+    }
+
+    Ok(())
 }
 
 // -- rig rstudio ---------------------------------------------------------
