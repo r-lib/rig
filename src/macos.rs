@@ -20,7 +20,6 @@ use crate::library::*;
 use crate::resolve::resolve_versions;
 use crate::rversion::*;
 use crate::utils::*;
-use crate::run::*;
 
 pub const R_ROOT: &str = "/Library/Frameworks/R.framework/Versions";
 pub const R_VERSIONDIR: &str = "{}";
@@ -708,7 +707,7 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>) -> Result<(), B
 
 // ------------------------------------------------------------------------
 
-fn check_has_pak(ver: &String) -> Result<bool, Box<dyn Error>> {
+pub fn check_has_pak(ver: &String) -> Result<bool, Box<dyn Error>> {
     let ver = Regex::new("-.*$")?.replace(ver, "").to_string();
     let ver = ver + ".0";
     let v330 = Version::parse("3.2.0")?;
