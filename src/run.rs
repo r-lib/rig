@@ -104,7 +104,5 @@ fn r_nosudo(version: &str, command: &str)
 pub fn r(version: &str, command: &str)
       -> Result<(), Box<dyn Error>> {
 
-    // TODO
-
-    Ok(())
+    r_nosudo(&version, &command)
 }
