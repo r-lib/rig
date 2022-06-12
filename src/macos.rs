@@ -10,7 +10,7 @@ use std::process::Command;
 use clap::ArgMatches;
 use regex::Regex;
 use semver::Version;
-use simple_error::{bail, SimpleError};
+use simple_error::*;
 use simplelog::{debug, info, warn};
 
 use crate::common::*;
@@ -20,6 +20,7 @@ use crate::library::*;
 use crate::resolve::resolve_versions;
 use crate::rversion::*;
 use crate::utils::*;
+use crate::run::*;
 
 pub const R_ROOT: &str = "/Library/Frameworks/R.framework/Versions";
 pub const R_VERSIONDIR: &str = "{}";
@@ -264,9 +265,6 @@ pub fn system_add_pak(
         None => vec![sc_get_default_or_fail()?],
     };
 
-    let re = Regex::new("[{][}]")?;
-
-    let user = get_user()?;
     for ver in vers {
         check_installed(&ver)?;
         if update {
@@ -275,67 +273,34 @@ pub fn system_add_pak(
             info!("Installing pak for R {} (if not installed yet)", ver);
         }
         check_has_pak(&ver)?;
-        let status;
 
-        if user.sudo {
-            let r = R_ROOT.to_string() + "/" + &ver + "/Resources/R";
-            let cmd;
-            // su is pretty weird on macOS, we need to do all this escaping to
-            // be able to pass the command to the shell with -c
-            if update {
-                cmd = r#"
-                    .libPaths(c(Sys.getenv(\"R_LIBS_USER\"), .libPaths()));
-                    install.packages(\"pak\", repos = sprintf(\"https://r-lib.github.io/p/pak/{}/%s/%s/%s\", .Platform\$pkgType, R.Version()\$os, R.Version()\$arch))
-                "#;
-            } else {
-                cmd = r#"
-                    if (!requireNamespace(\"pak\", quietly = TRUE)) {
-                        .libPaths(c(Sys.getenv(\"R_LIBS_USER\"), .libPaths()));
-                        install.packages(\"pak\", repos = sprintf(\"https://r-lib.github.io/p/pak/{}/%s/%s/%s\", .Platform\$pkgType, R.Version()\$os, R.Version()\$arch))
-                    }
-                "#;
-            }
-            let cmd = re.replace(cmd, stream).to_string();
-            let cmd = Regex::new("[\n\r]")?.replace_all(&cmd, "").to_string();
-            let shcmd = r + " -s -e \"" + &cmd + "\"";
-            println!("--nnn-- Start of R output -------------------------");
-            status = Command::new("su")
-                .arg(&user.user)
-                .arg("-c")
-                .arg(shcmd)
-                .spawn()?
-                .wait()?;
-            println!("--uuu-- End of R output ---------------------------");
+        // We do this to create the user library, because currently there
+        // is a bug in the system profile code that creates it, and it is
+        // only added after a restart.
+        match r(&ver, "invisible()") {
+            Ok(_) => {},
+            Err(x) => bail!("Failed to to install pak for R {}: {}", ver, x.to_string())
+        };
 
+        // The actual pak installation
+        let cmd;
+        if update {
+            cmd = r#"
+                install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/{}/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))
+            "#;
         } else {
-            let r = Path::new(R_ROOT).join(&ver).join("Resources/R");
-            let cmd;
-            if update {
-                cmd = r#"
-                    .libPaths(c(Sys.getenv("R_LIBS_USER"), .libPaths()));
+            cmd = r#"
+                if (!requireNamespace("pak", quietly = TRUE)) {
                     install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/{}/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))
-                "#;
-            } else {
-                cmd = r#"
-                    if (!requireNamespace("pak", quietly = TRUE)) {
-                        .libPaths(c(Sys.getenv("R_LIBS_USER"), .libPaths()));
-                        install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/{}/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))
-                    }
-                "#;
-            }
-            let cmd = re.replace(cmd, stream).to_string();
-            let cmd = Regex::new("[\n\r]")?.replace_all(&cmd, "").to_string();
-            println!("--nnn-- Start of R output -------------------------");
-            status = Command::new(r)
-                .args(["--vanilla", "-s", "-e", &cmd])
-                .spawn()?
-                .wait()?;
-            println!("--uuu-- End of R output ---------------------------");
-        }
+                }
+            "#;
+        };
+        let cmd = cmd.replace("{}", stream);
 
-        if !status.success() {
-            bail!("Failed to run R {} to install pak", ver);
-        }
+        match r(&ver, &cmd) {
+            Ok(_) => {},
+            Err(x) => bail!("Failed to install pak for R {}: {}", ver, x.to_string())
+        };
     }
 
     Ok(())
