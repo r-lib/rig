@@ -14,6 +14,7 @@ use std::error::Error;
 
 use simplelog::*;
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use crate::rversion::*;
 
 pub fn basename(path: &str) -> Option<&str> {

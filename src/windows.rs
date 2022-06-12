@@ -754,3 +754,8 @@ pub fn get_r_binary(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
     debug!("R {} binary: {}", rver, bin.display());
     Ok(bin)
 }
+
+pub fn check_has_pak(_rver: &str) -> Result<(), Box<dyn Error>> {
+    // TODO: actually check. Right now the install will fail
+    Ok(())
+}

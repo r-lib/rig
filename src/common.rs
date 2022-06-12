@@ -115,12 +115,12 @@ pub fn system_add_pak(
         let cmd;
         if update {
             cmd = r#"
-                install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/{}/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))
+                install.packages('pak', repos = sprintf('https://r-lib.github.io/p/pak/{}/%s/%s/%s', .Platform$pkgType, R.Version()$os, R.Version()$arch))
             "#;
         } else {
             cmd = r#"
-                if (!requireNamespace("pak", quietly = TRUE)) {
-                    install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/{}/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))
+                if (!requireNamespace('pak', quietly = TRUE)) {
+                    install.packages('pak', repos = sprintf('https://r-lib.github.io/p/pak/{}/%s/%s/%s', .Platform$pkgType, R.Version()$os, R.Version()$arch))
                 }
             "#;
         };

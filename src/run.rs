@@ -7,7 +7,9 @@ use regex::Regex;
 use simple_error::bail;
 use simplelog::*;
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use crate::rversion::*;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use crate::utils::*;
 
 #[cfg(target_os = "macos")]
@@ -22,7 +24,7 @@ use crate::linux::*;
 fn run(cmd: OsString, args: Vec<OsString>, what: &str)
        -> Result<(), Box<dyn Error>> {
 
-    debug!("Running {:?}", cmd);
+    debug!("Running {:?} with args {:?}", cmd, args);
     println!("--nnn-- Start of {} output -------------------------", what);
     let status = Command::new(cmd)
         .args(args)
@@ -87,7 +89,6 @@ fn r_sudo(version: &str, command: &str, user: &User)
     )
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn r_nosudo(version: &str, command: &str)
             -> Result<(), Box<dyn Error>> {
 
@@ -104,5 +105,6 @@ fn r_nosudo(version: &str, command: &str)
 pub fn r(version: &str, command: &str)
       -> Result<(), Box<dyn Error>> {
 
-    r_nosudo(&version, &command)
+    let cmdline = Regex::new("[\n\r]")?.replace_all(&command, "").to_string();
+    r_nosudo(&version, &cmdline)
 }
