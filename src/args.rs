@@ -140,6 +140,16 @@ pub fn rig_app() -> Command<'static> {
         );
     }
 
+    #[cfg(target_os = "windows")]
+    {
+	cmd_add = cmd_add.arg(
+	    Arg::new("without-translations")
+		.help("Do not install translations.")
+		.long("without-translations")
+		.required(false),
+	);
+    }
+
     #[cfg(target_os = "macos")]
     {
         cmd_add = cmd_add.arg(

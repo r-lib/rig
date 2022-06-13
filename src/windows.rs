@@ -45,9 +45,15 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let target_path = Path::new(&target);
 
     info!("Installing {}", target_path.display());
+
+    let mut cmd_args = vec!["/VERYSILENT", "/SUPPRESSMSGBOXES"];
+    if args.is_present("without-translations") {
+	cmd_args.push("/components=main,x64,i386");
+    }
+
     println!("--nnn-- Start of installer output -----------------");
     let status = Command::new(&target)
-        .args(["/VERYSILENT", "/SUPPRESSMSGBOXES"])
+        .args(cmd_args)
         .spawn()?
         .wait()?;
     println!("--uuu-- End of installer output -------------------");
