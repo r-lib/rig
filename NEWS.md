@@ -21,6 +21,9 @@
   message translations. This is useful if you prefer using R in
   English on a non-English system (#88).
 
+* On Windows `rig add` does not add a Desktop icon now by default.
+  If want an icon, use the new `--with-desktop-icon` switch (#89).
+
 # rig 0.4.1
 
 * `rig rstudio <version>` and `rig rstudio <version> <project>` work properly

@@ -50,6 +50,11 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     if args.is_present("without-translations") {
 	cmd_args.push("/components=main,x64,i386");
     }
+    if args.is_present("with-desktop-icon") {
+	cmd_args.push("/mergetasks=desktopicon");
+    } else {
+	cmd_args.push("/mergetasks=!desktopicon");
+    }
 
     println!("--nnn-- Start of installer output -----------------");
     let status = Command::new(&target)

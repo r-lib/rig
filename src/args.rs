@@ -147,6 +147,11 @@ pub fn rig_app() -> Command<'static> {
 		.help("Do not install translations.")
 		.long("without-translations")
 		.required(false),
+	).arg(
+	    Arg::new("with-desktop-icon")
+		.help("Install a desktop icon.")
+		.long("with-desktop-icon")
+		.required(false),
 	);
     }
 
