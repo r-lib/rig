@@ -264,53 +264,6 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn system_add_pak(
-    vers: Option<Vec<String>>,
-    stream: &str,
-    update: bool,
-) -> Result<(), Box<dyn Error>> {
-    let vers = match vers {
-        Some(x) => x,
-        None => vec![sc_get_default_or_fail()?],
-    };
-
-    let base = Path::new(R_ROOT);
-    let re = Regex::new("[{][}]")?;
-
-    for ver in vers {
-        check_installed(&ver)?;
-        if update {
-            info!("Installing pak for R {}", ver);
-        } else {
-            info!("Installing pak for R {} (if not installed yet)", ver);
-        }
-        let r = base.join(&ver).join("bin/R");
-        let cmd;
-        if update {
-            cmd = r#"
-              install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/{}/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))
-            "#;
-        } else {
-            cmd = r#"
-              if (!requireNamespace("pak", quietly = TRUE)) {
-                install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/{}/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))
-              }
-            "#;
-        }
-        let cmd = re.replace(cmd, stream).to_string();
-        let cmd = Regex::new("[\n\r]")?.replace_all(&cmd, "").to_string();
-        let status = Command::new(r)
-            .args(["--vanilla", "-s", "-e", &cmd])
-            .spawn()?
-            .wait()?;
-
-        if !status.success() {
-            bail!("Failed to run R {} to install pak", ver);
-        }
-    }
-    Ok(())
-}
-
 pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     escalate("making R-* quick links")?;
     let vers = sc_get_list()?;
@@ -757,4 +710,9 @@ pub fn get_system_profile(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
         .join(rver)
         .join("lib/R/library/base/R/Rprofile");
     Ok(profile)
+}
+
+pub fn check_has_pak(_rver: &str) -> Result<(), Box<dyn Error>> {
+    // TODO: actually check. Right now the install will fail
+    Ok(())
 }

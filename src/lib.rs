@@ -23,6 +23,7 @@ mod library;
 mod macos;
 mod resolve;
 mod rversion;
+mod run;
 mod utils;
 use common::*;
 use library::*;

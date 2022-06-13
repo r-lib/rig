@@ -10,7 +10,7 @@ use std::process::Command;
 use clap::ArgMatches;
 use regex::Regex;
 use semver::Version;
-use simple_error::{bail, SimpleError};
+use simple_error::*;
 use simplelog::{debug, info, warn};
 
 use crate::common::*;
@@ -250,58 +250,6 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     }
 
     sc_system_make_links()?;
-
-    Ok(())
-}
-
-pub fn system_add_pak(
-    vers: Option<Vec<String>>,
-    stream: &str,
-    update: bool,
-) -> Result<(), Box<dyn Error>> {
-    let vers = match vers {
-        Some(x) => x,
-        None => vec![sc_get_default_or_fail()?],
-    };
-
-    let base = Path::new("/Library/Frameworks/R.framework/Versions");
-    let re = Regex::new("[{][}]")?;
-
-    for ver in vers {
-        check_installed(&ver)?;
-        if update {
-            info!("Installing pak for R {}", ver);
-        } else {
-            info!("Installing pak for R {} (if not installed yet)", ver);
-        }
-        check_has_pak(&ver)?;
-        let r = base.join(&ver).join("Resources/R");
-        let cmd;
-        if update {
-            cmd = r#"
-               install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/{}/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))
-             "#;
-        } else {
-            cmd = r#"
-               if (!requireNamespace("pak", quietly = TRUE)) {
-                 install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/{}/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))
-               }
-             "#;
-        }
-
-        let cmd = re.replace(cmd, stream).to_string();
-        let cmd = Regex::new("[\n\r]")?.replace_all(&cmd, "").to_string();
-        println!("--nnn-- Start of R output -------------------------");
-        let status = Command::new(r)
-            .args(["--vanilla", "-s", "-e", &cmd])
-            .spawn()?
-            .wait()?;
-        println!("--uuu-- End of R output ---------------------------");
-
-        if !status.success() {
-            bail!("Failed to run R {} to install pak", ver);
-        }
-    }
 
     Ok(())
 }
@@ -759,7 +707,7 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>) -> Result<(), B
 
 // ------------------------------------------------------------------------
 
-fn check_has_pak(ver: &String) -> Result<bool, Box<dyn Error>> {
+pub fn check_has_pak(ver: &String) -> Result<bool, Box<dyn Error>> {
     let ver = Regex::new("-.*$")?.replace(ver, "").to_string();
     let ver = ver + ".0";
     let v330 = Version::parse("3.2.0")?;

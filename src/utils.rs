@@ -14,6 +14,9 @@ use std::error::Error;
 
 use simplelog::*;
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use crate::rversion::*;
+
 pub fn basename(path: &str) -> Option<&str> {
     path.rsplitn(2, '/').next()
 }
@@ -169,4 +172,42 @@ pub fn not_too_old(path: &std::path::PathBuf) -> bool {
             age < day
         }
     }
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub fn get_user() -> Result<User, Box<dyn Error>> {
+    let uid: u32;
+    let gid: u32;
+    let user;
+    let sudo;
+
+    fn parse_uid(str: Option<std::ffi::OsString>) -> Option<u32> {
+        str.and_then(|x| x.into_string().ok())
+            .and_then(|x| x.parse::<u32>().ok())
+    }
+
+    let euid = nix::unistd::geteuid();
+    let sudo_uid: Option<u32> = parse_uid(std::env::var_os("SUDO_UID"));
+    let sudo_gid: Option<u32> = parse_uid(std::env::var_os("SUDO_GID"));
+    let sudo_user = std::env::var_os("SUDO_USER").and_then(|x| x.into_string().ok());
+    if euid.is_root() && sudo_uid.is_some() && sudo_gid.is_some() && sudo_user.is_some() {
+       sudo = true;
+        uid = sudo_uid.unwrap_or_else(|| unreachable!());
+        gid = sudo_gid.unwrap_or_else(|| unreachable!());
+        user = sudo_user.unwrap_or_else(|| unreachable!());
+    } else {
+       sudo = false;
+        uid = nix::unistd::getuid().as_raw();
+        gid = nix::unistd::getgid().as_raw();
+        user = std::env::var_os("USER")
+            .and_then(|x: OsString| x.into_string().ok())
+            .unwrap_or_else(|| "Current user".to_string());
+    }
+
+    let ouid = nix::unistd::Uid::from_raw(uid);
+    let user_record = nix::unistd::User::from_uid(ouid)?
+        .ok_or(SimpleError::new("Failed to find user HOME"))?;
+    let dir = user_record.dir.into_os_string();
+
+    Ok(User { user, uid, gid, dir, sudo })
 }
