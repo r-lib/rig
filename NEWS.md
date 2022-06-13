@@ -17,6 +17,10 @@
 * `rig add` now correctly installs pak into the user library, instead of
   the system library, even if the user library did not exist before.
 
+* On Windows, `rig add ... --without-translations` installs R without
+  message translations. This is useful if you prefer using R in
+  English on a non-English system (#88).
+
 # rig 0.4.1
 
 * `rig rstudio <version>` and `rig rstudio <version> <project>` work properly
