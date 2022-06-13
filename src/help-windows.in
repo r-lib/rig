@@ -203,6 +203,12 @@ DESCRIPTION
     R or Rtools versions are not installed any more.
 "#;
 
+const HELP_SYSTEM_UPDATE_RTOOLS40: &str = r#"
+DESCRIPTION
+    Update Rtools40 compilers and libraries to the latest builds by
+    updating the MSYS2 packages in Rtools40.
+"#;
+
 const HELP_RSTUDIO: &str = r#"
 DESCRIPTION:
     Start RStudio with the specified R version.

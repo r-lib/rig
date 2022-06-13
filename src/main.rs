@@ -117,6 +117,7 @@ fn sc_system(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         Some(("fix-permissions", s)) => sc_system_fix_permissions(s),
         Some(("forget", _)) => sc_system_forget(),
         Some(("no-openmp", s)) => sc_system_no_openmp(s),
+	Some(("update-rtools40", _)) => sc_system_update_rtools40(),
         _ => Ok(()), // unreachable
     }
 }

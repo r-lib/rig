@@ -24,6 +24,9 @@
 * On Windows `rig add` does not add a Desktop icon now by default.
   If want an icon, use the new `--with-desktop-icon` switch (#89).
 
+* New subcommand `rig system update-rtools40` updates MSYS2 packages
+  of Rtools40 on Windows (#14).
+
 # rig 0.4.1
 
 * `rig rstudio <version>` and `rig rstudio <version> <project>` work properly

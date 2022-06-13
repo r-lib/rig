@@ -680,6 +680,10 @@ pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+pub fn sc_system_update_rtools40() -> Result<(), Box<dyn Error>> {
+    Ok(())
+}
+
 pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>) -> Result<(), Box<dyn Error>> {
     let mut args = match project {
         None => vec!["-n", "-a", "RStudio"],

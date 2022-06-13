@@ -21,7 +21,7 @@ use crate::windows::*;
 #[cfg(target_os = "linux")]
 use crate::linux::*;
 
-fn run(cmd: OsString, args: Vec<OsString>, what: &str)
+pub fn run(cmd: OsString, args: Vec<OsString>, what: &str)
        -> Result<(), Box<dyn Error>> {
 
     debug!("Running {:?} with args {:?}", cmd, args);

@@ -23,6 +23,7 @@ use crate::escalate::*;
 use crate::library::*;
 use crate::resolve::resolve_versions;
 use crate::rversion::Rversion;
+use crate::run::*;
 use crate::utils::*;
 
 pub const R_ROOT: &str = "C:\\Program Files\\R";
@@ -683,6 +684,14 @@ fn update_registry_default() -> Result<(), Box<dyn Error>> {
     escalate("Update registry default")?;
     let default = sc_get_default_or_fail()?;
     update_registry_default_to(&default)
+}
+
+pub fn sc_system_update_rtools40() -> Result<(), Box<dyn Error>> {
+    run(
+	"c:\\rtools40\\usr\\bin\\bash.exe".into(),
+        vec!["--login".into(), "-c".into(), "pacman -Syu --noconfirm".into()],
+	"Rtools40 update"
+    )
 }
 
 fn get_latest_install_path() -> Result<Option<String>, Box<dyn Error>> {

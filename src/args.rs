@@ -240,8 +240,12 @@ pub fn rig_app() -> Command<'static> {
         let cmd_system_cleanreg = Command::new("clean-registry")
             .about("clean stale R related entries in the registry")
             .long_about(HELP_SYSTEM_CLEANREG);
+        cmd_system = cmd_system.subcommand(cmd_system_cleanreg);
 
-        cmd_system = cmd_system.subcommand(cmd_system_cleanreg)
+	let cmd_system_update_rtools40 = Command::new("update-rtools40")
+	    .about("update Rtools40 MSYS packages")
+	    .long_about(HELP_SYSTEM_UPDATE_RTOOLS40);
+	cmd_system = cmd_system.subcommand(cmd_system_update_rtools40);
     }
 
     #[cfg(target_os = "macos")]
