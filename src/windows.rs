@@ -47,21 +47,17 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     info!("Installing {}", target_path.display());
 
-    let mut cmd_args = vec!["/VERYSILENT", "/SUPPRESSMSGBOXES"];
+    let mut cmd_args = vec![os("/VERYSILENT"), os("/SUPPRESSMSGBOXES")];
     if args.is_present("without-translations") {
-	cmd_args.push("/components=main,x64,i386");
+	cmd_args.push(os("/components=main,x64,i386"));
     }
     if args.is_present("with-desktop-icon") {
-	cmd_args.push("/mergetasks=desktopicon");
+	cmd_args.push(os("/mergetasks=desktopicon"));
     } else {
-	cmd_args.push("/mergetasks=!desktopicon");
+	cmd_args.push(os("/mergetasks=!desktopicon"));
     }
 
-    run(os(target), cmd_args)?;
-
-    if !status.success() {
-        bail!("installer exited with status {}", status.to_string());
-    }
+    run(target, cmd_args, "installer")?;
 
     let dirname = get_latest_install_path()?;
 
@@ -159,7 +155,7 @@ fn add_rtools(version: String) -> Result<(), Box<dyn Error>> {
         download_file(client, &url, &target.as_os_str())?;
         info!("Installing\n    {}", target.display());
         run(
-            target.as_os_str(),
+            target.into_os_string(),
             vec![os("/VERYSILENT"), os("/SUPPRESSMSGBOXES")],
             "installer"
         )?;
@@ -722,8 +718,8 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>) -> Result<(), B
     }
 
     let args = match project {
-        None => vec!["/c", "start", "/b", "rstudio"],
-        Some(p) => vec!["/c", "start", "/b", p],
+        None => vec![os("/c"), os("start"), os("/b"), os("rstudio")],
+        Some(p) => vec![os("/c"), os("start"), os("/b"), os(p)],
     };
 
     if let Some(version) = version {
@@ -732,7 +728,7 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>) -> Result<(), B
         update_registry_default_to(&ver)?;
     }
 
-    info!("Running cmd.exe {}", args.join(" "));
+    info!("Running cmd.exe {}", osjoin(args.to_owned(), " "));
 
     let status = run("cmd.exe".into(), args, "start");
 
