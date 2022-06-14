@@ -199,7 +199,7 @@ rig system forget            -- make system forget about R installations
 rig system make-links        -- create R-* quick links
 rig system make-orthogonal   -- make installed versions orthogonal
 rig system no-openmp         -- remove OpenMP (-fopenmp) option for Apple compilers
-rig system setup-user-lib    -- Set up automatic user package libraries
+rig system setup-user-lib    -- set up automatic user package libraries
 ```
 
 ### Windows `rig system` subcommands
@@ -208,7 +208,8 @@ rig system setup-user-lib    -- Set up automatic user package libraries
 rig system add-pak           -- install or update pak for an R version
 rig system clean-registry    -- clean stale R related entries in the registry
 rig system make-links        -- create R-* quick links
-rig system setup-user-lib    -- Set up automatic user package libraries
+rig system setup-user-lib    -- set up automatic user package libraries
+rig system update-rtools40   -- update Rtools40 MSYS2 packages
 ```
 
 ### Linux `rig system` subcommands
@@ -216,7 +217,7 @@ rig system setup-user-lib    -- Set up automatic user package libraries
 ```
 rig system add-pak           -- install or update pak for an R version
 rig system make-links        -- create R-* quick links
-rig system setup-user-lib    -- Set up automatic user package libraries
+rig system setup-user-lib    -- set up automatic user package libraries
 ```
 
 ## 🤝&nbsp; Feedback
