@@ -300,6 +300,10 @@ pub fn rig_app() -> Command<'static> {
                     .multiple_occurrences(true),
             );
 
+        let cmd_system_allow_debugger_rstudio = Command::new("allow-debugger-rstudio")
+            .about("Allow debugging RStudio with lldb and gdb")
+            .long_about(HELP_SYSTEM_ALLOW_DEBUGGER_RSTUDIO);
+
         let cmd_system_allow_core_dumps = Command::new("allow-core-dumps")
             .about("Allow creating core dumps when R crashes")
             .long_about(HELP_SYSTEM_ALLOW_CORE_DUMPS)
@@ -322,6 +326,7 @@ pub fn rig_app() -> Command<'static> {
             .subcommand(cmd_system_forget)
             .subcommand(cmd_system_noopenmp)
             .subcommand(cmd_system_allow_debugger)
+            .subcommand(cmd_system_allow_debugger_rstudio)
             .subcommand(cmd_system_allow_core_dumps);
     }
 

@@ -509,6 +509,11 @@ pub fn sc_system_allow_debugger(_args: &ArgMatches) -> Result<(), Box<dyn Error>
     Ok(())
 }
 
+pub fn sc_system_allow_debugger_rstudio(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    // Nothing to do on Linux
+    Ok(())
+}
+
 pub fn sc_system_make_orthogonal(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // Nothing to do on Windows
     Ok(())

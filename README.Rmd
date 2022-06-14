@@ -192,33 +192,34 @@ Run `rig <subcommand> --help` for information about a subcommand.
 ### macOS `rig system` subcommands
 
 ```
-rig system add-pak           -- install or update pak for an R version
-rig system allow-debugger    -- allow debugging R with lldb and gdb
-rig system allow-core-dumps  -- allow creating core dumps when R crashes
-rig system fix-permissions   -- restrict system library permissions to admin
-rig system forget            -- make system forget about R installations
-rig system make-links        -- create R-* quick links
-rig system make-orthogonal   -- make installed versions orthogonal
-rig system no-openmp         -- remove OpenMP (-fopenmp) option for Apple compilers
-rig system setup-user-lib    -- set up automatic user package libraries [alias: create-lib]
+rig system add-pak                 -- install or update pak for an R version
+rig system allow-debugger          -- allow debugging R with lldb and gdb
+rig system allow-debugger-rstudio  -- allow debugging RStudio with lldb and gdb
+rig system allow-core-dumps        -- allow creating core dumps when R crashes
+rig system fix-permissions         -- restrict system library permissions to admin
+rig system forget                  -- make system forget about R installations
+rig system make-links              -- create R-* quick links
+rig system make-orthogonal         -- make installed versions orthogonal
+rig system no-openmp               -- remove OpenMP (-fopenmp) option for Apple compilers
+rig system setup-user-lib          -- set up automatic user package libraries [alias: create-lib]
 ```
 
 ### Windows `rig system` subcommands
 
 ```
-rig system add-pak           -- install or update pak for an R version
-rig system clean-registry    -- clean stale R related entries in the registry
-rig system make-links        -- create R-* quick links
-rig system setup-user-lib    -- set up automatic user package libraries [alias: create-lib]
-rig system update-rtools40   -- update Rtools40 MSYS2 packages
+rig system add-pak                 -- install or update pak for an R version
+rig system clean-registry          -- clean stale R related entries in the registry
+rig system make-links              -- create R-* quick links
+rig system setup-user-lib          -- set up automatic user package libraries [alias: create-lib]
+rig system update-rtools40         -- update Rtools40 MSYS2 packages
 ```
 
 ### Linux `rig system` subcommands
 
 ```
-rig system add-pak           -- install or update pak for an R version
-rig system make-links        -- create R-* quick links
-rig system setup-user-lib    -- set up automatic user package libraries [alias: create-lib]
+rig system add-pak                 -- install or update pak for an R version
+rig system make-links              -- create R-* quick links
+rig system setup-user-lib          -- set up automatic user package libraries [alias: create-lib]
 ```
 
 ## 🤝&nbsp; Feedback

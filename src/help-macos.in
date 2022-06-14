@@ -274,6 +274,26 @@ DESCRIPTION:
     Call `R -d lldb` to start `lldb` on `R`. (Or `R-x.y -d lldb` if you
     want a non-default version.)
 
+    See also `rig system allow-debugger-rstudio`, which does the same for
+    R running in RStudio.
+
+    This command is experimental. Please let us know at
+    https://github.com/r-lib/rig/issues if it does not work as
+    expected.
+
+    This command probably needs `sudo`: `sudo rig system allow-debugger`,
+    otherwise rig will ask for your password.
+"#;
+
+const HELP_SYSTEM_ALLOW_DEBUGGER_RSTUDIO: &str = r#"
+DESCRIPTION:
+    Update the entitlements of RStudio R process to allow debuggers. It adds
+    the `get-task-allow` entitlement to the `rsession` (and `rsession-arm64`
+    on arm64 hardware) binary.
+
+    See also `rig system allow-debugger`, which does the same for
+    R running outside of RStudio.
+
     This command is experimental. Please let us know at
     https://github.com/r-lib/rig/issues if it does not work as
     expected.
