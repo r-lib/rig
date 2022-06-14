@@ -3,6 +3,7 @@
 use rand::Rng;
 use std::error::Error;
 use std::ffi::OsStr;
+use std::ffi::OsString;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -19,6 +20,7 @@ use crate::escalate::*;
 use crate::library::*;
 use crate::resolve::resolve_versions;
 use crate::rversion::*;
+use crate::run::*;
 use crate::utils::*;
 
 pub const R_ROOT: &str = "/Library/Frameworks/R.framework/Versions";
@@ -183,32 +185,26 @@ fn safe_install(target: std::path::PathBuf, ver: &str, arch: Option<String>)
         );
     }
 
-    let mut cmd = "installer";
-    let mut args: Vec<&str> = vec![];
+    let mut cmd: OsString = os("installer");
+    let mut args: Vec<OsString> = vec![];
 
     match arch {
         Some(arch) => {
             if arch == "arm64" {
-                cmd = "arch";
-                args = vec!["-arm64", "installer"];
+                cmd = os("arch");
+                args = vec![os("-arm64"), os("installer")];
             }
         },
         None => { }
     };
 
-    println!("--nnn-- Start of installer output -----------------");
-    let status = Command::new(cmd)
-            .args(args)
-            .arg("-pkg")
-            .arg(&pkg)
-            .args(["-target", "/"])
-            .spawn()?
-            .wait()?;
-    println!("--uuu-- End of installer output -------------------");
+    args.push(os("-pkg"));
+    args.push(pkg.to_owned().into_os_string());
+    args.push(os("-target"));
+    args.push(os("/"));
 
-    if !status.success() {
-        bail!("installer exited with status {}", status.to_string());
-    }
+    info!("Running installer");
+    run(cmd.into(), args, "installer")?;
 
     if let Err(err) = std::fs::remove_file(&pkg) {
         warn!(
@@ -545,13 +541,12 @@ fn system_fix_permissions(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
         check_installed(&ver)?;
         let path = Path::new(R_ROOT).join(ver.as_str());
         debug!("[DEBUG] Fixing permissions in {}", path.display());
-        let status = Command::new("chmod")
+        let output = Command::new("chmod")
             .args(["-R", "g-w"])
             .arg(path)
-            .spawn()?
-            .wait()?;
+            .output()?;
 
-        if !status.success() {
+        if !output.status.success() {
             bail!("Failed to update permissions :(");
         }
     }
@@ -561,23 +556,21 @@ fn system_fix_permissions(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
         "[DEBUG] Fixing permissions and group of {}",
         current.display()
     );
-    let status = Command::new("chmod")
+    let output = Command::new("chmod")
         .args(["-R", "775"])
         .arg(&current)
-        .spawn()?
-        .wait()?;
+        .output()?;
 
-    if !status.success() {
+    if !output.status.success() {
         bail!("Failed to update permissions :(");
     }
 
-    let status = Command::new("chgrp")
+    let output = Command::new("chgrp")
         .args(["admin"])
         .arg(&current)
-        .spawn()?
-        .wait()?;
+        .output()?;
 
-    if !status.success() {
+    if !output.status.success() {
         bail!("Failed to update group :(");
     }
 
@@ -714,27 +707,26 @@ pub fn sc_system_update_rtools40() -> Result<(), Box<dyn Error>> {
 
 pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>) -> Result<(), Box<dyn Error>> {
     let mut args = match project {
-        None => vec!["-n", "-a", "RStudio"],
-        Some(p) => vec!["-n", p],
+        None => vec![os("-n"), os("-a"), os("RStudio")],
+        Some(p) => vec![os("-n"), os(p)],
     };
     let path;
 
     if let Some(ver) = version {
         check_installed(&ver.to_string())?;
         path = "RSTUDIO_WHICH_R=".to_string() + R_ROOT + "/" + &ver + "/Resources/R";
-        let mut args2 = vec!["--env", &path];
+        let mut args2 = vec![os("--env"), os(&path)];
         args.append(&mut args2);
     }
 
-    info!("Running open {}", args.join(" "));
+    info!("Running open {}", osjoin(args.to_owned(), " "));
 
-    let status = Command::new("open").args(args).spawn()?.wait()?;
+    match run(os("open"), args, "open") {
+        Err(e) => { bail!("RStudio failed to start: {}", e.to_string()); },
+        _ => {}
+    };
 
-    if !status.success() {
-        bail!("RStudio failed with status {}", status.to_string());
-    } else {
-        Ok(())
-    }
+    Ok(())
 }
 
 // ------------------------------------------------------------------------

@@ -26,6 +26,7 @@ path = "src/main.rs"
 [dependencies]
 clap = { version = "3.1.18", features = ["cargo"] }
 directories = "4.0.1"
+duct = "0.13.5"
 futures = "0.3.17"
 futures-util = "0.3.14"
 lazy_static = "1.4.0"

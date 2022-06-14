@@ -57,12 +57,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 	cmd_args.push("/mergetasks=!desktopicon");
     }
 
-    println!("--nnn-- Start of installer output -----------------");
-    let status = Command::new(&target)
-        .args(cmd_args)
-        .spawn()?
-        .wait()?;
-    println!("--uuu-- End of installer output -------------------");
+    run(os(target), cmd_args)?;
 
     if !status.success() {
         bail!("installer exited with status {}", status.to_string());
@@ -163,16 +158,11 @@ fn add_rtools(version: String) -> Result<(), Box<dyn Error>> {
         info!("Downloading {} ->\n    {}", url, target.display());
         download_file(client, &url, &target.as_os_str())?;
         info!("Installing\n    {}", target.display());
-        println!("--nnn-- Start of installer output -----------------");
-        let status = Command::new(target.as_os_str())
-            .args(["/VERYSILENT", "/SUPPRESSMSGBOXES"])
-            .spawn()?
-            .wait()?;
-        println!("--uuu-- End of installer output -------------------");
-
-        if !status.success() {
-            bail!("Rtools installer exited with status {}", status.to_string());
-        }
+        run(
+            target.as_os_str(),
+            vec![os("/VERYSILENT"), os("/SUPPRESSMSGBOXES")],
+            "installer"
+        )?;
     }
 
     Ok(())
@@ -744,7 +734,7 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>) -> Result<(), B
 
     info!("Running cmd.exe {}", args.join(" "));
 
-    let status = Command::new("cmd.exe").args(args).spawn()?.wait()?;
+    let status = run("cmd.exe".into(), args, "start");
 
     // Restore registry (well, set default), if we changed it
     // temporarily
@@ -756,9 +746,10 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>) -> Result<(), B
         maybe_update_registry_default()?;
     }
 
-    if !status.success() {
-        bail!("`open` exited with status {}", status.to_string());
-    }
+    match status {
+        Err(e) => { bail!("`start` failed: {}", e.to_string()); },
+        _ => {}
+    };
 
     Ok(())
 }

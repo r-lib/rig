@@ -197,7 +197,7 @@ fn macos_install_gfortran_arm64() -> Result<(), Box<dyn Error>> {
     }
 
     info!("Unpacking gfortran");
-    run("tar".into(), vec!["fxz".into(), target, "-C".into(), "/".into()], "tar")?;
+    run("tar".into(), vec![os("fxz"), target, os("-C"), os("/")], "tar")?;
 
     info!("Updating gfortran link to your Apple SDK");
     run(
