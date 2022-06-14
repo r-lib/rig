@@ -55,7 +55,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     } else {
         info!("Downloading {} -> {}", url, target_dsp);
         let client = &reqwest::Client::new();
-        download_file(client, url, &target_str)?;
+        download_file(client, &url, &target_str)?;
     }
 
     sc_system_forget()?;

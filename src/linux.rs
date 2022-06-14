@@ -93,7 +93,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     } else {
         info!("Downloading {} ->\n    {}", url, target.display());
         let client = &reqwest::Client::new();
-        download_file(client, url, &target.as_os_str())?;
+        download_file(client, &url, &target.as_os_str())?;
     }
 
     let dirname;

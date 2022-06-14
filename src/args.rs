@@ -52,7 +52,7 @@ pub fn rig_app() -> Command<'static> {
         };
     }
 
-    let rig = Command::new("RIG -- The R Installation Manager")
+    let mut rig = Command::new("RIG -- The R Installation Manager")
         .version(clap::crate_version!())
         .about(HELP_ABOUT_REAL.as_str())
         .arg_required_else_help(true)
@@ -195,7 +195,7 @@ pub fn rig_app() -> Command<'static> {
         .long_about(HELP_SYSTEM_LINKS);
 
     let cmd_system_lib = Command::new("setup-user-lib")
-        .about("Set up automatic user package libraries [alias: create-lib]")
+        .about("set up automatic user package libraries [alias: create-lib]")
         .long_about(HELP_SYSTEM_LIB)
         .aliases(&["create-lib"])
         .arg(
@@ -243,7 +243,7 @@ pub fn rig_app() -> Command<'static> {
         cmd_system = cmd_system.subcommand(cmd_system_cleanreg);
 
 	let cmd_system_update_rtools40 = Command::new("update-rtools40")
-	    .about("update Rtools40 MSYS packages")
+	    .about("update Rtools40 MSYS2 packages")
 	    .long_about(HELP_SYSTEM_UPDATE_RTOOLS40);
 	cmd_system = cmd_system.subcommand(cmd_system_update_rtools40);
     }
@@ -383,7 +383,7 @@ pub fn rig_app() -> Command<'static> {
         );
 
     let cmd_library = Command::new("library")
-        .about("Manage package libraries [alias: lib] (experimental)")
+        .about("manage package libraries [alias: lib] (experimental)")
         .long_about(HELP_LIBRARY)
         .aliases(&["lib"])
         .arg_required_else_help(true)
@@ -434,7 +434,51 @@ pub fn rig_app() -> Command<'static> {
                 ),
         );
 
-    rig.arg(
+    #[cfg(target_os = "macos")]
+    {
+        let cmd_sysreqs = Command::new("sysreqs")
+            .about("manage R-related system libraries and tools (experimental)")
+            .long_about("TODO")
+            .arg_required_else_help(true)
+            .arg(
+                Arg::new("json")
+                    .help("JSON output")
+                    .long("json")
+                    .required(false),
+            )
+            .subcommand(
+                Command::new("add")
+                    .about("Install system library or tool")
+                    .arg(
+                        Arg::new("name")
+                            .help("system tool to install")
+                            .required(true)
+                            .multiple_occurrences(true),
+                    )
+                    .arg(
+                        Arg::new("arch")
+                            .help("Architecture to install for")
+                            .short('a')
+                            .long("arch")
+                            .required(false)
+                            .default_value(&_default_arch)
+                            .possible_values(["arm64", "x86_64"]),
+                    )
+            )
+            .subcommand(
+                Command::new("list")
+                    .about("List available system libraries and tools")
+                    .arg(
+                        Arg::new("json")
+                            .help("JSON output")
+                            .long("json")
+                            .required(false),
+                    )
+            );
+        rig = rig.subcommand(cmd_sysreqs);
+    }
+
+    rig = rig.arg(
         Arg::new("quiet")
             .help("Suppress output (overrides `--verbose`)")
             .short('q')
@@ -463,7 +507,9 @@ pub fn rig_app() -> Command<'static> {
     .subcommand(cmd_resolve)
     .subcommand(cmd_rstudio)
     .subcommand(cmd_library)
-    .after_help(HELP_EXAMPLES)
+    .after_help(HELP_EXAMPLES);
+
+    rig
 }
 
 pub fn parse_args() -> ArgMatches {

@@ -24,15 +24,17 @@ mod linux;
 use linux::*;
 
 mod library;
-use library::*;
-
 mod common;
 mod config;
 mod download;
 mod resolve;
 mod rversion;
 mod run;
+mod sysreqs;
 mod utils;
+
+use library::*;
+use sysreqs::*;
 
 use crate::common::*;
 
@@ -101,6 +103,7 @@ fn main__(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         Some(("resolve", sub)) => sc_resolve(sub, args),
         Some(("rstudio", sub)) => sc_rstudio(sub),
         Some(("library", sub)) => sc_library(sub, args),
+        Some(("sysreqs", sub)) => sc_sysreqs(sub, args),
         _ => Ok(()), // unreachable
     }
 }
