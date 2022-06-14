@@ -378,7 +378,7 @@ pub fn rig_app() -> Command<'static> {
         );
 
     let cmd_library = Command::new("library")
-        .about("Manage package libraries [alias: lib] (experimental)")
+        .about("manage package libraries [alias: lib] (experimental)")
         .long_about(HELP_LIBRARY)
         .aliases(&["lib"])
         .arg_required_else_help(true)
@@ -432,7 +432,7 @@ pub fn rig_app() -> Command<'static> {
     #[cfg(target_os = "macos")]
     {
         let cmd_sysreqs = Command::new("sysreqs")
-            .about("Manager R-related system libraries and tools (experimental)")
+            .about("manage R-related system libraries and tools (experimental)")
             .long_about("TODO")
             .arg_required_else_help(true)
             .arg(
