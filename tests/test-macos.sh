@@ -196,3 +196,19 @@ teardown() {
     fi
     echo $output | grep -q -- "com.apple.security.get-task-allow"
 }
+
+@test "sysreqs" {
+    run rig sysreqs list
+    [[ "$status" -eq 0 ]]
+    run rig sysreqs add checkbashisms tidy-html5 pkgconfig
+    echo "$output"
+    [[ "$status" -eq 0 ]]
+    run sudo `which rig` sysreqs add checkbashisms tidy-html5 pkgconfig
+    echo "$output"
+    [[ "$status" -eq 0 ]]
+
+    # This is different on arm hardware
+    run rig sysreqs add -a x86_64 checkbashisms tidy-html5 pkgconfig
+    echo "$output"
+    [[ "$status" -eq 0 ]]
+}

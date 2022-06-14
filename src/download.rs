@@ -2,7 +2,6 @@ use futures::future;
 use futures_util::StreamExt;
 use std::error::Error;
 use std::ffi::OsStr;
-#[cfg(target_os = "windows")]
 use std::ffi::OsString;
 use std::fs::File;
 use std::io::Write;
@@ -12,12 +11,10 @@ use std::path::Path;
 use clap::ArgMatches;
 
 use simple_error::bail;
-#[cfg(target_os = "windows")]
 use simplelog::info;
 
 #[cfg(target_os = "windows")]
 use crate::rversion::Rversion;
-#[cfg(target_os = "windows")]
 use crate::utils::*;
 #[cfg(target_os = "windows")]
 use crate::windows::*;
@@ -54,22 +51,42 @@ pub fn download_r(args: &ArgMatches) -> Result<(Rversion, OsString), Box<dyn Err
     } else {
         info!("Downloading {} ->\n    {}", url, target.display());
         let client = &reqwest::Client::new();
-        download_file(client, url, target.as_os_str())?;
+        download_file(client, &url, target.as_os_str())?;
     }
 
     Ok((version, target.into_os_string()))
 }
 
+pub fn download_file_sync(url: &str, filename: &str,
+                          infinite_cache: bool)
+                          -> Result<OsString, Box<dyn Error>> {
+    let tmp_dir = std::env::temp_dir().join("rig");
+    let target = tmp_dir.join(&filename);
+    if target.exists() && (infinite_cache || not_too_old(&target)) {
+        info!(
+            "{} is cached at \n    {}",
+            filename,
+            target.display()
+        );
+    } else {
+        info!("Downloading {} ->\n    {}", url, target.display());
+        let client = &reqwest::Client::new();
+        download_file(client, url, target.as_os_str())?;
+    }
+
+    Ok(target.into_os_string())
+}
+
 #[tokio::main]
 pub async fn download_file(
     client: &reqwest::Client,
-    url: String,
+    url: &str,
     opath: &OsStr,
 ) -> Result<(), Box<dyn Error>> {
     let mut path = opath.to_os_string();
     path.push(".tmp");
     let path = Path::new(&path);
-    let resp = client.get(&url).send().await;
+    let resp = client.get(url).send().await;
     let resp = match resp {
         Ok(resp) => resp.error_for_status(),
         Err(err) => bail!("HTTP error at {}: {}", url, err.to_string()),

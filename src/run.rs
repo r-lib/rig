@@ -39,6 +39,35 @@ pub fn run(cmd: OsString, args: Vec<OsString>, what: &str)
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
+pub fn run_as_user(cmd: String, args: Vec<String>, what: &str)
+                   -> Result<(), Box<dyn Error>> {
+    let user = get_user()?;
+
+    if user.sudo {
+        debug!("sudo detected, su needed for running {}", cmd);
+        let cmdline = cmd.to_owned() + " " + &args.join(" ");
+        let cmdline = cmdline.replace("\"", "\\\"").replace("$", "\\$");
+        let mut args2: Vec<OsString> = vec![user.user.into(), "-c".into()];
+        args2.push(cmdline.into());
+        run(
+            "su".into(),
+            args2,
+            &cmd
+        )?;
+
+    } else {
+        debug!("no su needed for running {}", cmd);
+        let mut args2: Vec<OsString> = vec![];
+        for arg in args.iter() {
+            args2.push(arg.into());
+        }
+        run(cmd.into(), args2, what)?;
+    }
+
+    Ok(())
+}
+
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn r(version: &str, command: &str)
       -> Result<(), Box<dyn Error>> {
