@@ -469,7 +469,7 @@ options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(getRversion(
 fn set_sysreqs(vers: Option<Vec<String>>, linux: &LinuxVersion) -> Result<(), Box<dyn Error>> {
     if linux.distro != "ubuntu" || !linux.rspm {
         info!(
-            "No system requirements support for this distro: {} {} :(",
+            "Skipping optional sysreqs setup, no sysreqs support for this distro: {} {}",
             linux.distro, linux.version
         );
         return Ok(());
