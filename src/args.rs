@@ -450,6 +450,15 @@ pub fn rig_app() -> Command<'static> {
                             .required(true)
                             .multiple_occurrences(true),
                     )
+                    .arg(
+                        Arg::new("arch")
+                            .help("Architecture to install for")
+                            .short('a')
+                            .long("arch")
+                            .required(false)
+                            .default_value(&_default_arch)
+                            .possible_values(["arm64", "x86_64"]),
+                    )
             )
             .subcommand(
                 Command::new("list")
