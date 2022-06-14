@@ -1,10 +1,10 @@
 
 use std::error::Error;
 use std::ffi::OsString;
-use std::process::Command;
+use std::io::BufRead;
+use std::io::BufReader;
 use regex::Regex;
 
-use simple_error::bail;
 use simplelog::*;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -21,19 +21,16 @@ use crate::windows::*;
 #[cfg(target_os = "linux")]
 use crate::linux::*;
 
-pub fn run(cmd: OsString, args: Vec<OsString>, what: &str)
+pub fn run(cmd: OsString, args: Vec<OsString>, _what: &str)
        -> Result<(), Box<dyn Error>> {
 
     debug!("Running {:?} with args {:?}", cmd, args);
-    println!("--nnn-- Start of {} output -------------------------", what);
-    let status = Command::new(cmd)
-        .args(args)
-        .spawn()?
-        .wait()?;
-    println!("--nnn-- End of {} output ---------------------------", what);
-
-    if !status.success() {
-        bail!("Failed to run {}", "R");
+    let reader = duct::cmd(cmd, args)
+        .stderr_to_stdout()
+        .reader()?;
+    let lines = BufReader::new(reader).lines();
+    for line in lines {
+        info!("<cyan>></> {}", line?);
     }
 
     Ok(())

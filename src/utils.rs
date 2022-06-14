@@ -17,6 +17,26 @@ use simplelog::*;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use crate::rversion::*;
 
+pub fn os(x: &str) -> OsString {
+    let mut ostr = OsString::new();
+    ostr.push(x);
+    ostr
+}
+
+pub fn osjoin(x: Vec<OsString>, sep: &str) -> String {
+    let mut buffer = String::new();
+
+    for (i, item) in x.iter().enumerate() {
+        if i > 0 {
+            buffer.push_str(sep);
+        }
+        let sitem = item.to_owned().into_string().unwrap_or("???".to_string());
+        buffer.push_str(&sitem);
+    }
+
+    buffer
+}
+
 pub fn basename(path: &str) -> Option<&str> {
     path.rsplitn(2, '/').next()
 }
