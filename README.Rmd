@@ -193,7 +193,7 @@ Run `rig <subcommand> --help` for information about a subcommand.
 ```
 rig system add-pak                 -- install or update pak for an R version
 rig system allow-debugger          -- allow debugging R with lldb and gdb
-rig system allow-debugger-rstudio  -- allow debugging R with lldb and gdb
+rig system allow-debugger-rstudio  -- allow debugging RStudio with lldb and gdb
 rig system allow-core-dumps        -- allow creating core dumps when R crashes
 rig system fix-permissions         -- restrict system library permissions to admin
 rig system forget                  -- make system forget about R installations
