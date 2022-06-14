@@ -341,6 +341,40 @@ pub fn sc_system_allow_debugger(args: &ArgMatches) -> Result<(), Box<dyn Error>>
             .collect()
     };
 
+    for ver in vers {
+        check_installed(&ver)?;
+        let path = PathBuf::new()
+            .join(R_ROOT)
+            .join(ver.as_str())
+            .join("Resources/bin/exec/R");
+        update_entitlements(path)?;
+    }
+
+    Ok(())
+}
+
+pub fn sc_system_allow_debugger_rstudio(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    let rsess = PathBuf::new().
+        join("/Applications/RStudio.app/Contents/MacOS/rsession");
+
+    if !rsess.exists() {
+        bail!("RStudio is not installed, at least not in /Applications/RStudio.app");
+    }
+
+    update_entitlements(rsess)?;
+
+    let rsessarm64 = PathBuf::new()
+        .join("/Applications/RStudio.app/Contents/MacOS/rsession-arm64");
+
+    if rsessarm64.exists() {
+        update_entitlements(rsessarm64)?;
+    }
+
+    Ok(())
+}
+
+pub fn update_entitlements(path: PathBuf) -> Result<(), Box<dyn Error>> {
+
     let tmp_dir = std::env::temp_dir().join("rig");
     match std::fs::create_dir_all(&tmp_dir) {
         Err(err) => {
@@ -354,65 +388,59 @@ pub fn sc_system_allow_debugger(args: &ArgMatches) -> Result<(), Box<dyn Error>>
         _ => {}
     };
 
-    for ver in vers {
-        check_installed(&ver)?;
-        let path = Path::new(R_ROOT)
-            .join(ver.as_str())
-            .join("Resources/bin/exec/R");
-        info!("Updating entitlements of {}", path.display());
+    info!("Updating entitlements of {}", path.display());
 
-        let out = Command::new("codesign")
-            .args(["-d", "--entitlements", ":-"])
-            .arg(&path)
-            .output()?;
-        if !out.status.success() {
-            let stderr = match std::str::from_utf8(&out.stderr) {
-                Ok(v) => v,
-                Err(e) => bail!("Invalid UTF-8 output from codesign: {}", e),
-            };
-            if stderr.contains("is not signed") {
-                info!("    not signed");
-            } else {
-                bail!("Cannot query entitlements:\n   {}", stderr);
-            }
-            continue;
-        }
-
-        let titles = tmp_dir.join("r.entitlements");
-        std::fs::write(&titles, out.stdout)?;
-
-        let out = Command::new("/usr/libexec/PlistBuddy")
-            .args(["-c", "Add :com.apple.security.get-task-allow bool true"])
-            .arg(&titles)
-            .output()?;
-
-        if !out.status.success() {
-            let stderr = match std::str::from_utf8(&out.stderr) {
-                Ok(v) => v,
-                Err(e) => bail!("Invalid UTF-8 output from codesign: {}", e),
-            };
-            if stderr.contains("Entry Already Exists") {
-                info!("    already allows debugging");
-                continue;
-            } else if stderr.contains("zero-length data") {
-                info!("    not signed");
-                continue;
-            } else {
-                bail!("Cannot update entitlements: {}", stderr);
-            }
-        }
-
-        let out = Command::new("codesign")
-            .args(["-s", "-", "-f", "--entitlements"])
-            .arg(&titles)
-            .arg(&path)
-            .output()?;
-
-        if !out.status.success() {
-            bail!("Cannot update entitlements");
+    let out = Command::new("codesign")
+        .args(["-d", "--entitlements", ":-"])
+        .arg(&path)
+        .output()?;
+    if !out.status.success() {
+        let stderr = match std::str::from_utf8(&out.stderr) {
+            Ok(v) => v,
+            Err(e) => bail!("Invalid UTF-8 output from codesign: {}", e),
+        };
+        if stderr.contains("is not signed") {
+            info!("    not signed");
         } else {
-            info!("    updated entitlements");
+            bail!("Cannot query entitlements:\n   {}", stderr);
         }
+        return Ok(());
+    }
+
+    let titles = tmp_dir.join("r.entitlements");
+    std::fs::write(&titles, out.stdout)?;
+
+    let out = Command::new("/usr/libexec/PlistBuddy")
+        .args(["-c", "Add :com.apple.security.get-task-allow bool true"])
+        .arg(&titles)
+        .output()?;
+
+    if !out.status.success() {
+        let stderr = match std::str::from_utf8(&out.stderr) {
+            Ok(v) => v,
+            Err(e) => bail!("Invalid UTF-8 output from codesign: {}", e),
+        };
+        if stderr.contains("Entry Already Exists") {
+            info!("    already allows debugging");
+            return Ok(());
+        } else if stderr.contains("zero-length data") {
+            info!("    not signed");
+            return Ok(());
+        } else {
+            bail!("Cannot update entitlements: {}", stderr);
+        }
+    }
+
+    let out = Command::new("codesign")
+        .args(["-s", "-", "-f", "--entitlements"])
+        .arg(&titles)
+        .arg(&path)
+        .output()?;
+
+    if !out.status.success() {
+        bail!("Cannot update entitlements");
+    } else {
+        info!("    updated entitlements");
     }
 
     Ok(())
