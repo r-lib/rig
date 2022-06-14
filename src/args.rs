@@ -195,7 +195,7 @@ pub fn rig_app() -> Command<'static> {
         .long_about(HELP_SYSTEM_LINKS);
 
     let cmd_system_lib = Command::new("setup-user-lib")
-        .about("Set up automatic user package libraries [alias: create-lib]")
+        .about("set up automatic user package libraries [alias: create-lib]")
         .long_about(HELP_SYSTEM_LIB)
         .aliases(&["create-lib"])
         .arg(
@@ -243,7 +243,7 @@ pub fn rig_app() -> Command<'static> {
         cmd_system = cmd_system.subcommand(cmd_system_cleanreg);
 
 	let cmd_system_update_rtools40 = Command::new("update-rtools40")
-	    .about("update Rtools40 MSYS packages")
+	    .about("update Rtools40 MSYS2 packages")
 	    .long_about(HELP_SYSTEM_UPDATE_RTOOLS40);
 	cmd_system = cmd_system.subcommand(cmd_system_update_rtools40);
     }
