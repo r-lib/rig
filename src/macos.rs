@@ -778,6 +778,27 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
     };
     let path = Path::new(R_ROOT).join(ver);
     std::os::unix::fs::symlink(&path, R_CUR)?;
+
+    let r = Path::new("/usr/local/bin/R");
+    if !r.exists() {
+        debug!("Creating {}", r.display());
+        let tgt = Path::new("/Library/Frameworks/R.framework/Resources/bin/R");
+        match std::os::unix::fs::symlink(&tgt, &r) {
+            Err(e) => warn!("Cannot create missing /usr/local/bin/R: {}", e.to_string()),
+            _ => {}
+        };
+    }
+
+    let rscript = Path::new("/usr/local/bin/Rscript");
+    if !rscript.exists() {
+        debug!("Creating {}", rscript.display());
+        let tgt = Path::new("/Library/Frameworks/R.framework/Resources/bin/Rscript");
+        match std::os::unix::fs::symlink(&tgt, &rscript) {
+            Err(e) => warn!("Cannot create missing /usr/local/bin/Rscript: {}", e.to_string()),
+            _ => {}
+        };
+    }
+
     Ok(())
 }
 
