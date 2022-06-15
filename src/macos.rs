@@ -39,7 +39,12 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     };
     let url: String = match &version.url {
         Some(s) => s.to_string(),
-        None => bail!("Cannot find a download url for R version {}", verstr),
+        None => {
+            let archarg = args
+                .value_of("arch")
+                .ok_or(SimpleError::new("Internal argument error"))?;
+            bail!("Cannot find a download url for R version {}, {}", verstr, archarg);
+        }
     };
     let arch = version.arch.to_owned();
     let prefix = match arch {
@@ -885,4 +890,27 @@ pub fn get_system_profile(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
         .join(rver)
         .join("Resources/library/base/R/Rprofile");
     Ok(profile)
+}
+
+pub fn is_arm64_machine() -> bool {
+    let proc = std::process::Command::new("arch")
+        .args(["-arm64", "true"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+
+    if let Ok(mut proc) = proc {
+        let out = proc.wait();
+        if let Ok(out) = out {
+            if out.success() {
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    }
 }

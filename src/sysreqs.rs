@@ -14,6 +14,9 @@ use crate::escalate::*;
 use crate::run::*;
 use crate::utils::*;
 
+#[cfg(target_os = "macos")]
+use crate::macos::*;
+
 #[derive(PartialEq, Clone, Debug)]
 pub struct SysReq {
     pub name: String,
@@ -237,30 +240,6 @@ fn brew_install(arch: &str, pkgs: Vec<String>)
     run_as_user(brew.0, args, "brew")?;
 
     Ok(())
-}
-
-#[cfg(target_os = "macos")]
-fn is_arm64_machine() -> bool {
-    let proc = std::process::Command::new("arch")
-        .args(["-arm64", "true"])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn();
-
-    if let Ok(mut proc) = proc {
-        let out = proc.wait();
-        if let Ok(out) = out {
-            if out.success() {
-                true
-            } else {
-                false
-            }
-        } else {
-            false
-        }
-    } else {
-        false
-    }
 }
 
 #[cfg(target_os = "macos")]
