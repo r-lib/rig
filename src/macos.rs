@@ -236,9 +236,17 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
     let vers = vers.ok_or(SimpleError::new("Internal argument error"))?;
+    let default = sc_get_default()?;
 
     for ver in vers {
         check_installed(&ver.to_string())?;
+
+        if let Some(ref default) = default {
+            if default == ver {
+                warn!("Removing default version, set new default with \
+                       <bold>rig default <version></>");
+            }
+        }
 
         let dir = Path::new(R_ROOT);
         let dir = dir.join(&ver);
