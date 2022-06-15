@@ -438,7 +438,7 @@ pub fn rig_app() -> Command<'static> {
     {
         let cmd_sysreqs = Command::new("sysreqs")
             .about("manage R-related system libraries and tools (experimental)")
-            .long_about("TODO")
+            .long_about(HELP_SYSREQS)
             .arg_required_else_help(true)
             .arg(
                 Arg::new("json")
@@ -468,6 +468,22 @@ pub fn rig_app() -> Command<'static> {
             .subcommand(
                 Command::new("list")
                     .about("List available system libraries and tools")
+                    .arg(
+                        Arg::new("json")
+                            .help("JSON output")
+                            .long("json")
+                            .required(false),
+                    )
+            )
+            .subcommand(
+                Command::new("info")
+                    .about("Information about a system tool")
+                    .arg(
+                        Arg::new("name")
+                            .help("system tool to show")
+                            .required(true)
+                            .multiple_occurrences(false),
+                    )
                     .arg(
                         Arg::new("json")
                             .help("JSON output")

@@ -231,3 +231,11 @@ pub fn get_user() -> Result<User, Box<dyn Error>> {
 
     Ok(User { user, uid, gid, dir, sudo })
 }
+
+#[cfg(target_os = "macos")]
+pub fn escape_json(input: &str) -> String {
+    input
+        .replace("\"", "\\\"")
+        .replace("\n", "\\n")
+        .to_string()
+}

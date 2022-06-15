@@ -1,4 +1,5 @@
 
+use std::collections::HashMap;
 use std::error::Error;
 use std::path::Path;
 
@@ -6,11 +7,18 @@ use clap::ArgMatches;
 use lazy_static::lazy_static;
 use simple_error::*;
 use simplelog::*;
+use tabular::*;
 
 use crate::download::*;
 use crate::escalate::*;
 use crate::run::*;
 use crate::utils::*;
+
+#[derive(PartialEq, Clone, Debug)]
+pub struct SysReq {
+    pub name: String,
+    pub description: String
+}
 
 lazy_static! {
     static ref SYSREQS: Vec<&'static str> = vec![
@@ -19,6 +27,58 @@ lazy_static! {
         "pkgconfig",
         "tidy-html5",
     ];
+
+    static ref SYSREQS_INFO: HashMap<String, SysReq> = {
+        let mut info = std::collections::HashMap::new();
+        info.insert(
+            "checkbashisms".to_string(),
+            SysReq {
+                name: "checkbashisms".to_string(),
+                description: r#"
+    Checks for bashisms in shell scripts. Via HomeBrew.
+"#.to_string()
+            }
+        );
+        info.insert(
+            "gfortran".to_string(),
+            SysReq {
+                name: "gfortran".to_string(),
+                description: r#"
+    GNU fortran compiler.
+
+    On x86_64 R it is version 8.2 from
+    https://github.com/fxcoudert/gfortran-for-macOS
+    This is compatible with CRAN's R 3.4 and above, even though some of these
+    were built with gfortran 6.1.0.
+
+    On arm64 R, this is version 12.0.1 from
+    https://github.com/R-macos/gcc-darwin-arm64
+
+    See https://mac.r-project.org/tools/ for the latest information about
+    gfortran on macOS.
+"#.to_string()
+            }
+        );
+        info.insert(
+            "pkgconfig".to_string(),
+            SysReq {
+                name: "pkgconfig".to_string(),
+                description: r#"
+    pkg-config: Manage compile and link flags for libraries. Via Homebrew.
+"#.to_string()
+            }
+        );
+        info.insert(
+            "tidy-html5".to_string(),
+            SysReq {
+                name: "tidy-html5".to_string(),
+                description: r#"
+    Granddaddy of HTML tools, with support for modern standards. Via Homebrew
+"#.to_string()
+            }
+        );
+        info
+    };
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
@@ -32,10 +92,41 @@ pub fn sc_sysreqs(_args: &ArgMatches, _mainargs: &ArgMatches)
 pub fn sc_sysreqs(args: &ArgMatches, mainargs: &ArgMatches)
               -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
-        Some(("list", s)) => sc_sysreqs_list(s, args, mainargs),
         Some(("add", s)) => sc_sysreqs_add(s, args, mainargs),
+        Some(("info", s)) => sc_sysreqs_info(s, args, mainargs),
+        Some(("list", s)) => sc_sysreqs_list(s, args, mainargs),
         _ => Ok(()), // unreachable
     }
+}
+
+#[cfg(target_os = "macos")]
+pub fn sc_sysreqs_info(
+    args: &ArgMatches,
+    libargs: &ArgMatches,
+    mainargs: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+
+    let name = args.value_of("name")
+        .ok_or(SimpleError::new("Internal argument error"))?;
+
+    let info = match SYSREQS_INFO.get(name) {
+        None => bail!("Unknown sysreqs: {}", name),
+        Some(x) => x
+    };
+
+    if args.is_present("json") || libargs.is_present("json") || mainargs.is_present("json") {
+        println!("{{");
+        println!("  \"name\": \"{}\",", info.name);
+        println!("  \"description\": \"{}\"", escape_json(&info.description));
+        println!("}}");
+
+    } else {
+        let mut tab = Table::new("{:<} {:<}");
+        tab.add_row(row!(&info.name, &info.description));
+        print!("{}", tab);
+    }
+
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]

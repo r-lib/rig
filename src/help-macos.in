@@ -336,3 +336,10 @@ EXAMPLES:
     rig rstudio 4.0 cli.Rproj
     rig rstudio cli.Rproj 4.0
 "#;
+
+const HELP_SYSREQS: &str = r#"
+DESCRIPTION:
+    Manage system libraries and tools. This currently includes a very
+    restricted set of tools, that are needed for running `R CMD check`.
+    Run `rig sysreqs list` for a complete list.
+"#;
