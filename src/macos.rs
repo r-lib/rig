@@ -253,7 +253,7 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     escalate("making R-* quick links")?;
     let vers = sc_get_list()?;
-    let base = Path::new("/Library/Frameworks/R.framework/Versions/");
+    let base = Path::new(R_ROOT);
 
     info!("Adding R-* quick links (if needed)");
 
@@ -476,11 +476,22 @@ fn system_make_orthogonal(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
     for ver in vers {
         check_installed(&ver)?;
         debug!("Making R {} orthogonal", ver);
-        let base = Path::new("/Library/Frameworks/R.framework/Versions/").join(&ver);
+        let base = Path::new(R_ROOT).join(&ver);
         make_orthogonal_(&base, &ver)?;
     }
 
     Ok(())
+}
+
+fn is_orthogonal(ver: &str) -> Result<bool, Box<dyn Error>> {
+    let base = Path::new(R_ROOT).join(&ver);
+    let re = Regex::new("R[.]framework/Resources")?;
+    let re2 = Regex::new("[-]F/Library/Frameworks/R[.]framework/[.][.]")?;
+    let rfile = base.join("Resources/bin/R");
+    let lines = read_lines(&rfile)?;
+    let mch = grep_lines(&re, &lines);
+    let mch2 = grep_lines(&re2, &lines);
+    Ok(mch.len() == 0 && mch2.len() == 0)
 }
 
 fn make_orthogonal_(base: &Path, ver: &str) -> Result<(), Box<dyn Error>> {
@@ -714,6 +725,10 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>) -> Result<(), B
 
     if let Some(ver) = version {
         check_installed(&ver.to_string())?;
+        if !is_orthogonal(ver)? {
+            bail!("R {} is not orthogonal, it cannot run as a non-default. \
+                   Run `rig system make-orthogonal`.", ver)
+        }
         path = "RSTUDIO_WHICH_R=".to_string() + R_ROOT + "/" + &ver + "/Resources/R";
         let mut args2 = vec![os("--env"), os(&path)];
         args.append(&mut args2);

@@ -27,6 +27,9 @@
 * New subcommand `rig system update-rtools40` updates MSYS2 packages
   of Rtools40 on Windows (#14).
 
+* On macOS, `rig rstudio <ver>` now errors if R `<ver>` is not orthogonal,
+  and the menu bar app errors as well (#90).
+
 # rig 0.4.1
 
 * `rig rstudio <version>` and `rig rstudio <version> <project>` work properly

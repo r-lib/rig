@@ -231,7 +231,7 @@ Thank you!
     }
 
     func startRStudio_(project: String?, version: String) {
-        let info = """
+        var info = """
 Make sure that RStudio is installed and can start up.
 You can try running
 open -a RStudio
@@ -240,6 +240,7 @@ from a terminal.
         do {
             try rigStartRStudio(version: version , project: project)
         } catch RigError.error(let msg) {
+            if msg.contains("make-orthogonal") { info = "" }
             setError(msg: "Failed to start RStudio: \(msg)", info: info)
         } catch {
             setError(msg: "Failed to start RStudio, unknown error", info: info)
