@@ -304,6 +304,7 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
     let vers = vers.ok_or(SimpleError::new("Internal argument error"))?;
+    let default = sc_get_default()?;
 
     for ver in vers {
         let verstr = ver.to_string();
@@ -312,6 +313,17 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             continue;
         }
         check_installed(&verstr)?;
+
+        if let Some(ref default) = default {
+            if default == ver {
+                warn!("Removing default version, set new default with \
+                       <bold>rig default <version></>");
+		match unset_default() {
+		    Err(e) => warn!("Failed to unset default version: {}", e.to_string()),
+		    _ => {}
+		};
+            }
+        }
 
         let ver = "R-".to_string() + ver;
         let dir = Path::new(R_ROOT);
@@ -404,7 +416,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                     match std::fs::remove_file(path.path()) {
                         Ok(_) => {}
                         Err(e) => {
-                            warn!("Faild to remove {}: {}", filename, e.to_string());
+                            warn!("Failed to remove {}: {}", filename, e.to_string());
                         }
                     }
                 }
@@ -521,6 +533,29 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
     file3.write_all(cnt3.as_bytes())?;
 
     update_registry_default()?;
+
+    Ok(())
+}
+
+pub fn unset_default() -> Result<(), Box<dyn Error>> {
+    escalate("unsetting the default R version")?;
+
+    fn try_rm(x: &str) {
+	let bin = Path::new(R_ROOT).join("bin");
+	let f = bin.join(x);
+	if f.exists() {
+	    match std::fs::remove_file(&f) {
+		Err(e) => warn!("Failed to remove {}: {}", f.display(), e.to_string()),
+		_ => {}
+	    };
+	}
+    }
+
+    try_rm("R.bat");
+    try_rm("RS.bat");
+    try_rm("Rscript.bat");
+
+    unset_registry_default()?;
 
     Ok(())
 }
@@ -675,6 +710,23 @@ fn update_registry_default() -> Result<(), Box<dyn Error>> {
     escalate("Update registry default")?;
     let default = sc_get_default_or_fail()?;
     update_registry_default_to(&default)
+}
+
+fn unset_registry_default() -> Result<(), Box<dyn Error>> {
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let r64r = hklm.create_subkey("SOFTWARE\\R-core\\R");
+    if let Ok(x) = r64r {
+        let (key, _) = x;
+	key.delete_value("Current Version")?;
+	key.delete_value("InstallPath")?;
+    }
+    let r64r64 = hklm.create_subkey("SOFTWARE\\R-core\\R64");
+    if let Ok(x) = r64r64 {
+        let (key, _) = x;
+	key.delete_value("Current Version")?;
+	key.delete_value("InstallPath")?;
+    }
+    Ok(())
 }
 
 pub fn sc_system_update_rtools40() -> Result<(), Box<dyn Error>> {

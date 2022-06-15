@@ -30,6 +30,9 @@
 * On macOS, `rig rstudio <ver>` now errors if R `<ver>` is not orthogonal,
   and the menu bar app errors as well (#90).
 
+* On Windows, if the default version is deleted, rig updates the
+  registry accordingly, and removes the default from there as well (#86).
+
 # rig 0.4.1
 
 * `rig rstudio <version>` and `rig rstudio <version> <project>` work properly
