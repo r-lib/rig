@@ -183,6 +183,11 @@ const HELP_RSTUDIO: &str = r#"
 DESCRIPTION:
     Start RStudio with the specified R version.
 
+    For renv lock files, rig checks the `renv.lock` file for the required
+    R version. If the same exact version is not installed, then rig chooses
+    the latest version with the same major and minor components. If no such
+    version is available, rig throws an error.
+
 EXAMPLES:
     # With default R version
     rig rstudio
