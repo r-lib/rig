@@ -1,17 +1,24 @@
 
 use std::collections::HashMap;
 use std::error::Error;
+#[cfg(target_os = "macos")]
 use std::path::Path;
 
 use clap::ArgMatches;
 use lazy_static::lazy_static;
+#[cfg(target_os = "macos")]
 use simple_error::*;
+#[cfg(target_os = "macos")]
 use simplelog::*;
 use tabular::*;
 
+#[cfg(target_os = "macos")]
 use crate::download::*;
+#[cfg(target_os = "macos")]
 use crate::escalate::*;
+#[cfg(target_os = "macos")]
 use crate::run::*;
+#[cfg(target_os = "macos")]
 use crate::utils::*;
 
 #[cfg(target_os = "macos")]

@@ -57,6 +57,7 @@ pub fn download_r(args: &ArgMatches) -> Result<(Rversion, OsString), Box<dyn Err
     Ok((version, target.into_os_string()))
 }
 
+#[cfg(target_os = "macos")]
 pub fn download_file_sync(url: &str, filename: &str,
                           infinite_cache: bool)
                           -> Result<OsString, Box<dyn Error>> {
