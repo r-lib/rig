@@ -181,5 +181,22 @@ DESCRIPTION:
 
 const HELP_RSTUDIO: &str = r#"
 DESCRIPTION:
-    Start RStudio with the specified R version (not implemented yet).
+    Start RStudio with the specified R version.
+
+EXAMPLES:
+    # With default R version
+    rig rstudio
+
+    # With another R version
+    rig rstudio 4.0
+
+    # Open project with default R version
+    rig rstudio cli.Rproj
+
+    # Open renv project with the R version specified in the lock file
+    rig rstudio projects/myproject/renv.lock
+
+    # Open RStudio project with specified R version, either is good
+    rig rstudio 4.0 cli.Rproj
+    rig rstudio cli.Rproj 4.0
 "#;
