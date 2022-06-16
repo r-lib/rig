@@ -756,7 +756,8 @@ fn get_latest_install_path() -> Result<Option<String>, Box<dyn Error>> {
     Ok(None)
 }
 
-pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>) -> Result<(), Box<dyn Error>> {
+pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>, arg: Option<&OsStr>)
+                   -> Result<(), Box<dyn Error>> {
     // we only need to restore if 'ver' is given, there is a default and
     // they are different
     let def = sc_get_default()?;

@@ -27,6 +27,7 @@ mod library;
 mod common;
 mod config;
 mod download;
+mod renv;
 mod resolve;
 mod rversion;
 mod run;

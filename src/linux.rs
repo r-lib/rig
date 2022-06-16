@@ -674,7 +674,8 @@ pub fn sc_system_update_rtools40() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>) -> Result<(), Box<dyn Error>> {
+pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>, arg: Option<OsStr>)
+                   -> Result<(), Box<dyn Error>> {
     let (cmd, args) = match project {
         Some(p) => ("xdg-open", vec![p]),
         None => ("rstudio", vec![]),

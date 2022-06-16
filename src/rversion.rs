@@ -1,3 +1,6 @@
+
+use std::cmp::Ordering;
+
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::ffi::OsString;
 
@@ -15,6 +18,34 @@ pub struct InstalledVersion {
     pub path: Option<String>,
     pub binary: Option<String>
 }
+
+#[derive(Debug, Clone)]
+pub struct OKInstalledVersion {
+    pub name: String,
+    pub version: semver::Version,
+    pub path: String,
+    pub binary: String
+}
+
+impl Ord for OKInstalledVersion {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.version.cmp(&other.version)
+    }
+}
+
+impl PartialOrd for OKInstalledVersion {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for OKInstalledVersion {
+    fn eq(&self, other: &Self) -> bool {
+        self.version == other.version
+    }
+}
+
+impl Eq for OKInstalledVersion { }
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct LinuxVersion {

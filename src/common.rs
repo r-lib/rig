@@ -2,6 +2,7 @@
 use regex::Regex;
 use std::error::Error;
 use std::path::Path;
+use std::path::PathBuf;
 
 use clap::ArgMatches;
 use simple_error::bail;
@@ -16,6 +17,7 @@ use crate::windows::*;
 #[cfg(target_os = "linux")]
 use crate::linux::*;
 
+use crate::renv;
 use crate::rversion::*;
 use crate::run::*;
 use crate::utils::*;
@@ -141,6 +143,36 @@ pub fn sc_rstudio(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let mut ver = args.value_of("version");
     let mut prj = args.value_of("project-file");
 
+    if let Some(ver2) = ver {
+        if ver2.ends_with("renv.lock") {
+            let lockfile = PathBuf::new().join(ver2);
+            let needver = renv::parse_r_version(lockfile)?;
+            let usever = renv::match_r_version(&needver)?;
+            let realver = usever.version.to_string();
+
+            info!("Using {} R {}{}",
+                  if needver == realver {
+                      "matching version:"
+                  } else {
+                      "latest minor version:"
+                  },
+                  usever.name,
+                  if realver != usever.name {
+                      " (R ".to_string() + &realver + ")"
+                  } else {
+                      "".to_string()
+                  }
+            );
+
+            // Seems that it is enough to call with the directory
+            // of the lock file, this works reasonable with and without
+            // a project file.
+            let prdir = Path::new(ver2).parent();
+            let prdir = prdir.and_then(|x| Some(x.as_os_str()));
+            return sc_rstudio_(Some(&usever.name), None, prdir);
+        }
+    }
+
     // If the first argument is an R project file, and the second is not,
     // then we switch the two
     if let Some(ver2) = ver {
@@ -150,7 +182,7 @@ pub fn sc_rstudio(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         }
     }
 
-    sc_rstudio_(ver, prj)
+    sc_rstudio_(ver, prj, None)
 }
 
 // ------------------------------------------------------------------------
