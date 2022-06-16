@@ -1,21 +1,23 @@
 
 # rig 0.4.2 (pre-release)
 
-* rig is now more robust when setting up the user library. In
-  particular R will not fail to start in renv projects (#81, @krlmlr).
-
-* On macOS `rig add` now does not fail if it is started from an x86_64
-  shell, when adding an arm64 R version on M1 Macs (#79).
+* rig can now open renv projects in RStudio, with the correct R version.
+  Pass the renv lock file to rig: `rig rstudio .../renv.lock` (#74).
 
 * `rig list` now prints the result as a table, and it prints the R version
   number as well. `rig list --json` includes the version number, the path
   to the installation, and the path to the R binary.
+
+* rig is now more robust when setting up the user library. In
+  particular R will not fail to start in renv projects (#81, @krlmlr).
 
 * On macOS and Linux `rig add` now creates the user library with the right
   permissions, if it does not exist and pak is installed (#84).
 
 * `rig add` now correctly installs pak into the user library, instead of
   the system library, even if the user library did not exist before.
+
+## Windows
 
 * On Windows, `rig add ... --without-translations` installs R without
   message translations. This is useful if you prefer using R in
@@ -24,17 +26,19 @@
 * On Windows `rig add` does not add a Desktop icon now by default.
   If want an icon, use the new `--with-desktop-icon` switch (#89).
 
-* New subcommand `rig system update-rtools40` updates MSYS2 packages
-  of Rtools40 on Windows (#14).
-
-* On macOS, `rig rstudio <ver>` now errors if R `<ver>` is not orthogonal,
-  and the menu bar app errors as well (#90).
-
 * On Windows, if the default version is deleted, rig updates the
   registry accordingly, and removes the default from there as well (#86).
 
-* rig can now open renv projects in RStudio, with the correct R version.
-  Pass the renv lock file to rig: `rig rstudio .../renv.lock` (#74).
+* New subcommand `rig system update-rtools40` updates MSYS2 packages
+  of Rtools40 on Windows (#14).
+
+## macOS
+
+* On macOS `rig add` now does not fail if it is started from an x86_64
+  shell, when adding an arm64 R version on M1 Macs (#79).
+
+* On macOS, `rig rstudio <ver>` now errors if R `<ver>` is not orthogonal,
+  and the menu bar app errors as well (#90).
 
 # rig 0.4.1
 
