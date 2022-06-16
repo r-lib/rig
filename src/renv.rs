@@ -99,6 +99,7 @@ pub fn match_r_version(ver: &str)
     // Choose the latest one of these (there is surely at least on left)
     match goodvers3.last() {
         Some(v) => Ok(v.to_owned()),
-        None => bail!("Internal R version matching error")
+        None => bail!("Cannot find any R version close to R {}, \
+                       required by renv lock file.", ver)
     }
 }
