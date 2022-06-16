@@ -21,6 +21,7 @@ mod download;
 mod escalate;
 mod library;
 mod macos;
+mod renv;
 mod resolve;
 mod rversion;
 mod run;
@@ -258,7 +259,7 @@ pub extern "C" fn rig_start_rstudio(
     let ver = if ver == "" { None } else { Some(ver) };
     let prj = if prj == "" { None } else { Some(prj) };
 
-    match sc_rstudio_(ver, prj) {
+    match sc_rstudio_(ver, prj, None) {
         Ok(_) => SUCCESS,
         Err(e) => {
             let msg = e.to_string();

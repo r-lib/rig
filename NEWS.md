@@ -33,6 +33,9 @@
 * On Windows, if the default version is deleted, rig updates the
   registry accordingly, and removes the default from there as well (#86).
 
+* rig can now open renv projects in RStudio, with the correct R version.
+  Pass the renv lock file to rig: `rig rstudio .../renv.lock` (#74).
+
 # rig 0.4.1
 
 * `rig rstudio <version>` and `rig rstudio <version> <project>` work properly

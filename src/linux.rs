@@ -674,8 +674,9 @@ pub fn sc_system_update_rtools40() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>) -> Result<(), Box<dyn Error>> {
-    let (cmd, args) = match project {
+pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>, arg: Option<&OsStr>)
+                   -> Result<(), Box<dyn Error>> {
+    let (cmd, mut args) = match project {
         Some(p) => ("xdg-open", vec![p]),
         None => ("rstudio", vec![]),
     };
@@ -687,6 +688,10 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>) -> Result<(), B
         envname = "RSTUDIO_WHICH_R";
         path = R_ROOT.to_string() + "/" + &ver + "/bin/R"
     };
+
+    if let Some(arg) = arg {
+        args.push(arg.to_str().unwrap_or("."));
+    }
 
     info!("Running {} {}", cmd, args.join(" "));
 

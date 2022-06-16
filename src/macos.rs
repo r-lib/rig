@@ -729,7 +729,11 @@ pub fn sc_system_update_rtools40() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>) -> Result<(), Box<dyn Error>> {
+pub fn sc_rstudio_(version: Option<&str>,
+                   project: Option<&str>,
+                   arg: Option<&OsStr>)
+                   -> Result<(), Box<dyn Error>> {
+
     let mut args = match project {
         None => vec![os("-n"), os("-a"), os("RStudio")],
         Some(p) => vec![os("-n"), os(p)],
@@ -746,6 +750,8 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>) -> Result<(), B
         let mut args2 = vec![os("--env"), os(&path)];
         args.append(&mut args2);
     }
+
+    if let Some(arg) = arg { args.push(arg.to_os_string()); }
 
     info!("Running open {}", osjoin(args.to_owned(), " "));
 

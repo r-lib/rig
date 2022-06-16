@@ -228,6 +228,9 @@ EXAMPLES:
     # Open project with default R version
     rig rstudio cli\cli.Rproj
 
+    # Open renv project with the R version specified in the lock file
+    rig rstudio projects\myproject\renv.lock
+
     # Open RStudio project with specified R version, either is good
     rig rstudio 4.0.5 cli.Rproj
     rig rstudio cli.Rproj 4.0.5
