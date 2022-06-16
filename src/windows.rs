@@ -2,6 +2,7 @@
 
 use regex::Regex;
 use std::error::Error;
+use std::ffi::OsStr;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -770,10 +771,14 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>, arg: Option<&Os
         escalate("updating default version in registry")?;
     }
 
-    let args = match project {
+    let mut args = match project {
         None => vec![os("/c"), os("start"), os("/b"), os("rstudio")],
         Some(p) => vec![os("/c"), os("start"), os("/b"), os(p)],
     };
+
+    if let Some(arg) = arg {
+	args.push(arg.to_os_string());
+    }
 
     if let Some(version) = version {
         let ver = version.to_string();

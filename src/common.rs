@@ -17,6 +17,7 @@ use crate::windows::*;
 #[cfg(target_os = "linux")]
 use crate::linux::*;
 
+use crate::escalate::escalate;
 use crate::renv;
 use crate::rversion::*;
 use crate::run::*;
@@ -149,6 +150,13 @@ pub fn sc_rstudio(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             let needver = renv::parse_r_version(lockfile)?;
             let usever = renv::match_r_version(&needver)?;
             let realver = usever.version.to_string();
+
+	    // On windows we need to escalate to change the registry
+	    // If we don't escalate now, then the info!() will be
+	    // printed twive.
+	    if std::env::consts::OS == "windows" {
+		escalate("updating default version in registry")?;
+	    }
 
             info!("Using {} R {}{}",
                   if needver == realver {
