@@ -1,5 +1,5 @@
 
-# rig 0.5.0 (unreleased)
+# rig 0.5.0
 
 * rig can now open renv projects in RStudio, with the correct R version.
   Pass the renv lock file to rig: `rig rstudio .../renv.lock` (#74).

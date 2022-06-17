@@ -1,7 +1,17 @@
 
+
 # The R Installation Manager
 
 Install, remove, configure R versions.
+
+
+-   [🚀  Features](#--features)
+-   [🐞  Known Issues](#--known-issues)
+-   [⬇️  Installation](#️--installation)
+-   [⚙️  Usage](#️--usage)
+-   [🤝  Feedback](#--feedback)
+-   [❓  FAQ](#--faq)
+-   [📘  License](#--license)
 
 ## 🚀  Features
 
@@ -39,9 +49,6 @@ Install, remove, configure R versions.
     temporarily before starting RStudio and then changes it back after a
     short wait. If RStudio starts up very slowly, then the wait might be
     too short, and it might start up with the wrong R version.
--   If you delete the default R version with `rig rm` or another way,
-    then the `R` and `RS` commands will kept, but they will point to a
-    non-existing directory and fail.
 -   On Windows Rtools installation will fail if the same version of
     Rtools is already installed.
 
@@ -123,12 +130,12 @@ Chocolatey, so the installer and the version in Scoop might be newer.
 Download the latest releast from <https://github.com/r-lib/rig/releases>
 and uncompress it to `/usr/local`
 
-    curl -Ls https://github.com/r-lib/rig/releases/download/v0.4.1/rig-linux-0.4.1.tar.gz |
+    curl -Ls https://github.com/r-lib/rig/releases/download/v0.5.0/rig-linux-0.5.0.tar.gz |
       sudo tar xz -C /usr/local
 
 If you are running Linux on arm64, download the arm64 build:
 
-    curl -Ls https://github.com/r-lib/rig/releases/download/v0.4.1/rig-linux-arm64-0.4.1.tar.gz |
+    curl -Ls https://github.com/r-lib/rig/releases/download/v0.5.0/rig-linux-arm64-0.5.0.tar.gz |
       sudo tar xz -C /usr/local
 
 Supported Linux distributions:
@@ -167,46 +174,153 @@ Run `rig` to see all commands and examples.
 
 ### Command list:
 
-    rig add        -- install a new R version
-    rig default    -- print or set default R version
-    rig library    -- Manage package libraries [alias: lib] (experimental)
-    rig list       -- list installed R versions
+    rig add        -- install a new R version [alias: install]
+    rig default    -- print or set default R version [alias: switch]
+    rig library    -- manage package libraries [alias: lib] (experimental)
+    rig list       -- list installed R versions [alias: ls]
     rig resolve    -- resolve a symbolic R version
-    rig rm         -- remove R versions
+    rig rm         -- remove R versions [aliases: del, delete, remove]
     rig rstudio    -- start RStudio with the specified R version
+    rig sysreqs    -- manage R-related system libraries and tools (experimental) (macOS)
     rig system     -- manage current installations
 
 Run `rig <subcommand> --help` for information about a subcommand.
 
 ### macOS `rig system` subcommands
 
-    rig system add-pak           -- install or update pak for an R version
-    rig system allow-debugger    -- allow debugging R with lldb and gdb
-    rig system allow-core-dumps  -- allow creating core dumps when R crashes
-    rig system fix-permissions   -- restrict system library permissions to admin
-    rig system forget            -- make system forget about R installations
-    rig system make-links        -- create R-* quick links
-    rig system make-orthogonal   -- make installed versions orthogonal
-    rig system no-openmp         -- remove OpenMP (-fopenmp) option for Apple compilers
-    rig system setup-user-lib    -- Set up automatic user package libraries
+    rig system add-pak                 -- install or update pak for an R version
+    rig system allow-debugger          -- allow debugging R with lldb and gdb
+    rig system allow-debugger-rstudio  -- allow debugging RStudio with lldb and gdb
+    rig system allow-core-dumps        -- allow creating core dumps when R crashes
+    rig system fix-permissions         -- restrict system library permissions to admin
+    rig system forget                  -- make system forget about R installations
+    rig system make-links              -- create R-* quick links
+    rig system make-orthogonal         -- make installed versions orthogonal
+    rig system no-openmp               -- remove OpenMP (-fopenmp) option for Apple compilers
+    rig system setup-user-lib          -- set up automatic user package libraries [alias: create-lib]
 
 ### Windows `rig system` subcommands
 
-    rig system add-pak           -- install or update pak for an R version
-    rig system clean-registry    -- clean stale R related entries in the registry
-    rig system make-links        -- create R-* quick links
-    rig system setup-user-lib    -- Set up automatic user package libraries
+    rig system add-pak                 -- install or update pak for an R version
+    rig system clean-registry          -- clean stale R related entries in the registry
+    rig system make-links              -- create R-* quick links
+    rig system setup-user-lib          -- set up automatic user package libraries [alias: create-lib]
+    rig system update-rtools40         -- update Rtools40 MSYS2 packages
 
 ### Linux `rig system` subcommands
 
-    rig system add-pak           -- install or update pak for an R version
-    rig system make-links        -- create R-* quick links
-    rig system setup-user-lib    -- Set up automatic user package libraries
+    rig system add-pak                 -- install or update pak for an R version
+    rig system make-links              -- create R-* quick links
+    rig system setup-user-lib          -- set up automatic user package libraries [alias: create-lib]
 
 ## 🤝  Feedback
 
 Please open an issue in our issue tracker at
 <https://github.com/r-lib/rig/issues>
+
+## ❓  FAQ
+
+<details>
+<summary>
+Why does rig create a user package library?
+</summary>
+
+> Installing non-base packages into a user package library has several
+> benefits:
+>
+> -   The system library is not writeable for regular users on some
+>     systems (Windows and Linux, typically), so we might as well create
+>     a properly versioned user library at the default place.
+> -   Some tools need a clean R environment, with base packages only,
+>     and do not work well if user packages are installed into the
+>     system library. E.g. `R CMD check` is such a tool, and
+>     <https://github.com/r-lib/revdepcheck> is another.
+> -   You can delete an R installation (e.g. with `rig rm`) and then and
+>     then install it again, without losing your R packages.
+
+</details>
+<details>
+<summary>
+Why does rig install pak?
+</summary>
+
+> To be able to install R packages efficiently, from CRAN, Bioconductor
+> or GitHub, right from the start. pak also supports installing system
+> libraries automatically on some Linux systems.
+>
+> If you don’t want `rig add` to install pak, use the `--without-pak`
+> option.
+
+</details>
+<details>
+<summary>
+Why does rig change the permissions of the system library (on macOS)?
+</summary>
+
+> To make sure that you don’t install packages accidentally into the
+> system library. See “Why does rig create a user package library?”
+> above.
+
+</details>
+<details>
+<summary>
+Why does rig set the default CRAN mirror?
+</summary>
+
+> To avoid the extra work the users need to spend on this.
+>
+> The <https://cloud.r-project.org> mirror is usually better than the
+> other, in that it is a CDN that is close to most users, and that it is
+> updated more often.
+>
+> If you want to use a different mirror, you can set the `repos` option
+> in your `.Rprofile`, so the rig repo settings will be ignored.
+>
+> You can also use the `--without-cran-mirror` option of `rig add`.
+
+</details>
+<details>
+<summary>
+Why does rig set up RSPM?
+</summary>
+
+> RSPM ([Rstudio Package
+> Manager](https://packagemanager.rstudio.com/client/#/)) is generally
+> superior to a refular CRAN mirror on Windows and many Linux systems.
+>
+> On Linux it includes binary packages for many popular distributions.
+>
+> On Windows, it includes up to date binary packages for older R
+> versions as well.
+>
+> To avoid RSPM, use the `--without-rspm` option of `rig add`.
+
+</details>
+<details>
+<summary>
+Can rig install R without admin permissions
+</summary>
+
+> No, currently it cannot.
+
+</details>
+<details>
+<summary>
+How is rig different from RSwitch?
+</summary>
+
+> While there is a small overlap in functionality, rig and
+> [RSwitch](https://rud.is/rswitch/) are very different. I suggest you
+> look over the features of both to decide which one suits your needs
+> better.
+>
+> If you like rig and also like the extra features of RSwitch, then you
+> can use them together just fine: changing the default R version in
+> RSwitch also changes it in rig and vice versa. You can use the rig cli
+> and the RSwitch app together, or you can also use both menu bar apps
+> at the same time.
+
+</details>
 
 ## 📘  License
 

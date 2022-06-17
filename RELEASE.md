@@ -3,7 +3,6 @@
 - [ ] Make sure version number is updated everywhere:
   - Cargo.toml
   - Cargo.lock (run cargo build)
-  - src/args.rs
   - rig.iss
   - NEWS file
   - README.Rmd
@@ -29,3 +28,4 @@
       `--tags` as well.
 - [ ] Update homebrew repo.
 - [ ] Update choco package.
+- [ ] tweet
