@@ -1,5 +1,10 @@
 ---
-output: github_document
+output:
+  github_document:
+    toc: true
+    toc_depth: 2
+    includes:
+      before_body: header.md
 ---
 
 ```{r, include = FALSE}
@@ -8,10 +13,6 @@ knitr::opts_chunk$set(
   out.width = "100%"
 )
 ```
-
-# The R Installation Manager
-
-Install, remove, configure R versions.
 
 ## 🚀&nbsp; Features
 
@@ -44,9 +45,6 @@ Install, remove, configure R versions.
   temporarily before starting RStudio and then changes it back after a
   short wait. If RStudio starts up very slowly, then the wait might be
   too short, and it might start up with the wrong R version.
-* If you delete the default R version with `rig rm` or another way,
-  then the `R` and `RS` commands will kept, but they will point to a
-  non-existing directory and fail.
 * On Windows Rtools installation will fail if the same version of Rtools is
   already installed.
 
@@ -129,13 +127,13 @@ Download the latest releast from https://github.com/r-lib/rig/releases
 and uncompress it to `/usr/local`
 
 ```
-curl -Ls https://github.com/r-lib/rig/releases/download/v0.4.2/rig-linux-0.4.2.tar.gz |
+curl -Ls https://github.com/r-lib/rig/releases/download/v0.5.0/rig-linux-0.5.0.tar.gz |
   sudo tar xz -C /usr/local
 ```
 
 If you are running Linux on arm64, download the arm64 build:
 ```
-curl -Ls https://github.com/r-lib/rig/releases/download/v0.4.2/rig-linux-arm64-0.4.2.tar.gz |
+curl -Ls https://github.com/r-lib/rig/releases/download/v0.5.0/rig-linux-arm64-0.5.0.tar.gz |
   sudo tar xz -C /usr/local
 ```
 
@@ -226,6 +224,9 @@ rig system setup-user-lib          -- set up automatic user package libraries [a
 
 Please open an issue in our issue tracker at
 https://github.com/r-lib/rig/issues
+
+```{r child="faq.Rmd"}
+```
 
 ## 📘&nbsp; License
 
