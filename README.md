@@ -130,12 +130,12 @@ Chocolatey, so the installer and the version in Scoop might be newer.
 Download the latest releast from <https://github.com/r-lib/rig/releases>
 and uncompress it to `/usr/local`
 
-    curl -Ls https://github.com/r-lib/rig/releases/download/v0.5.0/rig-linux-0.5.0.tar.gz |
+    curl -Ls https://github.com/r-lib/rig/releases/download/latest/rig-linux-latest.tar.gz |
       sudo tar xz -C /usr/local
 
 If you are running Linux on arm64, download the arm64 build:
 
-    curl -Ls https://github.com/r-lib/rig/releases/download/v0.5.0/rig-linux-arm64-0.5.0.tar.gz |
+    curl -Ls https://github.com/r-lib/rig/releases/download/latest/rig-linux-arm64-latest.tar.gz |
       sudo tar xz -C /usr/local
 
 Supported Linux distributions:
