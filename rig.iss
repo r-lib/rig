@@ -28,7 +28,7 @@ Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
 ArchitecturesInstallIn64BitMode="x64 arm64"
-ArchitecturesAllowed=x64
+ArchitecturesAllowed="x64 arm64"
 ChangesEnvironment=yes
 
 [Languages]
