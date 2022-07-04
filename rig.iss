@@ -27,7 +27,7 @@ OutputBaseFilename=mysetup
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
-ArchitecturesInstallIn64BitMode=x64
+ArchitecturesInstallIn64BitMode="x64 arm64"
 ArchitecturesAllowed=x64
 ChangesEnvironment=yes
 
