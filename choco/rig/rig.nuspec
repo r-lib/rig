@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
     <id>rig</id>
-    <version>0.4.1</version>
+    <version>0.5.0</version>
     <packageSourceUrl>https://github.com/r-lib/rig</packageSourceUrl>
     <owners>Gábor Csárdi</owners>
     <title>rig</title>
@@ -20,32 +20,74 @@
 
 ## Features
 
-* Works on macOS, Windows and Linux (Ubuntu and Debian, x86_64 and aarch64).
-* Easy installation and update, no system requirements on any platform.
-* Install multiple R versions.
-* Select the default R version, for the terminal and RStudio.
-* Select R version to install using symbolic names: devel, next, release, oldrel, etc.
-* Run multiple versions at the same time using quick links. E.g. R-4.1 or R-4.1.2 starts R 4.1.x. Quick links are automatically added to the user’s path.
-* On M1 macs select between x86_64 and arm64 versions or R, or install both.
-* Creates and configures user level package libraries.
-* Restricts permissions to the system library. (On macOS, not needed on Windows and Linux).
-* Includes auto-complete for zsh and bash, on macOS and Linux.
-* Updates R installations to allow debugging with lldb, and to allow core dumps, on macOS.
-* Installs the appropriate Rtools versions on Windows and sets them up.
-* Cleans up stale R-related entries from the Windows registry.
-* Switches to root/administrator user as needed.
+-   Works on macOS, Windows and Linux (Ubuntu and Debian, x86_64 and
+    aarch64).
+-   Easy installation and update, no system requirements on any
+    platform.
+-   Install multiple R versions.
+-   Select the default R version, for the terminal and RStudio.
+-   Select R version to install using symbolic names: `devel`, `next`,
+    `release`, `oldrel`, etc.
+-   Run multiple versions *at the same* time using quick links. E.g.
+    `R-4.1` or `R-4.1.2` starts R 4.1.x. Quick links are automatically
+    added to the user’s path.
+-   On M1 macs select between x86_64 and arm64 versions or R, or install
+    both.
+-   Creates and configures user level package libraries.
+-   Restricts permissions to the system library. (On macOS, not needed
+    on Windows and Linux).
+-   Includes auto-complete for `zsh` and `bash`, on macOS and Linux.
+-   Updates R installations to allow debugging with `lldb`, and to allow
+    core dumps, on macOS.
+-   Installs the appropriate Rtools versions on Windows and sets them
+    up.
+-   Cleans up stale R-related entries from the Windows registry.
+-   Switches to root/administrator user as needed.
 
 ## Feedback
 Please open an issue in our issue tracker at https://github.com/r-lib/rig/issues
     </description>
     <releaseNotes>
-# rig 0.4.1
+# rig 0.5.0
 
-* `rig rstudio [version]` and `rig rstudio [version] [project]` work properly
-  again (#77).
+* rig can now open renv projects in RStudio, with the correct R version.
+  Pass the renv lock file to rig: `rig rstudio .../renv.lock` (#74).
 
-* On Windows, `rig rstudio` now properly restores the default version after
-  starting RStudio, if a non-default version was specified.
+* `rig list` now prints the result as a table, and it prints the R version
+  number as well. `rig list --json` includes the version number, the path
+  to the installation, and the path to the R binary.
+
+* rig is now more robust when setting up the user library. In
+  particular R will not fail to start in renv projects (#81, @krlmlr).
+
+* On macOS and Linux `rig add` now creates the user library with the right
+  permissions, if it does not exist and pak is installed (#84).
+
+* `rig add` now correctly installs pak into the user library, instead of
+  the system library, even if the user library did not exist before.
+
+## Windows
+
+* On Windows, `rig add ... --without-translations` installs R without
+  message translations. This is useful if you prefer using R in
+  English on a non-English system (#88).
+
+* On Windows `rig add` does not add a Desktop icon now by default.
+  If want an icon, use the new `--with-desktop-icon` switch (#89).
+
+* On Windows, if the default version is deleted, rig updates the
+  registry accordingly, and removes the default from there as well (#86).
+
+* New subcommand `rig system update-rtools40` updates MSYS2 packages
+  of Rtools40 on Windows (#14).
+
+## macOS
+
+* On macOS `rig add` now does not fail if it is started from an x86_64
+  shell, when adding an arm64 R version on M1 Macs (#79).
+
+* On macOS, `rig rstudio [ver]` now errors if R `[ver]` is not orthogonal,
+  and the menu bar app errors as well (#90).
 
     </releaseNotes>
   </metadata>
