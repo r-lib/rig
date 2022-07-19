@@ -23,6 +23,7 @@ mod linux;
 #[cfg(target_os = "linux")]
 use linux::*;
 
+mod alias;
 mod library;
 mod common;
 mod config;
