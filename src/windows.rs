@@ -152,9 +152,9 @@ fn add_rtools(version: String) -> Result<(), Box<dyn Error>> {
         };
         let tmp_dir = std::env::temp_dir().join("rig");
         let target = tmp_dir.join(&filename);
-        info!("Downloading {} ->\n    {}", url, target.display());
+        info!("Downloading {} -> {}", url, target.display());
         download_file(client, &url, &target.as_os_str())?;
-        info!("Installing\n    {}", target.display());
+        info!("Installing {}", target.display());
         run(
             target.into_os_string(),
             vec![os("/VERYSILENT"), os("/SUPPRESSMSGBOXES")],

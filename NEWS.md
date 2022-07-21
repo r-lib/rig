@@ -1,4 +1,8 @@
 
+# rig 0.5.1 (unreleased)
+
+* rig now prints output from `apt`, etc. like regular logging output on Linux.
+
 # rig 0.5.0
 
 * rig can now open renv projects in RStudio, with the correct R version.

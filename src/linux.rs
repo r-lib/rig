@@ -3,6 +3,7 @@
 use regex::Regex;
 use std::error::Error;
 use std::ffi::OsStr;
+use std::ffi::OsString;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -19,6 +20,7 @@ use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
 use crate::library::*;
+use crate::run::*;
 use crate::utils::*;
 
 pub const R_ROOT: &str = "/opt/R";
@@ -89,9 +91,9 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let tmp_dir = std::env::temp_dir().join("rig");
     let target = tmp_dir.join(&filename);
     if target.exists() && not_too_old(&target) {
-        info!("{} is cached at\n    {}", filename, target.display());
+        info!("{} is cached at {}", filename, target.display());
     } else {
-        info!("Downloading {} ->\n    {}", url, target.display());
+        info!("Downloading {} -> {}", url, target.display());
         let client = &reqwest::Client::new();
         download_file(client, &url, &target.as_os_str())?;
     }
@@ -159,48 +161,18 @@ fn get_install_dir_deb(path: &OsStr) -> Result<String, Box<dyn Error>> {
 
 fn add_deb(path: &OsStr) -> Result<(), Box<dyn Error>> {
     info!("Running apt-get update");
-    println!("--nnn-- Start of apt-get output -------------------");
-    let status = try_with!(
-        Command::new("apt-get").args(["update"]).status(),
-        "Failed to run apt-get update @{}:{}",
-        file!(),
-        line!()
-    );
-    println!("--uuu-- End of apt-get output ---------------------");
+    let mut args: Vec<OsString> = vec![];
+    args.push(os("update"));
+    run("apt-get".into(), args, "apt-get update")?;
 
-    if !status.success() {
-        bail!("apt-get install exited with status {}", status.to_string());
-    }
-
-    info!("Running apt-get install");
-    println!("--nnn-- Start of apt-get output -------------------");
-    let status = try_with!(
-        Command::new("apt-get")
-            .args(["install", "-y", "gdebi-core"])
-            .status(),
-        "Failed to run apt-get install @{}:{}",
-        file!(),
-        line!()
-    );
-    println!("--uuu-- End of apt-get output ---------------------");
-
-    if !status.success() {
-        bail!("apt-get exited with status {}", status.to_string());
-    }
-
-    info!("Running gdebi");
-    println!("--nnn-- Start of gdebi output ---------------------");
-    let status = try_with!(
-        Command::new("gdebi").arg("-n").arg(path).status(),
-        "Failed to run gdebi @{}:{}",
-        file!(),
-        line!()
-    );
-    println!("--uuu-- End of gdebi output -----------------------");
-
-    if !status.success() {
-        bail!("gdebi exited with status {}", status.to_string());
-    }
+    info!("Running apt install");
+    let mut args: Vec<OsString> = vec![];
+    args.push(os("install"));
+    args.push(os("--reinstall"));
+    // https://askubuntu.com/a/668859
+    args.push(os("-o=Dpkg::Use-Pty=0"));
+    args.push(path.to_os_string());
+    run("apt".into(), args, "apt install")?;
 
     Ok(())
 }
@@ -227,20 +199,14 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
         if out.status.success() {
             info!("Removing {} package", pkgname);
-            println!("--nnn-- Start of apt-get output -------------------");
-            let status = try_with!(
-                Command::new("apt-get")
-                    .args(["remove", "-y", "--purge", &pkgname])
-                    .status(),
-                "Failed to run apt-get remove @{}:{}",
-                file!(),
-                line!()
-            );
-            println!("--uuu-- End of apt-get output ---------------------");
-
-            if !status.success() {
-                bail!("Failed to run apt-get remove");
-            }
+	    let mut args: Vec<OsString> = vec![];
+	    args.push(os("remove"));
+	    args.push(os("-y"));
+	    // https://askubuntu.com/a/668859
+	    args.push(os("-o=Dpkg::Use-Pty=0"));
+	    args.push(os("--purge"));
+	    args.push(os(&pkgname));
+	    run("apt-get".into(), args, "apt-get remove")?;
         } else {
             info!("{} package is not installed", pkgname);
         }
