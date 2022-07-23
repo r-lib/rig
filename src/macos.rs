@@ -14,6 +14,7 @@ use semver::Version;
 use simple_error::*;
 use simplelog::{debug, info, warn};
 
+use crate::alias::*;
 use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
@@ -32,6 +33,7 @@ const R_CUR: &str = "/Library/Frameworks/R.framework/Versions/Current";
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("adding new R versions")?;
     let mut version = get_resolve(args)?;
+    let alias = get_alias(args);
     let ver = version.version.to_owned();
     let verstr = match ver {
         Some(ref x) => x,
@@ -91,6 +93,10 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     system_fix_permissions(None)?;
     library_update_rprofile(&dirname.to_string())?;
     sc_system_make_links()?;
+    match alias {
+        Some(alias) => add_alias(dirname, &alias)?,
+        None => { }
+    };
 
     if !args.is_present("without-cran-mirror") {
         set_cloud_mirror(Some(vec![dirname.to_string()]))?;
@@ -275,11 +281,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         let linkfile = Path::new("/usr/local/bin/").join("R-".to_string() + &ver);
         let target = base.join(&ver).join("Resources/bin/R");
         if !linkfile.exists() {
-            debug!(
-                "[DEBUG] Adding {} -> {}",
-                linkfile.display(),
-                target.display()
-            );
+            debug!("Adding {} -> {}", linkfile.display(), target.display());
             match symlink(&target, &linkfile) {
                 Err(err) => bail!(
                     "Cannot create symlink {}: {}",
@@ -291,7 +293,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    // Remove danglink links
+    // Remove dangling links
     let paths = std::fs::read_dir("/usr/local/bin")?;
     let re = Regex::new("^R-[0-9]+[.][0-9]+")?;
     for file in paths {
@@ -308,10 +310,10 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         };
         if re.is_match(&fnamestr) {
             match std::fs::read_link(&path) {
-                Err(_) => debug!("[DEBUG] {} is not a symlink", path.display()),
+                Err(_) => debug!("{} is not a symlink", path.display()),
                 Ok(target) => {
                     if !target.exists() {
-                        debug!("[DEBUG] Cleaning up {}", target.display());
+                        debug!("Cleaning up {}", target.display());
                         match std::fs::remove_file(&path) {
                             Err(err) => {
                                 warn!("Failed to remove {}: {}", path.display(), err.to_string())
@@ -325,6 +327,72 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
+    debug!("Finding existing aliaes");
+
+    let paths = std::fs::read_dir("/usr/local/bin")?;
+    let re = re_alias();
+    let mut result: Vec<Alias> = vec![];
+
+    for file in paths {
+        let path = file?.path();
+        // If no path name, then path ends with ..., so we can skip
+        let fnamestr = match path.file_name() {
+            Some(x) => x,
+            None => continue,
+        };
+        // If the path is not UTF-8, we'll skip it, this should not happen
+        let fnamestr = match fnamestr.to_str() {
+            Some(x) => x,
+            None => continue,
+        };
+        if re.is_match(&fnamestr) {
+            match std::fs::read_link(&path) {
+                Err(_) => debug!("{} is not a symlink", path.display()),
+                Ok(target) => {
+                    if !target.exists() {
+                        debug!("Target does not exist at {}", target.display());
+
+                    } else {
+                        let version = version_from_link(target);
+                        match version {
+                            None => continue,
+                            Some(version) => {
+                                let als = Alias {
+                                    alias: fnamestr[2..].to_string(),
+                                    version: version.to_string()
+                                };
+                                result.push(als);
+                            }
+                        };
+                    }
+                }
+            };
+        }
+    }
+
+    Ok(result)
+}
+
+// /Library/Frameworks/R.framework/Versions/4.2-arm64/Resources/bin/R ->
+// 4.2-arm64
+fn version_from_link(pb: PathBuf) -> Option<String> {
+    let osver = match pb.parent()
+        .and_then(|x| x.parent())
+        .and_then(|x| x.parent())
+        .and_then(|x| x.file_name()) {
+        None => None,
+        Some(s) => Some(s.to_os_string())
+    };
+
+    let s = match osver {
+        None => None,
+        Some(os) => os.into_string().ok()
+    };
+
+    s
 }
 
 pub fn sc_system_allow_core_dumps(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
@@ -564,7 +632,7 @@ fn system_fix_permissions(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
     for ver in vers {
         check_installed(&ver)?;
         let path = Path::new(R_ROOT).join(ver.as_str());
-        debug!("[DEBUG] Fixing permissions in {}", path.display());
+        debug!("Fixing permissions in {}", path.display());
         let output = Command::new("chmod")
             .args(["-R", "g-w"])
             .arg(path)
@@ -577,7 +645,7 @@ fn system_fix_permissions(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
 
     let current = Path::new(R_ROOT).join("Current");
     debug!(
-        "[DEBUG] Fixing permissions and group of {}",
+        "Fixing permissions and group of {}",
         current.display()
     );
     let output = Command::new("chmod")
@@ -619,7 +687,7 @@ pub fn sc_system_forget() -> Result<(), Box<dyn Error>> {
     // TODO: this can fail, but if it fails it will still have exit
     // status 0, so we would need to check stderr to see if it failed.
     for line in output.lines() {
-        debug!("[DEBUG] Calling pkgutil --forget {}", line.trim());
+        debug!("Calling pkgutil --forget {}", line.trim());
         Command::new("pkgutil")
             .args(["--forget", line.trim()])
             .output()?;

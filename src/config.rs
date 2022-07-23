@@ -23,7 +23,7 @@ fn empty_stringmap() -> HashMap<String, String> {
 fn rig_config_file() -> Result<PathBuf, Box<dyn Error>> {
     let proj_dirs = match ProjectDirs::from("com", "gaborcsardi", "rig") {
         Some(x) => x,
-        None => bail!("Config file if not supported on this system"),
+        None => bail!("Config file is not supported on this system"),
     };
     let config_dir = proj_dirs.data_dir();
     let config_file = config_dir.join("config.json");
