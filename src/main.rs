@@ -186,10 +186,15 @@ fn sc_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error
         let num = vers.len();
         for (idx, ver) in vers.iter().enumerate() {
             let dflt = if def == ver.name { "true" } else { "false" };
+            let alsq: Vec<String> = ver.aliases.iter()
+                .map(|v| "\"".to_string() + v + "\"")
+                .collect();
+            let als = "[".to_string() + &alsq.join(", ") + "]";
             println!("  {{");
             println!("    \"name\": \"{}\",", ver.name);
             println!("    \"default\": {},", dflt);
             println!("    \"version\": \"{}\",", or_null(&ver.version));
+            println!("    \"aliases\": {},", als);
             println!("    \"path\": \"{}\",", or_null(&ver.path));
             println!("    \"binary\": \"{}\"", or_null(&ver.binary));
             println!("  }}{}", if idx == num - 1 { "" } else { "," });
@@ -197,7 +202,7 @@ fn sc_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error
         println!("]");
     } else {
 
-        let mut tab = Table::new("{:<} {:<}  {:<}");
+        let mut tab = Table::new("{:<} {:<}  {:<}  {:<}");
         for ver in vers {
             let dflt = if def == ver.name { "*" } else { " " };
             let note = match ver.version {
@@ -210,7 +215,8 @@ fn sc_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error
                     }
                 }
             };
-            tab.add_row(row!(dflt, ver.name, note));
+            let als = ver.aliases.join(", ");
+            tab.add_row(row!(dflt, ver.name, note, als));
         }
 
         print!("{}", tab);

@@ -55,6 +55,7 @@ pub fn set_default_if_none(ver: String) -> Result<(), Box<dyn Error>> {
 
 pub fn sc_get_list_details() -> Result<Vec<InstalledVersion>, Box<dyn Error>> {
     let names = sc_get_list()?;
+    let aliases = find_aliases()?;
     let mut res: Vec<InstalledVersion> = vec![];
     let re = Regex::new("^Version:[ ]?")?;
 
@@ -74,11 +75,18 @@ pub fn sc_get_list_details() -> Result<Vec<InstalledVersion>, Box<dyn Error>> {
         };
         let path = Path::new(R_ROOT).join(R_VERSIONDIR.replace("{}", &name));
         let binary = Path::new(R_ROOT).join(R_BINPATH.replace("{}", &name));
+        let mut myaliases: Vec<String> = vec![];
+        for a in &aliases {
+            if a.version == name {
+                myaliases.push(a.alias.to_owned());
+            }
+        }
         res.push(InstalledVersion {
             name: name.to_string(),
             version: version,
             path: path.to_str().and_then(|x| Some(x.to_string())),
-            binary: binary.to_str().and_then(|x| Some(x.to_string()))
+            binary: binary.to_str().and_then(|x| Some(x.to_string())),
+            aliases: myaliases
         });
     }
 

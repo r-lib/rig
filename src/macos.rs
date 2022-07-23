@@ -293,7 +293,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    // Remove danglink links
+    // Remove dangling links
     let paths = std::fs::read_dir("/usr/local/bin")?;
     let re = Regex::new("^R-[0-9]+[.][0-9]+")?;
     for file in paths {
@@ -327,6 +327,72 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
+    debug!("Finding existing aliaes");
+
+    let paths = std::fs::read_dir("/usr/local/bin")?;
+    let re = re_alias();
+    let mut result: Vec<Alias> = vec![];
+
+    for file in paths {
+        let path = file?.path();
+        // If no path name, then path ends with ..., so we can skip
+        let fnamestr = match path.file_name() {
+            Some(x) => x,
+            None => continue,
+        };
+        // If the path is not UTF-8, we'll skip it, this should not happen
+        let fnamestr = match fnamestr.to_str() {
+            Some(x) => x,
+            None => continue,
+        };
+        if re.is_match(&fnamestr) {
+            match std::fs::read_link(&path) {
+                Err(_) => debug!("{} is not a symlink", path.display()),
+                Ok(target) => {
+                    if !target.exists() {
+                        debug!("Target does not exist at {}", target.display());
+
+                    } else {
+                        let version = version_from_link(target);
+                        match version {
+                            None => continue,
+                            Some(version) => {
+                                let als = Alias {
+                                    alias: fnamestr[2..].to_string(),
+                                    version: version.to_string()
+                                };
+                                result.push(als);
+                            }
+                        };
+                    }
+                }
+            };
+        }
+    }
+
+    Ok(result)
+}
+
+// /Library/Frameworks/R.framework/Versions/4.2-arm64/Resources/bin/R ->
+// 4.2-arm64
+fn version_from_link(pb: PathBuf) -> Option<String> {
+    let osver = match pb.parent()
+        .and_then(|x| x.parent())
+        .and_then(|x| x.parent())
+        .and_then(|x| x.file_name()) {
+        None => None,
+        Some(s) => Some(s.to_os_string())
+    };
+
+    let s = match osver {
+        None => None,
+        Some(os) => os.into_string().ok()
+    };
+
+    s
 }
 
 pub fn sc_system_allow_core_dumps(args: &ArgMatches) -> Result<(), Box<dyn Error>> {

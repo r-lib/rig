@@ -1,4 +1,5 @@
 
+use regex::Regex;
 use std::cmp::Ordering;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -16,7 +17,8 @@ pub struct InstalledVersion {
     pub name: String,
     pub version: Option<String>,
     pub path: Option<String>,
-    pub binary: Option<String>
+    pub binary: Option<String>,
+    pub aliases: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -72,4 +74,15 @@ pub struct User {
     pub gid: u32,
     pub dir: OsString,
     pub sudo: bool,
+}
+
+#[derive(Default, Debug)]
+pub struct Alias {
+    pub alias: String,
+    pub version: String,
+}
+
+pub fn re_alias() -> Regex {
+    let re= Regex::new("^R-(next|devel|release|oldrel)$").unwrap();
+    re
 }
