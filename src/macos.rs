@@ -281,11 +281,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         let linkfile = Path::new("/usr/local/bin/").join("R-".to_string() + &ver);
         let target = base.join(&ver).join("Resources/bin/R");
         if !linkfile.exists() {
-            debug!(
-                "[DEBUG] Adding {} -> {}",
-                linkfile.display(),
-                target.display()
-            );
+            debug!("Adding {} -> {}", linkfile.display(), target.display());
             match symlink(&target, &linkfile) {
                 Err(err) => bail!(
                     "Cannot create symlink {}: {}",
@@ -314,10 +310,10 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         };
         if re.is_match(&fnamestr) {
             match std::fs::read_link(&path) {
-                Err(_) => debug!("[DEBUG] {} is not a symlink", path.display()),
+                Err(_) => debug!("{} is not a symlink", path.display()),
                 Ok(target) => {
                     if !target.exists() {
-                        debug!("[DEBUG] Cleaning up {}", target.display());
+                        debug!("Cleaning up {}", target.display());
                         match std::fs::remove_file(&path) {
                             Err(err) => {
                                 warn!("Failed to remove {}: {}", path.display(), err.to_string())
@@ -570,7 +566,7 @@ fn system_fix_permissions(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
     for ver in vers {
         check_installed(&ver)?;
         let path = Path::new(R_ROOT).join(ver.as_str());
-        debug!("[DEBUG] Fixing permissions in {}", path.display());
+        debug!("Fixing permissions in {}", path.display());
         let output = Command::new("chmod")
             .args(["-R", "g-w"])
             .arg(path)
@@ -583,7 +579,7 @@ fn system_fix_permissions(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
 
     let current = Path::new(R_ROOT).join("Current");
     debug!(
-        "[DEBUG] Fixing permissions and group of {}",
+        "Fixing permissions and group of {}",
         current.display()
     );
     let output = Command::new("chmod")
@@ -625,7 +621,7 @@ pub fn sc_system_forget() -> Result<(), Box<dyn Error>> {
     // TODO: this can fail, but if it fails it will still have exit
     // status 0, so we would need to check stderr to see if it failed.
     for line in output.lines() {
-        debug!("[DEBUG] Calling pkgutil --forget {}", line.trim());
+        debug!("Calling pkgutil --forget {}", line.trim());
         Command::new("pkgutil")
             .args(["--forget", line.trim()])
             .output()?;
