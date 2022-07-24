@@ -275,7 +275,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     let vers = sc_get_list()?;
     let base = Path::new(R_ROOT);
 
-    info!("Adding R-* quick links (if needed)");
+    info!("Updating R-* quick links (as needed)");
 
     // Create new links
     for ver in vers {
@@ -297,6 +297,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     // Remove dangling links
     let paths = std::fs::read_dir("/usr/local/bin")?;
     let re = Regex::new("^R-[0-9]+[.][0-9]+")?;
+    let re2 = re_alias();
     for file in paths {
         let path = file?.path();
         // If no path name, then path ends with ..., so we can skip
@@ -309,7 +310,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
             Some(x) => x,
             None => continue,
         };
-        if re.is_match(&fnamestr) {
+        if re.is_match(&fnamestr) || re2.is_match(&fnamestr) {
             match std::fs::read_link(&path) {
                 Err(_) => debug!("{} is not a symlink", path.display()),
                 Ok(target) => {
@@ -380,29 +381,6 @@ pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
     }
 
     Ok(result)
-}
-
-// Might not be needed in the end
-pub fn resolve_alias(alias: &str) -> Result<String, Box<dyn Error>> {
-    let path = Path::new("/usr/local/bin").join("R-".to_string() + alias);
-    if !path.exists() {
-        bail!("Could not find alias: {}", alias);
-    }
-    match std::fs::read_link(&path) {
-        Err(_) => bail!("{} is not a symlink", path.display()),
-        Ok(target) => {
-            if !target.exists() {
-                bail!("Target does not exist at {}", target.display());
-
-            } else {
-                let version = version_from_link(target);
-                match version {
-                    None => bail!("target file name not UTF-8"),
-                    Some(v) => return Ok(v.to_string())
-                };
-            }
-        }
-    };
 }
 
 // /Library/Frameworks/R.framework/Versions/4.2-arm64/Resources/bin/R ->
