@@ -81,8 +81,3 @@ pub struct Alias {
     pub alias: String,
     pub version: String,
 }
-
-pub fn re_alias() -> Regex {
-    let re= Regex::new("^R-(next|devel|release|oldrel)$").unwrap();
-    re
-}

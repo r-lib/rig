@@ -114,7 +114,7 @@ pub fn system_add_pak(
     };
 
     for ver in vers {
-        check_installed(&ver)?;
+        let ver = check_installed(&ver)?;
         if update {
             info!("Installing pak for R {}", ver);
         } else {
