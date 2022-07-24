@@ -203,13 +203,15 @@ fn sc_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error
     } else {
 
         let mut tab = Table::new("{:<} {:<}  {:<}  {:<}");
+        tab.add_row(row!["*", "name", "version", "aliases"]);
+        tab.add_heading("------------------------------------------");
         for ver in vers {
             let dflt = if def == ver.name { "*" } else { " " };
             let note = match ver.version {
-                None => " (broken?)".to_string(),
+                None => "(broken?)".to_string(),
                 Some(v) => {
                     if v != ver.name {
-                        format!(" (R {})", v)
+                        format!("(R {})", v)
                     } else {
                         "".to_string()
                     }

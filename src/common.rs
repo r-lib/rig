@@ -23,12 +23,20 @@ use crate::rversion::*;
 use crate::run::*;
 use crate::utils::*;
 
-pub fn check_installed(ver: &String) -> Result<bool, Box<dyn Error>> {
-    let inst = sc_get_list()?;
-    if !inst.contains(&ver) {
-        bail!("R version <b>{}</b> is not installed", &ver);
+pub fn check_installed(x: &String) -> Result<String, Box<dyn Error>> {
+    let inst = sc_get_list_details()?;
+
+    for ver in inst {
+        if &ver.name == x {
+            return Ok(ver.name);
+        }
+        if ver.aliases.contains(x) {
+            debug!("Alias {} is resolved to version {}", x, ver.name);
+            return Ok(ver.name);
+        }
     }
-    Ok(true)
+
+    bail!("R version <b>{}</b> is not installed", &x);
 }
 
 // -- rig default ---------------------------------------------------------

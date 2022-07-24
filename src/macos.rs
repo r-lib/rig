@@ -245,10 +245,11 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let default = sc_get_default()?;
 
     for ver in vers {
-        check_installed(&ver.to_string())?;
+
+        let ver = check_installed(&ver.to_string())?;
 
         if let Some(ref default) = default {
-            if default == ver {
+            if default == &ver {
                 warn!("Removing default version, set new default with \
                        <bold>rig default <version></>");
             }
@@ -376,6 +377,29 @@ pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
     Ok(result)
 }
 
+// Might not be needed in the end
+pub fn resolve_alias(alias: &str) -> Result<String, Box<dyn Error>> {
+    let path = Path::new("/usr/local/bin").join("R-".to_string() + alias);
+    if !path.exists() {
+        bail!("Could not find alias: {}", alias);
+    }
+    match std::fs::read_link(&path) {
+        Err(_) => bail!("{} is not a symlink", path.display()),
+        Ok(target) => {
+            if !target.exists() {
+                bail!("Target does not exist at {}", target.display());
+
+            } else {
+                let version = version_from_link(target);
+                match version {
+                    None => bail!("target file name not UTF-8"),
+                    Some(v) => return Ok(v.to_string())
+                };
+            }
+        }
+    };
+}
+
 // /Library/Frameworks/R.framework/Versions/4.2-arm64/Resources/bin/R ->
 // 4.2-arm64
 fn version_from_link(pb: PathBuf) -> Option<String> {
@@ -419,7 +443,7 @@ pub fn sc_system_allow_debugger(args: &ArgMatches) -> Result<(), Box<dyn Error>>
     };
 
     for ver in vers {
-        check_installed(&ver)?;
+        let ver = check_installed(&ver)?;
         let path = PathBuf::new()
             .join(R_ROOT)
             .join(ver.as_str())
@@ -555,7 +579,7 @@ fn system_make_orthogonal(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
     };
 
     for ver in vers {
-        check_installed(&ver)?;
+        let ver = check_installed(&ver)?;
         debug!("Making R {} orthogonal", ver);
         let base = Path::new(R_ROOT).join(&ver);
         make_orthogonal_(&base, &ver)?;
@@ -630,7 +654,7 @@ fn system_fix_permissions(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
     info!("Fixing permissions");
 
     for ver in vers {
-        check_installed(&ver)?;
+        let ver = check_installed(&ver)?;
         let path = Path::new(R_ROOT).join(ver.as_str());
         debug!("Fixing permissions in {}", path.display());
         let output = Command::new("chmod")
@@ -740,7 +764,7 @@ fn system_no_openmp(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     let re = Regex::new("[-]fopenmp")?;
 
     for ver in vers {
-        check_installed(&ver)?;
+        let ver = check_installed(&ver)?;
         let path = Path::new(R_ROOT).join(ver.as_str());
         let makevars = path.join("Resources/etc/Makeconf".to_string());
         if !makevars.exists() {
@@ -767,7 +791,7 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     info!("Setting default CRAN mirror");
 
     for ver in vers {
-        check_installed(&ver)?;
+        let ver = check_installed(&ver)?;
         let path = Path::new(R_ROOT).join(ver.as_str());
         let profile = path.join("Resources/library/base/R/Rprofile".to_string());
         if !profile.exists() {
@@ -809,8 +833,8 @@ pub fn sc_rstudio_(version: Option<&str>,
     let path;
 
     if let Some(ver) = version {
-        check_installed(&ver.to_string())?;
-        if !is_orthogonal(ver)? {
+        let ver = check_installed(&ver.to_string())?;
+        if !is_orthogonal(&ver)? {
             bail!("R {} is not orthogonal, it cannot run as a non-default. \
                    Run `rig system make-orthogonal`.", ver)
         }
@@ -845,7 +869,7 @@ pub fn check_has_pak(ver: &String) -> Result<bool, Box<dyn Error>> {
 }
 
 pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
-    check_installed(&ver.to_string())?;
+    let ver = check_installed(&ver.to_string())?;
     // Maybe it does not exist, ignore error here
     match std::fs::remove_file(R_CUR) {
         _ => {}
