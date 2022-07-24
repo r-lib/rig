@@ -15,6 +15,7 @@ use simplelog::{trace,debug, info, warn};
 use crate::resolve::resolve_versions;
 use crate::rversion::*;
 
+use crate::alias::*;
 use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
@@ -73,7 +74,8 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     }
 
     let linux = detect_linux()?;
-    let version = get_resolve(args)?;
+    let mut version = get_resolve(args)?;
+    let alias = get_alias(args);
     let ver = version.version.to_owned();
     let verstr = match ver {
         Some(ref x) => x,
@@ -108,6 +110,10 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     library_update_rprofile(&dirname.to_string())?;
     sc_system_make_links()?;
+    match alias {
+        Some(alias) => add_alias(&dirname, &alias)?,
+        None => { }
+    };
 
     if !args.is_present("without-cran-mirror") {
         set_cloud_mirror(Some(vec![dirname.to_string()]))?;
