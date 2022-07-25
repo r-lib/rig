@@ -18,12 +18,13 @@ use simplelog::{debug, info, warn};
 use winreg::enums::*;
 use winreg::RegKey;
 
+use crate::alias::*;
 use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
 use crate::library::*;
 use crate::resolve::resolve_versions;
-use crate::rversion::Rversion;
+use crate::rversion::*;
 use crate::run::*;
 use crate::utils::*;
 
@@ -35,6 +36,7 @@ pub const R_BINPATH: &str = "R-{}\\bin\\R.exe";
 #[warn(unused_variables)]
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("adding new R version")?;
+    let alias = get_alias(args);
     sc_clean_registry()?;
     let str = args
         .value_of("str")
@@ -75,6 +77,15 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         }
     };
     sc_system_make_links()?;
+    match dirname {
+	None => {},
+	Some(ref dirname) => {
+	    match alias {
+		Some(alias) => add_alias(&dirname, &alias)?,
+		None => { }
+	    }
+	}
+    };
     patch_for_rtools()?;
     maybe_update_registry_default()?;
 
@@ -426,6 +437,21 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+fn re_alias() -> Regex {
+    let re = Regex::new("^R-(oldrel|release|next)$").unwrap();
+    re
+}
+
+pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
+    debug!("Finding existing aliases");
+
+    let mut result: Vec<Alias> = vec![];
+
+    // TODO
+
+    Ok(result)
 }
 
 pub fn sc_system_allow_core_dumps(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {

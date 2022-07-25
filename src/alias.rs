@@ -1,7 +1,11 @@
 
 use std::error::Error;
-use std::os::unix::fs::symlink;
+use std::io::Write;
+use std::fs::File;
 use std::path::Path;
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use std::os::unix::fs::symlink;
 
 use clap::ArgMatches;
 use simple_error::*;
@@ -40,6 +44,20 @@ pub fn get_alias(args: &ArgMatches) -> Option<String> {
             match str {
                 "oldrel" | "oldrel/1" => Some("oldrel".to_string()),
                 "release" => Some(str.to_string()),
+                _ => None
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub fn get_alias(args: &ArgMatches) -> Option<String> {
+    match args.value_of("str") {
+        None => None,
+        Some(str) => {
+            match str {
+                "oldrel" | "oldrel/1" => Some("oldrel".to_string()),
+                "release" | "next" => Some(str.to_string()),
                 _ => None
             }
         }
@@ -98,8 +116,33 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
 }
 
 #[cfg(target_os = "windows")]
-pub fn add_alias(ver: String, alias: String) {
-    // TODO
+pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
+    let base = Path::new(R_ROOT);
+    let bin = base.join("bin");
+
+    // should exist at this point, but make sure
+    std::fs::create_dir_all(&bin)?;
+
+    let filename = "R-".to_string() + alias + ".bat";
+    let linkfile = bin.join(&filename);
+    let target = base.join("R-".to_string() + ver);
+
+    let cnt = "@\"C:\\Program Files\\R\\R-".to_string() + &ver + "\\bin\\R\" %*\n";
+    let op;
+    if linkfile.exists() {
+        op = "Updating";
+        let orig = std::fs::read_to_string(&linkfile)?;
+        if orig == cnt {
+            return Ok(());
+        }
+    } else {
+        op = "Adding";
+    };
+    info!("{} R-{} -> {} alias", op, alias, ver);
+    let mut file = File::create(&linkfile)?;
+    file.write_all(cnt.as_bytes())?;
+
+    Ok(())
 }
 
 #[cfg(target_os = "linux")]
