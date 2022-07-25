@@ -44,12 +44,12 @@ pub fn download_r(args: &ArgMatches) -> Result<(Rversion, OsString), Box<dyn Err
     let target = tmp_dir.join(&filename);
     if target.exists() && not_too_old(&target) {
         info!(
-            "{} is cached at\n    {}",
+            "{} is cached at {}",
             filename_path.display(),
             target.display()
         );
     } else {
-        info!("Downloading {} ->\n    {}", url, target.display());
+        info!("Downloading {} -> {}", url, target.display());
         let client = &reqwest::Client::new();
         download_file(client, &url, target.as_os_str())?;
     }
@@ -65,12 +65,12 @@ pub fn download_file_sync(url: &str, filename: &str,
     let target = tmp_dir.join(&filename);
     if target.exists() && (infinite_cache || not_too_old(&target)) {
         info!(
-            "{} is cached at \n    {}",
+            "{} is cached at {}",
             filename,
             target.display()
         );
     } else {
-        info!("Downloading {} ->\n    {}", url, target.display());
+        info!("Downloading {} -> {}", url, target.display());
         let client = &reqwest::Client::new();
         download_file(client, url, target.as_os_str())?;
     }
