@@ -287,7 +287,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
 
     // Remove dangling links
     let paths = std::fs::read_dir("/usr/local/bin")?;
-    let re = Regex::new("^R-[0-9]+[.][0-9]+")?;
+    let re = Regex::new("^R-([0-9]+[.][0-9]+[.][0-9]+|oldrel|next|release|devel)$")?;
     for file in paths {
         let path = file?.path();
         // If no path name, then path ends with ..., so we can skip
