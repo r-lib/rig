@@ -94,8 +94,8 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - { os: macOS-11    }
-          - { os: macos-10.15 }
+          - { os: macOS-11 }
+          - { os: macos-12 }
 
     steps:
 
