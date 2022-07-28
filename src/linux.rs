@@ -76,7 +76,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     }
 
     let linux = detect_linux()?;
-    let mut version = get_resolve(args)?;
+    let version = get_resolve(args)?;
     let alias = get_alias(args);
     let ver = version.version.to_owned();
     let verstr = match ver {
