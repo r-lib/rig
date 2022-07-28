@@ -14,7 +14,7 @@ use std::{thread, time};
 use clap::ArgMatches;
 use remove_dir_all::remove_dir_all;
 use simple_error::{bail, SimpleError};
-use simplelog::{debug, info, warn};
+use simplelog::*;
 use winreg::enums::*;
 use winreg::RegKey;
 
@@ -411,6 +411,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     }
 
     // Delete the ones we don't need
+    let re_als = re_alias();
     let old_links = std::fs::read_dir(base.join("bin"))?;
     for path in old_links {
         let path = path?;
@@ -423,6 +424,13 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                 if !filename.starts_with("R-") {
                     continue;
                 }
+		if re_als.is_match(&filename) {
+		    let rver = find_r_version_in_link(&path.path())?;
+		    let realname = "R-".to_string() + &rver + ".bat";
+		    if new_links.contains(&realname) {
+			continue;
+		    }
+		}
                 if !new_links.contains(&filename) {
                     info!("Deleting unused {}", filename);
                     match std::fs::remove_file(path.path()) {
@@ -440,18 +448,60 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
 }
 
 fn re_alias() -> Regex {
-    let re = Regex::new("^R-(oldrel|release|next)$").unwrap();
+    let re = Regex::new("^R-(oldrel|release|next)[.]bat$").unwrap();
     re
 }
 
 pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
     debug!("Finding existing aliases");
 
+    let bin = Path::new(R_ROOT).join("bin");
+    let paths = std::fs::read_dir(bin)?;
+    let re = re_alias();
     let mut result: Vec<Alias> = vec![];
+    let re_cmd = Regex::new("R\\R-4.1.3\\bin\\R\\");
 
-    // TODO
+    for file in paths {
+	let path = file?.path();
+        // If no path name, then path ends with ..., so we can skip
+        let fnamestr = match path.file_name() {
+            Some(x) => x,
+            None => continue,
+        };
+        // If the path is not UTF-8, we'll skip it, this should not happen
+        let fnamestr = match fnamestr.to_str() {
+            Some(x) => x,
+            None => continue,
+        };
+        if re.is_match(&fnamestr) {
+	    trace!("Checking {}", path.display());
+	    let rver = find_r_version_in_link(&path)?;
+	    let als = Alias {
+		alias: fnamestr[2..fnamestr.len()-4].to_string(),
+		version: rver
+	    };
+	    result.push(als);
+	}
+    }
 
     Ok(result)
+}
+
+fn find_r_version_in_link(path: &PathBuf) -> Result<String, Box<dyn Error>> {
+    let lines = read_lines(path)?;
+    if lines.len() == 0 {
+	bail!("Invalid R link file: {}", path.display());
+    }
+    let split = lines[0].split("\\").collect::<Vec<&str>>();
+    for s in split {
+	if s == "R-devel" {
+	    return Ok("devel".to_string());
+	}
+	if s.starts_with("R-") {
+	    return Ok(s[2..].to_string());
+	}
+    }
+    bail!("Cannot extract R version from {}, invalid R link file?", path.display());
 }
 
 pub fn sc_system_allow_core_dumps(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
