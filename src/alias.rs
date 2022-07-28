@@ -1,6 +1,8 @@
 
 use std::error::Error;
+#[cfg(target_os = "windows")]
 use std::io::Write;
+#[cfg(target_os = "windows")]
 use std::fs::File;
 use std::path::Path;
 
