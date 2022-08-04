@@ -10,6 +10,7 @@ use std::path::Path;
 use std::os::unix::fs::symlink;
 
 use clap::ArgMatches;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use simple_error::*;
 use simplelog::*;
 
@@ -119,6 +120,8 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
 
 #[cfg(target_os = "windows")]
 pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
+    let msg = "Adding R-".to_string() + alias + " alias";
+    escalate(&msg)?;
     let base = Path::new(R_ROOT);
     let bin = base.join("bin");
 
@@ -127,7 +130,6 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
 
     let filename = "R-".to_string() + alias + ".bat";
     let linkfile = bin.join(&filename);
-    let target = base.join("R-".to_string() + ver);
 
     let cnt = "@\"C:\\Program Files\\R\\R-".to_string() + &ver + "\\bin\\R\" %*\n";
     let op;

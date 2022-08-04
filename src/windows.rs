@@ -459,7 +459,6 @@ pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
     let paths = std::fs::read_dir(bin)?;
     let re = re_alias();
     let mut result: Vec<Alias> = vec![];
-    let re_cmd = Regex::new("R\\R-4.1.3\\bin\\R\\");
 
     for file in paths {
 	let path = file?.path();
