@@ -17,3 +17,8 @@ _rim.ps1
 /rimx/rimx.xcodeproj/project.xcworkspace/xcuserdata/
 /rimx/rimx.xcodeproj/xcuserdata/gaborcsardi.xcuserdatad/xcdebugger
 .DS_Store
+/Rig.app/Rig.xcodeproj/project.xcworkspace/xcuserdata
+/Rig.app/build-arm64
+/Rig.app/build-x86_64
+/Rig.app/lib
+/releases

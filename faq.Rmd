@@ -1,0 +1,93 @@
+
+## ❓&nbsp; FAQ
+
+<details>
+<summary>Why does rig create a user package library?</summary>
+>
+>Installing non-base packages into a user package library has several
+> benefits: 
+> 
+> - The system library is not writeable for regular users on some systems
+>   (Windows and Linux, typically), so we might as well create a 
+>   properly versioned user library at the default place.
+> - Some tools need a clean R environment, with base packages only, and do
+>   not work well if user packages are installed into the system library.
+>   E.g. `R CMD check` is such a tool, and https://github.com/r-lib/revdepcheck
+>   is another.
+> - You can delete an R installation (e.g. with `rig rm`) and then and then
+>   install it again, without losing your R packages.
+>
+</details>
+
+<details>
+<summary>Why does rig install pak?</summary>
+>
+> To be able to install R packages efficiently, from CRAN, Bioconductor or
+> GitHub, right from the start. pak also supports installing system libraries
+> automatically on some Linux systems.
+> 
+> If you don't want `rig add` to install pak, use the `--without-pak` option.
+</details>
+
+<details>
+<summary>Why does rig change the permissions of the system library
+(on macOS)?</summary>
+>
+> To make sure that you don't install packages accidentally into the system
+> library. See "Why does rig create a user package library?" above.
+> 
+</details>
+
+<details>
+<summary>Why does rig set the default CRAN mirror?</summary>
+>
+> To avoid the extra work the users need to spend on this.
+> 
+> The https://cloud.r-project.org mirror is usually better than the
+> other, in that it is a CDN that is close to most users, and that it is
+> updated more often.
+>
+> If you want to use a different mirror, you can set the `repos` option
+> in your `.Rprofile`, so the rig repo settings will be ignored.
+> 
+> You can also use the `--without-cran-mirror` option of `rig add`.
+>
+</details>
+
+<details>
+<summary>Why does rig set up RSPM?</summary>
+>
+> RSPM ([Rstudio Package Manager](https://packagemanager.rstudio.com/client/#/))
+> is generally superior to a refular CRAN mirror on Windows and many Linux
+> systems.
+>
+> On Linux it includes binary packages for many popular distributions.
+>
+> On Windows, it includes up to date binary packages for older R versions as
+> well.
+> 
+> To avoid RSPM, use the `--without-rspm` option of `rig add`.
+> 
+</details>
+
+<details>
+<summary>Can rig install R without admin permissions</summary>
+> 
+> No, currently it cannot.
+> 
+</details>
+
+<details>
+<summary>How is rig different from RSwitch?</summary>
+>
+> While there is a small overlap in functionality, rig and 
+> [RSwitch](https://rud.is/rswitch/) are very different.
+> I suggest you look over the features of both to decide which one suits 
+> your needs better.
+> 
+> If you like rig and also like the extra features of RSwitch, then you can
+> use them together just fine: changing the default R version in RSwitch also
+> changes it in rig and vice versa. You can use the rig cli and the RSwitch
+> app together, or you can also use both menu bar apps at the same time.
+>
+</details>
