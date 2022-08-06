@@ -16,7 +16,8 @@ pub struct InstalledVersion {
     pub name: String,
     pub version: Option<String>,
     pub path: Option<String>,
-    pub binary: Option<String>
+    pub binary: Option<String>,
+    pub aliases: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -72,4 +73,10 @@ pub struct User {
     pub gid: u32,
     pub dir: OsString,
     pub sudo: bool,
+}
+
+#[derive(Default, Debug)]
+pub struct Alias {
+    pub alias: String,
+    pub version: String,
 }

@@ -23,6 +23,7 @@ mod linux;
 #[cfg(target_os = "linux")]
 use linux::*;
 
+mod alias;
 mod library;
 mod common;
 mod config;
@@ -185,10 +186,15 @@ fn sc_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error
         let num = vers.len();
         for (idx, ver) in vers.iter().enumerate() {
             let dflt = if def == ver.name { "true" } else { "false" };
+            let alsq: Vec<String> = ver.aliases.iter()
+                .map(|v| "\"".to_string() + v + "\"")
+                .collect();
+            let als = "[".to_string() + &alsq.join(", ") + "]";
             println!("  {{");
             println!("    \"name\": \"{}\",", ver.name);
             println!("    \"default\": {},", dflt);
             println!("    \"version\": \"{}\",", or_null(&ver.version));
+            println!("    \"aliases\": {},", als);
             println!("    \"path\": \"{}\",", or_null(&ver.path));
             println!("    \"binary\": \"{}\"", or_null(&ver.binary));
             println!("  }}{}", if idx == num - 1 { "" } else { "," });
@@ -196,20 +202,23 @@ fn sc_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error
         println!("]");
     } else {
 
-        let mut tab = Table::new("{:<} {:<}  {:<}");
+        let mut tab = Table::new("{:<} {:<}  {:<}  {:<}");
+        tab.add_row(row!["*", "name", "version", "aliases"]);
+        tab.add_heading("------------------------------------------");
         for ver in vers {
             let dflt = if def == ver.name { "*" } else { " " };
             let note = match ver.version {
-                None => " (broken?)".to_string(),
+                None => "(broken?)".to_string(),
                 Some(v) => {
                     if v != ver.name {
-                        format!(" (R {})", v)
+                        format!("(R {})", v)
                     } else {
                         "".to_string()
                     }
                 }
             };
-            tab.add_row(row!(dflt, ver.name, note));
+            let als = ver.aliases.join(", ");
+            tab.add_row(row!(dflt, ver.name, note, als));
         }
 
         print!("{}", tab);

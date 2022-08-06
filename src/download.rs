@@ -2,6 +2,7 @@ use futures::future;
 use futures_util::StreamExt;
 use std::error::Error;
 use std::ffi::OsStr;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::ffi::OsString;
 use std::fs::File;
 use std::io::Write;
@@ -11,10 +12,12 @@ use std::path::Path;
 use clap::ArgMatches;
 
 use simple_error::bail;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use simplelog::info;
 
 #[cfg(target_os = "windows")]
 use crate::rversion::Rversion;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use crate::utils::*;
 #[cfg(target_os = "windows")]
 use crate::windows::*;

@@ -14,16 +14,17 @@ use std::{thread, time};
 use clap::ArgMatches;
 use remove_dir_all::remove_dir_all;
 use simple_error::{bail, SimpleError};
-use simplelog::{debug, info, warn};
+use simplelog::*;
 use winreg::enums::*;
 use winreg::RegKey;
 
+use crate::alias::*;
 use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
 use crate::library::*;
 use crate::resolve::resolve_versions;
-use crate::rversion::Rversion;
+use crate::rversion::*;
 use crate::run::*;
 use crate::utils::*;
 
@@ -35,6 +36,7 @@ pub const R_BINPATH: &str = "R-{}\\bin\\R.exe";
 #[warn(unused_variables)]
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("adding new R version")?;
+    let alias = get_alias(args);
     sc_clean_registry()?;
     let str = args
         .value_of("str")
@@ -75,6 +77,15 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         }
     };
     sc_system_make_links()?;
+    match dirname {
+	None => {},
+	Some(ref dirname) => {
+	    match alias {
+		Some(alias) => add_alias(&dirname, &alias)?,
+		None => { }
+	    }
+	}
+    };
     patch_for_rtools()?;
     maybe_update_registry_default()?;
 
@@ -252,7 +263,7 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     info!("Setting default CRAN mirror");
 
     for ver in vers {
-        check_installed(&ver)?;
+        let ver = check_installed(&ver)?;
         let path = Path::new(R_ROOT).join("R-".to_string() + ver.as_str());
         let profile = path.join("library/base/R/Rprofile".to_string());
         if !profile.exists() {
@@ -285,7 +296,7 @@ options(repos = c(RSPM="https://packagemanager.rstudio.com/all/latest", getOptio
 "#;
 
     for ver in vers {
-        check_installed(&ver)?;
+        let ver = check_installed(&ver)?;
         let path = Path::new(R_ROOT).join("R-".to_string() + ver.as_str());
         let profile = path.join("library/base/R/Rprofile".to_string());
         if !profile.exists() {
@@ -313,10 +324,10 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             rm_rtools(verstr)?;
             continue;
         }
-        check_installed(&verstr)?;
+        let ver = check_installed(&verstr)?;
 
         if let Some(ref default) = default {
-            if default == ver {
+            if default == &ver {
                 warn!("Removing default version, set new default with \
                        <bold>rig default <version></>");
 		match unset_default() {
@@ -326,7 +337,7 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             }
         }
 
-        let ver = "R-".to_string() + ver;
+        let ver = "R-".to_string() + &ver;
         let dir = Path::new(R_ROOT);
         let dir = dir.join(ver);
         info!("Removing {}", dir.display());
@@ -400,6 +411,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     }
 
     // Delete the ones we don't need
+    let re_als = re_alias();
     let old_links = std::fs::read_dir(base.join("bin"))?;
     for path in old_links {
         let path = path?;
@@ -412,6 +424,13 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                 if !filename.starts_with("R-") {
                     continue;
                 }
+		if re_als.is_match(&filename) {
+		    let rver = find_r_version_in_link(&path.path())?;
+		    let realname = "R-".to_string() + &rver + ".bat";
+		    if new_links.contains(&realname) {
+			continue;
+		    }
+		}
                 if !new_links.contains(&filename) {
                     info!("Deleting unused {}", filename);
                     match std::fs::remove_file(path.path()) {
@@ -426,6 +445,67 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+fn re_alias() -> Regex {
+    let re = Regex::new("^R-(oldrel|release|next)[.]bat$").unwrap();
+    re
+}
+
+pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
+    debug!("Finding existing aliases");
+
+    let mut result: Vec<Alias> = vec![];
+    let bin = Path::new(R_ROOT).join("bin");
+
+    if !bin.exists() {
+	return Ok(result);
+    }
+
+    let paths = std::fs::read_dir(bin)?;
+    let re = re_alias();
+
+    for file in paths {
+	let path = file?.path();
+        // If no path name, then path ends with ..., so we can skip
+        let fnamestr = match path.file_name() {
+            Some(x) => x,
+            None => continue,
+        };
+        // If the path is not UTF-8, we'll skip it, this should not happen
+        let fnamestr = match fnamestr.to_str() {
+            Some(x) => x,
+            None => continue,
+        };
+        if re.is_match(&fnamestr) {
+	    trace!("Checking {}", path.display());
+	    let rver = find_r_version_in_link(&path)?;
+	    let als = Alias {
+		alias: fnamestr[2..fnamestr.len()-4].to_string(),
+		version: rver
+	    };
+	    result.push(als);
+	}
+    }
+
+    Ok(result)
+}
+
+fn find_r_version_in_link(path: &PathBuf) -> Result<String, Box<dyn Error>> {
+    let lines = read_lines(path)?;
+    if lines.len() == 0 {
+	bail!("Invalid R link file: {}", path.display());
+    }
+    let split = lines[0].split("\\").collect::<Vec<&str>>();
+    for s in split {
+	if s == "R-devel" {
+	    return Ok("devel".to_string());
+	}
+	if s.starts_with("R-") {
+	    return Ok(s[2..].to_string());
+	}
+    }
+    bail!("Cannot extract R version from {}, invalid R link file?", path.display());
 }
 
 pub fn sc_system_allow_core_dumps(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
@@ -507,7 +587,7 @@ pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
 }
 
 pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
-    check_installed(&ver.to_string())?;
+    let ver = check_installed(&ver.to_string())?;
     escalate("setting the default R version")?;
     let base = Path::new(R_ROOT);
     let bin = base.join("bin");
@@ -782,7 +862,7 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>, arg: Option<&Os
 
     if let Some(version) = version {
         let ver = version.to_string();
-        check_installed(&ver)?;
+        let ver = check_installed(&ver)?;
         update_registry_default_to(&ver)?;
     }
 
