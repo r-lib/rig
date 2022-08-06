@@ -286,7 +286,7 @@ Why does rig set up RSPM?
 
 > RSPM ([Rstudio Package
 > Manager](https://packagemanager.rstudio.com/client/#/)) is generally
-> superior to a refular CRAN mirror on Windows and many Linux systems.
+> superior to a regular CRAN mirror on Windows and many Linux systems.
 >
 > On Linux it includes binary packages for many popular distributions.
 >
