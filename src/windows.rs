@@ -263,7 +263,7 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     info!("Setting default CRAN mirror");
 
     for ver in vers {
-        check_installed(&ver)?;
+        let ver = check_installed(&ver)?;
         let path = Path::new(R_ROOT).join("R-".to_string() + ver.as_str());
         let profile = path.join("library/base/R/Rprofile".to_string());
         if !profile.exists() {
@@ -296,7 +296,7 @@ options(repos = c(RSPM="https://packagemanager.rstudio.com/all/latest", getOptio
 "#;
 
     for ver in vers {
-        check_installed(&ver)?;
+        let ver = check_installed(&ver)?;
         let path = Path::new(R_ROOT).join("R-".to_string() + ver.as_str());
         let profile = path.join("library/base/R/Rprofile".to_string());
         if !profile.exists() {
@@ -324,10 +324,10 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             rm_rtools(verstr)?;
             continue;
         }
-        check_installed(&verstr)?;
+        let ver = check_installed(&verstr)?;
 
         if let Some(ref default) = default {
-            if default == ver {
+            if default == &ver {
                 warn!("Removing default version, set new default with \
                        <bold>rig default <version></>");
 		match unset_default() {
@@ -337,7 +337,7 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             }
         }
 
-        let ver = "R-".to_string() + ver;
+        let ver = "R-".to_string() + &ver;
         let dir = Path::new(R_ROOT);
         let dir = dir.join(ver);
         info!("Removing {}", dir.display());
@@ -587,7 +587,7 @@ pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
 }
 
 pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
-    check_installed(&ver.to_string())?;
+    let ver = check_installed(&ver.to_string())?;
     escalate("setting the default R version")?;
     let base = Path::new(R_ROOT);
     let bin = base.join("bin");
@@ -862,7 +862,7 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>, arg: Option<&Os
 
     if let Some(version) = version {
         let ver = version.to_string();
-        check_installed(&ver)?;
+        let ver = check_installed(&ver)?;
         update_registry_default_to(&ver)?;
     }
 
