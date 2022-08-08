@@ -7,7 +7,7 @@
   - NEWS file
   - README.Rmd
 - [ ] Make sure CI is OK
-- [ ] If needed, commit to to have a CI build with the right version number.
+- [ ] If needed, commit to have a CI build with the right version number.
 - [ ] Build README:
   ```
   Rscript -e 'rmarkdown::render("README.Rmd")'

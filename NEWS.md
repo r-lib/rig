@@ -1,5 +1,5 @@
 
-# rig 0.5.1 (unreleased)
+# rig 0.5.1
 
 * rig now prints output from `apt`, etc. like regular logging output on Linux.
 
