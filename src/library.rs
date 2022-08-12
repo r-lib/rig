@@ -375,7 +375,7 @@ pub fn library_update_rprofile(rver: &str) -> Result<(), Box<dyn Error>> {
         escalate("updating user library configuration")?;
         let newlines = r#"
 ## rig R_LIBS_USER start
-local({
+invisible(local({
   userlibs <- strsplit(Sys.getenv("R_LIBS_USER"), .Platform$path.sep)[[1]]
   if (length(userlibs) == 0) return()
   if (userlibs[[1]] == "NULL") return()
@@ -393,7 +393,7 @@ local({
     unlist(strsplit(Sys.getenv("R_LIBS"), .Platform$path.sep)),
     userlibs
   )))
-})
+}))
 ## rig R_LIBS_USER end
 "#;
 
