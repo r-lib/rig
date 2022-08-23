@@ -3,6 +3,7 @@
 use regex::Regex;
 use std::error::Error;
 use std::ffi::OsStr;
+use std::ffi::OsString;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -10,15 +11,17 @@ use std::{file, line};
 
 use clap::ArgMatches;
 use simple_error::*;
-use simplelog::{debug, info, warn};
+use simplelog::{trace,debug, info, warn};
 
 use crate::resolve::resolve_versions;
 use crate::rversion::*;
 
+use crate::alias::*;
 use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
 use crate::library::*;
+use crate::run::*;
 use crate::utils::*;
 
 pub const R_ROOT: &str = "/opt/R";
@@ -74,6 +77,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     let linux = detect_linux()?;
     let version = get_resolve(args)?;
+    let alias = get_alias(args);
     let ver = version.version.to_owned();
     let verstr = match ver {
         Some(ref x) => x,
@@ -89,9 +93,9 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let tmp_dir = std::env::temp_dir().join("rig");
     let target = tmp_dir.join(&filename);
     if target.exists() && not_too_old(&target) {
-        info!("{} is cached at\n    {}", filename, target.display());
+        info!("{} is cached at {}", filename, target.display());
     } else {
-        info!("Downloading {} ->\n    {}", url, target.display());
+        info!("Downloading {} -> {}", url, target.display());
         let client = &reqwest::Client::new();
         download_file(client, &url, &target.as_os_str())?;
     }
@@ -108,6 +112,10 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     library_update_rprofile(&dirname.to_string())?;
     sc_system_make_links()?;
+    match alias {
+        Some(alias) => add_alias(&dirname, &alias)?,
+        None => { }
+    };
 
     if !args.is_present("without-cran-mirror") {
         set_cloud_mirror(Some(vec![dirname.to_string()]))?;
@@ -159,48 +167,18 @@ fn get_install_dir_deb(path: &OsStr) -> Result<String, Box<dyn Error>> {
 
 fn add_deb(path: &OsStr) -> Result<(), Box<dyn Error>> {
     info!("Running apt-get update");
-    println!("--nnn-- Start of apt-get output -------------------");
-    let status = try_with!(
-        Command::new("apt-get").args(["update"]).status(),
-        "Failed to run apt-get update @{}:{}",
-        file!(),
-        line!()
-    );
-    println!("--uuu-- End of apt-get output ---------------------");
+    let mut args: Vec<OsString> = vec![];
+    args.push(os("update"));
+    run("apt-get".into(), args, "apt-get update")?;
 
-    if !status.success() {
-        bail!("apt-get install exited with status {}", status.to_string());
-    }
-
-    info!("Running apt-get install");
-    println!("--nnn-- Start of apt-get output -------------------");
-    let status = try_with!(
-        Command::new("apt-get")
-            .args(["install", "-y", "gdebi-core"])
-            .status(),
-        "Failed to run apt-get install @{}:{}",
-        file!(),
-        line!()
-    );
-    println!("--uuu-- End of apt-get output ---------------------");
-
-    if !status.success() {
-        bail!("apt-get exited with status {}", status.to_string());
-    }
-
-    info!("Running gdebi");
-    println!("--nnn-- Start of gdebi output ---------------------");
-    let status = try_with!(
-        Command::new("gdebi").arg("-n").arg(path).status(),
-        "Failed to run gdebi @{}:{}",
-        file!(),
-        line!()
-    );
-    println!("--uuu-- End of gdebi output -----------------------");
-
-    if !status.success() {
-        bail!("gdebi exited with status {}", status.to_string());
-    }
+    info!("Running apt install");
+    let mut args: Vec<OsString> = vec![];
+    args.push(os("install"));
+    args.push(os("--reinstall"));
+    // https://askubuntu.com/a/668859
+    args.push(os("-o=Dpkg::Use-Pty=0"));
+    args.push(path.to_os_string());
+    run("apt".into(), args, "apt install")?;
 
     Ok(())
 }
@@ -214,9 +192,9 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let vers = require_with!(vers, "clap error");
 
     for ver in vers {
-        check_installed(&ver.to_string())?;
+        let ver = check_installed(&ver.to_string())?;
 
-        let pkgname = "r-".to_string() + ver;
+        let pkgname = "r-".to_string() + &ver;
         let out = try_with!(
             Command::new("dpkg").args(["-s", &pkgname]).output(),
             "Failed to run dpkg -s {} @{}:{}",
@@ -227,20 +205,14 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
         if out.status.success() {
             info!("Removing {} package", pkgname);
-            println!("--nnn-- Start of apt-get output -------------------");
-            let status = try_with!(
-                Command::new("apt-get")
-                    .args(["remove", "-y", "--purge", &pkgname])
-                    .status(),
-                "Failed to run apt-get remove @{}:{}",
-                file!(),
-                line!()
-            );
-            println!("--uuu-- End of apt-get output ---------------------");
-
-            if !status.success() {
-                bail!("Failed to run apt-get remove");
-            }
+	    let mut args: Vec<OsString> = vec![];
+	    args.push(os("remove"));
+	    args.push(os("-y"));
+	    // https://askubuntu.com/a/668859
+	    args.push(os("-o=Dpkg::Use-Pty=0"));
+	    args.push(os("--purge"));
+	    args.push(os(&pkgname));
+	    run("apt-get".into(), args, "apt-get remove")?;
         } else {
             info!("{} package is not installed", pkgname);
         }
@@ -281,7 +253,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
 
     // Remove dangling links
     let paths = std::fs::read_dir("/usr/local/bin")?;
-    let re = Regex::new("^R-[0-9]+[.][0-9]+")?;
+    let re = Regex::new("^R-([0-9]+[.][0-9]+[.][0-9]+|oldrel|next|release|devel)$")?;
     for file in paths {
         let path = file?.path();
         // If no path name, then path ends with ..., so we can skip
@@ -312,6 +284,76 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         }
     }
     Ok(())
+}
+
+pub fn re_alias() -> Regex {
+    let re= Regex::new("^R-(release|oldrel)$").unwrap();
+    re
+}
+
+pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
+    debug!("Finding existing aliases");
+
+    let paths = std::fs::read_dir("/usr/local/bin")?;
+    let re = re_alias();
+    let mut result: Vec<Alias> = vec![];
+
+    for file in paths {
+        let path = file?.path();
+        // If no path name, then path ends with ..., so we can skip
+        let fnamestr = match path.file_name() {
+            Some(x) => x,
+            None => continue,
+        };
+        // If the path is not UTF-8, we'll skip it, this should not happen
+        let fnamestr = match fnamestr.to_str() {
+            Some(x) => x,
+            None => continue,
+        };
+        if re.is_match(&fnamestr) {
+	    trace!("Checking {}", path.display());
+            match std::fs::read_link(&path) {
+                Err(_) => debug!("{} is not a symlink", path.display()),
+                Ok(target) => {
+                    if !target.exists() {
+                        debug!("Target does not exist at {}", target.display());
+
+                    } else {
+                        let version = version_from_link(target);
+                        match version {
+                            None => continue,
+                            Some(version) => {
+				trace!("{} -> {}", fnamestr, version);
+                                let als = Alias {
+                                    alias: fnamestr[2..].to_string(),
+                                    version: version.to_string()
+                                };
+                                result.push(als);
+                            }
+                        };
+                    }
+                }
+            };
+        }
+    }
+
+    Ok(result)
+}
+
+fn version_from_link(pb: PathBuf) -> Option<String> {
+    let osver = match pb.parent()
+        .and_then(|x| x.parent())
+        .and_then(|x| x.file_name()) {
+        None => None,
+        Some(s) => Some(s.to_os_string())
+    };
+
+    let s = match osver {
+        None => None,
+        Some(os) => os.into_string().ok()
+    };
+
+    s
 }
 
 pub fn get_resolve(args: &ArgMatches) -> Result<Rversion, Box<dyn Error>> {
@@ -362,7 +404,7 @@ pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
 
 pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
     escalate("setting the default R version")?;
-    check_installed(&ver.to_string())?;
+    let ver = check_installed(&ver.to_string())?;
 
     // Remove current link
     if Path::new(R_CUR).exists() {
@@ -409,7 +451,7 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     info!("Setting default CRAN mirror");
 
     for ver in vers {
-        check_installed(&ver)?;
+        let ver = check_installed(&ver)?;
         let path = Path::new(R_ROOT).join(ver.as_str());
         let profile = path.join("lib/R/library/base/R/Rprofile".to_string());
         if !profile.exists() {
@@ -454,7 +496,7 @@ options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(getRversion(
     let rcode = rcode.to_string().replace("%url%", &linux.rspm_url);
 
     for ver in vers {
-        check_installed(&ver)?;
+        let ver = check_installed(&ver)?;
         let path = Path::new(R_ROOT).join(ver.as_str());
         let profile = path.join("lib/R/library/base/R/Rprofile".to_string());
         if !profile.exists() {
@@ -487,7 +529,7 @@ Sys.setenv(PKG_SYSREQS = "true")
 "#;
 
     for ver in vers {
-        check_installed(&ver)?;
+        let ver = check_installed(&ver)?;
         let path = Path::new(R_ROOT).join(ver.as_str());
         let profile = path.join("lib/R/library/base/R/Rprofile".to_string());
         if !profile.exists() {
@@ -684,7 +726,7 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>, arg: Option<&Os
     let mut envname = "dummy";
     let mut path = "".to_string();
     if let Some(ver) = version {
-        check_installed(&ver.to_string())?;
+        let ver = check_installed(&ver.to_string())?;
         envname = "RSTUDIO_WHICH_R";
         path = R_ROOT.to_string() + "/" + &ver + "/bin/R"
     };

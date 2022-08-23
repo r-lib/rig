@@ -2,6 +2,7 @@ use futures::future;
 use futures_util::StreamExt;
 use std::error::Error;
 use std::ffi::OsStr;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::ffi::OsString;
 use std::fs::File;
 use std::io::Write;
@@ -11,10 +12,12 @@ use std::path::Path;
 use clap::ArgMatches;
 
 use simple_error::bail;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use simplelog::info;
 
 #[cfg(target_os = "windows")]
 use crate::rversion::Rversion;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use crate::utils::*;
 #[cfg(target_os = "windows")]
 use crate::windows::*;
@@ -44,12 +47,12 @@ pub fn download_r(args: &ArgMatches) -> Result<(Rversion, OsString), Box<dyn Err
     let target = tmp_dir.join(&filename);
     if target.exists() && not_too_old(&target) {
         info!(
-            "{} is cached at\n    {}",
+            "{} is cached at {}",
             filename_path.display(),
             target.display()
         );
     } else {
-        info!("Downloading {} ->\n    {}", url, target.display());
+        info!("Downloading {} -> {}", url, target.display());
         let client = &reqwest::Client::new();
         download_file(client, &url, target.as_os_str())?;
     }
@@ -65,12 +68,12 @@ pub fn download_file_sync(url: &str, filename: &str,
     let target = tmp_dir.join(&filename);
     if target.exists() && (infinite_cache || not_too_old(&target)) {
         info!(
-            "{} is cached at \n    {}",
+            "{} is cached at {}",
             filename,
             target.display()
         );
     } else {
-        info!("Downloading {} ->\n    {}", url, target.display());
+        info!("Downloading {} -> {}", url, target.display());
         let client = &reqwest::Client::new();
         download_file(client, url, target.as_os_str())?;
     }

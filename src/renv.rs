@@ -35,7 +35,11 @@ fn filter_ok_versions(all: Vec<InstalledVersion>)
     for ver in all.iter() {
         match ver {
             InstalledVersion {
-                name: n, version: Some(v), path: Some(p), binary: Some(b)
+                name: n,
+                version: Some(v),
+                path: Some(p),
+                binary: Some(b),
+                aliases: _
             } => {
                 if let Ok(sv) = semver::Version::parse(v) {
                     ok.push(OKInstalledVersion {

@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "rig -- The R Installation Manager"
-#define MyAppVersion "0.5.0"
+#define MyAppVersion "0.5.1"
 #define MyAppPublisher "Gabor Csardi"
 #define MyAppURL "https://github.com/r-lib/rig"
 #define MyAppExeName "rig.exe"
@@ -28,7 +28,7 @@ Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
 ArchitecturesInstallIn64BitMode="x64 arm64"
-ArchitecturesAllowed=x64
+ArchitecturesAllowed="x64 arm64"
 ChangesEnvironment=yes
 
 [Languages]

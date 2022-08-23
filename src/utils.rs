@@ -23,6 +23,7 @@ pub fn os(x: &str) -> OsString {
     ostr
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub fn osjoin(x: Vec<OsString>, sep: &str) -> String {
     let mut buffer = String::new();
 

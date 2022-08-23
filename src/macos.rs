@@ -14,6 +14,7 @@ use semver::Version;
 use simple_error::*;
 use simplelog::{debug, info, warn};
 
+use crate::alias::*;
 use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
@@ -32,6 +33,7 @@ const R_CUR: &str = "/Library/Frameworks/R.framework/Versions/Current";
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("adding new R versions")?;
     let mut version = get_resolve(args)?;
+    let alias = get_alias(args);
     let ver = version.version.to_owned();
     let verstr = match ver {
         Some(ref x) => x,
@@ -91,6 +93,10 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     system_fix_permissions(None)?;
     library_update_rprofile(&dirname.to_string())?;
     sc_system_make_links()?;
+    match alias {
+        Some(alias) => add_alias(dirname, &alias)?,
+        None => { }
+    };
 
     if !args.is_present("without-cran-mirror") {
         set_cloud_mirror(Some(vec![dirname.to_string()]))?;
@@ -239,10 +245,11 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let default = sc_get_default()?;
 
     for ver in vers {
-        check_installed(&ver.to_string())?;
+
+        let ver = check_installed(&ver.to_string())?;
 
         if let Some(ref default) = default {
-            if default == ver {
+            if default == &ver {
                 warn!("Removing default version, set new default with \
                        <bold>rig default <version></>");
             }
@@ -268,18 +275,14 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     let vers = sc_get_list()?;
     let base = Path::new(R_ROOT);
 
-    info!("Adding R-* quick links (if needed)");
+    info!("Updating R-* quick links (as needed)");
 
     // Create new links
     for ver in vers {
         let linkfile = Path::new("/usr/local/bin/").join("R-".to_string() + &ver);
         let target = base.join(&ver).join("Resources/bin/R");
         if !linkfile.exists() {
-            debug!(
-                "[DEBUG] Adding {} -> {}",
-                linkfile.display(),
-                target.display()
-            );
+            debug!("Adding {} -> {}", linkfile.display(), target.display());
             match symlink(&target, &linkfile) {
                 Err(err) => bail!(
                     "Cannot create symlink {}: {}",
@@ -291,9 +294,55 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    // Remove danglink links
+    // Remove dangling links
     let paths = std::fs::read_dir("/usr/local/bin")?;
     let re = Regex::new("^R-[0-9]+[.][0-9]+")?;
+    let re2 = re_alias();
+    for file in paths {
+        let path = file?.path();
+        // If no path name, then path ends with ..., so we can skip
+        let fnamestr = match path.file_name() {
+            Some(x) => x,
+            None => continue,
+        };
+        // If the path is not UTF-8, we'll skip it, this should not happen
+        let fnamestr = match fnamestr.to_str() {
+            Some(x) => x,
+            None => continue,
+        };
+        if re.is_match(&fnamestr) || re2.is_match(&fnamestr) {
+            match std::fs::read_link(&path) {
+                Err(_) => debug!("{} is not a symlink", path.display()),
+                Ok(target) => {
+                    if !target.exists() {
+                        debug!("Cleaning up {}", target.display());
+                        match std::fs::remove_file(&path) {
+                            Err(err) => {
+                                warn!("Failed to remove {}: {}", path.display(), err.to_string())
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            };
+        }
+    }
+
+    Ok(())
+}
+
+pub fn re_alias() -> Regex {
+    let re= Regex::new("^R-(next|devel|release|oldrel)$").unwrap();
+    re
+}
+
+pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
+    debug!("Finding existing aliaes");
+
+    let paths = std::fs::read_dir("/usr/local/bin")?;
+    let re = re_alias();
+    let mut result: Vec<Alias> = vec![];
+
     for file in paths {
         let path = file?.path();
         // If no path name, then path ends with ..., so we can skip
@@ -308,23 +357,49 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         };
         if re.is_match(&fnamestr) {
             match std::fs::read_link(&path) {
-                Err(_) => debug!("[DEBUG] {} is not a symlink", path.display()),
+                Err(_) => debug!("{} is not a symlink", path.display()),
                 Ok(target) => {
                     if !target.exists() {
-                        debug!("[DEBUG] Cleaning up {}", target.display());
-                        match std::fs::remove_file(&path) {
-                            Err(err) => {
-                                warn!("Failed to remove {}: {}", path.display(), err.to_string())
+                        debug!("Target does not exist at {}", target.display());
+
+                    } else {
+                        let version = version_from_link(target);
+                        match version {
+                            None => continue,
+                            Some(version) => {
+                                let als = Alias {
+                                    alias: fnamestr[2..].to_string(),
+                                    version: version.to_string()
+                                };
+                                result.push(als);
                             }
-                            _ => {}
-                        }
+                        };
                     }
                 }
             };
         }
     }
 
-    Ok(())
+    Ok(result)
+}
+
+// /Library/Frameworks/R.framework/Versions/4.2-arm64/Resources/bin/R ->
+// 4.2-arm64
+fn version_from_link(pb: PathBuf) -> Option<String> {
+    let osver = match pb.parent()
+        .and_then(|x| x.parent())
+        .and_then(|x| x.parent())
+        .and_then(|x| x.file_name()) {
+        None => None,
+        Some(s) => Some(s.to_os_string())
+    };
+
+    let s = match osver {
+        None => None,
+        Some(os) => os.into_string().ok()
+    };
+
+    s
 }
 
 pub fn sc_system_allow_core_dumps(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
@@ -351,7 +426,7 @@ pub fn sc_system_allow_debugger(args: &ArgMatches) -> Result<(), Box<dyn Error>>
     };
 
     for ver in vers {
-        check_installed(&ver)?;
+        let ver = check_installed(&ver)?;
         let path = PathBuf::new()
             .join(R_ROOT)
             .join(ver.as_str())
@@ -487,7 +562,7 @@ fn system_make_orthogonal(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
     };
 
     for ver in vers {
-        check_installed(&ver)?;
+        let ver = check_installed(&ver)?;
         debug!("Making R {} orthogonal", ver);
         let base = Path::new(R_ROOT).join(&ver);
         make_orthogonal_(&base, &ver)?;
@@ -562,9 +637,9 @@ fn system_fix_permissions(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
     info!("Fixing permissions");
 
     for ver in vers {
-        check_installed(&ver)?;
+        let ver = check_installed(&ver)?;
         let path = Path::new(R_ROOT).join(ver.as_str());
-        debug!("[DEBUG] Fixing permissions in {}", path.display());
+        debug!("Fixing permissions in {}", path.display());
         let output = Command::new("chmod")
             .args(["-R", "g-w"])
             .arg(path)
@@ -577,7 +652,7 @@ fn system_fix_permissions(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
 
     let current = Path::new(R_ROOT).join("Current");
     debug!(
-        "[DEBUG] Fixing permissions and group of {}",
+        "Fixing permissions and group of {}",
         current.display()
     );
     let output = Command::new("chmod")
@@ -619,7 +694,7 @@ pub fn sc_system_forget() -> Result<(), Box<dyn Error>> {
     // TODO: this can fail, but if it fails it will still have exit
     // status 0, so we would need to check stderr to see if it failed.
     for line in output.lines() {
-        debug!("[DEBUG] Calling pkgutil --forget {}", line.trim());
+        debug!("Calling pkgutil --forget {}", line.trim());
         Command::new("pkgutil")
             .args(["--forget", line.trim()])
             .output()?;
@@ -672,7 +747,7 @@ fn system_no_openmp(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     let re = Regex::new("[-]fopenmp")?;
 
     for ver in vers {
-        check_installed(&ver)?;
+        let ver = check_installed(&ver)?;
         let path = Path::new(R_ROOT).join(ver.as_str());
         let makevars = path.join("Resources/etc/Makeconf".to_string());
         if !makevars.exists() {
@@ -699,7 +774,7 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     info!("Setting default CRAN mirror");
 
     for ver in vers {
-        check_installed(&ver)?;
+        let ver = check_installed(&ver)?;
         let path = Path::new(R_ROOT).join(ver.as_str());
         let profile = path.join("Resources/library/base/R/Rprofile".to_string());
         if !profile.exists() {
@@ -741,8 +816,8 @@ pub fn sc_rstudio_(version: Option<&str>,
     let path;
 
     if let Some(ver) = version {
-        check_installed(&ver.to_string())?;
-        if !is_orthogonal(ver)? {
+        let ver = check_installed(&ver.to_string())?;
+        if !is_orthogonal(&ver)? {
             bail!("R {} is not orthogonal, it cannot run as a non-default. \
                    Run `rig system make-orthogonal`.", ver)
         }
@@ -777,7 +852,7 @@ pub fn check_has_pak(ver: &String) -> Result<bool, Box<dyn Error>> {
 }
 
 pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
-    check_installed(&ver.to_string())?;
+    let ver = check_installed(&ver.to_string())?;
     // Maybe it does not exist, ignore error here
     match std::fs::remove_file(R_CUR) {
         _ => {}

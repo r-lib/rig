@@ -1,4 +1,11 @@
 
+# rig 0.5.1
+
+* rig now prints output from `apt`, etc. like regular logging output on Linux.
+
+* rig now supports the alises `oldrel`, `release`, `next`, `devel` in
+  `rig default`, `rig rm`, `rig rstudio`, etc. (#108).
+
 # rig 0.5.0
 
 * rig can now open renv projects in RStudio, with the correct R version.
