@@ -609,6 +609,23 @@ fn detect_linux() -> Result<LinuxVersion, Box<dyn Error>> {
         rspm_url: "".to_string(),
     };
 
+    debug!("Detected distro: {} {}", mine.distro, mine.version);
+
+    // Maybe Deepin?
+    if id == "Deepin" {
+	let debverfile = Path::new("/etc/debian_version");
+	let mut ver = "unknown".to_string();
+	if debverfile.exists() {
+	    let lines = read_lines(debverfile)?;
+	    if lines.len() > 0 {
+		let re_ver = Regex::new("[.][0-9]+$")?;
+		ver = re_ver.replace(&lines[0], "").to_string();
+	    }
+	}
+	mine.distro = "debian".to_string();
+	mine.version = ver;
+    }
+
     let supported = list_supported_distros();
 
     let mut good = false;
@@ -623,6 +640,7 @@ fn detect_linux() -> Result<LinuxVersion, Box<dyn Error>> {
 
     // Maybe an Ubuntu-like distro
     if !good {
+	debug!("Unsupported distro, checking if an Ubuntu derivative");
         let re_codename = Regex::new("^UBUNTU_CODENAME=")?;
         let codename_line = grep_lines(&re_codename, &lines);
         if codename_line.len() != 0 {
@@ -644,6 +662,7 @@ fn detect_linux() -> Result<LinuxVersion, Box<dyn Error>> {
                     mine.rspm = dis.rspm.to_owned();
                     mine.rspm_url = dis.rspm_url.to_owned();
                     good = true;
+		    debug!("Distro derivative of {} {}", id, ver);
                 }
             }
         }
