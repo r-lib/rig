@@ -26,6 +26,7 @@ pub fn run(cmd: OsString, args: Vec<OsString>, _what: &str)
 
     debug!("Running {:?} with args {:?}", cmd, args);
     let reader = duct::cmd(cmd, args)
+	.env("DEBIAN_FRONTEND", "noninteractive")
         .stderr_to_stdout()
         .reader()?;
     let lines = BufReader::new(reader).lines();

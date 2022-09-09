@@ -175,6 +175,7 @@ fn add_deb(path: &OsStr) -> Result<(), Box<dyn Error>> {
     let mut args: Vec<OsString> = vec![];
     args.push(os("install"));
     args.push(os("--reinstall"));
+    args.push(os("-y"));
     // https://askubuntu.com/a/668859
     args.push(os("-o=Dpkg::Use-Pty=0"));
     args.push(path.to_os_string());
