@@ -1,5 +1,5 @@
 
-# rig 0.5.2 (unreleased)
+# rig 0.5.2
 
 * rig now always runs non-interactively on Linux from a root shell (#117).
 

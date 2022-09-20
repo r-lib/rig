@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
     <id>rig</id>
-    <version>0.5.1</version>
+    <version>0.5.2</version>
     <packageSourceUrl>https://github.com/r-lib/rig</packageSourceUrl>
     <owners>Gábor Csárdi</owners>
     <title>rig</title>
@@ -48,12 +48,11 @@
 Please open an issue in our issue tracker at https://github.com/r-lib/rig/issues
     </description>
     <releaseNotes>
-# rig 0.5.1
+# rig 0.5.2
 
-* rig now prints output from `apt`, etc. like regular logging output on Linux.
+* rig now always runs non-interactively on Linux from a root shell (#117).
 
-* rig now supports the alises `oldrel`, `release`, `next`, `devel` in
-  `rig default`, `rig rm`, `rig rstudio`, etc. (#108).
+* rig now always uses `--vanilla` when running R (#120).
     </releaseNotes>
   </metadata>
 </package>
