@@ -3,6 +3,8 @@
 
 * rig now always runs non-interactively on Linux from a root shell (#117).
 
+* rig now always uses `--vanilla` when running R (#120).
+
 * rig now detects Deepin Linux as Debian (#111).
 
 # rig 0.5.1

@@ -111,7 +111,7 @@ fn r_sudo(version: &str, command: &str, user: &User)
     run(
         "su".into(),
         vec![username.into(), "--".into(), rbin.into(), "-s".into(),
-             "-e".into(), command.into()],
+             "--vanilla".into(), "-e".into(), command.into()],
         &("R ".to_string() + version)
     )
 }
