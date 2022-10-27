@@ -53,7 +53,7 @@ jobs:
         bats tests/test-linux.sh
 
   linux-arm:
-    runs-on: [self-hosted, Linux, arm64]
+    runs-on: [linux-arm64]
     name: Linux-aaarch
     env:
       RUST_BACKTRACE: 1
