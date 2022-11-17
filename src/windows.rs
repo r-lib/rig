@@ -292,7 +292,7 @@ fn set_rspm(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     };
 
     let rcode = r#"
-options(repos = c(RSPM="https://packagemanager.rstudio.com/all/latest", getOption("repos")))
+options(repos = c(RSPM="https://packagemanager.posit.co/cran/latest", getOption("repos")))
 "#;
 
     for ver in vers {

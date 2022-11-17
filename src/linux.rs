@@ -62,9 +62,9 @@ const DEBIAN_10_URL: &str =
 const DEBIAN_11_URL: &str =
     "https://github.com/r-hub/R/releases/download/v{}/R-rstudio-debian-11-{}_1_arm64.deb";
 
-const UBUNTU_1804_RSPM: &str = "https://packagemanager.rstudio.com/all/__linux__/bionic/latest";
-const UBUNTU_2004_RSPM: &str = "https://packagemanager.rstudio.com/all/__linux__/focal/latest";
-const UBUNTU_2204_RSPM: &str = "https://packagemanager.rstudio.com/all/__linux__/jammy/latest";
+const UBUNTU_1804_RSPM: &str = "https://packagemanager.posit.co/cran/__linux__/bionic/latest";
+const UBUNTU_2004_RSPM: &str = "https://packagemanager.posit.co/cran/__linux__/focal/latest";
+const UBUNTU_2204_RSPM: &str = "https://packagemanager.posit.co/cran/__linux__/jammy/latest";
 
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("adding new R versions")?;
