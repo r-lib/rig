@@ -15,10 +15,10 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Set up matrix of containers
-      if: setup-matrix
+      id: setup-matrix
       run: |
-        containers=$(printf '[' ; ls containers | sed 's/\/$//' | sed 's/^/"/' | sed 's/$/"/'; printf ']')
-        echo "containers=$containers" >> $GITHUB_OUTPUT
+        (echo -n 'containers=['; ls containers | sed 's|/$||' |
+        awk '{ printf("\"%s\",", $1) }' | sed 's/,$//'; echo -n ']') >> $GITHUB_OUTPUT
 
   containers:
     needs: setup-matrix
