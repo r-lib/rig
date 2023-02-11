@@ -5,57 +5,55 @@
 Install, remove, configure R versions.
 
 
--   [🚀  Features](#--features)
--   [🐞  Known Issues](#--known-issues)
--   [⬇️  Installation](#️--installation)
--   [⚙️  Usage](#️--usage)
--   [🤝  Feedback](#--feedback)
--   [❓  FAQ](#--faq)
--   [📘  License](#--license)
+- 🚀  <a href="#id-features">Features</a>
+- 🐞  <a href="#id-known-issues">Known Issues</a>
+- ⬇️  <a href="#id-installation">Installation</a>
+- ⚙️  <a href="#id-usage">Usage</a>
+- 🤝  <a href="#id-feedback">Feedback</a>
+- ❓  <a href="#id-faq">FAQ</a>
+- 📘  <a href="#id-license">License</a>
 
-## 🚀  Features
+## 🚀  Features <a id="id-features">
 
--   Works on macOS, Windows and Linux (Ubuntu and Debian, x86_64 and
-    aarch64).
--   Easy installation and update, no system requirements on any
-    platform.
--   Install multiple R versions.
--   Select the default R version, for the terminal and RStudio.
--   Select R version to install using symbolic names: `devel`, `next`,
-    `release`, `oldrel`, etc.
--   Run multiple versions *at the same* time using quick links. E.g.
-    `R-4.1` or `R-4.1.2` starts R 4.1.x. Quick links are automatically
-    added to the user’s path.
--   On M1 macs select between x86_64 and arm64 versions or R, or install
-    both.
--   Creates and configures user level package libraries.
--   Restricts permissions to the system library. (On macOS, not needed
-    on Windows and Linux).
--   Includes auto-complete for `zsh` and `bash`, on macOS and Linux.
--   Updates R installations to allow debugging with `lldb`, and to allow
-    core dumps, on macOS.
--   Installs the appropriate Rtools versions on Windows and sets them
-    up.
--   Cleans up stale R-related entries from the Windows registry.
--   Switches to root/administrator user as needed.
+- Works on macOS, Windows and Linux (Ubuntu and Debian, x86_64 and
+  aarch64).
+- Easy installation and update, no system requirements on any platform.
+- Install multiple R versions.
+- Select the default R version, for the terminal and RStudio.
+- Select R version to install using symbolic names: `devel`, `next`,
+  `release`, `oldrel`, etc.
+- Run multiple versions *at the same* time using quick links. E.g.
+  `R-4.1` or `R-4.1.2` starts R 4.1.x. Quick links are automatically
+  added to the user’s path.
+- On M1 macs select between x86_64 and arm64 versions or R, or install
+  both.
+- Creates and configures user level package libraries.
+- Restricts permissions to the system library. (On macOS, not needed on
+  Windows and Linux).
+- Includes auto-complete for `zsh` and `bash`, on macOS and Linux.
+- Updates R installations to allow debugging with `lldb`, and to allow
+  core dumps, on macOS.
+- Installs the appropriate Rtools versions on Windows and sets them up.
+- Cleans up stale R-related entries from the Windows registry.
+- Switches to root/administrator user as needed.
 
-## 🐞  Known Issues
+## 🐞  Known Issues <a id="id-known-issues">
 
--   On macOS, R.app often does not work if you install multiple R
-    versions.
--   On Windows you need to restart your shell or terminal after
-    installing Rtools, for the changes to take effect.
--   On Windows, `rig rstudio` changes the R version in the registry
-    temporarily before starting RStudio and then changes it back after a
-    short wait. If RStudio starts up very slowly, then the wait might be
-    too short, and it might start up with the wrong R version.
--   On Windows Rtools installation will fail if the same version of
-    Rtools is already installed.
+- On macOS, R.app often does not work if you install multiple R
+  versions.
+- On Windows you need to restart your shell or terminal after installing
+  Rtools, for the changes to take effect.
+- On Windows, `rig rstudio` changes the R version in the registry
+  temporarily before starting RStudio and then changes it back after a
+  short wait. If RStudio starts up very slowly, then the wait might be
+  too short, and it might start up with the wrong R version.
+- On Windows Rtools installation will fail if the same version of Rtools
+  is already installed.
 
 Found another issue? Please report it in our [issue
 tracker](https://github.com/r-lib/rig/issues).
 
-## ⬇️  Installation
+## ⬇️  Installation <a id="id-installation">
 
 ### macOS (installer)
 
@@ -140,12 +138,10 @@ If you are running Linux on arm64, download the arm64 build:
 
 Supported Linux distributions:
 
--   Ubuntu from
-    [r-builds](https://github.com/rstudio/r-builds#r-builds), currently
-    18.04, 20.04, 22.04.
--   Debian from
-    [r-builds](https://github.com/rstudio/r-builds#r-builds), currently
-    9, 10 and 11.
+- Ubuntu from [r-builds](https://github.com/rstudio/r-builds#r-builds),
+  currently 18.04, 20.04, 22.04.
+- Debian from [r-builds](https://github.com/rstudio/r-builds#r-builds),
+  currently 9, 10 and 11.
 
 Other Linux distributions are coming soon.
 
@@ -161,7 +157,7 @@ Homebrew or your Linux distribution and make sure it is loaded from your
 `.bashrc`. (You don’t need to install `bash` from Homebrew, but you can
 if you like.)
 
-## ⚙️  Usage
+## ⚙️  Usage <a id="id-usage">
 
 Use `rig add` to add a new R installation:
 
@@ -213,12 +209,12 @@ Run `rig <subcommand> --help` for information about a subcommand.
     rig system make-links              -- create R-* quick links
     rig system setup-user-lib          -- set up automatic user package libraries [alias: create-lib]
 
-## 🤝  Feedback
+## 🤝  Feedback <a id="id-feedback">
 
 Please open an issue in our issue tracker at
 <https://github.com/r-lib/rig/issues>
 
-## ❓  FAQ
+## ❓  FAQ <a id="id-faq">
 
 <details>
 <summary>
@@ -228,15 +224,15 @@ Why does rig create a user package library?
 > Installing non-base packages into a user package library has several
 > benefits:
 >
-> -   The system library is not writeable for regular users on some
->     systems (Windows and Linux, typically), so we might as well create
->     a properly versioned user library at the default place.
-> -   Some tools need a clean R environment, with base packages only,
->     and do not work well if user packages are installed into the
->     system library. E.g. `R CMD check` is such a tool, and
->     <https://github.com/r-lib/revdepcheck> is another.
-> -   You can delete an R installation (e.g. with `rig rm`) and then and
->     then install it again, without losing your R packages.
+> - The system library is not writeable for regular users on some
+>   systems (Windows and Linux, typically), so we might as well create a
+>   properly versioned user library at the default place.
+> - Some tools need a clean R environment, with base packages only, and
+>   do not work well if user packages are installed into the system
+>   library. E.g. `R CMD check` is such a tool, and
+>   <https://github.com/r-lib/revdepcheck> is another.
+> - You can delete an R installation (e.g. with `rig rm`) and then and
+>   then install it again, without losing your R packages.
 
 </details>
 <details>
@@ -322,6 +318,6 @@ How is rig different from RSwitch?
 
 </details>
 
-## 📘  License
+## 📘  License <a id="id-license">
 
-MIT 2021-2022 © RStudio Pbc.
+MIT 2021-2023 © RStudio Pbc.
