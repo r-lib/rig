@@ -9,6 +9,8 @@ Install, remove, configure R versions.
 - 🐞  <a href="#id-known-issues">Known Issues</a>
 - ⬇️  <a href="#id-installation">Installation</a>
 - ⚙️  <a href="#id-usage">Usage</a>
+- ⛵  <a href="#id-macos-menu-bar-app">macOS menu bar app</a>
+- 📦  <a href="#id-container">Docker container with rig</a>
 - 🤝  <a href="#id-feedback">Feedback</a>
 - ❓  <a href="#id-faq">FAQ</a>
 - 📘  <a href="#id-license">License</a>
@@ -209,6 +211,35 @@ Run `rig <subcommand> --help` for information about a subcommand.
     rig system make-links              -- create R-* quick links
     rig system setup-user-lib          -- set up automatic user package libraries [alias: create-lib]
 
+## ⛵  macOS menu bar app <a id="id-macos-menu-bar-app">
+
+View and select the default R version in the macOS menu bar. Start
+RStudio or a recent RStudio project with the selected R version. Select
+between your package libraries.
+
+<img src="rig-app.png">
+
+## 📦  Docker container with rig (and multiple R versions) <a id="id-container">
+
+Use the `rhub/rig` (also at ghcr.io/r-lib/rig/r) Docker container to
+easily run multiple R versions. It is currently based on Ubuntu 22.04
+and contains rig and the six latest R versions, including R-next and
+R-devel. It is available for x86_64 and arm64 systems:
+
+    > docker run ghcr.io/r-lib/rig/r rig ls
+    * name   version    aliases
+    ------------------------------------------
+      3.5.3
+      3.6.3
+      4.0.5
+      4.1.3             oldrel
+    * 4.2.2             release
+      devel  (R 4.3.0)
+      next   (R 4.2.2)
+
+See this image on [Docker Hub](https://hub.docker.com/r/rhub/rig) or
+[GitHub](https://github.com/r-lib/rig/pkgs/container/rig%2Fr).
+
 ## 🤝  Feedback <a id="id-feedback">
 
 Please open an issue in our issue tracker at
@@ -318,6 +349,6 @@ How is rig different from RSwitch?
 
 </details>
 
-## 📘  License <a id="id-license">
+## 📘   License <a id="id-license">
 
 MIT 2021-2023 © RStudio Pbc.
