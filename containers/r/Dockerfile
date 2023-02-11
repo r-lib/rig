@@ -14,6 +14,7 @@ RUN ARCH="$(arch)"; \
     rig add oldrel/1 --without-pak && \
     rig add oldrel/2 --without-pak && \
     rig add oldrel/3 --without-pak && \
+    rig add oldrel/4 --without-pak && \
     rig default release && \
     rm -rf /tmp/rig && \
     apt-get clean
