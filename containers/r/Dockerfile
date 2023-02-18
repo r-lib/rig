@@ -42,3 +42,8 @@ RUN apt-get update -y && \
     apt-get clean
 
 WORKDIR /root
+
+# Use new sysreqs
+
+ENV PKG_SYSREQS=true
+ENV R_PKG_SYSREQS2=true
