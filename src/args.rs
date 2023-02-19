@@ -129,6 +129,7 @@ pub fn rig_app() -> Command {
             Arg::new("without-rspm")
                 .help("Do not set up RSPM.")
                 .long("without-rspm")
+                .num_args(0)
                 .required(false),
         );
     }
@@ -139,6 +140,7 @@ pub fn rig_app() -> Command {
             Arg::new("without-sysreqs")
                 .help("Do not set up system requirements installation.")
                 .long("without-sysreqs")
+                .num_args(0)
                 .required(false),
         );
     }
@@ -149,11 +151,13 @@ pub fn rig_app() -> Command {
 	    Arg::new("without-translations")
 		.help("Do not install translations.")
 		.long("without-translations")
+                .num_args(0)
 		.required(false),
 	).arg(
 	    Arg::new("with-desktop-icon")
 		.help("Install a desktop icon.")
 		.long("with-desktop-icon")
+                .num_args(0)
 		.required(false),
 	);
     }
