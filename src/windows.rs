@@ -40,7 +40,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     sc_clean_registry()?;
     let str = args.get_one::<String>("str").unwrap();
     if str.len() >= 6 && &str[0..6] == "rtools" {
-        return add_rtools(str);
+        return add_rtools(str.to_string());
     }
     let (_version, target) = download_r(&args)?;
     let target_path = Path::new(&target);
@@ -543,7 +543,7 @@ pub fn sc_system_no_openmp(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
 pub fn get_resolve(args: &ArgMatches) -> Result<Rversion, Box<dyn Error>> {
     let str = args.get_one::<String>("str").unwrap();
-    let eps = vec![str];
+    let eps = vec![str.to_string()];
     let version = resolve_versions(eps, "win".to_string(), "default".to_string(), None)?;
     Ok(version[0].to_owned())
 }
