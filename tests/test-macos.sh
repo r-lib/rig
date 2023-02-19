@@ -169,7 +169,7 @@ teardown() {
         pkgutil --pkgs | grep -i r-project | grep -v clang
     }
     run pkgs
-    [[ $status -eq 0 ]]
+    [[ $status -eq 1 ]]
     [[ "$output" = "" ]]
 }
 
