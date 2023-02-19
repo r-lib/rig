@@ -157,8 +157,8 @@ pub fn system_add_pak(
 // -- rig rstudio ---------------------------------------------------------
 
 pub fn sc_rstudio(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    let mut ver = args.value_of("version");
-    let mut prj = args.value_of("project-file");
+    let mut ver: Option<&String> = args.get_one("version");
+    let mut prj: Option<&String> = args.get_one("project-file");
 
     if let Some(ver2) = ver {
         if ver2.ends_with("renv.lock") {
@@ -201,10 +201,20 @@ pub fn sc_rstudio(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // then we switch the two
     if let Some(ver2) = ver {
         if ver2.ends_with(".Rproj") {
-            ver = args.value_of("project-file");
-            prj = args.value_of("version");
+            ver = args.get_one("project-file");
+            prj = args.get_one("version");
         }
     }
+
+    let ver = match ver {
+        None => None,
+        Some(str) => Some(&str[..])
+    };
+
+    let prj = match prj {
+        None => None,
+        Some(prj) => Some(&prj[..])
+    };
 
     sc_rstudio_(ver, prj, None)
 }

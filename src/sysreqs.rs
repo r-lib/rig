@@ -116,15 +116,13 @@ pub fn sc_sysreqs_info(
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
 
-    let name = args.value_of("name")
-        .ok_or(SimpleError::new("Internal argument error"))?;
-
+    let name = args.get_one::<String>("name").unwrap();
     let info = match SYSREQS_INFO.get(name) {
         None => bail!("Unknown sysreqs: {}", name),
         Some(x) => x
     };
 
-    if args.is_present("json") || libargs.is_present("json") || mainargs.is_present("json") {
+    if args.get_flag("json") || libargs.get_flag("json") || mainargs.get_flag("json") {
         println!("{{");
         println!("  \"name\": \"{}\",", info.name);
         println!("  \"description\": \"{}\"", escape_json(&info.description));
@@ -146,7 +144,7 @@ pub fn sc_sysreqs_list(
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
 
-    if args.is_present("json") || libargs.is_present("json") || mainargs.is_present("json") {
+    if args.get_flag("json") || libargs.get_flag("json") || mainargs.get_flag("json") {
         let num = SYSREQS.len();
         println!("[");
         for (idx, sr) in SYSREQS.iter().enumerate() {
@@ -173,7 +171,7 @@ pub fn sc_sysreqs_add(
 
     let mut gfortran = false;
     let mut srs: Vec<String> = vec![];
-    match args.values_of("name") {
+    match args.get_many::<String>("name") {
         None => {
             debug!("No system package to install");
             return Ok(());
@@ -184,7 +182,7 @@ pub fn sc_sysreqs_add(
                     gfortran = true;
                     continue;
                 }
-                if !SYSREQS.contains(&sr) {
+                if !SYSREQS.contains(&&sr[..]) {
                     bail!("Unknown system package: {}", sr);
                 }
                 srs.push(sr.to_string());
@@ -192,9 +190,7 @@ pub fn sc_sysreqs_add(
         }
     };
 
-    let arch = args
-        .value_of("arch")
-        .ok_or(SimpleError::new("Internal argument error"))?;
+    let arch = args.get_one::<String>("arch").unwrap();
 
     // Need to do this up front, so we sudo and won't call brew twice
     if gfortran {

@@ -40,7 +40,7 @@ pub fn sc_library_ls(
         .collect();
     names.sort();
 
-    if args.is_present("json") || libargs.is_present("json") || mainargs.is_present("json") {
+    if args.get_flag("json") || libargs.get_flag("json") || mainargs.get_flag("json") {
         println!("[");
         let num = libs.len();
         for (idx, lib) in libs.iter().enumerate() {
@@ -142,7 +142,7 @@ pub fn sc_library_get_list(
 }
 
 pub fn sc_library_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    let new = require_with!(args.value_of("lib-name"), "clap error").to_string();
+    let new: String = require_with!(args.get_one::<String>("lib-name"), "clap error").to_string();
     let rver = match sc_get_default()? {
         Some(x) => x,
         None => {
@@ -179,7 +179,7 @@ pub fn sc_library_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn sc_library_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    let torm = require_with!(args.value_of("lib-name"), "clap error").to_string();
+    let torm: String = require_with!(args.get_one::<String>("lib-name"), "clap error").to_string();
     if torm == "main" {
         bail!("Cannot remove the main library");
     }
@@ -224,12 +224,12 @@ pub fn sc_library_default(
     libargs: &ArgMatches,
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
-    if args.is_present("lib-name") {
-        let name = require_with!(args.value_of("lib-name"), "clap error").to_string();
+    if args.get_flag("lib-name") {
+        let name: String = require_with!(args.get_one::<String>("lib-name"), "clap error").to_string();
         sc_library_set_default(&name)
     } else {
         let default = sc_library_get_default()?;
-        if args.is_present("json") || libargs.is_present("json") || mainargs.is_present("json") {
+        if args.get_flag("json") || libargs.get_flag("json") || mainargs.get_flag("json") {
             let path = default.path.display().to_string();
             println!("{{");
             println!("  \"name\": \"{}\",", default.name);
