@@ -257,6 +257,14 @@ It is available for x86_64 and arm64 systems:
   next   (R 4.2.2)
 ```
 
+### Docker container features:
+
+* https://github.com/r-lib/pak is installed for all R versions.
+* Automatic system dependency installation via pak.
+* Linux binary packages are automatically installed from the
+  [Posit Public Package Manager](https://packagemanager.posit.co/client/#/)
+  in x86_64 containers.
+
 See this image on [Docker Hub](https://hub.docker.com/r/rhub/rig) or
 [GitHub](https://github.com/r-lib/rig/pkgs/container/rig%2Fr).
 
