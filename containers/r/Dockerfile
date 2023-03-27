@@ -21,6 +21,8 @@ RUN ARCH="$(arch)"; \
 
 # We want to install pak into the system library, so we don't do it with rig
 
+SHELL ["/bin/bash", "-c"]
+
 RUN versions="$(rig ls --json | grep '"name"' | sed 's/^.*\"name\": \"//' | sed 's/\",//')" && \
     for ver in $versions; do \
       R-${ver} -q -e \
