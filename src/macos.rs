@@ -337,7 +337,7 @@ pub fn re_alias() -> Regex {
 }
 
 pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
-    debug!("Finding existing aliaes");
+    debug!("Finding existing aliases");
 
     let paths = std::fs::read_dir("/usr/local/bin")?;
     let re = re_alias();
@@ -933,8 +933,13 @@ fn get_install_dir(ver: &Rversion) -> Result<String, Box<dyn Error>> {
         None => bail!("Cannot calculate install dir for unknown arch"),
     };
     let minor = get_minor_version(&version)?;
-    if arch == "x86_64" {
+    let v430 = semver::Version::parse("4.3.0")?;
+    let vv = semver::Version::parse(version)?;
+
+    if arch == "x86_64" && vv < v430{
         Ok(minor)
+    } else if arch == "x86_64" {
+        Ok(minor + "-x86_64")
     } else if arch == "arm64" {
         Ok(minor + "-arm64")
     } else {
