@@ -364,7 +364,12 @@ pub fn get_resolve(args: &ArgMatches) -> Result<Rversion, Box<dyn Error>> {
 
     let eps = vec![str.to_string()];
     let me = detect_linux()?;
-    let version = resolve_versions(eps, "linux".to_string(), "default".to_string(), Some(me))?;
+    let version = resolve_versions(
+        eps,
+        "linux".to_string(),
+        std::env::consts::ARCH.to_string(),
+        Some(me)
+    )?;
     Ok(version[0].to_owned())
 }
 
