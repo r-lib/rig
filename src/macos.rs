@@ -69,20 +69,20 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     sc_system_forget()?;
 
-    // If installed from URL, then we'll need to extract the version + arch
+    // If installed from URL, then we'll use the version in the file
+    let fver = extract_pkg_version(&target_str)?;
     match ver {
         Some(_) => {}
         None => {
-            let fver = extract_pkg_version(&target_str)?;
-            version.version = fver.version;
-            version.arch = fver.arch;
+            version.version = Some(fver.version);
+            version.arch = Some(fver.arch);
         }
     };
 
-    let dirname = &get_install_dir(&version)?;
+    let dirname = fver.installdir;
 
     // Install without changing default
-    safe_install(target, dirname, arch)?;
+    safe_install(target, &dirname, arch)?;
 
     // This should not happen currently on macOS, a .pkg installer
     // sets the default, but prepare for the future
@@ -94,7 +94,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     library_update_rprofile(&dirname.to_string())?;
     sc_system_make_links()?;
     match alias {
-        Some(alias) => add_alias(dirname, &alias)?,
+        Some(alias) => add_alias(&dirname, &alias)?,
         None => { }
     };
 
@@ -923,36 +923,12 @@ pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
     Ok(vers)
 }
 
-fn get_install_dir(ver: &Rversion) -> Result<String, Box<dyn Error>> {
-    let version = match &ver.version {
-        Some(x) => x,
-        None => bail!("Cannot calculate install dir for unknown R version"),
-    };
-    let arch = match &ver.arch {
-        Some(x) => x,
-        None => bail!("Cannot calculate install dir for unknown arch"),
-    };
-    let minor = get_minor_version(&version)?;
-    let v430 = semver::Version::parse("4.3.0")?;
-    let vv = semver::Version::parse(version)?;
-
-    if arch == "x86_64" && vv < v430{
-        Ok(minor)
-    } else if arch == "x86_64" {
-        Ok(minor + "-x86_64")
-    } else if arch == "arm64" {
-        Ok(minor + "-arm64")
-    } else {
-        bail!("Unknown macOS arch: {}", arch);
-    }
-}
-
 fn get_minor_version(ver: &str) -> Result<String, Box<dyn Error>> {
     let re = Regex::new("[.][^.]*$")?;
     Ok(re.replace(ver, "").to_string())
 }
 
-fn extract_pkg_version(filename: &OsStr) -> Result<Rversion, Box<dyn Error>> {
+fn extract_pkg_version(filename: &OsStr) -> Result<RversionDir, Box<dyn Error>> {
     let out = Command::new("installer")
         .args(["-pkginfo", "-pkg"])
         .arg(filename)
@@ -978,10 +954,20 @@ fn extract_pkg_version(filename: &OsStr) -> Result<Rversion, Box<dyn Error>> {
         "x86_64"
     };
 
-    let res = Rversion {
-        version: Some(ver.to_string()),
-        url: None,
-        arch: Some(arch.to_string()),
+    let minor = get_minor_version(&ver)?;
+    let x86_64 = Regex::new("X86_64")?;
+    let installdir = if arch == "arm64" {
+        minor + "-arm64"
+    } else if x86_64.is_match(lines[0]) {
+        minor + "-x86_64"
+    } else {
+        minor
+    };
+
+    let res = RversionDir {
+        version: ver.to_string(),
+        arch: arch.to_string(),
+        installdir: installdir
     };
 
     Ok(res)

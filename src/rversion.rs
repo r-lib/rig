@@ -12,6 +12,13 @@ pub struct Rversion {
 }
 
 #[derive(Default, Debug, Clone)]
+pub struct RversionDir {
+    pub version: String,
+    pub arch: String,
+    pub installdir: String
+}
+
+#[derive(Default, Debug, Clone)]
 pub struct InstalledVersion {
     pub name: String,
     pub version: Option<String>,
