@@ -5,6 +5,11 @@
 
 * rig now does a better job when resolving R versions.
 
+* rig now supports Rtools43 on Windows.
+
+* rig now does not try to reinstall Rtools if the same version
+  is already installed.
+
 # rig 0.5.2
 
 * rig now always runs non-interactively on Linux from a root shell (#117).
