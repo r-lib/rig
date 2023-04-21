@@ -17,7 +17,7 @@ Install, remove, configure R versions.
 
 ## 🚀  Features <a id="id-features">
 
-- Works on macOS, Windows and Linux (Ubuntu and Debian, x86_64 and
+- Works on macOS, Windows and Linux (Ubuntu LTS and Debian, x86_64 and
   aarch64).
 - Easy installation and update, no system requirements on any platform.
 - Install multiple R versions.
@@ -140,8 +140,9 @@ If you are running Linux on arm64, download the arm64 build:
 
 Supported Linux distributions:
 
-- Ubuntu from [r-builds](https://github.com/rstudio/r-builds#r-builds),
-  currently 18.04, 20.04, 22.04.
+- Ubuntu LTS from
+  [r-builds](https://github.com/rstudio/r-builds#r-builds), currently
+  18.04, 20.04, 22.04.
 - Debian from [r-builds](https://github.com/rstudio/r-builds#r-builds),
   currently 9, 10 and 11.
 

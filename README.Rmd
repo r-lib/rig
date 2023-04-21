@@ -24,7 +24,7 @@ knitr::opts_chunk$set(
 
 ## 🚀&nbsp; Features <a id="id-features">
 
-* Works on macOS, Windows and Linux (Ubuntu and Debian, x86_64 and aarch64).
+* Works on macOS, Windows and Linux (Ubuntu LTS and Debian, x86_64 and aarch64).
 * Easy installation and update, no system requirements on any platform.
 * Install multiple R versions.
 * Select the default R version, for the terminal and RStudio.
@@ -147,7 +147,7 @@ curl -Ls https://github.com/r-lib/rig/releases/download/latest/rig-linux-arm64-l
 
 Supported Linux distributions:
 
-- Ubuntu from [r-builds](https://github.com/rstudio/r-builds#r-builds),
+- Ubuntu LTS from [r-builds](https://github.com/rstudio/r-builds#r-builds),
   currently 18.04, 20.04, 22.04.
 - Debian from [r-builds](https://github.com/rstudio/r-builds#r-builds),
   currently 9, 10 and 11.
