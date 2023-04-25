@@ -106,6 +106,7 @@ fn main__(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         Some(("rstudio", sub)) => sc_rstudio(sub),
         Some(("library", sub)) => sc_library(sub, args),
         Some(("sysreqs", sub)) => sc_sysreqs(sub, args),
+        Some(("available", sub)) => sc_available(sub, args),
         _ => Ok(()), // unreachable
     }
 }
