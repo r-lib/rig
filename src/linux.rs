@@ -582,7 +582,7 @@ pub fn sc_system_no_openmp(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn detect_linux() -> Result<LinuxVersion, Box<dyn Error>> {
+pub fn detect_linux() -> Result<LinuxVersion, Box<dyn Error>> {
     let release_file = Path::new("/etc/os-release");
     let lines = read_lines(release_file)?;
 

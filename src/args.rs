@@ -187,19 +187,20 @@ pub fn rig_app() -> Command<'static> {
 
     let mut cmd_available = Command::new("available")
         .about("List R versions available to install.")
-        .long_about(HELP_AVAILABLE)
-        .arg(
-            Arg::new("json")
-                .help("JSON output")
-                .long("json")
-                .required(false)
-        )
-        .arg(
-            Arg::new("all")
-                .help("List all available versions.")
-                .long("all")
-                .required(false),
-        );
+        .long_about(HELP_AVAILABLE);
+
+    cmd_available = cmd_available.arg(
+        Arg::new("json")
+            .help("JSON output")
+            .long("json")
+            .required(false)
+    )
+    .arg(
+        Arg::new("all")
+            .help("List all available versions.")
+            .long("all")
+            .required(false),
+    );
 
     #[cfg(target_os = "macos")]
     {
