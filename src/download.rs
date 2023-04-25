@@ -148,6 +148,23 @@ pub async fn download_file(
     Ok(())
 }
 
+pub fn download_json_sync(urls: Vec<String>)
+                       -> Result<Vec<serde_json::Value>, Box<dyn Error>> {
+    let client = reqwest::Client::new();
+    let client = &client;
+    let resp = download_json_(client, urls)?;
+    return Ok(resp);
+}
+
+#[tokio::main]
+async fn download_json_(
+    client: &reqwest::Client,
+    urls: Vec<String>,
+) -> Result<Vec<serde_json::Value>, Box<dyn Error>> {
+    let resp = download_json(client, urls).await?;
+    return Ok(resp);
+}
+
 // ------------------------------------------------------------------------
 // asynchronous API
 // ------------------------------------------------------------------------

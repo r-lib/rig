@@ -185,6 +185,36 @@ pub fn rig_app() -> Command<'static> {
                 .required(false),
         );
 
+    let mut cmd_available = Command::new("available")
+        .about("List R versions available to install.")
+        .long_about(HELP_AVAILABLE);
+
+    cmd_available = cmd_available.arg(
+        Arg::new("json")
+            .help("JSON output")
+            .long("json")
+            .required(false)
+    )
+    .arg(
+        Arg::new("all")
+            .help("List all available versions.")
+            .long("all")
+            .required(false),
+    );
+
+    #[cfg(target_os = "macos")]
+    {
+        cmd_available = cmd_available.arg(
+            Arg::new("arch")
+                .help(HELP_ARCH)
+                .short('a')
+                .long("arch")
+                .required(false)
+                .default_value(&_default_arch)
+                .possible_values(["arm64", "x86_64"]),
+        );
+    }
+
     let mut cmd_system = Command::new("system")
         .about("Manage current installations")
         .long_about(HELP_SYSTEM)
@@ -527,6 +557,7 @@ pub fn rig_app() -> Command<'static> {
     .subcommand(cmd_resolve)
     .subcommand(cmd_rstudio)
     .subcommand(cmd_library)
+    .subcommand(cmd_available)
     .after_help(HELP_EXAMPLES);
 
     rig
