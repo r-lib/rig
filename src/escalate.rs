@@ -57,8 +57,12 @@ pub fn escalate(task: &str) -> Result<(), Box<dyn Error>> {
     if is_elevated::is_elevated() {
         return Ok(());
     }
-    let args: Vec<String> = std::env::args().collect();
     debug!("Re-running rig as administrator for {}.", task);
+    let args: Vec<String> = std::env::args().collect();
+    let args: Vec<String> = [
+	vec!["-d".to_string()],
+	args
+    ].concat();
     let exe = std::env::current_exe()?;
     let exedir = Path::new(&exe).parent();
     let instdir = match exedir {
@@ -66,6 +70,8 @@ pub fn escalate(task: &str) -> Result<(), Box<dyn Error>> {
         None => Path::new("/"),
     };
     let gsudo = instdir.join("gsudo.exe");
+    debug!("gsudo: {:?}", gsudo);
+    debug!("Arguments: {:?}.", args);
     let code = std::process::Command::new(gsudo).args(args).status()?;
     std::process::exit(code.code().unwrap());
 }
