@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
     <id>rig</id>
-    <version>0.5.3</version>
+    <version>0.5.4</version>
     <packageSourceUrl>https://github.com/r-lib/rig</packageSourceUrl>
     <owners>Gábor Csárdi</owners>
     <title>rig</title>
@@ -48,16 +48,9 @@
 Please open an issue in our issue tracker at https://github.com/r-lib/rig/issues
     </description>
     <releaseNotes>
-# rig 0.5.3
+# rig 0.5.4
 
-* rig can now install x86_64 R 4.3.0 and later on macOS.
-
-* rig now does a better job when resolving R versions.
-
-* rig now supports Rtools43 on Windows.
-
-* rig now does not try to reinstall Rtools if the same version
-  is already installed.
+TODO
     </releaseNotes>
   </metadata>
 </package>
