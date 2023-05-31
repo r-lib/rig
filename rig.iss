@@ -40,9 +40,6 @@ Source: "gsudo.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "_rig.ps1"; DestDir: "{app}"; Flags: ignoreversion
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
-[Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-
 [Registry]
 Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"; \
     ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{autopf}\rig;{autopf}\R\bin"; \
