@@ -17,7 +17,7 @@ Install, remove, configure R versions.
 
 ## 🚀  Features <a id="id-features">
 
-- Works on macOS, Windows and Linux (Ubuntu and Debian, x86_64 and
+- Works on macOS, Windows and Linux (Ubuntu LTS and Debian, x86_64 and
   aarch64).
 - Easy installation and update, no system requirements on any platform.
 - Install multiple R versions.
@@ -140,8 +140,9 @@ If you are running Linux on arm64, download the arm64 build:
 
 Supported Linux distributions:
 
-- Ubuntu from [r-builds](https://github.com/rstudio/r-builds#r-builds),
-  currently 18.04, 20.04, 22.04.
+- Ubuntu LTS from
+  [r-builds](https://github.com/rstudio/r-builds#r-builds), currently
+  18.04, 20.04, 22.04.
 - Debian from [r-builds](https://github.com/rstudio/r-builds#r-builds),
   currently 9, 10 and 11.
 
@@ -236,6 +237,14 @@ R-devel. It is available for x86_64 and arm64 systems:
     * 4.2.2             release
       devel  (R 4.3.0)
       next   (R 4.2.2)
+
+### Docker container features:
+
+- <https://github.com/r-lib/pak> is installed for all R versions.
+- Automatic system dependency installation via pak.
+- Linux binary packages are automatically installed from the [Posit
+  Public Package Manager](https://packagemanager.posit.co/client/#/) in
+  x86_64 containers.
 
 See this image on [Docker Hub](https://hub.docker.com/r/rhub/rig) or
 [GitHub](https://github.com/r-lib/rig/pkgs/container/rig%2Fr).

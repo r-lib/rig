@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
     <id>rig</id>
-    <version>0.5.2</version>
+    <version>0.5.4</version>
     <packageSourceUrl>https://github.com/r-lib/rig</packageSourceUrl>
     <owners>Gábor Csárdi</owners>
     <title>rig</title>
@@ -48,11 +48,9 @@
 Please open an issue in our issue tracker at https://github.com/r-lib/rig/issues
     </description>
     <releaseNotes>
-# rig 0.5.2
+# rig 0.5.4
 
-* rig now always runs non-interactively on Linux from a root shell (#117).
-
-* rig now always uses `--vanilla` when running R (#120).
+TODO
     </releaseNotes>
   </metadata>
 </package>

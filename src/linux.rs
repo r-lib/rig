@@ -363,7 +363,12 @@ pub fn get_resolve(args: &ArgMatches) -> Result<Rversion, Box<dyn Error>> {
     let str = args.get_one::<String>("str").unwrap();
     let eps = vec![str.to_string()];
     let me = detect_linux()?;
-    let version = resolve_versions(eps, "linux".to_string(), "default".to_string(), Some(me))?;
+    let version = resolve_versions(
+        eps,
+        "linux".to_string(),
+        std::env::consts::ARCH.to_string(),
+        Some(me)
+    )?;
     Ok(version[0].to_owned())
 }
 
@@ -576,7 +581,7 @@ pub fn sc_system_no_openmp(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn detect_linux() -> Result<LinuxVersion, Box<dyn Error>> {
+pub fn detect_linux() -> Result<LinuxVersion, Box<dyn Error>> {
     let release_file = Path::new("/etc/os-release");
     let lines = read_lines(release_file)?;
 

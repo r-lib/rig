@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "rig -- The R Installation Manager"
-#define MyAppVersion "0.5.2"
+#define MyAppVersion "0.5.4"
 #define MyAppPublisher "Gabor Csardi"
 #define MyAppURL "https://github.com/r-lib/rig"
 #define MyAppExeName "rig.exe"
@@ -39,9 +39,6 @@ Source: "target\release\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "gsudo.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "_rig.ps1"; DestDir: "{app}"; Flags: ignoreversion
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
-
-[Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 
 [Registry]
 Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"; \

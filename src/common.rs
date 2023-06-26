@@ -1,12 +1,15 @@
 
 use regex::Regex;
+use std::env;
 use std::error::Error;
 use std::path::Path;
 use std::path::PathBuf;
 
 use clap::ArgMatches;
-use simple_error::bail;
+use semver::Version;
+use simple_error::*;
 use simplelog::*;
+use tabular::*;
 
 #[cfg(target_os = "macos")]
 use crate::macos::*;
@@ -17,6 +20,7 @@ use crate::windows::*;
 #[cfg(target_os = "linux")]
 use crate::linux::*;
 
+use crate::download::download_json_sync;
 use crate::escalate::escalate;
 use crate::renv;
 use crate::rversion::*;
@@ -217,6 +221,111 @@ pub fn sc_rstudio(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     };
 
     sc_rstudio_(ver, prj, None)
+}
+
+// -- rig avilable --------------------------------------------------------
+
+pub fn sc_available(args: &ArgMatches, mainargs: &ArgMatches)
+                    -> Result<(), Box<dyn Error>> {
+    #[allow(unused_mut)]
+    let mut os = env::consts::OS.to_string();
+
+    let mut arch = "";
+    if os == "macos" {
+        arch = args
+            .value_of("arch")
+            .ok_or(SimpleError::new("Internal argument error"))?;
+    } else if os == "linux" {
+        arch = env::consts::ARCH;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        if os == "linux" {
+            let dist = detect_linux()?;
+            os = "linux-".to_string() + &dist.distro + "-" + &dist.version;
+        }
+    }
+
+    let url = "https://api.r-hub.io/rversions/available/".to_string() +
+        &os + "/" + arch;
+    let resp = download_json_sync(vec![url])?;
+    let resp = resp[0].as_array().unwrap();
+
+    let mut vers: Vec<Available> = vec![];
+    for item in resp.iter().rev() {
+        let date = unquote(&item["date"].to_string());
+        let rtype = unquote(&item["type"].to_string());
+        let new = Available {
+            name: unquote(&item["name"].to_string()),
+            version: unquote(&item["version"].to_string()),
+            date: if date == "null" { None } else { Some(date) },
+            url: Some(unquote(&item["url"].to_string())),
+            rtype: Some(rtype),
+        };
+
+        if ! args.is_present("all") &&
+            vers.len() > 0 &&
+            new.name != "next" && new.name != "devel" {
+                let lstnam = &vers[vers.len() - 1].name;
+                let v300 = Version::parse("3.0.0")?;
+                let lstver = Version::parse(&vers[vers.len() - 1].version)?;
+                let thsver = Version::parse(&new.version)?;
+                // drop old versions
+                if thsver < v300 { continue; }
+                // drop outdated minor versions
+                if lstver.major == thsver.major &&
+                    lstver.minor == thsver.minor &&
+                    lstnam != "next" && lstnam != "devel" {
+                        continue;
+                    }
+            }
+        vers.push(new);
+    }
+
+    if args.is_present("json") || mainargs.is_present("json") {
+        println!("[");
+        let num = vers.len();
+        for (idx, ver) in vers.iter().rev().enumerate() {
+            let date = match &ver.date {
+                None => "null".to_string(),
+                Some(d) => "\"".to_string() + d + "\""
+            };
+            let rtype = match &ver.rtype {
+                None => "null".to_string(),
+                Some(x) => "\"".to_string() + x + "\""
+            };
+            let url = match &ver.url {
+                None => "null".to_string(),
+                Some(x) => "\"".to_string() + x + "\""
+            };
+            println!("  {{");
+            println!("    \"name\": \"{}\",", ver.name);
+            println!("    \"date\": {},", date);
+            println!("    \"version\": \"{}\",", ver.version);
+            println!("    \"type\": {},", rtype);
+            println!("    \"url\": {}", url);
+            println!("  }}{}", if idx == num - 1 { "" } else { "," });
+        }
+        println!("]");
+    } else {
+        let mut tab = Table::new("{:<}  {:<}  {:<}  {:<}");
+        tab.add_row(row!["name", "version", "release date", "type"]);
+        tab.add_heading("------------------------------------------");
+        for item in vers.iter().rev() {
+            let date = match &item.date {
+                None => "".to_string(),
+                Some(d) => d[..10].to_string()
+            };
+            let rtype = match &item.rtype {
+                None => "".to_string(),
+                Some(x) => x.to_string()
+            };
+            tab.add_row(row!(&item.name, &item.version, date, rtype));
+        }
+        print!("{}", tab);
+    }
+    Ok(())
 }
 
 // ------------------------------------------------------------------------

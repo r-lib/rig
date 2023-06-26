@@ -13,6 +13,7 @@ use std::{thread, time};
 
 use clap::ArgMatches;
 use remove_dir_all::remove_dir_all;
+use semver;
 use simple_error::{bail, SimpleError};
 use simplelog::*;
 use winreg::enums::*;
@@ -132,27 +133,52 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 fn add_rtools(version: String) -> Result<(), Box<dyn Error>> {
     let vers;
     if version == "rtools" {
-        vers = get_rtools_needed()?;
+        vers = get_rtools_needed(None)?;
     } else {
         vers = vec![version.replace("rtools", "")];
     }
     let client = &reqwest::Client::new();
     for ver in vers {
+	let rtools43 = &ver[0..2] == "43";
         let rtools42 = &ver[0..2] == "42";
-        let rtools4 = &ver[0..1] == "4" || ver == "devel";
+        let rtools4 = &ver[0..1] == "4";
         let filename: String;
         let url: String;
-        if rtools42 {
+	if rtools43 {
+	    let rt43=Path::new("C:\\Rtools43");
+	    if rt43.exists() {
+		info!("Rtools43 is already installed");
+		continue;
+	    }
+	    filename = "rtools43.exe".to_string();
+            url = "https://github.com/r-hub/rtools43/releases/download/latest/rtools43.exe"
+                .to_string();
+        } else if rtools42 {
+	    let rt42=Path::new("C:\\Rtools42");
+	    if rt42.exists() {
+		info!("Rtools42 is already installed");
+		continue;
+	    }
             filename = "rtools42.exe".to_string();
             url = "https://github.com/r-hub/rtools42/releases/download/latest/rtools42.exe"
                 .to_string();
         } else if rtools4 {
+	    let rt40=Path::new("C:\\Rtools40");
+	    if rt40.exists() {
+		info!("Rtools40 is already installed");
+		continue;
+	    }
             filename = format!("rtools{}-x86_64.exe", ver);
             url = format!(
                 "https://cloud.r-project.org/bin/windows/Rtools/{}",
                 filename
             );
         } else {
+	    let rt3=Path::new("C:\\Rtools");
+	    if rt3.exists() {
+		info!("Rtools3x is already installed");
+		continue;
+	    }
             filename = format!("Rtools{}.exe", ver);
             url = format!(
                 "https://cloud.r-project.org/bin/windows/Rtools/{}",
@@ -175,19 +201,19 @@ fn add_rtools(version: String) -> Result<(), Box<dyn Error>> {
 }
 
 fn patch_for_rtools() -> Result<(), Box<dyn Error>> {
-    let vers = sc_get_list()?;
     let base = Path::new(R_ROOT);
+    let vers = sc_get_list()?;
 
     for ver in vers {
-        let rtools42 = &ver[0..1] == "42";
-        // rtools42 does not need any updates
-        if rtools42 {
-            continue;
-        }
-
-        let rtools4 = &ver[0..1] == "4" || ver == "devel";
+	let vver = vec![ver.to_owned()];
+	let needed = get_rtools_needed(Some(vver))?;
+	if needed[0] == "42" || needed[0] == "43" {
+	    continue
+	}
+	let rtools4 = needed[0] == "40";
+	let rdir = "R-".to_string() + &ver;
         let envfile = base
-            .join("R-".to_string() + &ver)
+            .join(rdir)
             .join("etc")
             .join("Renviron.site");
         let mut ok = envfile.exists();
@@ -226,10 +252,13 @@ fn patch_for_rtools() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn get_rtools_needed() -> Result<Vec<String>, Box<dyn Error>> {
-    let vers = sc_get_list()?;
-    let mut res: Vec<String> = vec![];
+fn get_rtools_needed(version: Option<Vec<String>>) -> Result<Vec<String>, Box<dyn Error>> {
+    let vers = match version {
+	None => sc_get_list()?,
+	Some(x) => x
+    };
     let base = Path::new(R_ROOT);
+    let mut res: Vec<String> = vec![];
 
     for ver in vers {
         let r = base.join("R-".to_string() + &ver).join("bin").join("R.exe");
@@ -239,10 +268,17 @@ fn get_rtools_needed() -> Result<Vec<String>, Box<dyn Error>> {
         let ver: String = String::from_utf8(out.stdout)?;
         let v35 = "35".to_string();
         let v40 = "40".to_string();
+	let v43 = "43".to_string();
+	let sv430 = semver::Version::parse("4.3.0")?;
+	let sv = semver::Version::parse(&ver)?;
         if &ver[0..1] == "3" {
             if !res.contains(&v35) {
                 res.push(v35);
             }
+	} else if sv >= sv430 {
+	    if !res.contains(&v43) {
+		res.push(v43)
+	    }
         } else if &ver[0..1] == "4" {
             if !res.contains(&v40) {
                 res.push(v40);

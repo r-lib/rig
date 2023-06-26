@@ -12,6 +12,13 @@ pub struct Rversion {
 }
 
 #[derive(Default, Debug, Clone)]
+pub struct RversionDir {
+    pub version: String,
+    pub arch: String,
+    pub installdir: String
+}
+
+#[derive(Default, Debug, Clone)]
 pub struct InstalledVersion {
     pub name: String,
     pub version: Option<String>,
@@ -79,4 +86,13 @@ pub struct User {
 pub struct Alias {
     pub alias: String,
     pub version: String,
+}
+
+#[derive(Default, Debug)]
+pub struct Available {
+    pub name: String,
+    pub version: String,
+    pub date: Option<String>,
+    pub url: Option<String>,
+    pub rtype: Option<String>
 }

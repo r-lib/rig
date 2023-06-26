@@ -1,4 +1,19 @@
 
+# rig 0.5.4
+
+Under development.
+
+# rig 0.5.3
+
+* rig can now install x86_64 R 4.3.0 and later on macOS.
+
+* rig now does a better job when resolving R versions.
+
+* rig now supports Rtools43 on Windows.
+
+* rig now does not try to reinstall Rtools if the same version
+  is already installed.
+
 # rig 0.5.2
 
 * rig now always runs non-interactively on Linux from a root shell (#117).

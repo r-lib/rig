@@ -21,7 +21,10 @@ RUN ARCH="$(arch)"; \
 
 # We want to install pak into the system library, so we don't do it with rig
 
-RUN versions="$(rig ls --json | grep '"name"' | sed 's/^.*\"name\": \"//' | sed 's/\",//')" && \
+RUN for inst in $(ls /opt/R/*/lib/R/bin/INSTALL); do \
+      sed -i '1s/^/#!\/bin\/bash\n/' ${inst}; \
+    done; \
+    versions="$(rig ls --json | grep '"name"' | sed 's/^.*\"name\": \"//' | sed 's/\",//')" && \
     for ver in $versions; do \
       R-${ver} -q -e \
       'install.packages("pak", lib = .Library, repos = sprintf("https://r-lib.github.io/p/pak/%s/%s/%s/%s", "devel", .Platform$pkgType, R.Version()$os, R.Version()$arch))'; \

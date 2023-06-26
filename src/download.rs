@@ -148,29 +148,26 @@ pub async fn download_file(
     Ok(())
 }
 
+pub fn download_json_sync(urls: Vec<String>)
+                       -> Result<Vec<serde_json::Value>, Box<dyn Error>> {
+    let client = reqwest::Client::new();
+    let client = &client;
+    let resp = download_json_(client, urls)?;
+    return Ok(resp);
+}
+
+#[tokio::main]
+async fn download_json_(
+    client: &reqwest::Client,
+    urls: Vec<String>,
+) -> Result<Vec<serde_json::Value>, Box<dyn Error>> {
+    let resp = download_json(client, urls).await?;
+    return Ok(resp);
+}
+
 // ------------------------------------------------------------------------
 // asynchronous API
 // ------------------------------------------------------------------------
-
-pub async fn download_text(
-    client: &reqwest::Client,
-    url: String,
-) -> Result<String, Box<dyn Error>> {
-    let resp = client.get(&url).send().await;
-    let body = match resp {
-        Ok(resp) => resp.error_for_status(),
-        Err(err) => bail!("HTTP error at {}: {}", url, err.to_string()),
-    };
-    let body = match body {
-        Ok(content) => content,
-        Err(err) => bail!("HTTP error at {}: {}", url, err.to_string()),
-    };
-    let body = body.text().await;
-    match body {
-        Ok(txt) => Ok(txt),
-        Err(err) => bail!("HTTP error at {}: {}", url, err.to_string()),
-    }
-}
 
 pub async fn download_json(
     client: &reqwest::Client,
