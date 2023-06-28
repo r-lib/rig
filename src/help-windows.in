@@ -61,7 +61,7 @@ const HELP_DEFAULT: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
   Print or set the default R version. The default R version is the one
   that can be started with the `R` and `RS` commands, via quick
-  batch files at `C:\Program Files\R\bin`.
+  batch files at `C:\\Program Files\\R\\bin`.
 
   Call without any arguments to see the current default. Call with the
   version number/name to set the default. Before setting a default, you
@@ -89,7 +89,7 @@ const HELP_DEFAULT_EXAMPLES: &str = "\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
 
 const HELP_LIST: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
-  List installed R versions at `C:\Program Files\R`.
+  List installed R versions at `C:\\Program Files\\R`.
   It does _not_ check if they are working properly.
 
   `rig ls` is an alias.";
@@ -124,7 +124,7 @@ const HELP_ADD: &str = "
 
   will install all Rtools versions that are needed for the currently
   installed R versions. You can also request a specific Rtools version,
-  e.g. `rig add rtools40`. Rtools versions 3.x all install to `C:\Rtools`,
+  e.g. `rig add rtools40`. Rtools versions 3.x all install to `C:\\Rtools`,
   so only one of them can be installed at a time.
 
   You need an administrator account to run this command.
@@ -162,7 +162,7 @@ const HELP_SYSTEM: &str = "
 
 const HELP_SYSTEM_LINKS: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
-  Create quick links in `C:\Program Files\R\bin` for the current R
+  Create quick links in `C:\\Program Files\\R\\bin` for the current R
   installations. This lets you directly run a specific R version. E.g.
    `R-4.1.2` will start R 4.1.2.
 
@@ -217,10 +217,10 @@ const HELP_RSTUDIO: &str = "
   rig rstudio 4.0.5
 
   # Open project with default R version
-  rig rstudio cli\cli.Rproj
+  rig rstudio cli\\cli.Rproj
 
   # Open renv project with the R version specified in the lock file
-  rig rstudio projects\myproject\renv.lock
+  rig rstudio projects\\myproject\\renv.lock
 
   # Open RStudio project with specified R version, either is good
   rig rstudio 4.0.5 cli.Rproj
