@@ -86,6 +86,14 @@ To update rig you can run
 brew upgrade --cask rig
 ```
 
+### Windows (WinGet)
+
+The simplest way to install rig on Windows 10 and above is to use the
+built-in WinGet package manager. The name of the package is `posit.rig`.
+```
+winget install posit.rig
+```
+
 ### Windows (installer)
 
 Download the latest release from https://github.com/r-lib/rig/releases
