@@ -54,13 +54,13 @@ fn main_() -> i32 {
 
     // -- set up logger output --------------------------------------------
 
-    let mut loglevel = match args.occurrences_of("verbose") {
+    let mut loglevel = match args.get_count("verbose") {
         0 => LevelFilter::Info,
         1 => LevelFilter::Debug,
         _ => LevelFilter::Trace,
     };
 
-    if args.is_present("quiet") {
+    if args.get_flag("quiet") {
         loglevel = LevelFilter::Off;
     }
 
@@ -152,7 +152,7 @@ fn sc_resolve(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Er
         None => "???".to_string(),
     };
 
-    if args.is_present("json") || mainargs.is_present("json") {
+    if args.get_flag("json") || mainargs.get_flag("json") {
         println!("[");
         println!("  {{");
         println!("     \"version\": \"{}\",", version);
@@ -182,7 +182,7 @@ fn sc_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error
         }
     }
 
-    if args.is_present("json") || mainargs.is_present("json") {
+    if args.get_flag("json") || mainargs.get_flag("json") {
         println!("[");
         let num = vers.len();
         for (idx, ver) in vers.iter().enumerate() {
@@ -231,15 +231,15 @@ fn sc_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error
 // ------------------------------------------------------------------------
 
 fn sc_default(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    if args.is_present("version") {
+    if args.contains_id("version") {
         let ver = args
-            .value_of("version")
-            .ok_or(SimpleError::new("Internal argument error"))?
+            .get_one::<String>("version")
+            .unwrap()
             .to_string();
         sc_set_default(&ver)
     } else {
         let default = sc_get_default_or_fail()?;
-        if args.is_present("json") || mainargs.is_present("json") {
+        if args.get_flag("json") || mainargs.get_flag("json") {
             println!("{{");
             println!("  \"name\": \"{}\"", default);
             println!("}}");
@@ -253,7 +253,7 @@ fn sc_default(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Er
 // ------------------------------------------------------------------------
 
 pub fn sc_system_create_lib(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    let vers = args.values_of("version");
+    let vers = args.get_many::<String>("version");
     let vers: Vec<String> = match vers {
         None => sc_get_list()?,
         Some(vers) => vers.map(|v| v.to_string()).collect(),
@@ -268,13 +268,15 @@ pub fn sc_system_create_lib(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 // ------------------------------------------------------------------------
 
 pub fn sc_system_add_pak(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    let devel = args.is_present("devel");
-    let all = args.is_present("all");
-    let vers = args.values_of("version");
-    let mut pakver = args
-        .value_of("pak-version")
-        .ok_or(SimpleError::new("Internal argument error"))?;
-    let pakverx = args.occurrences_of("pak-version") > 0;
+    let devel = args.get_flag("devel");
+    let all = args.get_flag("all");
+    let vers = args.get_many::<String>("version");
+    let pakver = args
+        .get_one::<String>("pak-version")
+        .unwrap();
+    let mut pakver = &pakver[..];
+    let pakverx = args.value_source("pak-version") ==
+        Some(clap::parser::ValueSource::CommandLine);
 
     // --devel is deprecated
     if devel && !pakverx {

@@ -161,8 +161,8 @@ pub fn system_add_pak(
 // -- rig rstudio ---------------------------------------------------------
 
 pub fn sc_rstudio(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    let mut ver = args.value_of("version");
-    let mut prj = args.value_of("project-file");
+    let mut ver: Option<&String> = args.get_one("version");
+    let mut prj: Option<&String> = args.get_one("project-file");
 
     if let Some(ver2) = ver {
         if ver2.ends_with("renv.lock") {
@@ -205,10 +205,20 @@ pub fn sc_rstudio(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // then we switch the two
     if let Some(ver2) = ver {
         if ver2.ends_with(".Rproj") {
-            ver = args.value_of("project-file");
-            prj = args.value_of("version");
+            ver = args.get_one("project-file");
+            prj = args.get_one("version");
         }
     }
+
+    let ver = match ver {
+        None => None,
+        Some(str) => Some(&str[..])
+    };
+
+    let prj = match prj {
+        None => None,
+        Some(prj) => Some(&prj[..])
+    };
 
     sc_rstudio_(ver, prj, None)
 }
@@ -220,13 +230,12 @@ pub fn sc_available(args: &ArgMatches, mainargs: &ArgMatches)
     #[allow(unused_mut)]
     let mut os = env::consts::OS.to_string();
 
-    let mut arch = "";
+    let mut arch = "".to_string();
     if os == "macos" {
         arch = args
-            .value_of("arch")
-            .ok_or(SimpleError::new("Internal argument error"))?;
+            .get_one::<String>("arch").unwrap().to_string();
     } else if os == "linux" {
-        arch = env::consts::ARCH;
+        arch = env::consts::ARCH.to_string();
     }
 
     #[cfg(target_os = "linux")]
@@ -238,7 +247,7 @@ pub fn sc_available(args: &ArgMatches, mainargs: &ArgMatches)
     }
 
     let url = "https://api.r-hub.io/rversions/available/".to_string() +
-        &os + "/" + arch;
+        &os + "/" + &arch;
     let resp = download_json_sync(vec![url])?;
     let resp = resp[0].as_array().unwrap();
 
@@ -254,7 +263,7 @@ pub fn sc_available(args: &ArgMatches, mainargs: &ArgMatches)
             rtype: Some(rtype),
         };
 
-        if ! args.is_present("all") &&
+        if ! args.get_flag("all") &&
             vers.len() > 0 &&
             new.name != "next" && new.name != "devel" {
                 let lstnam = &vers[vers.len() - 1].name;
@@ -273,7 +282,7 @@ pub fn sc_available(args: &ArgMatches, mainargs: &ArgMatches)
         vers.push(new);
     }
 
-    if args.is_present("json") || mainargs.is_present("json") {
+    if args.get_flag("json") || mainargs.get_flag("json") {
         println!("[");
         let num = vers.len();
         for (idx, ver) in vers.iter().rev().enumerate() {

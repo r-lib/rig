@@ -39,12 +39,9 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("adding new R version")?;
     let alias = get_alias(args);
     sc_clean_registry()?;
-    let str = args
-        .value_of("str")
-        .ok_or(SimpleError::new("Internal argument error"))?
-        .to_string();
+    let str = args.get_one::<String>("str").unwrap();
     if str.len() >= 6 && &str[0..6] == "rtools" {
-        return add_rtools(str);
+        return add_rtools(str.to_string());
     }
     let (_version, target) = download_r(&args)?;
     let target_path = Path::new(&target);
@@ -52,10 +49,10 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     info!("Installing {}", target_path.display());
 
     let mut cmd_args = vec![os("/VERYSILENT"), os("/SUPPRESSMSGBOXES")];
-    if args.is_present("without-translations") {
+    if args.get_flag("without-translations") {
 	cmd_args.push(os("/components=main,x64,i386"));
     }
-    if args.is_present("with-desktop-icon") {
+    if args.get_flag("with-desktop-icon") {
 	cmd_args.push(os("/mergetasks=desktopicon"));
     } else {
 	cmd_args.push(os("/mergetasks=!desktopicon"));
@@ -90,7 +87,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     patch_for_rtools()?;
     maybe_update_registry_default()?;
 
-    if !args.is_present("without-cran-mirror") {
+    if !args.get_flag("without-cran-mirror") {
         match dirname {
             None => {
                 warn!("Cannot set CRAN mirror, cannot determine installation directory");
@@ -101,7 +98,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         }
     }
 
-    if !args.is_present("without-rspm") {
+    if !args.get_flag("without-rspm") {
         match dirname {
             None => {
                 warn!("Cannot set up RSPM, cannoe determine installation directory");
@@ -112,18 +109,19 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         };
     }
 
-    if !args.is_present("without-pak") {
+    if !args.get_flag("without-pak") {
         match dirname {
             None => {
                 warn!("Cannot install pak, cannot determine installation directory");
             }
             Some(ref dirname) => {
+                let explicit = args.value_source("pak-version") ==
+                    Some(clap::parser::ValueSource::CommandLine);
                 system_add_pak(
                     Some(vec![dirname.to_string()]),
-                    args.value_of("pak-version")
-                        .ok_or(SimpleError::new("Internal argument error"))?,
+                    args.get_one::<String>("pak-version").unwrap(),
                     // If this is specified then we always re-install
-                    args.occurrences_of("pak-version") > 0,
+                    explicit
                 )?;
             }
         }
@@ -347,7 +345,7 @@ options(repos = c(RSPM="https://packagemanager.posit.co/cran/latest", getOption(
 
 pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("removing R versions")?;
-    let vers = args.values_of("version");
+    let vers = args.get_many::<String>("version");
     if vers.is_none() {
         return Ok(());
     }
@@ -580,12 +578,8 @@ pub fn sc_system_no_openmp(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn get_resolve(args: &ArgMatches) -> Result<Rversion, Box<dyn Error>> {
-    let str = args
-        .value_of("str")
-        .ok_or(SimpleError::new("Internal argument error"))?
-        .to_string();
-
-    let eps = vec![str];
+    let str = args.get_one::<String>("str").unwrap();
+    let eps = vec![str.to_string()];
     let version = resolve_versions(eps, "win".to_string(), "default".to_string(), None)?;
     Ok(version[0].to_owned())
 }

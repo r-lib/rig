@@ -27,10 +27,11 @@ use crate::escalate::*;
 
 #[cfg(target_os = "macos")]
 pub fn get_alias(args: &ArgMatches) -> Option<String> {
-    match args.value_of("str") {
+    let str: Option<&String> = args.get_one("str");
+    match str {
         None => None,
         Some(str) => {
-            match str {
+            match str.as_ref() {
                 "oldrel" | "oldrel/1" => Some("oldrel".to_string()),
                 "release" | "devel" | "next" => Some(str.to_string()),
                 _ => None
@@ -41,10 +42,10 @@ pub fn get_alias(args: &ArgMatches) -> Option<String> {
 
 #[cfg(target_os = "linux")]
 pub fn get_alias(args: &ArgMatches) -> Option<String> {
-    match args.value_of("str") {
+    match args.get_one::<String>("str") {
         None => None,
         Some(str) => {
-            match str {
+            match str.as_ref() {
                 "oldrel" | "oldrel/1" => Some("oldrel".to_string()),
                 "release" => Some(str.to_string()),
                 _ => None
@@ -55,10 +56,10 @@ pub fn get_alias(args: &ArgMatches) -> Option<String> {
 
 #[cfg(target_os = "windows")]
 pub fn get_alias(args: &ArgMatches) -> Option<String> {
-    match args.value_of("str") {
+    match args.get_one::<String>("str") {
         None => None,
         Some(str) => {
-            match str {
+            match str.as_ref() {
                 "oldrel" | "oldrel/1" => Some("oldrel".to_string()),
                 "release" | "next" => Some(str.to_string()),
                 _ => None

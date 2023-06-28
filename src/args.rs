@@ -20,7 +20,7 @@ std::include!("help-windows.in");
 #[cfg(target_os = "linux")]
 std::include!("help-linux.in");
 
-pub fn rig_app() -> Command<'static> {
+pub fn rig_app() -> Command {
     let _arch_x86_64: &'static str = "x86_64";
     let _arch_arm64: &'static str = "arm64";
     let mut _default_arch: &'static str = "";
@@ -72,6 +72,7 @@ pub fn rig_app() -> Command<'static> {
             Arg::new("json")
                 .help("JSON output")
                 .long("json")
+                .num_args(0)
                 .required(false),
         );
 
@@ -83,6 +84,7 @@ pub fn rig_app() -> Command<'static> {
             Arg::new("json")
                 .help("JSON output")
                 .long("json")
+                .num_args(0)
                 .required(false),
         );
 
@@ -96,19 +98,20 @@ pub fn rig_app() -> Command<'static> {
         .arg(
             Arg::new("str")
                 .help("R version to install")
-                .default_value("release")
-                .multiple_occurrences(false),
+                .default_value("release"),
         )
         .arg(
             Arg::new("without-cran-mirror")
                 .help("Do not set the cloud CRAN mirror")
                 .long("without-cran-mirror")
+                .num_args(0)
                 .required(false),
         )
         .arg(
             Arg::new("without-pak")
                 .help("Do not install pak.")
                 .long("without-pak")
+                .num_args(0)
                 .required(false),
         )
         .arg(
@@ -116,7 +119,7 @@ pub fn rig_app() -> Command<'static> {
                 .help("pak version to install.")
                 .long("pak-version")
                 .required(false)
-                .possible_values(["stable", "rc", "devel"])
+                .value_parser(["stable", "rc", "devel"])
                 .default_value("stable"),
         );
 
@@ -126,6 +129,7 @@ pub fn rig_app() -> Command<'static> {
             Arg::new("without-rspm")
                 .help("Do not set up RSPM.")
                 .long("without-rspm")
+                .num_args(0)
                 .required(false),
         );
     }
@@ -136,6 +140,7 @@ pub fn rig_app() -> Command<'static> {
             Arg::new("without-sysreqs")
                 .help("Do not set up system requirements installation.")
                 .long("without-sysreqs")
+                .num_args(0)
                 .required(false),
         );
     }
@@ -146,11 +151,13 @@ pub fn rig_app() -> Command<'static> {
 	    Arg::new("without-translations")
 		.help("Do not install translations.")
 		.long("without-translations")
+                .num_args(0)
 		.required(false),
 	).arg(
 	    Arg::new("with-desktop-icon")
 		.help("Install a desktop icon.")
 		.long("with-desktop-icon")
+                .num_args(0)
 		.required(false),
 	);
     }
@@ -164,7 +171,7 @@ pub fn rig_app() -> Command<'static> {
                 .long("arch")
                 .required(false)
                 .default_value(&_default_arch)
-                .possible_values(["arm64", "x86_64"]),
+                .value_parser(["arm64", "x86_64"]),
         );
     }
 
@@ -175,13 +182,14 @@ pub fn rig_app() -> Command<'static> {
         .arg(
             Arg::new("version")
                 .help("versions to remove")
-                .multiple_occurrences(true)
+                .action(clap::ArgAction::Append)
                 .required(false),
         )
         .arg(
             Arg::new("all")
                 .help("remove all versions (TODO)")
                 .long("all")
+                .num_args(0)
                 .required(false),
         );
 
@@ -211,7 +219,7 @@ pub fn rig_app() -> Command<'static> {
                 .long("arch")
                 .required(false)
                 .default_value(&_default_arch)
-                .possible_values(["arm64", "x86_64"]),
+                .value_parser(["arm64", "x86_64"]),
         );
     }
 
@@ -232,7 +240,7 @@ pub fn rig_app() -> Command<'static> {
             Arg::new("version")
                 .help("R versions (default: all)")
                 .required(false)
-                .multiple_occurrences(true),
+                .action(clap::ArgAction::Append),
         );
 
     let cmd_system_pak = Command::new("add-pak")
@@ -242,6 +250,7 @@ pub fn rig_app() -> Command<'static> {
             Arg::new("devel")
                 .help("Install the development version of pak (deprecated)")
                 .long("devel")
+                .num_args(0)
                 .required(false),
         )
         .arg(
@@ -249,20 +258,21 @@ pub fn rig_app() -> Command<'static> {
                 .help("pak version to install.")
                 .long("pak-version")
                 .required(false)
-                .possible_values(["stable", "rc", "devel"])
+                .value_parser(["stable", "rc", "devel"])
                 .default_value("stable"),
         )
         .arg(
             Arg::new("all")
                 .help("Install pak for all R versions")
                 .long("all")
+                .num_args(0)
                 .required(false),
         )
         .arg(
             Arg::new("version")
                 .help("R versions to install/update pak for")
                 .required(false)
-                .multiple_occurrences(true),
+                .action(clap::ArgAction::Append),
         );
 
     #[cfg(target_os = "windows")]
@@ -287,7 +297,7 @@ pub fn rig_app() -> Command<'static> {
                 Arg::new("version")
                     .help("R versions to update (default: all)")
                     .required(false)
-                    .multiple_occurrences(true),
+                    .action(clap::ArgAction::Append),
             );
 
         let cmd_system_rights = Command::new("fix-permissions")
@@ -297,7 +307,7 @@ pub fn rig_app() -> Command<'static> {
                 Arg::new("version")
                     .help("R versions to update (default: all)")
                     .required(false)
-                    .multiple_occurrences(true),
+                    .action(clap::ArgAction::Append),
             );
 
         let cmd_system_forget = Command::new("forget")
@@ -311,7 +321,7 @@ pub fn rig_app() -> Command<'static> {
                 Arg::new("version")
                     .help("R versions to update (default: all)")
                     .required(false)
-                    .multiple_occurrences(true),
+                    .action(clap::ArgAction::Append),
             );
 
         let cmd_system_allow_debugger = Command::new("allow-debugger")
@@ -321,13 +331,14 @@ pub fn rig_app() -> Command<'static> {
                 Arg::new("all")
                     .help("Update all R versions")
                     .long("all")
+                    .num_args(0)
                     .required(false),
             )
             .arg(
                 Arg::new("version")
                     .help("R versions to update (default is the default R version)")
                     .required(false)
-                    .multiple_occurrences(true),
+                    .action(clap::ArgAction::Append),
             );
 
         let cmd_system_allow_debugger_rstudio = Command::new("allow-debugger-rstudio")
@@ -341,13 +352,14 @@ pub fn rig_app() -> Command<'static> {
                 Arg::new("all")
                     .help("Update all R versions")
                     .long("all")
+                    .num_args(0)
                     .required(false),
             )
             .arg(
                 Arg::new("version")
                     .help("R versions to update (default is the default R version)")
                     .required(false)
-                    .multiple_occurrences(true),
+                    .action(clap::ArgAction::Append),
             );
 
         cmd_system = cmd_system
@@ -380,6 +392,7 @@ pub fn rig_app() -> Command<'static> {
             Arg::new("json")
                 .help("JSON output")
                 .long("json")
+                .num_args(0)
                 .required(false),
         );
 
@@ -392,7 +405,7 @@ pub fn rig_app() -> Command<'static> {
                 .long("arch")
                 .required(false)
                 .default_value(&_default_arch)
-                .possible_values(["arm64", "x86_64"]),
+                .value_parser(["arm64", "x86_64"]),
         );
     }
 
@@ -402,13 +415,11 @@ pub fn rig_app() -> Command<'static> {
         .arg(
             Arg::new("version")
                 .help("R version to start")
-                .multiple_occurrences(false)
                 .required(false),
         )
         .arg(
             Arg::new("project-file")
                 .help("RStudio project file (.Rproj) to open")
-                .multiple_occurrences(false)
                 .required(false),
         );
 
@@ -421,6 +432,7 @@ pub fn rig_app() -> Command<'static> {
             Arg::new("json")
                 .help("JSON output")
                 .long("json")
+                .num_args(0)
                 .required(false),
         )
         .subcommand(
@@ -431,6 +443,7 @@ pub fn rig_app() -> Command<'static> {
                     Arg::new("json")
                         .help("JSON output")
                         .long("json")
+                        .num_args(0)
                         .required(false),
                 ),
         )
@@ -464,6 +477,7 @@ pub fn rig_app() -> Command<'static> {
                     Arg::new("json")
                         .help("JSON output")
                         .long("json")
+                        .num_args(0)
                         .required(false),
                 ),
         );
@@ -478,6 +492,7 @@ pub fn rig_app() -> Command<'static> {
                 Arg::new("json")
                     .help("JSON output")
                     .long("json")
+                    .num_args(0)
                     .required(false),
             )
             .subcommand(
@@ -487,7 +502,7 @@ pub fn rig_app() -> Command<'static> {
                         Arg::new("name")
                             .help("system tool to install")
                             .required(true)
-                            .multiple_occurrences(true),
+                            .action(clap::ArgAction::Append),
                     )
                     .arg(
                         Arg::new("arch")
@@ -496,7 +511,7 @@ pub fn rig_app() -> Command<'static> {
                             .long("arch")
                             .required(false)
                             .default_value(&_default_arch)
-                            .possible_values(["arm64", "x86_64"]),
+                            .value_parser(["arm64", "x86_64"]),
                     )
             )
             .subcommand(
@@ -506,6 +521,7 @@ pub fn rig_app() -> Command<'static> {
                         Arg::new("json")
                             .help("JSON output")
                             .long("json")
+                            .num_args(0)
                             .required(false),
                     )
             )
@@ -515,13 +531,13 @@ pub fn rig_app() -> Command<'static> {
                     .arg(
                         Arg::new("name")
                             .help("system tool to show")
-                            .required(true)
-                            .multiple_occurrences(false),
+                            .required(true),
                     )
                     .arg(
                         Arg::new("json")
                             .help("JSON output")
                             .long("json")
+                            .num_args(0)
                             .required(false),
                     )
             );
@@ -532,6 +548,7 @@ pub fn rig_app() -> Command<'static> {
         Arg::new("quiet")
             .help("Suppress output (overrides `--verbose`)")
             .short('q')
+            .num_args(0)
             .long("quiet")
             .required(false),
     )
@@ -541,12 +558,13 @@ pub fn rig_app() -> Command<'static> {
             .short('v')
             .long("verbose")
             .required(false)
-            .multiple_occurrences(true),
+            .action(clap::ArgAction::Count),
     )
     .arg(
         Arg::new("json")
             .help("Output JSON")
             .long("json")
+            .num_args(0)
             .required(false),
     )
     .subcommand(cmd_default)

@@ -107,7 +107,7 @@ teardown() {
 
 @test "rm" {
     if ! rig ls | grep -q '^[* ] 3.3'; then
-        run sudo rig add -a x86_64 3.3
+        run sudo rig add -a x86_64 3.3 --without-pak
         [[ "$status" -eq 0 ]]
         run rig ls
         echo "$output" | grep -q "[* ] 3[.]3"
@@ -169,7 +169,7 @@ teardown() {
         pkgutil --pkgs | grep -i r-project | grep -v clang
     }
     run pkgs
-    [[ $status -eq 0 ]]
+    [[ $status -eq 1 ]]
     [[ "$output" = "" ]]
 }
 

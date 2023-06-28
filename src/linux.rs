@@ -117,24 +117,26 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         None => { }
     };
 
-    if !args.is_present("without-cran-mirror") {
+    if !args.get_flag("without-cran-mirror") {
         set_cloud_mirror(Some(vec![dirname.to_string()]))?;
     }
 
-    if !args.is_present("without-rspm") {
+    if !args.get_flag("without-rspm") {
         set_rspm(Some(vec![dirname.to_string()]), &linux)?;
     }
 
-    if !args.is_present("without-sysreqs") {
+    if !args.get_flag("without-sysreqs") {
         set_sysreqs(Some(vec![dirname.to_string()]), &linux)?;
     }
 
-    if !args.is_present("without-pak") {
+    if !args.get_flag("without-pak") {
+        let explicit = args.value_source("pak-version") ==
+            Some(clap::parser::ValueSource::CommandLine);
         system_add_pak(
             Some(vec![dirname.to_string()]),
-            require_with!(args.value_of("pak-version"), "clap error"),
+            require_with!(args.get_one::<String>("pak-version"), "clap error"),
             // If this is specified then we always re-install
-            args.occurrences_of("pak-version") > 0,
+            explicit
         )?;
     }
 
@@ -186,7 +188,7 @@ fn add_deb(path: &OsStr) -> Result<(), Box<dyn Error>> {
 
 pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("removing R versions")?;
-    let vers = args.values_of("version");
+    let vers = args.get_many::<String>("version");
     if vers.is_none() {
         return Ok(());
     }
@@ -358,10 +360,7 @@ fn version_from_link(pb: PathBuf) -> Option<String> {
 }
 
 pub fn get_resolve(args: &ArgMatches) -> Result<Rversion, Box<dyn Error>> {
-    let str = args
-        .value_of("str")
-        .ok_or(SimpleError::new("Internal argument error"))?;
-
+    let str = args.get_one::<String>("str").unwrap();
     let eps = vec![str.to_string()];
     let me = detect_linux()?;
     let version = resolve_versions(

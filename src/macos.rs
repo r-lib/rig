@@ -42,9 +42,8 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let url: String = match &version.url {
         Some(s) => s.to_string(),
         None => {
-            let archarg = args
-                .value_of("arch")
-                .ok_or(SimpleError::new("Internal argument error"))?;
+            let archarg: &String = args
+                .get_one("arch").unwrap();
             bail!("Cannot find a download url for R version {}, {}", verstr, archarg);
         }
     };
@@ -98,17 +97,19 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         None => { }
     };
 
-    if !args.is_present("without-cran-mirror") {
+    if !args.get_flag("without-cran-mirror") {
         set_cloud_mirror(Some(vec![dirname.to_string()]))?;
     }
 
-    if !args.is_present("without-pak") {
+    if !args.get_flag("without-pak") {
+        let pakver: &String = args.get_one("pak-version").unwrap();
+        let explicit = args.value_source("pak-version") ==
+            Some(clap::parser::ValueSource::CommandLine);
+
         system_add_pak(
             Some(vec![dirname.to_string()]),
-            args.value_of("pak-version")
-                .ok_or(SimpleError::new("Internal argument error"))?,
-            // If this is specified then we always re-install
-            args.occurrences_of("pak-version") > 0,
+            pakver,
+            explicit
         )?;
     }
 
@@ -237,7 +238,7 @@ fn safe_install(target: std::path::PathBuf, ver: &str, arch: Option<String>)
 
 pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("removing R versions")?;
-    let vers = args.values_of("version");
+    let vers = args.get_many::<String>("version");
     if vers.is_none() {
         return Ok(());
     }
@@ -412,8 +413,8 @@ pub fn sc_system_allow_core_dumps(args: &ArgMatches) -> Result<(), Box<dyn Error
 
 pub fn sc_system_allow_debugger(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("updating code signature of R")?;
-    let all = args.is_present("all");
-    let vers = args.values_of("version");
+    let all = args.get_flag("all");
+    let vers = args.get_many::<String>("version");
 
     let vers: Vec<String> = if all {
         sc_get_list()?
@@ -532,7 +533,7 @@ pub fn update_entitlements(path: PathBuf) -> Result<(), Box<dyn Error>> {
 
 pub fn sc_system_make_orthogonal(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("updating the R installations")?;
-    let vers = args.values_of("version");
+    let vers = args.get_many::<String>("version");
     if vers.is_none() {
         system_make_orthogonal(None)
     } else {
@@ -616,7 +617,7 @@ fn make_orthogonal_(base: &Path, ver: &str) -> Result<(), Box<dyn Error>> {
 
 pub fn sc_system_fix_permissions(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("changing system library permissions")?;
-    let vers = args.values_of("version");
+    let vers = args.get_many::<String>("version");
     if vers.is_none() {
         system_fix_permissions(None)
     } else {
@@ -704,13 +705,8 @@ pub fn sc_system_forget() -> Result<(), Box<dyn Error>> {
 }
 
 pub fn get_resolve(args: &ArgMatches) -> Result<Rversion, Box<dyn Error>> {
-    let str = args
-        .value_of("str")
-        .ok_or(SimpleError::new("Internal argument error"))?
-        .to_string();
-    let arch = args
-        .value_of("arch")
-        .ok_or(SimpleError::new("Internal argument error"))?;
+    let str: &String = args.get_one("str").unwrap();
+    let arch: &String = args.get_one("arch").unwrap();
 
     if str.len() > 8 && (&str[..7] == "http://" || &str[..8] == "https://") {
         Ok(Rversion {
@@ -719,7 +715,7 @@ pub fn get_resolve(args: &ArgMatches) -> Result<Rversion, Box<dyn Error>> {
             arch: None,
         })
     } else {
-        let eps = vec![str];
+        let eps = vec![str.to_string()];
         let version = resolve_versions(eps, "macos".to_string(), arch.to_string(), None)?;
         Ok(version[0].to_owned())
     }
@@ -727,7 +723,7 @@ pub fn get_resolve(args: &ArgMatches) -> Result<Rversion, Box<dyn Error>> {
 
 pub fn sc_system_no_openmp(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("updating R compiler configuration")?;
-    let vers = args.values_of("version");
+    let vers = args.get_many::<String>("version");
     if vers.is_none() {
         system_no_openmp(None)
     } else {
