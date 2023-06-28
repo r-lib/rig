@@ -219,7 +219,7 @@ pub fn rig_app() -> Command {
                 .long("arch")
                 .required(false)
                 .default_value(&_default_arch)
-                .possible_values(["arm64", "x86_64"]),
+                .value_parser(["arm64", "x86_64"]),
         );
     }
 
