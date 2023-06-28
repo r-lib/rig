@@ -200,7 +200,7 @@ const HELP_RSTUDIO: &str = "
   Start RStudio with the specified R version.
 
   Note that you need to set the default R version in RStudio to
-  "Use your machine's default version", either 64 bit (recommended) or
+  \"Use your machine's default version\", either 64 bit (recommended) or
   32 bit. This setting is in Tools -> Global Options -> Basic ->
   General -> R version.
 
