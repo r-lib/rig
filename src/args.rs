@@ -126,9 +126,10 @@ pub fn rig_app() -> Command {
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     {
         cmd_add = cmd_add.arg(
-            Arg::new("without-rspm")
-                .help("Do not set up RSPM.")
-                .long("without-rspm")
+            Arg::new("without-p3m")
+                .aliases(&["without-rspm"])
+                .help("Do not set up P3M. [alias: --without-rspm]")
+                .long("without-p3m")
                 .num_args(0)
                 .required(false),
         );

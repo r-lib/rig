@@ -324,10 +324,10 @@ Why does rig set the default CRAN mirror?
 </details>
 <details>
 <summary>
-Why does rig set up RSPM?
+Why does rig set up P3M?
 </summary>
 
-> RSPM ([Rstudio Package
+> P3M ([Posit Public Package
 > Manager](https://packagemanager.posit.co/client/#/)) is generally
 > superior to a regular CRAN mirror on Windows and many Linux systems.
 >
@@ -336,7 +336,8 @@ Why does rig set up RSPM?
 > On Windows, it includes up to date binary packages for older R
 > versions as well.
 >
-> To avoid RSPM, use the `--without-rspm` option of `rig add`.
+> To avoid P3M use the `--without-p3m` option (or the legacy
+> `--without-rspm`) option of `rig add`.
 
 </details>
 <details>
@@ -367,4 +368,4 @@ How is rig different from RSwitch?
 
 ## 📘   License <a id="id-license">
 
-MIT 2021-2023 © RStudio Pbc.
+MIT 2021-2023 © Posit Software, PBC.

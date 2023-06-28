@@ -97,7 +97,7 @@ const HELP_ADD: &str = "
   Download and install an R version, from the official sources.
   It keeps the already installed R versions.
 
-  rig uses the RStudio R builds from `https://github.com/rstudio/r-builds`
+  rig uses the Posit R builds from `https://github.com/rstudio/r-builds`
   on Linux.
 
   The desired R version can be specified in various ways:

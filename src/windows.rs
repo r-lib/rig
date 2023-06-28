@@ -98,10 +98,10 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         }
     }
 
-    if !args.get_flag("without-rspm") {
+    if !args.get_flag("without-p3m") {
         match dirname {
             None => {
-                warn!("Cannot set up RSPM, cannoe determine installation directory");
+                warn!("Cannot set up P3M, cannot determine installation directory");
             }
             Some(ref dirname) => {
                 set_rspm(Some(vec![dirname.to_string()]))?;
@@ -316,7 +316,7 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
 fn set_rspm(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     let arch = std::env::consts::ARCH;
     if arch != "x86_64" {
-        warn!("RSPM does not support this architecture: {}", arch);
+        warn!("P3M does not support this architecture: {}", arch);
         return Ok(());
     }
 
@@ -326,7 +326,7 @@ fn set_rspm(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     };
 
     let rcode = r#"
-options(repos = c(RSPM="https://packagemanager.posit.co/cran/latest", getOption("repos")))
+options(repos = c(P3M="https://packagemanager.posit.co/cran/latest", getOption("repos")))
 "#;
 
     for ver in vers {

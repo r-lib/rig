@@ -121,7 +121,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         set_cloud_mirror(Some(vec![dirname.to_string()]))?;
     }
 
-    if !args.get_flag("without-rspm") {
+    if !args.get_flag("without-p3m") {
         set_rspm(Some(vec![dirname.to_string()]), &linux)?;
     }
 
@@ -474,19 +474,19 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
 fn set_rspm(vers: Option<Vec<String>>, linux: &LinuxVersion) -> Result<(), Box<dyn Error>> {
     let arch = std::env::consts::ARCH;
     if arch != "x86_64" {
-        info!("RSPM does not support this architecture: {}", arch);
+        info!("P3M does not support this architecture: {}", arch);
         return Ok(());
     }
 
     if !linux.rspm {
         info!(
-            "RSPM (or rig) does not support this distro: {} {}",
+            "P3M (or rig) does not support this distro: {} {}",
             linux.distro, linux.version
         );
         return Ok(());
     }
 
-    info!("Setting up RSPM");
+    info!("Setting up P3M");
 
     let vers = match vers {
         Some(x) => x,
@@ -494,7 +494,7 @@ fn set_rspm(vers: Option<Vec<String>>, linux: &LinuxVersion) -> Result<(), Box<d
     };
 
     let rcode = r#"
-options(repos = c(RSPM="%url%", getOption("repos")))
+options(repos = c(P3M="%url%", getOption("repos")))
 options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(getRversion(), R.version$platform, R.version$arch, R.version$os)))
 "#;
 

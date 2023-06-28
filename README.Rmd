@@ -286,4 +286,4 @@ https://github.com/r-lib/rig/issues
 
 ## 📘 &nbsp; License <a id="id-license">
 
-MIT 2021-2023 © RStudio Pbc.
+MIT 2021-2023 © Posit Software, PBC.
