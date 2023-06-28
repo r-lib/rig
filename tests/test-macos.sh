@@ -44,7 +44,7 @@ teardown() {
     fi
     run sudo rig system make-links
     [[ "$status" -eq 0 ]]
-    run R-${devel} -q -s -e 'cat(as.character(getRversion()))'
+    run R-${devel}-x86_64 -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
     echo $output
     echo "$output" | grep -q "^$devel[.][0-9]\$"
