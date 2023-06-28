@@ -5,352 +5,330 @@
 // ------------------------------------------------------------------------
 
 const HELP_ABOUT: &str = r#"
-    On macOS, R versions installed by rig do not interfere. You can run
-    multiple versions at the same time. rig also makes sure that packages
-    are installed into a user package library, so reinstalling R will not
-    wipe out your installed packages.
-"#;
+  On macOS, R versions installed by rig do not interfere. You can run
+  multiple versions at the same time. rig also makes sure that packages
+  are installed into a user package library, so reinstalling R will not
+  wipe out your installed packages."#;
 
-const HELP_EXAMPLES: &str = r#"EXAMPLES:
-    # Add the latest development snapshot
-    rig add devel
+const HELP_EXAMPLES: &str = "\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
+  # Add the latest development snapshot
+  rig add devel
 
-    # Add the latest release
-    rig add release
+  # Add the latest release
+  rig add release
 
-    # Install specific version
-    rig add 4.1.2
+  # Install specific version
+  rig add 4.1.2
 
-    # Install latest version within a minor branch
-    rig add 4.1
+  # Install latest version within a minor branch
+  rig add 4.1
 
-    # List installed versions
-    rig list
+  # List installed versions
+  rig list
 
-    # Set default version
-    rig default 4.0
-"#;
+  # Set default version
+  rig default 4.0";
 
-const HELP_RESOLVE: &str = r#"
-DESCRIPTION
-    Resolve R versions. Checks the version number of an R version (e.g.
-    release, devel, etc.), and looks up the URL of the installer for it,
-    if an installer is available.
+const HELP_RESOLVE: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Resolve R versions. Checks the version number of an R version (e.g.
+  release, devel, etc.), and looks up the URL of the installer for it,
+  if an installer is available.
 
-    It prints the R version number, and after a space the URL of the
-    installer. If no installer is available for this R version and the
-    current platform, the URL is `NA`.
+  It prints the R version number, and after a space the URL of the
+  installer. If no installer is available for this R version and the
+  current platform, the URL is `NA`.
 
-    An R version can be specified in various ways:
-    - `rig resolve devel` is the latest available development version,
-    - `rig resolve next` is the next (patched, alpha, beta, etc.) version,
-    - `rig resolve release` is the latest release.
-    - `rig resolve x.y.z` is a specific version.
-    - `rig resolve x.y` is the latest release within the `x.y` minor branch.
-    - `rig resolve oldrel/n` is the latest release within the `n`th previous
-      minor branch (`oldrel` is the same as `oldrel/1`).
-"#;
+  An R version can be specified in various ways:
+  - `rig resolve devel` is the latest available development version,
+  - `rig resolve next` is the next (patched, alpha, beta, etc.) version,
+  - `rig resolve release` is the latest release.
+  - `rig resolve x.y.z` is a specific version.
+  - `rig resolve x.y` is the latest release within the `x.y` minor branch.
+  - `rig resolve oldrel/n` is the latest release within the `n`th previous
+    minor branch (`oldrel` is the same as `oldrel/1`).";
 
-const HELP_RESOLVE_EXAMPLES: &str = r#"EXAMPLES
-    # Latest development snapshot
-    rig resolve devel
+const HELP_RESOLVE_EXAMPLES: &str = "\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
+  # Latest development snapshot
+  rig resolve devel
 
-    # Latest release (that has an installer available)
-    rig resolve release
+  # Latest release (that has an installer available)
+  rig resolve release
 
-    # URL for a specific version
-    rig resolve 4.1.2
+  # URL for a specific version
+  rig resolve 4.1.2
 
-    # Latest version within a minor branch
-    rig resolve 4.1
-"#;
+  # Latest version within a minor branch
+  rig resolve 4.1";
 
 const HELP_ARCH: &str = "Select macOS arch: arm64 or x86_64";
 
-const HELP_DEFAULT: &str = r#"
-DESCRIPTION:
-    Print or set the default R version. The default R version is the one that
-    is started with the `R` command, usually via the `/usr/local/bin/R`
-    symbolic link.
-
-    Call without any arguments to see the current default. Call with the
-    version number/name to set the default. Before setting a default, you
-    can call `rig list` to see the installed R versions.
-
-    The default R version is set by updating the symbolic link at
-    `/Library/Frameworks/R.framework/Versions/Current` and pointing it to the
-    specified R version.
-
-    This command can change the default version without `sudo` as long as
-    the user is in the `admin` group. Otherwise you need to run it as
-    `sudo rig default ...`.
-
-    You don't need to update the default R version to just run a non-default R
-    version. You can use the `R-<ver>` links, see `rig system make-links`.
-
-    `rig switch` is an alias of `rig default`.
-"#;
-
-const HELP_DEFAULT_EXAMPLES: &str = r#"EXAMPLES:
-    # Query default R version
-    rig default
-
-    # Set the default version
-    rig default 4.1
-"#;
-
-const HELP_LIST: &str = r#"
-DESCRIPTION:
-    List installed R versions from `/Library/Framework/R.framework/Versions`.
-    It does _not_ check if they are working properly.
-
-    `rig ls` is an alias.
-"#;
-
-const HELP_ADD: &str = r#"
-DESCRIPTION:
-    Download and install an R version, from the official sources.
-    It keeps the already installed R versions, except versions within the
-    same minor branch, see below.
-
-    NOTE: it is best to quit from all currently running R sessions before
-    adding new R versions. The newly added R version will be the default
-    after the installation. If you don't want that, call `rig default`.
-
-    The desired R version can be specified in various ways:
-    - `rig add devel` adds the latest available development version,
-    - `rig add next` is the next version (patched, alpha, beta, rc, etc.),
-    - `rig add release` adds the latest release.
-    - `rig add x.y.z` adds a specific version.
-    - `rig add x.y` adds the latest release within the `x.y` minor branch.
-    - `rig add oldrel/n` adds the latest release within the `n`th previous
-      minor branch (`oldrel` is the same as `oldrel/1`).
-    - `rig add <url>` uses a `.pkg` installer from `<url>`.
-
-    Usually you need to run this command with `sudo`: `sudo rig add ...`,
-    otherwise rig will need to ask for your password.
-
-    On macOS rig cannot add multiple R versions from the same minor branch.
-    E.g. it is not possible to have R 4.1.1 and R 4.1.2 installed at the
-    same time. Adding one of them will automatically remove the other.
-
-    `rig add` will automatically call `rig system forget` before the
-    installation, to make sure that already installed R versions are kept.
-    It will also call the following rig command after the installation:
-    - `rig system forget`
-    - `rig system fix-permissions`
-    - `rig system make-orthogonal`
-    - `rig system create-lib`
-    - `rig system make-links`
-    See their help pages for details.
-"#;
-
-const HELP_ADD_EXAMPLES: &str = r#"EXAMPLES:
-    # Add the latest development snapshot
-    rig add devel
-
-    # Add the latest release
-    rig add release
-
-    # Install specific version
-    rig add 4.1.2
-
-    # Install latest version within a minor branch
-    rig add 4.1
-
-    # Install arm64 build of R (default on arm64 macs)
-    rig add -a arm64 release
-
-    # Install x86_64 build of R (default on x86_64 macs)
-    rig add -a x86_64 release
-"#;
-
-const HELP_RM: &str = r#"
-DESCRIPTION:
-    Remove an R installation. It keeps the users' package libraries.
-    It automatically calls `rig system forget` before removing the files.
-
-    Usually you need to run this command with `sudo`: `sudo rig rm ...`,
-    otherwise rig will ask for your password.
-"#;
-
-const HELP_SYSTEM: &str = r#"
-DESCRIPTION:
-    Various commands to modify and configure the installed R versions.
-    See their help pages for details. E.g. run `rig system make-links --help`.
-"#;
-
-const HELP_SYSTEM_ORTHO: &str = r#"
-DESCRIPTION:
-    Make the current R installations orthogonal. This allows running multiple
-    R versions at the same time, as long as they are started with their
-    quick links (see `rig system make-links --help`). For example you
-    can run a script using R 4.1.x in one terminal:
-
-    R-4.1 -q -f script1.R
-
-    while running another script using R 4.0.x in another terminal:
-
-    R-4.0 -q -f script2.R
-
-    `rig add` runs `rig system make-orthogonal`, so if you only use rig to
-    install R, then you do not need to run it manually.
-
-    This command probably needs `sudo`: `sudo rig system make-orthogonal`,
-    otherwise rig will aks for your password.
-"#;
-
-const HELP_SYSTEM_LINKS: &str = r#"
-DESCRIPTION:
-    Create quick links in `/usr/local/bin` for the current R installations.
-    These let you directly run a specific R version. E.g. `R-4.1` will start
-    R 4.1.x.
-
-    `rig add` runs `rig system make-links`, so if you only use rig to
-    install R, then you do not need to run it manually.
-
-    This command probably needs `sudo`: `sudo rig system make-links`,
-    otherwise rig will ask for your password.
-"#;
-
-const HELP_SYSTEM_ADDPAK: &str = r#"
-DESCRIPTION:
-    Install/update pak for one or more R versions.
-
-    * If `--all` is specified, then it installs pak for all current R
-      installations.
-    * If one or more R versions are specified, then it installs pak for
-      those.
-    * If no R versions are specified, then it installs pak for the default
-      R installation (see `rig default`).
-"#;
-
-const HELP_SYSTEM_FIXPERMS: &str = r#"
-DESCRIPTION:
-    Update the permissions of the current R versions, so only the
-    administrator can install R packages into the system library.
-    Together with `rig system create-lib` this facilitates keeping
-    additional packages in a user library, instead of the system library.
-
-    `rig add` runs `rig system fix-permissions`, so if you only use rig to
-    install R, then you do not need to run it manually.
-
-    This command probably needs `sudo`: `sudo rig system fix-permissions`,
-    otherwise rig will ask for your password.
-"#;
-
-const HELP_SYSTEM_FORGET: &str = r#"
-DESCRIPTION:
-    Tell macOS to forget about the currently installed R versions.
-    This is needed to have multiple R installations at the same time.
-
-    `rig add` runs `rig system forget` before and after the installation,
-    so if you only use rig to install R, then you don't need to run this
-    command manually.
-
-    This command probably needs `sudo`: `sudo rig system forget`, otherwise
-    rig will ask for your password.
-"#;
-
-const HELP_SYSTEM_NO_OPENMP: &str = r#"
-DESCRIPTION:
-    Remove -fopenmp flags from the R configuration, to make R work with
-    the Apple compilers, instead of CRAN's custom compilers. This is only
-    needed for R 3.6.x and before.
-
-    `rig add` runs `rig system no-openmp` after the installation, so if
-    only use rig to install R, then you don't need to run this command
-    manually.
-
-    This command probably needs `sudo`: `sudo rig system no-openmp`,
-    otherwise rig will ask for your password.
-"#;
-
-const HELP_SYSTEM_ALLOW_DEBUGGER: &str = r#"
-DESCRIPTION:
-    Update the entitlements of the R process to allow debuggers. It adds
-    the `get-task-allow` entitlement to the R binary. This is only needed
-    for R installers 3.6 and later, previous versions are not signed.
-    Call `R -d lldb` to start `lldb` on `R`. (Or `R-x.y -d lldb` if you
-    want a non-default version.)
-
-    See also `rig system allow-debugger-rstudio`, which does the same for
-    R running in RStudio.
-
-    This command is experimental. Please let us know at
-    https://github.com/r-lib/rig/issues if it does not work as
-    expected.
-
-    This command probably needs `sudo`: `sudo rig system allow-debugger`,
-    otherwise rig will ask for your password.
-"#;
-
-const HELP_SYSTEM_ALLOW_DEBUGGER_RSTUDIO: &str = r#"
-DESCRIPTION:
-    Update the entitlements of RStudio R process to allow debuggers. It adds
-    the `get-task-allow` entitlement to the `rsession` (and `rsession-arm64`
-    on arm64 hardware) binary.
-
-    See also `rig system allow-debugger`, which does the same for
-    R running outside of RStudio.
-
-    This command is experimental. Please let us know at
-    https://github.com/r-lib/rig/issues if it does not work as
-    expected.
-
-    This command probably needs `sudo`: `sudo rig system allow-debugger`,
-    otherwise rig will ask for your password.
-"#;
-
-const HELP_SYSTEM_ALLOW_CORE_DUMPS: &str = r#"
-DESCRIPTION:
-    Update the entitlements of the R process to allow core dumps. This
-    command is similar to `rig system allow-debugger` but it also makes
-    sure that the `/cores` directory of core dumps is writeable by the
-    current user. Don't forget to call `ulimit -c unlimited` from the
-    same shell before starting R.
-
-    This command is experimental. Please let us know at
-    https://github.com/r-lib/rig/issues if it does not work as
-    expected.
-
-    This command probably needs `sudo`: `sudo rig system allow-core-dumps`,
-    otherwise rig will ask for your password.
-"#;
-
-const HELP_RSTUDIO: &str = r#"
-DESCRIPTION:
-    Start RStudio with the specified R version.
-
-    For renv lock files, rig checks the `renv.lock` file for the required
-    R version. If the same exact version is not installed, then rig chooses
-    the latest version with the same major and minor components. If no such
-    version is available, rig throws an error.
-
-    On macOS arm64 computers rig prefers arm64 R, unless an exact version
-    match is only available with x86_64 R.
-
-EXAMPLES:
-    # With default R version
-    rig rstudio
-
-    # With another R version
-    rig rstudio 4.0
-
-    # Open project with default R version
-    rig rstudio cli.Rproj
-
-    # Open renv project with the R version specified in the lock file
-    rig rstudio projects/myproject/renv.lock
-
-    # Open RStudio project with specified R version, either is good
-    rig rstudio 4.0 cli.Rproj
-    rig rstudio cli.Rproj 4.0
-"#;
-
-const HELP_SYSREQS: &str = r#"
-DESCRIPTION:
-    Manage system libraries and tools. This currently includes a very
-    restricted set of tools, that are needed for running `R CMD check`.
-    Run `rig sysreqs list` for a complete list.
-"#;
+const HELP_DEFAULT: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Print or set the default R version. The default R version is the one that
+  is started with the `R` command, usually via the `/usr/local/bin/R`
+  symbolic link.
+
+  Call without any arguments to see the current default. Call with the
+  version number/name to set the default. Before setting a default, you
+  can call `rig list` to see the installed R versions.
+
+  The default R version is set by updating the symbolic link at
+  `/Library/Frameworks/R.framework/Versions/Current` and pointing it to the
+  specified R version.
+
+  This command can change the default version without `sudo` as long as
+  the user is in the `admin` group. Otherwise you need to run it as
+  `sudo rig default ...`.
+
+  You don't need to update the default R version to just run a non-default R
+  version. You can use the `R-<ver>` links, see `rig system make-links`.
+
+  `rig switch` is an alias of `rig default`.";
+
+const HELP_DEFAULT_EXAMPLES: &str = "\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
+  # Query default R version
+  rig default
+
+  # Set the default version
+  rig default 4.1";
+
+const HELP_LIST: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  List installed R versions from `/Library/Framework/R.framework/Versions`.
+  It does _not_ check if they are working properly.
+
+  `rig ls` is an alias.";
+
+const HELP_ADD: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Download and install an R version, from the official sources.
+  It keeps the already installed R versions, except versions within the
+  same minor branch, see below.
+
+  NOTE: it is best to quit from all currently running R sessions before
+  adding new R versions. The newly added R version will be the default
+  after the installation. If you don't want that, call `rig default`.
+
+  The desired R version can be specified in various ways:
+  - `rig add devel` adds the latest available development version,
+  - `rig add next` is the next version (patched, alpha, beta, rc, etc.),
+  - `rig add release` adds the latest release.
+  - `rig add x.y.z` adds a specific version.
+  - `rig add x.y` adds the latest release within the `x.y` minor branch.
+  - `rig add oldrel/n` adds the latest release within the `n`th previous
+    minor branch (`oldrel` is the same as `oldrel/1`).
+  - `rig add <url>` uses a `.pkg` installer from `<url>`.
+
+  Usually you need to run this command with `sudo`: `sudo rig add ...`,
+  otherwise rig will need to ask for your password.
+
+  On macOS rig cannot add multiple R versions from the same minor branch.
+  E.g. it is not possible to have R 4.1.1 and R 4.1.2 installed at the
+ same time. Adding one of them will automatically remove the other.
+
+  `rig add` will automatically call `rig system forget` before the
+  installation, to make sure that already installed R versions are kept.
+  It will also call the following rig command after the installation:
+  - `rig system forget`
+  - `rig system fix-permissions`
+  - `rig system make-orthogonal`
+  - `rig system create-lib`
+  - `rig system make-links`
+  See their help pages for details.";
+
+const HELP_ADD_EXAMPLES: &str = "\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
+  # Add the latest development snapshot
+  rig add devel
+
+  # Add the latest release
+  rig add release
+
+  # Install specific version
+  rig add 4.1.2
+
+  # Install latest version within a minor branch
+  rig add 4.1
+
+  # Install arm64 build of R (default on arm64 macs)
+  rig add -a arm64 release
+
+  # Install x86_64 build of R (default on x86_64 macs)
+  rig add -a x86_64 release";
+
+const HELP_RM: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Remove an R installation. It keeps the users' package libraries.
+  It automatically calls `rig system forget` before removing the files.
+
+  Usually you need to run this command with `sudo`: `sudo rig rm ...`,
+  otherwise rig will ask for your password.";
+
+const HELP_SYSTEM: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Various commands to modify and configure the installed R versions.
+  See their help pages for details. E.g. run `rig system make-links --help`.";
+
+const HELP_SYSTEM_ORTHO: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Make the current R installations orthogonal. This allows running multiple
+  R versions at the same time, as long as they are started with their
+  quick links (see `rig system make-links --help`). For example you
+  can run a script using R 4.1.x in one terminal:
+
+  R-4.1 -q -f script1.R
+
+  while running another script using R 4.0.x in another terminal:
+
+  R-4.0 -q -f script2.R
+
+  `rig add` runs `rig system make-orthogonal`, so if you only use rig to
+  install R, then you do not need to run it manually.
+
+  This command probably needs `sudo`: `sudo rig system make-orthogonal`,
+  otherwise rig will aks for your password.";
+
+const HELP_SYSTEM_LINKS: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Create quick links in `/usr/local/bin` for the current R installations.
+  These let you directly run a specific R version. E.g. `R-4.1` will start
+  R 4.1.x.
+
+  `rig add` runs `rig system make-links`, so if you only use rig to
+  install R, then you do not need to run it manually.
+
+  This command probably needs `sudo`: `sudo rig system make-links`,
+  otherwise rig will ask for your password.";
+
+const HELP_SYSTEM_ADDPAK: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Install/update pak for one or more R versions.
+
+  * If `--all` is specified, then it installs pak for all current R
+    installations.
+  * If one or more R versions are specified, then it installs pak for
+    those.
+  * If no R versions are specified, then it installs pak for the default
+    R installation (see `rig default`).";
+
+const HELP_SYSTEM_FIXPERMS: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Update the permissions of the current R versions, so only the
+  administrator can install R packages into the system library.
+  Together with `rig system create-lib` this facilitates keeping
+  additional packages in a user library, instead of the system library.
+
+  `rig add` runs `rig system fix-permissions`, so if you only use rig to
+  install R, then you do not need to run it manually.
+
+  This command probably needs `sudo`: `sudo rig system fix-permissions`,
+  otherwise rig will ask for your password.";
+
+const HELP_SYSTEM_FORGET: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Tell macOS to forget about the currently installed R versions.
+  This is needed to have multiple R installations at the same time.
+
+  `rig add` runs `rig system forget` before and after the installation,
+  so if you only use rig to install R, then you don't need to run this
+  command manually.
+
+  This command probably needs `sudo`: `sudo rig system forget`, otherwise
+  rig will ask for your password.";
+
+const HELP_SYSTEM_NO_OPENMP: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Remove -fopenmp flags from the R configuration, to make R work with
+  the Apple compilers, instead of CRAN's custom compilers. This is only
+  needed for R 3.6.x and before.
+
+  `rig add` runs `rig system no-openmp` after the installation, so if
+  only use rig to install R, then you don't need to run this command
+  manually.
+
+  This command probably needs `sudo`: `sudo rig system no-openmp`,
+  otherwise rig will ask for your password.";
+
+const HELP_SYSTEM_ALLOW_DEBUGGER: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Update the entitlements of the R process to allow debuggers. It adds
+  the `get-task-allow` entitlement to the R binary. This is only needed
+  for R installers 3.6 and later, previous versions are not signed.
+  Call `R -d lldb` to start `lldb` on `R`. (Or `R-x.y -d lldb` if you
+  want a non-default version.)
+
+  See also `rig system allow-debugger-rstudio`, which does the same for
+  R running in RStudio.
+
+  This command is experimental. Please let us know at
+  https://github.com/r-lib/rig/issues if it does not work as
+  expected.
+
+  This command probably needs `sudo`: `sudo rig system allow-debugger`,
+  otherwise rig will ask for your password.";
+
+const HELP_SYSTEM_ALLOW_DEBUGGER_RSTUDIO: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Update the entitlements of RStudio R process to allow debuggers. It adds
+  the `get-task-allow` entitlement to the `rsession` (and `rsession-arm64`
+  on arm64 hardware) binary.
+
+  See also `rig system allow-debugger`, which does the same for
+  R running outside of RStudio.
+
+  This command is experimental. Please let us know at
+  https://github.com/r-lib/rig/issues if it does not work as
+  expected.
+
+  This command probably needs `sudo`: `sudo rig system allow-debugger`,
+  otherwise rig will ask for your password.";
+
+const HELP_SYSTEM_ALLOW_CORE_DUMPS: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Update the entitlements of the R process to allow core dumps. This
+  command is similar to `rig system allow-debugger` but it also makes
+  sure that the `/cores` directory of core dumps is writeable by the
+  current user. Don't forget to call `ulimit -c unlimited` from the
+  same shell before starting R.
+
+  This command is experimental. Please let us know at
+  https://github.com/r-lib/rig/issues if it does not work as
+  expected.
+
+  This command probably needs `sudo`: `sudo rig system allow-core-dumps`,
+  otherwise rig will ask for your password.";
+
+const HELP_RSTUDIO: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Start RStudio with the specified R version.
+
+  For renv lock files, rig checks the `renv.lock` file for the required
+  R version. If the same exact version is not installed, then rig chooses
+  the latest version with the same major and minor components. If no such
+  version is available, rig throws an error.
+
+  On macOS arm64 computers rig prefers arm64 R, unless an exact version
+  match is only available with x86_64 R.
+
+\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
+  # With default R version
+  rig rstudio
+
+  # With another R version
+  rig rstudio 4.0
+
+  # Open project with default R version
+  rig rstudio cli.Rproj
+
+  # Open renv project with the R version specified in the lock file
+  rig rstudio projects/myproject/renv.lock
+
+  # Open RStudio project with specified R version, either is good
+  rig rstudio 4.0 cli.Rproj
+  rig rstudio cli.Rproj 4.0";
+
+const HELP_SYSREQS: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Manage system libraries and tools. This currently includes a very
+  restricted set of tools, that are needed for running `R CMD check`.
+  Run `rig sysreqs list` for a complete list.";
