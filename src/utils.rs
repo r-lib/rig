@@ -240,3 +240,34 @@ pub fn escape_json(input: &str) -> String {
         .replace("\n", "\\n")
         .to_string()
 }
+
+pub fn unset_r_envvars() {
+    let evs = vec![
+        "R_ARCH",
+        "R_BROWSER",
+        "R_BZIPCMD",
+        "R_COMPILED_BY",
+        "R_DOC_DIR",
+        "R_GZIPCMD",
+        "R_HOME",
+        "R_INCLUDE_DIR",
+        "R_LIBS_SITE",
+        "R_LIBS_USER",
+        "R_PAPERSIZE",
+        "R_PDFVIEWER",
+        "R_PLATFORM",
+        "R_PRINTCMD",
+        "R_RD4PDF",
+        "R_SESSION_TMPDIR",
+        "R_SHARE_DIR",
+        "R_STRIP_SHARED_LIB",
+        "R_STRIP_STATIC_LIB",
+        "R_SYSTEM_ABI",
+        "R_TEXI2DVICMD",
+        "R_UNZIPCMD",
+        "R_ZIPCMD"
+    ];
+    for ev in evs {
+        std::env::remove_var(ev);
+    }
+}

@@ -37,6 +37,7 @@ mod utils;
 
 use library::*;
 use sysreqs::*;
+use utils::unset_r_envvars;
 
 use crate::common::*;
 
@@ -50,6 +51,7 @@ fn main() {
 }
 
 fn main_() -> i32 {
+    unset_r_envvars();
     let args = parse_args();
 
     // -- set up logger output --------------------------------------------
