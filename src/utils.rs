@@ -265,6 +265,7 @@ pub fn unset_r_envvars() {
         "R_SYSTEM_ABI",
         "R_TEXI2DVICMD",
         "R_UNZIPCMD",
+        "R_USER",
         "R_ZIPCMD"
     ];
     for ev in evs {
