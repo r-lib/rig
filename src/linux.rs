@@ -42,6 +42,8 @@ const DEBIAN_9_URL: &str = "https://cdn.rstudio.com/r/debian-9/pkgs/r-{}_1_amd64
 const DEBIAN_10_URL: &str = "https://cdn.rstudio.com/r/debian-10/pkgs/r-{}_1_amd64.deb";
 #[cfg(target_arch = "x86_64")]
 const DEBIAN_11_URL: &str = "https://cdn.rstudio.com/r/debian-11/pkgs/r-{}_1_amd64.deb";
+#[cfg(target_arch = "x86_64")]
+const DEBIAN_12_URL: &str = "https://cdn.rstudio.com/r/debian-12/pkgs/r-{}_1_amd64.deb";
 
 #[cfg(target_arch = "aarch64")]
 const UBUNTU_1804_URL: &str =
@@ -61,6 +63,9 @@ const DEBIAN_10_URL: &str =
 #[cfg(target_arch = "aarch64")]
 const DEBIAN_11_URL: &str =
     "https://github.com/r-hub/R/releases/download/v{}/R-rstudio-debian-11-{}_1_arm64.deb";
+#[cfg(target_arch = "aarch64")]
+const DEBIAN_12_URL: &str =
+    "https://github.com/r-hub/R/releases/download/v{}/R-rstudio-debian-12-{}_1_arm64.deb";
 
 const UBUNTU_1804_RSPM: &str = "https://packagemanager.posit.co/cran/__linux__/bionic/latest";
 const UBUNTU_2004_RSPM: &str = "https://packagemanager.posit.co/cran/__linux__/focal/latest";
@@ -677,7 +682,7 @@ pub fn detect_linux() -> Result<LinuxVersion, Box<dyn Error>> {
             "Unsupported distro: {} {}, only {} are supported currently",
             &id,
             &ver,
-            "Ubuntu 18.04, 20.04, 22.04 and Debian 9-11"
+            "Ubuntu 20.04, 22.04 and Debian 10-11"
         );
     }
 
@@ -725,6 +730,13 @@ fn list_supported_distros() -> Vec<LinuxVersion> {
             distro: "debian".to_string(),
             version: "11".to_string(),
             url: DEBIAN_11_URL.to_string(),
+            rspm: false,
+            rspm_url: "".to_string(),
+        },
+        LinuxVersion {
+            distro: "debian".to_string(),
+            version: "12".to_string(),
+            url: DEBIAN_12_URL.to_string(),
             rspm: false,
             rspm_url: "".to_string(),
         },

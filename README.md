@@ -149,9 +149,9 @@ Supported Linux distributions:
 
 - Ubuntu LTS from
   [r-builds](https://github.com/rstudio/r-builds#r-builds), currently
-  18.04, 20.04, 22.04.
+  20.04, 22.04.
 - Debian from [r-builds](https://github.com/rstudio/r-builds#r-builds),
-  currently 9, 10 and 11.
+  currently 10, 11 and 12.
 
 Other Linux distributions are coming soon.
 
