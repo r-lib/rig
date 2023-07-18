@@ -554,6 +554,36 @@ pub fn rig_app() -> Command {
         rig = rig.subcommand(cmd_sysreqs);
     }
 
+    let cmd_run = Command::new("run")
+        .about("Run R, an R script or an R project")
+        .long_about(HELP_RUN)
+        .arg(
+            Arg::new("r-version")
+                .help("R version to use")
+                .long("r-version")
+                .required(false)
+        )
+        .arg(
+            Arg::new("eval")
+                .help("R expression to evaluate")
+                .long("eval")
+                .num_args(1)
+                .required(false)
+        )
+        .arg(
+            Arg::new("script")
+                .help("R script file to run")
+                .long("script")
+                .num_args(1)
+                .required(false)
+        )
+        .arg(
+            Arg::new("command")
+                .help("R script or project to run, with parameters")
+                .required(false)
+                .action(clap::ArgAction::Append),
+        );
+
     rig = rig.arg(
         Arg::new("quiet")
             .help("Suppress output (overrides `--verbose`)")
@@ -586,6 +616,7 @@ pub fn rig_app() -> Command {
     .subcommand(cmd_rstudio)
     .subcommand(cmd_library)
     .subcommand(cmd_available)
+    .subcommand(cmd_run)
     .after_help(HELP_EXAMPLES);
 
     rig

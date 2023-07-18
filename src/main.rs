@@ -8,6 +8,9 @@ use tabular::*;
 mod args;
 use args::*;
 
+mod scrun;
+use scrun::*;
+
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "macos")]
@@ -109,6 +112,7 @@ fn main__(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         Some(("library", sub)) => sc_library(sub, args),
         Some(("sysreqs", sub)) => sc_sysreqs(sub, args),
         Some(("available", sub)) => sc_available(sub, args),
+        Some(("run", sub)) => sc_run(sub, args),
         _ => Ok(()), // unreachable
     }
 }

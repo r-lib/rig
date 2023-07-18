@@ -67,3 +67,9 @@ const HELP_SYSTEM_LIB: &str = "
 
   `rig add` runs `rig system create-lib`, so if you only use rig to
   install R, then you do not need to run it manually.";
+
+const HELP_RUN: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Run R, an R script or an R project, using the selected R version.
+
+  TODO";
