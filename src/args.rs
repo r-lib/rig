@@ -201,11 +201,13 @@ pub fn rig_app() -> Command {
     cmd_available = cmd_available.arg(
         Arg::new("json")
             .help("JSON output")
+            .num_args(0)
             .long("json")
             .required(false)
     )
     .arg(
         Arg::new("all")
+            .num_args(0)
             .help("List all available versions.")
             .long("all")
             .required(false),
