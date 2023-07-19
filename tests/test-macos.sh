@@ -141,7 +141,7 @@ teardown() {
         run sudo rig add -a x86_64 3.5
         [[ "$status" -eq 0 ]]
         run rig ls
-        echo "$output" | grep -q "[* ] 3[.]4"
+        echo "$output" | grep -q "[* ] 3[.]5"
     fi
 
     libdir=`R-3.5 -s -e 'cat(path.expand(Sys.getenv("R_LIBS_USER")))'`
