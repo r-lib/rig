@@ -137,17 +137,17 @@ teardown() {
     run R-4.1 -q -s -e 'pak::lib_status()'
     [[ "$status" -eq 0 ]]
 
-    if ! rig ls | grep -q '^[* ] 3.4'; then
-        run sudo rig add -a x86_64 3.4
+    if ! rig ls | grep -q '^[* ] 3.5'; then
+        run sudo rig add -a x86_64 3.5
         [[ "$status" -eq 0 ]]
         run rig ls
         echo "$output" | grep -q "[* ] 3[.]4"
     fi
 
-    libdir=`R-3.4 -s -e 'cat(path.expand(Sys.getenv("R_LIBS_USER")))'`
+    libdir=`R-3.5 -s -e 'cat(path.expand(Sys.getenv("R_LIBS_USER")))'`
     [[ "$libdir" == "" ]] && false
     run sudo rm -rf "$libdir"
-    run sudo rig system add-pak 3.4
+    run sudo rig system add-pak 3.5
     [[ "$status" -eq 0 ]]
     uid=`stat -f "%u" "$libdir"`
     [[ "$uid" -eq "`id -u`" ]]
