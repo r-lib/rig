@@ -842,7 +842,7 @@ pub fn check_has_pak(ver: &String) -> Result<bool, Box<dyn Error>> {
     let ver = ver + ".0";
     let v350 = Version::parse("3.5.0")?;
     let vv = Version::parse(&ver)?;
-    if vv <= v350 {
+    if vv < v350 {
         bail!("Pak is only available for R 3.5.0 or later");
     }
     Ok(true)
