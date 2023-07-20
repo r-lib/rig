@@ -86,6 +86,13 @@ pub fn rig_app() -> Command {
                 .long("json")
                 .num_args(0)
                 .required(false),
+        )
+        .arg(
+            Arg::new("plain")
+                .help("plain output, only the version names, one per line")
+                .long("plain")
+                .num_args(0)
+                .required(false),
         );
 
     let mut cmd_add = Command::new("add")

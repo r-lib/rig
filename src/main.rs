@@ -184,7 +184,15 @@ fn sc_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error
         }
     }
 
-    if args.get_flag("json") || mainargs.get_flag("json") {
+    if args.get_flag("plain") {
+        if args.get_flag("json") || mainargs.get_flag("json") {
+            bail!("the argument '--plain' cannot be used with '--json'");
+        }
+        for ver in vers.iter() {
+            println!("{}", ver.name);
+        }
+
+    } else if args.get_flag("json") || mainargs.get_flag("json") {
         println!("[");
         let num = vers.len();
         for (idx, ver) in vers.iter().enumerate() {
