@@ -116,6 +116,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     set_default_if_none(dirname.to_string())?;
 
     library_update_rprofile(&dirname.to_string())?;
+    check_usr_bin_sed(&dirname.to_string())?;
     sc_system_make_links()?;
     match alias {
         Some(alias) => add_alias(&dirname, &alias)?,
@@ -807,4 +808,49 @@ pub fn get_system_profile(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
 pub fn check_has_pak(_rver: &str) -> Result<(), Box<dyn Error>> {
     // TODO: actually check. Right now the install will fail
     Ok(())
+}
+
+// /usr/bin/sed might not be available, and R will need it (issue 119#)
+
+fn check_usr_bin_sed(rver: &str) -> Result<(), Box<dyn Error>> {
+    let usrbinsed = Path::new("/usr/bin/sed");
+    let binsed = Path::new("/bin/sed");
+
+    debug!("Checking if SED = /usr/bin/sed if OK");
+
+    // in these cases we don't need to or cannot do anything
+    if usrbinsed.exists() {
+        debug!("/usr/bin/sed exists giving up");
+        return Ok(());
+    }
+    if ! binsed.exists() {
+        debug!("/bin/sed missing, giving up");
+        return Ok(());
+    }
+
+    let makeconf = Path::new(R_ROOT)
+        .join(rver)
+        .join("lib/R/etc/Makeconf");
+    let lines: Vec<String> = match read_lines(&makeconf) {
+        Ok(x) => x,
+        Err(_) => {
+            // this should not happen, but if it does, then
+            // something weird is going on and we'll bail out
+            // silently
+            debug!("Cannot read Makeconf, giving up");
+            return Ok(());
+        }
+    };
+    let re_sed = Regex::new("^SED = /usr/bin/sed$")?;
+    let idx_sed: Vec<usize> = grep_lines(&re_sed, &lines);
+    if idx_sed.len() == 0 {
+        debug!("SED is not set in Makeconf, bailing.");
+        return Ok(());
+    }
+
+    bail!("This version of R was compiled using sed at /usr/bin/sed\n        \
+           but it is missing on your system.\n        \
+           Run `ln -s /bin/sed /usr/bin/sed` as the root user to fix this,\n        \
+           and then run rig again."
+        );
 }
