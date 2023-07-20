@@ -418,9 +418,8 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
     let ver = check_installed(&ver.to_string())?;
 
     // Remove current link
-    if Path::new(R_CUR).exists() {
-        std::fs::remove_file(R_CUR)?;
-    }
+    // We do not check if it exists, because that follows the symlink
+    std::fs::remove_file(R_CUR).ok();
 
     // Add current link
     let path = Path::new(R_ROOT).join(ver);
@@ -428,9 +427,7 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
 
     // Remove /usr/local/bin/R link
     let r = Path::new("/usr/local/bin/R");
-    if r.exists() {
-        std::fs::remove_file(r)?;
-    }
+    std::fs::remove_file(r).ok();
 
     // Add /usr/local/bin/R link
     let cr = Path::new("/opt/R/current/bin/R");
@@ -438,9 +435,7 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
 
     // Remove /usr/local/bin/Rscript link
     let rs = Path::new("/usr/local/bin/Rscript");
-    if rs.exists() {
-        std::fs::remove_file(rs)?;
-    }
+    std::fs::remove_file(rs).ok();
 
     // Add /usr/local/bin/Rscript link
     let crs = Path::new("/opt/R/current/bin/Rscript");
