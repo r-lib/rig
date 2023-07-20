@@ -107,11 +107,34 @@ fn r_sudo(version: &str, command: &str, user: &User)
 
     let rbin = R_ROOT.to_string() + "/" + &R_BINPATH.replace("{}", version);
     let username = user.user.to_string();
+    let mut args:Vec<OsString> = vec![username.into()];
+
+    // Try to avoid using zsh, because if has issue with arguments (#125)
+
+    let bash = std::path::Path::new("/bin/bash");
+    let sh = std::path::Path::new("/bin/sh");
+    if bash.exists() {
+        debug!("Switching to /bin/bash (issue #125)");
+        let mut args2: Vec<OsString> = vec!["-s".into(), "/bin/bash".into()];
+        args.append(&mut args2);
+    } else if sh.exists() {
+        debug!("Switching to /bin/sh (issue #125)");
+        let mut args2: Vec<OsString> = vec!["-s".into(), "/bin/sh".into()];
+        args.append(&mut args2);
+    } else {
+        debug!("Running in default shell, might fail in zsh, but /bin/bash and /bin/sh are not available (see issue #125)");
+    }
+
+    let mut args2: Vec<OsString> = vec![
+        "--".into(), rbin.into(), "-s".into(),
+        "--vanilla".into(), "-e".into(), command.into()
+    ];
+
+    args.append(&mut args2);
 
     run(
         "su".into(),
-        vec![username.into(), "--".into(), rbin.into(), "-s".into(),
-             "--vanilla".into(), "-e".into(), command.into()],
+        args,
         &("R ".to_string() + version)
     )
 }
