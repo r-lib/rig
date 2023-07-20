@@ -851,11 +851,18 @@ pub fn check_has_pak(ver: &String) -> Result<bool, Box<dyn Error>> {
 pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
     let ver = check_installed(&ver.to_string())?;
     // Maybe it does not exist, ignore error here
-    match std::fs::remove_file(R_CUR) {
-        _ => {}
-    };
+    std::fs::remove_file(R_CUR).ok();
     let path = Path::new(R_ROOT).join(ver);
-    std::os::unix::fs::symlink(&path, R_CUR)?;
+    match std::os::unix::fs::symlink(&path, R_CUR) {
+        Ok(_) => {},
+        Err(_) => {
+            bail!(
+                "Could not change the default R version. :( To be able to\n        \
+                change the default R version, you need to be an admin.\n        \
+                See the 'Users & Groups' section in the 'System Settings' app."
+            );
+        }
+    };
 
     let r = Path::new("/usr/local/bin/R");
     if !r.exists() {
