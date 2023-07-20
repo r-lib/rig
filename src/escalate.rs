@@ -41,7 +41,15 @@ pub fn escalate(task: &str) -> Result<(), Box<dyn Error>> {
             "http_proxy",
             "https_proxy",
             "HTTP_PROXY",
-            "HTTPS_PROXY"
+            "HTTPS_PROXY",
+            "LANG",
+            "LC_ALL",
+            "LC_COLLATE",
+            "LC_CTYPE",
+            "LC_MESSAGES",
+            "LC_MONETARY",
+            "LC_NUMERIC",
+            "LC_TIME",
         ])?;
     }
 
