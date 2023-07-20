@@ -35,7 +35,14 @@ pub fn escalate(task: &str) -> Result<(), Box<dyn Error>> {
             "Running `sudo` for {}. This might need your password.",
             task
         );
-        with_env(&["RIG_HOME", "RUST_BACKTRACE"])?;
+        with_env(&[
+            "RIG_HOME",
+            "RUST_BACKTRACE",
+            "http_proxy",
+            "https_proxy",
+            "HTTP_PROXY",
+            "HTTPS_PROXY"
+        ])?;
     }
 
     Ok(())
