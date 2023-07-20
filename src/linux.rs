@@ -320,7 +320,7 @@ pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
             None => continue,
         };
         if re.is_match(&fnamestr) {
-	    trace!("Checking {}", path.display());
+	        trace!("Checking {}", path.display());
             match std::fs::read_link(&path) {
                 Err(_) => debug!("{} is not a symlink", path.display()),
                 Ok(target) => {
@@ -332,7 +332,7 @@ pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
                         match version {
                             None => continue,
                             Some(version) => {
-				trace!("{} -> {}", fnamestr, version);
+		                        trace!("{} -> {}", fnamestr, version);
                                 let als = Alias {
                                     alias: fnamestr[2..].to_string(),
                                     version: version.to_string()
@@ -416,29 +416,36 @@ pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
 pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
     escalate("setting the default R version")?;
     let ver = check_installed(&ver.to_string())?;
+    trace!("Setting default version to {}", ver);
 
     // Remove current link
     // We do not check if it exists, because that follows the symlink
+    trace!("Removing current at {}", R_CUR);
     std::fs::remove_file(R_CUR).ok();
 
     // Add current link
     let path = Path::new(R_ROOT).join(ver);
+    trace!("Adding symlink at {}", R_CUR);
     std::os::unix::fs::symlink(&path, R_CUR)?;
 
     // Remove /usr/local/bin/R link
     let r = Path::new("/usr/local/bin/R");
+    trace!("Removing link at {}", r.display());
     std::fs::remove_file(r).ok();
 
     // Add /usr/local/bin/R link
     let cr = Path::new("/opt/R/current/bin/R");
+    trace!("Adding /usr/local/bin/R link");
     std::os::unix::fs::symlink(&cr, &r)?;
 
     // Remove /usr/local/bin/Rscript link
     let rs = Path::new("/usr/local/bin/Rscript");
+    trace!("Removing /usr/local/bin/Rscript link");
     std::fs::remove_file(rs).ok();
 
     // Add /usr/local/bin/Rscript link
     let crs = Path::new("/opt/R/current/bin/Rscript");
+    trace!("Adding /usr/local/bin/Rscript link");
     std::os::unix::fs::symlink(&crs, &rs)?;
 
     Ok(())
