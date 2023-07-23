@@ -570,22 +570,22 @@ pub fn sc_system_allow_debugger_rstudio(_args: &ArgMatches) -> Result<(), Box<dy
 }
 
 pub fn sc_system_make_orthogonal(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    // Nothing to do on Windows
+    // Nothing to do on Linux
     Ok(())
 }
 
 pub fn sc_system_fix_permissions(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    // Nothing to do on Windows
+    // Nothing to do on Linux
     Ok(())
 }
 
 pub fn sc_system_forget() -> Result<(), Box<dyn Error>> {
-    // Nothing to do on Windows
+    // Nothing to do on Linux
     Ok(())
 }
 
 pub fn sc_system_no_openmp(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    // Nothing to do on Windows
+    // Nothing to do on Linux
     Ok(())
 }
 
