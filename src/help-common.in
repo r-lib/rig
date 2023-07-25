@@ -72,4 +72,25 @@ const HELP_RUN: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
   Run R, an R script or an R project, using the selected R version.
 
-  TODO";
+  All of these examples allow an `--r-version` argument, to use a specific
+  R version.
+
+  Start R:
+    rig run
+  Run an R script:
+    rig run -f <script-file>
+  Evaluate an R expression:
+    rig run -e <expression>
+  Run a script from a package (from its `exec` directory):
+    rig run <pkg>::<script>
+  Run an R app:
+    rig run <path-to-app>
+
+  Currently supported apps are:
+  - Plumber APIs,
+  - Shiny apps,
+  - Quarto dcouments embedding Shiny apps,
+  - Quarto documents,
+  - Rmd documents,
+  - Rmd documents embedding Shiny apps,
+  - Static web sites.";

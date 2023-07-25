@@ -24,6 +24,15 @@ pub fn rig_app() -> Command {
     let _arch_x86_64: &'static str = "x86_64";
     let _arch_arm64: &'static str = "arm64";
     let mut _default_arch: &'static str = "";
+    let app_types = [
+        "api",
+        "shiny",
+        "quarto-shiny",
+        "rmd-shiny",
+        "quarto-static",
+        "rmd-static",
+        "static"
+    ];
 
     #[cfg(target_os = "macos")]
     {
@@ -560,12 +569,61 @@ pub fn rig_app() -> Command {
         .arg(
             Arg::new("r-version")
                 .help("R version to use")
+                .short('r')
                 .long("r-version")
                 .required(false)
         )
         .arg(
+            Arg::new("app-type")
+                .help("Explicitly specify app type to run")
+                .short('t')
+                .long("app-type")
+                .required(false)
+                .value_parser(app_types)
+                .conflicts_with("eval")
+                .conflicts_with("script")
+        )
+        .arg(
+            Arg::new("dry-run")
+                .help("Show the command, but do not run it")
+                .long("dry-run")
+                .required(false)
+                .action(clap::ArgAction::SetTrue)
+        )
+        .arg(
+            Arg::new("startup")
+                .help("Print R startup message")
+                .long("startup")
+                .action(clap::ArgAction::SetTrue)
+                .required(false)
+        )
+        .arg(
+            Arg::new("no-startup")
+                .help("Do not print R startup message")
+                .long("no-startup")
+                .action(clap::ArgAction::SetTrue)
+                .required(false)
+                .conflicts_with("startup")
+        )
+        .arg(
+            Arg::new("echo")
+                .help("Print input to R")
+                .long("echo")
+                .action(clap::ArgAction::SetTrue)
+                .required(false)
+        )
+        .arg(
+            Arg::new("no-echo")
+                .help("Do not print input to R")
+                .long("no-echo")
+                .action(clap::ArgAction::SetTrue)
+                .required(false)
+                .conflicts_with("echo")
+        )
+        .arg(
             Arg::new("eval")
                 .help("R expression to evaluate")
+                .short('e')
                 .long("eval")
                 .num_args(1)
                 .required(false)
@@ -573,15 +631,17 @@ pub fn rig_app() -> Command {
         .arg(
             Arg::new("script")
                 .help("R script file to run")
+                .short('f')
                 .long("script")
                 .num_args(1)
                 .required(false)
+                .conflicts_with("eval")
         )
         .arg(
             Arg::new("command")
                 .help("R script or project to run, with parameters")
                 .required(false)
-                .action(clap::ArgAction::Append),
+                .action(clap::ArgAction::Append)
         );
 
     rig = rig.arg(
