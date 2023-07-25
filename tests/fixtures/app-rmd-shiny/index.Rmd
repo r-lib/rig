@@ -1,0 +1,14 @@
+---
+title: "Shiny Document"
+output: html_document
+runtime: shiny
+---
+
+```{r, echo=FALSE}
+library(shiny)
+numericInput("rows", "How many cars?", 5)
+
+renderTable({
+  head(mtcars, input$rows)
+})
+```
