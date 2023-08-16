@@ -106,10 +106,6 @@ const HELP_ADD: &str = "
   It keeps the already installed R versions, except versions within the
   same minor branch, see below.
 
-  NOTE: it is best to quit from all currently running R sessions before
-  adding new R versions. The newly added R version will be the default
-  after the installation. If you don't want that, call `rig default`.
-
   The desired R version can be specified in various ways:
   - `rig add devel` adds the latest available development version,
   - `rig add next` is the next version (patched, alpha, beta, rc, etc.),
