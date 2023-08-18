@@ -991,12 +991,21 @@ pub fn get_rstudio_config_path() -> Result<std::path::PathBuf, Box<dyn Error>> {
 
 pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>, arg: Option<&OsStr>)
                    -> Result<(), Box<dyn Error>> {
+    debug!("Looking into starting RStudio");
+
+    let def = sc_get_default()?;
+
     // we only need to restore if 'ver' is given, there is a default and
     // they are different
-    let def = sc_get_default()?;
-    let restore = match (version, def) {
+    let restore = match (version, &def) {
         (Some(v), Some(d)) => v != d,
         _ => false,
+    };
+
+    // def is None if there is no default R version set
+    let version = match version {
+	Some(x) => Some(x.to_string()),
+	None    => def
     };
 
     if let Some(_) = version {
@@ -1015,7 +1024,34 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>, arg: Option<&Os
     if let Some(version) = version {
         let ver = version.to_string();
         let ver = check_installed(&ver)?;
+	debug!("Updating R version in registry to {}.", ver);
         update_registry_default_to(&ver)?;
+
+	// Update RStudio config, this is needed for newer RStudio versions.
+        let config_path = get_rstudio_config_path();
+	if config_path.is_ok() {
+	    let mut config_path = config_path.unwrap();
+	    config_path.push("config.json");
+	    if config_path.exists() {
+		let re = Regex::new(
+		    "\"rExecutablePath\":\\s*\"C:\\\\\\\\Program Files\\\\\\\\R\\\\\\\\R-.*\\\\\\\\bin\\\\\\\\x64\\\\\\\\Rterm.exe\""
+		).unwrap();
+		let sub = "\"rExecutablePath\": \"C:\\\\Program Files\\\\R\\\\R-".to_string() +
+		    &ver + "\\\\bin\\\\x64\\\\Rterm.exe\"";
+		match replace_in_file(&config_path, &re, &sub) {
+		    Ok(_) => {
+			debug!("Updated RStudio config at {}", config_path.display());
+		    },
+		    Err(x) => {
+			warn!(
+			    "Cannot update RStudio config file at {}: {}",
+			    config_path.display(),
+			    x.to_string()
+			);
+		    }
+		}
+	    }
+	}
     }
 
     info!("Running cmd.exe {}", osjoin(args.to_owned(), " "));
