@@ -199,10 +199,16 @@ const HELP_RSTUDIO: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
   Start RStudio with the specified R version.
 
-  Note that you need to set the default R version in RStudio to
-  \"Use your machine's default version\", either 64 bit (recommended) or
-  32 bit. This setting is in Tools -> Global Options -> Basic ->
-  General -> R version.
+  Note that on older RStudio versions (up to and including 2022.07.2) you
+  need to set the default R version in RStudio to \"Use your machine's
+  default version\", either 64 bit (recommended) or 32 bit. This
+  setting is in Tools -> Global Options -> Basic -> General -> R version.
+
+  For newer RStudio versions, `rig rstudio` overwrites the `config.json`
+  RStudio config file. (See `rig rstudio --config-path` for where this
+  file is located.) It does not restore this file, to avoid issues if
+  RStudio itself is also accessing it, which means that the next time you
+  start RStudio manually, it will keep using the same version.
 
   For renv lock files, rig checks the `renv.lock` file for the required
   R version. If the same exact version is not installed, then rig chooses
