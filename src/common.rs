@@ -164,6 +164,7 @@ pub fn sc_rstudio(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let mut ver: Option<&String> = args.get_one("version");
     let mut prj: Option<&String> = args.get_one("project-file");
 
+    #[cfg(target_os = "windows")]
     if args.get_flag("config-path") {
 	let cp = get_rstudio_config_path();
 	match cp {

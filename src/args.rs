@@ -428,9 +428,11 @@ pub fn rig_app() -> Command {
         );
     }
 
-    let cmd_rstudio = Command::new("rstudio")
+    let mut cmd_rstudio = Command::new("rstudio")
         .about("Start RStudio with specified R version")
-        .long_about(HELP_RSTUDIO)
+        .long_about(HELP_RSTUDIO);
+
+    cmd_rstudio = cmd_rstudio
         .arg(
             Arg::new("version")
                 .help("R version to start")
@@ -440,14 +442,19 @@ pub fn rig_app() -> Command {
             Arg::new("project-file")
                 .help("RStudio project file (.Rproj) to open")
                 .required(false),
-        )
-	.arg(
-	    Arg::new("config-path")
-		.help("Do not start RStudio, only print the path of the RStudio config directory")
-		.long("config-path")
-		.required(false)
-		.num_args(0)
-	);
+        );
+
+    #[cfg(target_os = "windows")]
+    {
+        cmd_rstudio = cmd_rstudio
+	    .arg(
+	        Arg::new("config-path")
+		    .help("Do not start RStudio, only print the path of the RStudio config directory")
+		    .long("config-path")
+		    .required(false)
+		    .num_args(0)
+	    );
+    }
 
     let cmd_library = Command::new("library")
         .about("Manage package libraries [alias: lib] (experimental)")
