@@ -12,10 +12,12 @@ use std::process::Command;
 use std::{thread, time};
 
 use clap::ArgMatches;
+use directories::BaseDirs;
 use remove_dir_all::remove_dir_all;
 use semver;
 use simple_error::{bail, SimpleError};
 use simplelog::*;
+use whoami::{hostname, username};
 use winreg::enums::*;
 use winreg::RegKey;
 
@@ -865,6 +867,126 @@ fn get_latest_install_path() -> Result<Option<String>, Box<dyn Error>> {
         }
     }
     Ok(None)
+}
+
+// All this is from https://github.com/rstudio/rstudio/blob/44f09c50d469a14d5a9c3840c7a239f3bf21ace9/src/cpp/core/system/Xdg.cpp#L85
+//
+// 1. RSTUDIO_CONFIG_HOME might point to the final path.
+// 2. XDG_CONFIG_HOME might point to the user config path (append RStudio).
+// 3. Otherwise query FOLDERID_RoamingAppData for the user config path.
+// 4. Or fall back to `~/.config` if that fails (it really should not).
+// 5. Set USER, HOME and HOSTNAME env vars for expansion.
+// 6. Expand env vars, both $ENV and ${ENV} types.
+// 7. Expand ~ to home dir
+//
+// 5-6 are only needed if the path has a '$' or '~' character.
+// 7 is only needed if the path has a '~' character or if it is empty.
+
+pub fn get_rstudio_config_path() -> Result<std::path::PathBuf, Box<dyn Error>> {
+    let mut final_path = true;
+    let mut xdg: Option<std::path::PathBuf> = None;
+
+    // RSTUDIO_CONFIG_HOME may point to the final path
+    match std::env::var("RSTUDIO_CONFIG_HOME") {
+	Ok(x)  => xdg = Some(std::path::PathBuf::from(x)),
+	Err(_) => { }
+    };
+
+    // XDG_CONFIG_HOME may point to the user config path
+    if xdg.is_none() {
+	final_path = false;
+	match std::env::var("XDG_CONFIG_HOME") {
+	    Ok(x) => {
+		let mut xdg2 = std::path::PathBuf::new();
+		xdg2.push(x);
+		xdg = Some(xdg2);
+	    },
+	    Err(_) => { }
+	};
+    }
+
+    // Get user config path from system
+    if xdg.is_none() {
+	if let Some(bd) = BaseDirs::new() {
+	    xdg = Some(std::path::PathBuf::from(bd.config_dir()));
+	}
+    }
+
+    // Fall back to `~/.config`
+    if xdg.is_none() {
+	xdg = Some(std::path::PathBuf::from("~/.config"));
+    }
+
+    // We have a path at this point
+    let xdg = xdg.unwrap();
+
+    // Set USER, HOME, HOSTNAME, for expansion, if needed
+    let mut path = match xdg.to_str() {
+	Some(x) => String::from(x),
+	None => bail!("RStudio config path cannot be represented as Unicode. :(")
+    };
+    let has_dollar = path.contains("$");
+    let empty = path.len() == 0;
+    let has_tilde = path.contains("~");
+
+    if has_dollar || empty || has_tilde {
+	match std::env::var("USER") {
+	    Ok(_) => { },
+	    Err(_) => {
+		let username = username();
+		std::env::set_var("USER", username);
+	    }
+	};
+    }
+
+    if has_dollar {
+	match std::env::var("HOME") {
+	    Ok(_) => { },
+	    Err(_) => {
+		let bd = BaseDirs::new();
+		match bd {
+		    Some(x) => {
+			std::env::set_var("HOME", x.home_dir().as_os_str());
+		    },
+		    None    => {
+			warn!("Cannot determine HOME directory");
+		    }
+		};
+	    }
+	};
+    }
+
+    if has_dollar {
+	match std::env::var("HOSTNAME") {
+	    Ok(_) => { },
+	    Err(_) => {
+		let hostname = hostname();
+		std::env::set_var("HOSTNAME", hostname);
+	    }
+	};
+    }
+
+    // Expand env vars
+    if has_dollar {
+	path = match shellexpand::env(&path) {
+	    Ok(x) => x.to_string(),
+	    Err(e) => {
+		bail!("RStudio config path contains unknown environment variable: {}", e.var_name);
+	    }
+	};
+    }
+
+    // Expand empty path and ~
+    if empty || has_tilde {
+	path = shellexpand::tilde(&path).to_string();
+    }
+
+    let mut xdg = std::path::PathBuf::from(path);
+    if !final_path {
+	xdg.push("RStudio");
+    }
+
+    Ok(xdg)
 }
 
 pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>, arg: Option<&OsStr>)

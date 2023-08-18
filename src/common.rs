@@ -164,6 +164,15 @@ pub fn sc_rstudio(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let mut ver: Option<&String> = args.get_one("version");
     let mut prj: Option<&String> = args.get_one("project-file");
 
+    if args.get_flag("config-path") {
+	let cp = get_rstudio_config_path();
+	match cp {
+	    Ok(x)  => println!("{}", x.display()),
+	    Err(x) => bail!("Error: {}", x.to_string())
+	};
+	return Ok(());
+    }
+
     if let Some(ver2) = ver {
         if ver2.ends_with("renv.lock") {
             let lockfile = PathBuf::new().join(ver2);
