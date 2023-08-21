@@ -391,6 +391,21 @@ pub fn rig_app() -> Command {
             .subcommand(cmd_system_allow_core_dumps);
     }
 
+    #[cfg(target_os = "linux")]
+    {
+        let cmd_system_detect_os = Command::new("detect-os")
+            .about("Detect operating system and distribution.")
+            .arg(
+                Arg::new("json")
+                    .help("JSON output")
+                    .long("json")
+                    .num_args(0)
+                    .required(false)
+            );
+
+        cmd_system = cmd_system.subcommand(cmd_system_detect_os);
+    }
+
     cmd_system = cmd_system
         .subcommand(cmd_system_links)
         .subcommand(cmd_system_lib)

@@ -579,6 +579,12 @@ pub fn sc_system_no_openmp(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+pub fn sc_system_detect_os(_args: &ArgMatches, _mainargs: &ArgMatches)
+                           -> Result<(), Box<dyn Error>> {
+    // Nothing to do on Windows
+    Ok(())
+}
+
 pub fn get_resolve(args: &ArgMatches) -> Result<Rversion, Box<dyn Error>> {
     let str = args.get_one::<String>("str").unwrap();
     let eps = vec![str.to_string()];

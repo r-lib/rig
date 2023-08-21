@@ -798,6 +798,12 @@ pub fn sc_system_update_rtools40() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+pub fn sc_system_detect_os(_args: &ArgMatches, _mainargs: &ArgMatches)
+                           -> Result<(), Box<dyn Error>> {
+    // Nothing to do on Windows
+    Ok(())
+}
+
 pub fn sc_rstudio_(version: Option<&str>,
                    project: Option<&str>,
                    arg: Option<&OsStr>)

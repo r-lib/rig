@@ -80,7 +80,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         println!("{}", uid);
     }
 
-    let linux = detect_linux()?;
+    let linux = detect_linux_old()?;
     let version = get_resolve(args)?;
     let alias = get_alias(args);
     let ver = version.version.to_owned();
@@ -368,7 +368,7 @@ fn version_from_link(pb: PathBuf) -> Option<String> {
 pub fn get_resolve(args: &ArgMatches) -> Result<Rversion, Box<dyn Error>> {
     let str = args.get_one::<String>("str").unwrap();
     let eps = vec![str.to_string()];
-    let me = detect_linux()?;
+    let me = detect_linux_old()?;
     let version = resolve_versions(
         eps,
         "linux".to_string(),
@@ -589,7 +589,7 @@ pub fn sc_system_no_openmp(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn detect_linux() -> Result<LinuxVersion, Box<dyn Error>> {
+pub fn detect_linux_old() -> Result<LinuxVersion, Box<dyn Error>> {
     let release_file = Path::new("/etc/os-release");
     let lines = read_lines(release_file)?;
 
@@ -688,6 +688,41 @@ pub fn detect_linux() -> Result<LinuxVersion, Box<dyn Error>> {
             "Ubuntu 20.04, 22.04 and Debian 10-11"
         );
     }
+
+    Ok(mine)
+}
+
+pub fn detect_linux() -> Result<LinuxVersion, Box<dyn Error>> {
+    let release_file = Path::new("/etc/os-release");
+    let lines = read_lines(release_file)?;
+
+    let re_id = Regex::new("^ID=")?;
+    let wid_line = grep_lines(&re_id, &lines);
+    let id = if wid_line.len() == 0 {
+        "".to_string()
+    } else {
+        let id_line = &lines[wid_line[0]];
+        let id = re_id.replace(&id_line, "").to_string();
+        unquote(&id)
+    };
+
+    let re_ver = Regex::new("^VERSION_ID=")?;
+    let wver_line = grep_lines(&re_ver, &lines);
+    let ver = if wver_line.len() == 0 {
+        "".to_string()
+    } else {
+        let ver_line = &lines[wver_line[0]];
+        let ver = re_ver.replace(&ver_line, "").to_string();
+        unquote(&ver)
+    };
+
+    let mine = LinuxVersion {
+        distro: id.to_owned(),
+        version: ver.to_owned(),
+        url: "".to_string(),
+        rspm: false,
+        rspm_url: "".to_string(),
+    };
 
     Ok(mine)
 }
@@ -855,4 +890,22 @@ fn check_usr_bin_sed(rver: &str) -> Result<(), Box<dyn Error>> {
            Run `ln -s /bin/sed /usr/bin/sed` as the root user to fix this,\n        \
            and then run rig again."
         );
+}
+
+pub fn sc_system_detect_os(args: &ArgMatches, mainargs: &ArgMatches)
+                           -> Result<(), Box<dyn Error>> {
+    let linux = detect_linux()?;
+    let distro = "linux-".to_string() + &linux.distro + "-" + &linux.version;
+
+    if args.get_flag("json") ||
+        mainargs.get_flag("json") {
+        println!("{{");
+        println!("  \"os\": \"linux\",");
+        println!("  \"distribution\": \"{}\",", linux.distro);
+        println!("  \"version\": \"{}\"", linux.version);
+        println!("}}");
+    } else {
+        println!("{}", distro);
+    }
+    Ok(())
 }
