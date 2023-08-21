@@ -263,6 +263,8 @@ pub fn sc_available(args: &ArgMatches, mainargs: &ArgMatches)
         }
     }
 
+    debug!("Auto-detected platform: {}.", os);
+    debug!("Auto-detected arch: {}.", arch);
     let url = "https://api.r-hub.io/rversions/available/".to_string() +
         &os + "/" + &arch;
     let resp = download_json_sync(vec![url])?;

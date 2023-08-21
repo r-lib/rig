@@ -404,8 +404,8 @@ pub fn rig_app() -> Command {
 
     #[cfg(target_os = "linux")]
     {
-        let cmd_system_detect_os = Command::new("detect-os")
-            .about("Detect operating system and distribution.")
+        let cmd_system_detect_platform = Command::new("detect-platform")
+            .about("Detect operating system version and distribution.")
             .arg(
                 Arg::new("json")
                     .help("JSON output")
@@ -414,7 +414,7 @@ pub fn rig_app() -> Command {
                     .required(false)
             );
 
-        cmd_system = cmd_system.subcommand(cmd_system_detect_os);
+        cmd_system = cmd_system.subcommand(cmd_system_detect_platform);
     }
 
     cmd_system = cmd_system

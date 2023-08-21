@@ -892,8 +892,8 @@ fn check_usr_bin_sed(rver: &str) -> Result<(), Box<dyn Error>> {
         );
 }
 
-pub fn sc_system_detect_os(args: &ArgMatches, mainargs: &ArgMatches)
-                           -> Result<(), Box<dyn Error>> {
+pub fn sc_system_detect_platform(args: &ArgMatches, mainargs: &ArgMatches)
+                                 -> Result<(), Box<dyn Error>> {
     let linux = detect_linux()?;
     let distro = "linux-".to_string() + &linux.distro + "-" + &linux.version;
 

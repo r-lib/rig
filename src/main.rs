@@ -132,7 +132,7 @@ fn sc_system(args: &ArgMatches, mainargs: &ArgMatches)
         Some(("forget", _)) => sc_system_forget(),
         Some(("no-openmp", s)) => sc_system_no_openmp(s),
 	Some(("update-rtools40", _)) => sc_system_update_rtools40(),
-        Some(("detect-os", s)) => sc_system_detect_os(s, mainargs),
+        Some(("detect-platform", s)) => sc_system_detect_platform(s, mainargs),
         _ => Ok(()), // unreachable
     }
 }
