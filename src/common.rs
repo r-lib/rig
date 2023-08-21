@@ -240,6 +240,13 @@ pub fn sc_available(args: &ArgMatches, mainargs: &ArgMatches)
     #[allow(unused_mut)]
     let mut os = env::consts::OS.to_string();
 
+    #[cfg(target_os = "linux")]
+    {
+        if args.get_flag("list-distros") {
+            return sc_available_distros(args, mainargs);
+        }
+    }
+
     let mut arch = "".to_string();
     if os == "macos" {
         arch = args
@@ -334,6 +341,42 @@ pub fn sc_available(args: &ArgMatches, mainargs: &ArgMatches)
         }
         print!("{}", tab);
     }
+    Ok(())
+}
+
+fn sc_available_distros(args: &ArgMatches, mainargs: &ArgMatches)
+                        -> Result<(), Box<dyn Error>> {
+
+    let url = "https://api.r-hub.io/rversions/linux-distros".to_string();
+    let resp = download_json_sync(vec![url])?;
+    let resp = resp[0].as_array().unwrap();
+
+    if args.get_flag("json") || mainargs.get_flag("json") {
+        let num = resp.len();
+        println!("[");
+        for (idx, item) in resp.iter().enumerate() {
+            println!("{{");
+            println!("  \"name\": {},", &item["name"]);
+            println!("  \"version\": {},", &item["version"]);
+            println!("  \"id\": {}", &item["id"]);
+            println!("}}{}", if idx == num - 1 { "" } else { "," });
+        }
+        println!("]");
+    } else {
+        let mut tab = Table::new("{:<}  {:<}  {:<}");
+        tab.add_row(row!["name", "version", "id"]);
+        tab.add_heading("--------------------------------------------------------------");
+        for item in resp.iter() {
+            tab.add_row(row!(
+                unquote(&item["name"].to_string()),
+                unquote(&item["version"].to_string()),
+                unquote(&item["id"].to_string())
+            ));
+        }
+
+        print!("{}", tab);
+    }
+
     Ok(())
 }
 

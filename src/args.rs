@@ -242,6 +242,17 @@ pub fn rig_app() -> Command {
         );
     }
 
+    #[cfg(target_os = "linux")]
+    {
+        cmd_available = cmd_available.arg(
+            Arg::new("list-distros")
+                .help("List supported Linux distributions instead of R versions.")
+                .long("list-distros")
+                .num_args(0)
+                .required(false)
+        );
+    }
+
     let mut cmd_system = Command::new("system")
         .about("Manage current installations")
         .long_about(HELP_SYSTEM)
