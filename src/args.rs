@@ -453,7 +453,25 @@ pub fn rig_app() -> Command {
                 .long("json")
                 .num_args(0)
                 .required(false),
+        )
+        .arg(
+            Arg::new("platform")
+                .help("Use this platform, instead of auto-detecting it.")
+                .long("platform")
+                .required(false)
         );
+
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    {
+        cmd_resolve = cmd_resolve.arg(
+            Arg::new("arch")
+                .help("Use this architecture, instead of auto-detecting it.")
+                .short('a')
+                .long("arch")
+                .required(false)
+                .value_parser(clap::value_parser!(String))
+        );
+    }
 
     #[cfg(target_os = "macos")]
     {

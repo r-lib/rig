@@ -13,7 +13,6 @@ use clap::ArgMatches;
 use simple_error::*;
 use simplelog::{trace,debug, info, warn};
 
-use crate::resolve::resolve_versions;
 use crate::rversion::*;
 
 use crate::alias::*;
@@ -21,6 +20,7 @@ use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
 use crate::library::*;
+use crate::resolve::get_resolve;
 use crate::run::*;
 use crate::utils::*;
 
@@ -363,19 +363,6 @@ fn version_from_link(pb: PathBuf) -> Option<String> {
     };
 
     s
-}
-
-pub fn get_resolve(args: &ArgMatches) -> Result<Rversion, Box<dyn Error>> {
-    let str = args.get_one::<String>("str").unwrap();
-    let eps = vec![str.to_string()];
-    let me = detect_linux_old()?;
-    let version = resolve_versions(
-        eps,
-        "linux".to_string(),
-        std::env::consts::ARCH.to_string(),
-        Some(me)
-    )?;
-    Ok(version[0].to_owned())
 }
 
 pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {

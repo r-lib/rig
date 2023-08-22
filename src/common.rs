@@ -235,12 +235,19 @@ pub fn sc_rstudio(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
 // -- rig avilable --------------------------------------------------------
 
-fn get_platform(args: &ArgMatches)
-                -> Result<String, Box<dyn Error>> {
-    let platform: Option<String> = args.get_one::<String>("platform").cloned();
+pub fn get_platform(args: &ArgMatches)
+                    -> Result<String, Box<dyn Error>> {
+
+    // rig add doe snot have a -platform argument
+    let platform = args.try_get_one::<&str>("platform");
+
+    let platform: Option<&str> = match platform {
+        Ok(x)  => x.copied(),
+        Err(_) => None
+    };
 
     if let Some(x) = platform {
-        return Ok(x);
+        return Ok(x.to_string());
     }
 
     #[allow(unused_mut)]
@@ -259,12 +266,39 @@ fn get_platform(args: &ArgMatches)
     Ok(os)
 }
 
-fn get_arch(platform: &str, args: &ArgMatches) -> String {
+pub fn get_arch(platform: &str, args: &ArgMatches) -> String {
     #[allow(unused_mut)]
 
-    let arch: String = match args.get_one::<String>("arch").cloned() {
-        Some(x) => x,
-        None    => env::consts::ARCH.to_string()
+    // For rig add we don't have --arch, except on macOS
+    let arch = args.try_get_one::<String>("arch");
+    debug!("specifies arch: {:?}.", arch);
+    let arch: Option<String> = match arch {
+        Ok(x)  => x.cloned(),
+        Err(_) => None
+    };
+
+    // For Windows, the default is x86_64
+    let arch = match arch {
+        Some(x) => {
+            match args.value_source("arch") {
+                Some(y) => {
+                    if y == clap::parser::ValueSource::DefaultValue &&
+                        platform == "windows"{
+                            "x86_64".to_string()
+                        } else {
+                            x
+                        }
+                },
+                None => x
+            }
+        },
+        None    => {
+            if platform == "windows" {
+                "x86_64".to_string()
+            } else {
+                env::consts::ARCH.to_string()
+            }
+        }
     };
 
     // Prefer 'arm64' on macos, but 'aarch64' on linux

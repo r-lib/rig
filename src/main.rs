@@ -26,6 +26,8 @@ mod linux;
 #[cfg(target_os = "linux")]
 use linux::*;
 
+use resolve::*;
+
 mod alias;
 mod library;
 mod common;
