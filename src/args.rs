@@ -227,7 +227,32 @@ pub fn rig_app() -> Command {
             .help("List all available versions.")
             .long("all")
             .required(false),
+    )
+    .arg(
+        Arg::new("platform")
+            .help("Use this platform, instead of auto-detecting it.")
+            .long("platform")
+            .required(false)
+    )
+    .arg(
+        Arg::new("list-distros")
+            .help("List supported Linux distributions instead of R versions.")
+            .long("list-distros")
+            .num_args(0)
+            .required(false)
     );
+
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    {
+        cmd_available = cmd_available.arg(
+            Arg::new("arch")
+                .help("Use this architecture, instead of auto-detecting it.")
+                .short('a')
+                .long("arch")
+                .required(false)
+                .value_parser(clap::value_parser!(String))
+        );
+    }
 
     #[cfg(target_os = "macos")]
     {
@@ -238,18 +263,7 @@ pub fn rig_app() -> Command {
                 .long("arch")
                 .required(false)
                 .default_value(&_default_arch)
-                .value_parser(["arm64", "x86_64"]),
-        );
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        cmd_available = cmd_available.arg(
-            Arg::new("list-distros")
-                .help("List supported Linux distributions instead of R versions.")
-                .long("list-distros")
-                .num_args(0)
-                .required(false)
+                .value_parser(["arm64", "aarch64", "x86_64"]),
         );
     }
 

@@ -235,25 +235,16 @@ pub fn sc_rstudio(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
 // -- rig avilable --------------------------------------------------------
 
-pub fn sc_available(args: &ArgMatches, mainargs: &ArgMatches)
-                    -> Result<(), Box<dyn Error>> {
+fn get_platform(args: &ArgMatches)
+                -> Result<String, Box<dyn Error>> {
+    let platform: Option<String> = args.get_one::<String>("platform").cloned();
+
+    if let Some(x) = platform {
+        return Ok(x);
+    }
+
     #[allow(unused_mut)]
     let mut os = env::consts::OS.to_string();
-
-    #[cfg(target_os = "linux")]
-    {
-        if args.get_flag("list-distros") {
-            return sc_available_distros(args, mainargs);
-        }
-    }
-
-    let mut arch = "".to_string();
-    if os == "macos" {
-        arch = args
-            .get_one::<String>("arch").unwrap().to_string();
-    } else if os == "linux" {
-        arch = env::consts::ARCH.to_string();
-    }
 
     #[cfg(target_os = "linux")]
     {
@@ -264,9 +255,41 @@ pub fn sc_available(args: &ArgMatches, mainargs: &ArgMatches)
     }
 
     debug!("Auto-detected platform: {}.", os);
-    debug!("Auto-detected arch: {}.", arch);
+
+    Ok(os)
+}
+
+fn get_arch(platform: &str, args: &ArgMatches) -> String {
+    #[allow(unused_mut)]
+
+    let arch: String = match args.get_one::<String>("arch").cloned() {
+        Some(x) => x,
+        None    => env::consts::ARCH.to_string()
+    };
+
+    // Prefer 'arm64' on macos, but 'aarch64' on linux
+    if platform == "macos" && arch == "aarch64" {
+        "arm64".to_string()
+    } else if platform == "linux" && arch == "arm64" {
+        "aarch64".to_string()
+    } else {
+        arch
+    }
+}
+
+pub fn sc_available(args: &ArgMatches, mainargs: &ArgMatches)
+                    -> Result<(), Box<dyn Error>> {
+    #[allow(unused_mut)]
+
+    if args.get_flag("list-distros") {
+        return sc_available_distros(args, mainargs);
+    }
+
+    let platform = get_platform(args)?;
+    let arch = get_arch(&platform, args);
+
     let url = "https://api.r-hub.io/rversions/available/".to_string() +
-        &os + "/" + &arch;
+        &platform + "/" + &arch;
     let resp = download_json_sync(vec![url])?;
     let resp = resp[0].as_array().unwrap();
 
