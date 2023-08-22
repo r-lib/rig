@@ -26,7 +26,6 @@ use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
 use crate::library::*;
-use crate::resolve::get_resolve;
 use crate::rversion::*;
 use crate::run::*;
 use crate::utils::*;
