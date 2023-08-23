@@ -882,17 +882,20 @@ fn check_usr_bin_sed(rver: &str) -> Result<(), Box<dyn Error>> {
 pub fn sc_system_detect_platform(args: &ArgMatches, mainargs: &ArgMatches)
                                  -> Result<(), Box<dyn Error>> {
     let linux = detect_linux()?;
+    let arch = std::env::consts::ARCH.to_string();
     let distro = "linux-".to_string() + &linux.distro + "-" + &linux.version;
 
     if args.get_flag("json") ||
         mainargs.get_flag("json") {
-        println!("{{");
-        println!("  \"os\": \"linux\",");
-        println!("  \"distribution\": \"{}\",", linux.distro);
-        println!("  \"version\": \"{}\"", linux.version);
-        println!("}}");
+            println!("{{");
+            println!("  \"arch\": \"{}\",", arch);
+            println!("  \"vendor\": \"unknown\",");
+            println!("  \"os\": \"linux\",");
+            println!("  \"distribution\": \"{}\",", linux.distro);
+            println!("  \"version\": \"{}\"", linux.version);
+            println!("}}");
     } else {
-        println!("{}", distro);
+        println!("{}-unknown-{}", arch, distro);
     }
     Ok(())
 }
