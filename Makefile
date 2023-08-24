@@ -47,9 +47,12 @@ rig-$(VERSION).tar.gz: target/release/rig
 	mkdir -p build/bin
 	mkdir -p build/share/bash-completion/completions
 	mkdir -p build/share/zsh/site-functions
+	ls -l target/release
 	cp target/release/rig build/bin
 	find target/release/build -name _rig -exec cp \{\} build/share/zsh/site-functions \; 
-	find target/release/build -name rig.bash -exec cp \{\} build/share/bash-completion/completions \; 
+	find target/release/build -name rig.bash -exec cp \{\} build/share/bash-completion/completions \;
+	mkdir -p build/share/rig
+	curl -L -o build/share/rig/cacert.pem 'https://curl.se/ca/cacert.pem'
 	tar cz -C build -f $@ bin share
 
 # -------------------------------------------------------------------------

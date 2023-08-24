@@ -54,7 +54,6 @@ fn main() {
 }
 
 fn main_() -> i32 {
-    unset_r_envvars();
     let args = parse_args();
 
     // -- set up logger output --------------------------------------------
@@ -86,6 +85,11 @@ fn main_() -> i32 {
         }
         _ => {}
     };
+
+    unset_r_envvars();
+
+    #[cfg(target_os = "linux")]
+    set_cert_envvar();
 
     // --------------------------------------------------------------------
 
