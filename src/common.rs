@@ -238,17 +238,16 @@ pub fn sc_rstudio(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 pub fn get_platform(args: &ArgMatches)
                     -> Result<String, Box<dyn Error>> {
 
-    // rig add doe snot have a -platform argument
-    let platform = args.try_get_one::<&str>("platform");
-
-    let platform: Option<&str> = match platform {
-        Ok(x)  => x.copied(),
-        Err(_) => None
+    // rig add does not have a --platform argument, only auto-detect
+    match args.try_contains_id("platform") {
+        Ok(_) => {
+            let platform = args.get_one::<String>("platform");
+            if let Some(x) = platform {
+                return Ok(x.to_string())
+            }
+        },
+        Err(_) => { }
     };
-
-    if let Some(x) = platform {
-        return Ok(x.to_string());
-    }
 
     #[allow(unused_mut)]
     let mut os = env::consts::OS.to_string();
@@ -269,11 +268,11 @@ pub fn get_platform(args: &ArgMatches)
 pub fn get_arch(platform: &str, args: &ArgMatches) -> String {
     #[allow(unused_mut)]
 
-    // For rig add we don't have --arch, except on macOS
-    let arch = args.try_get_one::<String>("arch");
-    debug!("specifies arch: {:?}.", arch);
-    let arch: Option<String> = match arch {
-        Ok(x)  => x.cloned(),
+    // For rig add we don't have --arch, except on macOS, only auto-detect
+    let arch = match args.try_contains_id("arch") {
+        Ok(_) => {
+            args.get_one::<String>("arch")
+        },
         Err(_) => None
     };
 
@@ -286,10 +285,10 @@ pub fn get_arch(platform: &str, args: &ArgMatches) -> String {
                         platform == "windows"{
                             "x86_64".to_string()
                         } else {
-                            x
+                            x.to_string()
                         }
                 },
-                None => x
+                None => x.to_string()
             }
         },
         None    => {

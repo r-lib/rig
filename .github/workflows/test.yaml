@@ -27,11 +27,7 @@ jobs:
 
     - name: Build rig
       run: |
-        docker build -t rig:latest .
-        docker run --name quickrig rig:latest ls out
-        docker cp quickrig:out .
-        ls out
-        cp out/rig* .
+        make linux-in-docker
 
     - name: Upload build as artifact
       uses: actions/upload-artifact@v3

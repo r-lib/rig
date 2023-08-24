@@ -30,46 +30,16 @@ pub const R_SYSLIBPATH: &str = "{}/lib/R/library";
 pub const R_BINPATH: &str = "{}/bin/R";
 const R_CUR: &str = "/opt/R/current";
 
-#[cfg(target_arch = "x86_64")]
-const UBUNTU_1804_URL: &str = "https://cdn.rstudio.com/r/ubuntu-1804/pkgs/r-{}_1_amd64.deb";
-#[cfg(target_arch = "x86_64")]
-const UBUNTU_2004_URL: &str = "https://cdn.rstudio.com/r/ubuntu-2004/pkgs/r-{}_1_amd64.deb";
-#[cfg(target_arch = "x86_64")]
-const UBUNTU_2204_URL: &str = "https://cdn.rstudio.com/r/ubuntu-2204/pkgs/r-{}_1_amd64.deb";
-#[cfg(target_arch = "x86_64")]
-const DEBIAN_9_URL: &str = "https://cdn.rstudio.com/r/debian-9/pkgs/r-{}_1_amd64.deb";
-#[cfg(target_arch = "x86_64")]
-const DEBIAN_10_URL: &str = "https://cdn.rstudio.com/r/debian-10/pkgs/r-{}_1_amd64.deb";
-#[cfg(target_arch = "x86_64")]
-const DEBIAN_11_URL: &str = "https://cdn.rstudio.com/r/debian-11/pkgs/r-{}_1_amd64.deb";
-#[cfg(target_arch = "x86_64")]
-const DEBIAN_12_URL: &str = "https://cdn.rstudio.com/r/debian-12/pkgs/r-{}_1_amd64.deb";
+const PPM_URL: &str = "https://packagemanager.posit.co/cran";
 
-#[cfg(target_arch = "aarch64")]
-const UBUNTU_1804_URL: &str =
-    "https://github.com/r-hub/R/releases/download/v{}/R-rstudio-ubuntu-1804-{}_1_arm64.deb";
-#[cfg(target_arch = "aarch64")]
-const UBUNTU_2004_URL: &str =
-    "https://github.com/r-hub/R/releases/download/v{}/R-rstudio-ubuntu-2004-{}_1_arm64.deb";
-#[cfg(target_arch = "aarch64")]
-const UBUNTU_2204_URL: &str =
-    "https://github.com/r-hub/R/releases/download/v{}/R-rstudio-ubuntu-2204-{}_1_arm64.deb";
-#[cfg(target_arch = "aarch64")]
-const DEBIAN_9_URL: &str =
-    "https://github.com/r-hub/R/releases/download/v{}/R-rstudio-debian-9-{}_1_arm64.deb";
-#[cfg(target_arch = "aarch64")]
-const DEBIAN_10_URL: &str =
-    "https://github.com/r-hub/R/releases/download/v{}/R-rstudio-debian-10-{}_1_arm64.deb";
-#[cfg(target_arch = "aarch64")]
-const DEBIAN_11_URL: &str =
-    "https://github.com/r-hub/R/releases/download/v{}/R-rstudio-debian-11-{}_1_arm64.deb";
-#[cfg(target_arch = "aarch64")]
-const DEBIAN_12_URL: &str =
-    "https://github.com/r-hub/R/releases/download/v{}/R-rstudio-debian-12-{}_1_arm64.deb";
-
-const UBUNTU_1804_RSPM: &str = "https://packagemanager.posit.co/cran/__linux__/bionic/latest";
-const UBUNTU_2004_RSPM: &str = "https://packagemanager.posit.co/cran/__linux__/focal/latest";
-const UBUNTU_2204_RSPM: &str = "https://packagemanager.posit.co/cran/__linux__/jammy/latest";
+macro_rules! strvec {
+    // match a list of expressions separated by comma:
+    ($($str:expr),*) => ({
+        // create a Vec with this list of expressions,
+        // calling String::from on each:
+        vec![$(String::from($str),)*] as Vec<String>
+    });
+}
 
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("adding new R versions")?;
@@ -80,7 +50,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         println!("{}", uid);
     }
 
-    let linux = detect_linux_old()?;
+    let platform = detect_linux()?;
     let version = get_resolve(args)?;
     let alias = get_alias(args);
     let ver = version.version.to_owned();
@@ -106,12 +76,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     }
 
     let dirname;
-    if linux.distro == "ubuntu" || linux.distro == "debian" {
-        add_deb(&target.as_os_str())?;
-        dirname = get_install_dir_deb(&target.as_os_str())?;
-    } else {
-        bail!("Only Ubuntu and Debian Linux are supported currently");
-    }
+    dirname = add_package(target.as_os_str(), &platform)?;
 
     set_default_if_none(dirname.to_string())?;
 
@@ -127,13 +92,8 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         set_cloud_mirror(Some(vec![dirname.to_string()]))?;
     }
 
-    if !args.get_flag("without-p3m") {
-        set_rspm(Some(vec![dirname.to_string()]), &linux)?;
-    }
-
-    if !args.get_flag("without-sysreqs") {
-        set_sysreqs(Some(vec![dirname.to_string()]), &linux)?;
-    }
+    set_ppm(Some(vec![dirname.to_string()]), &platform)?;
+    set_sysreqs(Some(vec![dirname.to_string()]))?;
 
     if !args.get_flag("without-pak") {
         let explicit = args.value_source("pak-version") ==
@@ -149,47 +109,112 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn get_install_dir_deb(path: &OsStr) -> Result<String, Box<dyn Error>> {
-    let path2 = Path::new(path);
-    let out = try_with!(
-        Command::new("dpkg").arg("-I").arg(path).output(),
-        "Failed to run dpkg -I {} @{}:{}",
-        path2.display(),
-        file!(),
-        line!()
-    );
-    let std = try_with!(
-        String::from_utf8(out.stdout),
-        "Non-UTF-8 output from dpkg -I {} @{}:{}",
-        path2.display(),
-        file!(),
-        line!()
-    );
-    let lines = std.lines();
-    let re = Regex::new("^[ ]*Package: r-(.*)$")?;
-    let lines: Vec<&str> = lines.filter(|l| re.is_match(l)).collect();
-    let ver = re.replace(lines[0], "${1}");
+fn select_linux_tools(platform: &OsVersion)
+                      -> Result<LinuxTools, Box<dyn Error>> {
+    if platform.distro == "debian" || platform.distro == "ubuntu" {
+        Ok(LinuxTools {
+            package_name: "r-{}".to_string(),
+            install: vec![
+                strvec!["apt-get", "update"],
+                strvec!["apt", "install", "--reinstall", "-y",
+                       "-o=Dpkg::Use-Pty=0", "{}"]
+            ],
+            get_package_name:
+                strvec!["dpkg", "--field", "{}", "Package"],
+            delete:
+                strvec!["apt-get", "remove", "-y", "-o=Dpkg::Use-Pty=0",
+                       "--purge", "{}"],
+            is_installed:
+                strvec!["dpkg", "-s", "{}"]
+        })
 
-    Ok(ver.to_string())
+    } else if platform.distro == "opensuse" || platform.distro == "sles" {
+        Ok(LinuxTools{
+            package_name: "R-{}".to_string(),
+            install: vec![
+                strvec!["zypper", "--no-gpg-checks", "install", "-y", "{}"]
+            ],
+            get_package_name:
+                strvec!["rpm", "-q", "--qf", "%{NAME}", "-p", "{}"],
+            is_installed:
+                strvec!["rpm", "-q", "{}"],
+            delete:
+                strvec!["zypper", "remove", "-y", "{}"]
+        })
+
+    } else if platform.distro == "fedora" || platform.distro == "almalinux" || platform.distro == "rocky" {
+        Ok(LinuxTools{
+            package_name: "R-{}".to_string(),
+            install: vec![
+                strvec!["dnf", "install", "-y", "{}"]
+            ],
+            get_package_name:
+                strvec!["rpm", "-q", "--qf", "%{NAME}", "-p", "{}"],
+            is_installed:
+                strvec!["rpm", "-q", "{}"],
+            delete:
+                strvec!["dnf", "remove", "-y", "{}"]
+        })
+
+    } else if platform.distro == "rhel" || platform.distro == "centos" {
+        Ok(LinuxTools{
+            package_name: "R-{}".to_string(),
+            install: vec![
+                strvec!["yum", "install", "-y", "{}"]
+            ],
+            get_package_name:
+                strvec!["rpm", "-q", "--qf", "%{NAME}", "-p", "{}"],
+            is_installed:
+                strvec!["rpm", "-q", "{}"],
+            delete:
+                strvec!["yum", "remove", "-y", "{}"]
+        })
+
+    } else {
+        bail!(
+            "I don't know how to install a system package on {} {}",
+            platform.distro,
+            platform.version
+        );
+    }
 }
 
-fn add_deb(path: &OsStr) -> Result<(), Box<dyn Error>> {
-    info!("Running apt-get update");
-    let mut args: Vec<OsString> = vec![];
-    args.push(os("update"));
-    run("apt-get".into(), args, "apt-get update")?;
+fn add_package(path: &OsStr, platform: &OsVersion)
+               -> Result<String, Box<dyn Error>> {
+    let tools = select_linux_tools(platform)?;
 
-    info!("Running apt install");
-    let mut args: Vec<OsString> = vec![];
-    args.push(os("install"));
-    args.push(os("--reinstall"));
-    args.push(os("-y"));
-    // https://askubuntu.com/a/668859
-    args.push(os("-o=Dpkg::Use-Pty=0"));
-    args.push(path.to_os_string());
-    run("apt".into(), args, "apt install")?;
+    for cmd in tools.install.iter() {
+        let cmd = format_cmd_args(cmd.to_vec(), path);
+        info!("Running {:?}", cmd.join(&OsString::from(" ")));
+        let cmd0 = cmd[0].to_owned();
+        run(cmd0, cmd[1..].to_vec(), "installation")?;
+    }
 
-    Ok(())
+    let get_package_name = format_cmd_args(tools.get_package_name, path);
+    let cmd0 = get_package_name[0].to_owned();
+    let oscmd = get_package_name.join(&OsString::from(" "));
+    let out = try_with!(
+        Command::new(cmd0)
+            .args(get_package_name[1..].to_vec())
+            .output(),
+        "Failed to run {:?} @{}:{}",
+        oscmd,
+        file!(),
+        line!()
+    );
+
+    let std = try_with!(
+        String::from_utf8(out.stdout),
+        "Non-UTF-8 output from {:?} @{}:{}",
+        oscmd,
+        file!(),
+        line!()
+    );
+
+    let re = Regex::new("^[rR]-(.*)\\s*$")?;
+    let ver = re.replace(&std, "${1}");
+
+    Ok(ver.to_string())
 }
 
 pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
@@ -200,28 +225,29 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     }
     let vers = require_with!(vers, "clap error");
 
+    let platform = detect_linux()?;
+    let tools = select_linux_tools(&platform)?;
     for ver in vers {
         let ver = check_installed(&ver.to_string())?;
 
-        let pkgname = "r-".to_string() + &ver;
+        let pkgname = tools.package_name.replace("{}", &ver);
+        let opkgname = OsStr::new(&pkgname);
+        let cmd = format_cmd_args(tools.is_installed.clone(), opkgname);
+        let oscmd = cmd.join(&OsString::from(" "));
+        let cmd0 = cmd[0].to_owned();
         let out = try_with!(
-            Command::new("dpkg").args(["-s", &pkgname]).output(),
-            "Failed to run dpkg -s {} @{}:{}",
-            pkgname,
+            Command::new(cmd0).args(cmd[1..].to_vec()).output(),
+            "Failed to run {:?} @{}:{}",
+            oscmd,
             file!(),
             line!()
         );
 
         if out.status.success() {
             info!("Removing {} package", pkgname);
-	    let mut args: Vec<OsString> = vec![];
-	    args.push(os("remove"));
-	    args.push(os("-y"));
-	    // https://askubuntu.com/a/668859
-	    args.push(os("-o=Dpkg::Use-Pty=0"));
-	    args.push(os("--purge"));
-	    args.push(os(&pkgname));
-	    run("apt-get".into(), args, "apt-get remove")?;
+            let cmd = format_cmd_args(tools.delete.clone(), opkgname);
+            let cmd0 = cmd[0].to_owned();
+	    run(cmd0, cmd[1..].to_vec(), "deleting system package")?;
         } else {
             info!("{} package is not installed", pkgname);
         }
@@ -466,17 +492,11 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn set_rspm(vers: Option<Vec<String>>, linux: &LinuxVersion) -> Result<(), Box<dyn Error>> {
-    let arch = std::env::consts::ARCH;
-    if arch != "x86_64" {
-        info!("P3M does not support this architecture: {}", arch);
-        return Ok(());
-    }
-
-    if !linux.rspm {
+fn set_ppm(vers: Option<Vec<String>>, platform: &OsVersion) -> Result<(), Box<dyn Error>> {
+    if !platform.ppm {
         info!(
-            "P3M (or rig) does not support this distro: {} {}",
-            linux.distro, linux.version
+            "P3M (or rig) does not support this distro: {} {} or arctitecture: {}",
+            platform.distro, platform.version, platform.arch
         );
         return Ok(());
     }
@@ -493,7 +513,7 @@ options(repos = c(P3M="%url%", getOption("repos")))
 options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(getRversion(), R.version$platform, R.version$arch, R.version$os)))
 "#;
 
-    let rcode = rcode.to_string().replace("%url%", &linux.rspm_url);
+    let rcode = rcode.to_string().replace("%url%", &platform.ppm_url);
 
     for ver in vers {
         let ver = check_installed(&ver)?;
@@ -508,15 +528,7 @@ options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(getRversion(
     Ok(())
 }
 
-fn set_sysreqs(vers: Option<Vec<String>>, linux: &LinuxVersion) -> Result<(), Box<dyn Error>> {
-    if linux.distro != "ubuntu" || !linux.rspm {
-        info!(
-            "Skipping optional sysreqs setup, no sysreqs support for this distro: {} {}",
-            linux.distro, linux.version
-        );
-        return Ok(());
-    }
-
+fn set_sysreqs(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     info!("Setting up automatic system requirements installation.");
 
     let vers = match vers {
@@ -526,6 +538,7 @@ fn set_sysreqs(vers: Option<Vec<String>>, linux: &LinuxVersion) -> Result<(), Bo
 
     let rcode = r#"
 Sys.setenv(PKG_SYSREQS = "true")
+Sys.setenv(PKG_SYSREQS2 = "true")
 "#;
 
     for ver in vers {
@@ -576,196 +589,145 @@ pub fn sc_system_no_openmp(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn detect_linux_old() -> Result<LinuxVersion, Box<dyn Error>> {
+pub fn detect_linux() -> Result<OsVersion, Box<dyn Error>> {
     let release_file = Path::new("/etc/os-release");
     let lines = read_lines(release_file)?;
 
-    let re_id = Regex::new("^ID=")?;
-    let wid_line = grep_lines(&re_id, &lines);
-    let mut id = if wid_line.len() == 0 {
-        "".to_string()
+    let mut id;
+    let mut ver;
+
+    let rig_platform = match std::env::var("RIG_PLATFORM") {
+        Ok(x)  => Some(x),
+        Err(_) => None
+    };
+
+    if rig_platform.is_some() {
+        let mut rig_platform2 = rig_platform.clone().unwrap();
+        if rig_platform2.starts_with("linux-") {
+            rig_platform2 = rig_platform2.strip_prefix("linux-").unwrap().to_string();
+        }
+
+        (id, ver) = match rig_platform2.split_once("-") {
+            Some((x, y)) => (x.to_string(), y.to_string()),
+            None       => (rig_platform2, "".to_string())
+        };
+
     } else {
-        let id_line = &lines[wid_line[0]];
-        let id = re_id.replace(&id_line, "").to_string();
-        unquote(&id)
-    };
+        let re_id = Regex::new("^ID=")?;
+        let wid_line = grep_lines(&re_id, &lines);
+        id = if wid_line.len() == 0 {
+            "".to_string()
+        } else {
+            let id_line = &lines[wid_line[0]];
+            let id = re_id.replace(&id_line, "").to_string();
+            unquote(&id)
+        };
 
-    let re_ver = Regex::new("^VERSION_ID=")?;
-    let wver_line = grep_lines(&re_ver, &lines);
-    let mut ver = if wver_line.len() == 0 {
-        "".to_string()
-    } else {
-        let ver_line = &lines[wver_line[0]];
-        let ver = re_ver.replace(&ver_line, "").to_string();
-        unquote(&ver)
-    };
+        let re_ver = Regex::new("^VERSION_ID=")?;
+        let wver_line = grep_lines(&re_ver, &lines);
+        ver = if wver_line.len() == 0 {
+            "".to_string()
+        } else {
+            let ver_line = &lines[wver_line[0]];
+            let ver = re_ver.replace(&ver_line, "").to_string();
+            unquote(&ver)
+        };
 
-    let mut mine = LinuxVersion {
-        distro: id.to_owned(),
-        version: ver.to_owned(),
-        url: "".to_string(),
-        rspm: false,
-        rspm_url: "".to_string(),
-    };
-
-    debug!("Detected distro: {} {}", mine.distro, mine.version);
-
-    // Maybe Deepin?
-    if id == "Deepin" {
-	let debverfile = Path::new("/etc/debian_version");
-	let mut ver = "unknown".to_string();
-	if debverfile.exists() {
-	    let lines = read_lines(debverfile)?;
-	    if lines.len() > 0 {
-		let re_ver = Regex::new("[.][0-9]+$")?;
-		ver = re_ver.replace(&lines[0], "").to_string();
-	    }
-	}
-	mine.distro = "debian".to_string();
-	mine.version = ver;
-    }
-
-    let supported = list_supported_distros();
-
-    let mut good = false;
-    for dis in &supported {
-        if dis.distro == mine.distro && dis.version == mine.version {
-            mine.url = dis.url.to_owned();
-            mine.rspm = dis.rspm.to_owned();
-            mine.rspm_url = dis.rspm_url.to_owned();
-            good = true;
+        // workaround for a node-rversions bug
+        if id == "opensuse-leap" {
+            id = "opensuse".to_string()
+        }
+        if id == "opensuse" {
+            ver = ver.replace(".", "");
         }
     }
 
-    // Maybe an Ubuntu-like distro
-    if !good {
-	debug!("Unsupported distro, checking if an Ubuntu derivative");
-        let re_codename = Regex::new("^UBUNTU_CODENAME=")?;
-        let codename_line = grep_lines(&re_codename, &lines);
-        if codename_line.len() != 0 {
-            let codename_line = &lines[codename_line[0]];
-            let codename = re_codename.replace(&codename_line, "").to_string();
+    let arch = std::env::consts::ARCH.to_string();
+    let vendor = "unknown".to_string();
+    let os = "linux".to_string();
+    let distro = id.to_owned();
+    let version = ver.to_owned();
+    let ppm_url = match get_ppm_url(&os, &distro, &version, &arch) {
+        Some(x) => x,
+        None    => "".to_string()
+    };
+    let ppm = ppm_url != "";
 
-            (id, ver) = match &codename[..] {
-                "bionic" => ("ubuntu".to_string(), "18.04".to_string()),
-                "focal" => ("ubuntu".to_string(), "20.04".to_string()),
-                "jammy" => ("ubuntu".to_string(), "22.04".to_string()),
-                _ => ("".to_string(), "".to_string()),
-            };
+    Ok(OsVersion {
+        rig_platform,
+        arch,
+        vendor,
+        os,
+        distro,
+        version,
+        ppm,
+        ppm_url
+    })
+}
 
-            mine.distro = id.to_owned();
-            mine.version = ver.to_owned();
-            for dis in &supported {
-                if dis.distro == mine.distro && dis.version == mine.version {
-                    mine.url = dis.url.to_owned();
-                    mine.rspm = dis.rspm.to_owned();
-                    mine.rspm_url = dis.rspm_url.to_owned();
-                    good = true;
-		    debug!("Distro derivative of {} {}", id, ver);
-                }
-            }
+fn get_ppm_url(os: &str, distro: &str, version: &str, arch: &str)
+               -> Option<String> {
+
+    if arch != "x86_64" {
+        None
+
+    } else if os == "windows" {
+        Some(PPM_URL.to_string() + "/latest")
+
+    } else if os != "linux" {
+        None
+
+    } else if distro == "centos" || distro == "rhel" ||
+        distro == "almalinux" || distro == "rocky" {
+        if version == "7" {
+            Some(PPM_URL.to_string() + "/__linux__/centos7/latest")
+        } else if version == "8" {
+            Some(PPM_URL.to_string() + "/__linux__/centos8/latest")
+        } else if version == "9" {
+            Some(PPM_URL.to_string() + "/__linux__/rhel8/latest")
+        } else {
+            None
         }
-    }
+    } else if distro == "opensuse" || distro == "sles" {
+        if version == "12.3" {
+            Some(PPM_URL.to_string() + "/__linux__/opensuse42/latest")
+        } else if version == "15" {
+            Some(PPM_URL.to_string() + "/__linux__/opensuse15/latest")
+        } else if version == "15.2" {
+            Some(PPM_URL.to_string() + "/__linux__/opensuse152/latest")
+        } else if version == "15.3" {
+            Some(PPM_URL.to_string() + "/__linux__/opensuse153/latest")
+        } else if version == "15.4" {
+            Some(PPM_URL.to_string() + "/__linux__/opensuse154/latest")
+        } else {
+            None
+        }
 
-    if !good {
-        bail!(
-            "Unsupported distro: {} {}, only {} are supported currently",
-            &id,
-            &ver,
-            "Ubuntu 20.04, 22.04 and Debian 10-11"
-        );
-    }
+    } else if distro == "debian" {
+        if version == "11" {
+            Some(PPM_URL.to_string() + "/__linux__/bullseye/latest")
+        } else if version == "12" {
+            Some(PPM_URL.to_string() + "/__linux__/bookworm/latest")
+        } else {
+            None
+        }
 
-    Ok(mine)
-}
+    } else if distro == "ubuntu" {
+        if version == "16.04" {
+            Some(PPM_URL.to_string() + "/__linux__/xenial/latest")
+        } else if version == "18.04" {
+            Some(PPM_URL.to_string() + "/__linux__/bionic/latest")
+        } else if version == "20.04" {
+            Some(PPM_URL.to_string() + "/__linux__/focal/latest")
+        } else if version == "22.04" {
+            Some(PPM_URL.to_string() + "/__linux__/jammy/latest")
+        } else {
+            None
+        }
 
-pub fn detect_linux() -> Result<LinuxVersion, Box<dyn Error>> {
-    let release_file = Path::new("/etc/os-release");
-    let lines = read_lines(release_file)?;
-
-    let re_id = Regex::new("^ID=")?;
-    let wid_line = grep_lines(&re_id, &lines);
-    let id = if wid_line.len() == 0 {
-        "".to_string()
     } else {
-        let id_line = &lines[wid_line[0]];
-        let id = re_id.replace(&id_line, "").to_string();
-        unquote(&id)
-    };
-
-    let re_ver = Regex::new("^VERSION_ID=")?;
-    let wver_line = grep_lines(&re_ver, &lines);
-    let ver = if wver_line.len() == 0 {
-        "".to_string()
-    } else {
-        let ver_line = &lines[wver_line[0]];
-        let ver = re_ver.replace(&ver_line, "").to_string();
-        unquote(&ver)
-    };
-
-    let mine = LinuxVersion {
-        distro: id.to_owned(),
-        version: ver.to_owned(),
-        url: "".to_string(),
-        rspm: false,
-        rspm_url: "".to_string(),
-    };
-
-    Ok(mine)
-}
-
-fn list_supported_distros() -> Vec<LinuxVersion> {
-    vec![
-        LinuxVersion {
-            distro: "ubuntu".to_string(),
-            version: "18.04".to_string(),
-            url: UBUNTU_1804_URL.to_string(),
-            rspm: true,
-            rspm_url: UBUNTU_1804_RSPM.to_string(),
-        },
-        LinuxVersion {
-            distro: "ubuntu".to_string(),
-            version: "20.04".to_string(),
-            url: UBUNTU_2004_URL.to_string(),
-            rspm: true,
-            rspm_url: UBUNTU_2004_RSPM.to_string(),
-        },
-        LinuxVersion {
-            distro: "ubuntu".to_string(),
-            version: "22.04".to_string(),
-            url: UBUNTU_2204_URL.to_string(),
-            rspm: true,
-            rspm_url: UBUNTU_2204_RSPM.to_string(),
-        },
-        LinuxVersion {
-            distro: "debian".to_string(),
-            version: "9".to_string(),
-            url: DEBIAN_9_URL.to_string(),
-            rspm: false,
-            rspm_url: "".to_string(),
-        },
-        LinuxVersion {
-            distro: "debian".to_string(),
-            version: "10".to_string(),
-            url: DEBIAN_10_URL.to_string(),
-            rspm: false,
-            rspm_url: "".to_string(),
-        },
-        LinuxVersion {
-            distro: "debian".to_string(),
-            version: "11".to_string(),
-            url: DEBIAN_11_URL.to_string(),
-            rspm: false,
-            rspm_url: "".to_string(),
-        },
-        LinuxVersion {
-            distro: "debian".to_string(),
-            version: "12".to_string(),
-            url: DEBIAN_12_URL.to_string(),
-            rspm: false,
-            rspm_url: "".to_string(),
-        },
-    ]
+        None
+    }
 }
 
 pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
@@ -882,20 +844,33 @@ fn check_usr_bin_sed(rver: &str) -> Result<(), Box<dyn Error>> {
 pub fn sc_system_detect_platform(args: &ArgMatches, mainargs: &ArgMatches)
                                  -> Result<(), Box<dyn Error>> {
     let linux = detect_linux()?;
-    let arch = std::env::consts::ARCH.to_string();
-    let distro = "linux-".to_string() + &linux.distro + "-" + &linux.version;
 
-    if args.get_flag("json") ||
-        mainargs.get_flag("json") {
-            println!("{{");
-            println!("  \"arch\": \"{}\",", arch);
-            println!("  \"vendor\": \"unknown\",");
-            println!("  \"os\": \"linux\",");
-            println!("  \"distribution\": \"{}\",", linux.distro);
-            println!("  \"version\": \"{}\"", linux.version);
-            println!("}}");
+    if args.get_flag("json") || mainargs.get_flag("json") {
+        println!("{{");
+        println!("  \"arch\": \"{}\",", linux.arch);
+        println!("  \"vendor\": \"{}\",", linux.vendor);
+        println!("  \"os\": \"{}\",", linux.os);
+        println!("  \"distribution\": \"{}\",", linux.distro);
+        println!("  \"version\": \"{}\",", linux.version);
+        println!(
+            "  \"ppm\": {}{}",
+            linux.ppm,
+            if linux.ppm { "," } else { "" }
+        );
+        if linux.ppm {
+            println!("  \"ppm-url\": \"{}\"", linux.ppm_url);
+        }
+        println!("}}");
     } else {
-        println!("{}-unknown-{}", arch, distro);
+        println!("Detected platform:");
+        println!("Architecture: {}", linux.arch);
+        println!("OS:           {}", linux.os);
+        println!("Distribution: {}", linux.distro);
+        println!("Version:      {}", linux.version);
+        println!("PPM support:  {}", linux.ppm);
+        if linux.ppm {
+            println!("PPM URL:      {}", linux.ppm_url);
+        }
     }
     Ok(())
 }

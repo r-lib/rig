@@ -56,12 +56,15 @@ impl PartialEq for OKInstalledVersion {
 impl Eq for OKInstalledVersion { }
 
 #[derive(PartialEq, Clone, Debug)]
-pub struct LinuxVersion {
+pub struct OsVersion {
+    pub rig_platform: Option<String>,
+    pub arch: String,
+    pub vendor: String,
+    pub os: String,
     pub distro: String,
     pub version: String,
-    pub url: String,
-    pub rspm: bool,
-    pub rspm_url: String,
+    pub ppm: bool,
+    pub ppm_url: String,
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -95,4 +98,14 @@ pub struct Available {
     pub date: Option<String>,
     pub url: Option<String>,
     pub rtype: Option<String>
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Default, Debug)]
+pub struct LinuxTools {
+    pub package_name: String,
+    pub install: Vec<Vec<String>>,
+    pub get_package_name: Vec<String>,
+    pub is_installed: Vec<String>,
+    pub delete: Vec<String>,
 }
