@@ -11,7 +11,7 @@ use std::{file, line};
 
 use clap::ArgMatches;
 use simple_error::*;
-use simplelog::{trace,debug, info, warn};
+use simplelog::{trace, debug, info, warn};
 
 use crate::resolve::resolve_versions;
 use crate::rversion::*;
@@ -855,4 +855,26 @@ fn check_usr_bin_sed(rver: &str) -> Result<(), Box<dyn Error>> {
            Run `ln -s /bin/sed /usr/bin/sed` as the root user to fix this,\n        \
            and then run rig again."
         );
+}
+
+pub fn set_cert_envvar() {
+    match std::env::var("SSL_CERT_FILE") {
+        Ok(_)  => {
+            debug!("SSL_CERT_FILE is already set, keeping it.");
+            return;
+        },
+        Err(_) => {
+            let scertpath = "/usr/local/share/rig/cacert.pem";
+            let certpath = std::path::Path::new(scertpath);
+            if certpath.exists() {
+                debug!("Using embedded SSL certificates via SSL_CERT_FILE");
+                std::env::set_var("SSL_CERT_FILE", scertpath);
+            } else {
+                debug!(
+                    "{} does not exist, using system SSL certificates",
+                    scertpath
+                );
+            }
+        }
+    };
 }

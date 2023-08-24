@@ -50,6 +50,8 @@ pub fn escalate(task: &str) -> Result<(), Box<dyn Error>> {
             "LC_MONETARY",
             "LC_NUMERIC",
             "LC_TIME",
+            "SSL_CERT_FILE",
+            "SSL_CERT_DIR",
         ])?;
     }
 
