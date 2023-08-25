@@ -3,7 +3,7 @@
 setup() {
     DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" >/dev/null 2>&1 && pwd )"
     # make executables in src/ visible to PATH
-    PATH="$DIR/../target/debug:$PATH"
+    SUDO="$(if [ "$EUID" -ne 0 ]; then echo sudo; else echo ''; fi)"
 }
 
 teardown() {
@@ -17,7 +17,7 @@ teardown() {
 
 @test "add" {
     if ! rig ls | grep -q '^[* ] 4.1.2'; then
-	run rig add 4.1.2
+	run rig -v add 4.1.2
 	[[ "$status" -eq 0 ]]
 	run rig ls
 	echo "$output" | grep -q "^[* ] 4.1.2"
@@ -123,6 +123,10 @@ teardown() {
 }
 
 @test "system add-pak" {
+    if ! rig ls | grep -q '^[* ] 4.1.2'; then
+	run rig -v add 4.1.2
+	[[ "$status" -eq 0 ]]
+    fi
     run rig default 4.1.2
     [[ "$status" -eq 0 ]]
     run rig system add-pak
@@ -139,8 +143,8 @@ teardown() {
 
     libdir=`R-3.4.4 -s -e 'cat(path.expand(Sys.getenv("R_LIBS_USER")))'`
     [[ "$libdir" == "" ]] && false
-    run sudo rm -rf "$libdir"
-    run sudo `which rig` system add-pak 3.4.4
+    run $SUDO rm -rf "$libdir"
+    run $SUDO `which rig` system add-pak 3.4.4
     [[ "$status" -eq 0 ]]
     uid=`stat -c "%u" "$libdir"`
     [[ "$uid" -eq "`id -u`" ]]

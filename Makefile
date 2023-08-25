@@ -55,7 +55,7 @@ rig-$(VERSION).tar.gz: target/release/rig
 	curl -L -o build/share/rig/cacert.pem 'https://curl.se/ca/cacert.pem'
 	tar cz -C build -f $@ bin share
 
-VARIANTS = ubuntu-20.04 ubuntu-22.04 debian-11 debian-12 centos-7 centos-8 rockylinux-8 rockylinux-9 opensuse/leap-15.3 opensuse/leap-15.4 fedora-37 fedora-38 almalinux-8 almalinux-9
+VARIANTS = ubuntu-20.04 ubuntu-22.04 debian-11 debian-12 centos-7 rockylinux-8 rockylinux-9 opensuse/leap-15.3 opensuse/leap-15.4 fedora-37 fedora-38 almalinux-8 almalinux-9
 print-linux-variants:
 	@echo $(VARIANTS)
 
@@ -68,7 +68,9 @@ linux-in-docker:
 
 define GEN_TESTS
 linux-test-$(variant): rig-$(VERSION).tar.gz
-	docker run --rm -v $(PWD):/work `echo $(variant) | tr - :` bash -c /work/tests/test-linux-docker.sh
+	docker run -t --rm -v $(PWD):/work `echo $(variant) | tr - :` bash -c /work/tests/test-linux-docker.sh
+shell-$(variant):
+	docker run -ti --rm -v $(PWD):/work `echo $(variant) | tr - :` bash
 TEST_IMAGES += linux-test-$(variant)
 endef
 $(foreach variant, $(VARIANTS), $(eval $(GEN_TESTS)))
