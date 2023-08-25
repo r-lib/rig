@@ -68,7 +68,12 @@ linux-in-docker:
 
 define GEN_TESTS
 linux-test-$(variant): rig-$(VERSION).tar.gz
-	docker run -t --rm -v $(PWD):/work `echo $(variant) | tr - :` bash -c /work/tests/test-linux-docker.sh
+	mkdir -p tests/results
+	rm -f tests/results/$(variant).fail tests/results/$(variant).success
+	docker run -t --rm -v $(PWD):/work `echo $(variant) | tr - :` \
+		bash -c /work/tests/test-linux-docker.sh && \
+	touch tests/results/$(variant).success || \
+	touch tests/results/$(variant).fail
 shell-$(variant):
 	docker run -ti --rm -v $(PWD):/work `echo $(variant) | tr - :` bash
 TEST_IMAGES += linux-test-$(variant)
@@ -76,6 +81,10 @@ endef
 $(foreach variant, $(VARIANTS), $(eval $(GEN_TESTS)))
 
 linux-test-all: $(TEST_IMAGES)
+	if ls tests/results | grep -q fail; then \
+		echo Some tests failed; \
+		exit 1; \
+	fi
 
 # -------------------------------------------------------------------------
 

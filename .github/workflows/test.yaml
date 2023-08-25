@@ -36,17 +36,9 @@ jobs:
         name: rig-linux
         path: 'rig-*.tar.gz'
 
-    - name: Install rig
-      run: |
-        sudo tar xzf rig-*.tar.gz -C /usr/local
-
-    - name: Install bats
-      run: |
-        sudo apt-get update && sudo apt-get install bats
-
     - name: Run tests
       run: |
-        bats tests/test-linux.sh
+        make linux-test-all
 
   linux-arm:
     runs-on: [linux-arm64]
@@ -63,13 +55,7 @@ jobs:
 
     - name: Build rig
       run: |
-        docker system prune -f
-        docker build -t rig:latest .
-        docker rm quickrig 2>/dev/null || true
-        docker run --name quickrig rig:latest ls out
-        docker cp quickrig:out .
-        ls out
-        cp out/rig* .
+        make linux-in-docker
 
     - name: Upload build as artifact
       uses: actions/upload-artifact@v3
@@ -78,7 +64,9 @@ jobs:
         name: rig-linux-aarch64
         path: 'rig-*.tar.gz'
 
-# TODO: run tests in Docker container
+    - name: Run tests
+      run: |
+        make linux-test-all
 
   macos:
     runs-on: ${{ matrix.config.os }}
