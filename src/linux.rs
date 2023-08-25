@@ -142,7 +142,7 @@ fn select_linux_tools(platform: &OsVersion)
                 strvec!["zypper", "remove", "-y", "{}"]
         })
 
-    } else if platform.distro == "fedora" || platform.distro == "almalinux" || platform.distro == "rocky" {
+    } else if platform.distro == "fedora" {
         Ok(LinuxTools{
             package_name: "R-{}".to_string(),
             install: vec![
@@ -156,10 +156,44 @@ fn select_linux_tools(platform: &OsVersion)
                 strvec!["dnf", "remove", "-y", "{}"]
         })
 
-    } else if platform.distro == "rhel" || platform.distro == "centos" {
+    } else if (platform.distro == "rhel" || platform.distro == "centos") && platform.version == "7" {
         Ok(LinuxTools{
             package_name: "R-{}".to_string(),
             install: vec![
+                strvec!["bash", "-c", "rpm -q epel-release || yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm"],
+                strvec!["yum", "install", "-y", "{}"]
+            ],
+            get_package_name:
+                strvec!["rpm", "-q", "--qf", "%{NAME}", "-p", "{}"],
+            is_installed:
+                strvec!["rpm", "-q", "{}"],
+            delete:
+                strvec!["yum", "remove", "-y", "{}"]
+        })
+
+    } else if (platform.distro == "rhel" || platform.distro == "almalinux" || platform.distro == "rocky") &&
+              (platform.version == "8" || platform.version.starts_with("8.")) {
+        Ok(LinuxTools{
+            package_name: "R-{}".to_string(),
+            install: vec![
+                strvec!["dnf", "install", "-y", "{}"]
+            ],
+            get_package_name:
+                strvec!["rpm", "-q", "--qf", "%{NAME}", "-p", "{}"],
+            is_installed:
+                strvec!["rpm", "-q", "{}"],
+            delete:
+                strvec!["dnf", "remove", "-y", "{}"]
+        })
+
+     } else if (platform.distro == "rhel" || platform.distro == "almalinux" || platform.distro == "rocky") &&
+               (platform.version == "9" || platform.version.starts_with("9.")) {
+        Ok(LinuxTools{
+            package_name: "R-{}".to_string(),
+            install: vec![
+                strvec!["dnf", "install", "-y", "dnf-plugins-core"],
+                strvec!["dnf", "config-manager", "--set-enabled", "crb"],
+                strvec!["dnf", "install", "-y", "epel-release"],
                 strvec!["yum", "install", "-y", "{}"]
             ],
             get_package_name:
