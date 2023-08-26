@@ -67,6 +67,8 @@ print-linux-variants:
 linux-in-docker:
 	docker compose build
 	docker run -v .:/work rlib/rig-builder:latest make linux
+	chown -R `id -u`:`id -g` build
+	find . -name "rig-$(VERSION)-.tar.gz" | xargs chown -R `id -u`:`id -g`
 
 define GEN_TESTS
 linux-test-$(variant):
