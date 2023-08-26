@@ -71,7 +71,8 @@ linux-in-docker:
 define GEN_TESTS
 linux-test-$(variant):
 	mkdir -p tests/results
-	rm -f tests/results/$(variant).fail tests/results/$(variant).success
+	rm -f tests/results/`echo $(variant) | tr / -`.fail \
+	      tests/results/`echo $(variant) | tr / -`.success
 	docker run -t --rm -v $(PWD):/work `echo $(variant) | tr - :` \
 		bash -c /work/tests/test-linux-docker.sh && \
 	touch tests/results/`echo $(variant) | tr / -`.success || \
