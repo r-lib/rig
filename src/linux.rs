@@ -156,13 +156,29 @@ fn select_linux_tools(platform: &OsVersion)
                 strvec!["dnf", "remove", "-y", "{}"]
         })
 
-    } else if (platform.distro == "rhel" || platform.distro == "centos") &&
+    } else if (platform.distro == "centos") &&
 	      (platform.version == "7" || platform.version.starts_with("7.")) {
         Ok(LinuxTools{
             package_name: "R-{}".to_string(),
             install: vec![
                 strvec!["bash", "-c", "rpm -q epel-release || yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm"],
                 strvec!["yum", "install", "-y", "{}"]
+            ],
+            get_package_name:
+                strvec!["rpm", "-q", "--qf", "%{NAME}", "-p", "{}"],
+            is_installed:
+                strvec!["rpm", "-q", "{}"],
+            delete:
+                strvec!["yum", "remove", "-y", "{}"]
+        })
+
+    } else if (platform.distro == "rhel") &&
+	      (platform.version == "7" || platform.version.starts_with("7.")) {
+        Ok(LinuxTools{
+            package_name: "R-{}".to_string(),
+            install: vec![
+                strvec!["bash", "-c", "rpm -q epel-release || yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm"],
+                strvec!["yum", "--enablerepo", "rhel-7-server-optional-rpms", "install", "-y", "{}"]
             ],
             get_package_name:
                 strvec!["rpm", "-q", "--qf", "%{NAME}", "-p", "{}"],
@@ -187,7 +203,7 @@ fn select_linux_tools(platform: &OsVersion)
                 strvec!["dnf", "remove", "-y", "{}"]
         })
 
-     } else if (platform.distro == "rhel" || platform.distro == "almalinux" || platform.distro == "rocky") &&
+     } else if (platform.distro == "almalinux" || platform.distro == "rocky") &&
                (platform.version == "9" || platform.version.starts_with("9.")) {
         Ok(LinuxTools{
             package_name: "R-{}".to_string(),
@@ -195,14 +211,32 @@ fn select_linux_tools(platform: &OsVersion)
                 strvec!["dnf", "install", "-y", "dnf-plugins-core"],
                 strvec!["dnf", "config-manager", "--set-enabled", "crb"],
                 strvec!["dnf", "install", "-y", "epel-release"],
-                strvec!["yum", "install", "-y", "{}"]
+                strvec!["dnf", "install", "-y", "{}"]
             ],
             get_package_name:
                 strvec!["rpm", "-q", "--qf", "%{NAME}", "-p", "{}"],
             is_installed:
                 strvec!["rpm", "-q", "{}"],
             delete:
-                strvec!["yum", "remove", "-y", "{}"]
+                strvec!["dnf", "remove", "-y", "{}"]
+        })
+
+     } else if (platform.distro == "rhel") &&
+               (platform.version == "9" || platform.version.starts_with("9.")) {
+
+	let crb = "codeready-builder-for-rhel-9-".to_string() + &platform.arch + "-rpms";
+	Ok(LinuxTools{
+            package_name: "R-{}".to_string(),
+            install: vec![
+		strvec!["bash", "-c", "rpm -q epel-release || dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm"],
+                strvec!["dnf", "install", "--enablerepo", crb, "-y", "{}"]
+            ],
+            get_package_name:
+                strvec!["rpm", "-q", "--qf", "%{NAME}", "-p", "{}"],
+            is_installed:
+                strvec!["rpm", "-q", "{}"],
+            delete:
+                strvec!["dnf", "remove", "-y", "{}"]
         })
 
     } else {
