@@ -1,9 +1,7 @@
 
 FROM alpine:3.15
 
-COPY . rig
-
-RUN apk add curl
+RUN apk add curl bash
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rust.sh && sh rust.sh -y
 
@@ -30,10 +28,10 @@ RUN cd openssl-* &&                                 \
     rm -rf /usr/local/bin/openssl                   \
        /usr/local/share/{man/doc}
 
-# build rig ---------------------------------------------------------------
+RUN mkdir /work
 
-RUN source $HOME/.cargo/env && cd rig && make linux
+WORKDIR /work
 
-RUN mkdir out && cp rig/rig-*.tar.gz out
+RUN apk add file
 
-RUN ls -l out
+ENV PATH="/root/.cargo/bin:$PATH"

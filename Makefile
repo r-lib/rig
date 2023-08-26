@@ -43,6 +43,7 @@ linux: export DEP_OPENSSL_INCLUDE = /usr/local/include/
 linux: rig-$(VERSION).tar.gz
 
 rig-$(VERSION).tar.gz: target/release/rig
+	ls -l target/release/rig
 	strip -x target/release/rig
 	mkdir -p build/bin
 	mkdir -p build/share/bash-completion/completions
@@ -55,19 +56,20 @@ rig-$(VERSION).tar.gz: target/release/rig
 	curl -L -o build/share/rig/cacert.pem 'https://curl.se/ca/cacert.pem'
 	tar cz -C build -f $@ bin share
 
+shell-linux:
+	docker compose build
+	docker run -ti -v .:/work rlib/rig-builder:latest bash
+
 VARIANTS = ubuntu-20.04 ubuntu-22.04 debian-11 debian-12 centos-7 rockylinux-8 rockylinux-9 opensuse/leap-15.3 opensuse/leap-15.4 fedora-37 fedora-38 almalinux-8 almalinux-9
 print-linux-variants:
 	@echo $(VARIANTS)
 
 linux-in-docker:
-	docker build -t 'rig:latest' .
-	docker run --name quickrig 'rig:latest' ls out
-	docker cp 'quickrig:out' .
-	ls out
-	cp out/rig* .
+	docker compose build
+	docker run -v .:/work rlib/rig-builder:latest make linux
 
 define GEN_TESTS
-linux-test-$(variant): rig-$(VERSION).tar.gz
+linux-test-$(variant):
 	mkdir -p tests/results
 	rm -f tests/results/$(variant).fail tests/results/$(variant).success
 	docker run -t --rm -v $(PWD):/work `echo $(variant) | tr - :` \
