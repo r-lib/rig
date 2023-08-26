@@ -86,6 +86,7 @@ $(foreach variant, $(VARIANTS), $(eval $(GEN_TESTS)))
 linux-test-all: $(TEST_IMAGES)
 	if ls tests/results | grep -q fail; then \
 		echo Some tests failed; \
+		ls tests/results; \
 		exit 1; \
 	fi
 
