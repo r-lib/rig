@@ -156,7 +156,8 @@ fn select_linux_tools(platform: &OsVersion)
                 strvec!["dnf", "remove", "-y", "{}"]
         })
 
-    } else if (platform.distro == "rhel" || platform.distro == "centos") && platform.version == "7" {
+    } else if (platform.distro == "rhel" || platform.distro == "centos") &&
+	      (platform.version == "7" || platform.version.starts_with("7.")) {
         Ok(LinuxTools{
             package_name: "R-{}".to_string(),
             install: vec![
