@@ -75,12 +75,19 @@ linux-in-docker:
 		-e LOCAL_UID=$(id -u $USER) -e LOCAL_GID=$(id -g $USER) \
 		rlib/rig-builder:latest make linux
 
+ifeq "$(DOCKER_DEFAULT_PLATFORM)" ""
+    DOCKER_ARCH :=
+else
+    DOCKER_ARCH := --platform=$(DOCKER_DEFAULT_PLATFORM)
+endif
+
 define GEN_TESTS
 linux-test-$(variant):
 	mkdir -p tests/results
 	rm -f tests/results/`echo $(variant) | tr / -`.fail \
 	      tests/results/`echo $(variant) | tr / -`.success
-	docker run -t --rm -v $(PWD):/work `echo $(variant) | tr - :` \
+	docker run -t --rm $(DOCKER_ARCH) \
+		-v $(PWD):/work `echo $(variant) | tr - :` \
 		bash -c /work/tests/test-linux-docker.sh && \
 	touch tests/results/`echo $(variant) | tr / -`.success || \
 	touch tests/results/`echo $(variant) | tr / -`.fail
