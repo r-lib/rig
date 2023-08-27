@@ -3,6 +3,7 @@
 use regex::Regex;
 use std::error::Error;
 use std::ffi::OsStr;
+use std::ffi::OsString;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -34,6 +35,15 @@ pub const R_ROOT: &str = "C:\\Program Files\\R";
 pub const R_VERSIONDIR: &str = "R-{}";
 pub const R_SYSLIBPATH: &str = "R-{}\\library";
 pub const R_BINPATH: &str = "R-{}\\bin\\R.exe";
+
+macro_rules! osvec {
+    // match a list of expressions separated by comma:
+    ($($str:expr),*) => ({
+        // create a Vec with this list of expressions,
+        // calling String::from on each:
+        vec![$(OsString::from($str),)*] as Vec<OsString>
+    });
+}
 
 #[warn(unused_variables)]
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
@@ -1010,9 +1020,13 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>, arg: Option<&Os
         escalate("updating default version in registry")?;
     }
 
+    let cwd = std::env::current_dir();
     let mut args = match project {
-        None => vec![os("/c"), os("start"), os("/b"), os("rstudio")],
-        Some(p) => vec![os("/c"), os("start"), os("/b"), os(p)],
+        None => match cwd {
+	    Ok(x) => osvec!["/c", "start", "/b", "rstudio", "/d", x],
+	    Err(_) => osvec!["/c", "start", "/b", "rstudio"]
+	},
+        Some(p) => osvec!["/c", "start", "/b", p],
     };
 
     if let Some(arg) = arg {

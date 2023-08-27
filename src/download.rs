@@ -21,8 +21,6 @@ use crate::resolve::get_resolve;
 use crate::rversion::Rversion;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use crate::utils::*;
-#[cfg(target_os = "windows")]
-use crate::windows::*;
 
 // ------------------------------------------------------------------------
 // synchronous API
