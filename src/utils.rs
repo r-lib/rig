@@ -1,3 +1,5 @@
+#[cfg(target_os = "linux")]
+use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::fs::File;
 use std::io::{prelude::*, BufReader};
