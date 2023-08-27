@@ -197,7 +197,7 @@ jobs:
             exit 1;
         fi
       env:
-        DOCKER_DEFAULT_PLATFORM: "linux/amd64"
+        DOCKER_DEFAULT_PLATFORM: "linux/arm64"
 
   macos:
     if: ${{ github.event.inputs.inpmacos == '' || github.event.inputs.inpmacos == 'yes' }}
