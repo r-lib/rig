@@ -26,7 +26,6 @@ use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
 use crate::library::*;
-use crate::resolve::resolve_versions;
 use crate::rversion::*;
 use crate::run::*;
 use crate::utils::*;
@@ -579,11 +578,10 @@ pub fn sc_system_no_openmp(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn get_resolve(args: &ArgMatches) -> Result<Rversion, Box<dyn Error>> {
-    let str = args.get_one::<String>("str").unwrap();
-    let eps = vec![str.to_string()];
-    let version = resolve_versions(eps, "win".to_string(), "default".to_string(), None)?;
-    Ok(version[0].to_owned())
+pub fn sc_system_detect_platform(_args: &ArgMatches, _mainargs: &ArgMatches)
+                                 -> Result<(), Box<dyn Error>> {
+    // Nothing to do on Windows
+    Ok(())
 }
 
 // ------------------------------------------------------------------------

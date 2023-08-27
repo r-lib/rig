@@ -22,3 +22,6 @@ _rim.ps1
 /Rig.app/build-x86_64
 /Rig.app/lib
 /releases
+/tests/results
+/build
+/rig-*.tar.gz

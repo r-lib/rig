@@ -235,18 +235,22 @@ pub fn sc_rstudio(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
 // -- rig avilable --------------------------------------------------------
 
-pub fn sc_available(args: &ArgMatches, mainargs: &ArgMatches)
-                    -> Result<(), Box<dyn Error>> {
+pub fn get_platform(args: &ArgMatches)
+                    -> Result<String, Box<dyn Error>> {
+
+    // rig add does not have a --platform argument, only auto-detect
+    match args.try_contains_id("platform") {
+        Ok(_) => {
+            let platform = args.get_one::<String>("platform");
+            if let Some(x) = platform {
+                return Ok(x.to_string())
+            }
+        },
+        Err(_) => { }
+    };
+
     #[allow(unused_mut)]
     let mut os = env::consts::OS.to_string();
-
-    let mut arch = "".to_string();
-    if os == "macos" {
-        arch = args
-            .get_one::<String>("arch").unwrap().to_string();
-    } else if os == "linux" {
-        arch = env::consts::ARCH.to_string();
-    }
 
     #[cfg(target_os = "linux")]
     {
@@ -256,8 +260,69 @@ pub fn sc_available(args: &ArgMatches, mainargs: &ArgMatches)
         }
     }
 
+    debug!("Auto-detected platform: {}.", os);
+
+    Ok(os)
+}
+
+pub fn get_arch(platform: &str, args: &ArgMatches) -> String {
+    #[allow(unused_mut)]
+
+    // For rig add we don't have --arch, except on macOS, only auto-detect
+    let arch = match args.try_contains_id("arch") {
+        Ok(_) => {
+            args.get_one::<String>("arch")
+        },
+        Err(_) => None
+    };
+
+    // For Windows, the default is x86_64
+    let arch = match arch {
+        Some(x) => {
+            match args.value_source("arch") {
+                Some(y) => {
+                    if y == clap::parser::ValueSource::DefaultValue &&
+                        platform == "windows"{
+                            "x86_64".to_string()
+                        } else {
+                            x.to_string()
+                        }
+                },
+                None => x.to_string()
+            }
+        },
+        None    => {
+            if platform == "windows" {
+                "x86_64".to_string()
+            } else {
+                env::consts::ARCH.to_string()
+            }
+        }
+    };
+
+    // Prefer 'arm64' on macos, but 'aarch64' on linux
+    if platform == "macos" && arch == "aarch64" {
+        "arm64".to_string()
+    } else if platform == "linux" && arch == "arm64" {
+        "aarch64".to_string()
+    } else {
+        arch
+    }
+}
+
+pub fn sc_available(args: &ArgMatches, mainargs: &ArgMatches)
+                    -> Result<(), Box<dyn Error>> {
+    #[allow(unused_mut)]
+
+    if args.get_flag("list-distros") {
+        return sc_available_distros(args, mainargs);
+    }
+
+    let platform = get_platform(args)?;
+    let arch = get_arch(&platform, args);
+
     let url = "https://api.r-hub.io/rversions/available/".to_string() +
-        &os + "/" + &arch;
+        &platform + "/" + &arch;
     let resp = download_json_sync(vec![url])?;
     let resp = resp[0].as_array().unwrap();
 
@@ -334,6 +399,42 @@ pub fn sc_available(args: &ArgMatches, mainargs: &ArgMatches)
         }
         print!("{}", tab);
     }
+    Ok(())
+}
+
+fn sc_available_distros(args: &ArgMatches, mainargs: &ArgMatches)
+                        -> Result<(), Box<dyn Error>> {
+
+    let url = "https://api.r-hub.io/rversions/linux-distros".to_string();
+    let resp = download_json_sync(vec![url])?;
+    let resp = resp[0].as_array().unwrap();
+
+    if args.get_flag("json") || mainargs.get_flag("json") {
+        let num = resp.len();
+        println!("[");
+        for (idx, item) in resp.iter().enumerate() {
+            println!("{{");
+            println!("  \"name\": {},", &item["name"]);
+            println!("  \"version\": {},", &item["version"]);
+            println!("  \"id\": {}", &item["id"]);
+            println!("}}{}", if idx == num - 1 { "" } else { "," });
+        }
+        println!("]");
+    } else {
+        let mut tab = Table::new("{:<}  {:<}  {:<}");
+        tab.add_row(row!["name", "version", "id"]);
+        tab.add_heading("--------------------------------------------------------------");
+        for item in resp.iter() {
+            tab.add_row(row!(
+                unquote(&item["name"].to_string()),
+                unquote(&item["version"].to_string()),
+                unquote(&item["id"].to_string())
+            ));
+        }
+
+        print!("{}", tab);
+    }
+
     Ok(())
 }
 

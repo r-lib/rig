@@ -3,23 +3,61 @@ name: Test
 
 on:
   workflow_dispatch:
+    inputs:
+      inplinuxx8664:
+        description: |
+          Build on Linux x86_64
+        required: false
+        type: choice
+        options:
+        - 'yes'
+        - 'no'
+        default: 'yes'
+      inplinuxaarch64:
+        description: |
+          Build Linux aarch64
+        required: false
+        type: choice
+        options:
+        - 'yes'
+        - 'no'
+        default: 'no'
+      inpmacos:
+        description: |
+          Build macOS
+        required: false
+        type: choice
+        options:
+        - 'yes'
+        - 'no'
+        default: 'yes'
+      inpwindows:
+        description: |
+          Build Windows
+        required: false
+        type: choice
+        options:
+        - 'yes'
+        - 'no'
+        default: 'yes'
   push:
     branches: [ 'dev', 'main' ]
   pull_request:
-    branches: [main, master]
+    branches: [main, master, dev]
   schedule:
   - cron: '30 6 * * *'
 
+env:
+  RUST_BACKTRACE: 1
+
 jobs:
 
-  linux:
+  linux-build-x86_64:
+    if: ${{ github.event.inputs.inplinuxx8664 == '' || github.event.inputs.inplinuxx8664 == 'yes' }}
     runs-on: ubuntu-latest
-    name: Linux
-    env:
-      RUST_BACKTRACE: 1
+    name: Linux build x86_64
 
     steps:
-
     - name: Checkout
       uses: actions/checkout@v3
       with:
@@ -27,34 +65,68 @@ jobs:
 
     - name: Build rig
       run: |
-        docker build -t rig:latest .
-        docker run --name quickrig rig:latest ls out
-        docker cp quickrig:out .
-        ls out
-        cp out/rig* .
+        make linux-in-docker
 
     - name: Upload build as artifact
       uses: actions/upload-artifact@v3
       if: success()
       with:
-        name: rig-linux
+        name: rig-linux-x86_64
         path: 'rig-*.tar.gz'
 
-    - name: Install rig
-      run: |
-        sudo tar xzf rig-*.tar.gz -C /usr/local
+  linux-tests-x86_64-setup:
+    needs: linux-build-x86_64
+    runs-on: ubuntu-latest
+    name: Linux test setup x86_64
+    outputs:
+      containers: ${{ steps.matrix-setup-x86_64.outputs.containers }}
 
-    - name: Install bats
-      run: |
-        sudo apt-get update && sudo apt-get install bats
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
 
-    - name: Run tests
+    - name: Set up matrix of containers
+      id: matrix-setup-x86_64
       run: |
-        bats tests/test-linux.sh
+        containers=$(make print-linux-variants-json)
+        echo "containers=$containers" >> $GITHUB_OUTPUT
 
-  linux-arm:
+  linux-tests-x86_64:
+    needs: linux-tests-x86_64-setup
+    strategy:
+      fail-fast: false
+      matrix:
+        container: ${{ fromJson(needs.linux-tests-x86_64-setup.outputs.containers) }}
+    runs-on: ubuntu-latest
+    name: ${{ matrix.container }} (x86_64)
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Download build from artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: rig-linux-x86_64
+
+    - name: Uncompress rig build
+      run: |
+        mkdir build
+        tar xzf rig-*.tar.gz -C build
+        find build
+
+    - name: Test
+      run: |
+        make linux-test-${{ matrix.container }}
+        if ls tests/results | grep -q fail; then
+            echo Some tests failed;
+            exit 1;
+        fi
+
+  linux-build-aarch64:
+    if: ${{ github.event.inputs.inplinuxaarch64 == 'yes' }}
     runs-on: [linux-arm64]
-    name: Linux-aaarch
+    name: Linux build aaarch
     env:
       RUST_BACKTRACE: 1
 
@@ -67,13 +139,7 @@ jobs:
 
     - name: Build rig
       run: |
-        docker system prune -f
-        docker build -t rig:latest .
-        docker rm quickrig 2>/dev/null || true
-        docker run --name quickrig rig:latest ls out
-        docker cp quickrig:out .
-        ls out
-        cp out/rig* .
+        make linux-in-docker
 
     - name: Upload build as artifact
       uses: actions/upload-artifact@v3
@@ -82,9 +148,65 @@ jobs:
         name: rig-linux-aarch64
         path: 'rig-*.tar.gz'
 
-# TODO: run tests in Docker container
+  linux-tests-aarch64-setup:
+    needs: linux-build-aarch64
+    runs-on: ubuntu-latest
+    name: Linux test setup aarch64
+    outputs:
+      containers: ${{ steps.matrix-setup-aarch64.outputs.containers }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Set up matrix of containers
+      id: matrix-setup-aarch64
+      run: |
+        containers=$(make print-linux-variants-json)
+        echo "containers=$containers" >> $GITHUB_OUTPUT
+
+  linux-tests-aarch64:
+    needs: linux-tests-aarch64-setup
+    strategy:
+      fail-fast: false
+      matrix:
+        container: ${{ fromJson(needs.linux-tests-aarch64-setup.outputs.containers) }}
+    runs-on: ubuntu-latest
+    name: ${{ matrix.container }} (aarch64)
+
+    steps:
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v2
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Download build from artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: rig-linux-aarch64
+
+    - name: Uncompress rig build
+      run: |
+        mkdir build
+        tar xzf rig-*.tar.gz -C build
+        find build
+
+    - name: Test
+      run: |
+        make linux-test-${{ matrix.container }}
+        if ls tests/results | grep -q fail; then
+            echo Some tests failed;
+            exit 1;
+        fi
+      env:
+        DOCKER_DEFAULT_PLATFORM: "linux/arm64"
 
   macos:
+    if: ${{ github.event.inputs.inpmacos == '' || github.event.inputs.inpmacos == 'yes' }}
     runs-on: ${{ matrix.config.os }}
     name: ${{ matrix.config.os }}
     env:
@@ -127,6 +249,7 @@ jobs:
         bats tests/test-macos.sh
 
   windows:
+    if: ${{ github.event.inputs.inpwindows == '' || github.event.inputs.inpwindows == 'yes' }}
     runs-on: windows-latest
     name: Windows
     env:
@@ -140,9 +263,7 @@ jobs:
         fetch-depth: 10
 
     - name: Install rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
+      uses: dtolnay/rust-toolchain@stable
 
     - name: Install make
       run: choco install make

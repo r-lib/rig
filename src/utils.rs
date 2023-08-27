@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::fs::File;
 use std::io::{prelude::*, BufReader};
@@ -17,6 +18,7 @@ use simplelog::*;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use crate::rversion::*;
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub fn os(x: &str) -> OsString {
     let mut ostr = OsString::new();
     ostr.push(x);
@@ -271,4 +273,27 @@ pub fn unset_r_envvars() {
     for ev in evs {
         std::env::remove_var(ev);
     }
+}
+
+#[cfg(target_os = "linux")]
+pub fn format_cmd_args(x: Vec<String>, val: &OsStr) -> Vec<OsString> {
+    let x2 = x.iter()
+        .map(|e| format_cmd_arg(e, val))
+        .collect();
+    x2
+}
+
+#[cfg(target_os = "linux")]
+fn format_cmd_arg(x: &str, val: &OsStr) -> OsString {
+    let parts: Vec<_> = x.split("{}").collect();
+    let mut ox = OsString::new();
+    let n = parts.len();
+    for (idx, part) in parts.iter().enumerate() {
+        ox.push(part);
+        if idx != n - 1 {
+            ox.push(val);
+        }
+    }
+
+    ox
 }

@@ -26,6 +26,8 @@ mod linux;
 #[cfg(target_os = "linux")]
 use linux::*;
 
+use resolve::*;
+
 mod alias;
 mod library;
 mod common;
@@ -110,7 +112,7 @@ fn main__(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         Some(("default", sub)) => sc_default(sub, args),
         Some(("list", sub)) => sc_list(sub, args),
         Some(("rm", sub)) => sc_rm(sub),
-        Some(("system", sub)) => sc_system(sub),
+        Some(("system", sub)) => sc_system(sub, args),
         Some(("resolve", sub)) => sc_resolve(sub, args),
         Some(("rstudio", sub)) => sc_rstudio(sub),
         Some(("library", sub)) => sc_library(sub, args),
@@ -121,7 +123,8 @@ fn main__(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     }
 }
 
-fn sc_system(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+fn sc_system(args: &ArgMatches, mainargs: &ArgMatches)
+             -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
         Some(("add-pak", s)) => sc_system_add_pak(s),
         Some(("allow-core-dumps", s)) => sc_system_allow_core_dumps(s),
@@ -135,6 +138,7 @@ fn sc_system(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         Some(("forget", _)) => sc_system_forget(),
         Some(("no-openmp", s)) => sc_system_no_openmp(s),
 	Some(("update-rtools40", _)) => sc_system_update_rtools40(),
+        Some(("detect-platform", s)) => sc_system_detect_platform(s, mainargs),
         _ => Ok(()), // unreachable
     }
 }

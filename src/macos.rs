@@ -19,7 +19,7 @@ use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
 use crate::library::*;
-use crate::resolve::resolve_versions;
+use crate::resolve::get_resolve;
 use crate::rversion::*;
 use crate::run::*;
 use crate::utils::*;
@@ -702,23 +702,6 @@ pub fn sc_system_forget() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn get_resolve(args: &ArgMatches) -> Result<Rversion, Box<dyn Error>> {
-    let str: &String = args.get_one("str").unwrap();
-    let arch: &String = args.get_one("arch").unwrap();
-
-    if str.len() > 8 && (&str[..7] == "http://" || &str[..8] == "https://") {
-        Ok(Rversion {
-            version: None,
-            url: Some(str.to_string()),
-            arch: None,
-        })
-    } else {
-        let eps = vec![str.to_string()];
-        let version = resolve_versions(eps, "macos".to_string(), arch.to_string(), None)?;
-        Ok(version[0].to_owned())
-    }
-}
-
 pub fn sc_system_no_openmp(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("updating R compiler configuration")?;
     let vers = args.get_many::<String>("version");
@@ -795,6 +778,12 @@ pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
 }
 
 pub fn sc_system_update_rtools40() -> Result<(), Box<dyn Error>> {
+    Ok(())
+}
+
+pub fn sc_system_detect_platform(_args: &ArgMatches, _mainargs: &ArgMatches)
+                                 -> Result<(), Box<dyn Error>> {
+    // Nothing to do on Windows
     Ok(())
 }
 

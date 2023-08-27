@@ -1,0 +1,12 @@
+
+services:
+  rig:
+    image: "rlib/rig-builder:latest"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: sleep 100000d
+    volumes:
+      - type: bind
+        source: .
+        target: /work

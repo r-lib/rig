@@ -43,6 +43,7 @@ linux: export DEP_OPENSSL_INCLUDE = /usr/local/include/
 linux: rig-$(VERSION).tar.gz
 
 rig-$(VERSION).tar.gz: target/release/rig
+	ls -l target/release/rig
 	strip -x target/release/rig
 	mkdir -p build/bin
 	mkdir -p build/share/bash-completion/completions
@@ -54,6 +55,54 @@ rig-$(VERSION).tar.gz: target/release/rig
 	mkdir -p build/share/rig
 	curl -L -o build/share/rig/cacert.pem 'https://curl.se/ca/cacert.pem'
 	tar cz -C build -f $@ bin share
+	if [[ -n "$$LOCAL_UID" && -n "$$LOCAL_GID" ]]; then \
+		chown -R "$$LOCAL_UID":"$$LOCAL_GID" build target $@; \
+	fi
+
+shell-linux:
+	docker compose build
+	docker run -ti -v .:/work rlib/rig-builder:latest bash
+
+VARIANTS = ubuntu-20.04 ubuntu-22.04 debian-11 debian-12 centos-7 rockylinux-8 rockylinux-9 opensuse/leap-15.3 opensuse/leap-15.4 fedora-37 fedora-38 almalinux-8 almalinux-9
+print-linux-variants:
+	@echo $(VARIANTS)
+print-linux-variants-json:
+	@echo $(VARIANTS) | sed 's/ /","/g' | sed 's/^/["/' | sed 's/$$/"]/'
+
+linux-in-docker:
+	docker compose build
+	docker run -v .:/work \
+		-e LOCAL_UID=`id -u` -e LOCAL_GID=`id -g` \
+		rlib/rig-builder:latest make linux
+
+ifeq "$(DOCKER_DEFAULT_PLATFORM)" ""
+    DOCKER_ARCH :=
+else
+    DOCKER_ARCH := --platform=$(DOCKER_DEFAULT_PLATFORM)
+endif
+
+define GEN_TESTS
+linux-test-$(variant):
+	mkdir -p tests/results
+	rm -f tests/results/`echo $(variant) | tr / -`.fail \
+	      tests/results/`echo $(variant) | tr / -`.success
+	docker run -t --rm $(DOCKER_ARCH) --privileged \
+		-v $(PWD):/work `echo $(variant) | tr - :` \
+		bash -c /work/tests/test-linux-docker.sh && \
+	touch tests/results/`echo $(variant) | tr / -`.success || \
+	touch tests/results/`echo $(variant) | tr / -`.fail
+shell-$(variant):
+	docker run -ti --rm -v $(PWD):/work `echo $(variant) | tr - :` bash
+TEST_IMAGES += linux-test-$(variant)
+endef
+$(foreach variant, $(VARIANTS), $(eval $(GEN_TESTS)))
+
+linux-test-all: $(TEST_IMAGES)
+	if ls tests/results | grep -q fail; then \
+		echo Some tests failed; \
+		ls tests/results; \
+		exit 1; \
+	fi
 
 # -------------------------------------------------------------------------
 
