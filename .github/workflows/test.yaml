@@ -111,13 +111,13 @@ jobs:
 
     - name: Uncompress rig build
       run: |
-        ls -R
         mkdir build
         tar xzf rig-*.tar.gz -C build
+        find build
 
     - name: Test
       run: |
-        make test-linux-${{ matrix.container }}
+        make linux-test-${{ matrix.container }}
 
   linux-build-aarch64:
     if: ${{ github.event.inputs.inplinuxaarch64 == '' || github.event.inputs.inplinuxaarch64 == 'yes' }}
@@ -181,13 +181,13 @@ jobs:
 
     - name: Uncompress rig build
       run: |
-        ls -R
         mkdir build
         tar xzf rig-*.tar.gz -C build
+        find build
 
     - name: Test
       run: |
-        make test-linux-${{ matrix.container }}
+        make linux-test-${{ matrix.container }}
 
   macos:
     if: ${{ github.event.inputs.inpmacos == '' || github.event.inputs.inpmacos == 'yes' }}
