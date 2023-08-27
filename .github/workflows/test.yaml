@@ -175,6 +175,12 @@ jobs:
     name: ${{ matrix.container }}
 
     steps:
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v1
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v1
+
     - name: Checkout
       uses: actions/checkout@v3
 
