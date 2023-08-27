@@ -55,6 +55,9 @@ rig-$(VERSION).tar.gz: target/release/rig
 	mkdir -p build/share/rig
 	curl -L -o build/share/rig/cacert.pem 'https://curl.se/ca/cacert.pem'
 	tar cz -C build -f $@ bin share
+	if [[ -n "$$LOCAL_UID" && -n "$$LOCAL_GID" ]]; then \
+		chown "$$LOCAL_UID":"$$LOCAL_GID" build $@; \
+	fi
 
 shell-linux:
 	docker compose build
@@ -68,8 +71,9 @@ print-linux-variants-json:
 
 linux-in-docker:
 	docker compose build
-	docker run -v .:/work rlib/rig-builder:latest make linux
-	sudo chown -R `id -u`:`id -g` build *.tar.gz || true
+	docker run -v .:/work \
+		-e LOCAL_UID=$(id -u $USER) -e LOCAL_GID=$(id -g $USER) \
+		rlib/rig-builder:latest make linux
 
 define GEN_TESTS
 linux-test-$(variant):
