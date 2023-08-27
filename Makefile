@@ -56,7 +56,7 @@ rig-$(VERSION).tar.gz: target/release/rig
 	curl -L -o build/share/rig/cacert.pem 'https://curl.se/ca/cacert.pem'
 	tar cz -C build -f $@ bin share
 	if [[ -n "$$LOCAL_UID" && -n "$$LOCAL_GID" ]]; then \
-		chown "$$LOCAL_UID":"$$LOCAL_GID" build target $@; \
+		chown -R "$$LOCAL_UID":"$$LOCAL_GID" build target $@; \
 	fi
 
 shell-linux:
@@ -72,7 +72,7 @@ print-linux-variants-json:
 linux-in-docker:
 	docker compose build
 	docker run -v .:/work \
-		-e LOCAL_UID=$(id -u $USER) -e LOCAL_GID=$(id -g $USER) \
+		-e LOCAL_UID=`id -u` -e LOCAL_GID=`id -g` \
 		rlib/rig-builder:latest make linux
 
 ifeq "$(DOCKER_DEFAULT_PLATFORM)" ""
