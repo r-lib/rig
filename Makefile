@@ -63,6 +63,8 @@ shell-linux:
 VARIANTS = ubuntu-20.04 ubuntu-22.04 debian-11 debian-12 centos-7 rockylinux-8 rockylinux-9 opensuse/leap-15.3 opensuse/leap-15.4 fedora-37 fedora-38 almalinux-8 almalinux-9
 print-linux-variants:
 	@echo $(VARIANTS)
+print-linux-variants-json:
+	@echo $(VARIANTS) | sed 's/ /","/g' | sed 's/^/["/' | sed 's/$$/"]/'
 
 linux-in-docker:
 	docker compose build
