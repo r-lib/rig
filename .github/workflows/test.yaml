@@ -263,9 +263,7 @@ jobs:
         fetch-depth: 10
 
     - name: Install rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
+      uses: dtolnay/rust-toolchain@stable
 
     - name: Install make
       run: choco install make
