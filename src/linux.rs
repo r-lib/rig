@@ -161,7 +161,7 @@ fn select_linux_tools(platform: &OsVersion)
         Ok(LinuxTools{
             package_name: "R-{}".to_string(),
             install: vec![
-                strvec!["bash", "-c", "rpm -q epel-release || yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm"],
+                strvec!["yum", "install", "-y", "epel-release"],
                 strvec!["yum", "install", "-y", "{}"]
             ],
             get_package_name:
