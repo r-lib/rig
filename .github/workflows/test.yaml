@@ -98,7 +98,7 @@ jobs:
       matrix:
         container: ${{ fromJson(needs.linux-tests-x86_64-setup.outputs.containers) }}
     runs-on: ubuntu-latest
-    name: ${{ matrix.container }}
+    name: ${{ matrix.container }} (x86_64)
 
     steps:
     - name: Checkout
@@ -172,7 +172,7 @@ jobs:
       matrix:
         container: ${{ fromJson(needs.linux-tests-aarch64-setup.outputs.containers) }}
     runs-on: ubuntu-latest
-    name: ${{ matrix.container }}
+    name: ${{ matrix.container }} (aarch64)
 
     steps:
     - name: Set up QEMU
