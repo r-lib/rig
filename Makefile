@@ -56,7 +56,7 @@ rig-$(VERSION).tar.gz: target/release/rig
 	curl -L -o build/share/rig/cacert.pem 'https://curl.se/ca/cacert.pem'
 	tar cz -C build -f $@ bin share
 	if [[ -n "$$LOCAL_UID" && -n "$$LOCAL_GID" ]]; then \
-		chown "$$LOCAL_UID":"$$LOCAL_GID" build $@; \
+		chown "$$LOCAL_UID":"$$LOCAL_GID" build target $@; \
 	fi
 
 shell-linux:

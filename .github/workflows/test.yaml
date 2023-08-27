@@ -118,6 +118,10 @@ jobs:
     - name: Test
       run: |
         make linux-test-${{ matrix.container }}
+        if ls tests/results | grep -q fail; then
+            echo Some tests failed;
+            exit 1;
+        fi
 
   linux-build-aarch64:
     if: ${{ github.event.inputs.inplinuxaarch64 == '' || github.event.inputs.inplinuxaarch64 == 'yes' }}
@@ -167,7 +171,7 @@ jobs:
       fail-fast: false
       matrix:
         container: ${{ fromJson(needs.linux-tests-aarch64-setup.outputs.containers) }}
-    runs-on: ubuntu-latest
+    runs-on: [linux-arm64]
     name: ${{ matrix.container }}
 
     steps:
@@ -188,6 +192,10 @@ jobs:
     - name: Test
       run: |
         make linux-test-${{ matrix.container }}
+        if ls tests/results | grep -q fail; then
+            echo Some tests failed;
+            exit 1;
+        fi
 
   macos:
     if: ${{ github.event.inputs.inpmacos == '' || github.event.inputs.inpmacos == 'yes' }}
