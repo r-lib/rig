@@ -95,7 +95,7 @@ teardown() {
 
 @test "rm" {
     if ! rig ls | grep -q '^[* ] 3.3.3$'; then
-        run rig add 3.3
+        run rig add 3.3 --without-pak
         [[ "$status" -eq 0 ]]
         run rig ls
         echo "$output" | grep -q "^[* ] 3[.]3[.]3"
