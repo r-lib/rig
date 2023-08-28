@@ -10,7 +10,6 @@ use std::process::Command;
 
 use clap::ArgMatches;
 use regex::Regex;
-use semver::Version;
 use simple_error::*;
 use simplelog::{debug, info, warn};
 
@@ -835,18 +834,6 @@ pub fn sc_rstudio_(version: Option<&str>,
 }
 
 // ------------------------------------------------------------------------
-
-// TODO: we should not hardcode this here...
-pub fn check_has_pak(ver: &String) -> Result<bool, Box<dyn Error>> {
-    let ver = Regex::new("-.*$")?.replace(ver, "").to_string();
-    let ver = ver + ".0";
-    let v350 = Version::parse("3.5.0")?;
-    let vv = Version::parse(&ver)?;
-    if vv < v350 {
-        bail!("Pak is only available for R 3.5.0 or later");
-    }
-    Ok(true)
-}
 
 pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
     let ver = check_installed(&ver.to_string())?;

@@ -874,11 +874,6 @@ pub fn get_system_profile(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
     Ok(profile)
 }
 
-pub fn check_has_pak(_rver: &str) -> Result<(), Box<dyn Error>> {
-    // TODO: actually check. Right now the install will fail
-    Ok(())
-}
-
 // /usr/bin/sed might not be available, and R will need it (issue 119#)
 
 fn check_usr_bin_sed(rver: &str) -> Result<(), Box<dyn Error>> {
