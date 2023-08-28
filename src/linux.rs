@@ -41,6 +41,15 @@ macro_rules! strvec {
     });
 }
 
+macro_rules! osvec {
+    // match a list of expressions separated by comma:
+    ($($str:expr),*) => ({
+        // create a Vec with this list of expressions,
+        // calling String::from on each:
+        vec![$(OsString::from($str),)*] as Vec<OsString>
+    });
+}
+
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("adding new R versions")?;
 
@@ -810,9 +819,14 @@ pub fn sc_system_update_rtools40() -> Result<(), Box<dyn Error>> {
 
 pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>, arg: Option<&OsStr>)
                    -> Result<(), Box<dyn Error>> {
+
+    let cwd = std::env::current_dir();
     let (cmd, mut args) = match project {
-        Some(p) => ("xdg-open", vec![p]),
-        None => ("rstudio", vec![]),
+        Some(p) => ("xdg-open", osvec![p]),
+        None => match cwd {
+	    Ok(x) => ("rstudio", osvec![x]),
+	    Err(_) => ("rstudio", osvec![])
+	}
     };
 
     let mut envname = "dummy";
@@ -824,10 +838,10 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>, arg: Option<&Os
     };
 
     if let Some(arg) = arg {
-        args.push(arg.to_str().unwrap_or("."));
+        args.push(arg.into());
     }
 
-    info!("Running {} {}", cmd, args.join(" "));
+    info!("Running {} {:?}", cmd, args.join(&os(" ")));
 
     Command::new(cmd)
         .args(args)

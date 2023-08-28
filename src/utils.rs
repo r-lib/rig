@@ -19,7 +19,6 @@ use simplelog::*;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use crate::rversion::*;
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub fn os(x: &str) -> OsString {
     let mut ostr = OsString::new();
     ostr.push(x);
