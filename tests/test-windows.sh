@@ -145,20 +145,20 @@ teardown() {
 }
 
 @test "rm" {
-    if ! rig ls | grep -q '^[* ] 3.4.4$'; then
-        run rig add 3.4
+    if ! rig ls | grep -q '^[* ] 3.5.3$'; then
+        run rig add 3.5
 	echo "status = ${status}"
 	echo "output = ${output}"
         [[ "$status" -eq 0 ]]
         run rig ls
-        echo "$output" | grep -q "^[* ] 3[.]4[.]4"
+        echo "$output" | grep -q "^[* ] 3[.]5[.]3"
     fi
-    run rig rm 3.4.4
+    run rig rm 3.5.3
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
     run rig list
-    echo $output | grep -vq "^[* ] 3.4.4"
+    echo $output | grep -vq "^[* ] 3.5.3"
 }
 
 # The quoting is very tricky here. We avoid double quotes because they

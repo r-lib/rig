@@ -134,17 +134,17 @@ teardown() {
     run R-4.1.2 -q -s -e 'pak::lib_status()'
     [[ "$status" -eq 0 ]]
 
-    if ! rig ls | grep -q '^[* ] 3.4.4$'; then
-        run rig add 3.4.4
+    if ! rig ls | grep -q '^[* ] 3.5.3$'; then
+        run rig add 3.5.3
         [[ "$status" -eq 0 ]]
         run rig ls
-        echo "$output" | grep -q "^[* ] 3[.]4[.]4"
+        echo "$output" | grep -q "^[* ] 3[.]5[.]3"
     fi
 
-    libdir=`R-3.4.4 -s -e 'cat(path.expand(Sys.getenv("R_LIBS_USER")))'`
+    libdir=`R-3.5.3 -s -e 'cat(path.expand(Sys.getenv("R_LIBS_USER")))'`
     [[ "$libdir" == "" ]] && false
     run $SUDO rm -rf "$libdir"
-    run $SUDO `which rig` system add-pak 3.4.4
+    run $SUDO `which rig` system add-pak 3.5.3
     [[ "$status" -eq 0 ]]
     uid=`stat -c "%u" "$libdir"`
     [[ "$uid" -eq "`id -u`" ]]
