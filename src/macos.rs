@@ -30,6 +30,15 @@ pub const R_SYSLIBPATH: &str = "{}/Resources/library";
 pub const R_BINPATH: &str = "{}/Resources/R";
 const R_CUR: &str = "/Library/Frameworks/R.framework/Versions/Current";
 
+macro_rules! osvec {
+    // match a list of expressions separated by comma:
+    ($($str:expr),*) => ({
+        // create a Vec with this list of expressions,
+        // calling String::from on each:
+        vec![$(OsString::from($str),)*] as Vec<OsString>
+    });
+}
+
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("adding new R versions")?;
     let mut version = get_resolve(args)?;
@@ -792,9 +801,13 @@ pub fn sc_rstudio_(version: Option<&str>,
                    arg: Option<&OsStr>)
                    -> Result<(), Box<dyn Error>> {
 
+    let cwd = std::env::current_dir();
     let mut args = match project {
-        None => vec![os("-n"), os("-a"), os("RStudio")],
-        Some(p) => vec![os("-n"), os(p)],
+        None => match cwd {
+            Ok(x) => osvec!["-n", "-a", "RStudio", "--args", x],
+            Err(_) => osvec!["-n", "-a", "RStudio"]
+        },
+        Some(p) => osvec!["-n", p],
     };
     let path;
 
