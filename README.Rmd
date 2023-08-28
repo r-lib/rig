@@ -25,16 +25,8 @@ knitr::opts_chunk$set(
 ## 🚀&nbsp; Features <a id="id-features">
 
 * Works on macOS, Windows and Linux.
-* Supported Linux distribution are:
-  - Debian 10, 11, 12,
-  - Ubuntu 18.04, 20.04, 22.04,
-  - Fedora Linux 37, 38,
-  - OpenSUSE 15.3, 15.4,
-  - SUSE Linux Enterprise 15 SP3, SP4,
-  - CentOS 7,
-  - Red Hat Enterprise Linux 7, 8, 9,
-  - AlmaLinux 8, 9,
-  - Rocky Linux 8, 9.
+* Supports many Linux distributions, see
+  [list below](#supported-linux-distributions).
 * Easy installation and update, no system requirements on any platform.
 * Install multiple R versions.
 * Select the default R version, for the terminal and RStudio.
@@ -44,9 +36,12 @@ knitr::opts_chunk$set(
 * Run multiple versions _at the same_ time using quick links.
   E.g. `R-4.1` or `R-4.1.2` starts R 4.1.x. Quick links are automatically
   added to the user's path.
+* On macOS it comes with a menu bar app that shows the default R
+  version and lets to select it interactively.
+  [See below](#id-macos-menu-bar-app).
 * On arm64 macs select between x86_64 and arm64 versions or R, or install both.
 * Sets up the default CRAN mirror and [PPM](https://packagemanager.posit.co/).
-* Installs [pak](https://pak.r-lib.org) and set up automatic 
+* Installs [pak](https://pak.r-lib.org) and set up automatic
   [system requirements installation](https://pak.r-lib.org/dev/reference/sysreqs.html).
 * Creates and configures user level package libraries.
 * Restricts permissions to the system library.
@@ -166,14 +161,20 @@ curl -Ls https://github.com/r-lib/rig/releases/download/latest/rig-linux-arm64-l
   sudo tar xz -C /usr/local
 ```
 
-Supported Linux distributions:
+#### Supported Linux distributions:
 
-- Ubuntu LTS from [r-builds](https://github.com/rstudio/r-builds#r-builds),
-  currently 20.04, 22.04.
-- Debian from [r-builds](https://github.com/rstudio/r-builds#r-builds),
-  currently 10, 11 and 12.
+- Debian 10, 11, 12,
+- Ubuntu 18.04, 20.04, 22.04,
+- Fedora Linux 37, 38,
+- OpenSUSE 15.3, 15.4,
+- SUSE Linux Enterprise 15 SP3, SP4,
+- CentOS 7,
+- Red Hat Enterprise Linux 7, 8, 9,
+- AlmaLinux 8, 9,
+- Rocky Linux 8, 9.
 
-Other Linux distributions are coming soon.
+We use the R builds from the Posit
+[R-builds project](https://github.com/rstudio/r-builds#r-builds).
 
 ### Auto-complete
 
@@ -198,6 +199,8 @@ Use `rig list` to list the currently installed R versions, and `rig default`
 to set the default one.
 
 Run `rig` to see all commands and examples.
+
+Run `rig --help` and `rig <subcommand> --help` to see the documentation.
 
 ### Command list:
 
