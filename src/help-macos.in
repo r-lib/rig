@@ -306,6 +306,10 @@ const HELP_RSTUDIO: &str = "
   On macOS arm64 computers rig prefers arm64 R, unless an exact version
   match is only available with x86_64 R.
 
+  Calling `rig rstudio` without a project file works best with RStudio
+  2023.06.0 and newer. Older versions may start with an error dialog box.
+  See issues #100 and #139 for some details.
+
 \x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
   # With default R version
   rig rstudio
