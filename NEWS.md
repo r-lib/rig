@@ -3,6 +3,73 @@
 
 Under development.
 
+* rig now supports RPM based distros, in addition to Deboan and Ubuntu (#28).
+  The full list of supported distros, on x86_64 and aarch64:
+  - Debian 10, 11, 12,
+  - Ubuntu 18.04, 20.04, 22.04,
+  - Fedora Linux 37, 38,
+  - OpenSUSE 15.3, 15.4,
+  - SUSE Linux Enterprise 15 SP3, SP4,
+  - CentOS 7,
+  - Red Hat Enterprise Linux 7, 8, 9,
+  - AlmaLinux 8, 9,
+  - Rocky Linux 8, 9.
+  See alsop the new `rig available --list-distros`.
+
+* New `rig available` command to list R versions available to install.
+  `rig available --list-distros` lists the supported Linux distributions.
+
+* New `rig run` to run R, an R script or an R project, using the selected
+  R version (#161).
+
+* rig now works in a shell that is a subprocess or R, e.g. in the
+  RStudio terminal (#127).
+
+* rig now works behind a proxy, on macOS and Linux, if the `https_proxy`
+  environment variable is set (#166).
+
+* `rig resolve` now has a `--platform` and a `--arch` arguments, to look up
+  available R versions for any supported platform, instead of the current
+  one.
+
+* `rig ls --plain` lists only the R version names, this is useful in
+  shell scripts (#128).
+
+* `rig rstudio` now starts RStudio with the correct working directory
+  and project (#139, #100).
+
+* macOS: `rig add` now only changes the permission for the R version
+  that it is installing (#109).
+
+* Windows: `rig rstudio` now starts the correct R version, even with newer
+  RStudio versions (#134).
+
+* Windows: rig now works in PowerShell 7.
+
+* Windows: the rig installer now does not create shortcut in the start
+  menu (#160).
+
+* Linux and macOS: rig now keeps the locales when switching to the root
+  user, so e.g. the language does not change (#138).
+
+* Linux: rig now works properly in Oh My Zsh (#125).
+
+* Linux: rig now works around a missing `/usr/bin/sed` that happened
+  on some distros (#119).
+
+* Linux: rig now does not fail if the default R version was deleted (#124).
+
+* Linux: new subcommand `rig system detect-platform` to print the detected
+  Linux distribution and configuration.
+
+* Linux: You can now set the `RIG_PLATFORM` environment variable to
+  override the auto-detected Linux distriution. E.g.
+  `RIG_PLATFORM=ubuntu-22.04` will force Ubuntu 22.04.
+
+* Linux: rig now comes with a CA certificate bundle, so it works without
+  system certificates. If you prefer not to use it, set the `SSL_CERT_FILE`
+  environment variable to point to your preferred CA bundle (#176).
+
 # rig 0.5.3
 
 * rig can now install x86_64 R 4.3.0 and later on macOS.
