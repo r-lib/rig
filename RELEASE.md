@@ -28,4 +28,5 @@
       `--tags` as well.
 - [ ] Update homebrew repo.
 - [ ] Update choco package.
-- [ ] tweet
+- [ ] Update the `latest` tag and release on GH.
+- [ ] toot
