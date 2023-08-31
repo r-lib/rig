@@ -17,18 +17,28 @@ Install, remove, configure R versions.
 
 ## 🚀  Features <a id="id-features">
 
-- Works on macOS, Windows and Linux (Ubuntu LTS and Debian, x86_64 and
-  aarch64).
+- Works on macOS, Windows and Linux.
+- Supports many Linux distributions, see [list
+  below](#supported-linux-distributions).
 - Easy installation and update, no system requirements on any platform.
 - Install multiple R versions.
 - Select the default R version, for the terminal and RStudio.
 - Select R version to install using symbolic names: `devel`, `next`,
   `release`, `oldrel`, etc.
+- List R versions available to install.
 - Run multiple versions *at the same* time using quick links. E.g.
   `R-4.1` or `R-4.1.2` starts R 4.1.x. Quick links are automatically
   added to the user’s path.
-- On M1 macs select between x86_64 and arm64 versions or R, or install
-  both.
+- On macOS it comes with a menu bar app that shows the default R version
+  and lets to select it interactively. [See
+  below](#id-macos-menu-bar-app).
+- On arm64 macs select between x86_64 and arm64 versions or R, or
+  install both.
+- Sets up the default CRAN mirror and
+  [PPM](https://packagemanager.posit.co/).
+- Installs [pak](https://pak.r-lib.org) and set up automatic [system
+  requirements
+  installation](https://pak.r-lib.org/dev/reference/sysreqs.html).
 - Creates and configures user level package libraries.
 - Restricts permissions to the system library. (On macOS, not needed on
   Windows and Linux).
@@ -38,13 +48,12 @@ Install, remove, configure R versions.
 - Installs the appropriate Rtools versions on Windows and sets them up.
 - Cleans up stale R-related entries from the Windows registry.
 - Switches to root/administrator user as needed.
+- Supports JSON output for scripting.
 
 ## 🐞  Known Issues <a id="id-known-issues">
 
 - On macOS, R.app often does not work if you install multiple R
   versions.
-- On Windows you need to restart your shell or terminal after installing
-  Rtools, for the changes to take effect.
 - On Windows, `rig rstudio` changes the R version in the registry
   temporarily before starting RStudio and then changes it back after a
   short wait. If RStudio starts up very slowly, then the wait might be
@@ -145,15 +154,20 @@ If you are running Linux on arm64, download the arm64 build:
     curl -Ls https://github.com/r-lib/rig/releases/download/latest/rig-linux-arm64-latest.tar.gz |
       sudo tar xz -C /usr/local
 
-Supported Linux distributions:
+#### Supported Linux distributions:
 
-- Ubuntu LTS from
-  [r-builds](https://github.com/rstudio/r-builds#r-builds), currently
-  20.04, 22.04.
-- Debian from [r-builds](https://github.com/rstudio/r-builds#r-builds),
-  currently 10, 11 and 12.
+- Debian 10, 11, 12,
+- Ubuntu 18.04, 20.04, 22.04,
+- Fedora Linux 37, 38,
+- OpenSUSE 15.3, 15.4,
+- SUSE Linux Enterprise 15 SP3, SP4,
+- CentOS 7,
+- Red Hat Enterprise Linux 7, 8, 9,
+- AlmaLinux 8, 9,
+- Rocky Linux 8, 9.
 
-Other Linux distributions are coming soon.
+We use the R builds from the Posit [R-builds
+project](https://github.com/rstudio/r-builds#r-builds).
 
 ### Auto-complete
 
@@ -177,6 +191,8 @@ Use `rig list` to list the currently installed R versions, and
 `rig default` to set the default one.
 
 Run `rig` to see all commands and examples.
+
+Run `rig --help` and `rig <subcommand> --help` to see the documentation.
 
 ### Command list:
 
@@ -217,6 +233,7 @@ Run `rig <subcommand> --help` for information about a subcommand.
 
 ### Linux `rig system` subcommands
 
+    rig system detect-platform         -- detect operating system version and distribution
     rig system add-pak                 -- install or update pak for an R version
     rig system make-links              -- create R-* quick links
     rig system setup-user-lib          -- set up automatic user package libraries [alias: create-lib]
@@ -251,13 +268,13 @@ R-devel. It is available for x86_64 and arm64 systems:
     > docker run ghcr.io/r-lib/rig/r rig ls
     * name   version    aliases
     ------------------------------------------
-      3.5.3
       3.6.3
       4.0.5
-      4.1.3             oldrel
-    * 4.2.2             release
-      devel  (R 4.3.0)
-      next   (R 4.2.2)
+      4.1.3
+      4.2.3             oldrel
+    * 4.3.1             release
+      devel  (R 4.4.0)
+      next   (R 4.3.1)
 
 ### Docker container features:
 
