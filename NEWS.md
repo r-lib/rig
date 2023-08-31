@@ -1,7 +1,5 @@
 
-# rig 0.5.99
-
-Under development.
+# rig 0.6.0
 
 * rig now supports RPM based distros, in addition to Deboan and Ubuntu (#28).
   The full list of supported distros, on x86_64 and aarch64:
@@ -14,7 +12,7 @@ Under development.
   - Red Hat Enterprise Linux 7, 8, 9,
   - AlmaLinux 8, 9,
   - Rocky Linux 8, 9.
-  See alsop the new `rig available --list-distros`.
+  See also the new `rig available --list-distros`.
 
 * New `rig available` command to list R versions available to install.
   `rig available --list-distros` lists the supported Linux distributions.
