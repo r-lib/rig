@@ -24,22 +24,18 @@ RUN cd openssl-* &&                                 \
     rm -rf /usr/local/bin/openssl                   \
        /usr/local/share/{man/doc}
 
+# install rust toolchain for 'rig' user ===================================
+
 RUN adduser rig -D
-
 USER rig
-
 RUN cd && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rust.sh && sh rust.sh -y
-
 USER root
+ENV PATH="/home/rig/.cargo/bin:$PATH"
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT [ "sh", "/entrypoint.sh" ]
+
+# this is the shared directory =============================================
 
 RUN mkdir /work
-
 WORKDIR /work
-
-ENV PATH="/home/rig/.cargo/bin:$PATH"
-
-COPY entrypoint.sh /entrypoint.sh
-
-RUN chmod +x /entrypoint.sh
-
-ENTRYPOINT [ "sh", "/entrypoint.sh" ]
