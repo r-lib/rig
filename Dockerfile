@@ -1,11 +1,7 @@
 
 FROM alpine:3.15
 
-RUN apk add curl bash
-
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rust.sh && sh rust.sh -y
-
-RUN apk add linux-headers bash gcc musl-dev g++ pkgconf make
+RUN apk add curl linux-headers bash gcc musl-dev g++ pkgconf make file
 
 # zlib --------------------------------------------------------------------
 
@@ -28,10 +24,22 @@ RUN cd openssl-* &&                                 \
     rm -rf /usr/local/bin/openssl                   \
        /usr/local/share/{man/doc}
 
+RUN adduser rig -D
+
+USER rig
+
+RUN cd && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rust.sh && sh rust.sh -y
+
+USER root
+
 RUN mkdir /work
 
 WORKDIR /work
 
-RUN apk add file
+ENV PATH="/home/rig/.cargo/bin:$PATH"
 
-ENV PATH="/root/.cargo/bin:$PATH"
+COPY entrypoint.sh /entrypoint.sh
+
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT [ "sh", "/entrypoint.sh" ]
