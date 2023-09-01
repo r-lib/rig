@@ -1,0 +1,14 @@
+
+name: Debian repo
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy-repo:
+    name: Update Debian Repo
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Update
+      uses: gaborcsardi/debian-repo@v1
