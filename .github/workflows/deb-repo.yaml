@@ -15,3 +15,7 @@ jobs:
 
     - name: Update
       uses: gaborcsardi/debian-repo@v1
+      with:
+        gpg-public-key: ${{ secrets.PUBLIC_REPO_KEY }}
+        gpg-private-key: ${{ secrets.PRIVATE_REPO_KEY }}
+        gpg-passphrase: ${{ secrets.REPO_KEY_PASSPHRASE }}
