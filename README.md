@@ -141,7 +141,24 @@ choco upgrade rig
 Note that a new rig version might take a week or two to publish on
 Chocolatey, so the installer and the version in Scoop might be newer.
 
-### Linux
+### Linux (DEB package)
+
+On any Ubuntu or Debian distro, you can use our package repository to
+install rig. First you add our key to your config:
+
+    sudo curl -L https://rig.r-pkg.org/deb/rig.gpg -o /etc/apt/trusted.gpg.d/rig.gpg
+
+Then add the rig repository:
+
+    echo "deb https://rig.r-pkg.org/deb rig main" > /etc/apt/sources.list.d/rig.list
+
+If you already added both the key and the repository, then install the
+`r-rig` package (`rig` is a different package in Debian and Ubuntu):
+
+    sudo apt update
+    sudo apt install r-rig
+
+### Linux (`.tar.gz`)
 
 Download the latest releast from <https://github.com/r-lib/rig/releases>
 and uncompress it to `/usr/local`
