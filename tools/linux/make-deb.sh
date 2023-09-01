@@ -25,7 +25,7 @@ rm -rf /tmp/nfpm
 mkdir -p /tmp/nfpm
 
 cat <<EOF >/tmp/nfpm-deb.yaml
-name: rig
+name: r-rig
 version: ${VERSION}
 release: 1
 section: universe/math

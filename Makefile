@@ -46,7 +46,7 @@ linux: export OPENSSL_INCLUDE_DIR = /usr/local/include/
 linux: export OPENSSL_LIB_DIR = /usr/local/lib/
 linux: export OPENSSL_STATIC = 1
 linux: export DEP_OPENSSL_INCLUDE = /usr/local/include/
-linux: rig-$(VERSION).tar.gz rig-$(VERSION).deb rig-$(VERSION).rpm
+linux: rig-$(VERSION).tar.gz r-rig-$(VERSION).deb r-rig-$(VERSION).rpm
 
 rig-$(VERSION).tar.gz: target/release/rig
 	ls -l target/release/rig
@@ -62,10 +62,10 @@ rig-$(VERSION).tar.gz: target/release/rig
 	curl -L -o build/share/rig/cacert.pem 'https://curl.se/ca/cacert.pem'
 	tar cz -C build -f $@ bin share
 
-rig-$(VERSION).deb: rig-$(VERSION).tar.gz tools/linux/make-deb.sh
+r-rig-$(VERSION).deb: rig-$(VERSION).tar.gz tools/linux/make-deb.sh
 	VERSION=$(VERSION) ./tools/linux/make-deb.sh $< $@
 
-rig-$(VERSION).rpm: rig-$(VERSION).tar.gz tools/linux/make-rpm.sh
+r-rig-$(VERSION).rpm: rig-$(VERSION).tar.gz tools/linux/make-rpm.sh
 	VERSION=$(VERSION) ./tools/linux/make-rpm.sh $< $@
 
 shell-linux:
