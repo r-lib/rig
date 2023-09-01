@@ -74,7 +74,7 @@ jobs:
         name: rig-linux-x86_64
         path: |
           rig-*.tar.gz
-          rig-*_amd64.deb
+          rig_*_amd64.deb
           rig-*.x86_64.rpm
 
   linux-tests-x86_64-setup:
@@ -115,7 +115,7 @@ jobs:
     - name: Uncompress rig build
       run: |
         mkdir build
-        tar xzf rig-*.tar.gz -C build
+        tar xzf rig-linux-x86_64/rig-*.tar.gz -C build
         find build
 
     - name: Test
@@ -151,7 +151,7 @@ jobs:
         name: rig-linux-aarch64
         path: |
           rig-*.tar.gz
-          rig-*_arm64.deb
+          rig_*_arm64.deb
           rig-*.aarch64.rpm
 
   linux-tests-aarch64-setup:
@@ -198,7 +198,7 @@ jobs:
     - name: Uncompress rig build
       run: |
         mkdir build
-        tar xzf rig-*.tar.gz -C build
+        tar xzf rig-linux-aarch64/rig-*.tar.gz -C build
         find build
 
     - name: Test

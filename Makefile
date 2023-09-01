@@ -61,7 +61,6 @@ rig-$(VERSION).tar.gz: target/release/rig
 	mkdir -p build/share/rig
 	curl -L -o build/share/rig/cacert.pem 'https://curl.se/ca/cacert.pem'
 	tar cz -C build -f $@ bin share
-	cp $@ rig-$(VERSION)-`arch`.tar.gz
 
 rig-$(VERSION).deb: rig-$(VERSION).tar.gz tools/linux/make-deb.sh
 	VERSION=$(VERSION) ./tools/linux/make-deb.sh $< $@
