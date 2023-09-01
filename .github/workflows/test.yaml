@@ -111,11 +111,12 @@ jobs:
       uses: actions/download-artifact@v3
       with:
         name: rig-linux-x86_64
+        path: .
 
     - name: Uncompress rig build
       run: |
         mkdir build
-        tar xzf rig-linux-x86_64/rig-*.tar.gz -C build
+        tar xzf rig-*.tar.gz -C build
         find build
 
     - name: Test
@@ -194,11 +195,12 @@ jobs:
       uses: actions/download-artifact@v3
       with:
         name: rig-linux-aarch64
+        path: .
 
     - name: Uncompress rig build
       run: |
         mkdir build
-        tar xzf rig-linux-aarch64/rig-*.tar.gz -C build
+        tar xzf rig-*.tar.gz -C build
         find build
 
     - name: Test
