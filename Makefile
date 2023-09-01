@@ -35,12 +35,18 @@ gsudo.exe:
 
 # -------------------------------------------------------------------------
 
+ifeq "$(DOCKER_DEFAULT_PLATFORM)" ""
+    DOCKER_ARCH :=
+else
+    DOCKER_ARCH := --platform=$(DOCKER_DEFAULT_PLATFORM)
+endif
+
 linux: export OPENSSL_DIR = /usr/local/
 linux: export OPENSSL_INCLUDE_DIR = /usr/local/include/
 linux: export OPENSSL_LIB_DIR = /usr/local/lib/
 linux: export OPENSSL_STATIC = 1
 linux: export DEP_OPENSSL_INCLUDE = /usr/local/include/
-linux: rig-$(VERSION).tar.gz
+linux: rig-$(VERSION).tar.gz rig-$(VERSION).deb rig-$(VERSION).rpm
 
 rig-$(VERSION).tar.gz: target/release/rig
 	ls -l target/release/rig
@@ -55,16 +61,27 @@ rig-$(VERSION).tar.gz: target/release/rig
 	mkdir -p build/share/rig
 	curl -L -o build/share/rig/cacert.pem 'https://curl.se/ca/cacert.pem'
 	tar cz -C build -f $@ bin share
+	cp $@ rig-$(VERSION)-`arch`.tar.gz
+
+rig-$(VERSION).deb: rig-$(VERSION).tar.gz tools/linux/make-deb.sh
+	VERSION=$(VERSION) ./tools/linux/make-deb.sh $< $@
+
+rig-$(VERSION).rpm: rig-$(VERSION).tar.gz tools/linux/make-rpm.sh
+	VERSION=$(VERSION) ./tools/linux/make-rpm.sh $< $@
 
 shell-linux:
 	docker compose build
-	docker run -ti -v .:/work rlib/rig-builder:latest bash
+	docker run -ti -v .:/work \
+		-e LOCAL_UID=`id -u` -e LOCAL_GID=`id -g` $(DOCKER_ARCH) \
+		rlib/rig-builder:latest bash
 
-VARIANTS = ubuntu-20.04 ubuntu-22.04 debian-11 debian-12 centos-7 rockylinux-8 rockylinux-9 opensuse/leap-15.3 opensuse/leap-15.4 fedora-37 fedora-38 almalinux-8 almalinux-9
-print-linux-variants:
-	@echo $(VARIANTS)
-print-linux-variants-json:
-	@echo $(VARIANTS) | sed 's/ /","/g' | sed 's/^/["/' | sed 's/$$/"]/'
+linux-amd64-in-docker:
+	@echo "make linux-amd64-in-docker is only reliable after make clean"
+	DOCKER_DEFAULT_PLATFORM=linux/amd64 make linux-in-docker
+
+linux-arm64-in-docker:
+	@echo "make linux-arm64-in-docker is only reliable after make clean"
+	DOCKER_DEFAULT_PLATFORM=linux/arm64 make linux-in-docker
 
 linux-in-docker:
 	docker compose build
@@ -72,11 +89,11 @@ linux-in-docker:
 		-e LOCAL_UID=`id -u` -e LOCAL_GID=`id -g` \
 		rlib/rig-builder:latest make linux
 
-ifeq "$(DOCKER_DEFAULT_PLATFORM)" ""
-    DOCKER_ARCH :=
-else
-    DOCKER_ARCH := --platform=$(DOCKER_DEFAULT_PLATFORM)
-endif
+VARIANTS = ubuntu-20.04 ubuntu-22.04 debian-11 debian-12 centos-7 rockylinux-8 rockylinux-9 opensuse/leap-15.3 opensuse/leap-15.4 fedora-37 fedora-38 almalinux-8 almalinux-9
+print-linux-variants:
+	@echo $(VARIANTS)
+print-linux-variants-json:
+	@echo $(VARIANTS) | sed 's/ /","/g' | sed 's/^/["/' | sed 's/$$/"]/'
 
 define GEN_TESTS
 linux-test-$(variant):
@@ -90,6 +107,7 @@ linux-test-$(variant):
 	touch tests/results/`echo $(variant) | tr / -`.fail
 shell-$(variant):
 	docker run -ti --rm -v $(PWD):/work `echo $(variant) | tr - :` bash
+.PHONY: linux-test-$(variant) shell-$(variant)
 TEST_IMAGES += linux-test-$(variant)
 endef
 $(foreach variant, $(VARIANTS), $(eval $(GEN_TESTS)))
@@ -202,7 +220,11 @@ build.stamp: target/release/rig target/x86_64-apple-darwin/release/rig \
 
 # -------------------------------------------------------------------------
 
-.PHONY: release clean all macos win linux Rig.app
+.PHONY: release clean all macos win linux Rig.app shell-linux \
+	linux-in-docker linux-amd64-in-docker linux-arm64-in-docker \
+	linux-test-all
 
 clean:
-	rm -rf build.stamp build-* Resources *.pkg distribution.xml gon.hcl Output *.exe
+	cargo clean
+	rm -rf build.stamp build-* Resources *.pkg distribution.xml \
+		gon.hcl Output *.exe *.deb *.rpm *.tar.gz build

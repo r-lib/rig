@@ -24,13 +24,13 @@ RUN cd openssl-* &&                                 \
     rm -rf /usr/local/bin/openssl                   \
        /usr/local/share/{man/doc}
 
-# install rust toolchain for 'rig' user ===================================
+# install rust toolchain for 'rigbuild' user ==============================
 
-RUN adduser rig -D
-USER rig
+RUN adduser rigbuild -D
+USER rigbuild
 RUN cd && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rust.sh && sh rust.sh -y
 USER root
-ENV PATH="/home/rig/.cargo/bin:$PATH"
+ENV PATH="/home/rigbuild/.cargo/bin:$PATH"
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT [ "sh", "/entrypoint.sh" ]
@@ -39,3 +39,9 @@ ENTRYPOINT [ "sh", "/entrypoint.sh" ]
 
 RUN mkdir /work
 WORKDIR /work
+
+# packageer ===============================================================
+
+RUN curl -LO https://github.com/goreleaser/nfpm/releases/download/v2.32.0/nfpm_2.32.0_$(arch).apk && \
+    apk add --allow-untrusted nfpm*.apk && \
+    rm nfpm*.apk

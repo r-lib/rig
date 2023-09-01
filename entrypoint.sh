@@ -4,19 +4,19 @@
 
 group=`getent group $LOCAL_GID | cut -f1 -d:`
 if [ -z "$group" ]; then
-    addgroup -g "$LOCAL_GID" rig
-    group=rig
+    addgroup -g "$LOCAL_GID" rigbuild
+    group=rigbuild
 fi
 
-# Recreate rig user with the right UID and GID
+# Recreate rigbuild user with the right UID and GID
 
-deluser rig 2>/dev/null
-adduser -u $LOCAL_UID -G $group -D -H rig
+deluser rigbuild 2>/dev/null
+adduser -u $LOCAL_UID -G $group -D -H rigbuild
 
 # We only need acceess to these and it would takes ~10s to chown all the
 # files of the rust toolchain
 
-chown rig:$group /home/rig/
-chown rig:$group /home/rig/.cargo
+chown rigbuild:$group /home/rigbuild/
+chown rigbuild:$group /home/rigbuild/.cargo
 
-exec su -s /bin/sh rig sh -c "$*"
+exec su -s /bin/sh rigbuild sh -c "$*"
