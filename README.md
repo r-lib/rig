@@ -7,7 +7,7 @@ Install, remove, configure R versions.
 
 - 🚀  <a href="#id-features">Features</a>
 - 🐞  <a href="#id-known-issues">Known Issues</a>
-- ⬇️  <a href="#id-installation">Installation</a>
+- ⬇️  <a href="#id-installation">Installing rig</a>
 - ⚙️  <a href="#id-usage">Usage</a>
 - ⛵  <a href="#id-macos-menu-bar-app">macOS menu bar app</a>
 - 📦  <a href="#id-container">Docker container with rig</a>
@@ -64,14 +64,35 @@ Install, remove, configure R versions.
 Found another issue? Please report it in our [issue
 tracker](https://github.com/r-lib/rig/issues).
 
-## ⬇️  Installation <a id="id-installation">
+## ⬇️  Installing rig <a id="id-installation">
 
-### macOS (installer)
+- [macOS (x86_64 or arm64)](#id-macos)
+  - [Installer](#id-macos-installer)
+  - [Homebrew](#id-macos-homebrew)
+- [Windows](#id-windows)
+  - [Installer](#id-windows-installer)
+  - [Scoop](#id-windows-scoop)
+  - [Chocolatey](#id-windows-chocolatey)
+  - [Winget](#id-windows-winget)
+- [Linux](#id-linux)
+  - [Supported Linux distributions](#id-supported-linux-distributions)
+  - [Ubuntu and Debian (DEB package)](#id-ubuntu-and-debian-deb-package)
+  - [RHEL, Fedora, CentOS, Rocky Linux, Almalinux, etc. (RPM
+    package)](#id-rhel-fedora-centos-rocky-linux-almalinux-etc-rpm-package)
+  - [OpenSUSE and SLES (RPM package)](#id-opensuse-and-sles-rpm-package)
+  - [Tarball on any supported distro](#id-linux-targz)
+- [Auto-complete](#id-auto-complete)
+
+### Installing rig on macOS <a id="id-macos">
+
+You can one of our installers or our Homebrew tap.
+
+#### Installing rig on macOS (installer) <a id="id-macos-installer">
 
 Download the latest release from <https://github.com/r-lib/rig/releases>
 and install it the usual way.
 
-### macOS (Homebrew)
+#### Installing rig on macOS (Homebrew) <a id="id-macos-homebrew">
 
 If you use Homebrew (Intel or Arm version), you can install rig from our
 tap:
@@ -91,14 +112,12 @@ To update rig you can run
 brew upgrade --cask rig
 ```
 
-### Windows (WinGet)
+### Installing rig on Windows <a id="id-windows">
 
-The simplest way to install rig on Windows 10 and above is to use the
-built-in WinGet package manager. The name of the package is `posit.rig`.
+There are several possible ways to install rig on Windows: with our
+installer, `winget`, `scoop` or `choco`.
 
-    winget install posit.rig
-
-### Windows (installer)
+#### Installing rig on Windows (installer) <a id="id-windows-installer">
 
 Download the latest release from <https://github.com/r-lib/rig/releases>
 and install it the usual way.
@@ -106,7 +125,7 @@ and install it the usual way.
 `rig` adds itself to the user’s path, but you might need to restart your
 terminal after the installation on Windows.
 
-### Windows (Scoop)
+#### Installing rig on Windows (Scoop) <a id="id-windows-scoop">
 
 If you use [Scoop](https://scoop.sh/), you can install rig from the
 scoop bucket at
@@ -123,7 +142,7 @@ To update run
 scoop update rig
 ```
 
-### Windows (Chocolatey)
+#### Installing rig on Windows (Chocolatey) <a id="id-windows-chocolatey">
 
 If you use [Chocolatey](https://chocolatey.org/) (e.g. on GitHub
 Actions) you can install `rig` with
@@ -138,40 +157,21 @@ and upgrade to the latest version with
 choco upgrade rig
 ```
 
-Note that a new rig version might take a week or two to publish on
-Chocolatey, so the installer and the version in Scoop might be newer.
+#### Installing rig on Windows (WinGet) <a id="id-windows-winget">
 
-### Linux (DEB package)
+❗ **NOTE: WinGet does not have the latest rig release yet!**
 
-On any Ubuntu or Debian distro, you can use our package repository to
-install rig. First you add our key to your config:
+An easy way to install rig on Windows 10 and above is to use the
+built-in WinGet package manager. The name of the package is `posit.rig`.
 
-    sudo curl -L https://rig.r-pkg.org/deb/rig.gpg -o /etc/apt/trusted.gpg.d/rig.gpg
+    winget install posit.rig
 
-Then add the rig repository:
+### Installing rig on Linux <a id="id-linux">
 
-    echo "deb https://rig.r-pkg.org/deb rig main" > /etc/apt/sources.list.d/rig.list
+On Linux you can install rig from a DEB or RPM package, or from a
+tarball.
 
-If you already added both the key and the repository, then install the
-`r-rig` package (`rig` is a different package in Debian and Ubuntu):
-
-    sudo apt update
-    sudo apt install r-rig
-
-### Linux (`.tar.gz`)
-
-Download the latest releast from <https://github.com/r-lib/rig/releases>
-and uncompress it to `/usr/local`
-
-    curl -Ls https://github.com/r-lib/rig/releases/download/latest/rig-linux-latest.tar.gz |
-      sudo tar xz -C /usr/local
-
-If you are running Linux on arm64, download the arm64 build:
-
-    curl -Ls https://github.com/r-lib/rig/releases/download/latest/rig-linux-arm64-latest.tar.gz |
-      sudo tar xz -C /usr/local
-
-#### Supported Linux distributions:
+#### Supported Linux distributions <a id="id-supported-linux-distributions">
 
 - Debian 10, 11, 12,
 - Ubuntu 18.04, 20.04, 22.04,
@@ -186,7 +186,45 @@ If you are running Linux on arm64, download the arm64 build:
 We use the R builds from the Posit [R-builds
 project](https://github.com/rstudio/r-builds#r-builds).
 
-### Auto-complete
+#### Installing rig on Ubuntu and Debian (DEB package) <a id="id-ubuntu-and-debian-deb-package">
+
+On any Ubuntu or Debian distro, you can use our package repository to
+install rig. First you add our key to your config:
+
+    sudo curl -L https://rig.r-pkg.org/deb/rig.gpg -o /etc/apt/trusted.gpg.d/rig.gpg
+
+Then add the rig repository:
+
+    echo "deb http://rig.r-pkg.org/deb rig main" > /etc/apt/sources.list.d/rig.list
+
+If you already added both the key and the repository, then install the
+`r-rig` package (`rig` is a different package in Debian and Ubuntu):
+
+    sudo apt update
+    sudo apt install r-rig
+
+#### Installing rig on RHEL, Fedora, CentOS, Rocky Linux, Almalinux, etc. (RPM package) <a id="id-rhel-fedora-centos-rocky-linux-almalinux-etc-rpm-package">
+
+On most RPM based distros (except for OpenSUSE and SLES) you can install
+our RPM package directly:
+
+    yum install -y https://github.com/r-lib/rig/releases/download/latest/r-rig-latest-1.$(arch).rpm
+
+#### Installing rig on OpenSUSE and SLES (RPM package) <a id="id-opensuse-and-sles-rpm-package">
+
+On OpenSUSE and SLES use `zypper` instead of `yum`:
+
+    zypper install -y --allow-unsigned-rpm https://github.com/r-lib/rig/releases/download/latest/r-rig-latest-1.$(arch).rpm
+
+#### Installing rig on any Linux distribution (tarball) <a id="id-linux-targz">
+
+Download the latest releast from <https://github.com/r-lib/rig/releases>
+and uncompress it to `/usr/local`
+
+    curl -Ls https://github.com/r-lib/rig/releases/download/latest/rig-linux-$(arch)-latest.tar.gz |
+      sudo tar xz -C /usr/local
+
+### Installing auto-complete on macOS and Linux <a id="id-auto-complete">
 
 The macOS and Linux installers also install completion files for `zsh`
 and `bash`.
