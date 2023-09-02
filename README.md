@@ -191,30 +191,30 @@ project](https://github.com/rstudio/r-builds#r-builds).
 On any Ubuntu or Debian distro, you can use our package repository to
 install rig. First you add our key to your config:
 
-    sudo curl -L https://rig.r-pkg.org/deb/rig.gpg -o /etc/apt/trusted.gpg.d/rig.gpg
+    `which sudo` curl -L https://rig.r-pkg.org/deb/rig.gpg -o /etc/apt/trusted.gpg.d/rig.gpg
 
 Then add the rig repository:
 
-    echo "deb http://rig.r-pkg.org/deb rig main" > /etc/apt/sources.list.d/rig.list
+    `which sudo` echo "deb http://rig.r-pkg.org/deb rig main" > /etc/apt/sources.list.d/rig.list
 
 If you already added both the key and the repository, then install the
 `r-rig` package (`rig` is a different package in Debian and Ubuntu):
 
-    sudo apt update
-    sudo apt install r-rig
+    `which sudo` apt update
+    `which sudo` apt install r-rig
 
 #### Installing rig on RHEL, Fedora, CentOS, Rocky Linux, Almalinux, etc. (RPM package) <a id="id-rhel-fedora-centos-rocky-linux-almalinux-etc-rpm-package">
 
 On most RPM based distros (except for OpenSUSE and SLES) you can install
 our RPM package directly:
 
-    yum install -y https://github.com/r-lib/rig/releases/download/latest/r-rig-latest-1.$(arch).rpm
+    `which sudo` yum install -y https://github.com/r-lib/rig/releases/download/latest/r-rig-latest-1.$(arch).rpm
 
 #### Installing rig on OpenSUSE and SLES (RPM package) <a id="id-opensuse-and-sles-rpm-package">
 
 On OpenSUSE and SLES use `zypper` instead of `yum`:
 
-    zypper install -y --allow-unsigned-rpm https://github.com/r-lib/rig/releases/download/latest/r-rig-latest-1.$(arch).rpm
+    `which sudo` zypper install -y --allow-unsigned-rpm https://github.com/r-lib/rig/releases/download/latest/r-rig-latest-1.$(arch).rpm
 
 #### Installing rig on any Linux distribution (tarball) <a id="id-linux-targz">
 
@@ -222,7 +222,7 @@ Download the latest releast from <https://github.com/r-lib/rig/releases>
 and uncompress it to `/usr/local`
 
     curl -Ls https://github.com/r-lib/rig/releases/download/latest/rig-linux-$(arch)-latest.tar.gz |
-      sudo tar xz -C /usr/local
+      `which sudo` tar xz -C /usr/local
 
 ### Installing auto-complete on macOS and Linux <a id="id-auto-complete">
 
