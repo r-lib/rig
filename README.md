@@ -70,10 +70,10 @@ tracker](https://github.com/r-lib/rig/issues).
   - [Installer](#id-macos-installer)
   - [Homebrew](#id-macos-homebrew)
 - [Windows](#id-windows)
+  - [Winget](#id-windows-winget)
   - [Installer](#id-windows-installer)
   - [Scoop](#id-windows-scoop)
   - [Chocolatey](#id-windows-chocolatey)
-  - [Winget](#id-windows-winget)
 - [Linux](#id-linux)
   - [Supported Linux distributions](#id-supported-linux-distributions)
   - [Ubuntu and Debian (DEB package)](#id-ubuntu-and-debian-deb-package)
@@ -117,6 +117,13 @@ brew upgrade --cask rig
 There are several possible ways to install rig on Windows: with our
 installer, `winget`, `scoop` or `choco`.
 
+#### Installing rig on Windows (WinGet) <a id="id-windows-winget">
+
+An easy way to install rig on Windows 10 and above is to use the
+built-in WinGet package manager. The name of the package is `posit.rig`.
+
+    winget install posit.rig
+
 #### Installing rig on Windows (installer) <a id="id-windows-installer">
 
 Download the latest release from <https://github.com/r-lib/rig/releases>
@@ -156,15 +163,6 @@ and upgrade to the latest version with
 ``` powershell
 choco upgrade rig
 ```
-
-#### Installing rig on Windows (WinGet) <a id="id-windows-winget">
-
-❗ **NOTE: WinGet does not have the latest rig release yet!**
-
-An easy way to install rig on Windows 10 and above is to use the
-built-in WinGet package manager. The name of the package is `posit.rig`.
-
-    winget install posit.rig
 
 ### Installing rig on Linux <a id="id-linux">
 
