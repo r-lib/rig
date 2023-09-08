@@ -193,7 +193,7 @@ install rig. First you add our key to your config:
 
 Then add the rig repository:
 
-    `which sudo` echo "deb http://rig.r-pkg.org/deb rig main" > /etc/apt/sources.list.d/rig.list
+    `which sudo` sh -c 'echo "deb http://rig.r-pkg.org/deb rig main" > /etc/apt/sources.list.d/rig.list'
 
 If you already added both the key and the repository, then install the
 `r-rig` package (`rig` is a different package in Debian and Ubuntu):
