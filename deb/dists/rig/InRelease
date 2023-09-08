@@ -1,0 +1,50 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+Origin: https://github.com/r-lib/rig
+Label: https://github.com/r-lib/rig
+Suite: rig
+Codename: rig
+Version: 1.0.0
+Architectures: amd64 arm64 i386
+Components: main
+Description: Packages from https://github.com/r-lib/rig.
+Date: Fri, 08 Sep 2023 09:23:53 +0000
+MD5Sum:
+ d41d8cd98f00b204e9800998ecf8427e 0 main/binary-i386/Packages
+ 56822795198a0b6681c51d645070cb49 29 main/binary-i386/Packages.gz
+ 42f18fcb4c8f6968ec6aa8e46b07b554 505 main/binary-arm64/Packages
+ 19967b1bb4ce5ca9bd147f6ce13b7311 382 main/binary-arm64/Packages.gz
+ 13386596ab95476ab8dfc46cc398e729 505 main/binary-amd64/Packages
+ 7b21eae51546a371c75f3f77ce8bc055 381 main/binary-amd64/Packages.gz
+SHA1:
+ da39a3ee5e6b4b0d3255bfef95601890afd80709 0 main/binary-i386/Packages
+ bd9f2d4ec7dc286f4920a82538e68689616d61c9 29 main/binary-i386/Packages.gz
+ 98365c3ca18e9f5f4470dc5397bffa816930b798 505 main/binary-arm64/Packages
+ 29ee7023b9f1a1de35e25e70e2e2f46a41f7b82f 382 main/binary-arm64/Packages.gz
+ 9f19ebef10d64102e2bf967668ccc2eb83d1ac77 505 main/binary-amd64/Packages
+ ee51695d06f1420b01a0c22276c60f6b66475cb5 381 main/binary-amd64/Packages.gz
+SHA256:
+ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 0 main/binary-i386/Packages
+ 5c0750a5adadaf0c350ee18d8bbfeb7725e95a4a5aac718c5b61a5e1e94a66da 29 main/binary-i386/Packages.gz
+ 5c8a28c01cbe73d05052e22775439a0a7a55c7cd56e269128a99ea7218183516 505 main/binary-arm64/Packages
+ 3a98f16ab40e3052fb51d14c049269ae12b66ce3196b09f10cfcceaef679c316 382 main/binary-arm64/Packages.gz
+ 74d2756b99ec0152fb26478013bdefc68fad88bc077f1c6e00c6fe2501720d25 505 main/binary-amd64/Packages
+ 4500bd6b800dfcc8cc139ca1ad5aeba7de5d07fa8713aad43e385b97d45cdda8 381 main/binary-amd64/Packages.gz
+-----BEGIN PGP SIGNATURE-----
+
+iQJLBAEBCgA1FiEEWOOW3pEE2IFCV2zjLQo0vRxa8TQFAmT66CsXHGNzYXJkaS5n
+YWJvckBnbWFpbC5jb20ACgkQLQo0vRxa8TQzkBAAngrzzWAUEb28crb9SvW+/t+z
+mBhmEBaa6i2d7Sg0lU+UXwmzebhxkXSOloHlwez/+17X+s9g9u4K3E62XjEJLSyX
+c6hh0r3Lw/iJB/AsgB94C3pd7BECGvObE+IrNatcfhfAFAxPJV0KYISb2znvNVlf
+appBxZs5u/eZ76R8mHgR37mpoE9SbuCZDX3TXod2B82L5mtNu/v7lDTjXBBAYYxq
+/6g9Mm/8QNFF5+DoC/ExyxCydEJ7fcnoY+LurEiOVUeiO6plPuq+XrFVHo4vk1fV
+broVfPOeBc76nI8cwsLggvp9s5yHREo8yhBDElc0bUKck3UeKTLisqfDaf40xBGW
+D6TcZNBuxQdRC7gy4qLyQrnEBvQwDU11FbdNfCaPbMWJRAMvNavXbyyJERxku04a
+UqbeVWh2XUqI86EeVKemNA4fofgcYqsIpZPttk0lQlfmL99inBzZsFr8n/OG3Ro9
+Y7+FMv5tWPWjfztY8ZSs/FURJW0gIY00YCpiWtf8PJrDZWo7lAk1ZgD0VU9ZO/vw
+4TNU/NPWllKQvXm+Wrq5kWCUzp8JkZuxAB6pS4tqbfO5oPt8YuUj9rt69B9Vyd4O
+Miv7A1wrn4q/IEEBzDY50z3YUPds57E8pN8sWVp0wCtiuvMdeaIAJIqpi/xWgjOo
+M1ZbP9/g7lI4FGl0Bck=
+=pDs/
+-----END PGP SIGNATURE-----
