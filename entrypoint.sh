@@ -21,7 +21,10 @@ fi
 # We only need acceess to these and it would takes ~10s to chown all the
 # files of the rust toolchain
 
-chown $user:$group /home/rigbuild/
-chown $user:$group /home/rigbuild/.cargo
+rm -rf /home/$user
+mv /home/rigbuild /home/$user
 
-exec su -s /bin/sh $user sh -c "$*"
+chown $user:$group /home/rig
+chown $user:$group /home/rig/.cargo
+
+exec su -s /bin/sh $user sh -l -c "$*"
