@@ -2,6 +2,12 @@
 
 # make sure that there is a group with $LOCAL_GID
 
+getent group $LOCAL_GID
+cat /etc/passwd
+cat /etc/group
+id -u
+id -g
+
 group=`getent group $LOCAL_GID | cut -f1 -d:`
 if [ -z "$group" ]; then
     addgroup -g "$LOCAL_GID" rigbuild
