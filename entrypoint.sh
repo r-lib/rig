@@ -1,19 +1,21 @@
 #!! /bin/sh
 
-# There is already a rigbuild user and a rigbuild group, we
-# just need to make sure that their uid and gid matches the host.
-apk add shadow
+set -x
+
+# need a user with $LOCAL_UID
 
 user=`getent passwd $LOCAL_UID | cut -f1 -d:`
 if [ -z "$user" ]; then
-    usermod -u $LOCAL_UID rigbuild
-    user=rigbuild
+    adduser -D -u "$LOCAL_UID" rig
+    user=rig
 fi
+
+# need a user with $LOCAL_GID
 
 group=`getent group $LOCAL_GID | cut -f1 -d:`
 if [ -z "$group" ]; then
-    groupmod -g ${LOCAL_GID} rigbuild
-    group=rigbuild
+    addgroup -g "$LOCAL_GID" rig
+    group=rig
 fi
 
 # We only need acceess to these and it would takes ~10s to chown all the
