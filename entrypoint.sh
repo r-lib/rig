@@ -27,4 +27,4 @@ mv /home/rigbuild /home/$user
 chown $user:$group /home/rig
 chown $user:$group /home/rig/.cargo
 
-exec su -s /bin/sh $user sh -l -c "$*"
+exec su -s /bin/sh $user sh -l -c "cd /work && $*"
