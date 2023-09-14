@@ -1,4 +1,5 @@
 use clap_complete::shells::Bash;
+use clap_complete::shells::Elvish;
 use clap_complete::shells::Fish;
 use clap_complete::shells::PowerShell;
 use clap_complete::shells::Zsh;
@@ -32,6 +33,9 @@ fn main() -> Result<(), Error> {
 
     let path = clap_complete::generate_to(Fish, &mut app, &name, &outdir);
     println!("fish completion file is generated: {:?}", path);
+
+    let path = clap_complete::generate_to(Elvish, &mut app, &name, &outdir);
+    println!("elvish completion file is generated: {:?}", path);
 
     Ok(())
 }
