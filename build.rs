@@ -1,6 +1,4 @@
-use clap_complete::shells::Bash;
-use clap_complete::shells::PowerShell;
-use clap_complete::shells::Zsh;
+use clap_complete::shells::{Bash, Elvish, Fish, PowerShell, Zsh};
 use std::env;
 use std::io::Error;
 
@@ -23,11 +21,17 @@ fn main() -> Result<(), Error> {
     let path = clap_complete::generate_to(Bash, &mut app, &name, &outdir);
     println!("bash completion file is generated: {:?}", path);
 
-    let path = clap_complete::generate_to(Zsh, &mut app, &name, &outdir);
-    println!("zsh completion file is generated: {:?}", path);
+    let path = clap_complete::generate_to(Elvish, &mut app, &name, &outdir);
+    println!("elvish completion file is generated: {:?}", path);
+
+    let path = clap_complete::generate_to(Fish, &mut app, &name, &outdir);
+    println!("fish completion file is generated: {:?}", path);
 
     let path = clap_complete::generate_to(PowerShell, &mut app, &name, &outdir);
     println!("powershell completion file is generated: {:?}", path);
+
+    let path = clap_complete::generate_to(Zsh, &mut app, &name, &outdir);
+    println!("zsh completion file is generated: {:?}", path);
 
     Ok(())
 }
