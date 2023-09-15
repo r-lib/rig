@@ -53,10 +53,14 @@ rig-$(VERSION).tar.gz: target/release/rig
 	strip -x target/release/rig
 	mkdir -p build/bin
 	mkdir -p build/share/bash-completion/completions
+	mkdir -p build/share/elvish/lib
+	mkdir -p build/share/fish/vendor_completions.d
 	mkdir -p build/share/zsh/site-functions
 	ls -l target/release
 	cp target/release/rig build/bin
 	find target/release/build -name rig.bash -exec cp \{\} build/share/bash-completion/completions \;
+	find target/release/build -name rig.elv -exec cp \{\} build/share/elvish/lib \;
+	find target/release/build -name rig.fish -exec cp \{\} build/share/fish/vendor_completions.d \;
 	find target/release/build -name _rig -exec cp \{\} build/share/zsh/site-functions \;
 	mkdir -p build/share/rig
 	curl -L -o build/share/rig/cacert.pem 'https://curl.se/ca/cacert.pem'
