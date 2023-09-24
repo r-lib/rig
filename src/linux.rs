@@ -102,7 +102,10 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     }
 
     set_ppm(Some(vec![dirname.to_string()]), &platform)?;
-    set_sysreqs(Some(vec![dirname.to_string()]))?;
+
+    if args.get_flag("without-sysreqs") {
+        set_sysreqs_false(Some(vec![dirname.to_string()]))?;
+    }
 
     if !args.get_flag("without-pak") {
         let explicit = args.value_source("pak-version") ==
@@ -606,7 +609,7 @@ options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(getRversion(
     Ok(())
 }
 
-fn set_sysreqs(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
+fn set_sysreqs_false(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     info!("Setting up automatic system requirements installation.");
 
     let vers = match vers {
@@ -615,8 +618,7 @@ fn set_sysreqs(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     };
 
     let rcode = r#"
-Sys.setenv(PKG_SYSREQS = "true")
-Sys.setenv(PKG_SYSREQS2 = "true")
+Sys.setenv(PKG_SYSREQS = "false")
 "#;
 
     for ver in vers {
