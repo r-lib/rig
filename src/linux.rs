@@ -618,7 +618,7 @@ fn set_sysreqs_false(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     };
 
     let rcode = r#"
-Sys.setenv(PKG_SYSREQS = "false")
+if (Sys.getenv("PKG_SYSREQS") == "") Sys.setenv(PKG_SYSREQS = "false")
 "#;
 
     for ver in vers {
