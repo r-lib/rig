@@ -14,7 +14,7 @@ RUN cd zlib-* &&                                    \
 
 # openssl -----------------------------------------------------------------
 
-RUN curl -O https://www.openssl.org/source/openssl-1.1.1m.tar.gz
+RUN curl -O https://www.openssl.org/source/openssl-1.1.1w.tar.gz
 RUN tar xzf openssl-*.tar.gz && rm openssl-*.tar.gz
 RUN apk add perl linux-headers
 RUN cd openssl-* &&                                 \
