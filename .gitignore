@@ -27,3 +27,4 @@ _rim.ps1
 /rig-*.tar.gz
 /*.deb
 /*.rpm
+/vscode/rig/node_modules
