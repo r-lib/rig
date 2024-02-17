@@ -1,8 +1,15 @@
 [
     {
-        "name": "ubuntu-release",
+        "name": "ubuntu-22.04-release",
+        "aliases": [
+            "ubuntu",
+            "ubuntu-22.04",
+            "ubuntu-release",
+            "release"
+        ],
         "dir": "ubuntu",
         "args": [
+            "DISTRO=ubuntu",
             "RELEASE=22.04",
             "RVERSION=release"
         ],
@@ -15,9 +22,16 @@
         ]
     },
     {
-        "name": "ubuntu-devel",
+        "name": "ubuntu-22.04-devel",
+        "aliases": [
+            "ubuntu",
+            "ubuntu-22.04",
+            "ubuntu-devel",
+            "devel"
+        ],
         "dir": "ubuntu",
         "args": [
+            "DISTRO=ubuntu",
             "RELEASE=22.04",
             "RVERSION=devel"
         ],
@@ -26,6 +40,150 @@
             "ghcr.io/r-lib/rig/ubuntu-latest-devel:latest",
             "ghcr.io/r-lib/rig/ubuntu-devel:latest",
             "ghcr.io/r-lib/rig/devel:latest"
+        ]
+    },
+    {
+        "name": "ubuntu-20.04-release",
+        "aliases": [
+            "ubuntu",
+            "ubuntu-20.04",
+            "ubuntu-release",
+            "release"
+        ],
+        "dir": "ubuntu",
+        "args": [
+            "DISTRO=ubuntu",
+            "RELEASE=22.04",
+            "RVERSION=release"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/ubuntu-20.04-release:latest"
+        ]
+    },
+    {
+        "name": "ubuntu-20.04-devel",
+        "aliases": [
+            "ubuntu",
+            "ubuntu-20.04",
+            "ubuntu-devel",
+            "devel"
+        ],
+        "dir": "ubuntu",
+        "args": [
+            "DISTRO=ubuntu",
+            "RELEASE=20.04",
+            "RVERSION=devel"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/ubuntu-20.04-devel:latest"
+        ]
+    },
+    {
+        "name": "debian-10-release",
+        "aliases": [
+            "debian",
+            "debian-10",
+            "debian-release",
+            "release"
+        ],
+        "dir": "ubuntu",
+        "args": [
+            "DISTRO=debian",
+            "RELEASE=10",
+            "RVERSION=release"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/debian-10-release:latest"
+        ]
+    },
+    {
+        "name": "debian-10-devel",
+        "aliases": [
+            "debian",
+            "debian-10",
+            "debian-devel",
+            "ubuntu-devel"
+        ],
+        "dir": "ubuntu",
+        "args": [
+            "DISTRO=debian",
+            "RELEASE=10",
+            "RVERSION=devel"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/debian-10-devel:latest"
+        ]
+    },
+    {
+        "name": "debian-11-release",
+        "aliases": [
+            "debian",
+            "debian-11",
+            "debian-release",
+            "release"
+        ],
+        "dir": "ubuntu",
+        "args": [
+            "DISTRO=debian",
+            "RELEASE=11",
+            "RVERSION=release"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/debian-11-release:latest"
+        ]
+    },
+    {
+        "name": "debian-11-devel",
+        "aliases": [
+            "debian",
+            "debian-11",
+            "debian-devel",
+            "ubuntu-devel"
+        ],
+        "dir": "ubuntu",
+        "args": [
+            "DISTRO=debian",
+            "RELEASE=11",
+            "RVERSION=devel"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/debian-11-devel:latest"
+        ]
+    },
+    {
+        "name": "debian-12-release",
+        "aliases": [
+            "debian",
+            "debian-12",
+            "debian-release",
+            "release"
+        ],
+        "dir": "ubuntu",
+        "args": [
+            "DISTRO=debian",
+            "RELEASE=12",
+            "RVERSION=release"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/debian-12-release:latest"
+        ]
+    },
+    {
+        "name": "debian-12-devel",
+        "aliases": [
+            "debian",
+            "debian-12",
+            "debian-devel",
+            "ubuntu-devel"
+        ],
+        "dir": "ubuntu",
+        "args": [
+            "DISTRO=debian",
+            "RELEASE=12",
+            "RVERSION=devel"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/debian-12-devel:latest"
         ]
     }
 ]

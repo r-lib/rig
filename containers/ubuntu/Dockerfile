@@ -1,6 +1,7 @@
 
+ARG DISTRO=ubuntu
 ARG RELEASE=22.04
-FROM ubuntu:${RELEASE}
+FROM ${DISTRO}:${RELEASE}
 
 ARG RVERSION=release
 
