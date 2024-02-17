@@ -28,11 +28,12 @@ RUN for inst in $(ls /opt/R/*/lib/R/bin/INSTALL); do \
       R-${ver} -q -e 'source("https://pak.r-lib.org/install.R?stream=devel")'; \
     done
 
-RUN apt-get update -y && \
+RUN apt-get update && \
     apt-get install -y locales && \
     apt-get clean && \
-    locale-gen en_US.UTF-8 && \
-    update-locale
+    echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen \
+	&& locale-gen en_US.utf8 \
+	&& /usr/sbin/update-locale LANG=en_US.UTF-8
 ENV LC_COLLATE C
 ENV LANG en_US.UTF-8
 
