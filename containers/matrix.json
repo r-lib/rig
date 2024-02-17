@@ -2,6 +2,7 @@
     {
         "name": "ubuntu-22.04-release",
         "aliases": [
+            "ubuntu-22.04-release",
             "ubuntu",
             "ubuntu-22.04",
             "ubuntu-release",
@@ -24,6 +25,7 @@
     {
         "name": "ubuntu-22.04-devel",
         "aliases": [
+            "ubuntu-22.04-devel",
             "ubuntu",
             "ubuntu-22.04",
             "ubuntu-devel",
@@ -45,6 +47,7 @@
     {
         "name": "ubuntu-20.04-release",
         "aliases": [
+            "ubuntu-20.04-release",
             "ubuntu",
             "ubuntu-20.04",
             "ubuntu-release",
@@ -63,6 +66,7 @@
     {
         "name": "ubuntu-20.04-devel",
         "aliases": [
+            "ubuntu-20.04-devel",
             "ubuntu",
             "ubuntu-20.04",
             "ubuntu-devel",
@@ -81,6 +85,7 @@
     {
         "name": "debian-10-release",
         "aliases": [
+            "debian-10-release",
             "debian",
             "debian-10",
             "debian-release",
@@ -99,10 +104,11 @@
     {
         "name": "debian-10-devel",
         "aliases": [
+            "debian-10-devel",
             "debian",
             "debian-10",
             "debian-devel",
-            "ubuntu-devel"
+            "devel"
         ],
         "dir": "ubuntu",
         "args": [
@@ -117,6 +123,7 @@
     {
         "name": "debian-11-release",
         "aliases": [
+            "debian-11-release",
             "debian",
             "debian-11",
             "debian-release",
@@ -135,10 +142,11 @@
     {
         "name": "debian-11-devel",
         "aliases": [
+            "debian-11-devel",
             "debian",
             "debian-11",
             "debian-devel",
-            "ubuntu-devel"
+            "devel"
         ],
         "dir": "ubuntu",
         "args": [
@@ -153,6 +161,7 @@
     {
         "name": "debian-12-release",
         "aliases": [
+            "debian-12-release",
             "debian",
             "debian-12",
             "debian-release",
@@ -171,10 +180,11 @@
     {
         "name": "debian-12-devel",
         "aliases": [
+            "debian-12-devel",
             "debian",
             "debian-12",
             "debian-devel",
-            "ubuntu-devel"
+            "devel"
         ],
         "dir": "ubuntu",
         "args": [

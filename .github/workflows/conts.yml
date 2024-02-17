@@ -7,7 +7,7 @@ on:
         description: |
           Containers, comma separated list or 'all'.
         required: false
-        default: 'all'
+        default: 'devel'
         type: string
   schedule:
     - cron:  '55 7 * * *'
@@ -26,6 +26,7 @@ jobs:
     - name: Set up matrix of containers
       id: setup-matrix
       run: |
+        cs=$(python containers/matrix.py ${{ github.event.inputs.inpconts || 'devel' }})
         echo "containers=`jq -c <containers/matrix.json`" >> $GITHUB_OUTPUT
 
   # ------------------------------------------------------------------------
