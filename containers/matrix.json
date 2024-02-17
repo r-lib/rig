@@ -1,5 +1,25 @@
 [
     {
+        "name": "ubuntu-22.04-multi",
+        "aliases": [
+            "ubuntu-22.04-multi",
+            "ubuntu",
+            "ubuntu-22.04",
+            "ubuntu-devel",
+            "devel",
+            "multi"
+        ],
+        "dir": "ubuntu/multi",
+        "args": [],
+        "tags": [
+            "ghcr.io/r-lib/rig/r:latest",
+            "ghcr.io/r-lib/rig/rig:latest",
+            "ghcr.io/r-lib/rig/multi:latest",
+            "ghcr.io/r-lib/rig/ubuntu-22.04-multi:latest",
+            "ghcr.io/r-lib/rig/ubuntu-multi:latest"
+        ]
+    },
+    {
         "name": "ubuntu-22.04-release",
         "aliases": [
             "ubuntu-22.04-release",
@@ -16,7 +36,9 @@
         ],
         "tags": [
             "ghcr.io/r-lib/rig/ubuntu-22.04-release:latest",
+            "ghcr.io/r-lib/rig/ubuntu-22.04:latest",
             "ghcr.io/r-lib/rig/ubuntu-latest-release:latest",
+            "ghcr.io/r-lib/rig/ubuntu-latest:latest",
             "ghcr.io/r-lib/rig/ubuntu-release:latest",
             "ghcr.io/r-lib/rig/ubuntu:latest",
             "ghcr.io/r-lib/rig/release:latest"
@@ -60,7 +82,8 @@
             "RVERSION=release"
         ],
         "tags": [
-            "ghcr.io/r-lib/rig/ubuntu-20.04-release:latest"
+            "ghcr.io/r-lib/rig/ubuntu-20.04-release:latest",
+            "ghcr.io/r-lib/rig/ubuntu-20.04:latest"
         ]
     },
     {
@@ -98,7 +121,8 @@
             "RVERSION=release"
         ],
         "tags": [
-            "ghcr.io/r-lib/rig/debian-10-release:latest"
+            "ghcr.io/r-lib/rig/debian-10-release:latest",
+            "ghcr.io/r-lib/rig/debian-10:latest"
         ]
     },
     {
@@ -136,7 +160,8 @@
             "RVERSION=release"
         ],
         "tags": [
-            "ghcr.io/r-lib/rig/debian-11-release:latest"
+            "ghcr.io/r-lib/rig/debian-11-release:latest",
+            "ghcr.io/r-lib/rig/debian-11:latest"
         ]
     },
     {
@@ -174,7 +199,12 @@
             "RVERSION=release"
         ],
         "tags": [
-            "ghcr.io/r-lib/rig/debian-12-release:latest"
+            "ghcr.io/r-lib/rig/debian-12-release:latest",
+            "ghcr.io/r-lib/rig/debian-12:latest",
+            "ghcr.io/r-lib/rig/debian-latest-release:latest",
+            "ghcr.io/r-lib/rig/debian-latest:latest",
+            "ghcr.io/r-lib/rig/debian-release:latest",
+            "ghcr.io/r-lib/rig/debian:latest"
         ]
     },
     {
@@ -193,7 +223,9 @@
             "RVERSION=devel"
         ],
         "tags": [
-            "ghcr.io/r-lib/rig/debian-12-devel:latest"
+            "ghcr.io/r-lib/rig/debian-12-devel:latest",
+            "ghcr.io/r-lib/rig/debian-latest-devel:latest",
+            "ghcr.io/r-lib/rig/debian-devel:latest"
         ]
     }
 ]

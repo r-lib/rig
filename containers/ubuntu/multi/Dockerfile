@@ -1,8 +1,6 @@
 
 FROM ubuntu:22.04
 
-ARG PAK_VERSION devel
-
 RUN ARCH="$(arch)"; \
     if [ "$ARCH" = "aarch64" ]; then ARM64="-arm64"; else ARM64=""; fi; \
     apt-get update -y && \
