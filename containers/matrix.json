@@ -1,0 +1,31 @@
+[
+    {
+        "name": "ubuntu-release",
+        "dir": "ubuntu",
+        "args": [
+            "RELEASE=22.04",
+            "RVERSION=release"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/ubuntu-22.04-release:latest",
+            "ghcr.io/r-lib/rig/ubuntu-latest-release:latest",
+            "ghcr.io/r-lib/rig/ubuntu-release:latest",
+            "ghcr.io/r-lib/rig/ubuntu:latest",
+            "ghcr.io/r-lib/rig/release:latest"
+        ]
+    },
+    {
+        "name": "ubuntu-devel",
+        "dir": "ubuntu",
+        "args": [
+            "RELEASE=22.04",
+            "RVERSION=devel"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/ubuntu-22.04-devel:latest",
+            "ghcr.io/r-lib/rig/ubuntu-latest-devel:latest",
+            "ghcr.io/r-lib/rig/ubuntu-devel:latest",
+            "ghcr.io/r-lib/rig/devel:latest"
+        ]
+    }
+]
