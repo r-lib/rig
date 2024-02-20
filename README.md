@@ -357,7 +357,7 @@ containers:
 | `ghcr.io/r-lib/rig/fedora-37-devel`       | Fedora 37          | devel          |                                                                                                 |
 | `ghcr.io/r-lib/rig/opensuse-15.5-release` | OpenSUSE Leap 15.5 | release        | `opensuse`, `opensuse-release`, `opensuse-latest`, `opensuse-latest-release`, `opensuse-15.5`   |
 | `ghcr.io/r-lib/rig/opensuse-15.5-devel`   | OpenSUSE Leap 15.5 | devel (daily)  | `opensuse-devel`, `opensuse-latest-devel`                                                       |
-| `ghcr.io/r-lib/rig/opensuse-15.4-release` | OpenSUSE Leap 15.4 | release        | `opensuse-14.5`                                                                                 |
+| `ghcr.io/r-lib/rig/opensuse-15.4-release` | OpenSUSE Leap 15.4 | release        | `opensuse-15.4`                                                                                 |
 | `ghcr.io/r-lib/rig/opensuse-15.4-devel`   | OpenSUSE Leap 15.4 | devel (daily)  |                                                                                                 |
 
 For convenience, we also create these tags:
