@@ -227,5 +227,165 @@
             "ghcr.io/r-lib/rig/debian-latest-devel:latest",
             "ghcr.io/r-lib/rig/debian-devel:latest"
         ]
+    },
+    {
+        "name": "fedora-38-release",
+        "aliases": [
+            "fedora-38-release",
+            "fedora",
+            "fedora-38",
+            "fedora-release",
+            "release"
+        ],
+        "dir": "fedora",
+        "args": [
+            "RELEASE=38",
+            "RVERSION=release"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/fedora-38-release:latest",
+            "ghcr.io/r-lib/rig/fedora-38:latest",
+            "ghcr.io/r-lib/rig/fedora-latest-release:latest",
+            "ghcr.io/r-lib/rig/fedora-latest:latest",
+            "ghcr.io/r-lib/rig/fedora-release:latest",
+            "ghcr.io/r-lib/rig/fedora:latest"
+        ]
+    },
+    {
+        "name": "fedora-38-devel",
+        "aliases": [
+            "fedora-38-devel",
+            "fedora",
+            "fedora-38",
+            "fedora-devel",
+            "devel"
+        ],
+        "dir": "fedora",
+        "args": [
+            "RELEASE=38",
+            "RVERSION=devel"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/fedora-38-devel:latest",
+            "ghcr.io/r-lib/rig/fedora-latest-devel:latest",
+            "ghcr.io/r-lib/rig/fedora-devel:latest"
+        ]
+    },
+    {
+        "name": "fedora-37-release",
+        "aliases": [
+            "fedora-37-release",
+            "fedora",
+            "fedora-37",
+            "fedora-release",
+            "release"
+        ],
+        "dir": "fedora",
+        "args": [
+            "RELEASE=37",
+            "RVERSION=release"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/fedora-37-release:latest",
+            "ghcr.io/r-lib/rig/fedora-37:latest"
+        ]
+    },
+    {
+        "name": "fedora-37-devel",
+        "aliases": [
+            "fedora-37-devel",
+            "fedora",
+            "fedora-37",
+            "fedora-devel",
+            "devel"
+        ],
+        "dir": "fedora",
+        "args": [
+            "RELEASE=37",
+            "RVERSION=devel"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/fedora-37-devel:latest"
+        ]
+    },
+    {
+        "name": "opensuse-15.5-release",
+        "aliases": [
+            "opensuse-15.5-release",
+            "opensuse",
+            "opensuse-15.5",
+            "opensuse-release",
+            "release"
+        ],
+        "dir": "suse",
+        "args": [
+            "RELEASE=15.5",
+            "RVERSION=release"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/opensuse-15.5-release:latest",
+            "ghcr.io/r-lib/rig/opensuse-15.5:latest",
+            "ghcr.io/r-lib/rig/opensuse-latest-release:latest",
+            "ghcr.io/r-lib/rig/opensuse-latest:latest",
+            "ghcr.io/r-lib/rig/opensuse-release:latest",
+            "ghcr.io/r-lib/rig/opensuse:latest"
+        ]
+    },
+    {
+        "name": "opensuse-15.5-devel",
+        "aliases": [
+            "opensuse-15.5-devel",
+            "opensuse",
+            "opensuse-15.5",
+            "opensuse-devel",
+            "devel"
+        ],
+        "dir": "suse",
+        "args": [
+            "RELEASE=15.5",
+            "RVERSION=devel"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/opensuse-15.5-devel:latest",
+            "ghcr.io/r-lib/rig/opensuse-latest-devel:latest",
+            "ghcr.io/r-lib/rig/opensuse-devel:latest"
+        ]
+    },
+    {
+        "name": "opensuse-15.4-release",
+        "aliases": [
+            "opensuse-15.4-release",
+            "opensuse",
+            "opensuse-15.4",
+            "opensuse-release",
+            "release"
+        ],
+        "dir": "suse",
+        "args": [
+            "RELEASE=15.4",
+            "RVERSION=release"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/opensuse-15.4-release:latest",
+            "ghcr.io/r-lib/rig/opensuse-15.4:latest"
+        ]
+    },
+    {
+        "name": "opensuse-15.4-devel",
+        "aliases": [
+            "opensuse-15.4-devel",
+            "opensuse",
+            "opensuse-15.4",
+            "opensuse-devel",
+            "devel"
+        ],
+        "dir": "suse",
+        "args": [
+            "RELEASE=15.4",
+            "RVERSION=devel"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/opensuse-15.4-devel:latest"
+        ]
     }
 ]
