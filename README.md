@@ -10,7 +10,7 @@ Install, remove, configure R versions.
 - ⬇️  <a href="#id-installation">Installing rig</a>
 - ⚙️  <a href="#id-usage">Usage</a>
 - ⛵  <a href="#id-macos-menu-bar-app">macOS menu bar app</a>
-- 📦  <a href="#id-container">Docker container with rig</a>
+- 📦  <a href="#id-container">Docker containers with rig</a>
 - 🤝  <a href="#id-feedback">Feedback</a>
 - ❓  <a href="#id-faq">FAQ</a>
 - 📘  <a href="#id-license">License</a>
@@ -311,12 +311,12 @@ Note: if you have a lot of menu bar apps running on an M1/M2 mac, then
 the some of them might be under the camera area. There is no good
 solution for this currently, other than running less menu bar apps.
 
-## 📦  Docker container with rig (and multiple R versions) <a id="id-container">
+## 📦  Docker containers with rig (and multiple R versions) <a id="id-container">
 
-Use the `rhub/rig` (also at ghcr.io/r-lib/rig/r) Docker container to
-easily run multiple R versions. It is currently based on Ubuntu 22.04
-and contains rig and the six latest R versions, including R-next and
-R-devel. It is available for x86_64 and arm64 systems:
+Use the `ghcr.io/r-lib/rig/r` Docker container to easily run multiple R
+versions. It is currently based on Ubuntu 22.04 and contains rig and the
+six latest R versions, including R-next and R-devel. It is available for
+x86_64 and arm64 systems:
 
     > docker run ghcr.io/r-lib/rig/r rig ls
     * name   version    aliases
@@ -329,16 +329,79 @@ R-devel. It is available for x86_64 and arm64 systems:
       devel  (R 4.4.0)
       next   (R 4.3.1)
 
+See this image on
+[GitHub](https://github.com/r-lib/rig/pkgs/container/rig%2Fr).
+
+### All containers
+
+We also have other containers with rig and either R-devel and R-release
+preinstalled, on various Linux distros. Here is a table of all
+containers:
+
+| Name                                      | OS                 | R version      | Tags                                                                                            |
+|-------------------------------------------|--------------------|----------------|-------------------------------------------------------------------------------------------------|
+| `ghcr.io/r-lib/rig/ubuntu-22.04-multi`    | Ubuntu 22.04       | last 6 (daily) | `r`, `rig`, `multi`, `ubuntu-multi`                                                             |
+| `ghcr.io/r-lib/rig/ubuntu-22.04-release`  | Ubuntu 22.04       | release        | `release`, `ubuntu`, `ubuntu-release`, `ubuntu-latest`, `ubuntu-latest-release`, `ubuntu-22.04` |
+| `ghcr.io/r-lib/rig/ubuntu-22.04-devel`    | Ubuntu 22.04       | devel (daily)  | `devel`, `ubuntu-devel`, `ubuntu-latest-devel`                                                  |
+| `ghcr.io/r-lib/rig/ubuntu-20.04-release`  | Ubuntu 20.04       | release        | `ubuntu-20.04`                                                                                  |
+| `ghcr.io/r-lib/rig/ubuntu-20.04-devel`    | Ubuntu 20.04       | devel (daily)  |                                                                                                 |
+| `ghcr.io/r-lib/rig/debian-12-release`     | Debian 12          | release        | `debian`, `debian-release`, `debian-latest`, `debian-latest-release`, `debian-12`               |
+| `ghcr.io/r-lib/rig/debian-12-devel`       | Debian 12          | devel (daily)  | `debian-devel`, `debian-latest-devel`                                                           |
+| `ghcr.io/r-lib/rig/debian-11-release`     | Debian 11          | release        | `debian-11`                                                                                     |
+| `ghcr.io/r-lib/rig/debian-11-devel`       | Debian 11          | devel (daily)  |                                                                                                 |
+| `ghcr.io/r-lib/rig/debian-10-release`     | Debian 10          | release        | `debian-10`                                                                                     |
+| `ghcr.io/r-lib/rig/debian-10-devel`       | Debian 10          | devel (daily)  |                                                                                                 |
+| `ghcr.io/r-lib/rig/fedora-38-release`     | Fedora 38          | release        | `fedora`, `fedora-release`, `fedora-latest`, `fedora-latest-release`, `fedora-38`               |
+| `ghcr.io/r-lib/rig/fedora-38-devel`       | Fedora 38          | devel          | `fedora-devel`, `fedora-latest-devel`                                                           |
+| `ghcr.io/r-lib/rig/fedora-37-release`     | Fedora 37          | release        | `fedora-37`                                                                                     |
+| `ghcr.io/r-lib/rig/fedora-37-devel`       | Fedora 37          | devel          |                                                                                                 |
+| `ghcr.io/r-lib/rig/opensuse-15.5-release` | OpenSUSE Leap 15.5 | release        | `opensuse`, `opensuse-release`, `opensuse-latest`, `opensuse-latest-release`, `opensuse-15.5`   |
+| `ghcr.io/r-lib/rig/opensuse-15.5-devel`   | OpenSUSE Leap 15.5 | devel (daily)  | `opensuse-devel`, `opensuse-latest-devel`                                                       |
+| `ghcr.io/r-lib/rig/opensuse-15.4-release` | OpenSUSE Leap 15.4 | release        | `opensuse-14.5`                                                                                 |
+| `ghcr.io/r-lib/rig/opensuse-15.4-devel`   | OpenSUSE Leap 15.4 | devel (daily)  |                                                                                                 |
+
+For convenience, we also create these tags:
+
+| Tag                                | Image                   | Description                          |
+|------------------------------------|-------------------------|--------------------------------------|
+| `ghcr.io/r-lib/rig/r`              | `ubuntu-22.04-multi`    | Last 6 R versions on latest Ubuntu.  |
+| `ghcr.io/r-lib/rig/rig`            | ”                       | ”                                    |
+| `ghcr.io/r-lib/rig/multi`          | ”                       | ”                                    |
+| `ghcr.io/r-lib/rig/ubuntu-multi`   | ”                       | ”                                    |
+| `ghcr.io/r-lib/rig/release`        | `ubuntu-22.04-release`  | Latest R release.                    |
+| `ghcr.io/r-lib/rig/ubuntu`         | `ubuntu-22.04-release`  | Latest R release on latest Ubuntu.   |
+| `ghcr.io/r-lib/rig/ubuntu-22.04`   | `ubuntu-22.04-release`  | Latest R release on Ubuntu 22.04.    |
+| `ghcr.io/r-lib/rig/devel`          | `ubuntu-22.04-devel`    | R devel.                             |
+| `ghcr.io/r-lib/rig/ubuntu-devel`   | `ubuntu-22.04-devel`    | R devel on latest Ubuntu.            |
+| `ghcr.io/r-lib/rig/ubuntu-20.04`   | `ubuntu-20.04-release`  | Latest R release on Ubuntu 20.04.    |
+| `ghcr.io/r-lib/rig/debian`         | `debian-12-release`     | Latest R release on latest Debian.   |
+| `ghcr.io/r-lib/rig/debian-12`      | `debian-12-release`     | Latest R release on Debian 12.       |
+| `ghcr.io/r-lib/rig/debian-devel`   | `debian-12-devel`       | R devel on latest Debian.            |
+| `ghcr.io/r-lib/rig/debian-11`      | `debian-11-release`     | Latest R release on Debian 11.       |
+| `ghcr.io/r-lib/rig/debian-10`      | `debian-10-release`     | Latest R release on Debian 10.       |
+| `ghcr.io/r-lib/rig/fedora`         | `fedora-38-release`     | Latest R release on latest Fedora.   |
+| `ghcr.io/r-lib/rig/fedora-38`      | `fedora-38-release`     | Latest R release on Fedora 38.       |
+| `ghcr.io/r-lib/rig/fedora-devel`   | `fedora-38-devel`       | R devel on latest Fedora.            |
+| `ghcr.io/r-lib/rig/fedora-37`      | `fedora-37-release`     | Latest R release on Fedora 37.       |
+| `ghcr.io/r-lib/rig/opensuse`       | `opensuse-15.5-release` | Latest R release on latest OpenSUSE. |
+| `ghcr.io/r-lib/rig/opensuse-15.5`  | `opensuse-15.5-release` | Latest R release on OpenSUSE 15.5.   |
+| `ghcr.io/r-lib/rig/opensuse-devel` | `opensuse-15.5-devel`   | R devel on latest OpenSUSE.          |
+| `ghcr.io/r-lib/rig/opensuse-15.4`  | `opensuse-15.4-release` | Latest R release on OpenSUSE 15.4.   |
+
+See all container images on
+[GitHub](https://github.com/orgs/r-lib/packages?repo_name=rig).
+
 ### Docker container features:
 
+For all containers:
+
+- rig is pre-installed, so you can easily add or remove R versions.
 - <https://github.com/r-lib/pak> is installed for all R versions.
 - Automatic system dependency installation via pak.
 - Linux binary packages are automatically installed from the [Posit
   Public Package Manager](https://packagemanager.posit.co/client/#/) in
-  x86_64 containers.
-
-See this image on [Docker Hub](https://hub.docker.com/r/rhub/rig) or
-[GitHub](https://github.com/r-lib/rig/pkgs/container/rig%2Fr).
+  x86_64 containers, on Ubuntu, Debian and OpenSUSE.
+- Available on x86_64 and aarch64.
 
 ## 🤝  Feedback <a id="id-feedback">
 
@@ -452,4 +515,4 @@ How is rig different from RSwitch?
 
 ## 📘   License <a id="id-license">
 
-MIT 2021-2023 © Posit Software, PBC.
+MIT 2021-2024 © Posit Software, PBC.
