@@ -272,40 +272,40 @@
         ]
     },
     {
-        "name": "fedora-37-release",
+        "name": "fedora-39-release",
         "aliases": [
-            "fedora-37-release",
+            "fedora-39-release",
             "fedora",
-            "fedora-37",
+            "fedora-39",
             "fedora-release",
             "release"
         ],
         "dir": "fedora",
         "args": [
-            "RELEASE=37",
+            "RELEASE=39",
             "RVERSION=release"
         ],
         "tags": [
-            "ghcr.io/r-lib/rig/fedora-37-release:latest",
-            "ghcr.io/r-lib/rig/fedora-37:latest"
+            "ghcr.io/r-lib/rig/fedora-39-release:latest",
+            "ghcr.io/r-lib/rig/fedora-39:latest"
         ]
     },
     {
-        "name": "fedora-37-devel",
+        "name": "fedora-39-devel",
         "aliases": [
-            "fedora-37-devel",
+            "fedora-39-devel",
             "fedora",
-            "fedora-37",
+            "fedora-39",
             "fedora-devel",
             "devel"
         ],
         "dir": "fedora",
         "args": [
-            "RELEASE=37",
+            "RELEASE=39",
             "RVERSION=devel"
         ],
         "tags": [
-            "ghcr.io/r-lib/rig/fedora-37-devel:latest"
+            "ghcr.io/r-lib/rig/fedora-39-devel:latest"
         ]
     },
     {
