@@ -173,7 +173,7 @@ tarball.
 
 - Debian 10, 11, 12,
 - Ubuntu 18.04, 20.04, 22.04,
-- Fedora Linux 37, 38,
+- Fedora Linux 37, 38, 39,
 - OpenSUSE 15.3, 15.4,
 - SUSE Linux Enterprise 15 SP3, SP4,
 - CentOS 7,
@@ -351,10 +351,10 @@ containers:
 | `ghcr.io/r-lib/rig/debian-11-devel`       | Debian 11          | devel (daily)  |                                                                                                 |
 | `ghcr.io/r-lib/rig/debian-10-release`     | Debian 10          | release        | `debian-10`                                                                                     |
 | `ghcr.io/r-lib/rig/debian-10-devel`       | Debian 10          | devel (daily)  |                                                                                                 |
-| `ghcr.io/r-lib/rig/fedora-38-release`     | Fedora 38          | release        | `fedora`, `fedora-release`, `fedora-latest`, `fedora-latest-release`, `fedora-38`               |
-| `ghcr.io/r-lib/rig/fedora-38-devel`       | Fedora 38          | devel          | `fedora-devel`, `fedora-latest-devel`                                                           |
-| `ghcr.io/r-lib/rig/fedora-37-release`     | Fedora 37          | release        | `fedora-37`                                                                                     |
-| `ghcr.io/r-lib/rig/fedora-37-devel`       | Fedora 37          | devel          |                                                                                                 |
+| `ghcr.io/r-lib/rig/fedora-39-release`     | Fedora 39          | release        | `fedora`, `fedora-release`, `fedora-latest`, `fedora-latest-release`, `fedora-39`               |
+| `ghcr.io/r-lib/rig/fedora-39-devel`       | Fedora 39          | devel          | `fedora-devel`, `fedora-latest-devel`                                                           |
+| `ghcr.io/r-lib/rig/fedora-38-release`     | Fedora 38          | release        | `fedora-38`                                                                                     |
+| `ghcr.io/r-lib/rig/fedora-38-devel`       | Fedora 38          | devel          |                                                                                                 |
 | `ghcr.io/r-lib/rig/opensuse-15.5-release` | OpenSUSE Leap 15.5 | release        | `opensuse`, `opensuse-release`, `opensuse-latest`, `opensuse-latest-release`, `opensuse-15.5`   |
 | `ghcr.io/r-lib/rig/opensuse-15.5-devel`   | OpenSUSE Leap 15.5 | devel (daily)  | `opensuse-devel`, `opensuse-latest-devel`                                                       |
 | `ghcr.io/r-lib/rig/opensuse-15.4-release` | OpenSUSE Leap 15.4 | release        | `opensuse-15.4`                                                                                 |
@@ -379,10 +379,10 @@ For convenience, we also create these tags:
 | `ghcr.io/r-lib/rig/debian-devel`   | `debian-12-devel`       | R devel on latest Debian.            |
 | `ghcr.io/r-lib/rig/debian-11`      | `debian-11-release`     | Latest R release on Debian 11.       |
 | `ghcr.io/r-lib/rig/debian-10`      | `debian-10-release`     | Latest R release on Debian 10.       |
-| `ghcr.io/r-lib/rig/fedora`         | `fedora-38-release`     | Latest R release on latest Fedora.   |
+| `ghcr.io/r-lib/rig/fedora`         | `fedora-39-release`     | Latest R release on latest Fedora.   |
+| `ghcr.io/r-lib/rig/fedora-39`      | `fedora-39-release`     | Latest R release on Fedora 39.       |
+| `ghcr.io/r-lib/rig/fedora-devel`   | `fedora-39-devel`       | R devel on latest Fedora.            |
 | `ghcr.io/r-lib/rig/fedora-38`      | `fedora-38-release`     | Latest R release on Fedora 38.       |
-| `ghcr.io/r-lib/rig/fedora-devel`   | `fedora-38-devel`       | R devel on latest Fedora.            |
-| `ghcr.io/r-lib/rig/fedora-37`      | `fedora-37-release`     | Latest R release on Fedora 37.       |
 | `ghcr.io/r-lib/rig/opensuse`       | `opensuse-15.5-release` | Latest R release on latest OpenSUSE. |
 | `ghcr.io/r-lib/rig/opensuse-15.5`  | `opensuse-15.5-release` | Latest R release on OpenSUSE 15.5.   |
 | `ghcr.io/r-lib/rig/opensuse-devel` | `opensuse-15.5-devel`   | R devel on latest OpenSUSE.          |
