@@ -1,0 +1,16 @@
+{
+  "test": ".tsx?$",
+  "exclude": ["node_modules"],
+  "sourceMaps": "inline",
+  "jsc": {
+    "target": "es2021",
+    "baseUrl": "./src",
+    "parser": {
+      "syntax": "typescript",
+      "tsx": true,
+      "functionBind": false,
+      "decorators": true,
+      "dynamicImport": true
+    }
+  }
+}
