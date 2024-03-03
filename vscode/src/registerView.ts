@@ -95,7 +95,7 @@ const setViewHtml = <V extends ViewKey>(
   ).join(" ");
 
   webview.html = template({
-    title: "Example",
+    title: "rig",
     csp,
     srcUri,
     publicPath,

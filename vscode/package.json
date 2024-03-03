@@ -11,7 +11,7 @@
   },
   "tags": [],
   "categories": [],
-  "publisher": "example",
+  "publisher": "Posit PBC",
   "main": "extension.js",
   "scripts": {
     "bundle": "webpack --mode production && webpack --mode production --config ./webpack.config.views.js",
@@ -47,8 +47,7 @@
     "webpack-dev-server": "^4.15.1"
   },
   "activationEvents": [
-    "onView:exampleViewA",
-    "onView:exampleViewB"
+    "onView:rigList"
   ],
   "contributes": {
     "commands": [
@@ -60,16 +59,16 @@
     "viewsContainers": {
       "panel": [
         {
-          "id": "examplePanelContainer",
-          "title": "example",
+          "id": "rigListContainer",
+          "title": "rig",
           "icon": "static/jersey.svg"
         }
       ]
     },
     "views": {
-      "examplePanelContainer": [
+      "rigListContainer": [
         {
-          "id": "exampleViewB",
+          "id": "rigList",
           "type": "webview",
           "name": "View B"
         }

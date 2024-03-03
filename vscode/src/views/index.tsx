@@ -1,11 +1,9 @@
 import { createRoot } from "react-dom/client";
 import { WebviewApi, WithWebviewContext } from "./WebviewContext";
-import { ExampleViewA } from "./ExampleViewA";
-import { ExampleViewB } from "./ExampleViewB";
+import { RigList } from "./RigList";
 
 export const Views = {
-  exampleViewA: ExampleViewA,
-  exampleViewB: ExampleViewB,
+  rigList: RigList,
 } as const;
 
 export type ViewKey = keyof typeof Views;

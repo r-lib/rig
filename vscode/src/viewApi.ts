@@ -25,10 +25,7 @@ export type ViewApiEvent<K extends keyof ViewEvents = keyof ViewEvents> = {
 
 export type ViewApi = {
   getFileContents: () => Promise<string>;
-  showExampleViewB: () => void;
-  sendMessageToExampleB: (msg: string) => void;
+  showRigList: () => void;
 };
 
-export type ViewEvents = {
-  exampleBMessage: (a: string) => void;
-};
+export type ViewEvents = {};

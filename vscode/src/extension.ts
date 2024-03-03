@@ -4,28 +4,13 @@ import { registerView } from "./registerView";
 import {
   ViewApi,
   ViewApiError,
-  ViewApiEvent,
   ViewApiRequest,
   ViewApiResponse,
-  ViewEvents,
 } from "./viewApi";
 import fs from "node:fs/promises";
 
 export const activate = async (ctx: vscode.ExtensionContext) => {
   const connectedViews: Partial<Record<ViewKey, vscode.WebviewView>> = {};
-
-  const triggerEvent = <E extends keyof ViewEvents>(
-    key: E,
-    ...params: Parameters<ViewEvents[E]>
-  ) => {
-    Object.values(connectedViews).forEach((view) => {
-      view.webview.postMessage({
-        type: "event",
-        key,
-        value: params,
-      } as ViewApiEvent<E>);
-    });
-  };
 
   const api: ViewApi = {
     getFileContents: async () => {
@@ -44,12 +29,9 @@ export const activate = async (ctx: vscode.ExtensionContext) => {
       const contents = await fs.readFile(uris[0].fsPath, "utf-8");
       return contents;
     },
-    showExampleViewB: () => {
-      connectedViews?.exampleViewB?.show?.(true);
-      vscode.commands.executeCommand(`exampleViewB.focus`);
-    },
-    sendMessageToExampleB: (msg: string) => {
-      triggerEvent("exampleBMessage", msg);
+    showRigList: () => {
+      connectedViews?.rigList?.show?.(true);
+      vscode.commands.executeCommand(`rigList.focus`);
     },
   };
 
@@ -69,7 +51,6 @@ export const activate = async (ctx: vscode.ExtensionContext) => {
         return;
       }
       try {
-        // @ts-expect-error
         const val = await Promise.resolve(api[msg.key](...msg.params));
         const res: ViewApiResponse = {
           type: "response",
@@ -91,13 +72,13 @@ export const activate = async (ctx: vscode.ExtensionContext) => {
     view.webview.onDidReceiveMessage(onMessage);
   };
 
-  let disposable = vscode.commands.registerCommand("rig.manage", () => {
-    vscode.window.showInformationMessage("HelloWorld from rig!");
+  let rigManageCmd = vscode.commands.registerCommand("rig.manage", () => {
+    connectedViews?.rigList?.show?.(true);
+    vscode.commands.executeCommand(`rigList.focus`);
   });
 
-  ctx.subscriptions.push(disposable);
-  registerAndConnectView("exampleViewA");
-  registerAndConnectView("exampleViewB");
+  ctx.subscriptions.push(rigManageCmd);
+  registerAndConnectView("rigList");
 };
 
 export const deactivate = () => {
