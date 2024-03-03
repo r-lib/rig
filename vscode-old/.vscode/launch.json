@@ -1,0 +1,40 @@
+// A launch configuration that compiles the extension and then opens it inside a new window
+// Use IntelliSense to learn about possible attributes.
+// Hover to view descriptions of existing attributes.
+// For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Watch + Run Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}/dist"],
+      "preLaunchTask": "Watch",
+      "autoAttachChildProcesses": true,
+      "debugWebWorkerHost": true,
+      "debugWebviews": true,
+      "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+      "sourceMaps": true,
+      "sourceMapPathOverrides": {
+        // necessary for sourcemaps/breakpoints to work when snowflake-sql-langauge-server is yarn linked.
+        // assumes vscode ext + snowflake-sql-language-server repos share same parent dir.
+        "./snowflake-sql-language-server/*": "${workspaceRoot}/node_modules/@snowflake/snowflake-sql-language-server/*",
+        "../snowflake-sql-language-server/*": "${workspaceRoot}/node_modules/@snowflake/snowflake-sql-language-server/*",
+        "./*": "${workspaceFolder}/*"
+      }
+    },
+    {
+      "name": "Build + Run Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}/dist"],
+      "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+      "preLaunchTask": "Build",
+      "resolveSourceMapLocations": [
+        "${workspaceFolder}/**",
+        "!**/node_modules/**"
+      ]
+    }
+  ]
+}

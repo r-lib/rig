@@ -1,25 +1,17 @@
 {
-  "compilerOptions": {
-    "jsx": "react-jsx",
-    "outDir": "out",
-    "types": ["node"],
-    "module": "CommonJS",
-    "target": "ES2021",
-    "moduleResolution": "node",
-    "lib": ["dom", "ES2021", "dom.iterable", "webworker"],
-    "composite": false,
-    "isolatedModules": true,
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noImplicitAny": true,
-    "noImplicitThis": true,
-    "alwaysStrict": true,
-    "skipLibCheck": true,
-    "baseUrl": ".",
-    "resolveJsonModule": true,
-    "esModuleInterop": true,
-  },
-  "include": ["./**/*.ts", "./**/*.tsx"],
-  "exclude": ["node_modules"]
+	"compilerOptions": {
+		"module": "Node16",
+		"target": "ES2022",
+		"outDir": "out",
+		"lib": [
+			"ES2022"
+		],
+		"sourceMap": true,
+		"rootDir": "src",
+		"strict": true   /* enable all strict type-checking options */
+		/* Additional Checks */
+		// "noImplicitReturns": true, /* Report error when not all code paths in function return a value. */
+		// "noFallthroughCasesInSwitch": true, /* Report errors for fallthrough cases in switch statement. */
+		// "noUnusedParameters": true,  /* Report errors on unused parameters. */
+	}
 }
