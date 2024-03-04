@@ -1,9 +1,9 @@
 import { useContext, useState } from "react";
 import { WebviewContext } from "./WebviewContext";
 
-//import { execFile } from "node:child_process";
-//import { promisify } from "node:util";
-//const exec = promisify(execFile);
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+const exec = promisify(execFile);
 
 interface IRVersion {
   name: string;
@@ -29,8 +29,9 @@ const RVersionList = () => {
 };
 
 async function rigRunLs() {
-  //  const { stdout } = await exec("rig", ["ls", "--json"]);
-  //  return stdout;
+  const { stdout } = await exec("rig", ["ls", "--json"]);
+  console.log(JSON.parse(stdout));
+  return stdout;
 }
 
 export const RigList = () => {
@@ -42,11 +43,12 @@ export const RigList = () => {
     setFileContent(await callApi("getFileContents"));
   };
 
-  return <div>foobar</div>;
-
   const versions = rigRunLs();
-  //  console.log(JSON.parse(versions));
-  return <RVersionList />;
+  // console.log(JSON.parse(versions));
+  return <div>
+    <h1>Installed R versions</h1>
+    <RVersionList />
+  </div>;
 
   return (
     <div

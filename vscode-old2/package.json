@@ -1,0 +1,71 @@
+{
+  "name": "rig",
+  "displayName": "rig",
+  "description": "Install and manage R versions.",
+  "version": "0.0.1",
+  "publisher": "Posit PBC",
+  "engines": {
+    "vscode": "^1.86.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:rigList"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "rig.manage",
+        "title": "Manage R versions with rig"
+      }
+    ],
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "rigListContainer",
+          "title": "rig",
+          "icon": "static/jersey.svg"
+        }
+      ]
+    },
+    "views": {
+      "rigListContainer": [
+        {
+          "id": "rigList",
+          "type": "webview",
+          "name": "View B"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.6",
+    "@types/node": "18.x",
+    "@types/promise-deferred": "^2.0.5",
+    "@types/react": "^18.2.61",
+    "@types/react-dom": "^18.2.19",
+    "@types/uuid": "^9.0.8",
+    "@types/vscode": "^1.86.0",
+    "@typescript-eslint/eslint-plugin": "^6.19.1",
+    "@typescript-eslint/parser": "^6.19.1",
+    "@vscode/test-cli": "^0.0.4",
+    "@vscode/test-electron": "^2.3.9",
+    "eslint": "^8.56.0",
+    "promise-deferred": "^2.0.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-refresh": "^0.14.0",
+    "typescript": "^5.2.2",
+    "uuid": "^9.0.1"
+  }
+}
