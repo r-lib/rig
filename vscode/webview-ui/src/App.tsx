@@ -1,6 +1,6 @@
 import { vscode } from "./utilities/vscode";
 import { VSCodeButton } from "@vscode/webview-ui-toolkit/react";
-import { useState } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import "./App.css";
 
 interface IRVersion {
@@ -11,37 +11,46 @@ interface IRVersion {
   path: string;
 };
 
-function RVersion() {
-  return <div></div>;
-}
-
 function RVersionList() {
   const [versions, setVersions] = useState<Array<IRVersion>>();
-  return <div></div>;
-}
 
-window.addEventListener("load", main);
-
-function main() {
-  // Handle the message inside the webview
-  window.addEventListener('message', event => {
-    const message = event.data; // The JSON data our extension sent
+  const listener = useCallback(event => {
+    const message = event.data;
     switch (message.command) {
     case 'versions':
-      const v = document.getElementById('versions');
-      if (!!v) {
-        v.textContent = JSON.stringify(message.data);
-      }
+      setVersions(message.data);
       break;
     }
-  });
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("message", listener);
+    return () => {
+        window.removeEventListener("message", listener);
+    };
+  }, [listener]);
+
+  const listItems = versions?.map(v =>
+    <li key={v.name}>
+      <RVersion {...v} />
+    </li>
+  );
+
+  return (
+    <ul>{listItems}</ul>
+  );
 }
+
+ function RVersion(version: IRVersion) {
+   return <>
+     {version.default ? "✅" : ""} {version.name} (R {version.version})
+   </>
+ }
 
 function App() {
   function refreshClick() {
     vscode.postMessage({
-      command: "refresh",
-      text: "Reloading installed R versions",
+      command: "refresh"
     });
   }
 

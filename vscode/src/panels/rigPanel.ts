@@ -153,7 +153,9 @@ export class rigPanel {
 
         switch (command) {
           case "refresh":
-            window.showInformationMessage(text);
+            if (text) {
+              window.showInformationMessage(text);
+            }
             const rvers = await listRVersions();
             rigPanel?.currentPanel?._panel?.webview?.postMessage({ command: "versions", data: rvers });
             return;
