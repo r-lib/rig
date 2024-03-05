@@ -4,11 +4,22 @@ import { getNonce } from "../utilities/getNonce";
 import { execFile } from "child_process";
 import { promisify } from "util";
 const asyncExecFile = promisify(execFile);
+import { exec } from '@vscode/sudo-prompt';
 
 async function listRVersions() {
   const out = await asyncExecFile("rig", ["ls", "--json"]);
   const versions = JSON.parse(out.stdout);
   return versions;
+}
+
+async function installRVersion(version: string): Promise<void> {
+  const options = { name: 'rig' };
+  exec("rig add " + version, options, function(error, stdout, stderr) {
+    if (error) {
+      throw error;
+    }
+    console.log(stdout);
+  });
 }
 
 export class rigPanel {
@@ -150,15 +161,25 @@ export class rigPanel {
       async (message: any) => {
         const command = message.command;
         const text = message.text;
+        if (text) {
+          window.showInformationMessage(text);
+        }
 
         switch (command) {
           case "refresh":
-            if (text) {
-              window.showInformationMessage(text);
-            }
+          {
             const rvers = await listRVersions();
             rigPanel?.currentPanel?._panel?.webview?.postMessage({ command: "versions", data: rvers });
             return;
+          }
+          case "install":
+          {
+            console.log(message);
+            const out = await installRVersion(message.version);
+            const rvers = await listRVersions();
+            rigPanel?.currentPanel?._panel?.webview?.postMessage({ command: "versions", data: rvers });
+            return;
+          }
         }
       },
       undefined,

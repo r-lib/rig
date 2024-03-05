@@ -1,5 +1,5 @@
 import { vscode } from "./utilities/vscode";
-import { VSCodeButton } from "@vscode/webview-ui-toolkit/react";
+import { VSCodeButton, VSCodeTextField } from "@vscode/webview-ui-toolkit/react";
 import { useState, useCallback, useEffect } from 'react';
 import "./App.css";
 
@@ -47,18 +47,47 @@ function RVersionList() {
    </>
  }
 
+interface IAppState {
+  newversion: string;
+}
+
 function App() {
+  const [value, setValue] = useState<string>('');
+
   function refreshClick() {
     vscode.postMessage({
       command: "refresh"
     });
   }
 
+  function installClick() {
+    console.log(value);
+    vscode.postMessage({
+      command: "install",
+      version: value
+    });
+  }
+
+  const onNew = (event: any) => {
+    setValue(event.target.value)
+  };
+
   return (
     <main>
       <h1>Installalled R versions</h1>
-      <RVersionList />
-      <VSCodeButton onClick={refreshClick}>Refresh</VSCodeButton>
+      <div>
+        <RVersionList />
+        <VSCodeButton onClick={refreshClick}>Refresh</VSCodeButton>
+      </div>
+      <h1>Install another R version</h1>
+      <VSCodeTextField
+       name="value"
+       value={value}
+       onInput={onNew}
+       placeholder="release">
+        Version
+      </VSCodeTextField>
+      <VSCodeButton onClick={installClick}>Install</VSCodeButton>
     </main>
   );
 }
