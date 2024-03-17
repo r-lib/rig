@@ -1,4 +1,8 @@
 
+# rig 0.6.1 (prerelease)
+
+* rig now supports Rtools44 on Windows.
+
 # rig 0.6.0
 
 * rig now supports RPM based distros, in addition to Deboan and Ubuntu (#28).
