@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
     <id>rig</id>
-    <version>0.6.0</version>
+    <version>0.6.1</version>
     <packageSourceUrl>https://github.com/r-lib/rig</packageSourceUrl>
     <owners>Gábor Csárdi</owners>
     <title>rig</title>
@@ -54,37 +54,10 @@
 Please open an issue in our issue tracker at https://github.com/r-lib/rig/issues
     </description>
     <releaseNotes>
-# rig 0.6.0
+# rig 0.6.1
 
--  New `rig available` command to list R versions available to install.
-   `rig available --list-distros` lists the supported Linux distributions.
-
--  New `rig run` to run R, an R script or an R project, using the selected
-   R version (#161).
-
--  rig now works in a shell that is a subprocess or R, e.g. in the
-   RStudio terminal (#127).
-
--  `rig resolve` now has a `--platform` and a `--arch` arguments, to look up
-   available R versions for any supported platform, instead of the current
-   one.
-
--  `rig ls --plain` lists only the R version names, this is useful in
-   shell scripts (#128).
-
--  `rig rstudio` now starts RStudio with the correct working directory
-   and project (#139, #100).
-
--  macOS: `rig add` now only changes the permission for the R version
-   that it is installing (#109).
-
--  Windows: `rig rstudio` now starts the correct R version, even with newer
-   RStudio versions (#134).
-
--  Windows: rig now works in PowerShell 7.
-
--  Windows: the rig installer now does not create shortcut in the start
-   menu (#160).
+-  rig now supports Rtools44 on Windows, and defaults to using
+   Rtools42 for R 4.2.x.
     </releaseNotes>
   </metadata>
 </package>

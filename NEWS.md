@@ -3,6 +3,8 @@
 
 * rig now supports Rtools44 on Windows.
 
+* rig now defaults to Rtools42 for R 4.2.x on Windows.
+
 # rig 0.6.0
 
 * rig now supports RPM based distros, in addition to Deboan and Ubuntu (#28).
