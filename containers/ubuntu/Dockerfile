@@ -14,7 +14,7 @@ RUN apt update && \
     apt install r-rig && \
     apt clean
 
-RUN rig add ${RVERISON} --without-pak && \
+RUN rig add ${RVERSION} --without-pak && \
     rm -rf /tmp/rig && \
     apt-get clean
 
