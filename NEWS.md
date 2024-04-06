@@ -1,4 +1,3 @@
-
 # rig 0.6.1 (prerelease)
 
 * rig now supports Rtools44 on Windows.
@@ -11,7 +10,7 @@
 
 # rig 0.6.0
 
-* rig now supports RPM based distros, in addition to Deboan and Ubuntu (#28).
+* rig now supports RPM based distros, in addition to Debian and Ubuntu (#28).
   The full list of supported distros, on x86_64 and aarch64:
   - Debian 10, 11, 12,
   - Ubuntu 18.04, 20.04, 22.04,
