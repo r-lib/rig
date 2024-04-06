@@ -1,12 +1,14 @@
 # rig 0.6.1 (prerelease)
 
-* rig now supports Rtools44 on Windows.
-
-* rig now defaults to Rtools42 for R 4.2.x on Windows.
-
 * Bash completions work well again (#202).
 
-* `rig rstudio <version>` works again on recent macOS versions (#208).
+* Windows: rig now supports Rtools44 on Windows.
+
+* Windows: rig now defaults to Rtools42 for R 4.2.x on Windows.
+
+* macOS: `rig rstudio <version>` works again on recent macOS versions (#208).
+
+* Linux: `rig add --without-p3m` works again (#193).
 
 # rig 0.6.0
 

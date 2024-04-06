@@ -101,7 +101,9 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         set_cloud_mirror(Some(vec![dirname.to_string()]))?;
     }
 
-    set_ppm(Some(vec![dirname.to_string()]), &platform)?;
+    if !args.get_flag("without-p3m") {
+        set_ppm(Some(vec![dirname.to_string()]), &platform)?;
+    }
 
     if args.get_flag("without-sysreqs") {
         set_sysreqs_false(Some(vec![dirname.to_string()]))?;
