@@ -52,6 +52,7 @@ pub fn escalate(task: &str) -> Result<(), Box<dyn Error>> {
             "LC_TIME",
             "SSL_CERT_FILE",
             "SSL_CERT_DIR",
+            "RIG_PLATFORM"
         ])?;
     }
 
