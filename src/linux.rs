@@ -129,7 +129,8 @@ fn select_linux_tools(platform: &OsVersion)
             install: vec![
                 strvec!["apt-get", "update"],
                 strvec!["apt", "install", "--reinstall", "-y",
-                       "-o=Dpkg::Use-Pty=0", "{}"]
+                       "-o=Dpkg::Use-Pty=0",
+                       "-o=Apt::Cmd::Disable-Script-Warning=1", "{}"]
             ],
             get_package_name:
                 strvec!["dpkg", "--field", "{}", "Package"],
