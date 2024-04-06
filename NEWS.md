@@ -10,6 +10,8 @@
 
 * Linux: `rig add --without-p3m` works again (#193).
 
+* Linux: `RIG_PLATFORM` works again when `sudo` is needed (#191).
+
 # rig 0.6.0
 
 * rig now supports RPM based distros, in addition to Debian and Ubuntu (#28).
