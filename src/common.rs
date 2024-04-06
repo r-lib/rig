@@ -231,6 +231,13 @@ pub fn sc_rstudio(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         }
     }
 
+    sc_rstudio2(ver, prj)
+}
+
+pub fn sc_rstudio2(ver: Option<&String>, prj: Option<&String>)
+    -> Result<(), Box<dyn Error>> {
+
+    let mut prj = prj;
     let mut prj2;
     if let Some(p) = prj {
 	let path = Path::new(p);

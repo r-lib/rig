@@ -257,10 +257,10 @@ pub extern "C" fn rig_start_rstudio(
         }
     };
 
-    let ver = if ver == "" { None } else { Some(ver) };
-    let prj = if prj == "" { None } else { Some(prj) };
+    let ver = if ver == "" { None } else { Some(ver.to_string()) };
+    let prj = if prj == "" { None } else { Some(prj.to_string()) };
 
-    match sc_rstudio_(ver, prj, None) {
+    match sc_rstudio2(ver.as_ref(), prj.as_ref()) {
         Ok(_) => SUCCESS,
         Err(e) => {
             let msg = e.to_string();

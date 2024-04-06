@@ -214,15 +214,15 @@ Thank you!
     @objc func startRStudio2(_ sender: NSMenuItem?) {
         var msg = sender!.representedObject! as! Array<String>
         var proj = msg[0] as! String
-        var rver = msg[1] as! String
-        if rver == "default" { rver = (try? rigDefault()) ?? "" }
+        var rver: String? = msg[1] as! String
+        if rver == "default" { rver = nil }
         startRStudio_(project: proj, version: rver)
     }
 
     @objc func startRStudio(_ sender: NSMenuItem?) {
-        var ver = String(sender!.title)
+        var ver: String? = String(sender!.title)
         if ver == "Default" || ver == "RStudio" {
-            ver = (try? rigDefault()) ?? ""
+            ver = nil
         } else {
           ver = sender!.representedObject as! String
         }
@@ -230,7 +230,7 @@ Thank you!
         startRStudio_(project: nil, version: ver)
     }
 
-    func startRStudio_(project: String?, version: String) {
+    func startRStudio_(project: String?, version: String?) {
         var info = """
 Make sure that RStudio is installed and can start up.
 You can try running
