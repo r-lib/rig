@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use clap::ArgMatches;
+use path_clean::PathClean;
 use regex::Regex;
 use simple_error::*;
 use simplelog::{debug, info, warn};
@@ -800,8 +801,6 @@ pub fn sc_rstudio_(version: Option<&str>,
                    arg: Option<&OsStr>)
                    -> Result<(), Box<dyn Error>> {
 
-    let cwd = std::env::current_dir();
-
     let mut args = match project {
         // open -n -a RStudio
         None => osvec!["-n", "-a", "RStudio"],
@@ -820,14 +819,10 @@ pub fn sc_rstudio_(version: Option<&str>,
         args.append(&mut osvec!["--env", &path]);
     }
 
-    // add current directory if there is no project
-    if let None = project {
-        if let Ok(x) = cwd {
-            args.append(&mut osvec!["--args", x]);
-        }
+    if let Some(a) = arg {
+        let absa = absolute_path(a)?;
+        args.append(&mut osvec!["--args", absa]);
     }
-
-    if let Some(arg) = arg { args.push(arg.to_os_string()); }
 
     info!("Running open {}", osjoin(args.to_owned(), " "));
 
@@ -837,6 +832,19 @@ pub fn sc_rstudio_(version: Option<&str>,
     };
 
     Ok(())
+}
+
+pub fn absolute_path(path: impl AsRef<Path>)
+    -> Result<PathBuf, Box<dyn Error>> {
+    let path = path.as_ref();
+
+    let absolute_path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()?.join(path)
+    }.clean();
+
+    Ok(absolute_path)
 }
 
 // ------------------------------------------------------------------------
