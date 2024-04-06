@@ -5,6 +5,10 @@
 
 * rig now defaults to Rtools42 for R 4.2.x on Windows.
 
+* Bash completions work well again (#202).
+
+* `rig rstudio <version>` works again on recent macOS versions (#208).
+
 # rig 0.6.0
 
 * rig now supports RPM based distros, in addition to Deboan and Ubuntu (#28).
