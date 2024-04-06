@@ -843,7 +843,9 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>, arg: Option<&Os
     };
 
     if let Some(arg) = arg {
-        args.push(arg.into());
+        if project.is_none() {
+            args.push(arg.into());
+        }
     }
 
     info!("Running {} {:?}", cmd, args.join(&os(" ")));
