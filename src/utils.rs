@@ -84,7 +84,7 @@ pub fn bak_file(path: &Path) -> PathBuf {
     path2
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(any(target_os = "macos"))]
 pub fn replace_in_file(path: &Path, re: &Regex, sub: &str) -> Result<(), Box<dyn Error>> {
     let mut lines = read_lines(path)?;
     let mch = grep_lines(re, &lines);

@@ -10,7 +10,6 @@ use std::io::Write;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::{thread, time};
 
 use clap::ArgMatches;
 use directories::BaseDirs;
@@ -1019,18 +1018,13 @@ pub fn get_rstudio_config_path() -> Result<std::path::PathBuf, Box<dyn Error>> {
     Ok(xdg)
 }
 
-pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>, arg: Option<&OsStr>)
+pub fn sc_rstudio_(version: Option<&str>,
+		   project: Option<&str>,
+		   arg: Option<&OsStr>)
                    -> Result<(), Box<dyn Error>> {
     debug!("Looking into starting RStudio");
 
     let def = sc_get_default()?;
-
-    // we only need to restore if 'ver' is given, there is a default and
-    // they are different
-    let restore = match (version, &def) {
-        (Some(v), Some(d)) => v != d,
-        _ => false,
-    };
 
     // def is None if there is no default R version set
     let version = match version {
@@ -1038,16 +1032,8 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>, arg: Option<&Os
 	None    => def
     };
 
-    if let Some(_) = version {
-        escalate("updating default version in registry")?;
-    }
-
-    let cwd = std::env::current_dir();
     let mut args = match project {
-        None => match cwd {
-	    Ok(x) => osvec!["/c", "start", "/b", "rstudio", "/d", x],
-	    Err(_) => osvec!["/c", "start", "/b", "rstudio"]
-	},
+        None => osvec!["/c", "start", "/b", "rstudio"],
         Some(p) => osvec!["/c", "start", "/b", p],
     };
 
@@ -1055,51 +1041,25 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>, arg: Option<&Os
 	args.push(arg.to_os_string());
     }
 
-    if let Some(version) = version {
-        let ver = version.to_string();
-        let ver = check_installed(&ver)?;
-	debug!("Updating R version in registry to {}.", ver);
-        update_registry_default_to(&ver)?;
-
-	// Update RStudio config, this is needed for newer RStudio versions.
-        let config_path = get_rstudio_config_path();
-	if config_path.is_ok() {
-	    let mut config_path = config_path.unwrap();
-	    config_path.push("config.json");
-	    if config_path.exists() {
-		let re = Regex::new(
-		    "\"rExecutablePath\":\\s*\"C:\\\\\\\\Program Files\\\\\\\\R\\\\\\\\R-.*\\\\\\\\bin\\\\\\\\x64\\\\\\\\Rterm.exe\""
-		).unwrap();
-		let sub = "\"rExecutablePath\": \"C:\\\\Program Files\\\\R\\\\R-".to_string() +
-		    &ver + "\\\\bin\\\\x64\\\\Rterm.exe\"";
-		match replace_in_file(&config_path, &re, &sub) {
-		    Ok(_) => {
-			debug!("Updated RStudio config at {}", config_path.display());
-		    },
-		    Err(x) => {
-			warn!(
-			    "Cannot update RStudio config file at {}: {}",
-			    config_path.display(),
-			    x.to_string()
-			);
-		    }
-		}
-	    }
-	}
+    // set version env var if needed
+    let old = std::env::var("RSTUDIO_WHICH_R");
+    if let Some(ref v) = version {
+	let ver = v.to_string();
+	let ver = check_installed(&ver)?;
+	let bin = get_r_binary_x64(&ver)?;
+	info!("Setting RSTUDIO_WHICH_R=\"{}\"", bin.display());
+	std::env::set_var("RSTUDIO_WHICH_R", bin);
     }
 
     info!("Running cmd.exe {}", osjoin(args.to_owned(), " "));
-
     let status = run("cmd.exe".into(), args, "start");
 
-    // Restore registry (well, set default), if we changed it
-    // temporarily
-    if restore {
-        debug!("Waiting for RStudio to start");
-        let twosecs = time::Duration::from_secs(2);
-        thread::sleep(twosecs);
-        debug!("Restoring default R version in registry");
-        maybe_update_registry_default()?;
+    // restore version env var
+    if let Some(_) = version {
+	match old {
+	    Ok(v) => std::env::set_var("RSTUDIO_WHICH_R", v),
+	    Err(_) => std::env::remove_var("RSTUDIO_WHICH_R")
+	};
     }
 
     match status {
@@ -1122,6 +1082,18 @@ pub fn get_r_binary(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
     let bin = base
         .join("R-".to_string() + &rver)
         .join("bin")
+        .join("R.exe");
+    debug!("R {} binary: {}", rver, bin.display());
+    Ok(bin)
+}
+
+pub fn get_r_binary_x64(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
+    debug!("Finding R {} binary", rver);
+    let base = Path::new(R_ROOT);
+    let bin = base
+        .join("R-".to_string() + &rver)
+        .join("bin")
+	.join("x64")
         .join("R.exe");
     debug!("R {} binary: {}", rver, bin.display());
     Ok(bin)

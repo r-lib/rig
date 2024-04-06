@@ -21,7 +21,6 @@ use crate::windows::*;
 use crate::linux::*;
 
 use crate::download::download_json_sync;
-use crate::escalate::escalate;
 use crate::renv;
 use crate::rversion::*;
 use crate::run::*;
@@ -186,6 +185,27 @@ pub fn system_add_pak(
 
 // -- rig rstudio ---------------------------------------------------------
 
+fn look_for_file(p: &Path, re: Regex)
+		 -> Result<Option<PathBuf>, Box<dyn Error>> {
+    let paths = std::fs::read_dir(p)?;
+    for file in paths {
+	let path = file?.path();
+	let pathstr = match path.file_name() {
+	    Some(x) => x,
+	    None => continue,
+	};
+	let pathstr = match pathstr.to_str() {
+	    Some(x) => x,
+	    None => continue,
+	};
+	if re.is_match(&pathstr) {
+	    return Ok(Some(path));
+	}
+    }
+
+    Ok(None)
+}
+
 pub fn sc_rstudio(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let mut ver: Option<&String> = args.get_one("version");
     let mut prj: Option<&String> = args.get_one("project-file");
@@ -200,63 +220,120 @@ pub fn sc_rstudio(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 	return Ok(());
     }
 
-    if let Some(ver2) = ver {
-        if ver2.ends_with("renv.lock") {
-            let lockfile = PathBuf::new().join(ver2);
-            let needver = renv::parse_r_version(lockfile)?;
-            let usever = renv::match_r_version(&needver)?;
-            let realver = usever.version.to_string();
-
-	    // On windows we need to escalate to change the registry
-	    // If we don't escalate now, then the info!() will be
-	    // printed twive.
-	    if std::env::consts::OS == "windows" {
-		escalate("updating default version in registry")?;
-	    }
-
-            info!("Using {} R {}{}",
-                  if needver == realver {
-                      "matching version:"
-                  } else {
-                      "latest minor version:"
-                  },
-                  usever.name,
-                  if realver != usever.name {
-                      " (R ".to_string() + &realver + ")"
-                  } else {
-                      "".to_string()
-                  }
-            );
-
-            // Seems that it is enough to call with the directory
-            // of the lock file, this works reasonable with and without
-            // a project file.
-            let prdir = Path::new(ver2).parent();
-            let prdir = prdir.and_then(|x| Some(x.as_os_str()));
-            return sc_rstudio_(Some(&usever.name), None, prdir);
-        }
-    }
-
-    // If the first argument is an R project file, and the second is not,
+    // If the first argument is an existing path, and the second is not,
     // then we switch the two
     if let Some(ver2) = ver {
-        if ver2.ends_with(".Rproj") {
+	let path = Path::new(ver2);
+	if path.exists() &&
+	    (prj.is_none() || ! Path::new(prj.unwrap()).exists()) {
             ver = args.get_one("project-file");
             prj = args.get_one("version");
         }
     }
 
-    let ver = match ver {
-        None => None,
-        Some(str) => Some(&str[..])
+    let mut prj2;
+    if let Some(p) = prj {
+	let path = Path::new(p);
+	if path.exists() && path.is_dir() && !p.ends_with("/") {
+	    prj2 = Some(p.to_string() + "/")
+		.and_then(|x| Some(x.to_string()));
+	    prj = prj2.as_ref();
+	}
+    };
+    if let Some(p) = prj {
+	if !p.starts_with("/") && !p.starts_with(".") {
+	    prj2 = Some("./".to_string() + p)
+		.and_then(|x| Some(x.to_string()));
+	    prj = prj2.as_ref();
+	}
+    }
+
+    // If there is a path, find its directory
+    let (fver, fproj, farg) = match (ver, prj) {
+	(None,    None)    => (None, None, None),
+	(Some(v), None)    => (Some(v.to_owned()), None, None),
+	(Some(v), Some(p)) => {
+	    let pf = find_project_file(p)?;
+	    (Some(v.to_owned()), pf.0, pf.1)
+	},
+	(None,    Some(p)) => {
+	    let pf = find_project_file(p)?;
+	    let v = get_project_version(p)?;
+	    (v, pf.0, pf.1)
+	},
     };
 
-    let prj = match prj {
-        None => None,
-        Some(prj) => Some(&prj[..])
+    debug!("RStudio start: {:?}, {:?}, {:?}", fver, fproj, farg);
+    sc_rstudio_(fver.as_deref(), fproj.as_deref(), farg.as_deref())
+}
+
+fn find_project_dir(path: &str) -> Result<PathBuf, Box<dyn Error>> {
+    debug!("Find project dir in {}", path);
+    let ppath = Path::new(path);
+    if !ppath.exists() {
+	bail!("Could not find path {}", path);
+    }
+    let ret = if ppath.is_dir() {
+	ppath.to_path_buf()
+    } else {
+	match ppath.parent() {
+	    None => Path::new("/").to_path_buf(),
+	    Some(x) => x.to_path_buf()
+	}
     };
 
-    sc_rstudio_(ver, prj, None)
+    debug!("Project dir: {:?}", ret.display());
+    Ok(ret)
+}
+
+// Returns the project file, and also the original file if it
+// was not the project file but another file
+
+fn find_project_file(path: &str)
+    -> Result<(Option<String>, Option<std::ffi::OsString>), Box<dyn Error>> {
+
+    if path.ends_with(".Rproj") && ! Path::new(path).is_dir() {
+	Ok((Some(path.to_string()), None))
+    } else {
+	let dir = find_project_dir(path)?;
+	let proj = look_for_file(&dir, Regex::new("[.]Rproj$").unwrap())?;
+	let projstr = proj
+	    .as_ref()
+	    .and_then(|x| x.to_str())
+	    .and_then(|x| Some(x.to_string()));
+	Ok((projstr, Some(std::ffi::OsString::from(path))))
+    }
+}
+
+// Look at the project dir, and check if there is an renv.lock file
+
+fn get_project_version(path: &str)
+    -> Result<Option<String>, Box<dyn Error>> {
+    let dir = find_project_dir(path)?;
+    let renv = dir.join("renv.lock");
+    if renv.exists() {
+	let needver = renv::parse_r_version(renv)?;
+	let usever = renv::match_r_version(&needver)?;
+	let realver = usever.version.to_string();
+
+	info!("Using {} R {}{}",
+	      if needver == realver {
+		  "matching version:"
+	      } else {
+		  "latest minor version:"
+	      },
+	      usever.name,
+	      if realver != usever.name {
+		  " (R ".to_string() + &realver + ")"
+	      } else {
+		  "".to_string()
+	      }
+	);
+	Ok(Some(usever.name.to_owned()))
+
+    } else {
+	Ok(None)
+    }
 }
 
 // -- rig avilable --------------------------------------------------------
