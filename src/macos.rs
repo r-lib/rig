@@ -801,24 +801,30 @@ pub fn sc_rstudio_(version: Option<&str>,
                    -> Result<(), Box<dyn Error>> {
 
     let cwd = std::env::current_dir();
-    let mut args = match project {
-        None => match cwd {
-            Ok(x) => osvec!["-n", "-a", "RStudio", "--args", x],
-            Err(_) => osvec!["-n", "-a", "RStudio"]
-        },
-        Some(p) => osvec!["-n", p],
-    };
-    let path;
 
+    let mut args = match project {
+        // open -n -a RStudio
+        None => osvec!["-n", "-a", "RStudio"],
+        // open -n <project>
+        Some(p) => osvec!["-n", p]
+    };
+
+    // open ... --env RSTUDIO_WHICH_R=...
     if let Some(ver) = version {
         let ver = check_installed(&ver.to_string())?;
         if !is_orthogonal(&ver)? {
             bail!("R {} is not orthogonal, it cannot run as a non-default. \
                    Run `rig system make-orthogonal`.", ver)
         }
-        path = "RSTUDIO_WHICH_R=".to_string() + R_ROOT + "/" + &ver + "/Resources/R";
-        let mut args2 = vec![os("--env"), os(&path)];
-        args.append(&mut args2);
+        let path = "RSTUDIO_WHICH_R=".to_string() + R_ROOT + "/" + &ver + "/Resources/R";
+        args.append(&mut osvec!["--env", &path]);
+    }
+
+    // add current directory if there is no project
+    if let None = project {
+        if let Ok(x) = cwd {
+            args.append(&mut osvec!["--args", x]);
+        }
     }
 
     if let Some(arg) = arg { args.push(arg.to_os_string()); }
