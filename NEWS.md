@@ -9,6 +9,9 @@
 * New `rig available --list-rtools-versions` option to list available
   Rtools versions.
 
+* Windowd: new `rig system rtools` subcommand to add, remove, list
+  Rtools versions (#18).
+
 * Windows: rig now supports Rtools44 on Windows.
 
 * Windows: rig now defaults to Rtools42 for R 4.2.x on Windows.

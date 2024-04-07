@@ -17,6 +17,7 @@ use remove_dir_all::remove_dir_all;
 use semver;
 use simple_error::{bail, SimpleError};
 use simplelog::*;
+use tabular::*;
 use whoami::{hostname, username};
 use winreg::enums::*;
 use winreg::RegKey;
@@ -877,6 +878,126 @@ pub fn sc_system_update_rtools40() -> Result<(), Box<dyn Error>> {
         vec!["--login".into(), "-c".into(), "pacman -Syu --noconfirm".into()],
 	"Rtools40 update"
     )
+}
+
+pub fn sc_system_rtools(args: &ArgMatches, mainargs: &ArgMatches)
+                        -> Result<(), Box<dyn Error>> {
+
+    match args.subcommand() {
+	Some(("add", s)) => sc_rtools_add(s, mainargs),
+	Some(("list", s)) => sc_rtools_ls(s, mainargs),
+	Some(("rm", s)) => sc_rtools_rm(s, mainargs),
+	_ => Ok(()), // unreachable
+    }
+}
+
+fn sc_rtools_add(args: &ArgMatches, _mainargs: &ArgMatches)
+                 -> Result<(), Box<dyn Error>> {
+    escalate("adding Rtools")?;
+    let ver = args.get_one::<String>("version").unwrap();
+    if ver == "all" {
+	add_rtools("rtools".to_string())
+    } else if ver.starts_with("rtools") {
+	add_rtools(ver.to_string())
+    } else {
+	add_rtools("rtools".to_string() + ver)
+    }
+}
+
+fn sc_rtools_rm(args: &ArgMatches, _mainargs: &ArgMatches)
+		-> Result<(), Box<dyn Error>> {
+    escalate("removing Rtools")?;
+    let vers = args.get_many::<String>("version");
+    if vers.is_none() {
+	return Ok(())
+    }
+    let vers = vers.ok_or(SimpleError::new("Internal argument error"))?;
+
+    for ver in vers {
+	if ver == "all" {
+	    rm_rtools("rtools".to_string())?;
+	} else if ver.starts_with("rtools") {
+	    rm_rtools(ver.to_string())?;
+	} else {
+	    rm_rtools("rtools".to_string() + ver)?;
+	}
+    }
+
+    Ok(())
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct RtoolsVersion {
+    pub name: String,
+    pub version: String,
+    pub fullversion: String,
+    pub path: String
+}
+
+
+fn get_rtools_versions(rtoolskey: &RegKey)
+		       -> Result<Vec<RtoolsVersion>, Box<dyn Error>> {
+    let mut versions: Vec<RtoolsVersion> = vec![];
+    for nm in rtoolskey.enum_keys() {
+	let nm = nm?;
+	let subkey = rtoolskey.open_subkey(&nm)?;
+	// e.g. 4.3.5948.5818
+	let fullversion: String = subkey.get_value("FullVersion")?;
+	let path: String = subkey.get_value("InstallPath")?;
+	let verparts: Vec<_> = nm.split(".").collect();
+	// e.g. 4.3
+	let version = verparts[0..2].join(".");
+	// e.g. 43
+	let name = verparts[0..2].join("");
+	versions.push(RtoolsVersion {
+	    name,
+	    version,
+	    fullversion,
+	    path
+	});
+    }
+    Ok(versions)
+}
+
+fn sc_rtools_ls(args: &ArgMatches, mainargs: &ArgMatches)
+                -> Result<(), Box<dyn Error>> {
+    escalate("listing Rtools in the registry")?;
+    let mut versions: Vec<RtoolsVersion> = vec![];
+
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let rtools32 = hklm.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\Rtools");
+    if let Ok(key) = rtools32 {
+	versions.append(&mut get_rtools_versions(&key)?);
+    }
+    let rtools64 = hklm.open_subkey("SOFTWARE\\R-core\\Rtools");
+    if let Ok(key) = rtools64 {
+	versions.append(&mut get_rtools_versions(&key)?);
+    }
+
+    let json = args.get_flag("json") || mainargs.get_flag("json");
+    if json {
+	let num = versions.len();
+	println!("[");
+	for (idx, item) in versions.into_iter().enumerate() {
+            println!("{{");
+            println!("  \"name\": \"{}\",", item.name);
+            println!("  \"version\": \"{}\",", item.version);
+            println!("  \"fullversion\": \"{}\",", item.fullversion);
+            println!("  \"path\": \"{}\",", item.path);
+            println!("}}{}", if idx == num - 1 { "" } else { "," });
+	}
+	println!("]");
+    } else {
+	let mut tab = Table::new("{:<}  {:<}  {:<}  {:<}");
+	tab.add_row(row!["name", "version", "full-version", "path"]);
+        tab.add_heading("------------------------------------------");
+	for item in versions {
+	    tab.add_row(row!(item.name, item.version, item.fullversion, item.path));
+	}
+	println!("{}", tab);
+    }
+
+    Ok(())
 }
 
 fn get_latest_install_path() -> Result<Option<String>, Box<dyn Error>> {

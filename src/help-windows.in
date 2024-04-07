@@ -236,3 +236,35 @@ const HELP_RSTUDIO: &str = "
   # Open RStudio project with specified R version, either is good
   rig rstudio 4.0.5 cli.Rproj
   rig rstudio cli.Rproj 4.0.5";
+
+const HELP_SYSTEM_RTOOLS_LS: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  List installed Rtools versions.
+
+  It only lists versions that are added to the Windows Registry.
+
+  Use the `--json` flag for JSON output.";
+
+const HELP_SYSTEM_RTOOLS_ADD: &str = "
+  Install new Rtools versions.
+
+  You can specify the new version(s) by their name, optionally with an
+  'rtools' prefix, e.g. '43' or 'rtools43'.
+
+  If `version` is 'all' (the default), then all Rtools versions that are
+   required for the currently installed R versions will be installed.
+
+\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
+  rig system rtools add 43
+  rig system rtools add all";
+
+const HELP_SYSTEM_RTOOLS_RM: &str = "
+  Remove Rtools versions.
+
+  You can specify the version(s) to remove by their name, optionally with
+  an 'rtools' prefix, e.g. '43' or 'rtools43'.
+
+  If no version is specified, then it does nothing.
+
+\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
+  rig system rtools rm 43";

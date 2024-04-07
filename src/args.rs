@@ -339,6 +339,45 @@ pub fn rig_app() -> Command {
 	    .about("Update Rtools40 MSYS2 packages")
 	    .long_about(HELP_SYSTEM_UPDATE_RTOOLS40);
 	cmd_system = cmd_system.subcommand(cmd_system_update_rtools40);
+
+	let cmd_system_rtools_ls = Command::new("list")
+	    .about("List installed Rtools vesions [alias: ls]")
+	    .long_about(HELP_SYSTEM_RTOOLS_LS)
+	    .aliases(&["ls"])
+	    .arg(
+		Arg::new("json")
+		    .help("JSON output")
+		    .long("json")
+		    .num_args(0)
+		    .required(false)
+	    );
+	let cmd_system_rtools_add = Command::new("add")
+	    .about("Install new Rtools version [alias: install]")
+	    .long_about(HELP_SYSTEM_RTOOLS_ADD)
+	    .aliases(&["install"])
+	    .arg(
+		Arg::new("version")
+		    .help("Rtools version to add, e.g. '43'")
+		    .default_value("all")
+	    );
+	let cmd_system_rtools_rm = Command::new("rm")
+	    .about("Remove rtools versions [aliases: del, remove, delete]")
+	    .long_about(HELP_SYSTEM_RTOOLS_RM)
+            .aliases(&["del", "remove", "delete"])
+	    .arg(
+		Arg::new("version")
+		    .help("versions to remove")
+		    .action(clap::ArgAction::Append)
+		    .required(false)
+	    );
+
+	let cmd_system_rtools = Command::new("rtools")
+	    .about("Manage Rtools installations")
+            .arg_required_else_help(true)
+	    .subcommand(cmd_system_rtools_ls)
+	    .subcommand(cmd_system_rtools_add)
+	    .subcommand(cmd_system_rtools_rm);
+	cmd_system = cmd_system.subcommand(cmd_system_rtools);
     }
 
     #[cfg(target_os = "macos")]
