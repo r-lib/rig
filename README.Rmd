@@ -57,12 +57,6 @@ knitr::opts_chunk$set(
 ## 🐞&nbsp; Known Issues <a id="id-known-issues">
 
 * On macOS, R.app often does not work if you install multiple R versions.
-* On Windows, `rig rstudio` changes the R version in the registry
-  temporarily before starting RStudio and then changes it back after a
-  short wait. If RStudio starts up very slowly, then the wait might be
-  too short, and it might start up with the wrong R version.
-* On Windows Rtools installation will fail if the same version of Rtools is
-  already installed.
 
 Found another issue? Please report it in our
 [issue tracker](https://github.com/r-lib/rig/issues).
@@ -300,6 +294,7 @@ rig system setup-user-lib          -- set up automatic user package libraries [a
 rig system add-pak                 -- install or update pak for an R version
 rig system clean-registry          -- clean stale R related entries in the registry
 rig system make-links              -- create R-* quick links
+rig system rtools                  -- manage Rtools installations
 rig system setup-user-lib          -- set up automatic user package libraries [alias: create-lib]
 rig system update-rtools40         -- update Rtools40 MSYS2 packages
 ```
