@@ -2,6 +2,10 @@
 
 * Bash completions work well again (#202).
 
+* `rig rstudio` has a new implementation that works much better.
+  Now it always defaults to the R version in `renv.lock` for renv
+  projects, and can open RStudio projects or directories.
+
 * New `rig available --list-rtools-versions` option to list available
   Rtools versions.
 
