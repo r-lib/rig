@@ -1,0 +1,12 @@
+name: Publish to WinGet
+on:
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - uses: vedantmgoyal2009/winget-releaser@v2
+        with:
+          identifier: Posit.rig
+          token: ${{ secrets.WINGET_TOKEN }}
