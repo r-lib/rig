@@ -141,9 +141,15 @@ target/x86_64-apple-darwin/release/rig: $(SOURCES)
 release: rig-$(VERSION)-macOS-arm64.pkg rig-$(VERSION)-macOS-x86_64.pkg
 
 rig-$(VERSION)-macOS-%.pkg: rig-unnotarized-%.pkg gon.hcl.in
+	if [[ "x$$AC_PASSWORD" == "x" ]]; then \
+		echo "AC_PASSWORD is not set"; \
+		exit 2; \
+	fi
 	cat gon.hcl.in | \
 		sed 's/{{VERSION}}/$(VERSION)/g' | \
-		sed 's/{{ARCH}}/$*/g' > gon.hcl
+		sed 's/{{ARCH}}/$*/g' | \
+		sed 's/{{AC_PASSWORD}}/'$$AC_PASSWORD'/g' | \
+		sed 's/{{TEAM_ID}}/'$$TEAM_ID'/g' > gon.hcl
 	cp $< $@
 	gon -log-level=warn ./gon.hcl
 
@@ -198,15 +204,15 @@ build.stamp: target/release/rig target/x86_64-apple-darwin/release/rig \
 	mkdir -p build-arm64/opt/homebrew/etc/bash_completion.d/
 	cp target/release/rig build-arm64/usr/local/bin/
 	strip -x build-arm64/usr/local/bin/rig
-	find target/release/build -name _rig -exec cp \{\} build-arm64/usr/local/share/zsh/site-functions \; 
-	find target/release/build -name rig.bash -exec cp \{\} build-arm64/opt/homebrew/etc/bash_completion.d \; 
+	find target/release/build -name _rig -exec cp \{\} build-arm64/usr/local/share/zsh/site-functions \;
+	find target/release/build -name rig.bash -exec cp \{\} build-arm64/opt/homebrew/etc/bash_completion.d \;
 	# x86_64
 	mkdir -p build-x86_64/usr/local/bin
 	mkdir -p build-x86_64/usr/local/share/zsh/site-functions
 	mkdir -p build-x86_64/opt/homebrew/etc/bash_completion.d/
 	cp target/x86_64-apple-darwin/release/rig build-x86_64/usr/local/bin/
 	strip -x build-x86_64/usr/local/bin/rig
-	find target/release/build -name _rig -exec cp \{\} build-x86_64/usr/local/share/zsh/site-functions \; 
+	find target/release/build -name _rig -exec cp \{\} build-x86_64/usr/local/share/zsh/site-functions \;
 	find target/release/build -name rig.bash -exec cp \{\} build-x86_64/opt/homebrew/etc/bash_completion.d \;
 	# Rig.app
 	mkdir build-arm64/Applications

@@ -5,5 +5,6 @@ notarize {
 }
 apple_id {
   username = "csardi.gabor@gmail.com"
-  password = "@env:AC_PASSWORD"
+  password = "{{AC_PASSWORD}}"
+  provider = "{{TEAM_ID}}"
 }

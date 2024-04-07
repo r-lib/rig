@@ -16,10 +16,13 @@
 - [ ] Build signed and notarized macOS packages locally:
   ```
   export AC_PASSWORD=...
+  export TEAM_ID=...
   sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
   make clean
   make macos
   ```
+  (https://github.com/mitchellh/gon is now archived, I had to compile my
+  own fork, from https://github.com/UniversalMediaServer.)
 - [ ] Download the artifacts for the new version for Windows & Linux (x2)
 - [ ] Create tag for the current version, push to GH.
 - [ ] Create release on GH, add the installers.
