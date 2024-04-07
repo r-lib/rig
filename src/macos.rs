@@ -9,6 +9,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use clap::ArgMatches;
+use nix::sys::stat::Mode;
+use nix::sys::stat::umask;
 use path_clean::PathClean;
 use regex::Regex;
 use simple_error::*;
@@ -287,6 +289,9 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
 
     info!("Updating R-* quick links (as needed)");
 
+    // https://github.com/r-lib/rig/issues/197
+    let old_umask = umask(Mode::from_bits(0o022).unwrap());
+
     // Create new links
     for ver in vers {
         let linkfile = Path::new("/usr/local/bin/").join("R-".to_string() + &ver);
@@ -294,15 +299,19 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         if !linkfile.exists() {
             debug!("Adding {} -> {}", linkfile.display(), target.display());
             match symlink(&target, &linkfile) {
-                Err(err) => bail!(
-                    "Cannot create symlink {}: {}",
-                    linkfile.display(),
-                    err.to_string()
-                ),
+                Err(err) => {
+                    umask(old_umask);
+                    bail!(
+                        "Cannot create symlink {}: {}",
+                        linkfile.display(),
+                        err.to_string()
+                    )
+                },
                 _ => {}
             };
         }
     }
+    umask(old_umask);
 
     // Remove dangling links
     let paths = std::fs::read_dir("/usr/local/bin")?;

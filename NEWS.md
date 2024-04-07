@@ -21,6 +21,9 @@
 
 * macOS: `rig rstudio <version>` works again on recent macOS versions (#208).
 
+* macOS: rig now always creates the `/usr/local/bin/R-*` quick links
+  with 0755 permissions (#200).
+
 * Linux: `rig add --without-p3m` works again (#193).
 
 * Linux: `RIG_PLATFORM` works again when `sudo` is needed (#191).
