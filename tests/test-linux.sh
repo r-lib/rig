@@ -16,15 +16,15 @@ teardown() {
 }
 
 @test "add" {
-    if ! rig ls | grep -q '^[* ] 4.1.2'; then
-	run rig -v add 4.1.2
+    if ! rig ls | grep -q '^[* ] 4.1.3'; then
+	run rig -v add 4.1.3
 	[[ "$status" -eq 0 ]]
 	run rig ls
-	echo "$output" | grep -q "^[* ] 4.1.2"
+	echo "$output" | grep -q "^[* ] 4.1.3"
     fi
-    run R-4.1.2 -q -s -e 'cat(as.character(getRversion()))'
+    run R-4.1.3 -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
-    echo "$output" | grep -q "^4[.]1[.]2$"
+    echo "$output" | grep -q "^4[.]1[.]3$"
 
     if ! rig ls | grep -q '^[* ] 4.0.5'; then
 	run rig add 4.0
@@ -54,10 +54,10 @@ teardown() {
 	run rig default
 	[[ ! "$status" -eq 0 ]]
     fi
-    run rig default 4.1.2
+    run rig default 4.1.3
     [[ "$status" -eq 0 ]]
     run rig default
-    [[ "$output" = "4.1.2" ]]
+    [[ "$output" = "4.1.3" ]]
     run rig default 1.0
     [[ ! "$status" -eq 0 ]]
     echo $output | grep -q "is not installed"
@@ -66,7 +66,7 @@ teardown() {
 @test "list" {
     run rig list
     [[ "$status" -eq 0 ]]
-    echo "$output" | grep -q "^[*] 4.1.2"
+    echo "$output" | grep -q "^[*] 4.1.3"
     run rig ls
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^  4.0.5"
@@ -85,9 +85,9 @@ teardown() {
     run rig resolve oldrel/3
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
-    run rig resolve 4.1.1
+    run rig resolve 4.1.3
     [[ "$status" -eq 0 ]]
-    echo $output | grep -q "4[.]1[.]1 https://"
+    echo $output | grep -q "4[.]1[.]3 https://"
     run rig resolve 4.0
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "4[.]0[.]5 https://"
@@ -108,7 +108,7 @@ teardown() {
 
 @test "system create-lib" {
     # Must already exist
-    run R-4.1.2 -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
+    run R-4.1.3 -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
     [[ $status -eq 0 ]]
     [[ "$output" = "[1] TRUE" ]]
     run R-devel -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
@@ -123,15 +123,15 @@ teardown() {
 }
 
 @test "system add-pak" {
-    if ! rig ls | grep -q '^[* ] 4.1.2'; then
-	run rig -v add 4.1.2
+    if ! rig ls | grep -q '^[* ] 4.1.3'; then
+	run rig -v add 4.1.3
 	[[ "$status" -eq 0 ]]
     fi
-    run rig default 4.1.2
+    run rig default 4.1.3
     [[ "$status" -eq 0 ]]
     run rig system add-pak
-    echo $output | grep -q "Installing pak for R 4.1.2"
-    run R-4.1.2 -q -s -e 'pak::lib_status()'
+    echo $output | grep -q "Installing pak for R 4.1.3"
+    run R-4.1.3 -q -s -e 'pak::lib_status()'
     [[ "$status" -eq 0 ]]
 
     if ! rig ls | grep -q '^[* ] 3.5.3$'; then
