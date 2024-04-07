@@ -3,27 +3,6 @@ FROM alpine:3.15
 
 RUN apk add curl linux-headers bash gcc musl-dev g++ pkgconf make file
 
-# zlib --------------------------------------------------------------------
-
-RUN curl -OL https://downloads.sourceforge.net/project/libpng/zlib/1.2.11/zlib-1.2.11.tar.gz
-RUN tar xzf zlib-*.tar.gz && rm zlib-*.tar.gz
-RUN cd zlib-* &&                                    \
-    CFLAGS=-fPIC ./configure --static &&            \
-    make &&                                         \
-    make install
-
-# openssl -----------------------------------------------------------------
-
-RUN curl -O https://www.openssl.org/source/openssl-1.1.1w.tar.gz
-RUN tar xzf openssl-*.tar.gz && rm openssl-*.tar.gz
-RUN apk add perl linux-headers
-RUN cd openssl-* &&                                 \
-    CFLAGS=-fPIC ./config -fPIC no-shared &&        \
-    make &&                                         \
-    make install_sw &&                              \
-    rm -rf /usr/local/bin/openssl                   \
-       /usr/local/share/{man/doc}
-
 # install rust toolchain for 'rigbuild' user ==============================
 
 RUN adduser rigbuild -D
