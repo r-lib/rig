@@ -18,7 +18,13 @@ const HELP_AVAILABLE: &str = "
   Use `--all` to list all versions.
 
   Use `--json` to return the output in JSON. JSON output includes the
-  full time stamp (if available) and the download URL as well.";
+  full time stamp (if available) and the download URL as well.
+
+  With the  `--list-distros` flag it lists supported Linux distributions.
+
+  With the `--list-rtools-versions` flag it lists supported Rtools versions.
+  Rtools contains tools to build R and R packages on Windows.
+  Use `--all` to list all Rtools versions, even very old ones.";
 
 const HELP_LIBRARY: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m

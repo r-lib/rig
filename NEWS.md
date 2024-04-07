@@ -2,6 +2,9 @@
 
 * Bash completions work well again (#202).
 
+* New `rig available --list-rtools-versions` option to list available
+  Rtools versions.
+
 * Windows: rig now supports Rtools44 on Windows.
 
 * Windows: rig now defaults to Rtools42 for R 4.2.x on Windows.

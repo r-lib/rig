@@ -428,6 +428,10 @@ pub fn sc_available(args: &ArgMatches, mainargs: &ArgMatches)
         return sc_available_distros(args, mainargs);
     }
 
+    if args.get_flag("list-rtools-versions") {
+        return sc_available_rtools_versions(args, mainargs);
+    }
+
     let platform = get_platform(args)?;
     let arch = get_arch(&platform, args);
 
@@ -542,6 +546,58 @@ fn sc_available_distros(args: &ArgMatches, mainargs: &ArgMatches)
             ));
         }
 
+        print!("{}", tab);
+    }
+
+    Ok(())
+}
+
+fn sc_available_rtools_versions(args: &ArgMatches, mainargs: &ArgMatches)
+                                -> Result<(), Box<dyn Error>> {
+
+    let url = "https://api.r-hub.io/rversions/rtools-versions".to_string();
+    let resp = download_json_sync(vec![url])?;
+    let resp = resp[0].as_array().unwrap();
+    let all = args.get_flag("all");
+
+    fn show(ver: &str) -> bool {
+        let iver = ver.parse::<i32>();
+        match iver {
+            Ok(x) => x >= 35 && (x < 210 || x > 215),
+            Err(_) => true
+        }
+    }
+
+    if args.get_flag("json") || mainargs.get_flag("json") {
+        let num = resp.len();
+        println!("[");
+        for (idx, item) in resp.iter().enumerate() {
+            let ver = unquote(&item["version"].to_string());
+            if all || show(&ver) {
+                println!("{{");
+                println!("  \"version\": {},", &item["version"]);
+                println!("  \"first\": {},", &item["first"]);
+                println!("  \"last\": {},", &item["last"]);
+                println!("  \"url\": {}", &item["url"]);
+                println!("}}{}", if idx == num - 1 { "" } else { "," });
+            }
+        }
+        println!("]");
+    } else {
+        let mut tab = Table::new("{:<}  {:<}  {:<}  {:<}");
+        tab.add_row(row!["version", "from R", "to R", "URL"]);
+        tab.add_heading("--------------------------------------------------------------");
+        for item in resp.iter() {
+            let ver = unquote(&item["version"].to_string());
+            if all || show(&ver) {
+                tab.add_row(row![
+                    ver,
+                    unquote(&item["first"].to_string()),
+                    unquote(&item["last"].to_string()),
+                    unquote(&item["url"].to_string())
+                ]);
+            }
+        }
         print!("{}", tab);
     }
 

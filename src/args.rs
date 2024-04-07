@@ -240,7 +240,16 @@ pub fn rig_app() -> Command {
             .long("list-distros")
             .num_args(0)
             .required(false)
-    );
+            .conflicts_with("list-rtools-versions")
+    )
+    .arg(
+        Arg::new("list-rtools-versions")
+            .help("List available Rtools versions instead of R versions.")
+            .long("list-rtools-versions")
+            .num_args(0)
+            .required(false)
+            .conflicts_with("list-distros")
+        );
 
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     {
