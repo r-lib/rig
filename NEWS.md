@@ -1,4 +1,4 @@
-# rig 0.6.1 (prerelease)
+# rig 0.7.0 (not released yet)
 
 * Bash completions work well again (#202).
 
