@@ -77,6 +77,18 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<(), Box<dyn E
     }
 }
 
+fn ignore_sigint() {
+    // Ignore CTRL+C for Rust, the R process will still get it
+    let sigint = ctrlc::set_handler(|| {});
+    if let Err(e) = sigint {
+        warn!(
+            "Could not set up signal handler for SIGINT (CTRL+C): {}",
+            e.to_string()
+        );
+    }
+    ()
+}
+
 fn sc_run_rver(rbin: String, args: Vec<String>, cmdargs: Vec<String>, dry_run: bool) -> Result<(), Box<dyn Error>> {
     let mut args2: Vec<String> = args;
     args2.push("--args".to_string());
@@ -90,6 +102,8 @@ fn sc_run_rver(rbin: String, args: Vec<String>, cmdargs: Vec<String>, dry_run: b
     }
 
     trace!("Running {} with arguments {:?}", rbin, args2);
+
+    ignore_sigint();
     let _status = Command::new(rbin).args(args2).status()?;
 
     Ok(())
@@ -115,6 +129,7 @@ fn sc_run_eval(
         return Ok(());
     }
 
+    ignore_sigint();
     trace!("Running {} with arguments {:?}", rbin, args2);
     let _status = Command::new(rbin).args(args2).status()?;
     Ok(())
@@ -140,6 +155,7 @@ fn sc_run_script(
         return Ok(());
     }
 
+    ignore_sigint();
     trace!("Running {} with arguments {:?}", rbin, args2);
     let _status = Command::new(rbin).args(args2).status()?;
     Ok(())
@@ -210,6 +226,7 @@ fn sc_run_app(
         return Ok(());
     }
 
+    ignore_sigint();
     let _status = Command::new(rbin).args(args2).current_dir(proj).status()?;
 
     Ok(())
@@ -519,6 +536,7 @@ fn sc_run_package_script(
         return Ok(());
     }
 
+    ignore_sigint();
     let status = Command::new(&rbin).args(allargs).status()?;
 
     let code = status.code();

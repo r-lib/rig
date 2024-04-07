@@ -9,7 +9,10 @@
 * New `rig available --list-rtools-versions` option to list available
   Rtools versions.
 
-* Windowd: new `rig system rtools` subcommand to add, remove, list
+* `rig run` now does not terminate the rig process on interrupts
+  (CTRL+C, CTRL+BREAK on Windows, SIGINT on Unix) (#187).
+
+* Windows: new `rig system rtools` subcommand to add, remove, list
   Rtools versions (#18).
 
 * Windows: rig now supports Rtools44 on Windows.

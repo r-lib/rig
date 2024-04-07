@@ -25,6 +25,7 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.3.8", features = ["cargo", "color"] }
+ctrlc = "3.4"
 directories = "4.0.1"
 duct = "0.13.5"
 futures = "0.3.17"
