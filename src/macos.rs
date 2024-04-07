@@ -294,6 +294,13 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
 
     // Create new links
     for ver in vers {
+        if !is_orthogonal(&ver)? {
+            warn!(
+              "Refusing to create quick link for non-orthogonal R version: {}.\n Call `rig system make-orthogonal` to fix this.",
+              ver
+            );
+            continue;
+        }
         let linkfile = Path::new("/usr/local/bin/").join("R-".to_string() + &ver);
         let target = base.join(&ver).join("Resources/bin/R");
         if !linkfile.exists() {
