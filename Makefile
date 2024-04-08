@@ -202,18 +202,26 @@ build.stamp: target/release/rig target/x86_64-apple-darwin/release/rig \
 	mkdir -p build-arm64/usr/local/bin
 	mkdir -p build-arm64/usr/local/share/zsh/site-functions
 	mkdir -p build-arm64/opt/homebrew/etc/bash_completion.d/
+	mkdir -p build-arm64/opt/homebrew/share/elvish/lib
+	mkdir -p build-arm64/opt/homebrew/share/fish/vendor_completions.d/
 	cp target/release/rig build-arm64/usr/local/bin/
 	strip -x build-arm64/usr/local/bin/rig
 	find target/release/build -name _rig -exec cp \{\} build-arm64/usr/local/share/zsh/site-functions \;
 	find target/release/build -name rig.bash -exec cp \{\} build-arm64/opt/homebrew/etc/bash_completion.d \;
+	find target/release/build -name rig.elv -exec cp \{\} build-arm64/opt/homebrew/share/elvish/lib \;
+	find target/release/build -name rig.fish -exec cp \{\} build-arm64/opt/homebrew/share/fish/vendor_completions.d \;
 	# x86_64
 	mkdir -p build-x86_64/usr/local/bin
 	mkdir -p build-x86_64/usr/local/share/zsh/site-functions
 	mkdir -p build-x86_64/opt/homebrew/etc/bash_completion.d/
+	mkdir -p build-x86_64/opt/homebrew/share/elvish/lib
+	mkdir -p build-x86_64/opt/homebrew/share/fish/vendor_completions.d/
 	cp target/x86_64-apple-darwin/release/rig build-x86_64/usr/local/bin/
 	strip -x build-x86_64/usr/local/bin/rig
 	find target/release/build -name _rig -exec cp \{\} build-x86_64/usr/local/share/zsh/site-functions \;
 	find target/release/build -name rig.bash -exec cp \{\} build-x86_64/opt/homebrew/etc/bash_completion.d \;
+	find target/release/build -name rig.elv -exec cp \{\} build-x86_64/opt/homebrew/share/elvish/lib \;
+	find target/release/build -name rig.fish -exec cp \{\} build-x86_64/opt/homebrew/share/fish/vendor_completions.d \;
 	# Rig.app
 	mkdir build-arm64/Applications
 	mkdir build-x86_64/Applications
