@@ -22,9 +22,9 @@ Rig.app/build-arm64/Build/Products/Release/Rig.app: Rig.app
 
 win: rig-$(VERSION).exe
 
-rig-$(VERSION).exe: target/release/rig.exe rig.iss gsudo.exe
+rig-$(VERSION).exe: target/release/rig.exe tools/rig.iss gsudo.exe
 	find target/release -name _rig.ps1 -exec cp \{\} _rig.ps1 \;
-	"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" rig.iss
+	"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" tools\rig.iss
 	cp output\mysetup.exe $@
 
 gsudo.exe:
@@ -140,20 +140,20 @@ target/x86_64-apple-darwin/release/rig: $(SOURCES)
 
 release: rig-$(VERSION)-macOS-arm64.pkg rig-$(VERSION)-macOS-x86_64.pkg
 
-rig-$(VERSION)-macOS-%.pkg: rig-unnotarized-%.pkg gon.hcl.in
+rig-$(VERSION)-macOS-%.pkg: rig-unnotarized-%.pkg tools/gon.hcl.in
 	if [[ "x$$AC_PASSWORD" == "x" ]]; then \
 		echo "AC_PASSWORD is not set"; \
 		exit 2; \
 	fi
-	cat gon.hcl.in | \
+	cat tools/gon.hcl.in | \
 		sed 's/{{VERSION}}/$(VERSION)/g' | \
 		sed 's/{{ARCH}}/$*/g' | \
 		sed 's/{{AC_PASSWORD}}/'$$AC_PASSWORD'/g' | \
-		sed 's/{{TEAM_ID}}/'$$TEAM_ID'/g' > gon.hcl
+		sed 's/{{TEAM_ID}}/'$$TEAM_ID'/g' > tools/gon.hcl
 	cp $< $@
-	gon -log-level=warn ./gon.hcl
+	gon -log-level=warn ./tools/gon.hcl
 
-rig-unnotarized-%.pkg: build.stamp  distribution.xml.in
+rig-unnotarized-%.pkg: build.stamp tools/distribution.xml.in
 	codesign --force \
 		--options runtime \
 		-s 8ADFF507AE8598B1792CF89213307C52FAFF3920 \
@@ -167,9 +167,9 @@ rig-unnotarized-%.pkg: build.stamp  distribution.xml.in
 		--version $(VERSION) \
 		--ownership recommended \
 		rig-$*.pkg
-	cat distribution.xml.in | sed "s/{{VERSION}}/$(VERSION)/g" | \
-		 sed "s/{{ARCH}}/$*/g" > distribution.xml
-	productbuild --distribution distribution.xml \
+	cat tools/distribution.xml.in | sed "s/{{VERSION}}/$(VERSION)/g" | \
+		 sed "s/{{ARCH}}/$*/g" > tools/distribution.xml
+	productbuild --distribution tools/distribution.xml \
 		--resources Resources \
 		--package-path rig-$*.pkg \
 		--version $(VERSION) \
@@ -181,14 +181,14 @@ macos-unsigned-x86_64: rig-$(VERSION)-macOS-unsigned-x86_64.pkg
 
 macos-unsigned-arm64: rig-$(VERSION)-macOS-unsigned-arm64.pkg
 
-rig-$(VERSION)-macOS-unsigned-%.pkg: build.stamp distribution.xml.in
+rig-$(VERSION)-macOS-unsigned-%.pkg: build.stamp tools/distribution.xml.in
 	pkgbuild --root build-$* \
 		--identifier com.gaborcsardi.rig \
 		--version $(VERSION) \
 		--ownership recommended \
 		$@
-	cat distribution.xml.in | sed "s/{{VERSION}}/$(VERSION)/g" | \
-		 sed "s/{{ARCH}}/$*/g" > distribution.xml
+	cat tools/distribution.xml.in | sed "s/{{VERSION}}/$(VERSION)/g" | \
+		 sed "s/{{ARCH}}/$*/g" > tools/distribution.xml
 
 README.md: README.Rmd $(SOURCES)
 	cargo build --release
@@ -235,5 +235,5 @@ build.stamp: target/release/rig target/x86_64-apple-darwin/release/rig \
 
 clean:
 	cargo clean
-	rm -rf build.stamp build-* Resources *.pkg distribution.xml \
-		gon.hcl Output *.exe *.deb *.rpm *.tar.gz build
+	rm -rf build.stamp build-* Resources *.pkg tools/distribution.xml \
+		tools/gon.hcl Output *.exe *.deb *.rpm *.tar.gz build

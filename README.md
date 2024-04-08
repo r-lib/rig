@@ -300,7 +300,7 @@ To start the menu bar app the first time, run the Rig app in
 from a Terminal. Then you can check the “Launch at login” box in
 “Preferences” to start it automatically in the future.
 
-<img src="rig-app.png">
+<img src="tools/rig-app.png">
 
 Note: if you have a lot of menu bar apps running on an M1/M2 mac, then
 the some of them might be under the camera area. There is no good
