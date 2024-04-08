@@ -22,9 +22,9 @@ Rig.app/build-arm64/Build/Products/Release/Rig.app: Rig.app
 
 win: rig-$(VERSION).exe
 
-rig-$(VERSION).exe: target/release/rig.exe tools/rig.iss gsudo.exe
+rig-$(VERSION).exe: target/release/rig.exe rig.iss gsudo.exe
 	find target/release -name _rig.ps1 -exec cp \{\} _rig.ps1 \;
-	"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" tools\rig.iss
+	"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" rig.iss
 	cp output\mysetup.exe $@
 
 gsudo.exe:

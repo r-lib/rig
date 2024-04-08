@@ -36,7 +36,7 @@
     - Make sure `rig.nuspec` is current
 	- `choco pack`
 	- Delete old `.nupkg` file
-	- Test: 
+	- Test:
 	  ```
 	  gsudo choco uninstall rig
 	  gsudo choco install rig --source .
