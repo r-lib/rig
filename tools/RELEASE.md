@@ -31,6 +31,7 @@
 - [ ] Test the macOS installers. (The rest are tested in the CI.)
 - [ ] `git commit` with the NEWS and README updates, update tag, push to GH,
       `--tags` as well.
+- [ ] Update Debian repo, by running the Action manually.
 - [ ] Update homebrew repo.
 - [ ] Update choco package.
     - Make sure `rig.nuspec` is current
