@@ -216,11 +216,17 @@ If you already added both the key and the repository, then install the
     `which sudo` apt update
     `which sudo` apt install r-rig
 
-On Pop!_OS you can manually set the RIG_PLATFORM by editing your environment variables.
+On Pop!_OS you can manually set the RIG_PLATFORM by editing your environment variables for Bash.
 
     `which sudo` echo -e '\n# Customize RIG_PLATFORM for r-rig' >> ~/.profile
     `which sudo` echo -e 'export RIG_PLATFORM="ubuntu-22.04"' >> ~/.profile
     `which sudo` source ~/.profile
+
+For ZSH you can manually set the RIG_PLATFORM by editing your environment variables with the following instructions.
+
+    `which sudo` echo -e '\n# Customize RIG_PLATFORM for r-rig' >> ~/.zprofile
+    `which sudo` echo -e 'export RIG_PLATFORM="ubuntu-22.04"' >> ~/.zprofile
+    `which sudo` source ~/.zprofile
 
 #### Installing rig on RHEL, Fedora, CentOS, Rocky Linux, Almalinux, etc. (RPM package) <a id="id-rhel-fedora-centos-rocky-linux-almalinux-etc-rpm-package">
 
