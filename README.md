@@ -220,6 +220,7 @@ On Pop!_OS you can manually set the RIG_PLATFORM by editing your environment var
 
     `which sudo` echo -e '\n# Customize RIG_PLATFORM for r-rig' >> ~/.profile
     `which sudo` echo -e 'export RIG_PLATFORM="ubuntu-22.04"' >> ~/.profile
+    `which sudo` source ~/.profile
 
 #### Installing rig on RHEL, Fedora, CentOS, Rocky Linux, Almalinux, etc. (RPM package) <a id="id-rhel-fedora-centos-rocky-linux-almalinux-etc-rpm-package">
 
