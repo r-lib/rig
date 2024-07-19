@@ -20,6 +20,45 @@
         ]
     },
     {
+        "name": "ubuntu-24.04-release",
+        "aliases": [
+            "ubuntu-24.04-release",
+            "ubuntu",
+            "ubuntu-24.04",
+            "ubuntu-release",
+            "release"
+        ],
+        "dir": "ubuntu",
+        "args": [
+            "DISTRO=ubuntu",
+            "RELEASE=24.04",
+            "RVERSION=release"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/ubuntu-24.04-release:latest",
+            "ghcr.io/r-lib/rig/ubuntu-24.04:latest"
+        ]
+    },
+    {
+        "name": "ubuntu-24.04-devel",
+        "aliases": [
+            "ubuntu-24.04-devel",
+            "ubuntu",
+            "ubuntu-24.04",
+            "ubuntu-devel",
+            "devel"
+        ],
+        "dir": "ubuntu",
+        "args": [
+            "DISTRO=ubuntu",
+            "RELEASE=24.04",
+            "RVERSION=devel"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/ubuntu-24.04-devel:latest"
+        ]
+    },
+    {
         "name": "ubuntu-22.04-release",
         "aliases": [
             "ubuntu-22.04-release",
