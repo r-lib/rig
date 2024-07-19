@@ -71,8 +71,8 @@ tracker](https://github.com/r-lib/rig/issues).
 - [Linux](#id-linux)
   - [Supported Linux distributions](#id-supported-linux-distributions)
   - [Ubuntu and Debian (DEB package)](#id-ubuntu-and-debian-deb-package)
-  - [RHEL, Fedora, CentOS, Rocky Linux, Almalinux, etc. (RPM
-    package)](#id-rhel-fedora-centos-rocky-linux-almalinux-etc-rpm-package)
+  - [RHEL, Fedora, Rocky Linux, Almalinux, etc. (RPM
+    package)](#id-rhel-fedora-rocky-linux-almalinux-etc-rpm-package)
   - [OpenSUSE and SLES (RPM package)](#id-opensuse-and-sles-rpm-package)
   - [Tarball on any supported distro](#id-linux-targz)
 - [Auto-complete](#id-auto-complete)
@@ -173,7 +173,6 @@ tarball.
 - Fedora Linux 39, 40
 - OpenSUSE 15.5,
 - SUSE Linux Enterprise 15 SP5,
-- CentOS 7,
 - Red Hat Enterprise Linux 7, 8, 9,
 - AlmaLinux 8, 9,
 - Rocky Linux 8, 9.
@@ -198,7 +197,7 @@ If you already added both the key and the repository, then install the
     `which sudo` apt update
     `which sudo` apt install r-rig
 
-#### Installing rig on RHEL, Fedora, CentOS, Rocky Linux, Almalinux, etc. (RPM package) <a id="id-rhel-fedora-centos-rocky-linux-almalinux-etc-rpm-package">
+#### Installing rig on RHEL, Fedora, Rocky Linux, Almalinux, etc. (RPM package) <a id="id-rhel-fedora-rocky-linux-almalinux-etc-rpm-package">
 
 On most RPM based distros (except for OpenSUSE and SLES) you can install
 our RPM package directly:
