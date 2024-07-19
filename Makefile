@@ -92,7 +92,7 @@ linux-in-docker:
 		-e LOCAL_UID=`id -u` -e LOCAL_GID=`id -g` \
 		rlib/rig-builder:latest make linux
 
-VARIANTS = ubuntu-20.04 ubuntu-22.04 debian-11 debian-12 centos-7 rockylinux-8 rockylinux-9 opensuse/leap-15.4 opensuse/leap-15.5 fedora-38 fedora-39 almalinux-8 almalinux-9
+VARIANTS = ubuntu-20.04 ubuntu-22.04 debian-11 debian-12 rockylinux-8 rockylinux-9 opensuse/leap-15.4 opensuse/leap-15.5 fedora-38 fedora-39 almalinux-8 almalinux-9
 print-linux-variants:
 	@echo $(VARIANTS)
 print-linux-variants-json:

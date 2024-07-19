@@ -224,8 +224,9 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - { os: macOS-11 }
           - { os: macos-12 }
+          - { os: macos-13 }
+          - { os: macos-14 }
 
     steps:
 
