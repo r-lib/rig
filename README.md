@@ -169,7 +169,7 @@ tarball.
 #### Supported Linux distributions <a id="id-supported-linux-distributions">
 
 - Debian 10, 11, 12,
-- Ubuntu 20.04, 22.04,
+- Ubuntu 20.04, 22.04, 22.04
 - Fedora Linux 39, 40
 - OpenSUSE 15.5,
 - SUSE Linux Enterprise 15 SP5,
@@ -338,6 +338,8 @@ containers:
 | Name                                      | OS                 | R version      | Tags                                                                                            |
 |-------------------------------------------|--------------------|----------------|-------------------------------------------------------------------------------------------------|
 | `ghcr.io/r-lib/rig/ubuntu-22.04-multi`    | Ubuntu 22.04       | last 6 (daily) | `r`, `rig`, `multi`, `ubuntu-multi`                                                             |
+| `ghcr.io/r-lib/rig/ubuntu-24.04-release`  | Ubuntu 24.04       | release        | `ubuntu-24.04`                                                                                  |
+| `ghcr.io/r-lib/rig/ubuntu-24.04-devel`    | Ubuntu 24.04       | devel (daily)  |                                                                                                 |
 | `ghcr.io/r-lib/rig/ubuntu-22.04-release`  | Ubuntu 22.04       | release        | `release`, `ubuntu`, `ubuntu-release`, `ubuntu-latest`, `ubuntu-latest-release`, `ubuntu-22.04` |
 | `ghcr.io/r-lib/rig/ubuntu-22.04-devel`    | Ubuntu 22.04       | devel (daily)  | `devel`, `ubuntu-devel`, `ubuntu-latest-devel`                                                  |
 | `ghcr.io/r-lib/rig/ubuntu-20.04-release`  | Ubuntu 20.04       | release        | `ubuntu-20.04`                                                                                  |
@@ -368,6 +370,7 @@ For convenience, we also create these tags:
 | `ghcr.io/r-lib/rig/ubuntu-22.04`   | `ubuntu-22.04-release`  | Latest R release on Ubuntu 22.04.    |
 | `ghcr.io/r-lib/rig/devel`          | `ubuntu-22.04-devel`    | R devel.                             |
 | `ghcr.io/r-lib/rig/ubuntu-devel`   | `ubuntu-22.04-devel`    | R devel on latest Ubuntu.            |
+| `ghcr.io/r-lib/rig/ubuntu-24.04`   | `ubuntu-24.04-release`  | Latest R release on Ubuntu 24.04.    |
 | `ghcr.io/r-lib/rig/ubuntu-20.04`   | `ubuntu-20.04-release`  | Latest R release on Ubuntu 20.04.    |
 | `ghcr.io/r-lib/rig/debian`         | `debian-12-release`     | Latest R release on latest Debian.   |
 | `ghcr.io/r-lib/rig/debian-12`      | `debian-12-release`     | Latest R release on Debian 12.       |
