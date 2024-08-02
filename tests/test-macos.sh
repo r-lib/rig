@@ -24,7 +24,7 @@ teardown() {
     echo "$output" | grep -q "^4[.]1[.][0-9]$"
 
     if ! rig ls | grep -q '^[* ] 4.0'; then
-        run sudo rig add 4.0
+        run sudo rig add 4.0 -a x86_64
         [[ "$status" -eq 0 ]]
         run rig ls
         echo "$output" | grep -q "^[* ] 4.0"
