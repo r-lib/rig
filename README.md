@@ -71,8 +71,8 @@ tracker](https://github.com/r-lib/rig/issues).
 - [Linux](#id-linux)
   - [Supported Linux distributions](#id-supported-linux-distributions)
   - [Ubuntu and Debian (DEB package)](#id-ubuntu-and-debian-deb-package)
-  - [RHEL, Fedora, Rocky Linux, Almalinux, etc. (RPM
-    package)](#id-rhel-fedora-rocky-linux-almalinux-etc-rpm-package)
+  - [Pop!_OS (DEB package)](#id-popos-deb-package)
+  - [RHEL, Fedora, Rocky Linux, Almalinux, etc. (RPM package)](#id-rhel-fedora-rocky-linux-almalinux-etc-rpm-package)
   - [OpenSUSE and SLES (RPM package)](#id-opensuse-and-sles-rpm-package)
   - [Tarball on any supported distro](#id-linux-targz)
 - [Auto-complete](#id-auto-complete)
@@ -196,6 +196,35 @@ If you already added both the key and the repository, then install the
 
     `which sudo` apt update
     `which sudo` apt install r-rig
+
+#### Installing rig on Pop!_OS (Ubuntu 22.04 LTS) (DEB package) <a id="id-popos-deb-package">
+
+On Pop!_OS you can install packages from any Ubuntu or Debian distro, you can use our package repository to
+install rig. First you add our key to your config:
+
+    `which sudo` curl -L https://rig.r-pkg.org/deb/rig.gpg -o /etc/apt/trusted.gpg.d/rig.gpg
+
+Then add the rig repository:
+
+    `which sudo` sh -c 'echo "deb http://rig.r-pkg.org/deb rig main" > /etc/apt/sources.list.d/rig.list'
+
+If you already added both the key and the repository, then install the
+`r-rig` package (`rig` is a different package in Debian and Ubuntu):
+
+    `which sudo` apt update
+    `which sudo` apt install r-rig
+
+On Pop!_OS you can manually set the RIG_PLATFORM by editing your environment variables for Bash.
+
+    `which sudo` echo -e '\n# Customize RIG_PLATFORM for r-rig' >> ~/.profile
+    `which sudo` echo -e 'export RIG_PLATFORM="ubuntu-22.04"' >> ~/.profile
+    `which sudo` source ~/.profile
+
+For ZSH you can manually set the RIG_PLATFORM by editing your environment variables with the following instructions.
+
+    `which sudo` echo -e '\n# Customize RIG_PLATFORM for r-rig' >> ~/.zprofile
+    `which sudo` echo -e 'export RIG_PLATFORM="ubuntu-22.04"' >> ~/.zprofile
+    `which sudo` source ~/.zprofile
 
 #### Installing rig on RHEL, Fedora, Rocky Linux, Almalinux, etc. (RPM package) <a id="id-rhel-fedora-rocky-linux-almalinux-etc-rpm-package">
 
