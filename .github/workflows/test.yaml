@@ -150,6 +150,11 @@ jobs:
         apk add --allow-untrusted nfpm*.apk
         rm nfpm*.apk
 
+    - name: Fool distro detection to run aarch64 Alpine
+      run: |
+        apk add gcompat
+        sed -i "s:ID=alpine:ID=NotpineForGHA:" /etc/os-release
+
     - name: Checkout
       uses: actions/checkout@v4
       with:
