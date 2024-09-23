@@ -135,7 +135,10 @@ jobs:
   linux-build-aarch64:
     if: ${{ github.event.inputs.inplinuxaarch64 == '' || github.event.inputs.inplinuxaarch64 == 'yes' }}
     runs-on: [linux-arm64]
-    container: ubuntu:24.04
+    container:
+      image: "ubuntu:24.04"
+      volumes:
+        - ${{ github.workspace }}:/${{ github.workspace }}
     name: Linux build aaarch
     env:
       RUST_BACKTRACE: 1
@@ -154,6 +157,7 @@ jobs:
 
     - name: Build rig
       run: |
+        cd ${{ github.workspace }}
         make linux-in-docker
 
     - name: Upload build as artifact
