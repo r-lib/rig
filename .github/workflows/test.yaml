@@ -149,7 +149,8 @@ jobs:
 
     - name: Install build tools
       run: |
-        apt-get update && apt-get install -y docker.io make
+        apt-get update && apt-get install -y \
+          make docker.io docker-compose-v2
 
     - name: Build rig
       run: |
