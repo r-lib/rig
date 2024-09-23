@@ -150,11 +150,15 @@ jobs:
 
     - name: Install build tools
       run: |
-        apt-get update && apt-get install -y make curl
+        apt-get update && apt-get install -y make curl gcc
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rust.sh && sh rust.sh -y
+        curl -LO https://github.com/goreleaser/nfpm/releases/download/v2.40.0/nfpm_2.40.0_arm64.deb && \
+          dpkg -i nfpm*.deb && \
+          rm nfpm*.deb
 
     - name: Build rig
       run: |
+        . "$HOME/.cargo/env"
         make linux
 
     - name: Upload build as artifact
