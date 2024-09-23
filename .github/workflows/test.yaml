@@ -144,10 +144,10 @@ jobs:
 
     - name: Install build tools
       run: |
-        apk add curl nodejs-current linux-headers bash gcc musl-dev g++ pkgconf make file
+        sudo apk add curl nodejs-current linux-headers bash gcc musl-dev g++ pkgconf make file
         cd && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rust.sh && sh rust.sh -y
         curl -LO https://github.com/goreleaser/nfpm/releases/download/v2.32.0/nfpm_2.32.0_$(arch).apk
-        apk add --allow-untrusted nfpm*.apk
+        sudo apk add --allow-untrusted nfpm*.apk
         rm nfpm*.apk
 
     - name: Checkout
