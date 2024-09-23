@@ -126,6 +126,11 @@ jobs:
             echo Some tests failed;
             exit 1;
         fi
+      env:
+        REDHAT_ORG: ${{ secrets.REDHAT_ORG }}
+        REDHAT_ACTIVATION_KEY_RHEL7: ${{ secrets.REDHAT_ACTIVATION_KEY_RHEL7 }}
+        REDHAT_ACTIVATION_KEY_RHEL8: ${{ secrets.REDHAT_ACTIVATION_KEY_RHEL8 }}
+        REDHAT_ACTIVATION_KEY_RHEL9: ${{ secrets.REDHAT_ACTIVATION_KEY_RHEL9 }}
 
   linux-build-aarch64:
     if: ${{ github.event.inputs.inplinuxaarch64 == 'yes' }}
@@ -212,6 +217,10 @@ jobs:
         fi
       env:
         DOCKER_DEFAULT_PLATFORM: "linux/arm64"
+        REDHAT_ORG: ${{ secrets.REDHAT_ORG }}
+        REDHAT_ACTIVATION_KEY_RHEL7: ${{ secrets.REDHAT_ACTIVATION_KEY_RHEL7 }}
+        REDHAT_ACTIVATION_KEY_RHEL8: ${{ secrets.REDHAT_ACTIVATION_KEY_RHEL8 }}
+        REDHAT_ACTIVATION_KEY_RHEL9: ${{ secrets.REDHAT_ACTIVATION_KEY_RHEL9 }}
 
   macos:
     if: ${{ github.event.inputs.inpmacos == '' || github.event.inputs.inpmacos == 'yes' }}

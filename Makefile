@@ -92,24 +92,30 @@ linux-in-docker:
 		-e LOCAL_UID=`id -u` -e LOCAL_GID=`id -g` \
 		rlib/rig-builder:latest make linux
 
-VARIANTS = ubuntu-20.04 ubuntu-22.04 ubuntu-24.04 debian-11 debian-12 rockylinux-8 rockylinux-9 opensuse/leap-15.5 opensuse/leap-15.6 fedora-39 fedora-40 almalinux-8 almalinux-9
+VARIANTS = ubuntu-20.04 ubuntu-22.04 ubuntu-24.04 debian-11 debian-12 rockylinux-8 rockylinux-9 opensuse/leap-15.5 opensuse/leap-15.6 fedora-39 fedora-40 almalinux-8 almalinux-9 redhat/ubi8 redhat/ubi9
 print-linux-variants:
 	@echo $(VARIANTS)
 print-linux-variants-json:
 	@echo $(VARIANTS) | sed 's/ /","/g' | sed 's/^/["/' | sed 's/$$/"]/'
 
+ENVS = -e REDHAT_ORG_RHEL7=$(REDHAT_ORG) \
+			 -e REDHAT_ORG_RHEL8=$(REDHAT_ORG) \
+			 -e REDHAT_ORG_RHEL9=$(REDHAT_ORG) \
+			 -e REDHAT_ACTIVATION_KEY_RHEL7=$(REDHAT_ACTIVATION_KEY_RHEL7) \
+			 -e REDHAT_ACTIVATION_KEY_RHEL8=$(REDHAT_ACTIVATION_KEY_RHEL8) \
+			 -e REDHAT_ACTIVATION_KEY_RHEL9=$(REDHAT_ACTIVATION_KEY_RHEL9)
 define GEN_TESTS
 linux-test-$(variant):
 	mkdir -p tests/results
 	rm -f tests/results/`echo $(variant) | tr / -`.fail \
 	      tests/results/`echo $(variant) | tr / -`.success
 	docker run -t --rm $(DOCKER_ARCH) --privileged \
-		-v $(PWD):/work `echo $(variant) | tr - :` \
+		-v $(PWD):/work $(ENVS) `echo $(variant) | tr - :` \
 		bash -c /work/tests/test-linux-docker.sh && \
 	touch tests/results/`echo $(variant) | tr / -`.success || \
 	touch tests/results/`echo $(variant) | tr / -`.fail
 shell-$(variant):
-	docker run -ti --rm -v $(PWD):/work `echo $(variant) | tr - :` bash
+	docker run -ti --rm -v $(PWD):/work $(ENVS) `echo $(variant) | tr - :` bash
 .PHONY: linux-test-$(variant) shell-$(variant)
 TEST_IMAGES += linux-test-$(variant)
 endef
