@@ -137,8 +137,6 @@ jobs:
     runs-on: [linux-arm64]
     container:
       image: "ubuntu:24.04"
-      volumes:
-        - ${{ github.workspace }}:/${{ github.workspace }}
     name: Linux build aaarch
     env:
       RUST_BACKTRACE: 1
@@ -152,13 +150,12 @@ jobs:
 
     - name: Install build tools
       run: |
-        apt-get update && apt-get install -y \
-          make docker.io docker-compose-v2
+        apt-get update && apt-get install -y make curl
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rust.sh && sh rust.sh -y
 
     - name: Build rig
       run: |
-        cd ${{ github.workspace }}
-        make linux-in-docker
+        make linux
 
     - name: Upload build as artifact
       uses: actions/upload-artifact@v4
