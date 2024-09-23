@@ -135,7 +135,7 @@ jobs:
   linux-build-aarch64:
     if: ${{ github.event.inputs.inplinuxaarch64 == '' || github.event.inputs.inplinuxaarch64 == 'yes' }}
     runs-on: [linux-arm64]
-    container: "alpine:3.18"
+    container: "cynkra/actions-runner:2-alpine-rootful"
     name: Linux build aaarch
     env:
       RUST_BACKTRACE: 1
@@ -149,11 +149,6 @@ jobs:
         curl -LO https://github.com/goreleaser/nfpm/releases/download/v2.32.0/nfpm_2.32.0_$(arch).apk
         apk add --allow-untrusted nfpm*.apk
         rm nfpm*.apk
-
-    - name: Fool distro detection to run aarch64 Alpine
-      run: |
-        apk add gcompat
-        sed -i "s:ID=alpine:ID=NotpineForGHA:" /etc/os-release
 
     - name: Checkout
       uses: actions/checkout@v4
