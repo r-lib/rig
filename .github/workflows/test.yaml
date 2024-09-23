@@ -136,7 +136,7 @@ jobs:
     if: ${{ github.event.inputs.inplinuxaarch64 == '' || github.event.inputs.inplinuxaarch64 == 'yes' }}
     runs-on: [linux-arm64]
     container:
-      image: "alpine:3.15"
+      image: "alpine:3.18"
     name: Linux build aaarch
     env:
       RUST_BACKTRACE: 1
@@ -150,7 +150,7 @@ jobs:
 
     - name: Install build tools
       run: |
-        apk add curl linux-headers bash gcc musl-dev g++ pkgconf make file
+        apk add curl nodejs-current linux-headers bash gcc musl-dev g++ pkgconf make file
         cd && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rust.sh && sh rust.sh -y
         curl -LO https://github.com/goreleaser/nfpm/releases/download/v2.32.0/nfpm_2.32.0_$(arch).apk
         apk add --allow-untrusted nfpm*.apk
