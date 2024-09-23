@@ -147,6 +147,10 @@ jobs:
       with:
         fetch-depth: 10
 
+    - name: Install build tools
+      run: |
+        apt-get update && apt-get install -y docker.io make
+
     - name: Build rig
       run: |
         make linux-in-docker
