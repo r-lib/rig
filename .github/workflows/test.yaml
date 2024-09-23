@@ -21,7 +21,7 @@ on:
         options:
         - 'yes'
         - 'no'
-        default: 'no'
+        default: 'yes'
       inpmacos:
         description: |
           Build macOS
