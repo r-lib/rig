@@ -133,7 +133,7 @@ jobs:
         REDHAT_ACTIVATION_KEY_RHEL9: ${{ secrets.REDHAT_ACTIVATION_KEY_RHEL9 }}
 
   linux-build-aarch64:
-    if: ${{ github.event.inputs.inplinuxaarch64 == 'yes' }}
+    if: ${{ github.event.inputs.inplinuxaarch64 == '' || github.event.inputs.inplinuxaarch64 == 'yes' }}
     runs-on: [linux-arm64]
     name: Linux build aaarch
     env:
