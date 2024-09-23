@@ -135,6 +135,7 @@ jobs:
   linux-build-aarch64:
     if: ${{ github.event.inputs.inplinuxaarch64 == '' || github.event.inputs.inplinuxaarch64 == 'yes' }}
     runs-on: [linux-arm64]
+    container: ubuntu:24.04
     name: Linux build aaarch
     env:
       RUST_BACKTRACE: 1
