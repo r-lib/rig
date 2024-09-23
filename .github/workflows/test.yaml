@@ -143,11 +143,6 @@ jobs:
 
     steps:
 
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 10
-
     - name: Install build tools
       run: |
         apk add curl nodejs-current linux-headers bash gcc musl-dev g++ pkgconf make file
@@ -155,6 +150,11 @@ jobs:
         curl -LO https://github.com/goreleaser/nfpm/releases/download/v2.32.0/nfpm_2.32.0_$(arch).apk
         apk add --allow-untrusted nfpm*.apk
         rm nfpm*.apk
+
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 10
 
     - name: Build rig
       run: |
