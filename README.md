@@ -169,10 +169,10 @@ tarball.
 #### Supported Linux distributions <a id="id-supported-linux-distributions">
 
 - Debian 10, 11, 12,
-- Ubuntu 20.04, 22.04, 22.04
-- Fedora Linux 39, 40
-- OpenSUSE 15.5,
-- SUSE Linux Enterprise 15 SP5,
+- Ubuntu 20.04, 22.04, 24.04
+- Fedora Linux 39, 40, 41
+- OpenSUSE 15.5, 15.6
+- SUSE Linux Enterprise 15 SP5, 15 SP6
 - Red Hat Enterprise Linux 7, 8, 9,
 - AlmaLinux 8, 9,
 - Rocky Linux 8, 9.
