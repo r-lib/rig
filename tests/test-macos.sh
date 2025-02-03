@@ -12,7 +12,7 @@ teardown() {
 
 @test "add" {
     if ! rig ls | grep -q '^[* ] 4.1'; then
-        run sudo rig add 4.1
+        run sudo rig add 4.1 -a x86_64
         [[ "$status" -eq 0 ]]
         run rig ls
         echo "$output" | grep -q "^[* ] 4.1"
@@ -24,7 +24,7 @@ teardown() {
     echo "$output" | grep -q "^4[.]1[.][0-9]$"
 
     if ! rig ls | grep -q '^[* ] 4.0'; then
-        run sudo rig add 4.0
+        run sudo rig add 4.0 -a x86_64
         [[ "$status" -eq 0 ]]
         run rig ls
         echo "$output" | grep -q "^[* ] 4.0"
@@ -44,7 +44,7 @@ teardown() {
     fi
     run sudo rig system make-links
     [[ "$status" -eq 0 ]]
-    run R-${devel}-x86_64 -q -s -e 'cat(as.character(getRversion()))'
+    run R-devel -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
     echo $output
     echo "$output" | grep -q "^$devel[.][0-9]\$"
@@ -207,8 +207,7 @@ teardown() {
     echo "$output"
     [[ "$status" -eq 0 ]]
 
-    # This is different on arm hardware
-    run rig sysreqs add -a x86_64 checkbashisms tidy-html5 pkgconfig
+    run rig sysreqs add checkbashisms tidy-html5 pkgconfig
     echo "$output"
     [[ "$status" -eq 0 ]]
 }

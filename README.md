@@ -72,8 +72,7 @@ tracker](https://github.com/r-lib/rig/issues).
   - [Supported Linux distributions](#id-supported-linux-distributions)
   - [Ubuntu and Debian (DEB package)](#id-ubuntu-and-debian-deb-package)
   - [Pop!_OS (DEB package)](#id-popos-deb-package)
-  - [RHEL, Fedora, CentOS, Rocky Linux, Almalinux, etc. (RPM
-    package)](#id-rhel-fedora-centos-rocky-linux-almalinux-etc-rpm-package)
+  - [RHEL, Fedora, Rocky Linux, Almalinux, etc. (RPM package)](#id-rhel-fedora-rocky-linux-almalinux-etc-rpm-package)
   - [OpenSUSE and SLES (RPM package)](#id-opensuse-and-sles-rpm-package)
   - [Tarball on any supported distro](#id-linux-targz)
 - [Auto-complete](#id-auto-complete)
@@ -170,17 +169,15 @@ tarball.
 #### Supported Linux distributions <a id="id-supported-linux-distributions">
 
 - Debian 10, 11, 12,
-- Ubuntu 18.04, 20.04, 22.04,
-- Fedora Linux 37, 38, 39,
-- OpenSUSE 15.3, 15.4, 15.5,
-- SUSE Linux Enterprise 15 SP3, SP4, SP5,
-- CentOS 7,
+- Ubuntu 20.04, 22.04, 24.04
+- Fedora Linux 39, 40, 41
+- OpenSUSE 15.5, 15.6
+- SUSE Linux Enterprise 15 SP5, 15 SP6
 - Red Hat Enterprise Linux 7, 8, 9,
 - AlmaLinux 8, 9,
 - Rocky Linux 8, 9.
 
-We use the R builds from the Posit [R-builds
-project](https://github.com/rstudio/r-builds#r-builds).
+We use the R builds from the Posit [R-builds project](https://github.com/rstudio/r-builds#r-builds).
 
 #### Installing rig on Ubuntu and Debian (DEB package) <a id="id-ubuntu-and-debian-deb-package">
 
@@ -228,7 +225,7 @@ For ZSH you can manually set the RIG_PLATFORM by editing your environment variab
     `which sudo` echo -e 'export RIG_PLATFORM="ubuntu-22.04"' >> ~/.zprofile
     `which sudo` source ~/.zprofile
 
-#### Installing rig on RHEL, Fedora, CentOS, Rocky Linux, Almalinux, etc. (RPM package) <a id="id-rhel-fedora-centos-rocky-linux-almalinux-etc-rpm-package">
+#### Installing rig on RHEL, Fedora, Rocky Linux, Almalinux, etc. (RPM package) <a id="id-rhel-fedora-rocky-linux-almalinux-etc-rpm-package">
 
 On most RPM based distros (except for OpenSUSE and SLES) you can install
 our RPM package directly:
@@ -369,6 +366,8 @@ containers:
 | Name                                      | OS                 | R version      | Tags                                                                                            |
 |-------------------------------------------|--------------------|----------------|-------------------------------------------------------------------------------------------------|
 | `ghcr.io/r-lib/rig/ubuntu-22.04-multi`    | Ubuntu 22.04       | last 6 (daily) | `r`, `rig`, `multi`, `ubuntu-multi`                                                             |
+| `ghcr.io/r-lib/rig/ubuntu-24.04-release`  | Ubuntu 24.04       | release        | `ubuntu-24.04`                                                                                  |
+| `ghcr.io/r-lib/rig/ubuntu-24.04-devel`    | Ubuntu 24.04       | devel (daily)  |                                                                                                 |
 | `ghcr.io/r-lib/rig/ubuntu-22.04-release`  | Ubuntu 22.04       | release        | `release`, `ubuntu`, `ubuntu-release`, `ubuntu-latest`, `ubuntu-latest-release`, `ubuntu-22.04` |
 | `ghcr.io/r-lib/rig/ubuntu-22.04-devel`    | Ubuntu 22.04       | devel (daily)  | `devel`, `ubuntu-devel`, `ubuntu-latest-devel`                                                  |
 | `ghcr.io/r-lib/rig/ubuntu-20.04-release`  | Ubuntu 20.04       | release        | `ubuntu-20.04`                                                                                  |
@@ -379,14 +378,12 @@ containers:
 | `ghcr.io/r-lib/rig/debian-11-devel`       | Debian 11          | devel (daily)  |                                                                                                 |
 | `ghcr.io/r-lib/rig/debian-10-release`     | Debian 10          | release        | `debian-10`                                                                                     |
 | `ghcr.io/r-lib/rig/debian-10-devel`       | Debian 10          | devel (daily)  |                                                                                                 |
-| `ghcr.io/r-lib/rig/fedora-39-release`     | Fedora 39          | release        | `fedora`, `fedora-release`, `fedora-latest`, `fedora-latest-release`, `fedora-39`               |
-| `ghcr.io/r-lib/rig/fedora-39-devel`       | Fedora 39          | devel          | `fedora-devel`, `fedora-latest-devel`                                                           |
-| `ghcr.io/r-lib/rig/fedora-38-release`     | Fedora 38          | release        | `fedora-38`                                                                                     |
-| `ghcr.io/r-lib/rig/fedora-38-devel`       | Fedora 38          | devel          |                                                                                                 |
+| `ghcr.io/r-lib/rig/fedora-40-release`     | Fedora 40          | release        | `fedora`, `fedora-release`, `fedora-latest`, `fedora-latest-release`, `fedora-40`               |
+| `ghcr.io/r-lib/rig/fedora-40-devel`       | Fedora 40          | devel          | `fedora-devel`, `fedora-latest-devel`                                                           |
+| `ghcr.io/r-lib/rig/fedora-39-release`     | Fedora 39          | release        | `fedora-39`                                                                                     |
+| `ghcr.io/r-lib/rig/fedora-39-devel`       | Fedora 39          | devel          |                                                                                                 |
 | `ghcr.io/r-lib/rig/opensuse-15.5-release` | OpenSUSE Leap 15.5 | release        | `opensuse`, `opensuse-release`, `opensuse-latest`, `opensuse-latest-release`, `opensuse-15.5`   |
 | `ghcr.io/r-lib/rig/opensuse-15.5-devel`   | OpenSUSE Leap 15.5 | devel (daily)  | `opensuse-devel`, `opensuse-latest-devel`                                                       |
-| `ghcr.io/r-lib/rig/opensuse-15.4-release` | OpenSUSE Leap 15.4 | release        | `opensuse-15.4`                                                                                 |
-| `ghcr.io/r-lib/rig/opensuse-15.4-devel`   | OpenSUSE Leap 15.4 | devel (daily)  |                                                                                                 |
 
 For convenience, we also create these tags:
 
@@ -401,20 +398,20 @@ For convenience, we also create these tags:
 | `ghcr.io/r-lib/rig/ubuntu-22.04`   | `ubuntu-22.04-release`  | Latest R release on Ubuntu 22.04.    |
 | `ghcr.io/r-lib/rig/devel`          | `ubuntu-22.04-devel`    | R devel.                             |
 | `ghcr.io/r-lib/rig/ubuntu-devel`   | `ubuntu-22.04-devel`    | R devel on latest Ubuntu.            |
+| `ghcr.io/r-lib/rig/ubuntu-24.04`   | `ubuntu-24.04-release`  | Latest R release on Ubuntu 24.04.    |
 | `ghcr.io/r-lib/rig/ubuntu-20.04`   | `ubuntu-20.04-release`  | Latest R release on Ubuntu 20.04.    |
 | `ghcr.io/r-lib/rig/debian`         | `debian-12-release`     | Latest R release on latest Debian.   |
 | `ghcr.io/r-lib/rig/debian-12`      | `debian-12-release`     | Latest R release on Debian 12.       |
 | `ghcr.io/r-lib/rig/debian-devel`   | `debian-12-devel`       | R devel on latest Debian.            |
 | `ghcr.io/r-lib/rig/debian-11`      | `debian-11-release`     | Latest R release on Debian 11.       |
 | `ghcr.io/r-lib/rig/debian-10`      | `debian-10-release`     | Latest R release on Debian 10.       |
-| `ghcr.io/r-lib/rig/fedora`         | `fedora-39-release`     | Latest R release on latest Fedora.   |
+| `ghcr.io/r-lib/rig/fedora`         | `fedora-40-release`     | Latest R release on latest Fedora.   |
+| `ghcr.io/r-lib/rig/fedora-40`      | `fedora-40-release`     | Latest R release on Fedora 40.       |
+| `ghcr.io/r-lib/rig/fedora-devel`   | `fedora-40-devel`       | R devel on latest Fedora.            |
 | `ghcr.io/r-lib/rig/fedora-39`      | `fedora-39-release`     | Latest R release on Fedora 39.       |
-| `ghcr.io/r-lib/rig/fedora-devel`   | `fedora-39-devel`       | R devel on latest Fedora.            |
-| `ghcr.io/r-lib/rig/fedora-38`      | `fedora-38-release`     | Latest R release on Fedora 38.       |
 | `ghcr.io/r-lib/rig/opensuse`       | `opensuse-15.5-release` | Latest R release on latest OpenSUSE. |
 | `ghcr.io/r-lib/rig/opensuse-15.5`  | `opensuse-15.5-release` | Latest R release on OpenSUSE 15.5.   |
 | `ghcr.io/r-lib/rig/opensuse-devel` | `opensuse-15.5-devel`   | R devel on latest OpenSUSE.          |
-| `ghcr.io/r-lib/rig/opensuse-15.4`  | `opensuse-15.4-release` | Latest R release on OpenSUSE 15.4.   |
 
 See all container images on
 [GitHub](https://github.com/orgs/r-lib/packages?repo_name=rig).

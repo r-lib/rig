@@ -20,6 +20,45 @@
         ]
     },
     {
+        "name": "ubuntu-24.04-release",
+        "aliases": [
+            "ubuntu-24.04-release",
+            "ubuntu",
+            "ubuntu-24.04",
+            "ubuntu-release",
+            "release"
+        ],
+        "dir": "ubuntu",
+        "args": [
+            "DISTRO=ubuntu",
+            "RELEASE=24.04",
+            "RVERSION=release"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/ubuntu-24.04-release:latest",
+            "ghcr.io/r-lib/rig/ubuntu-24.04:latest"
+        ]
+    },
+    {
+        "name": "ubuntu-24.04-devel",
+        "aliases": [
+            "ubuntu-24.04-devel",
+            "ubuntu",
+            "ubuntu-24.04",
+            "ubuntu-devel",
+            "devel"
+        ],
+        "dir": "ubuntu",
+        "args": [
+            "DISTRO=ubuntu",
+            "RELEASE=24.04",
+            "RVERSION=devel"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/ubuntu-24.04-devel:latest"
+        ]
+    },
+    {
         "name": "ubuntu-22.04-release",
         "aliases": [
             "ubuntu-22.04-release",
@@ -229,6 +268,49 @@
         ]
     },
     {
+        "name": "fedora-40-release",
+        "aliases": [
+            "fedora-40-release",
+            "fedora",
+            "fedora-40",
+            "fedora-release",
+            "release"
+        ],
+        "dir": "fedora",
+        "args": [
+            "RELEASE=40",
+            "RVERSION=release"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/fedora-40-release:latest",
+            "ghcr.io/r-lib/rig/fedora-40:latest",
+            "ghcr.io/r-lib/rig/fedora-latest-release:latest",
+            "ghcr.io/r-lib/rig/fedora-latest:latest",
+            "ghcr.io/r-lib/rig/fedora-release:latest",
+            "ghcr.io/r-lib/rig/fedora:latest"
+        ]
+    },
+    {
+        "name": "fedora-40-devel",
+        "aliases": [
+            "fedora-40-devel",
+            "fedora",
+            "fedora-40",
+            "fedora-devel",
+            "devel"
+        ],
+        "dir": "fedora",
+        "args": [
+            "RELEASE=40",
+            "RVERSION=devel"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/fedora-40-devel:latest",
+            "ghcr.io/r-lib/rig/fedora-latest-devel:latest",
+            "ghcr.io/r-lib/rig/fedora-devel:latest"
+        ]
+    },
+    {
         "name": "fedora-39-release",
         "aliases": [
             "fedora-39-release",
@@ -244,11 +326,7 @@
         ],
         "tags": [
             "ghcr.io/r-lib/rig/fedora-39-release:latest",
-            "ghcr.io/r-lib/rig/fedora-39:latest",
-            "ghcr.io/r-lib/rig/fedora-latest-release:latest",
-            "ghcr.io/r-lib/rig/fedora-latest:latest",
-            "ghcr.io/r-lib/rig/fedora-release:latest",
-            "ghcr.io/r-lib/rig/fedora:latest"
+            "ghcr.io/r-lib/rig/fedora-39:latest"
         ]
     },
     {
@@ -266,46 +344,7 @@
             "RVERSION=devel"
         ],
         "tags": [
-            "ghcr.io/r-lib/rig/fedora-39-devel:latest",
-            "ghcr.io/r-lib/rig/fedora-latest-devel:latest",
-            "ghcr.io/r-lib/rig/fedora-devel:latest"
-        ]
-    },
-    {
-        "name": "fedora-38-release",
-        "aliases": [
-            "fedora-38-release",
-            "fedora",
-            "fedora-38",
-            "fedora-release",
-            "release"
-        ],
-        "dir": "fedora",
-        "args": [
-            "RELEASE=38",
-            "RVERSION=release"
-        ],
-        "tags": [
-            "ghcr.io/r-lib/rig/fedora-38-release:latest",
-            "ghcr.io/r-lib/rig/fedora-38:latest"
-        ]
-    },
-    {
-        "name": "fedora-38-devel",
-        "aliases": [
-            "fedora-38-devel",
-            "fedora",
-            "fedora-38",
-            "fedora-devel",
-            "devel"
-        ],
-        "dir": "fedora",
-        "args": [
-            "RELEASE=38",
-            "RVERSION=devel"
-        ],
-        "tags": [
-            "ghcr.io/r-lib/rig/fedora-38-devel:latest"
+            "ghcr.io/r-lib/rig/fedora-39-devel:latest"
         ]
     },
     {
@@ -349,43 +388,6 @@
             "ghcr.io/r-lib/rig/opensuse-15.5-devel:latest",
             "ghcr.io/r-lib/rig/opensuse-latest-devel:latest",
             "ghcr.io/r-lib/rig/opensuse-devel:latest"
-        ]
-    },
-    {
-        "name": "opensuse-15.4-release",
-        "aliases": [
-            "opensuse-15.4-release",
-            "opensuse",
-            "opensuse-15.4",
-            "opensuse-release",
-            "release"
-        ],
-        "dir": "suse",
-        "args": [
-            "RELEASE=15.4",
-            "RVERSION=release"
-        ],
-        "tags": [
-            "ghcr.io/r-lib/rig/opensuse-15.4-release:latest",
-            "ghcr.io/r-lib/rig/opensuse-15.4:latest"
-        ]
-    },
-    {
-        "name": "opensuse-15.4-devel",
-        "aliases": [
-            "opensuse-15.4-devel",
-            "opensuse",
-            "opensuse-15.4",
-            "opensuse-devel",
-            "devel"
-        ],
-        "dir": "suse",
-        "args": [
-            "RELEASE=15.4",
-            "RVERSION=devel"
-        ],
-        "tags": [
-            "ghcr.io/r-lib/rig/opensuse-15.4-devel:latest"
         ]
     }
 ]

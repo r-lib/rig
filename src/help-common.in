@@ -95,7 +95,7 @@ const HELP_RUN: &str = "
   Currently supported apps are:
   - Plumber APIs,
   - Shiny apps,
-  - Quarto dcouments embedding Shiny apps,
+  - Quarto documents embedding Shiny apps,
   - Quarto documents,
   - Rmd documents,
   - Rmd documents embedding Shiny apps,

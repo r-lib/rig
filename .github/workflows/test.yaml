@@ -21,7 +21,7 @@ on:
         options:
         - 'yes'
         - 'no'
-        default: 'no'
+        default: 'yes'
       inpmacos:
         description: |
           Build macOS
@@ -126,9 +126,14 @@ jobs:
             echo Some tests failed;
             exit 1;
         fi
+      env:
+        REDHAT_ORG: ${{ secrets.REDHAT_ORG }}
+        REDHAT_ACTIVATION_KEY_RHEL7: ${{ secrets.REDHAT_ACTIVATION_KEY_RHEL7 }}
+        REDHAT_ACTIVATION_KEY_RHEL8: ${{ secrets.REDHAT_ACTIVATION_KEY_RHEL8 }}
+        REDHAT_ACTIVATION_KEY_RHEL9: ${{ secrets.REDHAT_ACTIVATION_KEY_RHEL9 }}
 
   linux-build-aarch64:
-    if: ${{ github.event.inputs.inplinuxaarch64 == 'yes' }}
+    if: ${{ github.event.inputs.inplinuxaarch64 == '' || github.event.inputs.inplinuxaarch64 == 'yes' }}
     runs-on: [linux-arm64]
     name: Linux build aaarch
     env:
@@ -212,6 +217,10 @@ jobs:
         fi
       env:
         DOCKER_DEFAULT_PLATFORM: "linux/arm64"
+        REDHAT_ORG: ${{ secrets.REDHAT_ORG }}
+        REDHAT_ACTIVATION_KEY_RHEL7: ${{ secrets.REDHAT_ACTIVATION_KEY_RHEL7 }}
+        REDHAT_ACTIVATION_KEY_RHEL8: ${{ secrets.REDHAT_ACTIVATION_KEY_RHEL8 }}
+        REDHAT_ACTIVATION_KEY_RHEL9: ${{ secrets.REDHAT_ACTIVATION_KEY_RHEL9 }}
 
   macos:
     if: ${{ github.event.inputs.inpmacos == '' || github.event.inputs.inpmacos == 'yes' }}
@@ -224,8 +233,9 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - { os: macOS-11 }
           - { os: macos-12 }
+          - { os: macos-13 }
+          - { os: macos-14 }
 
     steps:
 

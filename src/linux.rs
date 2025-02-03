@@ -579,7 +579,7 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
 fn set_ppm(vers: Option<Vec<String>>, platform: &OsVersion) -> Result<(), Box<dyn Error>> {
     if !platform.ppm {
         info!(
-            "P3M (or rig) does not support this distro: {} {} or arctitecture: {}",
+            "P3M (or rig) does not support this distro: {} {} or architecture: {}",
             platform.distro, platform.version, platform.arch
         );
         return Ok(());
