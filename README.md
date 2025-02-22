@@ -509,6 +509,38 @@ How is rig different from RSwitch?
 > at the same time.
 
 </details>
+<details>
+<summary>
+Which domains does rig download files from?
+</summary>
+
+> Here is the list of domains that you need to enable in your proxy.
+> Note that some of these, in particular the GitHub ones, might trigger
+> redirects.
+>
+> - <https://api.r-hub.io/rversions> for resolving R versions, i.e. this
+>   is needed for `rig install`, `rig available`, etc.
+> - `rig install` downloads pak from <https://r-lib.github.io/p/pak>
+>   unless requested otherwise.
+> - `rig install` sets <https://cloud.r-project.org> as the default CRAN
+>   mirror, unless requested otherwise.
+> - `rig install` sets <https://packagemanager.posit.co> as the Posit
+>   Package Manager CRAN mirror on supported Linux systems, unless
+>   requested otherwise.
+> - `rig install` downloads the EPEL package from
+>   <https://dl.fedoraproject.org/pub/epel> on RHEL systems.
+> - `rig system rtools` downloads Rtools from the following URLs on
+>   Windows:
+>   - <https://github.com/r-hub/rtools44/releases>,
+>   - <https://github.com/r-hub/rtools43/releases>,
+>   - <https://github.com/r-hub/rtools42/releases>,
+>   - <https://cloud.r-project.org/bin/windows/Rtools>
+> - <https://github.com/R-macos/gcc-darwin-arm64/releases>,
+>   <https://github.com/fxcoudert/gfortran-for-macOS/releases> and
+>   whatever domains Homebrew is using, to download system packages for
+>   `rig sysreqs` on macOS.
+
+</details>
 
 ## 📘   License <a id="id-license">
 
