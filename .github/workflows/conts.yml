@@ -87,20 +87,23 @@ jobs:
     if: ${{ inputs.manifest == 'yes' && always() }}
     needs: [ setup-matrix, amd64, arm64 ]
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-      packages: write
     strategy:
       fail-fast: false
       matrix:
         config: ${{ fromJson(needs.setup-matrix.outputs.containers) }}
     steps:
-      - uses: int128/docker-manifest-create-action@v2
-        id: build
-        with:
-          push: true
-          tags: "${{ join(matrix.config.tags, '\n') }}"
-          sources: |
-            ghcr.io/r-lib/rig/${{ matrix.config.name }}-amd64:latest
-            ghcr.io/r-lib/rig/${{ matrix.config.name }}-arm64:latest
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    - run: |
+        for tag in ${{ join(matrix.config.tags, ' ') }}; do
+          docker buildx imagetools create -t ${tag} \
+            ghcr.io/r-lib/rig/${{ matrix.config.name }}-amd64:latest \
+            ghcr.io/r-lib/rig/${{ matrix.config.name }}-arm64:latest;
+        done
+      shell: bash
