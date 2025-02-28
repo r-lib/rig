@@ -3,6 +3,30 @@ name: Build rig containers for new release
 on:
   workflow_dispatch:
     inputs:
+      amd64:
+        description: 'Build x86_64 containers'
+        required: true
+        type: choice
+        options:
+        - 'yes'
+        - 'no'
+        default: 'yes'
+      arm64:
+        description: 'Build aarch64 containers'
+        required: true
+        type: choice
+        options:
+        - 'yes'
+        - 'no'
+        default: 'yes'
+      manifest:
+        description: 'Build multi-arch manifest'
+        required: true
+        type: choice
+        options:
+        - 'yes'
+        - 'no'
+        default: 'yes'
       inpconts:
         description: |
           Containers, comma separated list or 'all'.
@@ -32,6 +56,7 @@ jobs:
   # ------------------------------------------------------------------------
 
   amd64:
+    if: ${{ inputs.amd64 == 'yes' }}
     needs: setup-matrix
     strategy:
       fail-fast: false
@@ -45,6 +70,7 @@ jobs:
     secrets: inherit
 
   arm64:
+    if: ${{ inputs.arm64 == 'yes' }}
     needs: setup-matrix
     strategy:
       fail-fast: false
@@ -58,6 +84,7 @@ jobs:
     secrets: inherit
 
   manifest:
+    if: ${{ inputs.manifest == 'yes' }}
     needs: [ setup-matrix, amd64, arm64 ]
     runs-on: ubuntu-latest
     strategy:
