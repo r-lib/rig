@@ -3,6 +3,30 @@ name: Build rig containers for new release
 on:
   workflow_dispatch:
     inputs:
+      amd64:
+        description: 'Build x86_64 containers'
+        required: true
+        type: choice
+        options:
+        - 'yes'
+        - 'no'
+        default: 'yes'
+      arm64:
+        description: 'Build aarch64 containers'
+        required: true
+        type: choice
+        options:
+        - 'yes'
+        - 'no'
+        default: 'yes'
+      manifest:
+        description: 'Build multi-arch manifest'
+        required: true
+        type: choice
+        options:
+        - 'yes'
+        - 'no'
+        default: 'yes'
       inpconts:
         description: |
           Containers, comma separated list or 'all'.
@@ -19,7 +43,7 @@ jobs:
   setup-matrix:
     runs-on: ubuntu-latest
     outputs:
-      containers: ${{steps.setup-matrix.outputs.containers}}
+      containers: ${{ steps.setup-matrix.outputs.containers }}
 
     steps:
     - uses: actions/checkout@v4
@@ -31,36 +55,55 @@ jobs:
 
   # ------------------------------------------------------------------------
 
-  containers:
+  amd64:
+    if: ${{ inputs.amd64 == 'yes' }}
     needs: setup-matrix
     strategy:
       fail-fast: false
       matrix:
         config: ${{ fromJson(needs.setup-matrix.outputs.containers) }}
+    uses: ./.github/workflows/conts-workflow.yml
+    with:
+      config: "${{ toJSON(matrix.config) }}"
+      platform: amd64
+      runs-on: ubuntu-latest
+    secrets: inherit
+
+  arm64:
+    if: ${{ inputs.arm64 == 'yes' }}
+    needs: setup-matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        config: ${{ fromJson(needs.setup-matrix.outputs.containers) }}
+    uses: ./.github/workflows/conts-workflow.yml
+    with:
+      config: "${{ toJSON(matrix.config) }}"
+      platform: arm64
+      runs-on: ubuntu-24.04-arm
+    secrets: inherit
+
+  manifest:
+    if: ${{ inputs.manifest == 'yes' && always() }}
+    needs: [ setup-matrix, amd64, arm64 ]
     runs-on: ubuntu-latest
-    name: ${{ matrix.config.name }}
-
+    strategy:
+      fail-fast: false
+      matrix:
+        config: ${{ fromJson(needs.setup-matrix.outputs.containers) }}
     steps:
-    - uses: actions/checkout@v4
-
     - name: Login to GitHub Container Registry
       uses: docker/login-action@v3
       with:
         registry: ghcr.io
         username: ${{ github.repository_owner }}
         password: ${{ secrets.GITHUB_TOKEN }}
-
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
-
-    - name: Build
-      uses: docker/build-push-action@v5
-      with:
-        platforms: linux/amd64,linux/arm64
-        provenance: false
-        context: containers/${{ matrix.config.dir }}
-        file: ${{ matrix.config.file }}
-        build-args: "${{ join(matrix.config.args, '\n') }}"
-        push: true
-        outputs:
-        tags: "${{ join(matrix.config.tags, '\n') }}"
+    - run: |
+        for tag in ${{ join(matrix.config.tags, ' ') }}; do
+          docker buildx imagetools create -t ${tag} \
+            ghcr.io/r-lib/rig/${{ matrix.config.name }}-amd64:latest \
+            ghcr.io/r-lib/rig/${{ matrix.config.name }}-arm64:latest;
+        done
+      shell: bash
