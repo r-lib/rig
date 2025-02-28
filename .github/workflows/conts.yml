@@ -9,7 +9,6 @@ on:
         required: false
         default: 'devel'
         type: string
-  push:
   schedule:
     - cron:  '55 7 * * *'
 
