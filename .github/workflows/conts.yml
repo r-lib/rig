@@ -84,7 +84,7 @@ jobs:
     secrets: inherit
 
   manifest:
-    if: ${{ inputs.manifest == 'yes' }}
+    if: ${{ inputs.manifest == 'yes' && always() }}
     needs: [ setup-matrix, amd64, arm64 ]
     runs-on: ubuntu-latest
     strategy:
