@@ -1,0 +1,49 @@
+name: Reusable container build workflow
+
+on:
+  workflow_call:
+    inputs:
+      platform:
+        description: Docker Linux platform to use, e.g. amd64.
+        type: string
+        required: true
+      runs-on:
+        description: GitHub Actions runner to use, e.g. ubuntu-latest.
+        type: string
+        required: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        config: ${{ fromJson(needs.setup-matrix.outputs.containers) }}
+    runs-on: {{ inputs.runs-on }}
+    name: ${{ matrix.config.name }}
+    outputs:
+      image-uri: "ghcr.io/r-lib/rig/${{ matrix.config.name}}-${{ inputs.platform }}:latest"
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.repository_owner }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build
+      uses: docker/build-push-action@v5
+      with:
+        platforms: linux/${{ inputs.platform }}
+        provenance: false
+        context: containers/${{ matrix.config.dir }}
+        file: ${{ matrix.config.file }}
+        build-args: "${{ join(matrix.config.args, '\n') }}"
+        push: true
+        outputs:
+        tags: "ghcr.io/r-lib/rig/${{ matrix.config.name }}-${{ inputs.platform }}:latest"
