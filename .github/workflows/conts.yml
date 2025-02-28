@@ -9,6 +9,7 @@ on:
         required: false
         default: 'devel'
         type: string
+  push:
   schedule:
     - cron:  '55 7 * * *'
 
@@ -19,7 +20,7 @@ jobs:
   setup-matrix:
     runs-on: ubuntu-latest
     outputs:
-      containers: ${{steps.setup-matrix.outputs.containers}}
+      containers: ${{ steps.setup-matrix.outputs.containers }}
 
     steps:
     - uses: actions/checkout@v4
@@ -32,17 +33,27 @@ jobs:
   # ------------------------------------------------------------------------
 
   amd64:
-    needs: setup=matrix
-    uses: ./conts-workflow.yml
+    needs: setup-matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        config: ${{ fromJson(needs.setup-matrix.outputs.containers) }}
+    uses: ./.github/workflows/conts-workflow.yml
     with:
+      config: "${{ toJSON(matrix.config) }}"
       platform: amd64
       runs-on: ubuntu-latest
     secrets: inherit
 
   arm64:
-    needs: setup=matrix
-    uses: ./conts-workflow.yml
+    needs: setup-matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        config: ${{ fromJson(needs.setup-matrix.outputs.containers) }}
+    uses: ./.github/workflows/conts-workflow.yml
     with:
+      config: "${{ toJSON(matrix.config) }}"
       platform: arm64
       runs-on: ubuntu-24.04-arm
     secrets: inherit

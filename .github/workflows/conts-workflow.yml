@@ -11,17 +11,21 @@ on:
         description: GitHub Actions runner to use, e.g. ubuntu-latest.
         type: string
         required: true
+      config:
+        description: Matrix config.
+        type: string
+        required: true
+    outputs:
+      image-uri:
+        description: Image URI
+        value: ${{ jobs.build.outputs.image-uri }}
 
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      matrix:
-        config: ${{ fromJson(needs.setup-matrix.outputs.containers) }}
-    runs-on: {{ inputs.runs-on }}
-    name: ${{ matrix.config.name }}
+    runs-on: ${{ inputs.runs-on }}
+    name: ${{ fromJSON(inputs.config).name }}
     outputs:
-      image-uri: "ghcr.io/r-lib/rig/${{ matrix.config.name}}-${{ inputs.platform }}:latest"
+      image-uri: "ghcr.io/r-lib/rig/${{ fromJSON(inputs.config).name}}-${{ inputs.platform }}:latest"
 
     steps:
     - uses: actions/checkout@v4
@@ -41,9 +45,9 @@ jobs:
       with:
         platforms: linux/${{ inputs.platform }}
         provenance: false
-        context: containers/${{ matrix.config.dir }}
-        file: ${{ matrix.config.file }}
-        build-args: "${{ join(matrix.config.args, '\n') }}"
+        context: containers/${{ fromJSON(inputs.config).dir }}
+        file: ${{ fromJSON(inputs.config).file }}
+        build-args: "${{ join(fromJSON(inputs.config).args, '\n') }}"
         push: true
         outputs:
-        tags: "ghcr.io/r-lib/rig/${{ matrix.config.name }}-${{ inputs.platform }}:latest"
+        tags: "ghcr.io/r-lib/rig/${{ fromJSON(inputs.config).name }}-${{ inputs.platform }}:latest"
