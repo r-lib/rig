@@ -98,5 +98,5 @@ jobs:
           push: true
           tags: "${{ join(matrix.config.tags, '\n') }}"
           sources: |
-            "ghcr.io/r-lib/rig/${{ matrix.config.name }}-amd64:latest"
-            "ghcr.io/r-lib/rig/${{ matrix.config.name }}-arm64:latest"
+            ghcr.io/r-lib/rig/${{ matrix.config.name }}-amd64:latest
+            ghcr.io/r-lib/rig/${{ matrix.config.name }}-arm64:latest
