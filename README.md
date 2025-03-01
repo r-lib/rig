@@ -337,7 +337,7 @@ containers:
 
 | Name                                      | OS                 | R version      | Tags                                                                                            |
 |-------------------------------------------|--------------------|----------------|-------------------------------------------------------------------------------------------------|
-| `ghcr.io/r-lib/rig/ubuntu-22.04-multi`    | Ubuntu 22.04       | last 6 (daily) | `r`, `rig`, `multi`, `ubuntu-multi`                                                             |
+| `ghcr.io/r-lib/rig/ubuntu-24.04-multi`    | Ubuntu 24.04       | last 6 (daily) | `r`, `rig`, `multi`, `ubuntu-multi`                                                             |
 | `ghcr.io/r-lib/rig/ubuntu-24.04-release`  | Ubuntu 24.04       | release        | `ubuntu-24.04`                                                                                  |
 | `ghcr.io/r-lib/rig/ubuntu-24.04-devel`    | Ubuntu 24.04       | devel (daily)  |                                                                                                 |
 | `ghcr.io/r-lib/rig/ubuntu-22.04-release`  | Ubuntu 22.04       | release        | `release`, `ubuntu`, `ubuntu-release`, `ubuntu-latest`, `ubuntu-latest-release`, `ubuntu-22.04` |
@@ -348,42 +348,39 @@ containers:
 | `ghcr.io/r-lib/rig/debian-12-devel`       | Debian 12          | devel (daily)  | `debian-devel`, `debian-latest-devel`                                                           |
 | `ghcr.io/r-lib/rig/debian-11-release`     | Debian 11          | release        | `debian-11`                                                                                     |
 | `ghcr.io/r-lib/rig/debian-11-devel`       | Debian 11          | devel (daily)  |                                                                                                 |
-| `ghcr.io/r-lib/rig/debian-10-release`     | Debian 10          | release        | `debian-10`                                                                                     |
-| `ghcr.io/r-lib/rig/debian-10-devel`       | Debian 10          | devel (daily)  |                                                                                                 |
 | `ghcr.io/r-lib/rig/fedora-40-release`     | Fedora 40          | release        | `fedora`, `fedora-release`, `fedora-latest`, `fedora-latest-release`, `fedora-40`               |
 | `ghcr.io/r-lib/rig/fedora-40-devel`       | Fedora 40          | devel          | `fedora-devel`, `fedora-latest-devel`                                                           |
 | `ghcr.io/r-lib/rig/fedora-39-release`     | Fedora 39          | release        | `fedora-39`                                                                                     |
 | `ghcr.io/r-lib/rig/fedora-39-devel`       | Fedora 39          | devel          |                                                                                                 |
-| `ghcr.io/r-lib/rig/opensuse-15.5-release` | OpenSUSE Leap 15.5 | release        | `opensuse`, `opensuse-release`, `opensuse-latest`, `opensuse-latest-release`, `opensuse-15.5`   |
-| `ghcr.io/r-lib/rig/opensuse-15.5-devel`   | OpenSUSE Leap 15.5 | devel (daily)  | `opensuse-devel`, `opensuse-latest-devel`                                                       |
+| `ghcr.io/r-lib/rig/opensuse-15.6-release` | OpenSUSE Leap 15.6 | release        | `opensuse`, `opensuse-release`, `opensuse-latest`, `opensuse-latest-release`, `opensuse-15.6`   |
+| `ghcr.io/r-lib/rig/opensuse-15.6-devel`   | OpenSUSE Leap 15.6 | devel (daily)  | `opensuse-devel`, `opensuse-latest-devel`                                                       |
 
 For convenience, we also create these tags:
 
 | Tag                                | Image                   | Description                          |
 |------------------------------------|-------------------------|--------------------------------------|
-| `ghcr.io/r-lib/rig/r`              | `ubuntu-22.04-multi`    | Last 6 R versions on latest Ubuntu.  |
+| `ghcr.io/r-lib/rig/r`              | `ubuntu-24.04-multi`    | Last 6 R versions on latest Ubuntu.  |
 | `ghcr.io/r-lib/rig/rig`            | ”                       | ”                                    |
 | `ghcr.io/r-lib/rig/multi`          | ”                       | ”                                    |
 | `ghcr.io/r-lib/rig/ubuntu-multi`   | ”                       | ”                                    |
-| `ghcr.io/r-lib/rig/release`        | `ubuntu-22.04-release`  | Latest R release.                    |
-| `ghcr.io/r-lib/rig/ubuntu`         | `ubuntu-22.04-release`  | Latest R release on latest Ubuntu.   |
-| `ghcr.io/r-lib/rig/ubuntu-22.04`   | `ubuntu-22.04-release`  | Latest R release on Ubuntu 22.04.    |
-| `ghcr.io/r-lib/rig/devel`          | `ubuntu-22.04-devel`    | R devel.                             |
-| `ghcr.io/r-lib/rig/ubuntu-devel`   | `ubuntu-22.04-devel`    | R devel on latest Ubuntu.            |
+| `ghcr.io/r-lib/rig/release`        | `ubuntu-24.04-release`  | Latest R release.                    |
+| `ghcr.io/r-lib/rig/ubuntu`         | `ubuntu-24.04-release`  | Latest R release on latest Ubuntu.   |
 | `ghcr.io/r-lib/rig/ubuntu-24.04`   | `ubuntu-24.04-release`  | Latest R release on Ubuntu 24.04.    |
+| `ghcr.io/r-lib/rig/devel`          | `ubuntu-24.04-devel`    | R devel.                             |
+| `ghcr.io/r-lib/rig/ubuntu-devel`   | `ubuntu-24.04-devel`    | R devel on latest Ubuntu.            |
+| `ghcr.io/r-lib/rig/ubuntu-22.04`   | `ubuntu-24.04-release`  | Latest R release on Ubuntu 22.04.    |
 | `ghcr.io/r-lib/rig/ubuntu-20.04`   | `ubuntu-20.04-release`  | Latest R release on Ubuntu 20.04.    |
 | `ghcr.io/r-lib/rig/debian`         | `debian-12-release`     | Latest R release on latest Debian.   |
 | `ghcr.io/r-lib/rig/debian-12`      | `debian-12-release`     | Latest R release on Debian 12.       |
 | `ghcr.io/r-lib/rig/debian-devel`   | `debian-12-devel`       | R devel on latest Debian.            |
 | `ghcr.io/r-lib/rig/debian-11`      | `debian-11-release`     | Latest R release on Debian 11.       |
-| `ghcr.io/r-lib/rig/debian-10`      | `debian-10-release`     | Latest R release on Debian 10.       |
-| `ghcr.io/r-lib/rig/fedora`         | `fedora-40-release`     | Latest R release on latest Fedora.   |
+| `ghcr.io/r-lib/rig/fedora`         | `fedora-41-release`     | Latest R release on latest Fedora.   |
+| `ghcr.io/r-lib/rig/fedora-41`      | `fedora-41-release`     | Latest R release on Fedora 41.       |
+| `ghcr.io/r-lib/rig/fedora-devel`   | `fedora-41-devel`       | R devel on latest Fedora.            |
 | `ghcr.io/r-lib/rig/fedora-40`      | `fedora-40-release`     | Latest R release on Fedora 40.       |
-| `ghcr.io/r-lib/rig/fedora-devel`   | `fedora-40-devel`       | R devel on latest Fedora.            |
-| `ghcr.io/r-lib/rig/fedora-39`      | `fedora-39-release`     | Latest R release on Fedora 39.       |
-| `ghcr.io/r-lib/rig/opensuse`       | `opensuse-15.5-release` | Latest R release on latest OpenSUSE. |
-| `ghcr.io/r-lib/rig/opensuse-15.5`  | `opensuse-15.5-release` | Latest R release on OpenSUSE 15.5.   |
-| `ghcr.io/r-lib/rig/opensuse-devel` | `opensuse-15.5-devel`   | R devel on latest OpenSUSE.          |
+| `ghcr.io/r-lib/rig/opensuse`       | `opensuse-15.6-release` | Latest R release on latest OpenSUSE. |
+| `ghcr.io/r-lib/rig/opensuse-15.6`  | `opensuse-15.6-release` | Latest R release on OpenSUSE 15.6.   |
+| `ghcr.io/r-lib/rig/opensuse-devel` | `opensuse-15.6-devel`   | R devel on latest OpenSUSE.          |
 
 See all container images on
 [GitHub](https://github.com/orgs/r-lib/packages?repo_name=rig).
