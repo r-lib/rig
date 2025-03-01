@@ -56,7 +56,7 @@ jobs:
   # ------------------------------------------------------------------------
 
   amd64:
-    if: ${{ inputs.amd64 == 'yes' }}
+    if: ${{ inputs.amd64 == '' || inputs.amd64 == 'yes' }}
     needs: setup-matrix
     strategy:
       fail-fast: false
@@ -70,7 +70,7 @@ jobs:
     secrets: inherit
 
   arm64:
-    if: ${{ inputs.arm64 == 'yes' }}
+    if: ${{ inputs.arm64 == '' || inputs.arm64 == 'yes' }}
     needs: setup-matrix
     strategy:
       fail-fast: false
@@ -84,7 +84,7 @@ jobs:
     secrets: inherit
 
   manifest:
-    if: ${{ inputs.manifest == 'yes' && always() }}
+    if: ${{ (inputs.manifest == '' || inputs.manifest == 'yes') && always() }}
     needs: [ setup-matrix, amd64, arm64 ]
     runs-on: ubuntu-latest
     strategy:
