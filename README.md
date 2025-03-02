@@ -168,17 +168,51 @@ tarball.
 
 #### Supported Linux distributions <a id="id-supported-linux-distributions">
 
-- Debian 10, 11, 12,
+- Debian 11, 12,
 - Ubuntu 20.04, 22.04, 24.04
-- Fedora Linux 39, 40, 41
-- OpenSUSE 15.5, 15.6
-- SUSE Linux Enterprise 15 SP5, 15 SP6
+- Fedora Linux 40, 41
+- OpenSUSE 15.6
+- SUSE Linux Enterprise 15 SP6
 - Red Hat Enterprise Linux 7, 8, 9,
 - AlmaLinux 8, 9,
 - Rocky Linux 8, 9.
 
 We use the R builds from the Posit [R-builds
 project](https://github.com/rstudio/r-builds#r-builds).
+
+<details>
+<summary>
+Retired Linux distributions
+</summary>
+
+These are not updated any more, no new R builds are added for them, but
+existing R builds still work.
+
+- CentOS 6 (only x86_64, last R version: 4.0.4),
+- CentOS 7 (last R version: 4.4.3),
+- CentOS 8 (last R version: 4.4.3),
+- Debian 9 (last R version: 4.2.1),
+- Debian 10 (last R version: 4.4.3),
+- Fedora 37 (last R version: 4.3.2),
+- Fedora 38 (last R version: 4.4.2),
+- Fedora 39 (last R version: 4.4.3),
+- OpenSUSE 42 (only x86_64, last R version: 4.2.1),
+- OpenSUSE 15.1 (only x86_64, last R version: 4.1.2),
+- OpenSUSE 15.2 (only x86_64, last R version: 4.1.3),
+- OpenSUSE 15.3 (last R version: x86_64: 4.4.3, aarch64: 4.3.1),
+- OpenSUSE 15.4 (last R version: 4.4.0),
+- OpenSUSE 15.5 (last R version: 4.4.3),
+- SUSE Linux Enterprise 15 (only x86_64, last R version: 4.1.2),
+- SUSE Linux Enterprise 15.1 (only x86_64, last R version: 4.1.2),
+- SUSE Linux Enterprise 15.2 (only x86_64, last R version: 4.1.3),
+- SUSE Linux Enterprise 15.3 (last R version: x86_64: 4.4.3, aarch64:
+  4.3.1),
+- SUSE Linux Enterprise 15.4 (last R version: 4.4.0),
+- SUSE Linux Enterprise 15.5 (last R version: 4.4.3),
+- Ubuntu 16.04 (only x86_64, last R version: 4.1.2),
+- Ubuntu 18.04 (last R version: 4.3.1).
+
+</details>
 
 #### Installing rig on Ubuntu and Debian (DEB package) <a id="id-ubuntu-and-debian-deb-package">
 
