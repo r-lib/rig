@@ -134,7 +134,7 @@ jobs:
 
   linux-build-aarch64:
     if: ${{ github.event.inputs.inplinuxaarch64 == '' || github.event.inputs.inplinuxaarch64 == 'yes' }}
-    runs-on: [linux-arm64]
+    runs-on: ubuntu-24.04-arm
     name: Linux build aaarch
     env:
       RUST_BACKTRACE: 1
@@ -183,16 +183,10 @@ jobs:
       fail-fast: false
       matrix:
         container: ${{ fromJson(needs.linux-tests-aarch64-setup.outputs.containers) }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     name: ${{ matrix.container }} (aarch64)
 
     steps:
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v2
-
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
-
     - name: Checkout
       uses: actions/checkout@v4
 
@@ -233,9 +227,8 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - { os: macos-12 }
-          - { os: macos-13 }
-          - { os: macos-14 }
+          - { os: macos-13     }
+          - { os: macos-latest }
 
     steps:
 
