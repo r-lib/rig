@@ -1,4 +1,4 @@
-# rig development
+# rig 0.7.1
 
 * macOS packages now include completion files for elvish and fish shells
   (#221, @TymekDev).

@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
     <id>rig</id>
-    <version>0.7.0</version>
+    <version>0.7.1</version>
     <packageSourceUrl>https://github.com/r-lib/rig</packageSourceUrl>
     <owners>Gábor Csárdi</owners>
     <title>rig</title>
@@ -54,24 +54,21 @@
 Please open an issue in our issue tracker at https://github.com/r-lib/rig/issues
     </description>
     <releaseNotes>
-# rig 0.7.0
+# rig 0.7.1
 
-- `rig rstudio` has a new implementation that works much better.
-  Now it always defaults to the R version in `renv.lock` for renv
-  projects, and can open RStudio projects or directories.
+- `rig available --list-distros` output now includes PPM support, whether
+  the a distro is retired, the EOL and in the JSON format also the last
+  R version for that distro.
 
-- New `rig available --list-rtools-versions` option to list available
-  Rtools versions.
+- `rig run` now exits with the exit code of the R process (#261).
 
-- `rig run` now does not terminate the rig process on interrupts
-  (CTRL+C, CTRL+BREAK on Windows) (#187).
+- Custom certificates via the `SSL_CERT_FILE` environment variable
+  work again (#227).
 
-- New `rig system rtools` subcommand to add, remove, list
-  Rtools versions (#18).
+- `rig library default` does not crash now (#240).
 
-- rig now supports Rtools44 on Windows.
+- Windows: rig supports Rtools45 now.
 
-- rig now defaults to Rtools42 for R 4.2.x on Windows.
     </releaseNotes>
   </metadata>
 </package>
