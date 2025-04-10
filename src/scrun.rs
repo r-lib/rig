@@ -21,7 +21,7 @@ use crate::windows::*;
 #[cfg(target_os = "linux")]
 use crate::linux::*;
 
-pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
+pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn Error>> {
     let rver = args.get_one::<String>("r-version");
     let rver = match rver {
         Some(x) => check_installed(x)?,
@@ -89,7 +89,7 @@ fn ignore_sigint() {
     ()
 }
 
-fn sc_run_rver(rbin: String, args: Vec<String>, cmdargs: Vec<String>, dry_run: bool) -> Result<(), Box<dyn Error>> {
+fn sc_run_rver(rbin: String, args: Vec<String>, cmdargs: Vec<String>, dry_run: bool) -> Result<i32, Box<dyn Error>> {
     let mut args2: Vec<String> = args;
     args2.push("--args".to_string());
     for a in cmdargs {
@@ -98,15 +98,17 @@ fn sc_run_rver(rbin: String, args: Vec<String>, cmdargs: Vec<String>, dry_run: b
 
     if dry_run {
         println!("\"{}\" {:?}", rbin, args2);
-        return Ok(());
+        return Ok(0);
     }
 
     trace!("Running {} with arguments {:?}", rbin, args2);
 
     ignore_sigint();
     let _status = Command::new(rbin).args(args2).status()?;
-
-    Ok(())
+    match _status.code() {
+        Some(code) => Ok(code),
+        None => Ok(-1)
+    }
 }
 
 fn sc_run_eval(
@@ -115,7 +117,7 @@ fn sc_run_eval(
     expr: String,
     cmdargs: Vec<String>,
     dry_run: bool,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<i32, Box<dyn Error>> {
     let mut args2: Vec<String> = args;
     args2.push("-e".to_string());
     args2.push(expr);
@@ -126,13 +128,16 @@ fn sc_run_eval(
 
     if dry_run {
         println!("\"{}\" {:?}", rbin, args2);
-        return Ok(());
+        return Ok(0);
     }
 
     ignore_sigint();
     trace!("Running {} with arguments {:?}", rbin, args2);
     let _status = Command::new(rbin).args(args2).status()?;
-    Ok(())
+    match _status.code() {
+        Some(code) => Ok(code),
+        None => Ok(-1)
+    }
 }
 
 fn sc_run_script(
@@ -141,7 +146,7 @@ fn sc_run_script(
     script: String,
     cmdargs: Vec<String>,
     dry_run: bool,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<i32, Box<dyn Error>> {
     let mut args2: Vec<String> = args;
     args2.push("-f".to_string());
     args2.push(script);
@@ -152,13 +157,16 @@ fn sc_run_script(
 
     if dry_run {
         println!("\"{}\" {:?}", rbin, args2);
-        return Ok(());
+        return Ok(0);
     }
 
     ignore_sigint();
     trace!("Running {} with arguments {:?}", rbin, args2);
     let _status = Command::new(rbin).args(args2).status()?;
-    Ok(())
+    match _status.code() {
+        Some(code) => Ok(code),
+        None => Ok(-1)
+    }
 }
 
 fn utf8_file_name(x: std::io::Result<std::fs::DirEntry>) -> String {
@@ -178,7 +186,7 @@ fn sc_run_app(
     app: Vec<String>,
     app_type: Option<&String>,
     dry_run: bool,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<i32, Box<dyn Error>> {
     let proj = app[0].to_string();
     let projpath = std::path::Path::new(&proj);
     if !projpath.exists() {
@@ -223,13 +231,15 @@ fn sc_run_app(
 
     if dry_run {
         println!("{} {:?}", rbin, args2);
-        return Ok(());
+        return Ok(0);
     }
 
     ignore_sigint();
     let _status = Command::new(rbin).args(args2).current_dir(proj).status()?;
-
-    Ok(())
+    match _status.code() {
+        Some(code) => Ok(code),
+        None => Ok(-1)
+    }
 }
 
 fn detect_primary_doc(
@@ -485,7 +495,7 @@ fn sc_run_package_script(
     rargs: Vec<String>,
     cmdargs: Vec<String>,
     dry_run: bool,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<i32, Box<dyn Error>> {
     let pkgfun = cmdargs[0].to_string();
     let re_pkg = Regex::new("::.*$")?;
     let re_fun = Regex::new("^.*::")?;
@@ -533,7 +543,7 @@ fn sc_run_package_script(
 
     if dry_run {
         println!("{} {:?}", rbin, allargs);
-        return Ok(());
+        return Ok(0);
     }
 
     ignore_sigint();

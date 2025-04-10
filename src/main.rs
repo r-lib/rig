@@ -96,8 +96,8 @@ fn main_() -> i32 {
     // --------------------------------------------------------------------
 
     match main__(&args) {
-        Ok(_) => {
-            return 0;
+        Ok(exitcode) => {
+            return exitcode;
         }
         Err(err) => {
             error!("{}", err.to_string());
@@ -106,21 +106,23 @@ fn main_() -> i32 {
     }
 }
 
-fn main__(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
+    let mut retval: i32 = 0;
     match args.subcommand() {
-        Some(("add", sub)) => sc_add(sub),
-        Some(("default", sub)) => sc_default(sub, args),
-        Some(("list", sub)) => sc_list(sub, args),
-        Some(("rm", sub)) => sc_rm(sub),
-        Some(("system", sub)) => sc_system(sub, args),
-        Some(("resolve", sub)) => sc_resolve(sub, args),
-        Some(("rstudio", sub)) => sc_rstudio(sub),
-        Some(("library", sub)) => sc_library(sub, args),
-        Some(("sysreqs", sub)) => sc_sysreqs(sub, args),
-        Some(("available", sub)) => sc_available(sub, args),
-        Some(("run", sub)) => sc_run(sub, args),
-        _ => Ok(()), // unreachable
+        Some(("add", sub)) => sc_add(sub)?,
+        Some(("default", sub)) => sc_default(sub, args)?,
+        Some(("list", sub)) => sc_list(sub, args)?,
+        Some(("rm", sub)) => sc_rm(sub)?,
+        Some(("system", sub)) => sc_system(sub, args)?,
+        Some(("resolve", sub)) => sc_resolve(sub, args)?,
+        Some(("rstudio", sub)) => sc_rstudio(sub)?,
+        Some(("library", sub)) => sc_library(sub, args)?,
+        Some(("sysreqs", sub)) => sc_sysreqs(sub, args)?,
+        Some(("available", sub)) => sc_available(sub, args)?,
+        Some(("run", sub)) => retval = sc_run(sub, args)?,
+        _ => (), // unreachable
     }
+    Ok(retval)
 }
 
 fn sc_system(args: &ArgMatches, mainargs: &ArgMatches)
@@ -137,9 +139,9 @@ fn sc_system(args: &ArgMatches, mainargs: &ArgMatches)
         Some(("fix-permissions", s)) => sc_system_fix_permissions(s),
         Some(("forget", _)) => sc_system_forget(),
         Some(("no-openmp", s)) => sc_system_no_openmp(s),
-	Some(("update-rtools40", _)) => sc_system_update_rtools40(),
+	    Some(("update-rtools40", _)) => sc_system_update_rtools40(),
         Some(("detect-platform", s)) => sc_system_detect_platform(s, mainargs),
-	Some(("rtools", s)) => sc_system_rtools(s, mainargs),
+	    Some(("rtools", s)) => sc_system_rtools(s, mainargs),
         _ => Ok(()), // unreachable
     }
 }
