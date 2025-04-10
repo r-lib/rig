@@ -19,6 +19,8 @@
 * Custom certificates via the `SSL_CERT_FILE` environment variable
   work again (#227).
 
+* `rig library default` does not crash now (#240).
+
 # rig 0.7.0
 
 * Bash completions work well again (#202).
