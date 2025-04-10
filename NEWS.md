@@ -7,6 +7,13 @@
   the a distro is retired, the EOL and in the JSON format also the last
   R version for that distro.
 
+* `rig add` is now better at detecting PPM support for new Linux
+  distribution versions. In particular, new Linux distribution releases
+  do not need a rig update to learn about PPM support. Relatedly,
+  `rig system detect-platform` now does **not** report PPM support.
+  Use `rig available --list-distros` to see which Linux distributions have
+  PPM binaries.
+
 # rig 0.7.0
 
 * Bash completions work well again (#202).
