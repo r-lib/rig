@@ -14,6 +14,8 @@
   Use `rig available --list-distros` to see which Linux distributions have
   PPM binaries.
 
+* `rig run` now exits with the exit code of the R process (#261).
+
 # rig 0.7.0
 
 * Bash completions work well again (#202).
