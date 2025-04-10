@@ -150,13 +150,23 @@ fn add_rtools(version: String) -> Result<(), Box<dyn Error>> {
     }
     let client = &reqwest::Client::new();
     for ver in vers {
+	let rtools45 = &ver[0..2] == "45";
 	let rtools44 = &ver[0..2] == "44";
 	let rtools43 = &ver[0..2] == "43";
         let rtools42 = &ver[0..2] == "42";
         let rtools4 = &ver[0..1] == "4";
         let filename: String;
         let url: String;
-	if rtools44 {
+	if rtools45 {
+	    let rt45=Path::new("C:\\Rtools45");
+	    if rt45.exists() {
+		info!("Rtools45 is already installed");
+		continue;
+	    }
+	    filename = "rtools45.exe".to_string();
+            url = "https://github.com/r-hub/rtools45/releases/download/latest/rtools45.exe"
+                .to_string();
+	} else if rtools44 {
 	    let rt44=Path::new("C:\\Rtools44");
 	    if rt44.exists() {
 		info!("Rtools44 is already installed");
@@ -292,6 +302,8 @@ fn get_rtools_needed(version: Option<Vec<String>>) -> Result<Vec<String>, Box<dy
 	let v42 = "42".to_string();
 	let v43 = "43".to_string();
 	let v44 = "44".to_string();
+	let v45 = "45".to_string();
+	let sv450 = semver::Version::parse("4.5.0")?;
 	let sv440 = semver::Version::parse("4.4.0")?;
 	let sv430 = semver::Version::parse("4.3.0")?;
 	let sv420 = semver::Version::parse("4.2.0")?;
@@ -300,17 +312,21 @@ fn get_rtools_needed(version: Option<Vec<String>>) -> Result<Vec<String>, Box<dy
             if !res.contains(&v35) {
                 res.push(v35);
             }
+	} else if sv >= sv450 {
+	    if !res.contains(&v45) {
+		res.push(v45);
+	    }
 	} else if sv >= sv440 {
 	    if !res.contains(&v44) {
-		res.push(v44)
+		res.push(v44);
 	    }
 	} else if sv >= sv430 {
 	    if !res.contains(&v43) {
-		res.push(v43)
+		res.push(v43);
 	    }
 	} else if sv >= sv420 {
 	    if !res.contains(&v42) {
-		res.push(v42)
+		res.push(v42);
 	    }
         } else if &ver[0..1] == "4" {
             if !res.contains(&v40) {
