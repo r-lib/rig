@@ -1,5 +1,6 @@
 
 use regex::Regex;
+use std::collections::HashMap;
 use std::env;
 use std::error::Error;
 use std::path::Path;
@@ -516,33 +517,107 @@ pub fn sc_available(args: &ArgMatches, mainargs: &ArgMatches)
     Ok(())
 }
 
-fn sc_available_distros(args: &ArgMatches, mainargs: &ArgMatches)
-                        -> Result<(), Box<dyn Error>> {
+#[derive(Hash, Eq, PartialEq, Debug, Clone)]
+struct Distro {
+    name: String,
+    version: String,
+    id: String,
+    ppm: bool,
+    retired: bool,
+    eol: String,
+    last: Option<String>,
+}
+
+fn get_distros() -> Result<Vec<Distro>, Box<dyn Error>> {
+    let mut distros: Vec<Distro> = vec![];
 
     let url = "https://api.r-hub.io/rversions/linux-distros".to_string();
     let resp = download_json_sync(vec![url])?;
     let resp = resp[0].as_array().unwrap();
 
+    let mut distro_aliases: HashMap<String, Distro> = HashMap::new();
+    for (idx, item) in resp.iter().enumerate() {
+        // these are always there
+        let name = item["name"].to_string();
+        let version = item["version"].to_string();
+        let id = item["id"].to_string();
+        let eol = item["eol"].to_string();
+
+        if item["implementation"].is_null() {
+            // these are not there for aliases
+            let ppm = match item["ppm-binaries"].as_bool() {
+                Some(v) => v,
+                None    => false
+            };
+            let retired = match item["retired"].as_bool() {
+                Some(v) => v,
+                None    => false
+            };
+            let last = match item["last-build"].as_str() {
+                Some(s) => Some(s.to_string()),
+                None    => None
+            };
+            let d = Distro {
+                name, version, id: id.clone(), ppm, retired, eol, last
+            };
+            distro_aliases.insert(id, d.clone());
+            distros.push(d);
+
+        } else {
+            let imp = item["implementation"].to_string();
+            let alias = distro_aliases.get(&imp);
+            match alias {
+                Some(alias2) => {
+                    let d = Distro {
+                        name, version, id, ppm: alias2.ppm,
+                        retired: alias2.retired, eol, last: alias2.last.clone()
+                    };
+                    distros.push(d);
+                },
+                None => ()
+            };
+        }
+    }
+
+    Ok(distros)
+}
+
+fn sc_available_distros(args: &ArgMatches, mainargs: &ArgMatches)
+                        -> Result<(), Box<dyn Error>> {
+
+    let distros = get_distros()?;
+
     if args.get_flag("json") || mainargs.get_flag("json") {
-        let num = resp.len();
+        let num = distros.len();
         println!("[");
-        for (idx, item) in resp.iter().enumerate() {
+        for (idx, item) in distros.iter().enumerate() {
+            let last = match &item.last {
+                Some(v) => "\"".to_string() + v + "\"",
+                None    => "null".to_string()
+            };
             println!("{{");
-            println!("  \"name\": {},", &item["name"]);
-            println!("  \"version\": {},", &item["version"]);
-            println!("  \"id\": {}", &item["id"]);
+            println!("  \"name\": {},", item.name);
+            println!("  \"version\": {},", item.version);
+            println!("  \"id\": {},", item.id);
+            println!("  \"ppm-binaries\": {},", item.ppm);
+            println!("  \"retired\": {},", item.retired);
+            println!("  \"eol\": {},", item.eol);
+            println!("  \"last-build\": {}", last);
             println!("}}{}", if idx == num - 1 { "" } else { "," });
         }
         println!("]");
     } else {
-        let mut tab = Table::new("{:<}  {:<}  {:<}");
-        tab.add_row(row!["name", "version", "id"]);
-        tab.add_heading("--------------------------------------------------------------");
-        for item in resp.iter() {
+        let mut tab = Table::new("{:<}  {:<}  {:<}  {:<}  {:<}  {:<}");
+        tab.add_row(row!["name", "version", "id", "PPM", "retired", "eol"]);
+        tab.add_heading("-------------------------------------------------------------------------------");
+        for item in distros.iter() {
             tab.add_row(row!(
-                unquote(&item["name"].to_string()),
-                unquote(&item["version"].to_string()),
-                unquote(&item["id"].to_string())
+                unquote(&item.name),
+                unquote(&item.version),
+                unquote(&item.id),
+                item.ppm.to_string(),
+                item.retired.to_string(),
+                unquote(&item.eol)
             ));
         }
 

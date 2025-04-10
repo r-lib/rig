@@ -3,6 +3,10 @@
 * macOS packages now include completion files for elvish and fish shells
   (#221, @TymekDev).
 
+* `rig available --list-distros` output now includes PPM support, whether
+  the a distro is retired, the EOL and in the JSON format also the last
+  R version for that distro.
+
 # rig 0.7.0
 
 * Bash completions work well again (#202).
