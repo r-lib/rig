@@ -24,6 +24,8 @@
 * rig now uses a better way to get the user's home directory, that works
   on systems without an `/etc/passwd` database (#228).
 
+* Windows: rig supports Rtools45 now.
+
 # rig 0.7.0
 
 * Bash completions work well again (#202).
