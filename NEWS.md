@@ -16,6 +16,9 @@
 
 * `rig run` now exits with the exit code of the R process (#261).
 
+* Custom certificates via the `SSL_CERT_FILE` environment variable
+  work again (#227).
+
 # rig 0.7.0
 
 * Bash completions work well again (#202).
