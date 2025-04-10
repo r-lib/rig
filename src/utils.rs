@@ -228,9 +228,14 @@ pub fn get_user() -> Result<User, Box<dyn Error>> {
     }
 
     let ouid = nix::unistd::Uid::from_raw(uid);
-    let user_record = nix::unistd::User::from_uid(ouid)?
-        .ok_or(SimpleError::new("Failed to find user HOME"))?;
-    let dir = user_record.dir.into_os_string();
+    let user_record = nix::unistd::User::from_uid(ouid);
+    let dir;
+    if let Ok(Some(d)) = user_record {
+        dir = d.dir.into_os_string();
+    } else {
+        dir = std::env::home_dir().map(|x| x.into_os_string())
+            .ok_or(SimpleError::new("Failed to find user HOME"))?;
+    }
 
     Ok(User { user, uid, gid, dir, sudo })
 }
