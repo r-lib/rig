@@ -102,7 +102,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     }
 
     if !args.get_flag("without-p3m") {
-        set_ppm(Some(vec![dirname.to_string()]), &platform)?;
+        set_ppm(Some(vec![dirname.to_string()]), &platform, &version)?;
     }
 
     if args.get_flag("without-sysreqs") {
@@ -576,8 +576,8 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn set_ppm(vers: Option<Vec<String>>, platform: &OsVersion) -> Result<(), Box<dyn Error>> {
-    if !platform.ppm {
+fn set_ppm(vers: Option<Vec<String>>, platform: &OsVersion, version: &Rversion) -> Result<(), Box<dyn Error>> {
+    if !version.ppm || version.ppmurl.is_none() {
         info!(
             "P3M (or rig) does not support this distro: {} {} or architecture: {}",
             platform.distro, platform.version, platform.arch
@@ -597,7 +597,8 @@ options(repos = c(P3M="%url%", getOption("repos")))
 options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(getRversion(), R.version$platform, R.version$arch, R.version$os)))
 "#;
 
-    let rcode = rcode.to_string().replace("%url%", &platform.ppm_url);
+    let ppm_url = PPM_URL.to_string() + "/__linux__/" + &version.ppmurl.clone().unwrap() + "/latest";
+    let rcode = rcode.to_string().replace("%url%", &ppm_url);
 
     for ver in vers {
         let ver = check_installed(&ver)?;
@@ -730,11 +731,6 @@ pub fn detect_linux() -> Result<OsVersion, Box<dyn Error>> {
     let os = "linux".to_string();
     let distro = id.to_owned();
     let version = ver.to_owned();
-    let ppm_url = match get_ppm_url(&os, &distro, &version, &arch) {
-        Some(x) => x,
-        None    => "".to_string()
-    };
-    let ppm = ppm_url != "";
 
     Ok(OsVersion {
         rig_platform,
@@ -743,74 +739,7 @@ pub fn detect_linux() -> Result<OsVersion, Box<dyn Error>> {
         os,
         distro,
         version,
-        ppm,
-        ppm_url
     })
-}
-
-fn get_ppm_url(os: &str, distro: &str, version: &str, arch: &str)
-               -> Option<String> {
-
-    if arch != "x86_64" {
-        None
-
-    } else if os == "windows" {
-        Some(PPM_URL.to_string() + "/latest")
-
-    } else if os != "linux" {
-        None
-
-    } else if distro == "centos" || distro == "rhel" ||
-        distro == "almalinux" || distro == "rocky" {
-        if version == "7" {
-            Some(PPM_URL.to_string() + "/__linux__/centos7/latest")
-        } else if version == "8" {
-            Some(PPM_URL.to_string() + "/__linux__/centos8/latest")
-        } else if version == "9" {
-            Some(PPM_URL.to_string() + "/__linux__/rhel8/latest")
-        } else {
-            None
-        }
-    } else if distro == "opensuse" || distro == "sles" {
-        if version == "12.3" {
-            Some(PPM_URL.to_string() + "/__linux__/opensuse42/latest")
-        } else if version == "15" {
-            Some(PPM_URL.to_string() + "/__linux__/opensuse15/latest")
-        } else if version == "15.2" {
-            Some(PPM_URL.to_string() + "/__linux__/opensuse152/latest")
-        } else if version == "15.3" {
-            Some(PPM_URL.to_string() + "/__linux__/opensuse153/latest")
-        } else if version == "15.4" {
-            Some(PPM_URL.to_string() + "/__linux__/opensuse154/latest")
-        } else {
-            None
-        }
-
-    } else if distro == "debian" {
-        if version == "11" {
-            Some(PPM_URL.to_string() + "/__linux__/bullseye/latest")
-        } else if version == "12" {
-            Some(PPM_URL.to_string() + "/__linux__/bookworm/latest")
-        } else {
-            None
-        }
-
-    } else if distro == "ubuntu" {
-        if version == "16.04" {
-            Some(PPM_URL.to_string() + "/__linux__/xenial/latest")
-        } else if version == "18.04" {
-            Some(PPM_URL.to_string() + "/__linux__/bionic/latest")
-        } else if version == "20.04" {
-            Some(PPM_URL.to_string() + "/__linux__/focal/latest")
-        } else if version == "22.04" {
-            Some(PPM_URL.to_string() + "/__linux__/jammy/latest")
-        } else {
-            None
-        }
-
-    } else {
-        None
-    }
 }
 
 pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
@@ -940,15 +869,7 @@ pub fn sc_system_detect_platform(args: &ArgMatches, mainargs: &ArgMatches)
         println!("  \"vendor\": \"{}\",", linux.vendor);
         println!("  \"os\": \"{}\",", linux.os);
         println!("  \"distribution\": \"{}\",", linux.distro);
-        println!("  \"version\": \"{}\",", linux.version);
-        println!(
-            "  \"ppm\": {}{}",
-            linux.ppm,
-            if linux.ppm { "," } else { "" }
-        );
-        if linux.ppm {
-            println!("  \"ppm-url\": \"{}\"", linux.ppm_url);
-        }
+        println!("  \"version\": \"{}\"", linux.version);
         println!("}}");
     } else {
         println!("Detected platform:");
@@ -956,10 +877,6 @@ pub fn sc_system_detect_platform(args: &ArgMatches, mainargs: &ArgMatches)
         println!("OS:           {}", linux.os);
         println!("Distribution: {}", linux.distro);
         println!("Version:      {}", linux.version);
-        println!("PPM support:  {}", linux.ppm);
-        if linux.ppm {
-            println!("PPM URL:      {}", linux.ppm_url);
-        }
     }
     Ok(())
 }

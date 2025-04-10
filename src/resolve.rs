@@ -22,7 +22,9 @@ pub fn get_resolve(args: &ArgMatches) -> Result<Rversion, Box<dyn Error>> {
             version: None,
             url: Some(str.to_string()),
             arch: None,
-        })
+            ppm: false,
+            ppmurl: None
+	})
     } else {
         Ok(resolve_versions(eps, &platform, &arch)?[0].to_owned())
     }
@@ -73,9 +75,19 @@ async fn resolve_version(
 
     let version: String = unquote(&resp["version"].to_string());
     let dlurl = Some(unquote(&resp["url"].to_string()));
+    let ppm = match resp["ppm-binaries"].as_bool() {
+        Some(v) => v,
+        None    => false
+    };
+    let ppmurl = match resp["ppm-binary-url"].as_str() {
+        Some(v) => Some(v.to_string()),
+	None    => None
+    };
     Ok(Rversion {
         version: Some(version),
         url: dlurl,
         arch: Some(arch.to_string()),
+        ppm: ppm,
+        ppmurl: ppmurl
     })
 }

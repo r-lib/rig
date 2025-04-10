@@ -9,6 +9,8 @@ pub struct Rversion {
     pub version: Option<String>,
     pub url: Option<String>,
     pub arch: Option<String>,
+    pub ppm: bool,
+    pub ppmurl: Option<String>,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -63,8 +65,6 @@ pub struct OsVersion {
     pub os: String,
     pub distro: String,
     pub version: String,
-    pub ppm: bool,
-    pub ppm_url: String,
 }
 
 #[derive(PartialEq, Clone, Debug)]
