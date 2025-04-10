@@ -228,7 +228,7 @@ fn patch_for_rtools() -> Result<(), Box<dyn Error>> {
     for ver in vers {
 	let vver = vec![ver.to_owned()];
 	let needed = get_rtools_needed(Some(vver))?;
-	if needed[0] == "42" || needed[0] == "43" {
+	if needed[0] != "35" && needed[0] != "40" {
 	    continue
 	}
 	let rtools4 = needed[0] == "40";
