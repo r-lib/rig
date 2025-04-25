@@ -59,7 +59,7 @@ pub fn read_lines(path: &Path) -> Result<Vec<String>, Box<dyn Error>> {
     Ok(result)
 }
 
-pub fn grep_lines(re: &Regex, lines: &Vec<String>) -> Vec<usize> {
+pub fn grep_lines(re: &Regex, lines: &[String]) -> Vec<usize> {
     lines
         .iter()
         .enumerate()

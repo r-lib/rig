@@ -697,15 +697,7 @@ pub fn detect_linux() -> Result<OsVersion, Box<dyn Error>> {
         };
 
     } else {
-        let re_id = Regex::new("^ID=")?;
-        let wid_line = grep_lines(&re_id, &lines);
-        id = if wid_line.len() == 0 {
-            "".to_string()
-        } else {
-            let id_line = &lines[wid_line[0]];
-            let id = re_id.replace(&id_line, "").to_string();
-            unquote(&id)
-        };
+        id = determine_id_from_os_release_contents(&lines)?;
 
         let re_ver = Regex::new("^VERSION_ID=")?;
         let wver_line = grep_lines(&re_ver, &lines);
@@ -717,10 +709,7 @@ pub fn detect_linux() -> Result<OsVersion, Box<dyn Error>> {
             unquote(&ver)
         };
 
-        // workaround for a node-rversions bug
-        if id == "opensuse-leap" {
-            id = "opensuse".to_string()
-        }
+        id = apply_os_id_workarounds(&id);
         if id == "opensuse" {
             ver = ver.replace(".", "");
         }
@@ -740,6 +729,29 @@ pub fn detect_linux() -> Result<OsVersion, Box<dyn Error>> {
         distro,
         version,
     })
+}
+
+fn determine_id_from_os_release_contents(lines: &[String]) -> Result<String, Box<dyn Error>> {
+    let re_id = Regex::new("^ID=")?;
+    let wid_line = grep_lines(&re_id, lines);
+    let id = if wid_line.is_empty() {
+        "".to_string()
+    } else {
+        let id_line = &lines[wid_line[0]];
+        let id = re_id.replace(id_line, "");
+        unquote(&id)
+    };
+    Ok(id)
+}
+
+/// Any OS-specific ID modifications we need to make
+fn apply_os_id_workarounds(id: &str) -> String {
+    match id {
+        // workaround for a node-rversions bug
+        "opensuse-leap" => "opensuse".to_string(),
+        "pop" => "ubuntu".to_string(),
+        _ => id.to_string(),
+    }
 }
 
 pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
@@ -901,4 +913,57 @@ pub fn set_cert_envvar() {
             }
         }
     };
+}
+
+#[cfg(test)]
+mod test {
+    use crate::linux::{apply_os_id_workarounds, determine_id_from_os_release_contents};
+
+    #[test]
+    fn test_pop_os_id_extracted_from_os_release_contents() {
+        // Truncated but representative contents of /etc/os-release on PopOS
+        let pop_os_release_contents = [
+            r#"NAME="Pop!_OS""#.to_string(),
+            r#"VERSION="22.04 LTS""#.to_string(),
+            r#"ID=pop"#.to_string(),
+            r#"ID_LIKE="ubuntu debian""#.to_string(),
+            r#"PRETTY_NAME="Pop!_OS 22.04 LTS""#.to_string(),
+            r#"VERSION_ID="22.04""#.to_string(),
+        ];
+        let result = determine_id_from_os_release_contents(&pop_os_release_contents).unwrap();
+
+        assert_eq!(result, "pop".to_string())
+    }
+
+    #[test]
+    fn test_empty_release_id_returns_empty_id() {
+        let pop_os_release_contents = [
+            r#"NAME="Some OS""#.to_string(),
+            r#"VERSION="22.04 LTS""#.to_string(),
+            r#"ID="#.to_string(),
+            r#"ID_LIKE="ubuntu debian""#.to_string(),
+            r#"VERSION_ID="22.04""#.to_string(),
+        ];
+        let result = determine_id_from_os_release_contents(&pop_os_release_contents).unwrap();
+
+        assert_eq!(result, "".to_string())
+    }
+
+    #[test]
+    fn test_os_id_workarounds() {
+        let cases = [
+            ("opensuse-leap", "opensuse"),
+            ("pop", "ubuntu"),
+            ("something-else", "something-else"),
+        ];
+
+        for (input, expected_id) in cases {
+            let id = apply_os_id_workarounds(input);
+            assert_eq!(
+                id, expected_id,
+                "Expected '{}' for input '{}'",
+                expected_id, input
+            );
+        }
+    }
 }
