@@ -1,3 +1,8 @@
+# rig, development version
+
+* R installations by rig now do set the default CRAN repositories in
+  RStudio and Positron (#203).
+
 # rig 0.7.1
 
 * macOS packages now include completion files for elvish and fish shells

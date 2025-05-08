@@ -355,7 +355,11 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
 
         append_to_file(
             &profile,
-            vec!["options(repos = c(CRAN = \"https://cloud.r-project.org\"))".to_string()],
+            vec![
+r#"if (Sys.getenv("RSTUDIO") != "1" && Sys.getenv("POSITRON") != "1") {
+  options(repos = c(CRAN = "https://cloud.r-project.org"))
+}"#.to_string()
+            ],
         )?;
     }
 
@@ -375,7 +379,9 @@ fn set_rspm(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     };
 
     let rcode = r#"
-options(repos = c(P3M="https://packagemanager.posit.co/cran/latest", getOption("repos")))
+if (Sys.getenv("RSTUDIO") != "1" && Sys.getenv("POSITRON") != "1") {
+  options(repos = c(P3M="https://packagemanager.posit.co/cran/latest", getOption("repos")))
+}
 "#;
 
     for ver in vers {

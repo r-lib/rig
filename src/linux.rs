@@ -570,7 +570,11 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
 
         append_to_file(
             &profile,
-            vec!["options(repos = c(CRAN = \"https://cloud.r-project.org\"))".to_string()],
+            vec![
+r#"if (Sys.getenv("RSTUDIO") != "1" && Sys.getenv("POSITRON") != "1") {
+  options(repos = c(CRAN = "https://cloud.r-project.org"))
+}"#.to_string()
+                ],
         )?;
     }
     Ok(())
@@ -593,8 +597,10 @@ fn set_ppm(vers: Option<Vec<String>>, platform: &OsVersion, version: &Rversion) 
     };
 
     let rcode = r#"
-options(repos = c(P3M="%url%", getOption("repos")))
-options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(getRversion(), R.version$platform, R.version$arch, R.version$os)))
+if (Sys.getenv("RSTUDIO") != "1" && Sys.getenv("POSITRON") != "1") {
+  options(repos = c(P3M="%url%", getOption("repos")))
+  options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(getRversion(), R.version$platform, R.version$arch, R.version$os)))
+}
 "#;
 
     let ppm_url = PPM_URL.to_string() + "/__linux__/" + &version.ppmurl.clone().unwrap() + "/latest";

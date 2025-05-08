@@ -785,7 +785,10 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
 
         match append_to_file(
             &profile,
-            vec!["options(repos = c(CRAN = \"https://cloud.r-project.org\"))".to_string()],
+            vec![
+r#"if (Sys.getenv("RSTUDIO") != "1" && Sys.getenv("POSITRON") != "1") {
+  options(repos = c(CRAN = "https://cloud.r-project.org"))
+}"#.to_string()],
         ) {
             Ok(_) => {}
             Err(err) => {

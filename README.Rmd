@@ -41,6 +41,7 @@ knitr::opts_chunk$set(
   [See below](#id-macos-menu-bar-app).
 * On arm64 macs select between x86_64 and arm64 versions or R, or install both.
 * Sets up the default CRAN mirror and [PPM](https://packagemanager.posit.co/).
+  (Only if you are not using RStudio or Positron!)
 * Installs [pak](https://pak.r-lib.org) and set up automatic
   [system requirements installation](https://pak.r-lib.org/dev/reference/sysreqs.html).
 * Creates and configures user level package libraries.
