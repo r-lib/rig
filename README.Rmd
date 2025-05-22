@@ -37,7 +37,7 @@ knitr::opts_chunk$set(
   E.g. `R-4.1` or `R-4.1.2` starts R 4.1.x. Quick links are automatically
   added to the user's path.
 * On macOS it comes with a menu bar app that shows the default R
-  version and lets to select it interactively.
+  version and lets you select it interactively.
   [See below](#id-macos-menu-bar-app).
 * On arm64 macs select between x86_64 and arm64 versions or R, or install both.
 * Sets up the default CRAN mirror and [PPM](https://packagemanager.posit.co/).
@@ -355,7 +355,7 @@ from a Terminal. Then you can check the "Launch at login" box in
 <img src="tools/rig-app.png">
 
 Note: if you have a lot of menu bar apps running on an M1/M2 mac, then
-the some of them might be under the camera area. There is no good solution
+some of them might be under the camera area. There is no good solution
 for this currently, other than running less menu bar apps.
 
 ## 📦&nbsp; Docker containers with rig (and multiple R versions) <a id="id-container">
