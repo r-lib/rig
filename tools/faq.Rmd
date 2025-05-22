@@ -14,7 +14,7 @@
 >   not work well if user packages are installed into the system library.
 >   E.g. `R CMD check` is such a tool, and https://github.com/r-lib/revdepcheck
 >   is another.
-> - You can delete an R installation (e.g. with `rig rm`) and then and then
+> - You can delete an R installation (e.g. with `rig rm`) and then
 >   install it again, without losing your R packages.
 >
 </details>
