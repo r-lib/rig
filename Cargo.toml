@@ -3,7 +3,7 @@
 name = "rig"
 version = "0.7.1"
 edition = "2021"
-authors = ["Gábor Csárdi <csardi.gabor@gmail.com"]
+authors = ["Gábor Csárdi <csardi.gabor@gmail.com>"]
 license = "MIT"
 description = "Manage R installations"
 readme = "README.md"
