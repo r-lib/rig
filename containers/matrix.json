@@ -10,7 +10,10 @@
             "multi"
         ],
         "dir": "ubuntu/multi",
-        "args": [],
+        "args": [
+            "DISTRO=ubuntu",
+            "RELEASE=24.04"
+        ],
         "tags": [
             "ghcr.io/r-lib/rig/r:latest",
             "ghcr.io/r-lib/rig/rig:latest",
