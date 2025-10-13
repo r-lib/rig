@@ -120,7 +120,7 @@
         "dir": "ubuntu",
         "args": [
             "DISTRO=ubuntu",
-            "RELEASE=22.04",
+            "RELEASE=20.04",
             "RVERSION=release"
         ],
         "tags": [
