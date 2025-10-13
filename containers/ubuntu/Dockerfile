@@ -1,6 +1,5 @@
-
 ARG DISTRO=ubuntu
-ARG RELEASE=22.04
+ARG RELEASE=mandatory
 FROM ${DISTRO}:${RELEASE}
 
 ARG RVERSION=release
