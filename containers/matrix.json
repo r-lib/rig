@@ -148,45 +148,6 @@
         ]
     },
     {
-        "name": "debian-11-release",
-        "aliases": [
-            "debian-11-release",
-            "debian",
-            "debian-11",
-            "debian-release",
-            "release"
-        ],
-        "dir": "ubuntu",
-        "args": [
-            "DISTRO=debian",
-            "RELEASE=11",
-            "RVERSION=release"
-        ],
-        "tags": [
-            "ghcr.io/r-lib/rig/debian-11-release:latest",
-            "ghcr.io/r-lib/rig/debian-11:latest"
-        ]
-    },
-    {
-        "name": "debian-11-devel",
-        "aliases": [
-            "debian-11-devel",
-            "debian",
-            "debian-11",
-            "debian-devel",
-            "devel"
-        ],
-        "dir": "ubuntu",
-        "args": [
-            "DISTRO=debian",
-            "RELEASE=11",
-            "RVERSION=devel"
-        ],
-        "tags": [
-            "ghcr.io/r-lib/rig/debian-11-devel:latest"
-        ]
-    },
-    {
         "name": "debian-12-release",
         "aliases": [
             "debian-12-release",
@@ -232,6 +193,49 @@
         ]
     },
     {
+        "name": "fedora-42-release",
+        "aliases": [
+            "fedora-42-release",
+            "fedora",
+            "fedora-42",
+            "fedora-release",
+            "release"
+        ],
+        "dir": "fedora",
+        "args": [
+            "RELEASE=42",
+            "RVERSION=release"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/fedora-42-release:latest",
+            "ghcr.io/r-lib/rig/fedora-42:latest",
+            "ghcr.io/r-lib/rig/fedora-latest-release:latest",
+            "ghcr.io/r-lib/rig/fedora-latest:latest",
+            "ghcr.io/r-lib/rig/fedora-release:latest",
+            "ghcr.io/r-lib/rig/fedora:latest"
+        ]
+    },
+    {
+        "name": "fedora-42-devel",
+        "aliases": [
+            "fedora-42-devel",
+            "fedora",
+            "fedora-42",
+            "fedora-devel",
+            "devel"
+        ],
+        "dir": "fedora",
+        "args": [
+            "RELEASE=42",
+            "RVERSION=devel"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/fedora-42-devel:latest",
+            "ghcr.io/r-lib/rig/fedora-latest-devel:latest",
+            "ghcr.io/r-lib/rig/fedora-devel:latest"
+        ]
+    },
+    {
         "name": "fedora-41-release",
         "aliases": [
             "fedora-41-release",
@@ -247,11 +251,7 @@
         ],
         "tags": [
             "ghcr.io/r-lib/rig/fedora-41-release:latest",
-            "ghcr.io/r-lib/rig/fedora-41:latest",
-            "ghcr.io/r-lib/rig/fedora-latest-release:latest",
-            "ghcr.io/r-lib/rig/fedora-latest:latest",
-            "ghcr.io/r-lib/rig/fedora-release:latest",
-            "ghcr.io/r-lib/rig/fedora:latest"
+            "ghcr.io/r-lib/rig/fedora-41:latest"
         ]
     },
     {
@@ -269,46 +269,7 @@
             "RVERSION=devel"
         ],
         "tags": [
-            "ghcr.io/r-lib/rig/fedora-41-devel:latest",
-            "ghcr.io/r-lib/rig/fedora-latest-devel:latest",
-            "ghcr.io/r-lib/rig/fedora-devel:latest"
-        ]
-    },
-    {
-        "name": "fedora-40-release",
-        "aliases": [
-            "fedora-40-release",
-            "fedora",
-            "fedora-40",
-            "fedora-release",
-            "release"
-        ],
-        "dir": "fedora",
-        "args": [
-            "RELEASE=40",
-            "RVERSION=release"
-        ],
-        "tags": [
-            "ghcr.io/r-lib/rig/fedora-40-release:latest",
-            "ghcr.io/r-lib/rig/fedora-40:latest"
-        ]
-    },
-    {
-        "name": "fedora-40-devel",
-        "aliases": [
-            "fedora-40-devel",
-            "fedora",
-            "fedora-40",
-            "fedora-devel",
-            "devel"
-        ],
-        "dir": "fedora",
-        "args": [
-            "RELEASE=40",
-            "RVERSION=devel"
-        ],
-        "tags": [
-            "ghcr.io/r-lib/rig/fedora-40-devel:latest"
+            "ghcr.io/r-lib/rig/fedora-41-devel:latest"
         ]
     },
     {
