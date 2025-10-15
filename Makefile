@@ -92,18 +92,21 @@ linux-in-docker:
 		-e LOCAL_UID=`id -u` -e LOCAL_GID=`id -g` \
 		rlib/rig-builder:latest make linux
 
-VARIANTS = ubuntu-20.04 ubuntu-22.04 ubuntu-24.04 debian-11 debian-12 rockylinux-8 rockylinux-9 opensuse/leap-15.6 fedora-40 fedora-41 fedora-42 almalinux-8 almalinux-9 redhat/ubi8 redhat/ubi9
+VARIANTS = ubuntu-20.04 ubuntu-22.04 ubuntu-24.04 debian-12 rockylinux/rockylinux-8 rockylinux/rockylinux-9 rockylinux/rockylinux-10 opensuse/leap-15.6 fedora-41 fedora-42 almalinux-8 almalinux-9 almalinux-10 redhat/ubi8 redhat/ubi9 redhat/ubi10
 print-linux-variants:
 	@echo $(VARIANTS)
 print-linux-variants-json:
 	@echo $(VARIANTS) | sed 's/ /","/g' | sed 's/^/["/' | sed 's/$$/"]/'
 
 ENVS = -e REDHAT_ORG_RHEL7=$(REDHAT_ORG) \
-			 -e REDHAT_ORG_RHEL8=$(REDHAT_ORG) \
-			 -e REDHAT_ORG_RHEL9=$(REDHAT_ORG) \
-			 -e REDHAT_ACTIVATION_KEY_RHEL7=$(REDHAT_ACTIVATION_KEY_RHEL7) \
-			 -e REDHAT_ACTIVATION_KEY_RHEL8=$(REDHAT_ACTIVATION_KEY_RHEL8) \
-			 -e REDHAT_ACTIVATION_KEY_RHEL9=$(REDHAT_ACTIVATION_KEY_RHEL9)
+       -e REDHAT_ORG_RHEL8=$(REDHAT_ORG) \
+       -e REDHAT_ORG_RHEL9=$(REDHAT_ORG) \
+       -e REDHAT_ORG_RHEL10=$(REDHAT_ORG) \
+       -e REDHAT_ACTIVATION_KEY_RHEL7=$(REDHAT_ACTIVATION_KEY_RHEL7) \
+       -e REDHAT_ACTIVATION_KEY_RHEL8=$(REDHAT_ACTIVATION_KEY_RHEL8) \
+       -e REDHAT_ACTIVATION_KEY_RHEL9=$(REDHAT_ACTIVATION_KEY_RHEL9) \
+       -e REDHAT_ACTIVATION_KEY_RHEL10=$(REDHAT_ACTIVATION_KEY_RHEL10)
+
 define GEN_TESTS
 linux-test-$(variant):
 	mkdir -p tests/results
