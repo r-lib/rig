@@ -261,7 +261,7 @@ jobs:
 
   windows:
     if: ${{ github.event.inputs.inpwindows == '' || github.event.inputs.inpwindows == 'yes' }}
-    runs-on: windows-latest
+    runs-on: windows-2022
     name: Windows
     env:
       RUST_BACKTRACE: 1
