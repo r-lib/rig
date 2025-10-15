@@ -131,6 +131,7 @@ jobs:
         REDHAT_ACTIVATION_KEY_RHEL7: ${{ secrets.REDHAT_ACTIVATION_KEY_RHEL7 }}
         REDHAT_ACTIVATION_KEY_RHEL8: ${{ secrets.REDHAT_ACTIVATION_KEY_RHEL8 }}
         REDHAT_ACTIVATION_KEY_RHEL9: ${{ secrets.REDHAT_ACTIVATION_KEY_RHEL9 }}
+        REDHAT_ACTIVATION_KEY_RHEL10: ${{ secrets.REDHAT_ACTIVATION_KEY_RHEL10 }}
 
   linux-build-aarch64:
     if: ${{ github.event.inputs.inplinuxaarch64 == '' || github.event.inputs.inplinuxaarch64 == 'yes' }}
@@ -215,6 +216,7 @@ jobs:
         REDHAT_ACTIVATION_KEY_RHEL7: ${{ secrets.REDHAT_ACTIVATION_KEY_RHEL7 }}
         REDHAT_ACTIVATION_KEY_RHEL8: ${{ secrets.REDHAT_ACTIVATION_KEY_RHEL8 }}
         REDHAT_ACTIVATION_KEY_RHEL9: ${{ secrets.REDHAT_ACTIVATION_KEY_RHEL9 }}
+        REDHAT_ACTIVATION_KEY_RHEL10: ${{ secrets.REDHAT_ACTIVATION_KEY_RHEL10 }}
 
   macos:
     if: ${{ github.event.inputs.inpmacos == '' || github.event.inputs.inpmacos == 'yes' }}
