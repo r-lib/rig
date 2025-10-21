@@ -562,10 +562,9 @@ fn re_alias() -> Regex {
 }
 
 pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
-    debug!("Finding existing aliases");
-
     let mut result: Vec<Alias> = vec![];
     let bin = Path::new(RIG_LINKS_DIR);
+    debug!("Finding existing aliases in {}", bin.display());
 
     if !bin.exists() {
 	return Ok(result);
@@ -586,6 +585,7 @@ pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
             Some(x) => x,
             None => continue,
         };
+	debug!("Alias candidate: {}", fnamestr);
         if re.is_match(&fnamestr) {
 	    trace!("Checking {}", path.display());
 	    let rver = find_r_version_in_link(&path)?;
@@ -610,7 +610,7 @@ fn find_r_version_in_link(path: &PathBuf) -> Result<String, Box<dyn Error>> {
 	if s == "R-devel" {
 	    return Ok("devel".to_string());
 	}
-	if s.starts_with("R-") {
+	if s != "R-aarch64" && s.starts_with("R-") {
 	    return Ok(s[2..].to_string());
 	}
     }
