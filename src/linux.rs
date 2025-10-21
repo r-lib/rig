@@ -52,7 +52,7 @@ macro_rules! osvec {
 
 
 pub fn R_ROOT() -> String {
-    R_ROOT_
+    R_ROOT_.to_string()
 }
 
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
@@ -356,7 +356,8 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             info!("{} package is not installed", pkgname);
         }
 
-        let dir = Path::new(R_ROOT());
+	let rroot = R_ROOT();
+        let dir = Path::new(&rroot);
         let dir = dir.join(&ver);
         if dir.exists() {
             info!("Removing {}", dir.display());
@@ -378,7 +379,8 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     escalate("making R-* quick links")?;
     let vers = sc_get_list()?;
-    let base = Path::new(R_ROOT());
+    let rroot = R_ROOT();
+    let base = Path::new(&rroot);
 
     // Create new links
     for ver in vers {
@@ -497,7 +499,7 @@ fn version_from_link(pb: PathBuf) -> Option<String> {
 
 pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
     let mut vers = Vec::new();
-    if !Path::new(R_ROOT()).exists() {
+    if !Path::new(&R_ROOT()).exists() {
         return Ok(vers);
     }
 
@@ -541,7 +543,7 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
     std::fs::remove_file(R_CUR).ok();
 
     // Add current link
-    let path = Path::new(R_ROOT()).join(ver);
+    let path = Path::new(&R_ROOT()).join(ver);
     trace!("Adding symlink at {}", R_CUR);
     std::os::unix::fs::symlink(&path, R_CUR)?;
 
@@ -582,7 +584,7 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
 
     for ver in vers {
         let ver = check_installed(&ver)?;
-        let path = Path::new(R_ROOT()).join(ver.as_str());
+        let path = Path::new(&R_ROOT()).join(ver.as_str());
         let profile = path.join("lib/R/library/base/R/Rprofile".to_string());
         if !profile.exists() {
             continue;
@@ -628,7 +630,7 @@ if (Sys.getenv("RSTUDIO") != "1" && Sys.getenv("POSITRON") != "1") {
 
     for ver in vers {
         let ver = check_installed(&ver)?;
-        let path = Path::new(R_ROOT()).join(ver.as_str());
+        let path = Path::new(&R_ROOT()).join(ver.as_str());
         let profile = path.join("lib/R/library/base/R/Rprofile".to_string());
         if !profile.exists() {
             continue;
@@ -653,7 +655,7 @@ if (Sys.getenv("PKG_SYSREQS") == "") Sys.setenv(PKG_SYSREQS = "false")
 
     for ver in vers {
         let ver = check_installed(&ver)?;
-        let path = Path::new(R_ROOT()).join(ver.as_str());
+        let path = Path::new(&R_ROOT()).join(ver.as_str());
         let profile = path.join("lib/R/library/base/R/Rprofile".to_string());
         if !profile.exists() {
             continue;
@@ -822,19 +824,19 @@ pub fn sc_rstudio_(version: Option<&str>, project: Option<&str>, arg: Option<&Os
 
 pub fn get_r_binary(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
     debug!("Finding R binary for R {}", rver);
-    let bin = Path::new(R_ROOT()).join(rver).join("bin/R");
+    let bin = Path::new(&R_ROOT()).join(rver).join("bin/R");
     debug!("R {} binary is at {}", rver, bin.display());
     Ok(bin)
 }
 
 #[allow(dead_code)]
 pub fn get_system_renviron(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
-    let renviron = Path::new(R_ROOT()).join(rver).join("lib/R/etc/Renviron");
+    let renviron = Path::new(&R_ROOT()).join(rver).join("lib/R/etc/Renviron");
     Ok(renviron)
 }
 
 pub fn get_system_profile(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
-    let profile = Path::new(R_ROOT())
+    let profile = Path::new(&R_ROOT())
         .join(rver)
         .join("lib/R/library/base/R/Rprofile");
     Ok(profile)
@@ -858,7 +860,7 @@ fn check_usr_bin_sed(rver: &str) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    let makeconf = Path::new(R_ROOT())
+    let makeconf = Path::new(&R_ROOT())
         .join(rver)
         .join("lib/R/etc/Makeconf");
     let lines: Vec<String> = match read_lines(&makeconf) {
