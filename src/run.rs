@@ -86,7 +86,7 @@ pub fn r(version: &str, command: &str)
 fn r_sudo(version: &str, command: &str, user: &User)
           -> Result<(), Box<dyn Error>> {
 
-    let rbin = R_ROOT.to_string() + "/" + &R_BINPATH.replace("{}", version);
+    let rbin = R_ROOT().to_string() + "/" + &R_BINPATH.replace("{}", version);
     let escaped_command =
         rbin + " --vanilla -s -e \"" +
         &command.replace("\"", "\\\"").replace("$", "\\$") +
@@ -105,7 +105,7 @@ fn r_sudo(version: &str, command: &str, user: &User)
 fn r_sudo(version: &str, command: &str, user: &User)
           -> Result<(), Box<dyn Error>> {
 
-    let rbin = R_ROOT.to_string() + "/" + &R_BINPATH.replace("{}", version);
+    let rbin = R_ROOT().to_string() + "/" + &R_BINPATH.replace("{}", version);
     let username = user.user.to_string();
     let mut args:Vec<OsString> = vec![username.into()];
 
@@ -142,7 +142,7 @@ fn r_sudo(version: &str, command: &str, user: &User)
 fn r_nosudo(version: &str, command: &str)
             -> Result<(), Box<dyn Error>> {
 
-    let rbin = R_ROOT.to_string() + "/" + &R_BINPATH.replace("{}", version);
+    let rbin = R_ROOT().to_string() + "/" + &R_BINPATH.replace("{}", version);
 
     run(
         rbin.into(),

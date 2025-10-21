@@ -18,7 +18,7 @@ use semver;
 use simple_error::{bail, SimpleError};
 use simplelog::*;
 use tabular::*;
-use whoami::{hostname, username};
+use whoami::{hostname, username, arch};
 use winreg::enums::*;
 use winreg::RegKey;
 
@@ -31,7 +31,13 @@ use crate::rversion::*;
 use crate::run::*;
 use crate::utils::*;
 
-pub const R_ROOT: &str = "C:\\Program Files\\R";
+// R_ROOT(): returns the directory where the R versions are installed
+// RIG_LINKS_DIR: directory where the quick links are created
+// R_VERSION_DIR: name of the directory of a single R version inside R_ROOT()
+// R_SYSLIBPATH: path to the system library of an R version from R_ROOT()
+// R_BINPATH: path of the R executable from R_ROOT()
+
+pub const RIG_LINKS_DIR: &str = "C:\\Program Files\\R\\bin";
 pub const R_VERSIONDIR: &str = "R-{}";
 pub const R_SYSLIBPATH: &str = "R-{}\\library";
 pub const R_BINPATH: &str = "R-{}\\bin\\R.exe";
@@ -43,6 +49,16 @@ macro_rules! osvec {
         // calling String::from on each:
         vec![$(OsString::from($str),)*] as Vec<OsString>
     });
+}
+
+pub fn R_ROOT() -> String {
+    const R_ROOT_: &str = "C:\\Program Files\\R";
+    const R_X86_ROOT_: &str = "C:\\Program Files (x86)\\R";
+    const R_AARCH64_ROOT_: &str = "C:\\Program Files\\R-aarch64";
+    match arch() {
+	whoami::Arch::Arm64 => R_AARCH64_ROOT_.to_string(),
+	_ => R_ROOT_.to_string()
+    }
 }
 
 #[warn(unused_variables)]
@@ -232,7 +248,8 @@ fn add_rtools(version: String) -> Result<(), Box<dyn Error>> {
 }
 
 fn patch_for_rtools() -> Result<(), Box<dyn Error>> {
-    let base = Path::new(R_ROOT);
+    let rroot = R_ROOT();
+    let base = Path::new(&rroot);
     let vers = sc_get_list()?;
 
     for ver in vers {
@@ -288,7 +305,8 @@ fn get_rtools_needed(version: Option<Vec<String>>) -> Result<Vec<String>, Box<dy
 	None => sc_get_list()?,
 	Some(x) => x
     };
-    let base = Path::new(R_ROOT);
+    let rroot = R_ROOT();
+    let base = Path::new(&rroot);
     let mut res: Vec<String> = vec![];
 
     for ver in vers {
@@ -347,7 +365,7 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
 
     for ver in vers {
         let ver = check_installed(&ver)?;
-        let path = Path::new(R_ROOT).join("R-".to_string() + ver.as_str());
+        let path = Path::new(&R_ROOT()).join("R-".to_string() + ver.as_str());
         let profile = path.join("library/base/R/Rprofile".to_string());
         if !profile.exists() {
             continue;
@@ -386,7 +404,7 @@ if (Sys.getenv("RSTUDIO") != "1" && Sys.getenv("POSITRON") != "1") {
 
     for ver in vers {
         let ver = check_installed(&ver)?;
-        let path = Path::new(R_ROOT).join("R-".to_string() + ver.as_str());
+        let path = Path::new(&R_ROOT()).join("R-".to_string() + ver.as_str());
         let profile = path.join("library/base/R/Rprofile".to_string());
         if !profile.exists() {
             continue;
@@ -427,7 +445,8 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         }
 
         let ver = "R-".to_string() + &ver;
-        let dir = Path::new(R_ROOT);
+	let rroot = R_ROOT();
+        let dir = Path::new(&rroot);
         let dir = dir.join(ver);
         info!("Removing {}", dir.display());
         remove_dir_all(&dir)?;
@@ -467,23 +486,24 @@ fn rm_rtools(ver: String) -> Result<(), Box<dyn Error>> {
 pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     escalate("making R-* quick shortcuts")?;
     let vers = sc_get_list()?;
-    let base = Path::new(R_ROOT);
-    let bin = base.join("bin");
+    let linkdir = Path::new(RIG_LINKS_DIR);
     let mut new_links: Vec<String> = vec![
         "RS.bat".to_string(),
         "R.bat".to_string(),
         "Rscript.bat".to_string(),
     ];
+    let rroot = R_ROOT();
+    let base = Path::new(&rroot);
 
-    std::fs::create_dir_all(bin)?;
+    std::fs::create_dir_all(linkdir)?;
 
     for ver in vers {
         let filename = "R-".to_string() + &ver + ".bat";
-        let linkfile = base.join("bin").join(&filename);
+        let linkfile = linkdir.join(&filename);
         new_links.push(filename);
         let target = base.join("R-".to_string() + &ver);
 
-        let cnt = "@\"C:\\Program Files\\R\\R-".to_string() + &ver + "\\bin\\R\" %*\n";
+        let cnt = "@\"".to_string() + &rroot + "\\R-" + &ver + "\\bin\\R\" %*\n";
         let op;
         if linkfile.exists() {
             op = "Updating";
@@ -501,7 +521,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
 
     // Delete the ones we don't need
     let re_als = re_alias();
-    let old_links = std::fs::read_dir(base.join("bin"))?;
+    let old_links = std::fs::read_dir(linkdir)?;
     for path in old_links {
         let path = path?;
         match path.file_name().into_string() {
@@ -545,7 +565,7 @@ pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
     debug!("Finding existing aliases");
 
     let mut result: Vec<Alias> = vec![];
-    let bin = Path::new(R_ROOT).join("bin");
+    let bin = Path::new(RIG_LINKS_DIR);
 
     if !bin.exists() {
 	return Ok(result);
@@ -642,11 +662,11 @@ pub fn sc_system_detect_platform(_args: &ArgMatches, _mainargs: &ArgMatches)
 
 pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
     let mut vers = Vec::new();
-    if !Path::new(R_ROOT).exists() {
+    if !Path::new(&R_ROOT()).exists() {
         return Ok(vers);
     }
 
-    let paths = std::fs::read_dir(R_ROOT)?;
+    let paths = std::fs::read_dir(&R_ROOT())?;
 
     for de in paths {
         let path = de?.path();
@@ -673,26 +693,27 @@ pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
 pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
     let ver = check_installed(&ver.to_string())?;
     escalate("setting the default R version")?;
-    let base = Path::new(R_ROOT);
-    let bin = base.join("bin");
-    std::fs::create_dir_all(&bin)?;
+    let rroot = R_ROOT();
+    let base = Path::new(&rroot);
+    let linkdir = Path::new(RIG_LINKS_DIR);
+    std::fs::create_dir_all(&linkdir)?;
 
-    let linkfile = bin.join("R.bat");
+    let linkfile = linkdir.join("R.bat");
     let cnt =
-        "::".to_string() + &ver + "\n" + "@\"C:\\Program Files\\R\\R-" + &ver + "\\bin\\R\" %*\n";
+        "::".to_string() + &ver + "\n" + "@\"" + &rroot + "\\R-" + &ver + "\\bin\\R\" %*\n";
     let mut file = File::create(linkfile)?;
     file.write_all(cnt.as_bytes())?;
 
-    let linkfile2 = base.join("bin").join("RS.bat");
+    let linkfile2 = linkdir.join("RS.bat");
     let mut file2 = File::create(linkfile2)?;
     file2.write_all(cnt.as_bytes())?;
 
-    let linkfile3 = base.join("bin").join("Rscript.bat");
+    let linkfile3 = linkdir.join("Rscript.bat");
     let mut file3 = File::create(linkfile3)?;
     let cnt3 = "::".to_string()
         + &ver
         + "\n"
-        + "@\"C:\\Program Files\\R\\R-"
+        + "@\"" + &rroot + "\\R-"
         + &ver
         + "\\bin\\Rscript\" %*\n";
     file3.write_all(cnt3.as_bytes())?;
@@ -704,10 +725,10 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
 
 pub fn unset_default() -> Result<(), Box<dyn Error>> {
     escalate("unsetting the default R version")?;
-
+    
     fn try_rm(x: &str) {
-	let bin = Path::new(R_ROOT).join("bin");
-	let f = bin.join(x);
+	let linkdir = Path::new(RIG_LINKS_DIR);
+	let f = linkdir.join(x);
 	if f.exists() {
 	    match std::fs::remove_file(&f) {
 		Err(e) => warn!("Failed to remove {}: {}", f.display(), e.to_string()),
@@ -726,8 +747,9 @@ pub fn unset_default() -> Result<(), Box<dyn Error>> {
 }
 
 pub fn sc_get_default() -> Result<Option<String>, Box<dyn Error>> {
-    let base = Path::new(R_ROOT);
-    let linkfile = base.join("bin").join("R.bat");
+    let rroot = R_ROOT();
+    let linkdir = Path::new(RIG_LINKS_DIR);
+    let linkfile = linkdir.join("R.bat");
     if !linkfile.exists() {
         return Ok(None);
     }
@@ -841,8 +863,9 @@ pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
 }
 
 fn maybe_update_registry_default() -> Result<(), Box<dyn Error>> {
-    let base = Path::new(R_ROOT);
-    let linkfile = base.join("bin").join("R.bat");
+    let rroot = R_ROOT();
+    let linkdir = Path::new(RIG_LINKS_DIR);
+    let linkfile = linkdir.join("R.bat");
     if linkfile.exists() {
         update_registry_default()?;
     }
@@ -851,7 +874,7 @@ fn maybe_update_registry_default() -> Result<(), Box<dyn Error>> {
 
 fn update_registry_default1(key: &RegKey, ver: &String) -> Result<(), Box<dyn Error>> {
     key.set_value("Current Version", ver)?;
-    let inst = R_ROOT.to_string() + "\\R-" + ver;
+    let inst = R_ROOT().to_string() + "\\R-" + ver;
     key.set_value("InstallPath", &inst)?;
     Ok(())
 }
@@ -1189,6 +1212,7 @@ pub fn sc_rstudio_(version: Option<&str>,
     if let Some(ref v) = version {
 	let ver = v.to_string();
 	let ver = check_installed(&ver)?;
+	// TODO: this does not work aarch64 windows
 	let bin = get_r_binary_x64(&ver)?;
 	info!("Setting RSTUDIO_WHICH_R=\"{}\"", bin.display());
 	std::env::set_var("RSTUDIO_WHICH_R", bin);
@@ -1214,14 +1238,15 @@ pub fn sc_rstudio_(version: Option<&str>,
 }
 
 pub fn get_system_profile(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
-    let path = Path::new(R_ROOT).join("R-".to_string() + rver);
+    let path = Path::new(&R_ROOT()).join("R-".to_string() + rver);
     let profile = path.join("library/base/R/Rprofile");
     Ok(profile)
 }
 
 pub fn get_r_binary(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
     debug!("Finding R {} binary", rver);
-    let base = Path::new(R_ROOT);
+    let rroot = R_ROOT();
+    let base = Path::new(&rroot);
     let bin = base
         .join("R-".to_string() + &rver)
         .join("bin")
@@ -1232,7 +1257,8 @@ pub fn get_r_binary(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
 
 pub fn get_r_binary_x64(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
     debug!("Finding R {} binary", rver);
-    let base = Path::new(R_ROOT);
+    let rroot = R_ROOT();
+    let base = Path::new(&rroot);
     let bin = base
         .join("R-".to_string() + &rver)
         .join("bin")

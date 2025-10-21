@@ -192,6 +192,19 @@ pub fn rig_app() -> Command {
         );
     }
 
+    #[cfg(target_os = "windows")]
+    {
+        cmd_add = cmd_add.arg(
+            Arg::new("arch")
+                .help(HELP_ARCH)
+                .short('a')
+                .long("arch")
+                .required(false)
+                .default_value(&_default_arch)
+                .value_parser(["aarch64", "x86_64"]),
+        );
+    }
+    
     let cmd_rm = Command::new("rm")
         .about("Remove R versions [aliases: del, remove, delete]")
         .long_about(HELP_RM)

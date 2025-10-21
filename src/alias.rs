@@ -75,7 +75,7 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
 
     info!("Adding R-{} alias to R {}", alias, ver);
 
-    let base = Path::new(R_ROOT);
+    let base = Path::new(&R_ROOT());
     let target = base.join(ver).join("Resources/bin/R");
     let linkfile = Path::new("/usr/local/bin/").join("R-".to_string() + alias);
 
@@ -123,16 +123,16 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
 pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     let msg = "Adding R-".to_string() + alias + " alias";
     escalate(&msg)?;
-    let base = Path::new(R_ROOT);
-    let bin = base.join("bin");
+    let rroot = R_ROOT();    
+    let linkdir = Path::new(RIG_LINKS_DIR);
 
     // should exist at this point, but make sure
-    std::fs::create_dir_all(&bin)?;
+    std::fs::create_dir_all(&linkdir)?;
 
     let filename = "R-".to_string() + alias + ".bat";
-    let linkfile = bin.join(&filename);
+    let linkfile = linkdir.join(&filename);
 
-    let cnt = "@\"C:\\Program Files\\R\\R-".to_string() + &ver + "\\bin\\R\" %*\n";
+    let cnt = "@\"".to_string() + &rroot + "\\R-" + &ver + "\\bin\\R\" %*\n";
     let op;
     if linkfile.exists() {
         op = "Updating";
@@ -157,7 +157,7 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
 
     info!("Adding R-{} alias to R {}", alias, ver);
 
-    let base = Path::new(R_ROOT);
+    let base = Path::new(&R_ROOT());
     let target = base.join(ver).join("bin/R");
     let linkfile = Path::new("/usr/local/bin/").join("R-".to_string() + alias);
 
