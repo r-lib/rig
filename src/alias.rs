@@ -75,7 +75,8 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
 
     info!("Adding R-{} alias to R {}", alias, ver);
 
-    let base = Path::new(&R_ROOT());
+    let rroot = R_ROOT();
+    let base = Path::new(&rroot);
     let target = base.join(ver).join("Resources/bin/R");
     let linkfile = Path::new("/usr/local/bin/").join("R-".to_string() + alias);
 
@@ -123,7 +124,7 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
 pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     let msg = "Adding R-".to_string() + alias + " alias";
     escalate(&msg)?;
-    let rroot = R_ROOT();    
+    let rroot = R_ROOT();
     let linkdir = Path::new(RIG_LINKS_DIR);
 
     // should exist at this point, but make sure
