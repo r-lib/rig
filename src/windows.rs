@@ -27,6 +27,7 @@ use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
 use crate::library::*;
+use crate::resolve::*;
 use crate::rversion::*;
 use crate::run::*;
 use crate::utils::*;
@@ -58,6 +59,13 @@ pub fn R_ROOT() -> String {
     match arch() {
 	whoami::Arch::Arm64 => R_AARCH64_ROOT_.to_string(),
 	_ => R_ROOT_.to_string()
+    }
+}
+
+fn get_arch() -> String {
+    match arch() {
+	whoami::Arch::Arm64 => "aarch64".to_string(),
+	_ => "x86_64".to_string()
     }
 }
 
@@ -164,6 +172,8 @@ fn add_rtools(version: String) -> Result<(), Box<dyn Error>> {
     } else {
         vers = vec![version.replace("rtools", "")];
     }
+    let myarch = arch();
+    let suffix = if myarch == whoami::Arch::Arm64 { "-aarch64" } else { "" };
     let client = &reqwest::Client::new();
     for ver in vers {
 	let rtools45 = &ver[0..2] == "45";
@@ -174,7 +184,8 @@ fn add_rtools(version: String) -> Result<(), Box<dyn Error>> {
         let filename: String;
         let url: String;
 	if rtools45 {
-	    let rt45=Path::new("C:\\Rtools45");
+	    let rt45path = "C:\\Rtools45".to_owned() + suffix;
+	    let rt45=Path::new(&rt45path);
 	    if rt45.exists() {
 		info!("Rtools45 is already installed");
 		continue;
@@ -308,6 +319,10 @@ fn get_rtools_needed(version: Option<Vec<String>>) -> Result<Vec<String>, Box<dy
     let rroot = R_ROOT();
     let base = Path::new(&rroot);
     let mut res: Vec<String> = vec![];
+    let rtvers = match get_available_rtools_versions(&get_arch()).as_array() {
+	Some(x) => x,
+	None => bail!("Cannot parse list of Rtools versions")
+    };
 
     for ver in vers {
         let r = base.join("R-".to_string() + &ver).join("bin").join("R.exe");
@@ -725,7 +740,7 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
 
 pub fn unset_default() -> Result<(), Box<dyn Error>> {
     escalate("unsetting the default R version")?;
-    
+
     fn try_rm(x: &str) {
 	let linkdir = Path::new(RIG_LINKS_DIR);
 	let f = linkdir.join(x);

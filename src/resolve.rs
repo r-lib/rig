@@ -3,13 +3,18 @@ use std::error::Error;
 
 use clap::ArgMatches;
 use simple_error::bail;
+use simplelog::*;
+use std::sync::{LazyLock, RwLock};
+use serde_json::{json, Map, Value};
 
 use crate::common::*;
 use crate::download::*;
 use crate::rversion::*;
 use crate::utils::*;
+use crate::hardcoded::*;
 
 const API_URI: &str = "https://api.r-hub.io/rversions/resolve/";
+const API_ROOT: &str = "https://api.r-hub.io/rversions/";
 
 pub fn get_resolve(args: &ArgMatches) -> Result<Rversion, Box<dyn Error>> {
     let platform = get_platform(args)?;
@@ -90,4 +95,79 @@ async fn resolve_version(
         ppm: ppm,
         ppmurl: ppmurl
     })
+}
+
+static API_CACHE: LazyLock<RwLock<Map<String, Value>>> = LazyLock::new(|| {
+    RwLock::new(Map::new())
+});
+
+fn cache_set_value(key: &str, value: Value) {
+    let mut map = API_CACHE.write().unwrap();
+    map.insert(key.to_string(), value);
+}
+
+fn cache_get_value(key: &str) -> Option<Value> {
+    let map = API_CACHE.read().unwrap();
+    map.get(key).cloned()
+}
+
+pub fn get_available_rtools_versions(arch: &str) -> serde_json::Value {
+    let cache_key = "rtools".to_string() + arch;
+    let value = match cache_get_value(&cache_key) {
+	Some(cached) => cached,
+	None => {
+	    let url = API_ROOT.to_string() + "/rtools-versions/" + arch;
+	    let val = match download_json_sync(vec![url]) {
+		Ok(dl) => {
+		    cache_set_value(&cache_key, dl[0].clone());
+		    dl[0].clone()
+		},
+		Err(err) => {
+		    warn!("Download error: {}.", err);
+		    warn!("Failed to download Rtools version data, will use \
+			   hardcoded data instead.");
+		    if arch == "aarch64" {
+			HC_RTOOLS_AARCH64.clone()
+		    } else {
+			HC_RTOOLS.clone()
+		    }
+		}
+	    };
+	    val
+	}
+    };
+
+    value
+}
+
+pub fn get_rtools_version(version: &str, arch: &str)
+			  -> Result<RtoolsVersion, Box<dyn Error>> {
+
+    let value = get_available_rtools_versions(arch);
+
+    let msg = "Cannot parse response from the R version API to learn about \
+	       Rtools versions";
+
+    let value = match value.as_array() {
+	Some(x) => x,
+	None => bail!(msg)
+    };
+
+
+    for ver in value {
+	let versionx: String = ver["version"].as_str().ok_or(msg)?.to_string();
+	if &versionx == version {
+	    let url: String = ver["url"].as_str().ok_or(msg)?.to_string();
+	    let first: String = ver["first"].as_str().ok_or(msg)?.to_string();
+	    let last: String = ver["last"].as_str().ok_or(msg)?.to_string();
+	    return Ok(RtoolsVersion {
+		version: versionx,
+		url,
+		first,
+		last
+	    });
+	}
+    }
+
+    bail!("Cannot find Rtools version {} for architecture {}", version, arch);
 }

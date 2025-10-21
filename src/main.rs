@@ -33,6 +33,7 @@ mod library;
 mod common;
 mod config;
 mod download;
+mod hardcoded;
 mod renv;
 mod resolve;
 mod rversion;
