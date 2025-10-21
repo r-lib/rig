@@ -63,6 +63,7 @@ clap_complete = "4.5.1"
 lazy_static = "1.4.0"
 simplelog = { version = "^0.12.0", features = ["paris"] }
 static_vcruntime = "2.0"
+whoami = "1.4.1"
 
 [dev-dependencies]
 assert_cmd = "2.0.8"

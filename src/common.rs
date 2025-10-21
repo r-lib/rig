@@ -387,34 +387,15 @@ pub fn get_arch(platform: &str, args: &ArgMatches) -> String {
         Err(_) => None
     };
 
-    // For Windows, the default is x86_64
     let arch = match arch {
-        Some(x) => {
-            match args.value_source("arch") {
-                Some(y) => {
-                    if y == clap::parser::ValueSource::DefaultValue &&
-                        platform == "windows"{
-                            "x86_64".to_string()
-                        } else {
-                            x.to_string()
-                        }
-                },
-                None => x.to_string()
-            }
-        },
-        None    => {
-            if platform == "windows" {
-                "x86_64".to_string()
-            } else {
-                env::consts::ARCH.to_string()
-            }
-        }
+        Some(x) => x.to_string(),
+        None    => env::consts::ARCH.to_string()
     };
 
-    // Prefer 'arm64' on macos, but 'aarch64' on linux
+    // Prefer 'arm64' on macos, but 'aarch64' on linux and windows
     if platform == "macos" && arch == "aarch64" {
         "arm64".to_string()
-    } else if platform == "linux" && arch == "arm64" {
+    } else if arch == "arm64" {
         "aarch64".to_string()
     } else {
         arch

@@ -9,6 +9,9 @@ use clap::{Arg, ArgMatches, Command};
 #[cfg(target_os = "macos")]
 use simplelog::*;
 
+#[cfg(target_os = "windows")]
+use whoami::{hostname, username, arch};
+
 std::include!("help-common.in");
 
 #[cfg(target_os = "macos")]
@@ -23,6 +26,7 @@ std::include!("help-linux.in");
 pub fn rig_app() -> Command {
     let _arch_x86_64: &'static str = "x86_64";
     let _arch_arm64: &'static str = "arm64";
+    let _arch_aarch64: &'static str = "aarch64";
     let mut _default_arch: &'static str = "";
     let app_types = [
         "api",
@@ -59,6 +63,14 @@ pub fn rig_app() -> Command {
             warn!("Failed to detect arch, default is 'x86_64'.");
             _default_arch = _arch_x86_64;
         };
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+	_default_arch = match arch() {
+	    whoami::Arch::Arm64 => _arch_aarch64,
+	    _ => _arch_x86_64
+	};
     }
 
     let mut rig = Command::new("RIG -- The R Installation Manager")
@@ -204,7 +216,7 @@ pub fn rig_app() -> Command {
                 .value_parser(["aarch64", "x86_64"]),
         );
     }
-    
+
     let cmd_rm = Command::new("rm")
         .about("Remove R versions [aliases: del, remove, delete]")
         .long_about(HELP_RM)
