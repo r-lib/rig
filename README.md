@@ -400,7 +400,7 @@ For convenience, we also create these tags:
 | `ghcr.io/r-lib/rig/ubuntu-24.04`   | `ubuntu-24.04-release`  | Latest R release on Ubuntu 24.04.    |
 | `ghcr.io/r-lib/rig/devel`          | `ubuntu-24.04-devel`    | R devel.                             |
 | `ghcr.io/r-lib/rig/ubuntu-devel`   | `ubuntu-24.04-devel`    | R devel on latest Ubuntu.            |
-| `ghcr.io/r-lib/rig/ubuntu-22.04`   | `ubuntu-24.04-release`  | Latest R release on Ubuntu 22.04.    |
+| `ghcr.io/r-lib/rig/ubuntu-22.04`   | `ubuntu-22.04-release`  | Latest R release on Ubuntu 22.04.    |
 | `ghcr.io/r-lib/rig/ubuntu-20.04`   | `ubuntu-20.04-release`  | Latest R release on Ubuntu 20.04.    |
 | `ghcr.io/r-lib/rig/debian`         | `debian-12-release`     | Latest R release on latest Debian.   |
 | `ghcr.io/r-lib/rig/debian-12`      | `debian-12-release`     | Latest R release on Debian 12.       |
