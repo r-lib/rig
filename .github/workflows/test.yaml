@@ -316,6 +316,37 @@ jobs:
         bats tests/test-windows.sh
       shell: bash
 
+  windows-aarch64-test:
+    if: ${{ github.event.inputs.inpwindows == '' || github.event.inputs.inpwindows == 'yes' }}
+    needs: windows
+    runs-on: windows-11-arm
+    name: Windows test x86_64 build on aarch64
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 10
+
+    - name: Download build from artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: rig-windows
+        path: .
+
+    - name: Install rig
+      run: |
+        Start-Process .\rig-*.exe -ArgumentList "/verysilent /suppressmsgboxes" -Wait -NoNewWindow
+
+    - name: Install bats
+      run: |
+        npm install -g bats
+
+    - name: Run tests
+      run: |
+        bats tests/test-windows.sh
+      shell: bash
+
   windows-aarch64:
     if: ${{ github.event.inputs.inpwindowsaarch64 == '' || github.event.inputs.inpwindowsaarch64 == 'yes' }}
     runs-on: windows-11-arm
