@@ -305,13 +305,16 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
         None => sc_get_list()?,
     };
 
-    info!("Setting default CRAN mirror");
-
     for ver in vers {
+	info!("Setting default CRAN mirror for R-{}", ver);
         let ver = check_installed(&ver)?;
         let path = Path::new(&get_r_root()).join("R-".to_string() + ver.as_str());
         let profile = path.join("library/base/R/Rprofile".to_string());
         if !profile.exists() {
+	    warn!(
+		"Cannot set default CRAN mirror, profile at {} does not exist.",
+		profile.display()
+	    );
             continue;
         }
 
@@ -988,7 +991,9 @@ fn sc_rtools_ls(args: &ArgMatches, mainargs: &ArgMatches)
 
 fn get_latest_install_path() -> Result<Option<String>, Box<dyn Error>> {
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    let r64r64 = hklm.open_subkey("SOFTWARE\\R-core\\R64");
+    let arch = get_arch();
+    let key = if arch == "aarch64" { "SOFTWARE\\R-core\\R" } else { "SOFTWARE\\R-core\\R64" };
+    let r64r64 = hklm.open_subkey(key);
     if let Ok(key) = r64r64 {
         let ip: Result<String, _> = key.get_value("InstallPath");
         if let Ok(fp) = ip {
