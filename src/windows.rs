@@ -175,77 +175,21 @@ fn add_rtools(version: String) -> Result<(), Box<dyn Error>> {
     } else {
         vers = vec![version.replace("rtools", "")];
     }
-    let myarch = arch();
-    let suffix = if myarch == whoami::Arch::Arm64 { "-aarch64" } else { "" };
+    let myarch = get_arch();
     let client = &reqwest::Client::new();
     for ver in vers {
-	let rtools45 = &ver[0..2] == "45";
-	let rtools44 = &ver[0..2] == "44";
-	let rtools43 = &ver[0..2] == "43";
-        let rtools42 = &ver[0..2] == "42";
-        let rtools4 = &ver[0..1] == "4";
-        let filename: String;
-        let url: String;
-	if rtools45 {
-	    let rt45path = "C:\\Rtools45".to_owned() + suffix;
-	    let rt45=Path::new(&rt45path);
-	    if rt45.exists() {
-		info!("Rtools45 is already installed");
-		continue;
-	    }
-	    filename = "rtools45.exe".to_string();
-            url = "https://github.com/r-hub/rtools45/releases/download/latest/rtools45.exe"
-                .to_string();
-	} else if rtools44 {
-	    let rt44=Path::new("C:\\Rtools44");
-	    if rt44.exists() {
-		info!("Rtools44 is already installed");
-		continue;
-	    }
-	    filename = "rtools44.exe".to_string();
-            url = "https://github.com/r-hub/rtools44/releases/download/latest/rtools44.exe"
-                .to_string();
-	} else if rtools43 {
-	    let rt43=Path::new("C:\\Rtools43");
-	    if rt43.exists() {
-		info!("Rtools43 is already installed");
-		continue;
-	    }
-	    filename = "rtools43.exe".to_string();
-            url = "https://github.com/r-hub/rtools43/releases/download/latest/rtools43.exe"
-                .to_string();
-        } else if rtools42 {
-	    let rt42=Path::new("C:\\Rtools42");
-	    if rt42.exists() {
-		info!("Rtools42 is already installed");
-		continue;
-	    }
-            filename = "rtools42.exe".to_string();
-            url = "https://github.com/r-hub/rtools42/releases/download/latest/rtools42.exe"
-                .to_string();
-        } else if rtools4 {
-	    let rt40=Path::new("C:\\Rtools40");
-	    if rt40.exists() {
-		info!("Rtools40 is already installed");
-		continue;
-	    }
-            filename = format!("rtools{}-x86_64.exe", ver);
-            url = format!(
-                "https://cloud.r-project.org/bin/windows/Rtools/{}",
-                filename
-            );
-        } else {
-	    let rt3=Path::new("C:\\Rtools");
-	    if rt3.exists() {
-		info!("Rtools3x is already installed");
-		continue;
-	    }
-            filename = format!("Rtools{}.exe", ver);
-            url = format!(
-                "https://cloud.r-project.org/bin/windows/Rtools/{}",
-                filename
-            );
-        };
+	let versuffix = if &ver[0..1] != "3" { &ver } else { "" };
+	let archsuffix = if myarch == "aarch64" { "-aarch64" } else { "" };
+	let instdir = "C:\\Rtools".to_string() + versuffix + archsuffix;
+	let instdirpath = Path::new(&instdir);
+	if instdirpath.exists() {
+	    info!("Rtools{} is already installed", ver);
+	    continue;
+	}
+	let rtver = get_rtools_version(&ver, &myarch)?;
+	let url = rtver.url;
+	let filename = "rtools-".to_string() + &ver + "-" + &myarch + ".exe";
+
         let tmp_dir = std::env::temp_dir().join("rig");
         let target = tmp_dir.join(&filename);
         info!("Downloading {} -> {}", url, target.display());
