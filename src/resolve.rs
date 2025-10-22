@@ -119,7 +119,6 @@ pub fn get_available_rtools_versions(arch: &str) -> serde_json::Value {
 	    let url = API_ROOT.to_string() + "/rtools-versions/" + arch;
 	    let val = match download_json_sync(vec![url]) {
 		Ok(dl) => {
-		    cache_set_value(&cache_key, dl[0].clone());
 		    dl[0].clone()
 		},
 		Err(err) => {
@@ -133,6 +132,7 @@ pub fn get_available_rtools_versions(arch: &str) -> serde_json::Value {
 		    }
 		}
 	    };
+	    cache_set_value(&cache_key, val.clone());
 	    val
 	}
     };

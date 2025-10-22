@@ -322,9 +322,11 @@ fn get_rtools_needed(version: Option<Vec<String>>) -> Result<Vec<String>, Box<dy
     let rroot = get_r_root();
     let base = Path::new(&rroot);
     let mut res: Vec<String> = vec![];
-    let rtvers = match get_available_rtools_versions(&get_arch()).as_array() {
+    let errmsg = "Cannot parse list of Rtools versions.";
+    let rtversval = get_available_rtools_versions(&get_arch());
+    let rtvers = match rtversval.as_array() {
 	Some(x) => x,
-	None => bail!("Cannot parse list of Rtools versions")
+	None => bail!(errmsg)
     };
 
     for ver in vers {
@@ -333,42 +335,22 @@ fn get_rtools_needed(version: Option<Vec<String>>) -> Result<Vec<String>, Box<dy
             .args(["--vanilla", "-s", "-e", "cat(as.character(getRversion()))"])
             .output()?;
         let ver: String = String::from_utf8(out.stdout)?;
-        let v35 = "35".to_string();
-        let v40 = "40".to_string();
-	let v42 = "42".to_string();
-	let v43 = "43".to_string();
-	let v44 = "44".to_string();
-	let v45 = "45".to_string();
-	let sv450 = semver::Version::parse("4.5.0")?;
-	let sv440 = semver::Version::parse("4.4.0")?;
-	let sv430 = semver::Version::parse("4.3.0")?;
-	let sv420 = semver::Version::parse("4.2.0")?;
-	let sv = semver::Version::parse(&ver)?;
-        if &ver[0..1] == "3" {
-            if !res.contains(&v35) {
-                res.push(v35);
-            }
-	} else if sv >= sv450 {
-	    if !res.contains(&v45) {
-		res.push(v45);
+	let sver = semver::Version::parse(&ver)?;
+	debug!("Get Rtools version for R {}.", ver);
+	for rtver in rtvers {
+	    let first = rtver["first"].as_str().ok_or(errmsg)?;
+	    let last = rtver["last"].as_str().ok_or(errmsg)?;
+	    let first = semver::Version::parse(first)?;
+	    let last = semver::Version::parse(last)?;
+	    if first <= sver && sver <= last {
+		let rtverver = rtver["version"].as_str().ok_or(errmsg)?.to_string();
+		debug!("R {} needs Rtools {}.", ver, rtverver);
+		if !res.contains(&rtverver) {
+		    res.push(rtverver);
+		}
 	    }
-	} else if sv >= sv440 {
-	    if !res.contains(&v44) {
-		res.push(v44);
-	    }
-	} else if sv >= sv430 {
-	    if !res.contains(&v43) {
-		res.push(v43);
-	    }
-	} else if sv >= sv420 {
-	    if !res.contains(&v42) {
-		res.push(v42);
-	    }
-        } else if &ver[0..1] == "4" {
-            if !res.contains(&v40) {
-                res.push(v40);
-            }
-        }
+
+	}
     }
     Ok(res)
 }
