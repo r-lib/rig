@@ -27,7 +27,7 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
         Some(x) => check_installed(x)?,
         None => sc_get_default_or_fail()?,
     };
-    let rbin = R_ROOT().to_string() + "/" + &R_BINPATH.replace("{}", &rver);
+    let rbin = get_r_root().to_string() + "/" + &R_BINPATH.replace("{}", &rver);
 
     let eval = args.get_one::<String>("eval");
     let script = args.get_one::<String>("script");

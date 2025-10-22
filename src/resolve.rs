@@ -5,7 +5,7 @@ use clap::ArgMatches;
 use simple_error::bail;
 use simplelog::*;
 use std::sync::{LazyLock, RwLock};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value};
 
 use crate::common::*;
 use crate::download::*;

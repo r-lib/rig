@@ -1,6 +1,6 @@
 
 use once_cell::sync::Lazy;
-use serde_json::{json, Value};
+use serde_json::Value;
 
 pub static HC_RTOOLS_AARCH64: Lazy<Value> = Lazy::new(|| {
     let data = include_str!("json/rtools-versions-aarch64.json");

@@ -13,6 +13,7 @@ pub struct Rversion {
     pub ppmurl: Option<String>,
 }
 
+#[cfg(target_os = "macos")]
 #[derive(Default, Debug, Clone)]
 pub struct RversionDir {
     pub version: String,
@@ -57,6 +58,7 @@ impl PartialEq for OKInstalledVersion {
 
 impl Eq for OKInstalledVersion { }
 
+#[cfg(target_os = "linux")]
 #[derive(PartialEq, Clone, Debug)]
 pub struct OsVersion {
     pub rig_platform: Option<String>,

@@ -10,7 +10,7 @@ use clap::{Arg, ArgMatches, Command};
 use simplelog::*;
 
 #[cfg(target_os = "windows")]
-use whoami::{hostname, username, arch};
+use whoami::arch;
 
 std::include!("help-common.in");
 

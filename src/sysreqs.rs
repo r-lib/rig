@@ -24,6 +24,7 @@ use crate::utils::*;
 #[cfg(target_os = "macos")]
 use crate::macos::*;
 
+#[allow(dead_code)]
 #[derive(PartialEq, Clone, Debug)]
 pub struct SysReq {
     pub name: String,
