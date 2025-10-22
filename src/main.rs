@@ -19,6 +19,8 @@ use macos::*;
 #[cfg(target_os = "windows")]
 mod windows;
 #[cfg(target_os = "windows")]
+mod windows_arch;
+#[cfg(target_os = "windows")]
 use windows::*;
 
 #[cfg(target_os = "linux")]
@@ -33,6 +35,7 @@ mod library;
 mod common;
 mod config;
 mod download;
+mod hardcoded;
 mod renv;
 mod resolve;
 mod rversion;

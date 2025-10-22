@@ -9,6 +9,11 @@ use clap::{Arg, ArgMatches, Command};
 #[cfg(target_os = "macos")]
 use simplelog::*;
 
+#[cfg(target_os = "windows")]
+mod windows_arch;
+#[cfg(target_os = "windows")]
+use crate::windows_arch::*;
+
 std::include!("help-common.in");
 
 #[cfg(target_os = "macos")]
@@ -23,6 +28,7 @@ std::include!("help-linux.in");
 pub fn rig_app() -> Command {
     let _arch_x86_64: &'static str = "x86_64";
     let _arch_arm64: &'static str = "arm64";
+    let _arch_aarch64: &'static str = "aarch64";
     let mut _default_arch: &'static str = "";
     let app_types = [
         "api",
@@ -59,6 +65,14 @@ pub fn rig_app() -> Command {
             warn!("Failed to detect arch, default is 'x86_64'.");
             _default_arch = _arch_x86_64;
         };
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+	_default_arch = match get_native_arch() {
+	    "aarch64" => _arch_aarch64,
+	    _ => _arch_x86_64
+	};
     }
 
     let mut rig = Command::new("RIG -- The R Installation Manager")
@@ -189,6 +203,19 @@ pub fn rig_app() -> Command {
                 .required(false)
                 .default_value(&_default_arch)
                 .value_parser(["arm64", "x86_64"]),
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        cmd_add = cmd_add.arg(
+            Arg::new("arch")
+                .help(HELP_ARCH)
+                .short('a')
+                .long("arch")
+                .required(false)
+                .default_value(&_default_arch)
+                .value_parser(["aarch64", "x86_64"]),
         );
     }
 

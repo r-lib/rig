@@ -72,7 +72,7 @@ pub fn sc_get_list_details() -> Result<Vec<InstalledVersion>, Box<dyn Error>> {
     let re = Regex::new("^Version:[ ]?")?;
 
     for name in names {
-        let desc = Path::new(R_ROOT)
+        let desc = Path::new(&get_r_root())
             .join(R_SYSLIBPATH.replace("{}", &name))
             .join("base/DESCRIPTION");
         let lines = match read_lines(&desc) {
@@ -85,8 +85,8 @@ pub fn sc_get_list_details() -> Result<Vec<InstalledVersion>, Box<dyn Error>> {
         } else {
             Some(re.replace(&lines[idx[0]], "").to_string())
         };
-        let path = Path::new(R_ROOT).join(R_VERSIONDIR.replace("{}", &name));
-        let binary = Path::new(R_ROOT).join(R_BINPATH.replace("{}", &name));
+        let path = Path::new(&get_r_root()).join(R_VERSIONDIR.replace("{}", &name));
+        let binary = Path::new(&get_r_root()).join(R_BINPATH.replace("{}", &name));
         let mut myaliases: Vec<String> = vec![];
         for a in &aliases {
             if a.version == name {
@@ -387,34 +387,15 @@ pub fn get_arch(platform: &str, args: &ArgMatches) -> String {
         Err(_) => None
     };
 
-    // For Windows, the default is x86_64
     let arch = match arch {
-        Some(x) => {
-            match args.value_source("arch") {
-                Some(y) => {
-                    if y == clap::parser::ValueSource::DefaultValue &&
-                        platform == "windows"{
-                            "x86_64".to_string()
-                        } else {
-                            x.to_string()
-                        }
-                },
-                None => x.to_string()
-            }
-        },
-        None    => {
-            if platform == "windows" {
-                "x86_64".to_string()
-            } else {
-                env::consts::ARCH.to_string()
-            }
-        }
+        Some(x) => x.to_string(),
+        None    => env::consts::ARCH.to_string()
     };
 
-    // Prefer 'arm64' on macos, but 'aarch64' on linux
+    // Prefer 'arm64' on macos, but 'aarch64' on linux and windows
     if platform == "macos" && arch == "aarch64" {
         "arm64".to_string()
-    } else if platform == "linux" && arch == "arm64" {
+    } else if arch == "arm64" {
         "aarch64".to_string()
     } else {
         arch
@@ -536,7 +517,7 @@ fn get_distros() -> Result<Vec<Distro>, Box<dyn Error>> {
     let resp = resp[0].as_array().unwrap();
 
     let mut distro_aliases: HashMap<String, Distro> = HashMap::new();
-    for (idx, item) in resp.iter().enumerate() {
+    for (_idx, item) in resp.iter().enumerate() {
         // these are always there
         let name = item["name"].to_string();
         let version = item["version"].to_string();

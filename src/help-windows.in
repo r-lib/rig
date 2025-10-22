@@ -57,6 +57,8 @@ const HELP_RESOLVE_EXAMPLES: &str = "\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
   # Latest version within a minor branch
   rig resolve 4.1";
 
+const HELP_ARCH: &str = "Select Windows arch: x86_64 or aarch64";
+
 const HELP_DEFAULT: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
   Print or set the default R version. The default R version is the one

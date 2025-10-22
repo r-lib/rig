@@ -40,6 +40,15 @@ on:
         - 'yes'
         - 'no'
         default: 'yes'
+      inpwindowsaarch64:
+        description: |
+          Build Windows aarch64
+        required: false
+        type: choice
+        options:
+        - 'yes'
+        - 'no'
+        default: 'yes'
   push:
     branches: [ 'dev', 'main' ]
   pull_request:
@@ -292,6 +301,83 @@ jobs:
       if: success()
       with:
         name: rig-windows
+        path: 'rig-*.exe'
+
+    - name: Install rig
+      run: |
+        Start-Process .\rig-*.exe -ArgumentList "/verysilent /suppressmsgboxes" -Wait -NoNewWindow
+
+    - name: Install bats
+      run: |
+        npm install -g bats
+
+    - name: Run tests
+      run: |
+        bats tests/test-windows.sh
+      shell: bash
+
+  windows-aarch64-test:
+    if: ${{ github.event.inputs.inpwindows == '' || github.event.inputs.inpwindows == 'yes' }}
+    needs: windows
+    runs-on: windows-11-arm
+    name: Windows test x86_64 build on aarch64
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 10
+
+    - name: Download build from artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: rig-windows
+        path: .
+
+    - name: Install rig
+      run: |
+        Start-Process .\rig-*.exe -ArgumentList "/verysilent /suppressmsgboxes" -Wait -NoNewWindow
+
+    - name: Install bats
+      run: |
+        npm install -g bats
+
+    - name: Run tests
+      run: |
+        bats tests/test-windows.sh
+      shell: bash
+
+  windows-aarch64:
+    if: ${{ github.event.inputs.inpwindowsaarch64 == '' || github.event.inputs.inpwindowsaarch64 == 'yes' }}
+    runs-on: windows-11-arm
+    name: Windows aarch64
+    env:
+      RUST_BACKTRACE: 1
+
+    steps:
+
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 10
+
+    - name: Install rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install make
+      run: choco install make
+
+    - name: Install curl
+      run: choco install curl
+
+    - run: |
+        make win
+      shell: bash
+
+    - uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: rig-windows-aarch64
         path: 'rig-*.exe'
 
     - name: Install rig

@@ -20,6 +20,7 @@ mod common;
 mod config;
 mod download;
 mod escalate;
+mod hardcoded;
 mod library;
 mod macos;
 mod renv;

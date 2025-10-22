@@ -29,7 +29,7 @@ rig-$(VERSION).exe: target/release/rig.exe rig.iss gsudo.exe
 
 gsudo.exe:
 	mkdir -p gsudo
-	curl -L https://github.com/gerardog/gsudo/releases/download/v2.0.9/gsudo.portable.zip -o gsudo/gsudo.zip
+	curl -L https://github.com/gerardog/gsudo/releases/download/v2.6.1/gsudo.portable.zip -o gsudo/gsudo.zip
 	cd gsudo && unzip -o gsudo.zip
 	cp gsudo/x64/gsudo.exe .
 

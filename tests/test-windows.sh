@@ -127,7 +127,7 @@ teardown() {
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
-    run rig resolve oldrel/3
+    run rig resolve oldrel/1
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
@@ -145,20 +145,20 @@ teardown() {
 }
 
 @test "rm" {
-    if ! rig ls | grep -q '^[* ] 4.0.5$'; then
-        run rig add 4.0
+    if ! rig ls | grep -q '^[* ] 4.4.2$'; then
+        run rig add 4.4.2
 	echo "status = ${status}"
 	echo "output = ${output}"
         [[ "$status" -eq 0 ]]
         run rig ls
-        echo "$output" | grep -q "^[* ] 4[.]0[.]5"
+        echo "$output" | grep -q "^[* ] 4[.]4[.]2"
     fi
-    run rig rm 4.0.5
+    run rig rm 4.4.2
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
     run rig list
-    echo $output | grep -vq "^[* ] 4.0.5"
+    echo $output | grep -vq "^[* ] 4.4.2"
 }
 
 # The quoting is very tricky here. We avoid double quotes because they
