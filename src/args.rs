@@ -10,7 +10,9 @@ use clap::{Arg, ArgMatches, Command};
 use simplelog::*;
 
 #[cfg(target_os = "windows")]
-use whoami::arch;
+mod windows_arch;
+#[cfg(target_os = "windows")]
+use crate::windows_arch::*;
 
 std::include!("help-common.in");
 
@@ -67,8 +69,8 @@ pub fn rig_app() -> Command {
 
     #[cfg(target_os = "windows")]
     {
-	_default_arch = match arch() {
-	    whoami::Arch::Arm64 => _arch_aarch64,
+	_default_arch = match get_native_arch() {
+	    "aarch64" => _arch_aarch64,
 	    _ => _arch_x86_64
 	};
     }

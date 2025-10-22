@@ -18,7 +18,7 @@ use semver;
 use simple_error::{bail, SimpleError};
 use simplelog::*;
 use tabular::*;
-use whoami::{fallible::hostname, username, arch};
+use whoami::{fallible::hostname, username};
 use winreg::enums::*;
 use winreg::RegKey;
 
@@ -31,6 +31,7 @@ use crate::resolve::*;
 use crate::rversion::*;
 use crate::run::*;
 use crate::utils::*;
+use crate::windows_arch::*;
 
 // get_r_root(): returns the directory where the R versions are installed
 // RIG_LINKS_DIR: directory where the quick links are created
@@ -59,16 +60,10 @@ pub fn get_r_root() -> String {
     // const R_X86_ROOT_: &str = "C:\\Program Files (x86)\\R";
     // aarch64 R on aarch64 Windows
     const R_AARCH64_ROOT_: &str = "C:\\Program Files\\R-aarch64";
-    match arch() {
-	whoami::Arch::Arm64 => R_AARCH64_ROOT_.to_string(),
-	_ => R_ROOT_.to_string()
-    }
-}
-
-fn get_arch() -> String {
-    match arch() {
-	whoami::Arch::Arm64 => "aarch64".to_string(),
-	_ => "x86_64".to_string()
+    if get_native_arch() == "aarch64" {
+	R_AARCH64_ROOT_.to_string()
+    } else {
+	R_ROOT_.to_string()
     }
 }
 
@@ -175,7 +170,7 @@ fn add_rtools(version: String) -> Result<(), Box<dyn Error>> {
     } else {
         vers = vec![version.replace("rtools", "")];
     }
-    let myarch = get_arch();
+    let myarch = get_native_arch();
     let client = &reqwest::Client::new();
     for ver in vers {
 	let versuffix = if &ver[0..1] != "3" { &ver } else { "" };
@@ -267,7 +262,7 @@ fn get_rtools_needed(version: Option<Vec<String>>) -> Result<Vec<String>, Box<dy
     let base = Path::new(&rroot);
     let mut res: Vec<String> = vec![];
     let errmsg = "Cannot parse list of Rtools versions.";
-    let rtversval = get_available_rtools_versions(&get_arch());
+    let rtversval = get_available_rtools_versions(&get_native_arch());
     let rtvers = match rtversval.as_array() {
 	Some(x) => x,
 	None => bail!(errmsg)
@@ -406,7 +401,7 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 }
 
 fn rm_rtools(ver: String) -> Result<(), Box<dyn Error>> {
-    let arch = get_arch();
+    let arch = get_native_arch();
     let ver = if arch == "aarch64" { ver + "-aarch64" } else { ver };
     let dir = Path::new("C:\\").join(ver);
     info!("Removing {}", dir.display());
@@ -993,7 +988,7 @@ fn sc_rtools_ls(args: &ArgMatches, mainargs: &ArgMatches)
 
 fn get_latest_install_path() -> Result<Option<String>, Box<dyn Error>> {
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    let arch = get_arch();
+    let arch = get_native_arch();
     let key = if arch == "aarch64" { "SOFTWARE\\R-core\\R" } else { "SOFTWARE\\R-core\\R64" };
     let r64r64 = hklm.open_subkey(key);
     if let Ok(key) = r64r64 {
