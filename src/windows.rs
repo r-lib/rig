@@ -775,6 +775,10 @@ pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
     if let Ok(x) = r32r32 {
         clean_registry_r(&x)?;
     };
+    let r32r64 = hklm.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\R64");
+    if let Ok(x) = r32r64 {
+        clean_registry_r(&x)?;
+    };
 
     let rtools64 = hklm.open_subkey("SOFTWARE\\R-core\\Rtools");
     if let Ok(x) = rtools64 {
