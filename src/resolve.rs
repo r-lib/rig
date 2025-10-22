@@ -111,6 +111,7 @@ fn cache_get_value(key: &str) -> Option<Value> {
     map.get(key).cloned()
 }
 
+#[cfg(target_os = "windows")]
 pub fn get_available_rtools_versions(arch: &str) -> serde_json::Value {
     let cache_key = "rtools".to_string() + arch;
     let value = match cache_get_value(&cache_key) {
@@ -140,6 +141,7 @@ pub fn get_available_rtools_versions(arch: &str) -> serde_json::Value {
     value
 }
 
+#[cfg(target_os = "windows")]
 pub fn get_rtools_version(version: &str, arch: &str)
 			  -> Result<RtoolsVersion, Box<dyn Error>> {
 
