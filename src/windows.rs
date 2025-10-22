@@ -406,6 +406,8 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 }
 
 fn rm_rtools(ver: String) -> Result<(), Box<dyn Error>> {
+    let arch = get_arch();
+    let ver = if arch == "aarch64" { ver + "-aarch64" } else { ver };
     let dir = Path::new("C:\\").join(ver);
     info!("Removing {}", dir.display());
     match remove_dir_all(&dir) {
