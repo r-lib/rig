@@ -1,4 +1,13 @@
-# rig, development version
+# rig 0.8.0-beta
+
+* rig now supports aarch64 Windows. It currently only supports installing
+  aarch64 builds of R and Rtools on aarch64 Windows. The x86_64 build of
+  rig also works on aarch64 Windows and installs aarch64 builds of R and
+  Rtools. Installing and managing x86_64 builds of R on aarch64 Windows is
+  not supported yet.
+
+* rig now supports RHEL 10 and binary compatible distributions like
+  AlmaLinux OS 10 and Rocky Linux 10.
 
 * R installations by rig now do *not* set the default CRAN repositories in
   RStudio and Positron (#203).

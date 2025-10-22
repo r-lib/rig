@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
     <id>rig</id>
-    <version>0.7.1</version>
+    <version>0.8.0-beta</version>
     <packageSourceUrl>https://github.com/r-lib/rig</packageSourceUrl>
     <owners>Gábor Csárdi</owners>
     <title>rig</title>
@@ -54,20 +54,19 @@
 Please open an issue in our issue tracker at https://github.com/r-lib/rig/issues
     </description>
     <releaseNotes>
-# rig 0.7.1
+# rig 0.8.0-beta
 
-- `rig available --list-distros` output now includes PPM support, whether
-  the a distro is retired, the EOL and in the JSON format also the last
-  R version for that distro.
+* rig now supports aarch64 Windows. It currently only supports installing
+  aarch64 builds of R and Rtools on aarch64 Windows. The x86_64 build of
+  rig also works on aarch64 Windows and installs aarch64 builds of R and
+  Rtools. Installing and managing x86_64 builds of R on aarch64 Windows is
+  not supported yet.
 
-- `rig run` now exits with the exit code of the R process (#261).
+* rig now supports RHEL 10 and binary compatible distributions like
+  AlmaLinux OS 10 and Rocky Linux 10.
 
-- Custom certificates via the `SSL_CERT_FILE` environment variable
-  work again (#227).
-
-- `rig library default` does not crash now (#240).
-
-- Windows: rig supports Rtools45 now.
+* R installations by rig now do *not* set the default CRAN repositories in
+  RStudio and Positron (#203).
 
     </releaseNotes>
   </metadata>
