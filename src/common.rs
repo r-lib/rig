@@ -611,7 +611,11 @@ fn sc_available_distros(args: &ArgMatches, mainargs: &ArgMatches)
 fn sc_available_rtools_versions(args: &ArgMatches, mainargs: &ArgMatches)
                                 -> Result<(), Box<dyn Error>> {
 
-    let url = "https://api.r-hub.io/rversions/rtools-versions".to_string();
+    let mut url = "https://api.r-hub.io/rversions/rtools-versions".to_string();
+    let arch = get_arch("windows", args);
+    if arch != "x86_64" {
+	url = url + "/" + &arch;
+    }
     let resp = download_json_sync(vec![url])?;
     let resp = resp[0].as_array().unwrap();
     let all = args.get_flag("all");

@@ -215,7 +215,7 @@ pub fn rig_app() -> Command {
                 .long("arch")
                 .required(false)
                 .default_value(&_default_arch)
-                .value_parser(["aarch64", "x86_64"]),
+                .value_parser(["x86_64", "aarch64", "arm64"]),
         );
     }
 
@@ -278,7 +278,7 @@ pub fn rig_app() -> Command {
             .conflicts_with("list-distros")
         );
 
-    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    #[cfg(any(target_os = "linux"))]
     {
         cmd_available = cmd_available.arg(
             Arg::new("arch")
@@ -300,6 +300,19 @@ pub fn rig_app() -> Command {
                 .required(false)
                 .default_value(&_default_arch)
                 .value_parser(["arm64", "aarch64", "x86_64"]),
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        cmd_available = cmd_available.arg(
+            Arg::new("arch")
+                .help(HELP_ARCH)
+                .short('a')
+                .long("arch")
+                .required(false)
+                .default_value(&_default_arch)
+                .value_parser(["x86_64", "aarch64", "arm64"]),
         );
     }
 
@@ -536,7 +549,7 @@ pub fn rig_app() -> Command {
                 .required(false)
         );
 
-    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    #[cfg(any(target_os = "linux"))]
     {
         cmd_resolve = cmd_resolve.arg(
             Arg::new("arch")
@@ -548,7 +561,7 @@ pub fn rig_app() -> Command {
         );
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos"))]
     {
         cmd_resolve = cmd_resolve.arg(
             Arg::new("arch")
@@ -558,6 +571,19 @@ pub fn rig_app() -> Command {
                 .required(false)
                 .default_value(&_default_arch)
                 .value_parser(["arm64", "x86_64"]),
+        );
+    }
+
+    #[cfg(any(target_os = "windows"))]
+    {
+        cmd_resolve = cmd_resolve.arg(
+            Arg::new("arch")
+                .help(HELP_ARCH)
+                .short('a')
+                .long("arch")
+                .required(false)
+                .default_value(&_default_arch)
+                .value_parser(["x86_64", "aarch64", "arm64"]),
         );
     }
 
