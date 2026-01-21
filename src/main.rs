@@ -36,6 +36,7 @@ mod common;
 mod config;
 mod download;
 mod hardcoded;
+mod proj;
 mod renv;
 mod resolve;
 mod rversion;
@@ -44,6 +45,7 @@ mod sysreqs;
 mod utils;
 
 use library::*;
+use proj::*;
 use sysreqs::*;
 use utils::unset_r_envvars;
 
@@ -115,6 +117,7 @@ fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
         Some(("add", sub)) => sc_add(sub)?,
         Some(("default", sub)) => sc_default(sub, args)?,
         Some(("list", sub)) => sc_list(sub, args)?,
+        Some(("proj", sub)) => sc_proj(sub, args)?,
         Some(("rm", sub)) => sc_rm(sub)?,
         Some(("system", sub)) => sc_system(sub, args)?,
         Some(("resolve", sub)) => sc_resolve(sub, args)?,

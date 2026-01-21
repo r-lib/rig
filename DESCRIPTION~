@@ -1,0 +1,30 @@
+Package: tsjsonc
+Title: Edit JSON Files
+Version: 0.0.0.9000
+Authors@R: c(
+    person("Gábor", "Csárdi", , "csardi.gabor@gmail.com", role = c("aut", "cre")),
+    person("Posit Software, PBC", role = c("cph", "fnd"),
+        comment = c(ROR = "03wc8by49")),
+    person(family = "tree-sitter-json authors", role = "ctb")
+  )
+Description: Extract and manipulate parts of JSON files without touching
+  the formatting and comments in other parts.
+License: MIT + file LICENSE
+Depends: R (>= 3.5.0)
+Imports:
+    ts
+Suggests:
+    pillar,
+    testthat (>= 3.0.0),
+    withr
+Remotes:
+    gaborcsardi/ts
+Encoding: UTF-8
+RoxygenNote: 7.3.3
+Config/testthat/edition: 3
+Config/Needs/website:
+    r-lib/asciicast,
+    tidyverse/tidytemplate
+URL: https://github.com/gaborcsardi/tsjsonc, https://gaborcsardi.github.io/tsjsonc/
+BugReports: https://github.com/gaborcsardi/tsjsonc/issues
+Biarch: true

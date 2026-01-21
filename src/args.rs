@@ -817,6 +817,16 @@ pub fn rig_app() -> Command {
                 .action(clap::ArgAction::Append)
         );
 
+    let cmd_proj = Command::new("proj")
+        .about("Manage R projects (experimental)")
+        .long_about("TODO")
+        .subcommand(
+            Command::new("deps")
+                .about("Show project dependencies")
+        );
+    rig = rig.subcommand(cmd_proj);
+
+
     rig = rig.arg(
         Arg::new("quiet")
             .help("Suppress output (overrides `--verbose`)")

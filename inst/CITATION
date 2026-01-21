@@ -1,0 +1,18 @@
+citHeader("To cite the 'rmarkdown' package in publications, please use:")
+
+year = sub('.*(2[[:digit:]]{3})-.*', '\\1', meta$Date, perl = TRUE)
+if (length(year) == 0) year = format(Sys.Date(), '%Y')
+vers = paste('The R Installation Manager ', meta$Version)
+auth = format(Filter(function(p) 'aut' %in% p$role, as.person(meta$Author)), c('given', 'family'))
+
+citEntry(
+  entry = 'manual',
+  title = paste('rig:', meta$Title),
+  author = auth,
+  year = year,
+  note = vers,
+  url = strsplit(meta$URL, ',')[[1]][1],
+  textVersion = paste0(
+    paste(auth, collapse = ' and '), ' (', year, '). rmarkdown: ', meta$Title, '. ', vers, '.'
+  )
+)

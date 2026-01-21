@@ -1,0 +1,22 @@
+export declare class ValuePointerRootSetError extends Error {
+    readonly value: unknown;
+    readonly path: string;
+    readonly update: unknown;
+    constructor(value: unknown, path: string, update: unknown);
+}
+export declare class ValuePointerRootDeleteError extends Error {
+    readonly value: unknown;
+    readonly path: string;
+    constructor(value: unknown, path: string);
+}
+/** ValuePointer performs mutable operations on values using RFC6901 Json Pointers */
+export declare namespace ValuePointer {
+    /** Sets the value at the given pointer. If the value at the pointer does not exist it is created. */
+    function Set(value: unknown, path: string, update: unknown): void;
+    /** Deletes a value at the given path. */
+    function Delete(value: any, path: string): any[] | undefined;
+    /** True if a value exists at the given path */
+    function Has(value: any, path: string): boolean;
+    /** Gets the value at the given path */
+    function Get(value: any, path: string): any;
+}
