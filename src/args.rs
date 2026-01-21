@@ -817,6 +817,29 @@ pub fn rig_app() -> Command {
                 .action(clap::ArgAction::Append)
         );
 
+    let cmd_proj = Command::new("proj")
+        .about("Manage R projects (experimental)")
+        .long_about("TODO")
+        .arg(
+            Arg::new("json")
+                .help("JSON output")
+                .long("json")
+                .num_args(0)
+                .required(false),
+        )
+        .subcommand(
+            Command::new("deps")
+                .about("Show project dependencies")
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                )
+        );
+    rig = rig.subcommand(cmd_proj);
+
     rig = rig.arg(
         Arg::new("quiet")
             .help("Suppress output (overrides `--verbose`)")
