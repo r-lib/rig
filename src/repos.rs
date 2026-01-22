@@ -13,9 +13,15 @@ pub fn sc_repos(args: &ArgMatches, mainargs: &ArgMatches)
 
 fn sc_repos_list_packages(
     args: &ArgMatches,
-    libargs: &ArgMatches,
+    _libargs: &ArgMatches,
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
+
+    if args.get_flag("json") || mainargs.get_flag("json") {
+
+    } else {
+
+    }
 
     Ok(())
 }

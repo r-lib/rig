@@ -18,7 +18,7 @@ pub fn sc_proj(args: &ArgMatches, mainargs: &ArgMatches)
 
 fn sc_proj_deps(
     args: &ArgMatches,
-    libargs: &ArgMatches,
+    _libargs: &ArgMatches,
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
 

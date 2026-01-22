@@ -5,6 +5,7 @@ use std::cmp::Ordering;
 use std::ffi::OsString;
 
 #[derive(Default, Debug, Clone)]
+#[allow(dead_code)]
 pub struct Rversion {
     pub version: Option<String>,
     pub url: Option<String>,
@@ -31,6 +32,7 @@ pub struct InstalledVersion {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct OKInstalledVersion {
     pub name: String,
     pub version: semver::Version,
@@ -79,6 +81,7 @@ pub struct PkgLibrary {
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 #[derive(Default, Debug)]
+#[allow(dead_code)]
 pub struct User {
     pub user: String,
     pub uid: u32,

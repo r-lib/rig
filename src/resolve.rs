@@ -3,17 +3,18 @@ use std::error::Error;
 
 use clap::ArgMatches;
 use simple_error::bail;
-use simplelog::*;
+#[cfg(target_os = "windows")]
 use std::sync::{LazyLock, RwLock};
+#[cfg(target_os = "windows")]
 use serde_json::{Map, Value};
 
 use crate::common::*;
 use crate::download::*;
 use crate::rversion::*;
 use crate::utils::*;
-use crate::hardcoded::*;
 
 const API_URI: &str = "https://api.r-hub.io/rversions/resolve/";
+#[cfg(target_os = "windows")]
 const API_ROOT: &str = "https://api.r-hub.io/rversions/";
 
 pub fn get_resolve(args: &ArgMatches) -> Result<Rversion, Box<dyn Error>> {
@@ -97,15 +98,18 @@ async fn resolve_version(
     })
 }
 
+#[cfg(target_os = "windows")]
 static API_CACHE: LazyLock<RwLock<Map<String, Value>>> = LazyLock::new(|| {
     RwLock::new(Map::new())
 });
 
+#[cfg(target_os = "windows")]
 fn cache_set_value(key: &str, value: Value) {
     let mut map = API_CACHE.write().unwrap();
     map.insert(key.to_string(), value);
 }
 
+#[cfg(target_os = "windows")]
 fn cache_get_value(key: &str) -> Option<Value> {
     let map = API_CACHE.read().unwrap();
     map.get(key).cloned()

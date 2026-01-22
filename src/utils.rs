@@ -197,6 +197,9 @@ pub fn not_too_old(path: &std::path::PathBuf) -> bool {
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+#[allow(deprecated)]
+// home_dir is no longer deprecated, actually, its behaviour was
+// fixed in Rust 1.85 and the deprecation will be removed in 1.87.
 pub fn get_user() -> Result<User, Box<dyn Error>> {
     let uid: u32;
     let gid: u32;
@@ -232,6 +235,8 @@ pub fn get_user() -> Result<User, Box<dyn Error>> {
     if let Ok(Some(d)) = user_record {
         dir = d.dir.into_os_string();
     } else {
+        // home_dir is no longer deprecated, actually, its behaviour was
+        // fixed in Rust 1.85 and the deprecation will be removed in 1.87.
         dir = std::env::home_dir().map(|x| x.into_os_string())
             .ok_or(SimpleError::new("Failed to find user HOME"))?;
     }
