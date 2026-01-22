@@ -24,32 +24,48 @@ path = "src/main.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+# CLI
 clap = { version = "4.3.8", features = ["cargo", "color"] }
+
 ctrlc = "3.4"
+# parse DESCRIPTION and PACKAGES files
 deb822-fast = "0.2.3"
+# data, cache, config directories on various platforms
 directories = "4.0.1"
+# run external commands and pipe their output
 duct = "0.13.5"
 futures = "0.3.17"
+# next(): async stream element reading
 futures-util = "0.3.14"
+# lazy static variables
 lazy_static = "1.4.0"
+# calling Rust from C
 libc = "0.2"
 log = "0.4"
+# symlinks, getuid & co.
 nix = { version = "0.28.0", features = ["fs", "user"] }
+# cache results, e.g. some parsed json
 once_cell = "1.21.3"
+# clean up paths, for rig rstudio
 path-clean = "1.0.1"
+# random file names, e.g. when renaming the macos installer
 rand = "0.8.5"
 regex = "1.5.4"
+# HTTP
 reqwest = { version = "0.11", features = ["json", "stream", "rustls-tls", "hyper-rustls", "rustls-tls-native-roots"], default-features = false }
 semver = "1.0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0"
 serde_json = "1.0"
 serde_yaml = "0.9"
+# hash url to get target path, for macOS installers
 sha2 = "0.9.8"
+# expand ~ in paths, e.g. in R_LIBS env vars, env vars for RStudio
 shellexpand = "2.1.0"
 simple-error = "0.2.3"
 simplelog = { version = "^0.12.0", features = ["paris"] }
 sudo = "0.6.0"
+# printing tables to the console
 tabular = "0.2.0"
 tokio = { version = "1", features = ["full"] }
 
