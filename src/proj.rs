@@ -37,13 +37,13 @@ fn sc_proj_deps(
 
     for desc0 in desc.iter() {
       if let Some(dd) = desc0.get("Depends") {
-          deps.append(&mut parse_deps(dd)?)
+          deps.append(&mut parse_deps(dd, "Depends")?)
       }
       if let Some(di) = desc0.get("Imports") {
-          deps.append(&mut parse_deps(di)?)
+          deps.append(&mut parse_deps(di, "Imports")?)
       }
       if let Some(dl) = desc0.get("LinkingTo") {
-          deps.append(&mut parse_deps(dl)?);
+          deps.append(&mut parse_deps(dl, "LinkingTo")?);
       }
       // if let Some(ds) = desc0.get("Suggests") {
       //     deps.append(&mut parse_deps(ds)?);
@@ -68,8 +68,10 @@ fn sc_proj_deps(
           }
           println!(" {{");
           let comma = if cst == "" { "" } else { ", " };
+          // TODO: should this be an array? Probably
+          println!("     \"types\": \"{}\",", pkg.types.join(", "));
           println!("     \"package\": \"{}\"{}", pkg.name, comma);
-          if (cst != "") {
+          if cst != "" {
             println!("     \"version\": \"{}\"", cst)
           }
           println!("  }}{}", if i == num - 1 { "" } else { "," });
@@ -77,8 +79,8 @@ fn sc_proj_deps(
       println!("]");
 
     } else {
-        let mut tab: Table = Table::new("{:<}   {:<}");
-        tab.add_row(row!["package", "constraint"]);
+        let mut tab: Table = Table::new("{:<}   {:<}   {:<}");
+        tab.add_row(row!["package", "constraints", "types"]);
         tab.add_heading("------------------------------------------");
         for pkg in deps {
           let mut cst: String = "".to_string();
@@ -88,7 +90,7 @@ fn sc_proj_deps(
             }
             cst += &format!("{} {}", cs.0, cs.1);
           }
-          tab.add_row(row!(pkg.name, cst));
+          tab.add_row(row!(pkg.name, cst, pkg.types.join(", ")));
         }
 
         print!("{}", tab);
@@ -97,14 +99,15 @@ fn sc_proj_deps(
   Ok(())
 }
 
-fn parse_deps(deps: &str) -> Result<Vec<DepVersionSpec>, Box<dyn Error>> {
+fn parse_deps(deps: &str, dep_type: &str)
+            -> Result<Vec<DepVersionSpec>, Box<dyn Error>> {
     let mut result = Vec::new();
     for dep in deps.split(',') {
         let dep = dep.trim();
         if dep.len() == 0 {
             continue;
         }
-        result.push(parse_dep(dep)?);
+        result.push(parse_dep(dep, dep_type)?);
     }
 
     // need to merge constraints for the same package
@@ -131,12 +134,15 @@ fn simplify_constraints(deps: Vec<DepVersionSpec>) -> Vec<DepVersionSpec> {
     deps2
 }
 
-fn parse_dep(dep: &str) -> Result<DepVersionSpec, Box<dyn Error>> {
+fn parse_dep(dep: &str, dep_type: &str)
+            -> Result<DepVersionSpec, Box<dyn Error>> {
     let parts: Vec<&str> = dep.split_whitespace().collect();
     if parts.len() == 0 || parts[0].len() == 0 {
         bail!("Invalid dependency version: {}", dep);
     }
     let name = parts[0].to_string();
+    let types: Vec<String> =
+      vec![dep_type.to_string()];
     let mut constraints = Vec::new();
 
     if parts.len() > 1 {
@@ -177,7 +183,7 @@ fn parse_dep(dep: &str) -> Result<DepVersionSpec, Box<dyn Error>> {
             bail!("Invalid dependency version: {}", dep);
         }
     }
-    Ok(DepVersionSpec { name, constraints })
+    Ok(DepVersionSpec { name, types, constraints })
 }
 
 #[derive(Debug, Hash, Clone, PartialEq, Eq)]
@@ -205,6 +211,8 @@ impl std::fmt::Display for VersionConstraint {
 pub struct DepVersionSpec {
     /// Package name.
     pub name: String,
+    /// Dependency Type(s)
+    pub types: Vec<String>,
     /// Version constraints.
     pub constraints: Vec<(VersionConstraint, String)>,
 }
