@@ -840,6 +840,29 @@ pub fn rig_app() -> Command {
         );
     rig = rig.subcommand(cmd_proj);
 
+    let cmd_repos = Command::new("repos")
+        .about("Manage package repositories")
+        .long_about("TODO")
+        .arg(
+            Arg::new("json")
+                .help("JSON output")
+                .long("json")
+                .num_args(0)
+                .required(false),
+        )
+        .subcommand(
+            Command::new("list-packages")
+                .about("List packages in package repositories")
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                )
+        );
+    rig = rig.subcommand(cmd_repos);
+
     rig = rig.arg(
         Arg::new("quiet")
             .help("Suppress output (overrides `--verbose`)")

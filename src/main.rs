@@ -38,6 +38,7 @@ mod download;
 mod hardcoded;
 mod proj;
 mod renv;
+mod repos;
 mod resolve;
 mod rversion;
 mod run;
@@ -46,6 +47,7 @@ mod utils;
 
 use library::*;
 use proj::*;
+use repos::*;
 use sysreqs::*;
 use utils::unset_r_envvars;
 
@@ -120,6 +122,7 @@ fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
         Some(("proj", sub)) => sc_proj(sub, args)?,
         Some(("rm", sub)) => sc_rm(sub)?,
         Some(("system", sub)) => sc_system(sub, args)?,
+        Some(("repos", sub)) => sc_repos(sub, args)?,
         Some(("resolve", sub)) => sc_resolve(sub, args)?,
         Some(("rstudio", sub)) => sc_rstudio(sub)?,
         Some(("library", sub)) => sc_library(sub, args)?,
