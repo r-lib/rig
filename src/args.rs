@@ -820,6 +820,7 @@ pub fn rig_app() -> Command {
     let cmd_proj = Command::new("proj")
         .about("Manage R projects (experimental)")
         .long_about("TODO")
+        .arg_required_else_help(true)
         .arg(
             Arg::new("json")
                 .help("JSON output")
@@ -854,6 +855,7 @@ pub fn rig_app() -> Command {
     let cmd_repos = Command::new("repos")
         .about("Manage package repositories")
         .long_about("TODO")
+        .arg_required_else_help(true)
         .arg(
             Arg::new("json")
                 .help("JSON output")
