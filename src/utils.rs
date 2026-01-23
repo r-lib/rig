@@ -124,7 +124,6 @@ pub fn append_to_file(path: &Path, extra: Vec<String>) -> Result<(), Box<dyn Err
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
 pub fn calculate_hash(s: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(s);
@@ -305,4 +304,30 @@ fn format_cmd_arg(x: &str, val: &OsStr) -> OsString {
     }
 
     ox
+}
+
+pub fn add_suffix(path: &PathBuf, suffix: &str) -> PathBuf {
+    let mut new = path.clone();
+
+    if let Some(stem) = new.file_stem().and_then(|s| s.to_str()) {
+        let ext = new.extension().and_then(|e| e.to_str());
+
+        let new_name = match ext {
+            Some(ext) => format!("{stem}{suffix}.{ext}"),
+            None => format!("{stem}{suffix}"),
+        };
+
+        new.set_file_name(new_name);
+    }
+
+    new
+}
+
+pub fn create_parent_dir_if_needed(path: &PathBuf) -> Result<(), Box<dyn Error>> {
+    if let Some(parent) = path.parent() {
+        if !parent.exists() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+    Ok(())
 }

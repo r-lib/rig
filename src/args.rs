@@ -837,6 +837,17 @@ pub fn rig_app() -> Command {
                         .num_args(0)
                         .required(false),
                 )
+        )
+        .subcommand(
+            Command::new("solve")
+                .about("Solve project dependencies")
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                )
         );
     rig = rig.subcommand(cmd_proj);
 

@@ -4,13 +4,16 @@ use std::error::Error;
 use std::ffi::OsStr;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::ffi::OsString;
+use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
+use std::path::PathBuf;
 
 #[cfg(target_os = "windows")]
 use clap::ArgMatches;
 
+use reqwest::StatusCode;
 use simple_error::bail;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use simplelog::info;
@@ -154,6 +157,53 @@ pub fn download_json_sync(urls: Vec<String>)
     let client = &client;
     let resp = download_json_(client, urls)?;
     return Ok(resp);
+}
+
+async fn download_if_newer(
+    client: &reqwest::Client,
+    url: &str,
+    local_path: &PathBuf,
+) -> Result<bool, Box<dyn Error>> {
+
+    let etag_path = add_suffix(local_path, ".etag");
+    let etag = fs::read_to_string(&etag_path).ok();
+    let mut req = client.get(url);
+    if let Some(etag) = etag.as_deref() {
+        req = req.header("If-None-Match", etag);
+    }
+    let resp = req.send().await?;
+
+    match resp.status() {
+        StatusCode::NOT_MODIFIED => {
+            Ok(false)
+        }
+
+        StatusCode::OK => {
+            // 200 → new content
+            // Save new ETag if present
+            if let Some(etag) = resp.headers().get("ETag") {
+                fs::write(etag_path, etag.to_str()?)?;
+            }
+            let bytes = resp.bytes().await?;
+            fs::write(local_path, &bytes)?;
+            Ok(true)
+        }
+
+        status => {
+            bail!("Failed to download package metadata, status: {}", status);
+        }
+    }
+}
+
+#[tokio::main]
+pub async fn download_if_newer_(
+    url: &str,
+    local_path: &PathBuf,
+) -> Result<bool, Box<dyn Error>> {
+    let client = reqwest::Client::new();
+    let client = &client;
+    let updated = download_if_newer(client, url, local_path).await?;
+    Ok(updated)
 }
 
 #[tokio::main]

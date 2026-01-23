@@ -4,25 +4,29 @@ use std::fs::File;
 
 use clap::ArgMatches;
 use deb822_fast::Deb822;
+use pubgrub::resolve;
 use simple_error::*;
+use simplelog::info;
 use tabular::*;
+
+use crate::dcf::*;
+use crate::repos::*;
+use crate::solver::*;
 
 pub fn sc_proj(args: &ArgMatches, mainargs: &ArgMatches)
               -> Result<(), Box<dyn Error>> {
 
     match args.subcommand() {
         Some(("deps", s)) => sc_proj_deps(s, args, mainargs),
+        Some(("solve", s)) => sc_proj_solve(s, args, mainargs),
         _ => Ok(()), // unreachable
     }
 }
 
-fn sc_proj_deps(
-    args: &ArgMatches,
-    _libargs: &ArgMatches,
-    mainargs: &ArgMatches,
-) -> Result<(), Box<dyn Error>> {
+fn proj_read_deps() -> Result<Vec<DepVersionSpec>, Box<dyn Error>> {
 
-    let df = File::open("DESCRIPTION")?;
+    info!("Reading dependencies from DESCRIPTION file");
+    let df: File = File::open("DESCRIPTION")?;
     let desc = Deb822::from_reader(df)?;
 
     if desc.len() == 0 {
@@ -54,6 +58,18 @@ fn sc_proj_deps(
     }
 
     let deps = simplify_constraints(deps);
+
+    Ok(deps)
+}
+
+/// Parse dependencies from DESCRIPTION file and print them out
+fn sc_proj_deps(
+    args: &ArgMatches,
+    _libargs: &ArgMatches,
+    mainargs: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+
+    let deps: Vec<DepVersionSpec> = proj_read_deps()?;
 
     if args.get_flag("json") || mainargs.get_flag("json") {
       println!("[");
@@ -99,120 +115,74 @@ fn sc_proj_deps(
   Ok(())
 }
 
-fn parse_deps(deps: &str, dep_type: &str)
-            -> Result<Vec<DepVersionSpec>, Box<dyn Error>> {
-    let mut result = Vec::new();
-    for dep in deps.split(',') {
-        let dep = dep.trim();
-        if dep.len() == 0 {
-            continue;
-        }
-        result.push(parse_dep(dep, dep_type)?);
+fn sc_proj_solve(
+    args: &ArgMatches,
+    _libargs: &ArgMatches,
+    mainargs: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+
+    // Do this first, to report local errors early
+    let deps: Vec<DepVersionSpec> = proj_read_deps()?;
+
+    let pkgs = repos_get_packages()?;
+    let mut reg = RPackageRegistry::default();
+
+    info!("Adding {} packages to the registry", pkgs.len());
+    for pkg in pkgs.iter() {
+        reg.add_package_version(
+            pkg.name.clone(),
+            RPackageVersion::from_str(&pkg.version)?,
+            rpackage_version_ranges_from_constraints(&pkg.dependencies)
+        );
     }
 
-    // need to merge constraints for the same package
-    let result2 = simplify_constraints(result);
-    Ok(result2)
-}
+    reg.add_package_version(
+        "_project".to_string(),
+        RPackageVersion::from_str("1.0.0")?,
+        rpackage_version_ranges_from_constraints(&deps)
+    );
 
-fn simplify_constraints(deps: Vec<DepVersionSpec>) -> Vec<DepVersionSpec> {
-    let mut pkgmap: HashMap<&str, usize> = HashMap::new();
-    let mut deps2 = Vec::new();
-    for dep in deps.iter() {
-        if let Some(idx) = pkgmap.get(dep.name.as_str()) {
-            let existing: &mut DepVersionSpec = &mut deps2[*idx];
-            for c in dep.constraints.iter() {
-                if !existing.constraints.contains(c) {
-                    existing.constraints.push(c.clone());
-                }
-            }
-        } else {
-            pkgmap.insert(dep.name.as_str(), deps2.len());
-            deps2.push(dep.clone());
-        }
+    // add R itself, for now a hardcoded version
+    let r_version = "4.5.2";
+    reg.add_package_version(
+        "R".to_string(),
+        RPackageVersion::from_str(r_version)?,
+        HashMap::with_hasher(rustc_hash::FxBuildHasher::default())
+    );
+
+    // add base packages, these are always available
+    let base_pkgs = vec![
+        "base",
+        "compiler",
+        "datasets",
+        "graphics",
+        "grDevices",
+        "grid",
+        "methods",
+        "parallel",
+        "splines",
+        "stats",
+        "stats4",
+        "tcltk",
+        "tools",
+        "utils"
+    ];
+    for bp in base_pkgs.iter() {
+        reg.add_package_version(
+            bp.to_string(),
+            RPackageVersion::from_str(r_version)?,
+            HashMap::with_hasher(rustc_hash::FxBuildHasher::default())
+        );
     }
-    deps2
-}
 
-fn parse_dep(dep: &str, dep_type: &str)
-            -> Result<DepVersionSpec, Box<dyn Error>> {
-    let parts: Vec<&str> = dep.split_whitespace().collect();
-    if parts.len() == 0 || parts[0].len() == 0 {
-        bail!("Invalid dependency version: {}", dep);
-    }
-    let name = parts[0].to_string();
-    let types: Vec<String> =
-      vec![dep_type.to_string()];
-    let mut constraints = Vec::new();
+    let solution = resolve(
+        &reg,
+        "_project".to_string(),
+        RPackageVersion::from_str("1.0.0")?
+    );
 
-    if parts.len() > 1 {
-        let trimmed = parts.iter()
-            .map(|s| s.trim())
-            .collect::<Vec<&str>>();
-        let spec = trimmed[1..].join("");
-        let specbytes = spec.as_bytes();
-        if specbytes.first() != Some(&b'(') || specbytes.last() != Some(&b')') {
-            bail!("Invalid dependency version: {}", dep);
-        }
-        let spec = &spec[1..spec.len()-1];
-        if spec.starts_with(">=") {
-            let ver = spec[2..].trim().to_string();
-            constraints.push((VersionConstraint::GreaterOrEqual, ver));
-        } else if spec.starts_with("<=") {
-            let ver = spec[2..].trim().to_string();
-            constraints.push((VersionConstraint::LessOrEqual, ver));
-        } else if spec.starts_with("==") {
-            let ver = spec[2..].trim().to_string();
-            constraints.push((VersionConstraint::Equal, ver));
-        } else if spec.starts_with('=') {
-            let ver = spec[1..].trim().to_string();
-            constraints.push((VersionConstraint::Equal, ver));
-        } else if spec.starts_with(">>") {
-            let ver = spec[2..].trim().to_string();
-            constraints.push((VersionConstraint::Greater, ver));
-        } else if spec.starts_with('>') {
-            let ver = spec[1..].trim().to_string();
-            constraints.push((VersionConstraint::Greater, ver));
-        } else if spec.starts_with("<<") {
-            let ver = spec[2..].trim().to_string();
-            constraints.push((VersionConstraint::Less, ver));
-        } else if spec.starts_with('<') {
-            let ver = spec[1..].trim().to_string();
-            constraints.push((VersionConstraint::Less, ver));
-        } else {
-            bail!("Invalid dependency version: {}", dep);
-        }
-    }
-    Ok(DepVersionSpec { name, types, constraints })
-}
+    println!("{:?}", solution);
 
-#[derive(Debug, Hash, Clone, PartialEq, Eq)]
-pub enum VersionConstraint {
-    Less,
-    LessOrEqual,
-    Equal,
-    Greater,
-    GreaterOrEqual,
-}
 
-impl std::fmt::Display for VersionConstraint {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            VersionConstraint::GreaterOrEqual => f.write_str(">="),
-            VersionConstraint::LessOrEqual => f.write_str("<="),
-            VersionConstraint::Equal => f.write_str("="),
-            VersionConstraint::Greater => f.write_str(">>"),
-            VersionConstraint::Less => f.write_str("<<"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct DepVersionSpec {
-    /// Package name.
-    pub name: String,
-    /// Dependency Type(s)
-    pub types: Vec<String>,
-    /// Version constraints.
-    pub constraints: Vec<(VersionConstraint, String)>,
+    Ok(())
 }

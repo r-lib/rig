@@ -31,6 +31,7 @@ use linux::*;
 use resolve::*;
 
 mod alias;
+mod dcf;
 mod library;
 mod common;
 mod config;
@@ -42,6 +43,7 @@ mod repos;
 mod resolve;
 mod rversion;
 mod run;
+mod solver;
 mod sysreqs;
 mod utils;
 
