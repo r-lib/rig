@@ -31,7 +31,7 @@ pub fn repos_get_packages() -> Result<Vec<Package>, Box<dyn Error>> {
     let repo_local = repo_local_file(repo_url)?;
     create_parent_dir_if_needed(&repo_local)?;
     info!("Updating repo metadata from {}", repo_url);
-    let dl_status = download_if_newer_(repo_url, &repo_local)?;
+    let dl_status = download_if_newer_(repo_url, &repo_local, None)?;
     if dl_status {
         info!("Updated repo metadata at {}", repo_local.display());
     } else {
@@ -136,7 +136,7 @@ fn sc_repos_package_info(
     local.push("package-".to_string() + &package + ".json");
 
     create_parent_dir_if_needed(&local)?;
-    download_if_newer_(&url, &local);
+    download_if_newer_(&url, &local, None);
 
     let contents: String = read_file_string(&local)?;
     let json: Value = serde_json::from_str(&contents)?;

@@ -34,6 +34,8 @@ deb822-fast = "0.2.3"
 directories = "4.0.1"
 # run external commands and pipe their output
 duct = "0.13.5"
+# to set the mtime of files when downloading
+filetime = "0.2"
 futures = "0.3.17"
 # next(): async stream element reading
 futures-util = "0.3.14"

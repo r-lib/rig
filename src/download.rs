@@ -9,9 +9,13 @@ use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::time::Duration;
+use std::time::SystemTime;
 
 #[cfg(target_os = "windows")]
 use clap::ArgMatches;
+
+use filetime::FileTime;
 
 use reqwest::StatusCode;
 use simple_error::bail;
@@ -163,7 +167,24 @@ async fn download_if_newer(
     client: &reqwest::Client,
     url: &str,
     local_path: &PathBuf,
+    update_older: Option<Duration>
 ) -> Result<bool, Box<dyn Error>> {
+
+    let update_older = match update_older {
+        Some(dur) => dur,
+        None => Duration::from_hours(24),
+    };
+
+    if local_path.exists() {
+        let metadata = fs::metadata(local_path)?;
+        let modified = metadata.modified()?;
+        let elapsed = SystemTime::now().duration_since(modified)?;
+
+        if elapsed < update_older {
+            // File is newer than the threshold, skip update
+            return Ok(false);
+        }
+    }
 
     let etag_path = add_suffix(local_path, ".etag");
     let etag = fs::read_to_string(&etag_path).ok();
@@ -175,6 +196,7 @@ async fn download_if_newer(
 
     match resp.status() {
         StatusCode::NOT_MODIFIED => {
+            filetime::set_file_mtime(local_path, FileTime::now())?;
             Ok(false)
         }
 
@@ -199,10 +221,11 @@ async fn download_if_newer(
 pub async fn download_if_newer_(
     url: &str,
     local_path: &PathBuf,
+    update_older: Option<Duration>,
 ) -> Result<bool, Box<dyn Error>> {
     let client = reqwest::Client::new();
     let client = &client;
-    let updated = download_if_newer(client, url, local_path).await?;
+    let updated = download_if_newer(client, url, local_path, update_older).await?;
     Ok(updated)
 }
 
