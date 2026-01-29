@@ -6,7 +6,7 @@ use simple_error::*;
 /// Parse a single dependency field
 pub fn parse_deps(deps: &str, dep_type: &str)
             -> Result<Vec<DepVersionSpec>, Box<dyn Error>> {
-    let mut result = Vec::new();
+    let mut result: Vec<DepVersionSpec> = Vec::new();
     for dep in deps.split(',') {
         let dep = dep.trim();
         if dep.len() == 0 {
@@ -16,7 +16,7 @@ pub fn parse_deps(deps: &str, dep_type: &str)
     }
 
     // need to merge constraints for the same package
-    let result2 = simplify_constraints(result);
+    let result2: Vec<DepVersionSpec> = simplify_constraints(result);
     Ok(result2)
 }
 
@@ -42,7 +42,7 @@ pub fn simplify_constraints(deps: Vec<DepVersionSpec>) -> Vec<DepVersionSpec> {
 
 /// Parse a single dependency specification, i.e. a package in a
 /// dependency field
-fn parse_dep(dep: &str, dep_type: &str)
+pub fn parse_dep(dep: &str, dep_type: &str)
             -> Result<DepVersionSpec, Box<dyn Error>> {
     let (name, spec) = match dep.find('(') {
         Some(i) => (&dep[..i], &dep[i..]),

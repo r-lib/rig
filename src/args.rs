@@ -873,6 +873,22 @@ pub fn rig_app() -> Command {
                         .num_args(0)
                         .required(false),
                 )
+        )
+        .subcommand(
+            Command::new("package-info")
+                .about("Information about a package in the repositories")
+                .arg(
+                    Arg::new("package")
+                        .help("package name to show")
+                        .required(true),
+                )
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                )
         );
     rig = rig.subcommand(cmd_repos);
 
