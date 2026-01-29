@@ -83,6 +83,7 @@ pub fn rig_app() -> Command {
 
     let cmd_default = Command::new("default")
         .about("Print or set default R version [alias: switch]")
+        .display_order(0)
         .aliases(&["switch"])
         .long_about(HELP_DEFAULT)
         .after_help(HELP_DEFAULT_EXAMPLES)
@@ -102,6 +103,7 @@ pub fn rig_app() -> Command {
     let cmd_list = Command::new("list")
         .aliases(&["ls"])
         .about("List installed R versions [alias: ls]")
+        .display_order(0)
         .long_about(HELP_LIST)
         .arg(
             Arg::new("json")
@@ -120,6 +122,7 @@ pub fn rig_app() -> Command {
 
     let mut cmd_add = Command::new("add")
         .about("Install a new R version [alias: install]")
+        .display_order(0)
         .long_about(HELP_ADD)
         .after_help(HELP_ADD_EXAMPLES)
         .aliases(&["install"]);
@@ -221,6 +224,7 @@ pub fn rig_app() -> Command {
 
     let cmd_rm = Command::new("rm")
         .about("Remove R versions [aliases: del, remove, delete]")
+        .display_order(0)
         .long_about(HELP_RM)
         .aliases(&["del", "remove", "delete"])
         .arg(
@@ -239,6 +243,7 @@ pub fn rig_app() -> Command {
 
     let mut cmd_available = Command::new("available")
         .about("List R versions available to install.")
+        .display_order(0)
         .long_about(HELP_AVAILABLE);
 
     cmd_available = cmd_available.arg(
@@ -319,15 +324,18 @@ pub fn rig_app() -> Command {
     let mut cmd_system = Command::new("system")
         .about("Manage current installations")
         .long_about(HELP_SYSTEM)
+        .display_order(0)
         .arg_required_else_help(true);
 
     let cmd_system_links = Command::new("make-links")
         .about("Create R-* quick links")
+        .display_order(0)
         .long_about(HELP_SYSTEM_LINKS);
 
     let cmd_system_lib = Command::new("setup-user-lib")
         .about("Set up automatic user package libraries [alias: create-lib]")
         .long_about(HELP_SYSTEM_LIB)
+        .display_order(0)
         .aliases(&["create-lib"])
         .arg(
             Arg::new("version")
@@ -339,6 +347,7 @@ pub fn rig_app() -> Command {
     let cmd_system_pak = Command::new("add-pak")
         .about("Install or update pak for an R version")
         .long_about(HELP_SYSTEM_ADDPAK)
+        .display_order(0)
         .arg(
             Arg::new("devel")
                 .help("Install the development version of pak (deprecated)")
@@ -372,17 +381,20 @@ pub fn rig_app() -> Command {
     {
         let cmd_system_cleanreg = Command::new("clean-registry")
             .about("Clean stale R related entries in the registry")
+            .display_order(0)
             .long_about(HELP_SYSTEM_CLEANREG);
         cmd_system = cmd_system.subcommand(cmd_system_cleanreg);
 
 	let cmd_system_update_rtools40 = Command::new("update-rtools40")
 	    .about("Update Rtools40 MSYS2 packages")
+	    .display_order(0)
 	    .long_about(HELP_SYSTEM_UPDATE_RTOOLS40);
 	cmd_system = cmd_system.subcommand(cmd_system_update_rtools40);
 
 	let cmd_system_rtools_ls = Command::new("list")
 	    .about("List installed Rtools vesions [alias: ls]")
 	    .long_about(HELP_SYSTEM_RTOOLS_LS)
+        .display_order(0)
 	    .aliases(&["ls"])
 	    .arg(
 		Arg::new("json")
@@ -394,6 +406,7 @@ pub fn rig_app() -> Command {
 	let cmd_system_rtools_add = Command::new("add")
 	    .about("Install new Rtools version [alias: install]")
 	    .long_about(HELP_SYSTEM_RTOOLS_ADD)
+        .display_order(0)
 	    .aliases(&["install"])
 	    .arg(
 		Arg::new("version")
@@ -403,7 +416,8 @@ pub fn rig_app() -> Command {
 	let cmd_system_rtools_rm = Command::new("rm")
 	    .about("Remove rtools versions [aliases: del, remove, delete]")
 	    .long_about(HELP_SYSTEM_RTOOLS_RM)
-            .aliases(&["del", "remove", "delete"])
+        .display_order(0)
+        .aliases(&["del", "remove", "delete"])
 	    .arg(
 		Arg::new("version")
 		    .help("versions to remove")
@@ -413,7 +427,8 @@ pub fn rig_app() -> Command {
 
 	let cmd_system_rtools = Command::new("rtools")
 	    .about("Manage Rtools installations")
-            .arg_required_else_help(true)
+        .display_order(0)
+        .arg_required_else_help(true)
 	    .subcommand(cmd_system_rtools_ls)
 	    .subcommand(cmd_system_rtools_add)
 	    .subcommand(cmd_system_rtools_rm);
@@ -425,6 +440,7 @@ pub fn rig_app() -> Command {
         let cmd_system_ortho = Command::new("make-orthogonal")
             .about("Make installed versions orthogonal")
             .long_about(HELP_SYSTEM_ORTHO)
+            .display_order(0)
             .arg(
                 Arg::new("version")
                     .help("R versions to update (default: all)")
@@ -435,6 +451,7 @@ pub fn rig_app() -> Command {
         let cmd_system_rights = Command::new("fix-permissions")
             .about("Restrict system library permissions to admin")
             .long_about(HELP_SYSTEM_FIXPERMS)
+            .display_order(0)
             .arg(
                 Arg::new("version")
                     .help("R versions to update (default: all)")
@@ -444,11 +461,13 @@ pub fn rig_app() -> Command {
 
         let cmd_system_forget = Command::new("forget")
             .about("Make system forget about R installations")
+            .display_order(0)
             .long_about(HELP_SYSTEM_FORGET);
 
         let cmd_system_noopenmp = Command::new("no-openmp")
             .about("Remove OpenMP (-fopenmp) option for Apple compilers")
             .long_about(HELP_SYSTEM_NO_OPENMP)
+            .display_order(0)
             .arg(
                 Arg::new("version")
                     .help("R versions to update (default: all)")
@@ -459,6 +478,7 @@ pub fn rig_app() -> Command {
         let cmd_system_allow_debugger = Command::new("allow-debugger")
             .about("Allow debugging R with lldb and gdb")
             .long_about(HELP_SYSTEM_ALLOW_DEBUGGER)
+            .display_order(0)
             .arg(
                 Arg::new("all")
                     .help("Update all R versions")
@@ -475,11 +495,13 @@ pub fn rig_app() -> Command {
 
         let cmd_system_allow_debugger_rstudio = Command::new("allow-debugger-rstudio")
             .about("Allow debugging RStudio with lldb and gdb")
+            .display_order(0)
             .long_about(HELP_SYSTEM_ALLOW_DEBUGGER_RSTUDIO);
 
         let cmd_system_allow_core_dumps = Command::new("allow-core-dumps")
             .about("Allow creating core dumps when R crashes")
             .long_about(HELP_SYSTEM_ALLOW_CORE_DUMPS)
+            .display_order(0)
             .arg(
                 Arg::new("all")
                     .help("Update all R versions")
@@ -508,6 +530,7 @@ pub fn rig_app() -> Command {
     {
         let cmd_system_detect_platform = Command::new("detect-platform")
             .about("Detect operating system version and distribution.")
+            .display_order(0)
             .arg(
                 Arg::new("json")
                     .help("JSON output")
@@ -526,6 +549,7 @@ pub fn rig_app() -> Command {
 
     let mut cmd_resolve = Command::new("resolve")
         .about("Resolve a symbolic R version")
+        .display_order(0)
         .long_about(HELP_RESOLVE)
         .after_help(HELP_RESOLVE_EXAMPLES);
 
@@ -589,6 +613,7 @@ pub fn rig_app() -> Command {
 
     let mut cmd_rstudio = Command::new("rstudio")
         .about("Start RStudio with specified R version")
+        .display_order(0)
         .long_about(HELP_RSTUDIO);
 
     cmd_rstudio = cmd_rstudio
@@ -617,6 +642,7 @@ pub fn rig_app() -> Command {
 
     let cmd_library = Command::new("library")
         .about("Manage package libraries [alias: lib] (experimental)")
+        .display_order(0)
         .long_about(HELP_LIBRARY)
         .aliases(&["lib"])
         .arg_required_else_help(true)
@@ -631,6 +657,7 @@ pub fn rig_app() -> Command {
             Command::new("list")
                 .aliases(&["ls"])
                 .about("List libraries [alias: ls]")
+                .display_order(0)
                 .arg(
                     Arg::new("json")
                         .help("JSON output")
@@ -642,6 +669,7 @@ pub fn rig_app() -> Command {
         .subcommand(
             Command::new("add")
                 .about("Add a new library")
+                .display_order(0)
                 .arg(
                     Arg::new("lib-name")
                         .help("name of new library")
@@ -651,6 +679,7 @@ pub fn rig_app() -> Command {
         .subcommand(
             Command::new("rm")
                 .about("Remove a library")
+                .display_order(0)
                 .arg(
                     Arg::new("lib-name")
                         .help("name of library to remove")
@@ -660,6 +689,7 @@ pub fn rig_app() -> Command {
         .subcommand(
             Command::new("default")
                 .about("Set the default library")
+                .display_order(0)
                 .arg(
                     Arg::new("lib-name")
                         .help("library name to set as default")
@@ -678,6 +708,7 @@ pub fn rig_app() -> Command {
     {
         let cmd_sysreqs = Command::new("sysreqs")
             .about("Manage R-related system libraries and tools (experimental)")
+            .display_order(0)
             .long_about(HELP_SYSREQS)
             .arg_required_else_help(true)
             .arg(
@@ -690,6 +721,7 @@ pub fn rig_app() -> Command {
             .subcommand(
                 Command::new("add")
                     .about("Install system library or tool")
+                    .display_order(0)
                     .arg(
                         Arg::new("name")
                             .help("system tool to install")
@@ -709,6 +741,7 @@ pub fn rig_app() -> Command {
             .subcommand(
                 Command::new("list")
                     .about("List available system libraries and tools")
+                    .display_order(0)
                     .arg(
                         Arg::new("json")
                             .help("JSON output")
@@ -720,6 +753,7 @@ pub fn rig_app() -> Command {
             .subcommand(
                 Command::new("info")
                     .about("Information about a system tool")
+                    .display_order(0)
                     .arg(
                         Arg::new("name")
                             .help("system tool to show")
@@ -738,6 +772,7 @@ pub fn rig_app() -> Command {
 
     let cmd_run = Command::new("run")
         .about("Run R, an R script or an R project")
+        .display_order(0)
         .long_about(HELP_RUN)
         .arg(
             Arg::new("r-version")
@@ -819,6 +854,7 @@ pub fn rig_app() -> Command {
 
     let cmd_proj = Command::new("proj")
         .about("Manage R projects (experimental)")
+        .display_order(0)
         .long_about("TODO")
         .arg_required_else_help(true)
         .arg(
@@ -831,6 +867,7 @@ pub fn rig_app() -> Command {
         .subcommand(
             Command::new("deps")
                 .about("Show project dependencies")
+                .display_order(0)
                 .arg(
                     Arg::new("json")
                         .help("JSON output")
@@ -842,6 +879,7 @@ pub fn rig_app() -> Command {
         .subcommand(
             Command::new("solve")
                 .about("Solve project dependencies")
+                .display_order(0)
                 .arg(
                     Arg::new("json")
                         .help("JSON output")
@@ -854,6 +892,7 @@ pub fn rig_app() -> Command {
 
     let cmd_repos = Command::new("repos")
         .about("Manage package repositories")
+        .display_order(0)
         .long_about("TODO")
         .arg_required_else_help(true)
         .arg(
@@ -866,6 +905,7 @@ pub fn rig_app() -> Command {
         .subcommand(
             Command::new("list-packages")
                 .about("List packages in package repositories")
+                .display_order(0)
                 .arg(
                     Arg::new("json")
                         .help("JSON output")
@@ -877,6 +917,7 @@ pub fn rig_app() -> Command {
         .subcommand(
             Command::new("package-info")
                 .about("Information about a package in the repositories")
+                .display_order(0)
                 .arg(
                     Arg::new("package")
                         .help("package name to show")
