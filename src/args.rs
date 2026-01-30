@@ -37,7 +37,7 @@ pub fn rig_app() -> Command {
         "rmd-shiny",
         "quarto-static",
         "rmd-static",
-        "static"
+        "static",
     ];
 
     #[cfg(target_os = "macos")]
@@ -69,10 +69,10 @@ pub fn rig_app() -> Command {
 
     #[cfg(target_os = "windows")]
     {
-	_default_arch = match get_native_arch() {
-	    "aarch64" => _arch_aarch64,
-	    _ => _arch_x86_64
-	};
+        _default_arch = match get_native_arch() {
+            "aarch64" => _arch_aarch64,
+            _ => _arch_x86_64,
+        };
     }
 
     let mut rig = Command::new("RIG -- The R Installation Manager")
@@ -178,19 +178,21 @@ pub fn rig_app() -> Command {
 
     #[cfg(target_os = "windows")]
     {
-	cmd_add = cmd_add.arg(
-	    Arg::new("without-translations")
-		.help("Do not install translations.")
-		.long("without-translations")
-                .num_args(0)
-		.required(false),
-	).arg(
-	    Arg::new("with-desktop-icon")
-		.help("Install a desktop icon.")
-		.long("with-desktop-icon")
-                .num_args(0)
-		.required(false),
-	);
+        cmd_add = cmd_add
+            .arg(
+                Arg::new("without-translations")
+                    .help("Do not install translations.")
+                    .long("without-translations")
+                    .num_args(0)
+                    .required(false),
+            )
+            .arg(
+                Arg::new("with-desktop-icon")
+                    .help("Install a desktop icon.")
+                    .long("with-desktop-icon")
+                    .num_args(0)
+                    .required(false),
+            );
     }
 
     #[cfg(target_os = "macos")]
@@ -241,41 +243,42 @@ pub fn rig_app() -> Command {
         .about("List R versions available to install.")
         .long_about(HELP_AVAILABLE);
 
-    cmd_available = cmd_available.arg(
-        Arg::new("json")
-            .help("JSON output")
-            .num_args(0)
-            .long("json")
-            .required(false)
-    )
-    .arg(
-        Arg::new("all")
-            .num_args(0)
-            .help("List all available versions.")
-            .long("all")
-            .required(false),
-    )
-    .arg(
-        Arg::new("platform")
-            .help("Use this platform, instead of auto-detecting it.")
-            .long("platform")
-            .required(false)
-    )
-    .arg(
-        Arg::new("list-distros")
-            .help("List supported Linux distributions instead of R versions.")
-            .long("list-distros")
-            .num_args(0)
-            .required(false)
-            .conflicts_with("list-rtools-versions")
-    )
-    .arg(
-        Arg::new("list-rtools-versions")
-            .help("List available Rtools versions instead of R versions.")
-            .long("list-rtools-versions")
-            .num_args(0)
-            .required(false)
-            .conflicts_with("list-distros")
+    cmd_available = cmd_available
+        .arg(
+            Arg::new("json")
+                .help("JSON output")
+                .num_args(0)
+                .long("json")
+                .required(false),
+        )
+        .arg(
+            Arg::new("all")
+                .num_args(0)
+                .help("List all available versions.")
+                .long("all")
+                .required(false),
+        )
+        .arg(
+            Arg::new("platform")
+                .help("Use this platform, instead of auto-detecting it.")
+                .long("platform")
+                .required(false),
+        )
+        .arg(
+            Arg::new("list-distros")
+                .help("List supported Linux distributions instead of R versions.")
+                .long("list-distros")
+                .num_args(0)
+                .required(false)
+                .conflicts_with("list-rtools-versions"),
+        )
+        .arg(
+            Arg::new("list-rtools-versions")
+                .help("List available Rtools versions instead of R versions.")
+                .long("list-rtools-versions")
+                .num_args(0)
+                .required(false)
+                .conflicts_with("list-distros"),
         );
 
     #[cfg(any(target_os = "linux"))]
@@ -286,7 +289,7 @@ pub fn rig_app() -> Command {
                 .short('a')
                 .long("arch")
                 .required(false)
-                .value_parser(clap::value_parser!(String))
+                .value_parser(clap::value_parser!(String)),
         );
     }
 
@@ -375,49 +378,49 @@ pub fn rig_app() -> Command {
             .long_about(HELP_SYSTEM_CLEANREG);
         cmd_system = cmd_system.subcommand(cmd_system_cleanreg);
 
-	let cmd_system_update_rtools40 = Command::new("update-rtools40")
-	    .about("Update Rtools40 MSYS2 packages")
-	    .long_about(HELP_SYSTEM_UPDATE_RTOOLS40);
-	cmd_system = cmd_system.subcommand(cmd_system_update_rtools40);
+        let cmd_system_update_rtools40 = Command::new("update-rtools40")
+            .about("Update Rtools40 MSYS2 packages")
+            .long_about(HELP_SYSTEM_UPDATE_RTOOLS40);
+        cmd_system = cmd_system.subcommand(cmd_system_update_rtools40);
 
-	let cmd_system_rtools_ls = Command::new("list")
-	    .about("List installed Rtools vesions [alias: ls]")
-	    .long_about(HELP_SYSTEM_RTOOLS_LS)
-	    .aliases(&["ls"])
-	    .arg(
-		Arg::new("json")
-		    .help("JSON output")
-		    .long("json")
-		    .num_args(0)
-		    .required(false)
-	    );
-	let cmd_system_rtools_add = Command::new("add")
-	    .about("Install new Rtools version [alias: install]")
-	    .long_about(HELP_SYSTEM_RTOOLS_ADD)
-	    .aliases(&["install"])
-	    .arg(
-		Arg::new("version")
-		    .help("Rtools version to add, e.g. '43'")
-		    .default_value("all")
-	    );
-	let cmd_system_rtools_rm = Command::new("rm")
-	    .about("Remove rtools versions [aliases: del, remove, delete]")
-	    .long_about(HELP_SYSTEM_RTOOLS_RM)
+        let cmd_system_rtools_ls = Command::new("list")
+            .about("List installed Rtools vesions [alias: ls]")
+            .long_about(HELP_SYSTEM_RTOOLS_LS)
+            .aliases(&["ls"])
+            .arg(
+                Arg::new("json")
+                    .help("JSON output")
+                    .long("json")
+                    .num_args(0)
+                    .required(false),
+            );
+        let cmd_system_rtools_add = Command::new("add")
+            .about("Install new Rtools version [alias: install]")
+            .long_about(HELP_SYSTEM_RTOOLS_ADD)
+            .aliases(&["install"])
+            .arg(
+                Arg::new("version")
+                    .help("Rtools version to add, e.g. '43'")
+                    .default_value("all"),
+            );
+        let cmd_system_rtools_rm = Command::new("rm")
+            .about("Remove rtools versions [aliases: del, remove, delete]")
+            .long_about(HELP_SYSTEM_RTOOLS_RM)
             .aliases(&["del", "remove", "delete"])
-	    .arg(
-		Arg::new("version")
-		    .help("versions to remove")
-		    .action(clap::ArgAction::Append)
-		    .required(false)
-	    );
+            .arg(
+                Arg::new("version")
+                    .help("versions to remove")
+                    .action(clap::ArgAction::Append)
+                    .required(false),
+            );
 
-	let cmd_system_rtools = Command::new("rtools")
-	    .about("Manage Rtools installations")
+        let cmd_system_rtools = Command::new("rtools")
+            .about("Manage Rtools installations")
             .arg_required_else_help(true)
-	    .subcommand(cmd_system_rtools_ls)
-	    .subcommand(cmd_system_rtools_add)
-	    .subcommand(cmd_system_rtools_rm);
-	cmd_system = cmd_system.subcommand(cmd_system_rtools);
+            .subcommand(cmd_system_rtools_ls)
+            .subcommand(cmd_system_rtools_add)
+            .subcommand(cmd_system_rtools_rm);
+        cmd_system = cmd_system.subcommand(cmd_system_rtools);
     }
 
     #[cfg(target_os = "macos")]
@@ -513,7 +516,7 @@ pub fn rig_app() -> Command {
                     .help("JSON output")
                     .long("json")
                     .num_args(0)
-                    .required(false)
+                    .required(false),
             );
 
         cmd_system = cmd_system.subcommand(cmd_system_detect_platform);
@@ -546,7 +549,7 @@ pub fn rig_app() -> Command {
             Arg::new("platform")
                 .help("Use this platform, instead of auto-detecting it.")
                 .long("platform")
-                .required(false)
+                .required(false),
         );
 
     #[cfg(any(target_os = "linux"))]
@@ -557,7 +560,7 @@ pub fn rig_app() -> Command {
                 .short('a')
                 .long("arch")
                 .required(false)
-                .value_parser(clap::value_parser!(String))
+                .value_parser(clap::value_parser!(String)),
         );
     }
 
@@ -605,14 +608,13 @@ pub fn rig_app() -> Command {
 
     #[cfg(target_os = "windows")]
     {
-        cmd_rstudio = cmd_rstudio
-	    .arg(
-	        Arg::new("config-path")
-		    .help("Do not start RStudio, only print the path of the RStudio config directory")
-		    .long("config-path")
-		    .required(false)
-		    .num_args(0)
-	    );
+        cmd_rstudio = cmd_rstudio.arg(
+            Arg::new("config-path")
+                .help("Do not start RStudio, only print the path of the RStudio config directory")
+                .long("config-path")
+                .required(false)
+                .num_args(0),
+        );
     }
 
     let cmd_library = Command::new("library")
@@ -640,22 +642,18 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
-            Command::new("add")
-                .about("Add a new library")
-                .arg(
-                    Arg::new("lib-name")
-                        .help("name of new library")
-                        .required(true),
-                ),
+            Command::new("add").about("Add a new library").arg(
+                Arg::new("lib-name")
+                    .help("name of new library")
+                    .required(true),
+            ),
         )
         .subcommand(
-            Command::new("rm")
-                .about("Remove a library")
-                .arg(
-                    Arg::new("lib-name")
-                        .help("name of library to remove")
-                        .required(true),
-                ),
+            Command::new("rm").about("Remove a library").arg(
+                Arg::new("lib-name")
+                    .help("name of library to remove")
+                    .required(true),
+            ),
         )
         .subcommand(
             Command::new("default")
@@ -704,7 +702,7 @@ pub fn rig_app() -> Command {
                             .required(false)
                             .default_value(&_default_arch)
                             .value_parser(["arm64", "x86_64"]),
-                    )
+                    ),
             )
             .subcommand(
                 Command::new("list")
@@ -715,23 +713,19 @@ pub fn rig_app() -> Command {
                             .long("json")
                             .num_args(0)
                             .required(false),
-                    )
+                    ),
             )
             .subcommand(
                 Command::new("info")
                     .about("Information about a system tool")
-                    .arg(
-                        Arg::new("name")
-                            .help("system tool to show")
-                            .required(true),
-                    )
+                    .arg(Arg::new("name").help("system tool to show").required(true))
                     .arg(
                         Arg::new("json")
                             .help("JSON output")
                             .long("json")
                             .num_args(0)
                             .required(false),
-                    )
+                    ),
             );
         rig = rig.subcommand(cmd_sysreqs);
     }
@@ -744,7 +738,7 @@ pub fn rig_app() -> Command {
                 .help("R version to use")
                 .short('r')
                 .long("r-version")
-                .required(false)
+                .required(false),
         )
         .arg(
             Arg::new("app-type")
@@ -754,21 +748,21 @@ pub fn rig_app() -> Command {
                 .required(false)
                 .value_parser(app_types)
                 .conflicts_with("eval")
-                .conflicts_with("script")
+                .conflicts_with("script"),
         )
         .arg(
             Arg::new("dry-run")
                 .help("Show the command, but do not run it")
                 .long("dry-run")
                 .required(false)
-                .action(clap::ArgAction::SetTrue)
+                .action(clap::ArgAction::SetTrue),
         )
         .arg(
             Arg::new("startup")
                 .help("Print R startup message")
                 .long("startup")
                 .action(clap::ArgAction::SetTrue)
-                .required(false)
+                .required(false),
         )
         .arg(
             Arg::new("no-startup")
@@ -776,14 +770,14 @@ pub fn rig_app() -> Command {
                 .long("no-startup")
                 .action(clap::ArgAction::SetTrue)
                 .required(false)
-                .conflicts_with("startup")
+                .conflicts_with("startup"),
         )
         .arg(
             Arg::new("echo")
                 .help("Print input to R")
                 .long("echo")
                 .action(clap::ArgAction::SetTrue)
-                .required(false)
+                .required(false),
         )
         .arg(
             Arg::new("no-echo")
@@ -791,7 +785,7 @@ pub fn rig_app() -> Command {
                 .long("no-echo")
                 .action(clap::ArgAction::SetTrue)
                 .required(false)
-                .conflicts_with("echo")
+                .conflicts_with("echo"),
         )
         .arg(
             Arg::new("eval")
@@ -799,7 +793,7 @@ pub fn rig_app() -> Command {
                 .short('e')
                 .long("eval")
                 .num_args(1)
-                .required(false)
+                .required(false),
         )
         .arg(
             Arg::new("script")
@@ -808,49 +802,50 @@ pub fn rig_app() -> Command {
                 .long("script")
                 .num_args(1)
                 .required(false)
-                .conflicts_with("eval")
+                .conflicts_with("eval"),
         )
         .arg(
             Arg::new("command")
                 .help("R script or project to run, with parameters")
                 .required(false)
-                .action(clap::ArgAction::Append)
+                .action(clap::ArgAction::Append),
         );
 
-    rig = rig.arg(
-        Arg::new("quiet")
-            .help("Suppress output (overrides `--verbose`)")
-            .short('q')
-            .num_args(0)
-            .long("quiet")
-            .required(false),
-    )
-    .arg(
-        Arg::new("verbose")
-            .help("Verbose output")
-            .short('v')
-            .long("verbose")
-            .required(false)
-            .action(clap::ArgAction::Count),
-    )
-    .arg(
-        Arg::new("json")
-            .help("Output JSON")
-            .long("json")
-            .num_args(0)
-            .required(false),
-    )
-    .subcommand(cmd_default)
-    .subcommand(cmd_list)
-    .subcommand(cmd_add)
-    .subcommand(cmd_rm)
-    .subcommand(cmd_system)
-    .subcommand(cmd_resolve)
-    .subcommand(cmd_rstudio)
-    .subcommand(cmd_library)
-    .subcommand(cmd_available)
-    .subcommand(cmd_run)
-    .after_help(HELP_EXAMPLES);
+    rig = rig
+        .arg(
+            Arg::new("quiet")
+                .help("Suppress output (overrides `--verbose`)")
+                .short('q')
+                .num_args(0)
+                .long("quiet")
+                .required(false),
+        )
+        .arg(
+            Arg::new("verbose")
+                .help("Verbose output")
+                .short('v')
+                .long("verbose")
+                .required(false)
+                .action(clap::ArgAction::Count),
+        )
+        .arg(
+            Arg::new("json")
+                .help("Output JSON")
+                .long("json")
+                .num_args(0)
+                .required(false),
+        )
+        .subcommand(cmd_default)
+        .subcommand(cmd_list)
+        .subcommand(cmd_add)
+        .subcommand(cmd_rm)
+        .subcommand(cmd_system)
+        .subcommand(cmd_resolve)
+        .subcommand(cmd_rstudio)
+        .subcommand(cmd_library)
+        .subcommand(cmd_available)
+        .subcommand(cmd_run)
+        .after_help(HELP_EXAMPLES);
 
     rig
 }

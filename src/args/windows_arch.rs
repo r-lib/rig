@@ -21,11 +21,7 @@ extern "system" {
 }
 
 /// Signature of IsWow64Process2
-type FnIsWow64Process2 = unsafe extern "system" fn(
-    HANDLE,
-    *mut USHORT,
-    *mut USHORT,
-) -> BOOL;
+type FnIsWow64Process2 = unsafe extern "system" fn(HANDLE, *mut USHORT, *mut USHORT) -> BOOL;
 
 static INIT: Once = Once::new();
 static mut FN_ISWOW64PROCESS2: Option<FnIsWow64Process2> = None;
@@ -53,7 +49,7 @@ unsafe fn init_iswow64process2() {
 /// `"x86_64"`, `"aarch64"`, `"x86"`, or `"unknown"`.
 pub fn get_native_arch() -> &'static str {
     unsafe {
-        INIT.call_once(|| { init_iswow64process2() });
+        INIT.call_once(|| init_iswow64process2());
 
         let hproc = GetCurrentProcess();
 
@@ -81,24 +77,42 @@ pub fn get_native_arch() -> &'static str {
                 return "x86_64"; // assume 64-bit host when under WOW64
             } else {
                 #[cfg(target_arch = "x86_64")]
-                { return "x86_64"; }
+                {
+                    return "x86_64";
+                }
                 #[cfg(target_arch = "aarch64")]
-                { return "aarch64"; }
+                {
+                    return "aarch64";
+                }
                 #[cfg(target_arch = "x86")]
-                { return "x86"; }
-		#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "x86")))]
+                {
+                    return "x86";
+                }
+                #[cfg(not(any(
+                    target_arch = "x86_64",
+                    target_arch = "aarch64",
+                    target_arch = "x86"
+                )))]
                 return "unknown";
             }
         }
 
         // Final fallback if everything fails
         #[cfg(target_arch = "x86_64")]
-        { "x86_64" }
+        {
+            "x86_64"
+        }
         #[cfg(target_arch = "aarch64")]
-        { "aarch64" }
+        {
+            "aarch64"
+        }
         #[cfg(target_arch = "x86")]
-        { "x86" }
+        {
+            "x86"
+        }
         #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "x86")))]
-        { "unknown" }
+        {
+            "unknown"
+        }
     }
 }

@@ -213,12 +213,12 @@ pub fn get_user() -> Result<User, Box<dyn Error>> {
     let sudo_gid: Option<u32> = parse_uid(std::env::var_os("SUDO_GID"));
     let sudo_user = std::env::var_os("SUDO_USER").and_then(|x| x.into_string().ok());
     if euid.is_root() && sudo_uid.is_some() && sudo_gid.is_some() && sudo_user.is_some() {
-       sudo = true;
+        sudo = true;
         uid = sudo_uid.unwrap_or_else(|| unreachable!());
         gid = sudo_gid.unwrap_or_else(|| unreachable!());
         user = sudo_user.unwrap_or_else(|| unreachable!());
     } else {
-       sudo = false;
+        sudo = false;
         uid = nix::unistd::getuid().as_raw();
         gid = nix::unistd::getgid().as_raw();
         user = std::env::var_os("USER")
@@ -232,19 +232,23 @@ pub fn get_user() -> Result<User, Box<dyn Error>> {
     if let Ok(Some(d)) = user_record {
         dir = d.dir.into_os_string();
     } else {
-        dir = std::env::home_dir().map(|x| x.into_os_string())
+        dir = std::env::home_dir()
+            .map(|x| x.into_os_string())
             .ok_or(SimpleError::new("Failed to find user HOME"))?;
     }
 
-    Ok(User { user, uid, gid, dir, sudo })
+    Ok(User {
+        user,
+        uid,
+        gid,
+        dir,
+        sudo,
+    })
 }
 
 #[cfg(target_os = "macos")]
 pub fn escape_json(input: &str) -> String {
-    input
-        .replace("\"", "\\\"")
-        .replace("\n", "\\n")
-        .to_string()
+    input.replace("\"", "\\\"").replace("\n", "\\n").to_string()
 }
 
 pub fn unset_r_envvars() {
@@ -272,7 +276,7 @@ pub fn unset_r_envvars() {
         "R_TEXI2DVICMD",
         "R_UNZIPCMD",
         "R_USER",
-        "R_ZIPCMD"
+        "R_ZIPCMD",
     ];
     for ev in evs {
         std::env::remove_var(ev);
@@ -281,9 +285,7 @@ pub fn unset_r_envvars() {
 
 #[cfg(target_os = "linux")]
 pub fn format_cmd_args(x: Vec<String>, val: &OsStr) -> Vec<OsString> {
-    let x2 = x.iter()
-        .map(|e| format_cmd_arg(e, val))
-        .collect();
+    let x2 = x.iter().map(|e| format_cmd_arg(e, val)).collect();
     x2
 }
 

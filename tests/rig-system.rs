@@ -7,8 +7,7 @@ use std::process::Command; // Run programs
 fn rig_system_make_links() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("rig")?;
     cmd.args(["system", "make-links"]);
-    cmd.assert()
-        .success();
+    cmd.assert().success();
 
     let mut cmd2 = Command::new("R-4.1");
     cmd2.args(["-q", "-s", "-e", "cat(as.character(getRversion()))"]);
