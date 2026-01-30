@@ -49,7 +49,6 @@ pub fn parse_dep(dep: &str, dep_type: &str)
         None => (dep, ""),
     };
     let name = name.trim();
-    let sepc = spec.trim();
     let types: Vec<String> =
       vec![dep_type.to_string()];
     let mut constraints = Vec::new();

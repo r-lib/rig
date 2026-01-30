@@ -63,6 +63,32 @@ pub fn set_default_if_none(ver: String) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+pub fn get_default_r_version() -> Result<Option<String>, Box<dyn Error>> {
+    let default = sc_get_default()?;
+    let re = Regex::new("^Version:[ ]?")?;
+    match default {
+        None => Ok(None),
+        Some(d) => {
+            let name = check_installed(&d)?;
+            let desc = Path::new(&get_r_root())
+                .join(R_SYSLIBPATH.replace("{}", &name))
+                .join("base/DESCRIPTION");
+            let lines = match read_lines(&desc) {
+                Ok(x) => x,
+                Err(_) => vec![],
+            };
+            let idx = grep_lines(&re, &lines);
+            let version: Option<String> = if idx.len() == 0 {
+                None
+            } else {
+                Some(re.replace(&lines[idx[0]], "").to_string())
+            };
+
+            Ok(version)
+        }
+    }
+}
+
 // -- rig list ------------------------------------------------------------
 
 pub fn sc_get_list_details() -> Result<Vec<InstalledVersion>, Box<dyn Error>> {

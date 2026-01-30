@@ -119,15 +119,10 @@ fn repo_local_file(url: &str) -> Result<PathBuf, Box<dyn Error>> {
     Ok(cache)
 }
 
-fn sc_repos_package_info(
-    args: &ArgMatches,
-    _libargs: &ArgMatches,
-    mainargs: &ArgMatches,
-) -> Result<(), Box<dyn Error>> {
-
-    let package: String = require_with!(args.get_one::<String>("package"), "clap error").to_string();
-
-    let url = "https://crandb.r-pkg.org/".to_string() + &package + "/" + "all";
+pub fn get_all_cran_package_versions(package: &str)
+    -> Result<Vec<(RPackageVersion, Vec<DepVersionSpec>)>, Box<dyn Error>>
+{
+   let url = "https://crandb.r-pkg.org/".to_string() + &package + "/" + "all";
     let mut local = ProjectDirs::from("com", "gaborcsardi", "rig")
         .ok_or("Cannot determine cache directory")?
         .cache_dir()
@@ -136,35 +131,49 @@ fn sc_repos_package_info(
     local.push("package-".to_string() + &package + ".json");
 
     create_parent_dir_if_needed(&local)?;
-    download_if_newer_(&url, &local, None);
+    download_if_newer_(&url, &local, None)?;
 
     let contents: String = read_file_string(&local)?;
+    let contents = contents.replace("<U+000a>", " ");
     let json: Value = serde_json::from_str(&contents)?;
     let versions = &json["versions"];
 
-    let mut rows: Vec<(RPackageVersion, String)> = vec![];
+    let mut rows: Vec<(RPackageVersion, Vec<DepVersionSpec> )> = vec![];
     if let Some(versions) = versions.as_object() {
         for (ver, data) in versions {
             let mut deps: Vec<DepVersionSpec> = vec![];
             deps.append(&mut parse_crandb_deps(&data["Depends"], "Depends")?);
             deps.append(&mut parse_crandb_deps(&data["Imports"], "Imports")?);
             deps.append(&mut parse_crandb_deps(&data["LinkingTo"], "LinkingTo")?);
-            let deps_str: String = deps.iter()
-                .map(|x| format!("{}", x))
-                .collect::<Vec<String>>()
-                .join(", ");
             let pver: RPackageVersion = RPackageVersion::from_str(ver)?;
-            rows.push((pver, deps_str));
+            rows.push((pver, deps));
         }
     }
 
+    Ok(rows)
+}
+
+fn sc_repos_package_info(
+    args: &ArgMatches,
+    _libargs: &ArgMatches,
+    _mainargs: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+
+    let package: String = require_with!(args.get_one::<String>("package"), "clap error").to_string();
+
+    let mut rows = get_all_cran_package_versions(&package)?;
     rows.sort_by(|a, b| a.0.cmp(&b.0)); // assumes RPackageVersion implements Ord
 
     let mut tab: Table = Table::new("{:<}   {:<}   {:<}");
     tab.add_row(row!("Package", "Version", "Dependencies"));
     tab.add_heading("------------------------------------------------------------------------");
     for row in rows {
-        tab.add_row(row!(&package, &row.0, &row.1));
+        let deps_str: String = row.1.iter()
+                .map(|x| format!("{}", x))
+                .collect::<Vec<String>>()
+                .join(", ");
+
+        tab.add_row(row!(&package, &row.0, &deps_str));
     }
 
     print!("{}", tab);

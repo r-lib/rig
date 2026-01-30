@@ -887,6 +887,14 @@ pub fn rig_app() -> Command {
                         .num_args(0)
                         .required(false),
                 )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version to solve dependencies for")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false)
+                )
         );
     rig = rig.subcommand(cmd_proj);
 

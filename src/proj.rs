@@ -4,14 +4,16 @@ use std::fs::File;
 
 use clap::ArgMatches;
 use deb822_fast::Deb822;
-use pubgrub::resolve;
+use pubgrub::{resolve, SelectedDependencies};
 use simple_error::*;
 use simplelog::info;
 use tabular::*;
 
+use crate::common::get_default_r_version;
 use crate::dcf::*;
 use crate::repos::*;
 use crate::solver::*;
+
 
 pub fn sc_proj(args: &ArgMatches, mainargs: &ArgMatches)
               -> Result<(), Box<dyn Error>> {
@@ -115,17 +117,12 @@ fn sc_proj_deps(
   Ok(())
 }
 
-fn sc_proj_solve(
-    args: &ArgMatches,
-    _libargs: &ArgMatches,
-    mainargs: &ArgMatches,
-) -> Result<(), Box<dyn Error>> {
+fn sc_proj_solve_latest(r_version: &str, deps: &Vec<DepVersionSpec>)
+  -> Result<SelectedDependencies<RPackageRegistry>, Box<dyn Error>> {
 
-    // Do this first, to report local errors early
-    let deps: Vec<DepVersionSpec> = proj_read_deps()?;
-
+    info!("Solver with latest package versions");
     let pkgs = repos_get_packages()?;
-    let mut reg = RPackageRegistry::default();
+    let reg: RPackageRegistry = RPackageRegistry::default();
 
     info!("Adding {} packages to the registry", pkgs.len());
     for pkg in pkgs.iter() {
@@ -143,7 +140,6 @@ fn sc_proj_solve(
     );
 
     // add R itself, for now a hardcoded version
-    let r_version = "4.5.2";
     reg.add_package_version(
         "R".to_string(),
         RPackageVersion::from_str(r_version)?,
@@ -181,8 +177,105 @@ fn sc_proj_solve(
         RPackageVersion::from_str("1.0.0")?
     );
 
-    println!("{:?}", solution);
+    match solution {
+        Ok(sol) => Ok(sol),
+        Err(e) => bail!("Solution failed with latest package versions: {}", e)
+    }
+}
 
+fn sc_proj_solve_all(r_version: &str, deps: &Vec<DepVersionSpec>)
+  -> Result<SelectedDependencies<RPackageRegistry>, Box<dyn Error>> {
 
-    Ok(())
+    info!("Solver with all package versions");
+    let reg: RPackageRegistry = RPackageRegistry::default();
+
+    reg.add_package_version(
+        "_project".to_string(),
+        RPackageVersion::from_str("1.0.0")?,
+        rpackage_version_ranges_from_constraints(&deps)
+    );
+
+    // add R itself, for now a hardcoded version
+    reg.add_package_version(
+        "R".to_string(),
+        RPackageVersion::from_str(r_version)?,
+        HashMap::with_hasher(rustc_hash::FxBuildHasher::default())
+    );
+
+    // add base packages, these are always available
+    let base_pkgs = vec![
+        "base",
+        "compiler",
+        "datasets",
+        "graphics",
+        "grDevices",
+        "grid",
+        "methods",
+        "parallel",
+        "splines",
+        "stats",
+        "stats4",
+        "tcltk",
+        "tools",
+        "utils"
+    ];
+    for bp in base_pkgs.iter() {
+        reg.add_package_version(
+            bp.to_string(),
+            RPackageVersion::from_str(r_version)?,
+            HashMap::with_hasher(rustc_hash::FxBuildHasher::default())
+        );
+    }
+
+    let solution = resolve(
+        &reg,
+        "_project".to_string(),
+        RPackageVersion::from_str("1.0.0")?
+    );
+
+    match solution {
+        Ok(sol) => Ok(sol),
+        Err(e) => bail!("Solution failed with all package versions: {}", e)
+    }
+}
+
+fn sc_proj_solve(
+    args: &ArgMatches,
+    _libargs: &ArgMatches,
+    _mainargs: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+
+    let rver = if args.contains_id("r-version") {
+        args
+            .get_one::<String>("r-version")
+            .unwrap()
+            .to_string()
+    } else {
+        match get_default_r_version()? {
+            Some(rv) => rv,
+            None => bail!("Cannot determine R version, please specify it with --r-version."),
+        }
+    };
+
+    // Do this first, to report local errors early
+    let deps: Vec<DepVersionSpec> = proj_read_deps()?;
+
+    // try latest version first
+    match sc_proj_solve_latest(&rver, &deps) {
+        Ok(solution) => {
+            println!("{:?}", solution);
+            return Ok(())
+        },
+        Err(solution) => {
+            print!("Failed: {:?}", solution);
+        }
+    };
+
+    match sc_proj_solve_all(&rver, &deps) {
+        Ok(solution) => {
+            print!("{:?}", solution);
+            Ok(())
+        },
+        Err(e) => bail!("Solver failed: {}", e)
+    }
 }
