@@ -4,8 +4,7 @@ use std::error::Error;
 use simple_error::*;
 
 /// Parse a single dependency field
-pub fn parse_deps(deps: &str, dep_type: &str)
-            -> Result<Vec<DepVersionSpec>, Box<dyn Error>> {
+pub fn parse_deps(deps: &str, dep_type: &str) -> Result<Vec<DepVersionSpec>, Box<dyn Error>> {
     let mut result: Vec<DepVersionSpec> = Vec::new();
     for dep in deps.split(',') {
         let dep = dep.trim();
@@ -42,15 +41,13 @@ pub fn simplify_constraints(deps: Vec<DepVersionSpec>) -> Vec<DepVersionSpec> {
 
 /// Parse a single dependency specification, i.e. a package in a
 /// dependency field
-pub fn parse_dep(dep: &str, dep_type: &str)
-            -> Result<DepVersionSpec, Box<dyn Error>> {
+pub fn parse_dep(dep: &str, dep_type: &str) -> Result<DepVersionSpec, Box<dyn Error>> {
     let (name, spec) = match dep.find('(') {
         Some(i) => (&dep[..i], &dep[i..]),
         None => (dep, ""),
     };
     let name = name.trim();
-    let types: Vec<String> =
-      vec![dep_type.to_string()];
+    let types: Vec<String> = vec![dep_type.to_string()];
     let mut constraints = Vec::new();
 
     if spec.len() > 0 {
@@ -58,7 +55,7 @@ pub fn parse_dep(dep: &str, dep_type: &str)
         if specbytes.first() != Some(&b'(') || specbytes.last() != Some(&b')') {
             bail!("Invalid dependency version: {}", dep);
         }
-        let spec = &spec[1..spec.len()-1];
+        let spec = &spec[1..spec.len() - 1];
         if spec.starts_with(">=") {
             let ver = spec[2..].trim().to_string();
             constraints.push((VersionConstraint::GreaterOrEqual, ver));
@@ -87,7 +84,11 @@ pub fn parse_dep(dep: &str, dep_type: &str)
             bail!("Invalid dependency version: {}", dep);
         }
     }
-    Ok(DepVersionSpec { name: name.to_string(), types, constraints })
+    Ok(DepVersionSpec {
+        name: name.to_string(),
+        types,
+        constraints,
+    })
 }
 
 #[derive(Debug, Hash, Clone, PartialEq, Eq)]

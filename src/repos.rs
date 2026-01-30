@@ -15,9 +15,7 @@ use crate::download::download_if_newer_;
 use crate::solver::RPackageVersion;
 use crate::utils::*;
 
-pub fn sc_repos(args: &ArgMatches, mainargs: &ArgMatches)
-              -> Result<(), Box<dyn Error>> {
-
+pub fn sc_repos(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
         Some(("list-packages", s)) => sc_repos_list_packages(s, args, mainargs),
         Some(("package-info", s)) => sc_repos_package_info(s, args, mainargs),
@@ -73,7 +71,11 @@ pub fn repos_get_packages() -> Result<Vec<Package>, Box<dyn Error>> {
         // }
         let dependencies = simplify_constraints(dependencies);
 
-        packages.push(Package { name, version, dependencies });
+        packages.push(Package {
+            name,
+            version,
+            dependencies,
+        });
     }
 
     Ok(packages)
@@ -84,17 +86,17 @@ fn sc_repos_list_packages(
     _libargs: &ArgMatches,
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
-
     let packages = repos_get_packages()?;
 
     if args.get_flag("json") || mainargs.get_flag("json") {
-
     } else {
         let mut tab: Table = Table::new("{:<}   {:<}   {:<}");
         tab.add_row(row!("Package", "Version", "Dependencies"));
         tab.add_heading("------------------------------------------------------------------------");
         for pkg in packages.iter() {
-            let deps_str: String = pkg.dependencies.iter()
+            let deps_str: String = pkg
+                .dependencies
+                .iter()
                 .map(|x| format!("{}", x))
                 .collect::<Vec<String>>()
                 .join(", ");
@@ -119,10 +121,10 @@ fn repo_local_file(url: &str) -> Result<PathBuf, Box<dyn Error>> {
     Ok(cache)
 }
 
-pub fn get_all_cran_package_versions(package: &str)
-    -> Result<Vec<(RPackageVersion, Vec<DepVersionSpec>)>, Box<dyn Error>>
-{
-   let url = "https://crandb.r-pkg.org/".to_string() + &package + "/" + "all";
+pub fn get_all_cran_package_versions(
+    package: &str,
+) -> Result<Vec<(RPackageVersion, Vec<DepVersionSpec>)>, Box<dyn Error>> {
+    let url = "https://crandb.r-pkg.org/".to_string() + &package + "/" + "all";
     let mut local = ProjectDirs::from("com", "gaborcsardi", "rig")
         .ok_or("Cannot determine cache directory")?
         .cache_dir()
@@ -138,7 +140,7 @@ pub fn get_all_cran_package_versions(package: &str)
     let json: Value = serde_json::from_str(&contents)?;
     let versions = &json["versions"];
 
-    let mut rows: Vec<(RPackageVersion, Vec<DepVersionSpec> )> = vec![];
+    let mut rows: Vec<(RPackageVersion, Vec<DepVersionSpec>)> = vec![];
     if let Some(versions) = versions.as_object() {
         for (ver, data) in versions {
             let mut deps: Vec<DepVersionSpec> = vec![];
@@ -158,8 +160,8 @@ fn sc_repos_package_info(
     _libargs: &ArgMatches,
     _mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
-
-    let package: String = require_with!(args.get_one::<String>("package"), "clap error").to_string();
+    let package: String =
+        require_with!(args.get_one::<String>("package"), "clap error").to_string();
 
     let mut rows = get_all_cran_package_versions(&package)?;
     rows.sort_by(|a, b| a.0.cmp(&b.0)); // assumes RPackageVersion implements Ord
@@ -168,10 +170,12 @@ fn sc_repos_package_info(
     tab.add_row(row!("Package", "Version", "Dependencies"));
     tab.add_heading("------------------------------------------------------------------------");
     for row in rows {
-        let deps_str: String = row.1.iter()
-                .map(|x| format!("{}", x))
-                .collect::<Vec<String>>()
-                .join(", ");
+        let deps_str: String = row
+            .1
+            .iter()
+            .map(|x| format!("{}", x))
+            .collect::<Vec<String>>()
+            .join(", ");
 
         tab.add_row(row!(&package, &row.0, &deps_str));
     }
@@ -181,8 +185,10 @@ fn sc_repos_package_info(
     Ok(())
 }
 
-fn parse_crandb_deps(deps: &serde_json::Value, dep_type: &str)
-            -> Result<Vec<DepVersionSpec>, Box<dyn Error>> {
+fn parse_crandb_deps(
+    deps: &serde_json::Value,
+    dep_type: &str,
+) -> Result<Vec<DepVersionSpec>, Box<dyn Error>> {
     let mut result: Vec<DepVersionSpec> = Vec::new();
 
     if let Some(pkgs) = deps.as_object() {

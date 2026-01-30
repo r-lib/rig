@@ -225,7 +225,8 @@ pub fn sc_library_default(
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
     if args.get_one::<String>("lib-name").is_some() {
-        let name: String = require_with!(args.get_one::<String>("lib-name"), "clap error").to_string();
+        let name: String =
+            require_with!(args.get_one::<String>("lib-name"), "clap error").to_string();
         sc_library_set_default(&name)
     } else {
         let default = sc_library_get_default()?;

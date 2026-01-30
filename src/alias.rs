@@ -1,9 +1,8 @@
-
 use std::error::Error;
 #[cfg(target_os = "windows")]
-use std::io::Write;
-#[cfg(target_os = "windows")]
 use std::fs::File;
+#[cfg(target_os = "windows")]
+use std::io::Write;
 use std::path::Path;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -30,13 +29,11 @@ pub fn get_alias(args: &ArgMatches) -> Option<String> {
     let str: Option<&String> = args.get_one("str");
     match str {
         None => None,
-        Some(str) => {
-            match str.as_ref() {
-                "oldrel" | "oldrel/1" => Some("oldrel".to_string()),
-                "release" | "devel" | "next" => Some(str.to_string()),
-                _ => None
-            }
-        }
+        Some(str) => match str.as_ref() {
+            "oldrel" | "oldrel/1" => Some("oldrel".to_string()),
+            "release" | "devel" | "next" => Some(str.to_string()),
+            _ => None,
+        },
     }
 }
 
@@ -44,13 +41,11 @@ pub fn get_alias(args: &ArgMatches) -> Option<String> {
 pub fn get_alias(args: &ArgMatches) -> Option<String> {
     match args.get_one::<String>("str") {
         None => None,
-        Some(str) => {
-            match str.as_ref() {
-                "oldrel" | "oldrel/1" => Some("oldrel".to_string()),
-                "release" => Some(str.to_string()),
-                _ => None
-            }
-        }
+        Some(str) => match str.as_ref() {
+            "oldrel" | "oldrel/1" => Some("oldrel".to_string()),
+            "release" => Some(str.to_string()),
+            _ => None,
+        },
     }
 }
 
@@ -58,13 +53,11 @@ pub fn get_alias(args: &ArgMatches) -> Option<String> {
 pub fn get_alias(args: &ArgMatches) -> Option<String> {
     match args.get_one::<String>("str") {
         None => None,
-        Some(str) => {
-            match str.as_ref() {
-                "oldrel" | "oldrel/1" => Some("oldrel".to_string()),
-                "release" | "next" => Some(str.to_string()),
-                _ => None
-            }
-        }
+        Some(str) => match str.as_ref() {
+            "oldrel" | "oldrel/1" => Some("oldrel".to_string()),
+            "release" | "next" => Some(str.to_string()),
+            _ => None,
+        },
     }
 }
 
@@ -88,7 +81,7 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
             Err(_) => bail!("{} is not a symlink, aborting", linkfile.display()),
             Ok(xtarget) => {
                 if xtarget == target {
-                    return Ok(())
+                    return Ok(());
                 } else {
                     debug!("{} is wrong, updating", linkfile.display());
                     match std::fs::remove_file(&linkfile) {
@@ -98,7 +91,7 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
                                 linkfile.display(),
                                 err.to_string()
                             );
-                        },
+                        }
                         _ => {}
                     }
                 }
@@ -171,7 +164,7 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
             Err(_) => bail!("{} is not a symlink, aborting", linkfile.display()),
             Ok(xtarget) => {
                 if xtarget == target {
-                    return Ok(())
+                    return Ok(());
                 } else {
                     debug!("{} is wrong, updating", linkfile.display());
                     match std::fs::remove_file(&linkfile) {
@@ -181,7 +174,7 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
                                 linkfile.display(),
                                 err.to_string()
                             );
-                        },
+                        }
                         _ => {}
                     }
                 }

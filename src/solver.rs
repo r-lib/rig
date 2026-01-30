@@ -1,6 +1,6 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::cmp::Reverse;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 
@@ -38,41 +38,41 @@ type RPackageName = String;
 pub type RPackageVersionRanges = version_ranges::Ranges<RPackageVersion>;
 
 pub fn rpackage_version_ranges_from_constraints(
-    constraints: &Vec<DepVersionSpec>
-)
-    -> HashMap<RPackageName, RPackageVersionRanges, rustc_hash::FxBuildHasher>
-{
-    let mut vranges=
-        HashMap::with_hasher(rustc_hash::FxBuildHasher::default());
+    constraints: &Vec<DepVersionSpec>,
+) -> HashMap<RPackageName, RPackageVersionRanges, rustc_hash::FxBuildHasher> {
+    let mut vranges = HashMap::with_hasher(rustc_hash::FxBuildHasher::default());
     for dep in constraints.iter() {
-      let mut vs = RPackageVersionRanges::full();
-      for cs in dep.constraints.iter() {
-        let ver = match RPackageVersion::from_str(&cs.1) {
-            Ok(v) => v,
-            Err(_) => {
-                info!("Invalid version in constraint for package {}: {}", dep.name, &cs.1);
-                continue;
-            }
-        };
-        match cs.0 {
-            VersionConstraint::Less => {
-                vs = vs.intersection(&Range::strictly_lower_than(ver));
-            },
-            VersionConstraint::LessOrEqual => {
-                vs = vs.intersection(&Range::lower_than(ver));
-            },
-            VersionConstraint::Equal => {
-                vs = vs.intersection(&Range::singleton(ver));
-            },
-            VersionConstraint::Greater => {
-                vs = vs.intersection(&Range::strictly_higher_than(ver));
-            },
-            VersionConstraint::GreaterOrEqual => {
-                vs = vs.intersection(&Range::higher_than(ver));
+        let mut vs = RPackageVersionRanges::full();
+        for cs in dep.constraints.iter() {
+            let ver = match RPackageVersion::from_str(&cs.1) {
+                Ok(v) => v,
+                Err(_) => {
+                    info!(
+                        "Invalid version in constraint for package {}: {}",
+                        dep.name, &cs.1
+                    );
+                    continue;
+                }
+            };
+            match cs.0 {
+                VersionConstraint::Less => {
+                    vs = vs.intersection(&Range::strictly_lower_than(ver));
+                }
+                VersionConstraint::LessOrEqual => {
+                    vs = vs.intersection(&Range::lower_than(ver));
+                }
+                VersionConstraint::Equal => {
+                    vs = vs.intersection(&Range::singleton(ver));
+                }
+                VersionConstraint::Greater => {
+                    vs = vs.intersection(&Range::strictly_higher_than(ver));
+                }
+                VersionConstraint::GreaterOrEqual => {
+                    vs = vs.intersection(&Range::higher_than(ver));
+                }
             }
         }
-      }
-      vranges.insert(dep.name.clone(), vs);
+        vranges.insert(dep.name.clone(), vs);
     }
     vranges
 }
@@ -80,10 +80,12 @@ pub fn rpackage_version_ranges_from_constraints(
 #[derive(Default)]
 pub struct RPackageRegistry {
     versions: RefCell<HashMap<RPackageName, Vec<RPackageVersion>>>,
-    deps: RefCell<HashMap<
-        (RPackageName, RPackageVersion),
-        HashMap<RPackageName, RPackageVersionRanges, rustc_hash::FxBuildHasher>
-    >>,
+    deps: RefCell<
+        HashMap<
+            (RPackageName, RPackageVersion),
+            HashMap<RPackageName, RPackageVersionRanges, rustc_hash::FxBuildHasher>,
+        >,
+    >,
 }
 
 impl RPackageRegistry {
@@ -91,31 +93,31 @@ impl RPackageRegistry {
         &self,
         pkg: RPackageName,
         ver: RPackageVersion,
-        deps: HashMap<RPackageName, RPackageVersionRanges, rustc_hash::FxBuildHasher>)
-    {
-      if self.versions.borrow().contains_key(&pkg) {
-          self.versions.borrow_mut().get_mut(&pkg).unwrap().push(ver.clone());
-      } else {
-          self.versions.borrow_mut().insert(pkg.clone(), vec![ver.clone()]);
-      }
-      // TODO: PACKAGE has multiple copies of the same version for Recommended packages,
-      // but that does not matter for now, they should have the same dependencies.
-      if !self.deps.borrow().contains_key(&(pkg.clone(), ver.clone())) {
-        self.deps.borrow_mut().insert((pkg, ver), deps);
-      }
+        deps: HashMap<RPackageName, RPackageVersionRanges, rustc_hash::FxBuildHasher>,
+    ) {
+        if self.versions.borrow().contains_key(&pkg) {
+            self.versions
+                .borrow_mut()
+                .get_mut(&pkg)
+                .unwrap()
+                .push(ver.clone());
+        } else {
+            self.versions
+                .borrow_mut()
+                .insert(pkg.clone(), vec![ver.clone()]);
+        }
+        // TODO: PACKAGE has multiple copies of the same version for Recommended packages,
+        // but that does not matter for now, they should have the same dependencies.
+        if !self.deps.borrow().contains_key(&(pkg.clone(), ver.clone())) {
+            self.deps.borrow_mut().insert((pkg, ver), deps);
+        }
     }
 
-    fn get_all_versions(&self, pkg: &RPackageName)
-      -> Result<(), Box<dyn Error>>
-    {
+    fn get_all_versions(&self, pkg: &RPackageName) -> Result<(), Box<dyn Error>> {
         let vers = get_all_cran_package_versions(pkg)?;
         for (ver, deps) in vers {
             let vranges = rpackage_version_ranges_from_constraints(&deps);
-            self.add_package_version(
-                pkg.clone(),
-                ver,
-                vranges
-            );
+            self.add_package_version(pkg.clone(), ver, vranges);
         }
         Ok(())
     }
@@ -153,9 +155,7 @@ impl DependencyProvider for RPackageRegistry {
             .versions
             .borrow()
             .get(package)
-            .map(|vs| {
-                vs.iter().filter(|v| range.contains(v)).count()
-            })
+            .map(|vs| vs.iter().filter(|v| range.contains(v)).count())
             .unwrap_or(0);
         Reverse(count)
     }
@@ -167,9 +167,7 @@ impl DependencyProvider for RPackageRegistry {
     ) -> Result<Option<Self::V>, Self::Err> {
         if !self.versions.borrow().contains_key(package) {
             match self.get_all_versions(package) {
-                Err(_) => {
-                    return Err(ProviderError::UnknownPackage)
-                },
+                Err(_) => return Err(ProviderError::UnknownPackage),
                 _ => {}
             };
         }
@@ -197,18 +195,12 @@ impl DependencyProvider for RPackageRegistry {
             return Ok(Dependencies::Available(deps.clone()));
         }
         match self.get_all_versions(package) {
-            Err(_) => {
-                return Err(ProviderError::UnknownPackage)
-            },
+            Err(_) => return Err(ProviderError::UnknownPackage),
             _ => {}
         };
         match self.deps.borrow().get(&key) {
-            Some(res) => {
-                Ok(Dependencies::Available(res.clone()))
-            },
-            None => {
-                Err(ProviderError::UnknownPackage)
-            }
+            Some(res) => Ok(Dependencies::Available(res.clone())),
+            None => Err(ProviderError::UnknownPackage),
         }
     }
 }

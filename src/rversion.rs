@@ -1,4 +1,3 @@
-
 use std::cmp::Ordering;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -19,7 +18,7 @@ pub struct Rversion {
 pub struct RversionDir {
     pub version: String,
     pub arch: String,
-    pub installdir: String
+    pub installdir: String,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -37,7 +36,7 @@ pub struct OKInstalledVersion {
     pub name: String,
     pub version: semver::Version,
     pub path: String,
-    pub binary: String
+    pub binary: String,
 }
 
 impl Ord for OKInstalledVersion {
@@ -58,7 +57,7 @@ impl PartialEq for OKInstalledVersion {
     }
 }
 
-impl Eq for OKInstalledVersion { }
+impl Eq for OKInstalledVersion {}
 
 #[cfg(target_os = "linux")]
 #[derive(PartialEq, Clone, Debug)]
@@ -102,7 +101,7 @@ pub struct Available {
     pub version: String,
     pub date: Option<String>,
     pub url: Option<String>,
-    pub rtype: Option<String>
+    pub rtype: Option<String>,
 }
 
 #[cfg(target_os = "linux")]
@@ -121,5 +120,5 @@ pub struct RtoolsVersion {
     pub version: String,
     pub url: String,
     pub first: String,
-    pub last: String
+    pub last: String,
 }

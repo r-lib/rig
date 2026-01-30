@@ -31,18 +31,18 @@ use linux::*;
 use resolve::*;
 
 mod alias;
-mod dcf;
-mod library;
 mod common;
 mod config;
+mod dcf;
 mod download;
 mod hardcoded;
+mod library;
 mod proj;
 mod renv;
 mod repos;
 mod resolve;
-mod rversion;
 mod run;
+mod rversion;
 mod solver;
 mod sysreqs;
 mod utils;
@@ -136,8 +136,7 @@ fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
     Ok(retval)
 }
 
-fn sc_system(args: &ArgMatches, mainargs: &ArgMatches)
-             -> Result<(), Box<dyn Error>> {
+fn sc_system(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
         Some(("add-pak", s)) => sc_system_add_pak(s),
         Some(("allow-core-dumps", s)) => sc_system_allow_core_dumps(s),
@@ -150,9 +149,9 @@ fn sc_system(args: &ArgMatches, mainargs: &ArgMatches)
         Some(("fix-permissions", s)) => sc_system_fix_permissions(s),
         Some(("forget", _)) => sc_system_forget(),
         Some(("no-openmp", s)) => sc_system_no_openmp(s),
-	    Some(("update-rtools40", _)) => sc_system_update_rtools40(),
+        Some(("update-rtools40", _)) => sc_system_update_rtools40(),
         Some(("detect-platform", s)) => sc_system_detect_platform(s, mainargs),
-	    Some(("rtools", s)) => sc_system_rtools(s, mainargs),
+        Some(("rtools", s)) => sc_system_rtools(s, mainargs),
         _ => Ok(()), // unreachable
     }
 }
@@ -206,7 +205,7 @@ fn sc_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error
     fn or_null(x: &Option<String>) -> String {
         match x {
             None => "null".to_string(),
-            Some(x) => x.to_string()
+            Some(x) => x.to_string(),
         }
     }
 
@@ -217,13 +216,14 @@ fn sc_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error
         for ver in vers.iter() {
             println!("{}", ver.name);
         }
-
     } else if args.get_flag("json") || mainargs.get_flag("json") {
         println!("[");
         let num = vers.len();
         for (idx, ver) in vers.iter().enumerate() {
             let dflt = if def == ver.name { "true" } else { "false" };
-            let alsq: Vec<String> = ver.aliases.iter()
+            let alsq: Vec<String> = ver
+                .aliases
+                .iter()
                 .map(|v| "\"".to_string() + v + "\"")
                 .collect();
             let als = "[".to_string() + &alsq.join(", ") + "]";
@@ -238,7 +238,6 @@ fn sc_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error
         }
         println!("]");
     } else {
-
         let mut tab = Table::new("{:<} {:<}  {:<}  {:<}");
         tab.add_row(row!["*", "name", "version", "aliases"]);
         tab.add_heading("------------------------------------------");
@@ -268,10 +267,7 @@ fn sc_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error
 
 fn sc_default(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     if args.contains_id("version") {
-        let ver = args
-            .get_one::<String>("version")
-            .unwrap()
-            .to_string();
+        let ver = args.get_one::<String>("version").unwrap().to_string();
         sc_set_default(&ver)
     } else {
         let default = sc_get_default_or_fail()?;
@@ -307,12 +303,9 @@ pub fn sc_system_add_pak(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let devel = args.get_flag("devel");
     let all = args.get_flag("all");
     let vers = args.get_many::<String>("version");
-    let pakver = args
-        .get_one::<String>("pak-version")
-        .unwrap();
+    let pakver = args.get_one::<String>("pak-version").unwrap();
     let mut pakver = &pakver[..];
-    let pakverx = args.value_source("pak-version") ==
-        Some(clap::parser::ValueSource::CommandLine);
+    let pakverx = args.value_source("pak-version") == Some(clap::parser::ValueSource::CommandLine);
 
     // --devel is deprecated
     if devel && !pakverx {

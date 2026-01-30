@@ -28,8 +28,8 @@ use crate::download::*;
 use crate::escalate::*;
 use crate::library::*;
 use crate::resolve::*;
-use crate::rversion::*;
 use crate::run::*;
+use crate::rversion::*;
 use crate::utils::*;
 use crate::windows_arch::*;
 
@@ -61,9 +61,9 @@ pub fn get_r_root() -> String {
     // aarch64 R on aarch64 Windows
     const R_AARCH64_ROOT_: &str = "C:\\Program Files\\R-aarch64";
     if get_native_arch() == "aarch64" {
-	R_AARCH64_ROOT_.to_string()
+        R_AARCH64_ROOT_.to_string()
     } else {
-	R_ROOT_.to_string()
+        R_ROOT_.to_string()
     }
 }
 
@@ -83,12 +83,12 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     let mut cmd_args = vec![os("/VERYSILENT"), os("/SUPPRESSMSGBOXES")];
     if args.get_flag("without-translations") {
-	cmd_args.push(os("/components=main,x64,i386"));
+        cmd_args.push(os("/components=main,x64,i386"));
     }
     if args.get_flag("with-desktop-icon") {
-	cmd_args.push(os("/mergetasks=desktopicon"));
+        cmd_args.push(os("/mergetasks=desktopicon"));
     } else {
-	cmd_args.push(os("/mergetasks=!desktopicon"));
+        cmd_args.push(os("/mergetasks=!desktopicon"));
     }
 
     run(target, cmd_args, "installer")?;
@@ -109,13 +109,11 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     };
     sc_system_make_links()?;
     match dirname {
-	None => {},
-	Some(ref dirname) => {
-	    match alias {
-		Some(alias) => add_alias(&dirname, &alias)?,
-		None => { }
-	    }
-	}
+        None => {}
+        Some(ref dirname) => match alias {
+            Some(alias) => add_alias(&dirname, &alias)?,
+            None => {}
+        },
     };
     patch_for_rtools()?;
     maybe_update_registry_default()?;
@@ -148,13 +146,13 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
                 warn!("Cannot install pak, cannot determine installation directory");
             }
             Some(ref dirname) => {
-                let explicit = args.value_source("pak-version") ==
-                    Some(clap::parser::ValueSource::CommandLine);
+                let explicit = args.value_source("pak-version")
+                    == Some(clap::parser::ValueSource::CommandLine);
                 system_add_pak(
                     Some(vec![dirname.to_string()]),
                     args.get_one::<String>("pak-version").unwrap(),
                     // If this is specified then we always re-install
-                    explicit
+                    explicit,
                 )?;
             }
         }
@@ -173,17 +171,17 @@ fn add_rtools(version: String) -> Result<(), Box<dyn Error>> {
     let myarch = get_native_arch();
     let client = &reqwest::Client::new();
     for ver in vers {
-	let versuffix = if &ver[0..1] != "3" { &ver } else { "" };
-	let archsuffix = if myarch == "aarch64" { "-aarch64" } else { "" };
-	let instdir = "C:\\Rtools".to_string() + versuffix + archsuffix;
-	let instdirpath = Path::new(&instdir);
-	if instdirpath.exists() {
-	    info!("Rtools{} is already installed", ver);
-	    continue;
-	}
-	let rtver = get_rtools_version(&ver, &myarch)?;
-	let url = rtver.url;
-	let filename = "rtools-".to_string() + &ver + "-" + &myarch + ".exe";
+        let versuffix = if &ver[0..1] != "3" { &ver } else { "" };
+        let archsuffix = if myarch == "aarch64" { "-aarch64" } else { "" };
+        let instdir = "C:\\Rtools".to_string() + versuffix + archsuffix;
+        let instdirpath = Path::new(&instdir);
+        if instdirpath.exists() {
+            info!("Rtools{} is already installed", ver);
+            continue;
+        }
+        let rtver = get_rtools_version(&ver, &myarch)?;
+        let url = rtver.url;
+        let filename = "rtools-".to_string() + &ver + "-" + &myarch + ".exe";
 
         let tmp_dir = std::env::temp_dir().join("rig");
         let target = tmp_dir.join(&filename);
@@ -193,7 +191,7 @@ fn add_rtools(version: String) -> Result<(), Box<dyn Error>> {
         run(
             target.into_os_string(),
             vec![os("/VERYSILENT"), os("/SUPPRESSMSGBOXES")],
-            "installer"
+            "installer",
         )?;
     }
 
@@ -206,17 +204,14 @@ fn patch_for_rtools() -> Result<(), Box<dyn Error>> {
     let vers = sc_get_list()?;
 
     for ver in vers {
-	let vver = vec![ver.to_owned()];
-	let needed = get_rtools_needed(Some(vver))?;
-	if needed[0] != "35" && needed[0] != "40" {
-	    continue
-	}
-	let rtools4 = needed[0] == "40";
-	let rdir = "R-".to_string() + &ver;
-        let envfile = base
-            .join(rdir)
-            .join("etc")
-            .join("Renviron.site");
+        let vver = vec![ver.to_owned()];
+        let needed = get_rtools_needed(Some(vver))?;
+        if needed[0] != "35" && needed[0] != "40" {
+            continue;
+        }
+        let rtools4 = needed[0] == "40";
+        let rdir = "R-".to_string() + &ver;
+        let envfile = base.join(rdir).join("etc").join("Renviron.site");
         let mut ok = envfile.exists();
         if ok {
             ok = false;
@@ -255,8 +250,8 @@ fn patch_for_rtools() -> Result<(), Box<dyn Error>> {
 
 fn get_rtools_needed(version: Option<Vec<String>>) -> Result<Vec<String>, Box<dyn Error>> {
     let vers = match version {
-	None => sc_get_list()?,
-	Some(x) => x
+        None => sc_get_list()?,
+        Some(x) => x,
     };
     let rroot = get_r_root();
     let base = Path::new(&rroot);
@@ -264,8 +259,8 @@ fn get_rtools_needed(version: Option<Vec<String>>) -> Result<Vec<String>, Box<dy
     let errmsg = "Cannot parse list of Rtools versions.";
     let rtversval = get_available_rtools_versions(&get_native_arch());
     let rtvers = match rtversval.as_array() {
-	Some(x) => x,
-	None => bail!(errmsg)
+        Some(x) => x,
+        None => bail!(errmsg),
     };
 
     for ver in vers {
@@ -274,22 +269,21 @@ fn get_rtools_needed(version: Option<Vec<String>>) -> Result<Vec<String>, Box<dy
             .args(["--vanilla", "-s", "-e", "cat(as.character(getRversion()))"])
             .output()?;
         let ver: String = String::from_utf8(out.stdout)?;
-	let sver = semver::Version::parse(&ver)?;
-	debug!("Get Rtools version for R {}.", ver);
-	for rtver in rtvers {
-	    let first = rtver["first"].as_str().ok_or(errmsg)?;
-	    let last = rtver["last"].as_str().ok_or(errmsg)?;
-	    let first = semver::Version::parse(first)?;
-	    let last = semver::Version::parse(last)?;
-	    if first <= sver && sver <= last {
-		let rtverver = rtver["version"].as_str().ok_or(errmsg)?.to_string();
-		debug!("R {} needs Rtools {}.", ver, rtverver);
-		if !res.contains(&rtverver) {
-		    res.push(rtverver);
-		}
-	    }
-
-	}
+        let sver = semver::Version::parse(&ver)?;
+        debug!("Get Rtools version for R {}.", ver);
+        for rtver in rtvers {
+            let first = rtver["first"].as_str().ok_or(errmsg)?;
+            let last = rtver["last"].as_str().ok_or(errmsg)?;
+            let first = semver::Version::parse(first)?;
+            let last = semver::Version::parse(last)?;
+            if first <= sver && sver <= last {
+                let rtverver = rtver["version"].as_str().ok_or(errmsg)?.to_string();
+                debug!("R {} needs Rtools {}.", ver, rtverver);
+                if !res.contains(&rtverver) {
+                    res.push(rtverver);
+                }
+            }
+        }
     }
     Ok(res)
 }
@@ -301,24 +295,25 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     };
 
     for ver in vers {
-	info!("Setting default CRAN mirror for R-{}", ver);
+        info!("Setting default CRAN mirror for R-{}", ver);
         let ver = check_installed(&ver)?;
         let path = Path::new(&get_r_root()).join("R-".to_string() + ver.as_str());
         let profile = path.join("library/base/R/Rprofile".to_string());
         if !profile.exists() {
-	    warn!(
-		"Cannot set default CRAN mirror, profile at {} does not exist.",
-		profile.display()
-	    );
+            warn!(
+                "Cannot set default CRAN mirror, profile at {} does not exist.",
+                profile.display()
+            );
             continue;
         }
 
         append_to_file(
             &profile,
             vec![
-r#"if (Sys.getenv("RSTUDIO") != "1" && Sys.getenv("POSITRON") != "1") {
+                r#"if (Sys.getenv("RSTUDIO") != "1" && Sys.getenv("POSITRON") != "1") {
   options(repos = c(CRAN = "https://cloud.r-project.org"))
-}"#.to_string()
+}"#
+                .to_string(),
             ],
         )?;
     }
@@ -377,17 +372,19 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
         if let Some(ref default) = default {
             if default == &ver {
-                warn!("Removing default version, set new default with \
-                       <bold>rig default <version></>");
-		match unset_default() {
-		    Err(e) => warn!("Failed to unset default version: {}", e.to_string()),
-		    _ => {}
-		};
+                warn!(
+                    "Removing default version, set new default with \
+                       <bold>rig default <version></>"
+                );
+                match unset_default() {
+                    Err(e) => warn!("Failed to unset default version: {}", e.to_string()),
+                    _ => {}
+                };
             }
         }
 
         let ver = "R-".to_string() + &ver;
-	let rroot = get_r_root();
+        let rroot = get_r_root();
         let dir = Path::new(&rroot);
         let dir = dir.join(ver);
         info!("Removing {}", dir.display());
@@ -402,7 +399,11 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
 fn rm_rtools(ver: String) -> Result<(), Box<dyn Error>> {
     let arch = get_native_arch();
-    let ver = if arch == "aarch64" { ver + "-aarch64" } else { ver };
+    let ver = if arch == "aarch64" {
+        ver + "-aarch64"
+    } else {
+        ver
+    };
     let dir = Path::new("C:\\").join(ver);
     info!("Removing {}", dir.display());
     match remove_dir_all(&dir) {
@@ -477,13 +478,13 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                 if !filename.starts_with("R-") {
                     continue;
                 }
-		if re_als.is_match(&filename) {
-		    let rver = find_r_version_in_link(&path.path())?;
-		    let realname = "R-".to_string() + &rver + ".bat";
-		    if new_links.contains(&realname) {
-			continue;
-		    }
-		}
+                if re_als.is_match(&filename) {
+                    let rver = find_r_version_in_link(&path.path())?;
+                    let realname = "R-".to_string() + &rver + ".bat";
+                    if new_links.contains(&realname) {
+                        continue;
+                    }
+                }
                 if !new_links.contains(&filename) {
                     info!("Deleting unused {}", filename);
                     match std::fs::remove_file(path.path()) {
@@ -511,14 +512,14 @@ pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
     debug!("Finding existing aliases in {}", bin.display());
 
     if !bin.exists() {
-	return Ok(result);
+        return Ok(result);
     }
 
     let paths = std::fs::read_dir(bin)?;
     let re = re_alias();
 
     for file in paths {
-	let path = file?.path();
+        let path = file?.path();
         // If no path name, then path ends with ..., so we can skip
         let fnamestr = match path.file_name() {
             Some(x) => x,
@@ -529,16 +530,16 @@ pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
             Some(x) => x,
             None => continue,
         };
-	debug!("Alias candidate: {}", fnamestr);
+        debug!("Alias candidate: {}", fnamestr);
         if re.is_match(&fnamestr) {
-	    trace!("Checking {}", path.display());
-	    let rver = find_r_version_in_link(&path)?;
-	    let als = Alias {
-		alias: fnamestr[2..fnamestr.len()-4].to_string(),
-		version: rver
-	    };
-	    result.push(als);
-	}
+            trace!("Checking {}", path.display());
+            let rver = find_r_version_in_link(&path)?;
+            let als = Alias {
+                alias: fnamestr[2..fnamestr.len() - 4].to_string(),
+                version: rver,
+            };
+            result.push(als);
+        }
     }
 
     Ok(result)
@@ -547,18 +548,21 @@ pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
 fn find_r_version_in_link(path: &PathBuf) -> Result<String, Box<dyn Error>> {
     let lines = read_lines(path)?;
     if lines.len() == 0 {
-	bail!("Invalid R link file: {}", path.display());
+        bail!("Invalid R link file: {}", path.display());
     }
     let split = lines[0].split("\\").collect::<Vec<&str>>();
     for s in split {
-	if s == "R-devel" {
-	    return Ok("devel".to_string());
-	}
-	if s != "R-aarch64" && s.starts_with("R-") {
-	    return Ok(s[2..].to_string());
-	}
+        if s == "R-devel" {
+            return Ok("devel".to_string());
+        }
+        if s != "R-aarch64" && s.starts_with("R-") {
+            return Ok(s[2..].to_string());
+        }
     }
-    bail!("Cannot extract R version from {}, invalid R link file?", path.display());
+    bail!(
+        "Cannot extract R version from {}, invalid R link file?",
+        path.display()
+    );
 }
 
 pub fn sc_system_allow_core_dumps(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
@@ -596,8 +600,10 @@ pub fn sc_system_no_openmp(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn sc_system_detect_platform(_args: &ArgMatches, _mainargs: &ArgMatches)
-                                 -> Result<(), Box<dyn Error>> {
+pub fn sc_system_detect_platform(
+    _args: &ArgMatches,
+    _mainargs: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
     // Nothing to do on Windows
     Ok(())
 }
@@ -642,8 +648,7 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
     std::fs::create_dir_all(&linkdir)?;
 
     let linkfile = linkdir.join("R.bat");
-    let cnt =
-        "::".to_string() + &ver + "\n" + "@\"" + &rroot + "\\R-" + &ver + "\\bin\\R\" %*\n";
+    let cnt = "::".to_string() + &ver + "\n" + "@\"" + &rroot + "\\R-" + &ver + "\\bin\\R\" %*\n";
     let mut file = File::create(linkfile)?;
     file.write_all(cnt.as_bytes())?;
 
@@ -653,12 +658,8 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
 
     let linkfile3 = linkdir.join("Rscript.bat");
     let mut file3 = File::create(linkfile3)?;
-    let cnt3 = "::".to_string()
-        + &ver
-        + "\n"
-        + "@\"" + &rroot + "\\R-"
-        + &ver
-        + "\\bin\\Rscript\" %*\n";
+    let cnt3 =
+        "::".to_string() + &ver + "\n" + "@\"" + &rroot + "\\R-" + &ver + "\\bin\\Rscript\" %*\n";
     file3.write_all(cnt3.as_bytes())?;
 
     update_registry_default()?;
@@ -670,14 +671,14 @@ pub fn unset_default() -> Result<(), Box<dyn Error>> {
     escalate("unsetting the default R version")?;
 
     fn try_rm(x: &str) {
-	let linkdir = Path::new(RIG_LINKS_DIR);
-	let f = linkdir.join(x);
-	if f.exists() {
-	    match std::fs::remove_file(&f) {
-		Err(e) => warn!("Failed to remove {}: {}", f.display(), e.to_string()),
-		_ => {}
-	    };
-	}
+        let linkdir = Path::new(RIG_LINKS_DIR);
+        let f = linkdir.join(x);
+        if f.exists() {
+            match std::fs::remove_file(&f) {
+                Err(e) => warn!("Failed to remove {}: {}", f.display(), e.to_string()),
+                _ => {}
+            };
+        }
     }
 
     try_rm("R.bat");
@@ -850,67 +851,67 @@ fn unset_registry_default() -> Result<(), Box<dyn Error>> {
     let r64r = hklm.create_subkey("SOFTWARE\\R-core\\R");
     if let Ok(x) = r64r {
         let (key, _) = x;
-	key.delete_value("Current Version")?;
-	key.delete_value("InstallPath")?;
+        key.delete_value("Current Version")?;
+        key.delete_value("InstallPath")?;
     }
     let r64r64 = hklm.create_subkey("SOFTWARE\\R-core\\R64");
     if let Ok(x) = r64r64 {
         let (key, _) = x;
-	key.delete_value("Current Version")?;
-	key.delete_value("InstallPath")?;
+        key.delete_value("Current Version")?;
+        key.delete_value("InstallPath")?;
     }
     Ok(())
 }
 
 pub fn sc_system_update_rtools40() -> Result<(), Box<dyn Error>> {
     run(
-	"c:\\rtools40\\usr\\bin\\bash.exe".into(),
-        vec!["--login".into(), "-c".into(), "pacman -Syu --noconfirm".into()],
-	"Rtools40 update"
+        "c:\\rtools40\\usr\\bin\\bash.exe".into(),
+        vec![
+            "--login".into(),
+            "-c".into(),
+            "pacman -Syu --noconfirm".into(),
+        ],
+        "Rtools40 update",
     )
 }
 
-pub fn sc_system_rtools(args: &ArgMatches, mainargs: &ArgMatches)
-                        -> Result<(), Box<dyn Error>> {
-
+pub fn sc_system_rtools(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
-	Some(("add", s)) => sc_rtools_add(s, mainargs),
-	Some(("list", s)) => sc_rtools_ls(s, mainargs),
-	Some(("rm", s)) => sc_rtools_rm(s, mainargs),
-	_ => Ok(()), // unreachable
+        Some(("add", s)) => sc_rtools_add(s, mainargs),
+        Some(("list", s)) => sc_rtools_ls(s, mainargs),
+        Some(("rm", s)) => sc_rtools_rm(s, mainargs),
+        _ => Ok(()), // unreachable
     }
 }
 
-fn sc_rtools_add(args: &ArgMatches, _mainargs: &ArgMatches)
-                 -> Result<(), Box<dyn Error>> {
+fn sc_rtools_add(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("adding Rtools")?;
     let ver = args.get_one::<String>("version").unwrap();
     if ver == "all" {
-	add_rtools("rtools".to_string())
+        add_rtools("rtools".to_string())
     } else if ver.starts_with("rtools") {
-	add_rtools(ver.to_string())
+        add_rtools(ver.to_string())
     } else {
-	add_rtools("rtools".to_string() + ver)
+        add_rtools("rtools".to_string() + ver)
     }
 }
 
-fn sc_rtools_rm(args: &ArgMatches, _mainargs: &ArgMatches)
-		-> Result<(), Box<dyn Error>> {
+fn sc_rtools_rm(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("removing Rtools")?;
     let vers = args.get_many::<String>("version");
     if vers.is_none() {
-	return Ok(())
+        return Ok(());
     }
     let vers = vers.ok_or(SimpleError::new("Internal argument error"))?;
 
     for ver in vers {
-	if ver == "all" {
-	    rm_rtools("rtools".to_string())?;
-	} else if ver.starts_with("rtools") {
-	    rm_rtools(ver.to_string())?;
-	} else {
-	    rm_rtools("rtools".to_string() + ver)?;
-	}
+        if ver == "all" {
+            rm_rtools("rtools".to_string())?;
+        } else if ver.starts_with("rtools") {
+            rm_rtools(ver.to_string())?;
+        } else {
+            rm_rtools("rtools".to_string() + ver)?;
+        }
     }
 
     Ok(())
@@ -921,70 +922,67 @@ pub struct RtoolsVersion {
     pub name: String,
     pub version: String,
     pub fullversion: String,
-    pub path: String
+    pub path: String,
 }
 
-
-fn get_rtools_versions(rtoolskey: &RegKey)
-		       -> Result<Vec<RtoolsVersion>, Box<dyn Error>> {
+fn get_rtools_versions(rtoolskey: &RegKey) -> Result<Vec<RtoolsVersion>, Box<dyn Error>> {
     let mut versions: Vec<RtoolsVersion> = vec![];
     for nm in rtoolskey.enum_keys() {
-	let nm = nm?;
-	let subkey = rtoolskey.open_subkey(&nm)?;
-	// e.g. 4.3.5948.5818
-	let fullversion: String = subkey.get_value("FullVersion")?;
-	let path: String = subkey.get_value("InstallPath")?;
-	let verparts: Vec<_> = nm.split(".").collect();
-	// e.g. 4.3
-	let version = verparts[0..2].join(".");
-	// e.g. 43
-	let name = verparts[0..2].join("");
-	versions.push(RtoolsVersion {
-	    name,
-	    version,
-	    fullversion,
-	    path
-	});
+        let nm = nm?;
+        let subkey = rtoolskey.open_subkey(&nm)?;
+        // e.g. 4.3.5948.5818
+        let fullversion: String = subkey.get_value("FullVersion")?;
+        let path: String = subkey.get_value("InstallPath")?;
+        let verparts: Vec<_> = nm.split(".").collect();
+        // e.g. 4.3
+        let version = verparts[0..2].join(".");
+        // e.g. 43
+        let name = verparts[0..2].join("");
+        versions.push(RtoolsVersion {
+            name,
+            version,
+            fullversion,
+            path,
+        });
     }
     Ok(versions)
 }
 
-fn sc_rtools_ls(args: &ArgMatches, mainargs: &ArgMatches)
-                -> Result<(), Box<dyn Error>> {
+fn sc_rtools_ls(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("listing Rtools in the registry")?;
     let mut versions: Vec<RtoolsVersion> = vec![];
 
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     let rtools32 = hklm.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\Rtools");
     if let Ok(key) = rtools32 {
-	versions.append(&mut get_rtools_versions(&key)?);
+        versions.append(&mut get_rtools_versions(&key)?);
     }
     let rtools64 = hklm.open_subkey("SOFTWARE\\R-core\\Rtools");
     if let Ok(key) = rtools64 {
-	versions.append(&mut get_rtools_versions(&key)?);
+        versions.append(&mut get_rtools_versions(&key)?);
     }
 
     let json = args.get_flag("json") || mainargs.get_flag("json");
     if json {
-	let num = versions.len();
-	println!("[");
-	for (idx, item) in versions.into_iter().enumerate() {
+        let num = versions.len();
+        println!("[");
+        for (idx, item) in versions.into_iter().enumerate() {
             println!("{{");
             println!("  \"name\": \"{}\",", item.name);
             println!("  \"version\": \"{}\",", item.version);
             println!("  \"fullversion\": \"{}\",", item.fullversion);
             println!("  \"path\": \"{}\",", item.path);
             println!("}}{}", if idx == num - 1 { "" } else { "," });
-	}
-	println!("]");
+        }
+        println!("]");
     } else {
-	let mut tab = Table::new("{:<}  {:<}  {:<}  {:<}");
-	tab.add_row(row!["name", "version", "full-version", "path"]);
+        let mut tab = Table::new("{:<}  {:<}  {:<}  {:<}");
+        tab.add_row(row!["name", "version", "full-version", "path"]);
         tab.add_heading("------------------------------------------");
-	for item in versions {
-	    tab.add_row(row!(item.name, item.version, item.fullversion, item.path));
-	}
-	println!("{}", tab);
+        for item in versions {
+            tab.add_row(row!(item.name, item.version, item.fullversion, item.path));
+        }
+        println!("{}", tab);
     }
 
     Ok(())
@@ -993,7 +991,11 @@ fn sc_rtools_ls(args: &ArgMatches, mainargs: &ArgMatches)
 fn get_latest_install_path() -> Result<Option<String>, Box<dyn Error>> {
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     let arch = get_native_arch();
-    let key = if arch == "aarch64" { "SOFTWARE\\R-core\\R" } else { "SOFTWARE\\R-core\\R64" };
+    let key = if arch == "aarch64" {
+        "SOFTWARE\\R-core\\R"
+    } else {
+        "SOFTWARE\\R-core\\R64"
+    };
     let r64r64 = hklm.open_subkey(key);
     if let Ok(key) = r64r64 {
         let ip: Result<String, _> = key.get_value("InstallPath");
@@ -1030,33 +1032,33 @@ pub fn get_rstudio_config_path() -> Result<std::path::PathBuf, Box<dyn Error>> {
 
     // RSTUDIO_CONFIG_HOME may point to the final path
     match std::env::var("RSTUDIO_CONFIG_HOME") {
-	Ok(x)  => xdg = Some(std::path::PathBuf::from(x)),
-	Err(_) => { }
+        Ok(x) => xdg = Some(std::path::PathBuf::from(x)),
+        Err(_) => {}
     };
 
     // XDG_CONFIG_HOME may point to the user config path
     if xdg.is_none() {
-	final_path = false;
-	match std::env::var("XDG_CONFIG_HOME") {
-	    Ok(x) => {
-		let mut xdg2 = std::path::PathBuf::new();
-		xdg2.push(x);
-		xdg = Some(xdg2);
-	    },
-	    Err(_) => { }
-	};
+        final_path = false;
+        match std::env::var("XDG_CONFIG_HOME") {
+            Ok(x) => {
+                let mut xdg2 = std::path::PathBuf::new();
+                xdg2.push(x);
+                xdg = Some(xdg2);
+            }
+            Err(_) => {}
+        };
     }
 
     // Get user config path from system
     if xdg.is_none() {
-	if let Some(bd) = BaseDirs::new() {
-	    xdg = Some(std::path::PathBuf::from(bd.config_dir()));
-	}
+        if let Some(bd) = BaseDirs::new() {
+            xdg = Some(std::path::PathBuf::from(bd.config_dir()));
+        }
     }
 
     // Fall back to `~/.config`
     if xdg.is_none() {
-	xdg = Some(std::path::PathBuf::from("~/.config"));
+        xdg = Some(std::path::PathBuf::from("~/.config"));
     }
 
     // We have a path at this point
@@ -1064,88 +1066,92 @@ pub fn get_rstudio_config_path() -> Result<std::path::PathBuf, Box<dyn Error>> {
 
     // Set USER, HOME, HOSTNAME, for expansion, if needed
     let mut path = match xdg.to_str() {
-	Some(x) => String::from(x),
-	None => bail!("RStudio config path cannot be represented as Unicode. :(")
+        Some(x) => String::from(x),
+        None => bail!("RStudio config path cannot be represented as Unicode. :("),
     };
     let has_dollar = path.contains("$");
     let empty = path.len() == 0;
     let has_tilde = path.contains("~");
 
     if has_dollar || empty || has_tilde {
-	match std::env::var("USER") {
-	    Ok(_) => { },
-	    Err(_) => {
-		let username = username();
-		std::env::set_var("USER", username);
-	    }
-	};
+        match std::env::var("USER") {
+            Ok(_) => {}
+            Err(_) => {
+                let username = username();
+                std::env::set_var("USER", username);
+            }
+        };
     }
 
     if has_dollar {
-	match std::env::var("HOME") {
-	    Ok(_) => { },
-	    Err(_) => {
-		let bd = BaseDirs::new();
-		match bd {
-		    Some(x) => {
-			std::env::set_var("HOME", x.home_dir().as_os_str());
-		    },
-		    None    => {
-			warn!("Cannot determine HOME directory");
-		    }
-		};
-	    }
-	};
+        match std::env::var("HOME") {
+            Ok(_) => {}
+            Err(_) => {
+                let bd = BaseDirs::new();
+                match bd {
+                    Some(x) => {
+                        std::env::set_var("HOME", x.home_dir().as_os_str());
+                    }
+                    None => {
+                        warn!("Cannot determine HOME directory");
+                    }
+                };
+            }
+        };
     }
 
     if has_dollar {
-	match std::env::var("HOSTNAME") {
-	    Ok(_) => { },
-	    Err(_) => {
-		let hostname = match hostname() {
-		    Ok(x) => x,
-		    Err(_) => "localhost".to_string()
-		};
-		std::env::set_var("HOSTNAME", hostname);
-	    }
-	};
+        match std::env::var("HOSTNAME") {
+            Ok(_) => {}
+            Err(_) => {
+                let hostname = match hostname() {
+                    Ok(x) => x,
+                    Err(_) => "localhost".to_string(),
+                };
+                std::env::set_var("HOSTNAME", hostname);
+            }
+        };
     }
 
     // Expand env vars
     if has_dollar {
-	path = match shellexpand::env(&path) {
-	    Ok(x) => x.to_string(),
-	    Err(e) => {
-		bail!("RStudio config path contains unknown environment variable: {}", e.var_name);
-	    }
-	};
+        path = match shellexpand::env(&path) {
+            Ok(x) => x.to_string(),
+            Err(e) => {
+                bail!(
+                    "RStudio config path contains unknown environment variable: {}",
+                    e.var_name
+                );
+            }
+        };
     }
 
     // Expand empty path and ~
     if empty || has_tilde {
-	path = shellexpand::tilde(&path).to_string();
+        path = shellexpand::tilde(&path).to_string();
     }
 
     let mut xdg = std::path::PathBuf::from(path);
     if !final_path {
-	xdg.push("RStudio");
+        xdg.push("RStudio");
     }
 
     Ok(xdg)
 }
 
-pub fn sc_rstudio_(version: Option<&str>,
-		   project: Option<&str>,
-		   arg: Option<&OsStr>)
-                   -> Result<(), Box<dyn Error>> {
+pub fn sc_rstudio_(
+    version: Option<&str>,
+    project: Option<&str>,
+    arg: Option<&OsStr>,
+) -> Result<(), Box<dyn Error>> {
     debug!("Looking into starting RStudio");
 
     let def = sc_get_default()?;
 
     // def is None if there is no default R version set
     let version = match version {
-	Some(x) => Some(x.to_string()),
-	None    => def
+        Some(x) => Some(x.to_string()),
+        None => def,
     };
 
     let mut args = match project {
@@ -1154,18 +1160,18 @@ pub fn sc_rstudio_(version: Option<&str>,
     };
 
     if let Some(arg) = arg {
-	args.push(arg.to_os_string());
+        args.push(arg.to_os_string());
     }
 
     // set version env var if needed
     let old = std::env::var("RSTUDIO_WHICH_R");
     if let Some(ref v) = version {
-	let ver = v.to_string();
-	let ver = check_installed(&ver)?;
-	// TODO: this does not work aarch64 windows
-	let bin = get_r_binary_x64(&ver)?;
-	info!("Setting RSTUDIO_WHICH_R=\"{}\"", bin.display());
-	std::env::set_var("RSTUDIO_WHICH_R", bin);
+        let ver = v.to_string();
+        let ver = check_installed(&ver)?;
+        // TODO: this does not work aarch64 windows
+        let bin = get_r_binary_x64(&ver)?;
+        info!("Setting RSTUDIO_WHICH_R=\"{}\"", bin.display());
+        std::env::set_var("RSTUDIO_WHICH_R", bin);
     }
 
     info!("Running cmd.exe {}", osjoin(args.to_owned(), " "));
@@ -1173,14 +1179,16 @@ pub fn sc_rstudio_(version: Option<&str>,
 
     // restore version env var
     if let Some(_) = version {
-	match old {
-	    Ok(v) => std::env::set_var("RSTUDIO_WHICH_R", v),
-	    Err(_) => std::env::remove_var("RSTUDIO_WHICH_R")
-	};
+        match old {
+            Ok(v) => std::env::set_var("RSTUDIO_WHICH_R", v),
+            Err(_) => std::env::remove_var("RSTUDIO_WHICH_R"),
+        };
     }
 
     match status {
-        Err(e) => { bail!("`start` failed: {}", e.to_string()); },
+        Err(e) => {
+            bail!("`start` failed: {}", e.to_string());
+        }
         _ => {}
     };
 
@@ -1212,7 +1220,7 @@ pub fn get_r_binary_x64(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
     let bin = base
         .join("R-".to_string() + &rver)
         .join("bin")
-	.join("x64")
+        .join("x64")
         .join("R.exe");
     debug!("R {} binary: {}", rver, bin.display());
     Ok(bin)

@@ -14,10 +14,7 @@ use crate::dcf::*;
 use crate::repos::*;
 use crate::solver::*;
 
-
-pub fn sc_proj(args: &ArgMatches, mainargs: &ArgMatches)
-              -> Result<(), Box<dyn Error>> {
-
+pub fn sc_proj(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
         Some(("deps", s)) => sc_proj_deps(s, args, mainargs),
         Some(("solve", s)) => sc_proj_solve(s, args, mainargs),
@@ -26,37 +23,36 @@ pub fn sc_proj(args: &ArgMatches, mainargs: &ArgMatches)
 }
 
 fn proj_read_deps() -> Result<Vec<DepVersionSpec>, Box<dyn Error>> {
-
     info!("Reading dependencies from DESCRIPTION file");
     let df: File = File::open("DESCRIPTION")?;
     let desc = Deb822::from_reader(df)?;
 
     if desc.len() == 0 {
-      bail!("Empty DESCRIPTION file");
+        bail!("Empty DESCRIPTION file");
     }
 
     if desc.len() > 1 {
-      bail!("Invalid DESCRIPTION file, empty lines are not allowed");
+        bail!("Invalid DESCRIPTION file, empty lines are not allowed");
     }
 
     let mut deps: Vec<DepVersionSpec> = vec![];
 
     for desc0 in desc.iter() {
-      if let Some(dd) = desc0.get("Depends") {
-          deps.append(&mut parse_deps(dd, "Depends")?)
-      }
-      if let Some(di) = desc0.get("Imports") {
-          deps.append(&mut parse_deps(di, "Imports")?)
-      }
-      if let Some(dl) = desc0.get("LinkingTo") {
-          deps.append(&mut parse_deps(dl, "LinkingTo")?);
-      }
-      // if let Some(ds) = desc0.get("Suggests") {
-      //     deps.append(&mut parse_deps(ds)?);
-      // }
-      // if let Some(de) = desc0.get("Enhances") {
-      //     deps.append(&mut parse_deps(de)?);
-      // }
+        if let Some(dd) = desc0.get("Depends") {
+            deps.append(&mut parse_deps(dd, "Depends")?)
+        }
+        if let Some(di) = desc0.get("Imports") {
+            deps.append(&mut parse_deps(di, "Imports")?)
+        }
+        if let Some(dl) = desc0.get("LinkingTo") {
+            deps.append(&mut parse_deps(dl, "LinkingTo")?);
+        }
+        // if let Some(ds) = desc0.get("Suggests") {
+        //     deps.append(&mut parse_deps(ds)?);
+        // }
+        // if let Some(de) = desc0.get("Enhances") {
+        //     deps.append(&mut parse_deps(de)?);
+        // }
     }
 
     let deps = simplify_constraints(deps);
@@ -70,56 +66,55 @@ fn sc_proj_deps(
     _libargs: &ArgMatches,
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
-
     let deps: Vec<DepVersionSpec> = proj_read_deps()?;
 
     if args.get_flag("json") || mainargs.get_flag("json") {
-      println!("[");
-      let num = deps.len();
-      for (i, pkg) in deps.iter().enumerate() {
-          let mut cst: String = "".to_string();
-          for (i, cs) in pkg.constraints.iter().enumerate() {
-            if i > 0 {
-              cst += ", ";
+        println!("[");
+        let num = deps.len();
+        for (i, pkg) in deps.iter().enumerate() {
+            let mut cst: String = "".to_string();
+            for (i, cs) in pkg.constraints.iter().enumerate() {
+                if i > 0 {
+                    cst += ", ";
+                }
+                cst += &format!("{} {}", cs.0, cs.1);
             }
-            cst += &format!("{} {}", cs.0, cs.1);
-          }
-          println!(" {{");
-          let comma = if cst == "" { "" } else { ", " };
-          // TODO: should this be an array? Probably
-          println!("     \"types\": \"{}\",", pkg.types.join(", "));
-          println!("     \"package\": \"{}\"{}", pkg.name, comma);
-          if cst != "" {
-            println!("     \"version\": \"{}\"", cst)
-          }
-          println!("  }}{}", if i == num - 1 { "" } else { "," });
-      }
-      println!("]");
-
+            println!(" {{");
+            let comma = if cst == "" { "" } else { ", " };
+            // TODO: should this be an array? Probably
+            println!("     \"types\": \"{}\",", pkg.types.join(", "));
+            println!("     \"package\": \"{}\"{}", pkg.name, comma);
+            if cst != "" {
+                println!("     \"version\": \"{}\"", cst)
+            }
+            println!("  }}{}", if i == num - 1 { "" } else { "," });
+        }
+        println!("]");
     } else {
         let mut tab: Table = Table::new("{:<}   {:<}   {:<}");
         tab.add_row(row!["package", "constraints", "types"]);
         tab.add_heading("------------------------------------------");
         for pkg in deps {
-          let mut cst: String = "".to_string();
-          for (i, cs) in pkg.constraints.iter().enumerate() {
-            if i > 0 {
-              cst += ", ";
+            let mut cst: String = "".to_string();
+            for (i, cs) in pkg.constraints.iter().enumerate() {
+                if i > 0 {
+                    cst += ", ";
+                }
+                cst += &format!("{} {}", cs.0, cs.1);
             }
-            cst += &format!("{} {}", cs.0, cs.1);
-          }
-          tab.add_row(row!(pkg.name, cst, pkg.types.join(", ")));
+            tab.add_row(row!(pkg.name, cst, pkg.types.join(", ")));
         }
 
         print!("{}", tab);
     }
 
-  Ok(())
+    Ok(())
 }
 
-fn sc_proj_solve_latest(r_version: &str, deps: &Vec<DepVersionSpec>)
-  -> Result<SelectedDependencies<RPackageRegistry>, Box<dyn Error>> {
-
+fn sc_proj_solve_latest(
+    r_version: &str,
+    deps: &Vec<DepVersionSpec>,
+) -> Result<SelectedDependencies<RPackageRegistry>, Box<dyn Error>> {
     info!("Solver with latest package versions");
     let pkgs = repos_get_packages()?;
     let reg: RPackageRegistry = RPackageRegistry::default();
@@ -129,21 +124,21 @@ fn sc_proj_solve_latest(r_version: &str, deps: &Vec<DepVersionSpec>)
         reg.add_package_version(
             pkg.name.clone(),
             RPackageVersion::from_str(&pkg.version)?,
-            rpackage_version_ranges_from_constraints(&pkg.dependencies)
+            rpackage_version_ranges_from_constraints(&pkg.dependencies),
         );
     }
 
     reg.add_package_version(
         "_project".to_string(),
         RPackageVersion::from_str("1.0.0")?,
-        rpackage_version_ranges_from_constraints(&deps)
+        rpackage_version_ranges_from_constraints(&deps),
     );
 
     // add R itself, for now a hardcoded version
     reg.add_package_version(
         "R".to_string(),
         RPackageVersion::from_str(r_version)?,
-        HashMap::with_hasher(rustc_hash::FxBuildHasher::default())
+        HashMap::with_hasher(rustc_hash::FxBuildHasher::default()),
     );
 
     // add base packages, these are always available
@@ -161,45 +156,46 @@ fn sc_proj_solve_latest(r_version: &str, deps: &Vec<DepVersionSpec>)
         "stats4",
         "tcltk",
         "tools",
-        "utils"
+        "utils",
     ];
     for bp in base_pkgs.iter() {
         reg.add_package_version(
             bp.to_string(),
             RPackageVersion::from_str(r_version)?,
-            HashMap::with_hasher(rustc_hash::FxBuildHasher::default())
+            HashMap::with_hasher(rustc_hash::FxBuildHasher::default()),
         );
     }
 
     let solution = resolve(
         &reg,
         "_project".to_string(),
-        RPackageVersion::from_str("1.0.0")?
+        RPackageVersion::from_str("1.0.0")?,
     );
 
     match solution {
         Ok(sol) => Ok(sol),
-        Err(e) => bail!("Solution failed with latest package versions: {}", e)
+        Err(e) => bail!("Solution failed with latest package versions: {}", e),
     }
 }
 
-fn sc_proj_solve_all(r_version: &str, deps: &Vec<DepVersionSpec>)
-  -> Result<SelectedDependencies<RPackageRegistry>, Box<dyn Error>> {
-
+fn sc_proj_solve_all(
+    r_version: &str,
+    deps: &Vec<DepVersionSpec>,
+) -> Result<SelectedDependencies<RPackageRegistry>, Box<dyn Error>> {
     info!("Solver with all package versions");
     let reg: RPackageRegistry = RPackageRegistry::default();
 
     reg.add_package_version(
         "_project".to_string(),
         RPackageVersion::from_str("1.0.0")?,
-        rpackage_version_ranges_from_constraints(&deps)
+        rpackage_version_ranges_from_constraints(&deps),
     );
 
     // add R itself, for now a hardcoded version
     reg.add_package_version(
         "R".to_string(),
         RPackageVersion::from_str(r_version)?,
-        HashMap::with_hasher(rustc_hash::FxBuildHasher::default())
+        HashMap::with_hasher(rustc_hash::FxBuildHasher::default()),
     );
 
     // add base packages, these are always available
@@ -217,25 +213,25 @@ fn sc_proj_solve_all(r_version: &str, deps: &Vec<DepVersionSpec>)
         "stats4",
         "tcltk",
         "tools",
-        "utils"
+        "utils",
     ];
     for bp in base_pkgs.iter() {
         reg.add_package_version(
             bp.to_string(),
             RPackageVersion::from_str(r_version)?,
-            HashMap::with_hasher(rustc_hash::FxBuildHasher::default())
+            HashMap::with_hasher(rustc_hash::FxBuildHasher::default()),
         );
     }
 
     let solution = resolve(
         &reg,
         "_project".to_string(),
-        RPackageVersion::from_str("1.0.0")?
+        RPackageVersion::from_str("1.0.0")?,
     );
 
     match solution {
         Ok(sol) => Ok(sol),
-        Err(e) => bail!("Solution failed with all package versions: {}", e)
+        Err(e) => bail!("Solution failed with all package versions: {}", e),
     }
 }
 
@@ -244,12 +240,8 @@ fn sc_proj_solve(
     _libargs: &ArgMatches,
     _mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
-
     let rver = if args.contains_id("r-version") {
-        args
-            .get_one::<String>("r-version")
-            .unwrap()
-            .to_string()
+        args.get_one::<String>("r-version").unwrap().to_string()
     } else {
         match get_default_r_version()? {
             Some(rv) => rv,
@@ -264,8 +256,8 @@ fn sc_proj_solve(
     match sc_proj_solve_latest(&rver, &deps) {
         Ok(solution) => {
             println!("{:?}", solution);
-            return Ok(())
-        },
+            return Ok(());
+        }
         Err(solution) => {
             print!("Failed: {:?}", solution);
         }
@@ -275,7 +267,7 @@ fn sc_proj_solve(
         Ok(solution) => {
             print!("{:?}", solution);
             Ok(())
-        },
-        Err(e) => bail!("Solver failed: {}", e)
+        }
+        Err(e) => bail!("Solver failed: {}", e),
     }
 }

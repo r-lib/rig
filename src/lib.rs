@@ -25,8 +25,8 @@ mod library;
 mod macos;
 mod renv;
 mod resolve;
-mod rversion;
 mod run;
+mod rversion;
 mod utils;
 use common::*;
 use library::*;
@@ -258,8 +258,16 @@ pub extern "C" fn rig_start_rstudio(
         }
     };
 
-    let ver = if ver == "" { None } else { Some(ver.to_string()) };
-    let prj = if prj == "" { None } else { Some(prj.to_string()) };
+    let ver = if ver == "" {
+        None
+    } else {
+        Some(ver.to_string())
+    };
+    let prj = if prj == "" {
+        None
+    } else {
+        Some(prj.to_string())
+    };
 
     match sc_rstudio2(ver.as_ref(), prj.as_ref()) {
         Ok(_) => SUCCESS,
