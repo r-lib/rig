@@ -253,21 +253,36 @@ fn sc_proj_solve(
     let deps: Vec<DepVersionSpec> = proj_read_deps()?;
 
     // try latest version first
-    match sc_proj_solve_latest(&rver, &deps) {
-        Ok(solution) => {
-            println!("{:?}", solution);
-            return Ok(());
+    let mut solution;
+    let try1 = sc_proj_solve_latest(&rver, &deps);
+    match try1 {
+        Ok(sol) => {
+            solution = sol;
+            info!("Solved using latest package versions");
         }
-        Err(solution) => {
-            print!("Failed: {:?}", solution);
+        Err(err) => {
+            print!("Failed: {:?}", err);
+            let try2 = sc_proj_solve_all(&rver, &deps);
+            match try2 {
+                Ok(sol) => {
+                    solution = sol;
+                    info!("Solved using all package versions");
+                }
+                Err(e) => {
+                    bail!("Solver failed: {}", e);
+                }
+            }
         }
     };
 
-    match sc_proj_solve_all(&rver, &deps) {
-        Ok(solution) => {
-            print!("{:?}", solution);
-            Ok(())
-        }
-        Err(e) => bail!("Solver failed: {}", e),
+    info!("Solution found:");
+    let mut tab: Table = Table::new("{:<}   {:<}");
+    tab.add_row(row!["package", "version"]);
+    tab.add_heading("-------------------------");
+    for (pkg, ver) in solution.iter() {
+        tab.add_row(row!(pkg, ver));
     }
+    println!("{}", tab);
+
+    Ok(())
 }
