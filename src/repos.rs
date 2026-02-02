@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::error::Error;
 use std::fs::File;
 use std::path::PathBuf;
@@ -7,7 +8,7 @@ use deb822_fast::Deb822;
 use directories::ProjectDirs;
 use serde_json::Value;
 use simple_error::*;
-use simplelog::info;
+use simplelog::*;
 use tabular::*;
 
 use crate::dcf::*;
@@ -18,6 +19,7 @@ use crate::utils::*;
 pub fn sc_repos(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
         Some(("list-packages", s)) => sc_repos_list_packages(s, args, mainargs),
+        Some(("package-info", s)) => sc_repos_package_info(s, args, mainargs),
         Some(("package-versions", s)) => sc_repos_package_versions(s, args, mainargs),
         _ => Ok(()), // unreachable
     }
@@ -121,6 +123,43 @@ fn repo_local_file(url: &str) -> Result<PathBuf, Box<dyn Error>> {
     Ok(cache)
 }
 
+fn get_cran_package_version(
+    package: &str,
+    version: &str,
+) -> Result<BTreeMap<String, String>, Box<dyn Error>> {
+    let mut url = "https://crandb.r-pkg.org/".to_string() + &package;
+    if version != "latest" {
+        url += "/";
+        url += version;
+    }
+    debug!("Fetching package info from {}", url);
+    let mut local = ProjectDirs::from("com", "gaborcsardi", "rig")
+        .ok_or("Cannot determine cache directory")?
+        .cache_dir()
+        .to_path_buf();
+    local.push("packages");
+    local.push("package-".to_string() + &package + "-" + version + ".json");
+    debug!("Local cache file: {}", local.display());
+
+    create_parent_dir_if_needed(&local)?;
+    download_if_newer_(&url, &local, None)?;
+
+    let contents: String = read_file_string(&local)?;
+    let contents = contents.replace("<U+000a>", " ");
+    let json: Value = serde_json::from_str(&contents)?;
+
+    let mut result: BTreeMap<String, String> = BTreeMap::new();
+    if let Some(json) = json.as_object() {
+        for (k, v) in json {
+            if v.is_string() {
+                result.insert(k.to_string(), v.as_str().unwrap().to_string());
+            }
+        }
+    }
+
+    Ok(result)
+}
+
 pub fn get_all_cran_package_versions(
     package: &str,
 ) -> Result<Vec<(RPackageVersion, Vec<DepVersionSpec>)>, Box<dyn Error>> {
@@ -153,6 +192,36 @@ pub fn get_all_cran_package_versions(
     }
 
     Ok(rows)
+}
+
+fn sc_repos_package_info(
+    args: &ArgMatches,
+    _libargs: &ArgMatches,
+    _mainargs: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+    let package: String =
+        require_with!(args.get_one::<String>("package"), "clap error").to_string();
+    let ver = if args.contains_id("version") {
+        args.get_one::<String>("version").unwrap().to_string()
+    } else {
+        "latest".to_string()
+    };
+
+    let info = get_cran_package_version(&package, &ver)?;
+    if args.get_flag("json") {
+        let json = serde_json::to_string_pretty(&info)?;
+        println!("{}", json);
+    } else {
+        let mut tab: Table = Table::new("{:<}   {:<}");
+        tab.add_row(row!("Field", "Value"));
+        tab.add_heading("------------------------------------------------------------------------");
+        for (k, v) in info.iter() {
+            tab.add_row(row!(k, v));
+        }
+        print!("{}", tab);
+    }
+
+    Ok(())
 }
 
 fn sc_repos_package_versions(

@@ -924,10 +924,26 @@ pub fn rig_app() -> Command {
             Command::new("package-versions")
                 .about("List all versions of a package in the repositories")
                 .display_order(0)
+                .arg(Arg::new("package").help("package to show").required(true))
                 .arg(
-                    Arg::new("package")
-                        .help("package name to show")
-                        .required(true),
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("package-info")
+                .about("Information about the package in the repositories")
+                .display_order(0)
+                .arg(Arg::new("package").help("package to show").required(true))
+                .arg(
+                    Arg::new("version")
+                        .long("version")
+                        .short('v')
+                        .help("package version to show (default: latest)")
+                        .required(false),
                 )
                 .arg(
                     Arg::new("json")
