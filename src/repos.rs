@@ -18,7 +18,7 @@ use crate::utils::*;
 pub fn sc_repos(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
         Some(("list-packages", s)) => sc_repos_list_packages(s, args, mainargs),
-        Some(("package-info", s)) => sc_repos_package_info(s, args, mainargs),
+        Some(("package-versions", s)) => sc_repos_package_versions(s, args, mainargs),
         _ => Ok(()), // unreachable
     }
 }
@@ -155,7 +155,7 @@ pub fn get_all_cran_package_versions(
     Ok(rows)
 }
 
-fn sc_repos_package_info(
+fn sc_repos_package_versions(
     args: &ArgMatches,
     _libargs: &ArgMatches,
     _mainargs: &ArgMatches,

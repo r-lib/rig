@@ -921,8 +921,8 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
-            Command::new("package-info")
-                .about("Information about a package in the repositories")
+            Command::new("package-versions")
+                .about("List all versions of a package in the repositories")
                 .display_order(0)
                 .arg(
                     Arg::new("package")
