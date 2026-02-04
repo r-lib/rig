@@ -69,7 +69,14 @@ fn sc_proj_deps(
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
     let dev = args.get_flag("dev");
-    let deps: Vec<DepVersionSpec> = proj_read_deps(dev)?;
+    let mut deps: Vec<DepVersionSpec> = proj_read_deps(dev)?;
+
+    // Sort by dependency type first, then by package name
+    deps.sort_by(|a, b| {
+        let a_types = a.types.join(", ");
+        let b_types = b.types.join(", ");
+        a_types.cmp(&b_types).then_with(|| a.name.cmp(&b.name))
+    });
 
     if args.get_flag("json") || mainargs.get_flag("json") {
         println!("[");
@@ -238,6 +245,17 @@ fn sc_proj_solve_all(
     }
 }
 
+fn solution_to_sorted_vec(
+    solution: &SelectedDependencies<RPackageRegistry>,
+) -> Vec<(String, RPackageVersion)> {
+    let mut vec: Vec<(String, RPackageVersion)> = solution
+        .iter()
+        .map(|(pkg, ver)| (pkg.clone(), ver.clone()))
+        .collect();
+    vec.sort_by(|a, b| a.0.cmp(&b.0));
+    vec
+}
+
 fn sc_proj_solve(
     args: &ArgMatches,
     _libargs: &ArgMatches,
@@ -280,10 +298,11 @@ fn sc_proj_solve(
     };
 
     info!("Solution found:");
+    let sorted_solution = solution_to_sorted_vec(&solution);
     let mut tab: Table = Table::new("{:<}   {:<}");
     tab.add_row(row!["package", "version"]);
     tab.add_heading("-------------------------");
-    for (pkg, ver) in solution.iter() {
+    for (pkg, ver) in sorted_solution.iter() {
         tab.add_row(row!(pkg, ver));
     }
     println!("{}", tab);
