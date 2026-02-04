@@ -22,7 +22,7 @@ pub fn sc_proj(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn E
     }
 }
 
-fn proj_read_deps() -> Result<Vec<DepVersionSpec>, Box<dyn Error>> {
+fn proj_read_deps(dev: bool) -> Result<Vec<DepVersionSpec>, Box<dyn Error>> {
     info!("Reading dependencies from DESCRIPTION file");
     let df: File = File::open("DESCRIPTION")?;
     let desc = Deb822::from_reader(df)?;
@@ -47,12 +47,14 @@ fn proj_read_deps() -> Result<Vec<DepVersionSpec>, Box<dyn Error>> {
         if let Some(dl) = desc0.get("LinkingTo") {
             deps.append(&mut parse_deps(dl, "LinkingTo")?);
         }
-        // if let Some(ds) = desc0.get("Suggests") {
-        //     deps.append(&mut parse_deps(ds)?);
-        // }
-        // if let Some(de) = desc0.get("Enhances") {
-        //     deps.append(&mut parse_deps(de)?);
-        // }
+        if dev {
+            if let Some(ds) = desc0.get("Suggests") {
+                deps.append(&mut parse_deps(ds, "Suggests")?);
+            }
+            if let Some(de) = desc0.get("Enhances") {
+                deps.append(&mut parse_deps(de, "Enhances")?);
+            }
+        }
     }
 
     let deps = simplify_constraints(deps);
@@ -66,7 +68,8 @@ fn sc_proj_deps(
     _libargs: &ArgMatches,
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
-    let deps: Vec<DepVersionSpec> = proj_read_deps()?;
+    let dev = args.get_flag("dev");
+    let deps: Vec<DepVersionSpec> = proj_read_deps(dev)?;
 
     if args.get_flag("json") || mainargs.get_flag("json") {
         println!("[");
@@ -250,7 +253,8 @@ fn sc_proj_solve(
     };
 
     // Do this first, to report local errors early
-    let deps: Vec<DepVersionSpec> = proj_read_deps()?;
+    let dev = args.get_flag("dev");
+    let deps: Vec<DepVersionSpec> = proj_read_deps(dev)?;
 
     // try latest version first
     let mut solution;

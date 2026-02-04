@@ -872,6 +872,13 @@ pub fn rig_app() -> Command {
                         .long("json")
                         .num_args(0)
                         .required(false),
+                )
+                .arg(
+                    Arg::new("dev")
+                        .help("Include dev (development) dependencies")
+                        .long("dev")
+                        .num_args(0)
+                        .required(false),
                 ),
         )
         .subcommand(
@@ -891,6 +898,13 @@ pub fn rig_app() -> Command {
                         .long("r-version")
                         .short('r')
                         .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("dev")
+                        .help("Include dev (development) dependencies")
+                        .long("dev")
+                        .num_args(0)
                         .required(false),
                 ),
         );
