@@ -86,6 +86,7 @@ pub struct RPackageRegistry {
             HashMap<RPackageName, RPackageVersionRanges, rustc_hash::FxBuildHasher>,
         >,
     >,
+    client: RefCell<Option<reqwest::Client>>,
 }
 
 impl RPackageRegistry {
@@ -114,7 +115,10 @@ impl RPackageRegistry {
     }
 
     fn get_all_versions(&self, pkg: &RPackageName) -> Result<(), Box<dyn Error>> {
-        let vers = get_all_cran_package_versions(pkg)?;
+        if self.client.borrow().is_none() {
+            self.client.replace(Some(reqwest::Client::new()));
+        }
+        let vers = get_all_cran_package_versions(pkg, self.client.borrow().as_ref())?;
         for (ver, deps) in vers {
             let vranges = rpackage_version_ranges_from_constraints(&deps);
             self.add_package_version(pkg.clone(), ver, vranges);

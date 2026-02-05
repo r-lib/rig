@@ -31,7 +31,7 @@ pub fn repos_get_packages() -> Result<Vec<Package>, Box<dyn Error>> {
     let repo_local = repo_local_file(repo_url)?;
     create_parent_dir_if_needed(&repo_local)?;
     info!("Updating repo metadata from {}", repo_url);
-    let dl_status = download_if_newer_(repo_url, &repo_local, None)?;
+    let dl_status = download_if_newer_(repo_url, &repo_local, None, None)?;
     if dl_status {
         info!("Updated repo metadata at {}", repo_local.display());
     } else {
@@ -142,7 +142,7 @@ fn get_cran_package_version(
     debug!("Local cache file: {}", local.display());
 
     create_parent_dir_if_needed(&local)?;
-    download_if_newer_(&url, &local, None)?;
+    download_if_newer_(&url, &local, None, None)?;
 
     let contents: String = read_file_string(&local)?;
     let contents = contents.replace("<U+000a>", " ");
@@ -162,6 +162,7 @@ fn get_cran_package_version(
 
 pub fn get_all_cran_package_versions(
     package: &str,
+    client: Option<&reqwest::Client>,
 ) -> Result<Vec<(RPackageVersion, Vec<DepVersionSpec>)>, Box<dyn Error>> {
     let url = "https://crandb.r-pkg.org/".to_string() + &package + "/" + "all";
     let mut local = ProjectDirs::from("com", "gaborcsardi", "rig")
@@ -172,7 +173,7 @@ pub fn get_all_cran_package_versions(
     local.push("package-".to_string() + &package + ".json");
 
     create_parent_dir_if_needed(&local)?;
-    download_if_newer_(&url, &local, None)?;
+    download_if_newer_(&url, &local, None, client)?;
 
     let contents: String = read_file_string(&local)?;
     let contents = contents.replace("<U+000a>", " ");
@@ -232,7 +233,7 @@ fn sc_repos_package_versions(
     let package: String =
         require_with!(args.get_one::<String>("package"), "clap error").to_string();
 
-    let mut rows = get_all_cran_package_versions(&package)?;
+    let mut rows = get_all_cran_package_versions(&package, None)?;
     rows.sort_by(|a, b| a.0.cmp(&b.0)); // assumes RPackageVersion implements Ord
 
     let mut tab: Table = Table::new("{:<}   {:<}   {:<}");

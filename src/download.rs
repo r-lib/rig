@@ -198,16 +198,23 @@ async fn download_if_newer(
 }
 
 #[tokio::main]
-pub async fn download_if_newer__(url: &str, local_path: &PathBuf) -> Result<bool, Box<dyn Error>> {
-    let client = reqwest::Client::new();
-    let client = &client;
-    download_if_newer(client, url, local_path).await
+pub async fn download_if_newer__(
+    url: &str,
+    local_path: &PathBuf,
+    client: Option<&reqwest::Client>,
+) -> Result<bool, Box<dyn Error>> {
+    let client_ = match client {
+        Some(c) => c,
+        None => &reqwest::Client::new(),
+    };
+    download_if_newer(client_, url, local_path).await
 }
 
 pub fn download_if_newer_(
     url: &str,
     local_path: &PathBuf,
     update_older: Option<Duration>,
+    client: Option<&reqwest::Client>,
 ) -> Result<bool, Box<dyn Error>> {
     let update_older = match update_older {
         Some(dur) => dur,
@@ -226,7 +233,7 @@ pub fn download_if_newer_(
         }
     }
 
-    download_if_newer__(url, local_path)
+    download_if_newer__(url, local_path, client)
 }
 
 #[tokio::main]
