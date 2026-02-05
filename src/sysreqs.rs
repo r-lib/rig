@@ -24,10 +24,15 @@ use crate::utils::*;
 use crate::macos::*;
 
 #[allow(dead_code)]
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SysReq {
     pub name: String,
     pub description: String,
+}
+
+#[derive(serde::Serialize)]
+struct SysReqName {
+    name: String,
 }
 
 lazy_static! {
@@ -119,10 +124,7 @@ pub fn sc_sysreqs_info(
     };
 
     if args.get_flag("json") || libargs.get_flag("json") || mainargs.get_flag("json") {
-        println!("{{");
-        println!("  \"name\": \"{}\",", info.name);
-        println!("  \"description\": \"{}\"", escape_json(&info.description));
-        println!("}}");
+        println!("{}", serde_json::to_string_pretty(&info)?);
     } else {
         let mut tab = Table::new("{:<} {:<}");
         tab.add_row(row!(&info.name, &info.description));
@@ -139,14 +141,13 @@ pub fn sc_sysreqs_list(
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
     if args.get_flag("json") || libargs.get_flag("json") || mainargs.get_flag("json") {
-        let num = SYSREQS.len();
-        println!("[");
-        for (idx, sr) in SYSREQS.iter().enumerate() {
-            println!("  {{");
-            println!("    \"name\": \"{}\"", sr);
-            println!("  }}{}", if idx == num - 1 { "" } else { "," });
-        }
-        println!("]");
+        let list: Vec<SysReqName> = SYSREQS
+            .iter()
+            .map(|sr| SysReqName {
+                name: sr.to_string(),
+            })
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&list)?);
     } else {
         for sr in SYSREQS.iter() {
             println!("{}", sr);
