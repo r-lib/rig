@@ -73,6 +73,14 @@ fn sc_proj_deps(
 
     // Sort by dependency type first, then by package name
     deps.sort_by(|a, b| {
+        // Put "R" first, always
+        if a.name == "R" && b.name != "R" {
+            return std::cmp::Ordering::Less;
+        }
+        if a.name != "R" && b.name == "R" {
+            return std::cmp::Ordering::Greater;
+        }
+        // Original sort: by type first, then by package name
         let a_types = a.types.join(", ");
         let b_types = b.types.join(", ");
         a_types.cmp(&b_types).then_with(|| a.name.cmp(&b.name))
@@ -250,9 +258,20 @@ fn solution_to_sorted_vec(
 ) -> Vec<(String, RPackageVersion)> {
     let mut vec: Vec<(String, RPackageVersion)> = solution
         .iter()
+        .filter(|(pkg, _ver)| *pkg != "_project")
         .map(|(pkg, ver)| (pkg.clone(), ver.clone()))
         .collect();
-    vec.sort_by(|a, b| a.0.cmp(&b.0));
+    vec.sort_by(|a, b| {
+        // Put "R" first, always
+        if a.0 == "R" && b.0 != "R" {
+            return std::cmp::Ordering::Less;
+        }
+        if a.0 != "R" && b.0 == "R" {
+            return std::cmp::Ordering::Greater;
+        }
+        // Original sort: by package name
+        a.0.cmp(&b.0)
+    });
     vec
 }
 
@@ -275,7 +294,7 @@ fn sc_proj_solve(
     let deps: Vec<DepVersionSpec> = proj_read_deps(dev)?;
 
     // try latest version first
-    let mut solution;
+    let solution;
     let try1 = sc_proj_solve_latest(&rver, &deps);
     match try1 {
         Ok(sol) => {
