@@ -164,30 +164,14 @@ async fn download_if_newer(
     client: &reqwest::Client,
     url: &str,
     local_path: &PathBuf,
-    update_older: Option<Duration>,
 ) -> Result<bool, Box<dyn Error>> {
-    let update_older = match update_older {
-        Some(dur) => dur,
-        None => Duration::from_hours(24),
-    };
-
-    if local_path.exists() {
-        let metadata = fs::metadata(local_path)?;
-        let modified = metadata.modified()?;
-        let elapsed = SystemTime::now().duration_since(modified)?;
-
-        if elapsed < update_older {
-            // File is newer than the threshold, skip update
-            return Ok(false);
-        }
-    }
-
     let etag_path = add_suffix(local_path, ".etag");
     let etag = fs::read_to_string(&etag_path).ok();
     let mut req = client.get(url);
     if let Some(etag) = etag.as_deref() {
         req = req.header("If-None-Match", etag);
     }
+    info!("Checking for updates for {}", local_path.display());
     let resp = req.send().await?;
 
     match resp.status() {
@@ -214,15 +198,35 @@ async fn download_if_newer(
 }
 
 #[tokio::main]
-pub async fn download_if_newer_(
+pub async fn download_if_newer__(url: &str, local_path: &PathBuf) -> Result<bool, Box<dyn Error>> {
+    let client = reqwest::Client::new();
+    let client = &client;
+    download_if_newer(client, url, local_path).await
+}
+
+pub fn download_if_newer_(
     url: &str,
     local_path: &PathBuf,
     update_older: Option<Duration>,
 ) -> Result<bool, Box<dyn Error>> {
-    let client = reqwest::Client::new();
-    let client = &client;
-    let updated = download_if_newer(client, url, local_path, update_older).await?;
-    Ok(updated)
+    let update_older = match update_older {
+        Some(dur) => dur,
+        None => Duration::from_hours(24),
+    };
+
+    if local_path.exists() {
+        let metadata = fs::metadata(local_path)?;
+        let modified = metadata.modified()?;
+        let elapsed = SystemTime::now().duration_since(modified)?;
+
+        if elapsed < update_older {
+            // File is newer than the threshold, skip update
+            info!("{} is up to date, skipping download", local_path.display());
+            return Ok(false);
+        }
+    }
+
+    download_if_newer__(url, local_path)
 }
 
 #[tokio::main]
