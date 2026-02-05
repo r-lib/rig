@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::error::Error;
-use std::fs::File;
+use std::fs::{self, File};
 
 use clap::ArgMatches;
 use deb822_fast::Deb822;
@@ -11,8 +11,26 @@ use tabular::*;
 
 use crate::common::get_default_r_version;
 use crate::dcf::*;
+use crate::renv::*;
 use crate::repos::*;
 use crate::solver::*;
+
+pub const BASE_PKGS: &[&str] = &[
+    "base",
+    "compiler",
+    "datasets",
+    "graphics",
+    "grDevices",
+    "grid",
+    "methods",
+    "parallel",
+    "splines",
+    "stats",
+    "stats4",
+    "tcltk",
+    "tools",
+    "utils",
+];
 
 pub fn sc_proj(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
@@ -134,7 +152,7 @@ fn sc_proj_deps(
 fn sc_proj_solve_latest(
     r_version: &str,
     deps: &Vec<DepVersionSpec>,
-) -> Result<SelectedDependencies<RPackageRegistry>, Box<dyn Error>> {
+) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
     info!("Solver with latest package versions");
     let pkgs = repos_get_packages()?;
     let reg: RPackageRegistry = RPackageRegistry::default();
@@ -162,23 +180,7 @@ fn sc_proj_solve_latest(
     );
 
     // add base packages, these are always available
-    let base_pkgs = vec![
-        "base",
-        "compiler",
-        "datasets",
-        "graphics",
-        "grDevices",
-        "grid",
-        "methods",
-        "parallel",
-        "splines",
-        "stats",
-        "stats4",
-        "tcltk",
-        "tools",
-        "utils",
-    ];
-    for bp in base_pkgs.iter() {
+    for bp in BASE_PKGS.iter() {
         reg.add_package_version(
             bp.to_string(),
             RPackageVersion::from_str(r_version)?,
@@ -193,7 +195,7 @@ fn sc_proj_solve_latest(
     );
 
     match solution {
-        Ok(sol) => Ok(sol),
+        Ok(sol) => Ok((reg, sol)),
         Err(e) => bail!("Solution failed with latest package versions: {}", e),
     }
 }
@@ -201,7 +203,7 @@ fn sc_proj_solve_latest(
 fn sc_proj_solve_all(
     r_version: &str,
     deps: &Vec<DepVersionSpec>,
-) -> Result<SelectedDependencies<RPackageRegistry>, Box<dyn Error>> {
+) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
     info!("Solver with all package versions");
     let reg: RPackageRegistry = RPackageRegistry::default();
 
@@ -219,23 +221,7 @@ fn sc_proj_solve_all(
     );
 
     // add base packages, these are always available
-    let base_pkgs = vec![
-        "base",
-        "compiler",
-        "datasets",
-        "graphics",
-        "grDevices",
-        "grid",
-        "methods",
-        "parallel",
-        "splines",
-        "stats",
-        "stats4",
-        "tcltk",
-        "tools",
-        "utils",
-    ];
-    for bp in base_pkgs.iter() {
+    for bp in BASE_PKGS.iter() {
         reg.add_package_version(
             bp.to_string(),
             RPackageVersion::from_str(r_version)?,
@@ -250,7 +236,7 @@ fn sc_proj_solve_all(
     );
 
     match solution {
-        Ok(sol) => Ok(sol),
+        Ok(sol) => Ok((reg, sol)),
         Err(e) => bail!("Solution failed with all package versions: {}", e),
     }
 }
@@ -295,13 +281,22 @@ fn sc_proj_solve(
     let dev = args.get_flag("dev");
     let default_input = "DESCRIPTION".to_string();
     let input: &String = args.get_one::<String>("input").unwrap_or(&default_input);
-    let deps: Vec<DepVersionSpec> = proj_read_deps(input, dev)?;
+    let mut deps: Vec<DepVersionSpec> = proj_read_deps(input, dev)?;
+
+    if args.get_flag("renv") {
+        deps.push(DepVersionSpec {
+            name: "renv".to_string(),
+            constraints: vec![],
+            types: vec!["Depends".to_string()],
+        });
+    };
 
     // try latest version first
-    let solution;
+    let (registry, solution);
     let try1 = sc_proj_solve_latest(&rver, &deps);
     match try1 {
-        Ok(sol) => {
+        Ok((reg, sol)) => {
+            registry = reg;
             solution = sol;
             info!("Solved using latest package versions");
         }
@@ -309,7 +304,8 @@ fn sc_proj_solve(
             print!("Failed: {:?}", err);
             let try2 = sc_proj_solve_all(&rver, &deps);
             match try2 {
-                Ok(sol) => {
+                Ok((reg, sol)) => {
+                    registry = reg;
                     solution = sol;
                     info!("Solved using all package versions");
                 }
@@ -321,6 +317,13 @@ fn sc_proj_solve(
     };
 
     info!("Solution found:");
+
+    if args.get_flag("renv") {
+        let renv = REnvLockfile::from_solution(&registry, &solution);
+        fs::write("renv.lock", serde_json::to_string_pretty(&renv)?)?;
+        info!("Written renv lockfile to renv.lock");
+    }
+
     let sorted_solution = solution_to_sorted_vec(&solution);
     let mut tab: Table = Table::new("{:<}   {:<}");
     tab.add_row(row!["package", "version"]);

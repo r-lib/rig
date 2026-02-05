@@ -902,6 +902,13 @@ pub fn rig_app() -> Command {
                         .required(false),
                 )
                 .arg(
+                    Arg::new("renv")
+                        .help("Output and renv.lock file")
+                        .long("renv")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
                     Arg::new("json")
                         .help("JSON output")
                         .long("json")

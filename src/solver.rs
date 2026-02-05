@@ -5,6 +5,7 @@ use std::error::Error;
 use std::fmt;
 
 use pubgrub::*;
+use simple_error::bail;
 use simplelog::*;
 
 use crate::dcf::*;
@@ -13,6 +14,7 @@ use crate::repos::*;
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RPackageVersion {
     pub components: Vec<u32>,
+    pub original: String,
 }
 
 impl RPackageVersion {
@@ -21,15 +23,16 @@ impl RPackageVersion {
             .split(['.', '-'])
             .map(|part| part.parse::<u32>())
             .collect();
-        Ok(RPackageVersion { components: comps? })
+        Ok(RPackageVersion {
+            components: comps?,
+            original: s.to_string(),
+        })
     }
 }
 
 impl fmt::Display for RPackageVersion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (i, comp) in self.components.iter().enumerate() {
-            write!(f, "{}{}", if i != 0 { "." } else { "" }, comp)?;
-        }
+        write!(f, "{}", self.original)?;
         Ok(())
     }
 }
@@ -107,7 +110,7 @@ impl RPackageRegistry {
                 .borrow_mut()
                 .insert(pkg.clone(), vec![ver.clone()]);
         }
-        // TODO: PACKAGE has multiple copies of the same version for Recommended packages,
+        // TODO: PACKAGES has multiple copies of the same version for Recommended packages,
         // but that does not matter for now, they should have the same dependencies.
         if !self.deps.borrow().contains_key(&(pkg.clone(), ver.clone())) {
             self.deps.borrow_mut().insert((pkg, ver), deps);
@@ -124,6 +127,17 @@ impl RPackageRegistry {
             self.add_package_version(pkg.clone(), ver, vranges);
         }
         Ok(())
+    }
+    pub fn get_dependency_summary(
+        &self,
+        package: &RPackageName,
+        version: &RPackageVersion,
+    ) -> Result<Vec<String>, Box<dyn Error>> {
+        let key = (package.clone(), version.clone());
+        match self.deps.borrow().get(&key) {
+            Some(res) => Ok(res.keys().cloned().collect()),
+            None => bail!("This should not happen"),
+        }
     }
 }
 
