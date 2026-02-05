@@ -22,9 +22,9 @@ pub fn sc_proj(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn E
     }
 }
 
-fn proj_read_deps(dev: bool) -> Result<Vec<DepVersionSpec>, Box<dyn Error>> {
-    info!("Reading dependencies from DESCRIPTION file");
-    let df: File = File::open("DESCRIPTION")?;
+fn proj_read_deps(input: &str, dev: bool) -> Result<Vec<DepVersionSpec>, Box<dyn Error>> {
+    info!("Reading dependencies from {}", input);
+    let df: File = File::open(input)?;
     let desc = Deb822::from_reader(df)?;
 
     if desc.len() == 0 {
@@ -69,7 +69,9 @@ fn sc_proj_deps(
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
     let dev = args.get_flag("dev");
-    let mut deps: Vec<DepVersionSpec> = proj_read_deps(dev)?;
+    let default_input = "DESCRIPTION".to_string();
+    let input: &String = args.get_one::<String>("input").unwrap_or(&default_input);
+    let mut deps: Vec<DepVersionSpec> = proj_read_deps(input, dev)?;
 
     // Sort by dependency type first, then by package name
     deps.sort_by(|a, b| {
@@ -291,7 +293,9 @@ fn sc_proj_solve(
 
     // Do this first, to report local errors early
     let dev = args.get_flag("dev");
-    let deps: Vec<DepVersionSpec> = proj_read_deps(dev)?;
+    let default_input = "DESCRIPTION".to_string();
+    let input: &String = args.get_one::<String>("input").unwrap_or(&default_input);
+    let deps: Vec<DepVersionSpec> = proj_read_deps(input, dev)?;
 
     // try latest version first
     let solution;

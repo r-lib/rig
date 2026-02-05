@@ -867,6 +867,14 @@ pub fn rig_app() -> Command {
                 .about("Show project dependencies")
                 .display_order(0)
                 .arg(
+                    Arg::new("input")
+                        .help("Project file to solve (e.g. DESCRIPTION)")
+                        .long("input")
+                        .short('i')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
                     Arg::new("json")
                         .help("JSON output")
                         .long("json")
@@ -885,6 +893,14 @@ pub fn rig_app() -> Command {
             Command::new("solve")
                 .about("Solve project dependencies")
                 .display_order(0)
+                .arg(
+                    Arg::new("input")
+                        .help("Project file to solve (e.g. DESCRIPTION)")
+                        .long("input")
+                        .short('i')
+                        .num_args(1)
+                        .required(false),
+                )
                 .arg(
                     Arg::new("json")
                         .help("JSON output")
