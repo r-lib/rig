@@ -884,13 +884,7 @@ pub fn sc_system_detect_platform(
     let linux = detect_linux()?;
 
     if args.get_flag("json") || mainargs.get_flag("json") {
-        println!("{{");
-        println!("  \"arch\": \"{}\",", linux.arch);
-        println!("  \"vendor\": \"{}\",", linux.vendor);
-        println!("  \"os\": \"{}\",", linux.os);
-        println!("  \"distribution\": \"{}\",", linux.distro);
-        println!("  \"version\": \"{}\"", linux.version);
-        println!("}}");
+        println!("{}", serde_json::to_string_pretty(&linux)?);
     } else {
         println!("Detected platform:");
         println!("Architecture: {}", linux.arch);

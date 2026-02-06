@@ -917,7 +917,7 @@ fn sc_rtools_rm(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<(), Box<dyn
     Ok(())
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RtoolsVersion {
     pub name: String,
     pub version: String,
@@ -964,17 +964,7 @@ fn sc_rtools_ls(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn 
 
     let json = args.get_flag("json") || mainargs.get_flag("json");
     if json {
-        let num = versions.len();
-        println!("[");
-        for (idx, item) in versions.into_iter().enumerate() {
-            println!("{{");
-            println!("  \"name\": \"{}\",", item.name);
-            println!("  \"version\": \"{}\",", item.version);
-            println!("  \"fullversion\": \"{}\",", item.fullversion);
-            println!("  \"path\": \"{}\",", item.path);
-            println!("}}{}", if idx == num - 1 { "" } else { "," });
-        }
-        println!("]");
+        println!("{}", serde_json::to_string_pretty(&versions)?);
     } else {
         let mut tab = Table::new("{:<}  {:<}  {:<}  {:<}");
         tab.add_row(row!["name", "version", "full-version", "path"]);
