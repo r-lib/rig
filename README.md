@@ -168,14 +168,14 @@ tarball.
 
 #### Supported Linux distributions <a id="id-supported-linux-distributions">
 
-- Debian 11, 12,
+- Debian 12, 13
 - Ubuntu 20.04, 22.04, 24.04
-- Fedora Linux 40, 41
-- OpenSUSE 15.6
+- Fedora Linux 41, 42, 43
+- OpenSUSE 15.6, 16.0
 - SUSE Linux Enterprise 15 SP6
-- Red Hat Enterprise Linux 7, 8, 9,
-- AlmaLinux 8, 9,
-- Rocky Linux 8, 9.
+- Red Hat Enterprise Linux 7, 8, 9, 10
+- AlmaLinux 8, 9, 10
+- Rocky Linux 8, 9 10
 
 We use the R builds from the Posit [R-builds
 project](https://github.com/rstudio/r-builds#r-builds).
