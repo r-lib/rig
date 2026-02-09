@@ -1,5 +1,4 @@
-
-ARG RELEASE=38
+ARG RELEASE=mandatory
 FROM fedora:${RELEASE}
 
 ARG RVERSION=release

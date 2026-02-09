@@ -11,6 +11,9 @@ if [[ "$ID" == "rhel" ]]; then
   elif [[ "$VERSION_ID" =~ ^9 ]]; then
     REDHAT_ORG=${REDHAT_ORG_RHEL9}
     REDHAT_ACTIVATION_KEY=${REDHAT_ACTIVATION_KEY_RHEL9}
+  elif [[ "$VERSION_ID" =~ ^10 ]]; then
+    REDHAT_ORG=${REDHAT_ORG_RHEL10}
+    REDHAT_ACTIVATION_KEY=${REDHAT_ACTIVATION_KEY_RHEL10}
   fi
   trap "subscription-manager unregister" EXIT
   subscription-manager register --org ${REDHAT_ORG} \

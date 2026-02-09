@@ -61,17 +61,15 @@ pub fn download_r(args: &ArgMatches) -> Result<(Rversion, OsString), Box<dyn Err
 }
 
 #[cfg(target_os = "macos")]
-pub fn download_file_sync(url: &str, filename: &str,
-                          infinite_cache: bool)
-                          -> Result<OsString, Box<dyn Error>> {
+pub fn download_file_sync(
+    url: &str,
+    filename: &str,
+    infinite_cache: bool,
+) -> Result<OsString, Box<dyn Error>> {
     let tmp_dir = std::env::temp_dir().join("rig");
     let target = tmp_dir.join(&filename);
     if target.exists() && (infinite_cache || not_too_old(&target)) {
-        info!(
-            "{} is cached at {}",
-            filename,
-            target.display()
-        );
+        info!("{} is cached at {}", filename, target.display());
     } else {
         info!("Downloading {} -> {}", url, target.display());
         let client = &reqwest::Client::new();
@@ -148,8 +146,7 @@ pub async fn download_file(
     Ok(())
 }
 
-pub fn download_json_sync(urls: Vec<String>)
-                       -> Result<Vec<serde_json::Value>, Box<dyn Error>> {
+pub fn download_json_sync(urls: Vec<String>) -> Result<Vec<serde_json::Value>, Box<dyn Error>> {
     let client = reqwest::Client::new();
     let client = &client;
     let resp = download_json_(client, urls)?;

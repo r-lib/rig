@@ -1,5 +1,6 @@
-
-FROM ubuntu:22.04
+ARG DISTRO=ubuntu
+ARG RELEASE=mandatory
+FROM ${DISTRO}:${RELEASE}
 
 RUN ARCH="$(arch)"; \
     if [ "$ARCH" = "aarch64" ]; then ARM64="-arm64"; else ARM64=""; fi; \

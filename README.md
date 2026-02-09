@@ -30,7 +30,7 @@ Install, remove, configure R versions.
   `R-4.1` or `R-4.1.2` starts R 4.1.x. Quick links are automatically
   added to the user’s path.
 - On macOS it comes with a menu bar app that shows the default R version
-  and lets to select it interactively. [See
+  and lets you select it interactively. [See
   below](#id-macos-menu-bar-app).
 - On arm64 macs select between x86_64 and arm64 versions or R, or
   install both.
@@ -168,14 +168,14 @@ tarball.
 
 #### Supported Linux distributions <a id="id-supported-linux-distributions">
 
-- Debian 11, 12,
+- Debian 12, 13
 - Ubuntu 20.04, 22.04, 24.04
-- Fedora Linux 40, 41
-- OpenSUSE 15.6
+- Fedora Linux 41, 42, 43
+- OpenSUSE 15.6, 16.0
 - SUSE Linux Enterprise 15 SP6
-- Red Hat Enterprise Linux 7, 8, 9,
-- AlmaLinux 8, 9,
-- Rocky Linux 8, 9.
+- Red Hat Enterprise Linux 7, 8, 9, 10
+- AlmaLinux 8, 9, 10
+- Rocky Linux 8, 9 10
 
 We use the R builds from the Posit [R-builds
 project](https://github.com/rstudio/r-builds#r-builds).
@@ -339,8 +339,8 @@ from a Terminal. Then you can check the “Launch at login” box in
 <img src="tools/rig-app.png">
 
 Note: if you have a lot of menu bar apps running on an M1/M2 mac, then
-the some of them might be under the camera area. There is no good
-solution for this currently, other than running less menu bar apps.
+some of them might be under the camera area. There is no good solution
+for this currently, other than running less menu bar apps.
 
 ## 📦  Docker containers with rig (and multiple R versions) <a id="id-container">
 
@@ -352,13 +352,13 @@ x86_64 and arm64 systems:
     > docker run ghcr.io/r-lib/rig/r rig ls
     * name   version    aliases
     ------------------------------------------
-      3.6.3
-      4.0.5
       4.1.3
-      4.2.3             oldrel
-    * 4.3.1             release
-      devel  (R 4.4.0)
-      next   (R 4.3.1)
+      4.2.3
+      4.3.3
+      4.4.3             oldrel
+    * 4.5.1             release
+      devel  (R 4.6.0)
+      next   (R 4.5.1)
 
 See this image on
 [GitHub](https://github.com/r-lib/rig/pkgs/container/rig%2Fr).
@@ -380,12 +380,10 @@ containers:
 | `ghcr.io/r-lib/rig/ubuntu-20.04-devel`    | Ubuntu 20.04       | devel (daily)  |                                                                                                 |
 | `ghcr.io/r-lib/rig/debian-12-release`     | Debian 12          | release        | `debian`, `debian-release`, `debian-latest`, `debian-latest-release`, `debian-12`               |
 | `ghcr.io/r-lib/rig/debian-12-devel`       | Debian 12          | devel (daily)  | `debian-devel`, `debian-latest-devel`                                                           |
-| `ghcr.io/r-lib/rig/debian-11-release`     | Debian 11          | release        | `debian-11`                                                                                     |
-| `ghcr.io/r-lib/rig/debian-11-devel`       | Debian 11          | devel (daily)  |                                                                                                 |
-| `ghcr.io/r-lib/rig/fedora-40-release`     | Fedora 40          | release        | `fedora`, `fedora-release`, `fedora-latest`, `fedora-latest-release`, `fedora-40`               |
-| `ghcr.io/r-lib/rig/fedora-40-devel`       | Fedora 40          | devel          | `fedora-devel`, `fedora-latest-devel`                                                           |
-| `ghcr.io/r-lib/rig/fedora-39-release`     | Fedora 39          | release        | `fedora-39`                                                                                     |
-| `ghcr.io/r-lib/rig/fedora-39-devel`       | Fedora 39          | devel          |                                                                                                 |
+| `ghcr.io/r-lib/rig/fedora-42-release`     | Fedora 42          | release        | `fedora`, `fedora-release`, `fedora-latest`, `fedora-latest-release`, `fedora-42`               |
+| `ghcr.io/r-lib/rig/fedora-42-devel`       | Fedora 42          | devel          | `fedora-devel`, `fedora-latest-devel`                                                           |
+| `ghcr.io/r-lib/rig/fedora-41-release`     | Fedora 41          | release        | `fedora-41`                                                                                     |
+| `ghcr.io/r-lib/rig/fedora-41-devel`       | Fedora 41          | devel          |                                                                                                 |
 | `ghcr.io/r-lib/rig/opensuse-15.6-release` | OpenSUSE Leap 15.6 | release        | `opensuse`, `opensuse-release`, `opensuse-latest`, `opensuse-latest-release`, `opensuse-15.6`   |
 | `ghcr.io/r-lib/rig/opensuse-15.6-devel`   | OpenSUSE Leap 15.6 | devel (daily)  | `opensuse-devel`, `opensuse-latest-devel`                                                       |
 
@@ -402,16 +400,15 @@ For convenience, we also create these tags:
 | `ghcr.io/r-lib/rig/ubuntu-24.04`   | `ubuntu-24.04-release`  | Latest R release on Ubuntu 24.04.    |
 | `ghcr.io/r-lib/rig/devel`          | `ubuntu-24.04-devel`    | R devel.                             |
 | `ghcr.io/r-lib/rig/ubuntu-devel`   | `ubuntu-24.04-devel`    | R devel on latest Ubuntu.            |
-| `ghcr.io/r-lib/rig/ubuntu-22.04`   | `ubuntu-24.04-release`  | Latest R release on Ubuntu 22.04.    |
+| `ghcr.io/r-lib/rig/ubuntu-22.04`   | `ubuntu-22.04-release`  | Latest R release on Ubuntu 22.04.    |
 | `ghcr.io/r-lib/rig/ubuntu-20.04`   | `ubuntu-20.04-release`  | Latest R release on Ubuntu 20.04.    |
 | `ghcr.io/r-lib/rig/debian`         | `debian-12-release`     | Latest R release on latest Debian.   |
 | `ghcr.io/r-lib/rig/debian-12`      | `debian-12-release`     | Latest R release on Debian 12.       |
 | `ghcr.io/r-lib/rig/debian-devel`   | `debian-12-devel`       | R devel on latest Debian.            |
-| `ghcr.io/r-lib/rig/debian-11`      | `debian-11-release`     | Latest R release on Debian 11.       |
-| `ghcr.io/r-lib/rig/fedora`         | `fedora-41-release`     | Latest R release on latest Fedora.   |
+| `ghcr.io/r-lib/rig/fedora`         | `fedora-42-release`     | Latest R release on latest Fedora.   |
+| `ghcr.io/r-lib/rig/fedora-42`      | `fedora-42-release`     | Latest R release on Fedora 42.       |
+| `ghcr.io/r-lib/rig/fedora-devel`   | `fedora-42-devel`       | R devel on latest Fedora.            |
 | `ghcr.io/r-lib/rig/fedora-41`      | `fedora-41-release`     | Latest R release on Fedora 41.       |
-| `ghcr.io/r-lib/rig/fedora-devel`   | `fedora-41-devel`       | R devel on latest Fedora.            |
-| `ghcr.io/r-lib/rig/fedora-40`      | `fedora-40-release`     | Latest R release on Fedora 40.       |
 | `ghcr.io/r-lib/rig/opensuse`       | `opensuse-15.6-release` | Latest R release on latest OpenSUSE. |
 | `ghcr.io/r-lib/rig/opensuse-15.6`  | `opensuse-15.6-release` | Latest R release on OpenSUSE 15.6.   |
 | `ghcr.io/r-lib/rig/opensuse-devel` | `opensuse-15.6-devel`   | R devel on latest OpenSUSE.          |
@@ -453,8 +450,8 @@ Why does rig create a user package library?
 >   do not work well if user packages are installed into the system
 >   library. E.g. `R CMD check` is such a tool, and
 >   <https://github.com/r-lib/revdepcheck> is another.
-> - You can delete an R installation (e.g. with `rig rm`) and then and
->   then install it again, without losing your R packages.
+> - You can delete an R installation (e.g. with `rig rm`) and then
+>   install it again, without losing your R packages.
 
 </details>
 <details>

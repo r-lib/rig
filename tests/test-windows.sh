@@ -28,37 +28,37 @@ teardown() {
     fi
 }
 
-# We use 4.1.1 because currently 4.1.2 is already installed on the GHA
+# We use 4.5.0 because currently 4.5.1 is already installed on the GHA
 # VM, but without the rig goodies.
 
 @test "add" {
-    if ! rig ls | grep -q '^[* ] 4.1.1$'; then
-	run rig add 4.1.1
+    if ! rig ls | grep -q '^[* ] 4.5.0$'; then
+	run rig add 4.5.0
 	echo "status = ${status}"
 	echo "output = ${output}"
 	[[ "$status" -eq 0 ]]
 	run rig ls
-	echo "$output" | grep -q "^[* ] 4.1.1"
+	echo "$output" | grep -q "^[* ] 4.5.0"
     fi
-    run R-4.1.1.bat -q -s -e 'cat(as.character(getRversion()))'
+    run R-4.5.0.bat -q -s -e 'cat(as.character(getRversion()))'
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
-    echo "$output" | grep -q "^4[.]1[.]1$"
+    echo "$output" | grep -q "^4[.]5[.]0$"
 
-    if ! rig ls | grep -q '^[* ] 4.0.5$'; then
-	run rig add 4.0
+    if ! rig ls | grep -q '^[* ] 4.4.3$'; then
+	run rig add 4.4
 	echo "status = ${status}"
 	echo "output = ${output}"
 	[[ "$status" -eq 0 ]]
 	run rig ls
-	echo "$output" | grep -q "^[* ] 4.0.5"
+	echo "$output" | grep -q "^[* ] 4.4.3"
     fi
-    run R-4.0.5.bat -q -s -e 'cat(as.character(getRversion()))'
+    run R-4.4.3.bat -q -s -e 'cat(as.character(getRversion()))'
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
-    echo "$output" | grep -q "^4[.]0[.]5$"
+    echo "$output" | grep -q "^4[.]4[.]3$"
 
     devel=$(rig resolve devel | cut -f1 -d" ")
     if ! rig ls | grep -q '^[* ] devel$'; then
@@ -85,12 +85,12 @@ teardown() {
 	echo "output = ${output}"
 	[[ ! "$status" -eq 0 ]]
     fi
-    run rig default 4.1.1
+    run rig default 4.5.0
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
     run rig default
-    [[ "$output" = "4.1.1" ]]
+    [[ "$output" = "4.5.0" ]]
     run rig default 1.0
     echo "status = ${status}"
     echo "output = ${output}"
@@ -103,12 +103,12 @@ teardown() {
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
-    echo "$output" | grep -q "^[*] 4.1.1"
+    echo "$output" | grep -q "^[*] 4.5.0"
     run rig ls
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
-    echo "$output" | grep -q "^  4.0.5"
+    echo "$output" | grep -q "^  4.4.3"
 }
 
 @test "resolve" {
@@ -127,38 +127,38 @@ teardown() {
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
-    run rig resolve oldrel/3
+    run rig resolve oldrel/1
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
-    run rig resolve 4.1.1
+    run rig resolve 4.5.0
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
-    echo $output | grep -q "4[.]1[.]1 https://"
-    run rig resolve 4.0
+    echo $output | grep -q "4[.]5[.]0 https://"
+    run rig resolve 4.4
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
-    echo $output | grep -q "4[.]0[.]5 https://"
+    echo $output | grep -q "4[.]4[.]3 https://"
 }
 
 @test "rm" {
-    if ! rig ls | grep -q '^[* ] 3.5.3$'; then
-        run rig add 3.5
+    if ! rig ls | grep -q '^[* ] 4.4.2$'; then
+        run rig add 4.4.2
 	echo "status = ${status}"
 	echo "output = ${output}"
         [[ "$status" -eq 0 ]]
         run rig ls
-        echo "$output" | grep -q "^[* ] 3[.]5[.]3"
+        echo "$output" | grep -q "^[* ] 4[.]4[.]2"
     fi
-    run rig rm 3.5.3
+    run rig rm 4.4.2
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
     run rig list
-    echo $output | grep -vq "^[* ] 3.5.3"
+    echo $output | grep -vq "^[* ] 4.4.2"
 }
 
 # The quoting is very tricky here. We avoid double quotes because they
@@ -169,7 +169,7 @@ teardown() {
 
 @test "system create-lib" {
     # Must already exist
-    run R-4.1.1.bat -q -s -e suppressWarnings\(file.exists\(Sys.getenv\(\'R_LIBS_USER\'\)\)\)
+    run R-4.5.0.bat -q -s -e suppressWarnings\(file.exists\(Sys.getenv\(\'R_LIBS_USER\'\)\)\)
     echo "status = ${status}"
     echo "output = ${output}"
     [[ $status -eq 0 ]]
@@ -179,7 +179,7 @@ teardown() {
     echo "output = ${output}"
     [[ $status -eq 0 ]]
     [[ "${lines[-1]}" = "[1] TRUE" ]]
-    run R-4.0.5.bat -q -s -e file.exists\(Sys.getenv\(\'R_LIBS_USER\'\)\)
+    run R-4.4.3.bat -q -s -e file.exists\(Sys.getenv\(\'R_LIBS_USER\'\)\)
     echo "status = ${status}"
     echo "output = ${output}"
     [[ $status -eq 0 ]]
@@ -191,13 +191,13 @@ teardown() {
 }
 
 @test "system add-pak" {
-    run rig default 4.1.1
+    run rig default 4.5.0
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
     run rig system add-pak
-    echo $output | grep -q "Installing pak for R 4.1.1"
-    run R-4.1.1.bat -q -s -e 'pak::lib_status()'
+    echo $output | grep -q "Installing pak for R 4.5.0"
+    run R-4.5.0.bat -q -s -e 'pak::lib_status()'
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]

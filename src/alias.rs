@@ -1,9 +1,8 @@
-
 use std::error::Error;
 #[cfg(target_os = "windows")]
-use std::io::Write;
-#[cfg(target_os = "windows")]
 use std::fs::File;
+#[cfg(target_os = "windows")]
+use std::io::Write;
 use std::path::Path;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -30,13 +29,11 @@ pub fn get_alias(args: &ArgMatches) -> Option<String> {
     let str: Option<&String> = args.get_one("str");
     match str {
         None => None,
-        Some(str) => {
-            match str.as_ref() {
-                "oldrel" | "oldrel/1" => Some("oldrel".to_string()),
-                "release" | "devel" | "next" => Some(str.to_string()),
-                _ => None
-            }
-        }
+        Some(str) => match str.as_ref() {
+            "oldrel" | "oldrel/1" => Some("oldrel".to_string()),
+            "release" | "devel" | "next" => Some(str.to_string()),
+            _ => None,
+        },
     }
 }
 
@@ -44,13 +41,11 @@ pub fn get_alias(args: &ArgMatches) -> Option<String> {
 pub fn get_alias(args: &ArgMatches) -> Option<String> {
     match args.get_one::<String>("str") {
         None => None,
-        Some(str) => {
-            match str.as_ref() {
-                "oldrel" | "oldrel/1" => Some("oldrel".to_string()),
-                "release" => Some(str.to_string()),
-                _ => None
-            }
-        }
+        Some(str) => match str.as_ref() {
+            "oldrel" | "oldrel/1" => Some("oldrel".to_string()),
+            "release" => Some(str.to_string()),
+            _ => None,
+        },
     }
 }
 
@@ -58,13 +53,11 @@ pub fn get_alias(args: &ArgMatches) -> Option<String> {
 pub fn get_alias(args: &ArgMatches) -> Option<String> {
     match args.get_one::<String>("str") {
         None => None,
-        Some(str) => {
-            match str.as_ref() {
-                "oldrel" | "oldrel/1" => Some("oldrel".to_string()),
-                "release" | "next" => Some(str.to_string()),
-                _ => None
-            }
-        }
+        Some(str) => match str.as_ref() {
+            "oldrel" | "oldrel/1" => Some("oldrel".to_string()),
+            "release" | "next" => Some(str.to_string()),
+            _ => None,
+        },
     }
 }
 
@@ -75,7 +68,8 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
 
     info!("Adding R-{} alias to R {}", alias, ver);
 
-    let base = Path::new(R_ROOT);
+    let rroot = get_r_root();
+    let base = Path::new(&rroot);
     let target = base.join(ver).join("Resources/bin/R");
     let linkfile = Path::new("/usr/local/bin/").join("R-".to_string() + alias);
 
@@ -87,7 +81,7 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
             Err(_) => bail!("{} is not a symlink, aborting", linkfile.display()),
             Ok(xtarget) => {
                 if xtarget == target {
-                    return Ok(())
+                    return Ok(());
                 } else {
                     debug!("{} is wrong, updating", linkfile.display());
                     match std::fs::remove_file(&linkfile) {
@@ -97,7 +91,7 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
                                 linkfile.display(),
                                 err.to_string()
                             );
-                        },
+                        }
                         _ => {}
                     }
                 }
@@ -123,16 +117,16 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
 pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     let msg = "Adding R-".to_string() + alias + " alias";
     escalate(&msg)?;
-    let base = Path::new(R_ROOT);
-    let bin = base.join("bin");
+    let rroot = get_r_root();
+    let linkdir = Path::new(RIG_LINKS_DIR);
 
     // should exist at this point, but make sure
-    std::fs::create_dir_all(&bin)?;
+    std::fs::create_dir_all(&linkdir)?;
 
     let filename = "R-".to_string() + alias + ".bat";
-    let linkfile = bin.join(&filename);
+    let linkfile = linkdir.join(&filename);
 
-    let cnt = "@\"C:\\Program Files\\R\\R-".to_string() + &ver + "\\bin\\R\" %*\n";
+    let cnt = "@\"".to_string() + &rroot + "\\R-" + &ver + "\\bin\\R\" %*\n";
     let op;
     if linkfile.exists() {
         op = "Updating";
@@ -157,7 +151,8 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
 
     info!("Adding R-{} alias to R {}", alias, ver);
 
-    let base = Path::new(R_ROOT);
+    let rroot = get_r_root();
+    let base = Path::new(&rroot);
     let target = base.join(ver).join("bin/R");
     let linkfile = Path::new("/usr/local/bin/").join("R-".to_string() + alias);
 
@@ -169,7 +164,7 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
             Err(_) => bail!("{} is not a symlink, aborting", linkfile.display()),
             Ok(xtarget) => {
                 if xtarget == target {
-                    return Ok(())
+                    return Ok(());
                 } else {
                     debug!("{} is wrong, updating", linkfile.display());
                     match std::fs::remove_file(&linkfile) {
@@ -179,7 +174,7 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
                                 linkfile.display(),
                                 err.to_string()
                             );
-                        },
+                        }
                         _ => {}
                     }
                 }

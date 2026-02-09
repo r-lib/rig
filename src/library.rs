@@ -27,35 +27,21 @@ pub fn sc_library_ls(
     libargs: &ArgMatches,
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
-    let libs = sc_library_get_list(None, false)?;
-    let mut names: Vec<String> = libs
-        .iter()
-        .map(|x| {
-            if x.default {
-                x.name.to_owned() + " (default)"
-            } else {
-                x.name.to_owned()
-            }
-        })
-        .collect();
-    names.sort();
-
+    let libs: Vec<PkgLibrary> = sc_library_get_list(None, false)?;
     if args.get_flag("json") || libargs.get_flag("json") || mainargs.get_flag("json") {
-        println!("[");
-        let num = libs.len();
-        for (idx, lib) in libs.iter().enumerate() {
-            let path = lib.path.display().to_string();
-            println!("  {{");
-            println!("    \"name\": \"{}\",", lib.name);
-            println!("    \"path\": \"{}\",", path.replace("\\", "/"));
-            println!(
-                "    \"default\": {}",
-                if lib.default { "true" } else { "false" }
-            );
-            println!("  }}{}", if idx == num - 1 { "" } else { "," });
-        }
-        println!("]");
+        println!("{}", serde_json::to_string_pretty(&libs)?);
     } else {
+        let mut names: Vec<String> = libs
+            .iter()
+            .map(|x| {
+                if x.default {
+                    x.name.to_owned() + " (default)"
+                } else {
+                    x.name.to_owned()
+                }
+            })
+            .collect();
+        names.sort();
         for name in names {
             println!("{}", name);
         }
@@ -225,16 +211,13 @@ pub fn sc_library_default(
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
     if args.get_one::<String>("lib-name").is_some() {
-        let name: String = require_with!(args.get_one::<String>("lib-name"), "clap error").to_string();
+        let name: String =
+            require_with!(args.get_one::<String>("lib-name"), "clap error").to_string();
         sc_library_set_default(&name)
     } else {
         let default = sc_library_get_default()?;
         if args.get_flag("json") || libargs.get_flag("json") || mainargs.get_flag("json") {
-            let path = default.path.display().to_string();
-            println!("{{");
-            println!("  \"name\": \"{}\",", default.name);
-            println!("  \"path\": \"{}\"", path.replace("\\", "/"));
-            println!("}}");
+            println!("{}", serde_json::to_string_pretty(&default)?);
         } else {
             println!("{}", default.name);
         }

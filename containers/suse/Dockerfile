@@ -1,5 +1,4 @@
-
-ARG RELEASE=15.4
+ARG RELEASE=mandatory
 FROM opensuse/leap:${RELEASE}
 
 ARG RVERSION=release

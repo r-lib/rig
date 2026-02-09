@@ -27,7 +27,7 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
         Some(x) => check_installed(x)?,
         None => sc_get_default_or_fail()?,
     };
-    let rbin = R_ROOT.to_string() + "/" + &R_BINPATH.replace("{}", &rver);
+    let rbin = get_r_root().to_string() + "/" + &R_BINPATH.replace("{}", &rver);
 
     let eval = args.get_one::<String>("eval");
     let script = args.get_one::<String>("script");
@@ -89,7 +89,12 @@ fn ignore_sigint() {
     ()
 }
 
-fn sc_run_rver(rbin: String, args: Vec<String>, cmdargs: Vec<String>, dry_run: bool) -> Result<i32, Box<dyn Error>> {
+fn sc_run_rver(
+    rbin: String,
+    args: Vec<String>,
+    cmdargs: Vec<String>,
+    dry_run: bool,
+) -> Result<i32, Box<dyn Error>> {
     let mut args2: Vec<String> = args;
     args2.push("--args".to_string());
     for a in cmdargs {
@@ -107,7 +112,7 @@ fn sc_run_rver(rbin: String, args: Vec<String>, cmdargs: Vec<String>, dry_run: b
     let _status = Command::new(rbin).args(args2).status()?;
     match _status.code() {
         Some(code) => Ok(code),
-        None => Ok(-1)
+        None => Ok(-1),
     }
 }
 
@@ -136,7 +141,7 @@ fn sc_run_eval(
     let _status = Command::new(rbin).args(args2).status()?;
     match _status.code() {
         Some(code) => Ok(code),
-        None => Ok(-1)
+        None => Ok(-1),
     }
 }
 
@@ -165,7 +170,7 @@ fn sc_run_script(
     let _status = Command::new(rbin).args(args2).status()?;
     match _status.code() {
         Some(code) => Ok(code),
-        None => Ok(-1)
+        None => Ok(-1),
     }
 }
 
@@ -238,7 +243,7 @@ fn sc_run_app(
     let _status = Command::new(rbin).args(args2).current_dir(proj).status()?;
     match _status.code() {
         Some(code) => Ok(code),
-        None => Ok(-1)
+        None => Ok(-1),
     }
 }
 

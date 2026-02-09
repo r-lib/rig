@@ -1,4 +1,3 @@
-
 use std::collections::HashMap;
 use std::error::Error;
 #[cfg(target_os = "macos")]
@@ -24,20 +23,21 @@ use crate::utils::*;
 #[cfg(target_os = "macos")]
 use crate::macos::*;
 
-#[derive(PartialEq, Clone, Debug)]
+#[allow(dead_code)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SysReq {
     pub name: String,
-    pub description: String
+    pub description: String,
+}
+
+#[derive(serde::Serialize)]
+struct SysReqName {
+    name: String,
 }
 
 lazy_static! {
-    static ref SYSREQS: Vec<&'static str> = vec![
-        "checkbashisms",
-        "gfortran",
-        "pkgconfig",
-        "tidy-html5",
-    ];
-
+    static ref SYSREQS: Vec<&'static str> =
+        vec!["checkbashisms", "gfortran", "pkgconfig", "tidy-html5",];
     static ref SYSREQS_INFO: HashMap<String, SysReq> = {
         let mut info = std::collections::HashMap::new();
         info.insert(
@@ -46,8 +46,9 @@ lazy_static! {
                 name: "checkbashisms".to_string(),
                 description: r#"
     Checks for bashisms in shell scripts. Via HomeBrew.
-"#.to_string()
-            }
+"#
+                .to_string(),
+            },
         );
         info.insert(
             "gfortran".to_string(),
@@ -66,8 +67,9 @@ lazy_static! {
 
     See https://mac.r-project.org/tools/ for the latest information about
     gfortran on macOS.
-"#.to_string()
-            }
+"#
+                .to_string(),
+            },
         );
         info.insert(
             "pkgconfig".to_string(),
@@ -75,8 +77,9 @@ lazy_static! {
                 name: "pkgconfig".to_string(),
                 description: r#"
     pkg-config: Manage compile and link flags for libraries. Via Homebrew.
-"#.to_string()
-            }
+"#
+                .to_string(),
+            },
         );
         info.insert(
             "tidy-html5".to_string(),
@@ -84,23 +87,22 @@ lazy_static! {
                 name: "tidy-html5".to_string(),
                 description: r#"
     Granddaddy of HTML tools, with support for modern standards. Via Homebrew
-"#.to_string()
-            }
+"#
+                .to_string(),
+            },
         );
         info
     };
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
-pub fn sc_sysreqs(_args: &ArgMatches, _mainargs: &ArgMatches)
-              -> Result<(), Box<dyn Error>> {
+pub fn sc_sysreqs(_args: &ArgMatches, _mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // Cannot be called
     Ok(())
 }
 
 #[cfg(target_os = "macos")]
-pub fn sc_sysreqs(args: &ArgMatches, mainargs: &ArgMatches)
-              -> Result<(), Box<dyn Error>> {
+pub fn sc_sysreqs(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
         Some(("add", s)) => sc_sysreqs_add(s, args, mainargs),
         Some(("info", s)) => sc_sysreqs_info(s, args, mainargs),
@@ -115,19 +117,14 @@ pub fn sc_sysreqs_info(
     libargs: &ArgMatches,
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
-
     let name = args.get_one::<String>("name").unwrap();
     let info = match SYSREQS_INFO.get(name) {
         None => bail!("Unknown sysreqs: {}", name),
-        Some(x) => x
+        Some(x) => x,
     };
 
     if args.get_flag("json") || libargs.get_flag("json") || mainargs.get_flag("json") {
-        println!("{{");
-        println!("  \"name\": \"{}\",", info.name);
-        println!("  \"description\": \"{}\"", escape_json(&info.description));
-        println!("}}");
-
+        println!("{}", serde_json::to_string_pretty(&info)?);
     } else {
         let mut tab = Table::new("{:<} {:<}");
         tab.add_row(row!(&info.name, &info.description));
@@ -143,16 +140,14 @@ pub fn sc_sysreqs_list(
     libargs: &ArgMatches,
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
-
     if args.get_flag("json") || libargs.get_flag("json") || mainargs.get_flag("json") {
-        let num = SYSREQS.len();
-        println!("[");
-        for (idx, sr) in SYSREQS.iter().enumerate() {
-            println!("  {{");
-            println!("    \"name\": \"{}\"", sr);
-            println!("  }}{}", if idx == num - 1 { "" } else { "," });
-        }
-        println!("]");
+        let list: Vec<SysReqName> = SYSREQS
+            .iter()
+            .map(|sr| SysReqName {
+                name: sr.to_string(),
+            })
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&list)?);
     } else {
         for sr in SYSREQS.iter() {
             println!("{}", sr);
@@ -168,14 +163,13 @@ pub fn sc_sysreqs_add(
     _libargs: &ArgMatches,
     _mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
-
     let mut gfortran = false;
     let mut srs: Vec<String> = vec![];
     match args.get_many::<String>("name") {
         None => {
             debug!("No system package to install");
             return Ok(());
-        },
+        }
         Some(x) => {
             for sr in x {
                 if sr == "gfortran" {
@@ -222,7 +216,7 @@ fn find_brew(arch: &str) -> Result<(String, Vec<String>), Box<dyn Error>> {
     if is_arm64_machine() {
         Ok((
             "arch".to_string(),
-            vec![("-".to_string() + arch).into(), brew.into()]
+            vec![("-".to_string() + arch).into(), brew.into()],
         ))
     } else {
         Ok((brew.to_string(), vec![]))
@@ -230,9 +224,7 @@ fn find_brew(arch: &str) -> Result<(String, Vec<String>), Box<dyn Error>> {
 }
 
 #[cfg(target_os = "macos")]
-fn brew_install(arch: &str, pkgs: Vec<String>)
-                -> Result<(), Box<dyn Error>> {
-
+fn brew_install(arch: &str, pkgs: Vec<String>) -> Result<(), Box<dyn Error>> {
     let brew = find_brew(&arch)?;
     let mut args: Vec<String> = brew.1;
     args.push("install".into());
@@ -262,21 +254,28 @@ fn macos_install_gfortran_arm64() -> Result<(), Box<dyn Error>> {
 
     let old = Path::new("/opt/R/arm64/gfortran");
     if old.exists() {
-        info!("Removing current gfortran installation from {}", old.display());
+        info!(
+            "Removing current gfortran installation from {}",
+            old.display()
+        );
         match std::fs::remove_dir_all(&old) {
-            Ok(_) => {},
-            Err(err) => bail!("Failed to remove {}: {}", old.display(), err.to_string())
+            Ok(_) => {}
+            Err(err) => bail!("Failed to remove {}: {}", old.display(), err.to_string()),
         };
     }
 
     info!("Unpacking gfortran");
-    run("tar".into(), vec![os("fxz"), target, os("-C"), os("/")], "tar")?;
+    run(
+        "tar".into(),
+        vec![os("fxz"), target, os("-C"), os("/")],
+        "tar",
+    )?;
 
     info!("Updating gfortran link to your Apple SDK");
     run(
         "/opt/R/arm64/gfortran/bin/gfortran-update-sdk".into(),
         vec![],
-        "gfortran-update-sdk"
+        "gfortran-update-sdk",
     )?;
 
     Ok(())
@@ -290,25 +289,34 @@ fn macos_install_gfortran_intel() -> Result<(), Box<dyn Error>> {
 
     // umount currently mounted gfortran images first, ignore errors
     info!("Trying to unmount leftover gfortran disk images");
-    match run("umount".into(), vec!["/Volumes/gfortran-8.2-Mojave".into()], "umount") {
+    match run(
+        "umount".into(),
+        vec!["/Volumes/gfortran-8.2-Mojave".into()],
+        "umount",
+    ) {
         _ => {}
     };
 
     run("hdiutil".into(), vec!["attach".into(), target], "hdiutil")?;
 
-    run("installer".into(),
+    run(
+        "installer".into(),
         vec![
             "-allowUntrusted".into(),
             "-package".into(),
             "/Volumes/gfortran-8.2-Mojave/gfortran-8.2-Mojave/gfortran.pkg".into(),
             "-target".into(),
-            "/".into()
+            "/".into(),
         ],
-        "installer"
+        "installer",
     )?;
 
     // Ignore failure of unmount, it is not a tragedy...
-    match run("umount".into(), vec!["/Volumes/gfortran-8.2-Mojave".into()], "umount") {
+    match run(
+        "umount".into(),
+        vec!["/Volumes/gfortran-8.2-Mojave".into()],
+        "umount",
+    ) {
         Err(x) => warn!("Failed to unmount gfortran installer: {}", x.to_string()),
         _ => {}
     };

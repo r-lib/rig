@@ -1,5 +1,5 @@
 
-FROM alpine:3.15
+FROM alpine:3.22
 
 RUN apk add curl linux-headers bash gcc musl-dev g++ pkgconf make file
 

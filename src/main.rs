@@ -19,6 +19,8 @@ use macos::*;
 #[cfg(target_os = "windows")]
 mod windows;
 #[cfg(target_os = "windows")]
+mod windows_arch;
+#[cfg(target_os = "windows")]
 use windows::*;
 
 #[cfg(target_os = "linux")]
@@ -29,14 +31,15 @@ use linux::*;
 use resolve::*;
 
 mod alias;
-mod library;
 mod common;
 mod config;
 mod download;
+mod hardcoded;
+mod library;
 mod renv;
 mod resolve;
-mod rversion;
 mod run;
+mod rversion;
 mod sysreqs;
 mod utils;
 
@@ -125,8 +128,7 @@ fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
     Ok(retval)
 }
 
-fn sc_system(args: &ArgMatches, mainargs: &ArgMatches)
-             -> Result<(), Box<dyn Error>> {
+fn sc_system(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
         Some(("add-pak", s)) => sc_system_add_pak(s),
         Some(("allow-core-dumps", s)) => sc_system_allow_core_dumps(s),
@@ -139,9 +141,9 @@ fn sc_system(args: &ArgMatches, mainargs: &ArgMatches)
         Some(("fix-permissions", s)) => sc_system_fix_permissions(s),
         Some(("forget", _)) => sc_system_forget(),
         Some(("no-openmp", s)) => sc_system_no_openmp(s),
-	    Some(("update-rtools40", _)) => sc_system_update_rtools40(),
+        Some(("update-rtools40", _)) => sc_system_update_rtools40(),
         Some(("detect-platform", s)) => sc_system_detect_platform(s, mainargs),
-	    Some(("rtools", s)) => sc_system_rtools(s, mainargs),
+        Some(("rtools", s)) => sc_system_rtools(s, mainargs),
         _ => Ok(()), // unreachable
     }
 }
@@ -160,24 +162,19 @@ fn sc_library(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Er
 
 fn sc_resolve(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let version = get_resolve(args)?;
-    let url: String = match version.url {
-        Some(s) => s.to_string(),
-        None => "NA".to_string(),
-    };
-    let version: String = match version.version {
-        Some(s) => s.to_string(),
-        None => "???".to_string(),
-    };
 
     if args.get_flag("json") || mainargs.get_flag("json") {
-        println!("[");
-        println!("  {{");
-        println!("     \"version\": \"{}\",", version);
-        println!("     \"url\": \"{}\"", url);
-        println!("  }}");
-        println!("]");
+        println!("{}", serde_json::to_string_pretty(&vec![&version])?);
     } else {
-        println!("{} {}", version, url);
+        let url: String = match &version.url {
+            Some(s) => s.to_string(),
+            None => "NA".to_string(),
+        };
+        let ver: String = match &version.version {
+            Some(s) => s.to_string(),
+            None => "???".to_string(),
+        };
+        println!("{} {}", ver, url);
     }
 
     Ok(())
@@ -186,18 +183,21 @@ fn sc_resolve(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Er
 // ------------------------------------------------------------------------
 
 fn sc_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    #[derive(serde::Serialize)]
+    struct InstalledVersionWithDefault<'a> {
+        name: &'a str,
+        default: bool,
+        version: &'a Option<String>,
+        aliases: &'a Vec<String>,
+        path: &'a Option<String>,
+        binary: &'a Option<String>,
+    }
+
     let vers = sc_get_list_details()?;
     let def = match sc_get_default()? {
         None => "".to_string(),
         Some(v) => v,
     };
-
-    fn or_null(x: &Option<String>) -> String {
-        match x {
-            None => "null".to_string(),
-            Some(x) => x.to_string()
-        }
-    }
 
     if args.get_flag("plain") {
         if args.get_flag("json") || mainargs.get_flag("json") {
@@ -206,28 +206,20 @@ fn sc_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error
         for ver in vers.iter() {
             println!("{}", ver.name);
         }
-
     } else if args.get_flag("json") || mainargs.get_flag("json") {
-        println!("[");
-        let num = vers.len();
-        for (idx, ver) in vers.iter().enumerate() {
-            let dflt = if def == ver.name { "true" } else { "false" };
-            let alsq: Vec<String> = ver.aliases.iter()
-                .map(|v| "\"".to_string() + v + "\"")
-                .collect();
-            let als = "[".to_string() + &alsq.join(", ") + "]";
-            println!("  {{");
-            println!("    \"name\": \"{}\",", ver.name);
-            println!("    \"default\": {},", dflt);
-            println!("    \"version\": \"{}\",", or_null(&ver.version));
-            println!("    \"aliases\": {},", als);
-            println!("    \"path\": \"{}\",", or_null(&ver.path));
-            println!("    \"binary\": \"{}\"", or_null(&ver.binary));
-            println!("  }}{}", if idx == num - 1 { "" } else { "," });
-        }
-        println!("]");
+        let json_vers: Vec<InstalledVersionWithDefault> = vers
+            .iter()
+            .map(|ver| InstalledVersionWithDefault {
+                name: &ver.name,
+                default: def == ver.name,
+                version: &ver.version,
+                aliases: &ver.aliases,
+                path: &ver.path,
+                binary: &ver.binary,
+            })
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&json_vers)?);
     } else {
-
         let mut tab = Table::new("{:<} {:<}  {:<}  {:<}");
         tab.add_row(row!["*", "name", "version", "aliases"]);
         tab.add_heading("------------------------------------------");
@@ -256,18 +248,21 @@ fn sc_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error
 // ------------------------------------------------------------------------
 
 fn sc_default(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    #[derive(serde::Serialize)]
+    struct DefaultVersion {
+        name: String,
+    }
+
     if args.contains_id("version") {
-        let ver = args
-            .get_one::<String>("version")
-            .unwrap()
-            .to_string();
+        let ver = args.get_one::<String>("version").unwrap().to_string();
         sc_set_default(&ver)
     } else {
         let default = sc_get_default_or_fail()?;
         if args.get_flag("json") || mainargs.get_flag("json") {
-            println!("{{");
-            println!("  \"name\": \"{}\"", default);
-            println!("}}");
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&DefaultVersion { name: default.clone() })?
+            );
         } else {
             println!("{}", default);
         }
@@ -296,12 +291,9 @@ pub fn sc_system_add_pak(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let devel = args.get_flag("devel");
     let all = args.get_flag("all");
     let vers = args.get_many::<String>("version");
-    let pakver = args
-        .get_one::<String>("pak-version")
-        .unwrap();
+    let pakver = args.get_one::<String>("pak-version").unwrap();
     let mut pakver = &pakver[..];
-    let pakverx = args.value_source("pak-version") ==
-        Some(clap::parser::ValueSource::CommandLine);
+    let pakverx = args.value_source("pak-version") == Some(clap::parser::ValueSource::CommandLine);
 
     // --devel is deprecated
     if devel && !pakverx {

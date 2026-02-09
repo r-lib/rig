@@ -16,25 +16,25 @@ teardown() {
 }
 
 @test "add" {
-    if ! rig ls | grep -q '^[* ] 4.1.3'; then
-	run rig -v add 4.1.3
+    if ! rig ls | grep -q '^[* ] 4.5.1'; then
+	run rig -v add 4.5.1
 	[[ "$status" -eq 0 ]]
 	run rig ls
-	echo "$output" | grep -q "^[* ] 4.1.3"
+	echo "$output" | grep -q "^[* ] 4.5.1"
     fi
-    run R-4.1.3 -q -s -e 'cat(as.character(getRversion()))'
+    run R-4.5.1 -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
-    echo "$output" | grep -q "^4[.]1[.]3$"
+    echo "$output" | grep -q "^4[.]5[.]1$"
 
-    if ! rig ls | grep -q '^[* ] 4.0.5'; then
-	run rig add 4.0
+    if ! rig ls | grep -q '^[* ] 4.4.3'; then
+	run rig add 4.4
 	[[ "$status" -eq 0 ]]
 	run rig ls
-	echo "$output" | grep -q "^[* ] 4.0.5"
+	echo "$output" | grep -q "^[* ] 4.4.3"
     fi
-    run R-4.0.5 -q -s -e 'cat(as.character(getRversion()))'
+    run R-4.4.3 -q -s -e 'cat(as.character(getRversion()))'
     [[ "$status" -eq 0 ]]
-    echo "$output" | grep -q "^4[.]0[.]5$"
+    echo "$output" | grep -q "^4[.]4[.]3$"
 
     devel=$(rig resolve devel | cut -f1 -d" ")
     if ! rig ls | grep -q '^[* ] devel$'; then
@@ -54,10 +54,10 @@ teardown() {
 	run rig default
 	[[ ! "$status" -eq 0 ]]
     fi
-    run rig default 4.1.3
+    run rig default 4.5.1
     [[ "$status" -eq 0 ]]
     run rig default
-    [[ "$output" = "4.1.3" ]]
+    [[ "$output" = "4.5.1" ]]
     run rig default 1.0
     [[ ! "$status" -eq 0 ]]
     echo $output | grep -q "is not installed"
@@ -66,10 +66,10 @@ teardown() {
 @test "list" {
     run rig list
     [[ "$status" -eq 0 ]]
-    echo "$output" | grep -q "^[*] 4.1.3"
+    echo "$output" | grep -q "^[*] 4.5.1"
     run rig ls
     [[ "$status" -eq 0 ]]
-    echo "$output" | grep -q "^  4.0.5"
+    echo "$output" | grep -q "^  4.4.3"
 }
 
 @test "resolve" {
@@ -85,36 +85,36 @@ teardown() {
     run rig resolve oldrel/3
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
-    run rig resolve 4.1.3
+    run rig resolve 4.5.1
     [[ "$status" -eq 0 ]]
-    echo $output | grep -q "4[.]1[.]3 https://"
-    run rig resolve 4.0
+    echo $output | grep -q "4[.]5[.]1 https://"
+    run rig resolve 4.4
     [[ "$status" -eq 0 ]]
-    echo $output | grep -q "4[.]0[.]5 https://"
+    echo $output | grep -q "4[.]4[.]3 https://"
 }
 
 @test "rm" {
-    if ! rig ls | grep -q '^[* ] 3.3.3$'; then
-        run rig add 3.3 --without-pak
+    if ! rig ls | grep -q '^[* ] 4.0.5$'; then
+        run rig add 4.0 --without-pak
         [[ "$status" -eq 0 ]]
         run rig ls
-        echo "$output" | grep -q "^[* ] 3[.]3[.]3"
+        echo "$output" | grep -q "^[* ] 4[.]0[.]5"
     fi
-    run rig rm 3.3.3
+    run rig rm 4.0.5
     [[ "$status" -eq 0 ]]
     run rig list
-    echo $output | grep -vq "^[* ] 3.3.3"
+    echo $output | grep -vq "^[* ] 4.0.5"
 }
 
 @test "system create-lib" {
     # Must already exist
-    run R-4.1.3 -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
+    run R-4.5.1 -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
     [[ $status -eq 0 ]]
     [[ "$output" = "[1] TRUE" ]]
     run R-devel -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
     [[ $status -eq 0 ]]
     [[ "$output" = "[1] TRUE" ]]
-    run R-4.0.5 -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
+    run R-4.4.3 -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
     [[ $status -eq 0 ]]
     [[ "$output" = "[1] TRUE" ]]
     run rig -vv system create-lib
@@ -123,28 +123,28 @@ teardown() {
 }
 
 @test "system add-pak" {
-    if ! rig ls | grep -q '^[* ] 4.1.3'; then
-	run rig -v add 4.1.3
+    if ! rig ls | grep -q '^[* ] 4.5.1'; then
+	run rig -v add 4.5.1
 	[[ "$status" -eq 0 ]]
     fi
-    run rig default 4.1.3
+    run rig default 4.5.1
     [[ "$status" -eq 0 ]]
     run rig system add-pak
-    echo $output | grep -q "Installing pak for R 4.1.3"
-    run R-4.1.3 -q -s -e 'pak::lib_status()'
+    echo $output | grep -q "Installing pak for R 4.5.1"
+    run R-4.5.1 -q -s -e 'pak::lib_status()'
     [[ "$status" -eq 0 ]]
 
-    if ! rig ls | grep -q '^[* ] 3.5.3$'; then
-        run rig add 3.5.3
+    if ! rig ls | grep -q '^[* ] 4.0.5$'; then
+        run rig add 4.0.5
         [[ "$status" -eq 0 ]]
         run rig ls
-        echo "$output" | grep -q "^[* ] 3[.]5[.]3"
+        echo "$output" | grep -q "^[* ] 4[.]0[.]5"
     fi
 
-    libdir=`R-3.5.3 -s -e 'cat(path.expand(Sys.getenv("R_LIBS_USER")))'`
+    libdir=`R-4.0.5 -s -e 'cat(path.expand(Sys.getenv("R_LIBS_USER")))'`
     [[ "$libdir" == "" ]] && false
     run $SUDO rm -rf "$libdir"
-    run $SUDO `which rig` system add-pak 3.5.3
+    run $SUDO `which rig` system add-pak 4.0.5
     [[ "$status" -eq 0 ]]
     uid=`stat -c "%u" "$libdir"`
     [[ "$uid" -eq "`id -u`" ]]

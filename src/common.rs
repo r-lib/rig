@@ -1,4 +1,3 @@
-
 use regex::Regex;
 use std::collections::HashMap;
 use std::env;
@@ -23,8 +22,8 @@ use crate::linux::*;
 
 use crate::download::download_json_sync;
 use crate::renv;
-use crate::rversion::*;
 use crate::run::*;
+use crate::rversion::*;
 use crate::utils::*;
 
 pub fn check_installed(x: &String) -> Result<String, Box<dyn Error>> {
@@ -72,7 +71,7 @@ pub fn sc_get_list_details() -> Result<Vec<InstalledVersion>, Box<dyn Error>> {
     let re = Regex::new("^Version:[ ]?")?;
 
     for name in names {
-        let desc = Path::new(R_ROOT)
+        let desc = Path::new(&get_r_root())
             .join(R_SYSLIBPATH.replace("{}", &name))
             .join("base/DESCRIPTION");
         let lines = match read_lines(&desc) {
@@ -85,8 +84,8 @@ pub fn sc_get_list_details() -> Result<Vec<InstalledVersion>, Box<dyn Error>> {
         } else {
             Some(re.replace(&lines[idx[0]], "").to_string())
         };
-        let path = Path::new(R_ROOT).join(R_VERSIONDIR.replace("{}", &name));
-        let binary = Path::new(R_ROOT).join(R_BINPATH.replace("{}", &name));
+        let path = Path::new(&get_r_root()).join(R_VERSIONDIR.replace("{}", &name));
+        let binary = Path::new(&get_r_root()).join(R_BINPATH.replace("{}", &name));
         let mut myaliases: Vec<String> = vec![];
         for a in &aliases {
             if a.version == name {
@@ -98,7 +97,7 @@ pub fn sc_get_list_details() -> Result<Vec<InstalledVersion>, Box<dyn Error>> {
             version: version,
             path: path.to_str().and_then(|x| Some(x.to_string())),
             binary: binary.to_str().and_then(|x| Some(x.to_string())),
-            aliases: myaliases
+            aliases: myaliases,
         });
     }
 
@@ -119,11 +118,13 @@ pub fn check_has_pak(ver: &String) -> Result<bool, Box<dyn Error>> {
     }
 
     // cut off extra stuff on Windows
-    ver = Regex::new("[a-zA-Z][a-zA-Z0-9]*$")?.replace(&ver, "").to_string();
+    ver = Regex::new("[a-zA-Z][a-zA-Z0-9]*$")?
+        .replace(&ver, "")
+        .to_string();
 
     let vv = match Version::parse(&ver) {
         Ok(x) => x,
-        Err(_) => return Ok(true)  // devel or next, probably
+        Err(_) => return Ok(true), // devel or next, probably
     };
 
     let v350 = Version::parse("3.5.0")?;
@@ -156,8 +157,8 @@ pub fn system_add_pak(
         // is a bug in the system profile code that creates it, and it is
         // only added after a restart.
         match r(&ver, "invisible()") {
-            Ok(_) => {},
-            Err(x) => bail!("Failed to to install pak for R {}: {}", ver, x.to_string())
+            Ok(_) => {}
+            Err(x) => bail!("Failed to to install pak for R {}: {}", ver, x.to_string()),
         };
 
         // The actual pak installation
@@ -176,8 +177,8 @@ pub fn system_add_pak(
         let cmd = cmd.replace("{}", stream);
 
         match r(&ver, &cmd) {
-            Ok(_) => {},
-            Err(x) => bail!("Failed to install pak for R {}: {}", ver, x.to_string())
+            Ok(_) => {}
+            Err(x) => bail!("Failed to install pak for R {}: {}", ver, x.to_string()),
         };
     }
 
@@ -186,22 +187,21 @@ pub fn system_add_pak(
 
 // -- rig rstudio ---------------------------------------------------------
 
-fn look_for_file(p: &Path, re: Regex)
-		 -> Result<Option<PathBuf>, Box<dyn Error>> {
+fn look_for_file(p: &Path, re: Regex) -> Result<Option<PathBuf>, Box<dyn Error>> {
     let paths = std::fs::read_dir(p)?;
     for file in paths {
-	let path = file?.path();
-	let pathstr = match path.file_name() {
-	    Some(x) => x,
-	    None => continue,
-	};
-	let pathstr = match pathstr.to_str() {
-	    Some(x) => x,
-	    None => continue,
-	};
-	if re.is_match(&pathstr) {
-	    return Ok(Some(path));
-	}
+        let path = file?.path();
+        let pathstr = match path.file_name() {
+            Some(x) => x,
+            None => continue,
+        };
+        let pathstr = match pathstr.to_str() {
+            Some(x) => x,
+            None => continue,
+        };
+        if re.is_match(&pathstr) {
+            return Ok(Some(path));
+        }
     }
 
     Ok(None)
@@ -213,20 +213,19 @@ pub fn sc_rstudio(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     #[cfg(target_os = "windows")]
     if args.get_flag("config-path") {
-	let cp = get_rstudio_config_path();
-	match cp {
-	    Ok(x)  => println!("{}", x.display()),
-	    Err(x) => bail!("Error: {}", x.to_string())
-	};
-	return Ok(());
+        let cp = get_rstudio_config_path();
+        match cp {
+            Ok(x) => println!("{}", x.display()),
+            Err(x) => bail!("Error: {}", x.to_string()),
+        };
+        return Ok(());
     }
 
     // If the first argument is an existing path, and the second is not,
     // then we switch the two
     if let Some(ver2) = ver {
-	let path = Path::new(ver2);
-	if path.exists() &&
-	    (prj.is_none() || ! Path::new(prj.unwrap()).exists()) {
+        let path = Path::new(ver2);
+        if path.exists() && (prj.is_none() || !Path::new(prj.unwrap()).exists()) {
             ver = args.get_one("project-file");
             prj = args.get_one("version");
         }
@@ -235,40 +234,36 @@ pub fn sc_rstudio(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     sc_rstudio2(ver, prj)
 }
 
-pub fn sc_rstudio2(ver: Option<&String>, prj: Option<&String>)
-    -> Result<(), Box<dyn Error>> {
-
+pub fn sc_rstudio2(ver: Option<&String>, prj: Option<&String>) -> Result<(), Box<dyn Error>> {
     let mut prj = prj;
     let mut prj2;
     if let Some(p) = prj {
-	let path = Path::new(p);
-	if path.exists() && path.is_dir() && !p.ends_with("/") {
-	    prj2 = Some(p.to_string() + "/")
-		.and_then(|x| Some(x.to_string()));
-	    prj = prj2.as_ref();
-	}
+        let path = Path::new(p);
+        if path.exists() && path.is_dir() && !p.ends_with("/") {
+            prj2 = Some(p.to_string() + "/").and_then(|x| Some(x.to_string()));
+            prj = prj2.as_ref();
+        }
     };
     if let Some(p) = prj {
-	if !p.starts_with("/") && !p.starts_with(".") {
-	    prj2 = Some("./".to_string() + p)
-		.and_then(|x| Some(x.to_string()));
-	    prj = prj2.as_ref();
-	}
+        if !p.starts_with("/") && !p.starts_with(".") {
+            prj2 = Some("./".to_string() + p).and_then(|x| Some(x.to_string()));
+            prj = prj2.as_ref();
+        }
     }
 
     // If there is a path, find its directory
     let (fver, fproj, farg) = match (ver, prj) {
-	(None,    None)    => (None, None, None),
-	(Some(v), None)    => (Some(v.to_owned()), None, None),
-	(Some(v), Some(p)) => {
-	    let pf = find_project_file(p)?;
-	    (Some(v.to_owned()), pf.0, pf.1)
-	},
-	(None,    Some(p)) => {
-	    let pf = find_project_file(p)?;
-	    let v = get_project_version(p)?;
-	    (v, pf.0, pf.1)
-	},
+        (None, None) => (None, None, None),
+        (Some(v), None) => (Some(v.to_owned()), None, None),
+        (Some(v), Some(p)) => {
+            let pf = find_project_file(p)?;
+            (Some(v.to_owned()), pf.0, pf.1)
+        }
+        (None, Some(p)) => {
+            let pf = find_project_file(p)?;
+            let v = get_project_version(p)?;
+            (v, pf.0, pf.1)
+        }
     };
 
     debug!("RStudio start: {:?}, {:?}, {:?}", fver, fproj, farg);
@@ -279,15 +274,15 @@ fn find_project_dir(path: &str) -> Result<PathBuf, Box<dyn Error>> {
     debug!("Find project dir in {}", path);
     let ppath = Path::new(path);
     if !ppath.exists() {
-	bail!("Could not find path {}", path);
+        bail!("Could not find path {}", path);
     }
     let ret = if ppath.is_dir() {
-	ppath.to_path_buf()
+        ppath.to_path_buf()
     } else {
-	match ppath.parent() {
-	    None => Path::new("/").to_path_buf(),
-	    Some(x) => x.to_path_buf()
-	}
+        match ppath.parent() {
+            None => Path::new("/").to_path_buf(),
+            Some(x) => x.to_path_buf(),
+        }
     };
 
     debug!("Project dir: {:?}", ret.display());
@@ -297,67 +292,64 @@ fn find_project_dir(path: &str) -> Result<PathBuf, Box<dyn Error>> {
 // Returns the project file, and also the original file if it
 // was not the project file but another file
 
-fn find_project_file(path: &str)
-    -> Result<(Option<String>, Option<std::ffi::OsString>), Box<dyn Error>> {
-
-    if path.ends_with(".Rproj") && ! Path::new(path).is_dir() {
-	Ok((Some(path.to_string()), None))
+fn find_project_file(
+    path: &str,
+) -> Result<(Option<String>, Option<std::ffi::OsString>), Box<dyn Error>> {
+    if path.ends_with(".Rproj") && !Path::new(path).is_dir() {
+        Ok((Some(path.to_string()), None))
     } else {
-	let dir = find_project_dir(path)?;
-	let proj = look_for_file(&dir, Regex::new("[.]Rproj$").unwrap())?;
-	let projstr = proj
-	    .as_ref()
-	    .and_then(|x| x.to_str())
-	    .and_then(|x| Some(x.to_string()));
-	Ok((projstr, Some(std::ffi::OsString::from(path))))
+        let dir = find_project_dir(path)?;
+        let proj = look_for_file(&dir, Regex::new("[.]Rproj$").unwrap())?;
+        let projstr = proj
+            .as_ref()
+            .and_then(|x| x.to_str())
+            .and_then(|x| Some(x.to_string()));
+        Ok((projstr, Some(std::ffi::OsString::from(path))))
     }
 }
 
 // Look at the project dir, and check if there is an renv.lock file
 
-fn get_project_version(path: &str)
-    -> Result<Option<String>, Box<dyn Error>> {
+fn get_project_version(path: &str) -> Result<Option<String>, Box<dyn Error>> {
     let dir = find_project_dir(path)?;
     let renv = dir.join("renv.lock");
     if renv.exists() {
-	let needver = renv::parse_r_version(renv)?;
-	let usever = renv::match_r_version(&needver)?;
-	let realver = usever.version.to_string();
+        let needver = renv::parse_r_version(renv)?;
+        let usever = renv::match_r_version(&needver)?;
+        let realver = usever.version.to_string();
 
-	info!("Using {} R {}{}",
-	      if needver == realver {
-		  "matching version:"
-	      } else {
-		  "latest minor version:"
-	      },
-	      usever.name,
-	      if realver != usever.name {
-		  " (R ".to_string() + &realver + ")"
-	      } else {
-		  "".to_string()
-	      }
-	);
-	Ok(Some(usever.name.to_owned()))
-
+        info!(
+            "Using {} R {}{}",
+            if needver == realver {
+                "matching version:"
+            } else {
+                "latest minor version:"
+            },
+            usever.name,
+            if realver != usever.name {
+                " (R ".to_string() + &realver + ")"
+            } else {
+                "".to_string()
+            }
+        );
+        Ok(Some(usever.name.to_owned()))
     } else {
-	Ok(None)
+        Ok(None)
     }
 }
 
 // -- rig avilable --------------------------------------------------------
 
-pub fn get_platform(args: &ArgMatches)
-                    -> Result<String, Box<dyn Error>> {
-
+pub fn get_platform(args: &ArgMatches) -> Result<String, Box<dyn Error>> {
     // rig add does not have a --platform argument, only auto-detect
     match args.try_contains_id("platform") {
         Ok(_) => {
             let platform = args.get_one::<String>("platform");
             if let Some(x) = platform {
-                return Ok(x.to_string())
+                return Ok(x.to_string());
             }
-        },
-        Err(_) => { }
+        }
+        Err(_) => {}
     };
 
     #[allow(unused_mut)]
@@ -378,53 +370,29 @@ pub fn get_platform(args: &ArgMatches)
 
 pub fn get_arch(platform: &str, args: &ArgMatches) -> String {
     #[allow(unused_mut)]
-
     // For rig add we don't have --arch, except on macOS, only auto-detect
     let arch = match args.try_contains_id("arch") {
-        Ok(_) => {
-            args.get_one::<String>("arch")
-        },
-        Err(_) => None
+        Ok(_) => args.get_one::<String>("arch"),
+        Err(_) => None,
     };
 
-    // For Windows, the default is x86_64
     let arch = match arch {
-        Some(x) => {
-            match args.value_source("arch") {
-                Some(y) => {
-                    if y == clap::parser::ValueSource::DefaultValue &&
-                        platform == "windows"{
-                            "x86_64".to_string()
-                        } else {
-                            x.to_string()
-                        }
-                },
-                None => x.to_string()
-            }
-        },
-        None    => {
-            if platform == "windows" {
-                "x86_64".to_string()
-            } else {
-                env::consts::ARCH.to_string()
-            }
-        }
+        Some(x) => x.to_string(),
+        None => env::consts::ARCH.to_string(),
     };
 
-    // Prefer 'arm64' on macos, but 'aarch64' on linux
+    // Prefer 'arm64' on macos, but 'aarch64' on linux and windows
     if platform == "macos" && arch == "aarch64" {
         "arm64".to_string()
-    } else if platform == "linux" && arch == "arm64" {
+    } else if arch == "arm64" {
         "aarch64".to_string()
     } else {
         arch
     }
 }
 
-pub fn sc_available(args: &ArgMatches, mainargs: &ArgMatches)
-                    -> Result<(), Box<dyn Error>> {
+pub fn sc_available(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     #[allow(unused_mut)]
-
     if args.get_flag("list-distros") {
         return sc_available_distros(args, mainargs);
     }
@@ -436,8 +404,7 @@ pub fn sc_available(args: &ArgMatches, mainargs: &ArgMatches)
     let platform = get_platform(args)?;
     let arch = get_arch(&platform, args);
 
-    let url = "https://api.r-hub.io/rversions/available/".to_string() +
-        &platform + "/" + &arch;
+    let url = "https://api.r-hub.io/rversions/available/".to_string() + &platform + "/" + &arch;
     let resp = download_json_sync(vec![url])?;
     let resp = resp[0].as_array().unwrap();
 
@@ -453,22 +420,24 @@ pub fn sc_available(args: &ArgMatches, mainargs: &ArgMatches)
             rtype: Some(rtype),
         };
 
-        if ! args.get_flag("all") &&
-            vers.len() > 0 &&
-            new.name != "next" && new.name != "devel" {
-                let lstnam = &vers[vers.len() - 1].name;
-                let v300 = Version::parse("3.0.0")?;
-                let lstver = Version::parse(&vers[vers.len() - 1].version)?;
-                let thsver = Version::parse(&new.version)?;
-                // drop old versions
-                if thsver < v300 { continue; }
-                // drop outdated minor versions
-                if lstver.major == thsver.major &&
-                    lstver.minor == thsver.minor &&
-                    lstnam != "next" && lstnam != "devel" {
-                        continue;
-                    }
+        if !args.get_flag("all") && vers.len() > 0 && new.name != "next" && new.name != "devel" {
+            let lstnam = &vers[vers.len() - 1].name;
+            let v300 = Version::parse("3.0.0")?;
+            let lstver = Version::parse(&vers[vers.len() - 1].version)?;
+            let thsver = Version::parse(&new.version)?;
+            // drop old versions
+            if thsver < v300 {
+                continue;
             }
+            // drop outdated minor versions
+            if lstver.major == thsver.major
+                && lstver.minor == thsver.minor
+                && lstnam != "next"
+                && lstnam != "devel"
+            {
+                continue;
+            }
+        }
         vers.push(new);
     }
 
@@ -478,15 +447,15 @@ pub fn sc_available(args: &ArgMatches, mainargs: &ArgMatches)
         for (idx, ver) in vers.iter().rev().enumerate() {
             let date = match &ver.date {
                 None => "null".to_string(),
-                Some(d) => "\"".to_string() + d + "\""
+                Some(d) => "\"".to_string() + d + "\"",
             };
             let rtype = match &ver.rtype {
                 None => "null".to_string(),
-                Some(x) => "\"".to_string() + x + "\""
+                Some(x) => "\"".to_string() + x + "\"",
             };
             let url = match &ver.url {
                 None => "null".to_string(),
-                Some(x) => "\"".to_string() + x + "\""
+                Some(x) => "\"".to_string() + x + "\"",
             };
             println!("  {{");
             println!("    \"name\": \"{}\",", ver.name);
@@ -504,11 +473,11 @@ pub fn sc_available(args: &ArgMatches, mainargs: &ArgMatches)
         for item in vers.iter().rev() {
             let date = match &item.date {
                 None => "".to_string(),
-                Some(d) => d[..10].to_string()
+                Some(d) => d[..10].to_string(),
             };
             let rtype = match &item.rtype {
                 None => "".to_string(),
-                Some(x) => x.to_string()
+                Some(x) => x.to_string(),
             };
             tab.add_row(row!(&item.name, &item.version, date, rtype));
         }
@@ -536,7 +505,7 @@ fn get_distros() -> Result<Vec<Distro>, Box<dyn Error>> {
     let resp = resp[0].as_array().unwrap();
 
     let mut distro_aliases: HashMap<String, Distro> = HashMap::new();
-    for (idx, item) in resp.iter().enumerate() {
+    for (_idx, item) in resp.iter().enumerate() {
         // these are always there
         let name = item["name"].to_string();
         let version = item["version"].to_string();
@@ -547,34 +516,44 @@ fn get_distros() -> Result<Vec<Distro>, Box<dyn Error>> {
             // these are not there for aliases
             let ppm = match item["ppm-binaries"].as_bool() {
                 Some(v) => v,
-                None    => false
+                None => false,
             };
             let retired = match item["retired"].as_bool() {
                 Some(v) => v,
-                None    => false
+                None => false,
             };
             let last = match item["last-build"].as_str() {
                 Some(s) => Some(s.to_string()),
-                None    => None
+                None => None,
             };
             let d = Distro {
-                name, version, id: id.clone(), ppm, retired, eol, last
+                name,
+                version,
+                id: id.clone(),
+                ppm,
+                retired,
+                eol,
+                last,
             };
             distro_aliases.insert(id, d.clone());
             distros.push(d);
-
         } else {
             let imp = item["implementation"].to_string();
             let alias = distro_aliases.get(&imp);
             match alias {
                 Some(alias2) => {
                     let d = Distro {
-                        name, version, id, ppm: alias2.ppm,
-                        retired: alias2.retired, eol, last: alias2.last.clone()
+                        name,
+                        version,
+                        id,
+                        ppm: alias2.ppm,
+                        retired: alias2.retired,
+                        eol,
+                        last: alias2.last.clone(),
                     };
                     distros.push(d);
-                },
-                None => ()
+                }
+                None => (),
             };
         }
     }
@@ -582,9 +561,7 @@ fn get_distros() -> Result<Vec<Distro>, Box<dyn Error>> {
     Ok(distros)
 }
 
-fn sc_available_distros(args: &ArgMatches, mainargs: &ArgMatches)
-                        -> Result<(), Box<dyn Error>> {
-
+fn sc_available_distros(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let distros = get_distros()?;
 
     if args.get_flag("json") || mainargs.get_flag("json") {
@@ -593,7 +570,7 @@ fn sc_available_distros(args: &ArgMatches, mainargs: &ArgMatches)
         for (idx, item) in distros.iter().enumerate() {
             let last = match &item.last {
                 Some(v) => "\"".to_string() + v + "\"",
-                None    => "null".to_string()
+                None => "null".to_string(),
             };
             println!("{{");
             println!("  \"name\": {},", item.name);
@@ -609,7 +586,9 @@ fn sc_available_distros(args: &ArgMatches, mainargs: &ArgMatches)
     } else {
         let mut tab = Table::new("{:<}  {:<}  {:<}  {:<}  {:<}  {:<}");
         tab.add_row(row!["name", "version", "id", "PPM", "retired", "eol"]);
-        tab.add_heading("-------------------------------------------------------------------------------");
+        tab.add_heading(
+            "-------------------------------------------------------------------------------",
+        );
         for item in distros.iter() {
             tab.add_row(row!(
                 unquote(&item.name),
@@ -627,10 +606,15 @@ fn sc_available_distros(args: &ArgMatches, mainargs: &ArgMatches)
     Ok(())
 }
 
-fn sc_available_rtools_versions(args: &ArgMatches, mainargs: &ArgMatches)
-                                -> Result<(), Box<dyn Error>> {
-
-    let url = "https://api.r-hub.io/rversions/rtools-versions".to_string();
+fn sc_available_rtools_versions(
+    args: &ArgMatches,
+    mainargs: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+    let mut url = "https://api.r-hub.io/rversions/rtools-versions".to_string();
+    let arch = get_arch("windows", args);
+    if arch != "x86_64" {
+        url = url + "/" + &arch;
+    }
     let resp = download_json_sync(vec![url])?;
     let resp = resp[0].as_array().unwrap();
     let all = args.get_flag("all");
@@ -639,7 +623,7 @@ fn sc_available_rtools_versions(args: &ArgMatches, mainargs: &ArgMatches)
         let iver = ver.parse::<i32>();
         match iver {
             Ok(x) => x >= 35 && (x < 210 || x > 215),
-            Err(_) => true
+            Err(_) => true,
         }
     }
 

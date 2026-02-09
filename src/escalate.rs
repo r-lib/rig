@@ -52,7 +52,7 @@ pub fn escalate(task: &str) -> Result<(), Box<dyn Error>> {
             "LC_TIME",
             "SSL_CERT_FILE",
             "SSL_CERT_DIR",
-            "RIG_PLATFORM"
+            "RIG_PLATFORM",
         ])?;
     }
 
@@ -77,10 +77,7 @@ pub fn escalate(task: &str) -> Result<(), Box<dyn Error>> {
     }
     debug!("Re-running rig as administrator for {}.", task);
     let args: Vec<String> = std::env::args().collect();
-    let args: Vec<String> = [
-	vec!["-d".to_string()],
-	args
-    ].concat();
+    let args: Vec<String> = [vec!["-d".to_string()], args].concat();
     let exe = std::env::current_exe()?;
     let exedir = Path::new(&exe).parent();
     let instdir = match exedir {
