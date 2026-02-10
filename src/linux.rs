@@ -27,6 +27,7 @@ use crate::utils::*;
 pub const R_ROOT_: &str = "/opt/R";
 pub const R_VERSIONDIR: &str = "{}";
 pub const R_SYSLIBPATH: &str = "{}/lib/R/library";
+pub const R_BASE_PROFILE: &str = "{}/lib/R/library/base/R/Rprofile";
 pub const R_BINPATH: &str = "{}/bin/R";
 const R_CUR: &str = "/opt/R/current";
 
@@ -106,7 +107,14 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     }
 
     if !args.get_flag("without-p3m") {
-        set_ppm(Some(vec![dirname.to_string()]), &platform, &version)?;
+        // only warn if --with-p3m, but no support for this distro or arch
+        let warn = args.get_flag("with-p3m") && !version.ppm;
+        set_ppm(
+            Some(vec![dirname.to_string()]),
+            &platform,
+            &version,
+            Some(warn),
+        )?;
     }
 
     if args.get_flag("without-sysreqs") {
@@ -587,12 +595,16 @@ fn set_ppm(
     vers: Option<Vec<String>>,
     platform: &OsVersion,
     version: &Rversion,
+    warn: Option<bool>,
 ) -> Result<(), Box<dyn Error>> {
+    let warn = warn.unwrap_or(true);
     if !version.ppm || version.ppmurl.is_none() {
-        info!(
-            "P3M (or rig) does not support this distro: {} {} or architecture: {}",
-            platform.distro, platform.version, platform.arch
-        );
+        if warn {
+            warn!(
+                "P3M (or rig) does not support this distro: {} {} or architecture: {}",
+                platform.distro, platform.version, platform.arch
+            );
+        }
         return Ok(());
     }
 

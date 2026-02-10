@@ -12,6 +12,12 @@
 * R installations by rig now do *not* set the default CRAN repositories in
   RStudio and Positron (#203).
 
+* The `--without-p3m` option of `rig add` is now always available, for
+  consistency across platforms. By default P3M is on on x86_64 Windows and
+  supported Linux distros, as before. The new `--with-p3m` option turns
+  on P3M on macOS as well. `rig add` warns for `--with-p3m` if the system
+  has no P3M support.
+
 # rig 0.7.1
 
 * macOS packages now include completion files for elvish and fish shells
