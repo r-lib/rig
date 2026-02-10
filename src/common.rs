@@ -42,6 +42,10 @@ pub fn check_installed(x: &String) -> Result<String, Box<dyn Error>> {
     bail!("R version <b>{}</b> is not installed", &x);
 }
 
+pub fn get_r_base_profile(ver: &str) -> String {
+    R_BASE_PROFILE.replace("{}", ver)
+}
+
 // -- rig default ---------------------------------------------------------
 
 // Fail if no default is set

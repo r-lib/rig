@@ -141,6 +141,23 @@ pub fn rig_app() -> Command {
                 .required(false),
         )
         .arg(
+            Arg::new("with-p3m")
+                .help("Set up P3M. This is the default on x86_64 Windows and supported Linux distros.")
+                .long("with-p3m")
+                .num_args(0)
+                .required(false)
+                .conflicts_with("without-p3m"),
+        )
+        .arg(
+            Arg::new("without-p3m")
+                .aliases(&["without-rspm"])
+                .help("Do not set up P3M. This is the default on macOS. [alias: --without-rspm]")
+                .long("without-p3m")
+                .num_args(0)
+                .required(false)
+                .conflicts_with("with-p3m"),
+        )
+        .arg(
             Arg::new("without-pak")
                 .help("Do not install pak.")
                 .long("without-pak")
@@ -155,18 +172,6 @@ pub fn rig_app() -> Command {
                 .value_parser(["stable", "rc", "devel"])
                 .default_value("stable"),
         );
-
-    #[cfg(any(target_os = "windows", target_os = "linux"))]
-    {
-        cmd_add = cmd_add.arg(
-            Arg::new("without-p3m")
-                .aliases(&["without-rspm"])
-                .help("Do not set up P3M. [alias: --without-rspm]")
-                .long("without-p3m")
-                .num_args(0)
-                .required(false),
-        );
-    }
 
     #[cfg(target_os = "linux")]
     {

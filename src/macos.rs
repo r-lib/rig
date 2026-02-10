@@ -30,6 +30,7 @@ pub const R_ROOT_: &str = "/Library/Frameworks/R.framework/Versions";
 pub const R_VERSIONDIR: &str = "{}";
 pub const R_SYSLIBPATH: &str = "{}/Resources/library";
 pub const R_BINPATH: &str = "{}/Resources/R";
+pub const R_BASE_PROFILE: &str = "{}/Resources/library/base/R/Rprofile";
 const R_CUR: &str = "/Library/Frameworks/R.framework/Versions/Current";
 
 macro_rules! osvec {
@@ -117,6 +118,10 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     if !args.get_flag("without-cran-mirror") {
         set_cloud_mirror(Some(vec![dirname.to_string()]))?;
+    }
+
+    if args.get_flag("with-p3m") {
+        set_ppm(Some(vec![dirname.to_string()]))?;
     }
 
     if !args.get_flag("without-pak") {
@@ -801,6 +806,34 @@ fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
                 bail!("Failed to update {}: {}", path.display(), err);
             }
         };
+    }
+
+    Ok(())
+}
+
+fn set_ppm(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
+    let vers = match vers {
+        Some(x) => x,
+        None => sc_get_list()?,
+    };
+
+    info!("Setting PPM repository");
+
+    for ver in vers {
+        let ver = check_installed(&ver)?;
+        let path = Path::new(&get_r_root()).join(ver.as_str());
+        let profile = path.join("Resources/library/base/R/Rprofile".to_string());
+        if !profile.exists() {
+            continue;
+        }
+
+        let rcode = r#"
+if (Sys.getenv("RSTUDIO") != "1" && Sys.getenv("POSITRON") != "1") {
+  options(repos = c(P3M="https://packagemanager.posit.co/cran/latest", getOption("repos")))
+}
+"#;
+
+        append_to_file(&profile, vec![rcode.to_string()])?;
     }
 
     Ok(())

@@ -42,6 +42,7 @@ use crate::windows_arch::*;
 pub const RIG_LINKS_DIR: &str = "C:\\Program Files\\R\\bin";
 pub const R_VERSIONDIR: &str = "R-{}";
 pub const R_SYSLIBPATH: &str = "R-{}\\library";
+pub const R_BASE_PROFILE: &str = "R-{}\\library\\base\\R\\Rprofile";
 pub const R_BINPATH: &str = "R-{}\\bin\\R.exe";
 
 macro_rules! osvec {
@@ -135,7 +136,15 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
                 warn!("Cannot set up P3M, cannot determine installation directory");
             }
             Some(ref dirname) => {
-                set_rspm(Some(vec![dirname.to_string()]))?;
+                let arch = get_native_arch();
+                if arch != "x86_64" {
+                    // only warn if --with-p3m, but no support for this arch
+                    if args.get_flag("with-p3m") {
+                        warn!("P3M does not support this architecture: {}", arch);
+                    }
+                } else {
+                    set_rspm(Some(vec![dirname.to_string()]))?;
+                }
             }
         };
     }
