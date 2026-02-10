@@ -18,6 +18,9 @@
   on P3M on macOS as well. `rig add` warns for `--with-p3m` if the system
   has no P3M support.
 
+* rig now supports the new macOS arm64 Sonoma builds, which are are the default
+  CRAN builds starting from R 4.6.0 (current R-devel).
+
 # rig 0.7.1
 
 * macOS packages now include completion files for elvish and fish shells

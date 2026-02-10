@@ -1031,20 +1031,52 @@ fn extract_pkg_version(filename: &OsStr) -> Result<RversionDir, Box<dyn Error>> 
         "x86_64"
     };
 
-    let minor = get_minor_version(&ver)?;
-    let x86_64 = Regex::new("X86_64")?;
-    let installdir = if arch == "arm64" {
-        minor + "-arm64"
-    } else if x86_64.is_match(lines[0]) {
-        minor + "-x86_64"
+    // Right now there are two installers for arm64 R 4.6.0, one writes to '4.6-arm64', and the
+    // newer one to '4.6'. So there is no way to determine the install dir name from the
+    // version. Let's extract it from the pkg file for R 4.6.0.
+
+    let installdir: String;
+    if ver == "4.6.0" {
+        let out = Command::new("pkgutil")
+            .args(["--payload-files"])
+            .arg(filename)
+            .output()?;
+        let std = match String::from_utf8(out.stdout) {
+            Ok(v) => v,
+            Err(err) => bail!("Cannot extract version from .pkg file: {}", err.to_string()),
+        };
+
+        let mut lines = std.lines();
+        let re = Regex::new(r"\./R\.framework/Versions/([0-9][^/]+)$")?;
+        installdir = match lines.find_map(|line| {
+            re.captures(line)
+                .and_then(|caps| caps.get(1))
+                .map(|m| m.as_str().to_string())
+        }) {
+            Some(dir) => dir,
+            None => bail!(
+                "Cannot extract version from .pkg file {}",
+                filename.display()
+            ),
+        }
     } else {
-        minor
-    };
+        let minor = get_minor_version(&ver)?;
+        let x86_64 = Regex::new("X86_64")?;
+        installdir = if arch == "arm64" {
+            minor + "-arm64"
+        } else if x86_64.is_match(lines[0]) {
+            minor + "-x86_64"
+        } else {
+            minor
+        };
+    }
+
+    info!("This is R {} for {}, named {}", ver, arch, installdir);
 
     let res = RversionDir {
         version: ver.to_string(),
         arch: arch.to_string(),
-        installdir: installdir,
+        installdir: installdir.to_string(),
     };
 
     Ok(res)
