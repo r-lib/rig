@@ -7,6 +7,7 @@ use std::ffi::OsString;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::OnceLock;
 use std::{file, line};
 
 use clap::ArgMatches;
@@ -699,17 +700,36 @@ pub fn sc_system_no_openmp(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+// Cache for detect_linux() when RIG_PLATFORM is not set
+static LINUX_DETECTION_CACHE: OnceLock<OsVersion> = OnceLock::new();
+
 pub fn detect_linux() -> Result<OsVersion, Box<dyn Error>> {
+    // Check if RIG_PLATFORM is set
+    let rig_platform = std::env::var("RIG_PLATFORM").ok();
+
+    // If RIG_PLATFORM is set, always compute fresh (don't use cache)
+    if rig_platform.is_some() {
+        return detect_linux_impl(rig_platform);
+    }
+
+    // If RIG_PLATFORM is not set, use cache
+    match LINUX_DETECTION_CACHE.get() {
+        Some(cached) => Ok(cached.clone()),
+        None => {
+            let result = detect_linux_impl(None)?;
+            // Try to cache it (this might fail if another thread cached it first, which is fine)
+            let _ = LINUX_DETECTION_CACHE.set(result.clone());
+            Ok(result)
+        }
+    }
+}
+
+fn detect_linux_impl(rig_platform: Option<String>) -> Result<OsVersion, Box<dyn Error>> {
     let release_file = Path::new("/etc/os-release");
     let lines = read_lines(release_file)?;
 
     let mut id;
     let mut ver;
-
-    let rig_platform = match std::env::var("RIG_PLATFORM") {
-        Ok(x) => Some(x),
-        Err(_) => None,
-    };
 
     if rig_platform.is_some() {
         let mut rig_platform2 = rig_platform.clone().unwrap();
