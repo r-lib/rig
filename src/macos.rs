@@ -680,36 +680,45 @@ fn system_fix_permissions(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
 
     for ver in vers {
         let ver = check_installed(&ver)?;
-        let path = Path::new(&get_r_root()).join(ver.as_str());
+        let path = Path::new(&get_r_root())
+            .join(ver.as_str())
+            .join("Resources")
+            .join("library");
         debug!("Fixing permissions in {}", path.display());
         let output = Command::new("chmod")
             .args(["-R", "g-w"])
-            .arg(path)
+            .arg(&path)
             .output()?;
 
         if !output.status.success() {
-            bail!("Failed to update permissions :(");
+            warn!("Failed to update permissions for {}", ver);
+        }
+
+        let output = Command::new("chgrp").args(["admin"]).arg(&path).output()?;
+
+        if !output.status.success() {
+            warn!("Failed to update group for {}", ver);
         }
     }
 
+    // also change group and permissions of the Current link, so admin users can update it
+    // without sudo
     let current = Path::new(&get_r_root()).join("Current");
-    debug!("Fixing permissions and group of {}", current.display());
-    let output = Command::new("chmod")
-        .args(["-R", "775"])
-        .arg(&current)
-        .output()?;
 
+    let output = Command::new("chmod").args(["775"]).arg(&current).output()?;
     if !output.status.success() {
-        bail!("Failed to update permissions :(");
+        warn!(
+            "Failed to update permissions of link at {}",
+            current.display()
+        );
     }
 
     let output = Command::new("chgrp")
         .args(["admin"])
         .arg(&current)
         .output()?;
-
     if !output.status.success() {
-        bail!("Failed to update group :(");
+        warn!("Failed to update group of link at {}", current.display());
     }
 
     Ok(())
