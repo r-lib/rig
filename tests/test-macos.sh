@@ -156,7 +156,7 @@ teardown() {
 @test "system fix-permissions" {
     run sudo rig system fix-permissions
     [[ "$status" -eq 0 ]]
-    run ls -l /Library/Frameworks/R.framework/Versions/4.1/Resources/Rscript
+    run ls -ld /Library/Frameworks/R.framework/Versions/4.1/Resources/library
     [[ "$status" -eq 0 ]]
     echo $output | grep -q -- "-rwxr-xr-x"
 }
