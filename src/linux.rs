@@ -29,6 +29,7 @@ pub const R_ROOT_: &str = "/opt/R";
 pub const R_VERSIONDIR: &str = "{}";
 pub const R_SYSLIBPATH: &str = "{}/lib/R/library";
 pub const R_BASE_PROFILE: &str = "{}/lib/R/library/base/R/Rprofile";
+pub const R_ETC_PATH: &str = "{}/lib/R/etc";
 pub const R_BINPATH: &str = "{}/bin/R";
 const R_CUR: &str = "/opt/R/current";
 

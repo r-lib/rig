@@ -19,14 +19,12 @@ use filetime::FileTime;
 
 use reqwest::StatusCode;
 use simple_error::bail;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use simplelog::info;
 
 #[cfg(target_os = "windows")]
 use crate::resolve::get_resolve;
 #[cfg(target_os = "windows")]
 use crate::rversion::Rversion;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use crate::utils::*;
 
 // ------------------------------------------------------------------------
