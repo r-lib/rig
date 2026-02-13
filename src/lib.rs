@@ -27,6 +27,7 @@ mod macos;
 mod proj;
 mod renv;
 mod repos;
+mod repositories;
 mod resolve;
 mod run;
 mod rversion;

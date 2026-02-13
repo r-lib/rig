@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::error::Error;
 
+use semver;
 use simple_error::*;
 
 /// Parse a single dependency field
@@ -39,6 +40,38 @@ pub fn simplify_constraints(deps: Vec<DepVersionSpec>) -> Vec<DepVersionSpec> {
     deps2
 }
 
+/// Parse a version constraint specification (e.g., ">= 4.0.0")
+/// The spec should NOT include surrounding parentheses
+pub fn parse_constraint(spec: &str) -> Result<(VersionConstraint, String), Box<dyn Error>> {
+    if spec.starts_with(">=") {
+        let ver = spec[2..].trim().to_string();
+        Ok((VersionConstraint::GreaterOrEqual, ver))
+    } else if spec.starts_with("<=") {
+        let ver = spec[2..].trim().to_string();
+        Ok((VersionConstraint::LessOrEqual, ver))
+    } else if spec.starts_with("==") {
+        let ver = spec[2..].trim().to_string();
+        Ok((VersionConstraint::Equal, ver))
+    } else if spec.starts_with('=') {
+        let ver = spec[1..].trim().to_string();
+        Ok((VersionConstraint::Equal, ver))
+    } else if spec.starts_with(">>") {
+        let ver = spec[2..].trim().to_string();
+        Ok((VersionConstraint::Greater, ver))
+    } else if spec.starts_with('>') {
+        let ver = spec[1..].trim().to_string();
+        Ok((VersionConstraint::Greater, ver))
+    } else if spec.starts_with("<<") {
+        let ver = spec[2..].trim().to_string();
+        Ok((VersionConstraint::Less, ver))
+    } else if spec.starts_with('<') {
+        let ver = spec[1..].trim().to_string();
+        Ok((VersionConstraint::Less, ver))
+    } else {
+        bail!("Invalid version constraint: {}", spec)
+    }
+}
+
 /// Parse a single dependency specification, i.e. a package in a
 /// dependency field
 pub fn parse_dep(dep: &str, dep_type: &str) -> Result<DepVersionSpec, Box<dyn Error>> {
@@ -56,33 +89,7 @@ pub fn parse_dep(dep: &str, dep_type: &str) -> Result<DepVersionSpec, Box<dyn Er
             bail!("Invalid dependency version: {}", dep);
         }
         let spec = &spec[1..spec.len() - 1];
-        if spec.starts_with(">=") {
-            let ver = spec[2..].trim().to_string();
-            constraints.push((VersionConstraint::GreaterOrEqual, ver));
-        } else if spec.starts_with("<=") {
-            let ver = spec[2..].trim().to_string();
-            constraints.push((VersionConstraint::LessOrEqual, ver));
-        } else if spec.starts_with("==") {
-            let ver = spec[2..].trim().to_string();
-            constraints.push((VersionConstraint::Equal, ver));
-        } else if spec.starts_with('=') {
-            let ver = spec[1..].trim().to_string();
-            constraints.push((VersionConstraint::Equal, ver));
-        } else if spec.starts_with(">>") {
-            let ver = spec[2..].trim().to_string();
-            constraints.push((VersionConstraint::Greater, ver));
-        } else if spec.starts_with('>') {
-            let ver = spec[1..].trim().to_string();
-            constraints.push((VersionConstraint::Greater, ver));
-        } else if spec.starts_with("<<") {
-            let ver = spec[2..].trim().to_string();
-            constraints.push((VersionConstraint::Less, ver));
-        } else if spec.starts_with('<') {
-            let ver = spec[1..].trim().to_string();
-            constraints.push((VersionConstraint::Less, ver));
-        } else {
-            bail!("Invalid dependency version: {}", dep);
-        }
+        constraints.push(parse_constraint(spec)?);
     }
     Ok(DepVersionSpec {
         name: name.to_string(),
@@ -120,6 +127,39 @@ pub struct DepVersionSpec {
     pub types: Vec<String>,
     /// Version constraints.
     pub constraints: Vec<(VersionConstraint, String)>,
+}
+
+impl DepVersionSpec {
+    /// Check if a version string satisfies all constraints in this DepVersionSpec
+    pub fn satisfies(&self, version: &str) -> Result<bool, Box<dyn Error>> {
+        // Parse the version string
+        let ver = match semver::Version::parse(version) {
+            Ok(v) => v,
+            Err(e) => bail!("Invalid version '{}': {}", version, e),
+        };
+
+        // Check all constraints
+        for (constraint, constraint_version) in self.constraints.iter() {
+            let constraint_ver = match semver::Version::parse(constraint_version) {
+                Ok(v) => v,
+                Err(e) => bail!("Invalid constraint version '{}': {}", constraint_version, e),
+            };
+
+            let satisfied = match constraint {
+                VersionConstraint::Less => ver < constraint_ver,
+                VersionConstraint::LessOrEqual => ver <= constraint_ver,
+                VersionConstraint::Equal => ver == constraint_ver,
+                VersionConstraint::Greater => ver > constraint_ver,
+                VersionConstraint::GreaterOrEqual => ver >= constraint_ver,
+            };
+
+            if !satisfied {
+                return Ok(false);
+            }
+        }
+
+        Ok(true)
+    }
 }
 
 impl std::fmt::Display for DepVersionSpec {

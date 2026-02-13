@@ -40,6 +40,7 @@ mod library;
 mod proj;
 mod renv;
 mod repos;
+mod repositories;
 mod resolve;
 mod run;
 mod rversion;
@@ -270,7 +271,9 @@ fn sc_default(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Er
         if args.get_flag("json") || mainargs.get_flag("json") {
             println!(
                 "{}",
-                serde_json::to_string_pretty(&DefaultVersion { name: default.clone() })?
+                serde_json::to_string_pretty(&DefaultVersion {
+                    name: default.clone()
+                })?
             );
         } else {
             println!("{}", default);

@@ -950,9 +950,47 @@ pub fn rig_app() -> Command {
                 .num_args(0)
                 .required(false),
         )
+        // .subcommand(
+        //     Command::new("add")
+        //         .about("Add an R package repository")
+        //         .display_order(0)
+        //         .arg(
+        //             Arg::new("enable")
+        //                 .help("Enable the repository after adding it")
+        //                 .long("enable")
+        //                 .num_args(0)
+        //                 .required(false),
+        //         )
+        //         .arg(
+        //             Arg::new("name")
+        //                 .help("name of the repository, e.g. 'CRAN'")
+        //                 .required(true),
+        //         )
+        //         .arg(Arg::new("url").help("URL of the repository").required(true)),
+        // )
+        // .subcommand(
+        //     Command::new("disable")
+        //         .about("Disable an R package repository")
+        //         .display_order(0)
+        //         .arg(
+        //             Arg::new("name")
+        //                 .help("name of the repository, e.g. 'CRAN'")
+        //                 .required(true),
+        //         ),
+        // )
+        // .subcommand(
+        //     Command::new("enable")
+        //         .about("Enable an R package repository")
+        //         .display_order(0)
+        //         .arg(
+        //             Arg::new("name")
+        //                 .help("name of the repository, e.g. 'CRAN'")
+        //                 .required(true),
+        //         ),
+        // )
         .subcommand(
-            Command::new("list-packages")
-                .about("List packages in package repositories")
+            Command::new("list")
+                .about("List R package repositories")
                 .display_order(0)
                 .arg(
                     Arg::new("json")
@@ -960,13 +998,19 @@ pub fn rig_app() -> Command {
                         .long("json")
                         .num_args(0)
                         .required(false),
+                )
+                .arg(
+                    Arg::new("all")
+                        .help("List disabled repositories as well")
+                        .long("all")
+                        .num_args(0)
+                        .required(false),
                 ),
         )
         .subcommand(
-            Command::new("package-versions")
-                .about("List all versions of a package in the repositories")
+            Command::new("list-packages")
+                .about("List packages in package repositories")
                 .display_order(0)
-                .arg(Arg::new("package").help("package to show").required(true))
                 .arg(
                     Arg::new("json")
                         .help("JSON output")
@@ -992,6 +1036,42 @@ pub fn rig_app() -> Command {
                         .help("JSON output")
                         .long("json")
                         .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("package-versions")
+                .about("List all versions of a package in the repositories")
+                .display_order(0)
+                .arg(Arg::new("package").help("package to show").required(true))
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        // .subcommand(
+        //     Command::new("reset")
+        //         .about("Reset R package repositories to rig or R default")
+        //         .display_order(0),
+        // )
+        // .subcommand(
+        //     Command::new("rm")
+        //         .about("Remove an R package repository")
+        //         .display_order(0),
+        // )
+        .subcommand(
+            Command::new("setup")
+                .about("Set up R package repositories")
+                .display_order(0)
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version to set up repositories for (default: all)")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
                         .required(false),
                 ),
         );

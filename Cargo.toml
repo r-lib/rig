@@ -28,6 +28,8 @@ path = "src/main.rs"
 clap = { version = "4.3.8", features = ["cargo", "color"] }
 # to ignore a SIGINT (CTRL+C) when running external commands
 ctrlc = "3.4"
+# to read/write the repositories files
+csv = "1.4.0"
 # parse DESCRIPTION and PACKAGES files
 deb822-fast = "0.2.3"
 # data, cache, config directories on various platforms
@@ -39,6 +41,8 @@ filetime = "0.2"
 futures = "0.3.17"
 # next(): async stream element reading
 futures-util = "0.3.14"
+# to match patterns in repos.json files
+globset = "0.4.18"
 # lazy static variables
 lazy_static = "1.4.0"
 # calling Rust from C

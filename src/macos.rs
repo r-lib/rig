@@ -31,6 +31,7 @@ pub const R_VERSIONDIR: &str = "{}";
 pub const R_SYSLIBPATH: &str = "{}/Resources/library";
 pub const R_BINPATH: &str = "{}/Resources/R";
 pub const R_BASE_PROFILE: &str = "{}/Resources/library/base/R/Rprofile";
+pub const R_ETC_PATH: &str = "{}/Resources/etc";
 const R_CUR: &str = "/Library/Frameworks/R.framework/Versions/Current";
 
 macro_rules! osvec {
