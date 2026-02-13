@@ -134,6 +134,14 @@ pub fn rig_app() -> Command {
                 .default_value("release"),
         )
         .arg(
+            Arg::new("without-repos")
+            .help("Do not set up package repositories.\nImplies --without-cran-mirror and --without-p3m.")
+            .long("without-repos")
+            .num_args(0)
+            .required(false)
+            .conflicts_with("with-p3m"),
+        )
+        .arg(
             Arg::new("without-cran-mirror")
                 .help("Do not set the cloud CRAN mirror")
                 .long("without-cran-mirror")
@@ -142,7 +150,7 @@ pub fn rig_app() -> Command {
         )
         .arg(
             Arg::new("with-p3m")
-                .help("Set up P3M. This is the default on x86_64 Windows and supported Linux distros.")
+                .help("Set up P3M. This is the default on x86_64 Windows and\nsupported Linux distros.")
                 .long("with-p3m")
                 .num_args(0)
                 .required(false)
@@ -151,7 +159,7 @@ pub fn rig_app() -> Command {
         .arg(
             Arg::new("without-p3m")
                 .aliases(&["without-rspm"])
-                .help("Do not set up P3M. This is the default on macOS. [alias: --without-rspm]")
+                .help("Do not set up P3M. This is the default on macOS.\n[alias: --without-rspm]")
                 .long("without-p3m")
                 .num_args(0)
                 .required(false)

@@ -129,31 +129,38 @@ struct RData {
     pub release: Option<String>,
 }
 
-pub fn sc_repos_setup(
+fn sc_repos_setup(
     args: &ArgMatches,
     _libargs: &ArgMatches,
     _mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
-    let vers = if args.contains_id("r-version") {
+    let vers: Vec<String> = if args.contains_id("r-version") {
         vec![args.get_one::<String>("r-version").unwrap().to_string()]
     } else {
         sc_get_list()?
     };
+    repos_setup(Some(vers))
+}
 
+pub fn repos_setup(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
+    let vers = match vers {
+        Some(v) => v,
+        None => sc_get_list()?,
+    };
     let config = get_repos_config()?;
     let root: String = get_r_root();
 
     for ver in vers {
         let ver = check_installed(&ver.to_string())?;
-        let profile = get_r_base_profile(&ver);
         let repositories = root.clone() + "/" + &R_ETC_PATH.replace("{}", &ver) + "/repositories";
 
         // if no 'repositories' file, skip. Maybe this happens for very old R versions?
         if !PathBuf::from(&repositories).exists() {
             debug!(
-                "Repositories file does not exist at {}, skipping",
+                "repositories file does not exist at {}, skipping",
                 repositories
             );
+            continue;
         }
 
         // save a copy of the original file, so we can restore later if needed.
@@ -183,6 +190,44 @@ pub fn sc_repos_setup(
         add_repositories_comment(&mut repos, "edited automatically by rig");
 
         write_repositories_file(repos, &repositories)?;
+
+        let profile = root.clone() + "/" + &get_r_base_profile(&ver);
+        debug!("Updating R profile at {}", profile);
+        let mut profile_lines = read_lines(&Path::new(&profile))?;
+
+        // maybe already current?
+        if grep_lines(
+            &Regex::new(&HC_PROFILE_REPOS_MARKERS.current_start.to_string())?,
+            &profile_lines,
+        )
+        .len()
+            > 0
+        {
+            continue;
+        }
+
+        // maybe from another version of rig?
+        let start = grep_lines(
+            &Regex::new(&HC_PROFILE_REPOS_MARKERS.generic_start.to_string())?,
+            &profile_lines,
+        );
+        let end = grep_lines(
+            &Regex::new(&HC_PROFILE_REPOS_MARKERS.end.to_string())?,
+            &profile_lines,
+        );
+
+        if start.len() == 1 && end.len() == 1 {
+            // remove old version
+            profile_lines.drain(start[0]..=end[0]);
+        } else if start.len() == 0 && end.len() == 0 {
+            // nothing there, nothing to remove
+        } else {
+            warn!("Corrupt R profile at {}, try reinstalling R. If the issue perists, report it to rig developers.", profile);
+            continue;
+        }
+
+        profile_lines.push(HC_PROFILE_REPOS.to_string());
+        std::fs::write(&profile, profile_lines.join("\n"))?;
     }
 
     Ok(())

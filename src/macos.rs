@@ -21,6 +21,7 @@ use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
 use crate::library::*;
+use crate::repos::*;
 use crate::resolve::get_resolve;
 use crate::run::*;
 use crate::rversion::*;
@@ -116,6 +117,10 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         Some(alias) => add_alias(&dirname, &alias)?,
         None => {}
     };
+
+    if !args.get_flag("without-repos") {
+        repos_setup(Some(vec![dirname.to_string()]))?;
+    }
 
     if !args.get_flag("without-cran-mirror") {
         set_cloud_mirror(Some(vec![dirname.to_string()]))?;
