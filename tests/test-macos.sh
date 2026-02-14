@@ -158,7 +158,7 @@ teardown() {
     [[ "$status" -eq 0 ]]
     run ls -ld /Library/Frameworks/R.framework/Versions/4.1/Resources/library
     [[ "$status" -eq 0 ]]
-    echo $output | grep -q -- "-rwxr-xr-x"
+    echo $output | grep -q -- "drwxr-xr-x"
 }
 
 
