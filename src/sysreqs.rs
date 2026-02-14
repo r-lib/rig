@@ -30,6 +30,7 @@ pub struct SysReq {
     pub description: String,
 }
 
+#[cfg(target_os = "macos")]
 #[derive(serde::Serialize)]
 struct SysReqName {
     name: String,

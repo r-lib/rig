@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::path::PathBuf;
 
-use pubgrub::DependencyProvider;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
 use simple_error::*;

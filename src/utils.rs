@@ -247,11 +247,6 @@ pub fn get_user() -> Result<User, Box<dyn Error>> {
     })
 }
 
-#[cfg(target_os = "macos")]
-pub fn escape_json(input: &str) -> String {
-    input.replace("\"", "\\\"").replace("\n", "\\n").to_string()
-}
-
 pub fn unset_r_envvars() {
     let evs = vec![
         "R_ARCH",

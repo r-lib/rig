@@ -3,7 +3,6 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 
 use csv::ReaderBuilder;
-use serde::{Deserialize, Serialize};
 
 use crate::repos::*;
 
@@ -24,9 +23,7 @@ pub struct RepositoriesContents {
     comments: Vec<(usize, String)>,
 }
 
-pub fn read_repositories_file(
-    path: &str,
-) -> Result<RepositoriesContents, Box<dyn std::error::Error>> {
+pub fn read_repositories_file(path: &str) -> Result<RepositoriesContents, Box<dyn Error>> {
     let tsv = read_tsv(path)?;
     let comments = tsv.0;
     let mut data = vec![];
@@ -75,7 +72,7 @@ pub fn write_repositories_file(
     Ok(())
 }
 
-pub fn comment_out_repository(mut repos: &mut RepositoriesContents, repo_name: &str) {
+pub fn comment_out_repository(repos: &mut RepositoriesContents, repo_name: &str) {
     // Find the repository by name
     let pos = repos.data.iter().position(|entry| entry.name == repo_name);
 
@@ -140,7 +137,7 @@ pub fn comment_out_repository(mut repos: &mut RepositoriesContents, repo_name: &
     }
 }
 
-pub fn add_repository(mut repos: &mut RepositoriesContents, entry: &RepoEntry) {
+pub fn add_repository(repos: &mut RepositoriesContents, entry: &RepoEntry) {
     comment_out_repository(repos, &entry.name);
     let new_entry = RepoFileEntry {
         name: entry.name.clone(),
@@ -154,7 +151,7 @@ pub fn add_repository(mut repos: &mut RepositoriesContents, entry: &RepoEntry) {
     repos.data.push(new_entry);
 }
 
-pub fn add_repositories_comment(mut repos: &mut RepositoriesContents, comment: &str) {
+pub fn add_repositories_comment(repos: &mut RepositoriesContents, comment: &str) {
     let total_lines = repos.comments.len() + repos.data.len();
     repos
         .comments

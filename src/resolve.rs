@@ -2,6 +2,7 @@ use futures::future;
 use std::error::Error;
 
 use clap::ArgMatches;
+#[cfg(target_os = "windows")]
 use log::warn;
 #[cfg(target_os = "windows")]
 use serde_json::{Map, Value};
@@ -11,6 +12,7 @@ use std::sync::{LazyLock, RwLock};
 
 use crate::common::*;
 use crate::download::*;
+#[cfg(target_os = "windows")]
 use crate::hardcoded::*;
 use crate::rversion::*;
 use crate::utils::*;

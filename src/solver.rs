@@ -144,7 +144,8 @@ impl RPackageRegistry {
 #[derive(Debug)]
 pub enum ProviderError {
     UnknownPackage,
-    UnknownVersion,
+    // TODO: distinguish between unknown package and unknown version
+    // UnknownVersion,
 }
 
 impl std::fmt::Display for ProviderError {

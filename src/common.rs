@@ -6,7 +6,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use clap::ArgMatches;
-use log::{debug, info, trace, warn};
+use log::{debug, info};
 use semver::Version;
 use simple_error::*;
 use tabular::*;

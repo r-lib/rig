@@ -2,16 +2,13 @@ use regex::Regex;
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::fs::File;
-use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use clap::ArgMatches;
-use csv::ReaderBuilder;
 use deb822_fast::Deb822;
 use directories::ProjectDirs;
 use globset::Glob;
 use log::{debug, info, warn};
-use semver::Op;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use simple_error::*;
@@ -124,7 +121,6 @@ struct RData {
     pub platform: String,
     pub arch: String,    // x86_64, aarch64
     pub version: String, // 4.5.2, etc.
-    pub os: String,      // linux, linux-gnu, windows, macos
     pub distro: Option<String>,
     pub release: Option<String>,
 }
@@ -389,22 +385,10 @@ fn get_r_data_common(ver: &str) -> Result<RData, Box<dyn Error>> {
     let rver = parts[0].trim();
     let rver = rver.strip_prefix("R").unwrap_or(rver).trim();
 
-    let os = match parts2[2] {
-        "linux" => "linux",
-        "linux-gnu" => "linux-gnu",
-        s if s.starts_with("linux") => "linux",
-        s if s.starts_with("darwin") => "macos",
-        "mingw32" => "windows",
-        _ => {
-            bail!("Cannot determine OS from {}", statsdesc)
-        }
-    };
-
     Ok(RData {
         platform: platform.to_string(),
         arch: arch.to_string(),
         version: rver.to_string(),
-        os: os.to_string(),
         distro: None,
         release: None,
     })
