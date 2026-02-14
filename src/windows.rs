@@ -45,6 +45,7 @@ pub const R_VERSIONDIR: &str = "R-{}";
 pub const R_SYSLIBPATH: &str = "R-{}\\library";
 pub const R_BASE_PROFILE: &str = "R-{}\\library\\base\\R\\Rprofile";
 pub const R_BINPATH: &str = "R-{}\\bin\\R.exe";
+pub const R_ETC_PATH: &str = "R-{}\\etc";
 
 macro_rules! osvec {
     // match a list of expressions separated by comma:
