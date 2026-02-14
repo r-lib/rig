@@ -5,10 +5,10 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use clap::ArgMatches;
+use log::{trace, warn};
 use regex::Regex;
 use serde_yaml;
 use simple_error::*;
-use simplelog::{trace, warn};
 
 use crate::common::*;
 

@@ -11,10 +11,10 @@ use deb822_fast::Deb822;
 use directories::ProjectDirs;
 use globset::Glob;
 use semver::Op;
+use log::{debug, info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use simple_error::*;
-use simplelog::*;
 use tabular::*;
 
 use crate::common::*;

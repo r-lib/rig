@@ -11,8 +11,8 @@ use std::sync::OnceLock;
 use std::{file, line};
 
 use clap::ArgMatches;
+use log::{debug, info, trace, warn};
 use simple_error::*;
-use simplelog::{debug, info, trace, warn};
 
 use crate::rversion::*;
 
@@ -398,7 +398,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         };
         if re.is_match(&fnamestr) {
             match std::fs::read_link(&path) {
-                Err(_) => warn!("<magenra>[WARN]</> {} is not a symlink", path.display()),
+                Err(_) => warn!("{} is not a symlink", path.display()),
                 Ok(target) => {
                     if !target.exists() {
                         info!("Cleaning up {}", target.display());

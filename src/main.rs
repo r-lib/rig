@@ -1,8 +1,11 @@
 use std::error::Error;
+use std::io::Write;
 
 use clap::ArgMatches;
+use env_logger;
+use log::{error, info, Level, LevelFilter};
+use owo_colors::OwoColorize;
 use simple_error::*;
-use simplelog::*;
 use tabular::*;
 
 mod args;
@@ -70,28 +73,61 @@ fn main_() -> i32 {
 
     // -- set up logger output --------------------------------------------
 
-    let mut loglevel = match args.get_count("verbose") {
-        0 => LevelFilter::Warn,
-        1 => LevelFilter::Info,
-        2 => LevelFilter::Debug,
+    let verbose_count = args.get_count("verbose");
+    let mut loglevel = match verbose_count {
+        0 => LevelFilter::Info,
+        1 => LevelFilter::Debug,
         _ => LevelFilter::Trace,
     };
 
-    if args.get_flag("quiet") {
-        loglevel = LevelFilter::Off;
-    }
+    match args.get_count("quiet") {
+        0 => {}
+        1 => loglevel = LevelFilter::Warn,
+        2 => loglevel = LevelFilter::Error,
+        _ => loglevel = LevelFilter::Off,
+    };
 
-    let config = ConfigBuilder::new()
-        .set_time_level(LevelFilter::Trace)
-        .set_location_level(LevelFilter::Debug)
-        .set_level_color(Level::Error, Some(Color::Magenta))
-        .set_level_color(Level::Warn, Some(Color::Yellow))
-        .set_level_color(Level::Info, Some(Color::Blue))
-        .set_level_color(Level::Debug, None)
-        .set_level_color(Level::Trace, None)
-        .build();
+    // Build filter string: set default level for rig, lower level for noisy crates
+    let filter_str = match loglevel {
+        LevelFilter::Off => "off".to_string(),
+        LevelFilter::Trace => "rig=trace,reqwest=trace,hyper=trace,pubgrub=trace".to_string(),
+        LevelFilter::Debug => "rig=debug,reqwest=info,hyper=info,pubgrub=info".to_string(),
+        LevelFilter::Info => "rig=info,reqwest=warn,hyper=warn,pubgrub=warn".to_string(),
+        LevelFilter::Warn => "rig=warn,reqwest=warn,hyper=warn,pubgrub=warn".to_string(),
+        LevelFilter::Error => "rig=error,reqwest=error,hyper=error,pubgrub=error".to_string(),
+    };
 
-    match TermLogger::init(loglevel, config, TerminalMode::Stderr, ColorChoice::Auto) {
+    match env_logger::Builder::from_env(env_logger::Env::default())
+        .filter(None, loglevel)
+        .parse_filters(&filter_str)
+        .target(env_logger::Target::Stderr)
+        .format(move |buf, record| {
+            let level_string = match record.level() {
+                Level::Error => record.level().to_string().red().bold().to_string(),
+                Level::Warn => record.level().to_string().yellow().bold().to_string(),
+                Level::Info => record.level().to_string().blue().to_string(),
+                Level::Debug => record.level().to_string().cyan().to_string(),
+                Level::Trace => record.level().to_string().white().to_string(),
+            };
+
+            // Show timestamps and location info only if -v was passed
+            if verbose_count >= 1 {
+                writeln!(
+                    buf,
+                    "[{} {} {}:{}] {}",
+                    buf.timestamp(),
+                    level_string,
+                    record.file().unwrap_or("unknown"),
+                    record.line().unwrap_or(0),
+                    record.args()
+                )
+            } else {
+                // No verbose flag: just show the message
+                writeln!(buf, "[{}] {}", level_string, record.args())
+            }
+        })
+        .try_init()
+    {
         Err(e) => {
             eprintln!("Fatal error, cannot set up logger: {}", e.to_string());
             return 2;

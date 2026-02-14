@@ -9,12 +9,13 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use clap::ArgMatches;
+use log::{debug, info, warn};
 use nix::sys::stat::umask;
 use nix::sys::stat::Mode;
+use owo_colors::OwoColorize;
 use path_clean::PathClean;
 use regex::Regex;
 use simple_error::*;
-use simplelog::{debug, info, warn};
 
 use crate::alias::*;
 use crate::common::*;
@@ -279,8 +280,8 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         if let Some(ref default) = default {
             if default == &ver {
                 warn!(
-                    "Removing default version, set new default with \
-                       <bold>rig default <version></>"
+                    "Removing default version, set new default with {}",
+                    "rig default <version>".bold()
                 );
             }
         }

@@ -10,10 +10,9 @@ use regex::Regex;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use sha2::{Digest, Sha256};
 
+use log::debug;
 use simple_error::*;
 use std::error::Error;
-
-use simplelog::*;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use crate::rversion::*;

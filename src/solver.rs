@@ -4,9 +4,9 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 
+use log::info;
 use pubgrub::*;
 use simple_error::bail;
-use simplelog::*;
 
 use crate::dcf::*;
 use crate::repos::*;

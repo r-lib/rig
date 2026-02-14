@@ -6,9 +6,9 @@ use std::path::Path;
 use clap::ArgMatches;
 use lazy_static::lazy_static;
 #[cfg(target_os = "macos")]
-use simple_error::*;
+use log::{debug, info, warn};
 #[cfg(target_os = "macos")]
-use simplelog::*;
+use simple_error::*;
 use tabular::*;
 
 #[cfg(target_os = "macos")]

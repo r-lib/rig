@@ -13,10 +13,11 @@ use std::process::Command;
 
 use clap::ArgMatches;
 use directories::BaseDirs;
+use log::{debug, info, trace, warn};
+use owo_colors::OwoColorize;
 use remove_dir_all::remove_dir_all;
 use semver;
 use simple_error::{bail, SimpleError};
-use simplelog::*;
 use tabular::*;
 use whoami::{fallible::hostname, username};
 use winreg::enums::*;
@@ -382,8 +383,8 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         if let Some(ref default) = default {
             if default == &ver {
                 warn!(
-                    "Removing default version, set new default with \
-                       <bold>rig default <version></>"
+                    "Removing default version, set new default with {}",
+                    "rig default <version>".bold()
                 );
                 match unset_default() {
                     Err(e) => warn!("Failed to unset default version: {}", e.to_string()),

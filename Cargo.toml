@@ -78,7 +78,8 @@ sha2 = "0.9.8"
 # expand ~ in paths, e.g. in R_LIBS env vars, env vars for RStudio
 shellexpand = "2.1.0"
 simple-error = "0.2.3"
-simplelog = { version = "^0.12.0", features = ["paris"] }
+env_logger = "0.11"
+owo-colors = "4.1"
 sudo = "0.6.0"
 # printing tables to the console
 tabular = "0.2.0"
@@ -96,7 +97,7 @@ winreg = "0.10"
 clap = { version = "4.3.8", features = ["cargo", "color"] }
 clap_complete = "4.5.1"
 lazy_static = "1.4.0"
-simplelog = { version = "^0.12.0", features = ["paris"] }
+log = "0.4"
 static_vcruntime = "2.0"
 whoami = "1.4.1"
 

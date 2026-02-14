@@ -6,9 +6,9 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use clap::ArgMatches;
+use log::{debug, info, trace, warn};
 use semver::Version;
 use simple_error::*;
-use simplelog::*;
 use tabular::*;
 
 #[cfg(target_os = "macos")]

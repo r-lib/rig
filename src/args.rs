@@ -7,7 +7,7 @@
 use clap::{Arg, ArgMatches, Command};
 
 #[cfg(target_os = "macos")]
-use simplelog::*;
+use log::warn;
 
 #[cfg(target_os = "windows")]
 mod windows_arch;
@@ -1090,9 +1090,9 @@ pub fn rig_app() -> Command {
             Arg::new("quiet")
                 .help("Suppress output (overrides `--verbose`)")
                 .short('q')
-                .num_args(0)
                 .long("quiet")
-                .required(false),
+                .required(false)
+                .action(clap::ArgAction::Count),
         )
         .arg(
             Arg::new("verbose")

@@ -4,9 +4,9 @@ use std::fs::{self, File};
 
 use clap::ArgMatches;
 use deb822_fast::Deb822;
+use log::info;
 use pubgrub::{resolve, SelectedDependencies};
 use simple_error::*;
-use simplelog::info;
 use tabular::*;
 
 use crate::common::get_default_r_version;

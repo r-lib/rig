@@ -16,10 +16,9 @@ use std::time::SystemTime;
 use clap::ArgMatches;
 
 use filetime::FileTime;
-
+use log::info;
 use reqwest::StatusCode;
 use simple_error::bail;
-use simplelog::info;
 
 #[cfg(target_os = "windows")]
 use crate::resolve::get_resolve;
