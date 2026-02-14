@@ -22,6 +22,12 @@
                 "url": "https://cran-archive.r-project.org/",
                 "rversions": [
                     "< 4.0.0"
+                ],
+                "platforms": [
+                    "windows",
+                    "*-mingw32",
+                    "macos",
+                    "*-apple-darwin*"
                 ]
             }
         ]
