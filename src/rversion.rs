@@ -162,8 +162,5 @@ pub struct LinuxTools {
 #[cfg(target_os = "windows")]
 #[derive(Default, Debug)]
 pub struct RtoolsVersion {
-    pub version: String,
     pub url: String,
-    pub first: String,
-    pub last: String,
 }

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::ffi::{c_void, OsStr};
 use std::os::windows::ffi::OsStrExt;
 use std::sync::Once;

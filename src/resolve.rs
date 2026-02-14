@@ -161,13 +161,8 @@ pub fn get_rtools_version(version: &str, arch: &str) -> Result<RtoolsVersion, Bo
         let versionx: String = ver["version"].as_str().ok_or(msg)?.to_string();
         if &versionx == version {
             let url: String = ver["url"].as_str().ok_or(msg)?.to_string();
-            let first: String = ver["first"].as_str().ok_or(msg)?.to_string();
-            let last: String = ver["last"].as_str().ok_or(msg)?.to_string();
             return Ok(RtoolsVersion {
-                version: versionx,
                 url,
-                first,
-                last,
             });
         }
     }
