@@ -1,9 +1,22 @@
 ## rig repositories start
-## rig repositories version 1
+## rig repositories version 2
 
 invisible(local({
     # this is to undo the default set by earlier versions of rig
     options(repos = NULL)
+    # only really needed for P3M, but it is a better default, so set it everywhere
+    rver <- getRversion()
+    ua <- sprintf(
+        "R/%s R (%s)",
+        rver,
+        paste(
+            rver,
+            R.version$platform,
+            R.version$arch,
+            R.version$os
+        )
+    )
+    options(HTTPUserAgent = ua)
     do <- function() {
         # Don't do anything at all if R_REPOSITORIES is set.
         # Clearly the user wants to manage repos themselves.
@@ -12,7 +25,6 @@ invisible(local({
         }
         # Don't do anything if not in RStudio/Positron and R >= 4.3.0.
         # In this case R (.onLoad() in utils) will load and set the repos.
-        rver <- getRversion()
         rstudio <- Sys.getenv("RSTUDIO") != ""
         positron <- Sys.getenv("POSITRON") != ""
         if (rver >= "4.3.0" && !rstudio && !positron) {

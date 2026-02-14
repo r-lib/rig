@@ -10,8 +10,8 @@ use csv::ReaderBuilder;
 use deb822_fast::Deb822;
 use directories::ProjectDirs;
 use globset::Glob;
-use semver::Op;
 use log::{debug, info, warn};
+use semver::Op;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use simple_error::*;
@@ -250,6 +250,15 @@ fn should_activate_repo(
     // if platforms are present, then they must match the current platform
     if entry.platforms.is_some() {
         let mut ok = false;
+        let mut rdata_platform = rdata.platform.clone();
+        if let Some(p) = &rdata.distro {
+            rdata_platform += "-";
+            rdata_platform += &p;
+        }
+        if let Some(r) = &rdata.release {
+            rdata_platform += "-";
+            rdata_platform += &r;
+        }
         for platform in entry.platforms.as_ref().unwrap().iter() {
             let glob = match Glob::new(platform) {
                 Ok(g) => g.compile_matcher(),
@@ -261,13 +270,17 @@ fn should_activate_repo(
                     continue;
                 }
             };
-            if glob.is_match(&rdata.platform) {
+            if glob.is_match(&rdata_platform) {
                 debug!("Repo '{}' matches platform glob '{}'", repo.name, platform);
                 ok = true;
                 break;
             }
         }
         if !ok {
+            debug!(
+                "Repo '{}' (platform {}) does not match any platform glob, skipping",
+                repo.name, rdata_platform
+            );
             return Ok(false);
         }
     }
