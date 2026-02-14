@@ -1,66 +1,5 @@
 [
     {
-        "name": "CRAN",
-        "title": "The Comprehensive R Archive Network",
-        "description": "TODO",
-        "enabled": true,
-        "repos": [
-            {
-                "name": "CRAN",
-                "url": "https://cloud.r-project.org"
-            }
-        ]
-    },
-    {
-        "name": "CRAN-archive",
-        "title": "CRAN archive",
-        "description": "TODO",
-        "enabled": true,
-        "repos": [
-            {
-                "name": "CRAN-archive",
-                "url": "https://cran-archive.r-project.org/",
-                "rversions": [
-                    "< 4.0.0"
-                ],
-                "platforms": [
-                    "windows",
-                    "*-mingw32",
-                    "macos",
-                    "*-apple-darwin*"
-                ]
-            }
-        ]
-    },
-    {
-        "name": "Bioconductor",
-        "title": "Open source software for Bioinformatics",
-        "description": "TODO",
-        "enabled": false,
-        "repos": [
-            {
-                "name": "BioCsoft",
-                "url": "https://bioconductor.org/packages/${bv}/bioc"
-            },
-            {
-                "name": "BioCann",
-                "url": "https://bioconductor.org/packages/${bv}/data/annotation"
-            },
-            {
-                "name": "BioCexp",
-                "url": "https://bioconductor.org/packages/${bv}/data/experiment"
-            },
-            {
-                "name": "BioCworkflows",
-                "url": "https://bioconductor.org/packages/${bv}/workflows"
-            },
-            {
-                "name": "BioCbooks",
-                "url": "https://bioconductor.org/packages/${bv}/books"
-            }
-        ]
-    },
-    {
         "name": "P3M",
         "title": "Posit Public Package Manager",
         "description": "TODO",
@@ -394,6 +333,67 @@
                 "rversions": [
                     "4.4"
                 ]
+            }
+        ]
+    },
+    {
+        "name": "CRAN",
+        "title": "The Comprehensive R Archive Network",
+        "description": "TODO",
+        "enabled": true,
+        "repos": [
+            {
+                "name": "CRAN",
+                "url": "https://cloud.r-project.org"
+            }
+        ]
+    },
+    {
+        "name": "CRAN-archive",
+        "title": "CRAN archive",
+        "description": "TODO",
+        "enabled": true,
+        "repos": [
+            {
+                "name": "CRAN-archive",
+                "url": "https://cran-archive.r-project.org/",
+                "rversions": [
+                    "< 4.0.0"
+                ],
+                "platforms": [
+                    "windows",
+                    "*-mingw32",
+                    "macos",
+                    "*-apple-darwin*"
+                ]
+            }
+        ]
+    },
+    {
+        "name": "Bioconductor",
+        "title": "Open source software for Bioinformatics",
+        "description": "TODO",
+        "enabled": false,
+        "repos": [
+            {
+                "name": "BioCsoft",
+                "url": "https://bioconductor.org/packages/${bv}/bioc"
+            },
+            {
+                "name": "BioCann",
+                "url": "https://bioconductor.org/packages/${bv}/data/annotation"
+            },
+            {
+                "name": "BioCexp",
+                "url": "https://bioconductor.org/packages/${bv}/data/experiment"
+            },
+            {
+                "name": "BioCworkflows",
+                "url": "https://bioconductor.org/packages/${bv}/workflows"
+            },
+            {
+                "name": "BioCbooks",
+                "url": "https://bioconductor.org/packages/${bv}/books"
             }
         ]
     }
