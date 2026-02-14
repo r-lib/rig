@@ -64,7 +64,7 @@
         "name": "P3M",
         "title": "Posit Public Package Manager",
         "description": "TODO",
-        "enabled": false,
+        "enabled": true,
         "repos": [
             {
                 "name": "P3M",
