@@ -180,6 +180,7 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
         let rdata = get_r_data(&ver)?;
         debug!("Detected architecture {:?}", rdata);
 
+        add_repositories_comment(&mut repos, "start added by rig");
         for repo in config.iter() {
             let enabled = match setup {
                 ReposSetupArgs::Default {
@@ -204,7 +205,7 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
                 add_repository(&mut repos, entry);
             }
         }
-        add_repositories_comment(&mut repos, "edited automatically by rig");
+        add_repositories_comment(&mut repos, "end added by rig");
 
         write_repositories_file(repos, &repositories)?;
 
