@@ -155,12 +155,6 @@ pub fn interpret_repos_args(args: &ArgMatches, deprecated: bool) -> ReposSetupAr
                 blacklist: Vec::new(),
             };
 
-            // On macOS, P3M is not enabled by default
-            #[cfg(target_os = "macos")]
-            if let ReposSetupArgs::Default { blacklist, .. } = &mut setup {
-                blacklist.push("p3m".to_string());
-            }
-
             if deprecated {
                 if args.get_flag("without-cran-mirror") {
                     if let ReposSetupArgs::Default { blacklist, .. } = &mut setup {
@@ -198,6 +192,18 @@ pub fn interpret_repos_args(args: &ArgMatches, deprecated: bool) -> ReposSetupAr
         match &mut setup {
             ReposSetupArgs::Default { whitelist, .. } => whitelist.extend(repos),
             ReposSetupArgs::Empty { whitelist } => whitelist.extend(repos),
+        }
+    }
+
+    // On macOS, P3M is not enabled by default, but it can be enabled with --with-repos=p3m
+    #[cfg(target_os = "macos")]
+    if let ReposSetupArgs::Default {
+        whitelist,
+        blacklist,
+    } = &mut setup
+    {
+        if !whitelist.contains(&"p3m".to_string()) {
+            blacklist.push("p3m".to_string());
         }
     }
 
@@ -257,23 +263,23 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
         debug!("Detected architecture {:?}", rdata);
 
         for repo in config.iter() {
-            for entry in repo.repos.iter() {
-                let enabled = match setup {
-                    ReposSetupArgs::Default {
-                        ref whitelist,
-                        ref blacklist,
-                    } => {
-                        (repo.enabled || whitelist.contains(&repo.name.to_lowercase()))
-                            && !blacklist.contains(&repo.name.to_lowercase())
-                    }
-                    ReposSetupArgs::Empty { ref whitelist } => {
-                        whitelist.contains(&repo.name.to_lowercase())
-                    }
-                };
-
-                if !enabled {
-                    continue;
+            let enabled = match setup {
+                ReposSetupArgs::Default {
+                    ref whitelist,
+                    ref blacklist,
+                } => {
+                    (repo.enabled || whitelist.contains(&repo.name.to_lowercase()))
+                        && !blacklist.contains(&repo.name.to_lowercase())
                 }
+                ReposSetupArgs::Empty { ref whitelist } => {
+                    whitelist.contains(&repo.name.to_lowercase())
+                }
+            };
+
+            if !enabled {
+                continue;
+            }
+            for entry in repo.repos.iter() {
                 if !should_activate_repo(repo, entry, &rdata)? {
                     continue;
                 }
@@ -833,7 +839,7 @@ mod tests {
             result,
             ReposSetupArgs::Default {
                 whitelist: vec![],
-                blacklist: vec!["p3m".to_string(), "cran".to_string(), "p3m".to_string()],
+                blacklist: vec!["cran".to_string(), "p3m".to_string(), "p3m".to_string()],
             }
         );
 
@@ -931,7 +937,7 @@ mod tests {
             result,
             ReposSetupArgs::Default {
                 whitelist: vec![],
-                blacklist: vec!["p3m".to_string(), "cran".to_string()],
+                blacklist: vec!["cran".to_string(), "p3m".to_string()],
             }
         );
 
@@ -985,7 +991,7 @@ mod tests {
             result,
             ReposSetupArgs::Default {
                 whitelist: vec![],
-                blacklist: vec!["p3m".to_string(), "cran".to_string(), "p3m".to_string()],
+                blacklist: vec!["cran".to_string(), "p3m".to_string(), "p3m".to_string()],
             }
         );
 
@@ -1007,16 +1013,7 @@ mod tests {
             .unwrap();
         let result = interpret_repos_args(&matches, true);
 
-        #[cfg(target_os = "macos")]
-        assert_eq!(
-            result,
-            ReposSetupArgs::Default {
-                whitelist: vec!["cran".to_string(), "p3m".to_string()],
-                blacklist: vec!["p3m".to_string()],
-            }
-        );
-
-        #[cfg(not(target_os = "macos"))]
+        // p3m is in whitelist, so it should NOT be in blacklist on macOS
         assert_eq!(
             result,
             ReposSetupArgs::Default {
@@ -1061,16 +1058,7 @@ mod tests {
             .unwrap();
         let result = interpret_repos_args(&matches, true);
 
-        #[cfg(target_os = "macos")]
-        assert_eq!(
-            result,
-            ReposSetupArgs::Default {
-                whitelist: vec!["cran".to_string(), "p3m".to_string()],
-                blacklist: vec!["p3m".to_string()],
-            }
-        );
-
-        #[cfg(not(target_os = "macos"))]
+        // p3m is in whitelist, so it should NOT be in blacklist on macOS
         assert_eq!(
             result,
             ReposSetupArgs::Default {
@@ -1097,7 +1085,7 @@ mod tests {
             result,
             ReposSetupArgs::Default {
                 whitelist: vec!["bioc".to_string(), "custom".to_string()],
-                blacklist: vec!["p3m".to_string(), "cran".to_string(), "p3m".to_string()],
+                blacklist: vec!["cran".to_string(), "p3m".to_string(), "p3m".to_string()],
             }
         );
 
@@ -1107,6 +1095,25 @@ mod tests {
             ReposSetupArgs::Default {
                 whitelist: vec!["bioc".to_string(), "custom".to_string()],
                 blacklist: vec!["cran".to_string(), "p3m".to_string()],
+            }
+        );
+    }
+
+    #[test]
+    fn test_macos_p3m_in_whitelist() {
+        // On macOS, explicitly adding p3m to whitelist should prevent it from being blacklisted
+        let cmd = create_test_command();
+        let matches = cmd
+            .try_get_matches_from(vec!["test", "--with-repos=p3m"])
+            .unwrap();
+        let result = interpret_repos_args(&matches, true);
+
+        // p3m is in whitelist, so it should NOT be in blacklist on macOS
+        assert_eq!(
+            result,
+            ReposSetupArgs::Default {
+                whitelist: vec!["p3m".to_string()],
+                blacklist: vec![],
             }
         );
     }
@@ -1131,7 +1138,12 @@ mod tests {
             result,
             ReposSetupArgs::Default {
                 whitelist: vec!["bioc".to_string()],
-                blacklist: vec!["p3m".to_string(), "cran".to_string(), "cran".to_string(), "p3m".to_string()],
+                blacklist: vec![
+                    "cran".to_string(),
+                    "cran".to_string(),
+                    "p3m".to_string(),
+                    "p3m".to_string()
+                ],
             }
         );
 
