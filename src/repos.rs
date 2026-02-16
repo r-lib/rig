@@ -154,6 +154,13 @@ pub fn interpret_repos_args(args: &ArgMatches, deprecated: bool) -> ReposSetupAr
                 whitelist: Vec::new(),
                 blacklist: Vec::new(),
             };
+
+            // On macOS, P3M is not enabled by default
+            #[cfg(target_os = "macos")]
+            if let ReposSetupArgs::Default { blacklist, .. } = &mut setup {
+                blacklist.push("p3m".to_string());
+            }
+
             if deprecated {
                 if args.get_flag("without-cran-mirror") {
                     if let ReposSetupArgs::Default { blacklist, .. } = &mut setup {
@@ -783,6 +790,16 @@ mod tests {
         let matches = cmd.try_get_matches_from(vec!["test"]).unwrap();
         let result = interpret_repos_args(&matches, true);
 
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            result,
+            ReposSetupArgs::Default {
+                whitelist: vec![],
+                blacklist: vec!["p3m".to_string()],
+            }
+        );
+
+        #[cfg(not(target_os = "macos"))]
         assert_eq!(
             result,
             ReposSetupArgs::Default {
@@ -811,6 +828,16 @@ mod tests {
             .unwrap();
         let result = interpret_repos_args(&matches, true);
 
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            result,
+            ReposSetupArgs::Default {
+                whitelist: vec![],
+                blacklist: vec!["p3m".to_string(), "cran".to_string(), "p3m".to_string()],
+            }
+        );
+
+        #[cfg(not(target_os = "macos"))]
         assert_eq!(
             result,
             ReposSetupArgs::Default {
@@ -828,6 +855,16 @@ mod tests {
             .unwrap();
         let result = interpret_repos_args(&matches, true);
 
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            result,
+            ReposSetupArgs::Default {
+                whitelist: vec!["bioc".to_string(), "custom".to_string()],
+                blacklist: vec!["p3m".to_string()],
+            }
+        );
+
+        #[cfg(not(target_os = "macos"))]
         assert_eq!(
             result,
             ReposSetupArgs::Default {
@@ -845,6 +882,16 @@ mod tests {
             .unwrap();
         let result = interpret_repos_args(&matches, true);
 
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            result,
+            ReposSetupArgs::Default {
+                whitelist: vec!["bioc".to_string()],
+                blacklist: vec!["p3m".to_string(), "p3m".to_string()],
+            }
+        );
+
+        #[cfg(not(target_os = "macos"))]
         assert_eq!(
             result,
             ReposSetupArgs::Default {
@@ -879,6 +926,16 @@ mod tests {
             .unwrap();
         let result = interpret_repos_args(&matches, true);
 
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            result,
+            ReposSetupArgs::Default {
+                whitelist: vec![],
+                blacklist: vec!["p3m".to_string(), "cran".to_string()],
+            }
+        );
+
+        #[cfg(not(target_os = "macos"))]
         assert_eq!(
             result,
             ReposSetupArgs::Default {
@@ -896,6 +953,16 @@ mod tests {
             .unwrap();
         let result = interpret_repos_args(&matches, true);
 
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            result,
+            ReposSetupArgs::Default {
+                whitelist: vec![],
+                blacklist: vec!["p3m".to_string(), "p3m".to_string()],
+            }
+        );
+
+        #[cfg(not(target_os = "macos"))]
         assert_eq!(
             result,
             ReposSetupArgs::Default {
@@ -913,6 +980,16 @@ mod tests {
             .unwrap();
         let result = interpret_repos_args(&matches, true);
 
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            result,
+            ReposSetupArgs::Default {
+                whitelist: vec![],
+                blacklist: vec!["p3m".to_string(), "cran".to_string(), "p3m".to_string()],
+            }
+        );
+
+        #[cfg(not(target_os = "macos"))]
         assert_eq!(
             result,
             ReposSetupArgs::Default {
@@ -930,6 +1007,16 @@ mod tests {
             .unwrap();
         let result = interpret_repos_args(&matches, true);
 
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            result,
+            ReposSetupArgs::Default {
+                whitelist: vec!["cran".to_string(), "p3m".to_string()],
+                blacklist: vec!["p3m".to_string()],
+            }
+        );
+
+        #[cfg(not(target_os = "macos"))]
         assert_eq!(
             result,
             ReposSetupArgs::Default {
@@ -947,6 +1034,16 @@ mod tests {
             .unwrap();
         let result = interpret_repos_args(&matches, true);
 
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            result,
+            ReposSetupArgs::Default {
+                whitelist: vec!["cran".to_string(), "bioc".to_string()],
+                blacklist: vec!["p3m".to_string()],
+            }
+        );
+
+        #[cfg(not(target_os = "macos"))]
         assert_eq!(
             result,
             ReposSetupArgs::Default {
@@ -964,6 +1061,16 @@ mod tests {
             .unwrap();
         let result = interpret_repos_args(&matches, true);
 
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            result,
+            ReposSetupArgs::Default {
+                whitelist: vec!["cran".to_string(), "p3m".to_string()],
+                blacklist: vec!["p3m".to_string()],
+            }
+        );
+
+        #[cfg(not(target_os = "macos"))]
         assert_eq!(
             result,
             ReposSetupArgs::Default {
@@ -985,6 +1092,16 @@ mod tests {
             .unwrap();
         let result = interpret_repos_args(&matches, true);
 
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            result,
+            ReposSetupArgs::Default {
+                whitelist: vec!["bioc".to_string(), "custom".to_string()],
+                blacklist: vec!["p3m".to_string(), "cran".to_string(), "p3m".to_string()],
+            }
+        );
+
+        #[cfg(not(target_os = "macos"))]
         assert_eq!(
             result,
             ReposSetupArgs::Default {
@@ -1009,7 +1126,16 @@ mod tests {
             .unwrap();
         let result = interpret_repos_args(&matches, true);
 
-        // Note: "cran" appears twice because deprecated flag runs first
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            result,
+            ReposSetupArgs::Default {
+                whitelist: vec!["bioc".to_string()],
+                blacklist: vec!["p3m".to_string(), "cran".to_string(), "cran".to_string(), "p3m".to_string()],
+            }
+        );
+
+        #[cfg(not(target_os = "macos"))]
         assert_eq!(
             result,
             ReposSetupArgs::Default {
