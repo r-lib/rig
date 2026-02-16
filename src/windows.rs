@@ -122,7 +122,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     patch_for_rtools()?;
     maybe_update_registry_default()?;
 
-    let setup = interpret_repos_args(args);
+    let setup = interpret_repos_args(args, true);
     repos_setup(Some(vec![dirname.to_string()]), setup)?;
 
     if !args.get_flag("without-pak") {
