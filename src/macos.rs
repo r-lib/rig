@@ -119,17 +119,8 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         None => {}
     };
 
-    if !args.get_flag("without-repos") {
-        repos_setup(Some(vec![dirname.to_string()]))?;
-    }
-
-    if !args.get_flag("without-cran-mirror") {
-        set_cloud_mirror(Some(vec![dirname.to_string()]))?;
-    }
-
-    if args.get_flag("with-p3m") {
-        set_ppm(Some(vec![dirname.to_string()]))?;
-    }
+    let setup = interpret_repos_args(args);
+    repos_setup(Some(vec![dirname.to_string()]), setup)?;
 
     if !args.get_flag("without-pak") {
         let pakver: &String = args.get_one("pak-version").unwrap();
@@ -787,69 +778,6 @@ fn system_no_openmp(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
                 bail!("Failed to update {}: {}", path.display(), err);
             }
         };
-    }
-
-    Ok(())
-}
-
-fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
-    let vers = match vers {
-        Some(x) => x,
-        None => sc_get_list()?,
-    };
-
-    info!("Setting default CRAN mirror");
-
-    for ver in vers {
-        let ver = check_installed(&ver)?;
-        let path = Path::new(&get_r_root()).join(ver.as_str());
-        let profile = path.join("Resources/library/base/R/Rprofile".to_string());
-        if !profile.exists() {
-            continue;
-        }
-
-        match append_to_file(
-            &profile,
-            vec![
-                r#"if (Sys.getenv("RSTUDIO") != "1" && Sys.getenv("POSITRON") != "1") {
-  options(repos = c(CRAN = "https://cloud.r-project.org"))
-}"#
-                .to_string(),
-            ],
-        ) {
-            Ok(_) => {}
-            Err(err) => {
-                bail!("Failed to update {}: {}", path.display(), err);
-            }
-        };
-    }
-
-    Ok(())
-}
-
-fn set_ppm(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
-    let vers = match vers {
-        Some(x) => x,
-        None => sc_get_list()?,
-    };
-
-    info!("Setting PPM repository");
-
-    for ver in vers {
-        let ver = check_installed(&ver)?;
-        let path = Path::new(&get_r_root()).join(ver.as_str());
-        let profile = path.join("Resources/library/base/R/Rprofile".to_string());
-        if !profile.exists() {
-            continue;
-        }
-
-        let rcode = r#"
-if (Sys.getenv("RSTUDIO") != "1" && Sys.getenv("POSITRON") != "1") {
-  options(repos = c(P3M="https://packagemanager.posit.co/cran/latest", getOption("repos")))
-}
-"#;
-
-        append_to_file(&profile, vec![rcode.to_string()])?;
     }
 
     Ok(())

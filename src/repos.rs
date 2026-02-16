@@ -125,6 +125,76 @@ struct RData {
     pub release: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReposSetupArgs {
+    Default {
+        whitelist: Vec<String>,
+        blacklist: Vec<String>,
+    },
+    Empty {
+        whitelist: Vec<String>,
+    },
+}
+
+pub fn interpret_repos_args(args: &ArgMatches) -> ReposSetupArgs {
+    let mut setup;
+
+    let without_repos = args.get_one::<String>("without-repos");
+
+    match without_repos {
+        Some(value) if value == "ALL REPOSITORIES" => {
+            // Specified without a value: --without-repos
+            setup = ReposSetupArgs::Empty {
+                whitelist: Vec::new(),
+            };
+        }
+        _ => {
+            // Not specified at all, or specified with a value: --without-repos=repo1,repo2
+            setup = ReposSetupArgs::Default {
+                whitelist: Vec::new(),
+                blacklist: Vec::new(),
+            };
+            if args.get_flag("without-cran-mirror") {
+                if let ReposSetupArgs::Default { blacklist, .. } = &mut setup {
+                    blacklist.push("cran".to_string());
+                }
+            }
+            if args.get_flag("without-p3m") {
+                if let ReposSetupArgs::Default { blacklist, .. } = &mut setup {
+                    blacklist.push("p3m".to_string());
+                }
+            }
+        }
+    }
+
+    if let Some(without_repos) = without_repos {
+        if without_repos != "ALL REPOSITORIES" {
+            let repos: Vec<String> = without_repos
+                .split(',')
+                .map(|s| s.trim().to_string().to_lowercase())
+                .filter(|s| !s.is_empty())
+                .collect();
+            if let ReposSetupArgs::Default { blacklist, .. } = &mut setup {
+                blacklist.extend(repos);
+            }
+        }
+    }
+
+    if let Some(with_repos) = args.get_one::<String>("with-repos") {
+        let repos: Vec<String> = with_repos
+            .split(',')
+            .map(|s| s.trim().to_string().to_lowercase())
+            .filter(|s| !s.is_empty())
+            .collect();
+        match &mut setup {
+            ReposSetupArgs::Default { whitelist, .. } => whitelist.extend(repos),
+            ReposSetupArgs::Empty { whitelist } => whitelist.extend(repos),
+        }
+    }
+
+    setup
+}
+
 fn sc_repos_setup(
     args: &ArgMatches,
     _libargs: &ArgMatches,
@@ -135,10 +205,12 @@ fn sc_repos_setup(
     } else {
         sc_get_list()?
     };
-    repos_setup(Some(vers))
+
+    let setup = interpret_repos_args(args);
+    repos_setup(Some(vers), setup)
 }
 
-pub fn repos_setup(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
+pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(), Box<dyn Error>> {
     let vers = match vers {
         Some(v) => v,
         None => sc_get_list()?,
@@ -177,6 +249,22 @@ pub fn repos_setup(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
 
         for repo in config.iter() {
             for entry in repo.repos.iter() {
+                let enabled = match setup {
+                    ReposSetupArgs::Default {
+                        ref whitelist,
+                        ref blacklist,
+                    } => {
+                        (repo.enabled || whitelist.contains(&repo.name.to_lowercase()))
+                            && !blacklist.contains(&repo.name.to_lowercase())
+                    }
+                    ReposSetupArgs::Empty { ref whitelist } => {
+                        whitelist.contains(&repo.name.to_lowercase())
+                    }
+                };
+
+                if !enabled {
+                    continue;
+                }
                 if !should_activate_repo(repo, entry, &rdata)? {
                     continue;
                 }
@@ -234,10 +322,6 @@ fn should_activate_repo(
     entry: &RepoEntry,
     rdata: &RData,
 ) -> Result<bool, Box<dyn Error>> {
-    if !repo.enabled {
-        return Ok(false);
-    }
-
     debug!(
         "Checking if repo '{}' should be activated for platform '{}', arch '{}', R version '{}'",
         repo.name, rdata.platform, rdata.arch, rdata.version

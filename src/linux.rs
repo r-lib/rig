@@ -21,6 +21,7 @@ use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
 use crate::library::*;
+use crate::repos::*;
 use crate::resolve::get_resolve;
 use crate::run::*;
 use crate::utils::*;
@@ -32,8 +33,6 @@ pub const R_BASE_PROFILE: &str = "{}/lib/R/library/base/R/Rprofile";
 pub const R_ETC_PATH: &str = "{}/lib/R/etc";
 pub const R_BINPATH: &str = "{}/bin/R";
 const R_CUR: &str = "/opt/R/current";
-
-const PPM_URL: &str = "https://packagemanager.posit.co/cran";
 
 macro_rules! strvec {
     // match a list of expressions separated by comma:
@@ -104,20 +103,8 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         None => {}
     };
 
-    if !args.get_flag("without-cran-mirror") {
-        set_cloud_mirror(Some(vec![dirname.to_string()]))?;
-    }
-
-    if !args.get_flag("without-p3m") {
-        // only warn if --with-p3m, but no support for this distro or arch
-        let warn = args.get_flag("with-p3m") && !version.ppm;
-        set_ppm(
-            Some(vec![dirname.to_string()]),
-            &platform,
-            &version,
-            Some(warn),
-        )?;
-    }
+    let setup = interpret_repos_args(args);
+    repos_setup(Some(vec![dirname.to_string()]), setup)?;
 
     if args.get_flag("without-sysreqs") {
         set_sysreqs_false(Some(vec![dirname.to_string()]))?;
@@ -562,83 +549,6 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
 
 pub fn sc_get_default() -> Result<Option<String>, Box<dyn Error>> {
     read_version_link(R_CUR)
-}
-
-fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
-    let vers = match vers {
-        Some(x) => x,
-        None => sc_get_list()?,
-    };
-
-    info!("Setting default CRAN mirror");
-
-    for ver in vers {
-        let ver = check_installed(&ver)?;
-        let path = Path::new(&get_r_root()).join(ver.as_str());
-        let profile = path.join("lib/R/library/base/R/Rprofile".to_string());
-        if !profile.exists() {
-            continue;
-        }
-
-        append_to_file(
-            &profile,
-            vec![
-                r#"if (Sys.getenv("RSTUDIO") != "1" && Sys.getenv("POSITRON") != "1") {
-  options(repos = c(CRAN = "https://cloud.r-project.org"))
-}"#
-                .to_string(),
-            ],
-        )?;
-    }
-    Ok(())
-}
-
-fn set_ppm(
-    vers: Option<Vec<String>>,
-    platform: &OsVersion,
-    version: &Rversion,
-    warn: Option<bool>,
-) -> Result<(), Box<dyn Error>> {
-    let warn = warn.unwrap_or(true);
-    if !version.ppm || version.ppmurl.is_none() {
-        if warn {
-            warn!(
-                "P3M (or rig) does not support this distro: {} {} or architecture: {}",
-                platform.distro, platform.version, platform.arch
-            );
-        }
-        return Ok(());
-    }
-
-    info!("Setting up P3M");
-
-    let vers = match vers {
-        Some(x) => x,
-        None => sc_get_list()?,
-    };
-
-    let rcode = r#"
-if (Sys.getenv("RSTUDIO") != "1" && Sys.getenv("POSITRON") != "1") {
-  options(repos = c(P3M="%url%", getOption("repos")))
-  options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(getRversion(), R.version$platform, R.version$arch, R.version$os)))
-}
-"#;
-
-    let ppm_url =
-        PPM_URL.to_string() + "/__linux__/" + &version.ppmurl.clone().unwrap() + "/latest";
-    let rcode = rcode.to_string().replace("%url%", &ppm_url);
-
-    for ver in vers {
-        let ver = check_installed(&ver)?;
-        let path = Path::new(&get_r_root()).join(ver.as_str());
-        let profile = path.join("lib/R/library/base/R/Rprofile".to_string());
-        if !profile.exists() {
-            continue;
-        }
-
-        append_to_file(&profile, vec![rcode.to_string()])?;
-    }
-    Ok(())
 }
 
 fn set_sysreqs_false(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {

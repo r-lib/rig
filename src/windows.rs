@@ -28,6 +28,7 @@ use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
 use crate::library::*;
+use crate::repos::*;
 use crate::resolve::*;
 use crate::run::*;
 use crate::rversion::*;
@@ -121,35 +122,8 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     patch_for_rtools()?;
     maybe_update_registry_default()?;
 
-    if !args.get_flag("without-cran-mirror") {
-        match dirname {
-            None => {
-                warn!("Cannot set CRAN mirror, cannot determine installation directory");
-            }
-            Some(ref dirname) => {
-                set_cloud_mirror(Some(vec![dirname.to_string()]))?;
-            }
-        }
-    }
-
-    if !args.get_flag("without-p3m") {
-        match dirname {
-            None => {
-                warn!("Cannot set up P3M, cannot determine installation directory");
-            }
-            Some(ref dirname) => {
-                let arch = get_native_arch();
-                if arch != "x86_64" {
-                    // only warn if --with-p3m, but no support for this arch
-                    if args.get_flag("with-p3m") {
-                        warn!("P3M does not support this architecture: {}", arch);
-                    }
-                } else {
-                    set_rspm(Some(vec![dirname.to_string()]))?;
-                }
-            }
-        };
-    }
+    let setup = interpret_repos_args(args);
+    repos_setup(Some(vec![dirname.to_string()]), setup)?;
 
     if !args.get_flag("without-pak") {
         match dirname {

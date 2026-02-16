@@ -134,36 +134,56 @@ pub fn rig_app() -> Command {
                 .default_value("release"),
         )
         .arg(
+            Arg::new("with-repos")
+                .help(
+                    "Repositories to enable, in addition to the ones enabled by default.\n\
+                    If --without-repos is also specified (without a value), then only these\n\
+                    repositories will be enabled.",
+                )
+                .long("with-repos")
+                .num_args(1)
+                .require_equals(true)
+                .required(false)
+                .conflicts_with_all(&["without-cran-mirror", "without-p3m"]),
+        )
+        .arg(
             Arg::new("without-repos")
-            .help("Do not set up package repositories.\nImplies --without-cran-mirror and --without-p3m.")
-            .long("without-repos")
-            .num_args(0)
-            .required(false)
-            .conflicts_with("with-p3m"),
+                .help(
+                    "Do not set up package repositories.\n\
+                    Alternatively, specify which ones to skip, a comma-separated list.\n\
+                    If --with-repos is also specified, then only the repositories in that\n\
+                    argument will be enabled.",
+                )
+                .long("without-repos")
+                .num_args(0..=1)
+                .require_equals(true)
+                .default_missing_value("ALL REPOSITORIES")
+                .required(false)
+                .conflicts_with_all(&["without-cran-mirror", "without-p3m"]),
         )
         .arg(
             Arg::new("without-cran-mirror")
-                .help("Do not set the cloud CRAN mirror")
+                .help(
+                    "Do not set the cloud CRAN mirror.\n\
+                    Deprecated in favor of --without-repos=cran.",
+                )
                 .long("without-cran-mirror")
                 .num_args(0)
-                .required(false),
-        )
-        .arg(
-            Arg::new("with-p3m")
-                .help("Set up P3M. This is the default on x86_64 Windows and\nsupported Linux distros.")
-                .long("with-p3m")
-                .num_args(0)
                 .required(false)
-                .conflicts_with("without-p3m"),
+                .conflicts_with_all(&["with-repos", "without-repos"]),
         )
         .arg(
             Arg::new("without-p3m")
                 .aliases(&["without-rspm"])
-                .help("Do not set up P3M. This is the default on macOS.\n[alias: --without-rspm]")
+                .help(
+                    "Do not set up P3M. This is the default on macOS.\n\
+                    Deprecated in favor of --without-repos=p3m. \n\
+                    [alias: --without-rspm]",
+                )
                 .long("without-p3m")
                 .num_args(0)
                 .required(false)
-                .conflicts_with("with-p3m"),
+                .conflicts_with_all(&["with-repos", "without-repos"]),
         )
         .arg(
             Arg::new("without-pak")
@@ -946,6 +966,45 @@ pub fn rig_app() -> Command {
         );
     rig = rig.subcommand(cmd_proj);
 
+    let cmd_repos_setup = Command::new("setup")
+        .about("Set up R package repositories")
+        .display_order(0)
+        .arg(
+            Arg::new("r-version")
+                .help("R version to set up repositories for (default: all)")
+                .long("r-version")
+                .short('r')
+                .num_args(1)
+                .required(false),
+        )
+        .arg(
+            Arg::new("with-repos")
+                .help(
+                    "Repositories to enable, in addition to the ones enabled by default.\n\
+                    If --without-repos is also specified (without a value), then only these\n\
+                    repositories will be enabled.",
+                )
+                .long("with-repos")
+                .num_args(1)
+                .require_equals(true)
+                .default_missing_value("DEFAULT REPOSITORIES")
+                .required(false),
+        )
+        .arg(
+            Arg::new("without-repos")
+                .help(
+                    "Do not set up package repositories.\n\
+                    Alternatively, specify which ones to skip, a comma-separated list.\n\
+                    If --with-repos is also specified, then only the repositories in that\n\
+                    argument will be enabled.",
+                )
+                .long("without-repos")
+                .num_args(1)
+                .require_equals(true)
+                .default_missing_value("ALL REPOSITORIES")
+                .required(false),
+        );
+
     let cmd_repos = Command::new("repos")
         .about("Manage package repositories")
         .display_order(0)
@@ -1070,19 +1129,8 @@ pub fn rig_app() -> Command {
         //         .about("Remove an R package repository")
         //         .display_order(0),
         // )
-        .subcommand(
-            Command::new("setup")
-                .about("Set up R package repositories")
-                .display_order(0)
-                .arg(
-                    Arg::new("r-version")
-                        .help("R version to set up repositories for (default: all)")
-                        .long("r-version")
-                        .short('r')
-                        .num_args(1)
-                        .required(false),
-                ),
-        );
+        .subcommand(cmd_repos_setup);
+
     rig = rig.subcommand(cmd_repos);
 
     rig = rig
