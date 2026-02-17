@@ -125,7 +125,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match dirname {
         None => {
             warn!("Cannot set up repositories, cannot determine installation directory");
-        },
+        }
         Some(ref dirname) => {
             let setup = interpret_repos_args(args, true);
             repos_setup(Some(vec![dirname.to_string()]), setup)?;

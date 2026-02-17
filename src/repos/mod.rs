@@ -188,13 +188,17 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
         for repo in config.iter() {
             let mut enabled = repo.enabled;
             let in_whitelist = match &setup {
-                ReposSetupArgs::Default { whitelist, blacklist } => {
-                    whitelist.contains(&repo.name.to_lowercase()) && !blacklist.contains(&repo.name.to_lowercase())
-                },
+                ReposSetupArgs::Default {
+                    whitelist,
+                    blacklist,
+                } => {
+                    whitelist.contains(&repo.name.to_lowercase())
+                        && !blacklist.contains(&repo.name.to_lowercase())
+                }
                 ReposSetupArgs::Empty { whitelist } => {
                     enabled = false;
                     whitelist.contains(&repo.name.to_lowercase())
-                },
+                }
             };
 
             for entry in repo.repos.iter() {
