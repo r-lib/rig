@@ -1057,7 +1057,7 @@ pub fn rig_app() -> Command {
         // )
         .subcommand(
             Command::new("list")
-                .about("List R package repositories")
+                .about("List configured R package repositories")
                 .display_order(0)
                 .arg(
                     Arg::new("json")
@@ -1067,8 +1067,15 @@ pub fn rig_app() -> Command {
                         .required(false),
                 )
                 .arg(
+                    Arg::new("all")
+                        .help("Show all repositories, not just the default ones")
+                        .long("all")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
                     Arg::new("r-version")
-                        .help("R version to list repositories for")
+                        .help("R version to list repositories for, instead of the default")
                         .long("r-version")
                         .short('r')
                         .num_args(1)
@@ -1089,7 +1096,7 @@ pub fn rig_app() -> Command {
         )
         .subcommand(
             Command::new("package-list")
-                .about("List packages in package repositories")
+                .about("List packages in R package repositories")
                 .display_order(0)
                 .arg(
                     Arg::new("json")

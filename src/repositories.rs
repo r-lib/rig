@@ -3,24 +3,25 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 
 use csv::ReaderBuilder;
+use serde::Serialize;
 
 use crate::repos::*;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct RepoFileEntry {
-    name: String,
-    description: String,
-    url: String,
-    default: bool,
-    source: bool,
-    win_binary: bool,
-    mac_binary: bool,
+    pub name: String,
+    pub description: String,
+    pub url: String,
+    pub default: bool,
+    pub source: bool,
+    pub win_binary: bool,
+    pub mac_binary: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct RepositoriesContents {
-    data: Vec<RepoFileEntry>,
-    comments: Vec<(usize, String)>,
+    pub data: Vec<RepoFileEntry>,
+    pub comments: Vec<(usize, String)>,
 }
 
 pub fn read_repositories_file(path: &str) -> Result<RepositoriesContents, Box<dyn Error>> {

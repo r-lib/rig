@@ -35,6 +35,8 @@ mod interpret_repos_args;
 pub use interpret_repos_args::{interpret_repos_args, ReposSetupArgs};
 mod repos_available;
 use repos_available::sc_repos_available;
+mod repos_list;
+use repos_list::sc_repos_list;
 
 pub fn sc_repos(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
@@ -42,6 +44,7 @@ pub fn sc_repos(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn 
         Some(("available", s)) => sc_repos_available(s, args, mainargs),
         // Some(("disable", s)) => sc_repos_disable(s, args, mainargs),
         // Some(("enable", s)) => sc_repos_enable(s, args, mainargs),
+        Some(("list", s)) => sc_repos_list(s, args, mainargs),
         Some(("package-list", s)) => sc_repos_package_list(s, args, mainargs),
         Some(("package-info", s)) => sc_repos_package_info(s, args, mainargs),
         Some(("package-versions", s)) => sc_repos_package_versions(s, args, mainargs),
