@@ -3,17 +3,9 @@ use std::error::Error;
 use clap::ArgMatches;
 use tabular::*;
 
+use crate::common::get_r_version_data_version;
 use crate::common::sc_get_default_or_fail;
-use crate::repositories::*;
-
-#[cfg(target_os = "macos")]
-use crate::macos::*;
-
-#[cfg(target_os = "windows")]
-use crate::windows::*;
-
-#[cfg(target_os = "linux")]
-use crate::linux::*;
+use crate::repos::*;
 
 pub fn sc_repos_list(
     args: &ArgMatches,
@@ -34,6 +26,21 @@ pub fn sc_repos_list(
         repos = repos.into_iter().filter(|x| x.default).collect();
     }
     repos.sort_by(|a, b| b.default.cmp(&a.default));
+
+    let has_bioc = repos
+        .iter()
+        .any(|x| x.url.contains("%v") || x.url.contains("%bm"));
+    if !args.get_flag("raw") && has_bioc {
+        let numver = get_r_version_data_version(&rver)?;
+        let biocver = r_version_to_bioc_version(&numver)?;
+        let biocmirror = match env::var("R_BIOC_MIRROR") {
+            Ok(v) => v,
+            Err(_) => "https://bioconductor.org".to_string(),
+        };
+        for repo in repos.iter_mut() {
+            repo.url = repo.url.replace("%v", &biocver).replace("%bm", &biocmirror);
+        }
+    }
 
     if args.get_flag("json") || mainargs.get_flag("json") {
         println!("{}", serde_json::to_string_pretty(&repos)?);

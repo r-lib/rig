@@ -1,5 +1,6 @@
 use regex::Regex;
 use std::collections::BTreeMap;
+use std::env;
 use std::error::Error;
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -52,6 +53,25 @@ pub fn sc_repos(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn 
         // Some(("rm", s)) => sc_repos_rm(s, args, mainargs),
         Some(("setup", s)) => sc_repos_setup(s, args, mainargs),
         _ => Ok(()), // unreachable
+    }
+}
+
+pub fn r_version_to_bioc_version(rver: &str) -> Result<String, Box<dyn Error>> {
+    match env::var("R_BIOC_VERSION") {
+        Ok(biocver) => Ok(biocver),
+        Err(_) => {
+            let minor = rver.split('.').take(2).collect::<Vec<&str>>().join(".");
+            match HC_R_VERSION_TO_BIOC_VERSION.get(&minor) {
+                Some(biocver) => Ok(biocver.to_string()),
+                None => {
+                    bail!(
+                        "Cannot determine Bioconductor version for R version {}, \n\
+                        set R_BIOC_VERSION environment variable to override.",
+                        rver
+                    );
+                }
+            }
+        }
     }
 }
 

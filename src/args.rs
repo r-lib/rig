@@ -1074,6 +1074,13 @@ pub fn rig_app() -> Command {
                         .required(false),
                 )
                 .arg(
+                    Arg::new("raw")
+                        .help("Do not resolve `%` variables in repository URLs.")
+                        .long("raw")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
                     Arg::new("r-version")
                         .help("R version to list repositories for, instead of the default")
                         .long("r-version")
