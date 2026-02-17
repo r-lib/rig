@@ -58,6 +58,7 @@ pub struct RepoEntry {
     pub platforms: Option<Vec<String>>,
     pub archs: Option<Vec<String>>,
     pub rversions: Option<Vec<String>>,
+    pub enabled: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -182,23 +183,22 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
 
         add_repositories_comment(&mut repos, "start added by rig");
         for repo in config.iter() {
-            let enabled = match setup {
-                ReposSetupArgs::Default {
-                    ref whitelist,
-                    ref blacklist,
-                } => {
-                    (repo.enabled || whitelist.contains(&repo.name.to_lowercase()))
-                        && !blacklist.contains(&repo.name.to_lowercase())
-                }
-                ReposSetupArgs::Empty { ref whitelist } => {
+            let mut enabled = repo.enabled;
+            let in_whitelist = match &setup {
+                ReposSetupArgs::Default { whitelist, blacklist } => {
+                    whitelist.contains(&repo.name.to_lowercase()) && !blacklist.contains(&repo.name.to_lowercase())
+                },
+                ReposSetupArgs::Empty { whitelist } => {
+                    enabled = false;
                     whitelist.contains(&repo.name.to_lowercase())
-                }
+                },
             };
 
-            if !enabled {
-                continue;
-            }
             for entry in repo.repos.iter() {
+                let enabled2 = entry.enabled.unwrap_or(enabled);
+                if !enabled2 && !in_whitelist {
+                    continue;
+                }
                 if !should_activate_repo(repo, entry, &rdata)? {
                     continue;
                 }

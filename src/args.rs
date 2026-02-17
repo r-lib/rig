@@ -999,7 +999,7 @@ pub fn rig_app() -> Command {
                     argument will be enabled.",
                 )
                 .long("without-repos")
-                .num_args(1)
+                .num_args(0..=1)
                 .require_equals(true)
                 .default_missing_value("ALL REPOSITORIES")
                 .required(false),

@@ -19,6 +19,7 @@
             {
                 "name": "P3M",
                 "url": "https://packagemanager.posit.co/cran/latest",
+                "enabled": false,
                 "platforms": [
                     "macos",
                     "*-apple-*"
