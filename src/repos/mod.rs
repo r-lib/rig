@@ -33,13 +33,16 @@ use crate::linux::*;
 
 mod interpret_repos_args;
 pub use interpret_repos_args::{interpret_repos_args, ReposSetupArgs};
+mod repos_available;
+use repos_available::sc_repos_available;
 
 pub fn sc_repos(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
         // Some(("add", s)) => sc_repos_add(s, args, mainargs),
+        Some(("available", s)) => sc_repos_available(s, args, mainargs),
         // Some(("disable", s)) => sc_repos_disable(s, args, mainargs),
         // Some(("enable", s)) => sc_repos_enable(s, args, mainargs),
-        Some(("list-packages", s)) => sc_repos_list_packages(s, args, mainargs),
+        Some(("package-list", s)) => sc_repos_package_list(s, args, mainargs),
         Some(("package-info", s)) => sc_repos_package_info(s, args, mainargs),
         Some(("package-versions", s)) => sc_repos_package_versions(s, args, mainargs),
         // Some(("reset", s)) => sc_repos_reset(s, args, mainargs),
@@ -116,7 +119,7 @@ pub struct Repository {
 //     Ok(())
 // }
 
-fn get_repos_config() -> Result<Vec<Repository>, Box<dyn Error>> {
+pub fn get_repos_config() -> Result<Vec<Repository>, Box<dyn Error>> {
     Ok(HC_REPOS.to_vec())
 }
 
@@ -470,7 +473,7 @@ pub fn repos_get_packages() -> Result<Vec<Package>, Box<dyn Error>> {
     Ok(packages)
 }
 
-fn sc_repos_list_packages(
+fn sc_repos_package_list(
     args: &ArgMatches,
     _libargs: &ArgMatches,
     mainargs: &ArgMatches,

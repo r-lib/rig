@@ -1067,15 +1067,28 @@ pub fn rig_app() -> Command {
                         .required(false),
                 )
                 .arg(
-                    Arg::new("all")
-                        .help("List disabled repositories as well")
-                        .long("all")
+                    Arg::new("r-version")
+                        .help("R version to list repositories for")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("available")
+                .about("List available R package repositories")
+                .display_order(0)
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
                         .num_args(0)
                         .required(false),
                 ),
         )
         .subcommand(
-            Command::new("list-packages")
+            Command::new("package-list")
                 .about("List packages in package repositories")
                 .display_order(0)
                 .arg(
