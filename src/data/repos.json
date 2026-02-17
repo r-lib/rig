@@ -378,23 +378,23 @@
         "repos": [
             {
                 "name": "BioCsoft",
-                "url": "https://bioconductor.org/packages/${bv}/bioc"
+                "url": "%bm/packages/%v/bioc"
             },
             {
                 "name": "BioCann",
-                "url": "https://bioconductor.org/packages/${bv}/data/annotation"
+                "url": "%bm/packages/%v/data/annotation"
             },
             {
                 "name": "BioCexp",
-                "url": "https://bioconductor.org/packages/${bv}/data/experiment"
+                "url": "%bm/packages/%v/data/experiment"
             },
             {
                 "name": "BioCworkflows",
-                "url": "https://bioconductor.org/packages/${bv}/workflows"
+                "url": "%bm/packages/%v/workflows"
             },
             {
                 "name": "BioCbooks",
-                "url": "https://bioconductor.org/packages/${bv}/books"
+                "url": "%bm/packages/%v/books"
             }
         ]
     }
