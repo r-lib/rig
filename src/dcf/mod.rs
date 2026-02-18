@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::error::Error;
 
+use bitcode::{Decode, Encode};
 use semver;
 use simple_error::*;
 
@@ -98,7 +99,7 @@ pub fn parse_dep(dep: &str, dep_type: &str) -> Result<DepVersionSpec, Box<dyn Er
     })
 }
 
-#[derive(Debug, Hash, Clone, PartialEq, Eq)]
+#[derive(Debug, Hash, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum VersionConstraint {
     Less,
     LessOrEqual,
@@ -119,7 +120,7 @@ impl std::fmt::Display for VersionConstraint {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Encode, Decode)]
 pub struct DepVersionSpec {
     /// Package name.
     pub name: String,
@@ -169,7 +170,7 @@ impl std::fmt::Display for DepVersionSpec {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Encode, Decode)]
 pub struct Package {
     pub name: String,
     pub version: String,
