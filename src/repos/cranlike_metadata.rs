@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use deb822_fast::Deb822;
 use directories::ProjectDirs;
+use flate2::read::GzDecoder;
 use log::info;
 
 use crate::dcf::*;
@@ -12,7 +13,7 @@ use crate::utils::{calculate_hash, create_parent_dir_if_needed};
 
 pub fn repos_get_packages() -> Result<Vec<Package>, Box<dyn Error>> {
     // TODO: do not hardcode repo URL
-    let repo_url = "https://cloud.r-project.org/src/contrib/PACKAGES";
+    let repo_url = "https://cloud.r-project.org/src/contrib/PACKAGES.gz";
     let repo_local = repo_local_file(repo_url)?;
     let repo_bitcode = repo_bitcode_file(&repo_local)?;
 
@@ -48,8 +49,9 @@ pub fn repos_get_packages() -> Result<Vec<Package>, Box<dyn Error>> {
 
 fn parse_packages_from_dcf(dcf_path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
     let df = File::open(dcf_path)?;
+    let decoder = GzDecoder::new(df);
     info!("Parsing repo metadata from {}", dcf_path.display());
-    let desc = Deb822::from_reader(df)?;
+    let desc = Deb822::from_reader(decoder)?;
     info!("Parsed {} packages from repo metadata", desc.len());
 
     let mut packages: Vec<Package> = vec![];
@@ -112,7 +114,7 @@ fn repo_local_file(url: &str) -> Result<PathBuf, Box<dyn Error>> {
         .ok_or("Cannot determine cache directory")?
         .cache_dir()
         .to_path_buf();
-    let urlhash = "repo-".to_string() + &calculate_hash(url) + ".dcf";
+    let urlhash = "repo-".to_string() + &calculate_hash(url) + ".dcf.gz";
 
     cache.push(urlhash);
 

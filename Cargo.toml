@@ -36,6 +36,8 @@ csv = "1.4.0"
 deb822-fast = "0.2.3"
 # data, cache, config directories on various platforms
 directories = "4.0.1"
+# gzip compression/decompression
+flate2 = "1.0"
 # run external commands and pipe their output
 duct = "0.13.5"
 # to set the mtime of files when downloading
