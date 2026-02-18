@@ -50,7 +50,7 @@ invisible(local({
             # If that file is not by rig then we don't need this.
             repositories <- R.home("etc/repositories")
             lns <- readLines(repositories, warn = FALSE)
-            if (any(grepl("edited automatically by rig", lns, fixed = TRUE))) {
+            if (any(grepl("added by rig", lns, fixed = TRUE))) {
                 options(repos = c(CRAN = "@CRAN@"))
             }
         } else if ((rstudio || positron) && rver < "4.3.0") {
