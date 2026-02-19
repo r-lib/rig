@@ -1160,6 +1160,21 @@ pub fn rig_app() -> Command {
 
     rig = rig.subcommand(cmd_repos);
 
+    #[cfg(debug_assertions)]
+    {
+        let cmd_test = Command::new("test")
+            .about("Run tests (for rig developers)")
+            .display_order(0)
+            .arg_required_else_help(true)
+            .subcommand(
+                Command::new("read-rds")
+                    .about("Test reading RDS files")
+                    .display_order(0)
+                    .arg(Arg::new("path").required(true)),
+            );
+        rig = rig.subcommand(cmd_test);
+    }
+
     rig = rig
         .arg(
             Arg::new("quiet")

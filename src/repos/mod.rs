@@ -348,7 +348,7 @@ fn should_activate_repo(
     if entry.rversions.is_some() {
         let mut ok = false;
         for constraint in entry.rversions.as_ref().unwrap().iter() {
-            let depconstraint = parse_constraint(constraint)?;
+            let depconstraint = VersionConstraint::from_str(constraint)?;
             let dep = DepVersionSpec {
                 name: "R".to_string(),
                 types: vec!["R version constraint".to_string()],
@@ -618,7 +618,7 @@ fn parse_crandb_deps(
                         types: vec![dep_type.to_string()],
                     });
                 } else {
-                    result.push(parse_dep(
+                    result.push(DepVersionSpec::parse(
                         &format!("{} ({})", name, ver_spec.as_str().unwrap()),
                         dep_type,
                     )?);
@@ -627,6 +627,6 @@ fn parse_crandb_deps(
         }
     }
 
-    let result2: Vec<DepVersionSpec> = simplify_constraints(result);
+    let result2: Vec<DepVersionSpec> = PackageDependencies::simplify(result);
     Ok(result2)
 }

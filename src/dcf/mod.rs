@@ -5,102 +5,11 @@ use bitcode::{Decode, Encode};
 use semver;
 use simple_error::*;
 
-/// Parse a single dependency field
-pub fn parse_deps(deps: &str, dep_type: &str) -> Result<Vec<DepVersionSpec>, Box<dyn Error>> {
-    let mut result: Vec<DepVersionSpec> = Vec::new();
-    for dep in deps.split(',') {
-        let dep = dep.trim();
-        if dep.len() == 0 {
-            continue;
-        }
-        result.push(parse_dep(dep, dep_type)?);
-    }
-
-    // need to merge constraints for the same package
-    let result2: Vec<DepVersionSpec> = simplify_constraints(result);
-    Ok(result2)
-}
-
-/// Merge constraints for the same package
-pub fn simplify_constraints(deps: Vec<DepVersionSpec>) -> Vec<DepVersionSpec> {
-    let mut pkgmap: HashMap<&str, usize> = HashMap::new();
-    let mut deps2 = Vec::new();
-    for dep in deps.iter() {
-        if let Some(idx) = pkgmap.get(dep.name.as_str()) {
-            let existing: &mut DepVersionSpec = &mut deps2[*idx];
-            for c in dep.constraints.iter() {
-                if !existing.constraints.contains(c) {
-                    existing.constraints.push(c.clone());
-                }
-            }
-        } else {
-            pkgmap.insert(dep.name.as_str(), deps2.len());
-            deps2.push(dep.clone());
-        }
-    }
-    deps2
-}
-
-/// Parse a version constraint specification (e.g., ">= 4.0.0")
-/// The spec should NOT include surrounding parentheses
-pub fn parse_constraint(spec: &str) -> Result<(VersionConstraint, String), Box<dyn Error>> {
-    if spec.starts_with(">=") {
-        let ver = spec[2..].trim().to_string();
-        Ok((VersionConstraint::GreaterOrEqual, ver))
-    } else if spec.starts_with("<=") {
-        let ver = spec[2..].trim().to_string();
-        Ok((VersionConstraint::LessOrEqual, ver))
-    } else if spec.starts_with("==") {
-        let ver = spec[2..].trim().to_string();
-        Ok((VersionConstraint::Equal, ver))
-    } else if spec.starts_with('=') {
-        let ver = spec[1..].trim().to_string();
-        Ok((VersionConstraint::Equal, ver))
-    } else if spec.starts_with(">>") {
-        let ver = spec[2..].trim().to_string();
-        Ok((VersionConstraint::Greater, ver))
-    } else if spec.starts_with('>') {
-        let ver = spec[1..].trim().to_string();
-        Ok((VersionConstraint::Greater, ver))
-    } else if spec.starts_with("<<") {
-        let ver = spec[2..].trim().to_string();
-        Ok((VersionConstraint::Less, ver))
-    } else if spec.starts_with('<') {
-        let ver = spec[1..].trim().to_string();
-        Ok((VersionConstraint::Less, ver))
-    } else {
-        bail!("Invalid version constraint: {}", spec)
-    }
-}
-
-/// Parse a single dependency specification, i.e. a package in a
-/// dependency field
-pub fn parse_dep(dep: &str, dep_type: &str) -> Result<DepVersionSpec, Box<dyn Error>> {
-    let (name, spec) = match dep.find('(') {
-        Some(i) => (&dep[..i], &dep[i..]),
-        None => (dep, ""),
-    };
-    let name = name.trim();
-    let types: Vec<String> = vec![dep_type.to_string()];
-    let mut constraints = Vec::new();
-
-    if spec.len() > 0 {
-        let specbytes = spec.as_bytes();
-        if specbytes.first() != Some(&b'(') || specbytes.last() != Some(&b')') {
-            bail!("Invalid dependency version: {}", dep);
-        }
-        let spec = &spec[1..spec.len() - 1];
-        constraints.push(parse_constraint(spec)?);
-    }
-    Ok(DepVersionSpec {
-        name: name.to_string(),
-        types,
-        constraints,
-    })
-}
+// ------------------------------------------------------------------------
+// A version constraint type, e.g. >= or >>, etc.
 
 #[derive(Debug, Hash, Clone, PartialEq, Eq, Encode, Decode)]
-pub enum VersionConstraint {
+pub enum VersionConstraintType {
     Less,
     LessOrEqual,
     Equal,
@@ -108,17 +17,71 @@ pub enum VersionConstraint {
     GreaterOrEqual,
 }
 
-impl std::fmt::Display for VersionConstraint {
+impl std::fmt::Display for VersionConstraintType {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            VersionConstraint::GreaterOrEqual => f.write_str(">="),
-            VersionConstraint::LessOrEqual => f.write_str("<="),
-            VersionConstraint::Equal => f.write_str("="),
-            VersionConstraint::Greater => f.write_str(">>"),
-            VersionConstraint::Less => f.write_str("<<"),
+            VersionConstraintType::GreaterOrEqual => f.write_str(">="),
+            VersionConstraintType::LessOrEqual => f.write_str("<="),
+            VersionConstraintType::Equal => f.write_str("="),
+            VersionConstraintType::Greater => f.write_str(">>"),
+            VersionConstraintType::Less => f.write_str("<<"),
         }
     }
 }
+
+// ------------------------------------------------------------------------
+// This is a version constraint that also includes the version number,
+// e.g. ">= 4.0.0"
+
+#[derive(Debug, Hash, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct VersionConstraint {
+    pub constraint_type: VersionConstraintType,
+    pub version: String,
+}
+
+impl VersionConstraint {
+    /// Parse a version constraint specification (e.g., ">= 4.0.0")
+    /// The spec should NOT include surrounding parentheses
+    pub fn from_str(spec: &str) -> Result<Self, Box<dyn Error>> {
+        let (constraint_type, version) = if spec.starts_with(">=") {
+            let ver = spec[2..].trim().to_string();
+            (VersionConstraintType::GreaterOrEqual, ver)
+        } else if spec.starts_with("<=") {
+            let ver = spec[2..].trim().to_string();
+            (VersionConstraintType::LessOrEqual, ver)
+        } else if spec.starts_with("==") {
+            let ver = spec[2..].trim().to_string();
+            (VersionConstraintType::Equal, ver)
+        } else if spec.starts_with('=') {
+            let ver = spec[1..].trim().to_string();
+            (VersionConstraintType::Equal, ver)
+        } else if spec.starts_with(">>") {
+            let ver = spec[2..].trim().to_string();
+            (VersionConstraintType::Greater, ver)
+        } else if spec.starts_with('>') {
+            let ver = spec[1..].trim().to_string();
+            (VersionConstraintType::Greater, ver)
+        } else if spec.starts_with("<<") {
+            let ver = spec[2..].trim().to_string();
+            (VersionConstraintType::Less, ver)
+        } else if spec.starts_with('<') {
+            let ver = spec[1..].trim().to_string();
+            (VersionConstraintType::Less, ver)
+        } else {
+            bail!("Invalid version constraint: {}", spec)
+        };
+
+        Ok(VersionConstraint {
+            constraint_type,
+            version,
+        })
+    }
+}
+
+// ------------------------------------------------------------------------
+// This is a single package dependency spec, including the package name,
+// the dependency types, and a list of version constraints,
+// which can also be empty
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Encode, Decode)]
 pub struct DepVersionSpec {
@@ -127,10 +90,35 @@ pub struct DepVersionSpec {
     /// Dependency Type(s)
     pub types: Vec<String>,
     /// Version constraints.
-    pub constraints: Vec<(VersionConstraint, String)>,
+    pub constraints: Vec<VersionConstraint>,
 }
 
 impl DepVersionSpec {
+    /// Parse a single dependency specification, i.e. a package in a dependency field
+    pub fn parse(dep: &str, dep_type: &str) -> Result<Self, Box<dyn Error>> {
+        let (name, spec) = match dep.find('(') {
+            Some(i) => (&dep[..i], &dep[i..]),
+            None => (dep, ""),
+        };
+        let name = name.trim();
+        let types: Vec<String> = vec![dep_type.to_string()];
+        let mut constraints = Vec::new();
+
+        if spec.len() > 0 {
+            let specbytes = spec.as_bytes();
+            if specbytes.first() != Some(&b'(') || specbytes.last() != Some(&b')') {
+                bail!("Invalid dependency version: {}", dep);
+            }
+            let spec = &spec[1..spec.len() - 1];
+            constraints.push(VersionConstraint::from_str(spec)?);
+        }
+        Ok(DepVersionSpec {
+            name: name.to_string(),
+            types,
+            constraints,
+        })
+    }
+
     /// Check if a version string satisfies all constraints in this DepVersionSpec
     pub fn satisfies(&self, version: &str) -> Result<bool, Box<dyn Error>> {
         // Parse the version string
@@ -140,18 +128,18 @@ impl DepVersionSpec {
         };
 
         // Check all constraints
-        for (constraint, constraint_version) in self.constraints.iter() {
-            let constraint_ver = match semver::Version::parse(constraint_version) {
+        for constraint in self.constraints.iter() {
+            let constraint_ver = match semver::Version::parse(&constraint.version) {
                 Ok(v) => v,
-                Err(e) => bail!("Invalid constraint version '{}': {}", constraint_version, e),
+                Err(e) => bail!("Invalid constraint version '{}': {}", constraint.version, e),
             };
 
-            let satisfied = match constraint {
-                VersionConstraint::Less => ver < constraint_ver,
-                VersionConstraint::LessOrEqual => ver <= constraint_ver,
-                VersionConstraint::Equal => ver == constraint_ver,
-                VersionConstraint::Greater => ver > constraint_ver,
-                VersionConstraint::GreaterOrEqual => ver >= constraint_ver,
+            let satisfied = match constraint.constraint_type {
+                VersionConstraintType::Less => ver < constraint_ver,
+                VersionConstraintType::LessOrEqual => ver <= constraint_ver,
+                VersionConstraintType::Equal => ver == constraint_ver,
+                VersionConstraintType::Greater => ver > constraint_ver,
+                VersionConstraintType::GreaterOrEqual => ver >= constraint_ver,
             };
 
             if !satisfied {
@@ -169,6 +157,55 @@ impl std::fmt::Display for DepVersionSpec {
         Ok(())
     }
 }
+
+// ------------------------------------------------------------------------
+// This is a set of package dependencies. It can be used for a single field,
+// e.g. Depends, or it can be used for the combined dependencies of a
+// package
+
+pub struct PackageDependencies {
+    pub dependencies: Vec<DepVersionSpec>,
+}
+
+impl PackageDependencies {
+    /// Parse a single dependency field
+    pub fn from_str(deps: &str, dep_type: &str) -> Result<Self, Box<dyn Error>> {
+        let mut result: Vec<DepVersionSpec> = Vec::new();
+        for dep in deps.split(',') {
+            let dep = dep.trim();
+            if dep.len() == 0 {
+                continue;
+            }
+            result.push(DepVersionSpec::parse(dep, dep_type)?);
+        }
+
+        // need to merge constraints for the same package
+        let dependencies = Self::simplify(result);
+        Ok(PackageDependencies { dependencies })
+    }
+
+    /// Merge constraints for the same package
+    pub fn simplify(deps: Vec<DepVersionSpec>) -> Vec<DepVersionSpec> {
+        let mut pkgmap: HashMap<&str, usize> = HashMap::new();
+        let mut deps2 = Vec::new();
+        for dep in deps.iter() {
+            if let Some(idx) = pkgmap.get(dep.name.as_str()) {
+                let existing: &mut DepVersionSpec = &mut deps2[*idx];
+                for c in dep.constraints.iter() {
+                    if !existing.constraints.contains(c) {
+                        existing.constraints.push(c.clone());
+                    }
+                }
+            } else {
+                pkgmap.insert(dep.name.as_str(), deps2.len());
+                deps2.push(dep.clone());
+            }
+        }
+        deps2
+    }
+}
+
+// ------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Encode, Decode)]
 pub struct Package {

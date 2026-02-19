@@ -47,30 +47,30 @@ pub fn rpackage_version_ranges_from_constraints(
     for dep in constraints.iter() {
         let mut vs = RPackageVersionRanges::full();
         for cs in dep.constraints.iter() {
-            let ver = match RPackageVersion::from_str(&cs.1) {
+            let ver = match RPackageVersion::from_str(&cs.version) {
                 Ok(v) => v,
                 Err(_) => {
                     info!(
                         "Invalid version in constraint for package {}: {}",
-                        dep.name, &cs.1
+                        dep.name, &cs.version
                     );
                     continue;
                 }
             };
-            match cs.0 {
-                VersionConstraint::Less => {
+            match cs.constraint_type {
+                VersionConstraintType::Less => {
                     vs = vs.intersection(&Range::strictly_lower_than(ver));
                 }
-                VersionConstraint::LessOrEqual => {
+                VersionConstraintType::LessOrEqual => {
                     vs = vs.intersection(&Range::lower_than(ver));
                 }
-                VersionConstraint::Equal => {
+                VersionConstraintType::Equal => {
                     vs = vs.intersection(&Range::singleton(ver));
                 }
-                VersionConstraint::Greater => {
+                VersionConstraintType::Greater => {
                     vs = vs.intersection(&Range::strictly_higher_than(ver));
                 }
-                VersionConstraint::GreaterOrEqual => {
+                VersionConstraintType::GreaterOrEqual => {
                     vs = vs.intersection(&Range::higher_than(ver));
                 }
             }

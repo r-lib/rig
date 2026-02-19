@@ -41,6 +41,7 @@ mod download;
 mod hardcoded;
 mod library;
 mod proj;
+mod rds;
 mod renv;
 mod repos;
 mod repositories;
@@ -49,6 +50,7 @@ mod run;
 mod rversion;
 mod solver;
 mod sysreqs;
+mod test;
 mod utils;
 
 use library::*;
@@ -58,6 +60,7 @@ use sysreqs::*;
 use utils::unset_r_envvars;
 
 use crate::common::*;
+use crate::test::*;
 
 mod escalate;
 
@@ -169,6 +172,7 @@ fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
         Some(("sysreqs", sub)) => sc_sysreqs(sub, args)?,
         Some(("available", sub)) => sc_available(sub, args)?,
         Some(("run", sub)) => retval = sc_run(sub, args)?,
+        Some(("test", sub)) => sc_test(sub, args)?,
         _ => (), // unreachable
     }
     Ok(retval)

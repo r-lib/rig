@@ -57,25 +57,25 @@ fn proj_read_deps(input: &str, dev: bool) -> Result<Vec<DepVersionSpec>, Box<dyn
 
     for desc0 in desc.iter() {
         if let Some(dd) = desc0.get("Depends") {
-            deps.append(&mut parse_deps(dd, "Depends")?)
+            deps.append(&mut PackageDependencies::from_str(dd, "Depends")?.dependencies)
         }
         if let Some(di) = desc0.get("Imports") {
-            deps.append(&mut parse_deps(di, "Imports")?)
+            deps.append(&mut PackageDependencies::from_str(di, "Imports")?.dependencies)
         }
         if let Some(dl) = desc0.get("LinkingTo") {
-            deps.append(&mut parse_deps(dl, "LinkingTo")?);
+            deps.append(&mut PackageDependencies::from_str(dl, "LinkingTo")?.dependencies);
         }
         if dev {
             if let Some(ds) = desc0.get("Suggests") {
-                deps.append(&mut parse_deps(ds, "Suggests")?);
+                deps.append(&mut PackageDependencies::from_str(ds, "Suggests")?.dependencies);
             }
             if let Some(de) = desc0.get("Enhances") {
-                deps.append(&mut parse_deps(de, "Enhances")?);
+                deps.append(&mut PackageDependencies::from_str(de, "Enhances")?.dependencies);
             }
         }
     }
 
-    let deps = simplify_constraints(deps);
+    let deps = PackageDependencies::simplify(deps);
 
     Ok(deps)
 }
@@ -115,7 +115,7 @@ fn sc_proj_deps(
                 if i > 0 {
                     cst += ", ";
                 }
-                cst += &format!("{} {}", cs.0, cs.1);
+                cst += &format!("{} {}", cs.constraint_type, cs.version);
             }
             println!(" {{");
             let comma = if cst == "" { "" } else { ", " };
@@ -138,7 +138,7 @@ fn sc_proj_deps(
                 if i > 0 {
                     cst += ", ";
                 }
-                cst += &format!("{} {}", cs.0, cs.1);
+                cst += &format!("{} {}", cs.constraint_type, cs.version);
             }
             tab.add_row(row!(pkg.name, cst, pkg.types.join(", ")));
         }

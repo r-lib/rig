@@ -68,15 +68,15 @@ fn parse_packages_from_dcf(dcf_path: &PathBuf) -> Result<Vec<Package>, Box<dyn E
         let mut dependencies: Vec<DepVersionSpec> = vec![];
 
         if let Some(dd) = pkg.get("Depends") {
-            dependencies.append(&mut parse_deps(dd, "Depends")?)
+            dependencies.append(&mut PackageDependencies::from_str(dd, "Depends")?.dependencies)
         }
         if let Some(di) = pkg.get("Imports") {
-            dependencies.append(&mut parse_deps(di, "Imports")?)
+            dependencies.append(&mut PackageDependencies::from_str(di, "Imports")?.dependencies)
         }
         if let Some(dl) = pkg.get("LinkingTo") {
-            dependencies.append(&mut parse_deps(dl, "LinkingTo")?);
+            dependencies.append(&mut PackageDependencies::from_str(dl, "LinkingTo")?.dependencies);
         }
-        let dependencies = simplify_constraints(dependencies);
+        let dependencies = PackageDependencies::simplify(dependencies);
 
         packages.push(Package {
             name,

@@ -61,6 +61,8 @@ path-clean = "1.0.1"
 pubgrub = "0.3.0"
 # random file names, e.g. when renaming the macos installer
 rand = "0.8.5"
+# deserialize R files
+rds2rust = { git = "https://github.com/gaborcsardi/rds2rust", branch = "feature/xz" }
 regex = "1.5.4"
 # HTTP
 reqwest = { version = "0.11", features = [
@@ -107,4 +109,5 @@ whoami = "1.4.1"
 
 [dev-dependencies]
 assert_cmd = "2.0.8"
+insta = "1.35"
 predicates = "2.1.5"
