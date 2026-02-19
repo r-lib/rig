@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::error::Error;
 
 use bitcode::{Decode, Encode};
+use deb822_fast::Paragraph;
 use semver;
 use simple_error::*;
 
@@ -191,7 +192,9 @@ impl PackageDependencies {
         }
 
         // need to merge constraints for the same package
-        let mut pkg_deps = PackageDependencies { dependencies: result };
+        let mut pkg_deps = PackageDependencies {
+            dependencies: result,
+        };
         pkg_deps.simplify();
         Ok(pkg_deps)
     }
@@ -224,7 +227,7 @@ pub struct DCFBuilt {
     pub r: String,
     pub platform: Option<String>,
     pub timestamp: String,
-    pub os_type: String
+    pub os_type: String,
 }
 
 impl DCFBuilt {
@@ -232,7 +235,10 @@ impl DCFBuilt {
         let parts: Vec<&str> = s.split(';').collect();
 
         if parts.len() != 4 {
-            bail!("Invalid Built field format: expected 4 parts, got {}", parts.len());
+            bail!(
+                "Invalid Built field format: expected 4 parts, got {}",
+                parts.len()
+            );
         }
 
         // First part: R version (e.g., "R 4.3.0") - strip the "R" prefix and any whitespace
@@ -293,6 +299,56 @@ pub struct Package {
     pub filesize: Option<u64>,
 }
 
+impl Package {
+    pub fn from_dcf_paragraph(pkg: &Paragraph) -> Result<Self, Box<dyn Error>> {
+        let name = pkg
+            .get("Package")
+            .ok_or("Missing Package field")?
+            .to_string();
+        let version = pkg
+            .get("Version")
+            .ok_or("Missing Version field")?
+            .to_string();
+        let mut dependencies = PackageDependencies::new();
+
+        let dep_types = vec!["Depends", "Imports", "LinkingTo", "Suggests", "Enhances"];
+        for dep_type in dep_types {
+            if let Some(deps) = pkg.get(dep_type) {
+                dependencies.append(&mut PackageDependencies::from_str(deps, dep_type)?);
+            }
+        }
+        dependencies.simplify();
+        let file = pkg.get("File").map(|f| f.to_string());
+        let path = pkg.get("Path").map(|p| p.to_string());
+        let download_url = pkg.get("DownloadURL").map(|u| u.to_string());
+        let built = pkg
+            .get("Built")
+            .map(|b| DCFBuilt::from_str(b))
+            .transpose()?;
+        let license = pkg.get("License").map(|l| l.to_string());
+        let platform = pkg.get("Platform").map(|p| p.to_string());
+        let arch = pkg.get("Arch").map(|a| a.to_string());
+        let graphics_api_version = pkg.get("GraphicsAPIVersion").map(|g| g.to_string());
+        let internals_id = pkg.get("InternalsID").map(|i| i.to_string());
+        let filesize = pkg.get("Filesize").and_then(|s| s.parse::<u64>().ok());
+
+        Ok(Package {
+            name,
+            version,
+            dependencies,
+            download_url,
+            path,
+            file,
+            built,
+            license,
+            platform,
+            arch,
+            graphics_api_version,
+            internals_id,
+            filesize,
+        })
+    }
+}
 // ------------------------------------------------------------------------
 
 #[cfg(test)]

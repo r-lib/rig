@@ -57,51 +57,7 @@ fn parse_packages_from_dcf(dcf_path: &PathBuf) -> Result<Vec<Package>, Box<dyn E
     let mut packages: Vec<Package> = vec![];
 
     for pkg in desc.iter() {
-        let name = match pkg.get("Package") {
-            Some(n) => n.to_string(),
-            None => continue,
-        };
-        let version = match pkg.get("Version") {
-            Some(v) => v.to_string(),
-            None => continue,
-        };
-        let mut dependencies = PackageDependencies::new();
-
-        let dep_types = vec!["Depends", "Imports", "LinkingTo", "Suggests", "Enhances"];
-        for dep_type in dep_types {
-            if let Some(deps) = pkg.get(dep_type) {
-                dependencies.append(&mut PackageDependencies::from_str(deps, dep_type)?);
-            }
-        }
-        dependencies.simplify();
-        let file = pkg.get("File").map(|f| f.to_string());
-        let path = pkg.get("Path").map(|p| p.to_string());
-        let download_url = pkg.get("DownloadURL").map(|u| u.to_string());
-        let built = pkg.get("Built")
-            .map(|b| DCFBuilt::from_str(b))
-            .transpose()?;
-        let license = pkg.get("License").map(|l| l.to_string());
-        let platform = pkg.get("Platform").map(|p| p.to_string());
-        let arch = pkg.get("Arch").map(|a| a.to_string());
-        let graphics_api_version = pkg.get("GraphicsAPIVersion").map(|g| g.to_string());
-        let internals_id = pkg.get("InternalsID").map(|i| i.to_string());
-        let filesize = pkg.get("Filesize").and_then(|s| s.parse::<u64>().ok());
-
-        packages.push(Package {
-            name,
-            version,
-            dependencies,
-            download_url,
-            path,
-            file,
-            built,
-            license,
-            platform,
-            arch,
-            graphics_api_version,
-            internals_id,
-            filesize,
-        });
+        packages.push(Package::from_dcf_paragraph(pkg)?);
     }
 
     Ok(packages)
