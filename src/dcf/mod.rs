@@ -220,6 +220,55 @@ impl PackageDependencies {
 // ------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Encode, Decode)]
+pub struct DCFBuilt {
+    pub r: String,
+    pub platform: Option<String>,
+    pub timestamp: String,
+    pub os_type: String
+}
+
+impl DCFBuilt {
+    pub fn from_str(s: &str) -> Result<Self, Box<dyn Error>> {
+        let parts: Vec<&str> = s.split(';').collect();
+
+        if parts.len() != 4 {
+            bail!("Invalid Built field format: expected 4 parts, got {}", parts.len());
+        }
+
+        // First part: R version (e.g., "R 4.3.0") - strip the "R" prefix and any whitespace
+        let r_part = parts[0].trim();
+        let r = if r_part.starts_with('R') {
+            r_part[1..].trim().to_string()
+        } else {
+            r_part.to_string()
+        };
+
+        // Second part: platform (can be empty)
+        let platform = if parts[1].trim().is_empty() {
+            None
+        } else {
+            Some(parts[1].trim().to_string())
+        };
+
+        // Third part: timestamp
+        let timestamp = parts[2].trim().to_string();
+
+        // Fourth part: os_type
+        let os_type = parts[3].trim().to_string();
+
+        Ok(DCFBuilt {
+            r: r,
+            platform,
+            timestamp,
+            os_type,
+        })
+    }
+}
+
+// ------------------------------------------------------------------------
+
+
+#[derive(Debug, Clone, Encode, Decode)]
 pub struct Package {
     pub name: String,
     pub version: String,
@@ -232,5 +281,5 @@ pub struct Package {
     pub path: Option<String>,
     // newer repos have a Built field, so we can update binaries when
     // CRAN rebuilds them.
-    pub built: Option<String>,
+    pub built: Option<DCFBuilt>,
 }

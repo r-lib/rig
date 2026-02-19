@@ -76,7 +76,9 @@ fn parse_packages_from_dcf(dcf_path: &PathBuf) -> Result<Vec<Package>, Box<dyn E
         dependencies.simplify();
         let path = pkg.get("Path").map(|p| p.to_string());
         let url = pkg.get("URL").map(|u| u.to_string());
-        let built = pkg.get("Built").map(|b| b.to_string());
+        let built = pkg.get("Built")
+            .map(|b| DCFBuilt::from_str(b))
+            .transpose()?;
 
         packages.push(Package {
             name,
