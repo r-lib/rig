@@ -283,3 +283,81 @@ pub struct Package {
     // CRAN rebuilds them.
     pub built: Option<DCFBuilt>,
 }
+
+// ------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_dcf_built_from_str_with_platform() {
+        let input = "R 4.3.0; x86_64-pc-linux-gnu; 2024-01-15 10:30:00 UTC; unix";
+        let result = DCFBuilt::from_str(input);
+
+        assert!(result.is_ok());
+        let built = result.unwrap();
+        assert_eq!(built.r, "4.3.0");
+        assert_eq!(built.platform, Some("x86_64-pc-linux-gnu".to_string()));
+        assert_eq!(built.timestamp, "2024-01-15 10:30:00 UTC");
+        assert_eq!(built.os_type, "unix");
+    }
+
+    #[test]
+    fn test_dcf_built_from_str_empty_platform() {
+        let input = "R 4.3.0; ; 2024-01-15 10:30:00 UTC; unix";
+        let result = DCFBuilt::from_str(input);
+
+        assert!(result.is_ok());
+        let built = result.unwrap();
+        assert_eq!(built.r, "4.3.0");
+        assert_eq!(built.platform, None);
+        assert_eq!(built.timestamp, "2024-01-15 10:30:00 UTC");
+        assert_eq!(built.os_type, "unix");
+    }
+
+    #[test]
+    fn test_dcf_built_from_str_flexible_whitespace() {
+        // Test with multiple spaces between R and version
+        let input = "R  4.3.0; ; 2024-01-15 10:30:00 UTC; unix";
+        let result = DCFBuilt::from_str(input);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().r, "4.3.0");
+
+        // Test with tab between R and version
+        let input = "R\t4.3.0; ; 2024-01-15 10:30:00 UTC; unix";
+        let result = DCFBuilt::from_str(input);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().r, "4.3.0");
+
+        // Test with no space (just R prefix)
+        let input = "R4.3.0; ; 2024-01-15 10:30:00 UTC; unix";
+        let result = DCFBuilt::from_str(input);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().r, "4.3.0");
+    }
+
+    #[test]
+    fn test_dcf_built_from_str_no_r_prefix() {
+        // Should still work if R prefix is missing
+        let input = "4.3.0; ; 2024-01-15 10:30:00 UTC; unix";
+        let result = DCFBuilt::from_str(input);
+
+        assert!(result.is_ok());
+        let built = result.unwrap();
+        assert_eq!(built.r, "4.3.0");
+    }
+
+    #[test]
+    fn test_dcf_built_from_str_invalid_parts() {
+        // Too few parts
+        let input = "R 4.3.0; ; 2024-01-15 10:30:00 UTC";
+        let result = DCFBuilt::from_str(input);
+        assert!(result.is_err());
+
+        // Too many parts
+        let input = "R 4.3.0; ; 2024-01-15 10:30:00 UTC; unix; extra";
+        let result = DCFBuilt::from_str(input);
+        assert!(result.is_err());
+    }
+}
