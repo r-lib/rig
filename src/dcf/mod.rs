@@ -266,7 +266,7 @@ impl DCFBuilt {
 }
 
 // ------------------------------------------------------------------------
-
+// This is a package as known by the dependency solver.
 
 #[derive(Debug, Clone, Encode, Decode)]
 pub struct Package {
@@ -275,13 +275,22 @@ pub struct Package {
     pub dependencies: PackageDependencies,
     // with pak, it is possible to store the package at a custom URL
     // instead of the normal CRAN-like repository structure.
-    pub url: Option<String>,
+    pub download_url: Option<String>,
+    // custom file name for this package
+    pub file: Option<String>,
     // sometimes the package is at a special path in the repository
-    // if url is not None, then this should be None
+    // if download_url is not None, then this should be None
     pub path: Option<String>,
     // newer repos have a Built field, so we can update binaries when
     // CRAN rebuilds them.
     pub built: Option<DCFBuilt>,
+    pub license: Option<String>,
+    // used by the R-hub repos and pak
+    pub platform: Option<String>,
+    pub arch: Option<String>,
+    pub graphics_api_version: Option<String>,
+    pub internals_id: Option<String>,
+    pub filesize: Option<u64>,
 }
 
 // ------------------------------------------------------------------------

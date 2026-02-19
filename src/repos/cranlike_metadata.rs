@@ -74,19 +74,33 @@ fn parse_packages_from_dcf(dcf_path: &PathBuf) -> Result<Vec<Package>, Box<dyn E
             }
         }
         dependencies.simplify();
+        let file = pkg.get("File").map(|f| f.to_string());
         let path = pkg.get("Path").map(|p| p.to_string());
-        let url = pkg.get("URL").map(|u| u.to_string());
+        let download_url = pkg.get("DownloadURL").map(|u| u.to_string());
         let built = pkg.get("Built")
             .map(|b| DCFBuilt::from_str(b))
             .transpose()?;
+        let license = pkg.get("License").map(|l| l.to_string());
+        let platform = pkg.get("Platform").map(|p| p.to_string());
+        let arch = pkg.get("Arch").map(|a| a.to_string());
+        let graphics_api_version = pkg.get("GraphicsAPIVersion").map(|g| g.to_string());
+        let internals_id = pkg.get("InternalsID").map(|i| i.to_string());
+        let filesize = pkg.get("Filesize").and_then(|s| s.parse::<u64>().ok());
 
         packages.push(Package {
             name,
             version,
-            dependencies: dependencies,
-            url: url,
-            path: path,
-            built: built
+            dependencies,
+            download_url,
+            path,
+            file,
+            built,
+            license,
+            platform,
+            arch,
+            graphics_api_version,
+            internals_id,
+            filesize,
         });
     }
 
