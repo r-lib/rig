@@ -163,11 +163,22 @@ impl std::fmt::Display for DepVersionSpec {
 // e.g. Depends, or it can be used for the combined dependencies of a
 // package
 
+#[derive(Debug, Clone, Encode, Decode)]
 pub struct PackageDependencies {
     pub dependencies: Vec<DepVersionSpec>,
 }
 
 impl PackageDependencies {
+    pub fn new() -> Self {
+        PackageDependencies {
+            dependencies: Vec::new(),
+        }
+    }
+
+    pub fn append(&mut self, other: &mut PackageDependencies) {
+        self.dependencies.append(&mut other.dependencies);
+    }
+
     /// Parse a single dependency field
     pub fn from_str(deps: &str, dep_type: &str) -> Result<Self, Box<dyn Error>> {
         let mut result: Vec<DepVersionSpec> = Vec::new();
@@ -180,15 +191,16 @@ impl PackageDependencies {
         }
 
         // need to merge constraints for the same package
-        let dependencies = Self::simplify(result);
-        Ok(PackageDependencies { dependencies })
+        let mut pkg_deps = PackageDependencies { dependencies: result };
+        pkg_deps.simplify();
+        Ok(pkg_deps)
     }
 
     /// Merge constraints for the same package
-    pub fn simplify(deps: Vec<DepVersionSpec>) -> Vec<DepVersionSpec> {
+    pub fn simplify(&mut self) {
         let mut pkgmap: HashMap<&str, usize> = HashMap::new();
         let mut deps2 = Vec::new();
-        for dep in deps.iter() {
+        for dep in self.dependencies.iter() {
             if let Some(idx) = pkgmap.get(dep.name.as_str()) {
                 let existing: &mut DepVersionSpec = &mut deps2[*idx];
                 for c in dep.constraints.iter() {
@@ -201,7 +213,7 @@ impl PackageDependencies {
                 deps2.push(dep.clone());
             }
         }
-        deps2
+        self.dependencies = deps2;
     }
 }
 
@@ -211,5 +223,14 @@ impl PackageDependencies {
 pub struct Package {
     pub name: String,
     pub version: String,
-    pub dependencies: Vec<DepVersionSpec>,
+    pub dependencies: PackageDependencies,
+    // with pak, it is possible to store the package at a custom URL
+    // instead of the normal CRAN-like repository structure.
+    pub url: Option<String>,
+    // sometimes the package is at a special path in the repository
+    // if url is not None, then this should be None
+    pub path: Option<String>,
+    // newer repos have a Built field, so we can update binaries when
+    // CRAN rebuilds them.
+    pub built: Option<String>,
 }

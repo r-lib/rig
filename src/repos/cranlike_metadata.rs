@@ -65,23 +65,26 @@ fn parse_packages_from_dcf(dcf_path: &PathBuf) -> Result<Vec<Package>, Box<dyn E
             Some(v) => v.to_string(),
             None => continue,
         };
-        let mut dependencies: Vec<DepVersionSpec> = vec![];
+        let mut dependencies = PackageDependencies::new();
 
-        if let Some(dd) = pkg.get("Depends") {
-            dependencies.append(&mut PackageDependencies::from_str(dd, "Depends")?.dependencies)
+        let dep_types = vec!["Depends", "Imports", "LinkingTo", "Suggests", "Enhances"];
+        for dep_type in dep_types {
+            if let Some(deps) = pkg.get(dep_type) {
+                dependencies.append(&mut PackageDependencies::from_str(deps, dep_type)?);
+            }
         }
-        if let Some(di) = pkg.get("Imports") {
-            dependencies.append(&mut PackageDependencies::from_str(di, "Imports")?.dependencies)
-        }
-        if let Some(dl) = pkg.get("LinkingTo") {
-            dependencies.append(&mut PackageDependencies::from_str(dl, "LinkingTo")?.dependencies);
-        }
-        let dependencies = PackageDependencies::simplify(dependencies);
+        dependencies.simplify();
+        let path = pkg.get("Path").map(|p| p.to_string());
+        let url = pkg.get("URL").map(|u| u.to_string());
+        let built = pkg.get("Built").map(|b| b.to_string());
 
         packages.push(Package {
             name,
             version,
-            dependencies,
+            dependencies: dependencies,
+            url: url,
+            path: path,
+            built: built
         });
     }
 

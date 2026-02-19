@@ -75,9 +75,10 @@ fn proj_read_deps(input: &str, dev: bool) -> Result<Vec<DepVersionSpec>, Box<dyn
         }
     }
 
-    let deps = PackageDependencies::simplify(deps);
+    let mut pkg_deps = PackageDependencies { dependencies: deps };
+    pkg_deps.simplify();
 
-    Ok(deps)
+    Ok(pkg_deps.dependencies)
 }
 
 /// Parse dependencies from DESCRIPTION file and print them out
@@ -162,7 +163,7 @@ fn sc_proj_solve_latest(
         reg.add_package_version(
             pkg.name.clone(),
             RPackageVersion::from_str(&pkg.version)?,
-            rpackage_version_ranges_from_constraints(&pkg.dependencies),
+            rpackage_version_ranges_from_constraints(&pkg.dependencies.dependencies),
         );
     }
 

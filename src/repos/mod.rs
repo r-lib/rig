@@ -457,6 +457,7 @@ fn sc_repos_package_list(
         for pkg in packages.iter() {
             let deps_str: String = pkg
                 .dependencies
+                .dependencies
                 .iter()
                 .map(|x| format!("{}", x))
                 .collect::<Vec<String>>()
@@ -627,6 +628,7 @@ fn parse_crandb_deps(
         }
     }
 
-    let result2: Vec<DepVersionSpec> = PackageDependencies::simplify(result);
-    Ok(result2)
+    let mut pkg_deps = PackageDependencies { dependencies: result };
+    pkg_deps.simplify();
+    Ok(pkg_deps.dependencies)
 }
