@@ -56,23 +56,16 @@ fn proj_read_deps(input: &str, dev: bool) -> Result<Vec<DepVersionSpec>, Box<dyn
     let mut deps: Vec<DepVersionSpec> = vec![];
 
     for desc0 in desc.iter() {
-        if let Some(dd) = desc0.get("Depends") {
-            deps.append(&mut PackageDependencies::from_str(dd, "Depends")?.dependencies)
-        }
-        if let Some(di) = desc0.get("Imports") {
-            deps.append(&mut PackageDependencies::from_str(di, "Imports")?.dependencies)
-        }
-        if let Some(dl) = desc0.get("LinkingTo") {
-            deps.append(&mut PackageDependencies::from_str(dl, "LinkingTo")?.dependencies);
-        }
-        if dev {
-            if let Some(ds) = desc0.get("Suggests") {
-                deps.append(&mut PackageDependencies::from_str(ds, "Suggests")?.dependencies);
-            }
-            if let Some(de) = desc0.get("Enhances") {
-                deps.append(&mut PackageDependencies::from_str(de, "Enhances")?.dependencies);
-            }
-        }
+        let package = Package::from_dcf_paragraph(desc0)?;
+        deps.extend(package.dependencies.dependencies);
+    }
+
+    // Filter out Suggests and Enhances if dev is false
+    if !dev {
+        deps.retain(|dep| {
+            !dep.types.contains(&"Suggests".to_string())
+                && !dep.types.contains(&"Enhances".to_string())
+        });
     }
 
     let mut pkg_deps = PackageDependencies { dependencies: deps };
