@@ -38,6 +38,8 @@ deb822-fast = "0.2.3"
 directories = "4.0.1"
 # gzip compression/decompression
 flate2 = "1.0"
+# xz compression/decompression
+xz2 = "0.1"
 # run external commands and pipe their output
 duct = "0.13.5"
 # to set the mtime of files when downloading

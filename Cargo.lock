@@ -1534,6 +1534,7 @@ dependencies = [
  "version-ranges",
  "whoami",
  "winreg 0.10.1",
+ "xz2",
 ]
 
 [[package]]

@@ -7,6 +7,7 @@ use deb822_fast::Deb822;
 use directories::ProjectDirs;
 use flate2::read::GzDecoder;
 use log::info;
+use xz2::read::XzDecoder;
 
 use crate::dcf::*;
 use crate::download::download_if_newer_;
@@ -51,18 +52,24 @@ pub fn repos_get_packages() -> Result<Vec<Package>, Box<dyn Error>> {
 fn parse_packages_from_dcf(dcf_path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
     let mut file = File::open(dcf_path)?;
 
-    // Peek at first 2 bytes to check for gzip magic number (0x1f, 0x8b)
-    let mut magic = [0u8; 2];
-    file.read_exact(&mut magic)?;
+    // Peek at first 6 bytes to check for compression magic numbers
+    // gzip: 0x1f, 0x8b (2 bytes)
+    // xz: 0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00 (6 bytes: 0xFD, '7', 'z', 'X', 'Z', 0x00)
+    let mut magic = [0u8; 6];
+    let bytes_read = file.read(&mut magic)?;
 
     // Rewind to start
     file.seek(SeekFrom::Start(0))?;
 
     info!("Parsing repo metadata from {}", dcf_path.display());
 
-    let desc = if magic == [0x1f, 0x8b] {
+    let desc = if bytes_read >= 2 && magic[0..2] == [0x1f, 0x8b] {
         // Gzip compressed
         let decoder = GzDecoder::new(file);
+        Deb822::from_reader(decoder)?
+    } else if bytes_read >= 6 && magic == [0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00] {
+        // XZ compressed
+        let decoder = XzDecoder::new(file);
         Deb822::from_reader(decoder)?
     } else {
         // Uncompressed
