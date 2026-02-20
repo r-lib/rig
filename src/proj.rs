@@ -63,8 +63,8 @@ fn proj_read_deps(input: &str, dev: bool) -> Result<Vec<DepVersionSpec>, Box<dyn
     // Filter out Suggests and Enhances if dev is false
     if !dev {
         deps.retain(|dep| {
-            !dep.types.contains(&"Suggests".to_string())
-                && !dep.types.contains(&"Enhances".to_string())
+            !dep.types.contains(&RDepType::Suggests)
+                && !dep.types.contains(&RDepType::Enhances)
         });
     }
 
@@ -95,8 +95,8 @@ fn sc_proj_deps(
             return std::cmp::Ordering::Greater;
         }
         // Original sort: by type first, then by package name
-        let a_types = a.types.join(", ");
-        let b_types = b.types.join(", ");
+        let a_types = a.types.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
+        let b_types = b.types.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
         a_types.cmp(&b_types).then_with(|| a.name.cmp(&b.name))
     });
 
@@ -114,7 +114,8 @@ fn sc_proj_deps(
             println!(" {{");
             let comma = if cst == "" { "" } else { ", " };
             // TODO: should this be an array? Probably
-            println!("     \"types\": \"{}\",", pkg.types.join(", "));
+            let types_str = pkg.types.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
+            println!("     \"types\": \"{}\",", types_str);
             println!("     \"package\": \"{}\"{}", pkg.name, comma);
             if cst != "" {
                 println!("     \"version\": \"{}\"", cst)
@@ -134,7 +135,8 @@ fn sc_proj_deps(
                 }
                 cst += &format!("{} {}", cs.constraint_type, cs.version);
             }
-            tab.add_row(row!(pkg.name, cst, pkg.types.join(", ")));
+            let types_str = pkg.types.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
+            tab.add_row(row!(pkg.name, cst, types_str));
         }
 
         print!("{}", tab);
@@ -281,7 +283,7 @@ fn sc_proj_solve(
         deps.push(DepVersionSpec {
             name: "renv".to_string(),
             constraints: vec![],
-            types: vec!["Depends".to_string()],
+            types: vec![RDepType::Depends],
         });
     };
 

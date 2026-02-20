@@ -350,7 +350,7 @@ fn should_activate_repo(
             let depconstraint = VersionConstraint::from_str(constraint)?;
             let dep = DepVersionSpec {
                 name: "R".to_string(),
-                types: vec!["R version constraint".to_string()],
+                types: vec![RDepType::Depends],
                 constraints: vec![depconstraint],
             };
             if dep.satisfies(&rdata.version)? {
@@ -531,9 +531,10 @@ pub fn get_all_cran_package_versions(
     if let Some(versions) = versions.as_object() {
         for (ver, data) in versions {
             let mut deps: Vec<DepVersionSpec> = vec![];
-            for dep_type in DEP_TYPES {
-                if let Some(deps_json) = data.get(dep_type) {
-                    deps.append(&mut parse_crandb_deps(deps_json, dep_type)?);
+            for dep_type in RDepType::all() {
+                let dep_type_str = dep_type.to_string();
+                if let Some(deps_json) = data.get(&dep_type_str) {
+                    deps.append(&mut parse_crandb_deps(deps_json, &dep_type_str)?);
                 }
             }
             let pver: RPackageVersion = RPackageVersion::from_str(ver)?;
@@ -619,7 +620,7 @@ fn parse_crandb_deps(
                     result.push(DepVersionSpec {
                         name: name.to_string(),
                         constraints: vec![],
-                        types: vec![dep_type.to_string()],
+                        types: vec![RDepType::from_str(dep_type)?],
                     });
                 } else {
                     result.push(DepVersionSpec::parse(

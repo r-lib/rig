@@ -9,7 +9,49 @@ use simple_error::*;
 // ------------------------------------------------------------------------
 // Dependency types
 
-pub const DEP_TYPES: &[&str] = &["Depends", "Imports", "LinkingTo", "Suggests", "Enhances"];
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Encode, Decode)]
+pub enum RDepType {
+    Depends,
+    Imports,
+    LinkingTo,
+    Suggests,
+    Enhances,
+}
+
+impl RDepType {
+    pub fn from_str(s: &str) -> Result<Self, Box<dyn Error>> {
+        match s {
+            "Depends" => Ok(RDepType::Depends),
+            "Imports" => Ok(RDepType::Imports),
+            "LinkingTo" => Ok(RDepType::LinkingTo),
+            "Suggests" => Ok(RDepType::Suggests),
+            "Enhances" => Ok(RDepType::Enhances),
+            _ => bail!("Invalid dependency type: {}", s),
+        }
+    }
+
+    pub fn all() -> &'static [RDepType] {
+        &[
+            RDepType::Depends,
+            RDepType::Imports,
+            RDepType::LinkingTo,
+            RDepType::Suggests,
+            RDepType::Enhances,
+        ]
+    }
+}
+
+impl fmt::Display for RDepType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            RDepType::Depends => write!(f, "Depends"),
+            RDepType::Imports => write!(f, "Imports"),
+            RDepType::LinkingTo => write!(f, "LinkingTo"),
+            RDepType::Suggests => write!(f, "Suggests"),
+            RDepType::Enhances => write!(f, "Enhances"),
+        }
+    }
+}
 
 // ------------------------------------------------------------------------
 // An R package version. We need to keep the original string, because
@@ -126,7 +168,7 @@ pub struct DepVersionSpec {
     /// Package name.
     pub name: String,
     /// Dependency Type(s)
-    pub types: Vec<String>,
+    pub types: Vec<RDepType>,
     /// Version constraints.
     pub constraints: Vec<VersionConstraint>,
 }
@@ -139,7 +181,7 @@ impl DepVersionSpec {
             None => (dep, ""),
         };
         let name = name.trim();
-        let types: Vec<String> = vec![dep_type.to_string()];
+        let types: Vec<RDepType> = vec![RDepType::from_str(dep_type)?];
         let mut constraints = Vec::new();
 
         if spec.len() > 0 {
@@ -363,9 +405,10 @@ impl Package {
         let version = RPackageVersion::from_str(version_str)?;
         let mut dependencies = PackageDependencies::new();
 
-        for dep_type in DEP_TYPES {
-            if let Some(deps) = pkg.get(dep_type) {
-                dependencies.append(&mut PackageDependencies::from_str(deps, dep_type)?);
+        for dep_type in RDepType::all() {
+            let dep_type_str = dep_type.to_string();
+            if let Some(deps) = pkg.get(&dep_type_str) {
+                dependencies.append(&mut PackageDependencies::from_str(deps, &dep_type_str)?);
             }
         }
         dependencies.simplify();
