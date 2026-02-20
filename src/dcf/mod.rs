@@ -53,6 +53,8 @@ impl fmt::Display for RDepType {
     }
 }
 
+pub static DEP_TYPES_SOFT: &[RDepType] = &[RDepType::Suggests, RDepType::Enhances];
+
 // ------------------------------------------------------------------------
 // An R package version. We need to keep the original string, because
 // it may contain dashes, that are also in the download URL.
@@ -399,9 +401,7 @@ impl Package {
             .get("Package")
             .ok_or("Missing Package field")?
             .to_string();
-        let version_str = pkg
-            .get("Version")
-            .ok_or("Missing Version field")?;
+        let version_str = pkg.get("Version").ok_or("Missing Version field")?;
         let version = RPackageVersion::from_str(version_str)?;
         let mut dependencies = PackageDependencies::new();
 

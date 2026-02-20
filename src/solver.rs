@@ -14,9 +14,14 @@ pub type RPackageVersionRanges = version_ranges::Ranges<RPackageVersion>;
 
 pub fn rpackage_version_ranges_from_constraints(
     constraints: &PackageDependencies,
+    dev: bool,
 ) -> HashMap<RPackageName, RPackageVersionRanges, rustc_hash::FxBuildHasher> {
     let mut vranges = HashMap::with_hasher(rustc_hash::FxBuildHasher::default());
     for dep in constraints.dependencies.iter() {
+        if !dev && dep.types.iter().all(|x| DEP_TYPES_SOFT.contains(&x)) {
+            // we ignore soft dependencies for now, as they are not required for installation
+            continue;
+        }
         let mut vs = RPackageVersionRanges::full();
         for cs in dep.constraints.iter() {
             let ver = cs.version.clone();
@@ -88,7 +93,7 @@ impl RPackageRegistry {
         }
         let vers = get_all_cran_package_versions(pkg, self.client.borrow().as_ref())?;
         for package in vers {
-            let vranges = rpackage_version_ranges_from_constraints(&package.dependencies);
+            let vranges = rpackage_version_ranges_from_constraints(&package.dependencies, false);
             self.add_package_version(pkg.clone(), package.version, vranges);
         }
         Ok(())

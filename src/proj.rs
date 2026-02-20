@@ -173,14 +173,14 @@ fn sc_proj_solve_latest(
         reg.add_package_version(
             pkg.name.clone(),
             pkg.version.clone(),
-            rpackage_version_ranges_from_constraints(&pkg.dependencies),
+            rpackage_version_ranges_from_constraints(&pkg.dependencies, false),
         );
     }
 
     reg.add_package_version(
         "_project".to_string(),
         RPackageVersion::from_str("1.0.0")?,
-        rpackage_version_ranges_from_constraints(deps),
+        rpackage_version_ranges_from_constraints(deps, true),
     );
 
     // add R itself, for now a hardcoded version
@@ -221,7 +221,7 @@ fn sc_proj_solve_all(
     reg.add_package_version(
         "_project".to_string(),
         RPackageVersion::from_str("1.0.0")?,
-        rpackage_version_ranges_from_constraints(deps),
+        rpackage_version_ranges_from_constraints(deps, true),
     );
 
     // add R itself, for now a hardcoded version
