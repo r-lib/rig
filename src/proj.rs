@@ -155,7 +155,7 @@ fn sc_proj_solve_latest(
     for pkg in pkgs.iter() {
         reg.add_package_version(
             pkg.name.clone(),
-            RPackageVersion::from_str(&pkg.version)?,
+            pkg.version.clone(),
             rpackage_version_ranges_from_constraints(&pkg.dependencies.dependencies),
         );
     }

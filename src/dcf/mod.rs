@@ -1,10 +1,40 @@
 use std::collections::HashMap;
 use std::error::Error;
+use std::fmt;
 
 use bitcode::{Decode, Encode};
 use deb822_fast::Paragraph;
-use semver;
 use simple_error::*;
+
+// ------------------------------------------------------------------------
+// An R package version. We need to keep the original string, because
+// it may contain dashes, that are also in the download URL.
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Encode, Decode)]
+pub struct RPackageVersion {
+    pub components: Vec<u32>,
+    pub original: String,
+}
+
+impl RPackageVersion {
+    pub fn from_str(s: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        let comps: Result<Vec<u32>, _> = s
+            .split(['.', '-'])
+            .map(|part| part.parse::<u32>())
+            .collect();
+        Ok(RPackageVersion {
+            components: comps?,
+            original: s.to_string(),
+        })
+    }
+}
+
+impl fmt::Display for RPackageVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.original)?;
+        Ok(())
+    }
+}
 
 // ------------------------------------------------------------------------
 // A version constraint type, e.g. >= or >>, etc.
@@ -37,40 +67,42 @@ impl std::fmt::Display for VersionConstraintType {
 #[derive(Debug, Hash, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct VersionConstraint {
     pub constraint_type: VersionConstraintType,
-    pub version: String,
+    pub version: RPackageVersion,
 }
 
 impl VersionConstraint {
     /// Parse a version constraint specification (e.g., ">= 4.0.0")
     /// The spec should NOT include surrounding parentheses
     pub fn from_str(spec: &str) -> Result<Self, Box<dyn Error>> {
-        let (constraint_type, version) = if spec.starts_with(">=") {
-            let ver = spec[2..].trim().to_string();
+        let (constraint_type, version_str) = if spec.starts_with(">=") {
+            let ver = spec[2..].trim();
             (VersionConstraintType::GreaterOrEqual, ver)
         } else if spec.starts_with("<=") {
-            let ver = spec[2..].trim().to_string();
+            let ver = spec[2..].trim();
             (VersionConstraintType::LessOrEqual, ver)
         } else if spec.starts_with("==") {
-            let ver = spec[2..].trim().to_string();
+            let ver = spec[2..].trim();
             (VersionConstraintType::Equal, ver)
         } else if spec.starts_with('=') {
-            let ver = spec[1..].trim().to_string();
+            let ver = spec[1..].trim();
             (VersionConstraintType::Equal, ver)
         } else if spec.starts_with(">>") {
-            let ver = spec[2..].trim().to_string();
+            let ver = spec[2..].trim();
             (VersionConstraintType::Greater, ver)
         } else if spec.starts_with('>') {
-            let ver = spec[1..].trim().to_string();
+            let ver = spec[1..].trim();
             (VersionConstraintType::Greater, ver)
         } else if spec.starts_with("<<") {
-            let ver = spec[2..].trim().to_string();
+            let ver = spec[2..].trim();
             (VersionConstraintType::Less, ver)
         } else if spec.starts_with('<') {
-            let ver = spec[1..].trim().to_string();
+            let ver = spec[1..].trim();
             (VersionConstraintType::Less, ver)
         } else {
             bail!("Invalid version constraint: {}", spec)
         };
+
+        let version = RPackageVersion::from_str(version_str)?;
 
         Ok(VersionConstraint {
             constraint_type,
@@ -123,24 +155,16 @@ impl DepVersionSpec {
     /// Check if a version string satisfies all constraints in this DepVersionSpec
     pub fn satisfies(&self, version: &str) -> Result<bool, Box<dyn Error>> {
         // Parse the version string
-        let ver = match semver::Version::parse(version) {
-            Ok(v) => v,
-            Err(e) => bail!("Invalid version '{}': {}", version, e),
-        };
+        let ver = RPackageVersion::from_str(version)?;
 
         // Check all constraints
         for constraint in self.constraints.iter() {
-            let constraint_ver = match semver::Version::parse(&constraint.version) {
-                Ok(v) => v,
-                Err(e) => bail!("Invalid constraint version '{}': {}", constraint.version, e),
-            };
-
             let satisfied = match constraint.constraint_type {
-                VersionConstraintType::Less => ver < constraint_ver,
-                VersionConstraintType::LessOrEqual => ver <= constraint_ver,
-                VersionConstraintType::Equal => ver == constraint_ver,
-                VersionConstraintType::Greater => ver > constraint_ver,
-                VersionConstraintType::GreaterOrEqual => ver >= constraint_ver,
+                VersionConstraintType::Less => ver < constraint.version,
+                VersionConstraintType::LessOrEqual => ver <= constraint.version,
+                VersionConstraintType::Equal => ver == constraint.version,
+                VersionConstraintType::Greater => ver > constraint.version,
+                VersionConstraintType::GreaterOrEqual => ver >= constraint.version,
             };
 
             if !satisfied {
@@ -277,7 +301,7 @@ impl DCFBuilt {
 #[derive(Debug, Clone, Encode, Decode)]
 pub struct Package {
     pub name: String,
-    pub version: String,
+    pub version: RPackageVersion,
     pub dependencies: PackageDependencies,
     // with pak, it is possible to store the package at a custom URL
     // instead of the normal CRAN-like repository structure.
@@ -300,15 +324,38 @@ pub struct Package {
 }
 
 impl Package {
+    /// Create a Package from CRANDB data (name, version, and dependencies)
+    pub fn from_crandb(
+        name: String,
+        version: RPackageVersion,
+        dependencies: Vec<DepVersionSpec>,
+    ) -> Self {
+        Package {
+            name,
+            version,
+            dependencies: PackageDependencies { dependencies },
+            download_url: None,
+            file: None,
+            path: None,
+            built: None,
+            license: None,
+            platform: None,
+            arch: None,
+            graphics_api_version: None,
+            internals_id: None,
+            filesize: None,
+        }
+    }
+
     pub fn from_dcf_paragraph(pkg: &Paragraph) -> Result<Self, Box<dyn Error>> {
         let name = pkg
             .get("Package")
             .ok_or("Missing Package field")?
             .to_string();
-        let version = pkg
+        let version_str = pkg
             .get("Version")
-            .ok_or("Missing Version field")?
-            .to_string();
+            .ok_or("Missing Version field")?;
+        let version = RPackageVersion::from_str(version_str)?;
         let mut dependencies = PackageDependencies::new();
 
         let dep_types = vec!["Depends", "Imports", "LinkingTo", "Suggests", "Enhances"];

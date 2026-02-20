@@ -18,7 +18,6 @@ use crate::dcf::*;
 use crate::download::download_if_newer_;
 use crate::hardcoded::*;
 use crate::repositories::*;
-use crate::solver::RPackageVersion;
 use crate::utils::*;
 
 #[cfg(target_os = "macos")]
@@ -511,7 +510,7 @@ fn get_cran_package_version(
 pub fn get_all_cran_package_versions(
     package: &str,
     client: Option<&reqwest::Client>,
-) -> Result<Vec<(RPackageVersion, Vec<DepVersionSpec>)>, Box<dyn Error>> {
+) -> Result<Vec<Package>, Box<dyn Error>> {
     let url = "https://crandb.r-pkg.org/".to_string() + &package + "/" + "all";
     let mut local = ProjectDirs::from("com", "gaborcsardi", "rig")
         .ok_or("Cannot determine cache directory")?
@@ -528,7 +527,7 @@ pub fn get_all_cran_package_versions(
     let json: Value = serde_json::from_str(&contents)?;
     let versions = &json["versions"];
 
-    let mut rows: Vec<(RPackageVersion, Vec<DepVersionSpec>)> = vec![];
+    let mut rows: Vec<Package> = vec![];
     if let Some(versions) = versions.as_object() {
         for (ver, data) in versions {
             let mut deps: Vec<DepVersionSpec> = vec![];
@@ -536,7 +535,8 @@ pub fn get_all_cran_package_versions(
             deps.append(&mut parse_crandb_deps(&data["Imports"], "Imports")?);
             deps.append(&mut parse_crandb_deps(&data["LinkingTo"], "LinkingTo")?);
             let pver: RPackageVersion = RPackageVersion::from_str(ver)?;
-            rows.push((pver, deps));
+            let pkg = Package::from_crandb(package.to_string(), pver, deps);
+            rows.push(pkg);
         }
     }
 
@@ -582,20 +582,21 @@ fn sc_repos_package_versions(
         require_with!(args.get_one::<String>("package"), "clap error").to_string();
 
     let mut rows = get_all_cran_package_versions(&package, None)?;
-    rows.sort_by(|a, b| a.0.cmp(&b.0)); // assumes RPackageVersion implements Ord
+    rows.sort_by(|a, b| a.version.cmp(&b.version));
 
     let mut tab: Table = Table::new("{:<}   {:<}   {:<}");
     tab.add_row(row!("Package", "Version", "Dependencies"));
     tab.add_heading("------------------------------------------------------------------------");
     for row in rows {
         let deps_str: String = row
-            .1
+            .dependencies
+            .dependencies
             .iter()
             .map(|x| format!("{}", x))
             .collect::<Vec<String>>()
             .join(", ");
 
-        tab.add_row(row!(&package, &row.0, &deps_str));
+        tab.add_row(row!(&row.name, &row.version, &deps_str));
     }
 
     print!("{}", tab);
@@ -628,7 +629,9 @@ fn parse_crandb_deps(
         }
     }
 
-    let mut pkg_deps = PackageDependencies { dependencies: result };
+    let mut pkg_deps = PackageDependencies {
+        dependencies: result,
+    };
     pkg_deps.simplify();
     Ok(pkg_deps.dependencies)
 }

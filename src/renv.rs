@@ -7,6 +7,7 @@ use serde_derive::Serialize;
 use simple_error::*;
 
 use crate::common::*;
+use crate::dcf::RPackageVersion;
 use crate::proj::BASE_PKGS;
 use crate::rversion::*;
 use crate::solver::*;

@@ -2,40 +2,12 @@ use std::cell::RefCell;
 use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::error::Error;
-use std::fmt;
 
-use log::info;
 use pubgrub::*;
 use simple_error::bail;
 
 use crate::dcf::*;
 use crate::repos::*;
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct RPackageVersion {
-    pub components: Vec<u32>,
-    pub original: String,
-}
-
-impl RPackageVersion {
-    pub fn from_str(s: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let comps: Result<Vec<u32>, _> = s
-            .split(['.', '-'])
-            .map(|part| part.parse::<u32>())
-            .collect();
-        Ok(RPackageVersion {
-            components: comps?,
-            original: s.to_string(),
-        })
-    }
-}
-
-impl fmt::Display for RPackageVersion {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.original)?;
-        Ok(())
-    }
-}
 
 type RPackageName = String;
 pub type RPackageVersionRanges = version_ranges::Ranges<RPackageVersion>;
@@ -47,16 +19,7 @@ pub fn rpackage_version_ranges_from_constraints(
     for dep in constraints.iter() {
         let mut vs = RPackageVersionRanges::full();
         for cs in dep.constraints.iter() {
-            let ver = match RPackageVersion::from_str(&cs.version) {
-                Ok(v) => v,
-                Err(_) => {
-                    info!(
-                        "Invalid version in constraint for package {}: {}",
-                        dep.name, &cs.version
-                    );
-                    continue;
-                }
-            };
+            let ver = cs.version.clone();
             match cs.constraint_type {
                 VersionConstraintType::Less => {
                     vs = vs.intersection(&Range::strictly_lower_than(ver));
@@ -122,9 +85,9 @@ impl RPackageRegistry {
             self.client.replace(Some(reqwest::Client::new()));
         }
         let vers = get_all_cran_package_versions(pkg, self.client.borrow().as_ref())?;
-        for (ver, deps) in vers {
-            let vranges = rpackage_version_ranges_from_constraints(&deps);
-            self.add_package_version(pkg.clone(), ver, vranges);
+        for package in vers {
+            let vranges = rpackage_version_ranges_from_constraints(&package.dependencies.dependencies);
+            self.add_package_version(pkg.clone(), package.version, vranges);
         }
         Ok(())
     }
