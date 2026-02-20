@@ -40,7 +40,7 @@ pub fn sc_proj(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn E
     }
 }
 
-fn proj_read_deps(input: &str, dev: bool) -> Result<Vec<DepVersionSpec>, Box<dyn Error>> {
+fn proj_read_deps(input: &str, dev: bool) -> Result<PackageDependencies, Box<dyn Error>> {
     info!("Reading dependencies from {}", input);
     let df: File = File::open(input)?;
     let desc = Deb822::from_reader(df)?;
@@ -53,25 +53,19 @@ fn proj_read_deps(input: &str, dev: bool) -> Result<Vec<DepVersionSpec>, Box<dyn
         bail!("Invalid DESCRIPTION file, empty lines are not allowed");
     }
 
-    let mut deps: Vec<DepVersionSpec> = vec![];
-
-    for desc0 in desc.iter() {
-        let package = Package::from_dcf_paragraph(desc0)?;
-        deps.extend(package.dependencies.dependencies);
-    }
+    // only one paragraph
+    let mut package = Package::from_dcf_paragraph(desc.iter().next().unwrap())?;
 
     // Filter out Suggests and Enhances if dev is false
     if !dev {
-        deps.retain(|dep| {
-            !dep.types.contains(&RDepType::Suggests)
-                && !dep.types.contains(&RDepType::Enhances)
+        package.dependencies.dependencies.retain(|dep| {
+            !dep.types.contains(&RDepType::Suggests) && !dep.types.contains(&RDepType::Enhances)
         });
     }
 
-    let mut pkg_deps = PackageDependencies { dependencies: deps };
-    pkg_deps.simplify();
+    package.dependencies.simplify();
 
-    Ok(pkg_deps.dependencies)
+    Ok(package.dependencies)
 }
 
 /// Parse dependencies from DESCRIPTION file and print them out
@@ -83,7 +77,8 @@ fn sc_proj_deps(
     let dev = args.get_flag("dev");
     let default_input = "DESCRIPTION".to_string();
     let input: &String = args.get_one::<String>("input").unwrap_or(&default_input);
-    let mut deps: Vec<DepVersionSpec> = proj_read_deps(input, dev)?;
+    let pkg_deps = proj_read_deps(input, dev)?;
+    let mut deps = pkg_deps.dependencies;
 
     // Sort by dependency type first, then by package name
     deps.sort_by(|a, b| {
@@ -95,8 +90,18 @@ fn sc_proj_deps(
             return std::cmp::Ordering::Greater;
         }
         // Original sort: by type first, then by package name
-        let a_types = a.types.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
-        let b_types = b.types.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
+        let a_types = a
+            .types
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let b_types = b
+            .types
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
         a_types.cmp(&b_types).then_with(|| a.name.cmp(&b.name))
     });
 
@@ -114,7 +119,12 @@ fn sc_proj_deps(
             println!(" {{");
             let comma = if cst == "" { "" } else { ", " };
             // TODO: should this be an array? Probably
-            let types_str = pkg.types.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
+            let types_str = pkg
+                .types
+                .iter()
+                .map(|t| t.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
             println!("     \"types\": \"{}\",", types_str);
             println!("     \"package\": \"{}\"{}", pkg.name, comma);
             if cst != "" {
@@ -135,7 +145,12 @@ fn sc_proj_deps(
                 }
                 cst += &format!("{} {}", cs.constraint_type, cs.version);
             }
-            let types_str = pkg.types.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
+            let types_str = pkg
+                .types
+                .iter()
+                .map(|t| t.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
             tab.add_row(row!(pkg.name, cst, types_str));
         }
 
@@ -147,7 +162,7 @@ fn sc_proj_deps(
 
 fn sc_proj_solve_latest(
     r_version: &str,
-    deps: &Vec<DepVersionSpec>,
+    deps: &PackageDependencies,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
     info!("Solver with latest package versions");
     let pkgs = repos_get_packages()?;
@@ -158,14 +173,14 @@ fn sc_proj_solve_latest(
         reg.add_package_version(
             pkg.name.clone(),
             pkg.version.clone(),
-            rpackage_version_ranges_from_constraints(&pkg.dependencies.dependencies),
+            rpackage_version_ranges_from_constraints(&pkg.dependencies),
         );
     }
 
     reg.add_package_version(
         "_project".to_string(),
         RPackageVersion::from_str("1.0.0")?,
-        rpackage_version_ranges_from_constraints(&deps),
+        rpackage_version_ranges_from_constraints(deps),
     );
 
     // add R itself, for now a hardcoded version
@@ -198,7 +213,7 @@ fn sc_proj_solve_latest(
 
 fn sc_proj_solve_all(
     r_version: &str,
-    deps: &Vec<DepVersionSpec>,
+    deps: &PackageDependencies,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
     info!("Solver with all package versions");
     let reg: RPackageRegistry = RPackageRegistry::default();
@@ -206,7 +221,7 @@ fn sc_proj_solve_all(
     reg.add_package_version(
         "_project".to_string(),
         RPackageVersion::from_str("1.0.0")?,
-        rpackage_version_ranges_from_constraints(&deps),
+        rpackage_version_ranges_from_constraints(deps),
     );
 
     // add R itself, for now a hardcoded version
@@ -277,10 +292,10 @@ fn sc_proj_solve(
     let dev = args.get_flag("dev");
     let default_input = "DESCRIPTION".to_string();
     let input: &String = args.get_one::<String>("input").unwrap_or(&default_input);
-    let mut deps: Vec<DepVersionSpec> = proj_read_deps(input, dev)?;
+    let mut pkg_deps = proj_read_deps(input, dev)?;
 
     if args.get_flag("renv") {
-        deps.push(DepVersionSpec {
+        pkg_deps.dependencies.push(DepVersionSpec {
             name: "renv".to_string(),
             constraints: vec![],
             types: vec![RDepType::Depends],
@@ -289,7 +304,7 @@ fn sc_proj_solve(
 
     // try latest version first
     let (registry, solution);
-    let try1 = sc_proj_solve_latest(&rver, &deps);
+    let try1 = sc_proj_solve_latest(&rver, &pkg_deps);
     match try1 {
         Ok((reg, sol)) => {
             registry = reg;
@@ -298,7 +313,7 @@ fn sc_proj_solve(
         }
         Err(err) => {
             print!("Failed: {:?}", err);
-            let try2 = sc_proj_solve_all(&rver, &deps);
+            let try2 = sc_proj_solve_all(&rver, &pkg_deps);
             match try2 {
                 Ok((reg, sol)) => {
                     registry = reg;

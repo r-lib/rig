@@ -13,10 +13,10 @@ type RPackageName = String;
 pub type RPackageVersionRanges = version_ranges::Ranges<RPackageVersion>;
 
 pub fn rpackage_version_ranges_from_constraints(
-    constraints: &Vec<DepVersionSpec>,
+    constraints: &PackageDependencies,
 ) -> HashMap<RPackageName, RPackageVersionRanges, rustc_hash::FxBuildHasher> {
     let mut vranges = HashMap::with_hasher(rustc_hash::FxBuildHasher::default());
-    for dep in constraints.iter() {
+    for dep in constraints.dependencies.iter() {
         let mut vs = RPackageVersionRanges::full();
         for cs in dep.constraints.iter() {
             let ver = cs.version.clone();
@@ -45,7 +45,9 @@ pub fn rpackage_version_ranges_from_constraints(
 
 #[derive(Default)]
 pub struct RPackageRegistry {
+    // for a package we have a list of versions
     versions: RefCell<HashMap<RPackageName, Vec<RPackageVersion>>>,
+    // for a package version, we have a list of dependencies
     deps: RefCell<
         HashMap<
             (RPackageName, RPackageVersion),
@@ -86,7 +88,7 @@ impl RPackageRegistry {
         }
         let vers = get_all_cran_package_versions(pkg, self.client.borrow().as_ref())?;
         for package in vers {
-            let vranges = rpackage_version_ranges_from_constraints(&package.dependencies.dependencies);
+            let vranges = rpackage_version_ranges_from_constraints(&package.dependencies);
             self.add_package_version(pkg.clone(), package.version, vranges);
         }
         Ok(())

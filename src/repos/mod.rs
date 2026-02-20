@@ -530,15 +530,16 @@ pub fn get_all_cran_package_versions(
     let mut rows: Vec<Package> = vec![];
     if let Some(versions) = versions.as_object() {
         for (ver, data) in versions {
-            let mut deps: Vec<DepVersionSpec> = vec![];
+            let mut pkg_deps = PackageDependencies::new();
             for dep_type in RDepType::all() {
                 let dep_type_str = dep_type.to_string();
                 if let Some(deps_json) = data.get(&dep_type_str) {
-                    deps.append(&mut parse_crandb_deps(deps_json, &dep_type_str)?);
+                    pkg_deps.append(&mut parse_crandb_deps(deps_json, &dep_type_str)?);
                 }
             }
+            pkg_deps.simplify();
             let pver: RPackageVersion = RPackageVersion::from_str(ver)?;
-            let pkg = Package::from_crandb(package.to_string(), pver, deps);
+            let pkg = Package::from_crandb(package.to_string(), pver, pkg_deps.dependencies);
             rows.push(pkg);
         }
     }
@@ -610,7 +611,7 @@ fn sc_repos_package_versions(
 fn parse_crandb_deps(
     deps: &serde_json::Value,
     dep_type: &str,
-) -> Result<Vec<DepVersionSpec>, Box<dyn Error>> {
+) -> Result<PackageDependencies, Box<dyn Error>> {
     let mut result: Vec<DepVersionSpec> = Vec::new();
 
     if let Some(pkgs) = deps.as_object() {
@@ -636,5 +637,5 @@ fn parse_crandb_deps(
         dependencies: result,
     };
     pkg_deps.simplify();
-    Ok(pkg_deps.dependencies)
+    Ok(pkg_deps)
 }
