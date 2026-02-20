@@ -531,9 +531,11 @@ pub fn get_all_cran_package_versions(
     if let Some(versions) = versions.as_object() {
         for (ver, data) in versions {
             let mut deps: Vec<DepVersionSpec> = vec![];
-            deps.append(&mut parse_crandb_deps(&data["Depends"], "Depends")?);
-            deps.append(&mut parse_crandb_deps(&data["Imports"], "Imports")?);
-            deps.append(&mut parse_crandb_deps(&data["LinkingTo"], "LinkingTo")?);
+            for dep_type in DEP_TYPES {
+                if let Some(deps_json) = data.get(dep_type) {
+                    deps.append(&mut parse_crandb_deps(deps_json, dep_type)?);
+                }
+            }
             let pver: RPackageVersion = RPackageVersion::from_str(ver)?;
             let pkg = Package::from_crandb(package.to_string(), pver, deps);
             rows.push(pkg);

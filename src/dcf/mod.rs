@@ -7,6 +7,11 @@ use deb822_fast::Paragraph;
 use simple_error::*;
 
 // ------------------------------------------------------------------------
+// Dependency types
+
+pub const DEP_TYPES: &[&str] = &["Depends", "Imports", "LinkingTo", "Suggests", "Enhances"];
+
+// ------------------------------------------------------------------------
 // An R package version. We need to keep the original string, because
 // it may contain dashes, that are also in the download URL.
 
@@ -358,8 +363,7 @@ impl Package {
         let version = RPackageVersion::from_str(version_str)?;
         let mut dependencies = PackageDependencies::new();
 
-        let dep_types = vec!["Depends", "Imports", "LinkingTo", "Suggests", "Enhances"];
-        for dep_type in dep_types {
+        for dep_type in DEP_TYPES {
             if let Some(deps) = pkg.get(dep_type) {
                 dependencies.append(&mut PackageDependencies::from_str(deps, dep_type)?);
             }
