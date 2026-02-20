@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;
 
 use deb822_fast::Deb822;
@@ -48,10 +49,26 @@ pub fn repos_get_packages() -> Result<Vec<Package>, Box<dyn Error>> {
 }
 
 fn parse_packages_from_dcf(dcf_path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
-    let df = File::open(dcf_path)?;
-    let decoder = GzDecoder::new(df);
+    let mut file = File::open(dcf_path)?;
+
+    // Peek at first 2 bytes to check for gzip magic number (0x1f, 0x8b)
+    let mut magic = [0u8; 2];
+    file.read_exact(&mut magic)?;
+
+    // Rewind to start
+    file.seek(SeekFrom::Start(0))?;
+
     info!("Parsing repo metadata from {}", dcf_path.display());
-    let desc = Deb822::from_reader(decoder)?;
+
+    let desc = if magic == [0x1f, 0x8b] {
+        // Gzip compressed
+        let decoder = GzDecoder::new(file);
+        Deb822::from_reader(decoder)?
+    } else {
+        // Uncompressed
+        Deb822::from_reader(file)?
+    };
+
     info!("Parsed {} packages from repo metadata", desc.len());
 
     let mut packages: Vec<Package> = vec![];
