@@ -6,6 +6,7 @@ use serde_derive::Serialize;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::ffi::OsString;
 
+#[allow(dead_code)]
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Rversion {
     pub version: Option<String>,
@@ -31,15 +32,22 @@ pub struct InstalledVersion {
     pub name: String,
     #[serde(default)]
     pub version: Option<String>,
-    #[serde(default, serialize_with = "serialize_option_string_with_forward_slashes")]
+    #[serde(
+        default,
+        serialize_with = "serialize_option_string_with_forward_slashes"
+    )]
     pub path: Option<String>,
-    #[serde(default, serialize_with = "serialize_option_string_with_forward_slashes")]
+    #[serde(
+        default,
+        serialize_with = "serialize_option_string_with_forward_slashes"
+    )]
     pub binary: Option<String>,
     #[serde(default)]
     pub aliases: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct OKInstalledVersion {
     pub name: String,
     pub version: semver::Version,
@@ -117,6 +125,7 @@ pub struct PkgLibrary {
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 #[derive(Default, Debug)]
+#[allow(dead_code)]
 pub struct User {
     pub user: String,
     pub uid: u32,
@@ -153,8 +162,5 @@ pub struct LinuxTools {
 #[cfg(target_os = "windows")]
 #[derive(Default, Debug)]
 pub struct RtoolsVersion {
-    pub version: String,
     pub url: String,
-    pub first: String,
-    pub last: String,
 }

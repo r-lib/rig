@@ -2,18 +2,23 @@ use futures::future;
 use std::error::Error;
 
 use clap::ArgMatches;
+#[cfg(target_os = "windows")]
+use log::warn;
+#[cfg(target_os = "windows")]
 use serde_json::{Map, Value};
 use simple_error::bail;
-use simplelog::*;
+#[cfg(target_os = "windows")]
 use std::sync::{LazyLock, RwLock};
 
 use crate::common::*;
 use crate::download::*;
+#[cfg(target_os = "windows")]
 use crate::hardcoded::*;
 use crate::rversion::*;
 use crate::utils::*;
 
 const API_URI: &str = "https://api.r-hub.io/rversions/resolve/";
+#[cfg(target_os = "windows")]
 const API_ROOT: &str = "https://api.r-hub.io/rversions/";
 
 pub fn get_resolve(args: &ArgMatches) -> Result<Rversion, Box<dyn Error>> {
@@ -95,13 +100,16 @@ async fn resolve_version(
     })
 }
 
+#[cfg(target_os = "windows")]
 static API_CACHE: LazyLock<RwLock<Map<String, Value>>> = LazyLock::new(|| RwLock::new(Map::new()));
 
+#[cfg(target_os = "windows")]
 fn cache_set_value(key: &str, value: Value) {
     let mut map = API_CACHE.write().unwrap();
     map.insert(key.to_string(), value);
 }
 
+#[cfg(target_os = "windows")]
 fn cache_get_value(key: &str) -> Option<Value> {
     let map = API_CACHE.read().unwrap();
     map.get(key).cloned()
@@ -153,14 +161,7 @@ pub fn get_rtools_version(version: &str, arch: &str) -> Result<RtoolsVersion, Bo
         let versionx: String = ver["version"].as_str().ok_or(msg)?.to_string();
         if &versionx == version {
             let url: String = ver["url"].as_str().ok_or(msg)?.to_string();
-            let first: String = ver["first"].as_str().ok_or(msg)?.to_string();
-            let last: String = ver["last"].as_str().ok_or(msg)?.to_string();
-            return Ok(RtoolsVersion {
-                version: versionx,
-                url,
-                first,
-                last,
-            });
+            return Ok(RtoolsVersion { url });
         }
     }
 

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::error::Error;
 use std::path::PathBuf;
 
@@ -6,24 +7,29 @@ use serde_derive::Serialize;
 use simple_error::*;
 
 use crate::common::*;
+use crate::dcf::RPackageVersion;
+use crate::proj::BASE_PKGS;
 use crate::rversion::*;
+use crate::solver::*;
 use crate::utils::*;
 
 #[derive(Serialize, Deserialize, Debug)]
 #[allow(non_snake_case)]
-struct REnvLockfileR {
+struct REnvLockfileSimpleR {
     Version: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[allow(non_snake_case)]
-struct REnvLockfile {
-    R: REnvLockfileR,
+struct REnvLockfileSimple {
+    R: REnvLockfileSimpleR,
 }
+
+// -------------------------------------------------------------------------------------
 
 pub fn parse_r_version(lockfile: PathBuf) -> Result<String, Box<dyn Error>> {
     let contents = read_file_string(&lockfile)?;
-    let lockf: REnvLockfile = serde_json::from_str(&contents)?;
+    let lockf: REnvLockfileSimple = serde_json::from_str(&contents)?;
     Ok(lockf.R.Version.to_string())
 }
 
@@ -102,5 +108,87 @@ pub fn match_r_version(ver: &str) -> Result<OKInstalledVersion, Box<dyn Error>> 
                        required by renv lock file.",
             ver
         ),
+    }
+}
+
+// -------------------------------------------------------------------------------------
+
+#[derive(Serialize, Deserialize, Debug)]
+#[allow(non_snake_case)]
+struct REnvLockfileRepository {
+    Name: String,
+    URL: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[allow(non_snake_case)]
+struct REnvLockfileR {
+    Version: String,
+    Repositories: Vec<REnvLockfileRepository>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[allow(non_snake_case)]
+struct REnvLockfilePackage {
+    Package: String,
+    Version: String,
+    Source: String,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    Repository: Option<String>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    Depends: Option<Vec<String>>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    Imports: Option<Vec<String>>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    LinkingTo: Option<Vec<String>>,
+}
+
+type REnvLockfilePackages = HashMap<String, REnvLockfilePackage>;
+
+#[derive(Serialize, Deserialize, Debug)]
+#[allow(non_snake_case)]
+pub struct REnvLockfile {
+    R: REnvLockfileR,
+    Packages: REnvLockfilePackages,
+}
+
+impl REnvLockfile {
+    pub fn from_solution(
+        registry: &RPackageRegistry,
+        solution: &HashMap<String, RPackageVersion, rustc_hash::FxBuildHasher>,
+    ) -> REnvLockfile {
+        let mut pkgs = REnvLockfilePackages::new();
+        for (k, v) in solution.iter() {
+            if k == "R" || k == "_project" || BASE_PKGS.contains(&k.as_str()) {
+                continue;
+            }
+            let deps = registry.get_dependency_summary(k, v).unwrap();
+            pkgs.insert(
+                k.to_string(),
+                REnvLockfilePackage {
+                    Package: k.to_string(),
+                    Version: v.to_string(),
+                    Source: "Repository".to_string(),
+                    Repository: Some("CRAN".to_string()),
+                    Depends: Some(deps),
+                    Imports: None,
+                    LinkingTo: None,
+                },
+            );
+        }
+        REnvLockfile {
+            R: REnvLockfileR {
+                Version: solution.get("R").unwrap().to_string(),
+                Repositories: vec![REnvLockfileRepository {
+                    Name: "CRAN".to_string(),
+                    URL: "https://cloud.r-project.org".to_string(),
+                }],
+            },
+            Packages: pkgs,
+        }
     }
 }

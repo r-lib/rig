@@ -7,7 +7,7 @@
 use clap::{Arg, ArgMatches, Command};
 
 #[cfg(target_os = "macos")]
-use simplelog::*;
+use log::warn;
 
 #[cfg(target_os = "windows")]
 mod windows_arch;
@@ -83,6 +83,7 @@ pub fn rig_app() -> Command {
 
     let cmd_default = Command::new("default")
         .about("Print or set default R version [alias: switch]")
+        .display_order(0)
         .aliases(&["switch"])
         .long_about(HELP_DEFAULT)
         .after_help(HELP_DEFAULT_EXAMPLES)
@@ -102,6 +103,7 @@ pub fn rig_app() -> Command {
     let cmd_list = Command::new("list")
         .aliases(&["ls"])
         .about("List installed R versions [alias: ls]")
+        .display_order(0)
         .long_about(HELP_LIST)
         .arg(
             Arg::new("json")
@@ -120,6 +122,7 @@ pub fn rig_app() -> Command {
 
     let mut cmd_add = Command::new("add")
         .about("Install a new R version [alias: install]")
+        .display_order(0)
         .long_about(HELP_ADD)
         .after_help(HELP_ADD_EXAMPLES)
         .aliases(&["install"]);
@@ -131,28 +134,56 @@ pub fn rig_app() -> Command {
                 .default_value("release"),
         )
         .arg(
-            Arg::new("without-cran-mirror")
-                .help("Do not set the cloud CRAN mirror")
-                .long("without-cran-mirror")
-                .num_args(0)
-                .required(false),
+            Arg::new("with-repos")
+                .help(
+                    "Repositories to enable, in addition to the ones enabled by default.\n\
+                    If --without-repos is also specified (without a value), then only these\n\
+                    repositories will be enabled.",
+                )
+                .long("with-repos")
+                .num_args(1)
+                .require_equals(true)
+                .required(false)
+                .conflicts_with_all(&["without-cran-mirror", "without-p3m"]),
         )
         .arg(
-            Arg::new("with-p3m")
-                .help("Set up P3M. This is the default on x86_64 Windows and supported Linux distros.")
-                .long("with-p3m")
+            Arg::new("without-repos")
+                .help(
+                    "Do not set up package repositories.\n\
+                    Alternatively, specify which ones to skip, a comma-separated list.\n\
+                    If --with-repos is also specified, then only the repositories in that\n\
+                    argument will be enabled.",
+                )
+                .long("without-repos")
+                .num_args(0..=1)
+                .require_equals(true)
+                .default_missing_value("ALL REPOSITORIES")
+                .required(false)
+                .conflicts_with_all(&["without-cran-mirror", "without-p3m"]),
+        )
+        .arg(
+            Arg::new("without-cran-mirror")
+                .help(
+                    "Do not set the cloud CRAN mirror.\n\
+                    Deprecated in favor of --without-repos=cran.",
+                )
+                .long("without-cran-mirror")
                 .num_args(0)
                 .required(false)
-                .conflicts_with("without-p3m"),
+                .conflicts_with_all(&["with-repos", "without-repos"]),
         )
         .arg(
             Arg::new("without-p3m")
                 .aliases(&["without-rspm"])
-                .help("Do not set up P3M. This is the default on macOS. [alias: --without-rspm]")
+                .help(
+                    "Do not set up P3M. This is the default on macOS.\n\
+                    Deprecated in favor of --without-repos=p3m. \n\
+                    [alias: --without-rspm]",
+                )
                 .long("without-p3m")
                 .num_args(0)
                 .required(false)
-                .conflicts_with("with-p3m"),
+                .conflicts_with_all(&["with-repos", "without-repos"]),
         )
         .arg(
             Arg::new("without-pak")
@@ -228,6 +259,7 @@ pub fn rig_app() -> Command {
 
     let cmd_rm = Command::new("rm")
         .about("Remove R versions [aliases: del, remove, delete]")
+        .display_order(0)
         .long_about(HELP_RM)
         .aliases(&["del", "remove", "delete"])
         .arg(
@@ -246,6 +278,7 @@ pub fn rig_app() -> Command {
 
     let mut cmd_available = Command::new("available")
         .about("List R versions available to install.")
+        .display_order(0)
         .long_about(HELP_AVAILABLE);
 
     cmd_available = cmd_available
@@ -327,15 +360,18 @@ pub fn rig_app() -> Command {
     let mut cmd_system = Command::new("system")
         .about("Manage current installations")
         .long_about(HELP_SYSTEM)
+        .display_order(0)
         .arg_required_else_help(true);
 
     let cmd_system_links = Command::new("make-links")
         .about("Create R-* quick links")
+        .display_order(0)
         .long_about(HELP_SYSTEM_LINKS);
 
     let cmd_system_lib = Command::new("setup-user-lib")
         .about("Set up automatic user package libraries [alias: create-lib]")
         .long_about(HELP_SYSTEM_LIB)
+        .display_order(0)
         .aliases(&["create-lib"])
         .arg(
             Arg::new("version")
@@ -347,6 +383,7 @@ pub fn rig_app() -> Command {
     let cmd_system_pak = Command::new("add-pak")
         .about("Install or update pak for an R version")
         .long_about(HELP_SYSTEM_ADDPAK)
+        .display_order(0)
         .arg(
             Arg::new("devel")
                 .help("Install the development version of pak (deprecated)")
@@ -380,17 +417,20 @@ pub fn rig_app() -> Command {
     {
         let cmd_system_cleanreg = Command::new("clean-registry")
             .about("Clean stale R related entries in the registry")
+            .display_order(0)
             .long_about(HELP_SYSTEM_CLEANREG);
         cmd_system = cmd_system.subcommand(cmd_system_cleanreg);
 
         let cmd_system_update_rtools40 = Command::new("update-rtools40")
             .about("Update Rtools40 MSYS2 packages")
+            .display_order(0)
             .long_about(HELP_SYSTEM_UPDATE_RTOOLS40);
         cmd_system = cmd_system.subcommand(cmd_system_update_rtools40);
 
         let cmd_system_rtools_ls = Command::new("list")
             .about("List installed Rtools vesions [alias: ls]")
             .long_about(HELP_SYSTEM_RTOOLS_LS)
+            .display_order(0)
             .aliases(&["ls"])
             .arg(
                 Arg::new("json")
@@ -402,6 +442,7 @@ pub fn rig_app() -> Command {
         let cmd_system_rtools_add = Command::new("add")
             .about("Install new Rtools version [alias: install]")
             .long_about(HELP_SYSTEM_RTOOLS_ADD)
+            .display_order(0)
             .aliases(&["install"])
             .arg(
                 Arg::new("version")
@@ -411,6 +452,7 @@ pub fn rig_app() -> Command {
         let cmd_system_rtools_rm = Command::new("rm")
             .about("Remove rtools versions [aliases: del, remove, delete]")
             .long_about(HELP_SYSTEM_RTOOLS_RM)
+            .display_order(0)
             .aliases(&["del", "remove", "delete"])
             .arg(
                 Arg::new("version")
@@ -421,6 +463,7 @@ pub fn rig_app() -> Command {
 
         let cmd_system_rtools = Command::new("rtools")
             .about("Manage Rtools installations")
+            .display_order(0)
             .arg_required_else_help(true)
             .subcommand(cmd_system_rtools_ls)
             .subcommand(cmd_system_rtools_add)
@@ -433,6 +476,7 @@ pub fn rig_app() -> Command {
         let cmd_system_ortho = Command::new("make-orthogonal")
             .about("Make installed versions orthogonal")
             .long_about(HELP_SYSTEM_ORTHO)
+            .display_order(0)
             .arg(
                 Arg::new("version")
                     .help("R versions to update (default: all)")
@@ -443,6 +487,7 @@ pub fn rig_app() -> Command {
         let cmd_system_rights = Command::new("fix-permissions")
             .about("Restrict system library permissions to admin")
             .long_about(HELP_SYSTEM_FIXPERMS)
+            .display_order(0)
             .arg(
                 Arg::new("version")
                     .help("R versions to update (default: all)")
@@ -452,11 +497,13 @@ pub fn rig_app() -> Command {
 
         let cmd_system_forget = Command::new("forget")
             .about("Make system forget about R installations")
+            .display_order(0)
             .long_about(HELP_SYSTEM_FORGET);
 
         let cmd_system_noopenmp = Command::new("no-openmp")
             .about("Remove OpenMP (-fopenmp) option for Apple compilers")
             .long_about(HELP_SYSTEM_NO_OPENMP)
+            .display_order(0)
             .arg(
                 Arg::new("version")
                     .help("R versions to update (default: all)")
@@ -467,6 +514,7 @@ pub fn rig_app() -> Command {
         let cmd_system_allow_debugger = Command::new("allow-debugger")
             .about("Allow debugging R with lldb and gdb")
             .long_about(HELP_SYSTEM_ALLOW_DEBUGGER)
+            .display_order(0)
             .arg(
                 Arg::new("all")
                     .help("Update all R versions")
@@ -483,11 +531,13 @@ pub fn rig_app() -> Command {
 
         let cmd_system_allow_debugger_rstudio = Command::new("allow-debugger-rstudio")
             .about("Allow debugging RStudio with lldb and gdb")
+            .display_order(0)
             .long_about(HELP_SYSTEM_ALLOW_DEBUGGER_RSTUDIO);
 
         let cmd_system_allow_core_dumps = Command::new("allow-core-dumps")
             .about("Allow creating core dumps when R crashes")
             .long_about(HELP_SYSTEM_ALLOW_CORE_DUMPS)
+            .display_order(0)
             .arg(
                 Arg::new("all")
                     .help("Update all R versions")
@@ -516,6 +566,7 @@ pub fn rig_app() -> Command {
     {
         let cmd_system_detect_platform = Command::new("detect-platform")
             .about("Detect operating system version and distribution.")
+            .display_order(0)
             .arg(
                 Arg::new("json")
                     .help("JSON output")
@@ -534,6 +585,7 @@ pub fn rig_app() -> Command {
 
     let mut cmd_resolve = Command::new("resolve")
         .about("Resolve a symbolic R version")
+        .display_order(0)
         .long_about(HELP_RESOLVE)
         .after_help(HELP_RESOLVE_EXAMPLES);
 
@@ -597,6 +649,7 @@ pub fn rig_app() -> Command {
 
     let mut cmd_rstudio = Command::new("rstudio")
         .about("Start RStudio with specified R version")
+        .display_order(0)
         .long_about(HELP_RSTUDIO);
 
     cmd_rstudio = cmd_rstudio
@@ -624,6 +677,7 @@ pub fn rig_app() -> Command {
 
     let cmd_library = Command::new("library")
         .about("Manage package libraries [alias: lib] (experimental)")
+        .display_order(0)
         .long_about(HELP_LIBRARY)
         .aliases(&["lib"])
         .arg_required_else_help(true)
@@ -638,6 +692,7 @@ pub fn rig_app() -> Command {
             Command::new("list")
                 .aliases(&["ls"])
                 .about("List libraries [alias: ls]")
+                .display_order(0)
                 .arg(
                     Arg::new("json")
                         .help("JSON output")
@@ -647,22 +702,29 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
-            Command::new("add").about("Add a new library").arg(
-                Arg::new("lib-name")
-                    .help("name of new library")
-                    .required(true),
-            ),
+            Command::new("add")
+                .about("Add a new library")
+                .display_order(0)
+                .arg(
+                    Arg::new("lib-name")
+                        .help("name of new library")
+                        .required(true),
+                ),
         )
         .subcommand(
-            Command::new("rm").about("Remove a library").arg(
-                Arg::new("lib-name")
-                    .help("name of library to remove")
-                    .required(true),
-            ),
+            Command::new("rm")
+                .about("Remove a library")
+                .display_order(0)
+                .arg(
+                    Arg::new("lib-name")
+                        .help("name of library to remove")
+                        .required(true),
+                ),
         )
         .subcommand(
             Command::new("default")
                 .about("Set the default library")
+                .display_order(0)
                 .arg(
                     Arg::new("lib-name")
                         .help("library name to set as default")
@@ -681,6 +743,7 @@ pub fn rig_app() -> Command {
     {
         let cmd_sysreqs = Command::new("sysreqs")
             .about("Manage R-related system libraries and tools (experimental)")
+            .display_order(0)
             .long_about(HELP_SYSREQS)
             .arg_required_else_help(true)
             .arg(
@@ -693,6 +756,7 @@ pub fn rig_app() -> Command {
             .subcommand(
                 Command::new("add")
                     .about("Install system library or tool")
+                    .display_order(0)
                     .arg(
                         Arg::new("name")
                             .help("system tool to install")
@@ -712,6 +776,7 @@ pub fn rig_app() -> Command {
             .subcommand(
                 Command::new("list")
                     .about("List available system libraries and tools")
+                    .display_order(0)
                     .arg(
                         Arg::new("json")
                             .help("JSON output")
@@ -723,6 +788,7 @@ pub fn rig_app() -> Command {
             .subcommand(
                 Command::new("info")
                     .about("Information about a system tool")
+                    .display_order(0)
                     .arg(Arg::new("name").help("system tool to show").required(true))
                     .arg(
                         Arg::new("json")
@@ -737,6 +803,7 @@ pub fn rig_app() -> Command {
 
     let cmd_run = Command::new("run")
         .about("Run R, an R script or an R project")
+        .display_order(0)
         .long_about(HELP_RUN)
         .arg(
             Arg::new("r-version")
@@ -816,14 +883,306 @@ pub fn rig_app() -> Command {
                 .action(clap::ArgAction::Append),
         );
 
+    let cmd_proj = Command::new("proj")
+        .about("Manage R projects (experimental)")
+        .display_order(0)
+        .long_about("TODO")
+        .arg_required_else_help(true)
+        .arg(
+            Arg::new("json")
+                .help("JSON output")
+                .long("json")
+                .num_args(0)
+                .required(false),
+        )
+        .subcommand(
+            Command::new("deps")
+                .about("Show project dependencies")
+                .display_order(0)
+                .arg(
+                    Arg::new("input")
+                        .help("Project file to solve (e.g. DESCRIPTION)")
+                        .long("input")
+                        .short('i')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("dev")
+                        .help("Include dev (development) dependencies")
+                        .long("dev")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("solve")
+                .about("Solve project dependencies")
+                .display_order(0)
+                .arg(
+                    Arg::new("input")
+                        .help("Project file to solve (e.g. DESCRIPTION)")
+                        .long("input")
+                        .short('i')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("renv")
+                        .help("Output and renv.lock file")
+                        .long("renv")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version to solve dependencies for")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("dev")
+                        .help("Include dev (development) dependencies")
+                        .long("dev")
+                        .num_args(0)
+                        .required(false),
+                ),
+        );
+    rig = rig.subcommand(cmd_proj);
+
+    let cmd_repos_setup = Command::new("setup")
+        .about("Set up R package repositories")
+        .display_order(0)
+        .arg(
+            Arg::new("r-version")
+                .help("R version to set up repositories for (default: all)")
+                .long("r-version")
+                .short('r')
+                .num_args(1)
+                .required(false),
+        )
+        .arg(
+            Arg::new("with-repos")
+                .help(
+                    "Repositories to enable, in addition to the ones enabled by default.\n\
+                    If --without-repos is also specified (without a value), then only these\n\
+                    repositories will be enabled.",
+                )
+                .long("with-repos")
+                .num_args(1)
+                .require_equals(true)
+                .default_missing_value("DEFAULT REPOSITORIES")
+                .required(false),
+        )
+        .arg(
+            Arg::new("without-repos")
+                .help(
+                    "Do not set up package repositories.\n\
+                    Alternatively, specify which ones to skip, a comma-separated list.\n\
+                    If --with-repos is also specified, then only the repositories in that\n\
+                    argument will be enabled.",
+                )
+                .long("without-repos")
+                .num_args(0..=1)
+                .require_equals(true)
+                .default_missing_value("ALL REPOSITORIES")
+                .required(false),
+        );
+
+    let cmd_repos = Command::new("repos")
+        .about("Manage package repositories")
+        .display_order(0)
+        .long_about("TODO")
+        .arg_required_else_help(true)
+        .arg(
+            Arg::new("json")
+                .help("JSON output")
+                .long("json")
+                .num_args(0)
+                .required(false),
+        )
+        // .subcommand(
+        //     Command::new("add")
+        //         .about("Add an R package repository")
+        //         .display_order(0)
+        //         .arg(
+        //             Arg::new("enable")
+        //                 .help("Enable the repository after adding it")
+        //                 .long("enable")
+        //                 .num_args(0)
+        //                 .required(false),
+        //         )
+        //         .arg(
+        //             Arg::new("name")
+        //                 .help("name of the repository, e.g. 'CRAN'")
+        //                 .required(true),
+        //         )
+        //         .arg(Arg::new("url").help("URL of the repository").required(true)),
+        // )
+        // .subcommand(
+        //     Command::new("disable")
+        //         .about("Disable an R package repository")
+        //         .display_order(0)
+        //         .arg(
+        //             Arg::new("name")
+        //                 .help("name of the repository, e.g. 'CRAN'")
+        //                 .required(true),
+        //         ),
+        // )
+        // .subcommand(
+        //     Command::new("enable")
+        //         .about("Enable an R package repository")
+        //         .display_order(0)
+        //         .arg(
+        //             Arg::new("name")
+        //                 .help("name of the repository, e.g. 'CRAN'")
+        //                 .required(true),
+        //         ),
+        // )
+        .subcommand(
+            Command::new("list")
+                .about("List configured R package repositories")
+                .display_order(0)
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("all")
+                        .help("Show all repositories, not just the default ones")
+                        .long("all")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("raw")
+                        .help("Do not resolve `%` variables in repository URLs.")
+                        .long("raw")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version to list repositories for, instead of the default")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("available")
+                .about("List available R package repositories")
+                .display_order(0)
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("package-list")
+                .about("List packages in R package repositories")
+                .display_order(0)
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("package-info")
+                .about("Information about the package in the repositories")
+                .display_order(0)
+                .arg(Arg::new("package").help("package to show").required(true))
+                .arg(
+                    Arg::new("version")
+                        .long("version")
+                        .short('v')
+                        .help("package version to show (default: latest)")
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("package-versions")
+                .about("List all versions of a package in the repositories")
+                .display_order(0)
+                .arg(Arg::new("package").help("package to show").required(true))
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        // .subcommand(
+        //     Command::new("reset")
+        //         .about("Reset R package repositories to rig or R default")
+        //         .display_order(0),
+        // )
+        // .subcommand(
+        //     Command::new("rm")
+        //         .about("Remove an R package repository")
+        //         .display_order(0),
+        // )
+        .subcommand(cmd_repos_setup);
+
+    rig = rig.subcommand(cmd_repos);
+
+    #[cfg(debug_assertions)]
+    {
+        let cmd_test = Command::new("test")
+            .about("Run tests (for rig developers)")
+            .display_order(0)
+            .arg_required_else_help(true)
+            .subcommand(
+                Command::new("read-rds")
+                    .about("Test reading RDS files")
+                    .display_order(0)
+                    .arg(Arg::new("path").required(true)),
+            );
+        rig = rig.subcommand(cmd_test);
+    }
+
     rig = rig
         .arg(
             Arg::new("quiet")
                 .help("Suppress output (overrides `--verbose`)")
                 .short('q')
-                .num_args(0)
                 .long("quiet")
-                .required(false),
+                .required(false)
+                .action(clap::ArgAction::Count),
         )
         .arg(
             Arg::new("verbose")

@@ -5,8 +5,8 @@ use std::process::Command;
 use std::{file, line};
 
 use clap::ArgMatches;
+use log::{debug, info, warn};
 use simple_error::*;
-use simplelog::{debug, info, warn};
 
 #[cfg(target_os = "macos")]
 use crate::macos::*;

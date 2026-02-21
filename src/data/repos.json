@@ -1,0 +1,401 @@
+[
+    {
+        "name": "P3M",
+        "title": "Posit Public Package Manager",
+        "description": "TODO",
+        "enabled": true,
+        "repos": [
+            {
+                "name": "P3M",
+                "url": "https://packagemanager.posit.co/cran/latest",
+                "platforms": [
+                    "windows",
+                    "*-mingw32"
+                ],
+                "archs": [
+                    "x86_64"
+                ]
+            },
+            {
+                "name": "P3M",
+                "url": "https://packagemanager.posit.co/cran/latest",
+                "enabled": false,
+                "platforms": [
+                    "macos",
+                    "*-apple-*"
+                ],
+                "archs": [
+                    "x86_64",
+                    "aarch64"
+                ]
+            },
+            {
+                "name": "P3M",
+                "url": "https://packagemanager.posit.co/cran/__linux__/centos7/latest",
+                "platforms": [
+                    "*-linux-gnu-centos-7",
+                    "*-linux-gnu-rhel-7.*"
+                ],
+                "archs": [
+                    "x86_64"
+                ]
+            },
+            {
+                "name": "P3M",
+                "url": "https://packagemanager.posit.co/cran/__linux__/centos8/latest",
+                "platforms": [
+                    "*-linux-gnu-centos-8",
+                    "*-linux-gnu-rhel-8.*"
+                ],
+                "archs": [
+                    "x86_64"
+                ]
+            },
+            {
+                "name": "P3M",
+                "url": "https://packagemanager.posit.co/cran/__linux__/rhel9/latest",
+                "platforms": [
+                    "*-linux-gnu-rhel-9.*"
+                ],
+                "archs": [
+                    "x86_64",
+                    "aarch64"
+                ]
+            },
+            {
+                "name": "P3M",
+                "url": "https://packagemanager.posit.co/cran/__linux__/rhel10/latest",
+                "platforms": [
+                    "*-linux-gnu-rhel-10.*"
+                ],
+                "archs": [
+                    "x86_64",
+                    "aarch64"
+                ]
+            },
+            {
+                "name": "P3M",
+                "url": "https://packagemanager.posit.co/cran/__linux__/opensuse15/latest",
+                "platforms": [
+                    "*-linux-gnu-opensuse-15",
+                    "*-linux-gnu-opensuse-leap-15",
+                    "*-linux-gnu-opensuse-15.0",
+                    "*-linux-gnu-opensuse-leap-15.0",
+                    "*-linux-gnu-opensuse-15.1",
+                    "*-linux-gnu-opensuse-leap-15.1",
+                    "*-linux-gnu-sles-15",
+                    "*-linux-gnu-sles-15.1"
+                ],
+                "archs": [
+                    "x86_64"
+                ]
+            },
+            {
+                "name": "P3M",
+                "url": "https://packagemanager.posit.co/cran/__linux__/opensuse152/latest",
+                "platforms": [
+                    "*-linux-gnu-opensuse-15.2",
+                    "*-linux-gnu-opensuse-leap-15.2",
+                    "*-linux-gnu-sles-15.2"
+                ],
+                "archs": [
+                    "x86_64"
+                ]
+            },
+            {
+                "name": "P3M",
+                "url": "https://packagemanager.posit.co/cran/__linux__/opensuse153/latest",
+                "platforms": [
+                    "*-linux-gnu-opensuse-15.3",
+                    "*-linux-gnu-opensuse-leap-15.3",
+                    "*-linux-gnu-sles-15.3"
+                ],
+                "archs": [
+                    "x86_64"
+                ]
+            },
+            {
+                "name": "P3M",
+                "url": "https://packagemanager.posit.co/cran/__linux__/opensuse154/latest",
+                "platforms": [
+                    "*-linux-gnu-opensuse-15.4",
+                    "*-linux-gnu-opensuse-leap-15.4",
+                    "*-linux-gnu-sles-15.4"
+                ],
+                "archs": [
+                    "x86_64"
+                ]
+            },
+            {
+                "name": "P3M",
+                "url": "https://packagemanager.posit.co/cran/__linux__/opensuse155/latest",
+                "platforms": [
+                    "*-linux-gnu-opensuse-15.5",
+                    "*-linux-gnu-opensuse-leap-15.5",
+                    "*-linux-gnu-sles-15.5"
+                ],
+                "archs": [
+                    "x86_64"
+                ]
+            },
+            {
+                "name": "P3M",
+                "url": "https://packagemanager.posit.co/cran/__linux__/opensuse156/latest",
+                "platforms": [
+                    "*-linux-gnu-opensuse-15.6",
+                    "*-linux-gnu-opensuse-leap-15.6",
+                    "*-linux-gnu-sles-15.6",
+                    "*-linux-gnu-sles-15.7"
+                ],
+                "archs": [
+                    "x86_64"
+                ]
+            },
+            {
+                "name": "P3M",
+                "url": "https://packagemanager.posit.co/cran/__linux__/opensuse42/latest",
+                "platforms": [
+                    "*-linux-gnu-opensuse-42",
+                    "*-linux-gnu-opensuse-42.*"
+                ],
+                "archs": [
+                    "x86_64"
+                ]
+            },
+            {
+                "name": "P3M",
+                "url": "https://packagemanager.posit.co/cran/__linux__/xenial/latest",
+                "platforms": [
+                    "*-linux-gnu-ubuntu-16.04"
+                ],
+                "archs": [
+                    "x86_64"
+                ]
+            },
+            {
+                "name": "P3M",
+                "url": "https://packagemanager.posit.co/cran/__linux__/bionic/latest",
+                "platforms": [
+                    "*-linux-gnu-ubuntu-18.04"
+                ],
+                "archs": [
+                    "x86_64"
+                ]
+            },
+            {
+                "name": "P3M",
+                "url": "https://packagemanager.posit.co/cran/__linux__/focal/latest",
+                "platforms": [
+                    "*-linux-gnu-ubuntu-20.04"
+                ],
+                "archs": [
+                    "x86_64"
+                ]
+            },
+            {
+                "name": "P3M",
+                "url": "https://packagemanager.posit.co/cran/__linux__/jammy/latest",
+                "platforms": [
+                    "*-linux-gnu-ubuntu-22.04"
+                ],
+                "archs": [
+                    "x86_64"
+                ]
+            },
+            {
+                "name": "P3M",
+                "url": "https://packagemanager.posit.co/cran/__linux__/noble/latest",
+                "platforms": [
+                    "*-linux-gnu-ubuntu-24.04"
+                ],
+                "archs": [
+                    "x86_64",
+                    "aarch64"
+                ]
+            },
+            {
+                "name": "P3M",
+                "url": "https://packagemanager.posit.co/cran/__linux__/bullseye/latest",
+                "platforms": [
+                    "*-linux-gnu-debian-11"
+                ],
+                "archs": [
+                    "x86_64"
+                ]
+            },
+            {
+                "name": "P3M",
+                "url": "https://packagemanager.posit.co/cran/__linux__/bookworm/latest",
+                "platforms": [
+                    "*-linux-gnu-debian-12"
+                ],
+                "archs": [
+                    "x86_64"
+                ]
+            },
+            {
+                "name": "P3M",
+                "url": "https://packagemanager.posit.co/cran/__linux__/trixie/latest",
+                "platforms": [
+                    "*-linux-gnu-debian-13"
+                ],
+                "archs": [
+                    "x86_64"
+                ]
+            }
+        ]
+    },
+    {
+        "name": "PPM-manylinux",
+        "title": "Posit Package Manager manylinux portable packages",
+        "description": "TODO",
+        "enabled": false,
+        "repos": [
+            {
+                "name": "PPM-manylinux",
+                "url": "https://packagemanager.posit.co/cran/__linux__/manylinux_2_28/latest",
+                "platforms": [
+                    "*-linux-gnu-*"
+                ],
+                "archs": [
+                    "x86_64",
+                    "aarch64"
+                ]
+            }
+        ]
+    },
+    {
+        "name": "RHUB",
+        "title": "R-Hub repositories",
+        "description": "TODO",
+        "enabled": false,
+        "repos": [
+            {
+                "name": "RHUB",
+                "url": "https://raw.githubusercontent.com/r-hub/repos/main/ubuntu-22.04/4.6",
+                "platforms": [
+                    "*-linux-gnu-ubuntu-22.04"
+                ],
+                "archs": [
+                    "x86_64"
+                ],
+                "rversions": [
+                    "4.6"
+                ]
+            },
+            {
+                "name": "RHUB",
+                "url": "https://raw.githubusercontent.com/r-hub/repos/main/ubuntu-24.04/4.6",
+                "platforms": [
+                    "*-linux-gnu-ubuntu-24.04"
+                ],
+                "archs": [
+                    "x86_64"
+                ],
+                "rversions": [
+                    "4.6"
+                ]
+            },
+            {
+                "name": "RHUB",
+                "url": "https://raw.githubusercontent.com/r-hub/repos/main/fedora38/4.6",
+                "platforms": [
+                    "*-linux-gnu-fedora-38"
+                ],
+                "archs": [
+                    "x86_64"
+                ],
+                "rversions": [
+                    "4.6"
+                ]
+            },
+            {
+                "name": "RHUB",
+                "url": "https://raw.githubusercontent.com/r-hub/repos/main/fedora40/4.6",
+                "platforms": [
+                    "*-linux-gnu-fedora-40"
+                ],
+                "archs": [
+                    "x86_64"
+                ],
+                "rversions": [
+                    "4.6"
+                ]
+            },
+            {
+                "name": "RHUB",
+                "url": "https://raw.githubusercontent.com/r-hub/repos/main/ubuntu-22.04-aarch64/4.4",
+                "platforms": [
+                    "*-linux-gnu-ubuntu-22.04"
+                ],
+                "archs": [
+                    "aarch64"
+                ],
+                "rversions": [
+                    "4.4"
+                ]
+            }
+        ]
+    },
+    {
+        "name": "CRAN",
+        "title": "The Comprehensive R Archive Network",
+        "description": "TODO",
+        "enabled": true,
+        "repos": [
+            {
+                "name": "CRAN",
+                "url": "https://cloud.r-project.org"
+            }
+        ]
+    },
+    {
+        "name": "CRAN-archive",
+        "title": "CRAN archive",
+        "description": "TODO",
+        "enabled": true,
+        "repos": [
+            {
+                "name": "CRAN-archive",
+                "url": "https://cran-archive.r-project.org/",
+                "rversions": [
+                    "< 4.0.0"
+                ],
+                "platforms": [
+                    "windows",
+                    "*-mingw32",
+                    "macos",
+                    "*-apple-darwin*"
+                ]
+            }
+        ]
+    },
+    {
+        "name": "Bioconductor",
+        "title": "Open source software for Bioinformatics",
+        "description": "TODO",
+        "enabled": false,
+        "repos": [
+            {
+                "name": "BioCsoft",
+                "url": "%bm/packages/%v/bioc"
+            },
+            {
+                "name": "BioCann",
+                "url": "%bm/packages/%v/data/annotation"
+            },
+            {
+                "name": "BioCexp",
+                "url": "%bm/packages/%v/data/experiment"
+            },
+            {
+                "name": "BioCworkflows",
+                "url": "%bm/packages/%v/workflows"
+            },
+            {
+                "name": "BioCbooks",
+                "url": "%bm/packages/%v/books"
+            }
+        ]
+    }
+]

@@ -9,18 +9,20 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use clap::ArgMatches;
+use log::{debug, info, warn};
 use nix::sys::stat::umask;
 use nix::sys::stat::Mode;
+use owo_colors::OwoColorize;
 use path_clean::PathClean;
 use regex::Regex;
 use simple_error::*;
-use simplelog::{debug, info, warn};
 
 use crate::alias::*;
 use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
 use crate::library::*;
+use crate::repos::*;
 use crate::resolve::get_resolve;
 use crate::run::*;
 use crate::rversion::*;
@@ -31,6 +33,7 @@ pub const R_VERSIONDIR: &str = "{}";
 pub const R_SYSLIBPATH: &str = "{}/Resources/library";
 pub const R_BINPATH: &str = "{}/Resources/R";
 pub const R_BASE_PROFILE: &str = "{}/Resources/library/base/R/Rprofile";
+pub const R_ETC_PATH: &str = "{}/Resources/etc";
 const R_CUR: &str = "/Library/Frameworks/R.framework/Versions/Current";
 
 macro_rules! osvec {
@@ -116,13 +119,8 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         None => {}
     };
 
-    if !args.get_flag("without-cran-mirror") {
-        set_cloud_mirror(Some(vec![dirname.to_string()]))?;
-    }
-
-    if args.get_flag("with-p3m") {
-        set_ppm(Some(vec![dirname.to_string()]))?;
-    }
+    let setup = interpret_repos_args(args, true);
+    repos_setup(Some(vec![dirname.to_string()]), setup)?;
 
     if !args.get_flag("without-pak") {
         let pakver: &String = args.get_one("pak-version").unwrap();
@@ -273,8 +271,8 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         if let Some(ref default) = default {
             if default == &ver {
                 warn!(
-                    "Removing default version, set new default with \
-                       <bold>rig default <version></>"
+                    "Removing default version, set new default with {}",
+                    "rig default <version>".bold()
                 );
             }
         }
@@ -780,69 +778,6 @@ fn system_no_openmp(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
                 bail!("Failed to update {}: {}", path.display(), err);
             }
         };
-    }
-
-    Ok(())
-}
-
-fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
-    let vers = match vers {
-        Some(x) => x,
-        None => sc_get_list()?,
-    };
-
-    info!("Setting default CRAN mirror");
-
-    for ver in vers {
-        let ver = check_installed(&ver)?;
-        let path = Path::new(&get_r_root()).join(ver.as_str());
-        let profile = path.join("Resources/library/base/R/Rprofile".to_string());
-        if !profile.exists() {
-            continue;
-        }
-
-        match append_to_file(
-            &profile,
-            vec![
-                r#"if (Sys.getenv("RSTUDIO") != "1" && Sys.getenv("POSITRON") != "1") {
-  options(repos = c(CRAN = "https://cloud.r-project.org"))
-}"#
-                .to_string(),
-            ],
-        ) {
-            Ok(_) => {}
-            Err(err) => {
-                bail!("Failed to update {}: {}", path.display(), err);
-            }
-        };
-    }
-
-    Ok(())
-}
-
-fn set_ppm(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
-    let vers = match vers {
-        Some(x) => x,
-        None => sc_get_list()?,
-    };
-
-    info!("Setting PPM repository");
-
-    for ver in vers {
-        let ver = check_installed(&ver)?;
-        let path = Path::new(&get_r_root()).join(ver.as_str());
-        let profile = path.join("Resources/library/base/R/Rprofile".to_string());
-        if !profile.exists() {
-            continue;
-        }
-
-        let rcode = r#"
-if (Sys.getenv("RSTUDIO") != "1" && Sys.getenv("POSITRON") != "1") {
-  options(repos = c(P3M="https://packagemanager.posit.co/cran/latest", getOption("repos")))
-}
-"#;
-
-        append_to_file(&profile, vec![rcode.to_string()])?;
     }
 
     Ok(())

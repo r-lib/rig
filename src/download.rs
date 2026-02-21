@@ -4,22 +4,26 @@ use std::error::Error;
 use std::ffi::OsStr;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::ffi::OsString;
+use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
+use std::path::PathBuf;
+use std::time::Duration;
+use std::time::SystemTime;
 
 #[cfg(target_os = "windows")]
 use clap::ArgMatches;
 
+use filetime::FileTime;
+use log::info;
+use reqwest::StatusCode;
 use simple_error::bail;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-use simplelog::info;
 
 #[cfg(target_os = "windows")]
 use crate::resolve::get_resolve;
 #[cfg(target_os = "windows")]
 use crate::rversion::Rversion;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 use crate::utils::*;
 
 // ------------------------------------------------------------------------
@@ -151,6 +155,82 @@ pub fn download_json_sync(urls: Vec<String>) -> Result<Vec<serde_json::Value>, B
     let client = &client;
     let resp = download_json_(client, urls)?;
     return Ok(resp);
+}
+
+async fn download_if_newer(
+    client: &reqwest::Client,
+    url: &str,
+    local_path: &PathBuf,
+) -> Result<bool, Box<dyn Error>> {
+    let etag_path = add_suffix(local_path, ".etag");
+    let etag = fs::read_to_string(&etag_path).ok();
+    let mut req = client.get(url);
+    if let Some(etag) = etag.as_deref() {
+        req = req.header("If-None-Match", etag);
+    }
+    info!("Checking for updates for {}", local_path.display());
+    let resp = req.send().await?;
+
+    match resp.status() {
+        StatusCode::NOT_MODIFIED => {
+            filetime::set_file_mtime(local_path, FileTime::now())?;
+            Ok(false)
+        }
+
+        StatusCode::OK => {
+            // 200 → new content
+            // Save new ETag if present
+            if let Some(etag) = resp.headers().get("ETag") {
+                fs::write(etag_path, etag.to_str()?)?;
+            }
+            let bytes = resp.bytes().await?;
+            fs::write(local_path, &bytes)?;
+            Ok(true)
+        }
+
+        status => {
+            bail!("Failed to download package metadata, status: {}", status);
+        }
+    }
+}
+
+#[tokio::main]
+pub async fn download_if_newer__(
+    url: &str,
+    local_path: &PathBuf,
+    client: Option<&reqwest::Client>,
+) -> Result<bool, Box<dyn Error>> {
+    let client_ = match client {
+        Some(c) => c,
+        None => &reqwest::Client::new(),
+    };
+    download_if_newer(client_, url, local_path).await
+}
+
+pub fn download_if_newer_(
+    url: &str,
+    local_path: &PathBuf,
+    update_older: Option<Duration>,
+    client: Option<&reqwest::Client>,
+) -> Result<bool, Box<dyn Error>> {
+    let update_older = match update_older {
+        Some(dur) => dur,
+        None => Duration::from_hours(24),
+    };
+
+    if local_path.exists() {
+        let metadata = fs::metadata(local_path)?;
+        let modified = metadata.modified()?;
+        let elapsed = SystemTime::now().duration_since(modified)?;
+
+        if elapsed < update_older {
+            // File is newer than the threshold, skip update
+            info!("{} is up to date, skipping download", local_path.display());
+            return Ok(false);
+        }
+    }
+
+    download_if_newer__(url, local_path, client)
 }
 
 #[tokio::main]

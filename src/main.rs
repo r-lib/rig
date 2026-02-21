@@ -1,8 +1,11 @@
 use std::error::Error;
+use std::io::Write;
 
 use clap::ArgMatches;
+use env_logger;
+use log::{error, info, Level, LevelFilter};
+use owo_colors::OwoColorize;
 use simple_error::*;
-use simplelog::*;
 use tabular::*;
 
 mod args;
@@ -33,21 +36,31 @@ use resolve::*;
 mod alias;
 mod common;
 mod config;
+mod dcf;
 mod download;
 mod hardcoded;
 mod library;
+mod proj;
+mod rds;
 mod renv;
+mod repos;
+mod repositories;
 mod resolve;
 mod run;
 mod rversion;
+mod solver;
 mod sysreqs;
+mod test;
 mod utils;
 
 use library::*;
+use proj::*;
+use repos::*;
 use sysreqs::*;
 use utils::unset_r_envvars;
 
 use crate::common::*;
+use crate::test::*;
 
 mod escalate;
 
@@ -63,27 +76,61 @@ fn main_() -> i32 {
 
     // -- set up logger output --------------------------------------------
 
-    let mut loglevel = match args.get_count("verbose") {
+    let verbose_count = args.get_count("verbose");
+    let mut loglevel = match verbose_count {
         0 => LevelFilter::Info,
         1 => LevelFilter::Debug,
         _ => LevelFilter::Trace,
     };
 
-    if args.get_flag("quiet") {
-        loglevel = LevelFilter::Off;
-    }
+    match args.get_count("quiet") {
+        0 => {}
+        1 => loglevel = LevelFilter::Warn,
+        2 => loglevel = LevelFilter::Error,
+        _ => loglevel = LevelFilter::Off,
+    };
 
-    let config = ConfigBuilder::new()
-        .set_time_level(LevelFilter::Trace)
-        .set_location_level(LevelFilter::Debug)
-        .set_level_color(Level::Error, Some(Color::Magenta))
-        .set_level_color(Level::Warn, Some(Color::Yellow))
-        .set_level_color(Level::Info, Some(Color::Blue))
-        .set_level_color(Level::Debug, None)
-        .set_level_color(Level::Trace, None)
-        .build();
+    // Build filter string: set default level for rig, lower level for noisy crates
+    let filter_str = match loglevel {
+        LevelFilter::Off => "off".to_string(),
+        LevelFilter::Trace => "rig=trace,reqwest=trace,hyper=trace,pubgrub=trace".to_string(),
+        LevelFilter::Debug => "rig=debug,reqwest=info,hyper=info,pubgrub=info".to_string(),
+        LevelFilter::Info => "rig=info,reqwest=warn,hyper=warn,pubgrub=warn".to_string(),
+        LevelFilter::Warn => "rig=warn,reqwest=warn,hyper=warn,pubgrub=warn".to_string(),
+        LevelFilter::Error => "rig=error,reqwest=error,hyper=error,pubgrub=error".to_string(),
+    };
 
-    match TermLogger::init(loglevel, config, TerminalMode::Stderr, ColorChoice::Auto) {
+    match env_logger::Builder::from_env(env_logger::Env::default())
+        .filter(None, loglevel)
+        .parse_filters(&filter_str)
+        .target(env_logger::Target::Stderr)
+        .format(move |buf, record| {
+            let level_string = match record.level() {
+                Level::Error => record.level().to_string().red().bold().to_string(),
+                Level::Warn => record.level().to_string().yellow().bold().to_string(),
+                Level::Info => record.level().to_string().blue().to_string(),
+                Level::Debug => record.level().to_string().cyan().to_string(),
+                Level::Trace => record.level().to_string().white().to_string(),
+            };
+
+            // Show timestamps and location info only if -v was passed
+            if verbose_count >= 1 {
+                writeln!(
+                    buf,
+                    "[{} {} {}:{}] {}",
+                    buf.timestamp(),
+                    level_string,
+                    record.file().unwrap_or("unknown"),
+                    record.line().unwrap_or(0),
+                    record.args()
+                )
+            } else {
+                // No verbose flag: just show the message
+                writeln!(buf, "[{}] {}", level_string, record.args())
+            }
+        })
+        .try_init()
+    {
         Err(e) => {
             eprintln!("Fatal error, cannot set up logger: {}", e.to_string());
             return 2;
@@ -115,14 +162,17 @@ fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
         Some(("add", sub)) => sc_add(sub)?,
         Some(("default", sub)) => sc_default(sub, args)?,
         Some(("list", sub)) => sc_list(sub, args)?,
+        Some(("proj", sub)) => sc_proj(sub, args)?,
         Some(("rm", sub)) => sc_rm(sub)?,
         Some(("system", sub)) => sc_system(sub, args)?,
+        Some(("repos", sub)) => sc_repos(sub, args)?,
         Some(("resolve", sub)) => sc_resolve(sub, args)?,
         Some(("rstudio", sub)) => sc_rstudio(sub)?,
         Some(("library", sub)) => sc_library(sub, args)?,
         Some(("sysreqs", sub)) => sc_sysreqs(sub, args)?,
         Some(("available", sub)) => sc_available(sub, args)?,
         Some(("run", sub)) => retval = sc_run(sub, args)?,
+        Some(("test", sub)) => sc_test(sub, args)?,
         _ => (), // unreachable
     }
     Ok(retval)
@@ -261,7 +311,9 @@ fn sc_default(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Er
         if args.get_flag("json") || mainargs.get_flag("json") {
             println!(
                 "{}",
-                serde_json::to_string_pretty(&DefaultVersion { name: default.clone() })?
+                serde_json::to_string_pretty(&DefaultVersion {
+                    name: default.clone()
+                })?
             );
         } else {
             println!("{}", default);

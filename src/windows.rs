@@ -13,10 +13,11 @@ use std::process::Command;
 
 use clap::ArgMatches;
 use directories::BaseDirs;
+use log::{debug, info, trace, warn};
+use owo_colors::OwoColorize;
 use remove_dir_all::remove_dir_all;
 use semver;
 use simple_error::{bail, SimpleError};
-use simplelog::*;
 use tabular::*;
 use whoami::{fallible::hostname, username};
 use winreg::enums::*;
@@ -27,6 +28,7 @@ use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
 use crate::library::*;
+use crate::repos::*;
 use crate::resolve::*;
 use crate::run::*;
 use crate::rversion::*;
@@ -44,6 +46,7 @@ pub const R_VERSIONDIR: &str = "R-{}";
 pub const R_SYSLIBPATH: &str = "R-{}\\library";
 pub const R_BASE_PROFILE: &str = "R-{}\\library\\base\\R\\Rprofile";
 pub const R_BINPATH: &str = "R-{}\\bin\\R.exe";
+pub const R_ETC_PATH: &str = "R-{}\\etc";
 
 macro_rules! osvec {
     // match a list of expressions separated by comma:
@@ -119,35 +122,15 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     patch_for_rtools()?;
     maybe_update_registry_default()?;
 
-    if !args.get_flag("without-cran-mirror") {
-        match dirname {
-            None => {
-                warn!("Cannot set CRAN mirror, cannot determine installation directory");
-            }
-            Some(ref dirname) => {
-                set_cloud_mirror(Some(vec![dirname.to_string()]))?;
-            }
+    match dirname {
+        None => {
+            warn!("Cannot set up repositories, cannot determine installation directory");
         }
-    }
-
-    if !args.get_flag("without-p3m") {
-        match dirname {
-            None => {
-                warn!("Cannot set up P3M, cannot determine installation directory");
-            }
-            Some(ref dirname) => {
-                let arch = get_native_arch();
-                if arch != "x86_64" {
-                    // only warn if --with-p3m, but no support for this arch
-                    if args.get_flag("with-p3m") {
-                        warn!("P3M does not support this architecture: {}", arch);
-                    }
-                } else {
-                    set_rspm(Some(vec![dirname.to_string()]))?;
-                }
-            }
-        };
-    }
+        Some(ref dirname) => {
+            let setup = interpret_repos_args(args, true);
+            repos_setup(Some(vec![dirname.to_string()]), setup)?;
+        }
+    };
 
     if !args.get_flag("without-pak") {
         match dirname {
@@ -297,71 +280,6 @@ fn get_rtools_needed(version: Option<Vec<String>>) -> Result<Vec<String>, Box<dy
     Ok(res)
 }
 
-fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
-    let vers = match vers {
-        Some(x) => x,
-        None => sc_get_list()?,
-    };
-
-    for ver in vers {
-        info!("Setting default CRAN mirror for R-{}", ver);
-        let ver = check_installed(&ver)?;
-        let path = Path::new(&get_r_root()).join("R-".to_string() + ver.as_str());
-        let profile = path.join("library/base/R/Rprofile".to_string());
-        if !profile.exists() {
-            warn!(
-                "Cannot set default CRAN mirror, profile at {} does not exist.",
-                profile.display()
-            );
-            continue;
-        }
-
-        append_to_file(
-            &profile,
-            vec![
-                r#"if (Sys.getenv("RSTUDIO") != "1" && Sys.getenv("POSITRON") != "1") {
-  options(repos = c(CRAN = "https://cloud.r-project.org"))
-}"#
-                .to_string(),
-            ],
-        )?;
-    }
-
-    Ok(())
-}
-
-fn set_rspm(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
-    let arch = std::env::consts::ARCH;
-    if arch != "x86_64" {
-        warn!("P3M does not support this architecture: {}", arch);
-        return Ok(());
-    }
-
-    let vers = match vers {
-        Some(x) => x,
-        None => sc_get_list()?,
-    };
-
-    let rcode = r#"
-if (Sys.getenv("RSTUDIO") != "1" && Sys.getenv("POSITRON") != "1") {
-  options(repos = c(P3M="https://packagemanager.posit.co/cran/latest", getOption("repos")))
-}
-"#;
-
-    for ver in vers {
-        let ver = check_installed(&ver)?;
-        let path = Path::new(&get_r_root()).join("R-".to_string() + ver.as_str());
-        let profile = path.join("library/base/R/Rprofile".to_string());
-        if !profile.exists() {
-            continue;
-        }
-
-        append_to_file(&profile, vec![rcode.to_string()])?;
-    }
-
-    Ok(())
-}
-
 pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("removing R versions")?;
     let vers = args.get_many::<String>("version");
@@ -382,8 +300,8 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         if let Some(ref default) = default {
             if default == &ver {
                 warn!(
-                    "Removing default version, set new default with \
-                       <bold>rig default <version></>"
+                    "Removing default version, set new default with {}",
+                    "rig default <version>".bold()
                 );
                 match unset_default() {
                     Err(e) => warn!("Failed to unset default version: {}", e.to_string()),
