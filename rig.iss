@@ -42,8 +42,8 @@ Source: "_rig.ps1"; DestDir: "{app}"; Flags: ignoreversion
 
 [Registry]
 Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"; \
-    ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{autopf}\rig;{autopf}\R\bin"; \
-    Check: NeedsAddPath('{autopf}\rig')
+    ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app};{autopf}\R\bin"; \
+    Check: NeedsAddPath('{app}')
 
 [Code]
 
@@ -74,7 +74,7 @@ begin
   if fileName <> '' then
     begin
       SetArrayLength(lines, 2);
-       lines[0] := ExpandConstant('{autopf}\rig');
+       lines[0] := ExpandConstant('{app}');
        lines[1] := ExpandConstant('{autopf}\R\bin');
        Result := SaveStringsToFile(fileName, lines, true);
     end;
