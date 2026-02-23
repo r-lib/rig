@@ -88,8 +88,15 @@ and install it the usual way.
 
 #### Installing rig on macOS (Homebrew) <a id="id-macos-homebrew">
 
-If you use Homebrew (Intel or Arm version), you can install rig from our
-tap:
+A command-line only version of rig (without menu bar app) is available
+from Homebrew core:
+
+```sh
+brew install rig-r
+```
+
+Alternatively Homebrew users can install the full rig menu bar app
+(Intel or Arm version) from our tap:
 
 ``` sh
 brew tap r-lib/rig
