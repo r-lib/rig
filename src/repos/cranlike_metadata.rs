@@ -32,8 +32,8 @@ pub fn repos_get_packages() -> Result<Vec<Package>, Box<dyn Error>> {
 
     if dl_status {
         info!("Updated repo metadata at {}", repo_local.display());
-        // Parse DCF file and save to bitcode
-        let packages = parse_packages_from_dcf(&repo_local)?;
+        // Parse DCF/RDS file and save to bitcode
+        let packages = parse_packages(&repo_local)?;
         save_packages_to_bitcode(&packages, &repo_bitcode)?;
         info!("Saved bitcode cache to {}", repo_bitcode.display());
         Ok(packages)
@@ -46,13 +46,21 @@ pub fn repos_get_packages() -> Result<Vec<Package>, Box<dyn Error>> {
                 Ok(packages)
             }
             Err(_) => {
-                // Bitcode file doesn't exist or is corrupted, parse DCF
-                info!("Bitcode cache not available, parsing DCF file");
-                let packages = parse_packages_from_dcf(&repo_local)?;
+                // Bitcode file doesn't exist or is corrupted, parse DCF/RDS file
+                info!("Bitcode cache not available, parsing DCF/RDS file");
+                let packages = parse_packages(&repo_local)?;
                 save_packages_to_bitcode(&packages, &repo_bitcode)?;
                 Ok(packages)
             }
         }
+    }
+}
+
+fn parse_packages(path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
+    if path.extension().and_then(|s| s.to_str()) == Some("rds") {
+        parse_packages_from_rds(path)
+    } else {
+        parse_packages_from_dcf(path)
     }
 }
 
@@ -267,7 +275,16 @@ fn repo_local_file(url: &str) -> Result<PathBuf, Box<dyn Error>> {
         .ok_or("Cannot determine cache directory")?
         .cache_dir()
         .to_path_buf();
-    let urlhash = "repo-".to_string() + &calculate_hash(url) + ".dcf.gz";
+    let extension = if url.ends_with(".rds") {
+        ".rds"
+    } else if url.ends_with(".gz") {
+        ".gz"
+    } else if url.ends_with(".xz") {
+        ".xz"
+    } else {
+        ""
+    };
+    let urlhash = "repo-".to_string() + &calculate_hash(url) + extension;
 
     cache.push(urlhash);
 
@@ -283,7 +300,11 @@ mod tests {
         let path = PathBuf::from("tests/fixtures/cran-metadata/src/PACKAGES.rds");
         let result = parse_packages_from_rds(&path);
 
-        assert!(result.is_ok(), "Failed to parse PACKAGES.rds: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to parse PACKAGES.rds: {:?}",
+            result.err()
+        );
 
         let packages = result.unwrap();
         assert!(packages.len() > 0, "Expected at least one package");
@@ -294,10 +315,15 @@ mod tests {
 
     #[test]
     fn test_parse_packages_from_rds_binary() {
-        let path = PathBuf::from("tests/fixtures/cran-metadata/bin/macosx/sonoma-arm64/PACKAGES.rds");
+        let path =
+            PathBuf::from("tests/fixtures/cran-metadata/bin/macosx/sonoma-arm64/PACKAGES.rds");
         let result = parse_packages_from_rds(&path);
 
-        assert!(result.is_ok(), "Failed to parse binary PACKAGES.rds: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to parse binary PACKAGES.rds: {:?}",
+            result.err()
+        );
 
         let packages = result.unwrap();
         assert!(packages.len() > 0, "Expected at least one package");
