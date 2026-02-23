@@ -36,6 +36,7 @@ use repos_available::sc_repos_available;
 mod repos_list;
 use repos_list::sc_repos_list;
 mod cranlike_metadata;
+pub use cranlike_metadata::parse_packages_from_rds;
 pub use cranlike_metadata::repos_get_packages;
 
 pub fn sc_repos(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {

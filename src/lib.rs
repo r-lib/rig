@@ -25,6 +25,7 @@ mod hardcoded;
 mod library;
 mod macos;
 mod proj;
+mod rds;
 mod renv;
 mod repos;
 mod repositories;

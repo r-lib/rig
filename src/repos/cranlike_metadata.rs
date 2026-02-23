@@ -1,16 +1,23 @@
+use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use deb822_fast::Deb822;
 use directories::ProjectDirs;
 use flate2::read::GzDecoder;
 use log::info;
+use rds2rust::RObject;
+use rds2rust::RObject::*;
+use rds2rust::VectorData;
+use simple_error::bail;
 use xz2::read::XzDecoder;
 
 use crate::dcf::*;
 use crate::download::download_if_newer_;
+use crate::rds::*;
 use crate::utils::{calculate_hash, create_parent_dir_if_needed};
 
 pub fn repos_get_packages() -> Result<Vec<Package>, Box<dyn Error>> {
@@ -87,6 +94,153 @@ fn parse_packages_from_dcf(dcf_path: &PathBuf) -> Result<Vec<Package>, Box<dyn E
     Ok(packages)
 }
 
+pub fn parse_packages_from_rds(rds_path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
+    let robj = read_rds(rds_path)?;
+    let (data, attr) = match robj {
+        WithAttributes { object, attributes } => (object, attributes),
+        _ => bail!("Expected R object with attributes when reading PACKAGES.rds"),
+    };
+
+    let data = match *data {
+        Character(vd) => {
+            if let VectorData::Owned(v) = vd {
+                v
+            } else {
+                bail!("Expected data to be owned character vector in PACKAGES.rds")
+            }
+        }
+        _ => bail!("Expected data to be a character vector in PACKAGES.rds"),
+    };
+
+    let dim = attr
+        .get("dim")
+        .ok_or("Missing 'dim' attribute in PACKAGES.rds")?;
+    let dim = match dim {
+        Integer(vd) => {
+            if let VectorData::Owned(v) = vd {
+                if let [nrow, ncol] = &v[..] {
+                    (*nrow as usize, *ncol as usize)
+                } else {
+                    bail!("Expected 'dim' to have length 2 in PACKAGES.rds")
+                }
+            } else {
+                bail!("Expected 'dim' to be owned integer vector in PACKAGES.rds")
+            }
+        }
+        _ => bail!("Expected 'dim' to be an integer vector in PACKAGES.rds"),
+    };
+    let dimnames = attr
+        .get("dimnames")
+        .ok_or("Missing 'dimnames' attribute in PACKAGES.rds")?;
+    let names = match dimnames {
+        RObject::List(dn) => {
+            if dn.len() != 2 {
+                bail!("Expected 'dimnames' to have length 2 in PACKAGES.rds")
+            }
+            if let Character(vd) = &dn[1] {
+                if let VectorData::Owned(v) = vd {
+                    v
+                } else {
+                    bail!("Expected 'dimnames' second element to be owned character vector in PACKAGES.rds")
+                }
+            } else {
+                bail!("Expected 'dimnames' second element to be character vector in PACKAGES.rds")
+            }
+        }
+        _ => bail!("Expected 'dimnames' to be a list in PACKAGES.rds"),
+    };
+    let mut col_idx = HashMap::new();
+    for (idx, nm) in names.iter().enumerate() {
+        col_idx.insert(nm.clone(), idx);
+    }
+    let selected_col_names = vec![
+        "Package",
+        "Version",
+        "Depends",
+        "Imports",
+        "Suggests",
+        "Enhances",
+        "LinkingTo",
+        "File",
+        "Path",
+        "DownloadURL",
+        "Built",
+        "License",
+        "Platform",
+        "Arch",
+        "GraphicsAPIVersion",
+        "InternalsID",
+        "Filesize",
+    ];
+    let mut cols: HashMap<&str, Vec<Arc<str>>> = HashMap::new();
+    let nacol: Vec<Arc<str>> = vec!["NA".into(); dim.0];
+    for nm in selected_col_names.iter() {
+        let idx = col_idx.get(*nm);
+        let col = match idx {
+            Some(i) => {
+                let start = i * dim.0;
+                let end = start + dim.0;
+                data[start..end].to_vec()
+            }
+            None => nacol.clone(),
+        };
+        cols.insert(*nm, col);
+    }
+
+    fn na_to_none(s: &str) -> Option<String> {
+        if s == "NA" {
+            None
+        } else {
+            Some(s.to_string())
+        }
+    }
+
+    let mut packages: Vec<Package> = vec![];
+    for i in 0..dim.0 {
+        let mut dependencies = PackageDependencies::new();
+        for dep_type in RDepType::all() {
+            let dep_type_str = dep_type.to_string();
+            let dep_str = cols.get(dep_type_str.as_str()).unwrap()[i].clone();
+            if dep_str != "NA".into() {
+                dependencies.append(&mut PackageDependencies::from_str(&dep_str, &dep_type_str)?);
+            }
+        }
+        let name = cols.get("Package").unwrap()[i].clone();
+        let version = RPackageVersion::from_str(&cols.get("Version").unwrap()[i])?;
+        let file = cols.get("File").unwrap()[i].clone();
+        let path = cols.get("Path").unwrap()[i].clone();
+        let download_url = cols.get("DownloadURL").unwrap()[i].clone();
+        let built = cols.get("Built").unwrap()[i].clone();
+        let license = cols.get("License").unwrap()[i].clone();
+        let platform = cols.get("Platform").unwrap()[i].clone();
+        let arch = cols.get("Arch").unwrap()[i].clone();
+        let graphics_api_version = cols.get("GraphicsAPIVersion").unwrap()[i].clone();
+        let internals_id = cols.get("InternalsID").unwrap()[i].clone();
+        let filesize = cols.get("Filesize").unwrap()[i].clone();
+
+        let pkg = Package {
+            name: name.to_string(),
+            version,
+            dependencies,
+            file: na_to_none(&file),
+            path: na_to_none(&path),
+            download_url: na_to_none(&download_url),
+            built: na_to_none(&built)
+                .map(|b| DCFBuilt::from_str(&b))
+                .transpose()?,
+            license: na_to_none(&license),
+            platform: na_to_none(&platform),
+            arch: na_to_none(&arch),
+            graphics_api_version: na_to_none(&graphics_api_version),
+            internals_id: na_to_none(&internals_id),
+            filesize: na_to_none(&filesize).and_then(|s| s.parse::<u64>().ok()),
+        };
+        packages.push(pkg);
+    }
+
+    Ok(packages)
+}
+
 fn load_packages_from_bitcode(bitcode_path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
     let bytes = std::fs::read(bitcode_path)?;
     let packages: Vec<Package> = bitcode::decode(&bytes)?;
@@ -118,4 +272,56 @@ fn repo_local_file(url: &str) -> Result<PathBuf, Box<dyn Error>> {
     cache.push(urlhash);
 
     Ok(cache)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_packages_from_rds_src() {
+        let path = PathBuf::from("tests/fixtures/cran-metadata/src/PACKAGES.rds");
+        let result = parse_packages_from_rds(&path);
+
+        assert!(result.is_ok(), "Failed to parse PACKAGES.rds: {:?}", result.err());
+
+        let packages = result.unwrap();
+        assert!(packages.len() > 0, "Expected at least one package");
+
+        // Snapshot test the parsed packages
+        insta::assert_debug_snapshot!(packages);
+    }
+
+    #[test]
+    fn test_parse_packages_from_rds_binary() {
+        let path = PathBuf::from("tests/fixtures/cran-metadata/bin/macosx/sonoma-arm64/PACKAGES.rds");
+        let result = parse_packages_from_rds(&path);
+
+        assert!(result.is_ok(), "Failed to parse binary PACKAGES.rds: {:?}", result.err());
+
+        let packages = result.unwrap();
+        assert!(packages.len() > 0, "Expected at least one package");
+
+        // Snapshot test the parsed binary packages
+        insta::assert_debug_snapshot!(packages);
+    }
+
+    #[test]
+    fn test_parse_packages_from_rds_validates_structure() {
+        let path = PathBuf::from("tests/fixtures/cran-metadata/src/PACKAGES.rds");
+        let result = parse_packages_from_rds(&path);
+
+        assert!(result.is_ok());
+        let packages = result.unwrap();
+
+        // Validate structure and snapshot the first package
+        let first_pkg = &packages[0];
+
+        // Name and version are required
+        assert!(!first_pkg.name.is_empty());
+        assert!(first_pkg.version.to_string().len() > 0);
+
+        // Snapshot the first package to validate its structure
+        insta::assert_debug_snapshot!(first_pkg);
+    }
 }
