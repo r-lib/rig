@@ -233,6 +233,77 @@ pub fn download_if_newer_(
     download_if_newer__(url, local_path, client)
 }
 
+/// Try to download from multiple URLs, using the first one that succeeds (async).
+async fn download_first_available(
+    client: &reqwest::Client,
+    urls: &[&str],
+    local_path: &PathBuf,
+) -> Result<bool, Box<dyn Error>> {
+    let mut last_error = None;
+
+    for url in urls {
+        info!("Trying to download from {}", url);
+        match download_if_newer(client, url, local_path).await {
+            Ok(result) => {
+                info!("Successfully downloaded from {}", url);
+                return Ok(result);
+            }
+            Err(e) => {
+                info!("Failed to download from {}: {}", url, e);
+                last_error = Some(e);
+            }
+        }
+    }
+
+    match last_error {
+        Some(e) => bail!("All download URLs failed. Last error: {}", e),
+        None => bail!("No URLs provided"),
+    }
+}
+
+/// Try to download from multiple URLs, using the first one that succeeds (sync wrapper).
+/// Returns Ok(true) if a new file was downloaded, Ok(false) if existing file is up to date,
+/// or Err if all URLs failed.
+pub fn download_first_available_(
+    urls: &[&str],
+    local_path: &PathBuf,
+    update_older: Option<Duration>,
+    client: Option<&reqwest::Client>,
+) -> Result<bool, Box<dyn Error>> {
+    let update_older = match update_older {
+        Some(dur) => dur,
+        None => Duration::from_hours(24),
+    };
+
+    if local_path.exists() {
+        let metadata = fs::metadata(local_path)?;
+        let modified = metadata.modified()?;
+        let elapsed = SystemTime::now().duration_since(modified)?;
+
+        if elapsed < update_older {
+            // File is newer than the threshold, skip update
+            info!("{} is up to date, skipping download", local_path.display());
+            return Ok(false);
+        }
+    }
+
+    let client_ = match client {
+        Some(c) => c,
+        None => &reqwest::Client::new(),
+    };
+
+    download_first_available__(client_, urls, local_path)
+}
+
+#[tokio::main]
+async fn download_first_available__(
+    client: &reqwest::Client,
+    urls: &[&str],
+    local_path: &PathBuf,
+) -> Result<bool, Box<dyn Error>> {
+    download_first_available(client, urls, local_path).await
+}
+
 #[tokio::main]
 async fn download_json_(
     client: &reqwest::Client,

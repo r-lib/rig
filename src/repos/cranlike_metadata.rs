@@ -16,19 +16,25 @@ use simple_error::bail;
 use xz2::read::XzDecoder;
 
 use crate::dcf::*;
-use crate::download::download_if_newer_;
+use crate::download::download_first_available_;
 use crate::rds::*;
 use crate::utils::{calculate_hash, create_parent_dir_if_needed};
 
-pub fn repos_get_packages() -> Result<Vec<Package>, Box<dyn Error>> {
-    // TODO: do not hardcode repo URL
-    let repo_url = "https://cloud.r-project.org/src/contrib/PACKAGES.gz";
+pub fn repos_get_packages(repo_url: &str) -> Result<Vec<Package>, Box<dyn Error>> {
+    let repo_url_gz = repo_url.to_string() + "/PACKAGES.gz";
+    let repo_url_rds = repo_url.to_string() + "/PACKAGES.rds";
+    let repo_url_plain = repo_url.to_string() + "/PACKAGES";
+    let repo_urls: Vec<&str> = vec![
+        repo_url_gz.as_str(),
+        repo_url_rds.as_str(),
+        repo_url_plain.as_str(),
+    ];
     let repo_local = repo_local_file(repo_url)?;
     let repo_bitcode = repo_bitcode_file(&repo_local)?;
 
     create_parent_dir_if_needed(&repo_local)?;
     info!("Updating repo metadata from {}", repo_url);
-    let dl_status = download_if_newer_(repo_url, &repo_local, None, None)?;
+    let dl_status = download_first_available_(&repo_urls, &repo_local, None, None)?;
 
     if dl_status {
         info!("Updated repo metadata at {}", repo_local.display());
@@ -56,15 +62,7 @@ pub fn repos_get_packages() -> Result<Vec<Package>, Box<dyn Error>> {
     }
 }
 
-fn parse_packages(path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
-    if path.extension().and_then(|s| s.to_str()) == Some("rds") {
-        parse_packages_from_rds(path)
-    } else {
-        parse_packages_from_dcf(path)
-    }
-}
-
-fn parse_packages_from_dcf(dcf_path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
+fn parse_packages(dcf_path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
     let mut file = File::open(dcf_path)?;
 
     // Peek at first 6 bytes to check for compression magic numbers
@@ -78,19 +76,43 @@ fn parse_packages_from_dcf(dcf_path: &PathBuf) -> Result<Vec<Package>, Box<dyn E
 
     info!("Parsing repo metadata from {}", dcf_path.display());
 
-    let desc = if bytes_read >= 2 && magic[0..2] == [0x1f, 0x8b] {
+    // Decompress if needed and read into memory to check format
+    let data: Vec<u8> = if bytes_read >= 2 && magic[0..2] == [0x1f, 0x8b] {
         // Gzip compressed
-        let decoder = GzDecoder::new(file);
-        Deb822::from_reader(decoder)?
+        let mut decoder = GzDecoder::new(file);
+        let mut data = Vec::new();
+        decoder.read_to_end(&mut data)?;
+        data
     } else if bytes_read >= 6 && magic == [0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00] {
         // XZ compressed
-        let decoder = XzDecoder::new(file);
-        Deb822::from_reader(decoder)?
+        let mut decoder = XzDecoder::new(file);
+        let mut data = Vec::new();
+        decoder.read_to_end(&mut data)?;
+        data
     } else {
-        // Uncompressed
-        Deb822::from_reader(file)?
+        // Uncompressed - read entire file
+        let mut data = Vec::new();
+        file.read_to_end(&mut data)?;
+        data
     };
 
+    // Check if decompressed data is RDS format
+    // RDS files start with: 0x58 0x00 (X), 0x41 0x00 (A), or 0x42 0x00 (B)
+    if data.len() >= 2 {
+        let is_rds = (data[0] == 0x58 && data[1] == 0x00)  // X format
+                  || (data[0] == 0x41 && data[1] == 0x00)  // A format
+                  || (data[0] == 0x42 && data[1] == 0x00); // B format
+
+        if is_rds {
+            info!("Detected RDS format, parsing as RDS");
+            let robj = read_rds(&data)?;
+            return parse_packages_from_rds_object(robj);
+        }
+    }
+
+    // Parse as DCF format
+    info!("Parsing as DCF format");
+    let desc = Deb822::from_reader(&data[..])?;
     info!("Parsed {} packages from repo metadata", desc.len());
 
     let mut packages: Vec<Package> = vec![];
@@ -102,8 +124,7 @@ fn parse_packages_from_dcf(dcf_path: &PathBuf) -> Result<Vec<Package>, Box<dyn E
     Ok(packages)
 }
 
-pub fn parse_packages_from_rds(rds_path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
-    let robj = read_rds(rds_path)?;
+fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn Error>> {
     let (data, attr) = match robj {
         WithAttributes { object, attributes } => (object, attributes),
         _ => bail!("Expected R object with attributes when reading PACKAGES.rds"),
@@ -249,6 +270,11 @@ pub fn parse_packages_from_rds(rds_path: &PathBuf) -> Result<Vec<Package>, Box<d
     Ok(packages)
 }
 
+pub fn parse_packages_from_rds(rds_path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
+    let robj = read_rds_file(rds_path)?;
+    parse_packages_from_rds_object(robj)
+}
+
 fn load_packages_from_bitcode(bitcode_path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
     let bytes = std::fs::read(bitcode_path)?;
     let packages: Vec<Package> = bitcode::decode(&bytes)?;
@@ -275,16 +301,7 @@ fn repo_local_file(url: &str) -> Result<PathBuf, Box<dyn Error>> {
         .ok_or("Cannot determine cache directory")?
         .cache_dir()
         .to_path_buf();
-    let extension = if url.ends_with(".rds") {
-        ".rds"
-    } else if url.ends_with(".gz") {
-        ".gz"
-    } else if url.ends_with(".xz") {
-        ".xz"
-    } else {
-        ""
-    };
-    let urlhash = "repo-".to_string() + &calculate_hash(url) + extension;
+    let urlhash = "repo-".to_string() + &calculate_hash(url) + "data";
 
     cache.push(urlhash);
 

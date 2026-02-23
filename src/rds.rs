@@ -1,11 +1,15 @@
 use std::error::Error;
 use std::path::PathBuf;
 
-use rds2rust::read_rds_from_path;
 use rds2rust::RObject;
 
-pub fn read_rds(path: &PathBuf) -> Result<RObject, Box<dyn Error>> {
-    let ps = read_rds_from_path(path)?;
+pub fn read_rds(data: &[u8]) -> Result<RObject, Box<dyn Error>> {
+    let ps = rds2rust::read_rds(data)?;
+    Ok(ps.object)
+}
+
+pub fn read_rds_file(path: &PathBuf) -> Result<RObject, Box<dyn Error>> {
+    let ps = rds2rust::read_rds_from_path(path)?;
     Ok(ps.object)
 }
 
@@ -16,7 +20,7 @@ mod tests {
     #[test]
     fn test_read_rds_packages() {
         let path = PathBuf::from("tests/fixtures/cran-metadata/src/PACKAGES.rds");
-        let result = read_rds(&path);
+        let result = read_rds_file(&path);
 
         assert!(result.is_ok(), "Failed to read PACKAGES.rds file");
 

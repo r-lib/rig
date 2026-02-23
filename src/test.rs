@@ -2,7 +2,7 @@ use std::error::Error;
 
 use clap::ArgMatches;
 
-use crate::rds::read_rds;
+use crate::rds::read_rds_file;
 use crate::repos::cranlike_metadata::parse_packages_from_rds;
 
 pub fn sc_test(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
@@ -19,7 +19,7 @@ fn sc_test_read_rds(
     _mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
     let path = args.get_one::<String>("path").unwrap();
-    read_rds(&std::path::PathBuf::from(path))?;
+    read_rds_file(&std::path::PathBuf::from(path))?;
     Ok(())
 }
 

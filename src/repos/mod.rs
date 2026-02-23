@@ -446,7 +446,7 @@ fn sc_repos_package_list(
     _libargs: &ArgMatches,
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
-    let packages = repos_get_packages()?;
+    let packages = repos_get_packages("https://cloud.r-project.org/src/contrib")?;
 
     if args.get_flag("json") || mainargs.get_flag("json") {
     } else {
