@@ -165,11 +165,11 @@ rig-$(VERSION)-macOS-%.pkg: rig-unnotarized-%.pkg tools/gon.hcl.in
 rig-unnotarized-%.pkg: build.stamp tools/distribution.xml.in
 	codesign --force \
 		--options runtime \
-		-s 8ADFF507AE8598B1792CF89213307C52FAFF3920 \
+		-s 'Developer ID Application: Gabor Csardi (5CK56ZU9YH)' \
 		build-$*/Applications/Rig.app
 	codesign --force \
 		--options runtime \
-		-s 8ADFF507AE8598B1792CF89213307C52FAFF3920 \
+		-s 'Developer ID Application: Gabor Csardi (5CK56ZU9YH)' \
 		build-$*/usr/local/bin/rig
 	pkgbuild --root build-$* \
 		--identifier com.gaborcsardi.rig \
