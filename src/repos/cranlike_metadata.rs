@@ -313,7 +313,7 @@ fn save_packages_to_db(
     packages: &Vec<Package>,
     db_path: &PathBuf,
 ) -> Result<(), Box<dyn Error>> {
-    let conn = Connection::open(db_path)?;
+    let mut conn = Connection::open(db_path)?;
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS packages (
@@ -334,11 +334,14 @@ fn save_packages_to_db(
         [],
     )?;
 
+    // Use a single transaction for all inserts - much faster!
+    let tx = conn.transaction()?;
+
     // Clear existing data
-    conn.execute("DELETE FROM packages", [])?;
+    tx.execute("DELETE FROM packages", [])?;
 
     // Insert packages
-    let mut stmt = conn.prepare(
+    let mut stmt = tx.prepare(
         "INSERT INTO packages
          (name, version, dependencies, download_url, file, path, built,
           license, platform, arch, graphics_api_version, internals_id, filesize)
@@ -367,6 +370,9 @@ fn save_packages_to_db(
             pkg.filesize,
         ])?;
     }
+
+    drop(stmt); // Drop statement before committing
+    tx.commit()?;
 
     Ok(())
 }
