@@ -2,14 +2,14 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 
-use bitcode::{Decode, Encode};
 use deb822_fast::Paragraph;
+use serde::{Deserialize, Serialize};
 use simple_error::*;
 
 // ------------------------------------------------------------------------
 // Dependency types
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Encode, Decode)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum RDepType {
     Depends,
     Imports,
@@ -59,7 +59,7 @@ pub static DEP_TYPES_SOFT: &[RDepType] = &[RDepType::Suggests, RDepType::Enhance
 // An R package version. We need to keep the original string, because
 // it may contain dashes, that are also in the download URL.
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Encode, Decode)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RPackageVersion {
     pub components: Vec<u32>,
     pub original: String,
@@ -88,7 +88,7 @@ impl fmt::Display for RPackageVersion {
 // ------------------------------------------------------------------------
 // A version constraint type, e.g. >= or >>, etc.
 
-#[derive(Debug, Hash, Clone, PartialEq, Eq, Encode, Decode)]
+#[derive(Debug, Hash, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum VersionConstraintType {
     Less,
     LessOrEqual,
@@ -113,7 +113,7 @@ impl std::fmt::Display for VersionConstraintType {
 // This is a version constraint that also includes the version number,
 // e.g. ">= 4.0.0"
 
-#[derive(Debug, Hash, Clone, PartialEq, Eq, Encode, Decode)]
+#[derive(Debug, Hash, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VersionConstraint {
     pub constraint_type: VersionConstraintType,
     pub version: RPackageVersion,
@@ -165,7 +165,7 @@ impl VersionConstraint {
 // the dependency types, and a list of version constraints,
 // which can also be empty
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Encode, Decode)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DepVersionSpec {
     /// Package name.
     pub name: String,
@@ -237,7 +237,7 @@ impl std::fmt::Display for DepVersionSpec {
 // e.g. Depends, or it can be used for the combined dependencies of a
 // package
 
-#[derive(Debug, Clone, Encode, Decode)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackageDependencies {
     pub dependencies: Vec<DepVersionSpec>,
 }
@@ -295,7 +295,7 @@ impl PackageDependencies {
 
 // ------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Encode, Decode)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DCFBuilt {
     pub r: String,
     pub platform: Option<String>,
@@ -347,7 +347,7 @@ impl DCFBuilt {
 // ------------------------------------------------------------------------
 // This is a package as known by the dependency solver.
 
-#[derive(Debug, Clone, Encode, Decode)]
+#[derive(Debug, Clone)]
 pub struct Package {
     pub name: String,
     pub version: RPackageVersion,

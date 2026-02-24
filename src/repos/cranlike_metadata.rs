@@ -12,6 +12,7 @@ use log::info;
 use rds2rust::RObject;
 use rds2rust::RObject::*;
 use rds2rust::VectorData;
+use rusqlite::{params, Connection};
 use simple_error::bail;
 use xz2::read::XzDecoder;
 
@@ -30,7 +31,7 @@ pub fn repos_get_packages(repo_url: &str) -> Result<Vec<Package>, Box<dyn Error>
         repo_url_plain.as_str(),
     ];
     let repo_local = repo_local_file(repo_url)?;
-    let repo_bitcode = repo_bitcode_file(&repo_local)?;
+    let repo_db = repo_db_file(&repo_local)?;
 
     create_parent_dir_if_needed(&repo_local)?;
     info!("Updating repo metadata from {}", repo_url);
@@ -38,24 +39,24 @@ pub fn repos_get_packages(repo_url: &str) -> Result<Vec<Package>, Box<dyn Error>
 
     if dl_status {
         info!("Updated repo metadata at {}", repo_local.display());
-        // Parse DCF/RDS file and save to bitcode
+        // Parse DCF/RDS file and save to database
         let packages = parse_packages(&repo_local)?;
-        save_packages_to_bitcode(&packages, &repo_bitcode)?;
-        info!("Saved bitcode cache to {}", repo_bitcode.display());
+        save_packages_to_db(&packages, &repo_db)?;
+        info!("Saved database cache to {}", repo_db.display());
         Ok(packages)
     } else {
         info!("Repo metadata is up to date at {}", repo_local.display());
-        // Try to load from bitcode cache
-        match load_packages_from_bitcode(&repo_bitcode) {
+        // Try to load from database cache
+        match load_packages_from_db(&repo_db) {
             Ok(packages) => {
-                info!("Loaded {} packages from bitcode cache", packages.len());
+                info!("Loaded {} packages from database cache", packages.len());
                 Ok(packages)
             }
             Err(_) => {
-                // Bitcode file doesn't exist or is corrupted, parse DCF/RDS file
-                info!("Bitcode cache not available, parsing DCF/RDS file");
+                // Database file doesn't exist or is corrupted, parse DCF/RDS file
+                info!("Database cache not available, parsing DCF/RDS file");
                 let packages = parse_packages(&repo_local)?;
-                save_packages_to_bitcode(&packages, &repo_bitcode)?;
+                save_packages_to_db(&packages, &repo_db)?;
                 Ok(packages)
             }
         }
@@ -275,25 +276,105 @@ pub fn parse_packages_from_rds(rds_path: &PathBuf) -> Result<Vec<Package>, Box<d
     parse_packages_from_rds_object(robj)
 }
 
-fn load_packages_from_bitcode(bitcode_path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
-    let bytes = std::fs::read(bitcode_path)?;
-    let packages: Vec<Package> = bitcode::decode(&bytes)?;
+fn load_packages_from_db(db_path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
+    let conn = Connection::open(db_path)?;
+
+    let mut stmt = conn.prepare(
+        "SELECT name, version, dependencies, download_url, file, path, built,
+                license, platform, arch, graphics_api_version, internals_id, filesize
+         FROM packages"
+    )?;
+
+    let packages = stmt.query_map([], |row| {
+        Ok(Package {
+            name: row.get(0)?,
+            version: RPackageVersion::from_str(&row.get::<_, String>(1)?).unwrap(),
+            dependencies: serde_json::from_str(&row.get::<_, String>(2)?).unwrap(),
+            download_url: row.get(3)?,
+            file: row.get(4)?,
+            path: row.get(5)?,
+            built: row.get::<_, Option<String>>(6)?
+                .map(|s| serde_json::from_str(&s).ok())
+                .flatten(),
+            license: row.get(7)?,
+            platform: row.get(8)?,
+            arch: row.get(9)?,
+            graphics_api_version: row.get(10)?,
+            internals_id: row.get(11)?,
+            filesize: row.get(12)?,
+        })
+    })?
+    .collect::<Result<Vec<_>, _>>()?;
+
     Ok(packages)
 }
 
-fn save_packages_to_bitcode(
+fn save_packages_to_db(
     packages: &Vec<Package>,
-    bitcode_path: &PathBuf,
+    db_path: &PathBuf,
 ) -> Result<(), Box<dyn Error>> {
-    let bytes = bitcode::encode(packages);
-    std::fs::write(bitcode_path, bytes)?;
+    let conn = Connection::open(db_path)?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS packages (
+            name TEXT NOT NULL,
+            version TEXT NOT NULL,
+            dependencies TEXT NOT NULL,
+            download_url TEXT,
+            file TEXT,
+            path TEXT,
+            built TEXT,
+            license TEXT,
+            platform TEXT,
+            arch TEXT,
+            graphics_api_version TEXT,
+            internals_id TEXT,
+            filesize INTEGER
+        )",
+        [],
+    )?;
+
+    // Clear existing data
+    conn.execute("DELETE FROM packages", [])?;
+
+    // Insert packages
+    let mut stmt = conn.prepare(
+        "INSERT INTO packages
+         (name, version, dependencies, download_url, file, path, built,
+          license, platform, arch, graphics_api_version, internals_id, filesize)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)"
+    )?;
+
+    for pkg in packages {
+        let deps_json = serde_json::to_string(&pkg.dependencies)?;
+        let built_json = pkg.built.as_ref()
+            .map(|b| serde_json::to_string(b).ok())
+            .flatten();
+
+        stmt.execute(params![
+            &pkg.name,
+            pkg.version.to_string(),
+            deps_json,
+            &pkg.download_url,
+            &pkg.file,
+            &pkg.path,
+            built_json,
+            &pkg.license,
+            &pkg.platform,
+            &pkg.arch,
+            &pkg.graphics_api_version,
+            &pkg.internals_id,
+            pkg.filesize,
+        ])?;
+    }
+
     Ok(())
 }
 
-fn repo_bitcode_file(dcf_path: &PathBuf) -> Result<PathBuf, Box<dyn Error>> {
-    let mut bitcode_path = dcf_path.clone();
-    bitcode_path.set_extension("bitcode");
-    Ok(bitcode_path)
+fn repo_db_file(dcf_path: &PathBuf) -> Result<PathBuf, Box<dyn Error>> {
+    let mut db_path = dcf_path.clone();
+    db_path.set_extension("db");
+    Ok(db_path)
 }
 
 fn repo_local_file(url: &str) -> Result<PathBuf, Box<dyn Error>> {
@@ -301,7 +382,7 @@ fn repo_local_file(url: &str) -> Result<PathBuf, Box<dyn Error>> {
         .ok_or("Cannot determine cache directory")?
         .cache_dir()
         .to_path_buf();
-    let urlhash = "repo-".to_string() + &calculate_hash(url) + "data";
+    let urlhash = "repo-".to_string() + &calculate_hash(url) + ".data";
 
     cache.push(urlhash);
 
