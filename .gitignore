@@ -27,3 +27,5 @@ _rim.ps1
 /rig-*.tar.gz
 /*.deb
 /*.rpm
+/tools/gon.hcl
+/tools/distribution.xml
