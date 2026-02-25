@@ -334,6 +334,13 @@ fn save_packages_to_db(
         [],
     )?;
 
+    // Create index for fast lookups by name, version, platform, arch
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_packages_lookup
+         ON packages (name, version, platform, arch)",
+        [],
+    )?;
+
     // Use a single transaction for all inserts - much faster!
     let tx = conn.transaction()?;
 
