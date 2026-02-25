@@ -41,13 +41,13 @@ pub fn repos_get_packages(repo_url: &str) -> Result<Vec<Package>, Box<dyn Error>
         info!("Updated repo metadata at {}", repo_local.display());
         // Parse DCF/RDS file and save to database
         let packages = parse_packages(&repo_local)?;
-        save_packages_to_db(&packages, &repo_db)?;
+        save_packages_to_db(&packages, &repo_db, repo_url)?;
         info!("Saved database cache to {}", repo_db.display());
         Ok(packages)
     } else {
         info!("Repo metadata is up to date at {}", repo_local.display());
         // Try to load from database cache
-        match load_packages_from_db(&repo_db) {
+        match load_packages_from_db(&repo_db, repo_url) {
             Ok(packages) => {
                 info!("Loaded {} packages from database cache", packages.len());
                 Ok(packages)
@@ -56,7 +56,7 @@ pub fn repos_get_packages(repo_url: &str) -> Result<Vec<Package>, Box<dyn Error>
                 // Database file doesn't exist or is corrupted, parse DCF/RDS file
                 info!("Database cache not available, parsing DCF/RDS file");
                 let packages = parse_packages(&repo_local)?;
-                save_packages_to_db(&packages, &repo_db)?;
+                save_packages_to_db(&packages, &repo_db, repo_url)?;
                 Ok(packages)
             }
         }
@@ -276,16 +276,23 @@ pub fn parse_packages_from_rds(rds_path: &PathBuf) -> Result<Vec<Package>, Box<d
     parse_packages_from_rds_object(robj)
 }
 
-fn load_packages_from_db(db_path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
+fn load_packages_from_db(db_path: &PathBuf, repo_url: &str) -> Result<Vec<Package>, Box<dyn Error>> {
     let conn = Connection::open(db_path)?;
+
+    // Get the repo_id for this URL
+    let repo_id: i64 = conn.query_row(
+        "SELECT id FROM repos WHERE url = ?1",
+        params![repo_url],
+        |row| row.get(0),
+    )?;
 
     let mut stmt = conn.prepare(
         "SELECT name, version, dependencies, download_url, file, path, built,
                 license, platform, arch, graphics_api_version, internals_id, filesize
-         FROM packages"
+         FROM packages WHERE repo_id = ?1"
     )?;
 
-    let packages = stmt.query_map([], |row| {
+    let packages = stmt.query_map(params![repo_id], |row| {
         Ok(Package {
             name: row.get(0)?,
             version: RPackageVersion::from_str(&row.get::<_, String>(1)?).unwrap(),
@@ -312,8 +319,18 @@ fn load_packages_from_db(db_path: &PathBuf) -> Result<Vec<Package>, Box<dyn Erro
 fn save_packages_to_db(
     packages: &Vec<Package>,
     db_path: &PathBuf,
+    repo_url: &str,
 ) -> Result<(), Box<dyn Error>> {
     let mut conn = Connection::open(db_path)?;
+
+    // Create repos table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS repos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            url TEXT NOT NULL UNIQUE
+        )",
+        [],
+    )?;
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS packages (
@@ -329,7 +346,9 @@ fn save_packages_to_db(
             arch TEXT,
             graphics_api_version TEXT,
             internals_id TEXT,
-            filesize INTEGER
+            filesize INTEGER,
+            repo_id INTEGER NOT NULL,
+            FOREIGN KEY (repo_id) REFERENCES repos(id)
         )",
         [],
     )?;
@@ -341,18 +360,37 @@ fn save_packages_to_db(
         [],
     )?;
 
+    // Create index for fast lookups by repo_id
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_packages_repo_id
+         ON packages (repo_id)",
+        [],
+    )?;
+
     // Use a single transaction for all inserts - much faster!
     let tx = conn.transaction()?;
 
-    // Clear existing data
-    tx.execute("DELETE FROM packages", [])?;
+    // Insert or get the repo_id
+    tx.execute(
+        "INSERT OR IGNORE INTO repos (url) VALUES (?1)",
+        params![repo_url],
+    )?;
+
+    let repo_id: i64 = tx.query_row(
+        "SELECT id FROM repos WHERE url = ?1",
+        params![repo_url],
+        |row| row.get(0),
+    )?;
+
+    // Clear existing data for this repository only
+    tx.execute("DELETE FROM packages WHERE repo_id = ?1", params![repo_id])?;
 
     // Insert packages
     let mut stmt = tx.prepare(
         "INSERT INTO packages
          (name, version, dependencies, download_url, file, path, built,
-          license, platform, arch, graphics_api_version, internals_id, filesize)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)"
+          license, platform, arch, graphics_api_version, internals_id, filesize, repo_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)"
     )?;
 
     for pkg in packages {
@@ -375,6 +413,7 @@ fn save_packages_to_db(
             &pkg.graphics_api_version,
             &pkg.internals_id,
             pkg.filesize,
+            repo_id,
         ])?;
     }
 
