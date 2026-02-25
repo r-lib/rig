@@ -385,8 +385,9 @@ fn save_packages_to_db(
 }
 
 fn repo_db_file(dcf_path: &PathBuf) -> Result<PathBuf, Box<dyn Error>> {
-    let mut db_path = dcf_path.clone();
-    db_path.set_extension("db");
+    let parent = dcf_path.parent()
+        .ok_or("Cannot determine parent directory for database file")?;
+    let db_path = parent.join("packages.db");
     Ok(db_path)
 }
 
