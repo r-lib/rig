@@ -29,6 +29,9 @@ use crate::windows::*;
 #[cfg(target_os = "linux")]
 use crate::linux::*;
 
+#[cfg(target_os = "linux")]
+use crate::platform::*;
+
 mod interpret_repos_args;
 pub use interpret_repos_args::{interpret_repos_args, ReposSetupArgs};
 mod repos_available;

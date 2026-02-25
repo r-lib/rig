@@ -75,7 +75,6 @@ impl PartialEq for OKInstalledVersion {
 
 impl Eq for OKInstalledVersion {}
 
-#[cfg(target_os = "linux")]
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct OsVersion {
     pub rig_platform: Option<String>,

@@ -20,6 +20,9 @@ use crate::windows::*;
 #[cfg(target_os = "linux")]
 use crate::linux::*;
 
+#[cfg(target_os = "linux")]
+use crate::platform::*;
+
 use crate::download::download_json_sync;
 use crate::renv;
 use crate::run::*;

@@ -31,6 +31,9 @@ mod linux;
 #[cfg(target_os = "linux")]
 use linux::*;
 
+#[cfg(target_os = "linux")]
+use platform::*;
+
 use resolve::*;
 
 mod alias;
@@ -40,6 +43,7 @@ mod dcf;
 mod download;
 mod hardcoded;
 mod library;
+mod platform;
 mod proj;
 mod rds;
 mod renv;
