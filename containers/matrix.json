@@ -105,7 +105,7 @@
             "RVERSION=devel"
         ],
         "tags": [
-            "ghcr.io/r-lib/rig/ubuntu-24.04-devel:latest"
+            "ghcr.io/r-lib/rig/ubuntu-22.04-devel:latest"
         ]
     },
     {
