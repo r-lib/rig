@@ -105,5 +105,6 @@ jobs:
           docker buildx imagetools create -t ${tag} \
             ghcr.io/r-lib/rig/${{ matrix.config.name }}-amd64:latest \
             ghcr.io/r-lib/rig/${{ matrix.config.name }}-arm64:latest;
+          docker push ${tag}
         done
       shell: bash
