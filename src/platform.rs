@@ -222,6 +222,38 @@ pub fn sc_system_detect_platform(
     Ok(())
 }
 
+pub fn platform_to_repo_directory(platform: &OsVersion, r_version: &str) -> Option<String> {
+    let r_version = semver::Version::parse(r_version).ok()?;
+    let minor = format!("{}.{}", r_version.major, r_version.minor);
+    if platform.os == "mingw32" && platform.arch == "x86_64" {
+        Some("bin/windows".to_string())
+    } else if platform.os.starts_with("darwin") {
+        if r_version < semver::Version::parse("3.1.0").unwrap() {
+            None
+        } else if r_version < semver::Version::parse("3.4.0").unwrap() {
+            Some(format!("bin/macosx/mavericks/contrib/{}", minor))
+        } else if r_version < semver::Version::parse("4.0.0").unwrap() {
+            Some(format!("/bin/macosx/el-capitan/contrib/{}", minor))
+        } else if r_version < semver::Version::parse("4.1.0").unwrap() {
+            Some(format!("/bin/macosx/contrib/{}", minor))
+        } else if r_version < semver::Version::parse("4.6.0").unwrap() {
+            if platform.arch == "aarch64" {
+                Some(format!("/bin/macosx/big-sur-arm64/contrib/{}", minor))
+            } else {
+                Some(format!("/bin/macosx/contrib/{}", minor))
+            }
+        } else {
+            if platform.arch == "aarch64" {
+                Some(format!("/bin/macosx/sonoma-arm64/contrib/{}", minor))
+            } else {
+                Some(format!("/bin/macosx/contrib/{}", minor))
+            }
+        }
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -321,5 +353,194 @@ mod tests {
     fn test_parse_platform_string_invalid_too_many_parts() {
         let result = parse_platform_string("a-b-c-d-e-f-g");
         assert!(result.is_err());
+    }
+
+    // Tests for platform_to_repo_directory
+
+    #[test]
+    fn test_platform_to_repo_directory_windows_x86_64() {
+        let platform = OsVersion {
+            rig_platform: None,
+            arch: "x86_64".to_string(),
+            vendor: "w64".to_string(),
+            os: "mingw32".to_string(),
+            distro: None,
+            version: None,
+        };
+        let result = platform_to_repo_directory(&platform, "4.3.0");
+        assert_eq!(result, Some("bin/windows".to_string()));
+    }
+
+    #[test]
+    fn test_platform_to_repo_directory_windows_aarch64() {
+        let platform = OsVersion {
+            rig_platform: None,
+            arch: "aarch64".to_string(),
+            vendor: "w64".to_string(),
+            os: "mingw32".to_string(),
+            distro: None,
+            version: None,
+        };
+        let result = platform_to_repo_directory(&platform, "4.3.0");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_platform_to_repo_directory_macos_old() {
+        let platform = OsVersion {
+            rig_platform: None,
+            arch: "x86_64".to_string(),
+            vendor: "apple".to_string(),
+            os: "darwin".to_string(),
+            distro: None,
+            version: None,
+        };
+        // R < 3.1.0 should return None
+        let result = platform_to_repo_directory(&platform, "3.0.3");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_platform_to_repo_directory_macos_mavericks() {
+        let platform = OsVersion {
+            rig_platform: None,
+            arch: "x86_64".to_string(),
+            vendor: "apple".to_string(),
+            os: "darwin".to_string(),
+            distro: None,
+            version: None,
+        };
+        // R 3.1.0 - 3.3.x should use mavericks
+        let result = platform_to_repo_directory(&platform, "3.2.5");
+        assert_eq!(result, Some("bin/macosx/mavericks/contrib/3.2".to_string()));
+    }
+
+    #[test]
+    fn test_platform_to_repo_directory_macos_el_capitan() {
+        let platform = OsVersion {
+            rig_platform: None,
+            arch: "x86_64".to_string(),
+            vendor: "apple".to_string(),
+            os: "darwin".to_string(),
+            distro: None,
+            version: None,
+        };
+        // R 3.4.0 - 3.x.x should use el-capitan
+        let result = platform_to_repo_directory(&platform, "3.6.3");
+        assert_eq!(
+            result,
+            Some("/bin/macosx/el-capitan/contrib/3.6".to_string())
+        );
+    }
+
+    #[test]
+    fn test_platform_to_repo_directory_macos_4_0() {
+        let platform = OsVersion {
+            rig_platform: None,
+            arch: "x86_64".to_string(),
+            vendor: "apple".to_string(),
+            os: "darwin".to_string(),
+            distro: None,
+            version: None,
+        };
+        // R 4.0.0 - 4.0.x
+        let result = platform_to_repo_directory(&platform, "4.0.5");
+        assert_eq!(result, Some("/bin/macosx/contrib/4.0".to_string()));
+    }
+
+    #[test]
+    fn test_platform_to_repo_directory_macos_4_1_x86_64() {
+        let platform = OsVersion {
+            rig_platform: None,
+            arch: "x86_64".to_string(),
+            vendor: "apple".to_string(),
+            os: "darwin".to_string(),
+            distro: None,
+            version: None,
+        };
+        // R 4.1.0 - 4.5.x on x86_64
+        let result = platform_to_repo_directory(&platform, "4.3.2");
+        assert_eq!(result, Some("/bin/macosx/contrib/4.3".to_string()));
+    }
+
+    #[test]
+    fn test_platform_to_repo_directory_macos_4_1_aarch64() {
+        let platform = OsVersion {
+            rig_platform: None,
+            arch: "aarch64".to_string(),
+            vendor: "apple".to_string(),
+            os: "darwin".to_string(),
+            distro: None,
+            version: None,
+        };
+        // R 4.1.0 - 4.5.x on aarch64
+        let result = platform_to_repo_directory(&platform, "4.3.2");
+        assert_eq!(
+            result,
+            Some("/bin/macosx/big-sur-arm64/contrib/4.3".to_string())
+        );
+    }
+
+    #[test]
+    fn test_platform_to_repo_directory_macos_4_6_x86_64() {
+        let platform = OsVersion {
+            rig_platform: None,
+            arch: "x86_64".to_string(),
+            vendor: "apple".to_string(),
+            os: "darwin".to_string(),
+            distro: None,
+            version: None,
+        };
+        // R 4.6.0+ on x86_64
+        let result = platform_to_repo_directory(&platform, "4.6.0");
+        assert_eq!(result, Some("/bin/macosx/contrib/4.6".to_string()));
+    }
+
+    #[test]
+    fn test_platform_to_repo_directory_macos_4_6_aarch64() {
+        let platform = OsVersion {
+            rig_platform: None,
+            arch: "aarch64".to_string(),
+            vendor: "apple".to_string(),
+            os: "darwin".to_string(),
+            distro: None,
+            version: None,
+        };
+        // R 4.6.0+ on aarch64
+        let result = platform_to_repo_directory(&platform, "4.6.0");
+        assert_eq!(
+            result,
+            Some("/bin/macosx/sonoma-arm64/contrib/4.6".to_string())
+        );
+    }
+
+    #[test]
+    fn test_platform_to_repo_directory_linux() {
+        let platform = OsVersion {
+            rig_platform: None,
+            arch: "x86_64".to_string(),
+            vendor: "unknown".to_string(),
+            os: "linux".to_string(),
+            distro: Some("ubuntu".to_string()),
+            version: Some("22.04".to_string()),
+        };
+        // Linux should return None
+        let result = platform_to_repo_directory(&platform, "4.3.0");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_platform_to_repo_directory_invalid_version() {
+        let platform = OsVersion {
+            rig_platform: None,
+            arch: "x86_64".to_string(),
+            vendor: "w64".to_string(),
+            os: "mingw32".to_string(),
+            distro: None,
+            version: None,
+        };
+        // Invalid version string should return None
+        let result = platform_to_repo_directory(&platform, "invalid");
+        assert_eq!(result, None);
     }
 }

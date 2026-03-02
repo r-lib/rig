@@ -1180,6 +1180,13 @@ pub fn rig_app() -> Command {
                     .about("Test parsing platform strings")
                     .display_order(0)
                     .arg(Arg::new("platform").required(true)),
+            )
+            .subcommand(
+                Command::new("platform-to-repo-directory")
+                    .about("Test repo directory for platform string")
+                    .display_order(0)
+                    .arg(Arg::new("platform").required(true))
+                    .arg(Arg::new("r-version").required(true).long("r-version")),
             );
         rig = rig.subcommand(cmd_test);
     }
