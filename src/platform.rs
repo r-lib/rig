@@ -1,14 +1,11 @@
-use regex::Regex;
 use std::error::Error;
 use std::ffi::CStr;
-use std::path::Path;
 use std::sync::OnceLock;
 
 use clap::ArgMatches;
 use simple_error::bail;
 
 use crate::rversion::*;
-use crate::utils::*;
 
 pub fn parse_platform_string(platform: &str) -> Result<OsVersion, Box<dyn Error>> {
     // macos -> {aarch64,x86_64}-apple-darwin<x> depending on R version
@@ -19,8 +16,15 @@ pub fn parse_platform_string(platform: &str) -> Result<OsVersion, Box<dyn Error>
     // windows -> {aarch64,x86_64}-w64-mingw32 (should we still care about 32-bit windows?)
     let native_arch = std::env::consts::ARCH;
     let platform = if platform == "macos" {
-        let darwin_version = get_darwin_version()?;
-        format!("{}-apple-darwin{}", native_arch, darwin_version)
+        #[cfg(target_os = "macos")]
+        {
+            let darwin_version = get_darwin_version()?;
+            format!("{}-apple-darwin{}", native_arch, darwin_version)
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            bail!("Cannot detect macOS platform on non-macOS system");
+        }
     } else if platform == "windows" {
         format!("{}-w64-mingw32", native_arch)
     } else if platform.starts_with("linux-") {
@@ -33,35 +37,33 @@ pub fn parse_platform_string(platform: &str) -> Result<OsVersion, Box<dyn Error>
     };
 
     let pieces = platform.split('-').collect::<Vec<_>>();
-    let (arch, vendor, distro, os, version);
+    let mut distro = None;
+    let mut version = None;
+    let (arch, vendor, os);
     match pieces.len() {
         3 => {
             arch = pieces[0];
             vendor = pieces[1];
             os = pieces[2].to_string();
-            distro = "unknown";
-            version = "unknown";
         }
         4 => {
             arch = pieces[0];
             vendor = pieces[1];
             os = pieces[2].to_string() + "-" + pieces[3];
-            distro = "unknown";
-            version = "unknown";
         }
         5 => {
             arch = pieces[0];
             vendor = pieces[1];
             os = pieces[2].to_string();
-            distro = pieces[3];
-            version = pieces[4];
+            distro = Some(pieces[3].to_string());
+            version = Some(pieces[4].to_string());
         }
         6 => {
             arch = pieces[0];
             vendor = pieces[1];
             os = pieces[2].to_string() + "-" + pieces[3];
-            distro = pieces[4];
-            version = pieces[5];
+            distro = Some(pieces[4].to_string());
+            version = Some(pieces[5].to_string());
         }
         _ => {
             bail!("Invalid platform string format: '{}'", platform);
@@ -72,13 +74,14 @@ pub fn parse_platform_string(platform: &str) -> Result<OsVersion, Box<dyn Error>
         rig_platform: Some(platform.to_string()),
         arch: arch.to_string(),
         vendor: vendor.to_string(),
-        distro: distro.to_string(),
+        distro,
         os,
-        version: version.to_string(),
+        version,
     })
 }
 
-pub fn detect_linux_impl() -> Result<OsVersion, Box<dyn Error>> {
+#[cfg(target_os = "linux")]
+pub fn detect_platform_impl() -> Result<OsVersion, Box<dyn Error>> {
     let release_file = Path::new("/etc/os-release");
     let lines = read_lines(release_file)?;
 
@@ -116,8 +119,8 @@ pub fn detect_linux_impl() -> Result<OsVersion, Box<dyn Error>> {
     let arch = std::env::consts::ARCH.to_string();
     let vendor = "unknown".to_string();
     let os = "linux".to_string();
-    let distro = id.to_owned();
-    let version = ver.to_owned();
+    let distro = Some(id.to_owned());
+    let version = Some(ver.to_owned());
 
     Ok(OsVersion {
         rig_platform: None,
@@ -129,25 +132,42 @@ pub fn detect_linux_impl() -> Result<OsVersion, Box<dyn Error>> {
     })
 }
 
-// Cache for detect_linux() when RIG_PLATFORM is not set
-static LINUX_DETECTION_CACHE: OnceLock<OsVersion> = OnceLock::new();
+#[cfg(target_os = "macos")]
+pub fn detect_platform_impl() -> Result<OsVersion, Box<dyn Error>> {
+    Ok(OsVersion {
+        rig_platform: None,
+        arch: std::env::consts::ARCH.to_string(),
+        vendor: "apple".to_string(),
+        os: "darwin".to_string() + &get_darwin_version()?,
+        distro: None,
+        version: None,
+    })
+}
 
-pub fn detect_linux() -> Result<OsVersion, Box<dyn Error>> {
-    // Check if RIG_PLATFORM is set
-    let rig_platform = std::env::var("RIG_PLATFORM").ok();
+#[cfg(target_os = "windows")]
+pub fn detect_platform_impl() -> Result<OsVersion, Box<dyn Error>> {
+    Ok(OsVersion {
+        rig_platform: None,
+        arch: std::env::consts::ARCH.to_string(),
+        vendor: "w64".to_string(),
+        os: "mingw32".to_string(),
+        distro: None,
+        version: None,
+    })
+}
 
-    // If RIG_PLATFORM is set, always compute fresh (don't use cache)
-    if rig_platform.is_some() {
-        return parse_platform_string(&rig_platform.unwrap());
-    }
+// Cache for detect_platform() when RIG_PLATFORM is not set
+static PLATFORM_DETECTION_CACHE: OnceLock<OsVersion> = OnceLock::new();
 
+pub fn detect_platform() -> Result<OsVersion, Box<dyn Error>> {
     // If RIG_PLATFORM is not set, use cache
-    match LINUX_DETECTION_CACHE.get() {
+    match PLATFORM_DETECTION_CACHE.get() {
         Some(cached) => Ok(cached.clone()),
         None => {
-            let result = detect_linux_impl()?;
-            // Try to cache it (this might fail if another thread cached it first, which is fine)
-            let _ = LINUX_DETECTION_CACHE.set(result.clone());
+            let result = detect_platform_impl()?;
+            // Try to cache it (this might fail if another thread
+            // cached it first, which is fine)
+            let _ = PLATFORM_DETECTION_CACHE.set(result.clone());
             Ok(result)
         }
     }
@@ -173,16 +193,31 @@ pub fn sc_system_detect_platform(
     args: &ArgMatches,
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
-    let linux = detect_linux()?;
+    // Check if RIG_PLATFORM is set, if not detect current platform
+    let platform = match std::env::var("RIG_PLATFORM") {
+        Ok(rp) => parse_platform_string(&rp)?,
+        Err(_) => detect_platform()?,
+    };
 
     if args.get_flag("json") || mainargs.get_flag("json") {
-        println!("{}", serde_json::to_string_pretty(&linux)?);
+        println!("{}", serde_json::to_string_pretty(&platform)?);
     } else {
         println!("Detected platform:");
-        println!("Architecture: {}", linux.arch);
-        println!("OS:           {}", linux.os);
-        println!("Distribution: {}", linux.distro);
-        println!("Version:      {}", linux.version);
+        println!(
+            "Rig platform: {}",
+            platform.rig_platform.as_deref().unwrap_or("unset")
+        );
+        println!("Vendor:       {}", platform.vendor);
+        println!("Architecture: {}", platform.arch);
+        println!("OS:           {}", platform.os);
+        println!(
+            "Distribution: {}",
+            platform.distro.as_deref().unwrap_or("N/A")
+        );
+        println!(
+            "Version:      {}",
+            platform.version.as_deref().unwrap_or("N/A")
+        );
     }
     Ok(())
 }
@@ -197,8 +232,8 @@ mod tests {
         assert_eq!(result.arch, "aarch64");
         assert_eq!(result.vendor, "apple");
         assert_eq!(result.os, "darwin");
-        assert_eq!(result.distro, "unknown");
-        assert_eq!(result.version, "unknown");
+        assert_eq!(result.distro, None);
+        assert_eq!(result.version, None);
     }
 
     #[test]
@@ -207,8 +242,8 @@ mod tests {
         assert_eq!(result.arch, "x86_64");
         assert_eq!(result.vendor, "w64");
         assert_eq!(result.os, "mingw32");
-        assert_eq!(result.distro, "unknown");
-        assert_eq!(result.version, "unknown");
+        assert_eq!(result.distro, None);
+        assert_eq!(result.version, None);
     }
 
     #[test]
@@ -217,8 +252,8 @@ mod tests {
         assert_eq!(result.arch, "aarch64");
         assert_eq!(result.vendor, "unknown");
         assert_eq!(result.os, "linux");
-        assert_eq!(result.distro, "ubuntu");
-        assert_eq!(result.version, "22.04");
+        assert_eq!(result.distro, Some("ubuntu".to_string()));
+        assert_eq!(result.version, Some("22.04".to_string()));
     }
 
     #[test]
@@ -227,8 +262,8 @@ mod tests {
         assert_eq!(result.arch, "aarch64");
         assert_eq!(result.vendor, "unknown");
         assert_eq!(result.os, "linux-gnu");
-        assert_eq!(result.distro, "ubuntu");
-        assert_eq!(result.version, "22.04");
+        assert_eq!(result.distro, Some("ubuntu".to_string()));
+        assert_eq!(result.version, Some("22.04".to_string()));
     }
 
     #[test]
@@ -238,8 +273,8 @@ mod tests {
         assert_eq!(result.arch, std::env::consts::ARCH);
         assert_eq!(result.vendor, "unknown");
         assert_eq!(result.os, "linux");
-        assert_eq!(result.distro, "ubuntu");
-        assert_eq!(result.version, "22.04");
+        assert_eq!(result.distro, Some("ubuntu".to_string()));
+        assert_eq!(result.version, Some("22.04".to_string()));
     }
 
     #[test]
@@ -249,8 +284,8 @@ mod tests {
         assert_eq!(result.arch, std::env::consts::ARCH);
         assert_eq!(result.vendor, "unknown");
         assert_eq!(result.os, "linux");
-        assert_eq!(result.distro, "ubuntu");
-        assert_eq!(result.version, "22.04");
+        assert_eq!(result.distro, Some("ubuntu".to_string()));
+        assert_eq!(result.version, Some("22.04".to_string()));
     }
 
     #[test]
@@ -269,8 +304,8 @@ mod tests {
         assert_eq!(result.vendor, "apple");
         // OS includes the darwin version, e.g. "darwin25.3.0"
         assert!(result.os.starts_with("darwin"));
-        assert_eq!(result.distro, "unknown");
-        assert_eq!(result.version, "unknown");
+        assert_eq!(result.distro, None);
+        assert_eq!(result.version, None);
     }
 
     #[test]

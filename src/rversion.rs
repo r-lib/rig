@@ -82,8 +82,8 @@ pub struct OsVersion {
     pub vendor: String,
     pub os: String,
     #[serde(rename = "distribution")]
-    pub distro: String,
-    pub version: String,
+    pub distro: Option<String>,
+    pub version: Option<String>,
 }
 
 fn serialize_path_with_forward_slashes<S>(

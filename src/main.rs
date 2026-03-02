@@ -58,6 +58,7 @@ mod test;
 mod utils;
 
 use library::*;
+use platform::*;
 use proj::*;
 use repos::*;
 use sysreqs::*;

@@ -796,14 +796,6 @@ pub fn sc_system_rtools(_args: &ArgMatches, _mainargs: &ArgMatches) -> Result<()
     Ok(())
 }
 
-pub fn sc_system_detect_platform(
-    _args: &ArgMatches,
-    _mainargs: &ArgMatches,
-) -> Result<(), Box<dyn Error>> {
-    // Nothing to do on macOS
-    Ok(())
-}
-
 pub fn sc_rstudio_(
     version: Option<&str>,
     project: Option<&str>,
