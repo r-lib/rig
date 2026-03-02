@@ -1177,6 +1177,12 @@ pub fn rig_app() -> Command {
                     .about("Test reading packages from RDS files")
                     .display_order(0)
                     .arg(Arg::new("path").required(true)),
+            )
+            .subcommand(
+                Command::new("parse-platform-string")
+                    .about("Test parsing platform strings")
+                    .display_order(0)
+                    .arg(Arg::new("platform").required(true)),
             );
         rig = rig.subcommand(cmd_test);
     }
