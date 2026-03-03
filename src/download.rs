@@ -295,6 +295,63 @@ pub fn download_first_available_(
     download_first_available__(client_, urls, local_path)
 }
 
+/// Download multiple files concurrently, each from a list of candidate URLs.
+/// Each download will try its URLs in order until one succeeds.
+/// Returns a vector of results, one for each download request.
+/// Each result is Ok(true) if downloaded, Ok(false) if cached, or Err if all URLs failed.
+pub fn download_multiple_first_available_(
+    downloads: Vec<(Vec<String>, PathBuf)>,
+    update_older: Option<Duration>,
+    client: Option<&reqwest::Client>,
+) -> Vec<Result<bool, Box<dyn Error>>> {
+    let update_older = match update_older {
+        Some(dur) => dur,
+        None => Duration::from_hours(24),
+    };
+
+    let client_ = match client {
+        Some(c) => c,
+        None => &reqwest::Client::new(),
+    };
+
+    download_multiple_first_available__(client_, downloads, update_older)
+}
+
+#[tokio::main]
+async fn download_multiple_first_available__(
+    client: &reqwest::Client,
+    downloads: Vec<(Vec<String>, PathBuf)>,
+    update_older: Duration,
+) -> Vec<Result<bool, Box<dyn Error>>> {
+    download_multiple_first_available(client, downloads, update_older).await
+}
+
+/// Async implementation: download multiple files concurrently.
+async fn download_multiple_first_available(
+    client: &reqwest::Client,
+    downloads: Vec<(Vec<String>, PathBuf)>,
+    update_older: Duration,
+) -> Vec<Result<bool, Box<dyn Error>>> {
+    future::join_all(downloads.into_iter().map(|(urls, local_path)| async move {
+        // Check if file is up to date before attempting download
+        if local_path.exists() {
+            let metadata = fs::metadata(&local_path)?;
+            let modified = metadata.modified()?;
+            let elapsed = SystemTime::now().duration_since(modified)?;
+
+            if elapsed < update_older {
+                info!("{} is up to date, skipping download", local_path.display());
+                return Ok(false);
+            }
+        }
+
+        // Convert Vec<String> to Vec<&str> for download_first_available
+        let url_refs: Vec<&str> = urls.iter().map(|s| s.as_str()).collect();
+        download_first_available(client, &url_refs, &local_path).await
+    }))
+    .await
+}
+
 #[tokio::main]
 async fn download_first_available__(
     client: &reqwest::Client,
@@ -344,4 +401,219 @@ pub async fn download_json(
     }
 
     Ok(vers2)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[test]
+    fn test_download_multiple_first_available_no_downloads() {
+        let downloads: Vec<(Vec<String>, PathBuf)> = vec![];
+        let results = download_multiple_first_available_(downloads, None, None);
+        assert_eq!(results.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_download_multiple_first_available_all_success() {
+        let mock_server = MockServer::start().await;
+
+        // Mock responses for two files
+        Mock::given(method("GET"))
+            .and(path("/file1.txt"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("content1"))
+            .mount(&mock_server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/file2.txt"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("content2"))
+            .mount(&mock_server)
+            .await;
+
+        let tmp_dir = std::env::temp_dir();
+        let file1_path = tmp_dir.join("test_download_concurrent_file1.txt");
+        let file2_path = tmp_dir.join("test_download_concurrent_file2.txt");
+
+        // Clean up any existing files
+        let _ = std::fs::remove_file(&file1_path);
+        let _ = std::fs::remove_file(&file2_path);
+
+        let downloads = vec![
+            (
+                vec![format!("{}/file1.txt", mock_server.uri())],
+                file1_path.clone(),
+            ),
+            (
+                vec![format!("{}/file2.txt", mock_server.uri())],
+                file2_path.clone(),
+            ),
+        ];
+
+        let client = reqwest::Client::new();
+        let results = download_multiple_first_available(
+            &client,
+            downloads,
+            Duration::from_hours(24),
+        )
+        .await;
+
+        assert_eq!(results.len(), 2);
+        assert!(results[0].is_ok());
+        assert!(results[1].is_ok());
+        assert_eq!(results[0].as_ref().unwrap(), &true); // Downloaded
+        assert_eq!(results[1].as_ref().unwrap(), &true); // Downloaded
+
+        // Verify files exist
+        assert!(file1_path.exists());
+        assert!(file2_path.exists());
+
+        // Clean up
+        let _ = std::fs::remove_file(&file1_path);
+        let _ = std::fs::remove_file(&file2_path);
+    }
+
+    #[tokio::test]
+    async fn test_download_multiple_first_available_with_fallback() {
+        let mock_server = MockServer::start().await;
+
+        // File1: only respond on /mirror path (first URL will fail)
+        Mock::given(method("GET"))
+            .and(path("/mirror/file1.txt"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("content1"))
+            .mount(&mock_server)
+            .await;
+
+        let tmp_dir = std::env::temp_dir();
+        let file1_path = tmp_dir.join("test_download_fallback_file1.txt");
+
+        // Clean up any existing file
+        let _ = std::fs::remove_file(&file1_path);
+
+        let downloads = vec![(
+            vec![
+                format!("{}/nonexistent/file1.txt", mock_server.uri()),
+                format!("{}/mirror/file1.txt", mock_server.uri()),
+            ],
+            file1_path.clone(),
+        )];
+
+        let client = reqwest::Client::new();
+        let results = download_multiple_first_available(
+            &client,
+            downloads,
+            Duration::from_hours(24),
+        )
+        .await;
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].is_ok());
+        assert_eq!(results[0].as_ref().unwrap(), &true); // Downloaded from fallback URL
+
+        // Verify file exists
+        assert!(file1_path.exists());
+
+        // Clean up
+        let _ = std::fs::remove_file(&file1_path);
+    }
+
+    #[tokio::test]
+    async fn test_download_multiple_first_available_mixed_results() {
+        let mock_server = MockServer::start().await;
+
+        // File1: success
+        Mock::given(method("GET"))
+            .and(path("/file1.txt"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("content1"))
+            .mount(&mock_server)
+            .await;
+
+        // File2: all URLs will fail (404)
+        Mock::given(method("GET"))
+            .and(path("/file2.txt"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&mock_server)
+            .await;
+
+        let tmp_dir = std::env::temp_dir();
+        let file1_path = tmp_dir.join("test_download_mixed_file1.txt");
+        let file2_path = tmp_dir.join("test_download_mixed_file2.txt");
+
+        // Clean up any existing files
+        let _ = std::fs::remove_file(&file1_path);
+        let _ = std::fs::remove_file(&file2_path);
+
+        let downloads = vec![
+            (
+                vec![format!("{}/file1.txt", mock_server.uri())],
+                file1_path.clone(),
+            ),
+            (
+                vec![format!("{}/file2.txt", mock_server.uri())],
+                file2_path.clone(),
+            ),
+        ];
+
+        let client = reqwest::Client::new();
+        let results = download_multiple_first_available(
+            &client,
+            downloads,
+            Duration::from_hours(24),
+        )
+        .await;
+
+        assert_eq!(results.len(), 2);
+        assert!(results[0].is_ok());
+        assert_eq!(results[0].as_ref().unwrap(), &true); // Success
+        assert!(results[1].is_err()); // Failed
+
+        // Verify only file1 exists
+        assert!(file1_path.exists());
+        assert!(!file2_path.exists());
+
+        // Clean up
+        let _ = std::fs::remove_file(&file1_path);
+    }
+
+    #[tokio::test]
+    async fn test_download_multiple_first_available_all_cached() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/file1.txt"))
+            .respond_with(
+                ResponseTemplate::new(304), // Not Modified
+            )
+            .mount(&mock_server)
+            .await;
+
+        let tmp_dir = std::env::temp_dir();
+        let file1_path = tmp_dir.join("test_download_cached_file1.txt");
+
+        // Create a file that already exists
+        std::fs::write(&file1_path, "existing content").unwrap();
+
+        let downloads = vec![(
+            vec![format!("{}/file1.txt", mock_server.uri())],
+            file1_path.clone(),
+        )];
+
+        let client = reqwest::Client::new();
+        // Set update_older to a very long time so the file is considered up-to-date
+        let results = download_multiple_first_available(
+            &client,
+            downloads,
+            Duration::from_secs(86400 * 365), // 1 year
+        )
+        .await;
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].is_ok());
+        assert_eq!(results[0].as_ref().unwrap(), &false); // Cached, not downloaded
+
+        // Clean up
+        let _ = std::fs::remove_file(&file1_path);
+    }
 }
