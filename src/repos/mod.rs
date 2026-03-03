@@ -512,7 +512,7 @@ fn get_cran_package_version(
         .ok_or("Cannot determine cache directory")?
         .cache_dir()
         .to_path_buf();
-    local.push("packages");
+    local.push("package-metadata");
     local.push("package-".to_string() + &package + "-" + version + ".json");
     debug!("Local cache file: {}", local.display());
 
