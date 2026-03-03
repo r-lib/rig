@@ -91,6 +91,9 @@ pub fn repos_get_packages(
     let repo_local = repo_local_file(&repo_url_plain)?;
     let repo_db = repo_db_file(&repo_local)?;
 
+    // Ensure database schema exists early
+    ensure_db_schema(&repo_db)?;
+
     create_parent_dir_if_needed(&repo_local)?;
     info!("Updating repo metadata from {}", repo_url_plain);
     let dl_status = download_first_available_(&repo_urls, &repo_local, None, None)?;
@@ -348,6 +351,60 @@ pub fn parse_packages_from_rds(rds_path: &PathBuf) -> Result<Vec<Package>, Box<d
     parse_packages_from_rds_object(robj)
 }
 
+fn ensure_db_schema(db_path: &PathBuf) -> Result<(), Box<dyn Error>> {
+    let conn = Connection::open(db_path)?;
+
+    // Create repos table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS repos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            url TEXT NOT NULL,
+            pkg_type TEXT NOT NULL,
+            r_version TEXT,
+            path TEXT NOT NULL,
+            last_updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS packages (
+            name TEXT NOT NULL,
+            version TEXT NOT NULL,
+            dependencies TEXT NOT NULL,
+            download_url TEXT,
+            file TEXT,
+            path TEXT,
+            built TEXT,
+            license TEXT,
+            platform TEXT,
+            arch TEXT,
+            graphics_api_version TEXT,
+            internals_id TEXT,
+            filesize INTEGER,
+            repo_id INTEGER NOT NULL,
+            FOREIGN KEY (repo_id) REFERENCES repos(id)
+        )",
+        [],
+    )?;
+
+    // Create index for fast lookups by name, version, platform, arch
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_packages_lookup
+         ON packages (name, version, platform, arch)",
+        [],
+    )?;
+
+    // Create index for fast lookups by repo_id
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_packages_repo_id
+         ON packages (repo_id)",
+        [],
+    )?;
+
+    Ok(())
+}
+
 fn load_packages_from_db(
     db_path: &PathBuf,
     repo_url: &str,
@@ -410,54 +467,6 @@ fn save_packages_to_db(
     } else {
         r_version
     };
-
-    // Create repos table
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS repos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            url TEXT NOT NULL,
-            pkg_type TEXT NOT NULL,
-            r_version TEXT,
-            path TEXT NOT NULL,
-            last_updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )",
-        [],
-    )?;
-
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS packages (
-            name TEXT NOT NULL,
-            version TEXT NOT NULL,
-            dependencies TEXT NOT NULL,
-            download_url TEXT,
-            file TEXT,
-            path TEXT,
-            built TEXT,
-            license TEXT,
-            platform TEXT,
-            arch TEXT,
-            graphics_api_version TEXT,
-            internals_id TEXT,
-            filesize INTEGER,
-            repo_id INTEGER NOT NULL,
-            FOREIGN KEY (repo_id) REFERENCES repos(id)
-        )",
-        [],
-    )?;
-
-    // Create index for fast lookups by name, version, platform, arch
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_packages_lookup
-         ON packages (name, version, platform, arch)",
-        [],
-    )?;
-
-    // Create index for fast lookups by repo_id
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_packages_repo_id
-         ON packages (repo_id)",
-        [],
-    )?;
 
     // Use a single transaction for all inserts - much faster!
     let tx = conn.transaction()?;
