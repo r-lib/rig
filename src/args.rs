@@ -1108,6 +1108,20 @@ pub fn rig_app() -> Command {
                         .long("json")
                         .num_args(0)
                         .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version to list repositories for, instead of the default")
+                        .long("r-version")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("pkg-type")
+                        .help("Type of package to list (source, binary, etc.)")
+                        .long("pkg-type")
+                        .num_args(1)
+                        .required(false),
                 ),
         )
         .subcommand(

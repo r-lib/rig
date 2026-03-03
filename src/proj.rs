@@ -165,7 +165,11 @@ fn sc_proj_solve_latest(
     deps: &PackageDependencies,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
     info!("Solver with latest package versions");
-    let pkgs = repos_get_packages("https://cloud.r-project.org/src/contrib")?;
+    let pkgs = repos_get_packages(
+        "https://cloud.r-project.org/src/contrib",
+        "source",
+        "src/contrib",
+    )?;
     let reg: RPackageRegistry = RPackageRegistry::default();
 
     info!("Adding {} packages to the registry", pkgs.len());

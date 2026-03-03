@@ -21,10 +21,68 @@ use crate::download::download_first_available_;
 use crate::rds::*;
 use crate::utils::{calculate_hash, create_parent_dir_if_needed};
 
-pub fn repos_get_packages(repo_url: &str) -> Result<Vec<Package>, Box<dyn Error>> {
-    let repo_url_gz = repo_url.to_string() + "/PACKAGES.gz";
-    let repo_url_rds = repo_url.to_string() + "/PACKAGES.rds";
-    let repo_url_plain = repo_url.to_string() + "/PACKAGES";
+fn package_type_to_path(pkg_type: &str, r_version: &str) -> Result<String, Box<dyn Error>> {
+    use regex::Regex;
+
+    if pkg_type == "source" {
+        return Ok("src/contrib".to_string());
+    }
+
+    // Pattern: ^([[:lower:]]+)[.]binary(|[.]([[:alnum:]_-]+))$
+    // In Rust regex: ^([a-z]+)\.binary(|\.([a-zA-Z0-9_-]+))$
+    let re = Regex::new(r"^([a-z]+)\.binary(|\.([a-zA-Z0-9_-]+))$")?;
+
+    if let Some(caps) = re.captures(pkg_type) {
+        let os_raw = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+
+        // Switch "mac" -> "macosx", "win" -> "windows"
+        let os = match os_raw {
+            "mac" => "macosx",
+            "win" => "windows",
+            other => other,
+        };
+
+        // Check if there's a subtype (group 3)
+        if let Some(subtype) = caps.get(3) {
+            // bin/{os}/{subtype}/contrib/{ver}
+            Ok(format!(
+                "bin/{}/{}/contrib/{}",
+                os,
+                subtype.as_str(),
+                r_version
+            ))
+        } else {
+            // bin/{os}/contrib/{ver}
+            Ok(format!("bin/{}/contrib/{}", os, r_version))
+        }
+    } else {
+        bail!("invalid 'type': {}", pkg_type)
+    }
+}
+
+fn minor_r_version(r_version: &str) -> Result<String, Box<dyn Error>> {
+    // If version has only 2 parts (e.g., "4.3"), append ".0" for semver parsing
+    let version_str = if r_version.matches('.').count() == 1 {
+        format!("{}.0", r_version)
+    } else {
+        r_version.to_string()
+    };
+
+    let version = semver::Version::parse(&version_str)
+        .map_err(|e| format!("Invalid R version format '{}': {}", r_version, e))?;
+    Ok(format!("{}.{}", version.major, version.minor))
+}
+
+pub fn repos_get_packages(
+    repo_url: &str,
+    pkg_type: &str,
+    r_version: &str,
+) -> Result<Vec<Package>, Box<dyn Error>> {
+    let r_version = minor_r_version(r_version)?;
+    let path = package_type_to_path(pkg_type, &r_version)?;
+    let repo_url_gz = repo_url.to_string() + "/" + &path + "/PACKAGES.gz";
+    let repo_url_rds = repo_url.to_string() + "/" + &path + "/PACKAGES.rds";
+    let repo_url_plain = repo_url.to_string() + "/" + &path + "/PACKAGES";
     let repo_urls: Vec<&str> = vec![
         repo_url_gz.as_str(),
         repo_url_rds.as_str(),
@@ -34,20 +92,20 @@ pub fn repos_get_packages(repo_url: &str) -> Result<Vec<Package>, Box<dyn Error>
     let repo_db = repo_db_file(&repo_local)?;
 
     create_parent_dir_if_needed(&repo_local)?;
-    info!("Updating repo metadata from {}", repo_url);
+    info!("Updating repo metadata from {}", repo_url_plain);
     let dl_status = download_first_available_(&repo_urls, &repo_local, None, None)?;
 
     if dl_status {
         info!("Updated repo metadata at {}", repo_local.display());
         // Parse DCF/RDS file and save to database
         let packages = parse_packages(&repo_local)?;
-        save_packages_to_db(&packages, &repo_db, repo_url)?;
+        save_packages_to_db(&packages, &repo_db, repo_url, pkg_type, &path)?;
         info!("Saved database cache to {}", repo_db.display());
         Ok(packages)
     } else {
         info!("Repo metadata is up to date at {}", repo_local.display());
         // Try to load from database cache
-        match load_packages_from_db(&repo_db, repo_url) {
+        match load_packages_from_db(&repo_db, repo_url, pkg_type) {
             Ok(packages) => {
                 info!("Loaded {} packages from database cache", packages.len());
                 Ok(packages)
@@ -56,7 +114,7 @@ pub fn repos_get_packages(repo_url: &str) -> Result<Vec<Package>, Box<dyn Error>
                 // Database file doesn't exist or is corrupted, parse DCF/RDS file
                 info!("Database cache not available, parsing DCF/RDS file");
                 let packages = parse_packages(&repo_local)?;
-                save_packages_to_db(&packages, &repo_db, repo_url)?;
+                save_packages_to_db(&packages, &repo_db, repo_url, pkg_type, &path)?;
                 Ok(packages)
             }
         }
@@ -276,42 +334,48 @@ pub fn parse_packages_from_rds(rds_path: &PathBuf) -> Result<Vec<Package>, Box<d
     parse_packages_from_rds_object(robj)
 }
 
-fn load_packages_from_db(db_path: &PathBuf, repo_url: &str) -> Result<Vec<Package>, Box<dyn Error>> {
+fn load_packages_from_db(
+    db_path: &PathBuf,
+    repo_url: &str,
+    pkg_type: &str,
+) -> Result<Vec<Package>, Box<dyn Error>> {
     let conn = Connection::open(db_path)?;
 
     // Get the repo_id for this URL
     let repo_id: i64 = conn.query_row(
-        "SELECT id FROM repos WHERE url = ?1",
-        params![repo_url],
+        "SELECT id FROM repos WHERE url = ?1 AND pkg_type = ?2",
+        params![repo_url, pkg_type],
         |row| row.get(0),
     )?;
 
     let mut stmt = conn.prepare(
         "SELECT name, version, dependencies, download_url, file, path, built,
                 license, platform, arch, graphics_api_version, internals_id, filesize
-         FROM packages WHERE repo_id = ?1"
+         FROM packages WHERE repo_id = ?1",
     )?;
 
-    let packages = stmt.query_map(params![repo_id], |row| {
-        Ok(Package {
-            name: row.get(0)?,
-            version: RPackageVersion::from_str(&row.get::<_, String>(1)?).unwrap(),
-            dependencies: serde_json::from_str(&row.get::<_, String>(2)?).unwrap(),
-            download_url: row.get(3)?,
-            file: row.get(4)?,
-            path: row.get(5)?,
-            built: row.get::<_, Option<String>>(6)?
-                .map(|s| serde_json::from_str(&s).ok())
-                .flatten(),
-            license: row.get(7)?,
-            platform: row.get(8)?,
-            arch: row.get(9)?,
-            graphics_api_version: row.get(10)?,
-            internals_id: row.get(11)?,
-            filesize: row.get(12)?,
-        })
-    })?
-    .collect::<Result<Vec<_>, _>>()?;
+    let packages = stmt
+        .query_map(params![repo_id], |row| {
+            Ok(Package {
+                name: row.get(0)?,
+                version: RPackageVersion::from_str(&row.get::<_, String>(1)?).unwrap(),
+                dependencies: serde_json::from_str(&row.get::<_, String>(2)?).unwrap(),
+                download_url: row.get(3)?,
+                file: row.get(4)?,
+                path: row.get(5)?,
+                built: row
+                    .get::<_, Option<String>>(6)?
+                    .map(|s| serde_json::from_str(&s).ok())
+                    .flatten(),
+                license: row.get(7)?,
+                platform: row.get(8)?,
+                arch: row.get(9)?,
+                graphics_api_version: row.get(10)?,
+                internals_id: row.get(11)?,
+                filesize: row.get(12)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(packages)
 }
@@ -320,6 +384,9 @@ fn save_packages_to_db(
     packages: &Vec<Package>,
     db_path: &PathBuf,
     repo_url: &str,
+    r_version: Option<&str>,
+    pkg_type: &str,
+    path: &str,
 ) -> Result<(), Box<dyn Error>> {
     let mut conn = Connection::open(db_path)?;
 
@@ -327,7 +394,11 @@ fn save_packages_to_db(
     conn.execute(
         "CREATE TABLE IF NOT EXISTS repos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            url TEXT NOT NULL UNIQUE
+            url TEXT NOT NULL,
+            pkg_type TEXT NOT NULL,
+            r_version TEXT,
+            path TEXT NOT NULL,
+            last_updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         )",
         [],
     )?;
@@ -372,13 +443,13 @@ fn save_packages_to_db(
 
     // Insert or get the repo_id
     tx.execute(
-        "INSERT OR IGNORE INTO repos (url) VALUES (?1)",
-        params![repo_url],
+        "INSERT OR IGNORE INTO repos (url, pkg_type, r_version, path) VALUES (?1, ?2, ?3, ?4)",
+        params![repo_url, pkg_type, r_version, path],
     )?;
 
     let repo_id: i64 = tx.query_row(
-        "SELECT id FROM repos WHERE url = ?1",
-        params![repo_url],
+        "SELECT id FROM repos WHERE url = ?1 AND pkg_type = ?2 AND r_version = ?3 AND path = ?4",
+        params![repo_url, pkg_type, r_version, path],
         |row| row.get(0),
     )?;
 
@@ -390,12 +461,14 @@ fn save_packages_to_db(
         "INSERT INTO packages
          (name, version, dependencies, download_url, file, path, built,
           license, platform, arch, graphics_api_version, internals_id, filesize, repo_id)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)"
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
     )?;
 
     for pkg in packages {
         let deps_json = serde_json::to_string(&pkg.dependencies)?;
-        let built_json = pkg.built.as_ref()
+        let built_json = pkg
+            .built
+            .as_ref()
             .map(|b| serde_json::to_string(b).ok())
             .flatten();
 
@@ -424,7 +497,8 @@ fn save_packages_to_db(
 }
 
 fn repo_db_file(dcf_path: &PathBuf) -> Result<PathBuf, Box<dyn Error>> {
-    let parent = dcf_path.parent()
+    let parent = dcf_path
+        .parent()
         .ok_or("Cannot determine parent directory for database file")?;
     let db_path = parent.join("packages.db");
     Ok(db_path)
@@ -500,5 +574,107 @@ mod tests {
 
         // Snapshot the first package to validate its structure
         insta::assert_debug_snapshot!(first_pkg);
+    }
+
+    #[test]
+    fn test_package_type_to_path_source() {
+        let result = package_type_to_path("source", "4.3").unwrap();
+        assert_eq!(result, "src/contrib");
+    }
+
+    #[test]
+    fn test_package_type_to_path_mac_binary() {
+        let result = package_type_to_path("mac.binary", "4.3").unwrap();
+        assert_eq!(result, "bin/macosx/contrib/4.3");
+    }
+
+    #[test]
+    fn test_package_type_to_path_mac_binary_with_subtype() {
+        let result = package_type_to_path("mac.binary.big-sur-arm64", "4.3").unwrap();
+        assert_eq!(result, "bin/macosx/big-sur-arm64/contrib/4.3");
+    }
+
+    #[test]
+    fn test_package_type_to_path_mac_binary_el_capitan() {
+        let result = package_type_to_path("mac.binary.el-capitan", "3.6").unwrap();
+        assert_eq!(result, "bin/macosx/el-capitan/contrib/3.6");
+    }
+
+    #[test]
+    fn test_package_type_to_path_win_binary() {
+        let result = package_type_to_path("win.binary", "4.3").unwrap();
+        assert_eq!(result, "bin/windows/contrib/4.3");
+    }
+
+    #[test]
+    fn test_package_type_to_path_different_versions() {
+        let result1 = package_type_to_path("mac.binary", "4.1").unwrap();
+        assert_eq!(result1, "bin/macosx/contrib/4.1");
+
+        let result2 = package_type_to_path("mac.binary", "3.5").unwrap();
+        assert_eq!(result2, "bin/macosx/contrib/3.5");
+    }
+
+    #[test]
+    fn test_package_type_to_path_invalid() {
+        let result = package_type_to_path("invalid", "4.3");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("invalid 'type'"));
+    }
+
+    #[test]
+    fn test_package_type_to_path_no_version_in_source() {
+        // Source should work with any version string (it's ignored)
+        let result1 = package_type_to_path("source", "4.3").unwrap();
+        let result2 = package_type_to_path("source", "3.0").unwrap();
+        assert_eq!(result1, result2);
+    }
+
+    // Tests for minor_r_version
+
+    #[test]
+    fn test_minor_r_version_basic() {
+        let result = minor_r_version("4.3.2").unwrap();
+        assert_eq!(result, "4.3");
+    }
+
+    #[test]
+    fn test_minor_r_version_patch_zero() {
+        let result = minor_r_version("3.6.0").unwrap();
+        assert_eq!(result, "3.6");
+    }
+
+    #[test]
+    fn test_minor_r_version_different_versions() {
+        assert_eq!(minor_r_version("4.1.3").unwrap(), "4.1");
+        assert_eq!(minor_r_version("3.5.1").unwrap(), "3.5");
+        assert_eq!(minor_r_version("4.0.0").unwrap(), "4.0");
+    }
+
+    #[test]
+    fn test_minor_r_version_two_parts() {
+        // Two-part versions should work (we append .0 internally)
+        let result = minor_r_version("4.3").unwrap();
+        assert_eq!(result, "4.3");
+
+        // Test multiple two-part versions
+        assert_eq!(minor_r_version("3.5").unwrap(), "3.5");
+        assert_eq!(minor_r_version("4.0").unwrap(), "4.0");
+    }
+
+    #[test]
+    fn test_minor_r_version_invalid() {
+        let result = minor_r_version("invalid");
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid R version format"));
+    }
+
+    #[test]
+    fn test_minor_r_version_empty() {
+        let result = minor_r_version("");
+        assert!(result.is_err());
     }
 }

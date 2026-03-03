@@ -449,9 +449,20 @@ fn sc_repos_package_list(
     _libargs: &ArgMatches,
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
-    let packages = repos_get_packages("https://cloud.r-project.org/src/contrib")?;
+    let r_version = if args.contains_id("r-version") {
+        args.get_one::<String>("r-version").unwrap().to_string()
+    } else {
+        get_default_r_version()?.ok_or("Cannot determine default R version")?
+    };
+    let pkg_type = if args.contains_id("pkg-type") {
+        args.get_one::<String>("pkg-type").unwrap().to_string()
+    } else {
+        "source".to_string()
+    };
+    let packages = repos_get_packages("https://cloud.r-project.org", &pkg_type, &r_version)?;
 
     if args.get_flag("json") || mainargs.get_flag("json") {
+        // TODO
     } else {
         let mut tab: Table = Table::new("{:<}   {:<}   {:<}");
         tab.add_row(row!("Package", "Version", "Dependencies"));
