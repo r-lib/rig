@@ -88,7 +88,7 @@ pub fn repos_get_packages(
         repo_url_rds.as_str(),
         repo_url_plain.as_str(),
     ];
-    let repo_local = repo_local_file(repo_url)?;
+    let repo_local = repo_local_file(&repo_url_plain)?;
     let repo_db = repo_db_file(&repo_local)?;
 
     create_parent_dir_if_needed(&repo_local)?;
@@ -99,7 +99,14 @@ pub fn repos_get_packages(
         info!("Updated repo metadata at {}", repo_local.display());
         // Parse DCF/RDS file and save to database
         let packages = parse_packages(&repo_local)?;
-        save_packages_to_db(&packages, &repo_db, repo_url, pkg_type, &path)?;
+        save_packages_to_db(
+            &packages,
+            &repo_db,
+            repo_url,
+            Some(&r_version),
+            pkg_type,
+            &path,
+        )?;
         info!("Saved database cache to {}", repo_db.display());
         Ok(packages)
     } else {
@@ -114,7 +121,14 @@ pub fn repos_get_packages(
                 // Database file doesn't exist or is corrupted, parse DCF/RDS file
                 info!("Database cache not available, parsing DCF/RDS file");
                 let packages = parse_packages(&repo_local)?;
-                save_packages_to_db(&packages, &repo_db, repo_url, pkg_type, &path)?;
+                save_packages_to_db(
+                    &packages,
+                    &repo_db,
+                    repo_url,
+                    Some(&r_version),
+                    pkg_type,
+                    &path,
+                )?;
                 Ok(packages)
             }
         }

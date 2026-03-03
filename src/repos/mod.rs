@@ -449,13 +449,27 @@ fn sc_repos_package_list(
     _libargs: &ArgMatches,
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
+    let platform = if args.contains_id("platform") {
+        crate::platform::parse_platform_string(
+            &args.get_one::<String>("platform").unwrap().to_string(),
+        )?
+    } else {
+        crate::platform::detect_platform()?
+    };
     let r_version = if args.contains_id("r-version") {
         args.get_one::<String>("r-version").unwrap().to_string()
     } else {
         get_default_r_version()?.ok_or("Cannot determine default R version")?
     };
     let pkg_type = if args.contains_id("pkg-type") {
-        args.get_one::<String>("pkg-type").unwrap().to_string()
+        match crate::platform::resolve_package_type_synonyms(
+            &platform,
+            &r_version,
+            &args.get_one::<String>("pkg-type").unwrap().to_string(),
+        ) {
+            Some(pt) => pt,
+            None => "source".to_string(),
+        }
     } else {
         "source".to_string()
     };

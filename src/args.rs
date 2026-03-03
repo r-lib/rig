@@ -1110,15 +1110,22 @@ pub fn rig_app() -> Command {
                         .required(false),
                 )
                 .arg(
+                    Arg::new("platform")
+                        .help("Platform to use, instead of the current")
+                        .long("platform")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
                     Arg::new("r-version")
-                        .help("R version to list repositories for, instead of the default")
+                        .help("R version to use, instead of the default")
                         .long("r-version")
                         .num_args(1)
                         .required(false),
                 )
                 .arg(
                     Arg::new("pkg-type")
-                        .help("Type of package to list (source, binary, etc.)")
+                        .help("Type of packages to list (e.g. source, binary)")
                         .long("pkg-type")
                         .num_args(1)
                         .required(false),
@@ -1196,7 +1203,7 @@ pub fn rig_app() -> Command {
                     .arg(Arg::new("platform").required(true)),
             )
             .subcommand(
-                Command::new("platform-to-repo-directory")
+                Command::new("platform-to-pkg-type")
                     .about("Test repo directory for platform string")
                     .display_order(0)
                     .arg(Arg::new("platform").required(true))

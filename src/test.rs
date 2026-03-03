@@ -10,9 +10,7 @@ pub fn sc_test(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn E
         Some(("read-rds", s)) => sc_test_read_rds(s, args, mainargs),
         Some(("read-packages-rds", s)) => sc_test_read_packages_rds(s, args, mainargs),
         Some(("parse-platform-string", s)) => sc_test_parse_platform_string(s, args, mainargs),
-        Some(("platform-to-repo-directory", s)) => {
-            sc_test_platform_to_repo_directory(s, args, mainargs)
-        }
+        Some(("platform-to-pkg-type", s)) => sc_test_platform_to_pkg_type(s, args, mainargs),
         _ => Ok(()), // unreachable
     }
 }
@@ -48,17 +46,17 @@ fn sc_test_parse_platform_string(
     Ok(())
 }
 
-fn sc_test_platform_to_repo_directory(
+fn sc_test_platform_to_pkg_type(
     args: &ArgMatches,
     _subargs: &ArgMatches,
     _mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
     let platform = args.get_one::<String>("platform").unwrap();
     let r_version = args.get_one::<String>("r-version").unwrap();
-    let repo_dir = crate::platform::platform_to_repo_directory(
+    let pkg_type = crate::platform::platform_to_pkg_type(
         &crate::platform::parse_platform_string(platform)?,
         r_version,
     );
-    println!("Repository directory: {:?}", repo_dir);
+    println!("Package type: {:?}", pkg_type);
     Ok(())
 }
