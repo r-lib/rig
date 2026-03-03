@@ -159,7 +159,7 @@ pub struct REnvLockfile {
 impl REnvLockfile {
     pub fn from_solution(
         registry: &RPackageRegistry,
-        solution: &HashMap<String, RPackageVersion, rustc_hash::FxBuildHasher>,
+        solution: &HashMap<String, RegistryPackageVersion, rustc_hash::FxBuildHasher>,
     ) -> REnvLockfile {
         let mut pkgs = REnvLockfilePackages::new();
         for (k, v) in solution.iter() {

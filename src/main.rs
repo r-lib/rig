@@ -43,6 +43,7 @@ mod dcf;
 mod download;
 mod hardcoded;
 mod library;
+mod pak;
 mod platform;
 mod proj;
 mod rds;

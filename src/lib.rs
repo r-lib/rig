@@ -24,6 +24,7 @@ mod escalate;
 mod hardcoded;
 mod library;
 mod macos;
+mod pak;
 mod platform;
 mod proj;
 mod rds;

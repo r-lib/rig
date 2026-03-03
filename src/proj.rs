@@ -11,6 +11,7 @@ use tabular::*;
 
 use crate::common::get_default_r_version;
 use crate::dcf::*;
+use crate::pak::PakLockfile;
 use crate::renv::*;
 use crate::repos::*;
 use crate::solver::*;
@@ -170,23 +171,26 @@ fn sc_proj_solve_latest(
 
     info!("Adding {} packages to the registry", pkgs.len());
     for pkg in pkgs.iter() {
+        let v = RegistryPackageVersion {
+            version: pkg.version.clone(),
+        };
         reg.add_package_version(
             pkg.name.clone(),
-            pkg.version.clone(),
+            v,
             rpackage_version_ranges_from_constraints(&pkg.dependencies, false),
         );
     }
 
     reg.add_package_version(
         "_project".to_string(),
-        RPackageVersion::from_str("1.0.0")?,
+        RegistryPackageVersion::from_str("1.0.0")?,
         rpackage_version_ranges_from_constraints(deps, true),
     );
 
     // add R itself, for now a hardcoded version
     reg.add_package_version(
         "R".to_string(),
-        RPackageVersion::from_str(r_version)?,
+        RegistryPackageVersion::from_str(r_version)?,
         HashMap::with_hasher(rustc_hash::FxBuildHasher::default()),
     );
 
@@ -194,7 +198,7 @@ fn sc_proj_solve_latest(
     for bp in BASE_PKGS.iter() {
         reg.add_package_version(
             bp.to_string(),
-            RPackageVersion::from_str(r_version)?,
+            RegistryPackageVersion::from_str(r_version)?,
             HashMap::with_hasher(rustc_hash::FxBuildHasher::default()),
         );
     }
@@ -202,7 +206,7 @@ fn sc_proj_solve_latest(
     let solution = resolve(
         &reg,
         "_project".to_string(),
-        RPackageVersion::from_str("1.0.0")?,
+        RegistryPackageVersion::from_str("1.0.0")?,
     );
 
     match solution {
@@ -220,14 +224,14 @@ fn sc_proj_solve_all(
 
     reg.add_package_version(
         "_project".to_string(),
-        RPackageVersion::from_str("1.0.0")?,
+        RegistryPackageVersion::from_str("1.0.0")?,
         rpackage_version_ranges_from_constraints(deps, true),
     );
 
     // add R itself, for now a hardcoded version
     reg.add_package_version(
         "R".to_string(),
-        RPackageVersion::from_str(r_version)?,
+        RegistryPackageVersion::from_str(r_version)?,
         HashMap::with_hasher(rustc_hash::FxBuildHasher::default()),
     );
 
@@ -235,7 +239,7 @@ fn sc_proj_solve_all(
     for bp in BASE_PKGS.iter() {
         reg.add_package_version(
             bp.to_string(),
-            RPackageVersion::from_str(r_version)?,
+            RegistryPackageVersion::from_str(r_version)?,
             HashMap::with_hasher(rustc_hash::FxBuildHasher::default()),
         );
     }
@@ -243,7 +247,7 @@ fn sc_proj_solve_all(
     let solution = resolve(
         &reg,
         "_project".to_string(),
-        RPackageVersion::from_str("1.0.0")?,
+        RegistryPackageVersion::from_str("1.0.0")?,
     );
 
     match solution {
@@ -258,7 +262,7 @@ fn solution_to_sorted_vec(
     let mut vec: Vec<(String, RPackageVersion)> = solution
         .iter()
         .filter(|(pkg, _ver)| *pkg != "_project")
-        .map(|(pkg, ver)| (pkg.clone(), ver.clone()))
+        .map(|(pkg, ver)| (pkg.clone(), ver.version.clone()))
         .collect();
     vec.sort_by(|a, b| {
         // Put "R" first, always
@@ -334,6 +338,9 @@ fn sc_proj_solve(
         fs::write("renv.lock", serde_json::to_string_pretty(&renv)?)?;
         info!("Written renv lockfile to renv.lock");
     }
+
+    let lockfile = PakLockfile::from_solution(&registry, &solution);
+    fs::write("pkg.lock", serde_json::to_string_pretty(&lockfile)?)?;
 
     let sorted_solution = solution_to_sorted_vec(&solution);
     let mut tab: Table = Table::new("{:<}   {:<}");

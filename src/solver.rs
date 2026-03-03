@@ -2,15 +2,50 @@ use std::cell::RefCell;
 use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::error::Error;
+use std::fmt;
 
 use pubgrub::*;
+use serde::{Deserialize, Serialize};
 use simple_error::bail;
 
 use crate::dcf::*;
 use crate::repos::*;
 
 type RPackageName = String;
-pub type RPackageVersionRanges = version_ranges::Ranges<RPackageVersion>;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct RegistryPackageVersion {
+    pub version: RPackageVersion,
+}
+
+impl RegistryPackageVersion {
+    pub fn from_str(s: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        Ok(RegistryPackageVersion {
+            version: RPackageVersion::from_str(s)?,
+        })
+    }
+}
+
+impl Ord for RegistryPackageVersion {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.version.cmp(&other.version)
+    }
+}
+
+impl PartialOrd for RegistryPackageVersion {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl fmt::Display for RegistryPackageVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.version)?;
+        Ok(())
+    }
+}
+
+pub type RPackageVersionRanges = version_ranges::Ranges<RegistryPackageVersion>;
 
 pub fn rpackage_version_ranges_from_constraints(
     constraints: &PackageDependencies,
@@ -24,7 +59,9 @@ pub fn rpackage_version_ranges_from_constraints(
         }
         let mut vs = RPackageVersionRanges::full();
         for cs in dep.constraints.iter() {
-            let ver = cs.version.clone();
+            let ver = RegistryPackageVersion {
+                version: cs.version.clone(),
+            };
             match cs.constraint_type {
                 VersionConstraintType::Less => {
                     vs = vs.intersection(&Range::strictly_lower_than(ver));
@@ -51,11 +88,11 @@ pub fn rpackage_version_ranges_from_constraints(
 #[derive(Default)]
 pub struct RPackageRegistry {
     // for a package we have a list of versions
-    versions: RefCell<HashMap<RPackageName, Vec<RPackageVersion>>>,
+    versions: RefCell<HashMap<RPackageName, Vec<RegistryPackageVersion>>>,
     // for a package version, we have a list of dependencies
     deps: RefCell<
         HashMap<
-            (RPackageName, RPackageVersion),
+            (RPackageName, RegistryPackageVersion),
             HashMap<RPackageName, RPackageVersionRanges, rustc_hash::FxBuildHasher>,
         >,
     >,
@@ -66,7 +103,7 @@ impl RPackageRegistry {
     pub fn add_package_version(
         &self,
         pkg: RPackageName,
-        ver: RPackageVersion,
+        ver: RegistryPackageVersion,
         deps: HashMap<RPackageName, RPackageVersionRanges, rustc_hash::FxBuildHasher>,
     ) {
         if self.versions.borrow().contains_key(&pkg) {
@@ -94,14 +131,17 @@ impl RPackageRegistry {
         let vers = get_all_cran_package_versions(pkg, self.client.borrow().as_ref())?;
         for package in vers {
             let vranges = rpackage_version_ranges_from_constraints(&package.dependencies, false);
-            self.add_package_version(pkg.clone(), package.version, vranges);
+            let v = RegistryPackageVersion {
+                version: package.version.clone(),
+            };
+            self.add_package_version(pkg.clone(), v, vranges);
         }
         Ok(())
     }
     pub fn get_dependency_summary(
         &self,
         package: &RPackageName,
-        version: &RPackageVersion,
+        version: &RegistryPackageVersion,
     ) -> Result<Vec<String>, Box<dyn Error>> {
         let key = (package.clone(), version.clone());
         match self.deps.borrow().get(&key) {
@@ -128,7 +168,7 @@ impl std::error::Error for ProviderError {}
 
 impl DependencyProvider for RPackageRegistry {
     type P = RPackageName;
-    type V = RPackageVersion;
+    type V = RegistryPackageVersion;
     type VS = RPackageVersionRanges;
     type Priority = Reverse<usize>; // pick fewer versions first
     type M = String; // we won’t use custom messages
