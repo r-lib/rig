@@ -404,6 +404,13 @@ fn save_packages_to_db(
 ) -> Result<(), Box<dyn Error>> {
     let mut conn = Connection::open(db_path)?;
 
+    // For source packages, we don't store r_version (use NULL)
+    let r_version_to_store = if pkg_type == "source" {
+        None
+    } else {
+        r_version
+    };
+
     // Create repos table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS repos (
@@ -458,12 +465,12 @@ fn save_packages_to_db(
     // Insert or get the repo_id
     tx.execute(
         "INSERT OR IGNORE INTO repos (url, pkg_type, r_version, path) VALUES (?1, ?2, ?3, ?4)",
-        params![repo_url, pkg_type, r_version, path],
+        params![repo_url, pkg_type, r_version_to_store, path],
     )?;
 
     let repo_id: i64 = tx.query_row(
-        "SELECT id FROM repos WHERE url = ?1 AND pkg_type = ?2 AND r_version = ?3 AND path = ?4",
-        params![repo_url, pkg_type, r_version, path],
+        "SELECT id FROM repos WHERE url = ?1 AND pkg_type = ?2 AND r_version IS ?3 AND path = ?4",
+        params![repo_url, pkg_type, r_version_to_store, path],
         |row| row.get(0),
     )?;
 
