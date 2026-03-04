@@ -42,6 +42,7 @@ mod config;
 mod dcf;
 mod download;
 mod hardcoded;
+mod install;
 mod library;
 mod pak;
 mod platform;

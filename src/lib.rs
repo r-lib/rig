@@ -22,6 +22,7 @@ mod dcf;
 mod download;
 mod escalate;
 mod hardcoded;
+mod install;
 mod library;
 mod macos;
 mod pak;

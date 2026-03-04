@@ -962,14 +962,32 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
-            Command::new("download")
-                .about("Download project dependencies")
-                .display_order(0),
-        )
-        .subcommand(
             Command::new("deploy")
                 .about("Deploy project dependencies")
-                .display_order(0),
+                .display_order(0)
+                .arg(
+                    Arg::new("library")
+                        .help("Library path where packages should be installed")
+                        .long("library")
+                        .short('l')
+                        .num_args(1)
+                        .required(true),
+                )
+                .arg(
+                    Arg::new("r-binary")
+                        .help("Path to R binary (default: R)")
+                        .long("r-binary")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("max-concurrent")
+                        .help("Maximum number of concurrent installations (default: 4)")
+                        .long("max-concurrent")
+                        .num_args(1)
+                        .value_parser(clap::value_parser!(usize))
+                        .required(false),
+                ),
         );
     rig = rig.subcommand(cmd_proj);
 

@@ -14,6 +14,7 @@ use tabular::*;
 use crate::common::get_default_r_version;
 use crate::dcf::*;
 use crate::download::download_multiple_first_available_;
+use crate::install::{install_package_tree, PackageInfo};
 use crate::pak::PakLockfile;
 use crate::renv::*;
 use crate::repos::*;
@@ -42,7 +43,6 @@ pub fn sc_proj(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn E
         Some(("deps", s)) => sc_proj_deps(s, args, mainargs),
         Some(("solve", s)) => sc_proj_solve(s, args, mainargs),
         Some(("deploy", s)) => sc_proj_deploy(s, args, mainargs),
-        Some(("download", s)) => sc_proj_download(s, args, mainargs),
         _ => Ok(()), // unreachable
     }
 }
@@ -362,18 +362,76 @@ fn sc_proj_solve(
 }
 
 fn sc_proj_deploy(
-    _args: &ArgMatches,
+    args: &ArgMatches,
     _libargs: &ArgMatches,
     _mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
+    // First, download all packages
+    info!("Downloading packages...");
+    proj_download()?;
+
+    // Read the lockfile to get package information
+    let lockfile_content = fs::read_to_string("pkg.lock")?;
+    let lockfile: PakLockfile = serde_json::from_str(&lockfile_content)?;
+
+    // Get cache directory where packages were downloaded
+    let cache_dir = ProjectDirs::from("com", "gaborcsardi", "rig")
+        .ok_or("Cannot determine cache directory")?
+        .cache_dir()
+        .to_path_buf();
+
+    // Build Vec<PackageInfo> from lockfile
+    let mut packages: Vec<PackageInfo> = Vec::new();
+    for pkg in &lockfile.packages {
+        let file_path = cache_dir.join("packages").join(&pkg.target);
+        packages.push(PackageInfo {
+            name: pkg.package.clone(),
+            file_path,
+            dependencies: pkg.dependencies.clone(),
+        });
+    }
+
+    // Get library path - required argument
+    let library_path = PathBuf::from(
+        args.get_one::<String>("library")
+            .ok_or("--library argument is required")?,
+    );
+
+    // Ensure library directory exists
+    fs::create_dir_all(&library_path)?;
+
+    // Get R binary path - use argument or default to "R"
+    let r_binary = args
+        .get_one::<String>("r-binary")
+        .map(|s| s.as_str())
+        .unwrap_or("R");
+
+    // Set max concurrent installations
+    let max_concurrent = args
+        .get_one::<usize>("max-concurrent")
+        .copied()
+        .unwrap_or(8);
+
+    info!(
+        "Installing {} packages to {}",
+        packages.len(),
+        library_path.display()
+    );
+
+    // Create a tokio runtime to run the async installation
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(install_package_tree(
+        packages,
+        &library_path,
+        r_binary,
+        max_concurrent,
+    ))?;
+
+    info!("Deployment complete!");
     Ok(())
 }
 
-fn sc_proj_download(
-    _args: &ArgMatches,
-    _libargs: &ArgMatches,
-    _mainargs: &ArgMatches,
-) -> Result<(), Box<dyn Error>> {
+fn proj_download() -> Result<(), Box<dyn Error>> {
     let lockfile_content = fs::read_to_string("pkg.lock")?;
     let lockfile: PakLockfile = serde_json::from_str(&lockfile_content)?;
 
@@ -397,7 +455,6 @@ fn sc_proj_download(
 
     // Check results and report errors
     let mut success_count = 0;
-    let mut failed_count = 0;
     for (i, result) in results.iter().enumerate() {
         match result {
             Ok(_) => {
@@ -405,20 +462,12 @@ fn sc_proj_download(
                 info!("Downloaded: {}", lockfile.packages[i].package);
             }
             Err(e) => {
-                failed_count += 1;
-                bail!(
-                    "Failed to download {}: {}",
-                    lockfile.packages[i].package,
-                    e
-                );
+                bail!("Failed to download {}: {}", lockfile.packages[i].package, e);
             }
         }
     }
 
-    info!(
-        "Download complete: {} succeeded, {} failed",
-        success_count, failed_count
-    );
+    info!("Download complete: {} packages downloaded", success_count);
 
     Ok(())
 }
