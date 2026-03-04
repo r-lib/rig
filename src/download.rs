@@ -161,13 +161,12 @@ async fn download_if_newer(
     client: &reqwest::Client,
     url: &str,
     local_path: &PathBuf,
-) -> Result<bool, Box<dyn Error>> {
-    let etag_path = add_suffix(local_path, ".etag");
-    let etag = fs::read_to_string(&etag_path).ok();
+    etag: Option<&str>,
+) -> Result<(bool, Option<String>), Box<dyn Error>> {
     let mut req = client.get(url);
     if local_path.exists() {
-        if let Some(etag) = etag.as_deref() {
-            req = req.header("If-None-Match", etag);
+        if let Some(etag_value) = etag {
+            req = req.header("If-None-Match", etag_value);
         }
     }
     info!("Checking for updates for {}", local_path.display());
@@ -176,18 +175,21 @@ async fn download_if_newer(
     match resp.status() {
         StatusCode::NOT_MODIFIED => {
             filetime::set_file_mtime(local_path, FileTime::now())?;
-            Ok(false)
+            Ok((false, None))
         }
 
         StatusCode::OK => {
             // 200 → new content
-            // Save new ETag if present
-            if let Some(etag) = resp.headers().get("ETag") {
-                fs::write(etag_path, etag.to_str()?)?;
-            }
+            // Extract etag from response headers
+            let new_etag = resp
+                .headers()
+                .get("etag")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string());
+
             let bytes = resp.bytes().await?;
             fs::write(local_path, &bytes)?;
-            Ok(true)
+            Ok((true, new_etag))
         }
 
         status => {
@@ -201,12 +203,12 @@ pub async fn download_if_newer__(
     url: &str,
     local_path: &PathBuf,
     client: Option<&reqwest::Client>,
-) -> Result<bool, Box<dyn Error>> {
+) -> Result<(bool, Option<String>), Box<dyn Error>> {
     let client_ = match client {
         Some(c) => c,
         None => &reqwest::Client::new(),
     };
-    download_if_newer(client_, url, local_path).await
+    download_if_newer(client_, url, local_path, None).await
 }
 
 pub fn download_if_newer_(
@@ -214,7 +216,7 @@ pub fn download_if_newer_(
     local_path: &PathBuf,
     update_older: Option<Duration>,
     client: Option<&reqwest::Client>,
-) -> Result<bool, Box<dyn Error>> {
+) -> Result<(bool, Option<String>), Box<dyn Error>> {
     let update_older = match update_older {
         Some(dur) => dur,
         None => Duration::from_hours(24),
@@ -228,7 +230,7 @@ pub fn download_if_newer_(
         if elapsed < update_older {
             // File is newer than the threshold, skip update
             info!("{} is up to date, skipping download", local_path.display());
-            return Ok(false);
+            return Ok((false, None));
         }
     }
 
@@ -240,15 +242,15 @@ async fn download_first_available(
     client: &reqwest::Client,
     urls: &[&str],
     local_path: &PathBuf,
-) -> Result<bool, Box<dyn Error>> {
+) -> Result<(bool, Option<String>), Box<dyn Error>> {
     let mut last_error = None;
 
     for url in urls {
         info!("Trying to download from {}", url);
-        match download_if_newer(client, url, local_path).await {
-            Ok(result) => {
+        match download_if_newer(client, url, local_path, None).await {
+            Ok((downloaded, etag)) => {
                 info!("Successfully downloaded from {}", url);
-                return Ok(result);
+                return Ok((downloaded, etag));
             }
             Err(e) => {
                 warn!("Failed to download from {}: {}", url, e);
@@ -264,14 +266,14 @@ async fn download_first_available(
 }
 
 /// Try to download from multiple URLs, using the first one that succeeds (sync wrapper).
-/// Returns Ok(true) if a new file was downloaded, Ok(false) if existing file is up to date,
+/// Returns Ok((true, etag)) if a new file was downloaded, Ok((false, None)) if existing file is up to date,
 /// or Err if all URLs failed.
 pub fn download_first_available_(
     urls: &[&str],
     local_path: &PathBuf,
     update_older: Option<Duration>,
     client: Option<&reqwest::Client>,
-) -> Result<bool, Box<dyn Error>> {
+) -> Result<(bool, Option<String>), Box<dyn Error>> {
     let update_older = match update_older {
         Some(dur) => dur,
         None => Duration::from_hours(24),
@@ -285,7 +287,7 @@ pub fn download_first_available_(
         if elapsed < update_older {
             // File is newer than the threshold, skip update
             info!("{} is up to date, skipping download", local_path.display());
-            return Ok(false);
+            return Ok((false, None));
         }
     }
 
@@ -300,12 +302,12 @@ pub fn download_first_available_(
 /// Download multiple files concurrently, each from a list of candidate URLs.
 /// Each download will try its URLs in order until one succeeds.
 /// Returns a vector of results, one for each download request.
-/// Each result is Ok(true) if downloaded, Ok(false) if cached, or Err if all URLs failed.
+/// Each result is Ok((true, etag)) if downloaded, Ok((false, None)) if cached, or Err if all URLs failed.
 pub fn download_multiple_first_available_(
     downloads: Vec<(Vec<String>, PathBuf)>,
     update_older: Option<Duration>,
     client: Option<&reqwest::Client>,
-) -> Vec<Result<bool, Box<dyn Error>>> {
+) -> Vec<Result<(bool, Option<String>), Box<dyn Error>>> {
     let update_older = match update_older {
         Some(dur) => dur,
         None => Duration::from_hours(24),
@@ -324,7 +326,7 @@ async fn download_multiple_first_available__(
     client: &reqwest::Client,
     downloads: Vec<(Vec<String>, PathBuf)>,
     update_older: Duration,
-) -> Vec<Result<bool, Box<dyn Error>>> {
+) -> Vec<Result<(bool, Option<String>), Box<dyn Error>>> {
     download_multiple_first_available(client, downloads, update_older).await
 }
 
@@ -333,7 +335,7 @@ async fn download_multiple_first_available(
     client: &reqwest::Client,
     downloads: Vec<(Vec<String>, PathBuf)>,
     update_older: Duration,
-) -> Vec<Result<bool, Box<dyn Error>>> {
+) -> Vec<Result<(bool, Option<String>), Box<dyn Error>>> {
     future::join_all(downloads.into_iter().map(|(urls, local_path)| async move {
         // Check if file is up to date before attempting download
         if local_path.exists() {
@@ -343,7 +345,7 @@ async fn download_multiple_first_available(
 
             if elapsed < update_older {
                 info!("{} is up to date, skipping download", local_path.display());
-                return Ok(false);
+                return Ok((false, None));
             }
         }
 
@@ -362,7 +364,7 @@ pub fn download_multiple_first_available_with_progress<F>(
     client: Option<&reqwest::Client>,
     progress_callback: F,
 ) where
-    F: FnMut(usize, &Result<bool, Box<dyn Error>>),
+    F: FnMut(usize, &Result<(bool, Option<String>), Box<dyn Error>>),
 {
     let update_older = match update_older {
         Some(dur) => dur,
@@ -384,14 +386,14 @@ async fn download_multiple_with_progress_async<F>(
     update_older: Duration,
     mut progress_callback: F,
 ) where
-    F: FnMut(usize, &Result<bool, Box<dyn Error>>),
+    F: FnMut(usize, &Result<(bool, Option<String>), Box<dyn Error>>),
 {
     let mut futures = FuturesUnordered::new();
 
     for (idx, (urls, local_path)) in downloads.into_iter().enumerate() {
         let client = client.clone();
         futures.push(async move {
-            let result: Result<bool, Box<dyn Error>> = async {
+            let result: Result<(bool, Option<String>), Box<dyn Error>> = async {
                 // Check if file is up to date before attempting download
                 if local_path.exists() {
                     let metadata = fs::metadata(&local_path)?;
@@ -400,7 +402,7 @@ async fn download_multiple_with_progress_async<F>(
 
                     if elapsed < update_older {
                         info!("{} is up to date, skipping download", local_path.display());
-                        return Ok(false);
+                        return Ok((false, None));
                     }
                 }
 
@@ -425,7 +427,7 @@ async fn download_first_available__(
     client: &reqwest::Client,
     urls: &[&str],
     local_path: &PathBuf,
-) -> Result<bool, Box<dyn Error>> {
+) -> Result<(bool, Option<String>), Box<dyn Error>> {
     download_first_available(client, urls, local_path).await
 }
 

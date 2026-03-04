@@ -514,7 +514,7 @@ fn get_cran_package_version(
     debug!("Local cache file: {}", local.display());
 
     create_parent_dir_if_needed(&local)?;
-    download_if_newer_(&url, &local, None, None)?;
+    let (_downloaded, _etag) = download_if_newer_(&url, &local, None, None)?;
 
     let contents: String = read_file_string(&local)?;
     let contents = contents.replace("<U+000a>", " ");
@@ -542,7 +542,7 @@ pub fn get_all_cran_package_versions(
     local.push("package-".to_string() + &package + ".json");
 
     create_parent_dir_if_needed(&local)?;
-    download_if_newer_(&url, &local, None, client)?;
+    let (_downloaded, _etag) = download_if_newer_(&url, &local, None, client)?;
 
     let contents: String = read_file_string(&local)?;
     let contents = contents.replace("<U+000a>", " ");

@@ -447,7 +447,10 @@ fn sc_proj_deploy(
         }),
     ))?;
 
-    install_pb.finish_with_message(format!("Complete: {} packages installed", installed_count.get()));
+    install_pb.finish_with_message(format!(
+        "Complete: {} packages installed",
+        installed_count.get()
+    ));
 
     info!("Deployment complete!");
     Ok(())
@@ -488,38 +491,38 @@ pub fn proj_download() -> Result<(), Box<dyn Error>> {
 
     // Download all packages concurrently with progress updates
     info!("Downloading {} packages", total);
-    download_multiple_first_available_with_progress(
-        downloads,
-        None,
-        None,
-        |idx, result| {
-            match result {
-                Ok(downloaded) => {
-                    if *downloaded {
-                        success_count.set(success_count.get() + 1);
-                        overall_pb.println(format!("✓ Downloaded: {}", lockfile.packages[idx].package));
-                    } else {
-                        cached_count.set(cached_count.get() + 1);
-                        overall_pb.println(format!("✓ Cached: {}", lockfile.packages[idx].package));
-                    }
-                    overall_pb.inc(1);
+    download_multiple_first_available_with_progress(downloads, None, None, |idx, result| {
+        match result {
+            Ok((downloaded, _etag)) => {
+                if *downloaded {
+                    success_count.set(success_count.get() + 1);
+                    overall_pb.println(format!("✓ Downloaded: {}", lockfile.packages[idx].package));
+                } else {
+                    cached_count.set(cached_count.get() + 1);
+                    overall_pb.println(format!("✓ Cached: {}", lockfile.packages[idx].package));
                 }
-                Err(e) => {
-                    error.set(Some((idx, e.to_string())));
-                    overall_pb.finish_and_clear();
-                }
+                overall_pb.inc(1);
             }
-        },
-    );
+            Err(e) => {
+                error.set(Some((idx, e.to_string())));
+                overall_pb.finish_and_clear();
+            }
+        }
+    });
 
     // Check if there was an error
     if let Some((idx, err)) = error.into_inner() {
-        bail!("Failed to download {}: {}", lockfile.packages[idx].package, err);
+        bail!(
+            "Failed to download {}: {}",
+            lockfile.packages[idx].package,
+            err
+        );
     }
 
     overall_pb.finish_with_message(format!(
         "Complete: {} downloaded, {} cached",
-        success_count.get(), cached_count.get()
+        success_count.get(),
+        cached_count.get()
     ));
 
     Ok(())

@@ -88,20 +88,46 @@ pub fn repos_get_packages(
         repo_url_rds.as_str(),
         repo_url_plain.as_str(),
     ];
+
+    // Use a temporary file for downloads (will be deleted after parsing)
     let repo_local = repo_local_file(&repo_url_plain)?;
     let repo_db = repo_db_file(&repo_local)?;
 
     // Ensure database schema exists early
     ensure_db_schema(&repo_db)?;
 
-    create_parent_dir_if_needed(&repo_local)?;
-    info!("Updating repo metadata from {}", repo_url_plain);
-    let dl_status = download_first_available_(&repo_urls, &repo_local, None, None)?;
+    // Check if we have recent data in the database (less than 24 hours old)
+    let should_download = match is_repo_cache_recent(&repo_db, repo_url, pkg_type) {
+        Ok(is_recent) => {
+            if is_recent {
+                info!("Database cache is recent (less than 24 hours old), skipping download");
+            }
+            !is_recent
+        }
+        Err(_) => {
+            // No database entry, need to download
+            info!("No database cache found, will download");
+            true
+        }
+    };
+
+    let (dl_status, new_etag) = if should_download {
+        create_parent_dir_if_needed(&repo_local)?;
+        info!("Checking for repo metadata updates from {}", repo_url_plain);
+
+        // Download with etag (will return false if 304 Not Modified or file is cached)
+        download_first_available_(&repo_urls, &repo_local, None, None)?
+    } else {
+        // Skip download, database is recent
+        (false, None)
+    };
 
     if dl_status {
-        info!("Updated repo metadata at {}", repo_local.display());
+        info!("Downloaded new repo metadata to {}", repo_local.display());
         // Parse DCF/RDS file and save to database
         let packages = parse_packages(&repo_local)?;
+
+        // Save to database with the etag from the download
         save_packages_to_db(
             &packages,
             &repo_db,
@@ -109,30 +135,43 @@ pub fn repos_get_packages(
             Some(&r_version),
             pkg_type,
             &path,
+            new_etag.as_deref(),
         )?;
-        info!("Saved database cache to {}", repo_db.display());
+
+        // Delete the temporary data file after saving to database
+        if let Err(e) = std::fs::remove_file(&repo_local) {
+            info!("Could not delete temporary file {}: {}", repo_local.display(), e);
+        }
+
+        info!("Saved {} packages to database cache", packages.len());
         Ok(packages)
     } else {
-        info!("Repo metadata is up to date at {}", repo_local.display());
-        // Try to load from database cache
+        info!("Repo metadata is up to date (cached)");
+        // Load from database cache
         match load_packages_from_db(&repo_db, repo_url, pkg_type) {
             Ok(packages) => {
                 info!("Loaded {} packages from database cache", packages.len());
                 Ok(packages)
             }
-            Err(_) => {
-                // Database file doesn't exist or is corrupted, parse DCF/RDS file
-                info!("Database cache not available, parsing DCF/RDS file");
-                let packages = parse_packages(&repo_local)?;
-                save_packages_to_db(
-                    &packages,
-                    &repo_db,
-                    repo_url,
-                    Some(&r_version),
-                    pkg_type,
-                    &path,
-                )?;
-                Ok(packages)
+            Err(e) => {
+                // Database file doesn't exist or is corrupted
+                // If we have a cached file, try parsing it
+                if repo_local.exists() {
+                    info!("Database cache error, parsing cached file: {}", e);
+                    let packages = parse_packages(&repo_local)?;
+                    save_packages_to_db(
+                        &packages,
+                        &repo_db,
+                        repo_url,
+                        Some(&r_version),
+                        pkg_type,
+                        &path,
+                        None,
+                    )?;
+                    Ok(packages)
+                } else {
+                    bail!("No cached data available and database error: {}", e)
+                }
             }
         }
     }
@@ -362,6 +401,7 @@ fn ensure_db_schema(db_path: &PathBuf) -> Result<(), Box<dyn Error>> {
             pkg_type TEXT NOT NULL,
             r_version TEXT,
             path TEXT NOT NULL,
+            etag TEXT,
             last_updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         )",
         [],
@@ -403,6 +443,46 @@ fn ensure_db_schema(db_path: &PathBuf) -> Result<(), Box<dyn Error>> {
     )?;
 
     Ok(())
+}
+
+/// Get the stored etag for a repository from the database
+fn get_repo_etag(
+    db_path: &PathBuf,
+    repo_url: &str,
+    pkg_type: &str,
+) -> Result<String, Box<dyn Error>> {
+    let conn = Connection::open(db_path)?;
+
+    let etag: String = conn.query_row(
+        "SELECT etag FROM repos WHERE url = ?1 AND pkg_type = ?2 AND etag IS NOT NULL",
+        params![repo_url, pkg_type],
+        |row| row.get(0),
+    )?;
+
+    Ok(etag)
+}
+
+fn is_repo_cache_recent(
+    db_path: &PathBuf,
+    repo_url: &str,
+    pkg_type: &str,
+) -> Result<bool, Box<dyn Error>> {
+    let conn = Connection::open(db_path)?;
+
+    // Check if last_updated is within the last 24 hours using SQLite's datetime functions
+    let is_recent: bool = conn.query_row(
+        "SELECT
+            CASE
+                WHEN (julianday('now') - julianday(last_updated)) * 24 < 24 THEN 1
+                ELSE 0
+            END as is_recent
+         FROM repos
+         WHERE url = ?1 AND pkg_type = ?2",
+        params![repo_url, pkg_type],
+        |row| row.get(0),
+    )?;
+
+    Ok(is_recent)
 }
 
 fn load_packages_from_db(
@@ -458,6 +538,7 @@ fn save_packages_to_db(
     r_version: Option<&str>,
     pkg_type: &str,
     path: &str,
+    etag: Option<&str>,
 ) -> Result<(), Box<dyn Error>> {
     let mut conn = Connection::open(db_path)?;
 
@@ -473,8 +554,15 @@ fn save_packages_to_db(
 
     // Insert or get the repo_id
     tx.execute(
-        "INSERT OR IGNORE INTO repos (url, pkg_type, r_version, path) VALUES (?1, ?2, ?3, ?4)",
-        params![repo_url, pkg_type, r_version_to_store, path],
+        "INSERT OR IGNORE INTO repos (url, pkg_type, r_version, path, etag) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![repo_url, pkg_type, r_version_to_store, path, etag],
+    )?;
+
+    // Update etag and last_updated timestamp for existing repos
+    tx.execute(
+        "UPDATE repos SET etag = ?1, last_updated = CURRENT_TIMESTAMP
+         WHERE url = ?2 AND pkg_type = ?3 AND r_version IS ?4 AND path = ?5",
+        params![etag, repo_url, pkg_type, r_version_to_store, path],
     )?;
 
     let repo_id: i64 = tx.query_row(
