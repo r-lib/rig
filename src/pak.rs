@@ -50,11 +50,17 @@ impl PakLockfile {
             if k == "R" || k == "_project" || BASE_PKGS.contains(&k.as_str()) {
                 continue;
             }
-            let deps = registry.get_dependency_summary(k, v).unwrap();
-            let dl1 = format!("https://cloud.r-project.org/src/contrib/{}_{}.tar.gz", k, v);
+            let filename = format!("{}_{}.tar.gz", k, v);
+            let deps = registry
+                .get_dependency_summary(k, v)
+                .unwrap()
+                .into_iter()
+                .filter(|dep| dep != "R" && !BASE_PKGS.contains(&dep.as_str()))
+                .collect();
+            let dl1 = format!("https://cloud.r-project.org/src/contrib/{}", filename);
             let dl2 = format!(
-                "https://cloud.r-project.org/src/contrib/Archive/{}/{}_{}.tar.gz",
-                k, k, v
+                "https://cloud.r-project.org/src/contrib/Archive/{}/{}",
+                k, filename
             );
             pkgs.push(PakLockfilePackage {
                 r#ref: k.to_string(),
@@ -67,8 +73,8 @@ impl PakLockfile {
                 vignettes: false,
                 metadata: HashMap::new(),
                 sources: vec![dl1, dl2],
-                target: "".to_string(),
-                platform: std::env::consts::ARCH.to_string(),
+                target: "src/contrib/".to_string() + &filename,
+                platform: "source".to_string(),
                 rversion: "4.5.2".to_string(),
                 directpkg: false,
                 license: "UNKNOWN".to_string(),
