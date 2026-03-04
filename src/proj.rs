@@ -16,7 +16,7 @@ use crate::cache::get_cache_dir;
 use crate::common::get_default_r_version;
 use crate::dcf::*;
 use crate::download::download_multiple_first_available_with_progress;
-use crate::install::{install_package_tree, PackageInfo};
+use crate::install::{install_package_tree_with_progress, PackageInfo};
 use crate::pak::PakLockfile;
 use crate::renv::*;
 use crate::repos::*;
@@ -411,20 +411,43 @@ fn sc_proj_deploy(
         .copied()
         .unwrap_or(8);
 
+    let total_packages = packages.len();
     info!(
         "Installing {} packages to {}",
-        packages.len(),
+        total_packages,
         library_path.display()
     );
 
+    // Create progress bar for installation
+    let install_pb = ProgressBar::new(total_packages as u64);
+    install_pb.set_style(
+        ProgressStyle::default_bar()
+            .template("{msg} [{bar:40.green/blue}] {pos}/{len} packages")
+            .unwrap()
+            .progress_chars("=>-"),
+    );
+    install_pb.set_message("Installing");
+
+    // Track installation progress
+    let installed_count = Cell::new(0);
+
     // Create a tokio runtime to run the async installation
     let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(install_package_tree(
+    rt.block_on(install_package_tree_with_progress(
         packages,
         &library_path,
         r_binary,
         max_concurrent,
+        Some(|pkg_name: &str, success: bool| {
+            if success {
+                installed_count.set(installed_count.get() + 1);
+                install_pb.println(format!("✓ Installed: {}", pkg_name));
+                install_pb.inc(1);
+            }
+        }),
     ))?;
+
+    install_pb.finish_with_message(format!("Complete: {} packages installed", installed_count.get()));
 
     info!("Deployment complete!");
     Ok(())
@@ -452,7 +475,7 @@ pub fn proj_download() -> Result<(), Box<dyn Error>> {
     let overall_pb = multi_progress.add(ProgressBar::new(total as u64));
     overall_pb.set_style(
         ProgressStyle::default_bar()
-            .template("{msg} [{bar:40.cyan/blue}] {pos}/{len} packages")
+            .template("{msg} [{bar:40.green/blue}] {pos}/{len} packages")
             .unwrap()
             .progress_chars("=>-"),
     );

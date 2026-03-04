@@ -76,16 +76,21 @@ pub async fn install_package(
 /// * `library_path` - Path to the R library directory
 /// * `r_binary` - Path to the R binary to use for installation
 /// * `max_concurrent` - Maximum number of packages to install concurrently
+/// * `progress_callback` - Optional callback called when each package completes installation
 ///
 /// # Returns
 /// * `Ok(())` if all installations succeeded
 /// * `Err` if any installation failed
-pub async fn install_package_tree(
+pub async fn install_package_tree_with_progress<F>(
     packages: Vec<PackageInfo>,
     library_path: &Path,
     r_binary: &str,
     max_concurrent: usize,
-) -> Result<(), Box<dyn Error>> {
+    mut progress_callback: Option<F>,
+) -> Result<(), Box<dyn Error>>
+where
+    F: FnMut(&str, bool),
+{
     let package_count = packages.len();
     info!("Installing {} packages in dependency order", package_count);
 
@@ -220,7 +225,18 @@ pub async fn install_package_tree(
 
     // Process tasks as they complete
     while let Some(result) = running_tasks.next().await {
-        let _ = result?; // Handle task join error
+        match result? {
+            Ok(pkg_name) => {
+                if let Some(ref mut callback) = progress_callback {
+                    callback(&pkg_name, true);
+                }
+            }
+            Err(_err_msg) => {
+                // Error already logged in the task
+                // We can't get the package name easily here since it's in the error context
+                // The error will be caught at the end anyway
+            }
+        }
 
         // After each completion, check how many tasks are currently running
         let currently_running = installing.lock().await.len();
@@ -279,4 +295,17 @@ pub async fn install_package_tree(
 
     info!("Successfully installed all {} packages", final_installed);
     Ok(())
+}
+
+/// Install multiple packages respecting dependency order (without progress callback)
+///
+/// This is a convenience wrapper around `install_package_tree_with_progress` that doesn't
+/// provide progress callbacks.
+pub async fn install_package_tree(
+    packages: Vec<PackageInfo>,
+    library_path: &Path,
+    r_binary: &str,
+    max_concurrent: usize,
+) -> Result<(), Box<dyn Error>> {
+    install_package_tree_with_progress(packages, library_path, r_binary, max_concurrent, None::<fn(&str, bool)>).await
 }
