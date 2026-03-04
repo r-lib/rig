@@ -381,9 +381,9 @@ fn get_r_data(ver: &str) -> Result<RData, Box<dyn Error>> {
 #[cfg(target_os = "linux")]
 fn get_r_data(ver: &str) -> Result<RData, Box<dyn Error>> {
     let mut data = get_r_data_common(ver)?;
-    let os = detect_linux()?;
-    data.distro = Some(os.distro);
-    data.release = Some(os.version);
+    let os = detect_platform()?;
+    data.distro = os.distro;
+    data.release = os.version;
     Ok(data)
 }
 

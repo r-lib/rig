@@ -527,14 +527,6 @@ pub fn sc_system_no_openmp(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn sc_system_detect_platform(
-    _args: &ArgMatches,
-    _mainargs: &ArgMatches,
-) -> Result<(), Box<dyn Error>> {
-    // Nothing to do on Windows
-    Ok(())
-}
-
 // ------------------------------------------------------------------------
 
 pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {

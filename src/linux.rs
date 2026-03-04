@@ -66,7 +66,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         println!("{}", uid);
     }
 
-    let platform = detect_linux()?;
+    let platform = detect_platform()?;
     let version = get_resolve(args)?;
     let alias = get_alias(args);
     let ver = version.version.to_owned();
@@ -126,7 +126,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 }
 
 fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>> {
-    if platform.distro == "debian" || platform.distro == "ubuntu" {
+    if platform.distro.as_deref() == Some("debian") || platform.distro.as_deref() == Some("ubuntu") {
         Ok(LinuxTools {
             package_name: "r-{}".to_string(),
             install: vec![
@@ -152,7 +152,7 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             ],
             is_installed: strvec!["dpkg", "-s", "{}"],
         })
-    } else if platform.distro == "opensuse" || platform.distro == "sles" {
+    } else if platform.distro.as_deref() == Some("opensuse") || platform.distro.as_deref() == Some("sles") {
         Ok(LinuxTools {
             package_name: "R-{}".to_string(),
             install: vec![strvec!["zypper", "--no-gpg-checks", "install", "-y", "{}"]],
@@ -160,7 +160,7 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             is_installed: strvec!["rpm", "-q", "{}"],
             delete: strvec!["zypper", "remove", "-y", "{}"],
         })
-    } else if platform.distro == "fedora" {
+    } else if platform.distro.as_deref() == Some("fedora") {
         Ok(LinuxTools {
             package_name: "R-{}".to_string(),
             install: vec![strvec!["dnf", "install", "-y", "{}"]],
@@ -168,8 +168,8 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             is_installed: strvec!["rpm", "-q", "{}"],
             delete: strvec!["dnf", "remove", "-y", "{}"],
         })
-    } else if (platform.distro == "centos")
-        && (platform.version == "7" || platform.version.starts_with("7."))
+    } else if platform.distro.as_deref() == Some("centos")
+        && (platform.version.as_deref() == Some("7") || platform.version.as_ref().map_or(false, |v| v.starts_with("7.")))
     {
         Ok(LinuxTools {
             package_name: "R-{}".to_string(),
@@ -181,8 +181,8 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             is_installed: strvec!["rpm", "-q", "{}"],
             delete: strvec!["yum", "remove", "-y", "{}"],
         })
-    } else if (platform.distro == "rhel")
-        && (platform.version == "7" || platform.version.starts_with("7."))
+    } else if platform.distro.as_deref() == Some("rhel")
+        && (platform.version.as_deref() == Some("7") || platform.version.as_ref().map_or(false, |v| v.starts_with("7.")))
     {
         Ok(LinuxTools{
             package_name: "R-{}".to_string(),
@@ -197,10 +197,10 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             delete:
                 strvec!["yum", "remove", "-y", "{}"]
         })
-    } else if (platform.distro == "rhel"
-        || platform.distro == "almalinux"
-        || platform.distro == "rocky")
-        && (platform.version == "8" || platform.version.starts_with("8."))
+    } else if (platform.distro.as_deref() == Some("rhel")
+        || platform.distro.as_deref() == Some("almalinux")
+        || platform.distro.as_deref() == Some("rocky"))
+        && (platform.version.as_deref() == Some("8") || platform.version.as_ref().map_or(false, |v| v.starts_with("8.")))
     {
         Ok(LinuxTools {
             package_name: "R-{}".to_string(),
@@ -209,8 +209,8 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             is_installed: strvec!["rpm", "-q", "{}"],
             delete: strvec!["dnf", "remove", "-y", "{}"],
         })
-    } else if (platform.distro == "almalinux" || platform.distro == "rocky")
-        && (platform.version == "9" || platform.version.starts_with("9."))
+    } else if (platform.distro.as_deref() == Some("almalinux") || platform.distro.as_deref() == Some("rocky"))
+        && (platform.version.as_deref() == Some("9") || platform.version.as_ref().map_or(false, |v| v.starts_with("9.")))
     {
         Ok(LinuxTools {
             package_name: "R-{}".to_string(),
@@ -224,8 +224,8 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             is_installed: strvec!["rpm", "-q", "{}"],
             delete: strvec!["dnf", "remove", "-y", "{}"],
         })
-    } else if (platform.distro == "rhel")
-        && (platform.version == "9" || platform.version.starts_with("9."))
+    } else if platform.distro.as_deref() == Some("rhel")
+        && (platform.version.as_deref() == Some("9") || platform.version.as_ref().map_or(false, |v| v.starts_with("9.")))
     {
         let crb = "codeready-builder-for-rhel-9-".to_string() + &platform.arch + "-rpms";
         Ok(LinuxTools{
@@ -241,9 +241,9 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
                 delete:
                     strvec!["dnf", "remove", "-y", "{}"]
             })
-    } else if platform.distro == "almalinux"
-        || platform.distro == "rocky"
-        || platform.distro == "rhel"
+    } else if platform.distro.as_deref() == Some("almalinux")
+        || platform.distro.as_deref() == Some("rocky")
+        || platform.distro.as_deref() == Some("rhel")
     {
         Ok(LinuxTools {
             package_name: "R-{}".to_string(),
@@ -255,8 +255,8 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
     } else {
         bail!(
             "I don't know how to install a system package on {} {}",
-            platform.distro,
-            platform.version
+            platform.distro.as_deref().unwrap_or("<unknown>"),
+            platform.version.as_deref().unwrap_or("<unknown>")
         );
     }
 }
@@ -306,7 +306,7 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     }
     let vers = require_with!(vers, "clap error");
 
-    let platform = detect_linux()?;
+    let platform = detect_platform()?;
     let tools = select_linux_tools(&platform)?;
     for ver in vers {
         let ver = check_installed(&ver.to_string())?;

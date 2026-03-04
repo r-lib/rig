@@ -2,8 +2,17 @@ use std::error::Error;
 use std::ffi::CStr;
 use std::sync::OnceLock;
 
+#[cfg(target_os = "linux")]
+use std::path::Path;
+
+#[cfg(target_os = "linux")]
+use regex::Regex;
+
 use clap::ArgMatches;
 use simple_error::bail;
+
+#[cfg(target_os = "linux")]
+use crate::utils::{grep_lines, read_lines, unquote};
 
 use crate::rversion::*;
 

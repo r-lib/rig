@@ -402,8 +402,10 @@ pub fn get_platform(args: &ArgMatches) -> Result<String, Box<dyn Error>> {
     #[cfg(target_os = "linux")]
     {
         if os == "linux" {
-            let dist = detect_linux()?;
-            os = "linux-".to_string() + &dist.distro + "-" + &dist.version;
+            let dist = detect_platform()?;
+            if let (Some(distro), Some(version)) = (dist.distro, dist.version) {
+                os = format!("linux-{}-{}", distro, version);
+            }
         }
     }
 
