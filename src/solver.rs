@@ -15,13 +15,15 @@ type RPackageName = String;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RegistryPackageVersion {
+    pub name: RPackageName,
     pub version: RPackageVersion,
 }
 
 impl RegistryPackageVersion {
-    pub fn from_str(s: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(name: &str, version_str: &str) -> Result<Self, Box<dyn std::error::Error>> {
         Ok(RegistryPackageVersion {
-            version: RPackageVersion::from_str(s)?,
+            name: name.to_string(),
+            version: RPackageVersion::from_str(version_str)?,
         })
     }
 }
@@ -60,6 +62,7 @@ pub fn rpackage_version_ranges_from_constraints(
         let mut vs = RPackageVersionRanges::full();
         for cs in dep.constraints.iter() {
             let ver = RegistryPackageVersion {
+                name: dep.name.clone(),
                 version: cs.version.clone(),
             };
             match cs.constraint_type {
@@ -132,6 +135,7 @@ impl RPackageRegistry {
         for package in vers {
             let vranges = rpackage_version_ranges_from_constraints(&package.dependencies, false);
             let v = RegistryPackageVersion {
+                name: package.name,
                 version: package.version.clone(),
             };
             self.add_package_version(pkg.clone(), v, vranges);

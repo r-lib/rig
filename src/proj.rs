@@ -172,6 +172,7 @@ fn sc_proj_solve_latest(
     info!("Adding {} packages to the registry", pkgs.len());
     for pkg in pkgs.iter() {
         let v = RegistryPackageVersion {
+            name: pkg.name.clone(),
             version: pkg.version.clone(),
         };
         reg.add_package_version(
@@ -183,14 +184,14 @@ fn sc_proj_solve_latest(
 
     reg.add_package_version(
         "_project".to_string(),
-        RegistryPackageVersion::from_str("1.0.0")?,
+        RegistryPackageVersion::new("_project", "1.0.0")?,
         rpackage_version_ranges_from_constraints(deps, true),
     );
 
     // add R itself, for now a hardcoded version
     reg.add_package_version(
         "R".to_string(),
-        RegistryPackageVersion::from_str(r_version)?,
+        RegistryPackageVersion::new("R", r_version)?,
         HashMap::with_hasher(rustc_hash::FxBuildHasher::default()),
     );
 
@@ -198,7 +199,7 @@ fn sc_proj_solve_latest(
     for bp in BASE_PKGS.iter() {
         reg.add_package_version(
             bp.to_string(),
-            RegistryPackageVersion::from_str(r_version)?,
+            RegistryPackageVersion::new(bp, r_version)?,
             HashMap::with_hasher(rustc_hash::FxBuildHasher::default()),
         );
     }
@@ -206,7 +207,7 @@ fn sc_proj_solve_latest(
     let solution = resolve(
         &reg,
         "_project".to_string(),
-        RegistryPackageVersion::from_str("1.0.0")?,
+        RegistryPackageVersion::new("_project", "1.0.0")?,
     );
 
     match solution {
@@ -224,14 +225,14 @@ fn sc_proj_solve_all(
 
     reg.add_package_version(
         "_project".to_string(),
-        RegistryPackageVersion::from_str("1.0.0")?,
+        RegistryPackageVersion::new("_project", "1.0.0")?,
         rpackage_version_ranges_from_constraints(deps, true),
     );
 
     // add R itself, for now a hardcoded version
     reg.add_package_version(
         "R".to_string(),
-        RegistryPackageVersion::from_str(r_version)?,
+        RegistryPackageVersion::new("R", r_version)?,
         HashMap::with_hasher(rustc_hash::FxBuildHasher::default()),
     );
 
@@ -239,7 +240,7 @@ fn sc_proj_solve_all(
     for bp in BASE_PKGS.iter() {
         reg.add_package_version(
             bp.to_string(),
-            RegistryPackageVersion::from_str(r_version)?,
+            RegistryPackageVersion::new(bp, r_version)?,
             HashMap::with_hasher(rustc_hash::FxBuildHasher::default()),
         );
     }
@@ -247,7 +248,7 @@ fn sc_proj_solve_all(
     let solution = resolve(
         &reg,
         "_project".to_string(),
-        RegistryPackageVersion::from_str("1.0.0")?,
+        RegistryPackageVersion::new("_project", "1.0.0")?,
     );
 
     match solution {

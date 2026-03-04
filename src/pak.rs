@@ -51,6 +51,11 @@ impl PakLockfile {
                 continue;
             }
             let deps = registry.get_dependency_summary(k, v).unwrap();
+            let dl1 = format!("https://cloud.r-project.org/src/contrib/{}_{}.tar.gz", k, v);
+            let dl2 = format!(
+                "https://cloud.r-project.org/src/contrib/Archive/{}/{}_{}.tar.gz",
+                k, k, v
+            );
             pkgs.push(PakLockfilePackage {
                 r#ref: k.to_string(),
                 package: k.to_string(),
@@ -61,7 +66,7 @@ impl PakLockfile {
                 dependencies: deps,
                 vignettes: false,
                 metadata: HashMap::new(),
-                sources: vec![],
+                sources: vec![dl1, dl2],
                 target: "".to_string(),
                 platform: std::env::consts::ARCH.to_string(),
                 rversion: "4.5.2".to_string(),
