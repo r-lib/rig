@@ -155,10 +155,7 @@ pub async fn install_package_tree(
                 drop(installing_set);
                 failed.lock().await.insert(name.clone());
                 installing_set = installing.lock().await;
-                error!(
-                    "Skipping package {} because a dependency failed",
-                    name
-                );
+                error!("Skipping package {} because a dependency failed", name);
             } else if all_deps_installed {
                 // Mark as currently installing
                 installing_set.insert(name.clone());
@@ -280,9 +277,6 @@ pub async fn install_package_tree(
         .into());
     }
 
-    info!(
-        "Successfully installed all {} packages",
-        final_installed
-    );
+    info!("Successfully installed all {} packages", final_installed);
     Ok(())
 }

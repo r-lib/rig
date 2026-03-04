@@ -126,7 +126,8 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 }
 
 fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>> {
-    if platform.distro.as_deref() == Some("debian") || platform.distro.as_deref() == Some("ubuntu") {
+    if platform.distro.as_deref() == Some("debian") || platform.distro.as_deref() == Some("ubuntu")
+    {
         Ok(LinuxTools {
             package_name: "r-{}".to_string(),
             install: vec![
@@ -152,7 +153,9 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             ],
             is_installed: strvec!["dpkg", "-s", "{}"],
         })
-    } else if platform.distro.as_deref() == Some("opensuse") || platform.distro.as_deref() == Some("sles") {
+    } else if platform.distro.as_deref() == Some("opensuse")
+        || platform.distro.as_deref() == Some("sles")
+    {
         Ok(LinuxTools {
             package_name: "R-{}".to_string(),
             install: vec![strvec!["zypper", "--no-gpg-checks", "install", "-y", "{}"]],
@@ -169,7 +172,11 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             delete: strvec!["dnf", "remove", "-y", "{}"],
         })
     } else if platform.distro.as_deref() == Some("centos")
-        && (platform.version.as_deref() == Some("7") || platform.version.as_ref().map_or(false, |v| v.starts_with("7.")))
+        && (platform.version.as_deref() == Some("7")
+            || platform
+                .version
+                .as_ref()
+                .map_or(false, |v| v.starts_with("7.")))
     {
         Ok(LinuxTools {
             package_name: "R-{}".to_string(),
@@ -182,7 +189,11 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             delete: strvec!["yum", "remove", "-y", "{}"],
         })
     } else if platform.distro.as_deref() == Some("rhel")
-        && (platform.version.as_deref() == Some("7") || platform.version.as_ref().map_or(false, |v| v.starts_with("7.")))
+        && (platform.version.as_deref() == Some("7")
+            || platform
+                .version
+                .as_ref()
+                .map_or(false, |v| v.starts_with("7.")))
     {
         Ok(LinuxTools{
             package_name: "R-{}".to_string(),
@@ -200,7 +211,11 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
     } else if (platform.distro.as_deref() == Some("rhel")
         || platform.distro.as_deref() == Some("almalinux")
         || platform.distro.as_deref() == Some("rocky"))
-        && (platform.version.as_deref() == Some("8") || platform.version.as_ref().map_or(false, |v| v.starts_with("8.")))
+        && (platform.version.as_deref() == Some("8")
+            || platform
+                .version
+                .as_ref()
+                .map_or(false, |v| v.starts_with("8.")))
     {
         Ok(LinuxTools {
             package_name: "R-{}".to_string(),
@@ -209,8 +224,13 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             is_installed: strvec!["rpm", "-q", "{}"],
             delete: strvec!["dnf", "remove", "-y", "{}"],
         })
-    } else if (platform.distro.as_deref() == Some("almalinux") || platform.distro.as_deref() == Some("rocky"))
-        && (platform.version.as_deref() == Some("9") || platform.version.as_ref().map_or(false, |v| v.starts_with("9.")))
+    } else if (platform.distro.as_deref() == Some("almalinux")
+        || platform.distro.as_deref() == Some("rocky"))
+        && (platform.version.as_deref() == Some("9")
+            || platform
+                .version
+                .as_ref()
+                .map_or(false, |v| v.starts_with("9.")))
     {
         Ok(LinuxTools {
             package_name: "R-{}".to_string(),
@@ -225,7 +245,11 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             delete: strvec!["dnf", "remove", "-y", "{}"],
         })
     } else if platform.distro.as_deref() == Some("rhel")
-        && (platform.version.as_deref() == Some("9") || platform.version.as_ref().map_or(false, |v| v.starts_with("9.")))
+        && (platform.version.as_deref() == Some("9")
+            || platform
+                .version
+                .as_ref()
+                .map_or(false, |v| v.starts_with("9.")))
     {
         let crb = "codeready-builder-for-rhel-9-".to_string() + &platform.arch + "-rpms";
         Ok(LinuxTools{

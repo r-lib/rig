@@ -453,12 +453,8 @@ mod tests {
         ];
 
         let client = reqwest::Client::new();
-        let results = download_multiple_first_available(
-            &client,
-            downloads,
-            Duration::from_hours(24),
-        )
-        .await;
+        let results =
+            download_multiple_first_available(&client, downloads, Duration::from_hours(24)).await;
 
         assert_eq!(results.len(), 2);
         assert!(results[0].is_ok());
@@ -501,12 +497,8 @@ mod tests {
         )];
 
         let client = reqwest::Client::new();
-        let results = download_multiple_first_available(
-            &client,
-            downloads,
-            Duration::from_hours(24),
-        )
-        .await;
+        let results =
+            download_multiple_first_available(&client, downloads, Duration::from_hours(24)).await;
 
         assert_eq!(results.len(), 1);
         assert!(results[0].is_ok());
@@ -557,12 +549,8 @@ mod tests {
         ];
 
         let client = reqwest::Client::new();
-        let results = download_multiple_first_available(
-            &client,
-            downloads,
-            Duration::from_hours(24),
-        )
-        .await;
+        let results =
+            download_multiple_first_available(&client, downloads, Duration::from_hours(24)).await;
 
         assert_eq!(results.len(), 2);
         assert!(results[0].is_ok());
