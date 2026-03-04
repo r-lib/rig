@@ -5,7 +5,6 @@ use std::error::Error;
 use std::path::{Path, PathBuf};
 
 use clap::ArgMatches;
-use directories::ProjectDirs;
 use globset::Glob;
 use log::{debug, warn};
 use serde::{Deserialize, Serialize};
@@ -13,6 +12,7 @@ use serde_json::Value;
 use simple_error::*;
 use tabular::*;
 
+use crate::cache::get_cache_dir;
 use crate::common::*;
 use crate::dcf::*;
 use crate::download::download_if_newer_;
@@ -508,10 +508,7 @@ fn get_cran_package_version(
         url += version;
     }
     debug!("Fetching package info from {}", url);
-    let mut local = ProjectDirs::from("com", "gaborcsardi", "rig")
-        .ok_or("Cannot determine cache directory")?
-        .cache_dir()
-        .to_path_buf();
+    let mut local = get_cache_dir()?;
     local.push("package-metadata");
     local.push("package-".to_string() + &package + "-" + version + ".json");
     debug!("Local cache file: {}", local.display());
@@ -540,10 +537,7 @@ pub fn get_all_cran_package_versions(
     client: Option<&reqwest::Client>,
 ) -> Result<Vec<Package>, Box<dyn Error>> {
     let url = "https://crandb.r-pkg.org/".to_string() + &package + "/" + "all";
-    let mut local = ProjectDirs::from("com", "gaborcsardi", "rig")
-        .ok_or("Cannot determine cache directory")?
-        .cache_dir()
-        .to_path_buf();
+    let mut local = get_cache_dir()?;
     local.push("packages");
     local.push("package-".to_string() + &package + ".json");
 

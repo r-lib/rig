@@ -5,12 +5,12 @@ use std::path::PathBuf;
 
 use clap::ArgMatches;
 use deb822_fast::Deb822;
-use directories::ProjectDirs;
 use log::info;
 use pubgrub::{resolve, SelectedDependencies};
 use simple_error::*;
 use tabular::*;
 
+use crate::cache::get_cache_dir;
 use crate::common::get_default_r_version;
 use crate::dcf::*;
 use crate::download::download_multiple_first_available_;
@@ -375,10 +375,7 @@ fn sc_proj_deploy(
     let lockfile: PakLockfile = serde_json::from_str(&lockfile_content)?;
 
     // Get cache directory where packages were downloaded
-    let cache_dir = ProjectDirs::from("com", "gaborcsardi", "rig")
-        .ok_or("Cannot determine cache directory")?
-        .cache_dir()
-        .to_path_buf();
+    let cache_dir = get_cache_dir()?;
 
     // Build Vec<PackageInfo> from lockfile
     let mut packages: Vec<PackageInfo> = Vec::new();
@@ -436,10 +433,7 @@ fn proj_download() -> Result<(), Box<dyn Error>> {
     let lockfile: PakLockfile = serde_json::from_str(&lockfile_content)?;
 
     // Get cache directory
-    let cache_dir = ProjectDirs::from("com", "gaborcsardi", "rig")
-        .ok_or("Cannot determine cache directory")?
-        .cache_dir()
-        .to_path_buf();
+    let cache_dir = get_cache_dir()?;
 
     // Build download list: (sources, target_path) for each package
     let mut downloads: Vec<(Vec<String>, PathBuf)> = Vec::new();

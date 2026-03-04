@@ -37,6 +37,7 @@ use platform::*;
 use resolve::*;
 
 mod alias;
+mod cache;
 mod common;
 mod config;
 mod dcf;

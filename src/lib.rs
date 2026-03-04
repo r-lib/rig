@@ -16,6 +16,7 @@ use simple_error::bail;
 
 mod alias;
 mod args;
+mod cache;
 mod common;
 mod config;
 mod dcf;

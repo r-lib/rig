@@ -6,7 +6,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deb822_fast::Deb822;
-use directories::ProjectDirs;
 use flate2::read::GzDecoder;
 use log::info;
 use rds2rust::RObject;
@@ -16,6 +15,7 @@ use rusqlite::{params, Connection};
 use simple_error::bail;
 use xz2::read::XzDecoder;
 
+use crate::cache::get_cache_dir;
 use crate::dcf::*;
 use crate::download::download_first_available_;
 use crate::rds::*;
@@ -535,10 +535,7 @@ fn repo_db_file(dcf_path: &PathBuf) -> Result<PathBuf, Box<dyn Error>> {
 }
 
 fn repo_local_file(url: &str) -> Result<PathBuf, Box<dyn Error>> {
-    let mut cache = ProjectDirs::from("com", "gaborcsardi", "rig")
-        .ok_or("Cannot determine cache directory")?
-        .cache_dir()
-        .to_path_buf();
+    let mut cache = get_cache_dir()?;
     let urlhash = "repo-".to_string() + &calculate_hash(url) + ".data";
 
     cache.push(urlhash);
