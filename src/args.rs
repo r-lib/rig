@@ -960,6 +960,16 @@ pub fn rig_app() -> Command {
                         .num_args(0)
                         .required(false),
                 ),
+        )
+        .subcommand(
+            Command::new("download")
+                .about("Download project dependencies")
+                .display_order(0),
+        )
+        .subcommand(
+            Command::new("deploy")
+                .about("Deploy project dependencies")
+                .display_order(0),
         );
     rig = rig.subcommand(cmd_proj);
 

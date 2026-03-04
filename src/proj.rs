@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs::{self, File};
+use std::path::PathBuf;
 
 use clap::ArgMatches;
 use deb822_fast::Deb822;
+use directories::ProjectDirs;
 use log::info;
 use pubgrub::{resolve, SelectedDependencies};
 use simple_error::*;
@@ -11,10 +13,12 @@ use tabular::*;
 
 use crate::common::get_default_r_version;
 use crate::dcf::*;
+use crate::download::download_multiple_first_available_;
 use crate::pak::PakLockfile;
 use crate::renv::*;
 use crate::repos::*;
 use crate::solver::*;
+use crate::utils::create_parent_dir_if_needed;
 
 pub const BASE_PKGS: &[&str] = &[
     "base",
@@ -37,6 +41,8 @@ pub fn sc_proj(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn E
     match args.subcommand() {
         Some(("deps", s)) => sc_proj_deps(s, args, mainargs),
         Some(("solve", s)) => sc_proj_solve(s, args, mainargs),
+        Some(("deploy", s)) => sc_proj_deploy(s, args, mainargs),
+        Some(("download", s)) => sc_proj_download(s, args, mainargs),
         _ => Ok(()), // unreachable
     }
 }
@@ -351,6 +357,68 @@ fn sc_proj_solve(
         tab.add_row(row!(pkg, ver));
     }
     println!("{}", tab);
+
+    Ok(())
+}
+
+fn sc_proj_deploy(
+    _args: &ArgMatches,
+    _libargs: &ArgMatches,
+    _mainargs: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+    Ok(())
+}
+
+fn sc_proj_download(
+    _args: &ArgMatches,
+    _libargs: &ArgMatches,
+    _mainargs: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+    let lockfile_content = fs::read_to_string("pkg.lock")?;
+    let lockfile: PakLockfile = serde_json::from_str(&lockfile_content)?;
+
+    // Get cache directory
+    let cache_dir = ProjectDirs::from("com", "gaborcsardi", "rig")
+        .ok_or("Cannot determine cache directory")?
+        .cache_dir()
+        .to_path_buf();
+
+    // Build download list: (sources, target_path) for each package
+    let mut downloads: Vec<(Vec<String>, PathBuf)> = Vec::new();
+    for pkg in &lockfile.packages {
+        let target_path = cache_dir.join("packages").join(&pkg.target);
+        create_parent_dir_if_needed(&target_path)?;
+        downloads.push((pkg.sources.clone(), target_path));
+    }
+
+    // Download all packages concurrently
+    info!("Downloading {} packages", downloads.len());
+    let results = download_multiple_first_available_(downloads, None, None);
+
+    // Check results and report errors
+    let mut success_count = 0;
+    let mut failed_count = 0;
+    for (i, result) in results.iter().enumerate() {
+        match result {
+            Ok(_) => {
+                success_count += 1;
+                info!("Downloaded: {}", lockfile.packages[i].package);
+            }
+            Err(e) => {
+                failed_count += 1;
+                bail!(
+                    "Failed to download {}: {}",
+                    lockfile.packages[i].package,
+                    e
+                );
+            }
+        }
+    }
+
+    info!(
+        "Download complete: {} succeeded, {} failed",
+        success_count, failed_count
+    );
 
     Ok(())
 }

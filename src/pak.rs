@@ -9,35 +9,35 @@ use crate::solver::*;
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all(serialize = "snake_case"))]
 pub struct PakLockfilePackage {
-    r#ref: String,
-    package: String,
-    version: String,
-    r#type: String,
-    direct: bool,
-    binary: bool,
-    dependencies: Vec<String>,
-    vignettes: bool,
-    metadata: HashMap<String, String>,
-    sources: Vec<String>,
-    target: String,
-    platform: String,
-    rversion: String,
-    directpkg: bool,
-    license: String,
-    dep_types: Vec<String>,
-    params: Vec<String>,
-    install_args: String,
-    sysreqs: String,
+    pub r#ref: String,
+    pub package: String,
+    pub version: String,
+    pub r#type: String,
+    pub direct: bool,
+    pub binary: bool,
+    pub dependencies: Vec<String>,
+    pub vignettes: bool,
+    pub metadata: HashMap<String, String>,
+    pub sources: Vec<String>,
+    pub target: String,
+    pub platform: String,
+    pub rversion: String,
+    pub directpkg: bool,
+    pub license: String,
+    pub dep_types: Vec<String>,
+    pub params: Vec<String>,
+    pub install_args: String,
+    pub sysreqs: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all(serialize = "snake_case"))]
 pub struct PakLockfile {
-    lockfile_version: usize,
-    os: String,
-    r_version: String,
-    platform: String,
-    packages: Vec<PakLockfilePackage>,
+    pub lockfile_version: usize,
+    pub os: String,
+    pub r_version: String,
+    pub platform: String,
+    pub packages: Vec<PakLockfilePackage>,
 }
 
 impl PakLockfile {
