@@ -11,6 +11,7 @@ pub fn sc_test(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn E
         Some(("read-packages-rds", s)) => sc_test_read_packages_rds(s, args, mainargs),
         Some(("parse-platform-string", s)) => sc_test_parse_platform_string(s, args, mainargs),
         Some(("platform-to-pkg-type", s)) => sc_test_platform_to_pkg_type(s, args, mainargs),
+        Some(("download-lockfile", s)) => sc_test_download_lockfile(s, args, mainargs),
         _ => Ok(()), // unreachable
     }
 }
@@ -58,5 +59,14 @@ fn sc_test_platform_to_pkg_type(
         r_version,
     );
     println!("Package type: {:?}", pkg_type);
+    Ok(())
+}
+
+fn sc_test_download_lockfile(
+    _args: &ArgMatches,
+    _subargs: &ArgMatches,
+    _mainargs: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+    crate::proj::proj_download()?;
     Ok(())
 }

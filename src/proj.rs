@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs::{self, File};
@@ -5,6 +6,7 @@ use std::path::PathBuf;
 
 use clap::ArgMatches;
 use deb822_fast::Deb822;
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use log::info;
 use pubgrub::{resolve, SelectedDependencies};
 use simple_error::*;
@@ -13,7 +15,7 @@ use tabular::*;
 use crate::cache::get_cache_dir;
 use crate::common::get_default_r_version;
 use crate::dcf::*;
-use crate::download::download_multiple_first_available_;
+use crate::download::download_multiple_first_available_with_progress;
 use crate::install::{install_package_tree, PackageInfo};
 use crate::pak::PakLockfile;
 use crate::renv::*;
@@ -428,7 +430,7 @@ fn sc_proj_deploy(
     Ok(())
 }
 
-fn proj_download() -> Result<(), Box<dyn Error>> {
+pub fn proj_download() -> Result<(), Box<dyn Error>> {
     let lockfile_content = fs::read_to_string("pkg.lock")?;
     let lockfile: PakLockfile = serde_json::from_str(&lockfile_content)?;
 
@@ -443,25 +445,59 @@ fn proj_download() -> Result<(), Box<dyn Error>> {
         downloads.push((pkg.sources.clone(), target_path));
     }
 
-    // Download all packages concurrently
-    info!("Downloading {} packages", downloads.len());
-    let results = download_multiple_first_available_(downloads, None, None);
+    let total = downloads.len();
 
-    // Check results and report errors
-    let mut success_count = 0;
-    for (i, result) in results.iter().enumerate() {
-        match result {
-            Ok(_) => {
-                success_count += 1;
-                info!("Downloaded: {}", lockfile.packages[i].package);
+    // Create progress bars
+    let multi_progress = MultiProgress::new();
+    let overall_pb = multi_progress.add(ProgressBar::new(total as u64));
+    overall_pb.set_style(
+        ProgressStyle::default_bar()
+            .template("{msg} [{bar:40.cyan/blue}] {pos}/{len} packages")
+            .unwrap()
+            .progress_chars("=>-"),
+    );
+    overall_pb.set_message("Downloading");
+
+    // Track results using Cell for interior mutability
+    let success_count = Cell::new(0);
+    let cached_count = Cell::new(0);
+    let error: Cell<Option<(usize, String)>> = Cell::new(None);
+
+    // Download all packages concurrently with progress updates
+    info!("Downloading {} packages", total);
+    download_multiple_first_available_with_progress(
+        downloads,
+        None,
+        None,
+        |idx, result| {
+            match result {
+                Ok(downloaded) => {
+                    if *downloaded {
+                        success_count.set(success_count.get() + 1);
+                        overall_pb.println(format!("✓ Downloaded: {}", lockfile.packages[idx].package));
+                    } else {
+                        cached_count.set(cached_count.get() + 1);
+                        overall_pb.println(format!("✓ Cached: {}", lockfile.packages[idx].package));
+                    }
+                    overall_pb.inc(1);
+                }
+                Err(e) => {
+                    error.set(Some((idx, e.to_string())));
+                    overall_pb.finish_and_clear();
+                }
             }
-            Err(e) => {
-                bail!("Failed to download {}: {}", lockfile.packages[i].package, e);
-            }
-        }
+        },
+    );
+
+    // Check if there was an error
+    if let Some((idx, err)) = error.into_inner() {
+        bail!("Failed to download {}: {}", lockfile.packages[idx].package, err);
     }
 
-    info!("Download complete: {} packages downloaded", success_count);
+    overall_pb.finish_with_message(format!(
+        "Complete: {} downloaded, {} cached",
+        success_count.get(), cached_count.get()
+    ));
 
     Ok(())
 }

@@ -1,5 +1,5 @@
 use futures::future;
-use futures_util::StreamExt;
+use futures::stream::{FuturesUnordered, StreamExt};
 use std::error::Error;
 use std::ffi::OsStr;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -16,7 +16,7 @@ use std::time::SystemTime;
 use clap::ArgMatches;
 
 use filetime::FileTime;
-use log::info;
+use log::{info, warn};
 use reqwest::StatusCode;
 use simple_error::bail;
 
@@ -165,8 +165,10 @@ async fn download_if_newer(
     let etag_path = add_suffix(local_path, ".etag");
     let etag = fs::read_to_string(&etag_path).ok();
     let mut req = client.get(url);
-    if let Some(etag) = etag.as_deref() {
-        req = req.header("If-None-Match", etag);
+    if local_path.exists() {
+        if let Some(etag) = etag.as_deref() {
+            req = req.header("If-None-Match", etag);
+        }
     }
     info!("Checking for updates for {}", local_path.display());
     let resp = req.send().await?;
@@ -189,7 +191,7 @@ async fn download_if_newer(
         }
 
         status => {
-            bail!("Failed to download package metadata, status: {}", status);
+            bail!("Failed to download {}, status: {}", url, status);
         }
     }
 }
@@ -249,7 +251,7 @@ async fn download_first_available(
                 return Ok(result);
             }
             Err(e) => {
-                info!("Failed to download from {}: {}", url, e);
+                warn!("Failed to download from {}: {}", url, e);
                 last_error = Some(e);
             }
         }
@@ -350,6 +352,72 @@ async fn download_multiple_first_available(
         download_first_available(client, &url_refs, &local_path).await
     }))
     .await
+}
+
+/// Download multiple files with a progress callback.
+/// The callback is called with (index, result) as each download completes.
+pub fn download_multiple_first_available_with_progress<F>(
+    downloads: Vec<(Vec<String>, PathBuf)>,
+    update_older: Option<Duration>,
+    client: Option<&reqwest::Client>,
+    progress_callback: F,
+) where
+    F: FnMut(usize, &Result<bool, Box<dyn Error>>),
+{
+    let update_older = match update_older {
+        Some(dur) => dur,
+        None => Duration::from_hours(24),
+    };
+
+    let client_ = match client {
+        Some(c) => c,
+        None => &reqwest::Client::new(),
+    };
+
+    download_multiple_with_progress_async(client_, downloads, update_older, progress_callback);
+}
+
+#[tokio::main]
+async fn download_multiple_with_progress_async<F>(
+    client: &reqwest::Client,
+    downloads: Vec<(Vec<String>, PathBuf)>,
+    update_older: Duration,
+    mut progress_callback: F,
+) where
+    F: FnMut(usize, &Result<bool, Box<dyn Error>>),
+{
+    let mut futures = FuturesUnordered::new();
+
+    for (idx, (urls, local_path)) in downloads.into_iter().enumerate() {
+        let client = client.clone();
+        futures.push(async move {
+            let result: Result<bool, Box<dyn Error>> = async {
+                // Check if file is up to date before attempting download
+                if local_path.exists() {
+                    let metadata = fs::metadata(&local_path)?;
+                    let modified = metadata.modified()?;
+                    let elapsed = SystemTime::now().duration_since(modified)?;
+
+                    if elapsed < update_older {
+                        info!("{} is up to date, skipping download", local_path.display());
+                        return Ok(false);
+                    }
+                }
+
+                // Convert Vec<String> to Vec<&str> for download_first_available
+                let url_refs: Vec<&str> = urls.iter().map(|s| s.as_str()).collect();
+                download_first_available(&client, &url_refs, &local_path).await
+            }
+            .await;
+
+            (idx, result)
+        });
+    }
+
+    // Process results as they complete
+    while let Some((idx, result)) = futures.next().await {
+        progress_callback(idx, &result);
+    }
 }
 
 #[tokio::main]

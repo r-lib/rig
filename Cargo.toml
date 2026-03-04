@@ -94,6 +94,8 @@ tabular = "0.2.0"
 tokio = { version = "1", features = ["full"] }
 # for pubgrub
 version-ranges = "0.1.2"
+# progress bars
+indicatif = "0.17"
 
 [target.'cfg(windows)'.dependencies]
 is_elevated = "0.1.2"
