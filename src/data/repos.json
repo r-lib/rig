@@ -246,13 +246,13 @@
         ]
     },
     {
-        "name": "PPM-manylinux",
+        "name": "P3M-manylinux",
         "title": "Posit Package Manager manylinux portable packages",
         "description": "TODO",
         "enabled": false,
         "repos": [
             {
-                "name": "PPM-manylinux",
+                "name": "P3M-manylinux",
                 "url": "https://packagemanager.posit.co/cran/__linux__/manylinux_2_28/latest",
                 "platforms": [
                     "*-linux-gnu-*"
