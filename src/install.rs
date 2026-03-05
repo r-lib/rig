@@ -1,10 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
+use std::fs::{remove_file, File, OpenOptions};
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 use std::sync::Arc;
 
 use futures::stream::{FuturesUnordered, StreamExt};
 use log::{error, info};
+use tokio::fs::create_dir_all;
 use tokio::process::Command;
 use tokio::sync::Mutex;
 
@@ -22,6 +25,7 @@ pub struct PackageInfo {
 /// Install an R package from a given path into a specified library
 ///
 /// # Arguments
+/// * `package_name` - Name of the package being installed
 /// * `package_path` - Path to the package tarball (e.g., "package_1.0.0.tar.gz")
 /// * `library_path` - Path to the R library directory where the package should be installed
 /// * `r_binary` - Path to the R binary to use for installation
@@ -30,37 +34,54 @@ pub struct PackageInfo {
 /// * `Ok(())` if installation succeeded
 /// * `Err` if installation failed
 pub async fn install_package(
+    package_name: &str,
     package_path: &Path,
     library_path: &Path,
     r_binary: &str,
 ) -> Result<(), Box<dyn Error>> {
     info!(
-        "Installing package from {} to {}",
+        "Installing package {} from {} to {}",
+        package_name,
         package_path.display(),
         library_path.display()
     );
 
-    let output = Command::new(r_binary)
+    // Create _logs directory and log file
+    let logs_dir = library_path.join("_logs");
+    create_dir_all(&logs_dir).await?;
+
+    let log_file_path = logs_dir.join(format!("{}-install.log", package_name));
+    let log_file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(&log_file_path)?;
+
+    // Clone the file handle for stderr
+    let log_file_stderr = log_file.try_clone()?;
+
+    // Spawn the R CMD INSTALL process with stdout and stderr redirected to the log file
+    let status = Command::new(r_binary)
         .arg("CMD")
         .arg("INSTALL")
         .arg("-l")
         .arg(library_path)
         .arg(package_path)
-        .output()
+        .stdout(Stdio::from(log_file))
+        .stderr(Stdio::from(log_file_stderr))
+        .status()
         .await?;
 
-    if output.status.success() {
-        info!(
-            "Successfully installed package from {}",
-            package_path.display()
-        );
+    if status.success() {
+        // Remove the log file after successful installation
+        let _ = remove_file(&log_file_path);
+        info!("Successfully installed package {}", package_name);
         Ok(())
     } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
         Err(format!(
-            "Failed to install package from {}: {}",
-            package_path.display(),
-            stderr
+            "Failed to install package {} (see log: {})",
+            package_name,
+            log_file_path.display()
         )
         .into())
     }
@@ -176,13 +197,17 @@ where
 
                 let task = tokio::spawn(async move {
                     // Convert result to String immediately to avoid Send issues
-                    let result =
-                        match install_package(&file_path, &library_path_clone, &r_binary_clone)
-                            .await
-                        {
-                            Ok(()) => Ok(()),
-                            Err(e) => Err(e.to_string()),
-                        };
+                    let result = match install_package(
+                        &name_clone,
+                        &file_path,
+                        &library_path_clone,
+                        &r_binary_clone,
+                    )
+                    .await
+                    {
+                        Ok(()) => Ok(()),
+                        Err(e) => Err(e.to_string()),
+                    };
 
                     // Remove from installing set
                     installing_clone.lock().await.remove(&name_clone);
