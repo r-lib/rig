@@ -73,9 +73,11 @@ pub async fn install_package(
         .await?;
 
     if status.success() {
-        // Remove the log file after successful installation
-        let _ = remove_file(&log_file_path);
-        info!("Successfully installed package {}", package_name);
+        info!(
+            "Successfully installed package {} (log: {})",
+            package_name,
+            log_file_path.display()
+        );
         Ok(())
     } else {
         Err(format!(
