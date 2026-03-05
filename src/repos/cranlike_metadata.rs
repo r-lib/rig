@@ -457,6 +457,9 @@ fn get_repo_etag(
 ) -> Result<String, Box<dyn Error>> {
     let conn = Connection::open(db_path)?;
 
+    // Normalize repo_url by removing trailing slashes
+    let repo_url = repo_url.trim_end_matches('/');
+
     let etag: String = conn.query_row(
         "SELECT etag FROM repos WHERE url = ?1 AND pkg_type = ?2 AND etag IS NOT NULL",
         params![repo_url, pkg_type],
@@ -472,6 +475,9 @@ fn is_repo_cache_recent(
     pkg_type: &str,
 ) -> Result<bool, Box<dyn Error>> {
     let conn = Connection::open(db_path)?;
+
+    // Normalize repo_url by removing trailing slashes
+    let repo_url = repo_url.trim_end_matches('/');
 
     // Check if last_updated is within the last 24 hours using SQLite's datetime functions
     let is_recent: bool = conn.query_row(
@@ -495,6 +501,9 @@ fn load_packages_from_db(
     pkg_type: &str,
 ) -> Result<Vec<Package>, Box<dyn Error>> {
     let conn = Connection::open(db_path)?;
+
+    // Normalize repo_url by removing trailing slashes
+    let repo_url = repo_url.trim_end_matches('/');
 
     // Get the repo_id for this URL
     let repo_id: i64 = conn.query_row(
@@ -545,6 +554,9 @@ fn save_packages_to_db(
     etag: Option<&str>,
 ) -> Result<(), Box<dyn Error>> {
     let mut conn = Connection::open(db_path)?;
+
+    // Normalize repo_url by removing trailing slashes
+    let repo_url = repo_url.trim_end_matches('/');
 
     // For source packages, we don't store r_version (use NULL)
     let r_version_to_store = if pkg_type == "source" {
