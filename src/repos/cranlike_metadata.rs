@@ -140,7 +140,11 @@ pub fn repos_get_packages(
 
         // Delete the temporary data file after saving to database
         if let Err(e) = std::fs::remove_file(&repo_local) {
-            info!("Could not delete temporary file {}: {}", repo_local.display(), e);
+            info!(
+                "Could not delete temporary file {}: {}",
+                repo_local.display(),
+                e
+            );
         }
 
         info!("Saved {} packages to database cache", packages.len());

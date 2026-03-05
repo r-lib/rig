@@ -307,5 +307,12 @@ pub async fn install_package_tree(
     r_binary: &str,
     max_concurrent: usize,
 ) -> Result<(), Box<dyn Error>> {
-    install_package_tree_with_progress(packages, library_path, r_binary, max_concurrent, None::<fn(&str, bool)>).await
+    install_package_tree_with_progress(
+        packages,
+        library_path,
+        r_binary,
+        max_concurrent,
+        None::<fn(&str, bool)>,
+    )
+    .await
 }
