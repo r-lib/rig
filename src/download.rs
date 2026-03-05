@@ -529,8 +529,8 @@ mod tests {
         assert_eq!(results.len(), 2);
         assert!(results[0].is_ok());
         assert!(results[1].is_ok());
-        assert_eq!(results[0].as_ref().unwrap(), &true); // Downloaded
-        assert_eq!(results[1].as_ref().unwrap(), &true); // Downloaded
+        assert_eq!(results[0].as_ref().unwrap().0, true); // Downloaded
+        assert_eq!(results[1].as_ref().unwrap().0, true); // Downloaded
 
         // Verify files exist
         assert!(file1_path.exists());
@@ -572,7 +572,7 @@ mod tests {
 
         assert_eq!(results.len(), 1);
         assert!(results[0].is_ok());
-        assert_eq!(results[0].as_ref().unwrap(), &true); // Downloaded from fallback URL
+        assert_eq!(results[0].as_ref().unwrap().0, true); // Downloaded from fallback URL
 
         // Verify file exists
         assert!(file1_path.exists());
@@ -624,7 +624,7 @@ mod tests {
 
         assert_eq!(results.len(), 2);
         assert!(results[0].is_ok());
-        assert_eq!(results[0].as_ref().unwrap(), &true); // Success
+        assert_eq!(results[0].as_ref().unwrap().0, true); // Success
         assert!(results[1].is_err()); // Failed
 
         // Verify only file1 exists
@@ -669,7 +669,7 @@ mod tests {
 
         assert_eq!(results.len(), 1);
         assert!(results[0].is_ok());
-        assert_eq!(results[0].as_ref().unwrap(), &false); // Cached, not downloaded
+        assert_eq!(results[0].as_ref().unwrap().0, false); // Cached, not downloaded
 
         // Clean up
         let _ = std::fs::remove_file(&file1_path);
