@@ -38,14 +38,58 @@ struct RData {
     pub release: Option<String>,
 }
 
+fn validate_repos_in_setup(
+    config: &[Repository],
+    setup: &ReposSetupArgs,
+) -> Result<(), Box<dyn Error>> {
+    let valid_repo_names: Vec<String> = config
+        .iter()
+        .map(|r| r.name.to_lowercase())
+        .collect();
+
+    let mut invalid_repos: Vec<String> = Vec::new();
+
+    match setup {
+        ReposSetupArgs::Default { whitelist, blacklist } => {
+            for repo in whitelist.iter().chain(blacklist.iter()) {
+                if !valid_repo_names.contains(repo) {
+                    invalid_repos.push(repo.clone());
+                }
+            }
+        }
+        ReposSetupArgs::Empty { whitelist } => {
+            for repo in whitelist.iter() {
+                if !valid_repo_names.contains(repo) {
+                    invalid_repos.push(repo.clone());
+                }
+            }
+        }
+    }
+
+    if !invalid_repos.is_empty() {
+        invalid_repos.sort();
+        invalid_repos.dedup();
+        bail!(
+            "Invalid repository name(s): {}. Valid repositories are: {}",
+            invalid_repos.join(", "),
+            valid_repo_names.join(", ")
+        );
+    }
+
+    Ok(())
+}
+
 pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(), Box<dyn Error>> {
     let vers = match vers {
         Some(v) => v,
         None => sc_get_list()?,
     };
     let config = get_repos_config()?;
-    let root: String = get_r_root();
 
+    // Validate that all repositories in whitelist and blacklist exist in config
+    validate_repos_in_setup(&config, &setup)?;
+
+    let root: String = get_r_root();
     for ver in vers {
         let ver = check_installed(&ver.to_string())?;
         let repositories = root.clone() + "/" + &R_ETC_PATH.replace("{}", &ver) + "/repositories";
