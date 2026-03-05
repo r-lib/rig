@@ -42,15 +42,19 @@ fn validate_repos_in_setup(
     config: &[Repository],
     setup: &ReposSetupArgs,
 ) -> Result<(), Box<dyn Error>> {
-    let valid_repo_names: Vec<String> = config
+    let mut valid_repo_names: Vec<String> = config
         .iter()
         .map(|r| r.name.to_lowercase())
-        .collect();
+        .collect::<Vec<_>>();
+    valid_repo_names.sort();
 
     let mut invalid_repos: Vec<String> = Vec::new();
 
     match setup {
-        ReposSetupArgs::Default { whitelist, blacklist } => {
+        ReposSetupArgs::Default {
+            whitelist,
+            blacklist,
+        } => {
             for repo in whitelist.iter().chain(blacklist.iter()) {
                 if !valid_repo_names.contains(repo) {
                     invalid_repos.push(repo.clone());
