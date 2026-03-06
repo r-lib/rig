@@ -2,12 +2,12 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::path::PathBuf;
 
-use directories::ProjectDirs;
 use simple_error::{bail, SimpleError};
 
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
 
+use crate::cache::get_data_dir;
 use crate::utils::*;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -20,12 +20,12 @@ fn empty_stringmap() -> HashMap<String, String> {
     HashMap::<String, String>::new()
 }
 
+fn rig_config_dir() -> Result<PathBuf, Box<dyn Error>> {
+    get_data_dir()
+}
+
 fn rig_config_file() -> Result<PathBuf, Box<dyn Error>> {
-    let proj_dirs = match ProjectDirs::from("com", "gaborcsardi", "rig") {
-        Some(x) => x,
-        None => bail!("Config file is not supported on this system"),
-    };
-    let config_dir = proj_dirs.data_dir();
+    let config_dir = rig_config_dir()?;
     let config_file = config_dir.join("config.json");
     Ok(config_file)
 }

@@ -6,14 +6,11 @@ use std::io::{prelude::*, BufReader};
 use std::path::{Path, PathBuf};
 
 use regex::Regex;
-
-#[cfg(target_os = "macos")]
 use sha2::{Digest, Sha256};
 
+use log::debug;
 use simple_error::*;
 use std::error::Error;
-
-use simplelog::*;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use crate::rversion::*;
@@ -124,7 +121,6 @@ pub fn append_to_file(path: &Path, extra: Vec<String>) -> Result<(), Box<dyn Err
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
 pub fn calculate_hash(s: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(s);
@@ -197,6 +193,9 @@ pub fn not_too_old(path: &std::path::PathBuf) -> bool {
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+#[allow(deprecated)]
+// home_dir is no longer deprecated, actually, its behaviour was
+// fixed in Rust 1.85 and the deprecation will be removed in 1.87.
 pub fn get_user() -> Result<User, Box<dyn Error>> {
     let uid: u32;
     let gid: u32;
@@ -232,6 +231,8 @@ pub fn get_user() -> Result<User, Box<dyn Error>> {
     if let Ok(Some(d)) = user_record {
         dir = d.dir.into_os_string();
     } else {
+        // home_dir is no longer deprecated, actually, its behaviour was
+        // fixed in Rust 1.85 and the deprecation will be removed in 1.87.
         dir = std::env::home_dir()
             .map(|x| x.into_os_string())
             .ok_or(SimpleError::new("Failed to find user HOME"))?;
@@ -244,11 +245,6 @@ pub fn get_user() -> Result<User, Box<dyn Error>> {
         dir,
         sudo,
     })
-}
-
-#[cfg(target_os = "macos")]
-pub fn escape_json(input: &str) -> String {
-    input.replace("\"", "\\\"").replace("\n", "\\n").to_string()
 }
 
 pub fn unset_r_envvars() {
@@ -302,4 +298,30 @@ fn format_cmd_arg(x: &str, val: &OsStr) -> OsString {
     }
 
     ox
+}
+
+pub fn add_suffix(path: &PathBuf, suffix: &str) -> PathBuf {
+    let mut new = path.clone();
+
+    if let Some(stem) = new.file_stem().and_then(|s| s.to_str()) {
+        let ext = new.extension().and_then(|e| e.to_str());
+
+        let new_name = match ext {
+            Some(ext) => format!("{stem}{suffix}.{ext}"),
+            None => format!("{stem}{suffix}"),
+        };
+
+        new.set_file_name(new_name);
+    }
+
+    new
+}
+
+pub fn create_parent_dir_if_needed(path: &PathBuf) -> Result<(), Box<dyn Error>> {
+    if let Some(parent) = path.parent() {
+        if !parent.exists() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+    Ok(())
 }

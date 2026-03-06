@@ -1,10 +1,10 @@
+use log::{debug, info};
+use owo_colors::OwoColorize;
 use regex::Regex;
 use std::error::Error;
 use std::ffi::OsString;
 use std::io::BufRead;
 use std::io::BufReader;
-
-use simplelog::*;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use crate::rversion::*;
@@ -28,7 +28,7 @@ pub fn run(cmd: OsString, args: Vec<OsString>, _what: &str) -> Result<(), Box<dy
         .reader()?;
     let lines = BufReader::new(reader).lines();
     for line in lines {
-        info!("<cyan>></> {}", line?);
+        info!("{} {}", ">".cyan(), line?);
     }
 
     Ok(())
