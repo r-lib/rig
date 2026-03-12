@@ -125,8 +125,17 @@ pub fn repos_get_packages(
         create_parent_dir_if_needed(&repo_local)?;
         info!("Checking for repo metadata updates from {}", repo_url_plain);
 
+        // Try to get existing etag from database
+        let existing_etag = get_repo_etag(&repo_db, repo_url, pkg_type).ok();
+
         // Download with etag (will return false if 304 Not Modified or file is cached)
-        download_first_available_(&repo_urls, &repo_local, None, None)?
+        download_first_available_(
+            &repo_urls,
+            &repo_local,
+            None,
+            None,
+            existing_etag.as_deref(),
+        )?
     } else {
         // Skip download, database is recent
         (false, None)

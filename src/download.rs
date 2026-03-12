@@ -312,12 +312,13 @@ async fn download_first_available(
     client: &reqwest::Client,
     urls: &[&str],
     local_path: &PathBuf,
+    etag: Option<&str>,
 ) -> Result<(bool, Option<String>), Box<dyn Error>> {
     let mut last_error = None;
 
     for url in urls {
         info!("Trying to download from {}", url);
-        match download_if_newer(client, url, local_path, None).await {
+        match download_if_newer(client, url, local_path, etag).await {
             Ok((downloaded, etag)) => {
                 info!("Successfully downloaded from {}", url);
                 return Ok((downloaded, etag));
@@ -351,6 +352,7 @@ pub fn download_first_available_(
     local_path: &PathBuf,
     update_older: Option<Duration>,
     client: Option<&reqwest::Client>,
+    etag: Option<&str>,
 ) -> Result<(bool, Option<String>), Box<dyn Error>> {
     let update_older = match update_older {
         Some(dur) => dur,
@@ -374,7 +376,7 @@ pub fn download_first_available_(
         None => &reqwest::Client::new(),
     };
 
-    download_first_available__(client_, urls, local_path)
+    download_first_available__(client_, urls, local_path, etag)
 }
 
 /// Download multiple files concurrently, each from a list of candidate URLs.
@@ -429,7 +431,7 @@ async fn download_multiple_first_available(
 
         // Convert Vec<String> to Vec<&str> for download_first_available
         let url_refs: Vec<&str> = urls.iter().map(|s| s.as_str()).collect();
-        download_first_available(client, &url_refs, &local_path).await
+        download_first_available(client, &url_refs, &local_path, None).await
     }))
     .await
 }
@@ -486,7 +488,7 @@ async fn download_multiple_with_progress_async<F>(
 
                 // Convert Vec<String> to Vec<&str> for download_first_available
                 let url_refs: Vec<&str> = urls.iter().map(|s| s.as_str()).collect();
-                download_first_available(&client, &url_refs, &local_path).await
+                download_first_available(&client, &url_refs, &local_path, None).await
             }
             .await;
 
@@ -505,8 +507,9 @@ async fn download_first_available__(
     client: &reqwest::Client,
     urls: &[&str],
     local_path: &PathBuf,
+    etag: Option<&str>,
 ) -> Result<(bool, Option<String>), Box<dyn Error>> {
-    download_first_available(client, urls, local_path).await
+    download_first_available(client, urls, local_path, etag).await
 }
 
 #[tokio::main]
