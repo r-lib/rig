@@ -6,7 +6,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use clap::ArgMatches;
-use log::{debug, info};
+use log::{debug, error, info};
 use semver::Version;
 use simple_error::*;
 use tabular::*;
@@ -24,6 +24,7 @@ use crate::linux::*;
 use crate::platform::*;
 
 use crate::download::download_json_sync;
+use crate::output::OUTPUT;
 use crate::renv;
 use crate::run::*;
 use crate::rversion::*;
@@ -42,7 +43,9 @@ pub fn check_installed(x: &String) -> Result<String, Box<dyn Error>> {
         }
     }
 
-    bail!("R version <b>{}</b> is not installed", &x);
+    OUTPUT.error(&format!("R version {} is not installed", x));
+    error!("R version {} is not installed", x);
+    bail!("R version {} is not installed", &x);
 }
 
 pub fn get_r_base_profile(ver: &str) -> String {
@@ -56,7 +59,11 @@ pub fn get_r_base_profile(ver: &str) -> String {
 pub fn sc_get_default_or_fail() -> Result<String, Box<dyn Error>> {
     let default = sc_get_default()?;
     match default {
-        None => bail!("No default R version is set, call <b>rig default <version></b>"),
+        None => {
+            OUTPUT.error("No default R version is set, call `rig default <version>`");
+            error!("No default R version is set, call `rig default <version>`");
+            bail!("No default R version is set, call `rig default <version>`")
+        }
         Some(d) => Ok(d),
     }
 }
@@ -108,7 +115,18 @@ pub fn get_r_version_data_version(name: &str) -> Result<String, Box<dyn Error>> 
     };
     let idx = grep_lines(&re, &lines);
     if idx.len() == 0 {
-        bail!("Could not find version information in base/DESCRIPTION file")
+        OUTPUT.error(&format!(
+            "Could not find version information for R {} in base/DESCRIPTION file",
+            name
+        ));
+        error!(
+            "Could not find version information for R {} in base/DESCRIPTION file",
+            name
+        );
+        bail!(
+            "Could not find version information for R {} in base/DESCRIPTION file",
+            name
+        );
     } else {
         Ok(re.replace(&lines[idx[0]], "").to_string())
     }
@@ -173,6 +191,8 @@ pub fn check_has_pak(ver: &String) -> Result<bool, Box<dyn Error>> {
 
     let v350 = Version::parse("3.5.0")?;
     if vv < v350 {
+        OUTPUT.error("Pak is only available for R 3.5.0 or later");
+        error!("Pak is only available for R 3.5.0 or later");
         bail!("Pak is only available for R 3.5.0 or later");
     }
     Ok(true)
@@ -190,11 +210,14 @@ pub fn system_add_pak(
 
     for ver in vers {
         let ver = check_installed(&ver)?;
+        let msg;
         if update {
-            info!("Installing pak for R {}", ver);
+            msg = format!("Updating pak for R {}", ver);
         } else {
-            info!("Installing pak for R {} (if not installed yet)", ver);
+            msg = format!("Installing pak for R {} (if not installed yet)", ver);
         }
+        OUTPUT.status(&msg);
+        info!("{}", msg);
         check_has_pak(&ver)?;
 
         // We do this to create the user library, because currently there
@@ -202,7 +225,15 @@ pub fn system_add_pak(
         // only added after a restart.
         match r(&ver, "invisible()") {
             Ok(_) => {}
-            Err(x) => bail!("Failed to to install pak for R {}: {}", ver, x.to_string()),
+            Err(x) => {
+                OUTPUT.error(&format!(
+                    "Failed to to install pak for R {}: {}",
+                    ver,
+                    x.to_string()
+                ));
+                error!("Failed to to install pak for R {}: {}", ver, x.to_string());
+                bail!("Failed to to install pak for R {}: {}", ver, x.to_string())
+            }
         };
 
         // The actual pak installation
@@ -222,7 +253,15 @@ pub fn system_add_pak(
 
         match r(&ver, &cmd) {
             Ok(_) => {}
-            Err(x) => bail!("Failed to install pak for R {}: {}", ver, x.to_string()),
+            Err(x) => {
+                OUTPUT.error(&format!(
+                    "Failed to install pak for R {}: {}",
+                    ver,
+                    x.to_string()
+                ));
+                error!("Failed to install pak for R {}: {}", ver, x.to_string());
+                bail!("Failed to install pak for R {}: {}", ver, x.to_string())
+            }
         };
     }
 
@@ -260,7 +299,11 @@ pub fn sc_rstudio(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         let cp = get_rstudio_config_path();
         match cp {
             Ok(x) => println!("{}", x.display()),
-            Err(x) => bail!("Error: {}", x.to_string()),
+            Err(x) => {
+                OUTPUT.error(&format!("Error: {}", x.to_string()));
+                error!("Error: {}", x.to_string());
+                bail!("Error: {}", x.to_string())
+            }
         };
         return Ok(());
     }
@@ -318,6 +361,8 @@ fn find_project_dir(path: &str) -> Result<PathBuf, Box<dyn Error>> {
     debug!("Find project dir in {}", path);
     let ppath = Path::new(path);
     if !ppath.exists() {
+        OUTPUT.error(&format!("Could not find path {}", path));
+        error!("Could not find path {}", path);
         bail!("Could not find path {}", path);
     }
     let ret = if ppath.is_dir() {
@@ -362,7 +407,7 @@ fn get_project_version(path: &str) -> Result<Option<String>, Box<dyn Error>> {
         let usever = renv::match_r_version(&needver)?;
         let realver = usever.version.to_string();
 
-        info!(
+        let msg = format!(
             "Using {} R {}{}",
             if needver == realver {
                 "matching version:"
@@ -376,6 +421,9 @@ fn get_project_version(path: &str) -> Result<Option<String>, Box<dyn Error>> {
                 "".to_string()
             }
         );
+        OUTPUT.info(&msg);
+        info!("{}", msg);
+
         Ok(Some(usever.name.to_owned()))
     } else {
         Ok(None)

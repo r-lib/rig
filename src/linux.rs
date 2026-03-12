@@ -11,7 +11,7 @@ use std::sync::OnceLock;
 use std::{file, line};
 
 use clap::ArgMatches;
-use log::{debug, info, trace, warn};
+use log::{debug, error, info, trace, warn};
 use simple_error::*;
 
 use crate::rversion::*;
@@ -21,6 +21,7 @@ use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
 use crate::library::*;
+use crate::output::OUTPUT;
 use crate::platform::*;
 use crate::repos::*;
 use crate::resolve::get_resolve;
@@ -60,7 +61,7 @@ pub fn get_r_root() -> String {
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("adding new R versions")?;
 
-    // This is needed to fix statix linking on Arm Linux :(
+    // This is needed to fix static linking on Arm Linux :(
     let uid = nix::unistd::getuid().as_raw();
     if false {
         println!("{}", uid);
@@ -77,15 +78,24 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     let url: String = match &version.url {
         Some(s) => s.to_string(),
-        None => bail!("Cannot find a download url for R version {}", verstr),
+        None => {
+            OUTPUT.error(&format!(
+                "Cannot find a download url for R version {}",
+                verstr
+            ));
+            error!("Cannot find a download url for R version {}", verstr);
+            bail!("Cannot find a download url for R version {}", verstr)
+        }
     };
 
     let filename = basename(&url).unwrap_or_else(|| "foo");
     let tmp_dir = std::env::temp_dir().join("rig");
     let target = tmp_dir.join(&filename);
     if target.exists() && not_too_old(&target) {
+        OUTPUT.success(&format!("{} is cached at {}", filename, target.display()));
         info!("{} is cached at {}", filename, target.display());
     } else {
+        OUTPUT.status(&format!("Downloading {} -> {}", url, target.display()));
         info!("Downloading {} -> {}", url, target.display());
         let client = &reqwest::Client::new();
         download_file(client, &url, &target.as_os_str())?;
@@ -277,10 +287,20 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             delete: strvec!["yum", "remove", "-y", "{}"],
         })
     } else {
+        let distro = platform.distro.as_deref().unwrap_or("<unknown>");
+        let version = platform.version.as_deref().unwrap_or("<unknown>");
+        OUTPUT.error(&format!(
+            "I don't know how to install a system package on {} {}",
+            distro, version
+        ));
+        error!(
+            "I don't know how to install a system package on {} {}",
+            distro, version
+        );
         bail!(
             "I don't know how to install a system package on {} {}",
-            platform.distro.as_deref().unwrap_or("<unknown>"),
-            platform.version.as_deref().unwrap_or("<unknown>")
+            distro,
+            version
         );
     }
 }
@@ -290,7 +310,9 @@ fn add_package(path: &OsStr, platform: &OsVersion) -> Result<String, Box<dyn Err
 
     for cmd in tools.install.iter() {
         let cmd = format_cmd_args(cmd.to_vec(), path);
-        info!("Running {:?}", cmd.join(&OsString::from(" ")));
+        let cmdline = cmd.join(&OsString::from(" "));
+        OUTPUT.status(&format!("Running {:?}", cmdline));
+        info!("Running {:?}", cmdline);
         let cmd0 = cmd[0].to_owned();
         run(cmd0, cmd[1..].to_vec(), "installation")?;
     }
@@ -349,11 +371,13 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         );
 
         if out.status.success() {
+            OUTPUT.status(&format!("Removing {} package", pkgname));
             info!("Removing {} package", pkgname);
             let cmd = format_cmd_args(tools.delete.clone(), opkgname);
             let cmd0 = cmd[0].to_owned();
             run(cmd0, cmd[1..].to_vec(), "deleting system package")?;
         } else {
+            OUTPUT.success(&format!("{} package is not installed", pkgname));
             info!("{} package is not installed", pkgname);
         }
 
@@ -361,6 +385,7 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         let dir = Path::new(&rroot);
         let dir = dir.join(&ver);
         if dir.exists() {
+            OUTPUT.status(&format!("Removing {}", dir.display()));
             info!("Removing {}", dir.display());
             try_with!(
                 std::fs::remove_dir_all(&dir),
@@ -388,6 +413,11 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         let linkfile = Path::new("/usr/local/bin").join("R-".to_string() + &ver);
         let target = base.join(&ver).join("bin/R");
         if !linkfile.exists() {
+            OUTPUT.status(&format!(
+                "Adding {} -> {}",
+                linkfile.display(),
+                target.display()
+            ));
             info!("Adding {} -> {}", linkfile.display(), target.display());
             symlink(&target, &linkfile)?;
         }
@@ -410,12 +440,21 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         };
         if re.is_match(&fnamestr) {
             match std::fs::read_link(&path) {
-                Err(_) => warn!("{} is not a symlink", path.display()),
+                Err(_) => {
+                    OUTPUT.warn(&format!("{} is not a symlink", path.display()));
+                    warn!("{} is not a symlink", path.display())
+                }
                 Ok(target) => {
                     if !target.exists() {
+                        OUTPUT.status(&format!("Cleaning up {}", target.display()));
                         info!("Cleaning up {}", target.display());
                         match std::fs::remove_file(&path) {
                             Err(err) => {
+                                OUTPUT.warn(&format!(
+                                    "Failed to remove {}: {}",
+                                    path.display(),
+                                    err.to_string()
+                                ));
                                 warn!("Failed to remove {}: {}", path.display(), err.to_string())
                             }
                             _ => {}
@@ -577,6 +616,7 @@ pub fn sc_get_default() -> Result<Option<String>, Box<dyn Error>> {
 }
 
 fn set_sysreqs_false(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
+    OUTPUT.status("Setting up automatic system requirements installation.");
     info!("Setting up automatic system requirements installation.");
 
     let vers = match vers {
@@ -677,6 +717,7 @@ pub fn sc_rstudio_(
         }
     }
 
+    OUTPUT.status(&format!("Running {} {:?}", cmd, args.join(&os(" "))));
     info!("Running {} {:?}", cmd, args.join(&os(" ")));
 
     Command::new(cmd)
@@ -750,12 +791,13 @@ fn check_usr_bin_sed(rver: &str) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    bail!(
-        "This version of R was compiled using sed at /usr/bin/sed\n        \
+    let msg = "This version of R was compiled using sed at /usr/bin/sed\n        \
            but it is missing on your system.\n        \
            Run `ln -s /bin/sed /usr/bin/sed` as the root user to fix this,\n        \
-           and then run rig again."
-    );
+           and then run rig again.";
+    OUTPUT.error(msg);
+    error!("{}", msg);
+    bail!(msg);
 }
 
 pub fn set_cert_envvar() {

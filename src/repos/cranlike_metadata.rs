@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use deb822_fast::Deb822;
 use flate2::read::GzDecoder;
-use log::info;
+use log::{error, info};
 use rds2rust::RObject;
 use rds2rust::RObject::*;
 use rds2rust::VectorData;
@@ -18,6 +18,7 @@ use xz2::read::XzDecoder;
 use crate::cache::get_cache_dir;
 use crate::dcf::*;
 use crate::download::download_first_available_;
+use crate::output::OUTPUT;
 use crate::rds::*;
 use crate::utils::{calculate_hash, create_parent_dir_if_needed};
 
@@ -56,7 +57,9 @@ fn package_type_to_path(pkg_type: &str, r_version: &str) -> Result<String, Box<d
             Ok(format!("bin/{}/contrib/{}", os, r_version))
         }
     } else {
-        bail!("invalid 'type': {}", pkg_type)
+        OUTPUT.error(&format!("Invalid package type: {}", pkg_type));
+        error!("Invalid package type {}", pkg_type);
+        bail!("Invalid package type: {}", pkg_type);
     }
 }
 
@@ -68,8 +71,14 @@ fn minor_r_version(r_version: &str) -> Result<String, Box<dyn Error>> {
         r_version.to_string()
     };
 
-    let version = semver::Version::parse(&version_str)
-        .map_err(|e| format!("Invalid R version format '{}': {}", r_version, e))?;
+    let version = match semver::Version::parse(&version_str) {
+        Ok(v) => v,
+        Err(e) => {
+            OUTPUT.error(&format!("Invalid R version format: {}", r_version));
+            error!("Invalid R version format '{}': {}", r_version, e);
+            bail!("Invalid R version format '{}': {}", r_version, e)
+        }
+    };
     Ok(format!("{}.{}", version.major, version.minor))
 }
 
@@ -96,16 +105,17 @@ pub fn repos_get_packages(
     // Ensure database schema exists early
     ensure_db_schema(&repo_db)?;
 
-    // Check if we have recent data in the database (less than 24 hours old)
+    // Check if we have recent data in the database
     let should_download = match is_repo_cache_recent(&repo_db, repo_url, pkg_type) {
         Ok(is_recent) => {
             if is_recent {
-                info!("Database cache is recent (less than 24 hours old), skipping download");
+                info!("Database cache is recent, skipping download");
             }
             !is_recent
         }
         Err(_) => {
             // No database entry, need to download
+            OUTPUT.status("Updating repository metadata");
             info!("No database cache found, will download");
             true
         }
@@ -158,24 +168,9 @@ pub fn repos_get_packages(
                 Ok(packages)
             }
             Err(e) => {
-                // Database file doesn't exist or is corrupted
-                // If we have a cached file, try parsing it
-                if repo_local.exists() {
-                    info!("Database cache error, parsing cached file: {}", e);
-                    let packages = parse_packages(&repo_local)?;
-                    save_packages_to_db(
-                        &packages,
-                        &repo_db,
-                        repo_url,
-                        Some(&r_version),
-                        pkg_type,
-                        &path,
-                        None,
-                    )?;
-                    Ok(packages)
-                } else {
-                    bail!("No cached data available and database error: {}", e)
-                }
+                OUTPUT.error("Failed to load package metadata, database is corrupt?");
+                error!("Failed to load package metadata from database: {}", e);
+                bail!("Failed to load package metadata from database: {}", e)
             }
         }
     }
@@ -246,7 +241,11 @@ fn parse_packages(dcf_path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
 fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn Error>> {
     let (data, attr) = match robj {
         WithAttributes { object, attributes } => (object, attributes),
-        _ => bail!("Expected R object with attributes when reading PACKAGES.rds"),
+        _ => {
+            OUTPUT.error("Failed to parse PACKAGES.rds file.");
+            error!("Expected R object with attributes when reading PACKAGES.rds.");
+            bail!("Expected R object with attributes when reading PACKAGES.rds.")
+        }
     };
 
     let data = match *data {
@@ -254,10 +253,16 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
             if let VectorData::Owned(v) = vd {
                 v
             } else {
-                bail!("Expected data to be owned character vector in PACKAGES.rds")
+                OUTPUT.error("Failed to parse PACKAGES.rds file.");
+                error!("Expected data to be owned character vector in PACKAGES.rds.");
+                bail!("Expected data to be owned character vector in PACKAGES.rds.");
             }
         }
-        _ => bail!("Expected data to be a character vector in PACKAGES.rds"),
+        _ => {
+            OUTPUT.error("Failed to parse PACKAGES.rds file.");
+            error!("Expected data to be a character vector in PACKAGES.rds.");
+            bail!("Expected data to be a character vector in PACKAGES.rds.");
+        }
     };
 
     let dim = attr
@@ -269,13 +274,21 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
                 if let [nrow, ncol] = &v[..] {
                     (*nrow as usize, *ncol as usize)
                 } else {
-                    bail!("Expected 'dim' to have length 2 in PACKAGES.rds")
+                    OUTPUT.error("Failed to parse PACKAGES.rds file.");
+                    error!("Expected 'dim' to have length 2 in PACKAGES.rds.");
+                    bail!("Expected 'dim' to have length 2 in PACKAGES.rds.");
                 }
             } else {
-                bail!("Expected 'dim' to be owned integer vector in PACKAGES.rds")
+                OUTPUT.error("Failed to parse PACKAGES.rds file.");
+                error!("Expected 'dim' to be owned integer vector in PACKAGES.rds.");
+                bail!("Expected 'dim' to be owned integer vector in PACKAGES.rds.");
             }
         }
-        _ => bail!("Expected 'dim' to be an integer vector in PACKAGES.rds"),
+        _ => {
+            OUTPUT.error("Failed to parse PACKAGES.rds file.");
+            error!("Expected 'dim' to be an integer vector in PACKAGES.rds.");
+            bail!("Expected 'dim' to be an integer vector in PACKAGES.rds.");
+        }
     };
     let dimnames = attr
         .get("dimnames")
@@ -283,19 +296,31 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
     let names = match dimnames {
         RObject::List(dn) => {
             if dn.len() != 2 {
-                bail!("Expected 'dimnames' to have length 2 in PACKAGES.rds")
+                OUTPUT.error("Failed to parse PACKAGES.rds file.");
+                error!("Expected 'dimnames' to have length 2 in PACKAGES.rds.");
+                bail!("Expected 'dimnames' to have length 2 in PACKAGES.rds.");
             }
             if let Character(vd) = &dn[1] {
                 if let VectorData::Owned(v) = vd {
                     v
                 } else {
-                    bail!("Expected 'dimnames' second element to be owned character vector in PACKAGES.rds")
+                    OUTPUT.error("Failed to parse PACKAGES.rds file.");
+                    error!("Expected 'dimnames' second element to be owned character vector in PACKAGES.rds.");
+                    bail!("Expected 'dimnames' second element to be owned character vector in PACKAGES.rds.");
                 }
             } else {
-                bail!("Expected 'dimnames' second element to be character vector in PACKAGES.rds")
+                OUTPUT.error("Failed to parse PACKAGES.rds file.");
+                error!(
+                    "Expected 'dimnames' second element to be character vector in PACKAGES.rds."
+                );
+                bail!("Expected 'dimnames' second element to be character vector in PACKAGES.rds.");
             }
         }
-        _ => bail!("Expected 'dimnames' to be a list in PACKAGES.rds"),
+        _ => {
+            OUTPUT.error("Failed to parse PACKAGES.rds file.");
+            error!("Expected 'dimnames' to be a list in PACKAGES.rds.");
+            bail!("Expected 'dimnames' to be a list in PACKAGES.rds.");
+        }
     };
     let mut col_idx = HashMap::new();
     for (idx, nm) in names.iter().enumerate() {
@@ -750,7 +775,7 @@ mod tests {
     fn test_package_type_to_path_invalid() {
         let result = package_type_to_path("invalid", "4.3");
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("invalid 'type'"));
+        assert!(result.unwrap_err().to_string().contains("Invalid package type:"));
     }
 
     #[test]

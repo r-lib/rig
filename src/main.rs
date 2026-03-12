@@ -1,5 +1,7 @@
 use std::error::Error;
-use std::io::Write;
+use std::fs::{File, OpenOptions};
+use std::io::{IsTerminal, Write};
+use std::sync::{Arc, Mutex};
 
 use clap::ArgMatches;
 use env_logger;
@@ -45,6 +47,7 @@ mod download;
 mod hardcoded;
 mod install;
 mod library;
+mod output;
 mod pak;
 mod platform;
 mod proj;
@@ -60,6 +63,7 @@ mod sysreqs;
 mod test;
 mod utils;
 
+use cache::get_logs_dir;
 use library::*;
 use platform::*;
 use proj::*;
@@ -68,6 +72,7 @@ use sysreqs::*;
 use utils::unset_r_envvars;
 
 use crate::common::*;
+use crate::output::OUTPUT;
 use crate::test::*;
 
 mod escalate;
@@ -108,33 +113,92 @@ fn main_() -> i32 {
         LevelFilter::Error => "rig=error,reqwest=error,hyper=error,pubgrub=error".to_string(),
     };
 
+    // Set up file logging for interactive sessions
+    let is_interactive = std::io::stdout().is_terminal();
+    let log_file_writer: Option<Arc<Mutex<File>>> = if is_interactive {
+        match get_logs_dir() {
+            Ok(logs_dir) => {
+                if let Err(e) = std::fs::create_dir_all(&logs_dir) {
+                    eprintln!("Warning: Could not create logs directory: {}", e);
+                    None
+                } else {
+                    let log_path = logs_dir.join("rig.log");
+
+                    match OpenOptions::new().create(true).append(true).open(&log_path) {
+                        Ok(file) => Some(Arc::new(Mutex::new(file))),
+                        Err(e) => {
+                            eprintln!("Warning: Could not create log file: {}", e);
+                            None
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Warning: Could not determine logs directory: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let log_file_for_format = log_file_writer.clone();
+
     match env_logger::Builder::from_env(env_logger::Env::default())
         .filter(None, loglevel)
         .parse_filters(&filter_str)
         .target(env_logger::Target::Stderr)
         .format(move |buf, record| {
-            let level_string = match record.level() {
-                Level::Error => record.level().to_string().red().bold().to_string(),
-                Level::Warn => record.level().to_string().yellow().bold().to_string(),
-                Level::Info => record.level().to_string().blue().to_string(),
-                Level::Debug => record.level().to_string().cyan().to_string(),
-                Level::Trace => record.level().to_string().white().to_string(),
-            };
-
-            // Show timestamps and location info only if -v was passed
-            if verbose_count >= 1 {
-                writeln!(
-                    buf,
-                    "[{} {} {}:{}] {}",
-                    buf.timestamp(),
-                    level_string,
-                    record.file().unwrap_or("unknown"),
-                    record.line().unwrap_or(0),
-                    record.args()
-                )
+            // In interactive mode, write only to log file
+            if is_interactive {
+                if let Some(ref log_file) = log_file_for_format {
+                    if let Ok(mut file) = log_file.lock() {
+                        // Always include timestamps in log file
+                        let log_line = if verbose_count >= 1 {
+                            format!(
+                                "[{} {} {}:{}] {}\n",
+                                buf.timestamp(),
+                                record.level(),
+                                record.file().unwrap_or("unknown"),
+                                record.line().unwrap_or(0),
+                                record.args()
+                            )
+                        } else {
+                            format!(
+                                "[{} {}] {}\n",
+                                buf.timestamp(),
+                                record.level(),
+                                record.args()
+                            )
+                        };
+                        let _ = file.write_all(log_line.as_bytes());
+                    }
+                }
+                // Don't write to stderr in interactive mode
+                Ok(())
             } else {
-                // No verbose flag: just show the message
-                writeln!(buf, "[{}] {}", level_string, record.args())
+                // Non-interactive: write to stderr with colors
+                let level_string = match record.level() {
+                    Level::Error => record.level().to_string().red().bold().to_string(),
+                    Level::Warn => record.level().to_string().yellow().bold().to_string(),
+                    Level::Info => record.level().to_string().blue().to_string(),
+                    Level::Debug => record.level().to_string().cyan().to_string(),
+                    Level::Trace => record.level().to_string().white().to_string(),
+                };
+
+                if verbose_count >= 1 {
+                    writeln!(
+                        buf,
+                        "[{} {} {}:{}] {}",
+                        buf.timestamp(),
+                        level_string,
+                        record.file().unwrap_or("unknown"),
+                        record.line().unwrap_or(0),
+                        record.args()
+                    )
+                } else {
+                    writeln!(buf, "[{}] {}", level_string, record.args())
+                }
             }
         })
         .try_init()
@@ -153,15 +217,23 @@ fn main_() -> i32 {
 
     // --------------------------------------------------------------------
 
-    match main__(&args) {
+    let cmdline = std::env::args().collect::<Vec<_>>().join(" ");
+    let pid = std::process::id();
+    info!("RIG START [pid:{}] {}", pid, cmdline);
+
+    let result = match main__(&args) {
         Ok(exitcode) => {
-            return exitcode;
+            info!("RIG END [pid:{}] {}", pid, cmdline);
+            exitcode
         }
         Err(err) => {
             error!("{}", err.to_string());
-            return 1;
+            info!("RIG END [pid:{}] {}", pid, cmdline);
+            1
         }
-    }
+    };
+
+    result
 }
 
 fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
@@ -259,6 +331,8 @@ fn sc_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error
 
     if args.get_flag("plain") {
         if args.get_flag("json") || mainargs.get_flag("json") {
+            OUTPUT.error("Error: --plain cannot be used with --json");
+            error!("the argument '--plain' cannot be used with '--json'");
             bail!("the argument '--plain' cannot be used with '--json'");
         }
         for ver in vers.iter() {
@@ -357,11 +431,16 @@ pub fn sc_system_add_pak(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     // --devel is deprecated
     if devel && !pakverx {
-        info!("Note: --devel is now deprecated, use --pak-version instead");
-        info!("Selecting 'devel' version");
+        OUTPUT.status(
+            "Note: --devel is now deprecated, use --pak-version instead. Selecting 'devel' version",
+        );
+        info!(
+            "Note: --devel is now deprecated, use --pak-version instead. Selecting 'devel' version"
+        );
         pakver = "devel";
     }
     if devel && pakverx {
+        OUTPUT.status("Note: --devel is ignored in favor of --pak-version");
         info!("Note: --devel is ignored in favor of --pak-version");
     }
     if all {

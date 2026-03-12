@@ -3,11 +3,12 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fs::{self, File};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use clap::ArgMatches;
 use deb822_fast::Deb822;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use log::info;
+use log::{debug, error, info};
 use pubgrub::{resolve, SelectedDependencies};
 use simple_error::*;
 use tabular::*;
@@ -17,6 +18,7 @@ use crate::common::get_default_r_version;
 use crate::dcf::*;
 use crate::download::download_multiple_first_available_with_progress;
 use crate::install::{install_package_tree_with_progress, PackageInfo};
+use crate::output::OUTPUT;
 use crate::pak::PakLockfile;
 use crate::renv::*;
 use crate::repos::*;
@@ -50,15 +52,20 @@ pub fn sc_proj(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn E
 }
 
 fn proj_read_deps(input: &str, dev: bool) -> Result<PackageDependencies, Box<dyn Error>> {
+    OUTPUT.status(&format!("Reading dependencies from {}", input));
     info!("Reading dependencies from {}", input);
     let df: File = File::open(input)?;
     let desc = Deb822::from_reader(df)?;
 
     if desc.len() == 0 {
+        OUTPUT.error("Empty DESCRIPTION file");
+        error!("Empty DESCRIPTION file");
         bail!("Empty DESCRIPTION file");
     }
 
     if desc.len() > 1 {
+        OUTPUT.error("Invalid DESCRIPTION file, empty lines are not allowed");
+        error!("Invalid DESCRIPTION file, empty lines are not allowed");
         bail!("Invalid DESCRIPTION file, empty lines are not allowed");
     }
 
@@ -173,11 +180,12 @@ fn sc_proj_solve_latest(
     r_version: &str,
     deps: &PackageDependencies,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
-    info!("Solver with latest package versions");
+    OUTPUT.status("Solving dependencies with latest package versions");
+    info!("Solving dependencies with latest package versions");
     let pkgs = repos_get_packages("https://cloud.r-project.org/", "source", "4.5.2")?;
     let reg: RPackageRegistry = RPackageRegistry::default();
 
-    info!("Adding {} packages to the registry", pkgs.len());
+    debug!("Adding {} packages to the registry", pkgs.len());
     for pkg in pkgs.iter() {
         let v = RegistryPackageVersion {
             name: pkg.name.clone(),
@@ -220,7 +228,14 @@ fn sc_proj_solve_latest(
 
     match solution {
         Ok(sol) => Ok((reg, sol)),
-        Err(e) => bail!("Solution failed with latest package versions: {}", e),
+        Err(e) => {
+            OUTPUT.error(&format!(
+                "Solver failed with latest package versions: {}",
+                e
+            ));
+            error!("Solver failed with latest package versions: {}", e);
+            bail!("Solver failed with latest package versions: {}", e)
+        }
     }
 }
 
@@ -228,7 +243,8 @@ fn sc_proj_solve_all(
     r_version: &str,
     deps: &PackageDependencies,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
-    info!("Solver with all package versions");
+    OUTPUT.status("Solving dependencies with all package versions");
+    info!("Solving dependencies with all package versions");
     let reg: RPackageRegistry = RPackageRegistry::default();
 
     reg.add_package_version(
@@ -261,7 +277,11 @@ fn sc_proj_solve_all(
 
     match solution {
         Ok(sol) => Ok((reg, sol)),
-        Err(e) => bail!("Solution failed with all package versions: {}", e),
+        Err(e) => {
+            OUTPUT.error(&format!("Solver failed with all package versions: {}", e));
+            error!("Solver failed with all package versions: {}", e);
+            bail!("Solver failed with all package versions: {}", e)
+        }
     }
 }
 
@@ -297,7 +317,11 @@ fn sc_proj_solve(
     } else {
         match get_default_r_version()? {
             Some(rv) => rv,
-            None => bail!("Cannot determine R version, please specify it with --r-version."),
+            None => {
+                OUTPUT.error("Cannot determine R version, please specify it with --r-version.");
+                error!("Cannot determine R version, please specify it with --r-version.");
+                bail!("Cannot determine R version, please specify it with --r-version.")
+            }
         }
     };
 
@@ -322,34 +346,38 @@ fn sc_proj_solve(
         Ok((reg, sol)) => {
             registry = reg;
             solution = sol;
+            OUTPUT.success("Solved using latest package versions");
             info!("Solved using latest package versions");
         }
-        Err(err) => {
-            print!("Failed: {:?}", err);
+        Err(_) => {
             let try2 = sc_proj_solve_all(&rver, &pkg_deps);
             match try2 {
                 Ok((reg, sol)) => {
                     registry = reg;
                     solution = sol;
+                    OUTPUT.success("Solved using all package versions");
                     info!("Solved using all package versions");
                 }
                 Err(e) => {
+                    OUTPUT.error(&format!("Solver failed: {}", e));
+                    error!("Solver failed: {}", e);
                     bail!("Solver failed: {}", e);
                 }
             }
         }
     };
 
-    info!("Solution found:");
-
     if args.get_flag("renv") {
         let renv = REnvLockfile::from_solution(&registry, &solution);
         fs::write("renv.lock", serde_json::to_string_pretty(&renv)?)?;
+        OUTPUT.success("Written renv lockfile to renv.lock");
         info!("Written renv lockfile to renv.lock");
     }
 
     let lockfile = PakLockfile::from_solution(&registry, &solution);
     fs::write("pkg.lock", serde_json::to_string_pretty(&lockfile)?)?;
+    OUTPUT.success("Written package lockfile to pkg.lock");
+    info!("Written package lockfile to pkg.lock");
 
     let sorted_solution = solution_to_sorted_vec(&solution);
     let mut tab: Table = Table::new("{:<}   {:<}");
@@ -369,7 +397,8 @@ fn sc_proj_deploy(
     _mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
     // First, download all packages
-    info!("Downloading packages...");
+    OUTPUT.status("Downloading packages");
+    info!("Downloading packages");
     proj_download()?;
 
     // Read the lockfile to get package information
@@ -412,6 +441,11 @@ fn sc_proj_deploy(
         .unwrap_or(8);
 
     let total_packages = packages.len();
+    OUTPUT.status(&format!(
+        "Installing {} packages to {}",
+        total_packages,
+        library_path.display()
+    ));
     info!(
         "Installing {} packages to {}",
         total_packages,
@@ -431,6 +465,14 @@ fn sc_proj_deploy(
     // Track installation progress
     let installed_count = Cell::new(0);
 
+    // Create print function that uses progress bar's println
+    let print_fn = Arc::new({
+        let pb = install_pb.clone();
+        move |msg: &str| {
+            pb.println(msg);
+        }
+    });
+
     // Create a tokio runtime to run the async installation
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(install_package_tree_with_progress(
@@ -438,10 +480,10 @@ fn sc_proj_deploy(
         &library_path,
         r_binary,
         max_concurrent,
-        Some(|pkg_name: &str, success: bool| {
+        Some(print_fn),
+        Some(|_pkg_name: &str, success: bool| {
             if success {
                 installed_count.set(installed_count.get() + 1);
-                install_pb.println(format!("✓ Installed: {}", pkg_name));
                 install_pb.inc(1);
             }
         }),
@@ -452,6 +494,7 @@ fn sc_proj_deploy(
         installed_count.get()
     ));
 
+    OUTPUT.success("Deployment complete!");
     info!("Deployment complete!");
     Ok(())
 }
@@ -490,6 +533,7 @@ pub fn proj_download() -> Result<(), Box<dyn Error>> {
     let error: Cell<Option<(usize, String)>> = Cell::new(None);
 
     // Download all packages concurrently with progress updates
+    OUTPUT.status(&format!("Downloading {} packages", total));
     info!("Downloading {} packages", total);
     download_multiple_first_available_with_progress(downloads, None, None, |idx, result| {
         match result {
@@ -512,6 +556,14 @@ pub fn proj_download() -> Result<(), Box<dyn Error>> {
 
     // Check if there was an error
     if let Some((idx, err)) = error.into_inner() {
+        OUTPUT.error(&format!(
+            "Failed to download {}: {}",
+            lockfile.packages[idx].package, err
+        ));
+        error!(
+            "Failed to download {}: {}",
+            lockfile.packages[idx].package, err
+        );
         bail!(
             "Failed to download {}: {}",
             lockfile.packages[idx].package,

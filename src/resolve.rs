@@ -2,8 +2,7 @@ use futures::future;
 use std::error::Error;
 
 use clap::ArgMatches;
-#[cfg(target_os = "windows")]
-use log::warn;
+use log::{error, warn};
 #[cfg(target_os = "windows")]
 use serde_json::{Map, Value};
 use simple_error::bail;
@@ -14,6 +13,7 @@ use crate::common::*;
 use crate::download::*;
 #[cfg(target_os = "windows")]
 use crate::hardcoded::*;
+use crate::output::OUTPUT;
 use crate::rversion::*;
 use crate::utils::*;
 
@@ -59,7 +59,11 @@ pub async fn resolve_versions(
     for o in out {
         match o {
             Ok(x) => out2.push(x),
-            Err(x) => bail!("Failed to resolve R version: {}", x.to_string()),
+            Err(x) => {
+                OUTPUT.error(&format!("Failed to resolve R version: {}", x.to_string()));
+                error!("Failed to resolve R version: {}", x.to_string());
+                bail!("Failed to resolve R version: {}", x.to_string())
+            }
         };
     }
 
@@ -125,10 +129,13 @@ pub fn get_available_rtools_versions(arch: &str) -> serde_json::Value {
             let val = match download_json_sync(vec![url]) {
                 Ok(dl) => dl[0].clone(),
                 Err(err) => {
-                    warn!("Download error: {}.", err);
+                    OUTPUT.warn(&format!(
+                        "Failed to download Rtools version data: {}, will use hardcoded data.",
+                        err
+                    ));
                     warn!(
-                        "Failed to download Rtools version data, will use \
-			   hardcoded data instead."
+                        "Failed to download Rtools version data: {}, will use hardcoded data.",
+                        err
                     );
                     if arch == "aarch64" {
                         HC_RTOOLS_AARCH64.clone()
@@ -154,7 +161,11 @@ pub fn get_rtools_version(version: &str, arch: &str) -> Result<RtoolsVersion, Bo
 
     let value = match value.as_array() {
         Some(x) => x,
-        None => bail!(msg),
+        None => {
+            OUTPUT.error(msg);
+            error!("{}", msg);
+            bail!(msg)
+        }
     };
 
     for ver in value {
@@ -165,9 +176,11 @@ pub fn get_rtools_version(version: &str, arch: &str) -> Result<RtoolsVersion, Bo
         }
     }
 
-    bail!(
+    let msg = format!(
         "Cannot find Rtools version {} for architecture {}",
-        version,
-        arch
+        version, arch
     );
+    OUTPUT.error(&msg);
+    error!("{}", msg);
+    bail!(msg)
 }

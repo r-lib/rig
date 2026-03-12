@@ -6,7 +6,7 @@ use std::path::Path;
 use clap::ArgMatches;
 use lazy_static::lazy_static;
 #[cfg(target_os = "macos")]
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 #[cfg(target_os = "macos")]
 use simple_error::*;
 use tabular::*;
@@ -15,6 +15,8 @@ use tabular::*;
 use crate::download::*;
 #[cfg(target_os = "macos")]
 use crate::escalate::*;
+#[cfg(target_os = "macos")]
+use crate::output::OUTPUT;
 #[cfg(target_os = "macos")]
 use crate::run::*;
 #[cfg(target_os = "macos")]
@@ -120,7 +122,11 @@ pub fn sc_sysreqs_info(
 ) -> Result<(), Box<dyn Error>> {
     let name = args.get_one::<String>("name").unwrap();
     let info = match SYSREQS_INFO.get(name) {
-        None => bail!("Unknown sysreqs: {}", name),
+        None => {
+            OUTPUT.error(&format!("Unknown sysreqs: {}", name));
+            error!("Unknown sysreqs: {}", name);
+            bail!("Unknown sysreqs: {}", name)
+        }
         Some(x) => x,
     };
 
@@ -178,6 +184,8 @@ pub fn sc_sysreqs_add(
                     continue;
                 }
                 if !SYSREQS.contains(&&sr[..]) {
+                    OUTPUT.error(&format!("Unknown system package: {}", sr));
+                    error!("Unknown system package: {}", sr);
                     bail!("Unknown system package: {}", sr);
                 }
                 srs.push(sr.to_string());
@@ -209,6 +217,8 @@ fn find_brew(arch: &str) -> Result<(String, Vec<String>), Box<dyn Error>> {
     };
 
     if !Path::new(brew).exists() {
+        OUTPUT.error(&format!("Cannot find {} brew at {}", arch, brew));
+        error!("Cannot find {} brew at {}", arch, brew);
         bail!("Cannot find {} brew at {}", arch, brew);
     }
 
@@ -255,6 +265,10 @@ fn macos_install_gfortran_arm64() -> Result<(), Box<dyn Error>> {
 
     let old = Path::new("/opt/R/arm64/gfortran");
     if old.exists() {
+        OUTPUT.status(&format!(
+            "Removing old gfortran installation from {}",
+            old.display()
+        ));
         info!(
             "Removing current gfortran installation from {}",
             old.display()
@@ -265,6 +279,7 @@ fn macos_install_gfortran_arm64() -> Result<(), Box<dyn Error>> {
         };
     }
 
+    OUTPUT.status("Unpacking gfortran");
     info!("Unpacking gfortran");
     run(
         "tar".into(),
@@ -272,6 +287,7 @@ fn macos_install_gfortran_arm64() -> Result<(), Box<dyn Error>> {
         "tar",
     )?;
 
+    OUTPUT.status("Updating gfortran link to your Apple SDK");
     info!("Updating gfortran link to your Apple SDK");
     run(
         "/opt/R/arm64/gfortran/bin/gfortran-update-sdk".into(),
@@ -289,6 +305,7 @@ fn macos_install_gfortran_intel() -> Result<(), Box<dyn Error>> {
     let target = download_file_sync(url, filename, true)?;
 
     // umount currently mounted gfortran images first, ignore errors
+    OUTPUT.status("Trying to unmount leftover gfortran disk images");
     info!("Trying to unmount leftover gfortran disk images");
     match run(
         "umount".into(),
@@ -318,7 +335,13 @@ fn macos_install_gfortran_intel() -> Result<(), Box<dyn Error>> {
         vec!["/Volumes/gfortran-8.2-Mojave".into()],
         "umount",
     ) {
-        Err(x) => warn!("Failed to unmount gfortran installer: {}", x.to_string()),
+        Err(x) => {
+            OUTPUT.warn(&format!(
+                "Failed to unmount gfortran installer: {}",
+                x.to_string()
+            ));
+            warn!("Failed to unmount gfortran installer: {}", x.to_string())
+        }
         _ => {}
     };
 

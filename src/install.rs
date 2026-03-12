@@ -1,24 +1,23 @@
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
-use std::fs::{remove_file, File, OpenOptions};
+use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
 
 use futures::stream::{FuturesUnordered, StreamExt};
-use log::{error, info};
+use log::{debug, error, info};
+use simple_error::bail;
 use tokio::fs::create_dir_all;
 use tokio::process::Command;
 use tokio::sync::Mutex;
 
-/// Information about a package to be installed
+use crate::output::OUTPUT;
+
 #[derive(Debug, Clone)]
 pub struct PackageInfo {
-    /// Package name
     pub name: String,
-    /// Path to the package file on disk
     pub file_path: PathBuf,
-    /// Names of packages this package depends on
     pub dependencies: Vec<String>,
 }
 
@@ -29,16 +28,21 @@ pub struct PackageInfo {
 /// * `package_path` - Path to the package tarball (e.g., "package_1.0.0.tar.gz")
 /// * `library_path` - Path to the R library directory where the package should be installed
 /// * `r_binary` - Path to the R binary to use for installation
+/// * `print_fn` - Optional custom print function (e.g., for progress bars). If None, uses OUTPUT.
 ///
 /// # Returns
 /// * `Ok(())` if installation succeeded
 /// * `Err` if installation failed
-pub async fn install_package(
+pub async fn install_package<F>(
     package_name: &str,
     package_path: &Path,
     library_path: &Path,
     r_binary: &str,
-) -> Result<(), Box<dyn Error>> {
+    print_fn: Option<Arc<F>>,
+) -> Result<(), Box<dyn Error>>
+where
+    F: Fn(&str) + Send + Sync + 'static,
+{
     info!(
         "Installing package {} from {} to {}",
         package_name,
@@ -46,7 +50,6 @@ pub async fn install_package(
         library_path.display()
     );
 
-    // Create _logs directory and log file
     let logs_dir = library_path.join("_logs");
     create_dir_all(&logs_dir).await?;
 
@@ -57,10 +60,8 @@ pub async fn install_package(
         .truncate(true)
         .open(&log_file_path)?;
 
-    // Clone the file handle for stderr
     let log_file_stderr = log_file.try_clone()?;
 
-    // Spawn the R CMD INSTALL process with stdout and stderr redirected to the log file
     let status = Command::new(r_binary)
         .arg("CMD")
         .arg("INSTALL")
@@ -73,19 +74,37 @@ pub async fn install_package(
         .await?;
 
     if status.success() {
+        // User output: Use custom print function if provided, otherwise use OUTPUT
+        if let Some(ref print) = print_fn {
+            print(&format!("Installed {}", package_name));
+        } else {
+            OUTPUT.success(&format!("Installed {}", package_name));
+        }
+
         info!(
-            "Successfully installed package {} (log: {})",
+            "Successfully installed package {} to {} (log: {})",
             package_name,
+            library_path.display(),
             log_file_path.display()
         );
+
         Ok(())
     } else {
-        Err(format!(
-            "Failed to install package {} (see log: {})",
+        // User output: Always use OUTPUT for errors (they should be visible)
+        OUTPUT.error(&format!(
+            "Failed to install {}\n  See log: {}",
             package_name,
             log_file_path.display()
-        )
-        .into())
+        ));
+
+        error!(
+            "Installation failed for {} from {}: exit code {}",
+            package_name,
+            package_path.display(),
+            status.code().unwrap_or(-1)
+        );
+
+        bail!("Installation failed for {}", package_name);
     }
 }
 
@@ -99,25 +118,33 @@ pub async fn install_package(
 /// * `library_path` - Path to the R library directory
 /// * `r_binary` - Path to the R binary to use for installation
 /// * `max_concurrent` - Maximum number of packages to install concurrently
+/// * `print_fn` - Optional print function for success messages (e.g., progress bar's println)
 /// * `progress_callback` - Optional callback called when each package completes installation
 ///
 /// # Returns
 /// * `Ok(())` if all installations succeeded
 /// * `Err` if any installation failed
-pub async fn install_package_tree_with_progress<F>(
+pub async fn install_package_tree_with_progress<P, F>(
     packages: Vec<PackageInfo>,
     library_path: &Path,
     r_binary: &str,
     max_concurrent: usize,
+    print_fn: Option<Arc<P>>,
     mut progress_callback: Option<F>,
 ) -> Result<(), Box<dyn Error>>
 where
+    P: Fn(&str) + Send + Sync + 'static,
     F: FnMut(&str, bool),
 {
     let package_count = packages.len();
-    info!("Installing {} packages in dependency order", package_count);
 
-    // Create a map of package name to package info
+    OUTPUT.status(&format!("Installing {} packages.", package_count));
+
+    info!(
+        "Installing {} packages in dependency order with max_concurrent={}",
+        package_count, max_concurrent
+    );
+
     let package_map: Arc<HashMap<String, PackageInfo>> = Arc::new(
         packages
             .into_iter()
@@ -125,21 +152,16 @@ where
             .collect(),
     );
 
-    // Track installed packages
     let installed = Arc::new(Mutex::new(HashSet::new()));
-    // Track failed packages
-    let failed = Arc::new(Mutex::new(HashSet::new()));
-    // Track packages currently being installed
+    let failed: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
     let installing = Arc::new(Mutex::new(HashSet::new()));
 
-    // Collection of running installation tasks
     let mut running_tasks = FuturesUnordered::new();
 
     let library_path = library_path.to_path_buf();
     let r_binary = r_binary.to_string();
 
-    // Helper function to find and start ready packages
-    async fn try_start_packages(
+    async fn try_start_packages<P>(
         package_map: Arc<HashMap<String, PackageInfo>>,
         installed: Arc<Mutex<HashSet<String>>>,
         failed: Arc<Mutex<HashSet<String>>>,
@@ -147,7 +169,11 @@ where
         library_path: PathBuf,
         r_binary: String,
         max_to_start: usize,
-    ) -> Vec<tokio::task::JoinHandle<Result<String, String>>> {
+        print_fn: Option<Arc<P>>,
+    ) -> Vec<tokio::task::JoinHandle<Result<String, String>>>
+    where
+        P: Fn(&str) + Send + Sync + 'static,
+    {
         let installed_set = installed.lock().await.clone();
         let failed_set = failed.lock().await.clone();
         let mut installing_set = installing.lock().await;
@@ -156,12 +182,10 @@ where
         let mut started = 0;
 
         for (name, pkg) in package_map.iter() {
-            // Stop if we've reached the maximum number of tasks to start
             if started >= max_to_start {
                 break;
             }
 
-            // Skip if already installed, failed, or currently installing
             if installed_set.contains(name)
                 || failed_set.contains(name)
                 || installing_set.contains(name)
@@ -169,26 +193,22 @@ where
                 continue;
             }
 
-            // Check if all dependencies are installed
             let all_deps_installed = pkg
                 .dependencies
                 .iter()
                 .all(|dep| installed_set.contains(dep));
 
-            // Check if any dependency failed
             let any_dep_failed = pkg.dependencies.iter().any(|dep| failed_set.contains(dep));
 
             if any_dep_failed {
-                // Mark as failed if any dependency failed
                 drop(installing_set);
                 failed.lock().await.insert(name.clone());
                 installing_set = installing.lock().await;
+                // TODO: can this happen? We quit on the first failure, no?
                 error!("Skipping package {} because a dependency failed", name);
             } else if all_deps_installed {
-                // Mark as currently installing
                 installing_set.insert(name.clone());
                 started += 1;
-
                 let name_clone = name.clone();
                 let file_path = pkg.file_path.clone();
                 let library_path_clone = library_path.clone();
@@ -196,14 +216,15 @@ where
                 let installed_clone = Arc::clone(&installed);
                 let failed_clone = Arc::clone(&failed);
                 let installing_clone = Arc::clone(&installing);
+                let print_fn_clone = print_fn.clone();
 
                 let task = tokio::spawn(async move {
-                    // Convert result to String immediately to avoid Send issues
                     let result = match install_package(
                         &name_clone,
                         &file_path,
                         &library_path_clone,
                         &r_binary_clone,
+                        print_fn_clone,
                     )
                     .await
                     {
@@ -211,7 +232,6 @@ where
                         Err(e) => Err(e.to_string()),
                     };
 
-                    // Remove from installing set
                     installing_clone.lock().await.remove(&name_clone);
 
                     match result {
@@ -220,7 +240,10 @@ where
                             Ok(name_clone)
                         }
                         Err(err_msg) => {
-                            error!("Failed to install {}: {}", name_clone, err_msg);
+                            debug!(
+                                "Install task completed with error for {}: {}",
+                                name_clone, err_msg
+                            );
                             failed_clone.lock().await.insert(name_clone.clone());
                             Err(err_msg)
                         }
@@ -234,7 +257,6 @@ where
         new_tasks
     }
 
-    // Start initial batch of packages
     let initial_tasks = try_start_packages(
         Arc::clone(&package_map),
         Arc::clone(&installed),
@@ -243,6 +265,7 @@ where
         library_path.clone(),
         r_binary.clone(),
         max_concurrent,
+        print_fn.clone(),
     )
     .await;
 
@@ -250,7 +273,6 @@ where
         running_tasks.push(task);
     }
 
-    // Process tasks as they complete
     while let Some(result) = running_tasks.next().await {
         match result? {
             Ok(pkg_name) => {
@@ -265,7 +287,6 @@ where
             }
         }
 
-        // After each completion, check how many tasks are currently running
         let currently_running = installing.lock().await.len();
         let can_start = if currently_running < max_concurrent {
             max_concurrent - currently_running
@@ -273,7 +294,6 @@ where
             0
         };
 
-        // Try to start new tasks if we have capacity
         if can_start > 0 {
             let new_tasks = try_start_packages(
                 Arc::clone(&package_map),
@@ -283,6 +303,7 @@ where
                 library_path.clone(),
                 r_binary.clone(),
                 can_start,
+                print_fn.clone(),
             )
             .await;
 
@@ -292,7 +313,6 @@ where
         }
     }
 
-    // Check for remaining packages
     let final_installed = installed.lock().await.len();
     let final_failed = failed.lock().await.len();
 
@@ -305,22 +325,39 @@ where
             .cloned()
             .collect();
 
-        return Err(format!(
-            "Unable to install remaining packages (possible circular dependency): {:?}",
-            remaining
-        )
-        .into());
+        let err_msg = format!(
+            "Unable to install remaining packages (possible circular dependency): {}",
+            remaining.join(", ")
+        );
+
+        OUTPUT.error(&err_msg);
+        error!("{}: {:?}", err_msg, remaining);
+
+        return Err(err_msg.into());
     }
 
     if final_failed > 0 {
-        return Err(format!(
-            "Installation completed with {} successes and {} failures",
+        let err_msg = format!(
+            "Installation completed with {} failures ({}  succeeded)",
+            final_failed, final_installed
+        );
+
+        OUTPUT.error(&err_msg);
+        error!(
+            "Installation completed: {} succeeded, {} failed",
             final_installed, final_failed
-        )
-        .into());
+        );
+
+        return Err(err_msg.into());
     }
 
+    OUTPUT.success(&format!(
+        "Installed all {} packages successfully",
+        final_installed
+    ));
+
     info!("Successfully installed all {} packages", final_installed);
+
     Ok(())
 }
 
@@ -334,11 +371,12 @@ pub async fn install_package_tree(
     r_binary: &str,
     max_concurrent: usize,
 ) -> Result<(), Box<dyn Error>> {
-    install_package_tree_with_progress(
+    install_package_tree_with_progress::<fn(&str), _>(
         packages,
         library_path,
         r_binary,
         max_concurrent,
+        None,
         None::<fn(&str, bool)>,
     )
     .await

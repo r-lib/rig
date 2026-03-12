@@ -8,12 +8,14 @@ use std::path::{Path, PathBuf};
 use regex::Regex;
 use sha2::{Digest, Sha256};
 
-use log::debug;
+use log::{debug, error};
 use simple_error::*;
 use std::error::Error;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use crate::rversion::*;
+
+use crate::output::OUTPUT;
 
 pub fn os(x: &str) -> OsString {
     let mut ostr = OsString::new();
@@ -154,7 +156,10 @@ pub fn read_version_link(path: &str) -> Result<Option<String>, Box<dyn Error>> {
 
     // file_name() might be None if tgt ends with ".."
     let fname = match tgt.file_name() {
-        None => bail!("Symlink for default version is invalid"),
+        None => {
+            error!("Symlink for default version is invalid: {}", path);
+            bail!("Symlink for default version is invalid")
+        }
         Some(f) => f,
     };
 
@@ -162,6 +167,10 @@ pub fn read_version_link(path: &str) -> Result<Option<String>, Box<dyn Error>> {
         Ok(x) => x,
         Err(x) => {
             let fpath = Path::new(&x);
+            error!(
+                "Default version is not a Unicode string: {}",
+                fpath.display()
+            );
             bail!(
                 "Default version is not a Unicode string: {}",
                 fpath.display()

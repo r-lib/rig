@@ -28,6 +28,7 @@ use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
 use crate::library::*;
+use crate::repos::OUTPUT;
 use crate::repos::*;
 use crate::resolve::*;
 use crate::run::*;
@@ -83,6 +84,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let (_version, target) = download_r(&args)?;
     let target_path = Path::new(&target);
 
+    OUTPUT.status(&format!("Installing {}", target_path.display()));
     info!("Installing {}", target_path.display());
 
     let mut cmd_args = vec![os("/VERYSILENT"), os("/SUPPRESSMSGBOXES")];
@@ -124,6 +126,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     match dirname {
         None => {
+            OUTPUT.warn("Cannot set up repositories, cannot determine installation directory");
             warn!("Cannot set up repositories, cannot determine installation directory");
         }
         Some(ref dirname) => {
@@ -135,6 +138,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     if !args.get_flag("without-pak") {
         match dirname {
             None => {
+                OUTPUT.warn("Cannot install pak, cannot determine installation directory");
                 warn!("Cannot install pak, cannot determine installation directory");
             }
             Some(ref dirname) => {
@@ -168,6 +172,7 @@ fn add_rtools(version: String) -> Result<(), Box<dyn Error>> {
         let instdir = "C:\\Rtools".to_string() + versuffix + archsuffix;
         let instdirpath = Path::new(&instdir);
         if instdirpath.exists() {
+            OUTPUT.success("Rtools{} is already installed", ver);
             info!("Rtools{} is already installed", ver);
             continue;
         }
@@ -177,8 +182,10 @@ fn add_rtools(version: String) -> Result<(), Box<dyn Error>> {
 
         let tmp_dir = std::env::temp_dir().join("rig");
         let target = tmp_dir.join(&filename);
+        OUTPUT.status(&format!("Downloading {} -> {}", url, target.display()));
         info!("Downloading {} -> {}", url, target.display());
         download_file(client, &url, &target.as_os_str())?;
+        OUTPUT.status(&format!("Installing {}", target.display()));
         info!("Installing {}", target.display());
         run(
             target.into_os_string(),
@@ -232,6 +239,7 @@ fn patch_for_rtools() -> Result<(), Box<dyn Error>> {
                 + &tail;
 
             if let Err(e) = writeln!(file, "{}", if rtools4 { txt4 } else { txt3 }) {
+                OUTPUT.warn("Couldn't write to Renviron.site file: {}", e);
                 warn!("Couldn't write to Renviron.site file: {}", e);
             }
         }
@@ -252,7 +260,11 @@ fn get_rtools_needed(version: Option<Vec<String>>) -> Result<Vec<String>, Box<dy
     let rtversval = get_available_rtools_versions(&get_native_arch());
     let rtvers = match rtversval.as_array() {
         Some(x) => x,
-        None => bail!(errmsg),
+        None => {
+            OUTPUT.error(errmsg);
+            error!(errmsg);
+            bail!(errmsg)
+        }
     };
 
     for ver in vers {
@@ -299,6 +311,10 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
         if let Some(ref default) = default {
             if default == &ver {
+                OUTPUT.warn(
+                    "Removing default version, set new default with {}",
+                    "rig default <version>".bold(),
+                );
                 warn!(
                     "Removing default version, set new default with {}",
                     "rig default <version>".bold()
@@ -314,6 +330,7 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         let rroot = get_r_root();
         let dir = Path::new(&rroot);
         let dir = dir.join(ver);
+        OUTPUT.status(&format!("Removing {}", dir.display()));
         info!("Removing {}", dir.display());
         remove_dir_all(&dir)?;
     }
@@ -332,6 +349,7 @@ fn rm_rtools(ver: String) -> Result<(), Box<dyn Error>> {
         ver
     };
     let dir = Path::new("C:\\").join(ver);
+    OUTPUT.status(&format!("Removing {}", dir.display()));
     info!("Removing {}", dir.display());
     match remove_dir_all(&dir) {
         Err(_err) => {
@@ -344,6 +362,8 @@ fn rm_rtools(ver: String) -> Result<(), Box<dyn Error>> {
                 Err(_v) => "cannot parse stderr",
             };
             if !out.status.success() {
+                OUTPUT.error("Failed to remove {}: {}", dir.display(), stderr);
+                error!("Failed to remove {}: {}", dir.display(), stderr);
                 bail!("Cannot remove {}: {}", dir.display(), stderr);
             }
         }
@@ -386,6 +406,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         } else {
             op = "Adding";
         };
+        OUTPUT.status(&format!("{} R-{} -> {}", op, ver, target.display()));
         info!("{} R-{} -> {}", op, ver, target.display());
         let mut file = File::create(&linkfile)?;
         file.write_all(cnt.as_bytes())?;
@@ -413,10 +434,16 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                     }
                 }
                 if !new_links.contains(&filename) {
+                    OUTPUT.status(&format!("Deleting unused {}", filename));
                     info!("Deleting unused {}", filename);
                     match std::fs::remove_file(path.path()) {
                         Ok(_) => {}
                         Err(e) => {
+                            OUTPUT.warn(&format!(
+                                "Failed to remove {}: {}",
+                                filename,
+                                e.to_string()
+                            ));
                             warn!("Failed to remove {}: {}", filename, e.to_string());
                         }
                     }
@@ -475,6 +502,8 @@ pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
 fn find_r_version_in_link(path: &PathBuf) -> Result<String, Box<dyn Error>> {
     let lines = read_lines(path)?;
     if lines.len() == 0 {
+        OUTPUT.error("Invalid R link file: {}", path.display());
+        error!("Invalid R link file: {}", path.display());
         bail!("Invalid R link file: {}", path.display());
     }
     let split = lines[0].split("\\").collect::<Vec<&str>>();
@@ -486,6 +515,14 @@ fn find_r_version_in_link(path: &PathBuf) -> Result<String, Box<dyn Error>> {
             return Ok(s[2..].to_string());
         }
     }
+    OUTPUT.error(
+        "Cannot extract R version from {}, invalid R link file?",
+        path.display(),
+    );
+    error!(
+        "Cannot extract R version from {}, invalid R link file?",
+        path.display()
+    );
     bail!(
         "Cannot extract R version from {}, invalid R link file?",
         path.display()
@@ -594,7 +631,14 @@ pub fn unset_default() -> Result<(), Box<dyn Error>> {
         let f = linkdir.join(x);
         if f.exists() {
             match std::fs::remove_file(&f) {
-                Err(e) => warn!("Failed to remove {}: {}", f.display(), e.to_string()),
+                Err(e) => {
+                    OUTPUT.warn(&format!(
+                        "Failed to remove {}: {}",
+                        f.display(),
+                        e.to_string()
+                    ));
+                    warn!("Failed to remove {}: {}", f.display(), e.to_string())
+                }
                 _ => {}
             };
         }
@@ -675,6 +719,7 @@ fn clean_registry_uninst(key: &RegKey) -> Result<(), Box<dyn Error>> {
 pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
     escalate("cleaning up the Windows registry")?;
 
+    OUTPUT.status("Cleaning leftover registry entries");
     info!("Cleaning leftover registry entries");
 
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
@@ -976,7 +1021,11 @@ pub fn get_rstudio_config_path() -> Result<std::path::PathBuf, Box<dyn Error>> {
     // Set USER, HOME, HOSTNAME, for expansion, if needed
     let mut path = match xdg.to_str() {
         Some(x) => String::from(x),
-        None => bail!("RStudio config path cannot be represented as Unicode. :("),
+        None => {
+            OUTPUT.error("RStudio config path cannot be represented as Unicode. :(");
+            error!("RStudio config path cannot be represented as Unicode. :(");
+            bail!("RStudio config path cannot be represented as Unicode. :(")
+        }
     };
     let has_dollar = path.contains("$");
     let empty = path.len() == 0;
@@ -1002,6 +1051,7 @@ pub fn get_rstudio_config_path() -> Result<std::path::PathBuf, Box<dyn Error>> {
                         std::env::set_var("HOME", x.home_dir().as_os_str());
                     }
                     None => {
+                        OUTPUT.warn("Cannot determine HOME directory");
                         warn!("Cannot determine HOME directory");
                     }
                 };
@@ -1027,6 +1077,14 @@ pub fn get_rstudio_config_path() -> Result<std::path::PathBuf, Box<dyn Error>> {
         path = match shellexpand::env(&path) {
             Ok(x) => x.to_string(),
             Err(e) => {
+                OUTPUT.error(&format!(
+                    "RStudio config path contains unknown environment variable: {}",
+                    e.var_name
+                ));
+                error!(
+                    "RStudio config path contains unknown environment variable: {}",
+                    e.var_name
+                );
                 bail!(
                     "RStudio config path contains unknown environment variable: {}",
                     e.var_name
@@ -1079,11 +1137,14 @@ pub fn sc_rstudio_(
         let ver = check_installed(&ver)?;
         // TODO: this does not work aarch64 windows
         let bin = get_r_binary_x64(&ver)?;
+        OUTPUT.status(&format!("Setting RSTUDIO_WHICH_R=\"{}\"", bin.display()));
         info!("Setting RSTUDIO_WHICH_R=\"{}\"", bin.display());
         std::env::set_var("RSTUDIO_WHICH_R", bin);
     }
 
-    info!("Running cmd.exe {}", osjoin(args.to_owned(), " "));
+    let cmdline = osjoin(args.to_owned(), " ");
+    OUTPUT.status(&format!("Running cmd.exe {}", cmdline));
+    info!("Running cmd.exe {}", cmdline);
     let status = run("cmd.exe".into(), args, "start");
 
     // restore version env var
@@ -1096,6 +1157,8 @@ pub fn sc_rstudio_(
 
     match status {
         Err(e) => {
+            OUTPUT.error("`start` failed: {}", e.to_string());
+            error!("`start` failed: {}", e.to_string());
             bail!("`start` failed: {}", e.to_string());
         }
         _ => {}

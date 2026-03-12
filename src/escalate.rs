@@ -1,18 +1,17 @@
 use std::error::Error;
 
+use log::*;
+
 #[cfg(target_os = "windows")]
 use std::path::Path;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use simple_error::bail;
 
-#[cfg(target_os = "windows")]
-use log::debug;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-use log::info;
-
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use sudo::with_env;
+
+use crate::output::OUTPUT;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn escalate(task: &str) -> Result<(), Box<dyn Error>> {
@@ -31,7 +30,7 @@ pub fn escalate(task: &str) -> Result<(), Box<dyn Error>> {
     };
 
     if need_sudo {
-        info!(
+        eprintln!(
             "Running `sudo` for {}. This might need your password.",
             task
         );
@@ -64,7 +63,11 @@ pub fn get_home() -> Result<String, Box<dyn Error>> {
     let home = match std::env::var("HOME") {
         Ok(x) => Ok(x),
         Err(_) => {
-            bail!("rig needs the HOME env var set");
+            OUTPUT.error(
+                "The HOME environment variable is not set. Please set it to your home directory.",
+            );
+            error!("The HOME environment variable is not set.");
+            bail!("The HOME environment variables is not set. rig needs the HOME env var set");
         }
     };
     home

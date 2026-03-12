@@ -26,6 +26,7 @@ mod hardcoded;
 mod install;
 mod library;
 mod macos;
+mod output;
 mod pak;
 mod platform;
 mod proj;

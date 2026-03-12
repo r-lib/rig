@@ -3,12 +3,13 @@ use std::error::Error;
 use std::path::{Path, PathBuf};
 
 use globset::Glob;
-use log::{debug, warn};
+use log::{debug, error, warn};
 use simple_error::*;
 
 use crate::common::*;
 use crate::dcf::*;
 use crate::hardcoded::*;
+use crate::output::OUTPUT;
 use crate::repositories::*;
 use crate::utils::*;
 
@@ -73,11 +74,15 @@ fn validate_repos_in_setup(
     if !invalid_repos.is_empty() {
         invalid_repos.sort();
         invalid_repos.dedup();
-        bail!(
+        let inv = invalid_repos.join(", ");
+        let val = valid_repo_names.join(", ");
+        let msg = format!(
             "Invalid repository name(s): {}. Valid repositories are: {}",
-            invalid_repos.join(", "),
-            valid_repo_names.join(", ")
+            inv, val
         );
+        OUTPUT.error(&msg);
+        error!("{}", msg);
+        bail!("{}", msg);
     }
 
     Ok(())
@@ -186,6 +191,10 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
         } else if start.len() == 0 && end.len() == 0 {
             // nothing there, nothing to remove
         } else {
+            OUTPUT.warn(&format!(
+                "Corrupt R profile at {}, try reinstalling R. If the issue perists, report it to rig developers.",
+                profile
+            ));
             warn!("Corrupt R profile at {}, try reinstalling R. If the issue perists, report it to rig developers.", profile);
             continue;
         }
@@ -223,6 +232,10 @@ fn should_activate_repo(
             let glob = match Glob::new(platform) {
                 Ok(g) => g.compile_matcher(),
                 Err(e) => {
+                    OUTPUT.warn(&format!(
+                        "Invalid platform glob '{}' in repo '{}', skipping: {}",
+                        platform, repo.name, e
+                    ));
                     warn!(
                         "Invalid platform glob '{}' in repo '{}', skipping: {}",
                         platform, repo.name, e
@@ -319,6 +332,14 @@ fn get_r_data_common(ver: &str) -> Result<RData, Box<dyn Error>> {
     let re = Regex::new("^Built:[ ]?")?;
     let bltidx = grep_lines(&re, &lines);
     if bltidx.len() == 0 {
+        OUTPUT.error(&format!(
+            "Could not find 'Built' field in {}, cannot determine architecture of R installation.",
+            statsdesc
+        ));
+        error!(
+            "Could not find 'Built' field in {}, cannot determine architecture of R installation.",
+            statsdesc
+        );
         bail!(
             "Could not find 'Built' in {}, cannot determine architecture of R installation.",
             statsdesc
@@ -331,18 +352,42 @@ fn get_r_data_common(ver: &str) -> Result<RData, Box<dyn Error>> {
     let parts: Vec<&str> = built.split(';').collect();
 
     if parts.len() < 2 {
+        OUTPUT.error(&format!(
+            "Could not parse 'Built' field in {}, unexpected format: {}",
+            statsdesc, blt
+        ));
+        error!(
+            "Could not parse 'Built' field in {}, unexpected format: {}",
+            statsdesc, blt
+        );
         bail!("Could not parse 'Built' field in {}: {}", statsdesc, blt);
     }
 
     let platform = parts[1].trim();
     let parts2: Vec<&str> = platform.splitn(3, '-').collect();
     if parts2.len() < 3 {
+        OUTPUT.error(&format!(
+            "Could not parse 'Built' field in {}, unexpected platform format: {}",
+            statsdesc, platform
+        ));
+        error!(
+            "Could not parse 'Built' field in {}, unexpected platform format: {}",
+            statsdesc, platform
+        );
         bail!("Could not parse 'Built' field in {}: {}", statsdesc, blt);
     }
 
     let arch = parts2[0];
 
     if arch == "" {
+        OUTPUT.error(&format!(
+            "Could not parse 'Built' field in {}, missing architecture: {}",
+            statsdesc, blt,
+        ));
+        error!(
+            "Could not parse 'Built' field in {}, missing architecture: {}",
+            statsdesc, blt
+        );
         bail!("Could not parse 'Built' field in {}: {}", statsdesc, blt);
     }
 
