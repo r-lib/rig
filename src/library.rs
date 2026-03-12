@@ -68,13 +68,7 @@ pub fn sc_library_get_list(
     };
 
     let (main, default) = get_library_path(&rver, cache)?;
-    let paths = try_with!(
-        std::fs::read_dir(&main),
-        "Cannot read directory {} @{}:{}",
-        main.display(),
-        file!(),
-        line!()
-    );
+    let paths = std::fs::read_dir(&main)?;
 
     let mut libs = Vec::new();
 
@@ -86,14 +80,7 @@ pub fn sc_library_get_list(
     });
 
     for de in paths {
-        let path = try_with!(
-            de,
-            "Cannot read directory {} @{}:{}",
-            main.display(),
-            file!(),
-            line!()
-        )
-        .path();
+        let path = de?.path();
 
         // If no path name, then path ends with ..., so we can skip
         let fnamestr = match path.file_name() {
@@ -131,7 +118,7 @@ pub fn sc_library_get_list(
 }
 
 pub fn sc_library_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    let new: String = require_with!(args.get_one::<String>("lib-name"), "clap error").to_string();
+    let new: String = args.get_one::<String>("lib-name").unwrap().to_string();
     let rver = match sc_get_default()? {
         Some(x) => x,
         None => {
@@ -162,13 +149,7 @@ pub fn sc_library_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         }
         Some(main) => {
             let dir = main.as_path().join("__".to_string() + &new);
-            try_with!(
-                std::fs::create_dir_all(&dir),
-                "Cannot create directory {} @{}:{}",
-                dir.display(),
-                file!(),
-                line!()
-            );
+            std::fs::create_dir_all(&dir)?;
         }
     };
 
@@ -176,7 +157,7 @@ pub fn sc_library_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn sc_library_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    let torm: String = require_with!(args.get_one::<String>("lib-name"), "clap error").to_string();
+    let torm: String = args.get_one::<String>("lib-name").unwrap().to_string();
     if torm == "main" {
         OUTPUT.error("Cannot remove the main library.");
         error!("Cannot remove the main library.");
@@ -214,13 +195,7 @@ pub fn sc_library_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         Some(dir) => {
             OUTPUT.status(&format!("Deleting library {} for R {}...", torm, rver));
             info!("Deleting library {} for R {}", torm, rver);
-            try_with!(
-                std::fs::remove_dir_all(&dir.as_path()),
-                "Cannot delete directory {} @ {}:{}",
-                dir.display(),
-                file!(),
-                line!()
-            );
+            let _ = std::fs::remove_dir_all(&dir.as_path());
         }
     };
 
@@ -233,8 +208,7 @@ pub fn sc_library_default(
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
     if args.get_one::<String>("lib-name").is_some() {
-        let name: String =
-            require_with!(args.get_one::<String>("lib-name"), "clap error").to_string();
+        let name: String = args.get_one::<String>("lib-name").unwrap().to_string();
         sc_library_set_default(&name)
     } else {
         let default = sc_library_get_default()?;
@@ -315,13 +289,7 @@ pub fn sc_library_set_default(name: &str) -> Result<(), Box<dyn Error>> {
     }
 
     let def_file = path.join("___default");
-    try_with!(
-        std::fs::write(&def_file, name),
-        "Cannot write file {} @{}:{}",
-        def_file.display(),
-        file!(),
-        line!()
-    );
+    std::fs::write(&def_file, name)?;
 
     // Update the R installation if needed
     let rprofile = get_system_profile(&rver)?;
@@ -557,20 +525,15 @@ pub fn get_library_path_cache(rver: &str) -> Result<(PathBuf, PathBuf), Box<dyn 
 pub fn get_library_path_nocache(rver: &str) -> Result<(PathBuf, PathBuf), Box<dyn Error>> {
     debug!("Finding library path (R {}) without cache", rver);
     let r = get_r_binary(rver)?;
-    let out = try_with!(
-        Command::new(r)
-            .args([
-                "--vanilla",
-                "-s",
-                "-e",
-                "cat(strsplit(Sys.getenv('R_LIBS_USER'), .Platform$path.sep)[[1]][1])"
-            ])
-            .output(),
-        "Failed to run R {} to get library path @{}:{}",
-        rver,
-        file!(),
-        line!()
-    );
+    let out = Command::new(r)
+        .args([
+            "--vanilla",
+            "-s",
+            "-e",
+            "cat(strsplit(Sys.getenv('R_LIBS_USER'), .Platform$path.sep)[[1]][1])",
+        ])
+        .output()?;
+
     let lib = match String::from_utf8(out.stdout) {
         Ok(v) => v,
         Err(err) => {

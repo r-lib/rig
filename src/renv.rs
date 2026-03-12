@@ -2,11 +2,13 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::path::PathBuf;
 
+use log::error;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
 use simple_error::*;
 
 use crate::common::*;
+use crate::output::OUTPUT;
 use crate::proj::BASE_PKGS;
 use crate::rversion::*;
 use crate::solver::*;
@@ -63,11 +65,14 @@ pub fn match_r_version(ver: &str) -> Result<OKInstalledVersion, Box<dyn Error>> 
     let mut okvers = filter_ok_versions(allvers);
     okvers.sort();
 
-    let ver = try_with!(
-        semver::Version::parse(ver),
-        "Invalid R version in renv.lock file: {:?}",
-        ver
-    );
+    let ver = match semver::Version::parse(ver) {
+        Ok(v) => v,
+        Err(_) => {
+            OUTPUT.error(&format!("Invalid R version in renv.lock file: {:?}", ver));
+            error!("Invalid R version in renv.lock file: {:?}", ver);
+            bail!("Invalid R version in renv.lock file: {:?}", ver);
+        }
+    };
 
     // Matching major.minor
     let goodvers: Vec<OKInstalledVersion> = okvers

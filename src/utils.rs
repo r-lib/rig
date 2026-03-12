@@ -50,7 +50,7 @@ pub fn read_lines(path: &Path) -> Result<Vec<String>, Box<dyn Error>> {
     let mut result: Vec<String> = vec![];
     let lines = BufReader::new(file).lines();
     for line in lines {
-        result.push(try_with!(line, "read failed"));
+        result.push(line?);
     }
     Ok(result)
 }

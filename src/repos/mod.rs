@@ -191,8 +191,7 @@ fn sc_repos_package_info(
     _libargs: &ArgMatches,
     _mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
-    let package: String =
-        require_with!(args.get_one::<String>("package"), "clap error").to_string();
+    let package: String = args.get_one::<String>("package").unwrap().to_string();
     let ver = if args.contains_id("version") {
         args.get_one::<String>("version").unwrap().to_string()
     } else {
@@ -221,8 +220,7 @@ fn sc_repos_package_versions(
     _libargs: &ArgMatches,
     _mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
-    let package: String =
-        require_with!(args.get_one::<String>("package"), "clap error").to_string();
+    let package: String = args.get_one::<String>("package").unwrap().to_string();
 
     let mut rows = crandb::get_all_cran_package_versions(&package, None)?;
     rows.sort_by(|a, b| a.version.cmp(&b.version));

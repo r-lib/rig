@@ -126,7 +126,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             args.value_source("pak-version") == Some(clap::parser::ValueSource::CommandLine);
         system_add_pak(
             Some(vec![dirname.to_string()]),
-            require_with!(args.get_one::<String>("pak-version"), "clap error"),
+            args.get_one::<String>("pak-version").unwrap(),
             // If this is specified then we always re-install
             explicit,
         )?;
@@ -320,23 +320,11 @@ fn add_package(path: &OsStr, platform: &OsVersion) -> Result<String, Box<dyn Err
     let get_package_name = format_cmd_args(tools.get_package_name, path);
     let cmd0 = get_package_name[0].to_owned();
     let oscmd = get_package_name.join(&OsString::from(" "));
-    let out = try_with!(
-        Command::new(cmd0)
-            .args(get_package_name[1..].to_vec())
-            .output(),
-        "Failed to run {:?} @{}:{}",
-        oscmd,
-        file!(),
-        line!()
-    );
+    let out = Command::new(cmd0)
+        .args(get_package_name[1..].to_vec())
+        .output()?;
 
-    let std = try_with!(
-        String::from_utf8(out.stdout),
-        "Non-UTF-8 output from {:?} @{}:{}",
-        oscmd,
-        file!(),
-        line!()
-    );
+    let std = String::from_utf8(out.stdout)?;
 
     let re = Regex::new("^[rR]-(.*)\\s*$")?;
     let ver = re.replace(&std, "${1}");
@@ -350,25 +338,19 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     if vers.is_none() {
         return Ok(());
     }
-    let vers = require_with!(vers, "clap error");
+    let vers = vers.unwrap();
 
     let platform = detect_platform()?;
     let tools = select_linux_tools(&platform)?;
     for ver in vers {
-        let ver = check_installed(&ver.to_string())?;
+        let ver = check_installed(ver)?;
 
         let pkgname = tools.package_name.replace("{}", &ver);
         let opkgname = OsStr::new(&pkgname);
         let cmd = format_cmd_args(tools.is_installed.clone(), opkgname);
         let oscmd = cmd.join(&OsString::from(" "));
         let cmd0 = cmd[0].to_owned();
-        let out = try_with!(
-            Command::new(cmd0).args(cmd[1..].to_vec()).output(),
-            "Failed to run {:?} @{}:{}",
-            oscmd,
-            file!(),
-            line!()
-        );
+        let out = Command::new(cmd0).args(cmd[1..].to_vec()).output()?;
 
         if out.status.success() {
             OUTPUT.status(&format!("Removing {} package", pkgname));
@@ -387,13 +369,7 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         if dir.exists() {
             OUTPUT.status(&format!("Removing {}", dir.display()));
             info!("Removing {}", dir.display());
-            try_with!(
-                std::fs::remove_dir_all(&dir),
-                "Failed to remove {} @{}:{}",
-                dir.display(),
-                file!(),
-                line!()
-            );
+            std::fs::remove_dir_all(&dir)?;
         }
     }
 
