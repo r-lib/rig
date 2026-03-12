@@ -15,8 +15,6 @@ use std::error::Error;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use crate::rversion::*;
 
-use crate::output::OUTPUT;
-
 pub fn os(x: &str) -> OsString {
     let mut ostr = OsString::new();
     ostr.push(x);
@@ -307,23 +305,6 @@ fn format_cmd_arg(x: &str, val: &OsStr) -> OsString {
     }
 
     ox
-}
-
-pub fn add_suffix(path: &PathBuf, suffix: &str) -> PathBuf {
-    let mut new = path.clone();
-
-    if let Some(stem) = new.file_stem().and_then(|s| s.to_str()) {
-        let ext = new.extension().and_then(|e| e.to_str());
-
-        let new_name = match ext {
-            Some(ext) => format!("{stem}{suffix}.{ext}"),
-            None => format!("{stem}{suffix}"),
-        };
-
-        new.set_file_name(new_name);
-    }
-
-    new
 }
 
 pub fn create_parent_dir_if_needed(path: &PathBuf) -> Result<(), Box<dyn Error>> {

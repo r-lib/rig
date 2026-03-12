@@ -2,7 +2,9 @@ use futures::future;
 use std::error::Error;
 
 use clap::ArgMatches;
-use log::{error, warn};
+use log::error;
+#[cfg(target_os = "windows")]
+use log::warn;
 #[cfg(target_os = "windows")]
 use serde_json::{Map, Value};
 use simple_error::bail;

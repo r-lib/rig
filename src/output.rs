@@ -1,4 +1,4 @@
-use std::io::{IsTerminal, Write};
+use std::io::IsTerminal;
 use std::sync::Arc;
 
 use lazy_static::lazy_static;
@@ -33,11 +33,6 @@ impl Output {
                 interactive: std::io::stdout().is_terminal(),
             }),
         }
-    }
-
-    /// Check if running in an interactive terminal
-    pub fn is_interactive(&self) -> bool {
-        self.inner.interactive
     }
 
     /// Display a success message
@@ -83,23 +78,6 @@ impl Output {
         } else {
             eprintln!("{}", msg);
         }
-    }
-
-    /// Display a message only in verbose mode
-    pub fn verbose(&self, msg: &str, verbose: bool) {
-        if verbose {
-            if self.inner.interactive {
-                eprintln!("{}", msg.cyan());
-            } else {
-                eprintln!("{}", msg);
-            }
-        }
-    }
-
-    /// Write directly to stderr
-    pub fn print(&self, msg: &str) {
-        eprint!("{}", msg);
-        let _ = std::io::stdout().flush();
     }
 
     /// Write directly to stderr with newline
