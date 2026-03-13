@@ -13,7 +13,7 @@ use std::process::Command;
 
 use clap::ArgMatches;
 use directories::BaseDirs;
-use log::{debug, info, trace, warn};
+use log::{debug, error, info, trace, warn};
 use owo_colors::OwoColorize;
 use remove_dir_all::remove_dir_all;
 use semver;
@@ -28,7 +28,7 @@ use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
 use crate::library::*;
-use crate::repos::OUTPUT;
+use crate::output::OUTPUT;
 use crate::repos::*;
 use crate::resolve::*;
 use crate::run::*;
