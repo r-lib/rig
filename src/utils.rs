@@ -6,14 +6,11 @@ use std::io::{prelude::*, BufReader};
 use std::path::{Path, PathBuf};
 
 use regex::Regex;
-
-#[cfg(target_os = "macos")]
 use sha2::{Digest, Sha256};
 
+use log::{debug, error};
 use simple_error::*;
 use std::error::Error;
-
-use simplelog::*;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use crate::rversion::*;
@@ -53,7 +50,7 @@ pub fn read_lines(path: &Path) -> Result<Vec<String>, Box<dyn Error>> {
     let mut result: Vec<String> = vec![];
     let lines = BufReader::new(file).lines();
     for line in lines {
-        result.push(try_with!(line, "read failed"));
+        result.push(line?);
     }
     Ok(result)
 }
@@ -124,7 +121,6 @@ pub fn append_to_file(path: &Path, extra: Vec<String>) -> Result<(), Box<dyn Err
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
 pub fn calculate_hash(s: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(s);
@@ -158,7 +154,10 @@ pub fn read_version_link(path: &str) -> Result<Option<String>, Box<dyn Error>> {
 
     // file_name() might be None if tgt ends with ".."
     let fname = match tgt.file_name() {
-        None => bail!("Symlink for default version is invalid"),
+        None => {
+            error!("Symlink for default version is invalid: {}", path);
+            bail!("Symlink for default version is invalid")
+        }
         Some(f) => f,
     };
 
@@ -166,6 +165,10 @@ pub fn read_version_link(path: &str) -> Result<Option<String>, Box<dyn Error>> {
         Ok(x) => x,
         Err(x) => {
             let fpath = Path::new(&x);
+            error!(
+                "Default version is not a Unicode string: {}",
+                fpath.display()
+            );
             bail!(
                 "Default version is not a Unicode string: {}",
                 fpath.display()
@@ -197,6 +200,9 @@ pub fn not_too_old(path: &std::path::PathBuf) -> bool {
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+#[allow(deprecated)]
+// home_dir is no longer deprecated, actually, its behaviour was
+// fixed in Rust 1.85 and the deprecation will be removed in 1.87.
 pub fn get_user() -> Result<User, Box<dyn Error>> {
     let uid: u32;
     let gid: u32;
@@ -232,6 +238,8 @@ pub fn get_user() -> Result<User, Box<dyn Error>> {
     if let Ok(Some(d)) = user_record {
         dir = d.dir.into_os_string();
     } else {
+        // home_dir is no longer deprecated, actually, its behaviour was
+        // fixed in Rust 1.85 and the deprecation will be removed in 1.87.
         dir = std::env::home_dir()
             .map(|x| x.into_os_string())
             .ok_or(SimpleError::new("Failed to find user HOME"))?;
@@ -244,11 +252,6 @@ pub fn get_user() -> Result<User, Box<dyn Error>> {
         dir,
         sudo,
     })
-}
-
-#[cfg(target_os = "macos")]
-pub fn escape_json(input: &str) -> String {
-    input.replace("\"", "\\\"").replace("\n", "\\n").to_string()
 }
 
 pub fn unset_r_envvars() {
@@ -302,4 +305,13 @@ fn format_cmd_arg(x: &str, val: &OsStr) -> OsString {
     }
 
     ox
+}
+
+pub fn create_parent_dir_if_needed(path: &PathBuf) -> Result<(), Box<dyn Error>> {
+    if let Some(parent) = path.parent() {
+        if !parent.exists() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+    Ok(())
 }

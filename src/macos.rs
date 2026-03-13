@@ -9,18 +9,21 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use clap::ArgMatches;
+use log::{debug, error, info, warn};
 use nix::sys::stat::umask;
 use nix::sys::stat::Mode;
+use owo_colors::OwoColorize;
 use path_clean::PathClean;
 use regex::Regex;
 use simple_error::*;
-use simplelog::{debug, info, warn};
 
 use crate::alias::*;
 use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
 use crate::library::*;
+use crate::output::OUTPUT;
+use crate::repos::*;
 use crate::resolve::get_resolve;
 use crate::run::*;
 use crate::rversion::*;
@@ -31,6 +34,7 @@ pub const R_VERSIONDIR: &str = "{}";
 pub const R_SYSLIBPATH: &str = "{}/Resources/library";
 pub const R_BINPATH: &str = "{}/Resources/R";
 pub const R_BASE_PROFILE: &str = "{}/Resources/library/base/R/Rprofile";
+pub const R_ETC_PATH: &str = "{}/Resources/etc";
 const R_CUR: &str = "/Library/Frameworks/R.framework/Versions/Current";
 
 macro_rules! osvec {
@@ -59,6 +63,14 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         Some(s) => s.to_string(),
         None => {
             let archarg: &String = args.get_one("arch").unwrap();
+            OUTPUT.error(&format!(
+                "Cannot find a download url for R version {}, {}",
+                verstr, archarg
+            ));
+            error!(
+                "Cannot find a download url for R version {}, {}",
+                verstr, archarg
+            );
             bail!(
                 "Cannot find a download url for R version {}, {}",
                 verstr,
@@ -78,8 +90,10 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let target_str = target.to_owned().into_os_string();
     let target_dsp = target.display();
     if cache {
+        OUTPUT.success(&format!("{} is cached at {}", filename, target_dsp));
         info!("{} is cached at {}", filename, target_dsp);
     } else {
+        OUTPUT.status(&format!("Downloading {} -> {}", url, target_dsp));
         info!("Downloading {} -> {}", url, target_dsp);
         let client = &reqwest::Client::new();
         download_file(client, &url, &target_str)?;
@@ -116,13 +130,8 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         None => {}
     };
 
-    if !args.get_flag("without-cran-mirror") {
-        set_cloud_mirror(Some(vec![dirname.to_string()]))?;
-    }
-
-    if args.get_flag("with-p3m") {
-        set_ppm(Some(vec![dirname.to_string()]))?;
-    }
+    let setup = interpret_repos_args(args, true);
+    repos_setup(Some(vec![dirname.to_string()]), setup)?;
 
     if !args.get_flag("without-pak") {
         let pakver: &String = args.get_one("pak-version").unwrap();
@@ -166,6 +175,14 @@ fn safe_install(
         .arg(&tmp)
         .output()?;
     if !output.status.success() {
+        OUTPUT.error(&format!(
+            "Failed to expand installer with pkgutil: {}",
+            output.status.to_string()
+        ));
+        error!(
+            "Failed to expand installer with pkgutil: {}",
+            output.status.to_string()
+        );
         bail!("pkgutil exited with {}", output.status.to_string());
     }
 
@@ -176,6 +193,8 @@ fn safe_install(
     } else if wd1.exists() {
         wd1
     } else {
+        OUTPUT.error("Failed to patch installer, could not find framework");
+        error!("Failed to patch installer, could not find framework");
         bail!("Failed to patch installer, could not find framework");
     };
     let output = Command::new("sh")
@@ -183,7 +202,10 @@ fn safe_install(
         .args(["-c", "gzip -dcf Payload | cpio -i"])
         .output()?;
     if !output.status.success() {
-        bail!("Failed to extract installer: {}", output.status.to_string());
+        let err = output.status.to_string();
+        OUTPUT.error(&format!("Failed to extract installer: {}", err));
+        error!("Failed to extract installer: {}", err);
+        bail!("Failed to extract installer: {}", err);
     }
 
     let link = wd.join("R.framework").join("Versions").join("Current");
@@ -196,10 +218,10 @@ fn safe_install(
         .args(["-c", "find R.framework | cpio -oz > Payload"])
         .output()?;
     if !output.status.success() {
-        bail!(
-            "Failed to re-package installer (cpio): {}",
-            output.status.to_string()
-        );
+        let err = output.status.to_string();
+        OUTPUT.error(&format!("Failed to re-package installer (cpio): {}", err));
+        error!("Failed to re-package installer (cpio): {}", err);
+        bail!("Failed to re-package installer (cpio): {}", err);
     }
 
     let rf = wd.join("R.framework");
@@ -213,10 +235,13 @@ fn safe_install(
         .arg(&pkg)
         .output()?;
     if !output.status.success() {
-        bail!(
+        let err = output.status.to_string();
+        OUTPUT.error(&format!(
             "Failed to re-package installer (pkgutil): {}",
-            output.status.to_string()
-        );
+            err
+        ));
+        error!("Failed to re-package installer (pkgutil): {}", err);
+        bail!("Failed to re-package installer (pkgutil): {}", err);
     }
 
     let mut cmd: OsString = os("installer");
@@ -237,10 +262,16 @@ fn safe_install(
     args.push(os("-target"));
     args.push(os("/"));
 
+    OUTPUT.status("Running installer");
     info!("Running installer");
     run(cmd.into(), args, "installer")?;
 
     if let Err(err) = std::fs::remove_file(&pkg) {
+        OUTPUT.warn(&format!(
+            "Failed to remove temporary installer {}: {}",
+            pkg.display(),
+            err.to_string()
+        ));
         warn!(
             "Failed to remove temporary file {}: {}",
             pkg.display(),
@@ -248,6 +279,11 @@ fn safe_install(
         );
     }
     if let Err(err) = std::fs::remove_dir_all(&tmp) {
+        OUTPUT.warn(&format!(
+            "Failed to remove temporary directory {}: {}",
+            tmp.display(),
+            err.to_string()
+        ));
         warn!(
             "Failed to remove temporary directory {}: {}",
             tmp.display(),
@@ -272,9 +308,14 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
         if let Some(ref default) = default {
             if default == &ver {
+                OUTPUT.warn(&format!(
+                    "Removing default version {}, set new default with {}",
+                    ver,
+                    "rig default <version>".bold(),
+                ));
                 warn!(
-                    "Removing default version, set new default with \
-                       <bold>rig default <version></>"
+                    "Removing default version, set new default with {}",
+                    "rig default <version>".bold()
                 );
             }
         }
@@ -282,10 +323,19 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         let rroot = get_r_root();
         let dir = Path::new(&rroot);
         let dir = dir.join(&ver);
+        OUTPUT.status(&format!("Removing {}", dir.display()));
         info!("Removing {}", dir.display());
         sc_system_forget()?;
         match std::fs::remove_dir_all(&dir) {
-            Err(err) => bail!("Cannot remove {}: {}", dir.display(), err.to_string()),
+            Err(err) => {
+                OUTPUT.error(&format!(
+                    "Cannot remove {}: {}",
+                    dir.display(),
+                    err.to_string()
+                ));
+                error!("Cannot remove {}: {}", dir.display(), err.to_string());
+                bail!("Cannot remove {}: {}", dir.display(), err.to_string())
+            }
             _ => {}
         };
     }
@@ -301,6 +351,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     let rroot = get_r_root();
     let base = Path::new(&rroot);
 
+    OUTPUT.status("Updating R-* quick links (as needed)");
     info!("Updating R-* quick links (as needed)");
 
     // https://github.com/r-lib/rig/issues/197
@@ -309,6 +360,10 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     // Create new links
     for ver in vers {
         if !is_orthogonal(&ver)? {
+            OUTPUT.warn(&format!(
+                "Refusing to create quick link for non-orthogonal R version: {}.\n Call `rig system make-orthogonal` to fix this.",
+                ver
+            ));
             warn!(
               "Refusing to create quick link for non-orthogonal R version: {}.\n Call `rig system make-orthogonal` to fix this.",
               ver
@@ -322,6 +377,16 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
             match symlink(&target, &linkfile) {
                 Err(err) => {
                     umask(old_umask);
+                    OUTPUT.error(&format!(
+                        "Cannot create symlink {}: {}",
+                        linkfile.display(),
+                        err.to_string()
+                    ));
+                    error!(
+                        "Cannot create symlink {}: {}",
+                        linkfile.display(),
+                        err.to_string()
+                    );
                     bail!(
                         "Cannot create symlink {}: {}",
                         linkfile.display(),
@@ -358,6 +423,11 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                         debug!("Cleaning up {}", target.display());
                         match std::fs::remove_file(&path) {
                             Err(err) => {
+                                OUTPUT.warn(&format!(
+                                    "Failed to remove {}: {}",
+                                    path.display(),
+                                    err.to_string()
+                                ));
                                 warn!("Failed to remove {}: {}", path.display(), err.to_string())
                             }
                             _ => {}
@@ -446,6 +516,7 @@ fn version_from_link(pb: PathBuf) -> Option<String> {
 pub fn sc_system_allow_core_dumps(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("updating code signature of R and /cores permissions")?;
     sc_system_allow_debugger(args)?;
+    OUTPUT.status("Updating permissions of /cores");
     info!("Updating permissions of /cores");
     Command::new("chmod").args(["1777", "/cores"]).output()?;
     Ok(())
@@ -482,6 +553,8 @@ pub fn sc_system_allow_debugger_rstudio(_args: &ArgMatches) -> Result<(), Box<dy
     let rsess = PathBuf::new().join("/Applications/RStudio.app/Contents/MacOS/rsession");
 
     if !rsess.exists() {
+        OUTPUT.error("RStudio is not installed, at least not in /Applications/RStudio.app");
+        error!("RStudio is not installed, at least not in /Applications/RStudio.app");
         bail!("RStudio is not installed, at least not in /Applications/RStudio.app");
     }
 
@@ -501,6 +574,16 @@ pub fn update_entitlements(path: PathBuf) -> Result<(), Box<dyn Error>> {
     match std::fs::create_dir_all(&tmp_dir) {
         Err(err) => {
             let dir = tmp_dir.to_str().unwrap_or_else(|| "???");
+            OUTPUT.error(&format!(
+                "Cannot create temporary directory {}: {}",
+                dir,
+                err.to_string()
+            ));
+            error!(
+                "Cannot create temporary directory {}: {}",
+                dir,
+                err.to_string()
+            );
             bail!(
                 "Cannot craete temporary file in {}: {}",
                 dir,
@@ -510,6 +593,7 @@ pub fn update_entitlements(path: PathBuf) -> Result<(), Box<dyn Error>> {
         _ => {}
     };
 
+    OUTPUT.status(&format!("Updating entitlements of {}", path.display()));
     info!("Updating entitlements of {}", path.display());
 
     let out = Command::new("codesign")
@@ -519,11 +603,18 @@ pub fn update_entitlements(path: PathBuf) -> Result<(), Box<dyn Error>> {
     if !out.status.success() {
         let stderr = match std::str::from_utf8(&out.stderr) {
             Ok(v) => v,
-            Err(e) => bail!("Invalid UTF-8 output from codesign: {}", e),
+            Err(e) => {
+                OUTPUT.error(&format!("Invalid UTF-8 output from codesign: {}", e));
+                error!("Invalid UTF-8 output from codesign: {}", e);
+                bail!("Invalid UTF-8 output from codesign: {}", e)
+            }
         };
         if stderr.contains("is not signed") {
-            info!("    not signed");
+            OUTPUT.status(&format!("{} is not signed.", path.display()));
+            info!("{} is not signed.", path.display());
         } else {
+            OUTPUT.error(&format!("Cannot query entitlements:\n   {}", stderr));
+            error!("Cannot query entitlements:\n   {}", stderr);
             bail!("Cannot query entitlements:\n   {}", stderr);
         }
         return Ok(());
@@ -540,15 +631,23 @@ pub fn update_entitlements(path: PathBuf) -> Result<(), Box<dyn Error>> {
     if !out.status.success() {
         let stderr = match std::str::from_utf8(&out.stderr) {
             Ok(v) => v,
-            Err(e) => bail!("Invalid UTF-8 output from codesign: {}", e),
+            Err(e) => {
+                OUTPUT.error(&format!("Invalid UTF-8 output from codesign: {}", e));
+                error!("Invalid UTF-8 output from codesign: {}", e);
+                bail!("Invalid UTF-8 output from codesign: {}", e)
+            }
         };
         if stderr.contains("Entry Already Exists") {
-            info!("    already allows debugging");
+            OUTPUT.status(&format!("{} already allows debugging", path.display()));
+            info!("{} already allows debugging", path.display());
             return Ok(());
         } else if stderr.contains("zero-length data") {
-            info!("    not signed");
+            OUTPUT.status(&format!("{} is not signed.", path.display()));
+            info!("{} is not signed.", path.display());
             return Ok(());
         } else {
+            OUTPUT.error(&format!("Cannot update entitlements: {}", stderr));
+            error!("Cannot update entitlements: {}", stderr);
             bail!("Cannot update entitlements: {}", stderr);
         }
     }
@@ -560,9 +659,12 @@ pub fn update_entitlements(path: PathBuf) -> Result<(), Box<dyn Error>> {
         .output()?;
 
     if !out.status.success() {
+        OUTPUT.error(&format!("Cannot update entitlements"));
+        error!("Cannot update entitlements");
         bail!("Cannot update entitlements");
     } else {
-        info!("    updated entitlements");
+        OUTPUT.success(&format!("Updated entitlements of {}", path.display()));
+        info!("Updated entitlements of {}", path.display());
     }
 
     Ok(())
@@ -586,6 +688,11 @@ fn system_make_orthogonal(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
     let vers = match vers {
         Some(x) => {
             let str = x.join(", ");
+            OUTPUT.status(&format!(
+                "Making R version{} {} orthogonal",
+                if x.len() > 1 { "s" } else { "" },
+                str
+            ));
             info!(
                 "Making R version{} {} orthogonal",
                 if x.len() > 1 { "s" } else { "" },
@@ -594,6 +701,7 @@ fn system_make_orthogonal(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
             x
         }
         None => {
+            OUTPUT.status("Making all R versions orthogonal");
             info!("Making all R versions orthogonal");
             sc_get_list()?
         }
@@ -670,6 +778,7 @@ fn system_fix_permissions(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
         None => sc_get_list()?,
     };
 
+    OUTPUT.status("Fixing permissions");
     info!("Fixing permissions");
 
     for ver in vers {
@@ -685,12 +794,14 @@ fn system_fix_permissions(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
             .output()?;
 
         if !output.status.success() {
+            OUTPUT.warn(&format!("Failed to update permissions for {}", ver));
             warn!("Failed to update permissions for {}", ver);
         }
 
         let output = Command::new("chgrp").args(["admin"]).arg(&path).output()?;
 
         if !output.status.success() {
+            OUTPUT.warn(&format!("Failed to update group for {}", ver));
             warn!("Failed to update group for {}", ver);
         }
     }
@@ -701,6 +812,10 @@ fn system_fix_permissions(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
 
     let output = Command::new("chmod").args(["775"]).arg(&current).output()?;
     if !output.status.success() {
+        OUTPUT.warn(&format!(
+            "Failed to update permissions of link at {}",
+            current.display()
+        ));
         warn!(
             "Failed to update permissions of link at {}",
             current.display()
@@ -712,6 +827,10 @@ fn system_fix_permissions(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
         .arg(&current)
         .output()?;
     if !output.status.success() {
+        OUTPUT.warn(&format!(
+            "Failed to update group of link at {}",
+            current.display()
+        ));
         warn!("Failed to update group of link at {}", current.display());
     }
 
@@ -726,10 +845,15 @@ pub fn sc_system_forget() -> Result<(), Box<dyn Error>> {
 
     let output = match String::from_utf8(out.stdout) {
         Ok(v) => v,
-        Err(_) => bail!("Invalid UTF-8 output from pkgutil"),
+        Err(_) => {
+            OUTPUT.error("Invalid UTF-8 output from pkgutil");
+            error!("Invalid UTF-8 output from pkgutil");
+            bail!("Invalid UTF-8 output from pkgutil")
+        }
     };
 
     if output.lines().count() > 0 {
+        OUTPUT.status("Forgetting installed versions");
         info!("Forgetting installed versions");
     }
 
@@ -777,72 +901,11 @@ fn system_no_openmp(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
         match replace_in_file(&makevars, &re, "") {
             Ok(_) => {}
             Err(err) => {
+                OUTPUT.error(&format!("Failed to update {}: {}", path.display(), err));
+                error!("Failed to update {}: {}", path.display(), err);
                 bail!("Failed to update {}: {}", path.display(), err);
             }
         };
-    }
-
-    Ok(())
-}
-
-fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
-    let vers = match vers {
-        Some(x) => x,
-        None => sc_get_list()?,
-    };
-
-    info!("Setting default CRAN mirror");
-
-    for ver in vers {
-        let ver = check_installed(&ver)?;
-        let path = Path::new(&get_r_root()).join(ver.as_str());
-        let profile = path.join("Resources/library/base/R/Rprofile".to_string());
-        if !profile.exists() {
-            continue;
-        }
-
-        match append_to_file(
-            &profile,
-            vec![
-                r#"if (Sys.getenv("RSTUDIO") != "1" && Sys.getenv("POSITRON") != "1") {
-  options(repos = c(CRAN = "https://cloud.r-project.org"))
-}"#
-                .to_string(),
-            ],
-        ) {
-            Ok(_) => {}
-            Err(err) => {
-                bail!("Failed to update {}: {}", path.display(), err);
-            }
-        };
-    }
-
-    Ok(())
-}
-
-fn set_ppm(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
-    let vers = match vers {
-        Some(x) => x,
-        None => sc_get_list()?,
-    };
-
-    info!("Setting PPM repository");
-
-    for ver in vers {
-        let ver = check_installed(&ver)?;
-        let path = Path::new(&get_r_root()).join(ver.as_str());
-        let profile = path.join("Resources/library/base/R/Rprofile".to_string());
-        if !profile.exists() {
-            continue;
-        }
-
-        let rcode = r#"
-if (Sys.getenv("RSTUDIO") != "1" && Sys.getenv("POSITRON") != "1") {
-  options(repos = c(P3M="https://packagemanager.posit.co/cran/latest", getOption("repos")))
-}
-"#;
-
-        append_to_file(&profile, vec![rcode.to_string()])?;
     }
 
     Ok(())
@@ -858,14 +921,6 @@ pub fn sc_system_update_rtools40() -> Result<(), Box<dyn Error>> {
 }
 
 pub fn sc_system_rtools(_args: &ArgMatches, _mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    Ok(())
-}
-
-pub fn sc_system_detect_platform(
-    _args: &ArgMatches,
-    _mainargs: &ArgMatches,
-) -> Result<(), Box<dyn Error>> {
-    // Nothing to do on macOS
     Ok(())
 }
 
@@ -885,6 +940,16 @@ pub fn sc_rstudio_(
     if let Some(ver) = version {
         let ver = check_installed(&ver.to_string())?;
         if !is_orthogonal(&ver)? {
+            OUTPUT.error(&format!(
+                "R {} is not orthogonal, it cannot run as a non-default. \
+                   Run `rig system make-orthogonal`.",
+                ver
+            ));
+            error!(
+                "R {} is not orthogonal, it cannot run as a non-default. \
+                   Run `rig system make-orthogonal`.",
+                ver
+            );
             bail!(
                 "R {} is not orthogonal, it cannot run as a non-default. \
                    Run `rig system make-orthogonal`.",
@@ -900,10 +965,14 @@ pub fn sc_rstudio_(
         args.append(&mut osvec!["--args", absa]);
     }
 
-    info!("Running open {}", osjoin(args.to_owned(), " "));
+    let cmdline = osjoin(args.to_owned(), " ");
+    OUTPUT.status(&format!("Running open {}", cmdline));
+    info!("Running open {}", cmdline);
 
     match run(os("open"), args, "open") {
         Err(e) => {
+            OUTPUT.error(&format!("RStudio failed to start: {}", e.to_string()));
+            error!("RStudio failed to start: {}", e.to_string());
             bail!("RStudio failed to start: {}", e.to_string());
         }
         _ => {}
@@ -935,11 +1004,12 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
     match std::os::unix::fs::symlink(&path, R_CUR) {
         Ok(_) => {}
         Err(_) => {
-            bail!(
-                "Could not change the default R version. :( To be able to\n        \
+            let msg = "Could not change the default R version. :( To be able to\n        \
                 change the default R version, you need to be an admin.\n        \
-                See the 'Users & Groups' section in the 'System Settings' app."
-            );
+                See the 'Users & Groups' section in the 'System Settings' app.";
+            OUTPUT.error(msg);
+            error!("{}", msg);
+            bail!(msg);
         }
     };
 
@@ -948,7 +1018,13 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
         debug!("Creating {}", r.display());
         let tgt = Path::new("/Library/Frameworks/R.framework/Resources/bin/R");
         match std::os::unix::fs::symlink(&tgt, &r) {
-            Err(e) => warn!("Cannot create missing /usr/local/bin/R: {}", e.to_string()),
+            Err(e) => {
+                OUTPUT.warn(&format!(
+                    "Cannot create missing /usr/local/bin/R: {}",
+                    e.to_string()
+                ));
+                warn!("Cannot create missing /usr/local/bin/R: {}", e.to_string())
+            }
             _ => {}
         };
     }
@@ -958,10 +1034,16 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
         debug!("Creating {}", rscript.display());
         let tgt = Path::new("/Library/Frameworks/R.framework/Resources/bin/Rscript");
         match std::os::unix::fs::symlink(&tgt, &rscript) {
-            Err(e) => warn!(
-                "Cannot create missing /usr/local/bin/Rscript: {}",
-                e.to_string()
-            ),
+            Err(e) => {
+                OUTPUT.warn(&format!(
+                    "Cannot create missing /usr/local/bin/Rscript: {}",
+                    e.to_string()
+                ));
+                warn!(
+                    "Cannot create missing /usr/local/bin/Rscript: {}",
+                    e.to_string()
+                )
+            }
             _ => {}
         };
     }
@@ -1021,7 +1103,23 @@ fn extract_pkg_version(filename: &OsStr) -> Result<RversionDir, Box<dyn Error>> 
         .output()?;
     let std = match String::from_utf8(out.stdout) {
         Ok(v) => v,
-        Err(err) => bail!("Cannot extract version from .pkg file: {}", err.to_string()),
+        Err(err) => {
+            OUTPUT.error(&format!(
+                "Cannot extract version from .pkg file {}: {}",
+                filename.to_string_lossy(),
+                err.to_string()
+            ));
+            error!(
+                "Cannot extract version from .pkg file {}: {}",
+                filename.to_string_lossy(),
+                err.to_string()
+            );
+            bail!(
+                "Cannot extract version from .pkg file {}: {}",
+                filename.to_string_lossy(),
+                err.to_string()
+            )
+        }
     };
 
     let lines = std.lines();
@@ -1029,7 +1127,18 @@ fn extract_pkg_version(filename: &OsStr) -> Result<RversionDir, Box<dyn Error>> 
     let lines: Vec<&str> = lines.filter(|l| re.is_match(l)).collect();
 
     if lines.len() == 0 {
-        bail!("Cannot extract version from .pkg file");
+        OUTPUT.error(&format!(
+            "Cannot extract version from .pkg file {}: no line with R version found",
+            filename.to_string_lossy()
+        ));
+        error!(
+            "Cannot extract version from .pkg file {}: no line with R version found",
+            filename.to_string_lossy()
+        );
+        bail!(
+            "Cannot extract version from .pkg file {}: no line with R version found",
+            filename.to_string_lossy()
+        );
     }
 
     let arm64 = Regex::new("ARM64")?;
@@ -1052,7 +1161,23 @@ fn extract_pkg_version(filename: &OsStr) -> Result<RversionDir, Box<dyn Error>> 
             .output()?;
         let std = match String::from_utf8(out.stdout) {
             Ok(v) => v,
-            Err(err) => bail!("Cannot extract version from .pkg file: {}", err.to_string()),
+            Err(err) => {
+                OUTPUT.error(&format!(
+                    "Cannot extract version from .pkg file {}: {}",
+                    filename.to_string_lossy(),
+                    err.to_string()
+                ));
+                error!(
+                    "Cannot extract version from .pkg file {}: {}",
+                    filename.to_string_lossy(),
+                    err.to_string()
+                );
+                bail!(
+                    "Cannot extract version from .pkg file {}: {}",
+                    filename.to_string_lossy(),
+                    err.to_string()
+                )
+            }
         };
 
         let mut lines = std.lines();
@@ -1080,6 +1205,10 @@ fn extract_pkg_version(filename: &OsStr) -> Result<RversionDir, Box<dyn Error>> 
         };
     }
 
+    OUTPUT.success(&format!(
+        "This is R {} for {}, named {}",
+        ver, arch, installdir
+    ));
     info!("This is R {} for {}, named {}", ver, arch, installdir);
 
     let res = RversionDir {

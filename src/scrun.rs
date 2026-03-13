@@ -5,12 +5,13 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use clap::ArgMatches;
+use log::{error, trace, warn};
 use regex::Regex;
 use serde_yaml;
 use simple_error::*;
-use simplelog::{trace, warn};
 
 use crate::common::*;
+use crate::output::OUTPUT;
 
 #[cfg(target_os = "macos")]
 use crate::macos::*;
@@ -58,6 +59,7 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
         let app_type: Option<&String> = args.get_one("app-type");
         if cmdargs[0].contains("::") {
             if app_type.is_some() {
+                OUTPUT.warn("'--app-type' argument ignored for package scripts");
                 warn!("'--app-type' argument ignored for package scripts");
             }
             return sc_run_package_script(rbin, rargs, cmdargs, dry_run);
@@ -81,6 +83,10 @@ fn ignore_sigint() {
     // Ignore CTRL+C for Rust, the R process will still get it
     let sigint = ctrlc::set_handler(|| {});
     if let Err(e) = sigint {
+        OUTPUT.warn(&format!(
+            "Could not set up signal handler for SIGINT (CTRL+C): {}",
+            e.to_string()
+        ));
         warn!(
             "Could not set up signal handler for SIGINT (CTRL+C): {}",
             e.to_string()
@@ -195,11 +201,18 @@ fn sc_run_app(
     let proj = app[0].to_string();
     let projpath = std::path::Path::new(&proj);
     if !projpath.exists() {
+        OUTPUT.error(&format!("R project directory at '{}' does not exist", proj));
+        error!("R project directory at '{}' does not exist", proj);
         bail!("R project directory at '{}' does not exist", proj);
     }
     let files: Vec<String> = match std::fs::read_dir(&proj) {
         Ok(x) => x.map(|x| utf8_file_name(x)).collect(),
         Err(e) => {
+            OUTPUT.error(&format!(
+                "Could no access files in R project at '{}': {}",
+                &proj, &e
+            ));
+            error!("Could no access files in R project at '{}': {}", &proj, &e);
             bail!("Could no access files in R project at '{}': {}", &proj, &e);
         }
     };
@@ -227,7 +240,11 @@ fn sc_run_app(
         }
         "rmd-shiny" | "rmd-static" => "rmarkdown::run('".to_string() + &primary_doc + "')",
         "static" => "utils::browseURL('".to_string() + &primary_doc + "')",
-        &_ => bail!("Unknown app type: {}", app_type),
+        &_ => {
+            OUTPUT.error(&format!("Unknown app type: {}", app_type));
+            error!("Unknown app type: {}", app_type);
+            bail!("Unknown app type: {}", app_type)
+        }
     };
 
     let mut args2 = args;
@@ -274,6 +291,14 @@ fn detect_primary_doc(
             .filter(|x| re_idx.is_match(x))
             .collect::<Vec<_>>();
         if idxs.len() == 0 {
+            OUTPUT.error(&format!(
+                "Could not find a primary document (index.html, index.Rmd, or index.qmd) in project at '{}'.",
+                project
+            ));
+            error!(
+                "Could not find a primary document (index.html, index.Rmd, or index.qmd) in project at '{}'.",
+                project
+            );
             bail!(
                 "Could not find the primary document in project at {}",
                 project
@@ -359,6 +384,12 @@ fn is_shiny_rmd(project: &str, file: &str) -> Result<bool, Box<dyn Error>> {
         Ok(None) => return Ok(false),
         Ok(Some(m)) => m,
         Err(e) => {
+            OUTPUT.error(&format!(
+                "Cannot read YAML header from {}: {}",
+                file.display(),
+                e
+            ));
+            error!("Cannot read YAML header from {}: {}", file.display(), e);
             bail!("Cannot read YAML header from {}: {}", file.display(), e);
         }
     };
@@ -439,6 +470,16 @@ fn read_yaml_header_string(file: &PathBuf) -> Result<Option<String>, Box<dyn Err
         let line = match line.unwrap() {
             Ok(l) => l,
             Err(e) => {
+                OUTPUT.error(&format!(
+                    "Failed to read YAML header from file at {}: {}",
+                    file.display(),
+                    e
+                ));
+                error!(
+                    "Failed to read YAML header from file at {}: {}",
+                    file.display(),
+                    e
+                );
                 bail!(
                     "Failed to read YAML header from file at {}: {}",
                     file.display(),
@@ -472,6 +513,16 @@ fn read_yaml_header_string(file: &PathBuf) -> Result<Option<String>, Box<dyn Err
         let line = match line.unwrap() {
             Ok(l) => l,
             Err(e) => {
+                OUTPUT.error(&format!(
+                    "Failed to read YAML header from file at {}: {}",
+                    file.display(),
+                    e
+                ));
+                error!(
+                    "Failed to read YAML header from file at {}: {}",
+                    file.display(),
+                    e
+                );
                 bail!(
                     "Failed to read YAML header from file at {}: {}",
                     file.display(),
@@ -531,6 +582,11 @@ fn sc_run_package_script(
     }
 
     if script.is_none() {
+        OUTPUT.error(&format!(
+            "Could not find script '{}' in package '{}'.",
+            fun, pkg
+        ));
+        error!("Could not find script '{}' in package '{}'.", fun, pkg);
         bail!("Could not find script '{}' in package '{}'.", fun, pkg);
     }
     let script = script.unwrap();

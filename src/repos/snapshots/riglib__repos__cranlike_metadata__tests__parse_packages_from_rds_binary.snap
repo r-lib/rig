@@ -1,0 +1,907 @@
+---
+source: src/repos/cranlike_metadata.rs
+expression: packages
+---
+[
+    Package {
+        name: "cli",
+        version: RPackageVersion {
+            components: [
+                3,
+                6,
+                5,
+            ],
+            original: "3.6.5",
+        },
+        dependencies: PackageDependencies {
+            dependencies: [
+                DepVersionSpec {
+                    name: "R",
+                    types: [
+                        Depends,
+                    ],
+                    constraints: [
+                        VersionConstraint {
+                            constraint_type: GreaterOrEqual,
+                            version: RPackageVersion {
+                                components: [
+                                    3,
+                                    4,
+                                ],
+                                original: "3.4",
+                            },
+                        },
+                    ],
+                },
+                DepVersionSpec {
+                    name: "utils",
+                    types: [
+                        Imports,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "callr",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "covr",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "crayon",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "digest",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "glue",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [
+                        VersionConstraint {
+                            constraint_type: GreaterOrEqual,
+                            version: RPackageVersion {
+                                components: [
+                                    1,
+                                    6,
+                                    0,
+                                ],
+                                original: "1.6.0",
+                            },
+                        },
+                    ],
+                },
+                DepVersionSpec {
+                    name: "grDevices",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "htmltools",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "htmlwidgets",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "knitr",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "methods",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "processx",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "ps",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [
+                        VersionConstraint {
+                            constraint_type: GreaterOrEqual,
+                            version: RPackageVersion {
+                                components: [
+                                    1,
+                                    3,
+                                    4,
+                                    9000,
+                                ],
+                                original: "1.3.4.9000",
+                            },
+                        },
+                    ],
+                },
+                DepVersionSpec {
+                    name: "rlang",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [
+                        VersionConstraint {
+                            constraint_type: GreaterOrEqual,
+                            version: RPackageVersion {
+                                components: [
+                                    1,
+                                    0,
+                                    2,
+                                    9003,
+                                ],
+                                original: "1.0.2.9003",
+                            },
+                        },
+                    ],
+                },
+                DepVersionSpec {
+                    name: "rmarkdown",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "rprojroot",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "rstudioapi",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "testthat",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [
+                        VersionConstraint {
+                            constraint_type: GreaterOrEqual,
+                            version: RPackageVersion {
+                                components: [
+                                    3,
+                                    2,
+                                    0,
+                                ],
+                                original: "3.2.0",
+                            },
+                        },
+                    ],
+                },
+                DepVersionSpec {
+                    name: "tibble",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "whoami",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "withr",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+            ],
+        },
+        download_url: None,
+        file: Some(
+            "cli_3.6.5.tgz",
+        ),
+        path: None,
+        built: Some(
+            DCFBuilt {
+                r: "4.6.0",
+                platform: Some(
+                    "aarch64-apple-darwin23",
+                ),
+                timestamp: "2026-02-05 01:07:34 UTC",
+                os_type: "unix",
+            },
+        ),
+        license: Some(
+            "MIT + file LICENSE",
+        ),
+        platform: None,
+        arch: None,
+        graphics_api_version: None,
+        internals_id: None,
+        filesize: None,
+    },
+    Package {
+        name: "dplyr",
+        version: RPackageVersion {
+            components: [
+                1,
+                2,
+                0,
+            ],
+            original: "1.2.0",
+        },
+        dependencies: PackageDependencies {
+            dependencies: [
+                DepVersionSpec {
+                    name: "R",
+                    types: [
+                        Depends,
+                    ],
+                    constraints: [
+                        VersionConstraint {
+                            constraint_type: GreaterOrEqual,
+                            version: RPackageVersion {
+                                components: [
+                                    4,
+                                    1,
+                                    0,
+                                ],
+                                original: "4.1.0",
+                            },
+                        },
+                    ],
+                },
+                DepVersionSpec {
+                    name: "cli",
+                    types: [
+                        Imports,
+                    ],
+                    constraints: [
+                        VersionConstraint {
+                            constraint_type: GreaterOrEqual,
+                            version: RPackageVersion {
+                                components: [
+                                    3,
+                                    6,
+                                    2,
+                                ],
+                                original: "3.6.2",
+                            },
+                        },
+                    ],
+                },
+                DepVersionSpec {
+                    name: "generics",
+                    types: [
+                        Imports,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "glue",
+                    types: [
+                        Imports,
+                    ],
+                    constraints: [
+                        VersionConstraint {
+                            constraint_type: GreaterOrEqual,
+                            version: RPackageVersion {
+                                components: [
+                                    1,
+                                    3,
+                                    2,
+                                ],
+                                original: "1.3.2",
+                            },
+                        },
+                    ],
+                },
+                DepVersionSpec {
+                    name: "lifecycle",
+                    types: [
+                        Imports,
+                    ],
+                    constraints: [
+                        VersionConstraint {
+                            constraint_type: GreaterOrEqual,
+                            version: RPackageVersion {
+                                components: [
+                                    1,
+                                    0,
+                                    5,
+                                ],
+                                original: "1.0.5",
+                            },
+                        },
+                    ],
+                },
+                DepVersionSpec {
+                    name: "magrittr",
+                    types: [
+                        Imports,
+                    ],
+                    constraints: [
+                        VersionConstraint {
+                            constraint_type: GreaterOrEqual,
+                            version: RPackageVersion {
+                                components: [
+                                    1,
+                                    5,
+                                ],
+                                original: "1.5",
+                            },
+                        },
+                    ],
+                },
+                DepVersionSpec {
+                    name: "methods",
+                    types: [
+                        Imports,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "pillar",
+                    types: [
+                        Imports,
+                    ],
+                    constraints: [
+                        VersionConstraint {
+                            constraint_type: GreaterOrEqual,
+                            version: RPackageVersion {
+                                components: [
+                                    1,
+                                    9,
+                                    0,
+                                ],
+                                original: "1.9.0",
+                            },
+                        },
+                    ],
+                },
+                DepVersionSpec {
+                    name: "R6",
+                    types: [
+                        Imports,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "rlang",
+                    types: [
+                        Imports,
+                    ],
+                    constraints: [
+                        VersionConstraint {
+                            constraint_type: GreaterOrEqual,
+                            version: RPackageVersion {
+                                components: [
+                                    1,
+                                    1,
+                                    7,
+                                ],
+                                original: "1.1.7",
+                            },
+                        },
+                    ],
+                },
+                DepVersionSpec {
+                    name: "tibble",
+                    types: [
+                        Imports,
+                    ],
+                    constraints: [
+                        VersionConstraint {
+                            constraint_type: GreaterOrEqual,
+                            version: RPackageVersion {
+                                components: [
+                                    3,
+                                    2,
+                                    0,
+                                ],
+                                original: "3.2.0",
+                            },
+                        },
+                    ],
+                },
+                DepVersionSpec {
+                    name: "tidyselect",
+                    types: [
+                        Imports,
+                    ],
+                    constraints: [
+                        VersionConstraint {
+                            constraint_type: GreaterOrEqual,
+                            version: RPackageVersion {
+                                components: [
+                                    1,
+                                    2,
+                                    0,
+                                ],
+                                original: "1.2.0",
+                            },
+                        },
+                    ],
+                },
+                DepVersionSpec {
+                    name: "utils",
+                    types: [
+                        Imports,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "vctrs",
+                    types: [
+                        Imports,
+                    ],
+                    constraints: [
+                        VersionConstraint {
+                            constraint_type: GreaterOrEqual,
+                            version: RPackageVersion {
+                                components: [
+                                    0,
+                                    7,
+                                    1,
+                                ],
+                                original: "0.7.1",
+                            },
+                        },
+                    ],
+                },
+                DepVersionSpec {
+                    name: "broom",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "covr",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "DBI",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "dbplyr",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [
+                        VersionConstraint {
+                            constraint_type: GreaterOrEqual,
+                            version: RPackageVersion {
+                                components: [
+                                    2,
+                                    2,
+                                    1,
+                                ],
+                                original: "2.2.1",
+                            },
+                        },
+                    ],
+                },
+                DepVersionSpec {
+                    name: "ggplot2",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "knitr",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "Lahman",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "lobstr",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "nycflights13",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "purrr",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "rmarkdown",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "RSQLite",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "stringi",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [
+                        VersionConstraint {
+                            constraint_type: GreaterOrEqual,
+                            version: RPackageVersion {
+                                components: [
+                                    1,
+                                    7,
+                                    6,
+                                ],
+                                original: "1.7.6",
+                            },
+                        },
+                    ],
+                },
+                DepVersionSpec {
+                    name: "testthat",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [
+                        VersionConstraint {
+                            constraint_type: GreaterOrEqual,
+                            version: RPackageVersion {
+                                components: [
+                                    3,
+                                    1,
+                                    5,
+                                ],
+                                original: "3.1.5",
+                            },
+                        },
+                    ],
+                },
+                DepVersionSpec {
+                    name: "tidyr",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [
+                        VersionConstraint {
+                            constraint_type: GreaterOrEqual,
+                            version: RPackageVersion {
+                                components: [
+                                    1,
+                                    3,
+                                    0,
+                                ],
+                                original: "1.3.0",
+                            },
+                        },
+                    ],
+                },
+                DepVersionSpec {
+                    name: "withr",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+            ],
+        },
+        download_url: None,
+        file: Some(
+            "dplyr_1.2.0.tgz",
+        ),
+        path: None,
+        built: Some(
+            DCFBuilt {
+                r: "4.6.0",
+                platform: Some(
+                    "aarch64-apple-darwin23",
+                ),
+                timestamp: "2026-02-03 12:55:53 UTC",
+                os_type: "unix",
+            },
+        ),
+        license: Some(
+            "MIT + file LICENSE",
+        ),
+        platform: None,
+        arch: None,
+        graphics_api_version: None,
+        internals_id: None,
+        filesize: None,
+    },
+    Package {
+        name: "rlang",
+        version: RPackageVersion {
+            components: [
+                1,
+                1,
+                7,
+            ],
+            original: "1.1.7",
+        },
+        dependencies: PackageDependencies {
+            dependencies: [
+                DepVersionSpec {
+                    name: "R",
+                    types: [
+                        Depends,
+                    ],
+                    constraints: [
+                        VersionConstraint {
+                            constraint_type: GreaterOrEqual,
+                            version: RPackageVersion {
+                                components: [
+                                    4,
+                                    0,
+                                    0,
+                                ],
+                                original: "4.0.0",
+                            },
+                        },
+                    ],
+                },
+                DepVersionSpec {
+                    name: "utils",
+                    types: [
+                        Imports,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "cli",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [
+                        VersionConstraint {
+                            constraint_type: GreaterOrEqual,
+                            version: RPackageVersion {
+                                components: [
+                                    3,
+                                    1,
+                                    0,
+                                ],
+                                original: "3.1.0",
+                            },
+                        },
+                    ],
+                },
+                DepVersionSpec {
+                    name: "covr",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "crayon",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "desc",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "fs",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "glue",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "knitr",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "magrittr",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "methods",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "pillar",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "pkgload",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "rmarkdown",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "stats",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "testthat",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [
+                        VersionConstraint {
+                            constraint_type: GreaterOrEqual,
+                            version: RPackageVersion {
+                                components: [
+                                    3,
+                                    2,
+                                    0,
+                                ],
+                                original: "3.2.0",
+                            },
+                        },
+                    ],
+                },
+                DepVersionSpec {
+                    name: "tibble",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "usethis",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "vctrs",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [
+                        VersionConstraint {
+                            constraint_type: GreaterOrEqual,
+                            version: RPackageVersion {
+                                components: [
+                                    0,
+                                    2,
+                                    3,
+                                ],
+                                original: "0.2.3",
+                            },
+                        },
+                    ],
+                },
+                DepVersionSpec {
+                    name: "withr",
+                    types: [
+                        Suggests,
+                    ],
+                    constraints: [],
+                },
+                DepVersionSpec {
+                    name: "winch",
+                    types: [
+                        Enhances,
+                    ],
+                    constraints: [],
+                },
+            ],
+        },
+        download_url: None,
+        file: Some(
+            "rlang_1.1.7.tgz",
+        ),
+        path: None,
+        built: Some(
+            DCFBuilt {
+                r: "4.6.0",
+                platform: Some(
+                    "aarch64-apple-darwin23",
+                ),
+                timestamp: "2026-02-04 22:57:54 UTC",
+                os_type: "unix",
+            },
+        ),
+        license: Some(
+            "MIT + file LICENSE",
+        ),
+        platform: None,
+        arch: None,
+        graphics_api_version: None,
+        internals_id: None,
+        filesize: None,
+    },
+]
