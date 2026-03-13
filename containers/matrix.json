@@ -312,6 +312,49 @@
         ]
     },
     {
+        "name": "opensuse-16.0-release",
+        "aliases": [
+            "opensuse-16.0-release",
+            "opensuse",
+            "opensuse-16.0",
+            "opensuse-release",
+            "release"
+        ],
+        "dir": "suse",
+        "args": [
+            "RELEASE=16.0",
+            "RVERSION=release"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/opensuse-16.0-release:latest",
+            "ghcr.io/r-lib/rig/opensuse-16.0:latest",
+            "ghcr.io/r-lib/rig/opensuse-latest-release:latest",
+            "ghcr.io/r-lib/rig/opensuse-latest:latest",
+            "ghcr.io/r-lib/rig/opensuse-release:latest",
+            "ghcr.io/r-lib/rig/opensuse:latest"
+        ]
+    },
+    {
+        "name": "opensuse-16.0-devel",
+        "aliases": [
+            "opensuse-16.0-devel",
+            "opensuse",
+            "opensuse-16.0",
+            "opensuse-devel",
+            "devel"
+        ],
+        "dir": "suse",
+        "args": [
+            "RELEASE=16.0",
+            "RVERSION=devel"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/opensuse-16.0-devel:latest",
+            "ghcr.io/r-lib/rig/opensuse-latest-devel:latest",
+            "ghcr.io/r-lib/rig/opensuse-devel:latest"
+        ]
+    },
+    {
         "name": "opensuse-15.6-release",
         "aliases": [
             "opensuse-15.6-release",
@@ -327,11 +370,7 @@
         ],
         "tags": [
             "ghcr.io/r-lib/rig/opensuse-15.6-release:latest",
-            "ghcr.io/r-lib/rig/opensuse-15.6:latest",
-            "ghcr.io/r-lib/rig/opensuse-latest-release:latest",
-            "ghcr.io/r-lib/rig/opensuse-latest:latest",
-            "ghcr.io/r-lib/rig/opensuse-release:latest",
-            "ghcr.io/r-lib/rig/opensuse:latest"
+            "ghcr.io/r-lib/rig/opensuse-15.6:latest"
         ]
     },
     {
@@ -349,9 +388,7 @@
             "RVERSION=devel"
         ],
         "tags": [
-            "ghcr.io/r-lib/rig/opensuse-15.6-devel:latest",
-            "ghcr.io/r-lib/rig/opensuse-latest-devel:latest",
-            "ghcr.io/r-lib/rig/opensuse-devel:latest"
+            "ghcr.io/r-lib/rig/opensuse-15.6-devel:latest"
         ]
     }
 ]

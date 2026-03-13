@@ -386,8 +386,10 @@ containers:
 | `ghcr.io/r-lib/rig/fedora-43-devel`       | Fedora 43          | devel          | `fedora-devel`, `fedora-latest-devel`                                                           |
 | `ghcr.io/r-lib/rig/fedora-42-release`     | Fedora 42          | release        | `fedora-42`                                                                                     |
 | `ghcr.io/r-lib/rig/fedora-42-devel`       | Fedora 42          | devel          |                                                                                                 |
-| `ghcr.io/r-lib/rig/opensuse-15.6-release` | OpenSUSE Leap 15.6 | release        | `opensuse`, `opensuse-release`, `opensuse-latest`, `opensuse-latest-release`, `opensuse-15.6`   |
-| `ghcr.io/r-lib/rig/opensuse-15.6-devel`   | OpenSUSE Leap 15.6 | devel (daily)  | `opensuse-devel`, `opensuse-latest-devel`                                                       |
+| `ghcr.io/r-lib/rig/opensuse-16.0-release` | OpenSUSE Leap 16.0 | release        | `opensuse`, `opensuse-release`, `opensuse-latest`, `opensuse-latest-release`, `opensuse-16.0`   |
+| `ghcr.io/r-lib/rig/opensuse-16.0-devel`   | OpenSUSE Leap 16.0 | devel (daily)  | `opensuse-devel`, `opensuse-latest-devel`                                                       |
+| `ghcr.io/r-lib/rig/opensuse-15.6-release` | OpenSUSE Leap 15.6 | release        | `opensuse-15.6`                                                                                 |
+| `ghcr.io/r-lib/rig/opensuse-15.6-devel`   | OpenSUSE Leap 15.6 | devel (daily)  |                                                                                                 |
 
 For convenience, we also create these tags:
 
@@ -412,9 +414,10 @@ For convenience, we also create these tags:
 | `ghcr.io/r-lib/rig/fedora-43`      | `fedora-43-release`     | Latest R release on Fedora 43.       |
 | `ghcr.io/r-lib/rig/fedora-42`      | `fedora-42-release`     | Latest R release on Fedora 42.       |
 | `ghcr.io/r-lib/rig/fedora-devel`   | `fedora-43-devel`       | R devel on latest Fedora.            |
-| `ghcr.io/r-lib/rig/opensuse`       | `opensuse-15.6-release` | Latest R release on latest OpenSUSE. |
+| `ghcr.io/r-lib/rig/opensuse`       | `opensuse-16.0-release` | Latest R release on latest OpenSUSE. |
+| `ghcr.io/r-lib/rig/opensuse-16.0`  | `opensuse-16.0-release` | Latest R release on OpenSUSE 16.0.   |
 | `ghcr.io/r-lib/rig/opensuse-15.6`  | `opensuse-15.6-release` | Latest R release on OpenSUSE 15.6.   |
-| `ghcr.io/r-lib/rig/opensuse-devel` | `opensuse-15.6-devel`   | R devel on latest OpenSUSE.          |
+| `ghcr.io/r-lib/rig/opensuse-devel` | `opensuse-16.0-devel`   | R devel on latest OpenSUSE.          |
 
 See all container images on
 [GitHub](https://github.com/orgs/r-lib/packages?repo_name=rig).
