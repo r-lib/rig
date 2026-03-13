@@ -56,7 +56,10 @@ teardown() {
     fi
     run rig default 4.5.1
     [[ "$status" -eq 0 ]]
-    run rig default
+    run rig -q default
+    [[ "$status" -eq 0 ]]
+    echo "Output was:"
+    echo "$output"
     [[ "$output" = "4.5.1" ]]
     run rig default 1.0
     [[ ! "$status" -eq 0 ]]
