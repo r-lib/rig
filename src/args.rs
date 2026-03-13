@@ -880,6 +880,7 @@ pub fn rig_app() -> Command {
                 .action(clap::ArgAction::Append),
         );
 
+    #[cfg(debug_assertions)]
     let cmd_proj = Command::new("proj")
         .about("Manage R projects (experimental)")
         .display_order(0)
@@ -989,7 +990,10 @@ pub fn rig_app() -> Command {
                         .required(false),
                 ),
         );
-    rig = rig.subcommand(cmd_proj);
+    #[cfg(debug_assertions)]
+    {
+        rig = rig.subcommand(cmd_proj);
+    }
 
     let cmd_repos_setup = Command::new("setup")
         .about("Set up R package repositories")
