@@ -33,9 +33,6 @@ mod linux;
 #[cfg(target_os = "linux")]
 use linux::*;
 
-#[cfg(target_os = "linux")]
-use platform::*;
-
 use resolve::*;
 
 mod alias;

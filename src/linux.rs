@@ -7,8 +7,6 @@ use std::ffi::OsString;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::OnceLock;
-use std::{file, line};
 
 use clap::ArgMatches;
 use log::{debug, error, info, trace, warn};
@@ -319,7 +317,6 @@ fn add_package(path: &OsStr, platform: &OsVersion) -> Result<String, Box<dyn Err
 
     let get_package_name = format_cmd_args(tools.get_package_name, path);
     let cmd0 = get_package_name[0].to_owned();
-    let oscmd = get_package_name.join(&OsString::from(" "));
     let out = Command::new(cmd0)
         .args(get_package_name[1..].to_vec())
         .output()?;
@@ -348,7 +345,6 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         let pkgname = tools.package_name.replace("{}", &ver);
         let opkgname = OsStr::new(&pkgname);
         let cmd = format_cmd_args(tools.is_installed.clone(), opkgname);
-        let oscmd = cmd.join(&OsString::from(" "));
         let cmd0 = cmd[0].to_owned();
         let out = Command::new(cmd0).args(cmd[1..].to_vec()).output()?;
 

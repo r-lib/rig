@@ -18,13 +18,10 @@ use crate::windows::*;
 #[cfg(target_os = "linux")]
 use crate::linux::*;
 
-#[cfg(target_os = "linux")]
-use crate::platform::*;
-
 mod config;
 pub use config::{get_repos_config, RepoEntry, Repository};
 mod interpret_repos_args;
-pub use interpret_repos_args::{interpret_repos_args, ReposSetupArgs};
+pub use interpret_repos_args::interpret_repos_args;
 mod repos_available;
 use repos_available::sc_repos_available;
 mod repos_list;

@@ -1,4 +1,5 @@
 use std::error::Error;
+#[cfg(target_os = "macos")]
 use std::ffi::CStr;
 use std::sync::OnceLock;
 

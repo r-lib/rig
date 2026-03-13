@@ -25,6 +25,7 @@ use crate::output::OUTPUT;
 use crate::resolve::get_resolve;
 #[cfg(target_os = "windows")]
 use crate::rversion::Rversion;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use crate::utils::*;
 
 // ------------------------------------------------------------------------
@@ -383,6 +384,7 @@ pub fn download_first_available_(
 /// Each download will try its URLs in order until one succeeds.
 /// Returns a vector of results, one for each download request.
 /// Each result is Ok((true, etag)) if downloaded, Ok((false, None)) if cached, or Err if all URLs failed.
+#[cfg(test)]
 pub fn download_multiple_first_available_(
     downloads: Vec<(Vec<String>, PathBuf)>,
     update_older: Option<Duration>,
@@ -401,6 +403,7 @@ pub fn download_multiple_first_available_(
     download_multiple_first_available__(client_, downloads, update_older)
 }
 
+#[cfg(test)]
 #[tokio::main]
 async fn download_multiple_first_available__(
     client: &reqwest::Client,
@@ -411,6 +414,7 @@ async fn download_multiple_first_available__(
 }
 
 /// Async implementation: download multiple files concurrently.
+#[cfg(test)]
 async fn download_multiple_first_available(
     client: &reqwest::Client,
     downloads: Vec<(Vec<String>, PathBuf)>,

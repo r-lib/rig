@@ -365,6 +365,7 @@ where
 ///
 /// This is a convenience wrapper around `install_package_tree_with_progress` that doesn't
 /// provide progress callbacks.
+#[allow(dead_code)]
 pub async fn install_package_tree(
     packages: Vec<PackageInfo>,
     library_path: &Path,
