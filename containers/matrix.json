@@ -236,43 +236,6 @@
         ]
     },
     {
-        "name": "fedora-41-release",
-        "aliases": [
-            "fedora-41-release",
-            "fedora",
-            "fedora-41",
-            "fedora-release",
-            "release"
-        ],
-        "dir": "fedora",
-        "args": [
-            "RELEASE=41",
-            "RVERSION=release"
-        ],
-        "tags": [
-            "ghcr.io/r-lib/rig/fedora-41-release:latest",
-            "ghcr.io/r-lib/rig/fedora-41:latest"
-        ]
-    },
-    {
-        "name": "fedora-41-devel",
-        "aliases": [
-            "fedora-41-devel",
-            "fedora",
-            "fedora-41",
-            "fedora-devel",
-            "devel"
-        ],
-        "dir": "fedora",
-        "args": [
-            "RELEASE=41",
-            "RVERSION=devel"
-        ],
-        "tags": [
-            "ghcr.io/r-lib/rig/fedora-41-devel:latest"
-        ]
-    },
-    {
         "name": "opensuse-15.6-release",
         "aliases": [
             "opensuse-15.6-release",

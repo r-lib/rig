@@ -382,8 +382,6 @@ containers:
 | `ghcr.io/r-lib/rig/debian-12-devel`       | Debian 12          | devel (daily)  | `debian-devel`, `debian-latest-devel`                                                           |
 | `ghcr.io/r-lib/rig/fedora-42-release`     | Fedora 42          | release        | `fedora`, `fedora-release`, `fedora-latest`, `fedora-latest-release`, `fedora-42`               |
 | `ghcr.io/r-lib/rig/fedora-42-devel`       | Fedora 42          | devel          | `fedora-devel`, `fedora-latest-devel`                                                           |
-| `ghcr.io/r-lib/rig/fedora-41-release`     | Fedora 41          | release        | `fedora-41`                                                                                     |
-| `ghcr.io/r-lib/rig/fedora-41-devel`       | Fedora 41          | devel          |                                                                                                 |
 | `ghcr.io/r-lib/rig/opensuse-15.6-release` | OpenSUSE Leap 15.6 | release        | `opensuse`, `opensuse-release`, `opensuse-latest`, `opensuse-latest-release`, `opensuse-15.6`   |
 | `ghcr.io/r-lib/rig/opensuse-15.6-devel`   | OpenSUSE Leap 15.6 | devel (daily)  | `opensuse-devel`, `opensuse-latest-devel`                                                       |
 
@@ -408,7 +406,6 @@ For convenience, we also create these tags:
 | `ghcr.io/r-lib/rig/fedora`         | `fedora-42-release`     | Latest R release on latest Fedora.   |
 | `ghcr.io/r-lib/rig/fedora-42`      | `fedora-42-release`     | Latest R release on Fedora 42.       |
 | `ghcr.io/r-lib/rig/fedora-devel`   | `fedora-42-devel`       | R devel on latest Fedora.            |
-| `ghcr.io/r-lib/rig/fedora-41`      | `fedora-41-release`     | Latest R release on Fedora 41.       |
 | `ghcr.io/r-lib/rig/opensuse`       | `opensuse-15.6-release` | Latest R release on latest OpenSUSE. |
 | `ghcr.io/r-lib/rig/opensuse-15.6`  | `opensuse-15.6-release` | Latest R release on OpenSUSE 15.6.   |
 | `ghcr.io/r-lib/rig/opensuse-devel` | `opensuse-15.6-devel`   | R devel on latest OpenSUSE.          |
