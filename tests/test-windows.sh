@@ -89,7 +89,7 @@ teardown() {
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
-    run rig default
+    run rig -q default
     [[ "$output" = "4.5.0" ]]
     run rig default 1.0
     echo "status = ${status}"
