@@ -208,11 +208,7 @@
         ],
         "tags": [
             "ghcr.io/r-lib/rig/fedora-42-release:latest",
-            "ghcr.io/r-lib/rig/fedora-42:latest",
-            "ghcr.io/r-lib/rig/fedora-latest-release:latest",
-            "ghcr.io/r-lib/rig/fedora-latest:latest",
-            "ghcr.io/r-lib/rig/fedora-release:latest",
-            "ghcr.io/r-lib/rig/fedora:latest"
+            "ghcr.io/r-lib/rig/fedora-42:latest"
         ]
     },
     {
@@ -230,7 +226,48 @@
             "RVERSION=devel"
         ],
         "tags": [
-            "ghcr.io/r-lib/rig/fedora-42-devel:latest",
+            "ghcr.io/r-lib/rig/fedora-42-devel:latest"
+        ]
+    },
+    {
+        "name": "fedora-43-release",
+        "aliases": [
+            "fedora-43-release",
+            "fedora",
+            "fedora-43",
+            "fedora-release",
+            "release"
+        ],
+        "dir": "fedora",
+        "args": [
+            "RELEASE=43",
+            "RVERSION=release"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/fedora-43-release:latest",
+            "ghcr.io/r-lib/rig/fedora-43:latest",
+            "ghcr.io/r-lib/rig/fedora-latest-release:latest",
+            "ghcr.io/r-lib/rig/fedora-latest:latest",
+            "ghcr.io/r-lib/rig/fedora-release:latest",
+            "ghcr.io/r-lib/rig/fedora:latest"
+        ]
+    },
+    {
+        "name": "fedora-43-devel",
+        "aliases": [
+            "fedora-43-devel",
+            "fedora",
+            "fedora-43",
+            "fedora-devel",
+            "devel"
+        ],
+        "dir": "fedora",
+        "args": [
+            "RELEASE=43",
+            "RVERSION=devel"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/fedora-43-devel:latest",
             "ghcr.io/r-lib/rig/fedora-latest-devel:latest",
             "ghcr.io/r-lib/rig/fedora-devel:latest"
         ]
