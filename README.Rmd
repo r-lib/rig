@@ -397,8 +397,10 @@ Name                                      | OS                 | R version      
 `ghcr.io/r-lib/rig/ubuntu-22.04-devel`    | Ubuntu 22.04       | devel (daily)  | `devel`, `ubuntu-devel`, `ubuntu-latest-devel`
 `ghcr.io/r-lib/rig/ubuntu-20.04-release`  | Ubuntu 20.04       | release        | `ubuntu-20.04`
 `ghcr.io/r-lib/rig/ubuntu-20.04-devel`    | Ubuntu 20.04       | devel (daily)  |
-`ghcr.io/r-lib/rig/debian-12-release`     | Debian 12          | release        | `debian`, `debian-release`, `debian-latest`, `debian-latest-release`, `debian-12`
-`ghcr.io/r-lib/rig/debian-12-devel`       | Debian 12          | devel (daily)  | `debian-devel`, `debian-latest-devel`
+`ghcr.io/r-lib/rig/debian-13-release`     | Debian 13          | release        | `debian`, `debian-release`, `debian-latest`, `debian-latest-release`, `debian-13`
+`ghcr.io/r-lib/rig/debian-13-devel`       | Debian 13          | devel (daily)  | `debian-devel`, `debian-latest-devel`
+`ghcr.io/r-lib/rig/debian-12-release`     | Debian 12          | release        | `debian-12`
+`ghcr.io/r-lib/rig/debian-12-devel`       | Debian 12          | devel (daily)  |
 `ghcr.io/r-lib/rig/fedora-43-release`     | Fedora 43          | release        | `fedora`, `fedora-release`, `fedora-latest`, `fedora-latest-release`, `fedora-43`
 `ghcr.io/r-lib/rig/fedora-43-devel`       | Fedora 43          | devel          | `fedora-devel`, `fedora-latest-devel`
 `ghcr.io/r-lib/rig/fedora-42-release`     | Fedora 42          | release        | `fedora-42`
@@ -408,7 +410,7 @@ Name                                      | OS                 | R version      
 
 For convenience, we also create these tags:
 
-Tag                                | Image                   | Description
+Tag                                | Current Image           | Description
 -----------------------------------+-------------------------+------------------------------------
 `ghcr.io/r-lib/rig/r`              | `ubuntu-24.04-multi`    | Last 6 R versions on latest Ubuntu.
 `ghcr.io/r-lib/rig/rig`            | "                       | "
@@ -421,9 +423,10 @@ Tag                                | Image                   | Description
 `ghcr.io/r-lib/rig/ubuntu-devel`   | `ubuntu-24.04-devel`    | R devel on latest Ubuntu.
 `ghcr.io/r-lib/rig/ubuntu-22.04`   | `ubuntu-22.04-release`  | Latest R release on Ubuntu 22.04.
 `ghcr.io/r-lib/rig/ubuntu-20.04`   | `ubuntu-20.04-release`  | Latest R release on Ubuntu 20.04.
-`ghcr.io/r-lib/rig/debian`         | `debian-12-release`     | Latest R release on latest Debian.
+`ghcr.io/r-lib/rig/debian`         | `debian-13-release`     | Latest R release on latest Debian.
+`ghcr.io/r-lib/rig/debian-13`      | `debian-13-release`     | Latest R release on Debian 13.
 `ghcr.io/r-lib/rig/debian-12`      | `debian-12-release`     | Latest R release on Debian 12.
-`ghcr.io/r-lib/rig/debian-devel`   | `debian-12-devel`       | R devel on latest Debian.
+`ghcr.io/r-lib/rig/debian-devel`   | `debian-13-devel`       | R devel on latest Debian.
 `ghcr.io/r-lib/rig/fedora`         | `fedora-43-release`     | Latest R release on latest Fedora.
 `ghcr.io/r-lib/rig/fedora-43`      | `fedora-43-release`     | Latest R release on Fedora 43.
 `ghcr.io/r-lib/rig/fedora-42`      | `fedora-42-release`     | Latest R release on Fedora 42.

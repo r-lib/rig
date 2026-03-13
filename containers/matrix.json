@@ -148,6 +148,51 @@
         ]
     },
     {
+        "name": "debian-13-release",
+        "aliases": [
+            "debian-13-release",
+            "debian",
+            "debian-13",
+            "debian-release",
+            "release"
+        ],
+        "dir": "ubuntu",
+        "args": [
+            "DISTRO=debian",
+            "RELEASE=13",
+            "RVERSION=release"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/debian-13-release:latest",
+            "ghcr.io/r-lib/rig/debian-13:latest",
+            "ghcr.io/r-lib/rig/debian-latest-release:latest",
+            "ghcr.io/r-lib/rig/debian-latest:latest",
+            "ghcr.io/r-lib/rig/debian-release:latest",
+            "ghcr.io/r-lib/rig/debian:latest"
+        ]
+    },
+    {
+        "name": "debian-13-devel",
+        "aliases": [
+            "debian-13-devel",
+            "debian",
+            "debian-13",
+            "debian-devel",
+            "devel"
+        ],
+        "dir": "ubuntu",
+        "args": [
+            "DISTRO=debian",
+            "RELEASE=13",
+            "RVERSION=devel"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/debian-13-devel:latest",
+            "ghcr.io/r-lib/rig/debian-latest-devel:latest",
+            "ghcr.io/r-lib/rig/debian-devel:latest"
+        ]
+    },
+    {
         "name": "debian-12-release",
         "aliases": [
             "debian-12-release",
@@ -164,11 +209,7 @@
         ],
         "tags": [
             "ghcr.io/r-lib/rig/debian-12-release:latest",
-            "ghcr.io/r-lib/rig/debian-12:latest",
-            "ghcr.io/r-lib/rig/debian-latest-release:latest",
-            "ghcr.io/r-lib/rig/debian-latest:latest",
-            "ghcr.io/r-lib/rig/debian-release:latest",
-            "ghcr.io/r-lib/rig/debian:latest"
+            "ghcr.io/r-lib/rig/debian-12:latest"
         ]
     },
     {
@@ -187,9 +228,7 @@
             "RVERSION=devel"
         ],
         "tags": [
-            "ghcr.io/r-lib/rig/debian-12-devel:latest",
-            "ghcr.io/r-lib/rig/debian-latest-devel:latest",
-            "ghcr.io/r-lib/rig/debian-devel:latest"
+            "ghcr.io/r-lib/rig/debian-12-devel:latest"
         ]
     },
     {
