@@ -172,8 +172,8 @@ fn add_rtools(version: String) -> Result<(), Box<dyn Error>> {
         let instdir = "C:\\Rtools".to_string() + versuffix + archsuffix;
         let instdirpath = Path::new(&instdir);
         if instdirpath.exists() {
-            OUTPUT.success("Rtools{} is already installed", ver);
-            info!("Rtools{} is already installed", ver);
+            OUTPUT.success(&format!("Rtools{} is already installed", &ver));
+            info!("Rtools{} is already installed", &ver);
             continue;
         }
         let rtver = get_rtools_version(&ver, &myarch)?;
@@ -239,7 +239,7 @@ fn patch_for_rtools() -> Result<(), Box<dyn Error>> {
                 + &tail;
 
             if let Err(e) = writeln!(file, "{}", if rtools4 { txt4 } else { txt3 }) {
-                OUTPUT.warn("Couldn't write to Renviron.site file: {}", e);
+                OUTPUT.warn(&format!("Couldn't write to Renviron.site file: {}", e));
                 warn!("Couldn't write to Renviron.site file: {}", e);
             }
         }
@@ -262,8 +262,8 @@ fn get_rtools_needed(version: Option<Vec<String>>) -> Result<Vec<String>, Box<dy
         Some(x) => x,
         None => {
             OUTPUT.error(errmsg);
-            error!(errmsg);
-            bail!(errmsg)
+            error!("{}", errmsg);
+            bail!("{}", errmsg)
         }
     };
 
@@ -311,10 +311,10 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
         if let Some(ref default) = default {
             if default == &ver {
-                OUTPUT.warn(
+                OUTPUT.warn(&format!(
                     "Removing default version, set new default with {}",
                     "rig default <version>".bold(),
-                );
+                ));
                 warn!(
                     "Removing default version, set new default with {}",
                     "rig default <version>".bold()
@@ -362,7 +362,7 @@ fn rm_rtools(ver: String) -> Result<(), Box<dyn Error>> {
                 Err(_v) => "cannot parse stderr",
             };
             if !out.status.success() {
-                OUTPUT.error("Failed to remove {}: {}", dir.display(), stderr);
+                OUTPUT.error(&format!("Failed to remove {}: {}", dir.display(), stderr));
                 error!("Failed to remove {}: {}", dir.display(), stderr);
                 bail!("Cannot remove {}: {}", dir.display(), stderr);
             }
@@ -502,7 +502,7 @@ pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
 fn find_r_version_in_link(path: &PathBuf) -> Result<String, Box<dyn Error>> {
     let lines = read_lines(path)?;
     if lines.len() == 0 {
-        OUTPUT.error("Invalid R link file: {}", path.display());
+        OUTPUT.error(&format!("Invalid R link file: {}", path.display()));
         error!("Invalid R link file: {}", path.display());
         bail!("Invalid R link file: {}", path.display());
     }
@@ -515,10 +515,10 @@ fn find_r_version_in_link(path: &PathBuf) -> Result<String, Box<dyn Error>> {
             return Ok(s[2..].to_string());
         }
     }
-    OUTPUT.error(
+    OUTPUT.error(&format!(
         "Cannot extract R version from {}, invalid R link file?",
         path.display(),
-    );
+    ));
     error!(
         "Cannot extract R version from {}, invalid R link file?",
         path.display()
@@ -1157,7 +1157,7 @@ pub fn sc_rstudio_(
 
     match status {
         Err(e) => {
-            OUTPUT.error("`start` failed: {}", e.to_string());
+            OUTPUT.error(&format!("`start` failed: {}", e.to_string()));
             error!("`start` failed: {}", e.to_string());
             bail!("`start` failed: {}", e.to_string());
         }
