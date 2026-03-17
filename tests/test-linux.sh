@@ -56,7 +56,10 @@ teardown() {
     fi
     run rig default 4.5.1
     [[ "$status" -eq 0 ]]
-    run rig default
+    run rig -q default
+    [[ "$status" -eq 0 ]]
+    echo "Output was:"
+    echo "$output"
     [[ "$output" = "4.5.1" ]]
     run rig default 1.0
     [[ ! "$status" -eq 0 ]]
@@ -130,7 +133,7 @@ teardown() {
     run rig default 4.5.1
     [[ "$status" -eq 0 ]]
     run rig system add-pak
-    echo $output | grep -q "Installing pak for R 4.5.1"
+    echo $output | grep -qE "(Installing|Updating) pak for R 4.5.1"
     run R-4.5.1 -q -s -e 'pak::lib_status()'
     [[ "$status" -eq 0 ]]
 

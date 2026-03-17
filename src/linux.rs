@@ -7,11 +7,10 @@ use std::ffi::OsString;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::{file, line};
 
 use clap::ArgMatches;
+use log::{debug, error, info, trace, warn};
 use simple_error::*;
-use simplelog::{debug, info, trace, warn};
 
 use crate::rversion::*;
 
@@ -20,6 +19,9 @@ use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
 use crate::library::*;
+use crate::output::OUTPUT;
+use crate::platform::*;
+use crate::repos::*;
 use crate::resolve::get_resolve;
 use crate::run::*;
 use crate::utils::*;
@@ -28,10 +30,9 @@ pub const R_ROOT_: &str = "/opt/R";
 pub const R_VERSIONDIR: &str = "{}";
 pub const R_SYSLIBPATH: &str = "{}/lib/R/library";
 pub const R_BASE_PROFILE: &str = "{}/lib/R/library/base/R/Rprofile";
+pub const R_ETC_PATH: &str = "{}/lib/R/etc";
 pub const R_BINPATH: &str = "{}/bin/R";
 const R_CUR: &str = "/opt/R/current";
-
-const PPM_URL: &str = "https://packagemanager.posit.co/cran";
 
 macro_rules! strvec {
     // match a list of expressions separated by comma:
@@ -58,13 +59,13 @@ pub fn get_r_root() -> String {
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("adding new R versions")?;
 
-    // This is needed to fix statix linking on Arm Linux :(
+    // This is needed to fix static linking on Arm Linux :(
     let uid = nix::unistd::getuid().as_raw();
     if false {
         println!("{}", uid);
     }
 
-    let platform = detect_linux()?;
+    let platform = detect_platform()?;
     let version = get_resolve(args)?;
     let alias = get_alias(args);
     let ver = version.version.to_owned();
@@ -75,15 +76,24 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     let url: String = match &version.url {
         Some(s) => s.to_string(),
-        None => bail!("Cannot find a download url for R version {}", verstr),
+        None => {
+            OUTPUT.error(&format!(
+                "Cannot find a download url for R version {}",
+                verstr
+            ));
+            error!("Cannot find a download url for R version {}", verstr);
+            bail!("Cannot find a download url for R version {}", verstr)
+        }
     };
 
     let filename = basename(&url).unwrap_or_else(|| "foo");
     let tmp_dir = std::env::temp_dir().join("rig");
     let target = tmp_dir.join(&filename);
     if target.exists() && not_too_old(&target) {
+        OUTPUT.success(&format!("{} is cached at {}", filename, target.display()));
         info!("{} is cached at {}", filename, target.display());
     } else {
+        OUTPUT.status(&format!("Downloading {} -> {}", url, target.display()));
         info!("Downloading {} -> {}", url, target.display());
         let client = &reqwest::Client::new();
         download_file(client, &url, &target.as_os_str())?;
@@ -102,20 +112,8 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         None => {}
     };
 
-    if !args.get_flag("without-cran-mirror") {
-        set_cloud_mirror(Some(vec![dirname.to_string()]))?;
-    }
-
-    if !args.get_flag("without-p3m") {
-        // only warn if --with-p3m, but no support for this distro or arch
-        let warn = args.get_flag("with-p3m") && !version.ppm;
-        set_ppm(
-            Some(vec![dirname.to_string()]),
-            &platform,
-            &version,
-            Some(warn),
-        )?;
-    }
+    let setup = interpret_repos_args(args, true);
+    repos_setup(Some(vec![dirname.to_string()]), setup)?;
 
     if args.get_flag("without-sysreqs") {
         set_sysreqs_false(Some(vec![dirname.to_string()]))?;
@@ -126,7 +124,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             args.value_source("pak-version") == Some(clap::parser::ValueSource::CommandLine);
         system_add_pak(
             Some(vec![dirname.to_string()]),
-            require_with!(args.get_one::<String>("pak-version"), "clap error"),
+            args.get_one::<String>("pak-version").unwrap(),
             // If this is specified then we always re-install
             explicit,
         )?;
@@ -136,7 +134,8 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 }
 
 fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>> {
-    if platform.distro == "debian" || platform.distro == "ubuntu" {
+    if platform.distro.as_deref() == Some("debian") || platform.distro.as_deref() == Some("ubuntu")
+    {
         Ok(LinuxTools {
             package_name: "r-{}".to_string(),
             install: vec![
@@ -162,7 +161,9 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             ],
             is_installed: strvec!["dpkg", "-s", "{}"],
         })
-    } else if platform.distro == "opensuse" || platform.distro == "sles" {
+    } else if platform.distro.as_deref() == Some("opensuse")
+        || platform.distro.as_deref() == Some("sles")
+    {
         Ok(LinuxTools {
             package_name: "R-{}".to_string(),
             install: vec![strvec!["zypper", "--no-gpg-checks", "install", "-y", "{}"]],
@@ -170,7 +171,7 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             is_installed: strvec!["rpm", "-q", "{}"],
             delete: strvec!["zypper", "remove", "-y", "{}"],
         })
-    } else if platform.distro == "fedora" {
+    } else if platform.distro.as_deref() == Some("fedora") {
         Ok(LinuxTools {
             package_name: "R-{}".to_string(),
             install: vec![strvec!["dnf", "install", "-y", "{}"]],
@@ -178,8 +179,12 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             is_installed: strvec!["rpm", "-q", "{}"],
             delete: strvec!["dnf", "remove", "-y", "{}"],
         })
-    } else if (platform.distro == "centos")
-        && (platform.version == "7" || platform.version.starts_with("7."))
+    } else if platform.distro.as_deref() == Some("centos")
+        && (platform.version.as_deref() == Some("7")
+            || platform
+                .version
+                .as_ref()
+                .map_or(false, |v| v.starts_with("7.")))
     {
         Ok(LinuxTools {
             package_name: "R-{}".to_string(),
@@ -191,8 +196,12 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             is_installed: strvec!["rpm", "-q", "{}"],
             delete: strvec!["yum", "remove", "-y", "{}"],
         })
-    } else if (platform.distro == "rhel")
-        && (platform.version == "7" || platform.version.starts_with("7."))
+    } else if platform.distro.as_deref() == Some("rhel")
+        && (platform.version.as_deref() == Some("7")
+            || platform
+                .version
+                .as_ref()
+                .map_or(false, |v| v.starts_with("7.")))
     {
         Ok(LinuxTools{
             package_name: "R-{}".to_string(),
@@ -207,10 +216,14 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             delete:
                 strvec!["yum", "remove", "-y", "{}"]
         })
-    } else if (platform.distro == "rhel"
-        || platform.distro == "almalinux"
-        || platform.distro == "rocky")
-        && (platform.version == "8" || platform.version.starts_with("8."))
+    } else if (platform.distro.as_deref() == Some("rhel")
+        || platform.distro.as_deref() == Some("almalinux")
+        || platform.distro.as_deref() == Some("rocky"))
+        && (platform.version.as_deref() == Some("8")
+            || platform
+                .version
+                .as_ref()
+                .map_or(false, |v| v.starts_with("8.")))
     {
         Ok(LinuxTools {
             package_name: "R-{}".to_string(),
@@ -219,8 +232,13 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             is_installed: strvec!["rpm", "-q", "{}"],
             delete: strvec!["dnf", "remove", "-y", "{}"],
         })
-    } else if (platform.distro == "almalinux" || platform.distro == "rocky")
-        && (platform.version == "9" || platform.version.starts_with("9."))
+    } else if (platform.distro.as_deref() == Some("almalinux")
+        || platform.distro.as_deref() == Some("rocky"))
+        && (platform.version.as_deref() == Some("9")
+            || platform
+                .version
+                .as_ref()
+                .map_or(false, |v| v.starts_with("9.")))
     {
         Ok(LinuxTools {
             package_name: "R-{}".to_string(),
@@ -234,8 +252,12 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             is_installed: strvec!["rpm", "-q", "{}"],
             delete: strvec!["dnf", "remove", "-y", "{}"],
         })
-    } else if (platform.distro == "rhel")
-        && (platform.version == "9" || platform.version.starts_with("9."))
+    } else if platform.distro.as_deref() == Some("rhel")
+        && (platform.version.as_deref() == Some("9")
+            || platform
+                .version
+                .as_ref()
+                .map_or(false, |v| v.starts_with("9.")))
     {
         let crb = "codeready-builder-for-rhel-9-".to_string() + &platform.arch + "-rpms";
         Ok(LinuxTools{
@@ -251,9 +273,9 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
                 delete:
                     strvec!["dnf", "remove", "-y", "{}"]
             })
-    } else if platform.distro == "almalinux"
-        || platform.distro == "rocky"
-        || platform.distro == "rhel"
+    } else if platform.distro.as_deref() == Some("almalinux")
+        || platform.distro.as_deref() == Some("rocky")
+        || platform.distro.as_deref() == Some("rhel")
     {
         Ok(LinuxTools {
             package_name: "R-{}".to_string(),
@@ -263,10 +285,20 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             delete: strvec!["yum", "remove", "-y", "{}"],
         })
     } else {
+        let distro = platform.distro.as_deref().unwrap_or("<unknown>");
+        let version = platform.version.as_deref().unwrap_or("<unknown>");
+        OUTPUT.error(&format!(
+            "I don't know how to install a system package on {} {}",
+            distro, version
+        ));
+        error!(
+            "I don't know how to install a system package on {} {}",
+            distro, version
+        );
         bail!(
             "I don't know how to install a system package on {} {}",
-            platform.distro,
-            platform.version
+            distro,
+            version
         );
     }
 }
@@ -276,31 +308,20 @@ fn add_package(path: &OsStr, platform: &OsVersion) -> Result<String, Box<dyn Err
 
     for cmd in tools.install.iter() {
         let cmd = format_cmd_args(cmd.to_vec(), path);
-        info!("Running {:?}", cmd.join(&OsString::from(" ")));
+        let cmdline = cmd.join(&OsString::from(" "));
+        OUTPUT.status(&format!("Running {:?}", cmdline));
+        info!("Running {:?}", cmdline);
         let cmd0 = cmd[0].to_owned();
         run(cmd0, cmd[1..].to_vec(), "installation")?;
     }
 
     let get_package_name = format_cmd_args(tools.get_package_name, path);
     let cmd0 = get_package_name[0].to_owned();
-    let oscmd = get_package_name.join(&OsString::from(" "));
-    let out = try_with!(
-        Command::new(cmd0)
-            .args(get_package_name[1..].to_vec())
-            .output(),
-        "Failed to run {:?} @{}:{}",
-        oscmd,
-        file!(),
-        line!()
-    );
+    let out = Command::new(cmd0)
+        .args(get_package_name[1..].to_vec())
+        .output()?;
 
-    let std = try_with!(
-        String::from_utf8(out.stdout),
-        "Non-UTF-8 output from {:?} @{}:{}",
-        oscmd,
-        file!(),
-        line!()
-    );
+    let std = String::from_utf8(out.stdout)?;
 
     let re = Regex::new("^[rR]-(.*)\\s*$")?;
     let ver = re.replace(&std, "${1}");
@@ -314,32 +335,27 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     if vers.is_none() {
         return Ok(());
     }
-    let vers = require_with!(vers, "clap error");
+    let vers = vers.unwrap();
 
-    let platform = detect_linux()?;
+    let platform = detect_platform()?;
     let tools = select_linux_tools(&platform)?;
     for ver in vers {
-        let ver = check_installed(&ver.to_string())?;
+        let ver = check_installed(ver)?;
 
         let pkgname = tools.package_name.replace("{}", &ver);
         let opkgname = OsStr::new(&pkgname);
         let cmd = format_cmd_args(tools.is_installed.clone(), opkgname);
-        let oscmd = cmd.join(&OsString::from(" "));
         let cmd0 = cmd[0].to_owned();
-        let out = try_with!(
-            Command::new(cmd0).args(cmd[1..].to_vec()).output(),
-            "Failed to run {:?} @{}:{}",
-            oscmd,
-            file!(),
-            line!()
-        );
+        let out = Command::new(cmd0).args(cmd[1..].to_vec()).output()?;
 
         if out.status.success() {
+            OUTPUT.status(&format!("Removing {} package", pkgname));
             info!("Removing {} package", pkgname);
             let cmd = format_cmd_args(tools.delete.clone(), opkgname);
             let cmd0 = cmd[0].to_owned();
             run(cmd0, cmd[1..].to_vec(), "deleting system package")?;
         } else {
+            OUTPUT.success(&format!("{} package is not installed", pkgname));
             info!("{} package is not installed", pkgname);
         }
 
@@ -347,14 +363,9 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         let dir = Path::new(&rroot);
         let dir = dir.join(&ver);
         if dir.exists() {
+            OUTPUT.status(&format!("Removing {}", dir.display()));
             info!("Removing {}", dir.display());
-            try_with!(
-                std::fs::remove_dir_all(&dir),
-                "Failed to remove {} @{}:{}",
-                dir.display(),
-                file!(),
-                line!()
-            );
+            std::fs::remove_dir_all(&dir)?;
         }
     }
 
@@ -374,6 +385,11 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         let linkfile = Path::new("/usr/local/bin").join("R-".to_string() + &ver);
         let target = base.join(&ver).join("bin/R");
         if !linkfile.exists() {
+            OUTPUT.status(&format!(
+                "Adding {} -> {}",
+                linkfile.display(),
+                target.display()
+            ));
             info!("Adding {} -> {}", linkfile.display(), target.display());
             symlink(&target, &linkfile)?;
         }
@@ -396,12 +412,21 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         };
         if re.is_match(&fnamestr) {
             match std::fs::read_link(&path) {
-                Err(_) => warn!("<magenra>[WARN]</> {} is not a symlink", path.display()),
+                Err(_) => {
+                    OUTPUT.warn(&format!("{} is not a symlink", path.display()));
+                    warn!("{} is not a symlink", path.display())
+                }
                 Ok(target) => {
                     if !target.exists() {
+                        OUTPUT.status(&format!("Cleaning up {}", target.display()));
                         info!("Cleaning up {}", target.display());
                         match std::fs::remove_file(&path) {
                             Err(err) => {
+                                OUTPUT.warn(&format!(
+                                    "Failed to remove {}: {}",
+                                    path.display(),
+                                    err.to_string()
+                                ));
                                 warn!("Failed to remove {}: {}", path.display(), err.to_string())
                             }
                             _ => {}
@@ -562,84 +587,8 @@ pub fn sc_get_default() -> Result<Option<String>, Box<dyn Error>> {
     read_version_link(R_CUR)
 }
 
-fn set_cloud_mirror(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
-    let vers = match vers {
-        Some(x) => x,
-        None => sc_get_list()?,
-    };
-
-    info!("Setting default CRAN mirror");
-
-    for ver in vers {
-        let ver = check_installed(&ver)?;
-        let path = Path::new(&get_r_root()).join(ver.as_str());
-        let profile = path.join("lib/R/library/base/R/Rprofile".to_string());
-        if !profile.exists() {
-            continue;
-        }
-
-        append_to_file(
-            &profile,
-            vec![
-                r#"if (Sys.getenv("RSTUDIO") != "1" && Sys.getenv("POSITRON") != "1") {
-  options(repos = c(CRAN = "https://cloud.r-project.org"))
-}"#
-                .to_string(),
-            ],
-        )?;
-    }
-    Ok(())
-}
-
-fn set_ppm(
-    vers: Option<Vec<String>>,
-    platform: &OsVersion,
-    version: &Rversion,
-    warn: Option<bool>,
-) -> Result<(), Box<dyn Error>> {
-    let warn = warn.unwrap_or(true);
-    if !version.ppm || version.ppmurl.is_none() {
-        if warn {
-            warn!(
-                "P3M (or rig) does not support this distro: {} {} or architecture: {}",
-                platform.distro, platform.version, platform.arch
-            );
-        }
-        return Ok(());
-    }
-
-    info!("Setting up P3M");
-
-    let vers = match vers {
-        Some(x) => x,
-        None => sc_get_list()?,
-    };
-
-    let rcode = r#"
-if (Sys.getenv("RSTUDIO") != "1" && Sys.getenv("POSITRON") != "1") {
-  options(repos = c(P3M="%url%", getOption("repos")))
-  options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(getRversion(), R.version$platform, R.version$arch, R.version$os)))
-}
-"#;
-
-    let ppm_url =
-        PPM_URL.to_string() + "/__linux__/" + &version.ppmurl.clone().unwrap() + "/latest";
-    let rcode = rcode.to_string().replace("%url%", &ppm_url);
-
-    for ver in vers {
-        let ver = check_installed(&ver)?;
-        let path = Path::new(&get_r_root()).join(ver.as_str());
-        let profile = path.join("lib/R/library/base/R/Rprofile".to_string());
-        if !profile.exists() {
-            continue;
-        }
-
-        append_to_file(&profile, vec![rcode.to_string()])?;
-    }
-    Ok(())
-}
-
 fn set_sysreqs_false(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
+    OUTPUT.status("Setting up automatic system requirements installation.");
     info!("Setting up automatic system requirements installation.");
 
     let vers = match vers {
@@ -699,74 +648,6 @@ pub fn sc_system_no_openmp(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn detect_linux() -> Result<OsVersion, Box<dyn Error>> {
-    let release_file = Path::new("/etc/os-release");
-    let lines = read_lines(release_file)?;
-
-    let mut id;
-    let mut ver;
-
-    let rig_platform = match std::env::var("RIG_PLATFORM") {
-        Ok(x) => Some(x),
-        Err(_) => None,
-    };
-
-    if rig_platform.is_some() {
-        let mut rig_platform2 = rig_platform.clone().unwrap();
-        if rig_platform2.starts_with("linux-") {
-            rig_platform2 = rig_platform2.strip_prefix("linux-").unwrap().to_string();
-        }
-
-        (id, ver) = match rig_platform2.split_once("-") {
-            Some((x, y)) => (x.to_string(), y.to_string()),
-            None => (rig_platform2, "".to_string()),
-        };
-    } else {
-        let re_id = Regex::new("^ID=")?;
-        let wid_line = grep_lines(&re_id, &lines);
-        id = if wid_line.len() == 0 {
-            "".to_string()
-        } else {
-            let id_line = &lines[wid_line[0]];
-            let id = re_id.replace(&id_line, "").to_string();
-            unquote(&id)
-        };
-
-        let re_ver = Regex::new("^VERSION_ID=")?;
-        let wver_line = grep_lines(&re_ver, &lines);
-        ver = if wver_line.len() == 0 {
-            "".to_string()
-        } else {
-            let ver_line = &lines[wver_line[0]];
-            let ver = re_ver.replace(&ver_line, "").to_string();
-            unquote(&ver)
-        };
-
-        // workaround for a node-rversions bug
-        if id == "opensuse-leap" {
-            id = "opensuse".to_string()
-        }
-        if id == "opensuse" {
-            ver = ver.replace(".", "");
-        }
-    }
-
-    let arch = std::env::consts::ARCH.to_string();
-    let vendor = "unknown".to_string();
-    let os = "linux".to_string();
-    let distro = id.to_owned();
-    let version = ver.to_owned();
-
-    Ok(OsVersion {
-        rig_platform,
-        arch,
-        vendor,
-        os,
-        distro,
-        version,
-    })
-}
-
 pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
     // Nothing to do on Linux
     Ok(())
@@ -808,6 +689,7 @@ pub fn sc_rstudio_(
         }
     }
 
+    OUTPUT.status(&format!("Running {} {:?}", cmd, args.join(&os(" "))));
     info!("Running {} {:?}", cmd, args.join(&os(" ")));
 
     Command::new(cmd)
@@ -881,30 +763,13 @@ fn check_usr_bin_sed(rver: &str) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    bail!(
-        "This version of R was compiled using sed at /usr/bin/sed\n        \
+    let msg = "This version of R was compiled using sed at /usr/bin/sed\n        \
            but it is missing on your system.\n        \
            Run `ln -s /bin/sed /usr/bin/sed` as the root user to fix this,\n        \
-           and then run rig again."
-    );
-}
-
-pub fn sc_system_detect_platform(
-    args: &ArgMatches,
-    mainargs: &ArgMatches,
-) -> Result<(), Box<dyn Error>> {
-    let linux = detect_linux()?;
-
-    if args.get_flag("json") || mainargs.get_flag("json") {
-        println!("{}", serde_json::to_string_pretty(&linux)?);
-    } else {
-        println!("Detected platform:");
-        println!("Architecture: {}", linux.arch);
-        println!("OS:           {}", linux.os);
-        println!("Distribution: {}", linux.distro);
-        println!("Version:      {}", linux.version);
-    }
-    Ok(())
+           and then run rig again.";
+    OUTPUT.error(msg);
+    error!("{}", msg);
+    bail!(msg);
 }
 
 pub fn set_cert_envvar() {

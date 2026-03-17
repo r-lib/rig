@@ -9,9 +9,9 @@ use std::path::Path;
 use std::os::unix::fs::symlink;
 
 use clap::ArgMatches;
+use log::*;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use simple_error::*;
-use simplelog::*;
 
 #[cfg(target_os = "macos")]
 use crate::macos::*;
@@ -23,6 +23,7 @@ use crate::windows::*;
 use crate::linux::*;
 
 use crate::escalate::*;
+use crate::output::OUTPUT;
 
 #[cfg(target_os = "macos")]
 pub fn get_alias(args: &ArgMatches) -> Option<String> {
@@ -66,6 +67,7 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     let msg = "Adding R-".to_string() + alias + " alias";
     escalate(&msg)?;
 
+    OUTPUT.status(&format!("Adding R-{} alias to R {}", alias, ver));
     info!("Adding R-{} alias to R {}", alias, ver);
 
     let rroot = get_r_root();
@@ -78,7 +80,14 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     let meta = std::fs::symlink_metadata(&linkfile);
     if meta.is_ok() {
         match std::fs::read_link(&linkfile) {
-            Err(_) => bail!("{} is not a symlink, aborting", linkfile.display()),
+            Err(_) => {
+                OUTPUT.error(&format!(
+                    "{} is not a symlink, aborting",
+                    linkfile.display()
+                ));
+                error!("{} is not a symlink, aborting", linkfile.display());
+                bail!("{} is not a symlink, aborting", linkfile.display())
+            }
             Ok(xtarget) => {
                 if xtarget == target {
                     return Ok(());
@@ -86,6 +95,16 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
                     debug!("{} is wrong, updating", linkfile.display());
                     match std::fs::remove_file(&linkfile) {
                         Err(err) => {
+                            OUTPUT.error(&format!(
+                                "Failed to delete {}, cannot update alias: {}",
+                                linkfile.display(),
+                                err.to_string()
+                            ));
+                            error!(
+                                "Failed to delete {}, cannot update alias: {}",
+                                linkfile.display(),
+                                err.to_string()
+                            );
                             bail!(
                                 "Failed to delete {}, cannot update alias: {}",
                                 linkfile.display(),
@@ -102,11 +121,23 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     // If we are still here, then we need to create the link
     debug!("Adding {} -> {}", linkfile.display(), target.display());
     match symlink(&target, &linkfile) {
-        Err(err) => bail!(
-            "Cannot create alias {}: {}",
-            linkfile.display(),
-            err.to_string()
-        ),
+        Err(err) => {
+            OUTPUT.error(&format!(
+                "Cannot create alias {}: {}",
+                linkfile.display(),
+                err.to_string()
+            ));
+            error!(
+                "Cannot create alias {}: {}",
+                linkfile.display(),
+                err.to_string()
+            );
+            bail!(
+                "Cannot create alias {}: {}",
+                linkfile.display(),
+                err.to_string()
+            )
+        }
         _ => {}
     };
 
@@ -137,6 +168,7 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     } else {
         op = "Adding";
     };
+    OUTPUT.status(&format!("{} R-{} alias to R {}", op, alias, ver));
     info!("{} R-{} -> {} alias", op, alias, ver);
     let mut file = File::create(&linkfile)?;
     file.write_all(cnt.as_bytes())?;
@@ -149,6 +181,7 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     let msg = "Adding R-".to_string() + alias + " alias";
     escalate(&msg)?;
 
+    OUTPUT.status(&format!("Adding R-{} alias to R {}", alias, ver));
     info!("Adding R-{} alias to R {}", alias, ver);
 
     let rroot = get_r_root();
@@ -161,7 +194,14 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     let meta = std::fs::symlink_metadata(&linkfile);
     if meta.is_ok() {
         match std::fs::read_link(&linkfile) {
-            Err(_) => bail!("{} is not a symlink, aborting", linkfile.display()),
+            Err(_) => {
+                OUTPUT.error(&format!(
+                    "{} is not a symlink, aborting",
+                    linkfile.display()
+                ));
+                error!("{} is not a symlink, aborting", linkfile.display());
+                bail!("{} is not a symlink, aborting", linkfile.display())
+            }
             Ok(xtarget) => {
                 if xtarget == target {
                     return Ok(());
@@ -169,6 +209,16 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
                     debug!("{} is wrong, updating", linkfile.display());
                     match std::fs::remove_file(&linkfile) {
                         Err(err) => {
+                            OUTPUT.error(&format!(
+                                "Failed to delete {}, cannot update alias: {}",
+                                linkfile.display(),
+                                err.to_string()
+                            ));
+                            error!(
+                                "Failed to delete {}, cannot update alias: {}",
+                                linkfile.display(),
+                                err.to_string()
+                            );
                             bail!(
                                 "Failed to delete {}, cannot update alias: {}",
                                 linkfile.display(),
@@ -185,11 +235,23 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     // If we are still here, then we need to create the link
     debug!("Adding {} -> {}", linkfile.display(), target.display());
     match symlink(&target, &linkfile) {
-        Err(err) => bail!(
-            "Cannot create alias {}: {}",
-            linkfile.display(),
-            err.to_string()
-        ),
+        Err(err) => {
+            OUTPUT.error(&format!(
+                "Cannot create alias {}: {}",
+                linkfile.display(),
+                err.to_string()
+            ));
+            error!(
+                "Cannot create alias {}: {}",
+                linkfile.display(),
+                err.to_string()
+            );
+            bail!(
+                "Cannot create alias {}: {}",
+                linkfile.display(),
+                err.to_string()
+            )
+        }
         _ => {}
     };
 

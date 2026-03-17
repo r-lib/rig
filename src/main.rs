@@ -1,8 +1,13 @@
 use std::error::Error;
+use std::fs::{File, OpenOptions};
+use std::io::{IsTerminal, Write};
+use std::sync::{Arc, Mutex};
 
 use clap::ArgMatches;
+use env_logger;
+use log::{error, info, Level, LevelFilter};
+use owo_colors::OwoColorize;
 use simple_error::*;
-use simplelog::*;
 use tabular::*;
 
 mod args;
@@ -31,23 +36,41 @@ use linux::*;
 use resolve::*;
 
 mod alias;
+mod cache;
 mod common;
 mod config;
+mod dcf;
 mod download;
 mod hardcoded;
+mod install;
 mod library;
+mod output;
+mod pak;
+mod platform;
+mod proj;
+mod rds;
 mod renv;
+mod repos;
+mod repositories;
 mod resolve;
 mod run;
 mod rversion;
+mod solver;
 mod sysreqs;
+mod test;
 mod utils;
 
+use cache::get_logs_dir;
 use library::*;
+use platform::*;
+use proj::*;
+use repos::*;
 use sysreqs::*;
 use utils::unset_r_envvars;
 
 use crate::common::*;
+use crate::output::OUTPUT;
+use crate::test::*;
 
 mod escalate;
 
@@ -63,27 +86,120 @@ fn main_() -> i32 {
 
     // -- set up logger output --------------------------------------------
 
-    let mut loglevel = match args.get_count("verbose") {
+    let verbose_count = args.get_count("verbose");
+    let mut loglevel = match verbose_count {
         0 => LevelFilter::Info,
         1 => LevelFilter::Debug,
         _ => LevelFilter::Trace,
     };
 
-    if args.get_flag("quiet") {
-        loglevel = LevelFilter::Off;
-    }
+    match args.get_count("quiet") {
+        0 => {}
+        1 => loglevel = LevelFilter::Warn,
+        2 => loglevel = LevelFilter::Error,
+        _ => loglevel = LevelFilter::Off,
+    };
 
-    let config = ConfigBuilder::new()
-        .set_time_level(LevelFilter::Trace)
-        .set_location_level(LevelFilter::Debug)
-        .set_level_color(Level::Error, Some(Color::Magenta))
-        .set_level_color(Level::Warn, Some(Color::Yellow))
-        .set_level_color(Level::Info, Some(Color::Blue))
-        .set_level_color(Level::Debug, None)
-        .set_level_color(Level::Trace, None)
-        .build();
+    // Build filter string: set default level for rig, lower level for noisy crates
+    let filter_str = match loglevel {
+        LevelFilter::Off => "off".to_string(),
+        LevelFilter::Trace => "rig=trace,reqwest=trace,hyper=trace,pubgrub=trace".to_string(),
+        LevelFilter::Debug => "rig=debug,reqwest=info,hyper=info,pubgrub=info".to_string(),
+        LevelFilter::Info => "rig=info,reqwest=warn,hyper=warn,pubgrub=warn".to_string(),
+        LevelFilter::Warn => "rig=warn,reqwest=warn,hyper=warn,pubgrub=warn".to_string(),
+        LevelFilter::Error => "rig=error,reqwest=error,hyper=error,pubgrub=error".to_string(),
+    };
 
-    match TermLogger::init(loglevel, config, TerminalMode::Stderr, ColorChoice::Auto) {
+    // Set up file logging for interactive sessions
+    let is_interactive = std::io::stdout().is_terminal();
+    let log_file_writer: Option<Arc<Mutex<File>>> = if is_interactive {
+        match get_logs_dir() {
+            Ok(logs_dir) => {
+                if let Err(e) = std::fs::create_dir_all(&logs_dir) {
+                    eprintln!("Warning: Could not create logs directory: {}", e);
+                    None
+                } else {
+                    let log_path = logs_dir.join("rig.log");
+
+                    match OpenOptions::new().create(true).append(true).open(&log_path) {
+                        Ok(file) => Some(Arc::new(Mutex::new(file))),
+                        Err(e) => {
+                            eprintln!("Warning: Could not create log file: {}", e);
+                            None
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Warning: Could not determine logs directory: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let log_file_for_format = log_file_writer.clone();
+
+    match env_logger::Builder::from_env(env_logger::Env::default())
+        .filter(None, loglevel)
+        .parse_filters(&filter_str)
+        .target(env_logger::Target::Stderr)
+        .format(move |buf, record| {
+            // In interactive mode, write only to log file
+            if is_interactive {
+                if let Some(ref log_file) = log_file_for_format {
+                    if let Ok(mut file) = log_file.lock() {
+                        // Always include timestamps in log file
+                        let log_line = if verbose_count >= 1 {
+                            format!(
+                                "[{} {} {}:{}] {}\n",
+                                buf.timestamp(),
+                                record.level(),
+                                record.file().unwrap_or("unknown"),
+                                record.line().unwrap_or(0),
+                                record.args()
+                            )
+                        } else {
+                            format!(
+                                "[{} {}] {}\n",
+                                buf.timestamp(),
+                                record.level(),
+                                record.args()
+                            )
+                        };
+                        let _ = file.write_all(log_line.as_bytes());
+                    }
+                }
+                // Don't write to stderr in interactive mode
+                Ok(())
+            } else {
+                // Non-interactive: write to stderr with colors
+                let level_string = match record.level() {
+                    Level::Error => record.level().to_string().red().bold().to_string(),
+                    Level::Warn => record.level().to_string().yellow().bold().to_string(),
+                    Level::Info => record.level().to_string().blue().to_string(),
+                    Level::Debug => record.level().to_string().cyan().to_string(),
+                    Level::Trace => record.level().to_string().white().to_string(),
+                };
+
+                if verbose_count >= 1 {
+                    writeln!(
+                        buf,
+                        "[{} {} {}:{}] {}",
+                        buf.timestamp(),
+                        level_string,
+                        record.file().unwrap_or("unknown"),
+                        record.line().unwrap_or(0),
+                        record.args()
+                    )
+                } else {
+                    writeln!(buf, "[{}] {}", level_string, record.args())
+                }
+            }
+        })
+        .try_init()
+    {
         Err(e) => {
             eprintln!("Fatal error, cannot set up logger: {}", e.to_string());
             return 2;
@@ -98,15 +214,23 @@ fn main_() -> i32 {
 
     // --------------------------------------------------------------------
 
-    match main__(&args) {
+    let cmdline = std::env::args().collect::<Vec<_>>().join(" ");
+    let pid = std::process::id();
+    info!("RIG START [pid:{}] {}", pid, cmdline);
+
+    let result = match main__(&args) {
         Ok(exitcode) => {
-            return exitcode;
+            info!("RIG END [pid:{}] {}", pid, cmdline);
+            exitcode
         }
         Err(err) => {
             error!("{}", err.to_string());
-            return 1;
+            info!("RIG END [pid:{}] {}", pid, cmdline);
+            1
         }
-    }
+    };
+
+    result
 }
 
 fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
@@ -115,14 +239,17 @@ fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
         Some(("add", sub)) => sc_add(sub)?,
         Some(("default", sub)) => sc_default(sub, args)?,
         Some(("list", sub)) => sc_list(sub, args)?,
+        Some(("proj", sub)) => sc_proj(sub, args)?,
         Some(("rm", sub)) => sc_rm(sub)?,
         Some(("system", sub)) => sc_system(sub, args)?,
+        Some(("repos", sub)) => sc_repos(sub, args)?,
         Some(("resolve", sub)) => sc_resolve(sub, args)?,
         Some(("rstudio", sub)) => sc_rstudio(sub)?,
         Some(("library", sub)) => sc_library(sub, args)?,
         Some(("sysreqs", sub)) => sc_sysreqs(sub, args)?,
         Some(("available", sub)) => sc_available(sub, args)?,
         Some(("run", sub)) => retval = sc_run(sub, args)?,
+        Some(("test", sub)) => sc_test(sub, args)?,
         _ => (), // unreachable
     }
     Ok(retval)
@@ -201,6 +328,8 @@ fn sc_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error
 
     if args.get_flag("plain") {
         if args.get_flag("json") || mainargs.get_flag("json") {
+            OUTPUT.error("Error: --plain cannot be used with --json");
+            error!("the argument '--plain' cannot be used with '--json'");
             bail!("the argument '--plain' cannot be used with '--json'");
         }
         for ver in vers.iter() {
@@ -261,7 +390,9 @@ fn sc_default(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Er
         if args.get_flag("json") || mainargs.get_flag("json") {
             println!(
                 "{}",
-                serde_json::to_string_pretty(&DefaultVersion { name: default.clone() })?
+                serde_json::to_string_pretty(&DefaultVersion {
+                    name: default.clone()
+                })?
             );
         } else {
             println!("{}", default);
@@ -297,11 +428,16 @@ pub fn sc_system_add_pak(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     // --devel is deprecated
     if devel && !pakverx {
-        info!("Note: --devel is now deprecated, use --pak-version instead");
-        info!("Selecting 'devel' version");
+        OUTPUT.status(
+            "Note: --devel is now deprecated, use --pak-version instead. Selecting 'devel' version",
+        );
+        info!(
+            "Note: --devel is now deprecated, use --pak-version instead. Selecting 'devel' version"
+        );
         pakver = "devel";
     }
     if devel && pakverx {
+        OUTPUT.status("Note: --devel is ignored in favor of --pak-version");
         info!("Note: --devel is ignored in favor of --pak-version");
     }
     if all {
