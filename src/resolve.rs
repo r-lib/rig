@@ -11,11 +11,14 @@ use simple_error::bail;
 #[cfg(target_os = "windows")]
 use std::sync::{LazyLock, RwLock};
 
+use std::path::Path;
+
 use crate::common::*;
 use crate::download::*;
 #[cfg(target_os = "windows")]
 use crate::hardcoded::*;
 use crate::output::OUTPUT;
+use crate::renv;
 use crate::rversion::*;
 use crate::utils::*;
 
@@ -23,10 +26,41 @@ const API_URI: &str = "https://api.r-hub.io/rversions/resolve/";
 #[cfg(target_os = "windows")]
 const API_ROOT: &str = "https://api.r-hub.io/rversions/";
 
+pub fn resolve_lockfile_version(str: &str) -> Result<Option<String>, Box<dyn Error>> {
+    let path = Path::new(str);
+
+    // Direct path to renv.lock
+    if path.file_name() == Some(std::ffi::OsStr::new("renv.lock")) && path.exists() {
+        let ver = renv::parse_r_version(path.to_path_buf())?;
+        OUTPUT.info(&format!("Installing R {} from renv.lock", ver));
+        return Ok(Some(ver));
+    }
+
+    // Directory containing renv.lock
+    if path.is_dir() {
+        let lockfile = path.join("renv.lock");
+        if lockfile.exists() {
+            let ver = renv::parse_r_version(lockfile)?;
+            OUTPUT.info(&format!("Installing R {} from renv.lock", ver));
+            return Ok(Some(ver));
+        }
+    }
+
+    Ok(None)
+}
+
 pub fn get_resolve(args: &ArgMatches) -> Result<Rversion, Box<dyn Error>> {
     let platform = get_platform(args)?;
     let arch = get_arch(&platform, args);
     let str: &String = args.get_one("str").unwrap();
+
+    // Check if str is a path to renv.lock or a directory containing one
+    let resolved_ver = resolve_lockfile_version(str)?;
+    let str = match &resolved_ver {
+        Some(ver) => ver.as_str(),
+        None => str.as_str(),
+    };
+
     let eps = vec![str.to_string()];
 
     if str.len() > 8 && (&str[..7] == "http://" || &str[..8] == "https://") {
@@ -185,4 +219,58 @@ pub fn get_rtools_version(version: &str, arch: &str) -> Result<RtoolsVersion, Bo
     OUTPUT.error(&msg);
     error!("{}", msg);
     bail!(msg)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+
+    #[test]
+    fn test_resolve_lockfile_direct_path() {
+        let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+        let lockfile = format!("{}/tests/fixtures/renv-project/renv.lock", manifest_dir);
+        let result = resolve_lockfile_version(&lockfile).unwrap();
+        assert_eq!(result, Some("4.4.1".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_lockfile_directory() {
+        let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+        let dir = format!("{}/tests/fixtures/renv-project", manifest_dir);
+        let result = resolve_lockfile_version(&dir).unwrap();
+        assert_eq!(result, Some("4.4.1".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_lockfile_not_a_path() {
+        let result = resolve_lockfile_version("release").unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_resolve_lockfile_version_string() {
+        let result = resolve_lockfile_version("4.4.1").unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_resolve_lockfile_devel() {
+        let result = resolve_lockfile_version("devel").unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_resolve_lockfile_nonexistent_path() {
+        let result = resolve_lockfile_version("/nonexistent/renv.lock").unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_resolve_lockfile_dir_without_lockfile() {
+        let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+        let dir = format!("{}/tests/fixtures/app-shiny", manifest_dir);
+        let result = resolve_lockfile_version(&dir).unwrap();
+        assert_eq!(result, None);
+    }
 }
