@@ -452,7 +452,13 @@ pub fn get_platform(args: &ArgMatches) -> Result<String, Box<dyn Error>> {
         if os == "linux" {
             let dist = detect_platform()?;
             if let (Some(distro), Some(version)) = (dist.distro, dist.version) {
-                os = format!("linux-{}-{}", distro, version);
+                // Amazon Linux 2023 is RHEL 9-compatible; the r-hub API
+                // doesn't know about amzn so we resolve against rhel-9.
+                if distro == "amzn" && version == "2023" {
+                    os = "linux-rhel-9".to_string();
+                } else {
+                    os = format!("linux-{}-{}", distro, version);
+                }
             }
         }
     }
