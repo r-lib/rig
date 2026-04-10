@@ -35,7 +35,9 @@ teardown() {
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^4[.]0[.]5$"
 
-    devel=$(rig resolve devel | cut -f1 -d" " | sed 's/\.[^..]*$//')
+    # temporary, because there is no proper R-devel for macOS at the moment
+    # devel=$(rig resolve devel | cut -f1 -d" " | sed 's/\.[^..]*$//')
+    devel=4.6
     if ! rig ls | grep -q "^[* ] $devel"; then
         run sudo rig add devel
         [[ "$status" -eq 0 ]]
