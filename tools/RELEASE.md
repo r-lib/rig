@@ -30,8 +30,11 @@
 - [ ] Test the macOS installers. (The rest are tested in the CI.)
 - [ ] `git commit` with the NEWS and README updates, update tag, push to GH,
       `--tags` as well.
-- [ ] Update Debian repo, by running the Action manually, and then `pull --rebase` and push the
-      `gh-pages` branch to the server at DigitalOcean.
+- [ ] Update Debian repo, by running the Action manually, and then check out
+      the `gh-pages` branch (into another directory, probably), add the
+      dokku remote, cherry-pick the updates from the dokku remote, and
+      then force-push to the server at DigitalOcean.
+      The purge the cloudflare cache for rig.r-pkg.org.
 - [ ] Update homebrew repo.
 - [ ] Update choco package.
     - Make sure `rig.nuspec` is current
@@ -51,10 +54,10 @@
 	  ```
 - [ ] Submit update to winget-pkgs:
     ```
-	VERSION=x.y.z
-    komac update --identifier  'Posit.rig' --version "$VERSION" \
+    VERSION=x.y.z
+    komac update --version "$VERSION" \
     --urls "https://github.com/r-lib/rig/releases/download/v${VERSION}/rig-windows-${VERSION}.exe" \
-    --submit
+    --submit 'Posit.rig'
     ```
 - [ ] Update the `latest` tag and release on GH.
 - [ ] toot
