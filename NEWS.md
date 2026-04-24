@@ -1,4 +1,4 @@
-# rig 0.8.0-beta
+# rig 0.8.0
 
 * New `rig repos` subcommand to manage R package repository setup
   across all installed R versions.
