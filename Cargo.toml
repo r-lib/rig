@@ -64,13 +64,10 @@ rand = "0.8.5"
 # deserialize R files
 rds2rust = "0.1.41"
 regex = "1.5.4"
-# HTTP
+# HTTP (non-Windows: rustls to avoid OpenSSL dep; Windows: native-tls (SChannel) to avoid ring build issues on aarch64)
 reqwest = { version = "0.11", features = [
     "json",
     "stream",
-    "rustls-tls",
-    "hyper-rustls",
-    "rustls-tls-native-roots",
 ], default-features = false }
 # SQLite database for caching
 rusqlite = { version = "0.32", features = ["bundled"] }
@@ -97,7 +94,15 @@ version-ranges = "0.1.2"
 # progress bars
 indicatif = "0.17"
 
+[target.'cfg(not(windows))'.dependencies]
+reqwest = { version = "0.11", features = [
+    "rustls-tls",
+    "hyper-rustls",
+    "rustls-tls-native-roots",
+], default-features = false }
+
 [target.'cfg(windows)'.dependencies]
+reqwest = { version = "0.11", features = ["native-tls"], default-features = false }
 is_elevated = "0.1.2"
 remove_dir_all = "0.7.0"
 whoami = "1.4.1"
