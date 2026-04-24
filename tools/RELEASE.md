@@ -7,7 +7,6 @@
   - choco/rig/rig.nuspec
   - NEWS file
 - [ ] If needed, commit to have a CI build with the right version number.
-- [ ] Trigger arm64 Linux CI build
 - [ ] Make sure CI is OK
 - [ ] Build README:
   ```

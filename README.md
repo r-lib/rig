@@ -35,7 +35,8 @@ Install, remove, configure R versions.
 - On arm64 macs select between x86_64 and arm64 versions or R, or
   install both.
 - Sets up the default CRAN mirror and
-  [PPM](https://packagemanager.posit.co/).
+  [PPM](https://packagemanager.posit.co/). (Only if you are not using
+  RStudio or Positron!)
 - Installs [pak](https://pak.r-lib.org) and set up automatic [system
   requirements
   installation](https://pak.r-lib.org/dev/reference/sysreqs.html).
@@ -169,8 +170,8 @@ tarball.
 #### Supported Linux distributions <a id="id-supported-linux-distributions">
 
 - Debian 12, 13
-- Ubuntu 20.04, 22.04, 24.04
-- Fedora Linux 41, 42, 43
+- Ubuntu 20.04, 22.04, 24.04, 26.04
+- Fedora Linux 42, 43
 - OpenSUSE 15.6, 16.0
 - SUSE Linux Enterprise 15 SP6
 - Red Hat Enterprise Linux 7, 8, 9, 10
@@ -181,7 +182,9 @@ We use the R builds from the Posit [R-builds
 project](https://github.com/rstudio/r-builds#r-builds).
 
 <details>
+
 <summary>
+
 Retired Linux distributions
 </summary>
 
@@ -196,6 +199,8 @@ existing R builds still work.
 - Fedora 37 (last R version: 4.3.2),
 - Fedora 38 (last R version: 4.4.2),
 - Fedora 39 (last R version: 4.4.3),
+- Fedora 40 (last R version: 4.5.1),
+- Fedora 41 (last R version: 4.5.3),
 - OpenSUSE 42 (only x86_64, last R version: 4.2.1),
 - OpenSUSE 15.1 (only x86_64, last R version: 4.1.2),
 - OpenSUSE 15.2 (only x86_64, last R version: 4.1.3),
@@ -280,15 +285,16 @@ Run `rig --help` and `rig <subcommand> --help` to see the documentation.
 ### Command list:
 
     rig add        -- install a new R version [alias: install]
-    rig available  -- List R versions available to install.
+    rig available  -- list R versions available to install.
     rig default    -- print or set default R version [alias: switch]
     rig library    -- manage package libraries [alias: lib] (experimental)
     rig list       -- list installed R versions [alias: ls]
+    rig repos      -- manage package repositories
     rig resolve    -- resolve a symbolic R version
-    rig rm         -- remove R versions [aliases: del, delete, remove]
-    rig rstudio    -- start RStudio with the specified R version
-    rig run        -- Run R, an R script or an R project
-    rig sysreqs    -- manage R-related system libraries and tools (experimental) (macOS)
+    rig rm         -- remove R versions [aliases: del, remove, delete]
+    rig rstudio    -- start RStudio with specified R version
+    rig run        -- run R, an R script or an R project
+    rig sysreqs    -- manage R-related system libraries and tools (experimental)
     rig system     -- manage current installations
 
 Run `rig <subcommand> --help` for information about a subcommand.
@@ -296,9 +302,10 @@ Run `rig <subcommand> --help` for information about a subcommand.
 ### macOS `rig system` subcommands
 
     rig system add-pak                 -- install or update pak for an R version
+    rig system allow-core-dumps        -- allow creating core dumps when R crashes
     rig system allow-debugger          -- allow debugging R with lldb and gdb
     rig system allow-debugger-rstudio  -- allow debugging RStudio with lldb and gdb
-    rig system allow-core-dumps        -- allow creating core dumps when R crashes
+    rig detect-platform                -- detect operating system version and distribution
     rig system fix-permissions         -- restrict system library permissions to admin
     rig system forget                  -- make system forget about R installations
     rig system make-links              -- create R-* quick links
@@ -310,6 +317,7 @@ Run `rig <subcommand> --help` for information about a subcommand.
 
     rig system add-pak                 -- install or update pak for an R version
     rig system clean-registry          -- clean stale R related entries in the registry
+    rig detect-platform                -- detect operating system version and distribution
     rig system make-links              -- create R-* quick links
     rig system rtools                  -- manage Rtools installations
     rig system setup-user-lib          -- set up automatic user package libraries [alias: create-lib]
@@ -317,8 +325,8 @@ Run `rig <subcommand> --help` for information about a subcommand.
 
 ### Linux `rig system` subcommands
 
-    rig system detect-platform         -- detect operating system version and distribution
     rig system add-pak                 -- install or update pak for an R version
+    rig system detect-platform         -- detect operating system version and distribution
     rig system make-links              -- create R-* quick links
     rig system setup-user-lib          -- set up automatic user package libraries [alias: create-lib]
 
@@ -369,55 +377,55 @@ We also have other containers with rig and either R-devel and R-release
 preinstalled, on various Linux distros. Here is a table of all
 containers:
 
-| Name                                      | OS                 | R version      | Tags                                                                                            |
-|-------------------------------------------|--------------------|----------------|-------------------------------------------------------------------------------------------------|
-| `ghcr.io/r-lib/rig/ubuntu-24.04-multi`    | Ubuntu 24.04       | last 6 (daily) | `r`, `rig`, `multi`, `ubuntu-multi`                                                             |
-| `ghcr.io/r-lib/rig/ubuntu-24.04-release`  | Ubuntu 24.04       | release        | `ubuntu-24.04`                                                                                  |
-| `ghcr.io/r-lib/rig/ubuntu-24.04-devel`    | Ubuntu 24.04       | devel (daily)  |                                                                                                 |
-| `ghcr.io/r-lib/rig/ubuntu-22.04-release`  | Ubuntu 22.04       | release        | `release`, `ubuntu`, `ubuntu-release`, `ubuntu-latest`, `ubuntu-latest-release`, `ubuntu-22.04` |
-| `ghcr.io/r-lib/rig/ubuntu-22.04-devel`    | Ubuntu 22.04       | devel (daily)  | `devel`, `ubuntu-devel`, `ubuntu-latest-devel`                                                  |
-| `ghcr.io/r-lib/rig/ubuntu-20.04-release`  | Ubuntu 20.04       | release        | `ubuntu-20.04`                                                                                  |
-| `ghcr.io/r-lib/rig/ubuntu-20.04-devel`    | Ubuntu 20.04       | devel (daily)  |                                                                                                 |
-| `ghcr.io/r-lib/rig/debian-13-release`     | Debian 13          | release        | `debian`, `debian-release`, `debian-latest`, `debian-latest-release`, `debian-13`               |
-| `ghcr.io/r-lib/rig/debian-13-devel`       | Debian 13          | devel (daily)  | `debian-devel`, `debian-latest-devel`                                                           |
-| `ghcr.io/r-lib/rig/debian-12-release`     | Debian 12          | release        | `debian-12`                                                                                     |
-| `ghcr.io/r-lib/rig/debian-12-devel`       | Debian 12          | devel (daily)  |                                                                                                 |
-| `ghcr.io/r-lib/rig/fedora-43-release`     | Fedora 43          | release        | `fedora`, `fedora-release`, `fedora-latest`, `fedora-latest-release`, `fedora-43`               |
-| `ghcr.io/r-lib/rig/fedora-43-devel`       | Fedora 43          | devel          | `fedora-devel`, `fedora-latest-devel`                                                           |
-| `ghcr.io/r-lib/rig/fedora-42-release`     | Fedora 42          | release        | `fedora-42`                                                                                     |
-| `ghcr.io/r-lib/rig/fedora-42-devel`       | Fedora 42          | devel          |                                                                                                 |
-| `ghcr.io/r-lib/rig/opensuse-16.0-release` | OpenSUSE Leap 16.0 | release        | `opensuse`, `opensuse-release`, `opensuse-latest`, `opensuse-latest-release`, `opensuse-16.0`   |
-| `ghcr.io/r-lib/rig/opensuse-16.0-devel`   | OpenSUSE Leap 16.0 | devel (daily)  | `opensuse-devel`, `opensuse-latest-devel`                                                       |
-| `ghcr.io/r-lib/rig/opensuse-15.6-release` | OpenSUSE Leap 15.6 | release        | `opensuse-15.6`                                                                                 |
-| `ghcr.io/r-lib/rig/opensuse-15.6-devel`   | OpenSUSE Leap 15.6 | devel (daily)  |                                                                                                 |
+| Name | OS | R version | Tags |
+|----|----|----|----|
+| `ghcr.io/r-lib/rig/ubuntu-24.04-multi` | Ubuntu 24.04 | last 6 (daily) | `r`, `rig`, `multi`, `ubuntu-multi` |
+| `ghcr.io/r-lib/rig/ubuntu-24.04-release` | Ubuntu 24.04 | release | `ubuntu-24.04` |
+| `ghcr.io/r-lib/rig/ubuntu-24.04-devel` | Ubuntu 24.04 | devel (daily) |  |
+| `ghcr.io/r-lib/rig/ubuntu-22.04-release` | Ubuntu 22.04 | release | `release`, `ubuntu`, `ubuntu-release`, `ubuntu-latest`, `ubuntu-latest-release`, `ubuntu-22.04` |
+| `ghcr.io/r-lib/rig/ubuntu-22.04-devel` | Ubuntu 22.04 | devel (daily) | `devel`, `ubuntu-devel`, `ubuntu-latest-devel` |
+| `ghcr.io/r-lib/rig/ubuntu-20.04-release` | Ubuntu 20.04 | release | `ubuntu-20.04` |
+| `ghcr.io/r-lib/rig/ubuntu-20.04-devel` | Ubuntu 20.04 | devel (daily) |  |
+| `ghcr.io/r-lib/rig/debian-13-release` | Debian 13 | release | `debian`, `debian-release`, `debian-latest`, `debian-latest-release`, `debian-13` |
+| `ghcr.io/r-lib/rig/debian-13-devel` | Debian 13 | devel (daily) | `debian-devel`, `debian-latest-devel` |
+| `ghcr.io/r-lib/rig/debian-12-release` | Debian 12 | release | `debian-12` |
+| `ghcr.io/r-lib/rig/debian-12-devel` | Debian 12 | devel (daily) |  |
+| `ghcr.io/r-lib/rig/fedora-43-release` | Fedora 43 | release | `fedora`, `fedora-release`, `fedora-latest`, `fedora-latest-release`, `fedora-43` |
+| `ghcr.io/r-lib/rig/fedora-43-devel` | Fedora 43 | devel | `fedora-devel`, `fedora-latest-devel` |
+| `ghcr.io/r-lib/rig/fedora-42-release` | Fedora 42 | release | `fedora-42` |
+| `ghcr.io/r-lib/rig/fedora-42-devel` | Fedora 42 | devel |  |
+| `ghcr.io/r-lib/rig/opensuse-16.0-release` | OpenSUSE Leap 16.0 | release | `opensuse`, `opensuse-release`, `opensuse-latest`, `opensuse-latest-release`, `opensuse-16.0` |
+| `ghcr.io/r-lib/rig/opensuse-16.0-devel` | OpenSUSE Leap 16.0 | devel (daily) | `opensuse-devel`, `opensuse-latest-devel` |
+| `ghcr.io/r-lib/rig/opensuse-15.6-release` | OpenSUSE Leap 15.6 | release | `opensuse-15.6` |
+| `ghcr.io/r-lib/rig/opensuse-15.6-devel` | OpenSUSE Leap 15.6 | devel (daily) |  |
 
 For convenience, we also create these tags:
 
-| Tag                                | Current Image           | Description                          |
-|------------------------------------|-------------------------|--------------------------------------|
-| `ghcr.io/r-lib/rig/r`              | `ubuntu-24.04-multi`    | Last 6 R versions on latest Ubuntu.  |
-| `ghcr.io/r-lib/rig/rig`            | ”                       | ”                                    |
-| `ghcr.io/r-lib/rig/multi`          | ”                       | ”                                    |
-| `ghcr.io/r-lib/rig/ubuntu-multi`   | ”                       | ”                                    |
-| `ghcr.io/r-lib/rig/release`        | `ubuntu-24.04-release`  | Latest R release.                    |
-| `ghcr.io/r-lib/rig/ubuntu`         | `ubuntu-24.04-release`  | Latest R release on latest Ubuntu.   |
-| `ghcr.io/r-lib/rig/ubuntu-24.04`   | `ubuntu-24.04-release`  | Latest R release on Ubuntu 24.04.    |
-| `ghcr.io/r-lib/rig/devel`          | `ubuntu-24.04-devel`    | R devel.                             |
-| `ghcr.io/r-lib/rig/ubuntu-devel`   | `ubuntu-24.04-devel`    | R devel on latest Ubuntu.            |
-| `ghcr.io/r-lib/rig/ubuntu-22.04`   | `ubuntu-22.04-release`  | Latest R release on Ubuntu 22.04.    |
-| `ghcr.io/r-lib/rig/ubuntu-20.04`   | `ubuntu-20.04-release`  | Latest R release on Ubuntu 20.04.    |
-| `ghcr.io/r-lib/rig/debian`         | `debian-13-release`     | Latest R release on latest Debian.   |
-| `ghcr.io/r-lib/rig/debian-13`      | `debian-13-release`     | Latest R release on Debian 13.       |
-| `ghcr.io/r-lib/rig/debian-12`      | `debian-12-release`     | Latest R release on Debian 12.       |
-| `ghcr.io/r-lib/rig/debian-devel`   | `debian-13-devel`       | R devel on latest Debian.            |
-| `ghcr.io/r-lib/rig/fedora`         | `fedora-43-release`     | Latest R release on latest Fedora.   |
-| `ghcr.io/r-lib/rig/fedora-43`      | `fedora-43-release`     | Latest R release on Fedora 43.       |
-| `ghcr.io/r-lib/rig/fedora-42`      | `fedora-42-release`     | Latest R release on Fedora 42.       |
-| `ghcr.io/r-lib/rig/fedora-devel`   | `fedora-43-devel`       | R devel on latest Fedora.            |
-| `ghcr.io/r-lib/rig/opensuse`       | `opensuse-16.0-release` | Latest R release on latest OpenSUSE. |
-| `ghcr.io/r-lib/rig/opensuse-16.0`  | `opensuse-16.0-release` | Latest R release on OpenSUSE 16.0.   |
-| `ghcr.io/r-lib/rig/opensuse-15.6`  | `opensuse-15.6-release` | Latest R release on OpenSUSE 15.6.   |
-| `ghcr.io/r-lib/rig/opensuse-devel` | `opensuse-16.0-devel`   | R devel on latest OpenSUSE.          |
+| Tag | Current Image | Description |
+|----|----|----|
+| `ghcr.io/r-lib/rig/r` | `ubuntu-24.04-multi` | Last 6 R versions on latest Ubuntu. |
+| `ghcr.io/r-lib/rig/rig` | ” | ” |
+| `ghcr.io/r-lib/rig/multi` | ” | ” |
+| `ghcr.io/r-lib/rig/ubuntu-multi` | ” | ” |
+| `ghcr.io/r-lib/rig/release` | `ubuntu-24.04-release` | Latest R release. |
+| `ghcr.io/r-lib/rig/ubuntu` | `ubuntu-24.04-release` | Latest R release on latest Ubuntu. |
+| `ghcr.io/r-lib/rig/ubuntu-24.04` | `ubuntu-24.04-release` | Latest R release on Ubuntu 24.04. |
+| `ghcr.io/r-lib/rig/devel` | `ubuntu-24.04-devel` | R devel. |
+| `ghcr.io/r-lib/rig/ubuntu-devel` | `ubuntu-24.04-devel` | R devel on latest Ubuntu. |
+| `ghcr.io/r-lib/rig/ubuntu-22.04` | `ubuntu-22.04-release` | Latest R release on Ubuntu 22.04. |
+| `ghcr.io/r-lib/rig/ubuntu-20.04` | `ubuntu-20.04-release` | Latest R release on Ubuntu 20.04. |
+| `ghcr.io/r-lib/rig/debian` | `debian-13-release` | Latest R release on latest Debian. |
+| `ghcr.io/r-lib/rig/debian-13` | `debian-13-release` | Latest R release on Debian 13. |
+| `ghcr.io/r-lib/rig/debian-12` | `debian-12-release` | Latest R release on Debian 12. |
+| `ghcr.io/r-lib/rig/debian-devel` | `debian-13-devel` | R devel on latest Debian. |
+| `ghcr.io/r-lib/rig/fedora` | `fedora-43-release` | Latest R release on latest Fedora. |
+| `ghcr.io/r-lib/rig/fedora-43` | `fedora-43-release` | Latest R release on Fedora 43. |
+| `ghcr.io/r-lib/rig/fedora-42` | `fedora-42-release` | Latest R release on Fedora 42. |
+| `ghcr.io/r-lib/rig/fedora-devel` | `fedora-43-devel` | R devel on latest Fedora. |
+| `ghcr.io/r-lib/rig/opensuse` | `opensuse-16.0-release` | Latest R release on latest OpenSUSE. |
+| `ghcr.io/r-lib/rig/opensuse-16.0` | `opensuse-16.0-release` | Latest R release on OpenSUSE 16.0. |
+| `ghcr.io/r-lib/rig/opensuse-15.6` | `opensuse-15.6-release` | Latest R release on OpenSUSE 15.6. |
+| `ghcr.io/r-lib/rig/opensuse-devel` | `opensuse-16.0-devel` | R devel on latest OpenSUSE. |
 
 See all container images on
 [GitHub](https://github.com/orgs/r-lib/packages?repo_name=rig).
@@ -442,7 +450,9 @@ Please open an issue in our issue tracker at
 ## ❓  FAQ <a id="id-faq">
 
 <details>
+
 <summary>
+
 Why does rig create a user package library?
 </summary>
 
@@ -460,8 +470,11 @@ Why does rig create a user package library?
 >   install it again, without losing your R packages.
 
 </details>
+
 <details>
+
 <summary>
+
 Why does rig install pak?
 </summary>
 
@@ -473,8 +486,11 @@ Why does rig install pak?
 > option.
 
 </details>
+
 <details>
+
 <summary>
+
 Why does rig change the permissions of the system library (on macOS)?
 </summary>
 
@@ -483,8 +499,11 @@ Why does rig change the permissions of the system library (on macOS)?
 > above.
 
 </details>
+
 <details>
+
 <summary>
+
 Why does rig set the default CRAN mirror?
 </summary>
 
@@ -500,8 +519,11 @@ Why does rig set the default CRAN mirror?
 > You can also use the `--without-cran-mirror` option of `rig add`.
 
 </details>
+
 <details>
+
 <summary>
+
 Why does rig set up P3M?
 </summary>
 
@@ -518,16 +540,22 @@ Why does rig set up P3M?
 > `--without-rspm`) option of `rig add`.
 
 </details>
+
 <details>
+
 <summary>
+
 Can rig install R without admin permissions
 </summary>
 
 > No, currently it cannot.
 
 </details>
+
 <details>
+
 <summary>
+
 How is rig different from RSwitch?
 </summary>
 
@@ -543,8 +571,11 @@ How is rig different from RSwitch?
 > at the same time.
 
 </details>
+
 <details>
+
 <summary>
+
 Which domains does rig download files from?
 </summary>
 
