@@ -1,0 +1,16 @@
+Package: r-rig
+Version: 0.8.0-1
+Architecture: arm64
+Bugs: https://github.com/r-lib/rig/issues
+Maintainer: Gabor Csardi <csardi.gabor@gmail.com>
+Installed-Size: 11635
+Filename: pool/main/r-rig_0.8.0-1_arm64.deb
+Size: 5481262
+MD5sum: 30312eaef77f0e2a7c78814ace159082
+SHA1: da9722643efa9b74229e2468026a3812ec2a923f
+SHA256: bacccf5236e5e23dd1faea670a175fb123c60e160b47fdefe463766d8b9727a3
+Section: universe/math
+Priority: normal
+Homepage: https://github.com/r-lib/rig
+Description: The R Installation Manager
+
