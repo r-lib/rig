@@ -1,5 +1,13 @@
 # rig 0.8.0-beta
 
+* New `rig repos` subcommand to manage R package repository setup
+  across all installed R versions.
+
+* The `--without-p3m` option of `rig add` is now always available, for
+  consistency across platforms. By default P3M is on on x86_64 Windows and
+  supported Linux distros, as before. The new `--with-p3m` option turns
+  on P3M on macOS as well.
+
 * rig now supports aarch64 Windows. It currently only supports installing
   aarch64 builds of R and Rtools on aarch64 Windows. The x86_64 build of
   rig also works on aarch64 Windows and installs aarch64 builds of R and
