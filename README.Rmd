@@ -396,10 +396,12 @@ Here is a table of all containers:
 Name                                      | OS                 | R version      | Tags
 ------------------------------------------+--------------------+----------------+------------------------------------------------------------------------------------------------
 `ghcr.io/r-lib/rig/ubuntu-24.04-multi`    | Ubuntu 24.04       | last 6 (daily) | `r`, `rig`, `multi`, `ubuntu-multi`
+`ghcr.io/r-lib/rig/ubuntu-26.04-release`  | Ubuntu 26.04       | release        | `release`, `ubuntu`, `ubuntu-release`, `ubuntu-latest`, `ubuntu-latest-release`, `ubuntu-26.04`
+`ghcr.io/r-lib/rig/ubuntu-26.04-devel`    | Ubuntu 26.04       | devel (daily)  | `devel`, `ubuntu-devel`, `ubuntu-latest-devel`
 `ghcr.io/r-lib/rig/ubuntu-24.04-release`  | Ubuntu 24.04       | release        | `ubuntu-24.04`
 `ghcr.io/r-lib/rig/ubuntu-24.04-devel`    | Ubuntu 24.04       | devel (daily)  |
-`ghcr.io/r-lib/rig/ubuntu-22.04-release`  | Ubuntu 22.04       | release        | `release`, `ubuntu`, `ubuntu-release`, `ubuntu-latest`, `ubuntu-latest-release`, `ubuntu-22.04`
-`ghcr.io/r-lib/rig/ubuntu-22.04-devel`    | Ubuntu 22.04       | devel (daily)  | `devel`, `ubuntu-devel`, `ubuntu-latest-devel`
+`ghcr.io/r-lib/rig/ubuntu-22.04-release`  | Ubuntu 22.04       | release        | `ubuntu-22.04`
+`ghcr.io/r-lib/rig/ubuntu-22.04-devel`    | Ubuntu 22.04       | devel (daily)  |
 `ghcr.io/r-lib/rig/ubuntu-20.04-release`  | Ubuntu 20.04       | release        | `ubuntu-20.04`
 `ghcr.io/r-lib/rig/ubuntu-20.04-devel`    | Ubuntu 20.04       | devel (daily)  |
 `ghcr.io/r-lib/rig/debian-13-release`     | Debian 13          | release        | `debian`, `debian-release`, `debian-latest`, `debian-latest-release`, `debian-13`
@@ -423,11 +425,12 @@ Tag                                | Current Image           | Description
 `ghcr.io/r-lib/rig/rig`            | "                       | "
 `ghcr.io/r-lib/rig/multi`          | "                       | "
 `ghcr.io/r-lib/rig/ubuntu-multi`   | "                       | "
-`ghcr.io/r-lib/rig/release`        | `ubuntu-24.04-release`  | Latest R release.
-`ghcr.io/r-lib/rig/ubuntu`         | `ubuntu-24.04-release`  | Latest R release on latest Ubuntu.
+`ghcr.io/r-lib/rig/release`        | `ubuntu-26.04-release`  | Latest R release.
+`ghcr.io/r-lib/rig/ubuntu`         | `ubuntu-26.04-release`  | Latest R release on latest Ubuntu.
+`ghcr.io/r-lib/rig/ubuntu-26.04`   | `ubuntu-26.04-release`  | Latest R release on Ubuntu 26.04.
+`ghcr.io/r-lib/rig/devel`          | `ubuntu-26.04-devel`    | R devel.
+`ghcr.io/r-lib/rig/ubuntu-devel`   | `ubuntu-26.04-devel`    | R devel on latest Ubuntu.
 `ghcr.io/r-lib/rig/ubuntu-24.04`   | `ubuntu-24.04-release`  | Latest R release on Ubuntu 24.04.
-`ghcr.io/r-lib/rig/devel`          | `ubuntu-24.04-devel`    | R devel.
-`ghcr.io/r-lib/rig/ubuntu-devel`   | `ubuntu-24.04-devel`    | R devel on latest Ubuntu.
 `ghcr.io/r-lib/rig/ubuntu-22.04`   | `ubuntu-22.04-release`  | Latest R release on Ubuntu 22.04.
 `ghcr.io/r-lib/rig/ubuntu-20.04`   | `ubuntu-20.04-release`  | Latest R release on Ubuntu 20.04.
 `ghcr.io/r-lib/rig/debian`         | `debian-13-release`     | Latest R release on latest Debian.
