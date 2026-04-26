@@ -170,13 +170,13 @@ pub fn detect_platform_impl() -> Result<OsVersion, Box<dyn Error>> {
 static PLATFORM_DETECTION_CACHE: OnceLock<OsVersion> = OnceLock::new();
 
 pub fn detect_platform() -> Result<OsVersion, Box<dyn Error>> {
-    // If RIG_PLATFORM is not set, use cache
+    if let Ok(rp) = std::env::var("RIG_PLATFORM") {
+        return parse_platform_string(&rp);
+    }
     match PLATFORM_DETECTION_CACHE.get() {
         Some(cached) => Ok(cached.clone()),
         None => {
             let result = detect_platform_impl()?;
-            // Try to cache it (this might fail if another thread
-            // cached it first, which is fine)
             let _ = PLATFORM_DETECTION_CACHE.set(result.clone());
             Ok(result)
         }
@@ -283,6 +283,29 @@ pub fn platform_to_pkg_type(platform: &OsVersion, r_version: &str) -> Option<Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_detect_platform_rig_platform_short() {
+        // "ubuntu-24.04" should be treated as a linux platform shorthand
+        std::env::set_var("RIG_PLATFORM", "ubuntu-24.04");
+        let result = detect_platform().unwrap();
+        std::env::remove_var("RIG_PLATFORM");
+        assert_eq!(result.distro, Some("ubuntu".to_string()));
+        assert_eq!(result.version, Some("24.04".to_string()));
+        assert_eq!(result.os, "linux");
+        assert_eq!(result.vendor, "unknown");
+    }
+
+    #[test]
+    fn test_detect_platform_rig_platform_prefixed() {
+        // "linux-ubuntu-22.04" explicit form
+        std::env::set_var("RIG_PLATFORM", "linux-ubuntu-22.04");
+        let result = detect_platform().unwrap();
+        std::env::remove_var("RIG_PLATFORM");
+        assert_eq!(result.distro, Some("ubuntu".to_string()));
+        assert_eq!(result.version, Some("22.04".to_string()));
+        assert_eq!(result.os, "linux");
+    }
 
     #[test]
     fn test_parse_platform_string_three_parts() {

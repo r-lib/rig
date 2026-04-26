@@ -432,6 +432,19 @@ fn get_project_version(path: &str) -> Result<Option<String>, Box<dyn Error>> {
 
 // -- rig avilable --------------------------------------------------------
 
+pub(crate) fn normalize_rig_platform(rp: &str) -> String {
+    // "ubuntu-24.04" (one dash, not a known non-linux shorthand) -> "linux-ubuntu-24.04"
+    if rp.matches('-').count() == 1
+        && rp != "macos"
+        && rp != "windows"
+        && !rp.starts_with("linux-")
+    {
+        format!("linux-{}", rp)
+    } else {
+        rp.to_string()
+    }
+}
+
 pub fn get_platform(args: &ArgMatches) -> Result<String, Box<dyn Error>> {
     // rig add does not have a --platform argument, only auto-detect
     match args.try_contains_id("platform") {
@@ -443,6 +456,12 @@ pub fn get_platform(args: &ArgMatches) -> Result<String, Box<dyn Error>> {
         }
         Err(_) => {}
     };
+
+    if let Ok(rp) = env::var("RIG_PLATFORM") {
+        let rp = normalize_rig_platform(&rp);
+        debug!("Using RIG_PLATFORM: {}.", rp);
+        return Ok(rp);
+    }
 
     #[allow(unused_mut)]
     let mut os = env::consts::OS.to_string();
@@ -758,3 +777,28 @@ fn sc_available_rtools_versions(
 }
 
 // ------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_normalize_rig_platform_short_linux() {
+        assert_eq!(normalize_rig_platform("ubuntu-24.04"), "linux-ubuntu-24.04");
+        assert_eq!(normalize_rig_platform("fedora-40"), "linux-fedora-40");
+    }
+
+    #[test]
+    fn test_normalize_rig_platform_already_prefixed() {
+        assert_eq!(
+            normalize_rig_platform("linux-ubuntu-22.04"),
+            "linux-ubuntu-22.04"
+        );
+    }
+
+    #[test]
+    fn test_normalize_rig_platform_non_linux() {
+        assert_eq!(normalize_rig_platform("macos"), "macos");
+        assert_eq!(normalize_rig_platform("windows"), "windows");
+    }
+}
