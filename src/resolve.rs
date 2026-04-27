@@ -21,7 +21,7 @@ use crate::utils::*;
 
 const API_URI: &str = "https://api.r-hub.io/rversions/resolve/";
 #[cfg(target_os = "windows")]
-const API_ROOT: &str = "https://api.r-hub.io/rversions/";
+const API_ROOT: &str = "https://api.r-hub.io/rversions/"; // must end with '/'
 
 pub fn get_resolve(args: &ArgMatches) -> Result<Rversion, Box<dyn Error>> {
     let platform = get_platform(args)?;
@@ -127,7 +127,7 @@ pub fn get_available_rtools_versions(arch: &str) -> serde_json::Value {
     let value = match cache_get_value(&cache_key) {
         Some(cached) => cached,
         None => {
-            let url = API_ROOT.to_string() + "/rtools-versions/" + arch;
+            let url = API_ROOT.to_string() + "rtools-versions/" + arch;
             let val = match download_json_sync(vec![url]) {
                 Ok(dl) => dl[0].clone(),
                 Err(err) => {
