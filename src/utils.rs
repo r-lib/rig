@@ -254,7 +254,7 @@ pub fn get_user() -> Result<User, Box<dyn Error>> {
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn get_binary_dir() -> Result<String, Box<dyn Error>> {
     if let Ok(val) = std::env::var("RIG_BINARY_DIR") {
         return Ok(val.trim_end_matches('/').to_string());
@@ -262,6 +262,17 @@ pub fn get_binary_dir() -> Result<String, Box<dyn Error>> {
 
     if let Some(val) = crate::config::get_global_config_value("binary-dir")? {
         return Ok(val.trim_end_matches('/').to_string());
+    }
+
+    let mode = if let Ok(val) = std::env::var("RIG_MODE") {
+        Some(val)
+    } else {
+        crate::config::get_global_config_value("mode")?
+    };
+
+    if mode.as_deref() == Some("user") {
+        let home = std::env::var("HOME")?;
+        return Ok(format!("{}/.local/bin", home));
     }
 
     Ok("/usr/local/bin".to_string())
@@ -393,5 +404,51 @@ esac
 
 #[cfg(target_os = "windows")]
 pub fn add_local_bin_to_path() -> Result<(), Box<dyn Error>> {
+    Ok(())
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub fn check_local_bin_path() -> Result<(), Box<dyn Error>> {
+    use crate::output::OUTPUT;
+
+    let binary_dir = get_binary_dir()?;
+
+    let home = match std::env::var("HOME") {
+        Ok(x) => x,
+        Err(_) => bail!("HOME environment variable is not set"),
+    };
+    let local_bin = Path::new(&home).join(".local/bin");
+    if Path::new(&binary_dir) == local_bin {
+        add_local_bin_to_path()?;
+    }
+
+    let path_var = std::env::var("PATH").unwrap_or_default();
+    let on_path = std::env::split_paths(&path_var)
+        .any(|p| p == Path::new(&binary_dir));
+
+    if !on_path {
+        let is_local_bin = Path::new(&binary_dir) == local_bin;
+        if is_local_bin {
+            let shell = std::env::var("SHELL").unwrap_or_default();
+            let is_fish = shell.contains("fish");
+            OUTPUT.warn(&format!("{} is not on the PATH.", binary_dir));
+            eprintln!("  To add it to the current session, run:");
+            if is_fish {
+                eprintln!("    fish_add_path \"$HOME/.local/bin\"          # fish");
+            } else {
+                eprintln!("    . \"$HOME/.local/bin/env\"                   # bash/zsh/sh");
+                eprintln!("    fish_add_path \"$HOME/.local/bin\"           # fish");
+            }
+            eprintln!("  New shell sessions will pick it up automatically.");
+        } else {
+            OUTPUT.warn(&format!("{} is not on the PATH.", binary_dir));
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+pub fn check_local_bin_path() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
