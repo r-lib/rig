@@ -12,6 +12,7 @@ use clap::ArgMatches;
 use log::{debug, error, info, warn};
 use nix::sys::stat::umask;
 use nix::sys::stat::Mode;
+use nix::unistd::{access, AccessFlags};
 use owo_colors::OwoColorize;
 use path_clean::PathClean;
 use regex::Regex;
@@ -346,12 +347,14 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
-    escalate("making R-* quick links")?;
+    let binary_dir = get_binary_dir()?;
+    if access(binary_dir.as_str(), AccessFlags::W_OK).is_err() {
+        escalate("making R-* quick links")?;
+    }
     check_local_bin_path()?;
     let vers = sc_get_list()?;
     let rroot = get_r_root();
     let base = Path::new(&rroot);
-    let binary_dir = get_binary_dir()?;
 
     OUTPUT.status("Updating R-* quick links (as needed)");
     info!("Updating R-* quick links (as needed)");
