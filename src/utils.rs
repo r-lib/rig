@@ -410,6 +410,10 @@ pub fn add_local_bin_to_path() -> Result<(), Box<dyn Error>> {
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn check_local_bin_path() -> Result<(), Box<dyn Error>> {
     use crate::output::OUTPUT;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    static ADD_DONE: AtomicBool = AtomicBool::new(false);
+    static WARN_DONE: AtomicBool = AtomicBool::new(false);
 
     let binary_dir = get_binary_dir()?;
 
@@ -419,14 +423,16 @@ pub fn check_local_bin_path() -> Result<(), Box<dyn Error>> {
     };
     let local_bin = Path::new(&home).join(".local/bin");
     if Path::new(&binary_dir) == local_bin {
-        add_local_bin_to_path()?;
+        if !ADD_DONE.swap(true, Ordering::Relaxed) {
+            add_local_bin_to_path()?;
+        }
     }
 
     let path_var = std::env::var("PATH").unwrap_or_default();
     let on_path = std::env::split_paths(&path_var)
         .any(|p| p == Path::new(&binary_dir));
 
-    if !on_path {
+    if !on_path && !WARN_DONE.swap(true, Ordering::Relaxed) {
         let is_local_bin = Path::new(&binary_dir) == local_bin;
         if is_local_bin {
             let shell = std::env::var("SHELL").unwrap_or_default();
