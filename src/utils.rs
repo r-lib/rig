@@ -254,6 +254,19 @@ pub fn get_user() -> Result<User, Box<dyn Error>> {
     })
 }
 
+#[cfg(target_os = "macos")]
+pub fn get_binary_dir() -> Result<String, Box<dyn Error>> {
+    if let Ok(val) = std::env::var("RIG_BINARY_DIR") {
+        return Ok(val.trim_end_matches('/').to_string());
+    }
+
+    if let Some(val) = crate::config::get_global_config_value("binary-dir")? {
+        return Ok(val.trim_end_matches('/').to_string());
+    }
+
+    Ok("/usr/local/bin".to_string())
+}
+
 pub fn unset_r_envvars() {
     let evs = vec![
         "R_ARCH",
@@ -313,5 +326,72 @@ pub fn create_parent_dir_if_needed(path: &PathBuf) -> Result<(), Box<dyn Error>>
             std::fs::create_dir_all(parent)?;
         }
     }
+    Ok(())
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub fn add_local_bin_to_path() -> Result<(), Box<dyn Error>> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let home = match std::env::var("HOME") {
+        Ok(x) => x,
+        Err(_) => bail!("HOME environment variable is not set"),
+    };
+    let home_path = Path::new(&home);
+
+    let local_bin = home_path.join(".local/bin");
+    std::fs::create_dir_all(&local_bin)?;
+
+    let env_file = local_bin.join("env");
+    if !env_file.exists() {
+        let content = "\
+#!/bin/sh
+# add binaries to PATH if they aren't added yet
+# affix colons on either side of $PATH to simplify matching
+case \":${PATH}:\" in
+    *:\"$HOME/.local/bin\":*)
+        ;;
+    *)
+        # Prepending path in case a system-installed binary needs to be overridden
+        export PATH=\"$HOME/.local/bin:$PATH\"
+        ;;
+esac
+";
+        std::fs::write(&env_file, content)?;
+        let mut perms = std::fs::metadata(&env_file)?.permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&env_file, perms)?;
+    }
+
+    let source_line = ". \"$HOME/.local/bin/env\"";
+
+    let candidates = [
+        home_path.join(".profile"),
+        home_path.join(".bash_profile"),
+        home_path.join(".zprofile"),
+    ];
+
+    let mut any_found = false;
+    for profile in &candidates {
+        if profile.exists() {
+            any_found = true;
+            let content = std::fs::read_to_string(profile)?;
+            if !content.contains(source_line) {
+                let mut file = std::fs::OpenOptions::new().append(true).open(profile)?;
+                writeln!(file, "\n{}", source_line)?;
+            }
+        }
+    }
+
+    if !any_found {
+        let profile = home_path.join(".profile");
+        std::fs::write(&profile, format!("{}\n", source_line))?;
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+pub fn add_local_bin_to_path() -> Result<(), Box<dyn Error>> {
     Ok(())
 }

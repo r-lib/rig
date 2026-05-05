@@ -179,6 +179,15 @@ fn save_raw_config(map: &serde_json::Map<String, serde_json::Value>) -> Result<(
 }
 
 #[cfg(target_os = "macos")]
+pub fn get_global_config_value(key: &str) -> Result<Option<String>, Box<dyn Error>> {
+    let map = load_raw_config()?;
+    match map.get(key) {
+        Some(serde_json::Value::String(s)) => Ok(Some(s.clone())),
+        _ => Ok(None),
+    }
+}
+
+#[cfg(target_os = "macos")]
 fn sc_config_set(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let keyvalue = args.get_one::<String>("keyvalue").unwrap();
     let (key, value) = keyvalue
