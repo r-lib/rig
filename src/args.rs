@@ -738,6 +738,55 @@ pub fn rig_app() -> Command {
 
     #[cfg(target_os = "macos")]
     {
+        let cmd_config = Command::new("config")
+            .about("Manage rig configuration")
+            .display_order(0)
+            .arg_required_else_help(true)
+            .subcommand(
+                Command::new("config-file-path")
+                    .about("Print the path to the rig config file")
+                    .display_order(0),
+            )
+            .subcommand(
+                Command::new("list")
+                    .about("List the names of all config entries")
+                    .display_order(0)
+                    .arg(
+                        Arg::new("json")
+                            .help("JSON output")
+                            .long("json")
+                            .num_args(0)
+                            .required(false),
+                    ),
+            )
+            .subcommand(
+                Command::new("get")
+                    .about("Get a config entry")
+                    .display_order(0)
+                    .arg(Arg::new("key").help("config key to get").required(true))
+                    .arg(
+                        Arg::new("json")
+                            .help("JSON output")
+                            .long("json")
+                            .num_args(0)
+                            .required(false),
+                    ),
+            )
+            .subcommand(
+                Command::new("set")
+                    .about("Set a config entry")
+                    .display_order(0)
+                    .arg(
+                        Arg::new("keyvalue")
+                            .help("key=value pair to set")
+                            .required(true),
+                    ),
+            );
+        rig = rig.subcommand(cmd_config);
+    }
+
+    #[cfg(target_os = "macos")]
+    {
         let cmd_sysreqs = Command::new("sysreqs")
             .about("Manage R-related system libraries and tools (experimental)")
             .display_order(0)
