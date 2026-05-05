@@ -152,7 +152,7 @@ fn sc_config_get(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn load_raw_config() -> Result<serde_json::Map<String, serde_json::Value>, Box<dyn Error>> {
     let config_file = rig_config_file()?;
     if config_file.exists() {
@@ -178,7 +178,7 @@ fn save_raw_config(map: &serde_json::Map<String, serde_json::Value>) -> Result<(
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn get_global_config_value(key: &str) -> Result<Option<String>, Box<dyn Error>> {
     let map = load_raw_config()?;
     match map.get(key) {
