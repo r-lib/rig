@@ -458,3 +458,133 @@ pub fn check_local_bin_path() -> Result<(), Box<dyn Error>> {
 pub fn check_local_bin_path() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
+
+#[cfg(test)]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use std::sync::Mutex;
+
+    // Serialize tests that mutate env vars to avoid races.
+    static ENV_MUTEX: Mutex<()> = Mutex::new(());
+
+    fn with_temp_home<F: FnOnce(&Path)>(f: F) {
+        let dir = tempfile::tempdir().unwrap();
+        let _guard = ENV_MUTEX.lock().unwrap();
+        unsafe {
+            std::env::set_var("HOME", dir.path());
+            std::env::remove_var("RIG_BINARY_DIR");
+            std::env::remove_var("RIG_MODE");
+        }
+        f(dir.path());
+    }
+
+    #[test]
+    fn test_add_local_bin_creates_directory() {
+        with_temp_home(|home| {
+            add_local_bin_to_path().unwrap();
+            assert!(home.join(".local/bin").is_dir());
+        });
+    }
+
+    #[test]
+    fn test_add_local_bin_creates_env_script() {
+        with_temp_home(|home| {
+            add_local_bin_to_path().unwrap();
+            let env_file = home.join(".local/bin/env");
+            assert!(env_file.exists());
+            let content = fs::read_to_string(&env_file).unwrap();
+            assert!(content.contains("$HOME/.local/bin"));
+        });
+    }
+
+    #[test]
+    fn test_add_local_bin_env_script_is_executable() {
+        with_temp_home(|home| {
+            add_local_bin_to_path().unwrap();
+            let env_file = home.join(".local/bin/env");
+            let perms = fs::metadata(&env_file).unwrap().permissions();
+            assert!(perms.mode() & 0o111 != 0);
+        });
+    }
+
+    #[test]
+    fn test_add_local_bin_creates_profile_when_none_exist() {
+        with_temp_home(|home| {
+            add_local_bin_to_path().unwrap();
+            let profile = home.join(".profile");
+            assert!(profile.exists());
+            let content = fs::read_to_string(&profile).unwrap();
+            assert!(content.contains(". \"$HOME/.local/bin/env\""));
+        });
+    }
+
+    #[test]
+    fn test_add_local_bin_appends_to_existing_bash_profile() {
+        with_temp_home(|home| {
+            let bash_profile = home.join(".bash_profile");
+            fs::write(&bash_profile, "# existing\n").unwrap();
+            add_local_bin_to_path().unwrap();
+            let content = fs::read_to_string(&bash_profile).unwrap();
+            assert!(content.contains("# existing"));
+            assert!(content.contains(". \"$HOME/.local/bin/env\""));
+            // .profile should not be created since a profile was found
+            assert!(!home.join(".profile").exists());
+        });
+    }
+
+    #[test]
+    fn test_add_local_bin_does_not_duplicate_source_line() {
+        with_temp_home(|home| {
+            let profile = home.join(".profile");
+            fs::write(&profile, ". \"$HOME/.local/bin/env\"\n").unwrap();
+            add_local_bin_to_path().unwrap();
+            let content = fs::read_to_string(&profile).unwrap();
+            assert_eq!(content.matches(". \"$HOME/.local/bin/env\"").count(), 1);
+        });
+    }
+
+    #[test]
+    fn test_add_local_bin_does_not_overwrite_existing_env_script() {
+        with_temp_home(|home| {
+            fs::create_dir_all(home.join(".local/bin")).unwrap();
+            let env_file = home.join(".local/bin/env");
+            fs::write(&env_file, "custom content").unwrap();
+            add_local_bin_to_path().unwrap();
+            let content = fs::read_to_string(&env_file).unwrap();
+            assert_eq!(content, "custom content");
+        });
+    }
+
+    #[test]
+    fn test_add_local_bin_appends_to_all_existing_profiles() {
+        with_temp_home(|home| {
+            let zprofile = home.join(".zprofile");
+            let bash_profile = home.join(".bash_profile");
+            fs::write(&zprofile, "# zsh\n").unwrap();
+            fs::write(&bash_profile, "# bash\n").unwrap();
+            add_local_bin_to_path().unwrap();
+            for p in [&zprofile, &bash_profile] {
+                let content = fs::read_to_string(p).unwrap();
+                assert!(content.contains(". \"$HOME/.local/bin/env\""), "{p:?} missing source line");
+            }
+        });
+    }
+
+    #[test]
+    fn test_check_local_bin_path_ok_when_binary_dir_on_path() {
+        with_temp_home(|home| {
+            let bin_dir = home.join("mybin");
+            fs::create_dir_all(&bin_dir).unwrap();
+            let bin_str = bin_dir.to_str().unwrap().to_string();
+            unsafe {
+                std::env::set_var("RIG_BINARY_DIR", &bin_str);
+                std::env::set_var("PATH", &bin_str);
+            }
+            // Should succeed without error regardless of WARN_DONE state.
+            check_local_bin_path().unwrap();
+        });
+    }
+}
