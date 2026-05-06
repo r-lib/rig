@@ -351,35 +351,37 @@ pub fn add_local_bin_to_path() -> Result<(), Box<dyn Error>> {
     let home_path = Path::new(&home);
 
     let local_bin = home_path.join(".local/bin");
+    debug!("Ensuring {} exists", local_bin.display());
     std::fs::create_dir_all(&local_bin)?;
 
-    let env_file = local_bin.join("env");
-    if !env_file.exists() {
-        let content = "\
+    let env_file = local_bin.join("rigenv");
+    debug!("Writing rigenv script to {}", env_file.display());
+    let content = "\
 #!/bin/sh
-# add binaries to PATH if they aren't added yet
-# affix colons on either side of $PATH to simplify matching
-case \":${PATH}:\" in
-    *:\"$HOME/.local/bin\":*)
-        ;;
-    *)
-        # Prepending path in case a system-installed binary needs to be overridden
-        export PATH=\"$HOME/.local/bin:$PATH\"
-        ;;
+# Ensure $HOME/.local/bin is on PATH and ahead of /usr/local/bin so that
+# rig-managed binaries take precedence over system binaries.
+_rigenv_path=\":${PATH}:\"
+_rigenv_local=\"$HOME/.local/bin\"
+_rigenv_prefix=\"${_rigenv_path%%:/usr/local/bin:*}\"
+case \"${_rigenv_prefix}:\" in
+    *:\"$_rigenv_local\":*) ;;
+    *) export PATH=\"$_rigenv_local:$PATH\" ;;
 esac
+unset _rigenv_path _rigenv_local _rigenv_prefix
 ";
-        std::fs::write(&env_file, content)?;
-        let mut perms = std::fs::metadata(&env_file)?.permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(&env_file, perms)?;
-    }
+    std::fs::write(&env_file, content)?;
+    let mut perms = std::fs::metadata(&env_file)?.permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&env_file, perms)?;
 
-    let source_line = ". \"$HOME/.local/bin/env\"";
+    let source_line = ". \"$HOME/.local/bin/rigenv\"";
 
     let candidates = [
         home_path.join(".profile"),
         home_path.join(".bash_profile"),
+        home_path.join(".bashrc"),
         home_path.join(".zprofile"),
+        home_path.join(".zshrc"),
     ];
 
     let mut any_found = false;
@@ -388,15 +390,33 @@ esac
             any_found = true;
             let content = std::fs::read_to_string(profile)?;
             if !content.contains(source_line) {
+                debug!("Appending source line to {}", profile.display());
                 let mut file = std::fs::OpenOptions::new().append(true).open(profile)?;
                 writeln!(file, "\n{}", source_line)?;
+            } else {
+                debug!("Source line already present in {}", profile.display());
             }
         }
     }
 
     if !any_found {
         let profile = home_path.join(".profile");
+        debug!("No existing profile found; creating {}", profile.display());
         std::fs::write(&profile, format!("{}\n", source_line))?;
+    }
+
+    let fish_dir = home_path.join(".config/fish");
+    if fish_dir.exists() {
+        let fish_confd = fish_dir.join("conf.d");
+        std::fs::create_dir_all(&fish_confd)?;
+        let fish_file = fish_confd.join("rigenv.fish");
+        debug!("Writing fish snippet to {}", fish_file.display());
+        let fish_content = "\
+# Ensure $HOME/.local/bin is on PATH ahead of /usr/local/bin so that
+# rig-managed binaries take precedence over system binaries.
+fish_add_path --prepend --move \"$HOME/.local/bin\"
+";
+        std::fs::write(&fish_file, fish_content)?;
     }
 
     Ok(())
@@ -422,15 +442,33 @@ pub fn check_local_bin_path() -> Result<(), Box<dyn Error>> {
         Err(_) => bail!("HOME environment variable is not set"),
     };
     let local_bin = Path::new(&home).join(".local/bin");
-    if Path::new(&binary_dir) == local_bin {
-        if !ADD_DONE.swap(true, Ordering::Relaxed) {
-            add_local_bin_to_path()?;
-        }
-    }
 
     let path_var = std::env::var("PATH").unwrap_or_default();
-    let on_path = std::env::split_paths(&path_var)
-        .any(|p| p == Path::new(&binary_dir));
+    let paths: Vec<PathBuf> = std::env::split_paths(&path_var).collect();
+
+    let local_bin_idx = paths.iter().position(|p| p == &local_bin);
+    let usr_local_bin_idx = paths.iter().position(|p| p == Path::new("/usr/local/bin"));
+    debug!(
+        "PATH check: {} at {:?}, /usr/local/bin at {:?}",
+        local_bin.display(),
+        local_bin_idx,
+        usr_local_bin_idx
+    );
+
+    let needs_add = match (local_bin_idx, usr_local_bin_idx) {
+        (None, _) => true,
+        (Some(l), Some(u)) if l > u => true,
+        _ => false,
+    };
+
+    if needs_add && !ADD_DONE.swap(true, Ordering::Relaxed) {
+        debug!("Updating shell profiles to put {} on PATH", local_bin.display());
+        add_local_bin_to_path()?;
+    } else if !needs_add {
+        debug!("{} is already correctly placed on PATH", local_bin.display());
+    }
+
+    let on_path = paths.iter().any(|p| p == Path::new(&binary_dir));
 
     if !on_path && !WARN_DONE.swap(true, Ordering::Relaxed) {
         let is_local_bin = Path::new(&binary_dir) == local_bin;
@@ -442,7 +480,7 @@ pub fn check_local_bin_path() -> Result<(), Box<dyn Error>> {
             if is_fish {
                 eprintln!("    fish_add_path \"$HOME/.local/bin\"          # fish");
             } else {
-                eprintln!("    . \"$HOME/.local/bin/env\"                   # bash/zsh/sh");
+                eprintln!("    . \"$HOME/.local/bin/rigenv\"                # bash/zsh/sh");
                 eprintln!("    fish_add_path \"$HOME/.local/bin\"           # fish");
             }
             eprintln!("  New shell sessions will pick it up automatically.");
@@ -493,10 +531,11 @@ mod tests {
     fn test_add_local_bin_creates_env_script() {
         with_temp_home(|home| {
             add_local_bin_to_path().unwrap();
-            let env_file = home.join(".local/bin/env");
+            let env_file = home.join(".local/bin/rigenv");
             assert!(env_file.exists());
             let content = fs::read_to_string(&env_file).unwrap();
             assert!(content.contains("$HOME/.local/bin"));
+            assert!(content.contains("/usr/local/bin"));
         });
     }
 
@@ -504,7 +543,7 @@ mod tests {
     fn test_add_local_bin_env_script_is_executable() {
         with_temp_home(|home| {
             add_local_bin_to_path().unwrap();
-            let env_file = home.join(".local/bin/env");
+            let env_file = home.join(".local/bin/rigenv");
             let perms = fs::metadata(&env_file).unwrap().permissions();
             assert!(perms.mode() & 0o111 != 0);
         });
@@ -517,7 +556,7 @@ mod tests {
             let profile = home.join(".profile");
             assert!(profile.exists());
             let content = fs::read_to_string(&profile).unwrap();
-            assert!(content.contains(". \"$HOME/.local/bin/env\""));
+            assert!(content.contains(". \"$HOME/.local/bin/rigenv\""));
         });
     }
 
@@ -529,7 +568,7 @@ mod tests {
             add_local_bin_to_path().unwrap();
             let content = fs::read_to_string(&bash_profile).unwrap();
             assert!(content.contains("# existing"));
-            assert!(content.contains(". \"$HOME/.local/bin/env\""));
+            assert!(content.contains(". \"$HOME/.local/bin/rigenv\""));
             // .profile should not be created since a profile was found
             assert!(!home.join(".profile").exists());
         });
@@ -539,22 +578,24 @@ mod tests {
     fn test_add_local_bin_does_not_duplicate_source_line() {
         with_temp_home(|home| {
             let profile = home.join(".profile");
-            fs::write(&profile, ". \"$HOME/.local/bin/env\"\n").unwrap();
+            fs::write(&profile, ". \"$HOME/.local/bin/rigenv\"\n").unwrap();
             add_local_bin_to_path().unwrap();
             let content = fs::read_to_string(&profile).unwrap();
-            assert_eq!(content.matches(". \"$HOME/.local/bin/env\"").count(), 1);
+            assert_eq!(content.matches(". \"$HOME/.local/bin/rigenv\"").count(), 1);
         });
     }
 
     #[test]
-    fn test_add_local_bin_does_not_overwrite_existing_env_script() {
+    fn test_add_local_bin_refreshes_stale_env_script() {
         with_temp_home(|home| {
             fs::create_dir_all(home.join(".local/bin")).unwrap();
-            let env_file = home.join(".local/bin/env");
-            fs::write(&env_file, "custom content").unwrap();
+            let env_file = home.join(".local/bin/rigenv");
+            fs::write(&env_file, "stale content").unwrap();
             add_local_bin_to_path().unwrap();
             let content = fs::read_to_string(&env_file).unwrap();
-            assert_eq!(content, "custom content");
+            assert_ne!(content, "stale content");
+            assert!(content.contains("$HOME/.local/bin"));
+            assert!(content.contains("/usr/local/bin"));
         });
     }
 
@@ -568,8 +609,54 @@ mod tests {
             add_local_bin_to_path().unwrap();
             for p in [&zprofile, &bash_profile] {
                 let content = fs::read_to_string(p).unwrap();
-                assert!(content.contains(". \"$HOME/.local/bin/env\""), "{p:?} missing source line");
+                assert!(content.contains(". \"$HOME/.local/bin/rigenv\""), "{p:?} missing source line");
             }
+        });
+    }
+
+    #[test]
+    fn test_add_local_bin_does_not_add_path_line_to_profile() {
+        with_temp_home(|home| {
+            add_local_bin_to_path().unwrap();
+            let profile = home.join(".profile");
+            let content = fs::read_to_string(&profile).unwrap();
+            assert!(!content.contains("export PATH="));
+            assert!(!content.contains("cargo-dist"));
+        });
+    }
+
+    #[test]
+    fn test_add_local_bin_skips_fish_when_not_configured() {
+        with_temp_home(|home| {
+            add_local_bin_to_path().unwrap();
+            assert!(!home.join(".config/fish").exists());
+        });
+    }
+
+    #[test]
+    fn test_add_local_bin_writes_fish_snippet_when_fish_configured() {
+        with_temp_home(|home| {
+            fs::create_dir_all(home.join(".config/fish")).unwrap();
+            add_local_bin_to_path().unwrap();
+            let fish_file = home.join(".config/fish/conf.d/rigenv.fish");
+            assert!(fish_file.exists());
+            let content = fs::read_to_string(&fish_file).unwrap();
+            assert!(content.contains("fish_add_path"));
+            assert!(content.contains("$HOME/.local/bin"));
+        });
+    }
+
+    #[test]
+    fn test_add_local_bin_refreshes_stale_fish_snippet() {
+        with_temp_home(|home| {
+            let fish_confd = home.join(".config/fish/conf.d");
+            fs::create_dir_all(&fish_confd).unwrap();
+            let fish_file = fish_confd.join("rigenv.fish");
+            fs::write(&fish_file, "stale fish content").unwrap();
+            add_local_bin_to_path().unwrap();
+            let content = fs::read_to_string(&fish_file).unwrap();
+            assert_ne!(content, "stale fish content");
+            assert!(content.contains("fish_add_path"));
         });
     }
 
