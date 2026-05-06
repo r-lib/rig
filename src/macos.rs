@@ -85,7 +85,9 @@ pub fn get_r_current() -> Result<String, Box<dyn Error>> {
 }
 
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    escalate("adding new R versions")?;
+    if get_mode()? == crate::utils::Mode::Admin {
+        escalate("adding new R versions")?;
+    }
     let mut version = get_resolve(args)?;
     let alias = get_alias(args);
     let ver = version.version.to_owned();
@@ -329,7 +331,9 @@ fn safe_install(
 }
 
 pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    escalate("removing R versions")?;
+    if get_mode()? == crate::utils::Mode::Admin {
+        escalate("removing R versions")?;
+    }
     let vers = args.get_many::<String>("version");
     if vers.is_none() {
         return Ok(());
@@ -381,7 +385,9 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
 pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     let binary_dir = get_binary_dir()?;
-    if access(binary_dir.as_str(), AccessFlags::W_OK).is_err() {
+    if get_mode()? == crate::utils::Mode::Admin
+        && access(binary_dir.as_str(), AccessFlags::W_OK).is_err()
+    {
         escalate("making R-* quick links")?;
     }
     check_local_bin_path()?;
@@ -553,7 +559,9 @@ fn version_from_link(pb: PathBuf) -> Option<String> {
 }
 
 pub fn sc_system_allow_core_dumps(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    escalate("updating code signature of R and /cores permissions")?;
+    if get_mode()? == crate::utils::Mode::Admin {
+        escalate("updating code signature of R and /cores permissions")?;
+    }
     sc_system_allow_debugger(args)?;
     OUTPUT.status("Updating permissions of /cores");
     info!("Updating permissions of /cores");
@@ -562,7 +570,9 @@ pub fn sc_system_allow_core_dumps(args: &ArgMatches) -> Result<(), Box<dyn Error
 }
 
 pub fn sc_system_allow_debugger(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    escalate("updating code signature of R")?;
+    if get_mode()? == crate::utils::Mode::Admin {
+        escalate("updating code signature of R")?;
+    }
     let all = args.get_flag("all");
     let vers = args.get_many::<String>("version");
 
@@ -710,6 +720,9 @@ pub fn update_entitlements(path: PathBuf) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn sc_system_make_orthogonal(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    if get_mode()? == crate::utils::Mode::User {
+        return Ok(());
+    }
     escalate("updating the R installations")?;
     let vers = args.get_many::<String>("version");
     if vers.is_none() {
@@ -798,6 +811,9 @@ fn make_orthogonal_(base: &Path, ver: &str) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn sc_system_fix_permissions(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    if get_mode()? == crate::utils::Mode::User {
+        return Ok(());
+    }
     escalate("changing system library permissions")?;
     let vers = args.get_many::<String>("version");
     if vers.is_none() {
@@ -877,6 +893,9 @@ fn system_fix_permissions(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
 }
 
 pub fn sc_system_forget() -> Result<(), Box<dyn Error>> {
+    if get_mode()? == crate::utils::Mode::User {
+        return Ok(());
+    }
     escalate("forgetting R versions")?;
     let out = Command::new("sh")
         .args(["-c", "pkgutil --pkgs | grep -i r-project | grep -v clang"])
@@ -909,7 +928,9 @@ pub fn sc_system_forget() -> Result<(), Box<dyn Error>> {
 }
 
 pub fn sc_system_no_openmp(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    escalate("updating R compiler configuration")?;
+    if get_mode()? == crate::utils::Mode::Admin {
+        escalate("updating R compiler configuration")?;
+    }
     let vers = args.get_many::<String>("version");
     if vers.is_none() {
         system_no_openmp(None)
