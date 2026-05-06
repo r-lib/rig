@@ -39,15 +39,11 @@ use crate::windows_arch::*;
 // get_r_root(): returns the directory where the R versions are installed
 // RIG_LINKS_DIR: directory where the quick links are created
 // R_VERSION_DIR: name of the directory of a single R version inside R_ROOT()
-// R_SYSLIBPATH: path to the system library of an R version from R_ROOT()
-// R_BINPATH: path of the R executable from R_ROOT()
+// get_r_syslibpath(): path to the system library of an R version from R_ROOT()
+// get_r_binpath(): path of the R executable from R_ROOT()
 
 pub const RIG_LINKS_DIR: &str = "C:\\Program Files\\R\\bin";
 pub const R_VERSIONDIR: &str = "R-{}";
-pub const R_SYSLIBPATH: &str = "R-{}\\library";
-pub const R_BASE_PROFILE: &str = "R-{}\\library\\base\\R\\Rprofile";
-pub const R_BINPATH: &str = "R-{}\\bin\\R.exe";
-pub const R_ETC_PATH: &str = "R-{}\\etc";
 
 macro_rules! osvec {
     // match a list of expressions separated by comma:
@@ -58,7 +54,7 @@ macro_rules! osvec {
     });
 }
 
-pub fn get_r_root() -> String {
+pub fn get_r_root() -> Result<String, Box<dyn Error>> {
     // x86_64 R on x86_64 Windows
     const R_ROOT_: &str = "C:\\Program Files\\R";
     // x86_64 R on aarch64 Windows
@@ -66,10 +62,26 @@ pub fn get_r_root() -> String {
     // aarch64 R on aarch64 Windows
     const R_AARCH64_ROOT_: &str = "C:\\Program Files\\R-aarch64";
     if get_native_arch() == "aarch64" {
-        R_AARCH64_ROOT_.to_string()
+        Ok(R_AARCH64_ROOT_.to_string())
     } else {
-        R_ROOT_.to_string()
+        Ok(R_ROOT_.to_string())
     }
+}
+
+pub fn get_r_syslibpath() -> Result<String, Box<dyn Error>> {
+    Ok("R-{}\\library".to_string())
+}
+
+pub fn get_r_binpath() -> Result<String, Box<dyn Error>> {
+    Ok("R-{}\\bin\\R.exe".to_string())
+}
+
+pub fn get_r_base_profile() -> Result<String, Box<dyn Error>> {
+    Ok("R-{}\\library\\base\\R\\Rprofile".to_string())
+}
+
+pub fn get_r_etc_path() -> Result<String, Box<dyn Error>> {
+    Ok("R-{}\\etc".to_string())
 }
 
 #[warn(unused_variables)]
@@ -198,7 +210,7 @@ fn add_rtools(version: String) -> Result<(), Box<dyn Error>> {
 }
 
 fn patch_for_rtools() -> Result<(), Box<dyn Error>> {
-    let rroot = get_r_root();
+    let rroot = get_r_root()?;
     let base = Path::new(&rroot);
     let vers = sc_get_list()?;
 
@@ -253,7 +265,7 @@ fn get_rtools_needed(version: Option<Vec<String>>) -> Result<Vec<String>, Box<dy
         None => sc_get_list()?,
         Some(x) => x,
     };
-    let rroot = get_r_root();
+    let rroot = get_r_root()?;
     let base = Path::new(&rroot);
     let mut res: Vec<String> = vec![];
     let errmsg = "Cannot parse list of Rtools versions.";
@@ -327,7 +339,7 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         }
 
         let ver = "R-".to_string() + &ver;
-        let rroot = get_r_root();
+        let rroot = get_r_root()?;
         let dir = Path::new(&rroot);
         let dir = dir.join(ver);
         OUTPUT.status(&format!("Removing {}", dir.display()));
@@ -384,7 +396,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         "R.bat".to_string(),
         "Rscript.bat".to_string(),
     ];
-    let rroot = get_r_root();
+    let rroot = get_r_root()?;
     let base = Path::new(&rroot);
 
     std::fs::create_dir_all(linkdir)?;

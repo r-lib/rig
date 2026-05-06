@@ -336,6 +336,24 @@ pub fn get_binary_dir() -> Result<String, Box<dyn Error>> {
     Ok("/usr/local/bin".to_string())
 }
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub fn get_r_install_dir() -> Result<Option<String>, Box<dyn Error>> {
+    if let Ok(val) = std::env::var("RIG_R_INSTALL_DIR") {
+        return Ok(Some(val.trim_end_matches('/').to_string()));
+    }
+
+    if let Some(val) = crate::config::get_global_config_value("r-install-dir")? {
+        return Ok(Some(val.trim_end_matches('/').to_string()));
+    }
+
+    if get_mode()? == Mode::User {
+        let home = std::env::var("HOME")?;
+        return Ok(Some(format!("{}/.local/share/rig/r", home)));
+    }
+
+    Ok(None)
+}
+
 pub fn unset_r_envvars() {
     let evs = vec![
         "R_ARCH",

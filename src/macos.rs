@@ -32,11 +32,6 @@ use crate::utils::*;
 
 pub const R_ROOT_: &str = "/Library/Frameworks/R.framework/Versions";
 pub const R_VERSIONDIR: &str = "{}";
-pub const R_SYSLIBPATH: &str = "{}/Resources/library";
-pub const R_BINPATH: &str = "{}/Resources/R";
-pub const R_BASE_PROFILE: &str = "{}/Resources/library/base/R/Rprofile";
-pub const R_ETC_PATH: &str = "{}/Resources/etc";
-const R_CUR: &str = "/Library/Frameworks/R.framework/Versions/Current";
 
 macro_rules! osvec {
     // match a list of expressions separated by comma:
@@ -47,8 +42,46 @@ macro_rules! osvec {
     });
 }
 
-pub fn get_r_root() -> String {
-    R_ROOT_.to_string()
+pub fn get_r_root() -> Result<String, Box<dyn Error>> {
+    if let Some(dir) = get_r_install_dir()? {
+        return Ok(dir);
+    }
+    Ok(R_ROOT_.to_string())
+}
+
+pub fn get_r_syslibpath() -> Result<String, Box<dyn Error>> {
+    if get_mode()? == crate::utils::Mode::User {
+        return Ok("{}/library".to_string());
+    }
+    Ok("{}/Resources/library".to_string())
+}
+
+pub fn get_r_binpath() -> Result<String, Box<dyn Error>> {
+    if get_mode()? == crate::utils::Mode::User {
+        return Ok("{}/R".to_string());
+    }
+    Ok("{}/Resources/R".to_string())
+}
+
+pub fn get_r_base_profile() -> Result<String, Box<dyn Error>> {
+    if get_mode()? == crate::utils::Mode::User {
+        return Ok("{}/library/base/R/Rprofile".to_string());
+    }
+    Ok("{}/Resources/library/base/R/Rprofile".to_string())
+}
+
+pub fn get_r_etc_path() -> Result<String, Box<dyn Error>> {
+    if get_mode()? == crate::utils::Mode::User {
+        return Ok("{}/etc".to_string());
+    }
+    Ok("{}/Resources/etc".to_string())
+}
+
+pub fn get_r_current() -> Result<String, Box<dyn Error>> {
+    if let Some(dir) = get_r_install_dir()? {
+        return Ok(format!("{}/Current", dir));
+    }
+    Ok("/Library/Frameworks/R.framework/Versions/Current".to_string())
 }
 
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
@@ -321,7 +354,7 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             }
         }
 
-        let rroot = get_r_root();
+        let rroot = get_r_root()?;
         let dir = Path::new(&rroot);
         let dir = dir.join(&ver);
         OUTPUT.status(&format!("Removing {}", dir.display()));
@@ -353,7 +386,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     }
     check_local_bin_path()?;
     let vers = sc_get_list()?;
-    let rroot = get_r_root();
+    let rroot = get_r_root()?;
     let base = Path::new(&rroot);
 
     OUTPUT.status("Updating R-* quick links (as needed)");
@@ -546,7 +579,7 @@ pub fn sc_system_allow_debugger(args: &ArgMatches) -> Result<(), Box<dyn Error>>
     for ver in vers {
         let ver = check_installed(&ver)?;
         let path = PathBuf::new()
-            .join(get_r_root())
+            .join(get_r_root()?)
             .join(ver.as_str())
             .join("Resources/bin/exec/R");
         update_entitlements(path)?;
@@ -716,7 +749,7 @@ fn system_make_orthogonal(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
     for ver in vers {
         let ver = check_installed(&ver)?;
         debug!("Making R {} orthogonal", ver);
-        let base = Path::new(&get_r_root()).join(&ver);
+        let base = Path::new(&get_r_root()?).join(&ver);
         make_orthogonal_(&base, &ver)?;
     }
 
@@ -724,7 +757,7 @@ fn system_make_orthogonal(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
 }
 
 fn is_orthogonal(ver: &str) -> Result<bool, Box<dyn Error>> {
-    let base = Path::new(&get_r_root()).join(&ver);
+    let base = Path::new(&get_r_root()?).join(&ver);
     let re = Regex::new("R[.]framework/Resources")?;
     let rfile = base.join("Resources/bin/R");
     let lines = read_lines(&rfile)?;
@@ -789,7 +822,7 @@ fn system_fix_permissions(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
 
     for ver in vers {
         let ver = check_installed(&ver)?;
-        let path = Path::new(&get_r_root())
+        let path = Path::new(&get_r_root()?)
             .join(ver.as_str())
             .join("Resources")
             .join("library");
@@ -814,7 +847,7 @@ fn system_fix_permissions(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
 
     // also change group and permissions of the Current link, so admin users can update it
     // without sudo
-    let current = Path::new(&get_r_root()).join("Current");
+    let current = PathBuf::from(get_r_current()?);
 
     let output = Command::new("chmod").args(["775"]).arg(&current).output()?;
     if !output.status.success() {
@@ -898,7 +931,7 @@ fn system_no_openmp(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
 
     for ver in vers {
         let ver = check_installed(&ver)?;
-        let path = Path::new(&get_r_root()).join(ver.as_str());
+        let path = Path::new(&get_r_root()?).join(ver.as_str());
         let makevars = path.join("Resources/etc/Makeconf".to_string());
         if !makevars.exists() {
             continue;
@@ -962,7 +995,7 @@ pub fn sc_rstudio_(
                 ver
             )
         }
-        let path = "RSTUDIO_WHICH_R=".to_string() + &get_r_root() + "/" + &ver + "/Resources/R";
+        let path = "RSTUDIO_WHICH_R=".to_string() + &get_r_root()? + "/" + &ver + "/Resources/R";
         args.append(&mut osvec!["--env", &path]);
     }
 
@@ -1004,10 +1037,11 @@ pub fn absolute_path(path: impl AsRef<Path>) -> Result<PathBuf, Box<dyn Error>> 
 
 pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
     let ver = check_installed(&ver.to_string())?;
+    let cur = get_r_current()?;
     // Maybe it does not exist, ignore error here
-    std::fs::remove_file(R_CUR).ok();
-    let path = Path::new(&get_r_root()).join(ver);
-    match std::os::unix::fs::symlink(&path, R_CUR) {
+    std::fs::remove_file(&cur).ok();
+    let path = Path::new(&get_r_root()?).join(ver);
+    match std::os::unix::fs::symlink(&path, &cur) {
         Ok(_) => {}
         Err(_) => {
             let msg = "Could not change the default R version. :( To be able to\n        \
@@ -1064,16 +1098,16 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn sc_get_default() -> Result<Option<String>, Box<dyn Error>> {
-    read_version_link(R_CUR)
+    read_version_link(&get_r_current()?)
 }
 
 pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
     let mut vers = Vec::new();
-    if !Path::new(&get_r_root()).exists() {
+    if !Path::new(&get_r_root()?).exists() {
         return Ok(vers);
     }
 
-    let paths = std::fs::read_dir(get_r_root())?;
+    let paths = std::fs::read_dir(get_r_root()?)?;
 
     for de in paths {
         let path = de?.path();
@@ -1237,21 +1271,21 @@ fn extract_pkg_version(filename: &OsStr) -> Result<RversionDir, Box<dyn Error>> 
 
 pub fn get_r_binary(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
     debug!("Finding R binary for R {}", rver);
-    let bin = Path::new(&get_r_root()).join(rver).join("Resources/R");
+    let bin = Path::new(&get_r_root()?).join(rver).join("Resources/R");
     debug!("R {} binary is at {}", rver, bin.display());
     Ok(bin)
 }
 
 #[allow(dead_code)]
 pub fn get_system_renviron(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
-    let renviron = Path::new(&get_r_root())
+    let renviron = Path::new(&get_r_root()?)
         .join(rver)
         .join("Resources/etc/Renviron");
     Ok(renviron)
 }
 
 pub fn get_system_profile(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
-    let profile = Path::new(&get_r_root())
+    let profile = Path::new(&get_r_root()?)
         .join(rver)
         .join("Resources/library/base/R/Rprofile");
     Ok(profile)

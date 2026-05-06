@@ -28,11 +28,6 @@ use crate::utils::*;
 
 pub const R_ROOT_: &str = "/opt/R";
 pub const R_VERSIONDIR: &str = "{}";
-pub const R_SYSLIBPATH: &str = "{}/lib/R/library";
-pub const R_BASE_PROFILE: &str = "{}/lib/R/library/base/R/Rprofile";
-pub const R_ETC_PATH: &str = "{}/lib/R/etc";
-pub const R_BINPATH: &str = "{}/bin/R";
-const R_CUR: &str = "/opt/R/current";
 
 macro_rules! strvec {
     // match a list of expressions separated by comma:
@@ -52,8 +47,46 @@ macro_rules! osvec {
     });
 }
 
-pub fn get_r_root() -> String {
-    R_ROOT_.to_string()
+pub fn get_r_root() -> Result<String, Box<dyn Error>> {
+    if let Some(dir) = get_r_install_dir()? {
+        return Ok(dir);
+    }
+    Ok(R_ROOT_.to_string())
+}
+
+pub fn get_r_syslibpath() -> Result<String, Box<dyn Error>> {
+    if get_mode()? == Mode::User {
+        return Ok("{}/library".to_string());
+    }
+    Ok("{}/lib/R/library".to_string())
+}
+
+pub fn get_r_binpath() -> Result<String, Box<dyn Error>> {
+    if get_mode()? == Mode::User {
+        return Ok("{}/R".to_string());
+    }
+    Ok("{}/bin/R".to_string())
+}
+
+pub fn get_r_base_profile() -> Result<String, Box<dyn Error>> {
+    if get_mode()? == Mode::User {
+        return Ok("{}/library/base/R/Rprofile".to_string());
+    }
+    Ok("{}/lib/R/library/base/R/Rprofile".to_string())
+}
+
+pub fn get_r_etc_path() -> Result<String, Box<dyn Error>> {
+    if get_mode()? == Mode::User {
+        return Ok("{}/etc".to_string());
+    }
+    Ok("{}/lib/R/etc".to_string())
+}
+
+pub fn get_r_current() -> Result<String, Box<dyn Error>> {
+    if let Some(dir) = get_r_install_dir()? {
+        return Ok(format!("{}/current", dir));
+    }
+    Ok("/opt/R/current".to_string())
 }
 
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
@@ -359,7 +392,7 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             info!("{} package is not installed", pkgname);
         }
 
-        let rroot = get_r_root();
+        let rroot = get_r_root()?;
         let dir = Path::new(&rroot);
         let dir = dir.join(&ver);
         if dir.exists() {
@@ -377,7 +410,7 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     escalate("making R-* quick links")?;
     let vers = sc_get_list()?;
-    let rroot = get_r_root();
+    let rroot = get_r_root()?;
     let base = Path::new(&rroot);
 
     // Create new links
@@ -512,11 +545,11 @@ fn version_from_link(pb: PathBuf) -> Option<String> {
 
 pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
     let mut vers = Vec::new();
-    if !Path::new(&get_r_root()).exists() {
+    if !Path::new(&get_r_root()?).exists() {
         return Ok(vers);
     }
 
-    let paths = std::fs::read_dir(get_r_root())?;
+    let paths = std::fs::read_dir(get_r_root()?)?;
 
     for de in paths {
         let path = de?.path();
@@ -550,15 +583,16 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
     let ver = check_installed(&ver.to_string())?;
     trace!("Setting default version to {}", ver);
 
+    let cur = get_r_current()?;
     // Remove current link
     // We do not check if it exists, because that follows the symlink
-    trace!("Removing current at {}", R_CUR);
-    std::fs::remove_file(R_CUR).ok();
+    trace!("Removing current at {}", cur);
+    std::fs::remove_file(&cur).ok();
 
     // Add current link
-    let path = Path::new(&get_r_root()).join(ver);
-    trace!("Adding symlink at {}", R_CUR);
-    std::os::unix::fs::symlink(&path, R_CUR)?;
+    let path = Path::new(&get_r_root()?).join(ver);
+    trace!("Adding symlink at {}", cur);
+    std::os::unix::fs::symlink(&path, &cur)?;
 
     // Remove /usr/local/bin/R link
     let r = Path::new("/usr/local/bin/R");
@@ -584,7 +618,7 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn sc_get_default() -> Result<Option<String>, Box<dyn Error>> {
-    read_version_link(R_CUR)
+    read_version_link(&get_r_current()?)
 }
 
 fn set_sysreqs_false(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
@@ -602,7 +636,7 @@ if (Sys.getenv("PKG_SYSREQS") == "") Sys.setenv(PKG_SYSREQS = "false")
 
     for ver in vers {
         let ver = check_installed(&ver)?;
-        let path = Path::new(&get_r_root()).join(ver.as_str());
+        let path = Path::new(&get_r_root()?).join(ver.as_str());
         let profile = path.join("lib/R/library/base/R/Rprofile".to_string());
         if !profile.exists() {
             continue;
@@ -680,7 +714,7 @@ pub fn sc_rstudio_(
     if let Some(ver) = version {
         let ver = check_installed(&ver.to_string())?;
         envname = "RSTUDIO_WHICH_R";
-        path = get_r_root().to_string() + "/" + &ver + "/bin/R"
+        path = get_r_root()? + "/" + &ver + "/bin/R"
     };
 
     if let Some(arg) = arg {
@@ -705,21 +739,21 @@ pub fn sc_rstudio_(
 
 pub fn get_r_binary(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
     debug!("Finding R binary for R {}", rver);
-    let bin = Path::new(&get_r_root()).join(rver).join("bin/R");
+    let bin = Path::new(&get_r_root()?).join(rver).join("bin/R");
     debug!("R {} binary is at {}", rver, bin.display());
     Ok(bin)
 }
 
 #[allow(dead_code)]
 pub fn get_system_renviron(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
-    let renviron = Path::new(&get_r_root())
+    let renviron = Path::new(&get_r_root()?)
         .join(rver)
         .join("lib/R/etc/Renviron");
     Ok(renviron)
 }
 
 pub fn get_system_profile(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
-    let profile = Path::new(&get_r_root())
+    let profile = Path::new(&get_r_root()?)
         .join(rver)
         .join("lib/R/library/base/R/Rprofile");
     Ok(profile)
@@ -743,7 +777,7 @@ fn check_usr_bin_sed(rver: &str) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    let makeconf = Path::new(&get_r_root())
+    let makeconf = Path::new(&get_r_root()?)
         .join(rver)
         .join("lib/R/etc/Makeconf");
     let lines: Vec<String> = match read_lines(&makeconf) {
