@@ -36,6 +36,9 @@ pub fn escalate(task: &str) -> Result<(), Box<dyn Error>> {
         );
         with_env(&[
             "RIG_HOME",
+            "RIG_BINARY_DIR",
+            "RIG_MODE",
+            "RIG_R_INSTALL_DIR",
             "RUST_BACKTRACE",
             "http_proxy",
             "https_proxy",

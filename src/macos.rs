@@ -12,6 +12,7 @@ use clap::ArgMatches;
 use log::{debug, error, info, warn};
 use nix::sys::stat::umask;
 use nix::sys::stat::Mode;
+use nix::unistd::{access, AccessFlags};
 use owo_colors::OwoColorize;
 use path_clean::PathClean;
 use regex::Regex;
@@ -346,7 +347,11 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
-    escalate("making R-* quick links")?;
+    let binary_dir = get_binary_dir()?;
+    if access(binary_dir.as_str(), AccessFlags::W_OK).is_err() {
+        escalate("making R-* quick links")?;
+    }
+    check_local_bin_path()?;
     let vers = sc_get_list()?;
     let rroot = get_r_root();
     let base = Path::new(&rroot);
@@ -370,7 +375,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
             );
             continue;
         }
-        let linkfile = Path::new("/usr/local/bin/").join("R-".to_string() + &ver);
+        let linkfile = Path::new(&binary_dir).join("R-".to_string() + &ver);
         let target = base.join(&ver).join("Resources/bin/R");
         if !linkfile.exists() {
             debug!("Adding {} -> {}", linkfile.display(), target.display());
@@ -400,7 +405,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     umask(old_umask);
 
     // Remove dangling links
-    let paths = std::fs::read_dir("/usr/local/bin")?;
+    let paths = std::fs::read_dir(&binary_dir)?;
     let re = Regex::new("^R-[0-9]+[.][0-9]+")?;
     let re2 = re_alias();
     for file in paths {
@@ -449,7 +454,8 @@ pub fn re_alias() -> Regex {
 pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
     debug!("Finding existing aliases");
 
-    let paths = std::fs::read_dir("/usr/local/bin")?;
+    let binary_dir = get_binary_dir()?;
+    let paths = std::fs::read_dir(&binary_dir)?;
     let re = re_alias();
     let mut result: Vec<Alias> = vec![];
 
@@ -1013,34 +1019,40 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
         }
     };
 
-    let r = Path::new("/usr/local/bin/R");
+    check_local_bin_path()?;
+    let binary_dir = get_binary_dir()?;
+
+    let r = Path::new(&binary_dir).join("R");
     if !r.exists() {
         debug!("Creating {}", r.display());
         let tgt = Path::new("/Library/Frameworks/R.framework/Resources/bin/R");
         match std::os::unix::fs::symlink(&tgt, &r) {
             Err(e) => {
                 OUTPUT.warn(&format!(
-                    "Cannot create missing /usr/local/bin/R: {}",
+                    "Cannot create missing {}/R: {}",
+                    binary_dir,
                     e.to_string()
                 ));
-                warn!("Cannot create missing /usr/local/bin/R: {}", e.to_string())
+                warn!("Cannot create missing {}/R: {}", binary_dir, e.to_string())
             }
             _ => {}
         };
     }
 
-    let rscript = Path::new("/usr/local/bin/Rscript");
+    let rscript = Path::new(&binary_dir).join("Rscript");
     if !rscript.exists() {
         debug!("Creating {}", rscript.display());
         let tgt = Path::new("/Library/Frameworks/R.framework/Resources/bin/Rscript");
         match std::os::unix::fs::symlink(&tgt, &rscript) {
             Err(e) => {
                 OUTPUT.warn(&format!(
-                    "Cannot create missing /usr/local/bin/Rscript: {}",
+                    "Cannot create missing {}/Rscript: {}",
+                    binary_dir,
                     e.to_string()
                 ));
                 warn!(
-                    "Cannot create missing /usr/local/bin/Rscript: {}",
+                    "Cannot create missing {}/Rscript: {}",
+                    binary_dir,
                     e.to_string()
                 )
             }
