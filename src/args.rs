@@ -1321,7 +1321,29 @@ pub fn rig_app() -> Command {
                 .long("json")
                 .num_args(0)
                 .required(false),
-        )
+        );
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        rig = rig
+            .arg(
+                Arg::new("user")
+                    .help("Run in user mode (overrides RIG_MODE and config)")
+                    .long("user")
+                    .global(true)
+                    .action(clap::ArgAction::SetTrue)
+                    .conflicts_with("admin"),
+            )
+            .arg(
+                Arg::new("admin")
+                    .help("Run in admin mode (overrides RIG_MODE and config)")
+                    .long("admin")
+                    .global(true)
+                    .action(clap::ArgAction::SetTrue),
+            );
+    }
+
+    rig = rig
         .subcommand(cmd_default)
         .subcommand(cmd_list)
         .subcommand(cmd_add)

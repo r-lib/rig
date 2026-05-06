@@ -4,6 +4,8 @@ use std::ffi::OsString;
 use std::fs::File;
 use std::io::{prelude::*, BufReader};
 use std::path::{Path, PathBuf};
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use std::sync::OnceLock;
 
 use regex::Regex;
 use sha2::{Digest, Sha256};
@@ -255,6 +257,68 @@ pub fn get_user() -> Result<User, Box<dyn Error>> {
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    User,
+    Admin,
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn parse_mode(s: &str) -> Option<Mode> {
+    match s {
+        "user" => Some(Mode::User),
+        "admin" => Some(Mode::Admin),
+        _ => None,
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+static MODE_CACHE: OnceLock<Mode> = OnceLock::new();
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub fn set_mode(mode: Mode) -> Result<(), Box<dyn Error>> {
+    match MODE_CACHE.set(mode) {
+        Ok(()) => Ok(()),
+        Err(existing) if existing == mode => Ok(()),
+        Err(existing) => bail!(
+            "Cannot set mode to {:?}, already set to {:?}",
+            mode,
+            existing
+        ),
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub fn get_mode() -> Result<Mode, Box<dyn Error>> {
+    if let Some(cached) = MODE_CACHE.get() {
+        return Ok(*cached);
+    }
+
+    let mode = if let Ok(val) = std::env::var("RIG_MODE") {
+        match parse_mode(&val) {
+            Some(m) => m,
+            None => bail!(
+                "Invalid RIG_MODE value: '{}', expected 'user' or 'admin'",
+                val
+            ),
+        }
+    } else if let Some(val) = crate::config::get_global_config_value("mode")? {
+        match parse_mode(&val) {
+            Some(m) => m,
+            None => bail!(
+                "Invalid 'mode' in rig config: '{}', expected 'user' or 'admin'",
+                val
+            ),
+        }
+    } else {
+        Mode::Admin
+    };
+
+    let _ = MODE_CACHE.set(mode);
+    Ok(mode)
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn get_binary_dir() -> Result<String, Box<dyn Error>> {
     if let Ok(val) = std::env::var("RIG_BINARY_DIR") {
         return Ok(val.trim_end_matches('/').to_string());
@@ -264,13 +328,7 @@ pub fn get_binary_dir() -> Result<String, Box<dyn Error>> {
         return Ok(val.trim_end_matches('/').to_string());
     }
 
-    let mode = if let Ok(val) = std::env::var("RIG_MODE") {
-        Some(val)
-    } else {
-        crate::config::get_global_config_value("mode")?
-    };
-
-    if mode.as_deref() == Some("user") {
+    if get_mode()? == Mode::User {
         let home = std::env::var("HOME")?;
         return Ok(format!("{}/.local/bin", home));
     }

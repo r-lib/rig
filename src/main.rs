@@ -209,6 +209,21 @@ fn main_() -> i32 {
 
     unset_r_envvars();
 
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        if args.get_flag("user") {
+            if let Err(e) = utils::set_mode(utils::Mode::User) {
+                error!("{}", e);
+                return 1;
+            }
+        } else if args.get_flag("admin") {
+            if let Err(e) = utils::set_mode(utils::Mode::Admin) {
+                error!("{}", e);
+                return 1;
+            }
+        }
+    }
+
     #[cfg(target_os = "linux")]
     set_cert_envvar();
 
