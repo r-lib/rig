@@ -257,6 +257,13 @@ jobs:
       run: |
         cargo build --release
 
+    - name: Upload build as artifact
+      uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: rig-${{ matrix.config.os }}
+        path: target/release/rig
+
     - name: Install rig
       run: |
         sudo cp target/release/rig /usr/local/bin/
