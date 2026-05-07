@@ -393,7 +393,14 @@ pub fn library_update_rprofile(rver: &str) -> Result<(), Box<dyn Error>> {
     }
 
     if nmarkers == 0 {
-        if get_mode()? == crate::utils::Mode::Admin {
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        {
+            if get_mode()? == crate::utils::Mode::Admin {
+                escalate("updating user library configuration")?;
+            }
+        }
+        #[cfg(target_os = "windows")]
+        {
             escalate("updating user library configuration")?;
         }
         let newlines = r#"

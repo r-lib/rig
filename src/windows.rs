@@ -580,11 +580,11 @@ pub fn sc_system_no_openmp(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
 pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
     let mut vers = Vec::new();
-    if !Path::new(&get_r_root()).exists() {
+    if !Path::new(&get_r_root()?).exists() {
         return Ok(vers);
     }
 
-    let paths = std::fs::read_dir(&get_r_root())?;
+    let paths = std::fs::read_dir(&get_r_root()?)?;
 
     for de in paths {
         let path = de?.path();
@@ -611,7 +611,7 @@ pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
 pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
     let ver = check_installed(&ver.to_string())?;
     escalate("setting the default R version")?;
-    let rroot = get_r_root();
+    let rroot = get_r_root()?;
     let linkdir = Path::new(RIG_LINKS_DIR);
     std::fs::create_dir_all(&linkdir)?;
 
@@ -796,7 +796,7 @@ fn maybe_update_registry_default() -> Result<(), Box<dyn Error>> {
 
 fn update_registry_default1(key: &RegKey, ver: &String) -> Result<(), Box<dyn Error>> {
     key.set_value("Current Version", ver)?;
-    let inst = get_r_root().to_string() + "\\R-" + ver;
+    let inst = get_r_root()? + "\\R-" + ver;
     key.set_value("InstallPath", &inst)?;
     Ok(())
 }
@@ -1180,14 +1180,14 @@ pub fn sc_rstudio_(
 }
 
 pub fn get_system_profile(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
-    let path = Path::new(&get_r_root()).join("R-".to_string() + rver);
+    let path = Path::new(&get_r_root()?).join("R-".to_string() + rver);
     let profile = path.join("library/base/R/Rprofile");
     Ok(profile)
 }
 
 pub fn get_r_binary(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
     debug!("Finding R {} binary", rver);
-    let rroot = get_r_root();
+    let rroot = get_r_root()?;
     let base = Path::new(&rroot);
     let bin = base
         .join("R-".to_string() + &rver)
@@ -1199,7 +1199,7 @@ pub fn get_r_binary(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
 
 pub fn get_r_binary_x64(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
     debug!("Finding R {} binary", rver);
-    let rroot = get_r_root();
+    let rroot = get_r_root()?;
     let base = Path::new(&rroot);
     let bin = base
         .join("R-".to_string() + &rver)
