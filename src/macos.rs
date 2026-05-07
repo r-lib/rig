@@ -448,6 +448,28 @@ fn replace_user_rscript(source_dir: &Path) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn replace_user_fontconfig(source_dir: &Path) -> Result<(), Box<dyn Error>> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let fc_cache = source_dir.join("bin").join("fc-cache");
+    let fc_cache_orig = fc_cache.with_file_name("fc-cache.orig");
+    debug!("Copying {} to {}", fc_cache.display(), fc_cache_orig.display());
+    std::fs::copy(&fc_cache, &fc_cache_orig)?;
+
+    let content = "#!/bin/sh\n\
+                   RHOME=$(cd \"$(dirname \"$(realpath \"$0\")\")/..\" && pwd -P)\n\
+                   FONTCONFIG_FILE=\"$RHOME/fontconfig/fonts/fonts.conf\"\n\
+                   export FONTCONFIG_FILE\n\
+                   exec \"$(dirname \"$(realpath \"$0\")\")/fc-cache.orig\" \"$@\"\n";
+    debug!("Writing wrapper fc-cache to {}", fc_cache.display());
+    std::fs::write(&fc_cache, content)?;
+    let mut perms = std::fs::metadata(&fc_cache)?.permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&fc_cache, perms)?;
+
+    Ok(())
+}
+
 fn safe_user_install(
     target: std::path::PathBuf,
     ver: &str,
@@ -463,6 +485,7 @@ fn safe_user_install(
     patch_user_r_script(&source_dir, &target_dir)?;
     patch_user_scripts(&source_dir, &target_dir)?;
     replace_user_rscript(&source_dir)?;
+    replace_user_fontconfig(&source_dir)?;
 
     debug!("Copying {} to {}", source_dir.display(), target_dir.display());
     let output = Command::new("ditto")
@@ -474,6 +497,28 @@ fn safe_user_install(
         OUTPUT.error(&format!("Failed to copy R framework: {}", err));
         error!("Failed to copy R framework: {}", err);
         bail!("Failed to copy R framework: {}", err);
+    }
+
+    let fc_cache = target_dir.join("bin").join("fc-cache");
+    debug!("Running {}", fc_cache.display());
+    match Command::new(&fc_cache).output() {
+        Err(err) => {
+            OUTPUT.warn(&format!(
+                "Failed to run {}: {}",
+                fc_cache.display(),
+                err.to_string()
+            ));
+            warn!("Failed to run {}: {}", fc_cache.display(), err.to_string());
+        }
+        Ok(output) if !output.status.success() => {
+            OUTPUT.warn(&format!(
+                "{} exited with {}",
+                fc_cache.display(),
+                output.status
+            ));
+            warn!("{} exited with {}", fc_cache.display(), output.status);
+        }
+        Ok(_) => {}
     }
 
     if let Err(err) = std::fs::remove_dir_all(&tmp) {
