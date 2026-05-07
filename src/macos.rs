@@ -783,8 +783,7 @@ pub fn sc_system_allow_debugger(args: &ArgMatches) -> Result<(), Box<dyn Error>>
         let ver = check_installed(&ver)?;
         let path = PathBuf::new()
             .join(get_r_root()?)
-            .join(ver.as_str())
-            .join("Resources/bin/exec/R");
+            .join(get_r_binpath()?.replace("{}", &ver));
         update_entitlements(path)?;
     }
 
@@ -963,6 +962,9 @@ fn system_make_orthogonal(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error
 }
 
 fn is_orthogonal(ver: &str) -> Result<bool, Box<dyn Error>> {
+    if get_mode()? == crate::utils::Mode::User {
+        return Ok(true);
+    }
     let base = Path::new(&get_r_root()?).join(&ver);
     let re = Regex::new("R[.]framework/Resources")?;
     let rfile = base.join("Resources/bin/R");
@@ -1148,8 +1150,9 @@ fn system_no_openmp(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
 
     for ver in vers {
         let ver = check_installed(&ver)?;
-        let path = Path::new(&get_r_root()?).join(ver.as_str());
-        let makevars = path.join("Resources/etc/Makeconf".to_string());
+        let makevars = Path::new(&get_r_root()?)
+            .join(get_r_etc_path()?.replace("{}", &ver))
+            .join("Makeconf");
         if !makevars.exists() {
             continue;
         }
@@ -1157,9 +1160,9 @@ fn system_no_openmp(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
         match replace_in_file(&makevars, &re, "") {
             Ok(_) => {}
             Err(err) => {
-                OUTPUT.error(&format!("Failed to update {}: {}", path.display(), err));
-                error!("Failed to update {}: {}", path.display(), err);
-                bail!("Failed to update {}: {}", path.display(), err);
+                OUTPUT.error(&format!("Failed to update {}: {}", makevars.display(), err));
+                error!("Failed to update {}: {}", makevars.display(), err);
+                bail!("Failed to update {}: {}", makevars.display(), err);
             }
         };
     }
@@ -1212,7 +1215,8 @@ pub fn sc_rstudio_(
                 ver
             )
         }
-        let path = "RSTUDIO_WHICH_R=".to_string() + &get_r_root()? + "/" + &ver + "/Resources/R";
+        let path = "RSTUDIO_WHICH_R=".to_string() +
+            &get_r_root()? + &get_r_binpath()?.replace("{}", &ver);
         args.append(&mut osvec!["--env", &path]);
     }
 
@@ -1490,7 +1494,8 @@ fn extract_pkg_version(filename: &OsStr) -> Result<RversionDir, Box<dyn Error>> 
 
 pub fn get_r_binary(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
     debug!("Finding R binary for R {}", rver);
-    let bin = Path::new(&get_r_root()?).join(rver).join("Resources/R");
+    let bin = Path::new(&get_r_root()?)
+        .join(get_r_binpath()?.replace("{}", rver));
     debug!("R {} binary is at {}", rver, bin.display());
     Ok(bin)
 }
