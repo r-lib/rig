@@ -324,6 +324,28 @@ fn safe_install(
     info!("Running installer");
     run(cmd.into(), args, "installer")?;
 
+    let fc_cache = Path::new(R_ROOT_).join(ver).join("Resources").join("bin").join("fc-cache");
+    debug!("Running {}", fc_cache.display());
+    match Command::new(&fc_cache).output() {
+        Err(err) => {
+            OUTPUT.warn(&format!(
+                "Failed to run {}: {}",
+                fc_cache.display(),
+                err.to_string()
+            ));
+            warn!("Failed to run {}: {}", fc_cache.display(), err.to_string());
+        }
+        Ok(output) if !output.status.success() => {
+            OUTPUT.warn(&format!(
+                "{} exited with {}",
+                fc_cache.display(),
+                output.status
+            ));
+            warn!("{} exited with {}", fc_cache.display(), output.status);
+        }
+        Ok(_) => {}
+    }
+
     if let Err(err) = std::fs::remove_file(&pkg) {
         OUTPUT.warn(&format!(
             "Failed to remove temporary installer {}: {}",
