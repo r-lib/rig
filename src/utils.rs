@@ -416,6 +416,9 @@ pub fn create_parent_dir_if_needed(path: &PathBuf) -> Result<(), Box<dyn Error>>
     Ok(())
 }
 
+// we use our own rigenv file instead of the standard env file from
+// axodotdev/cargo-dist, to work around
+// https://github.com/axodotdev/cargo-dist/issues/2390
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn add_local_bin_to_path() -> Result<(), Box<dyn Error>> {
     use std::os::unix::fs::PermissionsExt;

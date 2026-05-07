@@ -65,8 +65,10 @@ pub fn sc_get_default_or_fail() -> Result<String, Box<dyn Error>> {
 }
 
 pub fn set_default_if_none(ver: String) -> Result<(), Box<dyn Error>> {
+    debug!("Checking if a default R version is set");
     let cur = sc_get_default()?;
     if cur.is_none() {
+        debug!("No default R version is set, setting it to {}", ver);
         sc_set_default(&ver)?;
     }
     Ok(())
@@ -155,7 +157,7 @@ pub fn sc_get_list_details() -> Result<Vec<InstalledVersion>, Box<dyn Error>> {
     let aliases = find_aliases()?;
     let mut res: Vec<InstalledVersion> = vec![];
 
-    for name in names {
+    for name in &names {
         res.push(get_r_version_data(&name, &aliases)?);
     }
 

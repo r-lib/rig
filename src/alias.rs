@@ -67,16 +67,17 @@ pub fn get_alias(args: &ArgMatches) -> Option<String> {
 #[cfg(target_os = "macos")]
 pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     let msg = "Adding R-".to_string() + alias + " alias";
-    escalate(&msg)?;
+    if crate::utils::get_mode()? == crate::utils::Mode::Admin {
+        escalate(&msg)?;
+    }
 
     check_local_bin_path()?;
 
     OUTPUT.status(&format!("Adding R-{} alias to R {}", alias, ver));
     info!("Adding R-{} alias to R {}", alias, ver);
 
-    let rroot = get_r_root()?;
-    let base = Path::new(&rroot);
-    let target = base.join(ver).join("Resources/bin/R");
+    let binding = get_r_binpath()?.replace("{}", ver);
+    let target = Path::new(&get_r_root()?).join(&binding);
     let binary_dir = get_binary_dir()?;
     let linkfile = Path::new(&binary_dir).join("R-".to_string() + alias);
 

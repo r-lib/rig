@@ -393,7 +393,9 @@ pub fn library_update_rprofile(rver: &str) -> Result<(), Box<dyn Error>> {
     }
 
     if nmarkers == 0 {
-        escalate("updating user library configuration")?;
+        if get_mode()? == crate::utils::Mode::Admin {
+            escalate("updating user library configuration")?;
+        }
         let newlines = r#"
 ## rig R_LIBS_USER start
 invisible(local({
