@@ -259,6 +259,33 @@ fn unpack_and_patch(
     Ok((tmp, wd))
 }
 
+fn run_fc_cache(fc_cache: &Path) {
+    if !fc_cache.exists() {
+        debug!("Skipping fc-cache; {} does not exist", fc_cache.display());
+        return;
+    }
+    debug!("Running {}", fc_cache.display());
+    match Command::new(fc_cache).output() {
+        Err(err) => {
+            OUTPUT.warn(&format!(
+                "Failed to run {}: {}",
+                fc_cache.display(),
+                err.to_string()
+            ));
+            warn!("Failed to run {}: {}", fc_cache.display(), err.to_string());
+        }
+        Ok(output) if !output.status.success() => {
+            OUTPUT.warn(&format!(
+                "{} exited with {}",
+                fc_cache.display(),
+                output.status
+            ));
+            warn!("{} exited with {}", fc_cache.display(), output.status);
+        }
+        Ok(_) => {}
+    }
+}
+
 fn safe_install(
     target: std::path::PathBuf,
     ver: &str,
@@ -325,26 +352,7 @@ fn safe_install(
     run(cmd.into(), args, "installer")?;
 
     let fc_cache = Path::new(R_ROOT_).join(ver).join("Resources").join("bin").join("fc-cache");
-    debug!("Running {}", fc_cache.display());
-    match Command::new(&fc_cache).output() {
-        Err(err) => {
-            OUTPUT.warn(&format!(
-                "Failed to run {}: {}",
-                fc_cache.display(),
-                err.to_string()
-            ));
-            warn!("Failed to run {}: {}", fc_cache.display(), err.to_string());
-        }
-        Ok(output) if !output.status.success() => {
-            OUTPUT.warn(&format!(
-                "{} exited with {}",
-                fc_cache.display(),
-                output.status
-            ));
-            warn!("{} exited with {}", fc_cache.display(), output.status);
-        }
-        Ok(_) => {}
-    }
+    run_fc_cache(&fc_cache);
 
     if let Err(err) = std::fs::remove_file(&pkg) {
         OUTPUT.warn(&format!(
@@ -415,20 +423,28 @@ fn patch_user_scripts(source_dir: &Path, home_dir: &Path) -> Result<(), Box<dyn 
     replace_in_file(&renviron, &re, &sub)?;
 
     let fonts = source_dir.join("fontconfig").join("fonts").join("fonts.conf");
-    let re = Regex::new(r"/Library/Frameworks/R\.framework/Resources")?;
-    debug!("Patching fontconfig in {}", fonts.display());
-    replace_in_file(&fonts, &re, &home_escaped)?;
+    if fonts.exists() {
+        let re = Regex::new(r"/Library/Frameworks/R\.framework/Resources")?;
+        debug!("Patching fontconfig in {}", fonts.display());
+        replace_in_file(&fonts, &re, &home_escaped)?;
+    } else {
+        debug!("Skipping fonts.conf patch; {} does not exist", fonts.display());
+    }
 
     let libpc = source_dir.join("lib").join("pkgconfig").join("libR.pc");
-    // Do `rincludedir` first so the next pass doesn't rewrite the framework
-    // path inside it before we replace the whole line.
-    let re = Regex::new(r"(?m)^rincludedir=.*$")?;
-    let sub = "rincludedir=$${rhome}/include";
-    debug!("Patching rincludedir in {}", libpc.display());
-    replace_in_file(&libpc, &re, sub)?;
-    let re = Regex::new(r"/Library/Frameworks/R\.framework/Versions/[^/]+/Resources")?;
-    debug!("Patching framework path in {}", libpc.display());
-    replace_in_file(&libpc, &re, &home_escaped)?;
+    if libpc.exists() {
+        // Do `rincludedir` first so the next pass doesn't rewrite the framework
+        // path inside it before we replace the whole line.
+        let re = Regex::new(r"(?m)^rincludedir=.*$")?;
+        let sub = "rincludedir=$${rhome}/include";
+        debug!("Patching rincludedir in {}", libpc.display());
+        replace_in_file(&libpc, &re, sub)?;
+        let re = Regex::new(r"/Library/Frameworks/R\.framework/Versions/[^/]+/Resources")?;
+        debug!("Patching framework path in {}", libpc.display());
+        replace_in_file(&libpc, &re, &home_escaped)?;
+    } else {
+        debug!("Skipping libR.pc patch; {} does not exist", libpc.display());
+    }
 
     Ok(())
 }
@@ -474,6 +490,10 @@ fn replace_user_fontconfig(source_dir: &Path) -> Result<(), Box<dyn Error>> {
     use std::os::unix::fs::PermissionsExt;
 
     let fc_cache = source_dir.join("bin").join("fc-cache");
+    if !fc_cache.exists() {
+        debug!("Skipping fc-cache wrapper; {} does not exist", fc_cache.display());
+        return Ok(());
+    }
     let fc_cache_orig = fc_cache.with_file_name("fc-cache.orig");
     debug!("Copying {} to {}", fc_cache.display(), fc_cache_orig.display());
     std::fs::copy(&fc_cache, &fc_cache_orig)?;
@@ -522,26 +542,7 @@ fn safe_user_install(
     }
 
     let fc_cache = target_dir.join("bin").join("fc-cache");
-    debug!("Running {}", fc_cache.display());
-    match Command::new(&fc_cache).output() {
-        Err(err) => {
-            OUTPUT.warn(&format!(
-                "Failed to run {}: {}",
-                fc_cache.display(),
-                err.to_string()
-            ));
-            warn!("Failed to run {}: {}", fc_cache.display(), err.to_string());
-        }
-        Ok(output) if !output.status.success() => {
-            OUTPUT.warn(&format!(
-                "{} exited with {}",
-                fc_cache.display(),
-                output.status
-            ));
-            warn!("{} exited with {}", fc_cache.display(), output.status);
-        }
-        Ok(_) => {}
-    }
+    run_fc_cache(&fc_cache);
 
     if let Err(err) = std::fs::remove_dir_all(&tmp) {
         OUTPUT.warn(&format!(
