@@ -65,6 +65,13 @@ pub fn get_r_binpath() -> Result<String, Box<dyn Error>> {
     Ok("{}/Resources/bin/R".to_string())
 }
 
+fn get_r_exec_binpath() -> Result<String, Box<dyn Error>> {
+    if get_mode()? == crate::utils::Mode::User {
+        return Ok("{}/bin/exec/R".to_string());
+    }
+    Ok("{}/Resources/bin/exec/R".to_string())
+}
+
 pub fn get_r_default_bindir() -> Result<String, Box<dyn Error>> {
     if get_mode()? == crate::utils::Mode::User {
         return Ok(get_r_root()? + "/Current/bin");
@@ -851,7 +858,7 @@ pub fn sc_system_allow_debugger(args: &ArgMatches) -> Result<(), Box<dyn Error>>
         let ver = check_installed(&ver)?;
         let path = PathBuf::new()
             .join(get_r_root()?)
-            .join(get_r_binpath()?.replace("{}", &ver));
+            .join(get_r_exec_binpath()?.replace("{}", &ver));
         update_entitlements(path)?;
     }
 
