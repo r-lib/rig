@@ -519,6 +519,23 @@ fn replace_user_fontconfig(source_dir: &Path) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+// These are included on older R and shadow system libraries and cause crashes
+fn remove_user_dyld_shadows(source_dir: &Path) -> Result<(), Box<dyn Error>> {
+    let lib = source_dir.join("lib");
+    let shadows = ["libc++.1.dylib", "libc++abi.1.dylib", "libunwind.1.dylib"];
+    for name in shadows {
+        let path = lib.join(name);
+        match std::fs::remove_file(&path) {
+            Ok(()) => debug!("Removed system-shadowing dylib {}", path.display()),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                debug!("No system-shadowing dylib at {}", path.display());
+            }
+            Err(err) => return Err(err.into()),
+        }
+    }
+    Ok(())
+}
+
 fn safe_user_install(
     target: std::path::PathBuf,
     ver: &str,
@@ -535,6 +552,7 @@ fn safe_user_install(
     patch_user_scripts(&source_dir, &target_dir)?;
     replace_user_rscript(&source_dir)?;
     replace_user_fontconfig(&source_dir)?;
+    remove_user_dyld_shadows(&source_dir)?;
 
     debug!("Copying {} to {}", source_dir.display(), target_dir.display());
     let output = Command::new("ditto")
@@ -1977,5 +1995,37 @@ mod tests {
         write_fake_fonts_conf(dir.path(), "<fontconfig></fontconfig>\n");
         let home_dir = Path::new("/opt/r");
         assert!(patch_user_scripts(dir.path(), home_dir).is_err());
+    }
+
+    #[test]
+    fn remove_user_dyld_shadows_drops_shadowing_dylibs_and_keeps_others() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = dir.path().join("lib");
+        fs::create_dir_all(&lib).unwrap();
+        let shadows = ["libc++.1.dylib", "libc++abi.1.dylib", "libunwind.1.dylib"];
+        for name in shadows {
+            fs::write(lib.join(name), b"shadow").unwrap();
+        }
+        let keep = ["libR.dylib", "libomp.dylib", "libgfortran.3.dylib"];
+        for name in keep {
+            fs::write(lib.join(name), b"keep").unwrap();
+        }
+
+        remove_user_dyld_shadows(dir.path()).unwrap();
+
+        for name in shadows {
+            assert!(!lib.join(name).exists(), "expected {} to be removed", name);
+        }
+        for name in keep {
+            assert!(lib.join(name).exists(), "expected {} to be preserved", name);
+        }
+    }
+
+    #[test]
+    fn remove_user_dyld_shadows_is_ok_when_dylibs_are_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("lib")).unwrap();
+        // No shadow dylibs present (e.g. R 4.0+); call must succeed.
+        remove_user_dyld_shadows(dir.path()).unwrap();
     }
 }
