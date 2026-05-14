@@ -1196,7 +1196,10 @@ fn extract_pkg_version(filename: &OsStr) -> Result<RversionDir, Box<dyn Error>> 
     } else {
         let minor = get_minor_version(&ver)?;
         let x86_64 = Regex::new("X86_64")?;
-        installdir = if arch == "arm64" {
+        let ver_semver = semver::Version::parse(&ver).ok();
+        let cutoff = semver::Version::new(4, 6, 0);
+        let arm64_no_suffix = ver_semver.map_or(false, |v| v >= cutoff);
+        installdir = if arch == "arm64" && !arm64_no_suffix {
             minor + "-arm64"
         } else if x86_64.is_match(lines[0]) {
             minor + "-x86_64"

@@ -23,6 +23,53 @@
         ]
     },
     {
+        "name": "ubuntu-26.04-release",
+        "aliases": [
+            "ubuntu-26.04-release",
+            "ubuntu",
+            "ubuntu-26.04",
+            "ubuntu-release",
+            "release"
+        ],
+        "dir": "ubuntu",
+        "args": [
+            "DISTRO=ubuntu",
+            "RELEASE=26.04",
+            "RVERSION=release"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/ubuntu-26.04-release:latest",
+            "ghcr.io/r-lib/rig/ubuntu-26.04:latest",
+            "ghcr.io/r-lib/rig/ubuntu-latest-release:latest",
+            "ghcr.io/r-lib/rig/ubuntu-latest:latest",
+            "ghcr.io/r-lib/rig/ubuntu-release:latest",
+            "ghcr.io/r-lib/rig/ubuntu:latest",
+            "ghcr.io/r-lib/rig/release:latest"
+        ]
+    },
+    {
+        "name": "ubuntu-26.04-devel",
+        "aliases": [
+            "ubuntu-26.04-devel",
+            "ubuntu",
+            "ubuntu-26.04",
+            "ubuntu-devel",
+            "devel"
+        ],
+        "dir": "ubuntu",
+        "args": [
+            "DISTRO=ubuntu",
+            "RELEASE=26.04",
+            "RVERSION=devel"
+        ],
+        "tags": [
+            "ghcr.io/r-lib/rig/ubuntu-26.04-devel:latest",
+            "ghcr.io/r-lib/rig/ubuntu-latest-devel:latest",
+            "ghcr.io/r-lib/rig/ubuntu-devel:latest",
+            "ghcr.io/r-lib/rig/devel:latest"
+        ]
+    },
+    {
         "name": "ubuntu-24.04-release",
         "aliases": [
             "ubuntu-24.04-release",
@@ -39,12 +86,7 @@
         ],
         "tags": [
             "ghcr.io/r-lib/rig/ubuntu-24.04-release:latest",
-            "ghcr.io/r-lib/rig/ubuntu-24.04:latest",
-            "ghcr.io/r-lib/rig/ubuntu-latest-release:latest",
-            "ghcr.io/r-lib/rig/ubuntu-latest:latest",
-            "ghcr.io/r-lib/rig/ubuntu-release:latest",
-            "ghcr.io/r-lib/rig/ubuntu:latest",
-            "ghcr.io/r-lib/rig/release:latest"
+            "ghcr.io/r-lib/rig/ubuntu-24.04:latest"
         ]
     },
     {
@@ -63,10 +105,7 @@
             "RVERSION=devel"
         ],
         "tags": [
-            "ghcr.io/r-lib/rig/ubuntu-24.04-devel:latest",
-            "ghcr.io/r-lib/rig/ubuntu-latest-devel:latest",
-            "ghcr.io/r-lib/rig/ubuntu-devel:latest",
-            "ghcr.io/r-lib/rig/devel:latest"
+            "ghcr.io/r-lib/rig/ubuntu-24.04-devel:latest"
         ]
     },
     {
