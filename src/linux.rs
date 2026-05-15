@@ -171,6 +171,14 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             is_installed: strvec!["rpm", "-q", "{}"],
             delete: strvec!["zypper", "remove", "-y", "{}"],
         })
+    } else if platform.distro.as_deref() == Some("amzn") {
+        Ok(LinuxTools {
+            package_name: "R-{}".to_string(),
+            install: vec![strvec!["dnf", "install", "-y", "{}"]],
+            get_package_name: strvec!["rpm", "-q", "--qf", "%{NAME}", "-p", "{}"],
+            is_installed: strvec!["rpm", "-q", "{}"],
+            delete: strvec!["dnf", "remove", "-y", "{}"],
+        })
     } else if platform.distro.as_deref() == Some("fedora") {
         Ok(LinuxTools {
             package_name: "R-{}".to_string(),
