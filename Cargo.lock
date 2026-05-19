@@ -1814,6 +1814,7 @@ dependencies = [
  "static_vcruntime",
  "sudo",
  "tabular",
+ "tempfile",
  "tokio",
  "version-ranges",
  "whoami",

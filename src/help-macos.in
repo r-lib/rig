@@ -186,9 +186,9 @@ const HELP_SYSTEM_ORTHO: &str = "
 
 const HELP_SYSTEM_LINKS: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
-  Create quick links in `/usr/local/bin` for the current R installations.
-  These let you directly run a specific R version. E.g. `R-4.1` will start
-  R 4.1.x.
+  Create quick links in the rig binary directory (`/usr/local/bin` by
+  default) for the current R installations. These let you directly run a
+  specific R version. E.g. `R-4.1` will start R 4.1.x.
 
   `rig add` runs `rig system make-links`, so if you only use rig to
   install R, then you do not need to run it manually.

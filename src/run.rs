@@ -77,7 +77,7 @@ pub fn r(version: &str, command: &str) -> Result<(), Box<dyn Error>> {
 
 #[cfg(target_os = "macos")]
 fn r_sudo(version: &str, command: &str, user: &User) -> Result<(), Box<dyn Error>> {
-    let rbin = get_r_root().to_string() + "/" + &R_BINPATH.replace("{}", version);
+    let rbin = get_r_root()? + "/" + &get_r_binpath()?.replace("{}", version);
     let escaped_command =
         rbin + " --vanilla -s -e \"" + &command.replace("\"", "\\\"").replace("$", "\\$") + "\"";
 
@@ -92,7 +92,7 @@ fn r_sudo(version: &str, command: &str, user: &User) -> Result<(), Box<dyn Error
 
 #[cfg(target_os = "linux")]
 fn r_sudo(version: &str, command: &str, user: &User) -> Result<(), Box<dyn Error>> {
-    let rbin = get_r_root().to_string() + "/" + &R_BINPATH.replace("{}", version);
+    let rbin = get_r_root()? + "/" + &get_r_binpath()?.replace("{}", version);
     let username = user.user.to_string();
     let mut args: Vec<OsString> = vec![username.into()];
 
@@ -127,7 +127,7 @@ fn r_sudo(version: &str, command: &str, user: &User) -> Result<(), Box<dyn Error
 }
 
 fn r_nosudo(version: &str, command: &str) -> Result<(), Box<dyn Error>> {
-    let rbin = get_r_root().to_string() + "/" + &R_BINPATH.replace("{}", version);
+    let rbin = get_r_root()? + "/" + &get_r_binpath()?.replace("{}", version);
 
     run(
         rbin.into(),
