@@ -1,0 +1,54 @@
+name: Sign
+
+on:
+  workflow_dispatch:
+
+env:
+  RUST_BACKTRACE: 1
+
+jobs:
+
+  windows:
+    runs-on: windows-2022
+    name: Windows (signed)
+
+    steps:
+
+    - name: Checkout
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 10
+
+    - name: Install rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install make
+      run: choco install make
+
+    - name: Install curl
+      run: choco install curl
+
+    - run: |
+        make win
+      shell: bash
+
+    - uses: actions/upload-artifact@v7
+      id: upload-unsigned-artifact
+      with:
+        name: rig-windows-unsigned
+        path: 'rig-*.exe'
+
+    - uses: signpath/github-action-submit-signing-request@v2
+      with:
+        api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
+        organization-id: 'ce0224dd-53d3-46e4-8e82-b71df4fcef90'
+        project-slug: 'rig'
+        signing-policy-slug: 'test-signing'
+        github-artifact-id: '${{ steps.upload-unsigned-artifact.outputs.artifact-id }}'
+        wait-for-completion: true
+        output-artifact-directory: 'signed'
+
+    - uses: actions/upload-artifact@v7
+      with:
+        name: rig-windows-signed
+        path: 'signed/*'
