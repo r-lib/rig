@@ -304,12 +304,6 @@ jobs:
         make win
       shell: bash
 
-    - uses: actions/upload-artifact@v7
-      if: success()
-      with:
-        name: rig-windows
-        path: 'rig-*.exe'
-
     - name: Install rig
       run: |
         Start-Process .\rig-*.exe -ArgumentList "/verysilent /suppressmsgboxes" -Wait -NoNewWindow
@@ -322,6 +316,30 @@ jobs:
       run: |
         bats tests/test-windows.sh
       shell: bash
+
+    - uses: actions/upload-artifact@v7
+      id: upload-unsigned-artifact
+      if: success()
+      with:
+        name: rig-windows
+        path: 'rig-*.exe'
+
+    - uses: signpath/github-action-submit-signing-request@v2
+      if: success()
+      with:
+        api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
+        organization-id: 'ce0224dd-53d3-46e4-8e82-b71df4fcef90'
+        project-slug: 'rig'
+        signing-policy-slug: 'test-signing'
+        github-artifact-id: '${{ steps.upload-unsigned-artifact.outputs.artifact-id }}'
+        wait-for-completion: true
+        output-artifact-directory: 'signed'
+
+    - uses: actions/upload-artifact@v7
+      if: success()
+      with:
+        name: rig-windows-signed
+        path: 'signed/*'
 
   windows-aarch64-test:
     if: ${{ github.event.inputs.inpwindows == '' || github.event.inputs.inpwindows == 'yes' }}
