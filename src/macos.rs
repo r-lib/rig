@@ -642,6 +642,13 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     sc_system_make_links()?;
 
+    if get_mode()? == crate::utils::Mode::User && sc_get_list()?.is_empty() {
+        if let Err(e) = remove_rstudio_which_r_plist() {
+            OUTPUT.warn(&format!("Could not remove RSTUDIO_WHICH_R LaunchAgent: {}", e));
+            warn!("Could not remove RSTUDIO_WHICH_R LaunchAgent: {}", e);
+        }
+    }
+
     Ok(())
 }
 
@@ -1415,6 +1422,101 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
             _ => {}
         };
     }
+
+    if get_mode()? == crate::utils::Mode::User {
+        if let Err(e) = ensure_rstudio_which_r_plist() {
+            OUTPUT.warn(&format!("Could not install RSTUDIO_WHICH_R LaunchAgent: {}", e));
+            warn!("Could not install RSTUDIO_WHICH_R LaunchAgent: {}", e);
+        }
+    }
+
+    Ok(())
+}
+
+fn ensure_rstudio_which_r_plist() -> Result<(), Box<dyn Error>> {
+    let plist_path = rstudio_which_r_plist_path()?;
+
+    if Path::new(&plist_path).exists() {
+        return Ok(());
+    }
+
+    let rbin = Path::new(&get_r_default_bindir()?).join("R");
+    let rbin_str = rbin.to_string_lossy();
+
+    let plist = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>io.r-lib.rig.rstudio-which-r</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/launchctl</string>
+        <string>setenv</string>
+        <string>RSTUDIO_WHICH_R</string>
+        <string>{rbin_str}</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>
+"#
+    );
+
+    let plist_dir = Path::new(&plist_path).parent().unwrap();
+    std::fs::create_dir_all(plist_dir)?;
+    std::fs::write(&plist_path, plist)?;
+    info!("Installed LaunchAgent {}", plist_path);
+
+    let out = Command::new("launchctl")
+        .args(["load", &plist_path])
+        .output()?;
+    if !out.status.success() {
+        let msg = format!(
+            "launchctl load {} failed: {}",
+            plist_path,
+            String::from_utf8_lossy(&out.stderr)
+        );
+        OUTPUT.error(&msg);
+        error!("{}", msg);
+        bail!(msg);
+    }
+
+    Ok(())
+}
+
+fn rstudio_which_r_plist_path() -> Result<String, Box<dyn Error>> {
+    let home = std::env::var("HOME")?;
+    Ok(format!(
+        "{}/Library/LaunchAgents/io.r-lib.rig.rstudio-which-r.plist",
+        home
+    ))
+}
+
+fn remove_rstudio_which_r_plist() -> Result<(), Box<dyn Error>> {
+    let plist_path = rstudio_which_r_plist_path()?;
+
+    if !Path::new(&plist_path).exists() {
+        return Ok(());
+    }
+
+    let out = Command::new("launchctl")
+        .args(["unload", &plist_path])
+        .output()?;
+    if !out.status.success() {
+        let msg = format!(
+            "launchctl unload {} failed: {}",
+            plist_path,
+            String::from_utf8_lossy(&out.stderr)
+        );
+        OUTPUT.error(&msg);
+        error!("{}", msg);
+        bail!(msg);
+    }
+
+    std::fs::remove_file(&plist_path)?;
+    info!("Removed LaunchAgent {}", plist_path);
 
     Ok(())
 }
