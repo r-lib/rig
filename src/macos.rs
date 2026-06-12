@@ -1428,11 +1428,11 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
 
     if get_mode()? == crate::utils::Mode::User {
         if let Err(e) = ensure_rstudio_which_r_plist() {
-            OUTPUT.warn(&format!("Could not install RSTUDIO_WHICH_R LaunchAgent: {}", e));
+            OUTPUT.warn(&format!("Could not register default R version in RStudio: {}", e));
             warn!("Could not install RSTUDIO_WHICH_R LaunchAgent: {}", e);
         }
         if let Err(e) = ensure_positron_custom_root_folders() {
-            OUTPUT.warn(&format!("Could not update Positron settings: {}", e));
+            OUTPUT.warn(&format!("Could not register rig R versions in Positron: {}", e));
             warn!("Could not update Positron settings: {}", e);
         }
     }
@@ -1478,7 +1478,6 @@ fn ensure_rstudio_which_r_plist() -> Result<(), Box<dyn Error>> {
     let plist_dir = Path::new(&plist_path).parent().unwrap();
     std::fs::create_dir_all(plist_dir)?;
     std::fs::write(&plist_path, plist)?;
-    OUTPUT.success("Registering rig versions in RStudio");
     info!("Installed LaunchAgent {}", plist_path);
 
     let out = Command::new("launchctl")
@@ -1486,7 +1485,7 @@ fn ensure_rstudio_which_r_plist() -> Result<(), Box<dyn Error>> {
         .output()?;
     if !out.status.success() {
         let msg = format!(
-            "launchctl load {} failed: {}",
+            "Could not register default R version in RStudio: launchctl load {} failed: {}",
             plist_path,
             String::from_utf8_lossy(&out.stderr)
         );
@@ -1494,6 +1493,8 @@ fn ensure_rstudio_which_r_plist() -> Result<(), Box<dyn Error>> {
         error!("{}", msg);
         bail!(msg);
     }
+
+    OUTPUT.success("Registered default R version in RStudio");
 
     Ok(())
 }
@@ -1536,7 +1537,7 @@ fn ensure_positron_custom_root_folders() -> Result<(), Box<dyn Error>> {
             }
             // Append our path to the existing list
             arr.push(serde_json::Value::String(r_root.clone()));
-            OUTPUT.success("Registering rig versions in Positron");
+            OUTPUT.success("Registered rig R versions in Positron");
             info!("Appended \"{}\" to Positron setting '{}'", r_root, KEY);
         }
         Some(other) => {
@@ -1549,7 +1550,7 @@ fn ensure_positron_custom_root_folders() -> Result<(), Box<dyn Error>> {
         }
         None => {
             obj.insert(KEY.to_string(), serde_json::json!([r_root]));
-            OUTPUT.success("Registering rig versions in Positron");
+            OUTPUT.success("Registered rig R versions in Positron");
             info!("Set Positron setting '{}' = [\"{}\"]", KEY, r_root);
         }
     }
