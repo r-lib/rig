@@ -98,10 +98,10 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
     // Validate that all repositories in whitelist and blacklist exist in config
     validate_repos_in_setup(&config, &setup)?;
 
-    let root: String = get_r_root();
     for ver in vers {
         let ver = check_installed(&ver.to_string())?;
-        let repositories = root.clone() + "/" + &R_ETC_PATH.replace("{}", &ver) + "/repositories";
+        let root: String = get_r_root_for(&ver);
+        let repositories = root.clone() + "/" + &R_ETC_PATH.replace("{}", &version_dir_key(&ver)) + "/repositories";
 
         // if no 'repositories' file, skip. Maybe this happens for very old R versions?
         if !PathBuf::from(&repositories).exists() {
@@ -325,8 +325,8 @@ fn get_r_data(ver: &str) -> Result<RData, Box<dyn Error>> {
 }
 
 fn get_r_data_common(ver: &str) -> Result<RData, Box<dyn Error>> {
-    let root: String = get_r_root();
-    let statsdesc = root + "/" + &R_SYSLIBPATH.replace("{}", ver) + "/stats/DESCRIPTION";
+    let root: String = get_r_root_for(ver);
+    let statsdesc = root + "/" + &R_SYSLIBPATH.replace("{}", &version_dir_key(ver)) + "/stats/DESCRIPTION";
     debug!("Getting architectture from {}.", statsdesc);
     let lines = read_lines(Path::new(&statsdesc))?;
     let re = Regex::new("^Built:[ ]?")?;

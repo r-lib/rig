@@ -18,8 +18,8 @@ pub fn sc_repos_list(
     };
     let all = args.get_flag("all");
 
-    let root: String = get_r_root();
-    let repositories = root.clone() + "/" + &R_ETC_PATH.replace("{}", &rver) + "/repositories";
+    let root: String = get_r_root_for(&rver);
+    let repositories = root.clone() + "/" + &R_ETC_PATH.replace("{}", &version_dir_key(&rver)) + "/repositories";
     let mut repos = read_repositories_file(&repositories)?.data;
 
     if !all {

@@ -56,6 +56,14 @@ pub fn get_r_root() -> String {
     R_ROOT_.to_string()
 }
 
+pub fn get_r_root_for(_name: &str) -> String {
+    get_r_root()
+}
+
+pub fn version_dir_key(name: &str) -> String {
+    name.to_string()
+}
+
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("adding new R versions")?;
 
