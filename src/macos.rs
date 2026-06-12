@@ -902,14 +902,13 @@ pub fn sc_system_allow_debugger(args: &ArgMatches) -> Result<(), Box<dyn Error>>
 }
 
 pub fn sc_system_allow_debugger_rstudio(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    let rsess = PathBuf::new().join("/Applications/RStudio.app/Contents/MacOS/rsession");
-
-    if !rsess.exists() {
+    if !is_rstudio_installed() {
         OUTPUT.error("RStudio is not installed, at least not in /Applications/RStudio.app");
         error!("RStudio is not installed, at least not in /Applications/RStudio.app");
         bail!("RStudio is not installed, at least not in /Applications/RStudio.app");
     }
 
+    let rsess = PathBuf::new().join("/Applications/RStudio.app/Contents/MacOS/rsession");
     update_entitlements(rsess)?;
 
     let rsessarm64 = PathBuf::new().join("/Applications/RStudio.app/Contents/MacOS/rsession-arm64");
@@ -1442,6 +1441,10 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
 }
 
 fn ensure_rstudio_which_r_plist() -> Result<(), Box<dyn Error>> {
+    if !is_rstudio_installed() {
+        return Ok(());
+    }
+
     let plist_path = rstudio_which_r_plist_path()?;
 
     if Path::new(&plist_path).exists() {
@@ -1475,6 +1478,7 @@ fn ensure_rstudio_which_r_plist() -> Result<(), Box<dyn Error>> {
     let plist_dir = Path::new(&plist_path).parent().unwrap();
     std::fs::create_dir_all(plist_dir)?;
     std::fs::write(&plist_path, plist)?;
+    OUTPUT.success("Registering rig versions in RStudio");
     info!("Installed LaunchAgent {}", plist_path);
 
     let out = Command::new("launchctl")
@@ -1555,6 +1559,10 @@ fn ensure_positron_custom_root_folders() -> Result<(), Box<dyn Error>> {
     std::fs::write(settings_path, serde_json::to_string_pretty(&settings)?)?;
 
     Ok(())
+}
+
+fn is_rstudio_installed() -> bool {
+    Path::new("/Applications/RStudio.app/Contents/MacOS/rsession").exists()
 }
 
 fn rstudio_which_r_plist_path() -> Result<String, Box<dyn Error>> {
