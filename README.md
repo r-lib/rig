@@ -94,6 +94,7 @@ tap:
 
 ``` sh
 brew tap r-lib/rig
+brew trust r-lib/rig
 brew install --cask rig
 ```
 
