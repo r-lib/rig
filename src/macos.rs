@@ -2112,13 +2112,14 @@ mod tests {
     }
 
     #[test]
-    fn patch_user_scripts_errors_when_fonts_conf_missing() {
+    fn patch_user_scripts_ok_when_fonts_conf_missing() {
+        // fonts.conf is optional; older R versions don't ship it.
         let dir = tempfile::tempdir().unwrap();
         write_fake_makeconf(dir.path(), "LIBR = -framework R\n");
         write_fake_renviron(dir.path(), "R_QPDF=qpdf\n");
         write_fake_libpc(dir.path(), STUB_LIBPC);
         let home_dir = Path::new("/opt/r");
-        assert!(patch_user_scripts(dir.path(), home_dir).is_err());
+        assert!(patch_user_scripts(dir.path(), home_dir).is_ok());
     }
 
     #[test]
@@ -2177,13 +2178,14 @@ mod tests {
     }
 
     #[test]
-    fn patch_user_scripts_errors_when_libpc_missing() {
+    fn patch_user_scripts_ok_when_libpc_missing() {
+        // libR.pc is optional; older R versions don't ship it.
         let dir = tempfile::tempdir().unwrap();
         write_fake_makeconf(dir.path(), "LIBR = -framework R\n");
         write_fake_renviron(dir.path(), "R_QPDF=qpdf\n");
         write_fake_fonts_conf(dir.path(), "<fontconfig></fontconfig>\n");
         let home_dir = Path::new("/opt/r");
-        assert!(patch_user_scripts(dir.path(), home_dir).is_err());
+        assert!(patch_user_scripts(dir.path(), home_dir).is_ok());
     }
 
     #[test]
