@@ -566,6 +566,13 @@ fn safe_user_install(
         bail!("Failed to copy R framework: {}", err);
     }
 
+    // Positron tries to start Resources/bin/R
+    let resources_link = target_dir.join("Resources");
+    if !resources_link.exists() {
+        debug!("Creating Resources -> . symlink in {}", target_dir.display());
+        symlink(".", &resources_link)?;
+    }
+
     let fc_cache = target_dir.join("bin").join("fc-cache");
     run_fc_cache(&fc_cache);
 
