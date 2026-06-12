@@ -169,6 +169,10 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     if get_mode()? == crate::utils::Mode::User {
         let install_dir = std::path::PathBuf::from(get_r_root()?);
         safe_user_install(target, &dirname, install_dir)?;
+        if let Err(e) = ensure_positron_custom_root_folders() {
+            OUTPUT.warn(&format!("Could not update Positron settings: {}", e));
+            warn!("Could not update Positron settings: {}", e);
+        }
     } else {
         safe_install(target, &dirname, arch)?;
     }
@@ -1428,6 +1432,10 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
             OUTPUT.warn(&format!("Could not install RSTUDIO_WHICH_R LaunchAgent: {}", e));
             warn!("Could not install RSTUDIO_WHICH_R LaunchAgent: {}", e);
         }
+        if let Err(e) = ensure_positron_custom_root_folders() {
+            OUTPUT.warn(&format!("Could not update Positron settings: {}", e));
+            warn!("Could not update Positron settings: {}", e);
+        }
     }
 
     Ok(())
@@ -1482,6 +1490,69 @@ fn ensure_rstudio_which_r_plist() -> Result<(), Box<dyn Error>> {
         error!("{}", msg);
         bail!(msg);
     }
+
+    Ok(())
+}
+
+fn ensure_positron_custom_root_folders() -> Result<(), Box<dyn Error>> {
+    if let Some(val) = crate::config::get_global_config_value("positron-setup")? {
+        if val == "false" {
+            debug!("Skipping Positron setup (positron-setup=false in rig config)");
+            return Ok(());
+        }
+    }
+
+    let home = std::env::var("HOME")?;
+    let positron_dir = format!("{}/Library/Application Support/Positron", home);
+    if !Path::new(&positron_dir).exists() {
+        debug!("Skipping Positron setup; Positron not found");
+        return Ok(());
+    }
+    let settings_path_str = format!("{}/User/settings.json", positron_dir);
+    let settings_path = Path::new(&settings_path_str);
+    let r_root = get_r_root()?;
+    const KEY: &str = "positron.r.customRootFolders";
+
+    let mut settings: serde_json::Value = if settings_path.exists() {
+        let contents = std::fs::read_to_string(settings_path)?;
+        serde_json::from_str(&contents)?
+    } else {
+        serde_json::Value::Object(serde_json::Map::new())
+    };
+
+    let obj = settings
+        .as_object_mut()
+        .ok_or_else(|| SimpleError::new("Positron settings.json is not a JSON object"))?;
+
+    match obj.get_mut(KEY) {
+        Some(serde_json::Value::Array(arr)) => {
+            // Already contains our path — nothing to do
+            if arr.iter().any(|v| v.as_str() == Some(r_root.as_str())) {
+                return Ok(());
+            }
+            // Append our path to the existing list
+            arr.push(serde_json::Value::String(r_root.clone()));
+            OUTPUT.success("Registering rig versions in Positron");
+            info!("Appended \"{}\" to Positron setting '{}'", r_root, KEY);
+        }
+        Some(other) => {
+            // Unexpected type — leave it alone and inform
+            info!(
+                "Positron setting '{}' is not an array ({}); not modifying",
+                KEY, other
+            );
+            return Ok(());
+        }
+        None => {
+            obj.insert(KEY.to_string(), serde_json::json!([r_root]));
+            OUTPUT.success("Registering rig versions in Positron");
+            info!("Set Positron setting '{}' = [\"{}\"]", KEY, r_root);
+        }
+    }
+    if let Some(parent) = settings_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(settings_path, serde_json::to_string_pretty(&settings)?)?;
 
     Ok(())
 }
