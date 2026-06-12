@@ -1315,8 +1315,9 @@ pub fn sc_rstudio_(
                 ver
             )
         }
-        let path = "RSTUDIO_WHICH_R=".to_string() +
-            &get_r_root()? + &get_r_binpath()?.replace("{}", &ver);
+        let rbin = Path::new(&get_r_root()?)
+            .join(get_r_binpath()?.replace("{}", &ver));
+        let path = "RSTUDIO_WHICH_R=".to_string() + &rbin.to_string_lossy();
         args.append(&mut osvec!["--env", &path]);
     }
 
