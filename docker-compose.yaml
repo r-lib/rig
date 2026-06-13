@@ -10,3 +10,13 @@ services:
       - type: bind
         source: .
         target: /work
+      - type: volume
+        source: cargo-cache
+        target: /home/rigbuild/.cargo/registry
+      - type: volume
+        source: cargo-git
+        target: /home/rigbuild/.cargo/git
+
+volumes:
+  cargo-cache:
+  cargo-git:

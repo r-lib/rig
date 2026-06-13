@@ -304,12 +304,6 @@ jobs:
         make win
       shell: bash
 
-    - uses: actions/upload-artifact@v7
-      if: success()
-      with:
-        name: rig-windows
-        path: 'rig-*.exe'
-
     - name: Install rig
       run: |
         Start-Process .\rig-*.exe -ArgumentList "/verysilent /suppressmsgboxes" -Wait -NoNewWindow
@@ -322,6 +316,12 @@ jobs:
       run: |
         bats tests/test-windows.sh
       shell: bash
+
+    - uses: actions/upload-artifact@v7
+      if: success()
+      with:
+        name: rig-windows
+        path: 'rig-*.exe'
 
   windows-aarch64-test:
     if: ${{ github.event.inputs.inpwindows == '' || github.event.inputs.inpwindows == 'yes' }}

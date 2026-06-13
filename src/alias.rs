@@ -154,7 +154,8 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
 pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     let msg = "Adding R-".to_string() + alias + " alias";
     escalate(&msg)?;
-    let rroot = get_r_root()?;
+    let rroot = get_r_root_for(ver)?;
+    let base = version_dir_key(ver);
     let linkdir = Path::new(RIG_LINKS_DIR);
 
     // should exist at this point, but make sure
@@ -163,7 +164,7 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     let filename = "R-".to_string() + alias + ".bat";
     let linkfile = linkdir.join(&filename);
 
-    let cnt = "@\"".to_string() + &rroot + "\\R-" + &ver + "\\bin\\R\" %*\n";
+    let cnt = "@\"".to_string() + &rroot + "\\R-" + &base + "\\bin\\R\" %*\n";
     let op;
     if linkfile.exists() {
         op = "Updating";

@@ -98,10 +98,10 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
     // Validate that all repositories in whitelist and blacklist exist in config
     validate_repos_in_setup(&config, &setup)?;
 
-    let root: String = get_r_root()?;
     for ver in vers {
         let ver = check_installed(&ver.to_string())?;
-        let repositories = root.clone() + "/" + &get_r_etc_path()?.replace("{}", &ver) + "/repositories";
+        let root: String = get_r_root_for(&ver)?;
+        let repositories = root.clone() + "/" + &get_r_etc_path()?.replace("{}", &version_dir_key(&ver)) + "/repositories";
 
         // if no 'repositories' file, skip. Maybe this happens for very old R versions?
         if !PathBuf::from(&repositories).exists() {
@@ -160,7 +160,7 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
 
         write_repositories_file(repos, &repositories)?;
 
-        let profile = root.clone() + "/" + &get_r_base_profile()?.replace("{}", &ver);
+        let profile = root.clone() + "/" + &get_r_base_profile()?.replace("{}", &version_dir_key(&ver));
         debug!("Updating R profile at {}", profile);
         let mut profile_lines = read_lines(&Path::new(&profile))?;
 
@@ -325,8 +325,8 @@ fn get_r_data(ver: &str) -> Result<RData, Box<dyn Error>> {
 }
 
 fn get_r_data_common(ver: &str) -> Result<RData, Box<dyn Error>> {
-    let root: String = get_r_root()?;
-    let statsdesc = root + "/" + &get_r_syslibpath()?.replace("{}", ver) + "/stats/DESCRIPTION";
+    let root: String = get_r_root_for(ver)?;
+    let statsdesc = root + "/" + &get_r_syslibpath()?.replace("{}", &version_dir_key(ver)) + "/stats/DESCRIPTION";
     debug!("Getting architectture from {}.", statsdesc);
     let lines = read_lines(Path::new(&statsdesc))?;
     let re = Regex::new("^Built:[ ]?")?;

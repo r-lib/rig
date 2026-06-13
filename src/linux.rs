@@ -54,6 +54,14 @@ pub fn get_r_root() -> Result<String, Box<dyn Error>> {
     Ok(R_ROOT_.to_string())
 }
 
+pub fn get_r_root_for(_name: &str) -> Result<String, Box<dyn Error>> {
+    get_r_root()
+}
+
+pub fn version_dir_key(name: &str) -> String {
+    name.to_string()
+}
+
 pub fn get_r_syslibpath() -> Result<String, Box<dyn Error>> {
     if get_mode()? == Mode::User {
         return Ok("{}/library".to_string());

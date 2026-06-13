@@ -448,6 +448,14 @@ pub fn rig_app() -> Command {
                 Arg::new("version")
                     .help("Rtools version to add, e.g. '43'")
                     .default_value("all"),
+            )
+            .arg(
+                Arg::new("arch")
+                    .help("Architecture to install Rtools for (default: native arch).")
+                    .short('a')
+                    .long("arch")
+                    .required(false)
+                    .value_parser(["x86_64", "aarch64", "arm64"]),
             );
         let cmd_system_rtools_rm = Command::new("rm")
             .about("Remove rtools versions [aliases: del, remove, delete]")
@@ -459,6 +467,14 @@ pub fn rig_app() -> Command {
                     .help("versions to remove")
                     .action(clap::ArgAction::Append)
                     .required(false),
+            )
+            .arg(
+                Arg::new("arch")
+                    .help("Architecture of Rtools to remove (default: native arch).")
+                    .short('a')
+                    .long("arch")
+                    .required(false)
+                    .value_parser(["x86_64", "aarch64", "arm64"]),
             );
 
         let cmd_system_rtools = Command::new("rtools")

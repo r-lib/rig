@@ -81,8 +81,8 @@ pub fn get_default_r_version() -> Result<Option<String>, Box<dyn Error>> {
         None => Ok(None),
         Some(d) => {
             let name = check_installed(&d)?;
-            let desc = Path::new(&get_r_root()?)
-                .join(get_r_syslibpath()?.replace("{}", &name))
+            let desc = Path::new(&get_r_root_for(&name)?)
+                .join(get_r_syslibpath()?.replace("{}", &version_dir_key(&name)))
                 .join("base/DESCRIPTION");
             let lines = match read_lines(&desc) {
                 Ok(x) => x,
@@ -104,8 +104,8 @@ pub fn get_default_r_version() -> Result<Option<String>, Box<dyn Error>> {
 
 pub fn get_r_version_data_version(name: &str) -> Result<String, Box<dyn Error>> {
     let re = Regex::new("^Version:[ ]?").expect("Invalid regex pattern");
-    let desc = Path::new(&get_r_root()?)
-        .join(get_r_syslibpath()?.replace("{}", name))
+    let desc = Path::new(&get_r_root_for(name)?)
+        .join(get_r_syslibpath()?.replace("{}", &version_dir_key(name)))
         .join("base/DESCRIPTION");
     let lines = match read_lines(&desc) {
         Ok(x) => x,
@@ -135,8 +135,8 @@ pub fn get_r_version_data(
     aliases: &[Alias],
 ) -> Result<InstalledVersion, Box<dyn Error>> {
     let version = Some(get_r_version_data_version(name)?);
-    let path = Path::new(&get_r_root()?).join(R_VERSIONDIR.replace("{}", name));
-    let binary = Path::new(&get_r_root()?).join(get_r_binpath()?.replace("{}", name));
+    let path = Path::new(&get_r_root_for(name)?).join(R_VERSIONDIR.replace("{}", &version_dir_key(name)));
+    let binary = Path::new(&get_r_root_for(name)?).join(get_r_binpath()?.replace("{}", &version_dir_key(name)));
     let mut myaliases: Vec<String> = vec![];
     for a in aliases {
         if a.version == name {
