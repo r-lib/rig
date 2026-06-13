@@ -283,9 +283,13 @@ pub fn platform_to_pkg_type(platform: &OsVersion, r_version: &str) -> Option<Str
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static RIG_PLATFORM_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_detect_platform_rig_platform_short() {
+        let _guard = RIG_PLATFORM_LOCK.lock().unwrap();
         // "ubuntu-24.04" should be treated as a linux platform shorthand
         std::env::set_var("RIG_PLATFORM", "ubuntu-24.04");
         let result = detect_platform().unwrap();
@@ -298,6 +302,7 @@ mod tests {
 
     #[test]
     fn test_detect_platform_rig_platform_prefixed() {
+        let _guard = RIG_PLATFORM_LOCK.lock().unwrap();
         // "linux-ubuntu-22.04" explicit form
         std::env::set_var("RIG_PLATFORM", "linux-ubuntu-22.04");
         let result = detect_platform().unwrap();

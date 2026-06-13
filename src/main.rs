@@ -209,6 +209,21 @@ fn main_() -> i32 {
 
     unset_r_envvars();
 
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        if args.get_flag("user") {
+            if let Err(e) = utils::set_mode(utils::Mode::User) {
+                error!("{}", e);
+                return 1;
+            }
+        } else if args.get_flag("admin") {
+            if let Err(e) = utils::set_mode(utils::Mode::Admin) {
+                error!("{}", e);
+                return 1;
+            }
+        }
+    }
+
     #[cfg(target_os = "linux")]
     set_cert_envvar();
 
@@ -246,6 +261,7 @@ fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
         Some(("resolve", sub)) => sc_resolve(sub, args)?,
         Some(("rstudio", sub)) => sc_rstudio(sub)?,
         Some(("library", sub)) => sc_library(sub, args)?,
+        Some(("config", sub)) => crate::config::sc_config(sub, args)?,
         Some(("sysreqs", sub)) => sc_sysreqs(sub, args)?,
         Some(("available", sub)) => sc_available(sub, args)?,
         Some(("run", sub)) => retval = sc_run(sub, args)?,

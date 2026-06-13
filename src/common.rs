@@ -48,10 +48,6 @@ pub fn check_installed(x: &String) -> Result<String, Box<dyn Error>> {
     bail!("R version {} is not installed", &x);
 }
 
-pub fn get_r_base_profile(ver: &str) -> String {
-    R_BASE_PROFILE.replace("{}", &version_dir_key(ver))
-}
-
 // -- rig default ---------------------------------------------------------
 
 // Fail if no default is set
@@ -69,8 +65,10 @@ pub fn sc_get_default_or_fail() -> Result<String, Box<dyn Error>> {
 }
 
 pub fn set_default_if_none(ver: String) -> Result<(), Box<dyn Error>> {
+    debug!("Checking if a default R version is set");
     let cur = sc_get_default()?;
     if cur.is_none() {
+        debug!("No default R version is set, setting it to {}", ver);
         sc_set_default(&ver)?;
     }
     Ok(())
@@ -83,8 +81,8 @@ pub fn get_default_r_version() -> Result<Option<String>, Box<dyn Error>> {
         None => Ok(None),
         Some(d) => {
             let name = check_installed(&d)?;
-            let desc = Path::new(&get_r_root_for(&name))
-                .join(R_SYSLIBPATH.replace("{}", &version_dir_key(&name)))
+            let desc = Path::new(&get_r_root_for(&name)?)
+                .join(get_r_syslibpath()?.replace("{}", &version_dir_key(&name)))
                 .join("base/DESCRIPTION");
             let lines = match read_lines(&desc) {
                 Ok(x) => x,
@@ -106,8 +104,8 @@ pub fn get_default_r_version() -> Result<Option<String>, Box<dyn Error>> {
 
 pub fn get_r_version_data_version(name: &str) -> Result<String, Box<dyn Error>> {
     let re = Regex::new("^Version:[ ]?").expect("Invalid regex pattern");
-    let desc = Path::new(&get_r_root_for(name))
-        .join(R_SYSLIBPATH.replace("{}", &version_dir_key(name)))
+    let desc = Path::new(&get_r_root_for(name)?)
+        .join(get_r_syslibpath()?.replace("{}", &version_dir_key(name)))
         .join("base/DESCRIPTION");
     let lines = match read_lines(&desc) {
         Ok(x) => x,
@@ -137,8 +135,8 @@ pub fn get_r_version_data(
     aliases: &[Alias],
 ) -> Result<InstalledVersion, Box<dyn Error>> {
     let version = Some(get_r_version_data_version(name)?);
-    let path = Path::new(&get_r_root_for(name)).join(R_VERSIONDIR.replace("{}", &version_dir_key(name)));
-    let binary = Path::new(&get_r_root_for(name)).join(R_BINPATH.replace("{}", &version_dir_key(name)));
+    let path = Path::new(&get_r_root_for(name)?).join(R_VERSIONDIR.replace("{}", &version_dir_key(name)));
+    let binary = Path::new(&get_r_root_for(name)?).join(get_r_binpath()?.replace("{}", &version_dir_key(name)));
     let mut myaliases: Vec<String> = vec![];
     for a in aliases {
         if a.version == name {
@@ -159,7 +157,7 @@ pub fn sc_get_list_details() -> Result<Vec<InstalledVersion>, Box<dyn Error>> {
     let aliases = find_aliases()?;
     let mut res: Vec<InstalledVersion> = vec![];
 
-    for name in names {
+    for name in &names {
         res.push(get_r_version_data(&name, &aliases)?);
     }
 

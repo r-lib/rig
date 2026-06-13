@@ -39,15 +39,11 @@ use crate::windows_arch::*;
 // get_r_root(): returns the directory where the R versions are installed
 // RIG_LINKS_DIR: directory where the quick links are created
 // R_VERSION_DIR: name of the directory of a single R version inside R_ROOT()
-// R_SYSLIBPATH: path to the system library of an R version from R_ROOT()
-// R_BINPATH: path of the R executable from R_ROOT()
+// get_r_syslibpath(): path to the system library of an R version from R_ROOT()
+// get_r_binpath(): path of the R executable from R_ROOT()
 
 pub const RIG_LINKS_DIR: &str = "C:\\Program Files\\R\\bin";
 pub const R_VERSIONDIR: &str = "R-{}";
-pub const R_SYSLIBPATH: &str = "R-{}\\library";
-pub const R_BASE_PROFILE: &str = "R-{}\\library\\base\\R\\Rprofile";
-pub const R_BINPATH: &str = "R-{}\\bin\\R.exe";
-pub const R_ETC_PATH: &str = "R-{}\\etc";
 
 macro_rules! osvec {
     // match a list of expressions separated by comma:
@@ -58,8 +54,8 @@ macro_rules! osvec {
     });
 }
 
-pub fn get_r_root() -> String {
-    get_r_root_arch(get_native_arch())
+pub fn get_r_root() -> Result<String, Box<dyn Error>> {
+    Ok(get_r_root_arch(get_native_arch()))
 }
 
 pub fn get_r_root_arch(arch: &str) -> String {
@@ -97,8 +93,8 @@ pub fn arch_of_name(name: &str) -> &'static str {
 }
 
 // Return the R root directory for a given rig version name.
-pub fn get_r_root_for(name: &str) -> String {
-    get_r_root_arch(arch_of_name(name))
+pub fn get_r_root_for(name: &str) -> Result<String, Box<dyn Error>> {
+    Ok(get_r_root_arch(arch_of_name(name)))
 }
 
 // Return the bare directory key (R-{key}) used inside the root, stripping arch suffix.
@@ -115,6 +111,22 @@ fn rig_name_for_arch(base: &str, arch: &str) -> String {
     } else {
         base.to_string()
     }
+}
+
+pub fn get_r_syslibpath() -> Result<String, Box<dyn Error>> {
+    Ok("R-{}\\library".to_string())
+}
+
+pub fn get_r_binpath() -> Result<String, Box<dyn Error>> {
+    Ok("R-{}\\bin\\R.exe".to_string())
+}
+
+pub fn get_r_base_profile() -> Result<String, Box<dyn Error>> {
+    Ok("R-{}\\library\\base\\R\\Rprofile".to_string())
+}
+
+pub fn get_r_etc_path() -> Result<String, Box<dyn Error>> {
+    Ok("R-{}\\etc".to_string())
 }
 
 #[warn(unused_variables)]
@@ -279,7 +291,7 @@ fn patch_for_rtools() -> Result<(), Box<dyn Error>> {
             continue;
         }
         let rtools4 = needed[0].version == "40";
-        let ver_rroot = get_r_root_for(&ver);
+        let ver_rroot = get_r_root_for(&ver)?;
         let ver_base = version_dir_key(&ver);
         let rdir = "R-".to_string() + &ver_base;
         let envfile = Path::new(&ver_rroot).join(rdir).join("etc").join("Renviron.site");
@@ -338,7 +350,7 @@ fn get_rtools_needed(
                 continue;
             }
         }
-        let ver_rroot = get_r_root_for(&ver);
+        let ver_rroot = get_r_root_for(&ver)?;
         let ver_base = version_dir_key(&ver);
         let r = Path::new(&ver_rroot)
             .join("R-".to_string() + &ver_base)
@@ -412,7 +424,7 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             }
         }
 
-        let rroot = get_r_root_for(&ver);
+        let rroot = get_r_root_for(&ver)?;
         let base = version_dir_key(&ver);
         let dir = Path::new(&rroot).join("R-".to_string() + &base);
         OUTPUT.status(&format!("Removing {}", dir.display()));
@@ -475,7 +487,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         let filename = "R-".to_string() + &ver + ".bat";
         let linkfile = linkdir.join(&filename);
         new_links.push(filename);
-        let ver_rroot = get_r_root_for(&ver);
+        let ver_rroot = get_r_root_for(&ver)?;
         let ver_base = version_dir_key(&ver);
         let target = Path::new(&ver_rroot).join("R-".to_string() + &ver_base);
 
@@ -696,7 +708,7 @@ pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
     let mut vers = Vec::new();
 
     // Always scan the native root (plain names).
-    list_r_in_root(&get_r_root(), "", &mut vers)?;
+    list_r_in_root(&get_r_root()?, "", &mut vers)?;
 
     // On aarch64, also scan the x86_64 root and emit names with -x86_64 suffix.
     if get_native_arch() == "aarch64" {
@@ -711,7 +723,7 @@ pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
 pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
     let ver = check_installed(&ver.to_string())?;
     escalate("setting the default R version")?;
-    let rroot = get_r_root_for(&ver);
+    let rroot = get_r_root_for(&ver)?;
     let base = version_dir_key(&ver);
     let linkdir = Path::new(RIG_LINKS_DIR);
     std::fs::create_dir_all(&linkdir)?;
@@ -904,7 +916,7 @@ fn maybe_update_registry_default() -> Result<(), Box<dyn Error>> {
 
 fn update_registry_default1(key: &RegKey, ver: &String) -> Result<(), Box<dyn Error>> {
     let base = version_dir_key(ver);
-    let rroot = get_r_root_for(ver);
+    let rroot = get_r_root_for(ver)?;
     key.set_value("Current Version", &base)?;
     let inst = rroot + "\\R-" + &base;
     key.set_value("InstallPath", &inst)?;
@@ -1321,7 +1333,7 @@ pub fn sc_rstudio_(
 }
 
 pub fn get_system_profile(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
-    let rroot = get_r_root_for(rver);
+    let rroot = get_r_root_for(rver)?;
     let base = version_dir_key(rver);
     let path = Path::new(&rroot).join("R-".to_string() + &base);
     let profile = path.join("library/base/R/Rprofile");
@@ -1330,7 +1342,7 @@ pub fn get_system_profile(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
 
 pub fn get_r_binary(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
     debug!("Finding R {} binary", rver);
-    let rroot = get_r_root_for(rver);
+    let rroot = get_r_root_for(rver)?;
     let base = version_dir_key(rver);
     let bin = Path::new(&rroot)
         .join("R-".to_string() + &base)
@@ -1342,7 +1354,7 @@ pub fn get_r_binary(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
 
 pub fn get_r_binary_x64(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
     debug!("Finding R {} binary", rver);
-    let rroot = get_r_root_for(rver);
+    let rroot = get_r_root_for(rver)?;
     let base = version_dir_key(rver);
     let bin = Path::new(&rroot)
         .join("R-".to_string() + &base)
