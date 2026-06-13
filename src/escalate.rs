@@ -11,6 +11,7 @@ use simple_error::bail;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use sudo::with_env;
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use crate::output::OUTPUT;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -78,6 +79,9 @@ pub fn get_home() -> Result<String, Box<dyn Error>> {
 
 #[cfg(target_os = "windows")]
 pub fn escalate(task: &str) -> Result<(), Box<dyn Error>> {
+    if crate::utils::get_mode()? == crate::utils::Mode::User {
+        return Ok(());
+    }
     if is_elevated::is_elevated() {
         return Ok(());
     }

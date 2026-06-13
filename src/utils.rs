@@ -4,13 +4,14 @@ use std::ffi::OsString;
 use std::fs::File;
 use std::io::{prelude::*, BufReader};
 use std::path::{Path, PathBuf};
-#[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::sync::OnceLock;
 
 use regex::Regex;
 use sha2::{Digest, Sha256};
 
-use log::{debug, error};
+use log::debug;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use log::error;
 use simple_error::*;
 use std::error::Error;
 
@@ -256,14 +257,14 @@ pub fn get_user() -> Result<User, Box<dyn Error>> {
     })
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
     User,
     Admin,
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+
 fn parse_mode(s: &str) -> Option<Mode> {
     match s {
         "user" => Some(Mode::User),
@@ -272,10 +273,10 @@ fn parse_mode(s: &str) -> Option<Mode> {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+
 static MODE_CACHE: OnceLock<Mode> = OnceLock::new();
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+
 pub fn set_mode(mode: Mode) -> Result<(), Box<dyn Error>> {
     match MODE_CACHE.set(mode) {
         Ok(()) => Ok(()),
@@ -288,7 +289,7 @@ pub fn set_mode(mode: Mode) -> Result<(), Box<dyn Error>> {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+
 pub fn get_mode() -> Result<Mode, Box<dyn Error>> {
     if let Some(cached) = MODE_CACHE.get() {
         return Ok(*cached);
@@ -336,6 +337,24 @@ pub fn get_binary_dir() -> Result<String, Box<dyn Error>> {
     Ok("/usr/local/bin".to_string())
 }
 
+#[cfg(target_os = "windows")]
+pub fn get_binary_dir() -> Result<String, Box<dyn Error>> {
+    if let Ok(val) = std::env::var("RIG_BINARY_DIR") {
+        return Ok(val.trim_end_matches('\\').to_string());
+    }
+
+    if let Some(val) = crate::config::get_global_config_value("binary-dir")? {
+        return Ok(val.trim_end_matches('\\').to_string());
+    }
+
+    if get_mode()? == Mode::User {
+        let userprofile = std::env::var("USERPROFILE")?;
+        return Ok(format!("{}\\.local\\bin", userprofile));
+    }
+
+    Ok("C:\\Program Files\\R\\bin".to_string())
+}
+
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn get_r_install_dir() -> Result<Option<String>, Box<dyn Error>> {
     if let Ok(val) = std::env::var("RIG_R_INSTALL_DIR") {
@@ -349,6 +368,24 @@ pub fn get_r_install_dir() -> Result<Option<String>, Box<dyn Error>> {
     if get_mode()? == Mode::User {
         let home = std::env::var("HOME")?;
         return Ok(Some(format!("{}/.local/share/rig/r", home)));
+    }
+
+    Ok(None)
+}
+
+#[cfg(target_os = "windows")]
+pub fn get_r_install_dir() -> Result<Option<String>, Box<dyn Error>> {
+    if let Ok(val) = std::env::var("RIG_R_INSTALL_DIR") {
+        return Ok(Some(val.trim_end_matches('\\').to_string()));
+    }
+
+    if let Some(val) = crate::config::get_global_config_value("r-install-dir")? {
+        return Ok(Some(val.trim_end_matches('\\').to_string()));
+    }
+
+    if get_mode()? == Mode::User {
+        let appdata = std::env::var("APPDATA")?;
+        return Ok(Some(format!("{}\\rig\\data\\r", appdata)));
     }
 
     Ok(None)
@@ -501,10 +538,6 @@ fish_add_path --prepend --move \"$HOME/.local/bin\"
     Ok(())
 }
 
-#[cfg(target_os = "windows")]
-pub fn add_local_bin_to_path() -> Result<(), Box<dyn Error>> {
-    Ok(())
-}
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn check_local_bin_path() -> Result<(), Box<dyn Error>> {
@@ -568,11 +601,6 @@ pub fn check_local_bin_path() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    Ok(())
-}
-
-#[cfg(target_os = "windows")]
-pub fn check_local_bin_path() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
