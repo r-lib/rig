@@ -315,3 +315,147 @@ pub fn create_parent_dir_if_needed(path: &PathBuf) -> Result<(), Box<dyn Error>>
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use regex::Regex;
+    use std::path::Path;
+
+    #[test]
+    fn os_converts_to_osstring() {
+        assert_eq!(os("hello"), OsString::from("hello"));
+        assert_eq!(os(""), OsString::from(""));
+    }
+
+    #[test]
+    fn basename_last_component() {
+        assert_eq!(basename("/usr/local/bin/R"), Some("R"));
+        assert_eq!(basename("R"), Some("R"));
+    }
+
+    #[test]
+    fn basename_trailing_slash_returns_empty() {
+        assert_eq!(basename("/usr/local/"), Some(""));
+    }
+
+    #[test]
+    fn basename_empty_string() {
+        assert_eq!(basename(""), Some(""));
+    }
+
+    #[test]
+    fn unquote_single_quotes() {
+        assert_eq!(unquote("'hello'"), "hello");
+    }
+
+    #[test]
+    fn unquote_double_quotes() {
+        assert_eq!(unquote("\"world\""), "world");
+    }
+
+    #[test]
+    fn unquote_mismatched_quotes_unchanged() {
+        assert_eq!(unquote("'hello\""), "'hello\"");
+    }
+
+    #[test]
+    fn unquote_too_short_unchanged() {
+        assert_eq!(unquote("'"), "'");
+        assert_eq!(unquote(""), "");
+        assert_eq!(unquote("ab"), "ab");
+    }
+
+    #[test]
+    fn grep_lines_no_match() {
+        let re = Regex::new("^xyz").unwrap();
+        let lines = vec!["hello".to_string(), "world".to_string()];
+        assert_eq!(grep_lines(&re, &lines), Vec::<usize>::new());
+    }
+
+    #[test]
+    fn grep_lines_all_match() {
+        let re = Regex::new(".*").unwrap();
+        let lines = vec!["a".to_string(), "b".to_string()];
+        assert_eq!(grep_lines(&re, &lines), vec![0, 1]);
+    }
+
+    #[test]
+    fn grep_lines_partial_match() {
+        let re = Regex::new("^Built:").unwrap();
+        let lines = vec![
+            "Package: stats".to_string(),
+            "Built: R 4.4.0; x86_64-pc-linux-gnu".to_string(),
+            "Version: 4.4.0".to_string(),
+        ];
+        assert_eq!(grep_lines(&re, &lines), vec![1]);
+    }
+
+    #[test]
+    fn calculate_hash_known_value() {
+        assert_eq!(
+            calculate_hash("hello"),
+            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        );
+    }
+
+    #[test]
+    fn calculate_hash_empty_string() {
+        assert_eq!(
+            calculate_hash(""),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+    }
+
+    #[test]
+    fn bak_file_preserves_extension() {
+        let result = bak_file(Path::new("/etc/R/Renviron.site"));
+        assert_eq!(result, PathBuf::from("/etc/R/Renviron.site.bak"));
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn osjoin_multiple() {
+        let parts = vec![
+            OsString::from("a"),
+            OsString::from("b"),
+            OsString::from("c"),
+        ];
+        assert_eq!(osjoin(parts, ","), "a,b,c");
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn osjoin_single() {
+        assert_eq!(osjoin(vec![OsString::from("only")], ","), "only");
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn osjoin_empty() {
+        assert_eq!(osjoin(vec![], ","), "");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn format_cmd_args_substitutes_placeholder() {
+        use std::ffi::OsStr;
+        let args = vec![
+            "install-{}".to_string(),
+            "--prefix={}".to_string(),
+            "--verbose".to_string(),
+        ];
+        let result = format_cmd_args(args, OsStr::new("libcurl"));
+        assert_eq!(result[0], OsString::from("install-libcurl"));
+        assert_eq!(result[1], OsString::from("--prefix=libcurl"));
+        assert_eq!(result[2], OsString::from("--verbose"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn format_cmd_args_no_placeholder_unchanged() {
+        use std::ffi::OsStr;
+        let result = format_cmd_args(vec!["--help".to_string()], OsStr::new("anything"));
+        assert_eq!(result[0], OsString::from("--help"));
+    }
+}

@@ -163,3 +163,89 @@ pub struct LinuxTools {
 pub struct RtoolsVersion {
     pub url: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn ok_ver(version: &str) -> OKInstalledVersion {
+        OKInstalledVersion {
+            name: version.to_string(),
+            version: semver::Version::parse(version).unwrap(),
+            path: "/usr/local".to_string(),
+            binary: "/usr/bin/R".to_string(),
+        }
+    }
+
+    #[test]
+    fn ok_installed_version_ordering() {
+        assert!(ok_ver("4.0.0") < ok_ver("4.1.0"));
+        assert!(ok_ver("4.1.0") < ok_ver("4.2.0"));
+        assert!(ok_ver("4.2.0") > ok_ver("4.0.0"));
+        assert!(ok_ver("4.1.0") == ok_ver("4.1.0"));
+    }
+
+    #[test]
+    fn ok_installed_version_sort() {
+        let mut versions = vec![ok_ver("4.2.0"), ok_ver("4.0.0"), ok_ver("4.1.0")];
+        versions.sort();
+        assert_eq!(versions[0].version, semver::Version::parse("4.0.0").unwrap());
+        assert_eq!(versions[1].version, semver::Version::parse("4.1.0").unwrap());
+        assert_eq!(versions[2].version, semver::Version::parse("4.2.0").unwrap());
+    }
+
+    #[test]
+    fn pkglibrary_posix_path_unchanged() {
+        let lib = PkgLibrary {
+            rversion: "4.4".to_string(),
+            name: "default".to_string(),
+            path: PathBuf::from("/usr/local/lib/R"),
+            default: true,
+        };
+        let json = serde_json::to_string(&lib).unwrap();
+        assert!(json.contains("/usr/local/lib/R"));
+    }
+
+    #[test]
+    fn pkglibrary_backslashes_converted_to_forward_slashes() {
+        // On Unix, PathBuf treats backslashes as regular characters; the
+        // serializer must still convert them to forward slashes.
+        let lib = PkgLibrary {
+            rversion: "4.4".to_string(),
+            name: "default".to_string(),
+            path: PathBuf::from("C:\\Program Files\\R"),
+            default: true,
+        };
+        let json = serde_json::to_string(&lib).unwrap();
+        assert!(json.contains("C:/Program Files/R"));
+        assert!(!json.contains('\\'));
+    }
+
+    #[test]
+    fn installed_version_path_backslashes_converted() {
+        let iv = InstalledVersion {
+            name: "4.4".to_string(),
+            version: None,
+            path: Some("C:\\Program Files\\R\\R-4.4".to_string()),
+            binary: None,
+            aliases: vec![],
+        };
+        let json = serde_json::to_string(&iv).unwrap();
+        assert!(json.contains("C:/Program Files/R/R-4.4"));
+        assert!(!json.contains('\\'));
+    }
+
+    #[test]
+    fn installed_version_path_none_serializes_as_null() {
+        let iv = InstalledVersion {
+            name: "4.4".to_string(),
+            version: None,
+            path: None,
+            binary: None,
+            aliases: vec![],
+        };
+        let json = serde_json::to_string(&iv).unwrap();
+        assert!(json.contains("\"path\":null"));
+    }
+}

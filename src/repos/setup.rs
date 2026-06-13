@@ -324,6 +324,195 @@ fn get_r_data(ver: &str) -> Result<RData, Box<dyn Error>> {
     get_r_data_common(ver)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::{validate_repos_in_setup, should_activate_repo, RData};
+    use crate::repos::config::{Repository, RepoEntry};
+    use crate::repos::interpret_repos_args::ReposSetupArgs;
+
+    fn make_repo(name: &str) -> Repository {
+        Repository {
+            name: name.to_string(),
+            title: None,
+            description: None,
+            enabled: true,
+            repos: vec![],
+        }
+    }
+
+    fn make_entry() -> RepoEntry {
+        RepoEntry {
+            name: "test".to_string(),
+            title: None,
+            description: None,
+            url: "https://example.com".to_string(),
+            platforms: None,
+            archs: None,
+            rversions: None,
+            enabled: None,
+        }
+    }
+
+    fn rdata(platform: &str, arch: &str, version: &str) -> RData {
+        RData {
+            platform: platform.to_string(),
+            arch: arch.to_string(),
+            version: version.to_string(),
+            distro: None,
+            release: None,
+        }
+    }
+
+    // --- validate_repos_in_setup ---
+
+    #[test]
+    fn validate_all_valid_names() {
+        let config = vec![make_repo("CRAN"), make_repo("P3M")];
+        let setup = ReposSetupArgs::Default {
+            whitelist: vec!["cran".to_string()],
+            blacklist: vec!["p3m".to_string()],
+        };
+        assert!(validate_repos_in_setup(&config, &setup).is_ok());
+    }
+
+    #[test]
+    fn validate_invalid_whitelist_errors() {
+        let config = vec![make_repo("CRAN")];
+        let setup = ReposSetupArgs::Default {
+            whitelist: vec!["bioc".to_string()],
+            blacklist: vec![],
+        };
+        assert!(validate_repos_in_setup(&config, &setup).is_err());
+    }
+
+    #[test]
+    fn validate_invalid_blacklist_errors() {
+        let config = vec![make_repo("CRAN")];
+        let setup = ReposSetupArgs::Default {
+            whitelist: vec![],
+            blacklist: vec!["p3m".to_string()],
+        };
+        assert!(validate_repos_in_setup(&config, &setup).is_err());
+    }
+
+    #[test]
+    fn validate_empty_lists_ok() {
+        let config = vec![make_repo("CRAN")];
+        let setup = ReposSetupArgs::Default {
+            whitelist: vec![],
+            blacklist: vec![],
+        };
+        assert!(validate_repos_in_setup(&config, &setup).is_ok());
+    }
+
+    #[test]
+    fn validate_empty_setup_valid_name_ok() {
+        let config = vec![make_repo("CRAN")];
+        let setup = ReposSetupArgs::Empty {
+            whitelist: vec!["cran".to_string()],
+        };
+        assert!(validate_repos_in_setup(&config, &setup).is_ok());
+    }
+
+    #[test]
+    fn validate_empty_setup_invalid_name_errors() {
+        let config = vec![make_repo("CRAN")];
+        let setup = ReposSetupArgs::Empty {
+            whitelist: vec!["bioc".to_string()],
+        };
+        assert!(validate_repos_in_setup(&config, &setup).is_err());
+    }
+
+    // --- should_activate_repo ---
+
+    #[test]
+    fn activate_no_constraints_returns_true() {
+        let repo = make_repo("Test");
+        let entry = make_entry();
+        assert!(should_activate_repo(&repo, &entry, &rdata("linux", "x86_64", "4.4.0")).unwrap());
+    }
+
+    #[test]
+    fn activate_platform_glob_matches() {
+        let repo = make_repo("Test");
+        let mut entry = make_entry();
+        entry.platforms = Some(vec!["linux*".to_string()]);
+        assert!(should_activate_repo(&repo, &entry, &rdata("linux", "x86_64", "4.4.0")).unwrap());
+    }
+
+    #[test]
+    fn activate_platform_glob_no_match() {
+        let repo = make_repo("Test");
+        let mut entry = make_entry();
+        entry.platforms = Some(vec!["macos*".to_string()]);
+        assert!(!should_activate_repo(&repo, &entry, &rdata("linux", "x86_64", "4.4.0")).unwrap());
+    }
+
+    #[test]
+    fn activate_platform_with_distro_matches() {
+        let repo = make_repo("Test");
+        let mut entry = make_entry();
+        entry.platforms = Some(vec!["linux-ubuntu*".to_string()]);
+        let mut rd = rdata("linux", "x86_64", "4.4.0");
+        rd.distro = Some("ubuntu".to_string());
+        rd.release = Some("22.04".to_string());
+        assert!(should_activate_repo(&repo, &entry, &rd).unwrap());
+    }
+
+    #[test]
+    fn activate_platform_with_distro_no_match() {
+        let repo = make_repo("Test");
+        let mut entry = make_entry();
+        entry.platforms = Some(vec!["linux-ubuntu*".to_string()]);
+        let mut rd = rdata("linux", "x86_64", "4.4.0");
+        rd.distro = Some("fedora".to_string());
+        rd.release = Some("42".to_string());
+        assert!(!should_activate_repo(&repo, &entry, &rd).unwrap());
+    }
+
+    #[test]
+    fn activate_arch_matches() {
+        let repo = make_repo("Test");
+        let mut entry = make_entry();
+        entry.archs = Some(vec!["x86_64".to_string()]);
+        assert!(should_activate_repo(&repo, &entry, &rdata("linux", "x86_64", "4.4.0")).unwrap());
+    }
+
+    #[test]
+    fn activate_arch_no_match() {
+        let repo = make_repo("Test");
+        let mut entry = make_entry();
+        entry.archs = Some(vec!["aarch64".to_string()]);
+        assert!(!should_activate_repo(&repo, &entry, &rdata("linux", "x86_64", "4.4.0")).unwrap());
+    }
+
+    #[test]
+    fn activate_rversion_constraint_satisfied() {
+        let repo = make_repo("Test");
+        let mut entry = make_entry();
+        entry.rversions = Some(vec![">= 4.0".to_string()]);
+        assert!(should_activate_repo(&repo, &entry, &rdata("linux", "x86_64", "4.4.0")).unwrap());
+    }
+
+    #[test]
+    fn activate_rversion_constraint_not_satisfied() {
+        let repo = make_repo("Test");
+        let mut entry = make_entry();
+        entry.rversions = Some(vec!["< 3.5".to_string()]);
+        assert!(!should_activate_repo(&repo, &entry, &rdata("linux", "x86_64", "4.4.0")).unwrap());
+    }
+
+    #[test]
+    fn activate_all_constraints_must_pass() {
+        let repo = make_repo("Test");
+        let mut entry = make_entry();
+        entry.platforms = Some(vec!["linux*".to_string()]);
+        entry.archs = Some(vec!["aarch64".to_string()]); // won't match x86_64
+        entry.rversions = Some(vec![">= 4.0".to_string()]);
+        assert!(!should_activate_repo(&repo, &entry, &rdata("linux", "x86_64", "4.4.0")).unwrap());
+    }
+}
+
 fn get_r_data_common(ver: &str) -> Result<RData, Box<dyn Error>> {
     let root: String = get_r_root_for(ver);
     let statsdesc = root + "/" + &R_SYSLIBPATH.replace("{}", &version_dir_key(ver)) + "/stats/DESCRIPTION";
