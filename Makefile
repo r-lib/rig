@@ -246,9 +246,17 @@ build.stamp: target/release/rig target/x86_64-apple-darwin/release/rig \
 
 # -------------------------------------------------------------------------
 
+coverage:
+	rustup component add llvm-tools-preview
+	cargo llvm-cov --html --open
+
+coverage-ci:
+	rustup component add llvm-tools-preview
+	cargo llvm-cov --lcov --output-path lcov.info
+
 .PHONY: release clean all macos win linux Rig.app shell-linux \
 	linux-in-docker linux-amd64-in-docker linux-arm64-in-docker \
-	linux-test-all
+	linux-test-all coverage coverage-ci
 
 clean:
 	cargo clean

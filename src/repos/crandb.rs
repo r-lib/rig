@@ -111,3 +111,56 @@ fn parse_crandb_deps(
     pkg_deps.simplify();
     Ok(pkg_deps)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dcf::{RDepType, VersionConstraintType};
+
+    #[test]
+    fn parse_wildcard_produces_no_constraints() {
+        let deps = serde_json::json!({ "R": "*" });
+        let result = parse_crandb_deps(&deps, "Depends").unwrap();
+        assert_eq!(result.dependencies.len(), 1);
+        assert_eq!(result.dependencies[0].name, "R");
+        assert!(result.dependencies[0].constraints.is_empty());
+        assert_eq!(result.dependencies[0].types, vec![RDepType::Depends]);
+    }
+
+    #[test]
+    fn parse_version_constraint() {
+        let deps = serde_json::json!({ "ggplot2": ">= 3.0.0" });
+        let result = parse_crandb_deps(&deps, "Imports").unwrap();
+        assert_eq!(result.dependencies.len(), 1);
+        let dep = &result.dependencies[0];
+        assert_eq!(dep.name, "ggplot2");
+        assert_eq!(dep.types, vec![RDepType::Imports]);
+        assert_eq!(dep.constraints.len(), 1);
+        assert_eq!(
+            dep.constraints[0].constraint_type,
+            VersionConstraintType::GreaterOrEqual
+        );
+    }
+
+    #[test]
+    fn parse_empty_object_produces_no_deps() {
+        let deps = serde_json::json!({});
+        let result = parse_crandb_deps(&deps, "Depends").unwrap();
+        assert!(result.dependencies.is_empty());
+    }
+
+    #[test]
+    fn parse_multiple_packages() {
+        let deps = serde_json::json!({ "R": "*", "methods": "*" });
+        let result = parse_crandb_deps(&deps, "Depends").unwrap();
+        assert_eq!(result.dependencies.len(), 2);
+        assert!(result.dependencies.iter().any(|d| d.name == "R"));
+        assert!(result.dependencies.iter().any(|d| d.name == "methods"));
+    }
+
+    #[test]
+    fn parse_invalid_dep_type_errors() {
+        let deps = serde_json::json!({ "R": "*" });
+        assert!(parse_crandb_deps(&deps, "InvalidType").is_err());
+    }
+}
