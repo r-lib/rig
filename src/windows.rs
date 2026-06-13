@@ -37,13 +37,16 @@ use crate::utils::*;
 use crate::windows_arch::*;
 
 // get_r_root(): returns the directory where the R versions are installed
-// RIG_LINKS_DIR: directory where the quick links are created
+// get_links_dir(): returns the directory where the quick links are created
 // R_VERSION_DIR: name of the directory of a single R version inside R_ROOT()
 // get_r_syslibpath(): path to the system library of an R version from R_ROOT()
 // get_r_binpath(): path of the R executable from R_ROOT()
 
-pub const RIG_LINKS_DIR: &str = "C:\\Program Files\\R\\bin";
 pub const R_VERSIONDIR: &str = "R-{}";
+
+pub fn get_links_dir() -> Result<String, Box<dyn Error>> {
+    get_binary_dir()
+}
 
 macro_rules! osvec {
     // match a list of expressions separated by comma:
@@ -55,18 +58,32 @@ macro_rules! osvec {
 }
 
 pub fn get_r_root() -> Result<String, Box<dyn Error>> {
-    Ok(get_r_root_arch(get_native_arch()))
+    get_r_root_arch(get_native_arch())
 }
 
-pub fn get_r_root_arch(arch: &str) -> String {
+pub fn get_r_root_arch(arch: &str) -> Result<String, Box<dyn Error>> {
+    if get_mode()? == Mode::User {
+        let base = match get_r_install_dir()? {
+            Some(dir) => dir,
+            None => {
+                let appdata = std::env::var("APPDATA")?;
+                format!("{}\\rig\\data\\r", appdata)
+            }
+        };
+        // On aarch64 hosts, x86_64 R goes in a sibling directory
+        if arch == "x86_64" && get_native_arch() == "aarch64" {
+            return Ok(format!("{}-x86_64", base));
+        }
+        return Ok(base);
+    }
     const R_ROOT_: &str = "C:\\Program Files\\R";
     const R_X86_ROOT_: &str = "C:\\Program Files (x86)\\R";
     const R_AARCH64_ROOT_: &str = "C:\\Program Files\\R-aarch64";
-    match arch {
+    Ok(match arch {
         "aarch64" | "arm64" => R_AARCH64_ROOT_.to_string(),
         "x86_64" if get_native_arch() == "aarch64" => R_X86_ROOT_.to_string(),
         _ => R_ROOT_.to_string(),
-    }
+    })
 }
 
 // Strip a trailing -x86_64, -aarch64, or -arm64 arch suffix from a rig name.
@@ -94,7 +111,7 @@ pub fn arch_of_name(name: &str) -> &'static str {
 
 // Return the R root directory for a given rig version name.
 pub fn get_r_root_for(name: &str) -> Result<String, Box<dyn Error>> {
-    Ok(get_r_root_arch(arch_of_name(name)))
+    get_r_root_arch(arch_of_name(name))
 }
 
 // Return the bare directory key (R-{key}) used inside the root, stripping arch suffix.
@@ -165,9 +182,23 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         cmd_args.push(os("/mergetasks=!desktopicon"));
     }
 
-    run(target, cmd_args, "installer")?;
-
-    let dirname = get_latest_install_path(&installed_arch)?;
+    let dirname = if get_mode()? == Mode::User {
+        // In user mode: install into APPDATA, no registry lookup needed.
+        let base = match &version_info.version {
+            Some(v) => v.clone(),
+            None => bail!("Cannot determine R version to install in user mode"),
+        };
+        let r_root = get_r_root_arch(&installed_arch)?;
+        let install_dir = format!("{}\\R-{}", r_root, base);
+        std::fs::create_dir_all(&install_dir)?;
+        cmd_args.push(os("/CURRENTUSER"));
+        cmd_args.push(OsString::from(format!("/DIR={}", install_dir)));
+        run(target, cmd_args, "installer")?;
+        Some(rig_name_for_arch(&base, &installed_arch))
+    } else {
+        run(target, cmd_args, "installer")?;
+        get_latest_install_path(&installed_arch)?
+    };
 
     match dirname {
         None => {
@@ -475,7 +506,8 @@ fn rm_rtools(ver: String, arch: Option<String>) -> Result<(), Box<dyn Error>> {
 pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     escalate("making R-* quick shortcuts")?;
     let vers = sc_get_list()?;
-    let linkdir = Path::new(RIG_LINKS_DIR);
+    let links_dir = get_links_dir()?;
+    let linkdir = Path::new(&links_dir);
     let mut new_links: Vec<String> = vec![
         "RS.bat".to_string(),
         "R.bat".to_string(),
@@ -548,6 +580,10 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         };
     }
 
+    if get_mode()? == Mode::User {
+        add_user_bin_to_path()?;
+    }
+
     Ok(())
 }
 
@@ -558,7 +594,8 @@ fn re_alias() -> Regex {
 
 pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
     let mut result: Vec<Alias> = vec![];
-    let bin = Path::new(RIG_LINKS_DIR);
+    let links_dir = get_links_dir()?;
+    let bin = Path::new(&links_dir);
     debug!("Finding existing aliases in {}", bin.display());
 
     if !bin.exists() {
@@ -605,7 +642,7 @@ fn find_r_version_in_link(path: &PathBuf) -> Result<String, Box<dyn Error>> {
     // The .bat content is: @"<root>\R-<base>\bin\R" %*
     // Determine which root this link points into, so we can re-attach the right suffix.
     let line = &lines[0];
-    let x86_root = get_r_root_arch("x86_64");
+    let x86_root = get_r_root_arch("x86_64")?;
     let is_x86 = get_native_arch() == "aarch64"
         && line
             .to_lowercase()
@@ -712,7 +749,7 @@ pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
 
     // On aarch64, also scan the x86_64 root and emit names with -x86_64 suffix.
     if get_native_arch() == "aarch64" {
-        let x86_root = get_r_root_arch("x86_64");
+        let x86_root = get_r_root_arch("x86_64")?;
         list_r_in_root(&x86_root, "-x86_64", &mut vers)?;
     }
 
@@ -725,7 +762,8 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
     escalate("setting the default R version")?;
     let rroot = get_r_root_for(&ver)?;
     let base = version_dir_key(&ver);
-    let linkdir = Path::new(RIG_LINKS_DIR);
+    let links_dir = get_links_dir()?;
+    let linkdir = Path::new(&links_dir);
     std::fs::create_dir_all(&linkdir)?;
 
     let linkfile = linkdir.join("R.bat");
@@ -758,8 +796,10 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
 pub fn unset_default() -> Result<(), Box<dyn Error>> {
     escalate("unsetting the default R version")?;
 
-    fn try_rm(x: &str) {
-        let linkdir = Path::new(RIG_LINKS_DIR);
+    let links_dir = get_links_dir()?;
+    let linkdir = Path::new(&links_dir);
+
+    let try_rm = |x: &str| {
         let f = linkdir.join(x);
         if f.exists() {
             match std::fs::remove_file(&f) {
@@ -774,7 +814,7 @@ pub fn unset_default() -> Result<(), Box<dyn Error>> {
                 _ => {}
             };
         }
-    }
+    };
 
     try_rm("R.bat");
     try_rm("RS.bat");
@@ -786,7 +826,8 @@ pub fn unset_default() -> Result<(), Box<dyn Error>> {
 }
 
 pub fn sc_get_default() -> Result<Option<String>, Box<dyn Error>> {
-    let linkdir = Path::new(RIG_LINKS_DIR);
+    let links_dir = get_links_dir()?;
+    let linkdir = Path::new(&links_dir);
     let linkfile = linkdir.join("R.bat");
     if !linkfile.exists() {
         return Ok(None);
@@ -848,65 +889,80 @@ fn clean_registry_uninst(key: &RegKey) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn r_registry_hive() -> Result<RegKey, Box<dyn Error>> {
+    if get_mode()? == Mode::User {
+        Ok(RegKey::predef(HKEY_CURRENT_USER))
+    } else {
+        Ok(RegKey::predef(HKEY_LOCAL_MACHINE))
+    }
+}
+
 pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
     escalate("cleaning up the Windows registry")?;
 
     OUTPUT.status("Cleaning leftover registry entries");
     info!("Cleaning leftover registry entries");
 
-    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let hive = r_registry_hive()?;
 
-    let r64r = hklm.open_subkey("SOFTWARE\\R-core\\R");
+    let r64r = hive.open_subkey("SOFTWARE\\R-core\\R");
     if let Ok(x) = r64r {
         clean_registry_r(&x)?;
     };
-    let r64r64 = hklm.open_subkey("SOFTWARE\\R-core\\R64");
+    let r64r64 = hive.open_subkey("SOFTWARE\\R-core\\R64");
     if let Ok(x) = r64r64 {
         clean_registry_r(&x)?;
     };
-    let r32r = hklm.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\R");
+    let r32r = hive.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\R");
     if let Ok(x) = r32r {
         clean_registry_r(&x)?;
     };
-    let r32r32 = hklm.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\R32");
+    let r32r32 = hive.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\R32");
     if let Ok(x) = r32r32 {
         clean_registry_r(&x)?;
     };
-    let r32r64 = hklm.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\R64");
+    let r32r64 = hive.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\R64");
     if let Ok(x) = r32r64 {
         clean_registry_r(&x)?;
     };
 
-    let rtools64 = hklm.open_subkey("SOFTWARE\\R-core\\Rtools");
-    if let Ok(x) = rtools64 {
-        clean_registry_rtools(&x)?;
-        if x.enum_keys().count() == 0 {
-            hklm.delete_subkey("SOFTWARE\\R-core\\Rtools")?;
-        }
-    };
-    let rtools32 = hklm.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\Rtools");
-    if let Ok(x) = rtools32 {
-        clean_registry_rtools(&x)?;
-        if x.enum_keys().count() == 0 {
-            hklm.delete_subkey("SOFTWARE\\WOW6432Node\\R-core\\Rtools")?;
-        }
-    };
+    // Rtools and uninstall entries only exist in HKLM
+    if get_mode()? == Mode::Admin {
+        let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+        let rtools64 = hklm.open_subkey("SOFTWARE\\R-core\\Rtools");
+        if let Ok(x) = rtools64 {
+            clean_registry_rtools(&x)?;
+            if x.enum_keys().count() == 0 {
+                hklm.delete_subkey("SOFTWARE\\R-core\\Rtools")?;
+            }
+        };
+        let rtools32 = hklm.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\Rtools");
+        if let Ok(x) = rtools32 {
+            clean_registry_rtools(&x)?;
+            if x.enum_keys().count() == 0 {
+                hklm.delete_subkey("SOFTWARE\\WOW6432Node\\R-core\\Rtools")?;
+            }
+        };
 
-    let uninst = hklm.open_subkey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
-    if let Ok(x) = uninst {
-        clean_registry_uninst(&x)?;
-    };
-    let uninst32 =
-        hklm.open_subkey("SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
-    if let Ok(x) = uninst32 {
-        clean_registry_uninst(&x)?;
-    };
+        let uninst =
+            hklm.open_subkey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
+        if let Ok(x) = uninst {
+            clean_registry_uninst(&x)?;
+        };
+        let uninst32 = hklm.open_subkey(
+            "SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+        );
+        if let Ok(x) = uninst32 {
+            clean_registry_uninst(&x)?;
+        };
+    }
 
     Ok(())
 }
 
 fn maybe_update_registry_default() -> Result<(), Box<dyn Error>> {
-    let linkdir = Path::new(RIG_LINKS_DIR);
+    let links_dir = get_links_dir()?;
+    let linkdir = Path::new(&links_dir);
     let linkfile = linkdir.join("R.bat");
     if linkfile.exists() {
         update_registry_default()?;
@@ -924,26 +980,26 @@ fn update_registry_default1(key: &RegKey, ver: &String) -> Result<(), Box<dyn Er
 }
 
 fn update_registry_default_to(default: &String) -> Result<(), Box<dyn Error>> {
-    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let hive = r_registry_hive()?;
     let native = get_native_arch();
     let arch = arch_of_name(default);
 
     if native == "aarch64" && arch == "x86_64" {
         // x86_64 R on aarch64 host: update the WOW6432Node key
         let key_path = "SOFTWARE\\WOW6432Node\\R-core\\R64";
-        let r = hklm.create_subkey(key_path);
+        let r = hive.create_subkey(key_path);
         if let Ok(x) = r {
             let (key, _) = x;
             update_registry_default1(&key, default)?;
         }
     } else {
         // native arch: update both R and R64 keys
-        let r64r = hklm.create_subkey("SOFTWARE\\R-core\\R");
+        let r64r = hive.create_subkey("SOFTWARE\\R-core\\R");
         if let Ok(x) = r64r {
             let (key, _) = x;
             update_registry_default1(&key, default)?;
         }
-        let r64r64 = hklm.create_subkey("SOFTWARE\\R-core\\R64");
+        let r64r64 = hive.create_subkey("SOFTWARE\\R-core\\R64");
         if let Ok(x) = r64r64 {
             let (key, _) = x;
             update_registry_default1(&key, default)?;
@@ -959,19 +1015,81 @@ fn update_registry_default() -> Result<(), Box<dyn Error>> {
 }
 
 fn unset_registry_default() -> Result<(), Box<dyn Error>> {
-    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    let r64r = hklm.create_subkey("SOFTWARE\\R-core\\R");
+    let hive = r_registry_hive()?;
+    let r64r = hive.create_subkey("SOFTWARE\\R-core\\R");
     if let Ok(x) = r64r {
         let (key, _) = x;
-        key.delete_value("Current Version")?;
-        key.delete_value("InstallPath")?;
+        let _ = key.delete_value("Current Version");
+        let _ = key.delete_value("InstallPath");
     }
-    let r64r64 = hklm.create_subkey("SOFTWARE\\R-core\\R64");
+    let r64r64 = hive.create_subkey("SOFTWARE\\R-core\\R64");
     if let Ok(x) = r64r64 {
         let (key, _) = x;
-        key.delete_value("Current Version")?;
-        key.delete_value("InstallPath")?;
+        let _ = key.delete_value("Current Version");
+        let _ = key.delete_value("InstallPath");
     }
+    Ok(())
+}
+
+fn add_user_bin_to_path() -> Result<(), Box<dyn Error>> {
+    let bin_dir = get_binary_dir()?;
+
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let env_key = hkcu.open_subkey_with_flags(
+        "Environment",
+        winreg::enums::KEY_READ | winreg::enums::KEY_WRITE,
+    )?;
+
+    // Read current PATH (handles both REG_SZ and REG_EXPAND_SZ).
+    let raw = env_key.get_raw_value("Path").unwrap_or(winreg::RegValue {
+        bytes: Vec::new(),
+        vtype: winreg::enums::REG_EXPAND_SZ,
+    });
+
+    // Decode UTF-16 LE registry string (strip null terminator).
+    let words: Vec<u16> = raw
+        .bytes
+        .chunks_exact(2)
+        .map(|b| u16::from_le_bytes([b[0], b[1]]))
+        .take_while(|&c| c != 0)
+        .collect();
+    let current_path = String::from_utf16_lossy(&words);
+
+    // Check if bin_dir is already a segment (case-insensitive on Windows).
+    let bin_lower = bin_dir.to_lowercase();
+    let already_present = current_path
+        .split(';')
+        .any(|s| s.trim().to_lowercase() == bin_lower);
+
+    if already_present {
+        return Ok(());
+    }
+
+    let new_path = if current_path.is_empty() {
+        bin_dir.clone()
+    } else {
+        format!("{};{}", bin_dir, current_path)
+    };
+
+    // Encode back to UTF-16 LE with null terminator, preserving original REG type.
+    let encoded: Vec<u8> = new_path
+        .encode_utf16()
+        .chain(std::iter::once(0u16))
+        .flat_map(|c| c.to_le_bytes())
+        .collect();
+    env_key.set_raw_value(
+        "Path",
+        &winreg::RegValue {
+            bytes: encoded,
+            vtype: raw.vtype,
+        },
+    )?;
+
+    OUTPUT.status(&format!("Added {} to user PATH", bin_dir));
+    info!("Added {} to user PATH", bin_dir);
+    OUTPUT.warn("Restart your terminal (or sign out and back in) for the PATH change to take effect.");
+    warn!("Restart your terminal for the PATH change to take effect.");
+
     Ok(())
 }
 
