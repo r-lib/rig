@@ -261,6 +261,18 @@
                     "x86_64",
                     "aarch64"
                 ]
+            },
+            {
+                "name": "P3M",
+                "url": "https://packagemanager.posit.co/cran/__linux__/manylinux_2_28/latest",
+                "platforms": [
+                    "*-linux-gnu-amzn-*"
+                ],
+                "archs": [
+                    "x86_64",
+                    "aarch64"
+                ],
+                "enabled": true
             }
         ]
     },
