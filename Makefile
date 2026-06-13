@@ -1,5 +1,5 @@
 
-VERSION=$(shell cargo pkgid | grep -oE '[^#]+$$')
+VERSION=$(shell grep "^version" Cargo.toml | head -1 | tr -cd '0-9.')
 SOURCES=$(wildcard src/*.rs) $(wildcard src/*.in)
 
 all:
