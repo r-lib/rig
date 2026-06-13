@@ -11,6 +11,7 @@ use simple_error::bail;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use sudo::with_env;
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use crate::output::OUTPUT;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]

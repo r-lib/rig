@@ -10,7 +10,10 @@ use std::sync::OnceLock;
 use regex::Regex;
 use sha2::{Digest, Sha256};
 
-use log::{debug, error};
+use log::debug;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use log::error;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use simple_error::*;
 use std::error::Error;
 
@@ -501,10 +504,6 @@ fish_add_path --prepend --move \"$HOME/.local/bin\"
     Ok(())
 }
 
-#[cfg(target_os = "windows")]
-pub fn add_local_bin_to_path() -> Result<(), Box<dyn Error>> {
-    Ok(())
-}
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn check_local_bin_path() -> Result<(), Box<dyn Error>> {
@@ -568,11 +567,6 @@ pub fn check_local_bin_path() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    Ok(())
-}
-
-#[cfg(target_os = "windows")]
-pub fn check_local_bin_path() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
