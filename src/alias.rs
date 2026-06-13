@@ -165,7 +165,7 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     let filename = "R-".to_string() + alias + ".bat";
     let linkfile = linkdir.join(&filename);
 
-    let cnt = "@\"".to_string() + &rroot + "\\R-" + &base + "\\bin\\R\" %*\n";
+    let cnt = format!("@\"{}\\{}\\bin\\R\" %*\n", rroot, get_r_versiondir()?.replace("{}", &base));
     let op;
     if linkfile.exists() {
         op = "Updating";

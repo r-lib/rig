@@ -135,7 +135,7 @@ pub fn get_r_version_data(
     aliases: &[Alias],
 ) -> Result<InstalledVersion, Box<dyn Error>> {
     let version = Some(get_r_version_data_version(name)?);
-    let path = Path::new(&get_r_root_for(name)?).join(R_VERSIONDIR.replace("{}", &version_dir_key(name)));
+    let path = Path::new(&get_r_root_for(name)?).join(get_r_versiondir()?.replace("{}", &version_dir_key(name)));
     let binary = Path::new(&get_r_root_for(name)?).join(get_r_binpath()?.replace("{}", &version_dir_key(name)));
     let mut myaliases: Vec<String> = vec![];
     for a in aliases {
