@@ -110,6 +110,9 @@ const HELP_ADD: &str = "
   - `rig add oldrel/n` adds the latest release within the `n`th previous
     minor branch (`oldrel` is the same as `oldrel/1`).
   - `rig add <url>` uses a `.pkg` installer from `<url>`.
+  - `rig add renv.lock` or `rig add <dir>` installs the R version specified
+    in the renv.lock file. If a directory is given, rig looks for an
+    renv.lock file in that directory.
 
   `rig add` will call the following rig command after the installation,
   to set up the newly installed version:
@@ -149,7 +152,13 @@ const HELP_ADD_EXAMPLES: &str = "\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
   rig add 4.1
 
   # Install all needed Rtools versions
-  rig add rtools";
+  rig add rtools
+
+  # Install the R version specified in renv.lock
+  rig add renv.lock
+
+  # Install R version from a project's renv.lock
+  rig add path/to/project";
 
 const HELP_RM: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
