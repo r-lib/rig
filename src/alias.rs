@@ -30,11 +30,18 @@ use crate::utils::{check_local_bin_path, get_binary_dir};
 #[cfg(target_os = "macos")]
 pub fn get_alias(args: &ArgMatches) -> Option<String> {
     let str: Option<&String> = args.get_one("str");
+    // In user mode the installation directory is itself named `devel`/`next`,
+    // so a separate alias would be redundant. In admin mode the installation
+    // is named after its version number, so we still add the alias to make
+    // the build reachable by name.
+    let user_mode =
+        crate::utils::get_mode().map(|m| m == crate::utils::Mode::User).unwrap_or(false);
     match str {
         None => None,
         Some(str) => match str.as_ref() {
             "oldrel" | "oldrel/1" => Some("oldrel".to_string()),
-            "release" | "devel" | "next" => Some(str.to_string()),
+            "release" => Some("release".to_string()),
+            "devel" | "next" if !user_mode => Some(str.to_string()),
             _ => None,
         },
     }
