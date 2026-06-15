@@ -184,6 +184,37 @@ pub(super) fn r_dirname(key: &str) -> Result<String, Box<dyn Error>> {
     }
 }
 
+fn read_rversion_h(install_dir: &Path) -> Result<(String, String), Box<dyn Error>> {
+    let path = install_dir.join("include").join("Rversion.h");
+    let content = std::fs::read_to_string(&path)?;
+    let major_re = Regex::new(r#"(?m)^\s*#define\s+R_MAJOR\s+"(.*)"\s*$"#)?;
+    let minor_re = Regex::new(r#"(?m)^\s*#define\s+R_MINOR\s+"(.*)"\s*$"#)?;
+    let status_re = Regex::new(r#"(?m)^\s*#define\s+R_STATUS\s+"(.*)"\s*$"#)?;
+    let grab = |re: &Regex| {
+        re.captures(&content)
+            .and_then(|c| c.get(1))
+            .map(|m| m.as_str().to_string())
+    };
+    let major = grab(&major_re)
+        .ok_or_else(|| SimpleError::new("Cannot find R_MAJOR in Rversion.h"))?;
+    let minor = grab(&minor_re)
+        .ok_or_else(|| SimpleError::new("Cannot find R_MINOR in Rversion.h"))?;
+    let status = grab(&status_re).unwrap_or_default();
+    Ok((format!("{}.{}", major, minor), status))
+}
+
+fn user_install_name(install_dir: &Path, arch: &str) -> Result<String, Box<dyn Error>> {
+    let (version, status) = read_rversion_h(install_dir)?;
+    let base = match status.as_str() {
+        "" => version,
+        "Under development (unstable)" => "devel".to_string(),
+        _ => "next".to_string(),
+    };
+    let name = rig_name_for_arch(&base, arch);
+    debug!("User install directory name is {} (R_STATUS = {:?})", name, status);
+    Ok(name)
+}
+
 #[warn(unused_variables)]
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("adding new R version")?;
@@ -221,19 +252,69 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     }
 
     let dirname = if get_mode()? == Mode::User {
-        // In user mode: install into APPDATA, no registry lookup needed.
-        let base = match &version_info.version {
-            Some(v) => v.clone(),
-            None => bail!("Cannot determine R version to install in user mode"),
-        };
         let r_root = get_r_root_arch(&installed_arch)?;
-        let rig_name = rig_name_for_arch(&base, &installed_arch);
-        // User mode: directory name is the rig name itself (no R- prefix, arch suffix included)
-        let install_dir = format!("{}\\{}", r_root, &rig_name);
-        std::fs::create_dir_all(&install_dir)?;
+        std::fs::create_dir_all(&r_root)?;
+        let temp_dir = format!("{}\\.rig-install-{}", r_root, std::process::id());
+        // Clean up a leftover temp dir from a previous interrupted install.
+        if Path::new(&temp_dir).exists() {
+            remove_dir_all(&temp_dir)?;
+        }
+        std::fs::create_dir_all(&temp_dir)?;
         cmd_args.push(os("/CURRENTUSER"));
-        cmd_args.push(OsString::from(format!("/DIR={}", install_dir)));
+        cmd_args.push(OsString::from(format!("/DIR={}", temp_dir)));
         run(target, cmd_args, "installer")?;
+
+        // The installer must have populated the temp dir. If it did not (e.g.
+        // it failed silently or exited before finishing), fail clearly here
+        // rather than with a confusing "Rversion.h not found" error.
+        let rversion_h = Path::new(&temp_dir).join("include").join("Rversion.h");
+        if !rversion_h.exists() {
+            let _ = remove_dir_all(&temp_dir);
+            let msg = format!(
+                "Installation failed: the R installer did not populate {} (expected {} to exist)",
+                temp_dir,
+                rversion_h.display()
+            );
+            OUTPUT.error(&msg);
+            error!("{}", msg);
+            bail!("{}", msg);
+        }
+
+        let rig_name = match user_install_name(Path::new(&temp_dir), &installed_arch) {
+            Ok(name) => name,
+            Err(err) => {
+                let _ = remove_dir_all(&temp_dir);
+                OUTPUT.error(&format!("Cannot determine installed R version: {}", err.to_string()));
+                error!("Cannot determine installed R version: {}", err.to_string());
+                return Err(err);
+            }
+        };
+        let final_dir = format!("{}\\{}", r_root, &rig_name);
+        if Path::new(&final_dir).exists() {
+            if let Err(err) = remove_dir_all(&final_dir) {
+                let _ = remove_dir_all(&temp_dir);
+                let msg = format!(
+                    "Cannot replace existing R installation at {}: {}",
+                    final_dir,
+                    err.to_string()
+                );
+                OUTPUT.error(&msg);
+                error!("{}", msg);
+                bail!("{}", msg);
+            }
+        }
+        if let Err(err) = std::fs::rename(&temp_dir, &final_dir) {
+            let _ = remove_dir_all(&temp_dir);
+            OUTPUT.error(&format!(
+                "Cannot move R installation into {}: {}",
+                final_dir,
+                err.to_string()
+            ));
+            error!("Cannot move R installation into {}: {}", final_dir, err.to_string());
+            return Err(err.into());
+        }
+        OUTPUT.status(&format!("Installed R as '{}'", rig_name));
+        info!("Installed R as '{}' in {}", rig_name, final_dir);
         Some(rig_name)
     } else {
         run(target, cmd_args, "installer")?;
@@ -256,7 +337,17 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match dirname {
         None => {}
         Some(ref dirname) => match alias {
-            Some(alias) => add_alias(&dirname, &alias)?,
+            // The `release`/`oldrel` aliases point at the native build. An
+            // x86_64 build on an aarch64 machine gets an `-x86_64` suffix
+            // instead, to avoid colliding with the native alias.
+            Some(alias) => {
+                let alias = if installed_arch == "x86_64" && get_native_arch() == "aarch64" {
+                    format!("{}-x86_64", alias)
+                } else {
+                    alias
+                };
+                add_alias(&dirname, &alias)?
+            }
             None => {}
         },
     };
@@ -623,7 +714,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
 }
 
 fn re_alias() -> Regex {
-    let re = Regex::new("^R-(oldrel|release|next)[.]bat$").unwrap();
+    let re = Regex::new("^R-(oldrel|release|next)(-x86_64)?[.]bat$").unwrap();
     re
 }
 
@@ -796,6 +887,11 @@ fn list_r_in_root(root: &str, suffix: &str, vers: &mut Vec<String>) -> Result<()
             Some(fname) => match fname.to_str() {
                 None => continue,
                 Some(fname) => {
+                    // Skip dot-directories (e.g. `.rig-install-*` temporary
+                    // install directories left behind by an interrupted add).
+                    if fname.starts_with('.') {
+                        continue;
+                    }
                     if user_mode {
                         // User mode: no R- prefix; directory name is the version
                         vers.push(fname.to_string() + suffix);
@@ -1206,4 +1302,110 @@ pub fn get_r_binary_x64(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
         .join("R.exe");
     debug!("R {} binary: {}", rver, bin.display());
     Ok(bin)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Drop guard: removes the temp install tree when the test ends.
+    struct TempDir(PathBuf);
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    // Write a fake installed R tree with an `include/Rversion.h` holding the
+    // given version and status, and return its root (with a cleanup guard).
+    fn fake_install(version: &str, status: &str) -> (PathBuf, TempDir) {
+        let root = std::env::temp_dir().join(format!(
+            "rig-test-{}-{}",
+            std::process::id(),
+            // Unique per call within a process.
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let inc = root.join("include");
+        std::fs::create_dir_all(&inc).expect("create include dir");
+        // Split "4.6.0" into R_MAJOR "4" and R_MINOR "6.0", as R's header does.
+        let (major, minor) = version.split_once('.').expect("version has a dot");
+        let content = format!(
+            "#define R_VERSION 263680\n\
+             #define R_NICK \"Some Nickname\"\n\
+             #define R_MAJOR  \"{}\"\n\
+             #define R_MINOR  \"{}\"\n\
+             #define R_STATUS \"{}\"\n\
+             #define R_YEAR  \"2026\"\n",
+            major, minor, status
+        );
+        std::fs::write(inc.join("Rversion.h"), content).expect("write Rversion.h");
+        (root.clone(), TempDir(root))
+    }
+
+    #[test]
+    fn read_rversion_h_parses_version_and_status() {
+        let (root, _g) = fake_install("4.6.0", "");
+        let (v, s) = read_rversion_h(&root).unwrap();
+        assert_eq!(v, "4.6.0");
+        assert_eq!(s, "");
+
+        let (root, _g) = fake_install("4.7.0", "Under development (unstable)");
+        let (v, s) = read_rversion_h(&root).unwrap();
+        assert_eq!(v, "4.7.0");
+        assert_eq!(s, "Under development (unstable)");
+
+        let (root, _g) = fake_install("4.6.1", "Patched");
+        let (v, s) = read_rversion_h(&root).unwrap();
+        assert_eq!(v, "4.6.1");
+        assert_eq!(s, "Patched");
+    }
+
+    #[test]
+    fn read_rversion_h_errors_without_version() {
+        let (root, _g) = fake_install("4.6.0", "");
+        std::fs::write(
+            root.join("include").join("Rversion.h"),
+            "#define R_STATUS \"\"\n",
+        )
+        .unwrap();
+        assert!(read_rversion_h(&root).is_err());
+    }
+
+    #[test]
+    fn user_install_name_maps_status_to_name() {
+        // Use the native arch so no `-x86_64` suffix is added, keeping the
+        // assertions host-independent.
+        let arch = get_native_arch();
+
+        let (root, _g) = fake_install("4.6.0", "");
+        assert_eq!(user_install_name(&root, arch).unwrap(), "4.6.0");
+
+        let (root, _g) = fake_install("4.7.0", "Under development (unstable)");
+        assert_eq!(user_install_name(&root, arch).unwrap(), "devel");
+
+        let (root, _g) = fake_install("4.6.1", "Patched");
+        assert_eq!(user_install_name(&root, arch).unwrap(), "next");
+    }
+
+    #[test]
+    fn re_alias_matches_plain_and_x86_64_suffixed_names() {
+        let re = re_alias();
+        // Plain alias names.
+        assert!(re.is_match("R-oldrel.bat"));
+        assert!(re.is_match("R-release.bat"));
+        assert!(re.is_match("R-next.bat"));
+        // x86_64 build on aarch64 gets an `-x86_64` suffix; these must be
+        // recognized too, otherwise sc_system_make_links deletes them and
+        // find_aliases does not list them.
+        assert!(re.is_match("R-oldrel-x86_64.bat"));
+        assert!(re.is_match("R-release-x86_64.bat"));
+        assert!(re.is_match("R-next-x86_64.bat"));
+        // Version links and other arch suffixes are not aliases.
+        assert!(!re.is_match("R-4.6.0.bat"));
+        assert!(!re.is_match("R-4.6.0-x86_64.bat"));
+        assert!(!re.is_match("R-oldrel-aarch64.bat"));
+    }
 }
