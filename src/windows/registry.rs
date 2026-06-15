@@ -69,6 +69,16 @@ fn r_registry_hive() -> Result<RegKey, Box<dyn Error>> {
     }
 }
 
+// Rtools registers under HKLM for system (admin) installs and under HKCU for per-user
+// (/CURRENTUSER) installs, so the hive to read/clean depends on the active mode.
+fn rtools_registry_hive() -> Result<RegKey, Box<dyn Error>> {
+    if get_mode()? == Mode::User {
+        Ok(RegKey::predef(HKEY_CURRENT_USER))
+    } else {
+        Ok(RegKey::predef(HKEY_LOCAL_MACHINE))
+    }
+}
+
 pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
     escalate("cleaning up the Windows registry")?;
 
@@ -98,24 +108,25 @@ pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
         clean_registry_r(&x)?;
     };
 
-    // Rtools entries only exist in HKLM
+    // Rtools registers in HKLM for admin installs and HKCU for per-user installs.
+    let rtools_hive = rtools_registry_hive()?;
+    let rtools64 = rtools_hive.open_subkey("SOFTWARE\\R-core\\Rtools");
+    if let Ok(x) = rtools64 {
+        clean_registry_rtools(&x)?;
+        if x.enum_keys().count() == 0 {
+            rtools_hive.delete_subkey("SOFTWARE\\R-core\\Rtools")?;
+        }
+    };
+    let rtools32 = rtools_hive.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\Rtools");
+    if let Ok(x) = rtools32 {
+        clean_registry_rtools(&x)?;
+        if x.enum_keys().count() == 0 {
+            rtools_hive.delete_subkey("SOFTWARE\\WOW6432Node\\R-core\\Rtools")?;
+        }
+    };
+
     if get_mode()? == Mode::Admin {
         let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-        let rtools64 = hklm.open_subkey("SOFTWARE\\R-core\\Rtools");
-        if let Ok(x) = rtools64 {
-            clean_registry_rtools(&x)?;
-            if x.enum_keys().count() == 0 {
-                hklm.delete_subkey("SOFTWARE\\R-core\\Rtools")?;
-            }
-        };
-        let rtools32 = hklm.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\Rtools");
-        if let Ok(x) = rtools32 {
-            clean_registry_rtools(&x)?;
-            if x.enum_keys().count() == 0 {
-                hklm.delete_subkey("SOFTWARE\\WOW6432Node\\R-core\\Rtools")?;
-            }
-        };
-
         let uninst =
             hklm.open_subkey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
         if let Ok(x) = uninst {
@@ -165,10 +176,14 @@ fn update_registry_default_to(default: &String) -> Result<(), Box<dyn Error>> {
     let arch = arch_of_name(default);
 
     if native == "aarch64" && arch == "x86_64" {
-        // x86_64 R on aarch64 host: update the WOW6432Node key
-        let key_path = "SOFTWARE\\WOW6432Node\\R-core\\R64";
-        let r = hive.create_subkey(key_path);
-        if let Ok(x) = r {
+        // x86_64 R on aarch64 host: update both WOW6432Node R and R64 keys
+        let r32r = hive.create_subkey("SOFTWARE\\WOW6432Node\\R-core\\R");
+        if let Ok(x) = r32r {
+            let (key, _) = x;
+            update_registry_default1(&key, default)?;
+        }
+        let r32r64 = hive.create_subkey("SOFTWARE\\WOW6432Node\\R-core\\R64");
+        if let Ok(x) = r32r64 {
             let (key, _) = x;
             update_registry_default1(&key, default)?;
         }
@@ -196,17 +211,18 @@ pub(super) fn update_registry_default() -> Result<(), Box<dyn Error>> {
 
 pub(super) fn unset_registry_default() -> Result<(), Box<dyn Error>> {
     let hive = r_registry_hive()?;
-    let r64r = hive.create_subkey("SOFTWARE\\R-core\\R");
-    if let Ok(x) = r64r {
-        let (key, _) = x;
-        let _ = key.delete_value("Current Version");
-        let _ = key.delete_value("InstallPath");
+    let mut key_paths = vec!["SOFTWARE\\R-core\\R", "SOFTWARE\\R-core\\R64"];
+    // On aarch64 hosts x86_64 R also records its default in the WOW6432Node
+    // keys (see update_registry_default_to), so clear those as well.
+    if get_native_arch() == "aarch64" {
+        key_paths.push("SOFTWARE\\WOW6432Node\\R-core\\R");
+        key_paths.push("SOFTWARE\\WOW6432Node\\R-core\\R64");
     }
-    let r64r64 = hive.create_subkey("SOFTWARE\\R-core\\R64");
-    if let Ok(x) = r64r64 {
-        let (key, _) = x;
-        let _ = key.delete_value("Current Version");
-        let _ = key.delete_value("InstallPath");
+    for key_path in key_paths {
+        if let Ok((key, _)) = hive.create_subkey(key_path) {
+            let _ = key.delete_value("Current Version");
+            let _ = key.delete_value("InstallPath");
+        }
     }
     Ok(())
 }
@@ -321,12 +337,13 @@ pub(super) fn sc_rtools_ls(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(
     escalate("listing Rtools in the registry")?;
     let mut versions: Vec<RtoolsVersion> = vec![];
 
-    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    let rtools32 = hklm.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\Rtools");
+    // Admin installs register under HKLM, per-user installs under HKCU.
+    let hive = rtools_registry_hive()?;
+    let rtools32 = hive.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\Rtools");
     if let Ok(key) = rtools32 {
         versions.append(&mut get_rtools_versions(&key)?);
     }
-    let rtools64 = hklm.open_subkey("SOFTWARE\\R-core\\Rtools");
+    let rtools64 = hive.open_subkey("SOFTWARE\\R-core\\Rtools");
     if let Ok(key) = rtools64 {
         versions.append(&mut get_rtools_versions(&key)?);
     }
@@ -353,9 +370,9 @@ pub(super) fn get_latest_install_path(installed_arch: &str) -> Result<Option<Str
     // Choose the registry key written by the installer for this arch.
     // x86_64 R on x86_64 host  -> SOFTWARE\R-core\R64
     // aarch64 R on aarch64 host -> SOFTWARE\R-core\R
-    // x86_64 R on aarch64 host  -> SOFTWARE\WOW6432Node\R-core\R64
+    // x86_64 R on aarch64 host  -> SOFTWARE\WOW6432Node\R-core\R
     let key = if native == "aarch64" && installed_arch == "x86_64" {
-        "SOFTWARE\\WOW6432Node\\R-core\\R64"
+        "SOFTWARE\\WOW6432Node\\R-core\\R"
     } else if native == "aarch64" {
         "SOFTWARE\\R-core\\R"
     } else {

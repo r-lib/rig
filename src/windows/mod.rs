@@ -399,6 +399,100 @@ struct NeededRtools {
     arch: String,
 }
 
+// Folder basename for an Rtools version+arch, mirroring the historical C:\Rtools layout:
+// "Rtools44", "Rtools44-aarch64", "Rtools40", and "Rtools" for 3.x (or an empty version).
+fn rtools_dir_name(version: &str, arch: &str) -> String {
+    let versuffix = if version.is_empty() || version.starts_with('3') {
+        ""
+    } else {
+        version
+    };
+    let archsuffix = if arch == "aarch64" { "-aarch64" } else { "" };
+    format!("Rtools{}{}", versuffix, archsuffix)
+}
+
+// Full install path for an Rtools version+arch. In User mode this lives under the per-user
+// rtools root (default %APPDATA%\rig\data\rtools); in Admin mode it stays at C:\<name>.
+fn rtools_install_path(version: &str, arch: &str) -> Result<PathBuf, Box<dyn Error>> {
+    let name = rtools_dir_name(version, arch);
+    match get_rtools_install_dir()? {
+        Some(root) => Ok(Path::new(&root).join(name)),
+        None => Ok(Path::new("C:\\").join(name)),
+    }
+}
+
+// The environment variable R uses to locate Rtools, e.g. RTOOLS44_HOME on x86_64 and
+// RTOOLS44_AARCH64_HOME on aarch64. R (4.2+) derives the toolchain PATH, include and library
+// paths from this single variable (via Makeconf, Rcmd_environ and Rprofile.windows).
+fn rtools_home_var(version: &str, arch: &str) -> String {
+    let archinfix = if arch == "aarch64" { "_AARCH64" } else { "" };
+    format!("RTOOLS{}{}_HOME", version, archinfix)
+}
+
+// The 8.3 short path of an existing path (e.g. C:\Users\GABORC~1\...), or None if it cannot
+// be determined (path missing, or 8.3 name generation disabled on the volume).
+fn short_path_name(path: &Path) -> Option<String> {
+    use std::os::windows::ffi::OsStrExt;
+    extern "system" {
+        fn GetShortPathNameW(
+            lpsz_long_path: *const u16,
+            lpsz_short_path: *mut u16,
+            cch_buffer: u32,
+        ) -> u32;
+    }
+    let wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    // First call (null buffer) returns the required size, including the null terminator.
+    let len = unsafe { GetShortPathNameW(wide.as_ptr(), std::ptr::null_mut(), 0) };
+    if len == 0 {
+        return None;
+    }
+    let mut buf = vec![0u16; len as usize];
+    let written = unsafe { GetShortPathNameW(wide.as_ptr(), buf.as_mut_ptr(), len) };
+    if written == 0 {
+        return None;
+    }
+    buf.truncate(written as usize);
+    Some(String::from_utf16_lossy(&buf))
+}
+
+// Render a path for use in Renviron.site. The make/clang toolchain breaks on spaces in
+// paths (and a user's %APPDATA% almost always contains one), so prefer the 8.3 short name;
+// also use forward slashes, which R and make handle without backslash-escaping surprises.
+fn renviron_path(path: &Path) -> String {
+    short_path_name(path)
+        .unwrap_or_else(|| path.display().to_string())
+        .replace('\\', "/")
+}
+
+// The lines to add to an R version's Renviron.site so it can find the given Rtools.
+// In user mode rig sets RTOOLS<NN>_HOME itself (the system installer would otherwise do so);
+// in admin mode it is set by the installer, so only the legacy 3.5/4.0 PATH lines are kept.
+// Values use forward slashes and are quoted so spaces in the path do not break parsing.
+fn rtools_renviron_lines(version: &str, arch: &str, rtools_path: &Path, user_mode: bool) -> String {
+    let path = renviron_path(rtools_path);
+    if version == "35" {
+        // Rtools 3.5: prepend its bin/ to PATH (no RTOOLS<NN>_HOME mechanism).
+        format!("PATH=\"{}/bin;${{PATH}}\"", path)
+    } else if version == "40" {
+        // Rtools 4.0: R does not auto-derive PATH, so keep the explicit PATH line that
+        // references RTOOLS40_HOME (set here in user mode, by the installer in admin mode).
+        let var = rtools_home_var(version, arch);
+        let mut s = String::new();
+        if user_mode {
+            s += &format!("{}=\"{}\"\n", var, path);
+        }
+        s += &format!("PATH=\"${{{var}}}/ucrt64/bin;${{{var}}}/usr/bin;${{PATH}}\"", var = var);
+        s
+    } else {
+        // Rtools 4.2+: R derives everything it needs from RTOOLS<NN>[_AARCH64]_HOME.
+        format!("{}=\"{}\"", rtools_home_var(version, arch), path)
+    }
+}
+
 fn add_rtools(version: String, arch: Option<String>) -> Result<(), Box<dyn Error>> {
     let needed: Vec<NeededRtools>;
     if version == "rtools" {
@@ -410,10 +504,7 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<(), Box<dyn Error
     }
     let client = &reqwest::Client::new();
     for item in needed {
-        let versuffix = if &item.version[0..1] != "3" { item.version.as_str() } else { "" };
-        let archsuffix = if item.arch == "aarch64" { "-aarch64" } else { "" };
-        let instdir = "C:\\Rtools".to_string() + versuffix + archsuffix;
-        let instdirpath = Path::new(&instdir);
+        let instdirpath = rtools_install_path(&item.version, &item.arch)?;
         if instdirpath.exists() {
             OUTPUT.success(&format!(
                 "Rtools{} ({}) is already installed",
@@ -433,60 +524,94 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<(), Box<dyn Error
         download_file(client, &url, &target.as_os_str())?;
         OUTPUT.status(&format!("Installing {}", target.display()));
         info!("Installing {}", target.display());
+
+        // In User mode install per-user (/CURRENTUSER) into the rig-managed rtools root,
+        // which writes the Rtools registry key to HKCU. Admin mode keeps the system install.
+        let mut cmd_args = vec![os("/VERYSILENT"), os("/SUPPRESSMSGBOXES")];
+        if get_mode()? == Mode::User {
+            if let Some(parent) = instdirpath.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            cmd_args.push(os("/CURRENTUSER"));
+            cmd_args.push(OsString::from(format!("/DIR={}", instdirpath.display())));
+        }
         run(
             target.into_os_string(),
-            vec![os("/VERYSILENT"), os("/SUPPRESSMSGBOXES")],
+            cmd_args,
             "installer",
         )?;
+    }
+
+    // In user mode R finds Rtools via RTOOLS<NN>_HOME, which rig writes into each R
+    // version's Renviron.site. Re-run the patch now so an Rtools installed after R is
+    // picked up (patch_for_rtools is idempotent and only acts on installed Rtools).
+    if get_mode()? == Mode::User {
+        patch_for_rtools()?;
     }
 
     Ok(())
 }
 
 fn patch_for_rtools() -> Result<(), Box<dyn Error>> {
+    let user_mode = get_mode()? == Mode::User;
     let vers = sc_get_list()?;
 
     for ver in vers {
         let vver = vec![ver.to_owned()];
         let needed = get_rtools_needed(Some(vver), None)?;
-        if needed.is_empty() || (needed[0].version != "35" && needed[0].version != "40") {
+        if needed.is_empty() {
             continue;
         }
-        let rtools4 = needed[0].version == "40";
+        let nn = &needed[0].version;
+        let arch = &needed[0].arch;
+
+        // Admin mode keeps the historical behaviour: only Rtools 3.5/4.0 are patched, since
+        // the system Rtools installer sets RTOOLS<NN>_HOME for 4.2+ itself. In user mode rig
+        // must set RTOOLS<NN>_HOME itself, for every Rtools version R can find it through.
+        if !user_mode && nn != "35" && nn != "40" {
+            continue;
+        }
+
+        // In user mode only patch once the matching Rtools is actually installed in the
+        // rig-managed location; otherwise defer until `rtools add` runs (which re-runs this).
+        let rtools_path = rtools_install_path(nn, arch)?;
+        if user_mode && !rtools_path.exists() {
+            continue;
+        }
+
         let ver_rroot = get_r_root_for(&ver)?;
         let ver_base = version_dir_key(&ver);
         let envfile = Path::new(&ver_rroot).join(r_dirname(&ver_base)?).join("etc").join("Renviron.site");
-        let mut ok = envfile.exists();
-        if ok {
-            ok = false;
+
+        // Skip if this Renviron.site has already been patched by rig.
+        if envfile.exists() {
             let file = File::open(&envfile)?;
             let reader = BufReader::new(file);
+            let mut patched = false;
             for line in reader.lines() {
-                let line2 = line?;
-                if line2.len() >= 14 && &line2[0..14] == "# added by rig" {
-                    ok = true;
+                if line?.starts_with("# added by rig") {
+                    patched = true;
                     break;
                 }
             }
-        }
-        if !ok {
-            let mut file = OpenOptions::new()
-                .create(true)
-                .write(true)
-                .append(true)
-                .open(&envfile)?;
-
-            let head = "\n".to_string() + "# added by rig, do not update by hand-----\n";
-            let tail = "\n".to_string() + "# ----------------------------------------\n";
-            let txt3 = head.to_owned() + "PATH=\"C:\\Rtools\\bin;${PATH}\"" + &tail;
-            let txt4 = head.to_owned()
-                + "PATH=\"${RTOOLS40_HOME}\\ucrt64\\bin;${RTOOLS40_HOME}\\usr\\bin;${PATH}\""
-                + &tail;
-
-            if let Err(e) = writeln!(file, "{}", if rtools4 { txt4 } else { txt3 }) {
-                OUTPUT.warn(&format!("Couldn't write to Renviron.site file: {}", e));
-                warn!("Couldn't write to Renviron.site file: {}", e);
+            if patched {
+                continue;
             }
+        }
+
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .append(true)
+            .open(&envfile)?;
+
+        let head = "\n# added by rig, do not update by hand-----\n";
+        let tail = "\n# ----------------------------------------\n";
+        let body = rtools_renviron_lines(nn, arch, &rtools_path, user_mode);
+
+        if let Err(e) = writeln!(file, "{}{}{}", head, body, tail) {
+            OUTPUT.warn(&format!("Couldn't write to Renviron.site file: {}", e));
+            warn!("Couldn't write to Renviron.site file: {}", e);
         }
     }
 
@@ -596,12 +721,8 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
 fn rm_rtools(ver: String, arch: Option<String>) -> Result<(), Box<dyn Error>> {
     let arch = arch.unwrap_or_else(|| get_native_arch().to_string());
-    let ver = if arch == "aarch64" {
-        ver + "-aarch64"
-    } else {
-        ver
-    };
-    let dir = Path::new("C:\\").join(ver);
+    let version = ver.trim_start_matches("rtools").to_string();
+    let dir = rtools_install_path(&version, &arch)?;
     OUTPUT.status(&format!("Removing {}", dir.display()));
     info!("Removing {}", dir.display());
     match remove_dir_all(&dir) {
@@ -1407,5 +1528,48 @@ mod tests {
         assert!(!re.is_match("R-4.6.0.bat"));
         assert!(!re.is_match("R-4.6.0-x86_64.bat"));
         assert!(!re.is_match("R-oldrel-aarch64.bat"));
+    }
+
+    #[test]
+    fn rtools_dir_name_encodes_version_and_arch() {
+        assert_eq!(rtools_dir_name("44", "x86_64"), "Rtools44");
+        assert_eq!(rtools_dir_name("44", "aarch64"), "Rtools44-aarch64");
+        assert_eq!(rtools_dir_name("40", "x86_64"), "Rtools40");
+        // Rtools 3.x has no version suffix; ditto an empty (unspecified) version.
+        assert_eq!(rtools_dir_name("35", "x86_64"), "Rtools");
+        assert_eq!(rtools_dir_name("", "x86_64"), "Rtools");
+        assert_eq!(rtools_dir_name("", "aarch64"), "Rtools-aarch64");
+    }
+
+    #[test]
+    fn rtools_home_var_is_arch_qualified() {
+        assert_eq!(rtools_home_var("44", "x86_64"), "RTOOLS44_HOME");
+        assert_eq!(rtools_home_var("45", "x86_64"), "RTOOLS45_HOME");
+        assert_eq!(rtools_home_var("44", "aarch64"), "RTOOLS44_AARCH64_HOME");
+    }
+
+    #[test]
+    fn rtools_renviron_lines_per_version() {
+        // Use non-existent paths so short_path_name falls back to the long path; the
+        // value must use forward slashes and be quoted so spaces would not break it.
+        let p = Path::new("C:\\rt\\Rtools44");
+        // 4.2+ sets only the home var; R derives PATH/flags from it.
+        assert_eq!(
+            rtools_renviron_lines("44", "x86_64", p, true),
+            "RTOOLS44_HOME=\"C:/rt/Rtools44\""
+        );
+        // 4.0 in user mode sets the home var and the explicit PATH line.
+        let l40 = rtools_renviron_lines("40", "x86_64", Path::new("C:\\rt\\Rtools40"), true);
+        assert!(l40.starts_with("RTOOLS40_HOME=\"C:/rt/Rtools40\"\n"));
+        assert!(l40.contains("${RTOOLS40_HOME}/ucrt64/bin"));
+        // 4.0 in admin mode keeps only the PATH line (installer sets the var).
+        let l40a = rtools_renviron_lines("40", "x86_64", Path::new("C:\\Rtools40"), false);
+        assert!(!l40a.contains("RTOOLS40_HOME=\""));
+        assert!(l40a.contains("${RTOOLS40_HOME}/usr/bin"));
+        // 3.5 prepends <path>/bin to PATH.
+        assert_eq!(
+            rtools_renviron_lines("35", "x86_64", Path::new("C:\\Rtools"), false),
+            "PATH=\"C:/Rtools/bin;${PATH}\""
+        );
     }
 }

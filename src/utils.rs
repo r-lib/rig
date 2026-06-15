@@ -391,6 +391,24 @@ pub fn get_r_install_dir() -> Result<Option<String>, Box<dyn Error>> {
     Ok(None)
 }
 
+#[cfg(target_os = "windows")]
+pub fn get_rtools_install_dir() -> Result<Option<String>, Box<dyn Error>> {
+    if let Ok(val) = std::env::var("RIG_RTOOLS_INSTALL_DIR") {
+        return Ok(Some(val.trim_end_matches('\\').to_string()));
+    }
+
+    if let Some(val) = crate::config::get_global_config_value("rtools-install-dir")? {
+        return Ok(Some(val.trim_end_matches('\\').to_string()));
+    }
+
+    if get_mode()? == Mode::User {
+        let appdata = std::env::var("APPDATA")?;
+        return Ok(Some(format!("{}\\rig\\data\\rtools", appdata)));
+    }
+
+    Ok(None)
+}
+
 pub fn unset_r_envvars() {
     let evs = vec![
         "R_ARCH",
