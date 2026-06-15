@@ -139,7 +139,9 @@ pub fn get_r_version_data(
     let binary = Path::new(&get_r_root_for(name)?).join(get_r_binpath()?.replace("{}", &version_dir_key(name)));
     let mut myaliases: Vec<String> = vec![];
     for a in aliases {
-        if a.version == name {
+        // Don't list an alias that is the same as the installation name,
+        // e.g. the `devel`/`next` aliases on a `devel`/`next` install.
+        if a.version == name && a.alias != name {
             myaliases.push(a.alias.to_owned());
         }
     }

@@ -202,7 +202,17 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     library_update_rprofile(&dirname.to_string())?;
     sc_system_make_links()?;
     match alias {
-        Some(alias) => add_alias(&dirname, &alias)?,
+        // The `release`/`oldrel` aliases point at the native build. An
+        // x86_64 build on an arm64 machine gets an `-x86_64` suffix instead,
+        // to avoid colliding with the native alias.
+        Some(alias) => {
+            let alias = if fver.arch == "x86_64" && is_arm64_machine() {
+                format!("{}-x86_64", alias)
+            } else {
+                alias
+            };
+            add_alias(&dirname, &alias)?
+        }
         None => {}
     };
 
@@ -829,7 +839,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
 }
 
 pub fn re_alias() -> Regex {
-    let re = Regex::new("^R-(next|devel|release|oldrel)$").unwrap();
+    let re = Regex::new("^R-(next|devel|release|release-x86_64|oldrel|oldrel-x86_64)$").unwrap();
     re
 }
 

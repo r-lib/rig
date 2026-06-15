@@ -34,7 +34,7 @@ pub fn get_alias(args: &ArgMatches) -> Option<String> {
         None => None,
         Some(str) => match str.as_ref() {
             "oldrel" | "oldrel/1" => Some("oldrel".to_string()),
-            "release" | "devel" | "next" => Some(str.to_string()),
+            "release" => Some("release".to_string()),
             _ => None,
         },
     }
