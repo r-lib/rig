@@ -188,6 +188,13 @@ pub fn get_global_config_value(key: &str) -> Result<Option<String>, Box<dyn Erro
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
+pub fn set_global_config_value(key: &str, value: &str) -> Result<(), Box<dyn Error>> {
+    let mut map = load_raw_config()?;
+    map.insert(key.to_string(), serde_json::Value::String(value.to_string()));
+    save_raw_config(&map)
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn sc_config_set(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let keyvalue = args.get_one::<String>("keyvalue").unwrap();
     let (key, value) = keyvalue

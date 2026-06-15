@@ -1310,6 +1310,373 @@ pub fn sc_system_forget() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+// Switch rig to user mode and clean up an existing admin-mode setup:
+// reinstall the admin-mode R versions in user mode (unless --no-reinstall),
+// restore the previous default and aliases, then remove the admin-mode
+// installations and the `/usr/local/bin` links.
+//
+// This command is meant to be run as a normal user: the reinstallation
+// writes into the user's home directory, while the cleanup of the system
+// locations is delegated to `rig system clean-admin-r`, which escalates on
+// its own. That way the user-side work never runs as root.
+pub fn sc_system_user_mode(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    let no_reinstall = args.get_flag("no-reinstall");
+
+    if sudo::check() == sudo::RunningAs::Root {
+        OUTPUT.warn(
+            "`rig system user-mode` is meant to be run as a normal user, not with `sudo`.",
+        );
+        warn!("rig system user-mode is running as root");
+    }
+
+    // 1. Capture the admin-mode setup from the system locations, before we
+    //    switch the configured mode. These paths are world-readable.
+    let admin_root = Path::new(R_ROOT_);
+    let versions = list_admin_versions(admin_root)?;
+    let default = read_version_link(&admin_root.join("Current").to_string_lossy())?;
+    let aliases = find_admin_aliases()?;
+
+    // 2. Switch to user mode. We write the config and prime the in-process
+    //    mode (via the RIG_MODE env var, which child processes inherit) so
+    //    that the reinstallation below targets the user location.
+    std::env::set_var("RIG_MODE", "user");
+    let _ = set_mode(crate::utils::Mode::User);
+    crate::config::set_global_config_value("mode", "user")?;
+    OUTPUT.success("Switched rig to user mode");
+    info!("Switched rig to user mode");
+
+    // 3. Reinstall the admin-mode versions in user mode and restore the
+    //    previous default version. Aliases are recreated automatically by
+    //    reinstalling via the alias name (see user_mode_install_spec()).
+    if no_reinstall {
+        if !versions.is_empty() {
+            OUTPUT.status("Not reinstalling R versions in user mode (--no-reinstall)");
+        }
+    } else if !versions.is_empty() {
+        let map = reinstall_in_user_mode(admin_root, &versions, &aliases)?;
+        if let Some(adef) = &default {
+            match map.iter().find(|(a, _)| a == adef) {
+                Some((_, udef)) => {
+                    OUTPUT.status(&format!("Restoring default R version ({})", udef));
+                    if let Err(e) = sc_set_default(udef) {
+                        OUTPUT.warn(&format!("Could not restore default R version: {}", e));
+                        warn!("Could not restore default R version: {}", e);
+                    }
+                }
+                None => {
+                    OUTPUT.warn(&format!(
+                        "Could not restore the previous default R version ({})",
+                        adef
+                    ));
+                    warn!("Could not restore default R version {}", adef);
+                }
+            }
+        }
+    }
+
+    // 4. Remove the admin-mode installations and the `/usr/local/bin` links.
+    //    This needs root, so it runs as a separate, self-escalating child
+    //    process to avoid re-running the user-side work above under `sudo`.
+    clean_admin_installations()?;
+
+    Ok(())
+}
+
+// List the R version directories under an admin-mode framework root, e.g.
+// `4.5-arm64`. A directory counts as an R installation if it contains an R
+// binary. Mirrors sc_get_list(), but works on an explicit root regardless of
+// the configured mode.
+fn list_admin_versions(root: &Path) -> Result<Vec<String>, Box<dyn Error>> {
+    let mut vers = Vec::new();
+    if !root.exists() {
+        return Ok(vers);
+    }
+    for de in std::fs::read_dir(root)? {
+        let path = de?.path();
+        let name = match path.file_name().and_then(|s| s.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        if name == "Current" || name == ".DS_Store" {
+            continue;
+        }
+        let rbin = path.join("Resources").join("bin").join("R");
+        let rbin2 = path.join("bin").join("R");
+        if !rbin.exists() && !rbin2.exists() {
+            continue;
+        }
+        vers.push(name);
+    }
+    vers.sort();
+    Ok(vers)
+}
+
+// Find the alias quick links (R-release, R-devel, ...) in the admin-mode
+// binary directory and the version directory each points at.
+fn find_admin_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
+    let bindir = Path::new("/usr/local/bin");
+    let mut result: Vec<Alias> = vec![];
+    if !bindir.exists() {
+        return Ok(result);
+    }
+    let re = re_alias();
+    for de in std::fs::read_dir(bindir)? {
+        let path = match de {
+            Ok(d) => d.path(),
+            Err(_) => continue,
+        };
+        let name = match path.file_name().and_then(|s| s.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        if !re.is_match(&name) {
+            continue;
+        }
+        if let Ok(tgt) = std::fs::read_link(&path) {
+            if tgt.exists() {
+                if let Some(version) = version_from_link(tgt) {
+                    result.push(Alias {
+                        alias: name[2..].to_string(),
+                        version,
+                    });
+                }
+            }
+        }
+    }
+    Ok(result)
+}
+
+// Read the exact R version and architecture of an installed R from the
+// `Built:` line of its stats package DESCRIPTION, e.g.
+//   Built: R 4.6.0; aarch64-apple-darwin23; 2026-04-25 08:58:20 UTC; unix
+// returns ("4.6.0", "arm64"). The directory name (e.g. `4.5-arm64`) is not a
+// reliable source for either, so we read them from the installation itself.
+fn read_built_version_arch(version_dir: &Path) -> Result<(String, String), Box<dyn Error>> {
+    // The stats DESCRIPTION lives under `Resources/library` in admin-mode
+    // installations and directly under `library` in user-mode ones.
+    let candidates = [
+        version_dir.join("Resources").join("library").join("stats").join("DESCRIPTION"),
+        version_dir.join("library").join("stats").join("DESCRIPTION"),
+    ];
+    let desc = candidates
+        .iter()
+        .find(|p| p.exists())
+        .ok_or_else(|| SimpleError::new("Cannot find stats/DESCRIPTION"))?;
+    let content = std::fs::read_to_string(desc)?;
+    let re = Regex::new(r"(?m)^Built:\s*R\s+([^;]+);\s*([^;]+);")?;
+    let caps = re
+        .captures(&content)
+        .ok_or_else(|| SimpleError::new("Cannot find 'Built:' line in stats/DESCRIPTION"))?;
+    let version = caps.get(1).unwrap().as_str().trim().to_string();
+    // The platform looks like `aarch64-apple-darwin23`; the CPU is the first
+    // component. Map it to the `--arch` values rig understands.
+    let cpu = caps.get(2).unwrap().as_str().trim().split('-').next().unwrap_or("");
+    let arch = match cpu {
+        "aarch64" | "arm64" => "arm64".to_string(),
+        "x86_64" => "x86_64".to_string(),
+        other => bail!("Unsupported architecture '{}' in stats/DESCRIPTION", other),
+    };
+    Ok((version, arch))
+}
+
+// Determine how to reinstall an admin-mode version directory in user mode,
+// returning the `rig add` version spec and the architecture (always passed
+// explicitly). If the version has an alias (release, oldrel, devel, next),
+// reinstall via that alias so the alias is recreated, and for devel/next the
+// user-mode directory keeps its symbolic name. Otherwise reinstall the exact
+// version number. Both the version and the architecture are read from the
+// installation's stats DESCRIPTION.
+fn user_mode_install_spec(
+    admin_root: &Path,
+    admin_dir: &str,
+    aliases: &[Alias],
+) -> Result<(String, String), Box<dyn Error>> {
+    let (version, arch) = read_built_version_arch(&admin_root.join(admin_dir))?;
+    for al in aliases {
+        if al.version == admin_dir {
+            let spec = al.alias.strip_suffix("-x86_64").unwrap_or(&al.alias).to_string();
+            return Ok((spec, arch));
+        }
+    }
+    Ok((version, arch))
+}
+
+// Reinstall the given admin-mode versions in user mode by spawning `rig add`
+// for each (so the full install path, including alias creation, is reused).
+// Returns a mapping from each admin-mode directory name to the resulting
+// user-mode directory name, used to restore the default version.
+fn reinstall_in_user_mode(
+    admin_root: &Path,
+    versions: &[String],
+    aliases: &[Alias],
+) -> Result<Vec<(String, String)>, Box<dyn Error>> {
+    let exe = std::env::current_exe()?;
+    let mut map: Vec<(String, String)> = vec![];
+    for admin_dir in versions {
+        let (spec, arch) = match user_mode_install_spec(admin_root, admin_dir, aliases) {
+            Ok(x) => x,
+            Err(e) => {
+                OUTPUT.warn(&format!("Skipping reinstall of '{}': {}", admin_dir, e));
+                warn!("Skipping reinstall of '{}': {}", admin_dir, e);
+                continue;
+            }
+        };
+        OUTPUT.status(&format!(
+            "Reinstalling R '{}' ({}) in user mode",
+            spec, arch
+        ));
+        info!("Reinstalling R '{}' ({}) in user mode", spec, arch);
+        let before = sc_get_list()?;
+        let status = Command::new(&exe)
+            .args(["add", &spec, "--arch", &arch, "--without-pak"])
+            .status()?;
+        if !status.success() {
+            OUTPUT.warn(&format!("Failed to reinstall R '{}' in user mode", spec));
+            warn!("Failed to reinstall R '{}' in user mode", spec);
+            continue;
+        }
+        let after = sc_get_list()?;
+        match after.iter().find(|v| !before.contains(v)) {
+            Some(udir) => map.push((admin_dir.clone(), udir.clone())),
+            None => debug!(
+                "No new user-mode version directory after reinstalling '{}'",
+                spec
+            ),
+        }
+    }
+    Ok(map)
+}
+
+// Spawn `rig system clean-admin-r` to remove the admin-mode installations,
+// unless there is nothing to remove. The child escalates on its own.
+fn clean_admin_installations() -> Result<(), Box<dyn Error>> {
+    if !admin_cleanup_needed()? {
+        debug!("No admin-mode installations or links to clean up");
+        return Ok(());
+    }
+    OUTPUT.status("Removing admin-mode R installations (this needs `sudo`)");
+    info!("Removing admin-mode R installations");
+    let exe = std::env::current_exe()?;
+    let status = Command::new(&exe).args(["system", "clean-admin-r"]).status()?;
+    if !status.success() {
+        bail!("Failed to remove admin-mode R installations");
+    }
+    Ok(())
+}
+
+// Whether there are any admin-mode installations or `/usr/local/bin` links
+// left to remove, to avoid asking for `sudo` when there is nothing to do.
+fn admin_cleanup_needed() -> Result<bool, Box<dyn Error>> {
+    if !list_admin_versions(Path::new(R_ROOT_))?.is_empty() {
+        return Ok(true);
+    }
+    let bindir = Path::new("/usr/local/bin");
+    for name in ["R", "Rscript"] {
+        if let Ok(tgt) = std::fs::read_link(bindir.join(name)) {
+            if tgt.to_string_lossy().contains("R.framework") {
+                return Ok(true);
+            }
+        }
+    }
+    let re_ver = Regex::new("^R-[0-9]+[.][0-9]+")?;
+    let re_al = re_alias();
+    if let Ok(paths) = std::fs::read_dir(bindir) {
+        for de in paths.flatten() {
+            if let Some(name) = de.path().file_name().and_then(|s| s.to_str()) {
+                if re_ver.is_match(name) || re_al.is_match(name) {
+                    return Ok(true);
+                }
+            }
+        }
+    }
+    Ok(false)
+}
+
+// Remove all admin-mode R installations: forget the macOS packages, delete
+// the framework version directories and the `/usr/local/bin` links. This
+// operates on the system locations directly, regardless of the configured
+// mode, and escalates to root. It is invoked by `rig system user-mode`.
+pub fn sc_system_clean_admin_r() -> Result<(), Box<dyn Error>> {
+    escalate("removing admin-mode R installations")?;
+
+    forget_admin_packages()?;
+
+    let admin_root = Path::new(R_ROOT_);
+    for ver in list_admin_versions(admin_root)? {
+        let dir = admin_root.join(&ver);
+        OUTPUT.status(&format!("Removing {}", dir.display()));
+        info!("Removing {}", dir.display());
+        if let Err(e) = std::fs::remove_dir_all(&dir) {
+            OUTPUT.warn(&format!("Cannot remove {}: {}", dir.display(), e));
+            warn!("Cannot remove {}: {}", dir.display(), e);
+        }
+    }
+    let current = admin_root.join("Current");
+    if current.symlink_metadata().is_ok() {
+        std::fs::remove_file(&current).ok();
+    }
+
+    remove_admin_links()?;
+
+    Ok(())
+}
+
+// `pkgutil --forget` the R packages, so macOS no longer believes R is
+// installed in the framework. Like sc_system_forget(), but unconditional
+// (sc_system_forget() is a no-op once the mode is `user`).
+fn forget_admin_packages() -> Result<(), Box<dyn Error>> {
+    let out = Command::new("sh")
+        .args(["-c", "pkgutil --pkgs | grep -i r-project | grep -v clang"])
+        .output()?;
+    let output = match String::from_utf8(out.stdout) {
+        Ok(v) => v,
+        Err(_) => bail!("Invalid UTF-8 output from pkgutil"),
+    };
+    if output.lines().count() > 0 {
+        OUTPUT.status("Forgetting installed versions");
+        info!("Forgetting installed versions");
+    }
+    for line in output.lines() {
+        Command::new("pkgutil").args(["--forget", line.trim()]).output()?;
+    }
+    Ok(())
+}
+
+// Remove the admin-mode `R`, `Rscript`, `R-*` and alias quick links from
+// `/usr/local/bin`. Only symlinks pointing into the R framework are removed,
+// to avoid touching unrelated files.
+fn remove_admin_links() -> Result<(), Box<dyn Error>> {
+    let bindir = Path::new("/usr/local/bin");
+    let paths = match std::fs::read_dir(bindir) {
+        Ok(p) => p,
+        Err(_) => return Ok(()),
+    };
+    let re_ver = Regex::new("^R-[0-9]+[.][0-9]+")?;
+    let re_al = re_alias();
+    for de in paths.flatten() {
+        let path = de.path();
+        let name = match path.file_name().and_then(|s| s.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        if name != "R" && name != "Rscript" && !re_ver.is_match(&name) && !re_al.is_match(&name) {
+            continue;
+        }
+        // Only remove symlinks that point into the R framework.
+        if let Ok(tgt) = std::fs::read_link(&path) {
+            if tgt.to_string_lossy().contains("R.framework") {
+                OUTPUT.status(&format!("Removing {}", path.display()));
+                info!("Removing {}", path.display());
+                if let Err(e) = std::fs::remove_file(&path) {
+                    OUTPUT.warn(&format!("Cannot remove {}: {}", path.display(), e));
+                    warn!("Cannot remove {}: {}", path.display(), e);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn sc_system_no_openmp(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     if get_mode()? == crate::utils::Mode::Admin {
         escalate("updating R compiler configuration")?;
@@ -2320,5 +2687,121 @@ mod tests {
 
         write_rversion_h(dir.path(), "Prerelease");
         assert_eq!(read_r_status(dir.path()).unwrap(), "Prerelease");
+    }
+
+    // Create an admin-mode installation directory whose stats DESCRIPTION
+    // declares the given exact version and platform CPU (e.g. "aarch64").
+    fn write_admin_install(root: &Path, dir: &str, version: &str, cpu: &str) {
+        let statsdir = root
+            .join(dir)
+            .join("Resources")
+            .join("library")
+            .join("stats");
+        fs::create_dir_all(&statsdir).unwrap();
+        fs::write(
+            statsdir.join("DESCRIPTION"),
+            format!(
+                "Package: stats\n\
+                 Built: R {}; {}-apple-darwin23; 2026-04-25 08:58:20 UTC; unix\n",
+                version, cpu
+            ),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn user_mode_install_spec_uses_alias_when_available() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_admin_install(root, "4.5-arm64", "4.5.1", "aarch64");
+        write_admin_install(root, "4.6-arm64", "4.6.0", "aarch64");
+        write_admin_install(root, "4.5-x86_64", "4.5.1", "x86_64");
+
+        let aliases = vec![
+            Alias { alias: "release".to_string(), version: "4.5-arm64".to_string() },
+            Alias { alias: "oldrel".to_string(), version: "4.4-arm64".to_string() },
+            Alias { alias: "devel".to_string(), version: "4.6-arm64".to_string() },
+            // An x86_64 alias on an arm machine keeps its suffix in the link
+            // name, but the install spec is the bare alias plus the arch.
+            Alias { alias: "release-x86_64".to_string(), version: "4.5-x86_64".to_string() },
+        ];
+
+        assert_eq!(
+            user_mode_install_spec(root, "4.5-arm64", &aliases).unwrap(),
+            ("release".to_string(), "arm64".to_string())
+        );
+        assert_eq!(
+            user_mode_install_spec(root, "4.6-arm64", &aliases).unwrap(),
+            ("devel".to_string(), "arm64".to_string())
+        );
+        assert_eq!(
+            user_mode_install_spec(root, "4.5-x86_64", &aliases).unwrap(),
+            ("release".to_string(), "x86_64".to_string())
+        );
+    }
+
+    #[test]
+    fn user_mode_install_spec_uses_exact_version_without_alias() {
+        // No alias points here, so we reinstall the exact version read from
+        // the installation's stats DESCRIPTION.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_admin_install(root, "4.3-x86_64", "4.3.3", "x86_64");
+
+        assert_eq!(
+            user_mode_install_spec(root, "4.3-x86_64", &[]).unwrap(),
+            ("4.3.3".to_string(), "x86_64".to_string())
+        );
+    }
+
+    #[test]
+    fn user_mode_install_spec_reads_arch_from_description_not_dir_name() {
+        // The architecture comes from the Built: line, not the directory name:
+        // a directory with no arch suffix still resolves its arch correctly.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_admin_install(root, "4.4", "4.4.2", "x86_64");
+
+        assert_eq!(
+            user_mode_install_spec(root, "4.4", &[]).unwrap(),
+            ("4.4.2".to_string(), "x86_64".to_string())
+        );
+    }
+
+    #[test]
+    fn user_mode_install_spec_errors_when_description_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(user_mode_install_spec(dir.path(), "4.2-arm64", &[]).is_err());
+    }
+
+    #[test]
+    fn list_admin_versions_only_lists_real_installations() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        // A valid installation with Resources/bin/R.
+        let v1 = root.join("4.5-arm64");
+        fs::create_dir_all(v1.join("Resources").join("bin")).unwrap();
+        fs::write(v1.join("Resources").join("bin").join("R"), "#!/bin/sh\n").unwrap();
+
+        // A valid installation with bin/R (user-style layout).
+        let v2 = root.join("4.4-arm64");
+        fs::create_dir_all(v2.join("bin")).unwrap();
+        fs::write(v2.join("bin").join("R"), "#!/bin/sh\n").unwrap();
+
+        // Not an installation: no R binary.
+        fs::create_dir_all(root.join("not-r")).unwrap();
+        // Skipped special entries.
+        fs::create_dir_all(root.join("Current")).unwrap();
+
+        let vers = list_admin_versions(root).unwrap();
+        assert_eq!(vers, vec!["4.4-arm64".to_string(), "4.5-arm64".to_string()]);
+    }
+
+    #[test]
+    fn list_admin_versions_returns_empty_for_missing_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("does-not-exist");
+        assert!(list_admin_versions(&missing).unwrap().is_empty());
     }
 }

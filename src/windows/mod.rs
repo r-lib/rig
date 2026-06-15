@@ -855,6 +855,16 @@ pub fn sc_system_make_orthogonal(_args: &ArgMatches) -> Result<(), Box<dyn Error
     Ok(())
 }
 
+pub fn sc_system_user_mode(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    // Not supported on Windows
+    Ok(())
+}
+
+pub fn sc_system_clean_admin_r() -> Result<(), Box<dyn Error>> {
+    // Not supported on Windows
+    Ok(())
+}
+
 pub fn sc_system_fix_permissions(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // Nothing to do on Windows
     Ok(())

@@ -568,6 +568,23 @@ pub fn rig_app() -> Command {
                     .action(clap::ArgAction::Append),
             );
 
+        let cmd_system_user_mode = Command::new("user-mode")
+            .about("Switch to user mode and clean up admin-mode installations")
+            .long_about(HELP_SYSTEM_USER_MODE)
+            .display_order(0)
+            .arg(
+                Arg::new("no-reinstall")
+                    .help("Do not reinstall admin-mode R versions in user mode.")
+                    .long("no-reinstall")
+                    .num_args(0)
+                    .required(false),
+            );
+
+        let cmd_system_clean_admin_r = Command::new("clean-admin-r")
+            .about("Remove all admin-mode R installations and links")
+            .display_order(0)
+            .hide(true);
+
         cmd_system = cmd_system
             .subcommand(cmd_system_ortho)
             .subcommand(cmd_system_rights)
@@ -575,7 +592,9 @@ pub fn rig_app() -> Command {
             .subcommand(cmd_system_noopenmp)
             .subcommand(cmd_system_allow_debugger)
             .subcommand(cmd_system_allow_debugger_rstudio)
-            .subcommand(cmd_system_allow_core_dumps);
+            .subcommand(cmd_system_allow_core_dumps)
+            .subcommand(cmd_system_user_mode)
+            .subcommand(cmd_system_clean_admin_r);
     }
 
     let cmd_system_detect_platform = Command::new("detect-platform")

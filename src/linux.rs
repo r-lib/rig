@@ -699,6 +699,16 @@ pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+pub fn sc_system_user_mode(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    // Not supported on Linux
+    Ok(())
+}
+
+pub fn sc_system_clean_admin_r() -> Result<(), Box<dyn Error>> {
+    // Not supported on Linux
+    Ok(())
+}
+
 pub fn sc_system_update_rtools40() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
