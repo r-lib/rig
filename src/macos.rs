@@ -250,9 +250,7 @@ fn random_string() -> String {
     password
 }
 
-fn unpack_and_patch(
-    target: &Path,
-) -> Result<(PathBuf, PathBuf), Box<dyn Error>> {
+fn unpack_and_patch(target: &Path) -> Result<(PathBuf, PathBuf), Box<dyn Error>> {
     let dir = target.parent().ok_or(SimpleError::new("Internal error"))?;
     let tmp = dir.join(random_string());
 
@@ -391,7 +389,11 @@ fn safe_install(
     info!("Running installer");
     run(cmd.into(), args, "installer")?;
 
-    let fc_cache = Path::new(R_ROOT_).join(ver).join("Resources").join("bin").join("fc-cache");
+    let fc_cache = Path::new(R_ROOT_)
+        .join(ver)
+        .join("Resources")
+        .join("bin")
+        .join("fc-cache");
     run_fc_cache(&fc_cache);
 
     if let Err(err) = std::fs::remove_file(&pkg) {
@@ -462,13 +464,19 @@ fn patch_user_scripts(source_dir: &Path, home_dir: &Path) -> Result<(), Box<dyn 
     debug!("Patching R_QPDF in {}", renviron.display());
     replace_in_file(&renviron, &re, &sub)?;
 
-    let fonts = source_dir.join("fontconfig").join("fonts").join("fonts.conf");
+    let fonts = source_dir
+        .join("fontconfig")
+        .join("fonts")
+        .join("fonts.conf");
     if fonts.exists() {
         let re = Regex::new(r"/Library/Frameworks/R\.framework/Resources")?;
         debug!("Patching fontconfig in {}", fonts.display());
         replace_in_file(&fonts, &re, &home_escaped)?;
     } else {
-        debug!("Skipping fonts.conf patch; {} does not exist", fonts.display());
+        debug!(
+            "Skipping fonts.conf patch; {} does not exist",
+            fonts.display()
+        );
     }
 
     let libpc = source_dir.join("lib").join("pkgconfig").join("libR.pc");
@@ -506,7 +514,11 @@ fn replace_user_rscript(source_dir: &Path) -> Result<(), Box<dyn Error>> {
 
     for (rscript, rhome_expr) in &scripts {
         let rscript_orig = rscript.with_file_name("Rscript.orig");
-        debug!("Renaming {} to {}", rscript.display(), rscript_orig.display());
+        debug!(
+            "Renaming {} to {}",
+            rscript.display(),
+            rscript_orig.display()
+        );
         std::fs::rename(rscript, &rscript_orig)?;
 
         let content = format!(
@@ -531,11 +543,18 @@ fn replace_user_fontconfig(source_dir: &Path) -> Result<(), Box<dyn Error>> {
 
     let fc_cache = source_dir.join("bin").join("fc-cache");
     if !fc_cache.exists() {
-        debug!("Skipping fc-cache wrapper; {} does not exist", fc_cache.display());
+        debug!(
+            "Skipping fc-cache wrapper; {} does not exist",
+            fc_cache.display()
+        );
         return Ok(());
     }
     let fc_cache_orig = fc_cache.with_file_name("fc-cache.orig");
-    debug!("Copying {} to {}", fc_cache.display(), fc_cache_orig.display());
+    debug!(
+        "Copying {} to {}",
+        fc_cache.display(),
+        fc_cache_orig.display()
+    );
     std::fs::copy(&fc_cache, &fc_cache_orig)?;
 
     let content = "#!/bin/sh\n\
@@ -575,7 +594,8 @@ fn safe_user_install(
     install_dir: std::path::PathBuf,
 ) -> Result<String, Box<dyn Error>> {
     let (tmp, wd) = unpack_and_patch(&target)?;
-    let source_dir = wd.join("R.framework")
+    let source_dir = wd
+        .join("R.framework")
         .join("Versions")
         .join("Current")
         .join("Resources");
@@ -588,7 +608,11 @@ fn safe_user_install(
     replace_user_fontconfig(&source_dir)?;
     remove_user_dyld_shadows(&source_dir)?;
 
-    debug!("Copying {} to {}", source_dir.display(), target_dir.display());
+    debug!(
+        "Copying {} to {}",
+        source_dir.display(),
+        target_dir.display()
+    );
     let output = Command::new("ditto")
         .arg(&source_dir)
         .arg(&target_dir)
@@ -603,7 +627,10 @@ fn safe_user_install(
     // Positron tries to start Resources/bin/R
     let resources_link = target_dir.join("Resources");
     if !resources_link.exists() {
-        debug!("Creating Resources -> . symlink in {}", target_dir.display());
+        debug!(
+            "Creating Resources -> . symlink in {}",
+            target_dir.display()
+        );
         symlink(".", &resources_link)?;
     }
 
@@ -631,10 +658,7 @@ fn safe_user_install(
 // (R-devel) or `next` (R-next), as recorded by the `R_STATUS` macro in
 // `include/Rversion.h`. An x86_64 build installed on an arm64 machine gets a
 // `-x86_64` suffix to avoid colliding with the native build.
-fn user_install_dirname(
-    source_dir: &Path,
-    fver: &RversionDir,
-) -> Result<String, Box<dyn Error>> {
+fn user_install_dirname(source_dir: &Path, fver: &RversionDir) -> Result<String, Box<dyn Error>> {
     let status = read_r_status(source_dir)?;
     let base = match status.as_str() {
         "" => fver.version.clone(),
@@ -723,7 +747,10 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     if get_mode()? == crate::utils::Mode::User && sc_get_list()?.is_empty() {
         if let Err(e) = remove_rstudio_which_r_plist() {
-            OUTPUT.warn(&format!("Could not remove RSTUDIO_WHICH_R LaunchAgent: {}", e));
+            OUTPUT.warn(&format!(
+                "Could not remove RSTUDIO_WHICH_R LaunchAgent: {}",
+                e
+            ));
             warn!("Could not remove RSTUDIO_WHICH_R LaunchAgent: {}", e);
         }
     }
@@ -734,8 +761,7 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     let binary_dir = get_binary_dir()?;
     let mode = get_mode()?;
-    if mode == crate::utils::Mode::Admin &&
-        access(binary_dir.as_str(), AccessFlags::W_OK).is_err()
+    if mode == crate::utils::Mode::Admin && access(binary_dir.as_str(), AccessFlags::W_OK).is_err()
     {
         escalate("making R-* quick links")?;
     }
@@ -1323,9 +1349,7 @@ pub fn sc_system_user_mode(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let no_reinstall = args.get_flag("no-reinstall");
 
     if sudo::check() == sudo::RunningAs::Root {
-        OUTPUT.warn(
-            "`rig system user-mode` is meant to be run as a normal user, not with `sudo`.",
-        );
+        OUTPUT.warn("`rig system user-mode` is meant to be run as a normal user, not with `sudo`.");
         warn!("rig system user-mode is running as root");
     }
 
@@ -1455,8 +1479,15 @@ fn read_built_version_arch(version_dir: &Path) -> Result<(String, String), Box<d
     // The stats DESCRIPTION lives under `Resources/library` in admin-mode
     // installations and directly under `library` in user-mode ones.
     let candidates = [
-        version_dir.join("Resources").join("library").join("stats").join("DESCRIPTION"),
-        version_dir.join("library").join("stats").join("DESCRIPTION"),
+        version_dir
+            .join("Resources")
+            .join("library")
+            .join("stats")
+            .join("DESCRIPTION"),
+        version_dir
+            .join("library")
+            .join("stats")
+            .join("DESCRIPTION"),
     ];
     let desc = candidates
         .iter()
@@ -1470,7 +1501,14 @@ fn read_built_version_arch(version_dir: &Path) -> Result<(String, String), Box<d
     let version = caps.get(1).unwrap().as_str().trim().to_string();
     // The platform looks like `aarch64-apple-darwin23`; the CPU is the first
     // component. Map it to the `--arch` values rig understands.
-    let cpu = caps.get(2).unwrap().as_str().trim().split('-').next().unwrap_or("");
+    let cpu = caps
+        .get(2)
+        .unwrap()
+        .as_str()
+        .trim()
+        .split('-')
+        .next()
+        .unwrap_or("");
     let arch = match cpu {
         "aarch64" | "arm64" => "arm64".to_string(),
         "x86_64" => "x86_64".to_string(),
@@ -1494,7 +1532,11 @@ fn user_mode_install_spec(
     let (version, arch) = read_built_version_arch(&admin_root.join(admin_dir))?;
     for al in aliases {
         if al.version == admin_dir {
-            let spec = al.alias.strip_suffix("-x86_64").unwrap_or(&al.alias).to_string();
+            let spec = al
+                .alias
+                .strip_suffix("-x86_64")
+                .unwrap_or(&al.alias)
+                .to_string();
             return Ok((spec, arch));
         }
     }
@@ -1557,7 +1599,9 @@ fn clean_admin_installations() -> Result<(), Box<dyn Error>> {
     OUTPUT.status("Removing admin-mode R installations (this needs `sudo`)");
     info!("Removing admin-mode R installations");
     let exe = std::env::current_exe()?;
-    let status = Command::new(&exe).args(["system", "clean-admin-r"]).status()?;
+    let status = Command::new(&exe)
+        .args(["system", "clean-admin-r"])
+        .status()?;
     if !status.success() {
         bail!("Failed to remove admin-mode R installations");
     }
@@ -1637,7 +1681,9 @@ fn forget_admin_packages() -> Result<(), Box<dyn Error>> {
         info!("Forgetting installed versions");
     }
     for line in output.lines() {
-        Command::new("pkgutil").args(["--forget", line.trim()]).output()?;
+        Command::new("pkgutil")
+            .args(["--forget", line.trim()])
+            .output()?;
     }
     Ok(())
 }
@@ -1767,8 +1813,7 @@ pub fn sc_rstudio_(
                 ver
             )
         }
-        let rbin = Path::new(&get_r_root()?)
-            .join(get_r_binpath()?.replace("{}", &ver));
+        let rbin = Path::new(&get_r_root()?).join(get_r_binpath()?.replace("{}", &ver));
         let path = "RSTUDIO_WHICH_R=".to_string() + &rbin.to_string_lossy();
         args.append(&mut osvec!["--env", &path]);
     }
@@ -1870,11 +1915,17 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
 
     if get_mode()? == crate::utils::Mode::User {
         if let Err(e) = ensure_rstudio_which_r_plist() {
-            OUTPUT.warn(&format!("Could not register default R version in RStudio: {}", e));
+            OUTPUT.warn(&format!(
+                "Could not register default R version in RStudio: {}",
+                e
+            ));
             warn!("Could not install RSTUDIO_WHICH_R LaunchAgent: {}", e);
         }
         if let Err(e) = ensure_positron_custom_root_folders() {
-            OUTPUT.warn(&format!("Could not register rig R versions in Positron: {}", e));
+            OUTPUT.warn(&format!(
+                "Could not register rig R versions in Positron: {}",
+                e
+            ));
             warn!("Could not update Positron settings: {}", e);
         }
     }
@@ -2074,7 +2125,12 @@ pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
         let rbin = path.join("Resources").join("bin").join("R");
         let rbin2 = path.join("bin").join("R");
         if !rbin.exists() && !rbin2.exists() {
-            debug!("Skipping {}, no R binary found at {} or {}", path.display(), rbin.display(), rbin2.display());
+            debug!(
+                "Skipping {}, no R binary found at {} or {}",
+                path.display(),
+                rbin.display(),
+                rbin2.display()
+            );
             continue;
         }
 
@@ -2216,8 +2272,7 @@ fn extract_pkg_version(filename: &OsStr) -> Result<RversionDir, Box<dyn Error>> 
 
 pub fn get_r_binary(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
     debug!("Finding R binary for R {}", rver);
-    let bin = Path::new(&get_r_root()?)
-        .join(get_r_binpath()?.replace("{}", rver));
+    let bin = Path::new(&get_r_root()?).join(get_r_binpath()?.replace("{}", rver));
     debug!("R {} binary is at {}", rver, bin.display());
     Ok(bin)
 }
@@ -2231,7 +2286,7 @@ pub fn get_system_renviron(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
 }
 
 pub fn get_system_profile(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
-    let profile = get_r_base_profile()?.replace("{}",rver);
+    let profile = get_r_base_profile()?.replace("{}", rver);
     Ok(PathBuf::from(&get_r_root()?).join(profile))
 }
 
@@ -2287,9 +2342,9 @@ mod tests {
         assert!(!content.contains("R_HOME_DIR=/Library/Frameworks/R.framework/Resources"));
         assert!(content.contains("R_HOME_DIR=/opt/r/4.6-arm64"));
         // Self-locating override added with $-escapes correctly applied.
-        assert!(content.contains(
-            "R_HOME_DIR=$(cd \"$(dirname \"$(realpath \"$0\")\")/..\" && pwd -P)"
-        ));
+        assert!(
+            content.contains("R_HOME_DIR=$(cd \"$(dirname \"$(realpath \"$0\")\")/..\" && pwd -P)")
+        );
         // DYLD line added; ${R_HOME_DIR} stays literal (not eaten as a regex group).
         assert!(content.contains("export DYLD_LIBRARY_PATH=\"${R_HOME_DIR}/lib\""));
         // Trailing content survives.
@@ -2456,10 +2511,7 @@ mod tests {
 
         assert!(rv.contains("R_QPDFEXT=foo"));
         assert!(rv.contains("R_QPDF_X=bar"));
-        assert_eq!(
-            rv.lines().filter(|l| l.starts_with("R_QPDF=")).count(),
-            1
-        );
+        assert_eq!(rv.lines().filter(|l| l.starts_with("R_QPDF=")).count(), 1);
     }
 
     #[test]
@@ -2587,8 +2639,9 @@ mod tests {
         assert!(content.contains("rhome=/opt/r/4.5-arm64\n"));
         // rincludedir line becomes the pkg-config var form (literal `${rhome}`).
         assert!(content.contains("rincludedir=${rhome}/include"));
-        assert!(!content
-            .contains("rincludedir=/Library/Frameworks/R.framework/Versions/4.5-arm64/Resources/include"));
+        assert!(!content.contains(
+            "rincludedir=/Library/Frameworks/R.framework/Versions/4.5-arm64/Resources/include"
+        ));
         // Lines without the versioned framework path are left alone.
         assert!(content.contains("prefix=/Library/Frameworks/R.framework/Resources"));
         assert!(content.contains("exec_prefix=${prefix}"));
@@ -2718,12 +2771,24 @@ mod tests {
         write_admin_install(root, "4.5-x86_64", "4.5.1", "x86_64");
 
         let aliases = vec![
-            Alias { alias: "release".to_string(), version: "4.5-arm64".to_string() },
-            Alias { alias: "oldrel".to_string(), version: "4.4-arm64".to_string() },
-            Alias { alias: "devel".to_string(), version: "4.6-arm64".to_string() },
+            Alias {
+                alias: "release".to_string(),
+                version: "4.5-arm64".to_string(),
+            },
+            Alias {
+                alias: "oldrel".to_string(),
+                version: "4.4-arm64".to_string(),
+            },
+            Alias {
+                alias: "devel".to_string(),
+                version: "4.6-arm64".to_string(),
+            },
             // An x86_64 alias on an arm machine keeps its suffix in the link
             // name, but the install spec is the bare alias plus the arch.
-            Alias { alias: "release-x86_64".to_string(), version: "4.5-x86_64".to_string() },
+            Alias {
+                alias: "release-x86_64".to_string(),
+                version: "4.5-x86_64".to_string(),
+            },
         ];
 
         assert_eq!(

@@ -101,7 +101,10 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
     for ver in vers {
         let ver = check_installed(&ver.to_string())?;
         let root: String = get_r_root_for(&ver)?;
-        let repositories = root.clone() + "/" + &get_r_etc_path()?.replace("{}", &version_dir_key(&ver)) + "/repositories";
+        let repositories = root.clone()
+            + "/"
+            + &get_r_etc_path()?.replace("{}", &version_dir_key(&ver))
+            + "/repositories";
 
         // if no 'repositories' file, skip. Maybe this happens for very old R versions?
         if !PathBuf::from(&repositories).exists() {
@@ -160,7 +163,8 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
 
         write_repositories_file(repos, &repositories)?;
 
-        let profile = root.clone() + "/" + &get_r_base_profile()?.replace("{}", &version_dir_key(&ver));
+        let profile =
+            root.clone() + "/" + &get_r_base_profile()?.replace("{}", &version_dir_key(&ver));
         debug!("Updating R profile at {}", profile);
         let mut profile_lines = read_lines(&Path::new(&profile))?;
 
@@ -326,8 +330,8 @@ fn get_r_data(ver: &str) -> Result<RData, Box<dyn Error>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_repos_in_setup, should_activate_repo, RData};
-    use crate::repos::config::{Repository, RepoEntry};
+    use super::{should_activate_repo, validate_repos_in_setup, RData};
+    use crate::repos::config::{RepoEntry, Repository};
     use crate::repos::interpret_repos_args::ReposSetupArgs;
 
     fn make_repo(name: &str) -> Repository {
@@ -515,7 +519,10 @@ mod tests {
 
 fn get_r_data_common(ver: &str) -> Result<RData, Box<dyn Error>> {
     let root: String = get_r_root_for(ver)?;
-    let statsdesc = root + "/" + &get_r_syslibpath()?.replace("{}", &version_dir_key(ver)) + "/stats/DESCRIPTION";
+    let statsdesc = root
+        + "/"
+        + &get_r_syslibpath()?.replace("{}", &version_dir_key(ver))
+        + "/stats/DESCRIPTION";
     debug!("Getting architectture from {}.", statsdesc);
     let lines = read_lines(Path::new(&statsdesc))?;
     let re = Regex::new("^Built:[ ]?")?;

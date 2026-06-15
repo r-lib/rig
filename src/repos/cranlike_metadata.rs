@@ -784,7 +784,10 @@ mod tests {
     fn test_package_type_to_path_invalid() {
         let result = package_type_to_path("invalid", "4.3");
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Invalid package type:"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid package type:"));
     }
 
     #[test]

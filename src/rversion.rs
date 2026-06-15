@@ -190,9 +190,18 @@ mod tests {
     fn ok_installed_version_sort() {
         let mut versions = vec![ok_ver("4.2.0"), ok_ver("4.0.0"), ok_ver("4.1.0")];
         versions.sort();
-        assert_eq!(versions[0].version, semver::Version::parse("4.0.0").unwrap());
-        assert_eq!(versions[1].version, semver::Version::parse("4.1.0").unwrap());
-        assert_eq!(versions[2].version, semver::Version::parse("4.2.0").unwrap());
+        assert_eq!(
+            versions[0].version,
+            semver::Version::parse("4.0.0").unwrap()
+        );
+        assert_eq!(
+            versions[1].version,
+            semver::Version::parse("4.1.0").unwrap()
+        );
+        assert_eq!(
+            versions[2].version,
+            semver::Version::parse("4.2.0").unwrap()
+        );
     }
 
     #[test]

@@ -19,7 +19,10 @@ pub fn sc_repos_list(
     let all = args.get_flag("all");
 
     let root: String = get_r_root_for(&rver)?;
-    let repositories = root.clone() + "/" + &get_r_etc_path()?.replace("{}", &version_dir_key(&rver)) + "/repositories";
+    let repositories = root.clone()
+        + "/"
+        + &get_r_etc_path()?.replace("{}", &version_dir_key(&rver))
+        + "/repositories";
     let mut repos = read_repositories_file(&repositories)?.data;
 
     if !all {

@@ -34,8 +34,9 @@ pub fn get_alias(args: &ArgMatches) -> Option<String> {
     // so a separate alias would be redundant. In admin mode the installation
     // is named after its version number, so we still add the alias to make
     // the build reachable by name.
-    let user_mode =
-        crate::utils::get_mode().map(|m| m == crate::utils::Mode::User).unwrap_or(false);
+    let user_mode = crate::utils::get_mode()
+        .map(|m| m == crate::utils::Mode::User)
+        .unwrap_or(false);
     match str {
         None => None,
         Some(str) => match str.as_ref() {
@@ -172,7 +173,11 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     let filename = "R-".to_string() + alias + ".bat";
     let linkfile = linkdir.join(&filename);
 
-    let cnt = format!("@\"{}\\{}\\bin\\R\" %*\n", rroot, get_r_versiondir()?.replace("{}", &base));
+    let cnt = format!(
+        "@\"{}\\{}\\bin\\R\" %*\n",
+        rroot,
+        get_r_versiondir()?.replace("{}", &base)
+    );
     let op;
     if linkfile.exists() {
         op = "Updating";

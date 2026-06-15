@@ -36,8 +36,7 @@ pub fn get_data_dir() -> Result<PathBuf, Box<dyn Error>> {
 pub fn get_logs_dir() -> Result<PathBuf, Box<dyn Error>> {
     #[cfg(target_os = "macos")]
     {
-        let home = std::env::var("HOME")
-            .map_err(|_| "Cannot determine home directory")?;
+        let home = std::env::var("HOME").map_err(|_| "Cannot determine home directory")?;
         Ok(PathBuf::from(home).join("Library/Logs/com.gaborcsardi.rig"))
     }
 

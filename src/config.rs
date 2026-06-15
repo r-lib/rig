@@ -152,7 +152,6 @@ fn sc_config_get(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn
     Ok(())
 }
 
-
 fn load_raw_config() -> Result<serde_json::Map<String, serde_json::Value>, Box<dyn Error>> {
     let config_file = rig_config_file()?;
     if config_file.exists() {
@@ -178,7 +177,6 @@ fn save_raw_config(map: &serde_json::Map<String, serde_json::Value>) -> Result<(
     Ok(())
 }
 
-
 pub fn get_global_config_value(key: &str) -> Result<Option<String>, Box<dyn Error>> {
     let map = load_raw_config()?;
     match map.get(key) {
@@ -190,7 +188,10 @@ pub fn get_global_config_value(key: &str) -> Result<Option<String>, Box<dyn Erro
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub fn set_global_config_value(key: &str, value: &str) -> Result<(), Box<dyn Error>> {
     let mut map = load_raw_config()?;
-    map.insert(key.to_string(), serde_json::Value::String(value.to_string()));
+    map.insert(
+        key.to_string(),
+        serde_json::Value::String(value.to_string()),
+    );
     save_raw_config(&map)
 }
 
@@ -201,7 +202,10 @@ fn sc_config_set(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         .split_once('=')
         .ok_or_else(|| SimpleError::new(format!("Invalid key=value format: '{}'", keyvalue)))?;
     let mut map = load_raw_config()?;
-    map.insert(key.to_string(), serde_json::Value::String(value.to_string()));
+    map.insert(
+        key.to_string(),
+        serde_json::Value::String(value.to_string()),
+    );
     save_raw_config(&map)
 }
 
@@ -221,7 +225,9 @@ fn sc_config_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dy
 
     if args.get_flag("json") || mainargs.get_flag("json") {
         #[derive(serde::Serialize)]
-        struct Entry { key: String }
+        struct Entry {
+            key: String,
+        }
         let entries: Vec<Entry> = keys.into_iter().map(|k| Entry { key: k }).collect();
         println!("{}", serde_json::to_string_pretty(&entries)?);
     } else {

@@ -1,11 +1,11 @@
 #![cfg(target_os = "windows")]
 
 mod registry;
-use registry::{
-    add_user_bin_to_path, get_latest_install_path, maybe_update_registry_default,
-    sc_rtools_ls, unset_registry_default, update_registry_default,
-};
 pub use registry::sc_clean_registry;
+use registry::{
+    add_user_bin_to_path, get_latest_install_path, maybe_update_registry_default, sc_rtools_ls,
+    unset_registry_default, update_registry_default,
+};
 
 use regex::Regex;
 use std::error::Error;
@@ -195,10 +195,10 @@ fn read_rversion_h(install_dir: &Path) -> Result<(String, String), Box<dyn Error
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().to_string())
     };
-    let major = grab(&major_re)
-        .ok_or_else(|| SimpleError::new("Cannot find R_MAJOR in Rversion.h"))?;
-    let minor = grab(&minor_re)
-        .ok_or_else(|| SimpleError::new("Cannot find R_MINOR in Rversion.h"))?;
+    let major =
+        grab(&major_re).ok_or_else(|| SimpleError::new("Cannot find R_MAJOR in Rversion.h"))?;
+    let minor =
+        grab(&minor_re).ok_or_else(|| SimpleError::new("Cannot find R_MINOR in Rversion.h"))?;
     let status = grab(&status_re).unwrap_or_default();
     Ok((format!("{}.{}", major, minor), status))
 }
@@ -211,7 +211,10 @@ fn user_install_name(install_dir: &Path, arch: &str) -> Result<String, Box<dyn E
         _ => "next".to_string(),
     };
     let name = rig_name_for_arch(&base, arch);
-    debug!("User install directory name is {} (R_STATUS = {:?})", name, status);
+    debug!(
+        "User install directory name is {} (R_STATUS = {:?})",
+        name, status
+    );
     Ok(name)
 }
 
@@ -225,8 +228,8 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         // For bare "rtools" (install all needed), only honour --arch when the user
         // explicitly passed it; the flag's native-arch default should not filter out
         // cross-arch installations.
-        let explicit_arch = args.value_source("arch")
-            == Some(clap::parser::ValueSource::CommandLine);
+        let explicit_arch =
+            args.value_source("arch") == Some(clap::parser::ValueSource::CommandLine);
         let arch = if explicit_arch {
             args.get_one::<String>("arch").map(|s| normalize_arch(s))
         } else {
@@ -235,7 +238,10 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         return add_rtools(str.to_string(), arch);
     }
     let (version_info, target) = download_r(&args)?;
-    let installed_arch = version_info.arch.clone().unwrap_or_else(|| get_native_arch().to_string());
+    let installed_arch = version_info
+        .arch
+        .clone()
+        .unwrap_or_else(|| get_native_arch().to_string());
     let target_path = Path::new(&target);
 
     OUTPUT.status(&format!("Installing {}", target_path.display()));
@@ -284,7 +290,10 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             Ok(name) => name,
             Err(err) => {
                 let _ = remove_dir_all(&temp_dir);
-                OUTPUT.error(&format!("Cannot determine installed R version: {}", err.to_string()));
+                OUTPUT.error(&format!(
+                    "Cannot determine installed R version: {}",
+                    err.to_string()
+                ));
                 error!("Cannot determine installed R version: {}", err.to_string());
                 return Err(err);
             }
@@ -310,7 +319,11 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
                 final_dir,
                 err.to_string()
             ));
-            error!("Cannot move R installation into {}: {}", final_dir, err.to_string());
+            error!(
+                "Cannot move R installation into {}: {}",
+                final_dir,
+                err.to_string()
+            );
             return Err(err.into());
         }
         OUTPUT.status(&format!("Installed R as '{}'", rig_name));
@@ -485,7 +498,10 @@ fn rtools_renviron_lines(version: &str, arch: &str, rtools_path: &Path, user_mod
         if user_mode {
             s += &format!("{}=\"{}\"\n", var, path);
         }
-        s += &format!("PATH=\"${{{var}}}/ucrt64/bin;${{{var}}}/usr/bin;${{PATH}}\"", var = var);
+        s += &format!(
+            "PATH=\"${{{var}}}/ucrt64/bin;${{{var}}}/usr/bin;${{PATH}}\"",
+            var = var
+        );
         s
     } else {
         // Rtools 4.2+: R derives everything it needs from RTOOLS<NN>[_AARCH64]_HOME.
@@ -500,7 +516,10 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<(), Box<dyn Error
     } else {
         let ver = version.replace("rtools", "");
         let a = arch.unwrap_or_else(|| get_native_arch().to_string());
-        needed = vec![NeededRtools { version: ver, arch: a }];
+        needed = vec![NeededRtools {
+            version: ver,
+            arch: a,
+        }];
     }
     let client = &reqwest::Client::new();
     for item in needed {
@@ -510,7 +529,10 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<(), Box<dyn Error
                 "Rtools{} ({}) is already installed",
                 &item.version, &item.arch
             ));
-            info!("Rtools{} ({}) is already installed", &item.version, &item.arch);
+            info!(
+                "Rtools{} ({}) is already installed",
+                &item.version, &item.arch
+            );
             continue;
         }
         let rtver = get_rtools_version(&item.version, &item.arch)?;
@@ -535,11 +557,7 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<(), Box<dyn Error
             cmd_args.push(os("/CURRENTUSER"));
             cmd_args.push(OsString::from(format!("/DIR={}", instdirpath.display())));
         }
-        run(
-            target.into_os_string(),
-            cmd_args,
-            "installer",
-        )?;
+        run(target.into_os_string(), cmd_args, "installer")?;
     }
 
     // In user mode R finds Rtools via RTOOLS<NN>_HOME, which rig writes into each R
@@ -581,7 +599,10 @@ fn patch_for_rtools() -> Result<(), Box<dyn Error>> {
 
         let ver_rroot = get_r_root_for(&ver)?;
         let ver_base = version_dir_key(&ver);
-        let envfile = Path::new(&ver_rroot).join(r_dirname(&ver_base)?).join("etc").join("Renviron.site");
+        let envfile = Path::new(&ver_rroot)
+            .join(r_dirname(&ver_base)?)
+            .join("etc")
+            .join("Renviron.site");
 
         // Skip if this Renviron.site has already been patched by rig.
         if envfile.exists() {
@@ -662,8 +683,14 @@ fn get_rtools_needed(
             if first <= sver && sver <= last {
                 let rtverver = rtver["version"].as_str().ok_or(errmsg)?.to_string();
                 debug!("R {} needs Rtools {} ({}).", rver_str, rtverver, r_arch);
-                if !res.iter().any(|x| x.version == rtverver && x.arch == r_arch) {
-                    res.push(NeededRtools { version: rtverver, arch: r_arch.clone() });
+                if !res
+                    .iter()
+                    .any(|x| x.version == rtverver && x.arch == r_arch)
+                {
+                    res.push(NeededRtools {
+                        version: rtverver,
+                        arch: r_arch.clone(),
+                    });
                 }
             }
         }
@@ -926,20 +953,12 @@ fn find_r_version_in_link(path: &PathBuf) -> Result<String, Box<dyn Error>> {
     for s in split {
         if s == "R-devel" {
             let base = "devel".to_string();
-            return Ok(if is_x86 {
-                base + "-x86_64"
-            } else {
-                base
-            });
+            return Ok(if is_x86 { base + "-x86_64" } else { base });
         }
         // Skip the R-aarch64 root directory name itself
         if s != "R-aarch64" && s.starts_with("R-") {
             let base = s[2..].to_string();
-            return Ok(if is_x86 {
-                base + "-x86_64"
-            } else {
-                base
-            });
+            return Ok(if is_x86 { base + "-x86_64" } else { base });
         }
     }
     OUTPUT.error(&format!(
@@ -1144,7 +1163,6 @@ pub fn sc_get_default() -> Result<Option<String>, Box<dyn Error>> {
     Ok(Some(first.to_string()))
 }
 
-
 pub fn sc_system_update_rtools40() -> Result<(), Box<dyn Error>> {
     run(
         "c:\\rtools40\\usr\\bin\\bash.exe".into(),
@@ -1200,7 +1218,6 @@ fn sc_rtools_rm(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<(), Box<dyn
 
     Ok(())
 }
-
 
 // All this is from https://github.com/rstudio/rstudio/blob/44f09c50d469a14d5a9c3840c7a239f3bf21ace9/src/cpp/core/system/Xdg.cpp#L85
 //

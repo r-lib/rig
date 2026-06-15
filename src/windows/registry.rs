@@ -14,7 +14,9 @@ use crate::output::OUTPUT;
 use crate::utils::*;
 use crate::windows_arch::*;
 
-use super::{arch_of_name, get_links_dir, get_r_root_for, r_dirname, rig_name_for_arch, version_dir_key};
+use super::{
+    arch_of_name, get_links_dir, get_r_root_for, r_dirname, rig_name_for_arch, version_dir_key,
+};
 
 fn clean_registry_r(key: &RegKey) -> Result<(), Box<dyn Error>> {
     for nm in key.enum_keys() {
@@ -127,22 +129,19 @@ pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
 
     if get_mode()? == Mode::Admin {
         let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-        let uninst =
-            hklm.open_subkey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
+        let uninst = hklm.open_subkey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
         if let Ok(x) = uninst {
             clean_registry_uninst(&x)?;
         };
-        let uninst32 = hklm.open_subkey(
-            "SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
-        );
+        let uninst32 = hklm
+            .open_subkey("SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
         if let Ok(x) = uninst32 {
             clean_registry_uninst(&x)?;
         };
     } else {
         // User-mode installs put uninstall entries in HKCU
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-        let uninst =
-            hkcu.open_subkey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
+        let uninst = hkcu.open_subkey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
         if let Ok(x) = uninst {
             clean_registry_uninst(&x)?;
         };
@@ -288,7 +287,9 @@ pub(super) fn add_user_bin_to_path() -> Result<(), Box<dyn Error>> {
 
     OUTPUT.status(&format!("Added {} to user PATH", bin_dir));
     info!("Added {} to user PATH", bin_dir);
-    OUTPUT.warn("Restart your terminal (or sign out and back in) for the PATH change to take effect.");
+    OUTPUT.warn(
+        "Restart your terminal (or sign out and back in) for the PATH change to take effect.",
+    );
     warn!("Restart your terminal for the PATH change to take effect.");
 
     Ok(())
@@ -356,7 +357,13 @@ pub(super) fn sc_rtools_ls(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(
         tab.add_row(row!["name", "version", "full-version", "arch", "path"]);
         tab.add_heading("------------------------------------------------------");
         for item in versions {
-            tab.add_row(row!(item.name, item.version, item.fullversion, item.arch, item.path));
+            tab.add_row(row!(
+                item.name,
+                item.version,
+                item.fullversion,
+                item.arch,
+                item.path
+            ));
         }
         println!("{}", tab);
     }
@@ -364,7 +371,9 @@ pub(super) fn sc_rtools_ls(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(
     Ok(())
 }
 
-pub(super) fn get_latest_install_path(installed_arch: &str) -> Result<Option<String>, Box<dyn Error>> {
+pub(super) fn get_latest_install_path(
+    installed_arch: &str,
+) -> Result<Option<String>, Box<dyn Error>> {
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     let native = get_native_arch();
     // Choose the registry key written by the installer for this arch.
@@ -482,8 +491,14 @@ mod tests {
 
         clean_registry_r(&root).unwrap();
 
-        assert!(root.open_subkey("4.3.0").is_err(), "stale entry should be removed");
-        assert!(root.open_subkey("4.4.0").is_ok(), "live entry should remain");
+        assert!(
+            root.open_subkey("4.3.0").is_err(),
+            "stale entry should be removed"
+        );
+        assert!(
+            root.open_subkey("4.4.0").is_ok(),
+            "live entry should remain"
+        );
     }
 
     // ── clean_registry_uninst ────────────────────────────────────────────────
@@ -495,17 +510,20 @@ mod tests {
 
         // "R for Windows" with missing path — removed.
         let (k, _) = root.create_subkey("R for Windows 4.3.0").unwrap();
-        k.set_value("InstallLocation", &"C:\\nonexistent\\R-4.3.0").unwrap();
+        k.set_value("InstallLocation", &"C:\\nonexistent\\R-4.3.0")
+            .unwrap();
         drop(k);
 
         // "Rtools" with missing path — removed.
         let (k, _) = root.create_subkey("Rtools43").unwrap();
-        k.set_value("InstallLocation", &"C:\\nonexistent\\Rtools43").unwrap();
+        k.set_value("InstallLocation", &"C:\\nonexistent\\Rtools43")
+            .unwrap();
         drop(k);
 
         // Unrelated prefix with missing path — NOT touched by the function.
         let (k, _) = root.create_subkey("Python 3.12.0").unwrap();
-        k.set_value("InstallLocation", &"C:\\nonexistent\\Python").unwrap();
+        k.set_value("InstallLocation", &"C:\\nonexistent\\Python")
+            .unwrap();
         drop(k);
 
         // "R for Windows" with existing path — kept.
@@ -517,7 +535,10 @@ mod tests {
 
         assert!(root.open_subkey("R for Windows 4.3.0").is_err());
         assert!(root.open_subkey("Rtools43").is_err());
-        assert!(root.open_subkey("Python 3.12.0").is_ok(), "unrelated key must not be deleted");
+        assert!(
+            root.open_subkey("Python 3.12.0").is_ok(),
+            "unrelated key must not be deleted"
+        );
         assert!(root.open_subkey("R for Windows 4.4.0").is_ok());
     }
 

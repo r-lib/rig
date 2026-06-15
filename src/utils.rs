@@ -257,13 +257,11 @@ pub fn get_user() -> Result<User, Box<dyn Error>> {
     })
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
     User,
     Admin,
 }
-
 
 fn parse_mode(s: &str) -> Option<Mode> {
     match s {
@@ -273,9 +271,7 @@ fn parse_mode(s: &str) -> Option<Mode> {
     }
 }
 
-
 static MODE_CACHE: OnceLock<Mode> = OnceLock::new();
-
 
 pub fn set_mode(mode: Mode) -> Result<(), Box<dyn Error>> {
     match MODE_CACHE.set(mode) {
@@ -288,7 +284,6 @@ pub fn set_mode(mode: Mode) -> Result<(), Box<dyn Error>> {
         ),
     }
 }
-
 
 pub fn get_mode() -> Result<Mode, Box<dyn Error>> {
     if let Some(cached) = MODE_CACHE.get() {
@@ -556,7 +551,6 @@ fish_add_path --prepend --move \"$HOME/.local/bin\"
     Ok(())
 }
 
-
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn check_local_bin_path() -> Result<(), Box<dyn Error>> {
     use crate::output::OUTPUT;
@@ -592,10 +586,16 @@ pub fn check_local_bin_path() -> Result<(), Box<dyn Error>> {
     };
 
     if needs_add && !ADD_DONE.swap(true, Ordering::Relaxed) {
-        debug!("Updating shell profiles to put {} on PATH", local_bin.display());
+        debug!(
+            "Updating shell profiles to put {} on PATH",
+            local_bin.display()
+        );
         add_local_bin_to_path()?;
     } else if !needs_add {
-        debug!("{} is already correctly placed on PATH", local_bin.display());
+        debug!(
+            "{} is already correctly placed on PATH",
+            local_bin.display()
+        );
     }
 
     let on_path = paths.iter().any(|p| p == Path::new(&binary_dir));
@@ -734,7 +734,10 @@ mod tests {
             add_local_bin_to_path().unwrap();
             for p in [&zprofile, &bash_profile] {
                 let content = fs::read_to_string(p).unwrap();
-                assert!(content.contains(". \"$HOME/.local/bin/rigenv\""), "{p:?} missing source line");
+                assert!(
+                    content.contains(". \"$HOME/.local/bin/rigenv\""),
+                    "{p:?} missing source line"
+                );
             }
         });
     }

@@ -135,8 +135,10 @@ pub fn get_r_version_data(
     aliases: &[Alias],
 ) -> Result<InstalledVersion, Box<dyn Error>> {
     let version = Some(get_r_version_data_version(name)?);
-    let path = Path::new(&get_r_root_for(name)?).join(get_r_versiondir()?.replace("{}", &version_dir_key(name)));
-    let binary = Path::new(&get_r_root_for(name)?).join(get_r_binpath()?.replace("{}", &version_dir_key(name)));
+    let path = Path::new(&get_r_root_for(name)?)
+        .join(get_r_versiondir()?.replace("{}", &version_dir_key(name)));
+    let binary = Path::new(&get_r_root_for(name)?)
+        .join(get_r_binpath()?.replace("{}", &version_dir_key(name)));
     let mut myaliases: Vec<String> = vec![];
     for a in aliases {
         // Don't list an alias that is the same as the installation name,
@@ -434,10 +436,7 @@ fn get_project_version(path: &str) -> Result<Option<String>, Box<dyn Error>> {
 
 pub(crate) fn normalize_rig_platform(rp: &str) -> String {
     // "ubuntu-24.04" (one dash, not a known non-linux shorthand) -> "linux-ubuntu-24.04"
-    if rp.matches('-').count() == 1
-        && rp != "macos"
-        && rp != "windows"
-        && !rp.starts_with("linux-")
+    if rp.matches('-').count() == 1 && rp != "macos" && rp != "windows" && !rp.starts_with("linux-")
     {
         format!("linux-{}", rp)
     } else {
