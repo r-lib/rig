@@ -163,27 +163,34 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     // If installed from URL, then we'll use the version in the file
     let fver = extract_pkg_version(&target_str)?;
+
+    let mode = get_mode()?;
+
     match ver {
         Some(_) => {}
         None => {
-            version.version = Some(fver.version);
-            version.arch = Some(fver.arch);
+            version.version = Some(fver.version.clone());
+            version.arch = Some(fver.arch.clone());
         }
     };
 
-    let dirname = fver.installdir;
-
-    // Install without changing default
-    if get_mode()? == crate::utils::Mode::User {
+    // Install without changing default. In user mode the installation
+    // directory is named after the full version number (or `devel`/`next`
+    // for development builds), so the name is determined while unpacking the
+    // framework and returned by `safe_user_install`.
+    let dirname = if mode == crate::utils::Mode::User {
         let install_dir = std::path::PathBuf::from(get_r_root()?);
-        safe_user_install(target, &dirname, install_dir)?;
+        let dirname = safe_user_install(target, &fver, install_dir)?;
         if let Err(e) = ensure_positron_custom_root_folders() {
             OUTPUT.warn(&format!("Could not update Positron settings: {}", e));
             warn!("Could not update Positron settings: {}", e);
         }
+        dirname
     } else {
+        let dirname = fver.installdir.clone();
         safe_install(target, &dirname, arch)?;
-    }
+        dirname
+    };
 
     // This should not happen currently on macOS, a .pkg installer
     // sets the default, but prepare for the future
@@ -550,16 +557,17 @@ fn remove_user_dyld_shadows(source_dir: &Path) -> Result<(), Box<dyn Error>> {
 
 fn safe_user_install(
     target: std::path::PathBuf,
-    ver: &str,
+    fver: &RversionDir,
     install_dir: std::path::PathBuf,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<String, Box<dyn Error>> {
     let (tmp, wd) = unpack_and_patch(&target)?;
     let source_dir = wd.join("R.framework")
         .join("Versions")
         .join("Current")
         .join("Resources");
 
-    let target_dir = install_dir.join(ver);
+    let dirname = user_install_dirname(&source_dir, fver)?;
+    let target_dir = install_dir.join(&dirname);
     patch_user_r_script(&source_dir, &target_dir)?;
     patch_user_scripts(&source_dir, &target_dir)?;
     replace_user_rscript(&source_dir)?;
@@ -601,7 +609,52 @@ fn safe_user_install(
         );
     }
 
-    Ok(())
+    Ok(dirname)
+}
+
+// Determine the user-mode installation directory name. Normal releases are
+// named after their full version number. Development builds are named `devel`
+// (R-devel) or `next` (R-next), as recorded by the `R_STATUS` macro in
+// `include/Rversion.h`. An x86_64 build installed on an arm64 machine gets a
+// `-x86_64` suffix to avoid colliding with the native build.
+fn user_install_dirname(
+    source_dir: &Path,
+    fver: &RversionDir,
+) -> Result<String, Box<dyn Error>> {
+    let status = read_r_status(source_dir)?;
+    let base = match status.as_str() {
+        "" => fver.version.clone(),
+        "Under development (unstable)" => "devel".to_string(),
+        _ => "next".to_string(),
+    };
+
+    let dirname = if fver.arch == "x86_64" && is_arm64_machine() {
+        format!("{}-x86_64", base)
+    } else {
+        base
+    };
+
+    debug!(
+        "User install directory name is {} (R_STATUS = {:?})",
+        dirname, status
+    );
+
+    Ok(dirname)
+}
+
+// Read the value of the `R_STATUS` macro from `include/Rversion.h`. It is an
+// empty string for released versions, "Under development (unstable)" for
+// R-devel, and something else (e.g. a patched/prerelease label) for R-next.
+fn read_r_status(source_dir: &Path) -> Result<String, Box<dyn Error>> {
+    let path = source_dir.join("include").join("Rversion.h");
+    let content = std::fs::read_to_string(&path)?;
+    let re = Regex::new(r#"(?m)^\s*#define\s+R_STATUS\s+"(.*)"\s*$"#)?;
+    let status = re
+        .captures(&content)
+        .and_then(|caps| caps.get(1))
+        .map(|m| m.as_str().to_string())
+        .unwrap_or_default();
+    Ok(status)
 }
 
 pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
@@ -1768,11 +1821,8 @@ fn extract_pkg_version(filename: &OsStr) -> Result<RversionDir, Box<dyn Error>> 
         };
     }
 
-    OUTPUT.success(&format!(
-        "This is R {} for {}, named {}",
-        ver, arch, installdir
-    ));
-    info!("This is R {} for {}, named {}", ver, arch, installdir);
+    OUTPUT.success(&format!("This is R {} for {}.", ver, arch));
+    info!("This is R {} for {}.", ver, arch);
 
     let res = RversionDir {
         version: ver.to_string(),
@@ -2227,5 +2277,34 @@ mod tests {
         fs::create_dir_all(dir.path().join("lib")).unwrap();
         // No shadow dylibs present (e.g. R 4.0+); call must succeed.
         remove_user_dyld_shadows(dir.path()).unwrap();
+    }
+
+    fn write_rversion_h(source_dir: &Path, status: &str) {
+        let incdir = source_dir.join("include");
+        fs::create_dir_all(&incdir).unwrap();
+        let content = format!(
+            "#define R_VERSION_STRING \"4.6.0\"\n\
+             #define R_STATUS \"{}\"\n\
+             #define R_YEAR 2026\n",
+            status
+        );
+        fs::write(incdir.join("Rversion.h"), content).unwrap();
+    }
+
+    #[test]
+    fn read_r_status_extracts_released_devel_and_next() {
+        let dir = tempfile::tempdir().unwrap();
+
+        write_rversion_h(dir.path(), "");
+        assert_eq!(read_r_status(dir.path()).unwrap(), "");
+
+        write_rversion_h(dir.path(), "Under development (unstable)");
+        assert_eq!(
+            read_r_status(dir.path()).unwrap(),
+            "Under development (unstable)"
+        );
+
+        write_rversion_h(dir.path(), "Prerelease");
+        assert_eq!(read_r_status(dir.path()).unwrap(), "Prerelease");
     }
 }
