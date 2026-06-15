@@ -995,7 +995,7 @@ pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
         clean_registry_r(&x)?;
     };
 
-    // Rtools and uninstall entries only exist in HKLM
+    // Rtools entries only exist in HKLM
     if get_mode()? == Mode::Admin {
         let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
         let rtools64 = hklm.open_subkey("SOFTWARE\\R-core\\Rtools");
@@ -1022,6 +1022,14 @@ pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
             "SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
         );
         if let Ok(x) = uninst32 {
+            clean_registry_uninst(&x)?;
+        };
+    } else {
+        // User-mode installs put uninstall entries in HKCU
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let uninst =
+            hkcu.open_subkey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
+        if let Ok(x) = uninst {
             clean_registry_uninst(&x)?;
         };
     }
