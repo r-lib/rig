@@ -211,6 +211,21 @@ pub(super) fn unset_registry_default() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn path_contains_dir(current_path: &str, dir: &str) -> bool {
+    let dir_lower = dir.to_lowercase();
+    current_path
+        .split(';')
+        .any(|s| s.trim().to_lowercase() == dir_lower)
+}
+
+fn prepend_dir_to_path(dir: &str, current_path: &str) -> String {
+    if current_path.is_empty() {
+        dir.to_string()
+    } else {
+        format!("{};{}", dir, current_path)
+    }
+}
+
 pub(super) fn add_user_bin_to_path() -> Result<(), Box<dyn Error>> {
     let bin_dir = get_binary_dir()?;
 
@@ -235,21 +250,11 @@ pub(super) fn add_user_bin_to_path() -> Result<(), Box<dyn Error>> {
         .collect();
     let current_path = String::from_utf16_lossy(&words);
 
-    // Check if bin_dir is already a segment (case-insensitive on Windows).
-    let bin_lower = bin_dir.to_lowercase();
-    let already_present = current_path
-        .split(';')
-        .any(|s| s.trim().to_lowercase() == bin_lower);
-
-    if already_present {
+    if path_contains_dir(&current_path, &bin_dir) {
         return Ok(());
     }
 
-    let new_path = if current_path.is_empty() {
-        bin_dir.clone()
-    } else {
-        format!("{};{}", bin_dir, current_path)
-    };
+    let new_path = prepend_dir_to_path(&bin_dir, &current_path);
 
     // Encode back to UTF-16 LE with null terminator, preserving original REG type.
     let encoded: Vec<u8> = new_path
@@ -372,4 +377,164 @@ pub(super) fn get_latest_install_path(installed_arch: &str) -> Result<Option<Str
         }
     }
     Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use winreg::enums::HKEY_CURRENT_USER;
+    use winreg::RegKey;
+
+    // Drop guard: deletes the registry subtree when the test ends (pass or fail).
+    struct TempKey(String);
+    impl Drop for TempKey {
+        fn drop(&mut self) {
+            let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+            let _ = hkcu.delete_subkey_all(&self.0);
+        }
+    }
+
+    fn make_test_key(name: &str) -> (RegKey, TempKey) {
+        let path = format!("SOFTWARE\\rig-test\\{}", name);
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let (key, _) = hkcu.create_subkey(&path).expect("create test key");
+        (key, TempKey(path))
+    }
+
+    // ── path_contains_dir ────────────────────────────────────────────────────
+
+    #[test]
+    fn path_contains_dir_finds_exact_match() {
+        assert!(path_contains_dir("C:\\foo;C:\\bar", "C:\\foo"));
+        assert!(path_contains_dir("C:\\bar", "C:\\bar"));
+    }
+
+    #[test]
+    fn path_contains_dir_is_case_insensitive() {
+        assert!(path_contains_dir("C:\\FOO;C:\\bar", "C:\\foo"));
+        assert!(path_contains_dir("C:\\foo", "C:\\FOO"));
+    }
+
+    #[test]
+    fn path_contains_dir_ignores_whitespace_around_segments() {
+        assert!(path_contains_dir(" C:\\foo ;C:\\bar", "C:\\foo"));
+    }
+
+    #[test]
+    fn path_contains_dir_returns_false_when_absent() {
+        assert!(!path_contains_dir("C:\\foo;C:\\bar", "C:\\baz"));
+        assert!(!path_contains_dir("", "C:\\foo"));
+    }
+
+    // ── prepend_dir_to_path ──────────────────────────────────────────────────
+
+    #[test]
+    fn prepend_dir_to_path_empty_base() {
+        assert_eq!(prepend_dir_to_path("C:\\new", ""), "C:\\new");
+    }
+
+    #[test]
+    fn prepend_dir_to_path_nonempty_base() {
+        assert_eq!(
+            prepend_dir_to_path("C:\\new", "C:\\existing"),
+            "C:\\new;C:\\existing"
+        );
+        assert_eq!(
+            prepend_dir_to_path("C:\\new", "C:\\a;C:\\b"),
+            "C:\\new;C:\\a;C:\\b"
+        );
+    }
+
+    // ── clean_registry_r ────────────────────────────────────────────────────
+
+    #[test]
+    fn clean_registry_r_removes_missing_keeps_present() {
+        let (root, _guard) = make_test_key("clean_r");
+
+        // Subkey whose InstallPath does not exist — should be removed.
+        let (gone, _) = root.create_subkey("4.3.0").unwrap();
+        gone.set_value("InstallPath", &"C:\\nonexistent\\R-4.3.0")
+            .unwrap();
+        drop(gone);
+
+        // Subkey whose InstallPath exists — should survive.
+        let tmp = std::env::temp_dir().to_string_lossy().to_string();
+        let (keep, _) = root.create_subkey("4.4.0").unwrap();
+        keep.set_value("InstallPath", &tmp).unwrap();
+        drop(keep);
+
+        clean_registry_r(&root).unwrap();
+
+        assert!(root.open_subkey("4.3.0").is_err(), "stale entry should be removed");
+        assert!(root.open_subkey("4.4.0").is_ok(), "live entry should remain");
+    }
+
+    // ── clean_registry_uninst ────────────────────────────────────────────────
+
+    #[test]
+    fn clean_registry_uninst_filters_by_prefix_and_path() {
+        let (root, _guard) = make_test_key("uninst");
+        let tmp = std::env::temp_dir().to_string_lossy().to_string();
+
+        // "R for Windows" with missing path — removed.
+        let (k, _) = root.create_subkey("R for Windows 4.3.0").unwrap();
+        k.set_value("InstallLocation", &"C:\\nonexistent\\R-4.3.0").unwrap();
+        drop(k);
+
+        // "Rtools" with missing path — removed.
+        let (k, _) = root.create_subkey("Rtools43").unwrap();
+        k.set_value("InstallLocation", &"C:\\nonexistent\\Rtools43").unwrap();
+        drop(k);
+
+        // Unrelated prefix with missing path — NOT touched by the function.
+        let (k, _) = root.create_subkey("Python 3.12.0").unwrap();
+        k.set_value("InstallLocation", &"C:\\nonexistent\\Python").unwrap();
+        drop(k);
+
+        // "R for Windows" with existing path — kept.
+        let (k, _) = root.create_subkey("R for Windows 4.4.0").unwrap();
+        k.set_value("InstallLocation", &tmp).unwrap();
+        drop(k);
+
+        clean_registry_uninst(&root).unwrap();
+
+        assert!(root.open_subkey("R for Windows 4.3.0").is_err());
+        assert!(root.open_subkey("Rtools43").is_err());
+        assert!(root.open_subkey("Python 3.12.0").is_ok(), "unrelated key must not be deleted");
+        assert!(root.open_subkey("R for Windows 4.4.0").is_ok());
+    }
+
+    // ── get_rtools_versions ──────────────────────────────────────────────────
+
+    #[test]
+    fn get_rtools_versions_parses_name_version_and_arch() {
+        let (root, _guard) = make_test_key("rtools");
+
+        // x86_64: no "-aarch64" in path.
+        let (k, _) = root.create_subkey("4.3.5948.5818").unwrap();
+        k.set_value("FullVersion", &"4.3.5948.5818").unwrap();
+        k.set_value("InstallPath", &"C:\\rtools43").unwrap();
+        drop(k);
+
+        // aarch64: "-aarch64" appears in path.
+        let (k, _) = root.create_subkey("4.4.6459.5818").unwrap();
+        k.set_value("FullVersion", &"4.4.6459.5818").unwrap();
+        k.set_value("InstallPath", &"C:\\rtools44-aarch64").unwrap();
+        drop(k);
+
+        let mut versions = get_rtools_versions(&root).unwrap();
+        versions.sort_by(|a, b| a.version.cmp(&b.version));
+
+        assert_eq!(versions.len(), 2);
+
+        assert_eq!(versions[0].name, "43");
+        assert_eq!(versions[0].version, "4.3");
+        assert_eq!(versions[0].fullversion, "4.3.5948.5818");
+        assert_eq!(versions[0].arch, "x86_64");
+
+        assert_eq!(versions[1].name, "44");
+        assert_eq!(versions[1].version, "4.4");
+        assert_eq!(versions[1].fullversion, "4.4.6459.5818");
+        assert_eq!(versions[1].arch, "aarch64");
+    }
 }
