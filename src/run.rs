@@ -127,10 +127,10 @@ fn r_sudo(version: &str, command: &str, user: &User) -> Result<(), Box<dyn Error
 }
 
 fn r_nosudo(version: &str, command: &str) -> Result<(), Box<dyn Error>> {
-    let rbin = get_r_root_for(version)? + "/" + &get_r_binpath()?.replace("{}", &version_dir_key(version));
+    let rbin = get_r_binary(version)?.into_os_string();
 
     run(
-        rbin.into(),
+        rbin,
         vec!["--vanilla".into(), "-s".into(), "-e".into(), command.into()],
         &("R ".to_string() + version),
     )

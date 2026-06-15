@@ -101,6 +101,10 @@ pub fn get_r_etc_path() -> Result<String, Box<dyn Error>> {
     Ok("{}/Resources/etc".to_string())
 }
 
+pub fn get_r_versiondir() -> Result<String, Box<dyn Error>> {
+    Ok(R_VERSIONDIR.to_string())
+}
+
 pub fn get_r_current() -> Result<String, Box<dyn Error>> {
     if let Some(dir) = get_r_install_dir()? {
         return Ok(format!("{}/Current", dir));

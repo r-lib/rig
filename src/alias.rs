@@ -163,7 +163,8 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     escalate(&msg)?;
     let rroot = get_r_root_for(ver)?;
     let base = version_dir_key(ver);
-    let linkdir = Path::new(RIG_LINKS_DIR);
+    let links_dir = get_links_dir()?;
+    let linkdir = Path::new(&links_dir);
 
     // should exist at this point, but make sure
     std::fs::create_dir_all(&linkdir)?;
@@ -171,7 +172,7 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     let filename = "R-".to_string() + alias + ".bat";
     let linkfile = linkdir.join(&filename);
 
-    let cnt = "@\"".to_string() + &rroot + "\\R-" + &base + "\\bin\\R\" %*\n";
+    let cnt = format!("@\"{}\\{}\\bin\\R\" %*\n", rroot, get_r_versiondir()?.replace("{}", &base));
     let op;
     if linkfile.exists() {
         op = "Updating";

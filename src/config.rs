@@ -91,13 +91,13 @@ pub fn get_config(rver: &str, key: &str) -> Result<Option<String>, Box<dyn Error
     }
 }
 
-#[cfg(any(target_os = "windows", target_os = "linux"))]
+#[cfg(target_os = "linux")]
 pub fn sc_config(_args: &ArgMatches, _mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // Cannot be called
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub fn sc_config(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
         Some(("config-file-path", _)) => sc_config_config_file_path(),
@@ -108,14 +108,14 @@ pub fn sc_config(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn sc_config_config_file_path() -> Result<(), Box<dyn Error>> {
     let path = rig_config_file()?;
     println!("{}", path.display());
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn sc_config_get(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let key = args.get_one::<String>("key").unwrap();
     let json = args.get_flag("json") || mainargs.get_flag("json");
@@ -152,7 +152,7 @@ fn sc_config_get(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn
     Ok(())
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+
 fn load_raw_config() -> Result<serde_json::Map<String, serde_json::Value>, Box<dyn Error>> {
     let config_file = rig_config_file()?;
     if config_file.exists() {
@@ -167,7 +167,7 @@ fn load_raw_config() -> Result<serde_json::Map<String, serde_json::Value>, Box<d
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn save_raw_config(map: &serde_json::Map<String, serde_json::Value>) -> Result<(), Box<dyn Error>> {
     let config_file = rig_config_file()?;
     let parent = config_file
@@ -178,7 +178,7 @@ fn save_raw_config(map: &serde_json::Map<String, serde_json::Value>) -> Result<(
     Ok(())
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+
 pub fn get_global_config_value(key: &str) -> Result<Option<String>, Box<dyn Error>> {
     let map = load_raw_config()?;
     match map.get(key) {
@@ -187,7 +187,7 @@ pub fn get_global_config_value(key: &str) -> Result<Option<String>, Box<dyn Erro
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn sc_config_set(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let keyvalue = args.get_one::<String>("keyvalue").unwrap();
     let (key, value) = keyvalue
@@ -198,7 +198,7 @@ fn sc_config_set(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     save_raw_config(&map)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn sc_config_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let config_file = rig_config_file()?;
     let keys: Vec<String> = if config_file.exists() {
