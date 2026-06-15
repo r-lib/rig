@@ -416,12 +416,7 @@ fn get_rtools_needed(
                 continue;
             }
         }
-        let ver_rroot = get_r_root_for(&ver)?;
-        let ver_base = version_dir_key(&ver);
-        let r = Path::new(&ver_rroot)
-            .join(r_dirname(&ver_base)?)
-            .join("bin")
-            .join("R.exe");
+        let r = get_r_binary(&ver)?;
         let out = Command::new(r)
             .args(["--vanilla", "-s", "-e", "cat(as.character(getRversion()))"])
             .output()?;
