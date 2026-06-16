@@ -101,6 +101,74 @@ pub fn get_r_current() -> Result<String, Box<dyn Error>> {
     Ok("/opt/R/current".to_string())
 }
 
+/// The C library implementation a Linux system is built against.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LibcType {
+    Glibc,
+    Musl,
+}
+
+impl std::fmt::Display for LibcType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LibcType::Glibc => write!(f, "glibc"),
+            LibcType::Musl => write!(f, "musl"),
+        }
+    }
+}
+
+/// The detected C library type and version of the running system.
+#[derive(Debug, Clone)]
+pub struct Libc {
+    pub kind: LibcType,
+    pub version: String,
+}
+
+/// Detect the system C library type (glibc or musl) and its version.
+///
+/// This works by running `ldd --version`. glibc's `ldd` writes its banner to
+/// stdout, while musl's `ldd` writes it to stderr (and may exit non-zero), so
+/// we inspect both streams.
+pub fn detect_libc() -> Result<Libc, Box<dyn Error>> {
+    let out = Command::new("ldd").arg("--version").output()?;
+
+    // Combine both streams: glibc reports on stdout, musl on stderr.
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    trace!("ldd --version output: {:?}", text);
+
+    let libc = parse_libc(&text)?;
+    debug!("Detected libc: {} {}", libc.kind, libc.version);
+    Ok(libc)
+}
+
+/// Parse the combined stdout+stderr output of `ldd --version` into a [`Libc`].
+fn parse_libc(text: &str) -> Result<Libc, Box<dyn Error>> {
+    let lower = text.to_lowercase();
+    let kind = if lower.contains("musl") {
+        LibcType::Musl
+    } else if lower.contains("glibc") || lower.contains("gnu libc") {
+        LibcType::Glibc
+    } else {
+        bail!("Could not determine libc type from `ldd --version` output");
+    };
+
+    // Grab the first version-looking token, e.g. "2.35" or "1.2.4".
+    let re = Regex::new(r"[0-9]+\.[0-9]+(\.[0-9]+)?")?;
+    let version = match re.find(text) {
+        Some(m) => m.as_str().to_string(),
+        None => bail!(
+            "Could not determine {} version from `ldd --version` output",
+            kind
+        ),
+    };
+
+    Ok(Libc { kind, version })
+}
+
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("adding new R versions")?;
 
@@ -848,4 +916,65 @@ pub fn set_cert_envvar() {
             }
         }
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Real `ldd --version` banner from a glibc system (Ubuntu 22.04).
+    const GLIBC_OUTPUT: &str = "ldd (Ubuntu GLIBC 2.35-0ubuntu3.8) 2.35\n\
+Copyright (C) 2022 Free Software Foundation, Inc.\n\
+This is free software; see the source for copying conditions.  There is NO\n\
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\
+Written by Roland McGrath and Ulrich Drepper.\n";
+
+    // Real `ldd --version` banner from a musl system (Alpine). musl prints to
+    // stderr and uses "Version" rather than the word "glibc".
+    const MUSL_OUTPUT: &str = "musl libc (x86_64)\n\
+Version 1.2.4\n\
+Dynamic Program Loader\n\
+Usage: /lib/ld-musl-x86_64.so.1 [options] [--] pathname\n";
+
+    #[test]
+    fn parse_libc_glibc() {
+        let libc = parse_libc(GLIBC_OUTPUT).unwrap();
+        assert_eq!(libc.kind, LibcType::Glibc);
+        assert_eq!(libc.version, "2.35");
+    }
+
+    #[test]
+    fn parse_libc_musl() {
+        let libc = parse_libc(MUSL_OUTPUT).unwrap();
+        assert_eq!(libc.kind, LibcType::Musl);
+        assert_eq!(libc.version, "1.2.4");
+    }
+
+    #[test]
+    fn parse_libc_gnu_libc_wording() {
+        // Some distributions phrase the banner as "GNU libc".
+        let text = "ldd (GNU libc) 2.31\n";
+        let libc = parse_libc(text).unwrap();
+        assert_eq!(libc.kind, LibcType::Glibc);
+        assert_eq!(libc.version, "2.31");
+    }
+
+    #[test]
+    fn parse_libc_unknown_type_errors() {
+        let err = parse_libc("some completely unrelated output 1.2.3\n");
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn parse_libc_missing_version_errors() {
+        // Recognizable as glibc, but no version-looking token present.
+        let err = parse_libc("this is glibc, but without a version number\n");
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn libc_type_display() {
+        assert_eq!(LibcType::Glibc.to_string(), "glibc");
+        assert_eq!(LibcType::Musl.to_string(), "musl");
+    }
 }

@@ -209,8 +209,20 @@ pub fn sc_system_detect_platform(
         Err(_) => detect_platform()?,
     };
 
+    // On Linux we also report the C library (glibc or musl) and its version.
+    // This is a property of the running system, so it is only meaningful when
+    // detecting the current platform, not when parsing a RIG_PLATFORM string.
+    #[cfg(target_os = "linux")]
+    let libc = crate::linux::detect_libc().ok();
+
     if args.get_flag("json") || mainargs.get_flag("json") {
-        println!("{}", serde_json::to_string_pretty(&platform)?);
+        let mut value = serde_json::to_value(&platform)?;
+        #[cfg(target_os = "linux")]
+        if let (Some(libc), Some(obj)) = (&libc, value.as_object_mut()) {
+            obj.insert("libc".to_string(), serde_json::json!(libc.kind.to_string()));
+            obj.insert("libc_version".to_string(), serde_json::json!(libc.version));
+        }
+        println!("{}", serde_json::to_string_pretty(&value)?);
     } else {
         println!("Detected platform:");
         println!(
@@ -228,6 +240,15 @@ pub fn sc_system_detect_platform(
             "Version:      {}",
             platform.version.as_deref().unwrap_or("N/A")
         );
+        #[cfg(target_os = "linux")]
+        {
+            let (libc_type, libc_version) = match &libc {
+                Some(libc) => (libc.kind.to_string(), libc.version.clone()),
+                None => ("N/A".to_string(), "N/A".to_string()),
+            };
+            println!("Libc:         {}", libc_type);
+            println!("Libc version: {}", libc_version);
+        }
     }
     Ok(())
 }
