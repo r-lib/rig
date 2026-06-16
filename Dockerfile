@@ -9,7 +9,7 @@ RUN adduser rigbuild -D
 USER rigbuild
 RUN cd && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rust.sh && sh rust.sh -y
 USER root
-ENV PATH="/home/rigbuild/.cargo/bin:$PATH"
+ENV PATH="/home/rigbuild/.cargo/bin:/home/rig/.cargo/bin:$PATH"
 COPY tools/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT [ "sh", "/entrypoint.sh" ]

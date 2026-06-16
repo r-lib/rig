@@ -1,4 +1,4 @@
-#!! /bin/sh
+#! /bin/sh
 
 set -x
 
@@ -18,13 +18,15 @@ if [ -z "$group" ]; then
     group=rig
 fi
 
-# We only need acceess to these and it would takes ~10s to chown all the
-# files of the rust toolchain
-
 rm -rf /home/$user
 mv /home/rigbuild /home/$user
 
+# We only need acceess to these and it would take ~10s to chown all the
+# files of the rust toolchain
+
 chown $user:$group /home/rig
 chown $user:$group /home/rig/.cargo
+
+export PATH=/home/$user/.cargo/bin:$PATH
 
 exec su -s /bin/sh $user sh -l -c "cd /work && $*"
