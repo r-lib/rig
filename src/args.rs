@@ -771,7 +771,6 @@ pub fn rig_app() -> Command {
                 ),
         );
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
         let cmd_config = Command::new("config")
             .about("Manage rig configuration")
