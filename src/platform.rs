@@ -216,7 +216,7 @@ pub fn sc_system_detect_platform(
     let libc = crate::linux::detect_libc().ok();
 
     if args.get_flag("json") || mainargs.get_flag("json") {
-        let mut value = serde_json::to_value(&platform)?;
+        let value = serde_json::to_value(&platform)?;
         #[cfg(target_os = "linux")]
         if let (Some(libc), Some(obj)) = (&libc, value.as_object_mut()) {
             obj.insert("libc".to_string(), serde_json::json!(libc.kind.to_string()));
