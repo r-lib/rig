@@ -283,6 +283,13 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // when a default was already set.
     if mode == Mode::User {
         make_current_r_links()?;
+        // Download the CA certificate bundle (if not already present) and point
+        // this installation at it. A failure here (e.g. no network) should not
+        // abort the install, so only warn.
+        if let Err(e) = setup_user_cert(&dirname.to_string(), false) {
+            OUTPUT.warn(&format!("Could not set up CA certificate bundle: {}", e));
+            warn!("Could not set up CA certificate bundle: {}", e);
+        }
     }
 
     library_update_rprofile(&dirname.to_string())?;
@@ -1125,6 +1132,138 @@ fn check_usr_bin_sed(rver: &str) -> Result<(), Box<dyn Error>> {
     bail!(msg);
 }
 
+// URL of the CA certificate bundle (the Mozilla CA list extracted by the curl
+// project) that user-mode installations download and point R at.
+pub const CACERT_URL: &str = "https://curl.se/ca/cacert.pem";
+
+// Path to the user-mode CA certificate bundle. It lives in an `etc` directory
+// next to the R installations under the rig data directory, e.g.
+// `~/.local/share/rig/etc/cacert.pem`.
+fn get_user_cert_path() -> Result<PathBuf, Box<dyn Error>> {
+    let rdir = get_r_install_dir()?
+        .ok_or_else(|| SimpleError::new("No user-mode R installation directory"))?;
+    // `r-install-dir` is `<data>/r`; keep the bundle in a sibling `etc`.
+    let data = Path::new(&rdir)
+        .parent()
+        .ok_or_else(|| SimpleError::new("Cannot determine rig data directory"))?;
+    Ok(data.join("etc").join("cacert.pem"))
+}
+
+// `Renviron.site` of an installed R version.
+fn get_renviron_site(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
+    Ok(Path::new(&get_r_root()?)
+        .join(rver)
+        .join("lib/R/etc/Renviron.site"))
+}
+
+// Download the CA certificate bundle into the user-mode data directory. When
+// `force` is false an existing bundle is reused; `rig system update-certs`
+// passes `force = true` to always fetch a fresh copy. rig's own HTTP client uses
+// bundled roots, so this download does not depend on the system certificates.
+fn download_cacert(force: bool) -> Result<PathBuf, Box<dyn Error>> {
+    let cert = get_user_cert_path()?;
+    if cert.exists() && !force {
+        debug!("CA bundle already present at {}", cert.display());
+        return Ok(cert);
+    }
+    if let Some(parent) = cert.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    OUTPUT.status(&format!(
+        "Downloading CA bundle {} -> {}",
+        CACERT_URL,
+        cert.display()
+    ));
+    info!("Downloading CA bundle {} -> {}", CACERT_URL, cert.display());
+    let client = &reqwest::Client::new();
+    download_file(client, CACERT_URL, cert.as_os_str())?;
+    Ok(cert)
+}
+
+// Point an installed R version at the rig CA bundle by setting `SSL_CERT_FILE`
+// and `CURL_CA_BUNDLE` in its `Renviron.site`, inside a fenced rig block so the
+// change is idempotent and easy to remove. These cover R's libcurl downloads and
+// the curl / openssl packages.
+fn configure_cert(rver: &str, cert: &Path) -> Result<(), Box<dyn Error>> {
+    let renviron = get_renviron_site(rver)?;
+    let existing = std::fs::read_to_string(&renviron).unwrap_or_default();
+    let out = render_renviron_cert(&existing, &cert.to_string_lossy());
+
+    if let Some(parent) = renviron.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    debug!("Configuring CA bundle in {}", renviron.display());
+    std::fs::write(&renviron, out)?;
+    Ok(())
+}
+
+const CERT_BLOCK_START: &str = "## rig SSL_CERT_FILE start";
+const CERT_BLOCK_END: &str = "## rig SSL_CERT_FILE end";
+
+// Produce the contents of `Renviron.site` with the rig CA-bundle block set to
+// `cert`. Any previous rig block in `existing` is replaced (not duplicated), so
+// re-running with a new path is idempotent and leaves the rest of the file
+// untouched.
+fn render_renviron_cert(existing: &str, cert: &str) -> String {
+    // Keep everything outside a previous rig block, dropping the old block.
+    let mut kept: Vec<String> = Vec::new();
+    let mut in_block = false;
+    for line in existing.lines() {
+        match line.trim() {
+            CERT_BLOCK_START => in_block = true,
+            CERT_BLOCK_END => in_block = false,
+            _ if !in_block => kept.push(line.to_string()),
+            _ => {}
+        }
+    }
+    // Trim trailing blank lines so they do not accumulate across re-runs.
+    while matches!(kept.last(), Some(l) if l.trim().is_empty()) {
+        kept.pop();
+    }
+
+    let mut out = kept.join("\n");
+    if !out.is_empty() {
+        out.push('\n');
+    }
+    out.push_str(&format!(
+        "{}\nSSL_CERT_FILE={}\nCURL_CA_BUNDLE={}\n{}\n",
+        CERT_BLOCK_START, cert, cert, CERT_BLOCK_END
+    ));
+    out
+}
+
+// Download the CA bundle (if needed) and point the given user-mode R version at
+// it. Called automatically after a user-mode install.
+fn setup_user_cert(rver: &str, force: bool) -> Result<(), Box<dyn Error>> {
+    let cert = download_cacert(force)?;
+    configure_cert(rver, &cert)?;
+    OUTPUT.success(&format!("Configured CA certificate bundle for R {}", rver));
+    info!("Configured CA certificate bundle for R {}", rver);
+    Ok(())
+}
+
+// `rig system update-certs`: fetch a fresh CA bundle and re-point every
+// user-mode R installation at it. User mode only.
+pub fn sc_system_update_certs() -> Result<(), Box<dyn Error>> {
+    if get_mode()? != Mode::User {
+        OUTPUT.warn("`rig system update-certs` only applies in user mode.");
+        warn!("`rig system update-certs` called in admin mode, ignoring");
+        return Ok(());
+    }
+    let cert = download_cacert(true)?;
+    let vers = sc_get_list()?;
+    if vers.is_empty() {
+        OUTPUT.warn("No R installations to configure.");
+        return Ok(());
+    }
+    for ver in vers {
+        configure_cert(&ver, &cert)?;
+        OUTPUT.success(&format!("Configured CA certificate bundle for R {}", ver));
+        info!("Configured CA certificate bundle for R {}", ver);
+    }
+    Ok(())
+}
+
 pub fn set_cert_envvar() {
     match std::env::var("SSL_CERT_FILE") {
         Ok(_) => {
@@ -1249,5 +1388,42 @@ Usage: /lib/ld-musl-x86_64.so.1 [options] [--] pathname\n";
             version: "1.1.24".to_string(),
         };
         assert!(check_libc_supported(&musl).is_err());
+    }
+
+    #[test]
+    fn render_renviron_cert_into_empty_file() {
+        let out = render_renviron_cert("", "/home/u/.local/share/rig/etc/cacert.pem");
+        assert_eq!(
+            out,
+            "## rig SSL_CERT_FILE start\n\
+             SSL_CERT_FILE=/home/u/.local/share/rig/etc/cacert.pem\n\
+             CURL_CA_BUNDLE=/home/u/.local/share/rig/etc/cacert.pem\n\
+             ## rig SSL_CERT_FILE end\n"
+        );
+    }
+
+    #[test]
+    fn render_renviron_cert_preserves_existing_content() {
+        let existing = "FOO=bar\nBAZ=qux\n";
+        let out = render_renviron_cert(existing, "/etc/cacert.pem");
+        assert!(out.starts_with("FOO=bar\nBAZ=qux\n"));
+        assert!(out.contains("SSL_CERT_FILE=/etc/cacert.pem"));
+        assert!(out.contains("CURL_CA_BUNDLE=/etc/cacert.pem"));
+    }
+
+    #[test]
+    fn render_renviron_cert_is_idempotent() {
+        let first = render_renviron_cert("FOO=bar\n", "/old/cacert.pem");
+        // Re-running with a new path replaces the block rather than appending.
+        let second = render_renviron_cert(&first, "/new/cacert.pem");
+        assert_eq!(second.matches(CERT_BLOCK_START).count(), 1);
+        assert_eq!(second.matches(CERT_BLOCK_END).count(), 1);
+        assert!(!second.contains("/old/cacert.pem"));
+        assert!(second.contains("SSL_CERT_FILE=/new/cacert.pem"));
+        assert!(second.starts_with("FOO=bar\n"));
+
+        // A second run with the same path is a no-op on the contents.
+        let third = render_renviron_cert(&second, "/new/cacert.pem");
+        assert_eq!(third, second);
     }
 }
