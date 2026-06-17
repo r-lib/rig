@@ -175,6 +175,7 @@ pub fn get_global_config_value(key: &str) -> Result<Option<String>, Box<dyn Erro
     }
 }
 
+#[cfg(target_os = "macos")]
 pub fn set_global_config_value(key: &str, value: &str) -> Result<(), Box<dyn Error>> {
     let mut map = load_raw_config()?;
     map.insert(
