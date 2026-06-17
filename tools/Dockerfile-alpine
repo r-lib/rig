@@ -1,0 +1,37 @@
+
+FROM alpine:3.22
+
+RUN apk add curl linux-headers bash gcc musl-dev g++ pkgconf make file setpriv
+
+# install rust toolchain ==================================================
+#
+# Installed as root into /opt/rust, world-readable, so it belongs to no user
+# and the host-UID build user created at runtime can just read and run it.
+# RUSTUP_HOME holds the toolchain; the cargo shims land in /opt/rust/cargo/bin
+# (CARGO_HOME during install). RUSTUP_HOME is a persistent env var so the shims
+# find the toolchain at runtime.
+ENV RUSTUP_HOME=/opt/rust/rustup \
+    PATH=/opt/rust/cargo/bin:$PATH
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rust.sh && \
+    CARGO_HOME=/opt/rust/cargo sh rust.sh -y --no-modify-path && \
+    rm rust.sh
+
+# cargo's download cache (registry index, crate sources, git deps) lives on a
+# named volume mounted at /cargo at runtime, kept separate from the toolchain.
+ENV CARGO_HOME=/cargo
+RUN mkdir -p /cargo/registry /cargo/git
+
+COPY tools/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT [ "sh", "/entrypoint.sh" ]
+
+# this is the shared directory =============================================
+
+RUN mkdir /work
+WORKDIR /work
+
+# packageer ===============================================================
+
+RUN curl -LO https://github.com/goreleaser/nfpm/releases/download/v2.32.0/nfpm_2.32.0_$(arch).apk && \
+    apk add --allow-untrusted nfpm*.apk && \
+    rm nfpm*.apk

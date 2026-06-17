@@ -1,22 +1,21 @@
 
 services:
-  rig:
-    image: "rlib/rig-builder:latest"
+  alpine:
+    image: "rlib/rig-alpine:latest"
     build:
       context: .
-      dockerfile: Dockerfile
-    command: sleep 100000d
-    volumes:
-      - type: bind
-        source: .
-        target: /work
-      - type: volume
-        source: cargo-cache
-        target: /home/rigbuild/.cargo/registry
-      - type: volume
-        source: cargo-git
-        target: /home/rigbuild/.cargo/git
+      dockerfile: tools/Dockerfile-alpine
+
+  ubuntu:
+    image: "rlib/rig-ubuntu:latest"
+    build:
+      context: .
+      dockerfile: tools/Dockerfile-ubuntu
 
 volumes:
+  # Whole CARGO_HOME (registry + git + the .package-cache lock) on one volume,
+  # so concurrent containers share cargo's flock and serialize cache writes
+  # instead of clobbering each other.
   cargo-cache:
-  cargo-git:
+  rig-linux-target-alpine:
+  rig-linux-target-ubuntu:

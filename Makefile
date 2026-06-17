@@ -72,11 +72,21 @@ r-rig-$(VERSION).deb: rig-$(VERSION).tar.gz tools/linux/make-deb.sh
 r-rig-$(VERSION).rpm: rig-$(VERSION).tar.gz tools/linux/make-rpm.sh
 	VERSION=$(VERSION) ./tools/linux/make-rpm.sh $< $@
 
-shell-linux:
-	docker compose build
+shell-alpine:
+	docker compose build alpine
 	docker run -ti -v .:/work \
 		-e LOCAL_UID=`id -u` -e LOCAL_GID=`id -g` $(DOCKER_ARCH) \
-		rlib/rig-builder:latest bash
+		-v rig-linux-target-alpine:/work/target \
+		-v cargo-cache:/cargo \
+		rlib/rig-alpine:latest bash
+
+shell-ubuntu:
+	docker compose build ubuntu
+	docker run -ti -v .:/work \
+		-e LOCAL_UID=`id -u` -e LOCAL_GID=`id -g` $(DOCKER_ARCH) \
+		-v rig-linux-target-ubuntu:/work/target \
+		-v cargo-cache:/cargo \
+		rlib/rig-ubuntu:latest bash
 
 linux-amd64-in-docker:
 	@echo "make linux-amd64-in-docker is only reliable after make clean"
@@ -90,7 +100,7 @@ linux-in-docker:
 	docker compose build
 	docker run -v .:/work \
 		-e LOCAL_UID=`id -u` -e LOCAL_GID=`id -g` \
-		rlib/rig-builder:latest make linux
+		rlib/rig-alpine:latest make linux
 
 VARIANTS = ubuntu-20.04 ubuntu-22.04 ubuntu-24.04 ubuntu-26.04 debian-12 debian-13 rockylinux/rockylinux-8 rockylinux/rockylinux-9 rockylinux/rockylinux-10 opensuse/leap-15.6 fedora-42 fedora-43 almalinux-8 almalinux-9 almalinux-10 redhat/ubi8 redhat/ubi9 redhat/ubi10
 print-linux-variants:
