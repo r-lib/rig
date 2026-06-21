@@ -565,10 +565,24 @@ fn safe_user_install(target: &Path, version: &Rversion) -> Result<String, Box<dy
         let _ = std::fs::remove_dir_all(&staging);
     }
 
+    write_install_metadata(&dest)?;
+
     OUTPUT.success(&format!("Installed R to {}", dest.display()));
     info!("Installed R to {}", dest.display());
 
     Ok(dirname)
+}
+
+// Write a `metadata.json` file at the top level of a user-mode R installation,
+// recording the platform of the portable build (the manylinux/musllinux distro
+// string, selected by libc).
+fn write_install_metadata(dest: &Path) -> Result<(), Box<dyn Error>> {
+    let platform = user_mode_platform()?;
+    let metadata = serde_json::json!({ "platform": platform });
+    let path = dest.join("metadata.json");
+    debug!("Writing installation metadata to {}", path.display());
+    std::fs::write(&path, serde_json::to_string_pretty(&metadata)?)?;
+    Ok(())
 }
 
 // Extract a gzip-compressed tarball into `dest`, in-process (no external `tar`).
