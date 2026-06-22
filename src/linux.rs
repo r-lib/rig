@@ -29,6 +29,16 @@ use crate::utils::*;
 pub const R_ROOT_: &str = "/opt/R";
 pub const R_VERSIONDIR: &str = "{}";
 
+// Portable R builds used for user-mode installation. These "distros" resolve to
+// relocatable `.tar.gz` files on the R-hub version server, picked by libc type.
+pub const USER_DISTRO_GLIBC: &str = "linux-manylinux-2.34";
+pub const USER_DISTRO_MUSL: &str = "linux-musllinux-1.2";
+
+// Minimum libc versions the portable user-mode R builds support. These match
+// the manylinux/musllinux baselines the `.tar.gz` files are built against.
+pub const MIN_GLIBC_VERSION: &str = "2.34";
+pub const MIN_MUSL_VERSION: &str = "1.2";
+
 macro_rules! strvec {
     // match a list of expressions separated by comma:
     ($($str:expr),*) => ({
@@ -63,30 +73,18 @@ pub fn version_dir_key(name: &str) -> String {
 }
 
 pub fn get_r_syslibpath() -> Result<String, Box<dyn Error>> {
-    if get_mode()? == Mode::User {
-        return Ok("{}/library".to_string());
-    }
     Ok("{}/lib/R/library".to_string())
 }
 
 pub fn get_r_binpath() -> Result<String, Box<dyn Error>> {
-    if get_mode()? == Mode::User {
-        return Ok("{}/R".to_string());
-    }
     Ok("{}/bin/R".to_string())
 }
 
 pub fn get_r_base_profile() -> Result<String, Box<dyn Error>> {
-    if get_mode()? == Mode::User {
-        return Ok("{}/library/base/R/Rprofile".to_string());
-    }
     Ok("{}/lib/R/library/base/R/Rprofile".to_string())
 }
 
 pub fn get_r_etc_path() -> Result<String, Box<dyn Error>> {
-    if get_mode()? == Mode::User {
-        return Ok("{}/etc".to_string());
-    }
     Ok("{}/lib/R/etc".to_string())
 }
 
@@ -169,8 +167,67 @@ fn parse_libc(text: &str) -> Result<Libc, Box<dyn Error>> {
     Ok(Libc { kind, version })
 }
 
+/// Compare two dotted numeric version strings (e.g. "2.35" and "2.34").
+/// Returns `true` if `version` is greater than or equal to `minimum`.
+/// Non-numeric or missing components are treated as `0`.
+fn version_at_least(version: &str, minimum: &str) -> bool {
+    let parse = |s: &str| -> Vec<u64> {
+        s.split('.')
+            .map(|p| p.parse::<u64>().unwrap_or(0))
+            .collect()
+    };
+    let v = parse(version);
+    let m = parse(minimum);
+    for i in 0..m.len() {
+        let vi = v.get(i).copied().unwrap_or(0);
+        if vi != m[i] {
+            return vi > m[i];
+        }
+    }
+    true
+}
+
+/// Ensure the detected libc is one we have portable user-mode R builds for, and
+/// that it is recent enough. glibc must be >= 2.34, musl must be >= 1.2.
+fn check_libc_supported(libc: &Libc) -> Result<(), Box<dyn Error>> {
+    let minimum = match libc.kind {
+        LibcType::Glibc => MIN_GLIBC_VERSION,
+        LibcType::Musl => MIN_MUSL_VERSION,
+    };
+    if !version_at_least(&libc.version, minimum) {
+        bail!(
+            "Unsupported {} version {}: user-mode R installation requires \
+             {} {} or later",
+            libc.kind,
+            libc.version,
+            libc.kind,
+            minimum
+        );
+    }
+    Ok(())
+}
+
+/// The platform string used to resolve a user-mode (portable) R build, chosen
+/// from the system libc: glibc systems get the manylinux build, musl systems the
+/// musllinux build. Both resolve to a relocatable `.tar.gz`.
+///
+/// Errors if the libc type is unknown, or if it is too old for the portable
+/// builds (glibc < 2.34, musl < 1.2).
+pub fn user_mode_platform() -> Result<String, Box<dyn Error>> {
+    let libc = detect_libc()?;
+    check_libc_supported(&libc)?;
+    let platform = match libc.kind {
+        LibcType::Glibc => USER_DISTRO_GLIBC,
+        LibcType::Musl => USER_DISTRO_MUSL,
+    };
+    Ok(platform.to_string())
+}
+
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    escalate("adding new R versions")?;
+    let mode = get_mode()?;
+    if mode == Mode::Admin {
+        escalate("adding new R versions")?;
+    }
 
     // This is needed to fix static linking on Arm Linux :(
     let uid = nix::unistd::getuid().as_raw();
@@ -178,7 +235,6 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         println!("{}", uid);
     }
 
-    let platform = detect_platform()?;
     let version = get_resolve(args)?;
     let alias = get_alias(args);
     let ver = version.version.to_owned();
@@ -212,13 +268,34 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         download_file(client, &url, &target.as_os_str())?;
     }
 
-    let dirname;
-    dirname = add_package(target.as_os_str(), &platform)?;
+    let dirname = if mode == Mode::User {
+        safe_user_install(&target, &version)?
+    } else {
+        let platform = detect_platform()?;
+        add_package(target.as_os_str(), &platform)?
+    };
 
     set_default_if_none(dirname.to_string())?;
 
+    // In user mode, make sure the `R`/`Rscript` aliases in the binary directory
+    // exist and point at the current default. `set_default_if_none` only creates
+    // them on the very first install; refresh them here so they are present even
+    // when a default was already set.
+    if mode == Mode::User {
+        make_current_r_links()?;
+        // Download the CA certificate bundle (if not already present) and point
+        // this installation at it. A failure here (e.g. no network) should not
+        // abort the install, so only warn.
+        if let Err(e) = setup_user_cert(&dirname.to_string(), false) {
+            OUTPUT.warn(&format!("Could not set up CA certificate bundle: {}", e));
+            warn!("Could not set up CA certificate bundle: {}", e);
+        }
+    }
+
     library_update_rprofile(&dirname.to_string())?;
-    check_usr_bin_sed(&dirname.to_string())?;
+    if mode == Mode::Admin {
+        check_usr_bin_sed(&dirname.to_string())?;
+    }
     sc_system_make_links()?;
     match alias {
         Some(alias) => add_alias(&dirname, &alias)?,
@@ -442,34 +519,183 @@ fn add_package(path: &OsStr, platform: &OsVersion) -> Result<String, Box<dyn Err
     Ok(ver.to_string())
 }
 
+// User-mode installation: unpack a portable R build (a `.tar.gz`) into the
+// per-user R root (`~/.local/share/rig/r/<version>`), the same place macOS uses.
+// No privilege escalation and no system package manager.
+fn safe_user_install(target: &Path, version: &Rversion) -> Result<String, Box<dyn Error>> {
+    let root = PathBuf::from(get_r_root()?);
+    std::fs::create_dir_all(&root)?;
+
+    // Unpack into a staging directory next to the destination, so the final
+    // rename stays on the same filesystem.
+    let staging = root.join(format!(".rig-extract-{}", std::process::id()));
+    if staging.exists() {
+        std::fs::remove_dir_all(&staging)?;
+    }
+    std::fs::create_dir_all(&staging)?;
+
+    OUTPUT.status(&format!("Unpacking {}", target.display()));
+    info!("Unpacking {} into {}", target.display(), staging.display());
+    if let Err(e) = unpack_tar_gz(target, &staging) {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(e);
+    }
+
+    // The build is wrapped in a single top-level directory (named after the
+    // version); descend into it so the R tree (`bin/`, `lib/`, `share/`) sits at
+    // the top of the install directory.
+    let content = match single_subdir(&staging)? {
+        Some(sub) => sub,
+        None => staging.clone(),
+    };
+
+    let dirname = user_install_dirname(&content, version)?;
+    let dest = root.join(&dirname);
+    if dest.exists() {
+        OUTPUT.status(&format!("Removing existing {}", dest.display()));
+        info!("Removing existing {}", dest.display());
+        std::fs::remove_dir_all(&dest)?;
+    }
+
+    debug!("Moving {} to {}", content.display(), dest.display());
+    std::fs::rename(&content, &dest)?;
+
+    // Clean up the staging wrapper if we descended into a subdirectory.
+    if staging.exists() {
+        let _ = std::fs::remove_dir_all(&staging);
+    }
+
+    write_install_metadata(&dest)?;
+
+    OUTPUT.success(&format!("Installed R to {}", dest.display()));
+    info!("Installed R to {}", dest.display());
+
+    Ok(dirname)
+}
+
+// Write a `metadata.json` file at the top level of a user-mode R installation,
+// recording the platform of the portable build (the manylinux/musllinux distro
+// string, selected by libc).
+fn write_install_metadata(dest: &Path) -> Result<(), Box<dyn Error>> {
+    let platform = user_mode_platform()?;
+    let metadata = serde_json::json!({ "platform": platform });
+    let path = dest.join("metadata.json");
+    debug!("Writing installation metadata to {}", path.display());
+    std::fs::write(&path, serde_json::to_string_pretty(&metadata)?)?;
+    Ok(())
+}
+
+pub fn read_install_platform(dir: &Path) -> Option<String> {
+    let path = dir.join("metadata.json");
+    let text = std::fs::read_to_string(&path).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&text).ok()?;
+    value.get("platform")?.as_str().map(|s| s.to_string())
+}
+
+// Extract a gzip-compressed tarball into `dest`, in-process (no external `tar`).
+fn unpack_tar_gz(archive: &Path, dest: &Path) -> Result<(), Box<dyn Error>> {
+    let file = std::fs::File::open(archive)?;
+    let decoder = flate2::read::GzDecoder::new(file);
+    let mut ar = tar::Archive::new(decoder);
+    ar.set_preserve_permissions(true);
+    ar.set_overwrite(true);
+    ar.unpack(dest)?;
+    Ok(())
+}
+
+// If `dir` contains exactly one entry and it is a directory, return it. Used to
+// strip an optional top-level directory inside the build tarball.
+fn single_subdir(dir: &Path) -> Result<Option<PathBuf>, Box<dyn Error>> {
+    let mut entries = std::fs::read_dir(dir)?.collect::<Result<Vec<_>, _>>()?;
+    if entries.len() != 1 {
+        return Ok(None);
+    }
+    let entry = entries.remove(0);
+    if entry.file_type()?.is_dir() {
+        Ok(Some(entry.path()))
+    } else {
+        Ok(None)
+    }
+}
+
+// Determine the user-mode installation directory name. Released versions are
+// named after their version number; development builds are named `devel`
+// (R-devel) or `next` (R-next), as recorded by the `R_STATUS` macro in
+// `include/Rversion.h`.
+fn user_install_dirname(content: &Path, version: &Rversion) -> Result<String, Box<dyn Error>> {
+    let status = read_r_status(content);
+    let base = match status.as_deref() {
+        Some("Under development (unstable)") => "devel".to_string(),
+        Some(s) if !s.is_empty() => "next".to_string(),
+        _ => version
+            .version
+            .clone()
+            .ok_or_else(|| SimpleError::new("Resolved R build has no version"))?,
+    };
+    debug!(
+        "User install directory name is {} (R_STATUS = {:?})",
+        base, status
+    );
+    Ok(base)
+}
+
+// Read the `R_STATUS` macro from `Rversion.h` in an unpacked R build. Returns
+// None if the header cannot be located, an empty string for released versions,
+// "Under development (unstable)" for R-devel, and another label for R-next.
+fn read_r_status(content: &Path) -> Option<String> {
+    let candidates = ["include/Rversion.h", "lib/R/include/Rversion.h"];
+    let re = Regex::new(r#"(?m)^\s*#define\s+R_STATUS\s+"(.*)"\s*$"#).ok()?;
+    for cand in candidates {
+        if let Ok(text) = std::fs::read_to_string(content.join(cand)) {
+            let status = re
+                .captures(&text)
+                .and_then(|caps| caps.get(1))
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default();
+            return Some(status);
+        }
+    }
+    None
+}
+
 pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    escalate("removing R versions")?;
+    let mode = get_mode()?;
+    if mode == Mode::Admin {
+        escalate("removing R versions")?;
+    }
     let vers = args.get_many::<String>("version");
     if vers.is_none() {
         return Ok(());
     }
     let vers = vers.unwrap();
 
-    let platform = detect_platform()?;
-    let tools = select_linux_tools(&platform)?;
+    // In admin mode R is a system package, so we ask the package manager to
+    // remove it. In user mode it is just an unpacked directory tree.
+    let tools = if mode == Mode::Admin {
+        Some(select_linux_tools(&detect_platform()?)?)
+    } else {
+        None
+    };
     for ver in vers {
         let ver = check_installed(ver)?;
 
-        let pkgname = tools.package_name.replace("{}", &ver);
-        let opkgname = OsStr::new(&pkgname);
-        let cmd = format_cmd_args(tools.is_installed.clone(), opkgname);
-        let cmd0 = cmd[0].to_owned();
-        let out = Command::new(cmd0).args(cmd[1..].to_vec()).output()?;
-
-        if out.status.success() {
-            OUTPUT.status(&format!("Removing {} package", pkgname));
-            info!("Removing {} package", pkgname);
-            let cmd = format_cmd_args(tools.delete.clone(), opkgname);
+        if let Some(ref tools) = tools {
+            let pkgname = tools.package_name.replace("{}", &ver);
+            let opkgname = OsStr::new(&pkgname);
+            let cmd = format_cmd_args(tools.is_installed.clone(), opkgname);
             let cmd0 = cmd[0].to_owned();
-            run(cmd0, cmd[1..].to_vec(), "deleting system package")?;
-        } else {
-            OUTPUT.success(&format!("{} package is not installed", pkgname));
-            info!("{} package is not installed", pkgname);
+            let out = Command::new(cmd0).args(cmd[1..].to_vec()).output()?;
+
+            if out.status.success() {
+                OUTPUT.status(&format!("Removing {} package", pkgname));
+                info!("Removing {} package", pkgname);
+                let cmd = format_cmd_args(tools.delete.clone(), opkgname);
+                let cmd0 = cmd[0].to_owned();
+                run(cmd0, cmd[1..].to_vec(), "deleting system package")?;
+            } else {
+                OUTPUT.success(&format!("{} package is not installed", pkgname));
+                info!("{} package is not installed", pkgname);
+            }
         }
 
         let rroot = get_r_root()?;
@@ -488,15 +714,23 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
-    escalate("making R-* quick links")?;
+    let mode = get_mode()?;
+    let binary_dir = get_binary_dir()?;
+    if mode == Mode::Admin {
+        escalate("making R-* quick links")?;
+    } else {
+        std::fs::create_dir_all(&binary_dir)?;
+        check_local_bin_path()?;
+    }
     let vers = sc_get_list()?;
     let rroot = get_r_root()?;
     let base = Path::new(&rroot);
+    let binpath = get_r_binpath()?;
 
     // Create new links
     for ver in vers {
-        let linkfile = Path::new("/usr/local/bin").join("R-".to_string() + &ver);
-        let target = base.join(&ver).join("bin/R");
+        let linkfile = Path::new(&binary_dir).join("R-".to_string() + &ver);
+        let target = base.join(binpath.replace("{}", &ver));
         if !linkfile.exists() {
             OUTPUT.status(&format!(
                 "Adding {} -> {}",
@@ -509,7 +743,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     }
 
     // Remove dangling links
-    let paths = std::fs::read_dir("/usr/local/bin")?;
+    let paths = std::fs::read_dir(&binary_dir)?;
     let re = Regex::new("^R-([0-9]+[.][0-9]+[.][0-9]+|oldrel|next|release|devel)$")?;
     for file in paths {
         let path = file?.path();
@@ -560,7 +794,14 @@ pub fn re_alias() -> Regex {
 pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
     debug!("Finding existing aliases");
 
-    let paths = std::fs::read_dir("/usr/local/bin")?;
+    let binary_dir = get_binary_dir()?;
+    // The binary directory might not exist yet in user mode (e.g. before the
+    // first install has created `~/.local/bin`), in which case there are no
+    // aliases to find.
+    if !Path::new(&binary_dir).exists() {
+        return Ok(vec![]);
+    }
+    let paths = std::fs::read_dir(&binary_dir)?;
     let re = re_alias();
     let mut result: Vec<Alias> = vec![];
 
@@ -646,6 +887,10 @@ pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
         if fname == "current" {
             continue;
         }
+        // Skip the staging directory used while extracting an installation
+        if fname.starts_with(".rig-extract-") {
+            continue;
+        }
         // If there is no bin/R, then this is not an R installation
         let rbin = path.join("bin").join("R");
         if !rbin.exists() {
@@ -658,8 +903,38 @@ pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
     Ok(vers)
 }
 
+// Create (or refresh) the `R` and `Rscript` symlinks in the binary directory.
+// They point at the current default R through the `current` symlink (e.g.
+// `~/.local/share/rig/r/current/bin/R` in user mode), so they keep working as
+// the default version changes. In user mode the binary directory is
+// `~/.local/bin`, which is how R ends up on the user's PATH.
+pub fn make_current_r_links() -> Result<(), Box<dyn Error>> {
+    let binary_dir = get_binary_dir()?;
+    if get_mode()? == Mode::User {
+        std::fs::create_dir_all(&binary_dir)?;
+        check_local_bin_path()?;
+    }
+
+    let cur = get_r_current()?;
+    let curdir = Path::new(&cur);
+
+    for prog in ["R", "Rscript"] {
+        let link = Path::new(&binary_dir).join(prog);
+        trace!("Removing link at {}", link.display());
+        std::fs::remove_file(&link).ok();
+        let target = curdir.join("bin").join(prog);
+        trace!("Adding {} -> {} link", link.display(), target.display());
+        symlink(&target, &link)?;
+    }
+
+    Ok(())
+}
+
 pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
-    escalate("setting the default R version")?;
+    let mode = get_mode()?;
+    if mode == Mode::Admin {
+        escalate("setting the default R version")?;
+    }
     let ver = check_installed(&ver.to_string())?;
     trace!("Setting default version to {}", ver);
 
@@ -674,25 +949,7 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
     trace!("Adding symlink at {}", cur);
     std::os::unix::fs::symlink(&path, &cur)?;
 
-    // Remove /usr/local/bin/R link
-    let r = Path::new("/usr/local/bin/R");
-    trace!("Removing link at {}", r.display());
-    std::fs::remove_file(r).ok();
-
-    // Add /usr/local/bin/R link
-    let cr = Path::new("/opt/R/current/bin/R");
-    trace!("Adding /usr/local/bin/R link");
-    std::os::unix::fs::symlink(&cr, &r)?;
-
-    // Remove /usr/local/bin/Rscript link
-    let rs = Path::new("/usr/local/bin/Rscript");
-    trace!("Removing /usr/local/bin/Rscript link");
-    std::fs::remove_file(rs).ok();
-
-    // Add /usr/local/bin/Rscript link
-    let crs = Path::new("/opt/R/current/bin/Rscript");
-    trace!("Adding /usr/local/bin/Rscript link");
-    std::os::unix::fs::symlink(&crs, &rs)?;
+    make_current_r_links()?;
 
     Ok(())
 }
@@ -896,6 +1153,138 @@ fn check_usr_bin_sed(rver: &str) -> Result<(), Box<dyn Error>> {
     bail!(msg);
 }
 
+// URL of the CA certificate bundle (the Mozilla CA list extracted by the curl
+// project) that user-mode installations download and point R at.
+pub const CACERT_URL: &str = "https://curl.se/ca/cacert.pem";
+
+// Path to the user-mode CA certificate bundle. It lives in an `etc` directory
+// next to the R installations under the rig data directory, e.g.
+// `~/.local/share/rig/etc/cacert.pem`.
+fn get_user_cert_path() -> Result<PathBuf, Box<dyn Error>> {
+    let rdir = get_r_install_dir()?
+        .ok_or_else(|| SimpleError::new("No user-mode R installation directory"))?;
+    // `r-install-dir` is `<data>/r`; keep the bundle in a sibling `etc`.
+    let data = Path::new(&rdir)
+        .parent()
+        .ok_or_else(|| SimpleError::new("Cannot determine rig data directory"))?;
+    Ok(data.join("etc").join("cacert.pem"))
+}
+
+// `Renviron.site` of an installed R version.
+fn get_renviron_site(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
+    Ok(Path::new(&get_r_root()?)
+        .join(rver)
+        .join("lib/R/etc/Renviron.site"))
+}
+
+// Download the CA certificate bundle into the user-mode data directory. When
+// `force` is false an existing bundle is reused; `rig system update-certs`
+// passes `force = true` to always fetch a fresh copy. rig's own HTTP client uses
+// bundled roots, so this download does not depend on the system certificates.
+fn download_cacert(force: bool) -> Result<PathBuf, Box<dyn Error>> {
+    let cert = get_user_cert_path()?;
+    if cert.exists() && !force {
+        debug!("CA bundle already present at {}", cert.display());
+        return Ok(cert);
+    }
+    if let Some(parent) = cert.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    OUTPUT.status(&format!(
+        "Downloading CA bundle {} -> {}",
+        CACERT_URL,
+        cert.display()
+    ));
+    info!("Downloading CA bundle {} -> {}", CACERT_URL, cert.display());
+    let client = &reqwest::Client::new();
+    download_file(client, CACERT_URL, cert.as_os_str())?;
+    Ok(cert)
+}
+
+// Point an installed R version at the rig CA bundle by setting `SSL_CERT_FILE`
+// and `CURL_CA_BUNDLE` in its `Renviron.site`, inside a fenced rig block so the
+// change is idempotent and easy to remove. These cover R's libcurl downloads and
+// the curl / openssl packages.
+fn configure_cert(rver: &str, cert: &Path) -> Result<(), Box<dyn Error>> {
+    let renviron = get_renviron_site(rver)?;
+    let existing = std::fs::read_to_string(&renviron).unwrap_or_default();
+    let out = render_renviron_cert(&existing, &cert.to_string_lossy());
+
+    if let Some(parent) = renviron.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    debug!("Configuring CA bundle in {}", renviron.display());
+    std::fs::write(&renviron, out)?;
+    Ok(())
+}
+
+const CERT_BLOCK_START: &str = "## rig SSL_CERT_FILE start";
+const CERT_BLOCK_END: &str = "## rig SSL_CERT_FILE end";
+
+// Produce the contents of `Renviron.site` with the rig CA-bundle block set to
+// `cert`. Any previous rig block in `existing` is replaced (not duplicated), so
+// re-running with a new path is idempotent and leaves the rest of the file
+// untouched.
+fn render_renviron_cert(existing: &str, cert: &str) -> String {
+    // Keep everything outside a previous rig block, dropping the old block.
+    let mut kept: Vec<String> = Vec::new();
+    let mut in_block = false;
+    for line in existing.lines() {
+        match line.trim() {
+            CERT_BLOCK_START => in_block = true,
+            CERT_BLOCK_END => in_block = false,
+            _ if !in_block => kept.push(line.to_string()),
+            _ => {}
+        }
+    }
+    // Trim trailing blank lines so they do not accumulate across re-runs.
+    while matches!(kept.last(), Some(l) if l.trim().is_empty()) {
+        kept.pop();
+    }
+
+    let mut out = kept.join("\n");
+    if !out.is_empty() {
+        out.push('\n');
+    }
+    out.push_str(&format!(
+        "{}\nSSL_CERT_FILE={}\nCURL_CA_BUNDLE={}\n{}\n",
+        CERT_BLOCK_START, cert, cert, CERT_BLOCK_END
+    ));
+    out
+}
+
+// Download the CA bundle (if needed) and point the given user-mode R version at
+// it. Called automatically after a user-mode install.
+fn setup_user_cert(rver: &str, force: bool) -> Result<(), Box<dyn Error>> {
+    let cert = download_cacert(force)?;
+    configure_cert(rver, &cert)?;
+    OUTPUT.success(&format!("Configured CA certificate bundle for R {}", rver));
+    info!("Configured CA certificate bundle for R {}", rver);
+    Ok(())
+}
+
+// `rig system update-certs`: fetch a fresh CA bundle and re-point every
+// user-mode R installation at it. User mode only.
+pub fn sc_system_update_certs() -> Result<(), Box<dyn Error>> {
+    if get_mode()? != Mode::User {
+        OUTPUT.warn("`rig system update-certs` only applies in user mode.");
+        warn!("`rig system update-certs` called in admin mode, ignoring");
+        return Ok(());
+    }
+    let cert = download_cacert(true)?;
+    let vers = sc_get_list()?;
+    if vers.is_empty() {
+        OUTPUT.warn("No R installations to configure.");
+        return Ok(());
+    }
+    for ver in vers {
+        configure_cert(&ver, &cert)?;
+        OUTPUT.success(&format!("Configured CA certificate bundle for R {}", ver));
+        info!("Configured CA certificate bundle for R {}", ver);
+    }
+    Ok(())
+}
+
 pub fn set_cert_envvar() {
     match std::env::var("SSL_CERT_FILE") {
         Ok(_) => {
@@ -976,5 +1365,86 @@ Usage: /lib/ld-musl-x86_64.so.1 [options] [--] pathname\n";
     fn libc_type_display() {
         assert_eq!(LibcType::Glibc.to_string(), "glibc");
         assert_eq!(LibcType::Musl.to_string(), "musl");
+    }
+
+    #[test]
+    fn version_at_least_works() {
+        assert!(version_at_least("2.35", "2.34"));
+        assert!(version_at_least("2.34", "2.34"));
+        assert!(!version_at_least("2.31", "2.34"));
+        assert!(version_at_least("1.2.4", "1.2"));
+        assert!(version_at_least("1.2", "1.2"));
+        assert!(!version_at_least("1.1.24", "1.2"));
+        assert!(version_at_least("3.0", "2.34"));
+    }
+
+    #[test]
+    fn check_libc_supported_accepts_recent() {
+        let glibc = Libc {
+            kind: LibcType::Glibc,
+            version: "2.35".to_string(),
+        };
+        assert!(check_libc_supported(&glibc).is_ok());
+
+        let musl = Libc {
+            kind: LibcType::Musl,
+            version: "1.2.4".to_string(),
+        };
+        assert!(check_libc_supported(&musl).is_ok());
+    }
+
+    #[test]
+    fn check_libc_supported_rejects_old_glibc() {
+        let glibc = Libc {
+            kind: LibcType::Glibc,
+            version: "2.31".to_string(),
+        };
+        assert!(check_libc_supported(&glibc).is_err());
+    }
+
+    #[test]
+    fn check_libc_supported_rejects_old_musl() {
+        let musl = Libc {
+            kind: LibcType::Musl,
+            version: "1.1.24".to_string(),
+        };
+        assert!(check_libc_supported(&musl).is_err());
+    }
+
+    #[test]
+    fn render_renviron_cert_into_empty_file() {
+        let out = render_renviron_cert("", "/home/u/.local/share/rig/etc/cacert.pem");
+        assert_eq!(
+            out,
+            "## rig SSL_CERT_FILE start\n\
+             SSL_CERT_FILE=/home/u/.local/share/rig/etc/cacert.pem\n\
+             CURL_CA_BUNDLE=/home/u/.local/share/rig/etc/cacert.pem\n\
+             ## rig SSL_CERT_FILE end\n"
+        );
+    }
+
+    #[test]
+    fn render_renviron_cert_preserves_existing_content() {
+        let existing = "FOO=bar\nBAZ=qux\n";
+        let out = render_renviron_cert(existing, "/etc/cacert.pem");
+        assert!(out.starts_with("FOO=bar\nBAZ=qux\n"));
+        assert!(out.contains("SSL_CERT_FILE=/etc/cacert.pem"));
+        assert!(out.contains("CURL_CA_BUNDLE=/etc/cacert.pem"));
+    }
+
+    #[test]
+    fn render_renviron_cert_is_idempotent() {
+        let first = render_renviron_cert("FOO=bar\n", "/old/cacert.pem");
+        // Re-running with a new path replaces the block rather than appending.
+        let second = render_renviron_cert(&first, "/new/cacert.pem");
+        assert_eq!(second.matches(CERT_BLOCK_START).count(), 1);
+        assert_eq!(second.matches(CERT_BLOCK_END).count(), 1);
+        assert!(!second.contains("/old/cacert.pem"));
+        assert!(second.contains("SSL_CERT_FILE=/new/cacert.pem"));
+        assert!(second.starts_with("FOO=bar\n"));
+
+        // A second run with the same path is a no-op on the contents.
+        let third = render_renviron_cert(&second, "/new/cacert.pem");
+        assert_eq!(third, second);
     }
 }

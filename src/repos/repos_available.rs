@@ -22,7 +22,7 @@ pub fn sc_repos_available(
             if let Some(title) = &repo.title {
                 println!("Title: {}", title);
             }
-            println!("Enabled: {}", if repo.enabled { "Yes" } else { "No" });
+            println!("Enabled: {}", repo.enabled.describe());
             println!("URLS:");
             for repoentry in repo.repos.iter() {
                 let mut extra = "".to_string();

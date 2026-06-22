@@ -597,6 +597,14 @@ pub fn rig_app() -> Command {
             .subcommand(cmd_system_clean_admin_r);
     }
 
+    #[cfg(target_os = "linux")]
+    {
+        let cmd_system_update_certs = Command::new("update-certs")
+            .about("Download the CA certificate bundle and configure R to use it")
+            .display_order(0);
+        cmd_system = cmd_system.subcommand(cmd_system_update_certs);
+    }
+
     let cmd_system_detect_platform = Command::new("detect-platform")
         .about("Detect operating system version and distribution.")
         .display_order(0)

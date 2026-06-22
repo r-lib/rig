@@ -14,7 +14,7 @@ use crate::repositories::*;
 use crate::utils::*;
 
 use super::{
-    config::{get_repos_config, RepoEntry, Repository},
+    config::{get_repos_config, Enabled, RepoEntry, Repository},
     interpret_repos_args::ReposSetupArgs,
 };
 
@@ -131,9 +131,13 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
         let rdata = get_r_data(&ver)?;
         debug!("Detected architecture {:?}", rdata);
 
+        let rdata_platform = rdata_platform_string(&rdata);
+
         add_repositories_comment(&mut repos, "start added by rig");
         for repo in config.iter() {
-            let mut enabled = repo.enabled;
+            // In `Empty` mode nothing is enabled by default; only the explicitly
+            // whitelisted repos are activated.
+            let empty_mode = matches!(setup, ReposSetupArgs::Empty { .. });
             let in_whitelist = match &setup {
                 ReposSetupArgs::Default {
                     whitelist,
@@ -143,14 +147,21 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
                         && !blacklist.contains(&repo.name.to_lowercase())
                 }
                 ReposSetupArgs::Empty { whitelist } => {
-                    enabled = false;
                     whitelist.contains(&repo.name.to_lowercase())
                 }
             };
 
             for entry in repo.repos.iter() {
-                let enabled2 = entry.enabled.unwrap_or(enabled);
-                if !enabled2 && !in_whitelist {
+                // An entry's `enabled` (if present) overrides the repo's. Whether
+                // a repo is enabled by default can depend on the installation's
+                // platform (e.g. P3M-manylinux is a default only on manylinux).
+                let enabled_default = if empty_mode {
+                    false
+                } else {
+                    let enabled = entry.enabled.as_ref().unwrap_or(&repo.enabled);
+                    enabled_by_default(enabled, &rdata_platform, &repo.name)
+                };
+                if !enabled_default && !in_whitelist {
                     continue;
                 }
                 if !should_activate_repo(repo, entry, &rdata)? {
@@ -210,6 +221,56 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
     Ok(())
 }
 
+// Compose the full platform string that platform globs are matched against,
+// e.g. "x86_64-pc-linux-gnu-ubuntu-22.04" or "x86_64-pc-linux-gnu-manylinux-2.34".
+fn rdata_platform_string(rdata: &RData) -> String {
+    let mut platform = rdata.platform.clone();
+    if let Some(p) = &rdata.distro {
+        platform += "-";
+        platform += p;
+    }
+    if let Some(r) = &rdata.release {
+        platform += "-";
+        platform += r;
+    }
+    platform
+}
+
+// Whether `rdata_platform` matches any of the given platform globs. Invalid
+// globs are warned about and skipped. `ctx` is the repo name, for messages.
+fn platform_matches_any(platforms: &[String], rdata_platform: &str, ctx: &str) -> bool {
+    for platform in platforms.iter() {
+        let glob = match Glob::new(platform) {
+            Ok(g) => g.compile_matcher(),
+            Err(e) => {
+                OUTPUT.warn(&format!(
+                    "Invalid platform glob '{}' in repo '{}', skipping: {}",
+                    platform, ctx, e
+                ));
+                warn!(
+                    "Invalid platform glob '{}' in repo '{}', skipping: {}",
+                    platform, ctx, e
+                );
+                continue;
+            }
+        };
+        if glob.is_match(rdata_platform) {
+            debug!("Repo '{}' matches platform glob '{}'", ctx, platform);
+            return true;
+        }
+    }
+    false
+}
+
+// Whether a repo/entry with this `enabled` setting is enabled by default for the
+// given (composed) platform string.
+fn enabled_by_default(enabled: &Enabled, rdata_platform: &str, ctx: &str) -> bool {
+    match enabled {
+        Enabled::Always(b) => *b,
+        Enabled::OnPlatforms { platforms } => platform_matches_any(platforms, rdata_platform, ctx),
+    }
+}
+
 fn should_activate_repo(
     repo: &Repository,
     entry: &RepoEntry,
@@ -221,39 +282,9 @@ fn should_activate_repo(
     );
 
     // if platforms are present, then they must match the current platform
-    if entry.platforms.is_some() {
-        let mut ok = false;
-        let mut rdata_platform = rdata.platform.clone();
-        if let Some(p) = &rdata.distro {
-            rdata_platform += "-";
-            rdata_platform += &p;
-        }
-        if let Some(r) = &rdata.release {
-            rdata_platform += "-";
-            rdata_platform += &r;
-        }
-        for platform in entry.platforms.as_ref().unwrap().iter() {
-            let glob = match Glob::new(platform) {
-                Ok(g) => g.compile_matcher(),
-                Err(e) => {
-                    OUTPUT.warn(&format!(
-                        "Invalid platform glob '{}' in repo '{}', skipping: {}",
-                        platform, repo.name, e
-                    ));
-                    warn!(
-                        "Invalid platform glob '{}' in repo '{}', skipping: {}",
-                        platform, repo.name, e
-                    );
-                    continue;
-                }
-            };
-            if glob.is_match(&rdata_platform) {
-                debug!("Repo '{}' matches platform glob '{}'", repo.name, platform);
-                ok = true;
-                break;
-            }
-        }
-        if !ok {
+    if let Some(platforms) = &entry.platforms {
+        let rdata_platform = rdata_platform_string(rdata);
+        if !platform_matches_any(platforms, &rdata_platform, &repo.name) {
             debug!(
                 "Repo '{}' (platform {}) does not match any platform glob, skipping",
                 repo.name, rdata_platform
@@ -312,9 +343,27 @@ fn get_r_data(ver: &str) -> Result<RData, Box<dyn Error>> {
 #[cfg(target_os = "linux")]
 fn get_r_data(ver: &str) -> Result<RData, Box<dyn Error>> {
     let mut data = get_r_data_common(ver)?;
-    let os = detect_platform()?;
-    data.distro = os.distro;
-    data.release = os.version;
+
+    let install_dir = PathBuf::from(get_r_root_for(ver)?).join(version_dir_key(ver));
+    match read_install_platform(&install_dir) {
+        Some(platform) => {
+            debug!("Installation {} has recorded platform {}", ver, platform);
+            let parts: Vec<&str> = platform.splitn(3, '-').collect();
+            if parts.len() == 3 {
+                data.distro = Some(parts[1].to_string());
+                data.release = Some(parts[2].to_string());
+            }
+        }
+        None => {
+            debug!(
+                "Installation {} has no metadata.json platform, detecting host distro",
+                ver
+            );
+            let os = detect_platform()?;
+            data.distro = os.distro;
+            data.release = os.version;
+        }
+    }
     Ok(data)
 }
 
@@ -330,8 +379,11 @@ fn get_r_data(ver: &str) -> Result<RData, Box<dyn Error>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{should_activate_repo, validate_repos_in_setup, RData};
-    use crate::repos::config::{RepoEntry, Repository};
+    use super::{
+        enabled_by_default, rdata_platform_string, should_activate_repo, validate_repos_in_setup,
+        RData,
+    };
+    use crate::repos::config::{Enabled, RepoEntry, Repository};
     use crate::repos::interpret_repos_args::ReposSetupArgs;
 
     fn make_repo(name: &str) -> Repository {
@@ -339,7 +391,7 @@ mod tests {
             name: name.to_string(),
             title: None,
             description: None,
-            enabled: true,
+            enabled: Enabled::Always(true),
             repos: vec![],
         }
     }
@@ -475,6 +527,32 @@ mod tests {
     }
 
     #[test]
+    fn activate_manylinux_compat_matches_manylinux_install() {
+        // The P3M-manylinux repo is compatible with (can be activated on) any
+        // glibc Linux install, including manylinux user-mode installs.
+        let repo = make_repo("P3M-manylinux");
+        let mut entry = make_entry();
+        entry.platforms = Some(vec!["*-linux-gnu-*".to_string()]);
+        let mut rd = rdata("x86_64-pc-linux-gnu", "x86_64", "4.4.0");
+        rd.distro = Some("manylinux".to_string());
+        rd.release = Some("2.34".to_string());
+        assert!(should_activate_repo(&repo, &entry, &rd).unwrap());
+    }
+
+    #[test]
+    fn activate_manylinux_compat_matches_distro_install() {
+        // It is also compatible with a regular distro install, so that it can be
+        // enabled there on request (it is just not a default there).
+        let repo = make_repo("P3M-manylinux");
+        let mut entry = make_entry();
+        entry.platforms = Some(vec!["*-linux-gnu-*".to_string()]);
+        let mut rd = rdata("x86_64-pc-linux-gnu", "x86_64", "4.4.0");
+        rd.distro = Some("ubuntu".to_string());
+        rd.release = Some("22.04".to_string());
+        assert!(should_activate_repo(&repo, &entry, &rd).unwrap());
+    }
+
+    #[test]
     fn activate_arch_matches() {
         let repo = make_repo("Test");
         let mut entry = make_entry();
@@ -514,6 +592,62 @@ mod tests {
         entry.archs = Some(vec!["aarch64".to_string()]); // won't match x86_64
         entry.rversions = Some(vec![">= 4.0".to_string()]);
         assert!(!should_activate_repo(&repo, &entry, &rdata("linux", "x86_64", "4.4.0")).unwrap());
+    }
+
+    // --- enabled_by_default ---
+
+    fn manylinux_platform() -> String {
+        let mut rd = rdata("x86_64-pc-linux-gnu", "x86_64", "4.4.0");
+        rd.distro = Some("manylinux".to_string());
+        rd.release = Some("2.34".to_string());
+        rdata_platform_string(&rd)
+    }
+
+    fn ubuntu_platform() -> String {
+        let mut rd = rdata("x86_64-pc-linux-gnu", "x86_64", "4.4.0");
+        rd.distro = Some("ubuntu".to_string());
+        rd.release = Some("22.04".to_string());
+        rdata_platform_string(&rd)
+    }
+
+    #[test]
+    fn enabled_always() {
+        assert!(enabled_by_default(
+            &Enabled::Always(true),
+            &ubuntu_platform(),
+            "Test"
+        ));
+        assert!(!enabled_by_default(
+            &Enabled::Always(false),
+            &ubuntu_platform(),
+            "Test"
+        ));
+    }
+
+    #[test]
+    fn enabled_on_platforms_default_on_manylinux() {
+        // P3M-manylinux is a default on manylinux installs ...
+        let enabled = Enabled::OnPlatforms {
+            platforms: vec!["*-linux-gnu-manylinux-*".to_string()],
+        };
+        assert!(enabled_by_default(
+            &enabled,
+            &manylinux_platform(),
+            "P3M-manylinux"
+        ));
+    }
+
+    #[test]
+    fn enabled_on_platforms_optional_on_other_linux() {
+        // ... but only optional (off by default) on other glibc Linux installs.
+        let enabled = Enabled::OnPlatforms {
+            platforms: vec!["*-linux-gnu-manylinux-*".to_string()],
+        };
+        assert!(!enabled_by_default(
+            &enabled,
+            &ubuntu_platform(),
+            "P3M-manylinux"
+        ));
     }
 }
 

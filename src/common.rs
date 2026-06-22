@@ -468,9 +468,15 @@ pub fn get_platform(args: &ArgMatches) -> Result<String, Box<dyn Error>> {
     #[cfg(target_os = "linux")]
     {
         if os == "linux" {
-            let dist = detect_platform()?;
-            if let (Some(distro), Some(version)) = (dist.distro, dist.version) {
-                os = format!("linux-{}-{}", distro, version);
+            if get_mode()? == Mode::User {
+                // User mode installs a portable build (manylinux/musllinux),
+                // selected by libc rather than by the host distro.
+                os = crate::linux::user_mode_platform()?;
+            } else {
+                let dist = detect_platform()?;
+                if let (Some(distro), Some(version)) = (dist.distro, dist.version) {
+                    os = format!("linux-{}-{}", distro, version);
+                }
             }
         }
     }

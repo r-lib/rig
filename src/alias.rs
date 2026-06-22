@@ -24,7 +24,7 @@ use crate::linux::*;
 
 use crate::escalate::*;
 use crate::output::OUTPUT;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use crate::utils::{check_local_bin_path, get_binary_dir};
 
 #[cfg(target_os = "macos")]
@@ -198,16 +198,24 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
 
 #[cfg(target_os = "linux")]
 pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
+    let mode = crate::utils::get_mode()?;
     let msg = "Adding R-".to_string() + alias + " alias";
-    escalate(&msg)?;
+    if mode == crate::utils::Mode::Admin {
+        escalate(&msg)?;
+    } else {
+        let binary_dir = get_binary_dir()?;
+        std::fs::create_dir_all(&binary_dir)?;
+        check_local_bin_path()?;
+    }
 
     OUTPUT.status(&format!("Adding R-{} alias to R {}", alias, ver));
     info!("Adding R-{} alias to R {}", alias, ver);
 
     let rroot = get_r_root()?;
     let base = Path::new(&rroot);
-    let target = base.join(ver).join("bin/R");
-    let linkfile = Path::new("/usr/local/bin/").join("R-".to_string() + alias);
+    let target = base.join(get_r_binpath()?.replace("{}", ver));
+    let binary_dir = get_binary_dir()?;
+    let linkfile = Path::new(&binary_dir).join("R-".to_string() + alias);
 
     // If it exists then we check that it points to the right place
     // Cannot use .exists(), because it follows symlinks
