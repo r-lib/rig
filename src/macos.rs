@@ -1364,12 +1364,20 @@ pub fn sc_system_user_mode(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     // 2. Switch to user mode. We write the config and prime the in-process
     //    mode (via the RIG_MODE env var, which child processes inherit) so
-    //    that the reinstallation below targets the user location.
+    //    that the reinstallation below targets the user location. Read the
+    //    persisted mode first so we can report whether we actually switched.
+    let already_user =
+        crate::config::get_global_config_value("mode")?.as_deref() == Some("user");
     std::env::set_var("RIG_MODE", "user");
     let _ = set_mode(crate::utils::Mode::User);
     crate::config::set_global_config_value("mode", "user")?;
-    OUTPUT.success("Switched rig to user mode");
-    info!("Switched rig to user mode");
+    if already_user {
+        OUTPUT.success("rig already in user mode");
+        info!("rig already in user mode");
+    } else {
+        OUTPUT.success("Switched rig to user mode");
+        info!("Switched rig to user mode");
+    }
 
     // 3. Reinstall the admin-mode versions in user mode and restore the
     //    previous default version. Aliases are recreated automatically by

@@ -1024,13 +1024,380 @@ pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn sc_system_user_mode(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    // Not supported on Linux
+// `rig system user-mode` (Linux): switch rig to user mode and clean up an
+// existing admin-mode setup. This:
+//
+//   1. Captures the admin-mode versions, default and aliases from the system
+//      locations (`/opt/R` and `/usr/local/bin`), before switching the mode.
+//   2. Switches the configured mode to `user`.
+//   3. Reinstalls the admin-mode versions in user mode (unless --no-reinstall)
+//      and restores the previous default version. Aliases are recreated by
+//      reinstalling via the alias name.
+//   4. Removes the admin-mode installations (the `/opt/R` directories and the
+//      corresponding system packages) and the `/usr/local/bin` links.
+//
+// Like the macOS version, this is meant to be run as a normal user: the
+// reinstallation writes into the user's home directory, while the cleanup of
+// the system locations is delegated to `rig system clean-admin-r`, which
+// escalates on its own.
+pub fn sc_system_user_mode(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    let no_reinstall = args.get_flag("no-reinstall");
+    let keep_install = args.get_flag("keep-install");
+    let keep_links = args.get_flag("keep-links");
+
+    if sudo::check() == sudo::RunningAs::Root {
+        OUTPUT.warn("`rig system user-mode` is meant to be run as a normal user, not with `sudo`.");
+        warn!("rig system user-mode is running as root");
+    }
+
+    // 1. Capture the admin-mode setup from the system locations, before we
+    //    switch the configured mode. These paths are world-readable.
+    let admin_root = Path::new(R_ROOT_);
+    let versions = list_admin_versions(admin_root)?;
+    let default = read_version_link(&admin_root.join("current").to_string_lossy())?;
+    let aliases = find_admin_aliases()?;
+
+    // If we are going to reinstall, make sure the system can actually run the
+    // portable user-mode builds before we remove the admin-mode R. Otherwise we
+    // would leave the user with no working R installation.
+    if !no_reinstall && !versions.is_empty() {
+        if let Err(e) = user_mode_platform() {
+            OUTPUT.error(&format!(
+                "Cannot reinstall R in user mode: {}. Re-run with `--no-reinstall` \
+                 to switch to user mode and clean up without reinstalling.",
+                e
+            ));
+            error!("Cannot switch to user mode: {}", e);
+            return Err(e);
+        }
+    }
+
+    // 2. Switch to user mode. We write the config and prime the in-process mode
+    //    (via the RIG_MODE env var, which child processes inherit) so that the
+    //    reinstallation below targets the user location. Read the persisted mode
+    //    first so we can report whether we actually switched.
+    let already_user =
+        crate::config::get_global_config_value("mode")?.as_deref() == Some("user");
+    std::env::set_var("RIG_MODE", "user");
+    let _ = set_mode(Mode::User);
+    crate::config::set_global_config_value("mode", "user")?;
+    if already_user {
+        OUTPUT.success("rig already in user mode");
+        info!("rig already in user mode");
+    } else {
+        OUTPUT.success("Switched rig to user mode");
+        info!("Switched rig to user mode");
+    }
+
+    // 3. Reinstall the admin-mode versions in user mode and restore the
+    //    previous default version. Aliases are recreated automatically by
+    //    reinstalling via the alias name (see user_mode_install_spec()).
+    if no_reinstall {
+        if !versions.is_empty() {
+            OUTPUT.status("Not reinstalling R versions in user mode (--no-reinstall)");
+        }
+    } else if !versions.is_empty() {
+        let map = reinstall_in_user_mode(&versions, &aliases)?;
+        if let Some(adef) = &default {
+            match map.iter().find(|(a, _)| a == adef) {
+                Some((_, udef)) => {
+                    OUTPUT.status(&format!("Restoring default R version ({})", udef));
+                    if let Err(e) = sc_set_default(udef) {
+                        OUTPUT.warn(&format!("Could not restore default R version: {}", e));
+                        warn!("Could not restore default R version: {}", e);
+                    }
+                }
+                None => {
+                    OUTPUT.warn(&format!(
+                        "Could not restore the previous default R version ({})",
+                        adef
+                    ));
+                    warn!("Could not restore default R version {}", adef);
+                }
+            }
+        }
+    }
+
+    // 4. Remove the admin-mode installations (unless `--keep-install`) and the
+    //    `/usr/local/bin` links (unless `--keep-links`). This needs root, so it
+    //    runs as a separate, self-escalating child process to avoid re-running
+    //    the user-side work above under `sudo`.
+    clean_admin_installations(keep_install, keep_links)?;
+
     Ok(())
 }
 
-pub fn sc_system_clean_admin_r(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    // Not supported on Linux
+fn list_admin_versions(root: &Path) -> Result<Vec<String>, Box<dyn Error>> {
+    let mut vers = Vec::new();
+    if !root.exists() {
+        return Ok(vers);
+    }
+    for de in std::fs::read_dir(root)? {
+        let path = de?.path();
+        let name = match path.file_name().and_then(|s| s.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        if name == "current" || name.starts_with(".rig-extract-") {
+            continue;
+        }
+        if !path.join("bin").join("R").exists() {
+            continue;
+        }
+        vers.push(name);
+    }
+    vers.sort();
+    Ok(vers)
+}
+
+fn find_admin_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
+    let bindir = Path::new("/usr/local/bin");
+    let mut result: Vec<Alias> = vec![];
+    if !bindir.exists() {
+        return Ok(result);
+    }
+    let re = re_alias();
+    for de in std::fs::read_dir(bindir)? {
+        let path = match de {
+            Ok(d) => d.path(),
+            Err(_) => continue,
+        };
+        let name = match path.file_name().and_then(|s| s.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        if !re.is_match(&name) {
+            continue;
+        }
+        if let Ok(tgt) = std::fs::read_link(&path) {
+            if tgt.exists() {
+                if let Some(version) = version_from_link(tgt) {
+                    result.push(Alias {
+                        alias: name[2..].to_string(),
+                        version,
+                    });
+                }
+            }
+        }
+    }
+    Ok(result)
+}
+
+fn user_mode_install_spec(admin_dir: &str, aliases: &[Alias]) -> String {
+    for al in aliases {
+        if al.version == admin_dir {
+            return al.alias.clone();
+        }
+    }
+    admin_dir.to_string()
+}
+
+fn reinstall_in_user_mode(
+    versions: &[String],
+    aliases: &[Alias],
+) -> Result<Vec<(String, String)>, Box<dyn Error>> {
+    let exe = std::env::current_exe()?;
+    let mut map: Vec<(String, String)> = vec![];
+    for admin_dir in versions {
+        let spec = user_mode_install_spec(admin_dir, aliases);
+        OUTPUT.status(&format!("Reinstalling R '{}' in user mode", spec));
+        info!("Reinstalling R '{}' in user mode", spec);
+        let before = sc_get_list()?;
+        let status = Command::new(&exe)
+            .args(["add", &spec, "--without-pak"])
+            .status()?;
+        if !status.success() {
+            OUTPUT.warn(&format!("Failed to reinstall R '{}' in user mode", spec));
+            warn!("Failed to reinstall R '{}' in user mode", spec);
+            continue;
+        }
+        let after = sc_get_list()?;
+        match after.iter().find(|v| !before.contains(v)) {
+            Some(udir) => map.push((admin_dir.clone(), udir.clone())),
+            None => debug!(
+                "No new user-mode version directory after reinstalling '{}'",
+                spec
+            ),
+        }
+    }
+    Ok(map)
+}
+
+fn clean_admin_installations(keep_install: bool, keep_links: bool) -> Result<(), Box<dyn Error>> {
+    if !admin_cleanup_needed(keep_install, keep_links)? {
+        debug!("No admin-mode installations or links to clean up");
+        return Ok(());
+    }
+    if keep_install {
+        OUTPUT.status("Removing admin-mode links, keeping installations (this needs `sudo`)");
+        info!("Removing admin-mode links, keeping installations");
+    } else {
+        OUTPUT.status("Removing admin-mode R installations (this needs `sudo`)");
+        info!("Removing admin-mode R installations");
+    }
+    let exe = std::env::current_exe()?;
+    let mut cmd = Command::new(&exe);
+    cmd.args(["system", "clean-admin-r"]);
+    if keep_install {
+        cmd.arg("--keep-install");
+    }
+    if keep_links {
+        cmd.arg("--keep-links");
+    }
+    let status = cmd.status()?;
+    if !status.success() {
+        bail!("Failed to remove admin-mode R installations");
+    }
+    Ok(())
+}
+
+fn re_admin_link() -> Result<Regex, Box<dyn Error>> {
+    Ok(Regex::new(
+        "^R-([0-9]+[.][0-9]+[.][0-9]+|oldrel|next|release|devel)$",
+    )?)
+}
+
+fn link_points_into_admin_root(target: &Path) -> bool {
+    target.starts_with(R_ROOT_)
+}
+
+fn admin_cleanup_needed(keep_install: bool, keep_links: bool) -> Result<bool, Box<dyn Error>> {
+    if !keep_install && !list_admin_versions(Path::new(R_ROOT_))?.is_empty() {
+        return Ok(true);
+    }
+    if keep_links {
+        return Ok(false);
+    }
+    let bindir = Path::new("/usr/local/bin");
+    let paths = match std::fs::read_dir(bindir) {
+        Ok(p) => p,
+        Err(_) => return Ok(false),
+    };
+    let re = re_admin_link()?;
+    for de in paths.flatten() {
+        let path = de.path();
+        let name = match path.file_name().and_then(|s| s.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        if name != "R" && name != "Rscript" && !re.is_match(&name) {
+            continue;
+        }
+        if let Ok(tgt) = std::fs::read_link(&path) {
+            if link_points_into_admin_root(&tgt) {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
+}
+
+pub fn sc_system_clean_admin_r(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    let keep_install = args.get_flag("keep-install");
+    let keep_links = args.get_flag("keep-links");
+
+    escalate("removing admin-mode R installations")?;
+
+    if !keep_install {
+        remove_admin_installations()?;
+    }
+
+    if !keep_links {
+        remove_admin_links()?;
+    }
+
+    Ok(())
+}
+
+fn remove_admin_installations() -> Result<(), Box<dyn Error>> {
+    let admin_root = Path::new(R_ROOT_);
+    let versions = list_admin_versions(admin_root)?;
+    if versions.is_empty() {
+        return Ok(());
+    }
+
+    let tools = match detect_platform() {
+        Ok(platform) => match select_linux_tools(&platform) {
+            Ok(t) => Some(t),
+            Err(e) => {
+                debug!("Cannot determine package tools to remove R packages: {}", e);
+                None
+            }
+        },
+        Err(e) => {
+            debug!("Cannot detect platform to remove R packages: {}", e);
+            None
+        }
+    };
+
+    for ver in &versions {
+        if let Some(ref tools) = tools {
+            let pkgname = tools.package_name.replace("{}", ver);
+            let opkgname = OsStr::new(&pkgname);
+            let cmd = format_cmd_args(tools.is_installed.clone(), opkgname);
+            let cmd0 = cmd[0].to_owned();
+            match Command::new(cmd0).args(cmd[1..].to_vec()).output() {
+                Ok(out) if out.status.success() => {
+                    OUTPUT.status(&format!("Removing {} package", pkgname));
+                    info!("Removing {} package", pkgname);
+                    let cmd = format_cmd_args(tools.delete.clone(), opkgname);
+                    let cmd0 = cmd[0].to_owned();
+                    if let Err(e) = run(cmd0, cmd[1..].to_vec(), "deleting system package") {
+                        OUTPUT.warn(&format!("Could not remove {} package: {}", pkgname, e));
+                        warn!("Could not remove {} package: {}", pkgname, e);
+                    }
+                }
+                _ => debug!("{} package is not installed", pkgname),
+            }
+        }
+
+        let dir = admin_root.join(ver);
+        if dir.exists() {
+            OUTPUT.status(&format!("Removing {}", dir.display()));
+            info!("Removing {}", dir.display());
+            if let Err(e) = std::fs::remove_dir_all(&dir) {
+                OUTPUT.warn(&format!("Cannot remove {}: {}", dir.display(), e));
+                warn!("Cannot remove {}: {}", dir.display(), e);
+            }
+        }
+    }
+
+    let current = admin_root.join("current");
+    if current.symlink_metadata().is_ok() {
+        std::fs::remove_file(&current).ok();
+    }
+
+    Ok(())
+}
+
+fn remove_admin_links() -> Result<(), Box<dyn Error>> {
+    let bindir = Path::new("/usr/local/bin");
+    let paths = match std::fs::read_dir(bindir) {
+        Ok(p) => p,
+        Err(_) => return Ok(()),
+    };
+    let re = re_admin_link()?;
+    for de in paths.flatten() {
+        let path = de.path();
+        let name = match path.file_name().and_then(|s| s.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        if name != "R" && name != "Rscript" && !re.is_match(&name) {
+            continue;
+        }
+        // Only remove symlinks that point into the admin-mode R root.
+        if let Ok(tgt) = std::fs::read_link(&path) {
+            if link_points_into_admin_root(&tgt) {
+                OUTPUT.status(&format!("Removing {}", path.display()));
+                info!("Removing {}", path.display());
+                if let Err(e) = std::fs::remove_file(&path) {
+                    OUTPUT.warn(&format!("Cannot remove {}: {}", path.display(), e));
+                    warn!("Cannot remove {}: {}", path.display(), e);
+                }
+            }
+        }
+    }
     Ok(())
 }
 
@@ -1446,5 +1813,62 @@ Usage: /lib/ld-musl-x86_64.so.1 [options] [--] pathname\n";
         // A second run with the same path is a no-op on the contents.
         let third = render_renviron_cert(&second, "/new/cacert.pem");
         assert_eq!(third, second);
+    }
+
+    #[test]
+    fn user_mode_install_spec_uses_alias_when_available() {
+        let aliases = vec![
+            Alias {
+                alias: "release".to_string(),
+                version: "4.6.0".to_string(),
+            },
+            Alias {
+                alias: "oldrel".to_string(),
+                version: "4.5.1".to_string(),
+            },
+        ];
+        assert_eq!(user_mode_install_spec("4.6.0", &aliases), "release");
+        assert_eq!(user_mode_install_spec("4.5.1", &aliases), "oldrel");
+    }
+
+    #[test]
+    fn user_mode_install_spec_uses_version_without_alias() {
+        // No alias points at this version, so reinstall by version number.
+        let aliases = vec![Alias {
+            alias: "release".to_string(),
+            version: "4.6.0".to_string(),
+        }];
+        assert_eq!(user_mode_install_spec("4.4.3", &aliases), "4.4.3");
+        // With no aliases at all the directory name is used verbatim, including
+        // symbolic names like `devel`.
+        assert_eq!(user_mode_install_spec("devel", &[]), "devel");
+    }
+
+    #[test]
+    fn link_points_into_admin_root_matches_opt_r() {
+        assert!(link_points_into_admin_root(Path::new("/opt/R/4.6.0/bin/R")));
+        assert!(link_points_into_admin_root(Path::new(
+            "/opt/R/current/bin/Rscript"
+        )));
+        // Links pointing elsewhere (e.g. a user-mode install) are left alone.
+        assert!(!link_points_into_admin_root(Path::new(
+            "/home/u/.local/share/rig/r/4.6.0/bin/R"
+        )));
+        assert!(!link_points_into_admin_root(Path::new("/usr/bin/R")));
+    }
+
+    #[test]
+    fn re_admin_link_matches_version_and_alias_links() {
+        let re = re_admin_link().unwrap();
+        assert!(re.is_match("R-4.6.0"));
+        assert!(re.is_match("R-release"));
+        assert!(re.is_match("R-oldrel"));
+        assert!(re.is_match("R-devel"));
+        assert!(re.is_match("R-next"));
+        // Not version/alias links.
+        assert!(!re.is_match("R"));
+        assert!(!re.is_match("Rscript"));
+        assert!(!re.is_match("R-4.6")); // incomplete version
+        assert!(!re.is_match("Rfoo"));
     }
 }

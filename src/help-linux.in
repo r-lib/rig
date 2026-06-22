@@ -156,6 +156,36 @@ const HELP_SYSTEM_LINKS: &str = "
   This command probably needs `sudo`: `sudo rig system make-links`,
   otherwise rig will ask for your password.";
 
+const HELP_SYSTEM_USER_MODE: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Switch rig to user mode and clean up the machine after admin mode.
+
+  In user mode rig installs R into your home directory
+  (`~/.local/share/rig/r`), and quick links into `~/.local/bin`, so that
+  rig never needs `sudo`. This command migrates an existing admin-mode
+  setup to user mode:
+
+    1. Sets the rig `mode` configuration to `user`.
+    2. Reinstalls the admin-mode R versions in user mode, and restores
+       the previous default version and version aliases. Use
+       `--no-reinstall` to skip this and only clean up.
+    3. Removes the admin-mode R installations from `/opt/R`, including
+       the corresponding system packages (e.g. via `apt` or `dnf`).
+    4. Removes the `R-*` quick links and the `R`/`Rscript` links from
+       `/usr/local/bin`.
+
+  Steps 3 and 4 remove files outside your home directory, so this command
+  needs `sudo` and will ask for your password.
+
+  Use `--keep-install` to leave the admin-mode R installations in `/opt/R`
+  in place (skipping step 3), and `--keep-links` to leave the
+  `/usr/local/bin` links in place (skipping step 4). With both, nothing
+  outside your home directory is touched and `sudo` is not needed.
+
+  User-mode R installations are portable builds and require a recent
+  enough C library (glibc >= 2.34 or musl >= 1.2). On older systems the
+  reinstallation in step 2 is not possible.";
+
 const HELP_SYSTEM_ADDPAK: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
   Install/update pak for one or more R versions.

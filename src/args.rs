@@ -568,6 +568,26 @@ pub fn rig_app() -> Command {
                     .action(clap::ArgAction::Append),
             );
 
+        cmd_system = cmd_system
+            .subcommand(cmd_system_ortho)
+            .subcommand(cmd_system_rights)
+            .subcommand(cmd_system_forget)
+            .subcommand(cmd_system_noopenmp)
+            .subcommand(cmd_system_allow_debugger)
+            .subcommand(cmd_system_allow_debugger_rstudio)
+            .subcommand(cmd_system_allow_core_dumps);
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let cmd_system_update_certs = Command::new("update-certs")
+            .about("Download the CA certificate bundle and configure R to use it")
+            .display_order(0);
+        cmd_system = cmd_system.subcommand(cmd_system_update_certs);
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
         let cmd_system_user_mode = Command::new("user-mode")
             .about("Switch to user mode and clean up admin-mode installations")
             .long_about(HELP_SYSTEM_USER_MODE)
@@ -628,23 +648,8 @@ pub fn rig_app() -> Command {
             );
 
         cmd_system = cmd_system
-            .subcommand(cmd_system_ortho)
-            .subcommand(cmd_system_rights)
-            .subcommand(cmd_system_forget)
-            .subcommand(cmd_system_noopenmp)
-            .subcommand(cmd_system_allow_debugger)
-            .subcommand(cmd_system_allow_debugger_rstudio)
-            .subcommand(cmd_system_allow_core_dumps)
             .subcommand(cmd_system_user_mode)
             .subcommand(cmd_system_clean_admin_r);
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        let cmd_system_update_certs = Command::new("update-certs")
-            .about("Download the CA certificate bundle and configure R to use it")
-            .display_order(0);
-        cmd_system = cmd_system.subcommand(cmd_system_update_certs);
     }
 
     let cmd_system_detect_platform = Command::new("detect-platform")
