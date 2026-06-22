@@ -249,7 +249,11 @@
         "name": "P3M-manylinux",
         "title": "Posit Package Manager manylinux portable packages",
         "description": "TODO",
-        "enabled": false,
+        "enabled": {
+            "platforms": [
+                "*-linux-gnu-manylinux-*"
+            ]
+        },
         "repos": [
             {
                 "name": "P3M-manylinux",

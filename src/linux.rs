@@ -585,6 +585,13 @@ fn write_install_metadata(dest: &Path) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+pub fn read_install_platform(dir: &Path) -> Option<String> {
+    let path = dir.join("metadata.json");
+    let text = std::fs::read_to_string(&path).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&text).ok()?;
+    value.get("platform")?.as_str().map(|s| s.to_string())
+}
+
 // Extract a gzip-compressed tarball into `dest`, in-process (no external `tar`).
 fn unpack_tar_gz(archive: &Path, dest: &Path) -> Result<(), Box<dyn Error>> {
     let file = std::fs::File::open(archive)?;
