@@ -1029,7 +1029,7 @@ pub fn sc_system_user_mode(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn sc_system_clean_admin_r() -> Result<(), Box<dyn Error>> {
+pub fn sc_system_clean_admin_r(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // Not supported on Linux
     Ok(())
 }

@@ -578,12 +578,54 @@ pub fn rig_app() -> Command {
                     .long("no-reinstall")
                     .num_args(0)
                     .required(false),
+            )
+            .arg(
+                Arg::new("keep-install")
+                    .help("Keep the admin-mode R installations, do not remove them.")
+                    .long("keep-install")
+                    .num_args(0)
+                    .required(false),
+            )
+            .arg(
+                Arg::new("keep-links")
+                    .help("Keep the admin-mode links in `/usr/local/bin`.")
+                    .long("keep-links")
+                    .num_args(0)
+                    .required(false),
+            )
+            // The global --user/--admin flags are irrelevant and confusing here,
+            // so override them with hidden versions to keep them out of the help.
+            .arg(
+                Arg::new("user")
+                    .long("user")
+                    .global(false)
+                    .action(clap::ArgAction::SetTrue)
+                    .hide(true),
+            )
+            .arg(
+                Arg::new("admin")
+                    .long("admin")
+                    .global(false)
+                    .action(clap::ArgAction::SetTrue)
+                    .hide(true),
             );
 
         let cmd_system_clean_admin_r = Command::new("clean-admin-r")
             .about("Remove all admin-mode R installations and links")
             .display_order(0)
-            .hide(true);
+            .hide(true)
+            .arg(
+                Arg::new("keep-install")
+                    .long("keep-install")
+                    .num_args(0)
+                    .required(false),
+            )
+            .arg(
+                Arg::new("keep-links")
+                    .long("keep-links")
+                    .num_args(0)
+                    .required(false),
+            );
 
         cmd_system = cmd_system
             .subcommand(cmd_system_ortho)
