@@ -18,8 +18,11 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o rust.sh && \
 
 # cargo's download cache (registry index, crate sources, git deps) lives on a
 # named volume mounted at /cargo at runtime, kept separate from the toolchain.
+# Only create the top dir; it is root-owned here, but the entrypoint chowns it
+# to the build user, who then lets cargo create registry/ and git/ underneath.
+# Pre-creating those subdirs as root would leave them unwritable to that user.
 ENV CARGO_HOME=/cargo
-RUN mkdir -p /cargo/registry /cargo/git
+RUN mkdir /cargo
 
 COPY tools/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
