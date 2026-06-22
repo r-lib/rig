@@ -49,8 +49,10 @@ done
 # becomes the session leader and owns the controlling terminal. Using su here
 # instead forks bash as a grandchild, which then cannot set the terminal
 # process group ("no job control in this shell"). The inner `exec` likewise
-# lets bash replace the shell rather than run as its child. We re-export PATH
-# because the login shell would otherwise reset it and lose /opt/rust/cargo/bin.
+# lets bash replace the shell rather than run as its child. The `sh -lc` login
+# shell sources /etc/profile, which resets PATH and drops /opt/rust/cargo/bin, so
+# we prepend cargo's bin *inside* the -c script (after profile has run) rather
+# than via env (which profile would then clobber).
 exec setpriv --reuid "$LOCAL_UID" --regid "$LOCAL_GID" --init-groups \
-    env HOME="$home" PATH="/opt/rust/cargo/bin:$PATH" \
-    sh -lc 'cd /work && exec "$@"' sh "$@"
+    env HOME="$home" \
+    sh -lc 'export PATH="/opt/rust/cargo/bin:$PATH"; cd /work && exec "$@"' sh "$@"
