@@ -1347,6 +1347,8 @@ pub fn sc_system_forget() -> Result<(), Box<dyn Error>> {
 // its own. That way the user-side work never runs as root.
 pub fn sc_system_user_mode(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let no_reinstall = args.get_flag("no-reinstall");
+    let keep_install = args.get_flag("keep-install");
+    let keep_links = args.get_flag("keep-links");
 
     if sudo::check() == sudo::RunningAs::Root {
         OUTPUT.warn("`rig system user-mode` is meant to be run as a normal user, not with `sudo`.");
@@ -1362,12 +1364,20 @@ pub fn sc_system_user_mode(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     // 2. Switch to user mode. We write the config and prime the in-process
     //    mode (via the RIG_MODE env var, which child processes inherit) so
-    //    that the reinstallation below targets the user location.
+    //    that the reinstallation below targets the user location. Read the
+    //    persisted mode first so we can report whether we actually switched.
+    let already_user =
+        crate::config::get_global_config_value("mode")?.as_deref() == Some("user");
     std::env::set_var("RIG_MODE", "user");
     let _ = set_mode(crate::utils::Mode::User);
     crate::config::set_global_config_value("mode", "user")?;
-    OUTPUT.success("Switched rig to user mode");
-    info!("Switched rig to user mode");
+    if already_user {
+        OUTPUT.success("rig already in user mode");
+        info!("rig already in user mode");
+    } else {
+        OUTPUT.success("Switched rig to user mode");
+        info!("Switched rig to user mode");
+    }
 
     // 3. Reinstall the admin-mode versions in user mode and restore the
     //    previous default version. Aliases are recreated automatically by
@@ -1398,10 +1408,11 @@ pub fn sc_system_user_mode(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         }
     }
 
-    // 4. Remove the admin-mode installations and the `/usr/local/bin` links.
-    //    This needs root, so it runs as a separate, self-escalating child
-    //    process to avoid re-running the user-side work above under `sudo`.
-    clean_admin_installations()?;
+    // 4. Remove the admin-mode installations (unless `--keep-install`) and
+    //    the `/usr/local/bin` links (unless `--keep-links`). This needs root,
+    //    so it runs as a separate, self-escalating child process to avoid
+    //    re-running the user-side work above under `sudo`.
+    clean_admin_installations(keep_install, keep_links)?;
 
     Ok(())
 }
@@ -1591,17 +1602,28 @@ fn reinstall_in_user_mode(
 
 // Spawn `rig system clean-admin-r` to remove the admin-mode installations,
 // unless there is nothing to remove. The child escalates on its own.
-fn clean_admin_installations() -> Result<(), Box<dyn Error>> {
-    if !admin_cleanup_needed()? {
+fn clean_admin_installations(keep_install: bool, keep_links: bool) -> Result<(), Box<dyn Error>> {
+    if !admin_cleanup_needed(keep_install, keep_links)? {
         debug!("No admin-mode installations or links to clean up");
         return Ok(());
     }
-    OUTPUT.status("Removing admin-mode R installations (this needs `sudo`)");
-    info!("Removing admin-mode R installations");
+    if keep_install {
+        OUTPUT.status("Removing admin-mode links, keeping installations (this needs `sudo`)");
+        info!("Removing admin-mode links, keeping installations");
+    } else {
+        OUTPUT.status("Removing admin-mode R installations (this needs `sudo`)");
+        info!("Removing admin-mode R installations");
+    }
     let exe = std::env::current_exe()?;
-    let status = Command::new(&exe)
-        .args(["system", "clean-admin-r"])
-        .status()?;
+    let mut cmd = Command::new(&exe);
+    cmd.args(["system", "clean-admin-r"]);
+    if keep_install {
+        cmd.arg("--keep-install");
+    }
+    if keep_links {
+        cmd.arg("--keep-links");
+    }
+    let status = cmd.status()?;
     if !status.success() {
         bail!("Failed to remove admin-mode R installations");
     }
@@ -1610,9 +1632,14 @@ fn clean_admin_installations() -> Result<(), Box<dyn Error>> {
 
 // Whether there are any admin-mode installations or `/usr/local/bin` links
 // left to remove, to avoid asking for `sudo` when there is nothing to do.
-fn admin_cleanup_needed() -> Result<bool, Box<dyn Error>> {
-    if !list_admin_versions(Path::new(R_ROOT_))?.is_empty() {
+fn admin_cleanup_needed(keep_install: bool, keep_links: bool) -> Result<bool, Box<dyn Error>> {
+    // With `--keep-install` the installations don't count towards needing
+    // cleanup; with `--keep-links` neither do the `/usr/local/bin` links.
+    if !keep_install && !list_admin_versions(Path::new(R_ROOT_))?.is_empty() {
         return Ok(true);
+    }
+    if keep_links {
+        return Ok(false);
     }
     let bindir = Path::new("/usr/local/bin");
     for name in ["R", "Rscript"] {
@@ -1640,27 +1667,37 @@ fn admin_cleanup_needed() -> Result<bool, Box<dyn Error>> {
 // the framework version directories and the `/usr/local/bin` links. This
 // operates on the system locations directly, regardless of the configured
 // mode, and escalates to root. It is invoked by `rig system user-mode`.
-pub fn sc_system_clean_admin_r() -> Result<(), Box<dyn Error>> {
+pub fn sc_system_clean_admin_r(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    let keep_install = args.get_flag("keep-install");
+    let keep_links = args.get_flag("keep-links");
+
     escalate("removing admin-mode R installations")?;
 
-    forget_admin_packages()?;
+    // With `--keep-install` we leave the installations (and their package
+    // receipts) in place; with `--keep-links` we leave the `/usr/local/bin`
+    // links in place.
+    if !keep_install {
+        forget_admin_packages()?;
 
-    let admin_root = Path::new(R_ROOT_);
-    for ver in list_admin_versions(admin_root)? {
-        let dir = admin_root.join(&ver);
-        OUTPUT.status(&format!("Removing {}", dir.display()));
-        info!("Removing {}", dir.display());
-        if let Err(e) = std::fs::remove_dir_all(&dir) {
-            OUTPUT.warn(&format!("Cannot remove {}: {}", dir.display(), e));
-            warn!("Cannot remove {}: {}", dir.display(), e);
+        let admin_root = Path::new(R_ROOT_);
+        for ver in list_admin_versions(admin_root)? {
+            let dir = admin_root.join(&ver);
+            OUTPUT.status(&format!("Removing {}", dir.display()));
+            info!("Removing {}", dir.display());
+            if let Err(e) = std::fs::remove_dir_all(&dir) {
+                OUTPUT.warn(&format!("Cannot remove {}: {}", dir.display(), e));
+                warn!("Cannot remove {}: {}", dir.display(), e);
+            }
+        }
+        let current = admin_root.join("Current");
+        if current.symlink_metadata().is_ok() {
+            std::fs::remove_file(&current).ok();
         }
     }
-    let current = admin_root.join("Current");
-    if current.symlink_metadata().is_ok() {
-        std::fs::remove_file(&current).ok();
-    }
 
-    remove_admin_links()?;
+    if !keep_links {
+        remove_admin_links()?;
+    }
 
     Ok(())
 }

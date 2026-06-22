@@ -568,6 +568,26 @@ pub fn rig_app() -> Command {
                     .action(clap::ArgAction::Append),
             );
 
+        cmd_system = cmd_system
+            .subcommand(cmd_system_ortho)
+            .subcommand(cmd_system_rights)
+            .subcommand(cmd_system_forget)
+            .subcommand(cmd_system_noopenmp)
+            .subcommand(cmd_system_allow_debugger)
+            .subcommand(cmd_system_allow_debugger_rstudio)
+            .subcommand(cmd_system_allow_core_dumps);
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let cmd_system_update_certs = Command::new("update-certs")
+            .about("Download the CA certificate bundle and configure R to use it")
+            .display_order(0);
+        cmd_system = cmd_system.subcommand(cmd_system_update_certs);
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
         let cmd_system_user_mode = Command::new("user-mode")
             .about("Switch to user mode and clean up admin-mode installations")
             .long_about(HELP_SYSTEM_USER_MODE)
@@ -578,31 +598,58 @@ pub fn rig_app() -> Command {
                     .long("no-reinstall")
                     .num_args(0)
                     .required(false),
+            )
+            .arg(
+                Arg::new("keep-install")
+                    .help("Keep the admin-mode R installations, do not remove them.")
+                    .long("keep-install")
+                    .num_args(0)
+                    .required(false),
+            )
+            .arg(
+                Arg::new("keep-links")
+                    .help("Keep the admin-mode links in `/usr/local/bin`.")
+                    .long("keep-links")
+                    .num_args(0)
+                    .required(false),
+            )
+            // The global --user/--admin flags are irrelevant and confusing here,
+            // so override them with hidden versions to keep them out of the help.
+            .arg(
+                Arg::new("user")
+                    .long("user")
+                    .global(false)
+                    .action(clap::ArgAction::SetTrue)
+                    .hide(true),
+            )
+            .arg(
+                Arg::new("admin")
+                    .long("admin")
+                    .global(false)
+                    .action(clap::ArgAction::SetTrue)
+                    .hide(true),
             );
 
         let cmd_system_clean_admin_r = Command::new("clean-admin-r")
             .about("Remove all admin-mode R installations and links")
             .display_order(0)
-            .hide(true);
+            .hide(true)
+            .arg(
+                Arg::new("keep-install")
+                    .long("keep-install")
+                    .num_args(0)
+                    .required(false),
+            )
+            .arg(
+                Arg::new("keep-links")
+                    .long("keep-links")
+                    .num_args(0)
+                    .required(false),
+            );
 
         cmd_system = cmd_system
-            .subcommand(cmd_system_ortho)
-            .subcommand(cmd_system_rights)
-            .subcommand(cmd_system_forget)
-            .subcommand(cmd_system_noopenmp)
-            .subcommand(cmd_system_allow_debugger)
-            .subcommand(cmd_system_allow_debugger_rstudio)
-            .subcommand(cmd_system_allow_core_dumps)
             .subcommand(cmd_system_user_mode)
             .subcommand(cmd_system_clean_admin_r);
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        let cmd_system_update_certs = Command::new("update-certs")
-            .about("Download the CA certificate bundle and configure R to use it")
-            .display_order(0);
-        cmd_system = cmd_system.subcommand(cmd_system_update_certs);
     }
 
     let cmd_system_detect_platform = Command::new("detect-platform")

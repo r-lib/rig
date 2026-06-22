@@ -251,7 +251,13 @@ const HELP_SYSTEM_USER_MODE: &str = "
        `/usr/local/bin`.
 
   Steps 3 and 4 remove files outside your home directory, so this command
-  needs `sudo` and will ask for your password.";
+  needs `sudo` and will ask for your password.
+
+  Use `--keep-install` to leave the admin-mode R installations in
+  `/Library/Frameworks/R.framework` in place (skipping step 3), and
+  `--keep-links` to leave the `/usr/local/bin` links in place (skipping
+  step 4). With both, nothing outside your home directory is touched and
+  `sudo` is not needed.";
 
 const HELP_SYSTEM_NO_OPENMP: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
