@@ -3,7 +3,10 @@ use std::error::Error;
 use log::*;
 
 #[cfg(target_os = "windows")]
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+#[cfg(target_os = "windows")]
+use simple_error::bail;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use simple_error::bail;
@@ -77,6 +80,20 @@ pub fn get_home() -> Result<String, Box<dyn Error>> {
     home
 }
 
+// Locate gsudo.exe on the PATH, so admin mode still works when rig itself was
+// installed without a bundled gsudo somehow.
+#[cfg(target_os = "windows")]
+fn gsudo_on_path() -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path) {
+        let cand = dir.join("gsudo.exe");
+        if cand.is_file() {
+            return Some(cand);
+        }
+    }
+    None
+}
+
 #[cfg(target_os = "windows")]
 pub fn escalate(task: &str) -> Result<(), Box<dyn Error>> {
     if crate::utils::get_mode()? == crate::utils::Mode::User {
@@ -94,9 +111,43 @@ pub fn escalate(task: &str) -> Result<(), Box<dyn Error>> {
         Some(d) => d,
         None => Path::new("/"),
     };
-    let gsudo = instdir.join("gsudo.exe");
+
+    // Prefer the gsudo.exe shipped next to rig.exe; otherwise fall back to one on the
+    // PATH. If neither exists we cannot elevate, so report it instead of failing silently
+    // (in interactive mode a bare `error!` only reaches the log file, not the terminal).
+    let bundled = instdir.join("gsudo.exe");
+    let gsudo = if bundled.is_file() {
+        bundled
+    } else if let Some(found) = gsudo_on_path() {
+        found
+    } else {
+        let msg = format!(
+            "Cannot run admin task ({}): elevation helper gsudo.exe was not found next to \
+             rig ({}) or on the PATH. Re-run from an elevated (Administrator) terminal, \
+             or install gsudo and ensure it is on the PATH.",
+            task,
+            instdir.display()
+        );
+        crate::output::OUTPUT.error(&msg);
+        error!("{}", msg);
+        bail!("{}", msg);
+    };
+
     debug!("gsudo: {:?}", gsudo);
     debug!("Arguments: {:?}.", args);
-    let code = std::process::Command::new(gsudo).args(args).status()?;
-    std::process::exit(code.code().unwrap());
+    let code = match std::process::Command::new(&gsudo).args(&args).status() {
+        Ok(code) => code,
+        Err(err) => {
+            let msg = format!(
+                "Cannot run admin task ({}): failed to start elevation helper {}: {}",
+                task,
+                gsudo.display(),
+                err
+            );
+            crate::output::OUTPUT.error(&msg);
+            error!("{}", msg);
+            bail!("{}", msg);
+        }
+    };
+    std::process::exit(code.code().unwrap_or(1));
 }

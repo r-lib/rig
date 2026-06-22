@@ -6,8 +6,8 @@ $packageArgs = @{
   PackageName    = $env:ChocolateyPackageName
   FileType       = 'exe'
   SilentArgs     = '/VERYSILENT /SUPPRESSMSGBOXES'
-  Url64bit       = 'https://github.com/r-lib/rig/releases/download/v0.8.0-beta/rig-windows-0.8.0-beta.exe'
-  Checksum64     = '23746671fbea4fdd66e859b6a47da8aa514009cb925b3e9743d77a3ce55503c7'
+  Url64bit       = 'https://github.com/r-lib/rig/releases/download/v0.8.0/rig-windows-0.8.0.exe'
+  Checksum64     = '1de99a3906453c2e18848a587cfd752183e9cfaa2b7931f60c64c40f04489eab'
   ChecksumType64 = 'sha256'
 }
 
