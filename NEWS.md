@@ -1,3 +1,5 @@
+# rig 0.10.0 (not released yet)
+
 # rig 0.8.1 (not released yet)
 
 * The `RIG_PLATFORM` environment variable works correctly again (#325).
