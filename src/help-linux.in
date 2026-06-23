@@ -60,17 +60,20 @@ const HELP_RESOLVE_EXAMPLES: &str = "\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
 const HELP_DEFAULT: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
   Print or set the default R version. The default R version is the one that
-  is started with the `R` command, via the `/usr/local/bin/R` symbolic link.
+  is started with the `R` command, via the `R` link in the rig binary
+  directory (`~/.local/bin` in user mode).
 
   Call without any arguments to see the current default. Call with the
   version number/name to set the default. Before setting a default, you
   can call `rig list` to see the installed R versions.
 
-  The default R version is set by updating the symbolic link at
-  `/opt/R/current` and pointing it to the specified R version. If you have
-  never set the default version, then there is no default.
+  The default R version is set by updating the `current` symbolic link in
+  the R installation directory and pointing it to the specified R version.
+  If you have never set the default version, then there is no default.
 
-  You need to run this command with `sudo` to change the default version:
+  In user mode rig works entirely within your home directory, so no `sudo`
+  is needed. In admin mode, where R is installed system-wide, you need to
+  run this command with `sudo` to change the default version:
   `sudo rig default ...`.
 
   You don't need to update the default R version to just run a non-default R
@@ -87,8 +90,8 @@ const HELP_DEFAULT_EXAMPLES: &str = "\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
 
 const HELP_LIST: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
-  List installed R versions from `/opt/R`. It does _not_ check if they are
-  working properly.
+  List installed R versions. It does _not_ check if they are working
+  properly.
 
   `rig ls` is an alias.";
 
@@ -109,8 +112,9 @@ const HELP_ADD: &str = "
   - `rig add oldrel/n` adds the latest release within the `n`th previous
     minor branch (`oldrel` is the same as `oldrel/1`).
 
-  You need to run this command with `sudo`: `sudo rig add ...`,
-  otherwise rig will need to ask for your password.
+  In user mode rig installs R into your home directory and never needs
+  `sudo`. In admin mode you need to run this command with `sudo`:
+  `sudo rig add ...`, otherwise rig will need to ask for your password.
 
   `rig add` will automatically call `rig system forget` before the
   installation, to make sure that already installed R versions are kept.
@@ -136,8 +140,9 @@ const HELP_RM: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
   Remove an R installation. It keeps the users' package libraries.
 
-  Usually you need to run this command with `sudo`: `sudo rig rm ...`,
-  otherwise rig will ask for your password.";
+  In user mode no `sudo` is needed. In admin mode you usually need to run
+  this command with `sudo`: `sudo rig rm ...`, otherwise rig will ask for
+  your password.";
 
 const HELP_SYSTEM: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
@@ -146,15 +151,16 @@ const HELP_SYSTEM: &str = "
 
 const HELP_SYSTEM_LINKS: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
-  Create quick links in `/usr/local/bin` for the current R installations.
-  This lets you directly run a specific R version. E.g. `R-4.1.2` will start
-  R 4.1.2.
+  Create quick links in the rig binary directory (`~/.local/bin` in user
+  mode) for the current R installations. This lets you directly run a
+  specific R version. E.g. `R-4.1.2` will start R 4.1.2.
 
   `rig add` runs `rig system make-links`, so if you only use rig to
   install R, then you do not need to run it manually.
 
-  This command probably needs `sudo`: `sudo rig system make-links`,
-  otherwise rig will ask for your password.";
+  In user mode no `sudo` is needed. In admin mode this command probably
+  needs `sudo`: `sudo rig system make-links`, otherwise rig will ask for
+  your password.";
 
 const HELP_SYSTEM_USER_MODE: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m

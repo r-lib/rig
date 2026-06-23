@@ -52,7 +52,10 @@ knitr::opts_chunk$set(
   core dumps, on macOS.
 * Installs the appropriate Rtools versions on Windows and sets them up.
 * Cleans up stale R-related entries from the Windows registry.
-* Switches to root/administrator user as needed.
+* Optional *user mode* installs R entirely into your home directory, with
+  no `sudo` or administrator rights needed. In the default *admin mode* rig
+  installs R system-wide and switches to the root/administrator user as
+  needed. See the [FAQ](#id-faq).
 * Supports JSON output for scripting.
 
 ## 🐞&nbsp; Known Issues <a id="id-known-issues">
@@ -321,6 +324,7 @@ rig system make-links              -- create R-* quick links
 rig system make-orthogonal         -- make installed versions orthogonal
 rig system no-openmp               -- remove OpenMP (-fopenmp) option for Apple compilers
 rig system setup-user-lib          -- set up automatic user package libraries [alias: create-lib]
+rig system user-mode               -- switch to user mode and clean up admin-mode installations
 ```
 
 ### Windows `rig system` subcommands
@@ -333,6 +337,7 @@ rig system make-links              -- create R-* quick links
 rig system rtools                  -- manage Rtools installations
 rig system setup-user-lib          -- set up automatic user package libraries [alias: create-lib]
 rig system update-rtools40         -- update Rtools40 MSYS2 packages
+rig system user-mode               -- switch to user mode and clean up admin-mode installations
 ```
 
 ### Linux `rig system` subcommands
@@ -342,6 +347,8 @@ rig system add-pak                 -- install or update pak for an R version
 rig system detect-platform         -- detect operating system version and distribution
 rig system make-links              -- create R-* quick links
 rig system setup-user-lib          -- set up automatic user package libraries [alias: create-lib]
+rig system update-certs            -- download the CA certificate bundle and configure R to use it
+rig system user-mode               -- switch to user mode and clean up admin-mode installations
 ```
 
 ## ⛵&nbsp; macOS menu bar app <a id="id-macos-menu-bar-app">

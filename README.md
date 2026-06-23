@@ -48,7 +48,10 @@ Install, remove, configure R versions.
   core dumps, on macOS.
 - Installs the appropriate Rtools versions on Windows and sets them up.
 - Cleans up stale R-related entries from the Windows registry.
-- Switches to root/administrator user as needed.
+- Optional *user mode* installs R entirely into your home directory,
+  with no `sudo` or administrator rights needed. In the default *admin
+  mode* rig installs R system-wide and switches to the
+  root/administrator user as needed. See the [FAQ](#id-faq).
 - Supports JSON output for scripting.
 
 ## 🐞  Known Issues <a id="id-known-issues">
@@ -313,6 +316,7 @@ Run `rig <subcommand> --help` for information about a subcommand.
     rig system make-orthogonal         -- make installed versions orthogonal
     rig system no-openmp               -- remove OpenMP (-fopenmp) option for Apple compilers
     rig system setup-user-lib          -- set up automatic user package libraries [alias: create-lib]
+    rig system user-mode               -- switch to user mode and clean up admin-mode installations
 
 ### Windows `rig system` subcommands
 
@@ -323,6 +327,7 @@ Run `rig <subcommand> --help` for information about a subcommand.
     rig system rtools                  -- manage Rtools installations
     rig system setup-user-lib          -- set up automatic user package libraries [alias: create-lib]
     rig system update-rtools40         -- update Rtools40 MSYS2 packages
+    rig system user-mode               -- switch to user mode and clean up admin-mode installations
 
 ### Linux `rig system` subcommands
 
@@ -330,6 +335,8 @@ Run `rig <subcommand> --help` for information about a subcommand.
     rig system detect-platform         -- detect operating system version and distribution
     rig system make-links              -- create R-* quick links
     rig system setup-user-lib          -- set up automatic user package libraries [alias: create-lib]
+    rig system update-certs            -- download the CA certificate bundle and configure R to use it
+    rig system user-mode               -- switch to user mode and clean up admin-mode installations
 
 ## ⛵  macOS menu bar app <a id="id-macos-menu-bar-app">
 
@@ -552,7 +559,21 @@ Why does rig set up P3M?
 Can rig install R without admin permissions
 </summary>
 
-> No, currently it cannot.
+> Yes. rig has a *user mode* that installs everything into your home
+> directory, so it never needs `sudo` or administrator rights. In user
+> mode rig installs R into `~/.local/share/rig/r`
+> (`%APPDATA%\rig\data\r` on Windows) and creates quick links in
+> `~/.local/bin` (`%USERPROFILE%\.local\bin` on Windows), which need to
+> be on your `PATH`.
+>
+> Switch to user mode by setting the `RIG_MODE=user` environment
+> variable, by running `rig config set mode=user`, or by passing the
+> `--user` flag to any rig command. `rig system user-mode` switches to
+> user mode and migrates an existing admin-mode setup (see
+> `rig system user-mode --help`).
+>
+> The default is still *admin mode*, which installs R system-wide and
+> needs `sudo` (or an administrator account on Windows).
 
 </details>
 

@@ -62,15 +62,18 @@ const HELP_ARCH: &str = "Select Windows arch: x86_64 or aarch64";
 const HELP_DEFAULT: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
   Print or set the default R version. The default R version is the one
-  that can be started with the `R` and `RS` commands, via quick
-  batch files at `C:\\Program Files\\R\\bin`.
+  that can be started with the `R` and `RS` commands, via quick batch
+  files in the rig binary directory (`%USERPROFILE%\\.local\\bin` in user
+  mode).
 
   Call without any arguments to see the current default. Call with the
   version number/name to set the default. Before setting a default, you
   can call `rig list` to see the installed R versions.
 
-  Potentially you need to run this command from an admininstrator shell
-  to change the current default.
+  In user mode rig works entirely within your user profile, so no
+  administrator rights are needed. In admin mode you potentially need to
+  run this command from an administrator shell to change the current
+  default.
 
   You don't need to update the default R version to just run a non-default R
   version. You can use the `R-<ver>` links, see `rig system make-links`.
@@ -91,8 +94,8 @@ const HELP_DEFAULT_EXAMPLES: &str = "\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
 
 const HELP_LIST: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
-  List installed R versions at `C:\\Program Files\\R`.
-  It does _not_ check if they are working properly.
+  List installed R versions. It does _not_ check if they are working
+  properly.
 
   `rig ls` is an alias.";
 
@@ -129,7 +132,9 @@ const HELP_ADD: &str = "
   e.g. `rig add rtools40`. Rtools versions 3.x all install to `C:\\Rtools`,
   so only one of them can be installed at a time.
 
-  You need an administrator account to run this command.
+  In user mode rig installs R and Rtools into your user profile, without
+  administrator rights. In admin mode you need an administrator account to
+  run this command.
 
 \x1b[4m\x1b[1mKnown issue:\x1b[22m\x1b[24m
   - Rtools installation will fail if the same version of Rtools is
@@ -155,7 +160,8 @@ const HELP_RM: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
   Remove an R installation. It keeps the users' package libraries.
 
-  You need an administrator account to run this command.";
+  In user mode no administrator rights are needed. In admin mode you need
+  an administrator account to run this command.";
 
 const HELP_SYSTEM: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
@@ -164,9 +170,9 @@ const HELP_SYSTEM: &str = "
 
 const HELP_SYSTEM_LINKS: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
-  Create quick links in `C:\\Program Files\\R\\bin` for the current R
-  installations. This lets you directly run a specific R version. E.g.
-   `R-4.1.2` will start R 4.1.2.
+  Create quick links in the rig binary directory (`%USERPROFILE%\\.local\\bin`
+  in user mode) for the current R installations. This lets you directly run
+  a specific R version. E.g. `R-4.1.2` will start R 4.1.2.
 
   It also adds an `R` and `RS` link that runs the default R version.
   See `rig default`.
@@ -174,7 +180,8 @@ const HELP_SYSTEM_LINKS: &str = "
   `rig add` runs `rig system make-links`, so if you only use rig to
   install R, then you do not need to run it manually.
 
-  You need an administrator account to run this command.";
+  In user mode no administrator rights are needed. In admin mode you need
+  an administrator account to run this command.";
 
 const HELP_SYSTEM_ADDPAK: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m

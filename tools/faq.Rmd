@@ -74,7 +74,25 @@
 <details>
 <summary>Can rig install R without admin permissions</summary>
 >
-> No, currently it cannot.
+> Yes. rig has a *user mode* that installs everything into your home
+> directory, so it never needs `sudo` or administrator rights. In user
+> mode rig installs R into `~/.local/share/rig/r` (`%APPDATA%\rig\data\r`
+> on Windows) and creates quick links in `~/.local/bin`
+> (`%USERPROFILE%\.local\bin` on Windows), which need to be on your
+> `PATH`.
+>
+> `rig system user-mode` switches to user mode and migrates an existing
+> admin-mode setup (see `rig system user-mode --help`).
+>
+> Use `rig config set mode=user` and `rig config set mode=admin` to switch
+> between user and admin mode.
+>
+> Alternatively, switch to user mode temporarily by setting the
+> `RIG_MODE=user` environment variable, or by passing the `--user` flag to
+> any rig command.
+>
+> The default is still *admin mode*, which installs R system-wide and
+> needs `sudo` (or an administrator account on Windows).
 >
 </details>
 
@@ -97,28 +115,28 @@
 <summary>Which domains does rig download files from?</summary>
 >
 > Here is the list of domains that you need to enable in your proxy.
-> Note that some of these, in particular the GitHub ones,  might 
+> Note that some of these, in particular the GitHub ones,  might
 > trigger redirects.
 >
 > - https://api.r-hub.io/rversions for resolving R versions, i.e. this is
 >   needed for `rig install`, `rig available`, etc.
 > - `rig install` downloads pak from https://r-lib.github.io/p/pak
 >   unless requested otherwise.
-> - `rig install` sets https://cloud.r-project.org as the default CRAN 
+> - `rig install` sets https://cloud.r-project.org as the default CRAN
 >   mirror, unless requested otherwise.
 > - `rig install` sets https://packagemanager.posit.co as the Posit
 >   Package Manager CRAN mirror on supported Linux systems, unless
 >   requested otherwise.
-> - `rig install` downloads the EPEL package from 
+> - `rig install` downloads the EPEL package from
 >   https://dl.fedoraproject.org/pub/epel on RHEL systems.
-> - `rig system rtools` downloads Rtools from the following URLs on 
->   Windows: 
+> - `rig system rtools` downloads Rtools from the following URLs on
+>   Windows:
 >   * https://github.com/r-hub/rtools44/releases,
 >   * https://github.com/r-hub/rtools43/releases,
 >   * https://github.com/r-hub/rtools42/releases,
 >   * https://cloud.r-project.org/bin/windows/Rtools
-> - https://github.com/R-macos/gcc-darwin-arm64/releases, 
+> - https://github.com/R-macos/gcc-darwin-arm64/releases,
 >   https://github.com/fxcoudert/gfortran-for-macOS/releases and whatever
->   domains Homebrew is using, to download system packages for 
+>   domains Homebrew is using, to download system packages for
 >   `rig sysreqs` on macOS.
 </details>

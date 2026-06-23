@@ -6,6 +6,44 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **rig** is "The R Installation Manager" - a cross-platform CLI tool written in Rust that manages multiple R installations on macOS, Windows, and Linux. It allows users to install, remove, configure, and switch between different R versions.
 
+## Installation Modes (user vs admin)
+
+rig operates in one of two modes on all platforms, represented by the `Mode`
+enum in `src/utils.rs`:
+
+- **Admin mode** (the current default): R is installed system-wide and most
+  operations need `sudo` / an administrator account. R goes into platform
+  locations (`/opt/R` on Linux, `/Library/Frameworks/R.framework` on macOS,
+  `C:\Program Files\R` on Windows) and quick links into `/usr/local/bin`
+  (`C:\Program Files\R\bin` on Windows).
+- **User mode**: rig installs everything into the user's home directory and
+  never needs elevated privileges. R goes into `~/.local/share/rig/r`
+  (`%APPDATA%\rig\data\r` on Windows) and quick links into `~/.local/bin`
+  (`%USERPROFILE%\.local\bin` on Windows).
+
+Mode resolution (`get_mode()` in `src/utils.rs`) checks, in order: the
+`--user`/`--admin` global flags, the `RIG_MODE` environment variable, the
+`mode` key in the rig config file, then defaults to admin. The mode is cached
+after the first lookup.
+
+Never hard-code mode-specific paths. Resolve directories through the helpers
+in `src/utils.rs`, which are mode-aware and also honor override env vars /
+config keys:
+
+- `get_binary_dir()` — quick-link directory (`RIG_BINARY_DIR` / `binary-dir`).
+- `get_r_install_dir()` — R installation root (`RIG_R_INSTALL_DIR` /
+  `r-install-dir`).
+
+`rig system user-mode` (macOS/Linux, `sc_system_user_mode` in `src/macos.rs`
+and `src/linux.rs`) switches an existing admin-mode setup to user mode,
+reinstalls the R versions, and cleans up the admin-mode files.
+
+When editing docs or help text (`src/help-*.in`, `README.Rmd`/`README.md`,
+`tools/faq.Rmd`), describe both modes; do not present admin-mode directories
+or the `/usr/local/bin` binary location as the only behavior. `README.md` is
+generated from `README.Rmd` (which pulls in `tools/faq.Rmd`) — edit the `.Rmd`
+sources and keep `README.md` in sync.
+
 ## Build Commands
 
 ```bash
