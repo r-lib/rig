@@ -209,9 +209,22 @@ rig-$(VERSION)-macOS-unsigned-%.pkg: build.stamp tools/distribution.xml.in
 	cat tools/distribution.xml.in | sed "s/{{VERSION}}/$(VERSION)/g" | \
 		 sed "s/{{ARCH}}/$*/g" > tools/distribution.xml
 
-README.md: README.Rmd $(SOURCES)
-	cargo build --release
-	R -q -e 'rmarkdown::render("README.Rmd")'
+# README.md is the short landing page, generated from README.qmd (which
+# includes shared partials from website/_partials). The full documentation
+# lives in the Quarto website under website/.
+README.md: README.qmd website/_partials/intro.md website/_partials/feedback.md
+	quarto render README.qmd --to gfm
+
+.PHONY: readme docs docs-preview
+readme: README.md
+
+# Build the documentation website into website/_site.
+docs:
+	quarto render website
+
+# Live-preview the documentation website.
+docs-preview:
+	quarto preview website
 
 build.stamp: target/release/rig target/x86_64-apple-darwin/release/rig \
 	     Rig.app/build-arm64/Build/Products/Release/Rig.app \

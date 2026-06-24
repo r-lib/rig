@@ -1,0 +1,39 @@
+name: docs
+
+# Build the Quarto documentation site and deploy it to the root of the
+# gh-pages branch on every push to the default branch (or a manual run).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'website/**'
+      - 'README.qmd'
+      - 'NEWS.md'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: docs-pages
+  cancel-in-progress: false
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: quarto-dev/quarto-actions/setup@v2
+
+      - name: Render site
+        run: quarto render website
+
+      - name: Deploy to gh-pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: gh-pages
+          folder: website/_site
+          clean: true

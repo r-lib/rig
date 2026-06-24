@@ -1,0 +1,6 @@
+/*-- scss:defaults --*/
+
+// Keep the navbar the same height in both the light and dark themes. The
+// darkly (dark) theme otherwise uses a taller $navbar-padding-y (1rem) than
+// cosmo (light, 0.5rem), making the top bar jump taller in dark mode.
+$navbar-padding-y: 0.5rem;

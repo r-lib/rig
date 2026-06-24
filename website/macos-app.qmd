@@ -1,0 +1,5 @@
+---
+title: "macOS menu bar app"
+---
+
+{{< include _partials/macos-app.md >}}

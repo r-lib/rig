@@ -1,0 +1,29 @@
+---
+title: "Reference"
+---
+
+Reference material for rig.
+
+## Command-line reference
+
+The full command-line reference is available from rig itself:
+
+```sh
+rig --help                 # overview of all commands
+rig <subcommand> --help    # detailed help for a subcommand
+```
+
+See [Usage](../usage.qmd) for the list of commands and the platform-specific
+`rig system` subcommands.
+
+<!--
+A generated, browsable CLI reference can be added here. See
+`tools/gen-cli-reference.sh` (optional follow-up): it runs the built `rig`
+binary, captures `--help` output for every command, strips ANSI escapes and
+writes one page per command under `reference/cli/`.
+-->
+
+## Reference manuals
+
+Additional reference manuals (e.g. rendered HTML or PDF documents) can be
+linked or embedded here as they become available.

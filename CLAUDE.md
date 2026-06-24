@@ -38,11 +38,49 @@ config keys:
 and `src/linux.rs`) switches an existing admin-mode setup to user mode,
 reinstalls the R versions, and cleans up the admin-mode files.
 
-When editing docs or help text (`src/help-*.in`, `README.Rmd`/`README.md`,
-`tools/faq.Rmd`), describe both modes; do not present admin-mode directories
-or the `/usr/local/bin` binary location as the only behavior. `README.md` is
-generated from `README.Rmd` (which pulls in `tools/faq.Rmd`) — edit the `.Rmd`
-sources and keep `README.md` in sync.
+When editing docs or help text (`src/help-*.in`, the website under `website/`,
+`README.md`), describe both modes; do not present admin-mode directories or the
+`/usr/local/bin` binary location as the only behavior.
+
+## Documentation website
+
+The full user documentation is a Quarto website under `website/` (see
+`website/_quarto.yml`). Prose lives in `website/_partials/*.md` (one markdown
+file per section: `intro`, `features`, `known-issues`, `install`, `usage`,
+`macos-app`, `docker`, `faq`, `feedback`); the `.qmd` pages are thin wrappers
+that `{{< include >}}` a partial. Edit the partials, not the rendered HTML.
+
+- The site is **one level deep**: `index.qmd` (Get started — intro, quick
+  start, features, known issues) plus five flat Guide pages
+  (`install.qmd`, `usage.qmd`, `macos-app.qmd`, `docker.qmd`, `faq.qmd`),
+  `reference/index.qmd`, `articles/index.qmd` and `news.qmd`. Do **not** add a
+  further level of sub-pages.
+- The layout is the uv-style three-column docs layout: a **permanent docked
+  left sidebar** holds all navigation (Get started, a collapsible `Guide`
+  section with the five Guide pages, Reference, Articles, Changelog — see the
+  `sidebar:` block in `_quarto.yml`), the content is in the middle, and the
+  right-hand on-page TOC (`toc: true`) lists the current page's sections. The
+  main navigation lives in the sidebar only; the top `navbar` is kept thin
+  (search, GitHub link) so nav is not duplicated.
+- The site has a light/dark theme toggle (`theme: { light: cosmo, dark:
+  darkly }`). Shared cross-theme style overrides live in `website/theme.scss`
+  (applied to both themes), e.g. pinning the navbar height.
+- Cross-links between pages are `.qmd` links (e.g. `[FAQ](faq.qmd)`,
+  `[list below](install.qmd#id-supported-linux-distributions)`).
+
+- `README.md` is now an **ultra-minimal landing page** generated from
+  `README.qmd` (which includes `website/_partials/intro.md` and
+  `feedback.md`). It just describes rig and links to the website. Do **not**
+  put full docs back in the README. Regenerate with `make readme`
+  (`quarto render README.qmd --to gfm`).
+- Build/preview the site with `make docs` / `make docs-preview` (or
+  `quarto render website` / `quarto preview website`). No R or `cargo build`
+  is needed — the content is static markdown.
+- The site is deployed to the root of the GitHub Pages `gh-pages` branch on
+  every push to the default branch, handled by `.github/workflows/docs.yml`.
+- `website/news.qmd` includes the repo's `NEWS.md`; keep the changelog in
+  `NEWS.md`. `website/reference/` and `website/articles/` hold the reference
+  manual(s) and articles/blog-post listings.
 
 ## Build Commands
 

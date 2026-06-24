@@ -1,6 +1,3 @@
-
-## ❓&nbsp; FAQ <a id="id-faq">
-
 <details>
 <summary>Why does rig create a user package library?</summary>
 >

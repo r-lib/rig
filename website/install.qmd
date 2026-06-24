@@ -1,0 +1,5 @@
+---
+title: "Installing rig"
+---
+
+{{< include _partials/install.md >}}
