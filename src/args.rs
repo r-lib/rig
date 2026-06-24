@@ -586,7 +586,7 @@ pub fn rig_app() -> Command {
         cmd_system = cmd_system.subcommand(cmd_system_update_certs);
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(all(debug_assertions, any(target_os = "macos", target_os = "linux")))]
     {
         let cmd_system_user_mode = Command::new("user-mode")
             .about("Switch to user mode and clean up admin-mode installations")
@@ -826,6 +826,7 @@ pub fn rig_app() -> Command {
                 ),
         );
 
+    #[cfg(debug_assertions)]
     {
         let cmd_config = Command::new("config")
             .about("Manage rig configuration")
@@ -1412,22 +1413,25 @@ pub fn rig_app() -> Command {
                 .required(false),
         );
 
-    rig = rig
-        .arg(
-            Arg::new("user")
-                .help("Run in user mode (overrides RIG_MODE and config)")
-                .long("user")
-                .global(true)
-                .action(clap::ArgAction::SetTrue)
-                .conflicts_with("admin"),
-        )
-        .arg(
-            Arg::new("admin")
-                .help("Run in admin mode (overrides RIG_MODE and config)")
-                .long("admin")
-                .global(true)
-                .action(clap::ArgAction::SetTrue),
-        );
+    #[cfg(debug_assertions)]
+    {
+        rig = rig
+            .arg(
+                Arg::new("user")
+                    .help("Run in user mode (overrides RIG_MODE and config)")
+                    .long("user")
+                    .global(true)
+                    .action(clap::ArgAction::SetTrue)
+                    .conflicts_with("admin"),
+            )
+            .arg(
+                Arg::new("admin")
+                    .help("Run in admin mode (overrides RIG_MODE and config)")
+                    .long("admin")
+                    .global(true)
+                    .action(clap::ArgAction::SetTrue),
+            );
+    }
 
     rig = rig
         .subcommand(cmd_default)

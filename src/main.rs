@@ -209,15 +209,18 @@ fn main_() -> i32 {
 
     unset_r_envvars();
 
-    if args.get_flag("user") {
-        if let Err(e) = utils::set_mode(utils::Mode::User) {
-            error!("{}", e);
-            return 1;
-        }
-    } else if args.get_flag("admin") {
-        if let Err(e) = utils::set_mode(utils::Mode::Admin) {
-            error!("{}", e);
-            return 1;
+    #[cfg(debug_assertions)]
+    {
+        if args.get_flag("user") {
+            if let Err(e) = utils::set_mode(utils::Mode::User) {
+                error!("{}", e);
+                return 1;
+            }
+        } else if args.get_flag("admin") {
+            if let Err(e) = utils::set_mode(utils::Mode::Admin) {
+                error!("{}", e);
+                return 1;
+            }
         }
     }
 
