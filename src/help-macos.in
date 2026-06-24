@@ -232,6 +232,7 @@ const HELP_SYSTEM_FORGET: &str = "
   This command probably needs `sudo`: `sudo rig system forget`, otherwise
   rig will ask for your password.";
 
+#[cfg(debug_assertions)]
 const HELP_SYSTEM_USER_MODE: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
   Switch rig to user mode and clean up the machine after admin mode.
