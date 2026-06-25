@@ -1,8 +1,5 @@
 name: docs
 
-# Build the Quarto documentation site and deploy it to the root of the
-# gh-pages branch on every push to the default branch (or a manual run).
-
 on:
   push:
     branches: [main]
@@ -17,7 +14,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: docs-pages
+  group: website
   cancel-in-progress: false
 
 jobs:
@@ -31,9 +28,9 @@ jobs:
       - name: Render site
         run: quarto render website
 
-      - name: Deploy to gh-pages
+      - name: Deploy to website branch
         uses: JamesIves/github-pages-deploy-action@v4
         with:
-          branch: gh-pages
+          branch: website
           folder: website/_site
           clean: true
