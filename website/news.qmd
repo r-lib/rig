@@ -1,0 +1,6 @@
+---
+title: "Changelog"
+toc: true
+---
+
+{{< include ../NEWS.md >}}

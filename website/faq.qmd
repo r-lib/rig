@@ -1,0 +1,9 @@
+---
+title: "FAQ"
+---
+
+{{< include _partials/faq.md >}}
+
+## Feedback
+
+{{< include _partials/feedback.md >}}

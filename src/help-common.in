@@ -15,7 +15,7 @@ const HELP_AVAILABLE: &str = "
     might not work at all.
   - Only the latest release is shown for each minor version. E.g.
     R 4.2.3 is listed, but other R 4.2.x versions are not.
-  Use `--all` to list all versions.
+    Use `--all` to list all versions.
 
   Use `--json` to return the output in JSON. JSON output includes the
   full time stamp (if available) and the download URL as well.
@@ -58,8 +58,8 @@ const HELP_ABOUT_PRE: &str = "\x1b[4m\x1b[1mName:\x1b[22m\x1b[24m
   together.";
 
 const HELP_ABOUT_POST: &str = "
-  rig is currently experimental and is a work in progress. Feedback is much
-  appreciated. See https://github.com/r-lib/rig for bug reports.";
+  rig is under constant development. Feedback is much appreciated.
+  See https://github.com/r-lib/rig for bug reports.";
 
 lazy_static! {
     static ref HELP_ABOUT_REAL: String =

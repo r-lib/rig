@@ -1,0 +1,33 @@
+---
+format: gfm
+---
+
+<!-- README.md is generated from README.qmd. Edit README.qmd (and the
+     website/_partials it includes), then run `make readme`. -->
+
+# The R Installation Manager
+
+Install, remove, configure R versions.
+
+{{< include website/_partials/intro.md >}}
+
+## 📖 Documentation
+
+**Full documentation — installation, usage, all commands, FAQ — is on the rig
+website: <https://r-lib.github.io/rig/>**
+
+Quick start:
+
+```sh
+rig add release      # install the latest R release
+rig list             # list installed R versions
+rig default 4.5.1    # set the default R version
+```
+
+## 🤝 Feedback
+
+{{< include website/_partials/feedback.md >}}
+
+## 📘 License
+
+MIT 2021-2026 © Posit Software, PBC.

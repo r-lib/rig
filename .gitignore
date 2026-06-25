@@ -29,3 +29,8 @@ _rim.ps1
 /*.rpm
 /tools/gon.hcl
 /tools/distribution.xml
+
+# Quarto documentation site build artifacts
+/website/_site
+/.quarto
+/website/.quarto

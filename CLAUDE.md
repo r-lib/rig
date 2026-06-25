@@ -6,6 +6,82 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **rig** is "The R Installation Manager" - a cross-platform CLI tool written in Rust that manages multiple R installations on macOS, Windows, and Linux. It allows users to install, remove, configure, and switch between different R versions.
 
+## Installation Modes (user vs admin)
+
+rig operates in one of two modes on all platforms, represented by the `Mode`
+enum in `src/utils.rs`:
+
+- **Admin mode** (the current default): R is installed system-wide and most
+  operations need `sudo` / an administrator account. R goes into platform
+  locations (`/opt/R` on Linux, `/Library/Frameworks/R.framework` on macOS,
+  `C:\Program Files\R` on Windows) and quick links into `/usr/local/bin`
+  (`C:\Program Files\R\bin` on Windows).
+- **User mode**: rig installs everything into the user's home directory and
+  never needs elevated privileges. R goes into `~/.local/share/rig/r`
+  (`%APPDATA%\rig\data\r` on Windows) and quick links into `~/.local/bin`
+  (`%USERPROFILE%\.local\bin` on Windows).
+
+Mode resolution (`get_mode()` in `src/utils.rs`) checks, in order: the
+`--user`/`--admin` global flags, the `RIG_MODE` environment variable, the
+`mode` key in the rig config file, then defaults to admin. The mode is cached
+after the first lookup.
+
+Never hard-code mode-specific paths. Resolve directories through the helpers
+in `src/utils.rs`, which are mode-aware and also honor override env vars /
+config keys:
+
+- `get_binary_dir()` — quick-link directory (`RIG_BINARY_DIR` / `binary-dir`).
+- `get_r_install_dir()` — R installation root (`RIG_R_INSTALL_DIR` /
+  `r-install-dir`).
+
+`rig system user-mode` (macOS/Linux, `sc_system_user_mode` in `src/macos.rs`
+and `src/linux.rs`) switches an existing admin-mode setup to user mode,
+reinstalls the R versions, and cleans up the admin-mode files.
+
+When editing docs or help text (`src/help-*.in`, the website under `website/`,
+`README.md`), describe both modes; do not present admin-mode directories or the
+`/usr/local/bin` binary location as the only behavior.
+
+## Documentation website
+
+The full user documentation is a Quarto website under `website/` (see
+`website/_quarto.yml`). Prose lives in `website/_partials/*.md` (one markdown
+file per section: `intro`, `features`, `known-issues`, `install`, `usage`,
+`macos-app`, `docker`, `faq`, `feedback`); the `.qmd` pages are thin wrappers
+that `{{< include >}}` a partial. Edit the partials, not the rendered HTML.
+
+- The site is **one level deep**: `index.qmd` (Get started — intro, quick
+  start, features, known issues) plus five flat Guide pages
+  (`install.qmd`, `usage.qmd`, `macos-app.qmd`, `docker.qmd`, `faq.qmd`),
+  `reference/index.qmd`, `articles/index.qmd` and `news.qmd`. Do **not** add a
+  further level of sub-pages.
+- The layout is the uv-style three-column docs layout: a **permanent docked
+  left sidebar** holds all navigation (Get started, a collapsible `Guide`
+  section with the five Guide pages, Reference, Articles, Changelog — see the
+  `sidebar:` block in `_quarto.yml`), the content is in the middle, and the
+  right-hand on-page TOC (`toc: true`) lists the current page's sections. The
+  main navigation lives in the sidebar only; the top `navbar` is kept thin
+  (search, GitHub link) so nav is not duplicated.
+- The site has a light/dark theme toggle (`theme: { light: cosmo, dark:
+  darkly }`). Shared cross-theme style overrides live in `website/theme.scss`
+  (applied to both themes), e.g. pinning the navbar height.
+- Cross-links between pages are `.qmd` links (e.g. `[FAQ](faq.qmd)`,
+  `[list below](install.qmd#id-supported-linux-distributions)`).
+
+- `README.md` is now an **ultra-minimal landing page** generated from
+  `README.qmd` (which includes `website/_partials/intro.md` and
+  `feedback.md`). It just describes rig and links to the website. Do **not**
+  put full docs back in the README. Regenerate with `make readme`
+  (`quarto render README.qmd --to gfm`).
+- Build/preview the site with `make docs` / `make docs-preview` (or
+  `quarto render website` / `quarto preview website`). No R or `cargo build`
+  is needed — the content is static markdown.
+- The site is deployed to the root of the GitHub Pages `gh-pages` branch on
+  every push to the default branch, handled by `.github/workflows/docs.yml`.
+- `website/news.qmd` includes the repo's `NEWS.md`; keep the changelog in
+  `NEWS.md`. `website/reference/` and `website/articles/` hold the reference
+  manual(s) and articles/blog-post listings.
+
 ## Build Commands
 
 ```bash

@@ -1,0 +1,24 @@
+---
+title: "The R Installation Manager"
+toc: false
+---
+
+{{< include _partials/intro.md >}}
+
+## Quick start
+
+Install rig (see [Installing rig](install.qmd) for all options), then:
+
+```sh
+rig add release      # install the latest R release
+rig list             # list installed R versions
+rig default 4.5.1    # set the default R version
+```
+
+## Features
+
+{{< include _partials/features.md >}}
+
+## Known issues
+
+{{< include _partials/known-issues.md >}}

@@ -1,0 +1,53 @@
+project:
+  type: website
+  output-dir: _site
+
+website:
+  title: "rig"
+  description: "The R Installation Manager"
+  site-url: https://r-lib.github.io/rig/
+  repo-url: https://github.com/r-lib/rig
+  favicon: assets/rig-app.png
+  navbar:
+    background: primary
+    search: true
+    tools:
+      - icon: github
+        href: https://github.com/r-lib/rig
+        text: GitHub
+  sidebar:
+    style: docked
+    search: true
+    # Keep all top-level entries (e.g. the "Guide" section) expanded; never
+    # collapse them. collapse-level must exceed the sidebar's nesting depth.
+    collapse-level: 3
+    contents:
+      - text: "Get started"
+        file: index.qmd
+      - section: "Guide"
+        contents:
+          - text: "Installing rig"
+            file: install.qmd
+          - text: "Usage"
+            file: usage.qmd
+          - text: "macOS menu bar app"
+            file: macos-app.qmd
+          - text: "Docker containers"
+            file: docker.qmd
+          - text: "FAQ"
+            file: faq.qmd
+      - text: "Reference"
+        file: reference/index.qmd
+      - text: "Articles"
+        file: articles/index.qmd
+      - text: "Changelog"
+        file: news.qmd
+
+format:
+  html:
+    # Providing a light and a dark theme makes Quarto add a light/dark toggle
+    # to the navbar automatically.
+    theme:
+      light: [cosmo, theme.scss]
+      dark: [darkly, theme.scss]
+    toc: true

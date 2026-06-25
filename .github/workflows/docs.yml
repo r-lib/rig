@@ -1,0 +1,36 @@
+name: docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'website/**'
+      - 'README.qmd'
+      - 'NEWS.md'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: website
+  cancel-in-progress: false
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: quarto-dev/quarto-actions/setup@v2
+
+      - name: Render site
+        run: quarto render website
+
+      - name: Deploy to website branch
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: website
+          folder: website/_site
+          clean: true

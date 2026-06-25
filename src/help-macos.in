@@ -66,20 +66,20 @@ const HELP_ARCH: &str = "Select macOS arch: arm64 or x86_64";
 const HELP_DEFAULT: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
   Print or set the default R version. The default R version is the one that
-  is started with the `R` command, usually via the `/usr/local/bin/R`
-  symbolic link.
+  is started with the `R` command, via the `R` quick link in the rig binary
+  directory (`~/.local/bin` in user mode).
 
   Call without any arguments to see the current default. Call with the
   version number/name to set the default. Before setting a default, you
   can call `rig list` to see the installed R versions.
 
-  The default R version is set by updating the symbolic link at
-  `/Library/Frameworks/R.framework/Versions/Current` and pointing it to the
-  specified R version.
+  The default R version is set by updating the `current` symbolic link in
+  the R installation directory and pointing it to the specified R version.
 
-  This command can change the default version without `sudo` as long as
-  the user is in the `admin` group. Otherwise you need to run it as
-  `sudo rig default ...`.
+  In user mode rig works entirely within your home directory, so no `sudo`
+  is needed. In admin mode this command can change the default version
+  without `sudo` as long as the user is in the `admin` group; otherwise you
+  need to run it as `sudo rig default ...`.
 
   You don't need to update the default R version to just run a non-default R
   version. You can use the `R-<ver>` links, see `rig system make-links`.
@@ -95,8 +95,8 @@ const HELP_DEFAULT_EXAMPLES: &str = "\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
 
 const HELP_LIST: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
-  List installed R versions from `/Library/Framework/R.framework/Versions`.
-  It does _not_ check if they are working properly.
+  List installed R versions. It does _not_ check if they are working
+  properly.
 
   `rig ls` is an alias.";
 
@@ -116,12 +116,14 @@ const HELP_ADD: &str = "
     minor branch (`oldrel` is the same as `oldrel/1`).
   - `rig add <url>` uses a `.pkg` installer from `<url>`.
 
-  Usually you need to run this command with `sudo`: `sudo rig add ...`,
-  otherwise rig will need to ask for your password.
+  In user mode rig installs R into your home directory and never needs
+  `sudo`. In admin mode you usually need to run this command with `sudo`:
+  `sudo rig add ...`, otherwise rig will need to ask for your password.
 
-  On macOS rig cannot add multiple R versions from the same minor branch.
-  E.g. it is not possible to have R 4.1.1 and R 4.1.2 installed at the
- same time. Adding one of them will automatically remove the other.
+  In admin mode on macOS rig cannot add multiple R versions from the same
+  minor branch. E.g. it is not possible to have R 4.1.1 and R 4.1.2
+  installed at the same time. Adding one of them will automatically remove
+  the other. In user mode there is no such restriction.
 
   `rig add` will automatically call `rig system forget` before the
   installation, to make sure that already installed R versions are kept.
@@ -157,8 +159,9 @@ const HELP_RM: &str = "
   Remove an R installation. It keeps the users' package libraries.
   It automatically calls `rig system forget` before removing the files.
 
-  Usually you need to run this command with `sudo`: `sudo rig rm ...`,
-  otherwise rig will ask for your password.";
+  In user mode no `sudo` is needed. In admin mode you usually need to run
+  this command with `sudo`: `sudo rig rm ...`, otherwise rig will ask for
+  your password.";
 
 const HELP_SYSTEM: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
@@ -186,15 +189,16 @@ const HELP_SYSTEM_ORTHO: &str = "
 
 const HELP_SYSTEM_LINKS: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
-  Create quick links in the rig binary directory (`/usr/local/bin` by
-  default) for the current R installations. These let you directly run a
+  Create quick links in the rig binary directory (`~/.local/bin` in user
+  mode) for the current R installations. These let you directly run a
   specific R version. E.g. `R-4.1` will start R 4.1.x.
 
   `rig add` runs `rig system make-links`, so if you only use rig to
   install R, then you do not need to run it manually.
 
-  This command probably needs `sudo`: `sudo rig system make-links`,
-  otherwise rig will ask for your password.";
+  In user mode no `sudo` is needed. In admin mode this command probably
+  needs `sudo`: `sudo rig system make-links`, otherwise rig will ask for
+  your password.";
 
 const HELP_SYSTEM_ADDPAK: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m

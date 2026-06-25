@@ -1,0 +1,5 @@
+---
+title: "Docker containers with rig"
+---
+
+{{< include _partials/docker.md >}}

@@ -1,0 +1,26 @@
+---
+title: "Articles"
+listing:
+  contents: "*.qmd"
+  type: default
+  sort: "date desc"
+  fields: [date, title, description]
+  exclude:
+    filename: "index.qmd"
+---
+
+Longer-form articles and tutorials about rig.
+
+To add an article, drop a new `.qmd` file in `website/articles/` with a
+`title`, `date` and `description` in its front matter; it will appear in the
+list above automatically.
+
+## Blog posts and external articles
+
+Posts published elsewhere:
+
+<!-- Add external links here, for example:
+- [Managing R versions with rig](https://example.com/post) — Example Blog, 2024
+-->
+
+_None yet._
