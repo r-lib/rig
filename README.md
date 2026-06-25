@@ -173,7 +173,7 @@ tarball.
 
 #### Supported Linux distributions <a id="id-supported-linux-distributions">
 
-- Debian 12, 13
+- Debian 13
 - Ubuntu 20.04, 22.04, 24.04, 26.04
 - Fedora Linux 42, 43
 - OpenSUSE 15.6, 16.0
@@ -200,6 +200,8 @@ existing R builds still work.
 - CentOS 8 (last R version: 4.4.3),
 - Debian 9 (last R version: 4.2.1),
 - Debian 10 (last R version: 4.4.3),
+- Debian 11 (last R version: 4.5.0),
+- Debian 12 (last R version: 4.6.0),
 - Fedora 37 (last R version: 4.3.2),
 - Fedora 38 (last R version: 4.4.2),
 - Fedora 39 (last R version: 4.4.3),
@@ -398,8 +400,6 @@ containers:
 | `ghcr.io/r-lib/rig/ubuntu-20.04-devel` | Ubuntu 20.04 | devel (daily) |  |
 | `ghcr.io/r-lib/rig/debian-13-release` | Debian 13 | release | `debian`, `debian-release`, `debian-latest`, `debian-latest-release`, `debian-13` |
 | `ghcr.io/r-lib/rig/debian-13-devel` | Debian 13 | devel (daily) | `debian-devel`, `debian-latest-devel` |
-| `ghcr.io/r-lib/rig/debian-12-release` | Debian 12 | release | `debian-12` |
-| `ghcr.io/r-lib/rig/debian-12-devel` | Debian 12 | devel (daily) |  |
 | `ghcr.io/r-lib/rig/fedora-43-release` | Fedora 43 | release | `fedora`, `fedora-release`, `fedora-latest`, `fedora-latest-release`, `fedora-43` |
 | `ghcr.io/r-lib/rig/fedora-43-devel` | Fedora 43 | devel | `fedora-devel`, `fedora-latest-devel` |
 | `ghcr.io/r-lib/rig/fedora-42-release` | Fedora 42 | release | `fedora-42` |
@@ -427,7 +427,6 @@ For convenience, we also create these tags:
 | `ghcr.io/r-lib/rig/ubuntu-20.04` | `ubuntu-20.04-release` | Latest R release on Ubuntu 20.04. |
 | `ghcr.io/r-lib/rig/debian` | `debian-13-release` | Latest R release on latest Debian. |
 | `ghcr.io/r-lib/rig/debian-13` | `debian-13-release` | Latest R release on Debian 13. |
-| `ghcr.io/r-lib/rig/debian-12` | `debian-12-release` | Latest R release on Debian 12. |
 | `ghcr.io/r-lib/rig/debian-devel` | `debian-13-devel` | R devel on latest Debian. |
 | `ghcr.io/r-lib/rig/fedora` | `fedora-43-release` | Latest R release on latest Fedora. |
 | `ghcr.io/r-lib/rig/fedora-43` | `fedora-43-release` | Latest R release on Fedora 43. |
