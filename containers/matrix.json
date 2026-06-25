@@ -232,45 +232,6 @@
         ]
     },
     {
-        "name": "debian-12-release",
-        "aliases": [
-            "debian-12-release",
-            "debian",
-            "debian-12",
-            "debian-release",
-            "release"
-        ],
-        "dir": "ubuntu",
-        "args": [
-            "DISTRO=debian",
-            "RELEASE=12",
-            "RVERSION=release"
-        ],
-        "tags": [
-            "ghcr.io/r-lib/rig/debian-12-release:latest",
-            "ghcr.io/r-lib/rig/debian-12:latest"
-        ]
-    },
-    {
-        "name": "debian-12-devel",
-        "aliases": [
-            "debian-12-devel",
-            "debian",
-            "debian-12",
-            "debian-devel",
-            "devel"
-        ],
-        "dir": "ubuntu",
-        "args": [
-            "DISTRO=debian",
-            "RELEASE=12",
-            "RVERSION=devel"
-        ],
-        "tags": [
-            "ghcr.io/r-lib/rig/debian-12-devel:latest"
-        ]
-    },
-    {
         "name": "fedora-42-release",
         "aliases": [
             "fedora-42-release",
