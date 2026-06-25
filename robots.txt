@@ -1,0 +1,1 @@
+Sitemap: https://r-lib.github.io/rig/sitemap.xml

@@ -1,0 +1,358 @@
+[
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "The R Installation Manager",
+    "section": "",
+    "text": "rig is the R Installation Manager: a command line tool that installs, removes, configures and switches between multiple versions of R on macOS, Windows and Linux. It works without system requirements on any platform, lets you select R versions with symbolic names like release, oldrel or devel, runs multiple R versions side by side via quick links, and sets up user package libraries, pak and the default CRAN mirror for you. On macOS it also ships a menu bar app for viewing and switching the default R version.",
+    "crumbs": [
+      "Get started"
+    ]
+  },
+  {
+    "objectID": "index.html#quick-start",
+    "href": "index.html#quick-start",
+    "title": "The R Installation Manager",
+    "section": "Quick start",
+    "text": "Quick start\nInstall rig (see Installing rig for all options), then:\nrig add release      # install the latest R release\nrig list             # list installed R versions\nrig default 4.5.1    # set the default R version",
+    "crumbs": [
+      "Get started"
+    ]
+  },
+  {
+    "objectID": "index.html#features",
+    "href": "index.html#features",
+    "title": "The R Installation Manager",
+    "section": "Features",
+    "text": "Features\n\nWorks on macOS, Windows and Linux.\nSupports many Linux distributions, see list below.\nEasy installation and update, no system requirements on any platform.\nInstall multiple R versions.\nSelect the default R version, for the terminal and RStudio.\nSelect R version to install using symbolic names: devel, next, release, oldrel, etc.\nList R versions available to install.\nRun multiple versions at the same time using quick links. E.g. R-4.1 or R-4.1.2 starts R 4.1.x. Quick links are automatically added to the user’s path.\nOn macOS it comes with a menu bar app that shows the default R version and lets you select it interactively. See more.\nOn arm64 macs select between x86_64 and arm64 versions or R, or install both.\nSets up the default CRAN mirror and PPM. (Only if you are not using RStudio or Positron!)\nInstalls pak and set up automatic system requirements installation.\nCreates and configures user level package libraries.\nRestricts permissions to the system library. (On macOS, not needed on Windows and Linux).\nIncludes auto-complete for zsh and bash, on macOS and Linux.\nUpdates R installations to allow debugging with lldb, and to allow core dumps, on macOS.\nInstalls the appropriate Rtools versions on Windows and sets them up.\nCleans up stale R-related entries from the Windows registry.\nOptional user mode installs R entirely into your home directory, with no sudo or administrator rights needed. In the default admin mode rig installs R system-wide and switches to the root/administrator user as needed. See the FAQ.\nSupports JSON output for scripting.",
+    "crumbs": [
+      "Get started"
+    ]
+  },
+  {
+    "objectID": "index.html#known-issues",
+    "href": "index.html#known-issues",
+    "title": "The R Installation Manager",
+    "section": "Known issues",
+    "text": "Known issues\n\nOn macOS, R.app often does not work if you install multiple R versions.\n\nFound another issue? Please report it in our issue tracker.",
+    "crumbs": [
+      "Get started"
+    ]
+  },
+  {
+    "objectID": "macos-app.html",
+    "href": "macos-app.html",
+    "title": "macOS menu bar app",
+    "section": "",
+    "text": "View and select the default R version in the macOS menu bar. Start RStudio or a recent RStudio project with the selected R version. Select between your package libraries.\nTo start the menu bar app the first time, run the Rig app in “Applications” from Finder or Spotlight, or run\nopen -a Rig\nfrom a Terminal. Then you can check the “Launch at login” box in “Preferences” to start it automatically in the future.\n\n\n\nThe rig menu bar app on macOS\n\n\nNote: if you have a lot of menu bar apps running on an M1/M2 mac, then some of them might be under the camera area. There is no good solution for this currently, other than running less menu bar apps.",
+    "crumbs": [
+      "Guide",
+      "macOS menu bar app"
+    ]
+  },
+  {
+    "objectID": "docker.html",
+    "href": "docker.html",
+    "title": "Docker containers with rig",
+    "section": "",
+    "text": "Use the ghcr.io/r-lib/rig/r Docker container to easily run multiple R versions. It is currently based on Ubuntu 22.04 and contains rig and the six latest R versions, including R-next and R-devel. It is available for x86_64 and arm64 systems:\nSee this image on GitHub.",
+    "crumbs": [
+      "Guide",
+      "Docker containers"
+    ]
+  },
+  {
+    "objectID": "docker.html#all-containers",
+    "href": "docker.html#all-containers",
+    "title": "Docker containers with rig",
+    "section": "All containers",
+    "text": "All containers\nWe also have other containers with rig and either R-devel and R-release preinstalled, on various Linux distros. Here is a table of all containers:\n\n\n\n\n\n\n\n\n\nName\nOS\nR version\nTags\n\n\n\n\nghcr.io/r-lib/rig/ubuntu-24.04-multi\nUbuntu 24.04\nlast 6 (daily)\nr, rig, multi, ubuntu-multi\n\n\nghcr.io/r-lib/rig/ubuntu-26.04-release\nUbuntu 26.04\nrelease\nrelease, ubuntu, ubuntu-release, ubuntu-latest, ubuntu-latest-release, ubuntu-26.04\n\n\nghcr.io/r-lib/rig/ubuntu-26.04-devel\nUbuntu 26.04\ndevel (daily)\ndevel, ubuntu-devel, ubuntu-latest-devel\n\n\nghcr.io/r-lib/rig/ubuntu-24.04-release\nUbuntu 24.04\nrelease\nubuntu-24.04\n\n\nghcr.io/r-lib/rig/ubuntu-24.04-devel\nUbuntu 24.04\ndevel (daily)\n\n\n\nghcr.io/r-lib/rig/ubuntu-22.04-release\nUbuntu 22.04\nrelease\nubuntu-22.04\n\n\nghcr.io/r-lib/rig/ubuntu-22.04-devel\nUbuntu 22.04\ndevel (daily)\n\n\n\nghcr.io/r-lib/rig/ubuntu-20.04-release\nUbuntu 20.04\nrelease\nubuntu-20.04\n\n\nghcr.io/r-lib/rig/ubuntu-20.04-devel\nUbuntu 20.04\ndevel (daily)\n\n\n\nghcr.io/r-lib/rig/debian-13-release\nDebian 13\nrelease\ndebian, debian-release, debian-latest, debian-latest-release, debian-13\n\n\nghcr.io/r-lib/rig/debian-13-devel\nDebian 13\ndevel (daily)\ndebian-devel, debian-latest-devel\n\n\nghcr.io/r-lib/rig/debian-12-release\nDebian 12\nrelease\ndebian-12\n\n\nghcr.io/r-lib/rig/debian-12-devel\nDebian 12\ndevel (daily)\n\n\n\nghcr.io/r-lib/rig/fedora-43-release\nFedora 43\nrelease\nfedora, fedora-release, fedora-latest, fedora-latest-release, fedora-43\n\n\nghcr.io/r-lib/rig/fedora-43-devel\nFedora 43\ndevel\nfedora-devel, fedora-latest-devel\n\n\nghcr.io/r-lib/rig/fedora-42-release\nFedora 42\nrelease\nfedora-42\n\n\nghcr.io/r-lib/rig/fedora-42-devel\nFedora 42\ndevel\n\n\n\nghcr.io/r-lib/rig/opensuse-16.0-release\nOpenSUSE Leap 16.0\nrelease\nopensuse, opensuse-release, opensuse-latest, opensuse-latest-release, opensuse-16.0\n\n\nghcr.io/r-lib/rig/opensuse-16.0-devel\nOpenSUSE Leap 16.0\ndevel (daily)\nopensuse-devel, opensuse-latest-devel\n\n\nghcr.io/r-lib/rig/opensuse-15.6-release\nOpenSUSE Leap 15.6\nrelease\nopensuse-15.6\n\n\nghcr.io/r-lib/rig/opensuse-15.6-devel\nOpenSUSE Leap 15.6\ndevel (daily)\n\n\n\n\nFor convenience, we also create these tags:\n\n\n\n\n\n\n\n\nTag\nCurrent Image\nDescription\n\n\n\n\nghcr.io/r-lib/rig/r\nubuntu-24.04-multi\nLast 6 R versions on latest Ubuntu.\n\n\nghcr.io/r-lib/rig/rig\n”\n”\n\n\nghcr.io/r-lib/rig/multi\n”\n”\n\n\nghcr.io/r-lib/rig/ubuntu-multi\n”\n”\n\n\nghcr.io/r-lib/rig/release\nubuntu-26.04-release\nLatest R release.\n\n\nghcr.io/r-lib/rig/ubuntu\nubuntu-26.04-release\nLatest R release on latest Ubuntu.\n\n\nghcr.io/r-lib/rig/ubuntu-26.04\nubuntu-26.04-release\nLatest R release on Ubuntu 26.04.\n\n\nghcr.io/r-lib/rig/devel\nubuntu-26.04-devel\nR devel.\n\n\nghcr.io/r-lib/rig/ubuntu-devel\nubuntu-26.04-devel\nR devel on latest Ubuntu.\n\n\nghcr.io/r-lib/rig/ubuntu-24.04\nubuntu-24.04-release\nLatest R release on Ubuntu 24.04.\n\n\nghcr.io/r-lib/rig/ubuntu-22.04\nubuntu-22.04-release\nLatest R release on Ubuntu 22.04.\n\n\nghcr.io/r-lib/rig/ubuntu-20.04\nubuntu-20.04-release\nLatest R release on Ubuntu 20.04.\n\n\nghcr.io/r-lib/rig/debian\ndebian-13-release\nLatest R release on latest Debian.\n\n\nghcr.io/r-lib/rig/debian-13\ndebian-13-release\nLatest R release on Debian 13.\n\n\nghcr.io/r-lib/rig/debian-12\ndebian-12-release\nLatest R release on Debian 12.\n\n\nghcr.io/r-lib/rig/debian-devel\ndebian-13-devel\nR devel on latest Debian.\n\n\nghcr.io/r-lib/rig/fedora\nfedora-43-release\nLatest R release on latest Fedora.\n\n\nghcr.io/r-lib/rig/fedora-43\nfedora-43-release\nLatest R release on Fedora 43.\n\n\nghcr.io/r-lib/rig/fedora-42\nfedora-42-release\nLatest R release on Fedora 42.\n\n\nghcr.io/r-lib/rig/fedora-devel\nfedora-43-devel\nR devel on latest Fedora.\n\n\nghcr.io/r-lib/rig/opensuse\nopensuse-16.0-release\nLatest R release on latest OpenSUSE.\n\n\nghcr.io/r-lib/rig/opensuse-16.0\nopensuse-16.0-release\nLatest R release on OpenSUSE 16.0.\n\n\nghcr.io/r-lib/rig/opensuse-15.6\nopensuse-15.6-release\nLatest R release on OpenSUSE 15.6.\n\n\nghcr.io/r-lib/rig/opensuse-devel\nopensuse-16.0-devel\nR devel on latest OpenSUSE.\n\n\n\nSee all container images on GitHub.",
+    "crumbs": [
+      "Guide",
+      "Docker containers"
+    ]
+  },
+  {
+    "objectID": "docker.html#docker-container-features",
+    "href": "docker.html#docker-container-features",
+    "title": "Docker containers with rig",
+    "section": "Docker container features",
+    "text": "Docker container features\nFor all containers:\n\nrig is pre-installed, so you can easily add or remove R versions.\nhttps://github.com/r-lib/pak is installed for all R versions.\nAutomatic system dependency installation via pak.\nLinux binary packages are automatically installed from the Posit Public Package Manager in x86_64 containers, on Ubuntu, Debian and OpenSUSE.\nAvailable on x86_64 and aarch64.",
+    "crumbs": [
+      "Guide",
+      "Docker containers"
+    ]
+  },
+  {
+    "objectID": "install.html",
+    "href": "install.html",
+    "title": "Installing rig",
+    "section": "",
+    "text": "You can use one of our installers or our Homebrew tap.\n\n\nDownload the latest release from https://github.com/r-lib/rig/releases and install it the usual way.\n\n\n\nIf you use Homebrew (Intel or Arm version), you can install rig from our tap:\nbrew tap r-lib/rig\nbrew trust r-lib/rig\nbrew install --cask rig\nYou can use x86_64 rig on Arm macs, and it will be able to install Arm builds of R. But you cannot use Arm rig on Intel macs. If you use both brew versions, only install rig with one of them.\nTo update rig you can run\nbrew upgrade --cask rig",
+    "crumbs": [
+      "Guide",
+      "Installing rig"
+    ]
+  },
+  {
+    "objectID": "install.html#installing-rig-on-macos",
+    "href": "install.html#installing-rig-on-macos",
+    "title": "Installing rig",
+    "section": "",
+    "text": "You can use one of our installers or our Homebrew tap.\n\n\nDownload the latest release from https://github.com/r-lib/rig/releases and install it the usual way.\n\n\n\nIf you use Homebrew (Intel or Arm version), you can install rig from our tap:\nbrew tap r-lib/rig\nbrew trust r-lib/rig\nbrew install --cask rig\nYou can use x86_64 rig on Arm macs, and it will be able to install Arm builds of R. But you cannot use Arm rig on Intel macs. If you use both brew versions, only install rig with one of them.\nTo update rig you can run\nbrew upgrade --cask rig",
+    "crumbs": [
+      "Guide",
+      "Installing rig"
+    ]
+  },
+  {
+    "objectID": "install.html#installing-rig-on-windows",
+    "href": "install.html#installing-rig-on-windows",
+    "title": "Installing rig",
+    "section": "Installing rig on Windows",
+    "text": "Installing rig on Windows\nThere are several possible ways to install rig on Windows: with our installer, scoop, choco or winget.\n\nWindows (installer)\nDownload the latest release from https://github.com/r-lib/rig/releases and install it the usual way.\nrig adds itself to the user’s path, but you might need to restart your terminal after the installation on Windows.\n\n\nWindows (Scoop)\nIf you use Scoop, you can install rig from the scoop bucket at cderv/r-bucket:\nscoop bucket add r-bucket https://github.com/cderv/r-bucket.git\nscoop install rig\nTo update run\nscoop update rig\n\n\nWindows (Chocolatey)\nIf you use Chocolatey (e.g. on GitHub Actions) you can install rig with\nchoco install rig\nand upgrade to the latest version with\nchoco upgrade rig\n\n\nWindows (WinGet)\nAn easy way to install rig on Windows 10 and above is to use the built-in WinGet package manager. The name of the package is posit.rig.\nwinget install posit.rig\nNote that updating a WinGet package typically takes some time, so WinGet might not have the latest version of rig.",
+    "crumbs": [
+      "Guide",
+      "Installing rig"
+    ]
+  },
+  {
+    "objectID": "install.html#installing-rig-on-linux",
+    "href": "install.html#installing-rig-on-linux",
+    "title": "Installing rig",
+    "section": "Installing rig on Linux",
+    "text": "Installing rig on Linux\nOn Linux you can install rig from a DEB or RPM package, or from a tarball.\n\nSupported Linux distributions \n\nDebian 12, 13\nUbuntu 20.04, 22.04, 24.04, 26.04\nFedora Linux 42, 43\nOpenSUSE 15.6, 16.0\nSUSE Linux Enterprise 15 SP6\nRed Hat Enterprise Linux 7, 8, 9, 10\nAlmaLinux 8, 9, 10\nRocky Linux 8, 9 10\n\nWe use the R builds from the Posit R-builds project.\n\n\nRetired Linux distributions\n\nThese are not updated any more, no new R builds are added for them, but existing R builds still work.\n\nCentOS 6 (only x86_64, last R version: 4.0.4),\nCentOS 7 (last R version: 4.4.3),\nCentOS 8 (last R version: 4.4.3),\nDebian 9 (last R version: 4.2.1),\nDebian 10 (last R version: 4.4.3),\nFedora 37 (last R version: 4.3.2),\nFedora 38 (last R version: 4.4.2),\nFedora 39 (last R version: 4.4.3),\nFedora 40 (last R version: 4.5.1),\nFedora 41 (last R version: 4.5.3),\nOpenSUSE 42 (only x86_64, last R version: 4.2.1),\nOpenSUSE 15.1 (only x86_64, last R version: 4.1.2),\nOpenSUSE 15.2 (only x86_64, last R version: 4.1.3),\nOpenSUSE 15.3 (last R version: x86_64: 4.4.3, aarch64: 4.3.1),\nOpenSUSE 15.4 (last R version: 4.4.0),\nOpenSUSE 15.5 (last R version: 4.4.3),\nSUSE Linux Enterprise 15 (only x86_64, last R version: 4.1.2),\nSUSE Linux Enterprise 15.1 (only x86_64, last R version: 4.1.2),\nSUSE Linux Enterprise 15.2 (only x86_64, last R version: 4.1.3),\nSUSE Linux Enterprise 15.3 (last R version: x86_64: 4.4.3, aarch64: 4.3.1),\nSUSE Linux Enterprise 15.4 (last R version: 4.4.0),\nSUSE Linux Enterprise 15.5 (last R version: 4.4.3),\nUbuntu 16.04 (only x86_64, last R version: 4.1.2),\nUbuntu 18.04 (last R version: 4.3.1).\n\n\n\n\nUbuntu and Debian (DEB package)\nOn any Ubuntu or Debian distro, you can use our package repository to install rig. First you add our key to your config:\n`which sudo` curl -L https://rig.r-pkg.org/deb/rig.gpg -o /etc/apt/trusted.gpg.d/rig.gpg\nThen add the rig repository:\n`which sudo` sh -c 'echo \"deb http://rig.r-pkg.org/deb rig main\" &gt; /etc/apt/sources.list.d/rig.list'\nIf you already added both the key and the repository, then install the r-rig package (rig is a different package in Debian and Ubuntu):\n`which sudo` apt update\n`which sudo` apt install r-rig\n\n\nRHEL, Fedora, Rocky Linux, Almalinux, etc. (RPM package)\nOn most RPM based distros (except for OpenSUSE and SLES) you can install our RPM package directly:\n`which sudo` yum install -y https://github.com/r-lib/rig/releases/download/latest/r-rig-latest-1.$(arch).rpm\n\n\nOpenSUSE and SLES (RPM package)\nOn OpenSUSE and SLES use zypper instead of yum:\n`which sudo` zypper install -y --allow-unsigned-rpm https://github.com/r-lib/rig/releases/download/latest/r-rig-latest-1.$(arch).rpm\n\n\nAny Linux distribution (tarball)\nDownload the latest release from https://github.com/r-lib/rig/releases and uncompress it to /usr/local\ncurl -Ls https://github.com/r-lib/rig/releases/download/latest/rig-linux-$(arch)-latest.tar.gz |\n  `which sudo` tar xz -C /usr/local",
+    "crumbs": [
+      "Guide",
+      "Installing rig"
+    ]
+  },
+  {
+    "objectID": "install.html#installing-auto-complete-on-macos-and-linux",
+    "href": "install.html#installing-auto-complete-on-macos-and-linux",
+    "title": "Installing rig",
+    "section": "Installing auto-complete on macOS and Linux",
+    "text": "Installing auto-complete on macOS and Linux\nThe macOS and Linux installers also install completion files for zsh and bash.\nzsh completions work out of the box.\nFor bash completions install the bash-completion package from Homebrew or your Linux distribution and make sure it is loaded from your .bashrc. (You don’t need to install bash from Homebrew, but you can if you like.)",
+    "crumbs": [
+      "Guide",
+      "Installing rig"
+    ]
+  },
+  {
+    "objectID": "faq.html",
+    "href": "faq.html",
+    "title": "FAQ",
+    "section": "",
+    "text": "Why does rig create a user package library?\n\n\nInstalling non-base packages into a user package library has several benefits:\n\nThe system library is not writeable for regular users on some systems (Windows and Linux, typically), so we might as well create a properly versioned user library at the default place.\nSome tools need a clean R environment, with base packages only, and do not work well if user packages are installed into the system library. E.g. R CMD check is such a tool, and https://github.com/r-lib/revdepcheck is another.\nYou can delete an R installation (e.g. with rig rm) and then install it again, without losing your R packages.",
+    "crumbs": [
+      "Guide",
+      "FAQ"
+    ]
+  },
+  {
+    "objectID": "faq.html#feedback",
+    "href": "faq.html#feedback",
+    "title": "FAQ",
+    "section": "Feedback",
+    "text": "Feedback\nPlease open an issue in our issue tracker at https://github.com/r-lib/rig/issues",
+    "crumbs": [
+      "Guide",
+      "FAQ"
+    ]
+  },
+  {
+    "objectID": "articles/index.html",
+    "href": "articles/index.html",
+    "title": "Articles",
+    "section": "",
+    "text": "Longer-form articles and tutorials about rig.\nTo add an article, drop a new .qmd file in website/articles/ with a title, date and description in its front matter; it will appear in the list above automatically.",
+    "crumbs": [
+      "Articles"
+    ]
+  },
+  {
+    "objectID": "articles/index.html#blog-posts-and-external-articles",
+    "href": "articles/index.html#blog-posts-and-external-articles",
+    "title": "Articles",
+    "section": "Blog posts and external articles",
+    "text": "Blog posts and external articles\nPosts published elsewhere:\n\nNone yet.",
+    "crumbs": [
+      "Articles"
+    ]
+  },
+  {
+    "objectID": "usage.html",
+    "href": "usage.html",
+    "title": "Usage",
+    "section": "",
+    "text": "Use rig add to add a new R installation:\nUse rig list to list the currently installed R versions, and rig default to set the default one.\nRun rig to see all commands and examples.\nRun rig --help and rig &lt;subcommand&gt; --help to see the documentation.",
+    "crumbs": [
+      "Guide",
+      "Usage"
+    ]
+  },
+  {
+    "objectID": "usage.html#command-list",
+    "href": "usage.html#command-list",
+    "title": "Usage",
+    "section": "Command list",
+    "text": "Command list\nrig add        -- install a new R version [alias: install]\nrig available  -- list R versions available to install.\nrig default    -- print or set default R version [alias: switch]\nrig library    -- manage package libraries [alias: lib] (experimental)\nrig list       -- list installed R versions [alias: ls]\nrig repos      -- manage package repositories\nrig resolve    -- resolve a symbolic R version\nrig rm         -- remove R versions [aliases: del, remove, delete]\nrig rstudio    -- start RStudio with specified R version\nrig run        -- run R, an R script or an R project\nrig sysreqs    -- manage R-related system libraries and tools (experimental)\nrig system     -- manage current installations\nRun rig &lt;subcommand&gt; --help for information about a subcommand.",
+    "crumbs": [
+      "Guide",
+      "Usage"
+    ]
+  },
+  {
+    "objectID": "usage.html#macos-rig-system-subcommands",
+    "href": "usage.html#macos-rig-system-subcommands",
+    "title": "Usage",
+    "section": "macOS rig system subcommands",
+    "text": "macOS rig system subcommands\nrig system add-pak                 -- install or update pak for an R version\nrig system allow-core-dumps        -- allow creating core dumps when R crashes\nrig system allow-debugger          -- allow debugging R with lldb and gdb\nrig system allow-debugger-rstudio  -- allow debugging RStudio with lldb and gdb\nrig detect-platform                -- detect operating system version and distribution\nrig system fix-permissions         -- restrict system library permissions to admin\nrig system forget                  -- make system forget about R installations\nrig system make-links              -- create R-* quick links\nrig system make-orthogonal         -- make installed versions orthogonal\nrig system no-openmp               -- remove OpenMP (-fopenmp) option for Apple compilers\nrig system setup-user-lib          -- set up automatic user package libraries [alias: create-lib]\nrig system user-mode               -- switch to user mode and clean up admin-mode installations",
+    "crumbs": [
+      "Guide",
+      "Usage"
+    ]
+  },
+  {
+    "objectID": "usage.html#windows-rig-system-subcommands",
+    "href": "usage.html#windows-rig-system-subcommands",
+    "title": "Usage",
+    "section": "Windows rig system subcommands",
+    "text": "Windows rig system subcommands\nrig system add-pak                 -- install or update pak for an R version\nrig system clean-registry          -- clean stale R related entries in the registry\nrig detect-platform                -- detect operating system version and distribution\nrig system make-links              -- create R-* quick links\nrig system rtools                  -- manage Rtools installations\nrig system setup-user-lib          -- set up automatic user package libraries [alias: create-lib]\nrig system update-rtools40         -- update Rtools40 MSYS2 packages\nrig system user-mode               -- switch to user mode and clean up admin-mode installations",
+    "crumbs": [
+      "Guide",
+      "Usage"
+    ]
+  },
+  {
+    "objectID": "usage.html#linux-rig-system-subcommands",
+    "href": "usage.html#linux-rig-system-subcommands",
+    "title": "Usage",
+    "section": "Linux rig system subcommands",
+    "text": "Linux rig system subcommands\nrig system add-pak                 -- install or update pak for an R version\nrig system detect-platform         -- detect operating system version and distribution\nrig system make-links              -- create R-* quick links\nrig system setup-user-lib          -- set up automatic user package libraries [alias: create-lib]\nrig system update-certs            -- download the CA certificate bundle and configure R to use it\nrig system user-mode               -- switch to user mode and clean up admin-mode installations",
+    "crumbs": [
+      "Guide",
+      "Usage"
+    ]
+  },
+  {
+    "objectID": "reference/index.html",
+    "href": "reference/index.html",
+    "title": "Reference",
+    "section": "",
+    "text": "Reference material for rig.",
+    "crumbs": [
+      "Reference"
+    ]
+  },
+  {
+    "objectID": "reference/index.html#command-line-reference",
+    "href": "reference/index.html#command-line-reference",
+    "title": "Reference",
+    "section": "Command-line reference",
+    "text": "Command-line reference\nThe full command-line reference is available from rig itself:\nrig --help                 # overview of all commands\nrig &lt;subcommand&gt; --help    # detailed help for a subcommand\nSee Usage for the list of commands and the platform-specific rig system subcommands.",
+    "crumbs": [
+      "Reference"
+    ]
+  },
+  {
+    "objectID": "reference/index.html#reference-manuals",
+    "href": "reference/index.html#reference-manuals",
+    "title": "Reference",
+    "section": "Reference manuals",
+    "text": "Reference manuals\nAdditional reference manuals (e.g. rendered HTML or PDF documents) can be linked or embedded here as they become available.",
+    "crumbs": [
+      "Reference"
+    ]
+  },
+  {
+    "objectID": "news.html#windows",
+    "href": "news.html#windows",
+    "title": "Changelog",
+    "section": "Windows",
+    "text": "Windows\n\nOn Windows, rig add ... --without-translations installs R without message translations. This is useful if you prefer using R in English on a non-English system (#88).\nOn Windows rig add does not add a Desktop icon now by default. If want an icon, use the new --with-desktop-icon switch (#89).\nOn Windows, if the default version is deleted, rig updates the registry accordingly, and removes the default from there as well (#86).\nNew subcommand rig system update-rtools40 updates MSYS2 packages of Rtools40 on Windows (#14).",
+    "crumbs": [
+      "Changelog"
+    ]
+  },
+  {
+    "objectID": "news.html#macos",
+    "href": "news.html#macos",
+    "title": "Changelog",
+    "section": "macOS",
+    "text": "macOS\n\nOn macOS rig add now does not fail if it is started from an x86_64 shell, when adding an arm64 R version on M1 Macs (#79).\nOn macOS, rig rstudio &lt;ver&gt; now errors if R &lt;ver&gt; is not orthogonal, and the menu bar app errors as well (#90).",
+    "crumbs": [
+      "Changelog"
+    ]
+  },
+  {
+    "objectID": "news.html#new-name",
+    "href": "news.html#new-name",
+    "title": "Changelog",
+    "section": "NEW NAME",
+    "text": "NEW NAME\nrim is now known as rig.",
+    "crumbs": [
+      "Changelog"
+    ]
+  },
+  {
+    "objectID": "news.html#new-features",
+    "href": "news.html#new-features",
+    "title": "Changelog",
+    "section": "New features",
+    "text": "New features\n\nExperimental multi-library support. See rig library --help for the details.\nOn macOS rig now includes a menu bar app that show the default R version, lets you choose between R versions and libraries, and lets you start RStudio with a specific R version, and/or a recent RStudio project. Start the app with open -a Rig.\nNew subcommand rig system setup-user-lib to update the R config to create the user package library when R starts up, if it does not exist. The old rig system create-lib subcommand is now an alias of this.\nBetter messages. rig has a -v and -vv flag now, for extra debug and trace messages.\nOn arm64 macOS, rig add installs arm64 R by default now. (This is also true for the x86_64 build of rig.\nOn macOS rig add does not change the default R version any more (#2).\nrig now supports Linux distros based on Ubuntu Bionic 18.04, Focal 20.04 and Jammy 22.04. They need to have a proper UBUNTU_CODENAME entry in /etc/os-release (#34).\nrig now sets up automated system requirements installation with pak on Linux distributions that support it: Ubuntu 18.04, 20.04 and 22.04 (on distros based on these), on both x86_64 and aarch64. (This currently needs passwordless sudo or a root account.)\nAll OSes create an Rscript link now that runs the default R version (#20).",
+    "crumbs": [
+      "Changelog"
+    ]
+  },
+  {
+    "objectID": "news.html#windows-1",
+    "href": "news.html#windows-1",
+    "title": "Changelog",
+    "section": "Windows",
+    "text": "Windows\n\nrim has a Chocolatey package now, so on Windows you can install it with choco install rim and upgrade it with choco upgrade rim.\nOn Windows rim default &lt;version&gt; now sets the default R version in the Windows Registry as well, which changes the default for RStudio. (Make sure you set the R version in RStudio to the machine’s default version in Tools -&gt; Global Options -&gt; Basic -&gt; General -&gt; R version.)",
+    "crumbs": [
+      "Changelog"
+    ]
+  },
+  {
+    "objectID": "news.html#macos-1",
+    "href": "news.html#macos-1",
+    "title": "Changelog",
+    "section": "macOS",
+    "text": "macOS\n\nOn macOS rim system fix-permissions now sets the permissions and group of the Current link. Also, rim add now calls rim system fix-permissions for all installed R versions, because the R installed changes the permissions of all of them.",
+    "crumbs": [
+      "Changelog"
+    ]
+  },
+  {
+    "objectID": "news.html#linux",
+    "href": "news.html#linux",
+    "title": "Changelog",
+    "section": "Linux",
+    "text": "Linux\n\nrim now supports arm64 Linux, currently the following distributions: Ubuntu 18.04, 20.04 & 22.04 and Debian 9, 10 & 11.\nrim now supports Debian 11, on arm64 and x86_64.",
+    "crumbs": [
+      "Changelog"
+    ]
+  },
+  {
+    "objectID": "news.html#macos-2",
+    "href": "news.html#macos-2",
+    "title": "Changelog",
+    "section": "macOS",
+    "text": "macOS\n\nNew macOS rim system commands to allow debugging: rim system allow-debugger; and to allow core dumps: rim system allow-core-dumps.\nrim now uses better R-devel URLs on macOS, that do not fail if the daily build failed on mac.r-project.org.",
+    "crumbs": [
+      "Changelog"
+    ]
+  },
+  {
+    "objectID": "news.html#windows-2",
+    "href": "news.html#windows-2",
+    "title": "Changelog",
+    "section": "Windows",
+    "text": "Windows\n\nrim now supports Rtools42 on Windows: rim add rtools42.\nFix resolution of older Windows installers, they were moved to another URL.\nrim can now delete Rtools on Windows, e.g.: rim rm rtools42.",
+    "crumbs": [
+      "Changelog"
+    ]
+  }
+]

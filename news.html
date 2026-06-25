@@ -1,0 +1,1134 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.38">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>Changelog – rig</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<link href="./assets/rig-app.png" rel="icon" type="image/png">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-15634bcf2e68342d4ad2dfa704d543f6.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-dark-0a6b7249c26820e032cb0bd839ff02b1.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-15634bcf2e68342d4ad2dfa704d543f6.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-366cb8ec674e47143b072bc2c76f74d8.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-dark-785818dbc5d96fd52cb159fe6cdcecc7.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<link href="site_libs/bootstrap/bootstrap-366cb8ec674e47143b072bc2c76f74d8.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+</head>
+
+<body class="nav-sidebar docked nav-fixed quarto-light"><script id="quarto-html-before-body" type="application/javascript">
+    const toggleBodyColorMode = (bsSheetEl) => {
+      const mode = bsSheetEl.getAttribute("data-mode");
+      const bodyEl = window.document.querySelector("body");
+      if (mode === "dark") {
+        bodyEl.classList.add("quarto-dark");
+        bodyEl.classList.remove("quarto-light");
+      } else {
+        bodyEl.classList.add("quarto-light");
+        bodyEl.classList.remove("quarto-dark");
+      }
+    }
+    const toggleBodyColorPrimary = () => {
+      const bsSheetEl = window.document.querySelector("link#quarto-bootstrap:not([rel=disabled-stylesheet])");
+      if (bsSheetEl) {
+        toggleBodyColorMode(bsSheetEl);
+      }
+    }
+    const setColorSchemeToggle = (alternate) => {
+      const toggles = window.document.querySelectorAll('.quarto-color-scheme-toggle');
+      for (let i=0; i < toggles.length; i++) {
+        const toggle = toggles[i];
+        if (toggle) {
+          if (alternate) {
+            toggle.classList.add("alternate");
+          } else {
+            toggle.classList.remove("alternate");
+          }
+        }
+      }
+    };
+    const toggleColorMode = (alternate) => {
+      // Switch the stylesheets
+      const primaryStylesheets = window.document.querySelectorAll('link.quarto-color-scheme:not(.quarto-color-alternate)');
+      const alternateStylesheets = window.document.querySelectorAll('link.quarto-color-scheme.quarto-color-alternate');
+      manageTransitions('#quarto-margin-sidebar .nav-link', false);
+      if (alternate) {
+        // note: dark is layered on light, we don't disable primary!
+        enableStylesheet(alternateStylesheets);
+        for (const sheetNode of alternateStylesheets) {
+          if (sheetNode.id === "quarto-bootstrap") {
+            toggleBodyColorMode(sheetNode);
+          }
+        }
+      } else {
+        disableStylesheet(alternateStylesheets);
+        enableStylesheet(primaryStylesheets)
+        toggleBodyColorPrimary();
+      }
+      manageTransitions('#quarto-margin-sidebar .nav-link', true);
+      // Switch the toggles
+      setColorSchemeToggle(alternate)
+      // Hack to workaround the fact that safari doesn't
+      // properly recolor the scrollbar when toggling (#1455)
+      if (navigator.userAgent.indexOf('Safari') > 0 && navigator.userAgent.indexOf('Chrome') == -1) {
+        manageTransitions("body", false);
+        window.scrollTo(0, 1);
+        setTimeout(() => {
+          window.scrollTo(0, 0);
+          manageTransitions("body", true);
+        }, 40);
+      }
+    }
+    const disableStylesheet = (stylesheets) => {
+      for (let i=0; i < stylesheets.length; i++) {
+        const stylesheet = stylesheets[i];
+        stylesheet.rel = 'disabled-stylesheet';
+      }
+    }
+    const enableStylesheet = (stylesheets) => {
+      for (let i=0; i < stylesheets.length; i++) {
+        const stylesheet = stylesheets[i];
+        if(stylesheet.rel !== 'stylesheet') { // for Chrome, which will still FOUC without this check
+          stylesheet.rel = 'stylesheet';
+        }
+      }
+    }
+    const manageTransitions = (selector, allowTransitions) => {
+      const els = window.document.querySelectorAll(selector);
+      for (let i=0; i < els.length; i++) {
+        const el = els[i];
+        if (allowTransitions) {
+          el.classList.remove('notransition');
+        } else {
+          el.classList.add('notransition');
+        }
+      }
+    }
+    const isFileUrl = () => {
+      return window.location.protocol === 'file:';
+    }
+    const hasAlternateSentinel = () => {
+      let styleSentinel = getColorSchemeSentinel();
+      if (styleSentinel !== null) {
+        return styleSentinel === "alternate";
+      } else {
+        return false;
+      }
+    }
+    const setStyleSentinel = (alternate) => {
+      const value = alternate ? "alternate" : "default";
+      if (!isFileUrl()) {
+        window.localStorage.setItem("quarto-color-scheme", value);
+      } else {
+        localAlternateSentinel = value;
+      }
+    }
+    const getColorSchemeSentinel = () => {
+      if (!isFileUrl()) {
+        const storageValue = window.localStorage.getItem("quarto-color-scheme");
+        return storageValue != null ? storageValue : localAlternateSentinel;
+      } else {
+        return localAlternateSentinel;
+      }
+    }
+    const toggleGiscusIfUsed = (isAlternate, darkModeDefault) => {
+      const baseTheme = document.querySelector('#giscus-base-theme')?.value ?? 'light';
+      const alternateTheme = document.querySelector('#giscus-alt-theme')?.value ?? 'dark';
+      let newTheme = '';
+      if(authorPrefersDark) {
+        newTheme = isAlternate ? baseTheme : alternateTheme;
+      } else {
+        newTheme = isAlternate ? alternateTheme : baseTheme;
+      }
+      const changeGiscusTheme = () => {
+        // From: https://github.com/giscus/giscus/issues/336
+        const sendMessage = (message) => {
+          const iframe = document.querySelector('iframe.giscus-frame');
+          if (!iframe) return;
+          iframe.contentWindow.postMessage({ giscus: message }, 'https://giscus.app');
+        }
+        sendMessage({
+          setConfig: {
+            theme: newTheme
+          }
+        });
+      }
+      const isGiscussLoaded = window.document.querySelector('iframe.giscus-frame') !== null;
+      if (isGiscussLoaded) {
+        changeGiscusTheme();
+      }
+    };
+    const authorPrefersDark = false;
+    const darkModeDefault = authorPrefersDark;
+      document.querySelector('link#quarto-text-highlighting-styles.quarto-color-scheme-extra').rel = 'disabled-stylesheet';
+      document.querySelector('link#quarto-bootstrap.quarto-color-scheme-extra').rel = 'disabled-stylesheet';
+    let localAlternateSentinel = darkModeDefault ? 'alternate' : 'default';
+    // Dark / light mode switch
+    window.quartoToggleColorScheme = () => {
+      // Read the current dark / light value
+      let toAlternate = !hasAlternateSentinel();
+      toggleColorMode(toAlternate);
+      setStyleSentinel(toAlternate);
+      toggleGiscusIfUsed(toAlternate, darkModeDefault);
+      window.dispatchEvent(new Event('resize'));
+    };
+    // Switch to dark mode if need be
+    if (hasAlternateSentinel()) {
+      toggleColorMode(true);
+    } else {
+      toggleColorMode(false);
+    }
+  </script>
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="./index.html">
+    <span class="navbar-title">rig</span>
+    </a>
+  </div>
+        <div class="quarto-navbar-tools tools-end">
+    <a href="https://github.com/r-lib/rig" title="GitHub" class="quarto-navigation-tool px-1" aria-label="GitHub"><i class="bi bi-github"></i></a>
+  <a href="" class="quarto-color-scheme-toggle quarto-navigation-tool  px-1" onclick="window.quartoToggleColorScheme(); return false;" title="Toggle dark mode"><i class="bi"></i></a>
+</div>
+          <div id="quarto-search" class="" title="Search"></div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./news.html">Changelog</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+      <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
+        <i class="bi bi-search"></i>
+      </button>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation docked overflow-auto">
+        <div class="mt-2 flex-shrink-0 align-items-center">
+        <div class="sidebar-search">
+        <div id="quarto-search" class="" title="Search"></div>
+        </div>
+        </div>
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Get started</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">Guide</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./install.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Installing rig</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./usage.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Usage</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./macos-app.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">macOS menu bar app</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./docker.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Docker containers</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./faq.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">FAQ</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Reference</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./articles/index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Articles</span></a>
+  </div>
+</li>
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./news.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Changelog</span></a>
+  </div>
+</li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#rig-0.10.0-not-released-yet" id="toc-rig-0.10.0-not-released-yet" class="nav-link active" data-scroll-target="#rig-0.10.0-not-released-yet">rig 0.10.0 (not released yet)</a></li>
+  <li><a href="#rig-0.8.1-not-released-yet" id="toc-rig-0.8.1-not-released-yet" class="nav-link" data-scroll-target="#rig-0.8.1-not-released-yet">rig 0.8.1 (not released yet)</a></li>
+  <li><a href="#rig-0.8.0" id="toc-rig-0.8.0" class="nav-link" data-scroll-target="#rig-0.8.0">rig 0.8.0</a></li>
+  <li><a href="#rig-0.7.1" id="toc-rig-0.7.1" class="nav-link" data-scroll-target="#rig-0.7.1">rig 0.7.1</a></li>
+  <li><a href="#rig-0.7.0" id="toc-rig-0.7.0" class="nav-link" data-scroll-target="#rig-0.7.0">rig 0.7.0</a></li>
+  <li><a href="#rig-0.6.0" id="toc-rig-0.6.0" class="nav-link" data-scroll-target="#rig-0.6.0">rig 0.6.0</a></li>
+  <li><a href="#rig-0.5.3" id="toc-rig-0.5.3" class="nav-link" data-scroll-target="#rig-0.5.3">rig 0.5.3</a></li>
+  <li><a href="#rig-0.5.2" id="toc-rig-0.5.2" class="nav-link" data-scroll-target="#rig-0.5.2">rig 0.5.2</a></li>
+  <li><a href="#rig-0.5.1" id="toc-rig-0.5.1" class="nav-link" data-scroll-target="#rig-0.5.1">rig 0.5.1</a></li>
+  <li><a href="#rig-0.5.0" id="toc-rig-0.5.0" class="nav-link" data-scroll-target="#rig-0.5.0">rig 0.5.0</a>
+  <ul class="collapse">
+  <li><a href="#windows" id="toc-windows" class="nav-link" data-scroll-target="#windows">Windows</a></li>
+  <li><a href="#macos" id="toc-macos" class="nav-link" data-scroll-target="#macos">macOS</a></li>
+  </ul></li>
+  <li><a href="#rig-0.4.1" id="toc-rig-0.4.1" class="nav-link" data-scroll-target="#rig-0.4.1">rig 0.4.1</a></li>
+  <li><a href="#rig-0.4.0" id="toc-rig-0.4.0" class="nav-link" data-scroll-target="#rig-0.4.0">rig 0.4.0</a>
+  <ul class="collapse">
+  <li><a href="#new-name" id="toc-new-name" class="nav-link" data-scroll-target="#new-name">NEW NAME</a></li>
+  <li><a href="#new-features" id="toc-new-features" class="nav-link" data-scroll-target="#new-features">New features</a></li>
+  </ul></li>
+  <li><a href="#rim-0.3.0" id="toc-rim-0.3.0" class="nav-link" data-scroll-target="#rim-0.3.0">rim 0.3.0</a>
+  <ul class="collapse">
+  <li><a href="#windows-1" id="toc-windows-1" class="nav-link" data-scroll-target="#windows-1">Windows</a></li>
+  <li><a href="#macos-1" id="toc-macos-1" class="nav-link" data-scroll-target="#macos-1">macOS</a></li>
+  </ul></li>
+  <li><a href="#rim-0.2.3" id="toc-rim-0.2.3" class="nav-link" data-scroll-target="#rim-0.2.3">rim 0.2.3</a></li>
+  <li><a href="#rim-0.2.2" id="toc-rim-0.2.2" class="nav-link" data-scroll-target="#rim-0.2.2">rim 0.2.2</a></li>
+  <li><a href="#rim-0.2.1" id="toc-rim-0.2.1" class="nav-link" data-scroll-target="#rim-0.2.1">rim 0.2.1</a>
+  <ul class="collapse">
+  <li><a href="#linux" id="toc-linux" class="nav-link" data-scroll-target="#linux">Linux</a></li>
+  <li><a href="#macos-2" id="toc-macos-2" class="nav-link" data-scroll-target="#macos-2">macOS</a></li>
+  <li><a href="#windows-2" id="toc-windows-2" class="nav-link" data-scroll-target="#windows-2">Windows</a></li>
+  </ul></li>
+  <li><a href="#rim-0.2.0" id="toc-rim-0.2.0" class="nav-link" data-scroll-target="#rim-0.2.0">rim 0.2.0</a></li>
+  <li><a href="#rim-0.1.5" id="toc-rim-0.1.5" class="nav-link" data-scroll-target="#rim-0.1.5">rim 0.1.5</a></li>
+  <li><a href="#rim-0.1.4" id="toc-rim-0.1.4" class="nav-link" data-scroll-target="#rim-0.1.4">rim 0.1.4</a></li>
+  <li><a href="#rim-0.1.3" id="toc-rim-0.1.3" class="nav-link" data-scroll-target="#rim-0.1.3">rim 0.1.3</a></li>
+  <li><a href="#rim-0.1.2" id="toc-rim-0.1.2" class="nav-link" data-scroll-target="#rim-0.1.2">rim 0.1.2</a></li>
+  <li><a href="#rim-0.1.1" id="toc-rim-0.1.1" class="nav-link" data-scroll-target="#rim-0.1.1">rim 0.1.1</a></li>
+  <li><a href="#rim-0.1.0" id="toc-rim-0.1.0" class="nav-link" data-scroll-target="#rim-0.1.0">rim 0.1.0</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Changelog</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<section id="rig-0.10.0-not-released-yet" class="level1">
+<h1>rig 0.10.0 (not released yet)</h1>
+</section>
+<section id="rig-0.8.1-not-released-yet" class="level1">
+<h1>rig 0.8.1 (not released yet)</h1>
+<ul>
+<li><p>The <code>RIG_PLATFORM</code> environment variable works correctly again (#325).</p></li>
+<li><p>rig can now install R &gt; 4.6.0 (current R-devel) correctly on macOS.</p></li>
+</ul>
+</section>
+<section id="rig-0.8.0" class="level1">
+<h1>rig 0.8.0</h1>
+<ul>
+<li><p>New <code>rig repos</code> subcommand to manage R package repository setup across all installed R versions.</p></li>
+<li><p>The <code>--without-p3m</code> option of <code>rig add</code> is now always available, for consistency across platforms. By default P3M is on on x86_64 Windows and supported Linux distros, as before. The new <code>--with-p3m</code> option turns on P3M on macOS as well.</p></li>
+<li><p>rig now supports aarch64 Windows. It currently only supports installing aarch64 builds of R and Rtools on aarch64 Windows. The x86_64 build of rig also works on aarch64 Windows and installs aarch64 builds of R and Rtools. Installing and managing x86_64 builds of R on aarch64 Windows is not supported yet.</p></li>
+<li><p>rig now supports RHEL 10 and binary compatible distributions like AlmaLinux OS 10 and Rocky Linux 10.</p></li>
+<li><p>R installations by rig now do <em>not</em> set the default CRAN repositories in RStudio and Positron (#203).</p></li>
+<li><p>rig now supports the new macOS arm64 Sonoma builds, which are are the default CRAN builds starting from R 4.6.0 (current R-devel).</p></li>
+</ul>
+</section>
+<section id="rig-0.7.1" class="level1">
+<h1>rig 0.7.1</h1>
+<ul>
+<li><p>macOS packages now include completion files for elvish and fish shells (#221, <span class="citation" data-cites="TymekDev">@TymekDev</span>).</p></li>
+<li><p><code>rig available --list-distros</code> output now includes PPM support, whether the a distro is retired, the EOL and in the JSON format also the last R version for that distro.</p></li>
+<li><p><code>rig add</code> is now better at detecting PPM support for new Linux distribution versions. In particular, new Linux distribution releases do not need a rig update to learn about PPM support. Relatedly, <code>rig system detect-platform</code> now does <strong>not</strong> report PPM support. Use <code>rig available --list-distros</code> to see which Linux distributions have PPM binaries.</p></li>
+<li><p><code>rig run</code> now exits with the exit code of the R process (#261).</p></li>
+<li><p>Custom certificates via the <code>SSL_CERT_FILE</code> environment variable work again (#227).</p></li>
+<li><p><code>rig library default</code> does not crash now (#240).</p></li>
+<li><p>rig now uses a better way to get the user’s home directory, that works on systems without an <code>/etc/passwd</code> database (#228).</p></li>
+<li><p>Windows: rig supports Rtools45 now.</p></li>
+</ul>
+</section>
+<section id="rig-0.7.0" class="level1">
+<h1>rig 0.7.0</h1>
+<ul>
+<li><p>Bash completions work well again (#202).</p></li>
+<li><p><code>rig rstudio</code> has a new implementation that works much better. Now it always defaults to the R version in <code>renv.lock</code> for renv projects, and can open RStudio projects or directories.</p></li>
+<li><p>New <code>rig available --list-rtools-versions</code> option to list available Rtools versions.</p></li>
+<li><p><code>rig run</code> now does not terminate the rig process on interrupts (CTRL+C, CTRL+BREAK on Windows, SIGINT on Unix) (#187).</p></li>
+<li><p>Windows: new <code>rig system rtools</code> subcommand to add, remove, list Rtools versions (#18).</p></li>
+<li><p>Windows: rig now supports Rtools44 on Windows.</p></li>
+<li><p>Windows: rig now defaults to Rtools42 for R 4.2.x on Windows.</p></li>
+<li><p>macOS: <code>rig rstudio &lt;version&gt;</code> works again on recent macOS versions (#208).</p></li>
+<li><p>macOS: rig now always creates the <code>/usr/local/bin/R-*</code> quick links with 0755 permissions (#200).</p></li>
+<li><p>Linux: <code>rig add --without-p3m</code> works again (#193).</p></li>
+<li><p>Linux: <code>RIG_PLATFORM</code> works again when <code>sudo</code> is needed (#191).</p></li>
+</ul>
+</section>
+<section id="rig-0.6.0" class="level1">
+<h1>rig 0.6.0</h1>
+<ul>
+<li><p>rig now supports RPM based distros, in addition to Debian and Ubuntu (#28). The full list of supported distros, on x86_64 and aarch64:</p>
+<ul>
+<li>Debian 10, 11, 12,</li>
+<li>Ubuntu 18.04, 20.04, 22.04,</li>
+<li>Fedora Linux 37, 38,</li>
+<li>OpenSUSE 15.3, 15.4,</li>
+<li>SUSE Linux Enterprise 15 SP3, SP4,</li>
+<li>CentOS 7,</li>
+<li>Red Hat Enterprise Linux 7, 8, 9,</li>
+<li>AlmaLinux 8, 9,</li>
+<li>Rocky Linux 8, 9. See also the new <code>rig available --list-distros</code>.</li>
+</ul></li>
+<li><p>New <code>rig available</code> command to list R versions available to install. <code>rig available --list-distros</code> lists the supported Linux distributions.</p></li>
+<li><p>New <code>rig run</code> to run R, an R script or an R project, using the selected R version (#161).</p></li>
+<li><p>rig now works in a shell that is a subprocess or R, e.g.&nbsp;in the RStudio terminal (#127).</p></li>
+<li><p>rig now works behind a proxy, on macOS and Linux, if the <code>https_proxy</code> environment variable is set (#166).</p></li>
+<li><p><code>rig resolve</code> now has a <code>--platform</code> and a <code>--arch</code> arguments, to look up available R versions for any supported platform, instead of the current one.</p></li>
+<li><p><code>rig ls --plain</code> lists only the R version names, this is useful in shell scripts (#128).</p></li>
+<li><p><code>rig rstudio</code> now starts RStudio with the correct working directory and project (#139, #100).</p></li>
+<li><p>macOS: <code>rig add</code> now only changes the permission for the R version that it is installing (#109).</p></li>
+<li><p>Windows: <code>rig rstudio</code> now starts the correct R version, even with newer RStudio versions (#134).</p></li>
+<li><p>Windows: rig now works in PowerShell 7.</p></li>
+<li><p>Windows: the rig installer now does not create shortcut in the start menu (#160).</p></li>
+<li><p>Linux and macOS: rig now keeps the locales when switching to the root user, so e.g.&nbsp;the language does not change (#138).</p></li>
+<li><p>Linux: rig now works properly in Oh My Zsh (#125).</p></li>
+<li><p>Linux: rig now works around a missing <code>/usr/bin/sed</code> that happened on some distros (#119).</p></li>
+<li><p>Linux: rig now does not fail if the default R version was deleted (#124).</p></li>
+<li><p>Linux: new subcommand <code>rig system detect-platform</code> to print the detected Linux distribution and configuration.</p></li>
+<li><p>Linux: You can now set the <code>RIG_PLATFORM</code> environment variable to override the auto-detected Linux distriution. E.g. <code>RIG_PLATFORM=ubuntu-22.04</code> will force Ubuntu 22.04.</p></li>
+<li><p>Linux: rig now comes with a CA certificate bundle, so it works without system certificates. If you prefer not to use it, set the <code>SSL_CERT_FILE</code> environment variable to point to your preferred CA bundle (#176).</p></li>
+</ul>
+</section>
+<section id="rig-0.5.3" class="level1">
+<h1>rig 0.5.3</h1>
+<ul>
+<li><p>rig can now install x86_64 R 4.3.0 and later on macOS.</p></li>
+<li><p>rig now does a better job when resolving R versions.</p></li>
+<li><p>rig now supports Rtools43 on Windows.</p></li>
+<li><p>rig now does not try to reinstall Rtools if the same version is already installed.</p></li>
+</ul>
+</section>
+<section id="rig-0.5.2" class="level1">
+<h1>rig 0.5.2</h1>
+<ul>
+<li><p>rig now always runs non-interactively on Linux from a root shell (#117).</p></li>
+<li><p>rig now always uses <code>--vanilla</code> when running R (#120).</p></li>
+<li><p>rig now detects Deepin Linux as Debian (#111).</p></li>
+</ul>
+</section>
+<section id="rig-0.5.1" class="level1">
+<h1>rig 0.5.1</h1>
+<ul>
+<li><p>rig now prints output from <code>apt</code>, etc. like regular logging output on Linux.</p></li>
+<li><p>rig now supports the alises <code>oldrel</code>, <code>release</code>, <code>next</code>, <code>devel</code> in <code>rig default</code>, <code>rig rm</code>, <code>rig rstudio</code>, etc. (#108).</p></li>
+</ul>
+</section>
+<section id="rig-0.5.0" class="level1">
+<h1>rig 0.5.0</h1>
+<ul>
+<li><p>rig can now open renv projects in RStudio, with the correct R version. Pass the renv lock file to rig: <code>rig rstudio .../renv.lock</code> (#74).</p></li>
+<li><p><code>rig list</code> now prints the result as a table, and it prints the R version number as well. <code>rig list --json</code> includes the version number, the path to the installation, and the path to the R binary.</p></li>
+<li><p>rig is now more robust when setting up the user library. In particular R will not fail to start in renv projects (#81, <span class="citation" data-cites="krlmlr">@krlmlr</span>).</p></li>
+<li><p>On macOS and Linux <code>rig add</code> now creates the user library with the right permissions, if it does not exist and pak is installed (#84).</p></li>
+<li><p><code>rig add</code> now correctly installs pak into the user library, instead of the system library, even if the user library did not exist before.</p></li>
+</ul>
+<section id="windows" class="level2">
+<h2 class="anchored" data-anchor-id="windows">Windows</h2>
+<ul>
+<li><p>On Windows, <code>rig add ... --without-translations</code> installs R without message translations. This is useful if you prefer using R in English on a non-English system (#88).</p></li>
+<li><p>On Windows <code>rig add</code> does not add a Desktop icon now by default. If want an icon, use the new <code>--with-desktop-icon</code> switch (#89).</p></li>
+<li><p>On Windows, if the default version is deleted, rig updates the registry accordingly, and removes the default from there as well (#86).</p></li>
+<li><p>New subcommand <code>rig system update-rtools40</code> updates MSYS2 packages of Rtools40 on Windows (#14).</p></li>
+</ul>
+</section>
+<section id="macos" class="level2">
+<h2 class="anchored" data-anchor-id="macos">macOS</h2>
+<ul>
+<li><p>On macOS <code>rig add</code> now does not fail if it is started from an x86_64 shell, when adding an arm64 R version on M1 Macs (#79).</p></li>
+<li><p>On macOS, <code>rig rstudio &lt;ver&gt;</code> now errors if R <code>&lt;ver&gt;</code> is not orthogonal, and the menu bar app errors as well (#90).</p></li>
+</ul>
+</section>
+</section>
+<section id="rig-0.4.1" class="level1">
+<h1>rig 0.4.1</h1>
+<ul>
+<li><p><code>rig rstudio &lt;version&gt;</code> and <code>rig rstudio &lt;version&gt; &lt;project&gt;</code> work properly again (#77).</p></li>
+<li><p>On Windows, <code>rig rstudio</code> now properly restores the default version after starting RStudio, if a non-default version was specified.</p></li>
+</ul>
+</section>
+<section id="rig-0.4.0" class="level1">
+<h1>rig 0.4.0</h1>
+<section id="new-name" class="level2">
+<h2 class="anchored" data-anchor-id="new-name">NEW NAME</h2>
+<p><code>rim</code> is now known as <code>rig</code>.</p>
+</section>
+<section id="new-features" class="level2">
+<h2 class="anchored" data-anchor-id="new-features">New features</h2>
+<ul>
+<li><p>Experimental multi-library support. See <code>rig library --help</code> for the details.</p></li>
+<li><p>On macOS rig now includes a menu bar app that show the default R version, lets you choose between R versions and libraries, and lets you start RStudio with a specific R version, and/or a recent RStudio project. Start the app with <code>open -a Rig</code>.</p></li>
+<li><p>New subcommand <code>rig system setup-user-lib</code> to update the R config to create the user package library when R starts up, if it does not exist. The old <code>rig system create-lib</code> subcommand is now an alias of this.</p></li>
+<li><p>Better messages. rig has a <code>-v</code> and <code>-vv</code> flag now, for extra debug and trace messages.</p></li>
+<li><p>On arm64 macOS, <code>rig add</code> installs arm64 R by default now. (This is also true for the x86_64 build of <code>rig</code>.</p></li>
+<li><p>On macOS <code>rig add</code> does not change the default R version any more (#2).</p></li>
+<li><p>rig now supports Linux distros based on Ubuntu Bionic 18.04, Focal 20.04 and Jammy 22.04. They need to have a proper <code>UBUNTU_CODENAME</code> entry in <code>/etc/os-release</code> (#34).</p></li>
+<li><p>rig now sets up automated system requirements installation with pak on Linux distributions that support it: Ubuntu 18.04, 20.04 and 22.04 (on distros based on these), on both x86_64 and aarch64. (This currently needs passwordless <code>sudo</code> or a root account.)</p></li>
+<li><p>All OSes create an <code>Rscript</code> link now that runs the default R version (#20).</p></li>
+</ul>
+</section>
+</section>
+<section id="rim-0.3.0" class="level1">
+<h1>rim 0.3.0</h1>
+<ul>
+<li><p>New <code>rim rstudio</code> command to open a project in RStudio with the specified R version.</p></li>
+<li><p><code>rim add</code> now performs additonal tasks, to give you an R installation that is ready to use:</p>
+<ul>
+<li><p>It installs pak for the newly added R version, it is wasn’t installed before. You can opt out of this with the <code>--without-pak</code> option. You can select the pak version to install with <code>--pak-version</code>.</p></li>
+<li><p>Sets the default R version after installation to the newly installed version, if no default is set.</p></li>
+<li><p>Sets the default CRAN mirror to the cloud mirror in the system profile, after installation (#11).</p></li>
+<li><p>Sets up RStudio Package Manager (RSPM) as the default repository, if your system is supported. See https://packagemanager.rstudio.com for more about RSPM. The systems that are supported by both RSPM and rim are Windows, and Ubuntu Linux 18.04, 20.04 and 22.04, all of them on x86_64 architectures only (#15).</p></li>
+</ul></li>
+<li><p><code>rim add</code> now only caches downloaded files for a day.</p></li>
+<li><p><code>rim system add-pak</code> now has a new option <code>--pak-version</code> to specify the pak version to install (stable, rc or devel). Its <code>--devel</code> option is now deprecated.</p></li>
+<li><p><code>rim list</code> now marks the default R version (if any) with <code>(default)</code> (#38).</p></li>
+</ul>
+<section id="windows-1" class="level2">
+<h2 class="anchored" data-anchor-id="windows-1">Windows</h2>
+<ul>
+<li><p>rim has a Chocolatey package now, so on Windows you can install it with <code>choco install rim</code> and upgrade it with <code>choco upgrade rim</code>.</p></li>
+<li><p>On Windows <code>rim default &lt;version&gt;</code> now sets the default R version in the Windows Registry as well, which changes the default for RStudio. (Make sure you set the R version in RStudio to the machine’s default version in Tools -&gt; Global Options -&gt; Basic -&gt; General -&gt; R version.)</p></li>
+</ul>
+</section>
+<section id="macos-1" class="level2">
+<h2 class="anchored" data-anchor-id="macos-1">macOS</h2>
+<ul>
+<li>On macOS <code>rim system fix-permissions</code> now sets the permissions and group of the <code>Current</code> link. Also, <code>rim add</code> now calls <code>rim system fix-permissions</code> for all installed R versions, because the R installed changes the permissions of all of them.</li>
+</ul>
+</section>
+</section>
+<section id="rim-0.2.3" class="level1">
+<h1>rim 0.2.3</h1>
+<ul>
+<li><code>rim system allow-debugger</code> and <code>rim system allow-core-dumps</code> now work on macOS Big Sur.</li>
+</ul>
+</section>
+<section id="rim-0.2.2" class="level1">
+<h1>rim 0.2.2</h1>
+<ul>
+<li><p>rim now supports the next version of R:</p>
+<pre><code>rim resolve next
+rim add next</code></pre>
+<p>The next version of R is R-alpha, R-beta, R-rc or R-prerelease if there is an active R release process, and it is R-patched otherwise.</p></li>
+</ul>
+</section>
+<section id="rim-0.2.1" class="level1">
+<h1>rim 0.2.1</h1>
+<section id="linux" class="level2">
+<h2 class="anchored" data-anchor-id="linux">Linux</h2>
+<ul>
+<li><p>rim now supports arm64 Linux, currently the following distributions: Ubuntu 18.04, 20.04 &amp; 22.04 and Debian 9, 10 &amp; 11.</p></li>
+<li><p>rim now supports Debian 11, on arm64 and x86_64.</p></li>
+</ul>
+</section>
+<section id="macos-2" class="level2">
+<h2 class="anchored" data-anchor-id="macos-2">macOS</h2>
+<ul>
+<li><p>New macOS <code>rim system</code> commands to allow debugging: <code>rim system allow-debugger</code>; and to allow core dumps: <code>rim system allow-core-dumps</code>.</p></li>
+<li><p>rim now uses better R-devel URLs on macOS, that do not fail if the daily build failed on mac.r-project.org.</p></li>
+</ul>
+</section>
+<section id="windows-2" class="level2">
+<h2 class="anchored" data-anchor-id="windows-2">Windows</h2>
+<ul>
+<li><p>rim now supports Rtools42 on Windows: <code>rim add rtools42</code>.</p></li>
+<li><p>Fix resolution of older Windows installers, they were moved to another URL.</p></li>
+<li><p>rim can now delete Rtools on Windows, e.g.: <code>rim rm rtools42</code>.</p></li>
+</ul>
+</section>
+</section>
+<section id="rim-0.2.0" class="level1">
+<h1>rim 0.2.0</h1>
+<ul>
+<li><p>New Linux version.</p></li>
+<li><p>On macOS rim now asks for your password for tasks that require admin access.</p></li>
+<li><p>On Windows rim now automatically elevates to administrator privileges as needed, by re-running with gsudo. gsudo is now bundled in the Windows distribution.</p></li>
+<li><p>New <code>rim system clean-registry</code> command to remove leftover Windows registry entries</p></li>
+<li><p>New <code>rim system no-openmp</code> to use the Apple compilers on macOS.</p></li>
+<li><p><code>rim rm</code> now cleans the registry on Windows.</p></li>
+<li><p>The Windows rim installer adds rim and R to the PATH on GitHub Actions.</p></li>
+<li><p><code>rim list</code> does not error any more if no R versions are installed.</p></li>
+<li><p>macOS now has <code>rim system no-openmp</code> to fix the conpiler configurations for the Apple compilers.</p></li>
+</ul>
+</section>
+<section id="rim-0.1.5" class="level1">
+<h1>rim 0.1.5</h1>
+<ul>
+<li>Experimental Windows version.</li>
+</ul>
+</section>
+<section id="rim-0.1.4" class="level1">
+<h1>rim 0.1.4</h1>
+<ul>
+<li><code>resolve</code> and <code>add</code> work again.</li>
+</ul>
+</section>
+<section id="rim-0.1.3" class="level1">
+<h1>rim 0.1.3</h1>
+<ul>
+<li><p><code>bash</code> and <code>zsh</code> completions out of the box, on macOS</p></li>
+<li><p>You can now pass URLs <code>.pkg</code> installers to <code>rim add</code> on macOS.</p></li>
+</ul>
+</section>
+<section id="rim-0.1.2" class="level1">
+<h1>rim 0.1.2</h1>
+<ul>
+<li><p><code>rim ls</code> is now a synonym of <code>rim list</code>.</p></li>
+<li><p>We have macOS installers now, and they are signed and notarized.</p></li>
+</ul>
+</section>
+<section id="rim-0.1.1" class="level1">
+<h1>rim 0.1.1</h1>
+<ul>
+<li><p>`rim rm now supports removing multiple versions.</p></li>
+<li><p><code>rim system</code> commands <code>create-lib</code>, <code>fix-permissions</code> and <code>make-orthogonal</code> can be now restricted to one or more R versions. <code>rim add</code> now only calls them for the newly installed R version.</p></li>
+<li><p><code>rim system add-pak</code> is now implemented.</p></li>
+</ul>
+</section>
+<section id="rim-0.1.0" class="level1">
+<h1>rim 0.1.0</h1>
+<p>First pre-release.</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    // Ensure there is a toggle, if there isn't float one in the top right
+    if (window.document.querySelector('.quarto-color-scheme-toggle') === null) {
+      const a = window.document.createElement('a');
+      a.classList.add('top-right');
+      a.classList.add('quarto-color-scheme-toggle');
+      a.href = "";
+      a.onclick = function() { try { window.quartoToggleColorScheme(); } catch {} return false; };
+      const i = window.document.createElement("i");
+      i.classList.add('bi');
+      a.appendChild(i);
+      window.document.body.appendChild(a);
+    }
+    setColorSchemeToggle(hasAlternateSentinel())
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/r-lib\.github\.io\/rig\/");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>
