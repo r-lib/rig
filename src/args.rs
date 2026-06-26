@@ -586,7 +586,7 @@ pub fn rig_app() -> Command {
         cmd_system = cmd_system.subcommand(cmd_system_update_certs);
     }
 
-    #[cfg(all(debug_assertions, any(target_os = "macos", target_os = "linux")))]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
         let cmd_system_user_mode = Command::new("user-mode")
             .about("Switch to user mode and clean up admin-mode installations")
@@ -826,7 +826,6 @@ pub fn rig_app() -> Command {
                 ),
         );
 
-    #[cfg(debug_assertions)]
     {
         let cmd_config = Command::new("config")
             .about("Manage rig configuration")
@@ -1019,7 +1018,6 @@ pub fn rig_app() -> Command {
                 .action(clap::ArgAction::Append),
         );
 
-    #[cfg(debug_assertions)]
     let cmd_proj = Command::new("proj")
         .about("Manage R projects (experimental)")
         .display_order(0)
@@ -1129,10 +1127,7 @@ pub fn rig_app() -> Command {
                         .required(false),
                 ),
         );
-    #[cfg(debug_assertions)]
-    {
-        rig = rig.subcommand(cmd_proj);
-    }
+    rig = rig.subcommand(cmd_proj);
 
     let cmd_repos_setup = Command::new("setup")
         .about("Set up R package repositories")
@@ -1413,25 +1408,22 @@ pub fn rig_app() -> Command {
                 .required(false),
         );
 
-    #[cfg(debug_assertions)]
-    {
-        rig = rig
-            .arg(
-                Arg::new("user")
-                    .help("Run in user mode (overrides RIG_MODE and config)")
-                    .long("user")
-                    .global(true)
-                    .action(clap::ArgAction::SetTrue)
-                    .conflicts_with("admin"),
-            )
-            .arg(
-                Arg::new("admin")
-                    .help("Run in admin mode (overrides RIG_MODE and config)")
-                    .long("admin")
-                    .global(true)
-                    .action(clap::ArgAction::SetTrue),
-            );
-    }
+    rig = rig
+        .arg(
+            Arg::new("user")
+                .help("Run in user mode (overrides RIG_MODE and config)")
+                .long("user")
+                .global(true)
+                .action(clap::ArgAction::SetTrue)
+                .conflicts_with("admin"),
+        )
+        .arg(
+            Arg::new("admin")
+                .help("Run in admin mode (overrides RIG_MODE and config)")
+                .long("admin")
+                .global(true)
+                .action(clap::ArgAction::SetTrue),
+        );
 
     rig = rig
         .subcommand(cmd_default)
