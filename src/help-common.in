@@ -125,3 +125,59 @@ const HELP_SYSTEM: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
   Various commands to modify and configure the installed R versions.
   See their help pages for details. E.g. run `rig system make-links --help`.";
+
+const HELP_RESOLVE: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Resolve R versions. Checks the version number of an R version (e.g.
+  release, devel, etc.), and looks up the URL of the installer for it,
+  if an installer is available.
+
+  It prints the R version number, and after a space the URL of the
+  installer. If no installer is available for this R version and the
+  current platform, the URL is `NA`.
+
+  An R version can be specified in various ways:
+  - `rig resolve devel` is the latest available development version,
+  - `rig resolve next` is the next (patched, alpha, beta, etc.) version,
+  - `rig resolve release` is the latest release.
+  - `rig resolve x.y.z` is a specific version.
+  - `rig resolve x.y` is the latest release within the `x.y` minor branch.
+  - `rig resolve oldrel/n` is the latest release within the `n`th previous
+    minor branch (`oldrel` is the same as `oldrel/1`).";
+
+const HELP_EXAMPLES: &str = "\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
+  # Add the latest development snapshot
+  rig add devel
+
+  # Add the latest release
+  rig add release
+
+  # Install specific version
+  rig add 4.1.2
+
+  # Install latest version within a minor branch
+  rig add 4.1
+
+  # List installed versions
+  rig list
+
+  # Set default version
+  rig default 4.1.2";
+
+const HELP_DEFAULT_EXAMPLES: &str = "\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
+  # Query default R version
+  rig default
+
+  # Set the default version
+  rig default 4.1.2";
+
+const HELP_SYSTEM_ADDPAK: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Install/update pak for one or more R versions.
+
+  * If `--all` is specified, then it installs pak for all current R
+    installations.
+  * If one or more R versions are specified, then it installs pak for
+    those.
+  * If no R versions are specified, then it installs pak for the default
+    R installation, if there is one (see `rig default`).";

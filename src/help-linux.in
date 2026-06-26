@@ -6,48 +6,10 @@
 
 const HELP_ABOUT: &str = "";
 
-const HELP_EXAMPLES: &str = "\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
-  # Add the latest development snapshot
-  rig add devel
-
-  # Add the latest release
-  rig add release
-
-  # Install specific version
-  rig add 4.1.2
-
-  # Install latest version within a minor branch
-  rig add 4.1
-
-  # List installed versions
-  rig list
-
-  # Set default version
-  rig default 4.1.2";
-
-const HELP_RESOLVE: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
-  Resolve R versions. Check the version number of an R version (e.g.
-  release, devel, etc.), and look up the URL of the installer for it,
-  if an installer is available.
-
-  It prints the R version number, and after a space the URL of the
-  installer. If no installer is available for this R version and the
-  current platform, the URL is `NA`.
-
-  An R version can be specified in various ways:
-  - `rig resolve devel` is the latest available development version,
-  - `rig resolve next` is the next (patched, alpha, beta, etc.) version,
-  - `rig resolve release` is the latest release.
-  - `rig resolve x.y.z` is a specific version.
-  - `rig resolve x.y` is the latest release within the `x.y` minor branch.
-  - `rig resolve oldrel/n` is the latest release within the `n`th previous
-    minor branch (`oldrel` is the same as `oldrel/1`).";
-
 const HELP_DEFAULT: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
   Print or set the default R version. The default R version is the one that
-  is started with the `R` command, via the `R` link in the rig binary
+  is started with the `R` command, via the `R` quick link in the rig binary
   directory (`~/.local/bin` in user mode).
 
   Call without any arguments to see the current default. Call with the
@@ -67,13 +29,6 @@ const HELP_DEFAULT: &str = "
   version. You can use the `R-<ver>` links, see `rig system make-links`.
 
   `rig switch` is an alias of `rig default`.";
-
-const HELP_DEFAULT_EXAMPLES: &str = "\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
-  # Query default R version
-  rig default
-
-  # Set the default version
-  rig default 4.1.2";
 
 const HELP_ADD: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
@@ -166,17 +121,6 @@ const HELP_SYSTEM_USER_MODE: &str = "
   User-mode R installations are portable builds and require a recent
   enough C library (glibc >= 2.34 or musl >= 1.2). On older systems the
   reinstallation in step 2 is not possible.";
-
-const HELP_SYSTEM_ADDPAK: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
-  Install/update pak for one or more R versions.
-
-  * If `--all` is specified, then it installs pak for all current R
-    installations.
-  * If one or more R versions are specified, then it installs pak for
-    those.
-  * If no R versions are specified, then it installs pak for the default
-    R installation (see `rig default`).";
 
 const HELP_RSTUDIO: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
