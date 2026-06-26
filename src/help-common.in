@@ -100,3 +100,28 @@ const HELP_RUN: &str = "
   - Rmd documents,
   - Rmd documents embedding Shiny apps,
   - Static web sites.";
+
+const HELP_LIST: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  List installed R versions. It does _not_ check if they are working
+  properly.
+
+  `rig ls` is an alias.";
+
+const HELP_RESOLVE_EXAMPLES: &str = "\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
+  # Latest development snapshot
+  rig resolve devel
+
+  # Latest release (that has an installer available)
+  rig resolve release
+
+  # URL for a specific version
+  rig resolve 4.1.2
+
+  # Latest version within a minor branch
+  rig resolve 4.1";
+
+const HELP_SYSTEM: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Various commands to modify and configure the installed R versions.
+  See their help pages for details. E.g. run `rig system make-links --help`.";
