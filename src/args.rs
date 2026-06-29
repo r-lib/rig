@@ -751,16 +751,13 @@ pub fn rig_app() -> Command {
                 .required(false),
         );
 
-    #[cfg(target_os = "windows")]
-    {
-        cmd_rstudio = cmd_rstudio.arg(
-            Arg::new("config-path")
-                .help("Do not start RStudio, only print the path of the RStudio config directory")
-                .long("config-path")
-                .required(false)
-                .num_args(0),
-        );
-    }
+    cmd_rstudio = cmd_rstudio.arg(
+        Arg::new("config-path")
+            .help("Do not start RStudio, only print the path of the RStudio config directory")
+            .long("config-path")
+            .required(false)
+            .num_args(0),
+    );
 
     let cmd_library = Command::new("library")
         .about("Manage package libraries [alias: lib] (experimental)")
