@@ -292,11 +292,81 @@ fn look_for_file(p: &Path, re: Regex) -> Result<Option<PathBuf>, Box<dyn Error>>
     Ok(None)
 }
 
+// This mirrors how RStudio resolves the user config directory on Linux and
+// macOS, see
+// https://github.com/rstudio/rstudio/blob/44f09c50d469a14d5a9c3840c7a239f3bf21ace9/src/cpp/core/system/Xdg.cpp#L85
+//
+// 1. RSTUDIO_CONFIG_HOME might point to the final path.
+// 2. XDG_CONFIG_HOME might point to the user config path (append `rstudio`).
+// 3. Otherwise fall back to `~/.config` (append `rstudio`).
+//
+// Environment variables (`$VAR` / `${VAR}`) and a leading `~` are expanded in
+// the resolved path. (The Windows version of this function lives in
+// `src/windows/mod.rs` and uses `FOLDERID_RoamingAppData` and `RStudio`.)
+#[cfg(unix)]
+pub fn get_rstudio_config_path() -> Result<PathBuf, Box<dyn Error>> {
+    let mut final_path = true;
+    let mut xdg: Option<PathBuf> = None;
+
+    // RSTUDIO_CONFIG_HOME may point to the final path
+    if let Ok(x) = env::var("RSTUDIO_CONFIG_HOME") {
+        if !x.is_empty() {
+            xdg = Some(PathBuf::from(x));
+        }
+    }
+
+    // XDG_CONFIG_HOME may point to the user config path
+    if xdg.is_none() {
+        final_path = false;
+        if let Ok(x) = env::var("XDG_CONFIG_HOME") {
+            if !x.is_empty() {
+                xdg = Some(PathBuf::from(x));
+            }
+        }
+    }
+
+    // Fall back to `~/.config`
+    let xdg = xdg.unwrap_or_else(|| PathBuf::from("~/.config"));
+
+    // Expand environment variables and a leading `~`
+    let path = match xdg.to_str() {
+        Some(x) => x,
+        None => {
+            OUTPUT.error("RStudio config path cannot be represented as Unicode. :(");
+            error!("RStudio config path cannot be represented as Unicode. :(");
+            bail!("RStudio config path cannot be represented as Unicode. :(")
+        }
+    };
+    let path = match shellexpand::full(path) {
+        Ok(x) => x.to_string(),
+        Err(e) => {
+            OUTPUT.error(&format!(
+                "RStudio config path contains unknown environment variable: {}",
+                e.var_name
+            ));
+            error!(
+                "RStudio config path contains unknown environment variable: {}",
+                e.var_name
+            );
+            bail!(
+                "RStudio config path contains unknown environment variable: {}",
+                e.var_name
+            );
+        }
+    };
+
+    let mut xdg = PathBuf::from(path);
+    if !final_path {
+        xdg.push("rstudio");
+    }
+
+    Ok(xdg)
+}
+
 pub fn sc_rstudio(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let mut ver: Option<&String> = args.get_one("version");
     let mut prj: Option<&String> = args.get_one("project-file");
 
-    #[cfg(target_os = "windows")]
     if args.get_flag("config-path") {
         let cp = get_rstudio_config_path();
         match cp {
