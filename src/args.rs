@@ -580,11 +580,11 @@ pub fn rig_app() -> Command {
             .subcommand(cmd_system_allow_core_dumps);
     }
 
-    #[cfg(target_os = "macos")]
     {
         let cmd_system_forget = Command::new("forget")
             .about("Make system forget about R installations")
             .display_order(0)
+            .hide(cfg!(not(target_os = "macos")))
             .long_about(HELP_SYSTEM_FORGET);
 
         cmd_system = cmd_system.subcommand(cmd_system_forget);
@@ -886,11 +886,11 @@ pub fn rig_app() -> Command {
         rig = rig.subcommand(cmd_config);
     }
 
-    #[cfg(target_os = "macos")]
     {
         let cmd_sysreqs = Command::new("sysreqs")
             .about("Manage R-related system libraries and tools (experimental)")
             .display_order(0)
+            .hide(cfg!(not(target_os = "macos")))
             .long_about(HELP_SYSREQS)
             .arg_required_else_help(true)
             .arg(
