@@ -215,11 +215,16 @@ rig-$(VERSION)-macOS-unsigned-%.pkg: build.stamp tools/distribution.xml.in
 README.md: README.qmd website/_partials/intro.md website/_partials/feedback.md
 	quarto render README.qmd --to gfm
 
-.PHONY: readme docs docs-preview
+.PHONY: readme docs docs-preview cli-reference
 readme: README.md
 
+# Regenerate the command-line reference (website/reference/_commands.md) from
+# the built rig binary. Requires a release (or debug) build of rig.
+cli-reference:
+	website/gen-cli-reference.sh
+
 # Build the documentation website into website/_site.
-docs:
+docs: cli-reference
 	quarto render website
 
 # Live-preview the documentation website.

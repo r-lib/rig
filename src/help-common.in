@@ -1,10 +1,94 @@
 // -*- mode: rust -*-
 
-// ------------------------------------------------------------------------
-// Common help
-// ------------------------------------------------------------------------
-
 use lazy_static::lazy_static;
+
+const HELP_ARCH: &str = "Select architecture: arm64 or x86_64";
+
+const HELP_DEFAULT: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Print or set the default R version. The default R version is the one that
+  is started with the `R` command, via the `R` quick link in the rig binary
+  directory (`~/.local/bin` in user mode).
+
+  Call without any arguments to see the current default. Call with the
+  version number/name to set the default. Before setting a default, you
+  can call `rig list` to see the installed R versions.
+
+  The default R version is set by updating the `current` symbolic link in
+  the R installation directory and pointing it to the specified R version.
+
+  In user mode rig works entirely within your home directory, so no `sudo`
+  is needed. In admin mode this command can change the default version
+  without `sudo` as long as the user is in the `admin` group; otherwise you
+  need to run it as `sudo rig default ...`.
+
+  You don't need to update the default R version to just run a non-default R
+  version. You can use the `R-<ver>` links, see `rig system make-links`.
+
+  `rig switch` is an alias of `rig default`.";
+
+const HELP_ADD: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Download and install an R version, from the official sources. It keeps
+  the already installed R versions, except on macOS in admin mode, where
+  patch versions of the same minor overwrite each other.
+
+  On macOS and Windows rig uses the R builds at https://cran.r-project.org.
+  On Linux rig uses the Posit R builds from
+  https://github.com/rstudio/r-builds.
+
+  The desired R version can be specified in various ways:
+  - `rig add devel` adds the latest available development version,
+  - `rig add next` is the next version (patched, alpha, beta, rc, etc.),
+  - `rig add release` adds the latest release.
+  - `rig add x.y.z` adds a specific version.
+  - `rig add x.y` adds the latest release within the `x.y` minor branch.
+  - `rig add oldrel/n` adds the latest release within the `n`th previous
+    minor branch (`oldrel` is the same as `oldrel/1`).
+  - `rig add <url>` uses a build from `<url>`.
+
+  In user mode rig installs R into your home directory and never needs
+  `sudo`. In admin mode you usually need to run this command with `sudo`:
+  `sudo rig add ...`, otherwise rig will need to ask for your password.
+
+  In admin mode on macOS rig cannot add multiple R versions from the same
+  minor branch. E.g. it is not possible to have R 4.6.0 and R 4.6.1
+  installed at the same time. Adding one of them will automatically remove
+  the other. In user mode there is no such restriction.
+
+  You can use `rig add` to install Rtools:
+
+  rig add rtools
+
+  will install all Rtools versions that are needed for the currently
+  installed R versions. You can also request a specific Rtools version,
+  e.g. `rig add rtools45`.
+
+  In user mode rig installs R and Rtools into your user profile, without
+  administrator rights. In admin mode you need an administrator account to
+  run this command.";
+
+const HELP_ADD_EXAMPLES: &str = "\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
+  # Add the latest development snapshot
+  rig add devel
+
+  # Add the latest release
+  rig add release
+
+  # Install specific version
+  rig add 4.6.1
+
+  # Install latest version within a minor branch
+  rig add 4.6
+
+  # Install arm64 build of R (default on arm64 machines)
+  rig add -a arm64 release
+
+  # Install x86_64 build of R (default on x86_64 machines)
+  rig add -a x86_64 release
+
+  # Install all needed Rtools versions (Windows only)
+  rig add rtools";
 
 const HELP_AVAILABLE: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
@@ -63,7 +147,7 @@ const HELP_ABOUT_POST: &str = "
 
 lazy_static! {
     static ref HELP_ABOUT_REAL: String =
-        HELP_ABOUT_PRE.to_string() + HELP_ABOUT + HELP_ABOUT_POST;
+        HELP_ABOUT_PRE.to_string() + HELP_ABOUT_POST;
 }
 
 const HELP_SYSTEM_LIB: &str = "
@@ -181,3 +265,267 @@ const HELP_SYSTEM_ADDPAK: &str = "
     those.
   * If no R versions are specified, then it installs pak for the default
     R installation, if there is one (see `rig default`).";
+
+const HELP_RM: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Remove an R installation. It keeps the users' package libraries.
+
+  In user mode no administrator rights are needed. In admin mode you need
+  an administrator account to run this command or use `sudo` on Unix,
+  otherwise rig will ask for your password.";
+
+const HELP_SYSTEM_ORTHO: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Make the current R installations orthogonal on macOS. This allows
+  running multiple R versions at the same time.
+
+  This command does nothing on Windows and Linux, where R installations
+  are automatically orthogonal. It also does nothing in user mode, as user
+  mode installations are always orthogonal.
+
+  `rig add` runs `rig system make-orthogonal` automatically, you do not
+  need to run it manually.
+
+  In admin mode this command probably needs `sudo`:
+  `sudo rig system make-orthogonal`, otherwise rig will ask for your
+  password.";
+
+const HELP_SYSTEM_LINKS: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Create quick links in the rig binary directory (`~/.local/bin` in user
+  mode) for the current R installations. These let you directly run a
+  specific R version. E.g. `R-4.6.0` will start R 4.6.0. It also creates
+  the `R` and `Rscript` links if they are missing.
+
+  `rig add` runs `rig system make-links`, so if you only use rig to
+  install R, then you do not need to run it manually.
+
+  In user mode no administrator rights are needed. In admin mode you need
+  an administrator account to run this command or use `sudo` on Unix,
+  otherwise rig will ask for your password.";
+
+const HELP_SYSTEM_FIXPERMS: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Update the permissions of the current R versions on macOS, so only the
+  administrator can install R packages into the system library.
+  Together with `rig system create-lib` this facilitates keeping
+  additional packages in a user library, instead of the system library.
+
+  This command does nothing on Windows and Linux and in user mode.
+
+  `rig add` runs `rig system fix-permissions`, so if you only use rig to
+  install R, then you do not need to run it manually.
+
+  In admin mode this command probably needs `sudo`:
+  `sudo rig system fix-permissions`, otherwise rig will ask for your
+  password.";
+
+const HELP_SYSTEM_FORGET: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Tell macOS to forget about the currently installed R versions.
+  This is needed to have multiple R installations at the same time.
+
+  This command does nothing on Windows and Linux and in user mode.
+
+  `rig add` runs `rig system forget` before and after the installation,
+  so if you only use rig to install R, then you don't need to run this
+  command manually.
+
+  In admin mode this command probably needs `sudo`:
+  `sudo rig system forget`, otherwise rig will ask for your password.";
+
+const HELP_SYSTEM_NO_OPENMP: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Remove -fopenmp flags from the R configuration, to make R work with
+  the Apple compilers, instead of CRAN's custom compilers. This is only
+  needed for R 3.6.x and before.
+
+  `rig add` runs `rig system no-openmp` after the installation, so if
+  only use rig to install R, then you don't need to run this command
+  manually.
+
+  This command does nothing on Windows and Linux and in user mode.
+
+  In admin mode this command probably needs `sudo`:
+  `sudo rig system no-openmp`, otherwise rig will ask for your password.";
+
+const HELP_SYSTEM_ALLOW_DEBUGGER: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Update the entitlements of the R binary to allow debuggers on macOS. It
+  adds the `get-task-allow` entitlement to the R binary. This is only
+  needed for R installers 3.6 and later, previous versions are not signed.
+  Call `R -d lldb` to start `lldb` on `R`. (Or `R-x.y -d lldb` if you
+  want a non-default version.)
+
+  See also `rig system allow-debugger-rstudio`, which does the same for
+  R running in RStudio.
+
+  This command does nothing on Windows and Linux and in user mode.
+
+  In admin mode this command probably needs `sudo`:
+  `sudo rig system allow-debugger`, otherwise rig will ask for your
+  password.";
+
+const HELP_SYSTEM_ALLOW_DEBUGGER_RSTUDIO: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Update the entitlements of RStudio R process to allow debuggers on macOS.
+  It adds the `get-task-allow` entitlement to the `rsession` (and
+  `rsession-arm64` on arm64 hardware) binary.
+
+  See also `rig system allow-debugger`, which does the same for
+  R running outside of RStudio.
+
+  This command does nothing on Windows and Linux.
+
+  This command probably needs `sudo`:
+  `sudo rig system allow-debugger-rstudio`, otherwise rig will ask for your
+  password.";
+
+const HELP_SYSTEM_ALLOW_CORE_DUMPS: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Update the entitlements of the R process to allow core dumps on macOS.
+  This command is similar to `rig system allow-debugger` but it also makes
+  sure that the `/cores` directory of core dumps is writeable by the
+  current user. Don't forget to call `ulimit -c unlimited` from the
+  same shell before starting R.
+
+  This command does nothing on Windows and Linux and in user mode.
+
+  In admin mode this command probably needs `sudo`:
+  `sudo rig system allow-core-dumps`, otherwise rig will ask for your
+  password.";
+
+const HELP_SYSTEM_USER_MODE: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Switch rig to user mode and clean up the machine after admin mode.
+
+  In user mode rig installs R into your home directory
+  (`~/.local/share/rig/r` or `%APPDATA%\\rig\\data\\r` on Windows),
+  and quick links into `~/.local/bin`, so that rig never needs `sudo`.
+  This command migrates an existing admin-mode setup to user mode:
+
+    1. Sets the rig `mode` configuration to `user`.
+    2. Reinstalls the admin-mode R versions in user mode, and restores
+       the previous default version and version aliases. Use
+       `--no-reinstall` to skip this and only clean up.
+    3. Removes the system-wide admin-mode R installations.
+    4. Removes the system-wide `R-*` quick links and the `R`/`Rscript`
+       links.
+
+  Steps 3 and 4 remove files outside your home directory, so this command
+  needs an administrator account or `sudo` on Unix, otherwise it will ask
+  for your password.
+
+  Use `--keep-install` to leave the admin-mode R installations in
+  in place (skipping step 3), and `--keep-links` to leave the system-wide
+  links in place (skipping step 4). With both, nothing outside your home
+  directory is touched and no administrator account or `sudo` is needed.";
+
+const HELP_RSTUDIO: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Start RStudio with the specified R version.
+
+  If `project-file` is an RStudio `.Rproj` file, or a directory containing
+  an RStudio project file, RStudio will open the project.
+
+  If `project-file` is a directory that does not contain an RStudio
+  project file, then RStudio will start up without an active project,
+  but will set the working directory to the specified directory.
+
+  If `project-file` is a regular file that is not inside a directory
+  containing an RStudio project, then RStudio will start up without an
+  active project, but it will open the specified file, and will set the
+  working directory to the directory of the file.
+
+  If the RStudio project or the specified directory contains an `renv.lock`
+  file (created by the renv package), and `version` is not specified, then
+  rig will read the preferred R version from the `renv.lock` file.
+  If the same exact version is not installed, then rig chooses
+  the latest version with the same major and minor components. If no such
+  version is available, rig throws an error.
+
+  On macOS arm64 computers rig prefers arm64 R, unless an exact version
+  match is only available with x86_64 R.
+
+  On Windows, `rig rstudio` needs RStudio Desktop 2021.09.0+351 or later.
+
+\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
+  # With default R version
+  rig rstudio
+
+  # With another R version
+  rig rstudio 4.6
+
+  # Open project with default R version
+  rig rstudio cli.Rproj
+
+  # Open renv project with the R version specified in the lock file
+  rig rstudio projects/myproject/renv.lock
+
+  # Open RStudio project with specified R version, either is good
+  rig rstudio 4.6 cli.Rproj
+  rig rstudio cli.Rproj 4.0";
+
+const HELP_SYSREQS: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Manage system libraries and tools. This currently includes a very
+  restricted set of tools, that are needed for running `R CMD check`.
+  Run `rig sysreqs list` for a complete list.";
+
+const HELP_SYSTEM_CLEANREG: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Remove R and Rtools entries from the Windows registry, if the
+  corresponding R or Rtools versions are not installed any more.
+
+  This command does nothing on macOS and Linux.";
+
+const HELP_SYSTEM_UPDATE_RTOOLS40: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  Update Rtools40 compilers and libraries to the latest builds by
+  updating the MSYS2 packages in Rtools40 on Windows.
+
+  This command does nothing on macOS and Linux.
+
+  In admin mode this command needs an administrator account.";
+
+const HELP_SYSTEM_RTOOLS_LS: &str = "
+\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+  List installed Rtools versions on Windows.
+
+  It only lists versions that are added to the Windows Registry.
+
+  Use the `--json` flag for JSON output.";
+
+const HELP_SYSTEM_RTOOLS_ADD: &str = "
+  Install new Rtools versions on Windows.
+
+  You can specify the new version(s) by their name, optionally with an
+  'rtools' prefix, e.g. '43' or 'rtools43'.
+
+  If `version` is 'all' (the default), then all Rtools versions that are
+   required for the currently installed R versions will be installed.
+
+  In user mode (RIG_MODE=user) Rtools is installed per-user, without
+  administrator rights, into %APPDATA%\\rig\\data\\rtools (override with the
+  RIG_RTOOLS_INSTALL_DIR environment variable or the 'rtools-install-dir'
+  config setting). rig points each R version at it by setting RTOOLS<ver>_HOME
+  in that R version's etc\\Renviron.site.
+
+  In admin mode this command needs an administrator account.
+
+\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
+  rig system rtools add 43
+  rig system rtools add all";
+
+const HELP_SYSTEM_RTOOLS_RM: &str = "
+  Remove Rtools versions on Windows.
+
+  You can specify the version(s) to remove by their name, optionally with
+  an 'rtools' prefix, e.g. '43' or 'rtools43'.
+
+  If no version is specified, then it does nothing.
+
+  In admin mode this command needs an administrator account.
+
+\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
+  rig system rtools rm 43";

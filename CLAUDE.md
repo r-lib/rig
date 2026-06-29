@@ -54,7 +54,16 @@ that `{{< include >}}` a partial. Edit the partials, not the rendered HTML.
   start, features, known issues) plus five flat Guide pages
   (`install.qmd`, `usage.qmd`, `macos-app.qmd`, `docker.qmd`, `faq.qmd`),
   `reference/index.qmd`, `articles/index.qmd` and `news.qmd`. Do **not** add a
-  further level of sub-pages.
+  further level of sub-pages. The one exception is the **generated** CLI
+  reference: `reference/` holds one page per top-level rig command
+  (`reference/<cmd>.qmd`, e.g. `add.qmd`, `system.qmd`), each with its
+  subcommands as sections. These pages — and the `reference/_overview.md` /
+  `reference/_toc.md` includes used by `reference/index.qmd` — are produced by
+  `website/gen-cli-reference.sh` (run via `make cli-reference`, which `make
+  docs` runs automatically). They carry a "Do not edit by hand" marker and are
+  regenerated from the built `rig` binary's `--help` output; never hand-edit
+  them, and don't list them individually in `_quarto.yml` (the sidebar picks
+  them up with `auto: "reference/*.qmd"`).
 - The layout is the uv-style three-column docs layout: a **permanent docked
   left sidebar** holds all navigation (Get started, a collapsible `Guide`
   section with the five Guide pages, Reference, Articles, Changelog — see the

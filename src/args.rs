@@ -16,15 +16,6 @@ use crate::windows_arch::*;
 
 std::include!("help-common.in");
 
-#[cfg(target_os = "macos")]
-std::include!("help-macos.in");
-
-#[cfg(target_os = "windows")]
-std::include!("help-windows.in");
-
-#[cfg(target_os = "linux")]
-std::include!("help-linux.in");
-
 pub fn rig_app() -> Command {
     let _arch_x86_64: &'static str = "x86_64";
     let _arch_arm64: &'static str = "arm64";
@@ -413,17 +404,21 @@ pub fn rig_app() -> Command {
                 .action(clap::ArgAction::Append),
         );
 
-    #[cfg(target_os = "windows")]
     {
+        // `clean-registry`, `update-rtools40` and `rtools` are real commands on
+        // Windows, but hidden no-ops on macOS and Linux, so that they are
+        // always available (e.g. in scripts).
         let cmd_system_cleanreg = Command::new("clean-registry")
             .about("Clean stale R related entries in the registry")
             .display_order(0)
+            .hide(cfg!(not(target_os = "windows")))
             .long_about(HELP_SYSTEM_CLEANREG);
         cmd_system = cmd_system.subcommand(cmd_system_cleanreg);
 
         let cmd_system_update_rtools40 = Command::new("update-rtools40")
             .about("Update Rtools40 MSYS2 packages")
             .display_order(0)
+            .hide(cfg!(not(target_os = "windows")))
             .long_about(HELP_SYSTEM_UPDATE_RTOOLS40);
         cmd_system = cmd_system.subcommand(cmd_system_update_rtools40);
 
@@ -480,6 +475,7 @@ pub fn rig_app() -> Command {
         let cmd_system_rtools = Command::new("rtools")
             .about("Manage Rtools installations")
             .display_order(0)
+            .hide(cfg!(not(target_os = "windows")))
             .arg_required_else_help(true)
             .subcommand(cmd_system_rtools_ls)
             .subcommand(cmd_system_rtools_add)
@@ -487,39 +483,45 @@ pub fn rig_app() -> Command {
         cmd_system = cmd_system.subcommand(cmd_system_rtools);
     }
 
-    #[cfg(target_os = "macos")]
     {
+        // `make-orthogonal` is a real command on macOS, but a hidden no-op on
+        // Windows and Linux, so that it is always available (e.g. in scripts).
         let cmd_system_ortho = Command::new("make-orthogonal")
             .about("Make installed versions orthogonal")
             .long_about(HELP_SYSTEM_ORTHO)
             .display_order(0)
+            .hide(cfg!(not(target_os = "macos")))
             .arg(
                 Arg::new("version")
                     .help("R versions to update (default: all)")
                     .required(false)
                     .action(clap::ArgAction::Append),
             );
+        cmd_system = cmd_system.subcommand(cmd_system_ortho);
 
+        // `fix-permissions` is a real command on macOS, but a hidden no-op on
+        // Windows and Linux, so that it is always available (e.g. in scripts).
         let cmd_system_rights = Command::new("fix-permissions")
             .about("Restrict system library permissions to admin")
             .long_about(HELP_SYSTEM_FIXPERMS)
             .display_order(0)
+            .hide(cfg!(not(target_os = "macos")))
             .arg(
                 Arg::new("version")
                     .help("R versions to update (default: all)")
                     .required(false)
                     .action(clap::ArgAction::Append),
             );
+        cmd_system = cmd_system.subcommand(cmd_system_rights);
 
-        let cmd_system_forget = Command::new("forget")
-            .about("Make system forget about R installations")
-            .display_order(0)
-            .long_about(HELP_SYSTEM_FORGET);
-
+        // The following are real commands on macOS, but hidden no-ops on
+        // Windows and Linux, so that they are always available (e.g. in
+        // scripts).
         let cmd_system_noopenmp = Command::new("no-openmp")
             .about("Remove OpenMP (-fopenmp) option for Apple compilers")
             .long_about(HELP_SYSTEM_NO_OPENMP)
             .display_order(0)
+            .hide(cfg!(not(target_os = "macos")))
             .arg(
                 Arg::new("version")
                     .help("R versions to update (default: all)")
@@ -531,6 +533,7 @@ pub fn rig_app() -> Command {
             .about("Allow debugging R with lldb and gdb")
             .long_about(HELP_SYSTEM_ALLOW_DEBUGGER)
             .display_order(0)
+            .hide(cfg!(not(target_os = "macos")))
             .arg(
                 Arg::new("all")
                     .help("Update all R versions")
@@ -548,12 +551,14 @@ pub fn rig_app() -> Command {
         let cmd_system_allow_debugger_rstudio = Command::new("allow-debugger-rstudio")
             .about("Allow debugging RStudio with lldb and gdb")
             .display_order(0)
+            .hide(cfg!(not(target_os = "macos")))
             .long_about(HELP_SYSTEM_ALLOW_DEBUGGER_RSTUDIO);
 
         let cmd_system_allow_core_dumps = Command::new("allow-core-dumps")
             .about("Allow creating core dumps when R crashes")
             .long_about(HELP_SYSTEM_ALLOW_CORE_DUMPS)
             .display_order(0)
+            .hide(cfg!(not(target_os = "macos")))
             .arg(
                 Arg::new("all")
                     .help("Update all R versions")
@@ -569,13 +574,20 @@ pub fn rig_app() -> Command {
             );
 
         cmd_system = cmd_system
-            .subcommand(cmd_system_ortho)
-            .subcommand(cmd_system_rights)
-            .subcommand(cmd_system_forget)
             .subcommand(cmd_system_noopenmp)
             .subcommand(cmd_system_allow_debugger)
             .subcommand(cmd_system_allow_debugger_rstudio)
             .subcommand(cmd_system_allow_core_dumps);
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let cmd_system_forget = Command::new("forget")
+            .about("Make system forget about R installations")
+            .display_order(0)
+            .long_about(HELP_SYSTEM_FORGET);
+
+        cmd_system = cmd_system.subcommand(cmd_system_forget);
     }
 
     #[cfg(target_os = "linux")]
