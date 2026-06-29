@@ -192,18 +192,17 @@ pub fn rig_app() -> Command {
                 .default_value("stable"),
         );
 
-    #[cfg(target_os = "linux")]
     {
         cmd_add = cmd_add.arg(
             Arg::new("without-sysreqs")
                 .help("Do not set up system requirements installation.")
                 .long("without-sysreqs")
                 .num_args(0)
-                .required(false),
+                .required(false)
+                .hide(cfg!(not(target_os = "linux"))),
         );
     }
 
-    #[cfg(target_os = "windows")]
     {
         cmd_add = cmd_add
             .arg(
@@ -211,14 +210,16 @@ pub fn rig_app() -> Command {
                     .help("Do not install translations.")
                     .long("without-translations")
                     .num_args(0)
-                    .required(false),
+                    .required(false)
+                    .hide(cfg!(not(target_os = "windows"))),
             )
             .arg(
                 Arg::new("with-desktop-icon")
                     .help("Install a desktop icon.")
                     .long("with-desktop-icon")
                     .num_args(0)
-                    .required(false),
+                    .required(false)
+                    .hide(cfg!(not(target_os = "windows"))),
             );
     }
 
@@ -245,6 +246,19 @@ pub fn rig_app() -> Command {
                 .required(false)
                 .default_value(&_default_arch)
                 .value_parser(["x86_64", "aarch64", "arm64"]),
+        );
+    }
+
+    // On Linux `--arch` is accepted (so it is defined on all platforms) but
+    // using it is an error, see sc_add() in src/linux.rs.
+    #[cfg(target_os = "linux")]
+    {
+        cmd_add = cmd_add.arg(
+            Arg::new("arch")
+                .help(HELP_ARCH)
+                .short('a')
+                .long("arch")
+                .required(false),
         );
     }
 
@@ -590,11 +604,11 @@ pub fn rig_app() -> Command {
         cmd_system = cmd_system.subcommand(cmd_system_forget);
     }
 
-    #[cfg(target_os = "linux")]
     {
         let cmd_system_update_certs = Command::new("update-certs")
             .about("Download the CA certificate bundle and configure R to use it")
-            .display_order(0);
+            .display_order(0)
+            .hide(cfg!(not(target_os = "linux")));
         cmd_system = cmd_system.subcommand(cmd_system_update_certs);
     }
 

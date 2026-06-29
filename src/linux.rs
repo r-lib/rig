@@ -224,6 +224,12 @@ pub fn user_mode_platform() -> Result<String, Box<dyn Error>> {
 }
 
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    if args.value_source("arch") == Some(clap::parser::ValueSource::CommandLine) {
+        OUTPUT.error("`--arch` is not supported on Linux.");
+        error!("`--arch` is not supported on Linux");
+        bail!("`--arch` is not supported on Linux");
+    }
+
     let mode = get_mode()?;
     if mode == Mode::Admin {
         escalate("adding new R versions")?;
