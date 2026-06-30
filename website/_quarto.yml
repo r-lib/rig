@@ -36,8 +36,10 @@ website:
             file: docker.qmd
           - text: "FAQ"
             file: faq.qmd
-      - text: "Reference"
-        file: reference/index.qmd
+      - section: "Reference"
+        href: reference/index.qmd
+        contents:
+          - auto: "reference/*.qmd"
       - text: "Articles"
         file: articles/index.qmd
       - text: "Changelog"
