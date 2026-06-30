@@ -180,14 +180,6 @@ pub fn get_r_version_data_version(name: &str) -> Result<String, Box<dyn Error>> 
     };
     let idx = grep_lines(&re, &lines);
     if idx.len() == 0 {
-        OUTPUT.error(&format!(
-            "Could not find version information for R {} in base/DESCRIPTION file",
-            name
-        ));
-        error!(
-            "Could not find version information for R {} in base/DESCRIPTION file",
-            name
-        );
         bail!(
             "Could not find version information for R {} in base/DESCRIPTION file",
             name
@@ -201,7 +193,14 @@ pub fn get_r_version_data(
     name: &str,
     aliases: &[Alias],
 ) -> Result<InstalledVersion, Box<dyn Error>> {
-    let version = Some(get_r_version_data_version(name)?);
+    let version = match get_r_version_data_version(name) {
+        Ok(v) => Some(v),
+        Err(e) => {
+            OUTPUT.warn(&format!("R installation '{}' looks broken: {}", name, e));
+            warn!("R installation '{}' looks broken: {}", name, e);
+            None
+        }
+    };
     let path = Path::new(&get_r_root_for(name)?)
         .join(get_r_versiondir()?.replace("{}", &version_dir_key(name)));
     let binary = Path::new(&get_r_root_for(name)?)
