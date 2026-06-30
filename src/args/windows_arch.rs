@@ -1,4 +1,6 @@
 #![allow(dead_code)]
+// These type aliases intentionally mirror the Windows API names.
+#![allow(clippy::upper_case_acronyms)]
 
 use std::ffi::{c_void, OsStr};
 use std::os::windows::ffi::OsStrExt;
@@ -43,7 +45,7 @@ unsafe fn init_iswow64process2() {
     let proc_name = b"IsWow64Process2\0";
     let ptr_fn = GetProcAddress(module, proc_name.as_ptr());
     if !ptr_fn.is_null() {
-        FN_ISWOW64PROCESS2 = Some(std::mem::transmute(ptr_fn));
+        FN_ISWOW64PROCESS2 = Some(std::mem::transmute::<*mut c_void, FnIsWow64Process2>(ptr_fn));
     }
 }
 

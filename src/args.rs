@@ -305,7 +305,7 @@ pub fn rig_app() -> Command {
                 .short('a')
                 .long("arch")
                 .required(false)
-                .default_value(&_default_arch)
+                .default_value(_default_arch)
                 .value_parser(["x86_64", "aarch64", "arm64"]),
         );
     }
@@ -418,7 +418,7 @@ pub fn rig_app() -> Command {
                 .short('a')
                 .long("arch")
                 .required(false)
-                .default_value(&_default_arch)
+                .default_value(_default_arch)
                 .value_parser(["x86_64", "aarch64", "arm64"]),
         );
     }
@@ -761,7 +761,7 @@ pub fn rig_app() -> Command {
                 .short('a')
                 .long("arch")
                 .required(false)
-                .default_value(&_default_arch)
+                .default_value(_default_arch)
                 .value_parser(["x86_64", "aarch64", "arm64"]),
         );
     }

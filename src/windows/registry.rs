@@ -224,7 +224,7 @@ pub(super) fn maybe_update_registry_default() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn update_registry_default1(key: &RegKey, ver: &String) -> Result<(), Box<dyn Error>> {
+fn update_registry_default1(key: &RegKey, ver: &str) -> Result<(), Box<dyn Error>> {
     let base = version_dir_key(ver);
     let rroot = get_r_root_for(ver)?;
     key.set_value("Current Version", &base)?;
@@ -233,7 +233,7 @@ fn update_registry_default1(key: &RegKey, ver: &String) -> Result<(), Box<dyn Er
     Ok(())
 }
 
-fn update_registry_default_to(default: &String) -> Result<(), Box<dyn Error>> {
+fn update_registry_default_to(default: &str) -> Result<(), Box<dyn Error>> {
     let hive = r_registry_hive()?;
     let native = get_native_arch();
     let arch = arch_of_name(default);

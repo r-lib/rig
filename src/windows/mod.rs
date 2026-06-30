@@ -1,5 +1,3 @@
-#![cfg(target_os = "windows")]
-
 mod registry;
 pub use registry::sc_clean_registry;
 use registry::{
@@ -24,7 +22,6 @@ use directories::BaseDirs;
 use log::{debug, error, info, trace, warn};
 use owo_colors::OwoColorize;
 use remove_dir_all::remove_dir_all;
-use semver;
 use simple_error::{bail, SimpleError};
 use whoami::{fallible::hostname, username};
 
@@ -246,7 +243,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         };
         return add_rtools(str.to_string(), arch);
     }
-    let (version_info, target) = download_r(&args)?;
+    let (version_info, target) = download_r(args)?;
     let installed_arch = version_info
         .arch
         .clone()
@@ -301,9 +298,9 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
                 let _ = remove_dir_all(&temp_dir);
                 OUTPUT.error(&format!(
                     "Cannot determine installed R version: {}",
-                    err.to_string()
+                    err
                 ));
-                error!("Cannot determine installed R version: {}", err.to_string());
+                error!("Cannot determine installed R version: {}", err);
                 return Err(err);
             }
         };
@@ -314,7 +311,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
                 let msg = format!(
                     "Cannot replace existing R installation at {}: {}",
                     final_dir,
-                    err.to_string()
+                    err
                 );
                 OUTPUT.error(&msg);
                 error!("{}", msg);
@@ -326,12 +323,12 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             OUTPUT.error(&format!(
                 "Cannot move R installation into {}: {}",
                 final_dir,
-                err.to_string()
+                err
             ));
             error!(
                 "Cannot move R installation into {}: {}",
                 final_dir,
-                err.to_string()
+                err
             );
             return Err(err.into());
         }
@@ -358,20 +355,19 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     sc_system_make_links()?;
     match dirname {
         None => {}
-        Some(ref dirname) => match alias {
+        Some(ref dirname) => {
             // The `release`/`oldrel` aliases point at the native build. An
             // x86_64 build on an aarch64 machine gets an `-x86_64` suffix
             // instead, to avoid colliding with the native alias.
-            Some(alias) => {
+            if let Some(alias) = alias {
                 let alias = if installed_arch == "x86_64" && get_native_arch() == "aarch64" {
                     format!("{}-x86_64", alias)
                 } else {
                     alias
                 };
-                add_alias(&dirname, &alias)?
+                add_alias(dirname, &alias)?
             }
-            None => {}
-        },
+        }
     };
     patch_for_rtools()?;
     maybe_update_registry_default()?;
@@ -538,17 +534,16 @@ fn rtools_renviron_lines(version: &str, arch: &str, rtools_path: &Path, user_mod
 }
 
 fn add_rtools(version: String, arch: Option<String>) -> Result<(), Box<dyn Error>> {
-    let needed: Vec<NeededRtools>;
-    if version == "rtools" {
-        needed = get_rtools_needed(None, arch.as_deref())?;
+    let needed: Vec<NeededRtools> = if version == "rtools" {
+        get_rtools_needed(None, arch.as_deref())?
     } else {
         let ver = version.replace("rtools", "");
         let a = arch.unwrap_or_else(|| get_native_arch().to_string());
-        needed = vec![NeededRtools {
+        vec![NeededRtools {
             version: ver,
             arch: a,
-        }];
-    }
+        }]
+    };
     let client = &reqwest::Client::new();
     for item in needed {
         let instdirpath = rtools_install_path(&item.version, &item.arch)?;
@@ -571,7 +566,7 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<(), Box<dyn Error
         let target = tmp_dir.join(&filename);
         OUTPUT.status(&format!("Downloading {} -> {}", url, target.display()));
         info!("Downloading {} -> {}", url, target.display());
-        download_file(client, &url, &target.as_os_str())?;
+        download_file(client, &url, target.as_os_str())?;
         OUTPUT.status(&format!("Installing {}", target.display()));
         info!("Installing {}", target.display());
 
@@ -661,7 +656,7 @@ fn patch_for_rtools() -> Result<(), Box<dyn Error>> {
 
         let mut file = OpenOptions::new()
             .create(true)
-            .write(true)
+            
             .append(true)
             .open(&envfile)?;
 
@@ -768,10 +763,7 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
                     "Removing default version, set new default with {}",
                     "rig default <version>".bold()
                 );
-                match unset_default() {
-                    Err(e) => warn!("Failed to unset default version: {}", e.to_string()),
-                    _ => {}
-                };
+                if let Err(e) = unset_default() { warn!("Failed to unset default version: {}", e) };
             }
         }
 
@@ -821,26 +813,20 @@ fn rm_rtools(ver: String, arch: Option<String>) -> Result<(), Box<dyn Error>> {
     }
     OUTPUT.status(&format!("Removing {}", dir.display()));
     info!("Removing {}", dir.display());
-    match remove_dir_all(&dir) {
-        Err(_err) => {
-            let cmd = format!(
-                "Remove-Item -Recurse -Force -LiteralPath '{}'",
-                dir.display().to_string().replace('\'', "''")
-            );
-            let out = Command::new("powershell")
-                .args(["-command", &cmd])
-                .output()?;
-            let stderr = match std::str::from_utf8(&out.stderr) {
-                Ok(v) => v,
-                Err(_v) => "cannot parse stderr",
-            };
-            if !out.status.success() {
-                OUTPUT.error(&format!("Failed to remove {}: {}", dir.display(), stderr));
-                error!("Failed to remove {}: {}", dir.display(), stderr);
-                bail!("Cannot remove {}: {}", dir.display(), stderr);
-            }
+    if let Err(_err) = remove_dir_all(&dir) {
+        let cmd = format!(
+            "Remove-Item -Recurse -Force -LiteralPath '{}'",
+            dir.display().to_string().replace('\'', "''")
+        );
+        let out = Command::new("powershell")
+            .args(["-command", &cmd])
+            .output()?;
+        let stderr = std::str::from_utf8(&out.stderr).unwrap_or("cannot parse stderr");
+        if !out.status.success() {
+            OUTPUT.error(&format!("Failed to remove {}: {}", dir.display(), stderr));
+            error!("Failed to remove {}: {}", dir.display(), stderr);
+            bail!("Cannot remove {}: {}", dir.display(), stderr);
         }
-        _ => {}
     }
 
     sc_clean_registry()?;
@@ -916,9 +902,9 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                             OUTPUT.warn(&format!(
                                 "Failed to remove {}: {}",
                                 filename,
-                                e.to_string()
+                                e
                             ));
-                            warn!("Failed to remove {}: {}", filename, e.to_string());
+                            warn!("Failed to remove {}: {}", filename, e);
                         }
                     }
                 }
@@ -934,8 +920,8 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
 }
 
 fn re_alias() -> Regex {
-    let re = Regex::new("^R-(oldrel|release|next)(-x86_64)?[.]bat$").unwrap();
-    re
+    
+    Regex::new("^R-(oldrel|release|next)(-x86_64)?[.]bat$").unwrap()
 }
 
 pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
@@ -964,7 +950,7 @@ pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
             None => continue,
         };
         debug!("Alias candidate: {}", fnamestr);
-        if re.is_match(&fnamestr) {
+        if re.is_match(fnamestr) {
             trace!("Checking {}", path.display());
             let rver = find_r_version_in_link(&path)?;
             let als = Alias {
@@ -978,9 +964,9 @@ pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
     Ok(result)
 }
 
-fn find_r_version_in_link(path: &PathBuf) -> Result<String, Box<dyn Error>> {
+fn find_r_version_in_link(path: &Path) -> Result<String, Box<dyn Error>> {
     let lines = read_lines(path)?;
-    if lines.len() == 0 {
+    if lines.is_empty() {
         OUTPUT.error(&format!("Invalid R link file: {}", path.display()));
         error!("Invalid R link file: {}", path.display());
         bail!("Invalid R link file: {}", path.display());
@@ -1645,7 +1631,7 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
     let base = version_dir_key(&ver);
     let links_dir = get_links_dir()?;
     let linkdir = Path::new(&links_dir);
-    std::fs::create_dir_all(&linkdir)?;
+    std::fs::create_dir_all(linkdir)?;
 
     let linkfile = linkdir.join("R.bat");
     let base_dir = r_dirname(&base)?;
@@ -1684,16 +1670,13 @@ pub fn unset_default() -> Result<(), Box<dyn Error>> {
     let try_rm = |x: &str| {
         let f = linkdir.join(x);
         if f.exists() {
-            match std::fs::remove_file(&f) {
-                Err(e) => {
-                    OUTPUT.warn(&format!(
-                        "Failed to remove {}: {}",
-                        f.display(),
-                        e.to_string()
-                    ));
-                    warn!("Failed to remove {}: {}", f.display(), e.to_string())
-                }
-                _ => {}
+            if let Err(e) = std::fs::remove_file(&f) {
+                OUTPUT.warn(&format!(
+                    "Failed to remove {}: {}",
+                    f.display(),
+                    e
+                ));
+                warn!("Failed to remove {}: {}", f.display(), e)
             };
         }
     };
@@ -1718,9 +1701,8 @@ pub fn sc_get_default() -> Result<Option<String>, Box<dyn Error>> {
     let reader = BufReader::new(file);
 
     let mut first = "".to_string();
-    for line in reader.lines() {
+    if let Some(line) = reader.lines().next() {
         first = line?.replace("::", "");
-        break;
     }
 
     Ok(Some(first.to_string()))
@@ -1800,21 +1782,15 @@ pub fn get_rstudio_config_path() -> Result<std::path::PathBuf, Box<dyn Error>> {
     let mut xdg: Option<std::path::PathBuf> = None;
 
     // RSTUDIO_CONFIG_HOME may point to the final path
-    match std::env::var("RSTUDIO_CONFIG_HOME") {
-        Ok(x) => xdg = Some(std::path::PathBuf::from(x)),
-        Err(_) => {}
-    };
+    if let Ok(x) = std::env::var("RSTUDIO_CONFIG_HOME") { xdg = Some(std::path::PathBuf::from(x)) };
 
     // XDG_CONFIG_HOME may point to the user config path
     if xdg.is_none() {
         final_path = false;
-        match std::env::var("XDG_CONFIG_HOME") {
-            Ok(x) => {
-                let mut xdg2 = std::path::PathBuf::new();
-                xdg2.push(x);
-                xdg = Some(xdg2);
-            }
-            Err(_) => {}
+        if let Ok(x) = std::env::var("XDG_CONFIG_HOME") {
+            let mut xdg2 = std::path::PathBuf::new();
+            xdg2.push(x);
+            xdg = Some(xdg2);
         };
     }
 
@@ -1843,7 +1819,7 @@ pub fn get_rstudio_config_path() -> Result<std::path::PathBuf, Box<dyn Error>> {
         }
     };
     let has_dollar = path.contains("$");
-    let empty = path.len() == 0;
+    let empty = path.is_empty();
     let has_tilde = path.contains("~");
 
     if has_dollar || empty || has_tilde {
@@ -1963,20 +1939,17 @@ pub fn sc_rstudio_(
     let status = run("cmd.exe".into(), args, "start");
 
     // restore version env var
-    if let Some(_) = version {
+    if version.is_some() {
         match old {
             Ok(v) => std::env::set_var("RSTUDIO_WHICH_R", v),
             Err(_) => std::env::remove_var("RSTUDIO_WHICH_R"),
         };
     }
 
-    match status {
-        Err(e) => {
-            OUTPUT.error(&format!("`start` failed: {}", e.to_string()));
-            error!("`start` failed: {}", e.to_string());
-            bail!("`start` failed: {}", e.to_string());
-        }
-        _ => {}
+    if let Err(e) = status {
+        OUTPUT.error(&format!("`start` failed: {}", e));
+        error!("`start` failed: {}", e);
+        bail!("`start` failed: {}", e.to_string());
     };
 
     Ok(())

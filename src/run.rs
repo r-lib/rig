@@ -140,6 +140,6 @@ fn r_nosudo(version: &str, command: &str) -> Result<(), Box<dyn Error>> {
 
 #[cfg(target_os = "windows")]
 pub fn r(version: &str, command: &str) -> Result<(), Box<dyn Error>> {
-    let cmdline = Regex::new("[\n\r]")?.replace_all(&command, "").to_string();
-    r_nosudo(&version, &cmdline)
+    let cmdline = Regex::new("[\n\r]")?.replace_all(command, "").to_string();
+    r_nosudo(version, &cmdline)
 }

@@ -290,12 +290,10 @@ pub fn platform_to_pkg_type(platform: &OsVersion, r_version: &str) -> Option<Str
             } else {
                 Some("mac.binary.big-sur-x86_64".to_string())
             }
+        } else if platform.arch == "aarch64" {
+            Some("mac.binary.sonoma-arm64".to_string())
         } else {
-            if platform.arch == "aarch64" {
-                Some("mac.binary.sonoma-arm64".to_string())
-            } else {
-                Some("mac.binary.big-sur-x86_64".to_string())
-            }
+            Some("mac.binary.big-sur-x86_64".to_string())
         }
     } else {
         None

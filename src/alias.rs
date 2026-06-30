@@ -158,7 +158,7 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     let linkdir = Path::new(&links_dir);
 
     // should exist at this point, but make sure
-    std::fs::create_dir_all(&linkdir)?;
+    std::fs::create_dir_all(linkdir)?;
 
     let filename = "R-".to_string() + alias + ".bat";
     let linkfile = linkdir.join(&filename);
