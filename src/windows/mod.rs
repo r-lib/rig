@@ -514,9 +514,7 @@ fn renviron_path(path: &Path) -> String {
 fn rtools_renviron_lines(version: &str, arch: &str, rtools_path: &Path, user_mode: bool) -> String {
     let path = renviron_path(rtools_path);
     if is_legacy_rtools(version) {
-        // Rtools 3.x and older (e.g. 3.5): prepend their bin/ to PATH; these predate
-        // the RTOOLS<NN>_HOME mechanism, and R 3.x finds gcc via Makeconf's BINPREF.
-        format!("PATH=\"{}/bin;${{PATH}}\"", path)
+        format!("BINPREF=\"{}/mingw_$(WIN)/bin/\"\nPATH=\"{}/bin;${{PATH}}\"", path, path)
     } else if version == "40" {
         // Rtools 4.0: R does not auto-derive PATH, so keep the explicit PATH line that
         // references RTOOLS40_HOME (set here in user mode, by the installer in admin mode).
@@ -2183,12 +2181,17 @@ mod tests {
         // 3.5 prepends <path>/bin to PATH.
         assert_eq!(
             rtools_renviron_lines("35", "x86_64", Path::new("C:\\Rtools"), false),
-            "PATH=\"C:/Rtools/bin;${PATH}\""
+            "BINPREF=\"C:/Rtools/mingw_$(WIN)/bin/\"\nPATH=\"C:/Rtools/bin;${PATH}\""
         );
-        // Any legacy 3.x Rtools (e.g. 3.4) uses the same PATH/bin mechanism as 3.5.
+        // Any legacy 3.x Rtools (e.g. 3.4) uses the same BINPREF/PATH mechanism as 3.5.
         assert_eq!(
             rtools_renviron_lines("34", "x86_64", Path::new("C:\\Rtools"), false),
-            "PATH=\"C:/Rtools/bin;${PATH}\""
+            "BINPREF=\"C:/Rtools/mingw_$(WIN)/bin/\"\nPATH=\"C:/Rtools/bin;${PATH}\""
+        );
+        // In user mode the BINPREF points at the rig-managed Rtools location.
+        assert_eq!(
+            rtools_renviron_lines("35", "x86_64", Path::new("C:\\rt\\35"), true),
+            "BINPREF=\"C:/rt/35/mingw_$(WIN)/bin/\"\nPATH=\"C:/rt/35/bin;${PATH}\""
         );
     }
 
