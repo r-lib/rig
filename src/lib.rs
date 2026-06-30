@@ -11,7 +11,6 @@ use std::sync::Mutex;
 static GLOBAL: System = System;
 
 use lazy_static::lazy_static;
-use libc;
 use simple_error::bail;
 
 mod alias;
@@ -68,12 +67,11 @@ pub extern "C" fn rig_last_error(ptr: *mut libc::c_char, size: libc::size_t) -> 
         Err(_) => "Unknown error".to_string(),
     };
 
-    let str2;
-    if size <= str.len() {
-        str2 = str[..(size - 1)].to_string() + "\0";
+    let str2 = if size <= str.len() {
+        str[..(size - 1)].to_string() + "\0"
     } else {
-        str2 = str.to_string()
-    }
+        str.to_string()
+    };
     match set_c_string(&str2, ptr, size) {
         Ok(x) => x,
         Err(_) => ERROR_BUFFER_SHORT,
@@ -99,11 +97,11 @@ fn set_c_string(
 ) -> Result<libc::c_int, Box<dyn Error>> {
     let from = from.to_string() + "\0";
     let bts = from.as_bytes();
-    let n = from.bytes().count();
+    let n = from.len();
     if n <= size {
         let ptr2;
         unsafe {
-            ptr2 = std::slice::from_raw_parts_mut(ptr as *mut u8, size as usize);
+            ptr2 = std::slice::from_raw_parts_mut(ptr as *mut u8, size);
         }
         ptr2[0..n].clone_from_slice(bts);
         Ok(SUCCESS)
@@ -125,7 +123,7 @@ fn set_c_strings(
         let mut idx = 0;
         let ptr2;
         unsafe {
-            ptr2 = std::slice::from_raw_parts_mut(ptr as *mut u8, size as usize);
+            ptr2 = std::slice::from_raw_parts_mut(ptr as *mut u8, size);
         }
         for s in &from {
             let l = s.len();
@@ -207,7 +205,7 @@ pub extern "C" fn rig_list_with_versions(
                 Ok(x) => x,
                 Err(_) => {
                     set_error("Buffer too short for R version");
-                    return ERROR_BUFFER_SHORT;
+                    ERROR_BUFFER_SHORT
                 }
             }
         }
@@ -220,6 +218,7 @@ pub extern "C" fn rig_list_with_versions(
 }
 
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn rig_set_default(ptr: *const libc::c_char) -> libc::c_int {
     let cver;
 
@@ -243,6 +242,7 @@ pub extern "C" fn rig_set_default(ptr: *const libc::c_char) -> libc::c_int {
 }
 
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn rig_start_rstudio(
     pversion: *const libc::c_char,
     pproject: *const libc::c_char,
@@ -269,12 +269,12 @@ pub extern "C" fn rig_start_rstudio(
         }
     };
 
-    let ver = if ver == "" {
+    let ver = if ver.is_empty() {
         None
     } else {
         Some(ver.to_string())
     };
-    let prj = if prj == "" {
+    let prj = if prj.is_empty() {
         None
     } else {
         Some(prj.to_string())
@@ -305,7 +305,7 @@ pub extern "C" fn rig_library_list(ptr: *mut libc::c_char, size: libc::size_t) -
                 Ok(x) => x,
                 Err(_) => {
                     set_error("Buffer too short for R libraries");
-                    return ERROR_BUFFER_SHORT;
+                    ERROR_BUFFER_SHORT
                 }
             }
         }
@@ -318,6 +318,7 @@ pub extern "C" fn rig_library_list(ptr: *mut libc::c_char, size: libc::size_t) -
 }
 
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn rig_lib_set_default(ptr: *const libc::c_char) -> libc::c_int {
     let cver;
 

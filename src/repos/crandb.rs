@@ -13,7 +13,7 @@ pub fn get_cran_package_version(
     package: &str,
     version: &str,
 ) -> Result<BTreeMap<String, String>, Box<dyn Error>> {
-    let mut url = "https://crandb.r-pkg.org/".to_string() + &package;
+    let mut url = "https://crandb.r-pkg.org/".to_string() + package;
     if version != "latest" {
         url += "/";
         url += version;
@@ -21,7 +21,7 @@ pub fn get_cran_package_version(
     debug!("Fetching package info from {}", url);
     let mut local = get_cache_dir()?;
     local.push("package-metadata");
-    local.push("package-".to_string() + &package + "-" + version + ".json");
+    local.push("package-".to_string() + package + "-" + version + ".json");
     debug!("Local cache file: {}", local.display());
 
     create_parent_dir_if_needed(&local)?;
@@ -47,10 +47,10 @@ pub fn get_all_cran_package_versions(
     package: &str,
     client: Option<&reqwest::Client>,
 ) -> Result<Vec<Package>, Box<dyn Error>> {
-    let url = "https://crandb.r-pkg.org/".to_string() + &package + "/" + "all";
+    let url = "https://crandb.r-pkg.org/".to_string() + package + "/" + "all";
     let mut local = get_cache_dir()?;
     local.push("packages");
-    local.push("package-".to_string() + &package + ".json");
+    local.push("package-".to_string() + package + ".json");
 
     create_parent_dir_if_needed(&local)?;
     let (_downloaded, _etag) = download_if_newer_(&url, &local, None, client)?;

@@ -4,7 +4,6 @@ use std::io::{IsTerminal, Write};
 use std::sync::{Arc, Mutex};
 
 use clap::ArgMatches;
-use env_logger;
 use log::{error, info, Level, LevelFilter};
 use owo_colors::OwoColorize;
 use simple_error::*;
@@ -141,7 +140,7 @@ fn main_() -> i32 {
 
     let log_file_for_format = log_file_writer.clone();
 
-    match env_logger::Builder::from_env(env_logger::Env::default())
+    if let Err(e) = env_logger::Builder::from_env(env_logger::Env::default())
         .filter(None, loglevel)
         .parse_filters(&filter_str)
         .target(env_logger::Target::Stderr)
@@ -200,11 +199,8 @@ fn main_() -> i32 {
         })
         .try_init()
     {
-        Err(e) => {
-            eprintln!("Fatal error, cannot set up logger: {}", e.to_string());
-            return 2;
-        }
-        _ => {}
+        eprintln!("Fatal error, cannot set up logger: {}", e);
+        return 2;
     };
 
     unset_r_envvars();
@@ -236,7 +232,7 @@ fn main_() -> i32 {
             exitcode
         }
         Err(err) => {
-            error!("{}", err.to_string());
+            error!("{}", err);
             info!("RIG END [pid:{}] {}", pid, cmdline);
             1
         }

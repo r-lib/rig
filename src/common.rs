@@ -151,12 +151,9 @@ pub fn get_default_r_version() -> Result<Option<String>, Box<dyn Error>> {
             let desc = Path::new(&get_r_root_for(&name)?)
                 .join(get_r_syslibpath()?.replace("{}", &version_dir_key(&name)))
                 .join("base/DESCRIPTION");
-            let lines = match read_lines(&desc) {
-                Ok(x) => x,
-                Err(_) => vec![],
-            };
+            let lines = read_lines(&desc).unwrap_or_default();
             let idx = grep_lines(&re, &lines);
-            let version: Option<String> = if idx.len() == 0 {
+            let version: Option<String> = if idx.is_empty() {
                 None
             } else {
                 Some(re.replace(&lines[idx[0]], "").to_string())
@@ -174,12 +171,9 @@ pub fn get_r_version_data_version(name: &str) -> Result<String, Box<dyn Error>> 
     let desc = Path::new(&get_r_root_for(name)?)
         .join(get_r_syslibpath()?.replace("{}", &version_dir_key(name)))
         .join("base/DESCRIPTION");
-    let lines = match read_lines(&desc) {
-        Ok(x) => x,
-        Err(_) => vec![],
-    };
+    let lines = read_lines(&desc).unwrap_or_default();
     let idx = grep_lines(&re, &lines);
-    if idx.len() == 0 {
+    if idx.is_empty() {
         bail!(
             "Could not find version information for R {} in base/DESCRIPTION file",
             name
@@ -215,9 +209,9 @@ pub fn get_r_version_data(
     }
     Ok(InstalledVersion {
         name: name.to_string(),
-        version: version,
-        path: path.to_str().and_then(|x| Some(x.to_string())),
-        binary: binary.to_str().and_then(|x| Some(x.to_string())),
+        version,
+        path: path.to_str().map(|x| x.to_string()),
+        binary: binary.to_str().map(|x| x.to_string()),
         aliases: myaliases,
     })
 }
@@ -228,7 +222,7 @@ pub fn sc_get_list_details() -> Result<Vec<InstalledVersion>, Box<dyn Error>> {
     let mut res: Vec<InstalledVersion> = vec![];
 
     for name in &names {
-        res.push(get_r_version_data(&name, &aliases)?);
+        res.push(get_r_version_data(name, &aliases)?);
     }
 
     Ok(res)
@@ -237,14 +231,14 @@ pub fn sc_get_list_details() -> Result<Vec<InstalledVersion>, Box<dyn Error>> {
 // -- rig system add-pak (implementation) ---------------------------------
 
 // TODO: we should not hardcode this here...
-pub fn check_has_pak(ver: &String) -> Result<bool, Box<dyn Error>> {
+pub fn check_has_pak(ver: &str) -> Result<bool, Box<dyn Error>> {
     // cur off -arm64 and -x86_64
     let mut ver = Regex::new("-.*$")?.replace(ver, "").to_string();
 
     // add .0 for macOS minor versions
     let minor = Regex::new("^[0-9]+[.][0-9]+$")?;
     if minor.is_match(&ver) {
-        ver = ver + ".0";
+        ver += ".0";
     }
 
     // cut off extra stuff on Windows
@@ -278,12 +272,11 @@ pub fn system_add_pak(
 
     for ver in vers {
         let ver = check_installed(&ver)?;
-        let msg;
-        if update {
-            msg = format!("Updating pak for R {}", ver);
+        let msg = if update {
+            format!("Updating pak for R {}", ver)
         } else {
-            msg = format!("Installing pak for R {} (if not installed yet)", ver);
-        }
+            format!("Installing pak for R {} (if not installed yet)", ver)
+        };
         OUTPUT.status(&msg);
         info!("{}", msg);
         check_has_pak(&ver)?;
@@ -297,25 +290,24 @@ pub fn system_add_pak(
                 OUTPUT.error(&format!(
                     "Failed to to install pak for R {}: {}",
                     ver,
-                    x.to_string()
+                    x
                 ));
-                error!("Failed to to install pak for R {}: {}", ver, x.to_string());
+                error!("Failed to to install pak for R {}: {}", ver, x);
                 bail!("Failed to to install pak for R {}: {}", ver, x.to_string())
             }
         };
 
         // The actual pak installation
-        let cmd;
-        if update {
-            cmd = r#"
+        let cmd = if update {
+            r#"
                 install.packages('pak', repos = sprintf('https://r-lib.github.io/p/pak/{}/%s/%s/%s', .Platform$pkgType, R.Version()$os, R.Version()$arch))
-            "#;
+            "#
         } else {
-            cmd = r#"
+            r#"
                 if (!requireNamespace('pak', quietly = TRUE)) {
                     install.packages('pak', repos = sprintf('https://r-lib.github.io/p/pak/{}/%s/%s/%s', .Platform$pkgType, R.Version()$os, R.Version()$arch))
                 }
-            "#;
+            "#
         };
         let cmd = cmd.replace("{}", stream);
 
@@ -325,9 +317,9 @@ pub fn system_add_pak(
                 OUTPUT.error(&format!(
                     "Failed to install pak for R {}: {}",
                     ver,
-                    x.to_string()
+                    x
                 ));
-                error!("Failed to install pak for R {}: {}", ver, x.to_string());
+                error!("Failed to install pak for R {}: {}", ver, x);
                 bail!("Failed to install pak for R {}: {}", ver, x.to_string())
             }
         };
@@ -350,7 +342,7 @@ fn look_for_file(p: &Path, re: Regex) -> Result<Option<PathBuf>, Box<dyn Error>>
             Some(x) => x,
             None => continue,
         };
-        if re.is_match(&pathstr) {
+        if re.is_match(pathstr) {
             return Ok(Some(path));
         }
     }
@@ -438,8 +430,8 @@ pub fn sc_rstudio(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         match cp {
             Ok(x) => println!("{}", x.display()),
             Err(x) => {
-                OUTPUT.error(&format!("Error: {}", x.to_string()));
-                error!("Error: {}", x.to_string());
+                OUTPUT.error(&format!("Error: {}", x));
+                error!("Error: {}", x);
                 bail!("Error: {}", x.to_string())
             }
         };
@@ -465,13 +457,13 @@ pub fn sc_rstudio2(ver: Option<&String>, prj: Option<&String>) -> Result<(), Box
     if let Some(p) = prj {
         let path = Path::new(p);
         if path.exists() && path.is_dir() && !p.ends_with("/") {
-            prj2 = Some(p.to_string() + "/").and_then(|x| Some(x.to_string()));
+            prj2 = Some(p.to_string() + "/").map(|x| x.to_string());
             prj = prj2.as_ref();
         }
     };
     if let Some(p) = prj {
         if !p.starts_with("/") && !p.starts_with(".") {
-            prj2 = Some("./".to_string() + p).and_then(|x| Some(x.to_string()));
+            prj2 = Some("./".to_string() + p).map(|x| x.to_string());
             prj = prj2.as_ref();
         }
     }
@@ -529,8 +521,7 @@ fn find_project_file(
         let proj = look_for_file(&dir, Regex::new("[.]Rproj$").unwrap())?;
         let projstr = proj
             .as_ref()
-            .and_then(|x| x.to_str())
-            .and_then(|x| Some(x.to_string()));
+            .and_then(|x| x.to_str()).map(|x| x.to_string());
         Ok((projstr, Some(std::ffi::OsString::from(path))))
     }
 }
@@ -582,14 +573,11 @@ pub(crate) fn normalize_rig_platform(rp: &str) -> String {
 
 pub fn get_platform(args: &ArgMatches) -> Result<String, Box<dyn Error>> {
     // rig add does not have a --platform argument, only auto-detect
-    match args.try_contains_id("platform") {
-        Ok(_) => {
-            let platform = args.get_one::<String>("platform");
-            if let Some(x) = platform {
-                return Ok(x.to_string());
-            }
+    if args.try_contains_id("platform").is_ok() {
+        let platform = args.get_one::<String>("platform");
+        if let Some(x) = platform {
+            return Ok(x.to_string());
         }
-        Err(_) => {}
     };
 
     if let Ok(rp) = env::var("RIG_PLATFORM") {
@@ -674,7 +662,7 @@ pub fn sc_available(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<
             rtype: Some(rtype),
         };
 
-        if !args.get_flag("all") && vers.len() > 0 && new.name != "next" && new.name != "devel" {
+        if !args.get_flag("all") && !vers.is_empty() && new.name != "next" && new.name != "devel" {
             let lstnam = &vers[vers.len() - 1].name;
             let v300 = Version::parse("3.0.0")?;
             let lstver = Version::parse(&vers[vers.len() - 1].version)?;
@@ -759,7 +747,7 @@ fn get_distros() -> Result<Vec<Distro>, Box<dyn Error>> {
     let resp = resp[0].as_array().unwrap();
 
     let mut distro_aliases: HashMap<String, Distro> = HashMap::new();
-    for (_idx, item) in resp.iter().enumerate() {
+    for item in resp.iter() {
         // these are always there
         let name = item["name"].to_string();
         let version = item["version"].to_string();
@@ -768,18 +756,9 @@ fn get_distros() -> Result<Vec<Distro>, Box<dyn Error>> {
 
         if item["implementation"].is_null() {
             // these are not there for aliases
-            let ppm = match item["ppm-binaries"].as_bool() {
-                Some(v) => v,
-                None => false,
-            };
-            let retired = match item["retired"].as_bool() {
-                Some(v) => v,
-                None => false,
-            };
-            let last = match item["last-build"].as_str() {
-                Some(s) => Some(s.to_string()),
-                None => None,
-            };
+            let ppm = item["ppm-binaries"].as_bool().unwrap_or_default();
+            let retired = item["retired"].as_bool().unwrap_or_default();
+            let last = item["last-build"].as_str().map(|s| s.to_string());
             let d = Distro {
                 name,
                 version,
@@ -794,20 +773,17 @@ fn get_distros() -> Result<Vec<Distro>, Box<dyn Error>> {
         } else {
             let imp = item["implementation"].to_string();
             let alias = distro_aliases.get(&imp);
-            match alias {
-                Some(alias2) => {
-                    let d = Distro {
-                        name,
-                        version,
-                        id,
-                        ppm: alias2.ppm,
-                        retired: alias2.retired,
-                        eol,
-                        last: alias2.last.clone(),
-                    };
-                    distros.push(d);
-                }
-                None => (),
+            if let Some(alias2) = alias {
+                let d = Distro {
+                    name,
+                    version,
+                    id,
+                    ppm: alias2.ppm,
+                    retired: alias2.retired,
+                    eol,
+                    last: alias2.last.clone(),
+                };
+                distros.push(d);
             };
         }
     }
@@ -876,7 +852,7 @@ fn sc_available_rtools_versions(
     fn show(ver: &str) -> bool {
         let iver = ver.parse::<i32>();
         match iver {
-            Ok(x) => x >= 35 && (x < 210 || x > 215),
+            Ok(x) => x >= 35 && !(210..=215).contains(&x),
             Err(_) => true,
         }
     }

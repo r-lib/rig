@@ -52,7 +52,7 @@ pub fn rig_app() -> Command {
             _default_arch = _arch_x86_64;
         }
 
-        if _default_arch == "" {
+        if _default_arch.is_empty() {
             warn!("Failed to detect arch, default is 'x86_64'.");
             _default_arch = _arch_x86_64;
         };
@@ -75,7 +75,7 @@ pub fn rig_app() -> Command {
     let cmd_default = Command::new("default")
         .about("Print or set default R version [alias: switch]")
         .display_order(0)
-        .aliases(&["switch"])
+        .aliases(["switch"])
         .long_about(HELP_DEFAULT)
         .after_help(HELP_DEFAULT_EXAMPLES)
         .arg(
@@ -92,7 +92,7 @@ pub fn rig_app() -> Command {
         );
 
     let cmd_list = Command::new("list")
-        .aliases(&["ls"])
+        .aliases(["ls"])
         .about("List installed R versions [alias: ls]")
         .display_order(0)
         .long_about(HELP_LIST)
@@ -116,7 +116,7 @@ pub fn rig_app() -> Command {
         .display_order(0)
         .long_about(HELP_ADD)
         .after_help(HELP_ADD_EXAMPLES)
-        .aliases(&["install"]);
+        .aliases(["install"]);
 
     cmd_add = cmd_add
         .arg(
@@ -135,7 +135,7 @@ pub fn rig_app() -> Command {
                 .num_args(1)
                 .require_equals(true)
                 .required(false)
-                .conflicts_with_all(&["without-cran-mirror", "without-p3m"]),
+                .conflicts_with_all(["without-cran-mirror", "without-p3m"]),
         )
         .arg(
             Arg::new("without-repos")
@@ -150,7 +150,7 @@ pub fn rig_app() -> Command {
                 .require_equals(true)
                 .default_missing_value("ALL REPOSITORIES")
                 .required(false)
-                .conflicts_with_all(&["without-cran-mirror", "without-p3m"]),
+                .conflicts_with_all(["without-cran-mirror", "without-p3m"]),
         )
         .arg(
             Arg::new("without-cran-mirror")
@@ -161,11 +161,11 @@ pub fn rig_app() -> Command {
                 .long("without-cran-mirror")
                 .num_args(0)
                 .required(false)
-                .conflicts_with_all(&["with-repos", "without-repos"]),
+                .conflicts_with_all(["with-repos", "without-repos"]),
         )
         .arg(
             Arg::new("without-p3m")
-                .aliases(&["without-rspm"])
+                .aliases(["without-rspm"])
                 .help(
                     "Do not set up P3M. This is the default on macOS.\n\
                     Deprecated in favor of --without-repos=p3m. \n\
@@ -174,7 +174,7 @@ pub fn rig_app() -> Command {
                 .long("without-p3m")
                 .num_args(0)
                 .required(false)
-                .conflicts_with_all(&["with-repos", "without-repos"]),
+                .conflicts_with_all(["with-repos", "without-repos"]),
         )
         .arg(
             Arg::new("without-pak")
@@ -231,7 +231,7 @@ pub fn rig_app() -> Command {
                 .short('a')
                 .long("arch")
                 .required(false)
-                .default_value(&_default_arch)
+                .default_value(_default_arch)
                 .value_parser(["arm64", "x86_64"]),
         );
     }
@@ -266,7 +266,7 @@ pub fn rig_app() -> Command {
         .about("Remove R versions [aliases: del, remove, delete]")
         .display_order(0)
         .long_about(HELP_RM)
-        .aliases(&["del", "remove", "delete"])
+        .aliases(["del", "remove", "delete"])
         .arg(
             Arg::new("version")
                 .help("versions to remove")
@@ -324,7 +324,7 @@ pub fn rig_app() -> Command {
                 .conflicts_with("list-distros"),
         );
 
-    #[cfg(any(target_os = "linux"))]
+    #[cfg(target_os = "linux")]
     {
         cmd_available = cmd_available.arg(
             Arg::new("arch")
@@ -344,7 +344,7 @@ pub fn rig_app() -> Command {
                 .short('a')
                 .long("arch")
                 .required(false)
-                .default_value(&_default_arch)
+                .default_value(_default_arch)
                 .value_parser(["arm64", "aarch64", "x86_64"]),
         );
     }
@@ -377,7 +377,7 @@ pub fn rig_app() -> Command {
         .about("Set up automatic user package libraries [alias: create-lib]")
         .long_about(HELP_SYSTEM_LIB)
         .display_order(0)
-        .aliases(&["create-lib"])
+        .aliases(["create-lib"])
         .arg(
             Arg::new("version")
                 .help("R versions (default: all)")
@@ -440,7 +440,7 @@ pub fn rig_app() -> Command {
             .about("List installed Rtools vesions [alias: ls]")
             .long_about(HELP_SYSTEM_RTOOLS_LS)
             .display_order(0)
-            .aliases(&["ls"])
+            .aliases(["ls"])
             .arg(
                 Arg::new("json")
                     .help("JSON output")
@@ -452,7 +452,7 @@ pub fn rig_app() -> Command {
             .about("Install new Rtools version [alias: install]")
             .long_about(HELP_SYSTEM_RTOOLS_ADD)
             .display_order(0)
-            .aliases(&["install"])
+            .aliases(["install"])
             .arg(
                 Arg::new("version")
                     .help("Rtools version to add, e.g. '43'")
@@ -470,7 +470,7 @@ pub fn rig_app() -> Command {
             .about("Remove rtools versions [aliases: del, remove, delete]")
             .long_about(HELP_SYSTEM_RTOOLS_RM)
             .display_order(0)
-            .aliases(&["del", "remove", "delete"])
+            .aliases(["del", "remove", "delete"])
             .arg(
                 Arg::new("version")
                     .help("versions to remove")
@@ -721,7 +721,7 @@ pub fn rig_app() -> Command {
                 .required(false),
         );
 
-    #[cfg(any(target_os = "linux"))]
+    #[cfg(target_os = "linux")]
     {
         cmd_resolve = cmd_resolve.arg(
             Arg::new("arch")
@@ -733,7 +733,7 @@ pub fn rig_app() -> Command {
         );
     }
 
-    #[cfg(any(target_os = "macos"))]
+    #[cfg(target_os = "macos")]
     {
         cmd_resolve = cmd_resolve.arg(
             Arg::new("arch")
@@ -741,12 +741,12 @@ pub fn rig_app() -> Command {
                 .short('a')
                 .long("arch")
                 .required(false)
-                .default_value(&_default_arch)
+                .default_value(_default_arch)
                 .value_parser(["arm64", "x86_64"]),
         );
     }
 
-    #[cfg(any(target_os = "windows"))]
+    #[cfg(target_os = "windows")]
     {
         cmd_resolve = cmd_resolve.arg(
             Arg::new("arch")
@@ -788,7 +788,7 @@ pub fn rig_app() -> Command {
         .about("Manage package libraries [alias: lib] (experimental)")
         .display_order(0)
         .long_about(HELP_LIBRARY)
-        .aliases(&["lib"])
+        .aliases(["lib"])
         .arg_required_else_help(true)
         .arg(
             Arg::new("json")
@@ -799,7 +799,7 @@ pub fn rig_app() -> Command {
         )
         .subcommand(
             Command::new("list")
-                .aliases(&["ls"])
+                .aliases(["ls"])
                 .about("List libraries [alias: ls]")
                 .display_order(0)
                 .arg(
@@ -926,7 +926,7 @@ pub fn rig_app() -> Command {
                             .short('a')
                             .long("arch")
                             .required(false)
-                            .default_value(&_default_arch)
+                            .default_value(_default_arch)
                             .value_parser(["arm64", "x86_64"]),
                     ),
             )

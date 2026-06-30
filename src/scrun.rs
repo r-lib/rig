@@ -7,7 +7,6 @@ use std::process::Command;
 use clap::ArgMatches;
 use log::{error, trace, warn};
 use regex::Regex;
-use serde_yaml;
 use simple_error::*;
 
 use crate::common::*;
@@ -51,20 +50,20 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
         rargs.push("--slave".to_string())
     }
 
-    if eval.is_some() {
-        return sc_run_eval(rbin, rargs, eval.unwrap().to_string(), cmdargs, dry_run);
-    } else if script.is_some() {
-        return sc_run_script(rbin, rargs, script.unwrap().to_string(), cmdargs, dry_run);
-    } else if cmdargs.len() > 0 {
+    if let Some(eval) = eval {
+        sc_run_eval(rbin, rargs, eval.to_string(), cmdargs, dry_run)
+    } else if let Some(script) = script {
+        sc_run_script(rbin, rargs, script.to_string(), cmdargs, dry_run)
+    } else if !cmdargs.is_empty() {
         let app_type: Option<&String> = args.get_one("app-type");
         if cmdargs[0].contains("::") {
             if app_type.is_some() {
                 OUTPUT.warn("'--app-type' argument ignored for package scripts");
                 warn!("'--app-type' argument ignored for package scripts");
             }
-            return sc_run_package_script(rbin, rargs, cmdargs, dry_run);
+            sc_run_package_script(rbin, rargs, cmdargs, dry_run)
         } else {
-            return sc_run_app(rbin, rargs, cmdargs, app_type, dry_run);
+            sc_run_app(rbin, rargs, cmdargs, app_type, dry_run)
         }
     } else {
         // just run R, default args are different in this case
@@ -75,7 +74,7 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
         if args.get_flag("no-echo") {
             rargs.push("--slave".to_string())
         }
-        return sc_run_rver(rbin, rargs, cmdargs, dry_run);
+        sc_run_rver(rbin, rargs, cmdargs, dry_run)
     }
 }
 
@@ -85,14 +84,14 @@ fn ignore_sigint() {
     if let Err(e) = sigint {
         OUTPUT.warn(&format!(
             "Could not set up signal handler for SIGINT (CTRL+C): {}",
-            e.to_string()
+            e
         ));
         warn!(
             "Could not set up signal handler for SIGINT (CTRL+C): {}",
-            e.to_string()
+            e
         );
     }
-    ()
+    
 }
 
 fn sc_run_rver(
@@ -206,7 +205,7 @@ fn sc_run_app(
         bail!("R project directory at '{}' does not exist", proj);
     }
     let files: Vec<String> = match std::fs::read_dir(&proj) {
-        Ok(x) => x.map(|x| utf8_file_name(x)).collect(),
+        Ok(x) => x.map(utf8_file_name).collect(),
         Err(e) => {
             OUTPUT.error(&format!(
                 "Could no access files in R project at '{}': {}",
@@ -267,7 +266,7 @@ fn sc_run_app(
 fn detect_primary_doc(
     project: &str,
     app_type: &str,
-    files: &Vec<String>,
+    files: &[String],
 ) -> Result<String, Box<dyn Error>> {
     let re_idx = if app_type == "static" {
         Regex::new("^index\\.html?$")?
@@ -280,7 +279,7 @@ fn detect_primary_doc(
         .filter(|x| re_idx.is_match(x))
         .collect::<Vec<_>>();
 
-    if idxs.len() == 0 {
+    if idxs.is_empty() {
         let re_idx = if app_type == "static" {
             Regex::new("\\.html?$")?
         } else {
@@ -290,7 +289,7 @@ fn detect_primary_doc(
             .iter()
             .filter(|x| re_idx.is_match(x))
             .collect::<Vec<_>>();
-        if idxs.len() == 0 {
+        if idxs.is_empty() {
             OUTPUT.error(&format!(
                 "Could not find a primary document (index.html, index.Rmd, or index.qmd) in project at '{}'.",
                 project
@@ -312,7 +311,7 @@ fn detect_primary_doc(
 }
 
 // port of https://github.com/rstudio/rsconnect/blob/26ec2c7ca8379cef9d139a85a2cdb62ef6db9ead/R/appMetadata.R#L120
-fn detect_app_type(project: &str, files: &Vec<String>) -> Result<String, Box<dyn Error>> {
+fn detect_app_type(project: &str, files: &[String]) -> Result<String, Box<dyn Error>> {
     // plumber.R or entrypoint.R -> api
     if files.contains(&"plumber.R".to_string()) || files.contains(&"entrypoint.R".to_string()) {
         return Ok("api".to_string());
@@ -333,18 +332,18 @@ fn detect_app_type(project: &str, files: &Vec<String>) -> Result<String, Box<dyn
         .collect::<Vec<_>>();
     let quartoyml =
         files.contains(&"_quarto.yml".to_string()) || files.contains(&"_quarto.yaml".to_string());
-    let uses_quarto = qmds.len() > 0 || (quartoyml && rmds.len() > 0);
+    let uses_quarto = !qmds.is_empty() || (quartoyml && !rmds.is_empty());
 
     let mut has_shiny_rmd: bool = false;
     for rmd in &rmds {
-        if is_shiny_rmd(&project, rmd)? {
+        if is_shiny_rmd(project, rmd)? {
             has_shiny_rmd = true;
             break;
         }
     }
     let mut has_shiny_qmd = false;
     for qmd in &qmds {
-        if is_shiny_rmd(&project, qmd)? {
+        if is_shiny_rmd(project, qmd)? {
             has_shiny_qmd = true;
             break;
         }
@@ -366,7 +365,7 @@ fn detect_app_type(project: &str, files: &Vec<String>) -> Result<String, Box<dyn
     }
 
     // Any non-Shiny R Markdown or Quarto documents
-    if rmds.len() > 0 || qmds.len() > 0 {
+    if !rmds.is_empty() || !qmds.is_empty() {
         if uses_quarto {
             return Ok("quarto-static".to_string());
         } else {
@@ -398,22 +397,16 @@ fn is_shiny_rmd(project: &str, file: &str) -> Result<bool, Box<dyn Error>> {
 
     if yaml.is_mapping() {
         let yaml = yaml.as_mapping().unwrap();
-        let rt = yaml.get("runtime");
-        if rt.is_some() {
-            let rt2 = rt.unwrap();
+        if let Some(rt2) = yaml.get("runtime") {
             if rt2.is_string() {
                 runtime = Some(rt2.as_str().unwrap().to_string());
             }
         }
-        let sv = yaml.get("server");
-        if sv.is_some() {
-            let sv2 = sv.unwrap();
+        if let Some(sv2) = yaml.get("server") {
             if sv2.is_string() {
                 server = Some(sv2.as_str().unwrap().to_string());
             } else if sv2.is_mapping() {
-                let sv3 = sv2.get("type");
-                if sv3.is_some() {
-                    let sv4 = sv3.unwrap();
+                if let Some(sv4) = sv2.get("type") {
                     if sv4.is_string() {
                         server = Some(sv4.as_str().unwrap().to_string());
                     }
@@ -429,13 +422,7 @@ fn is_shiny_preferred(
     runtime: Option<String>,
     server: Option<String>,
 ) -> Result<bool, Box<dyn Error>> {
-    if runtime.is_some() && runtime.unwrap().starts_with("shiny") {
-        Ok(true)
-    } else if server.is_some() && server.unwrap() == "Shiny" {
-        Ok(true)
-    } else {
-        Ok(false)
-    }
+    Ok(runtime.is_some_and(|r| r.starts_with("shiny")) || server.as_deref() == Some("Shiny"))
 }
 
 fn read_yaml_header(file: &PathBuf) -> Result<Option<serde_yaml::Value>, Box<dyn Error>> {
@@ -530,16 +517,13 @@ fn read_yaml_header_string(file: &PathBuf) -> Result<Option<String>, Box<dyn Err
                 );
             }
         };
-        if start_lines && re_line.is_match(&line) {
-            trace!("End of YAML header");
-            break;
-        } else if !start_lines && re_dots.is_match(&line) {
+        if (start_lines && re_line.is_match(&line)) || (!start_lines && re_dots.is_match(&line)) {
             trace!("End of YAML header");
             break;
         } else {
             trace!("YAML header: {}", &line);
             header.push_str(&line);
-            header.push_str("\n");
+            header.push('\n');
         }
     }
 

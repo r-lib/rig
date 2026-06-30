@@ -195,7 +195,7 @@ pub fn sc_library_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         Some(dir) => {
             OUTPUT.status(&format!("Deleting library {} for R {}...", torm, rver));
             info!("Deleting library {} for R {}", torm, rver);
-            let _ = std::fs::remove_dir_all(&dir.as_path());
+            let _ = std::fs::remove_dir_all(dir.as_path());
         }
     };
 
@@ -245,7 +245,7 @@ fn sc_library_get_default() -> Result<PkgLibrary, Box<dyn Error>> {
 
     Ok(PkgLibrary {
         rversion: rver.to_string(),
-        name: name,
+        name,
         path: default,
         default: true,
     })
@@ -299,12 +299,12 @@ pub fn sc_library_set_default(name: &str) -> Result<(), Box<dyn Error>> {
             OUTPUT.error(&format!(
                 "Cannot read lines from file {}: {}",
                 rprofile.display(),
-                e.to_string()
+                e
             ));
             error!(
                 "Cannot read lines from file {}: {}",
                 rprofile.display(),
-                e.to_string()
+                e
             );
             bail!(
                 "Cannot read lines from file {} @{}:{}, {}",
@@ -317,7 +317,7 @@ pub fn sc_library_set_default(name: &str) -> Result<(), Box<dyn Error>> {
     };
     let re_start = Regex::new("^## rig R_LIBS_USER start")?;
     let idx_start = grep_lines(&re_start, &lines);
-    if idx_start.len() == 0 {
+    if idx_start.is_empty() {
         OUTPUT.error(&format!(
             "Library config not set up yet for R {}. Please run `rig system create-lib`.",
             rver
@@ -333,29 +333,26 @@ pub fn sc_library_set_default(name: &str) -> Result<(), Box<dyn Error>> {
     // It watches the current version, so we change that to trigger an update.
     #[cfg(target_os = "macos")]
     {
-        match sc_set_default(&rver) {
-            Err(_) => {}
-            Ok(_) => {}
-        };
+        if sc_set_default(&rver).is_err() {};
     }
 
     Ok(())
 }
 
 pub fn library_update_rprofile(rver: &str) -> Result<(), Box<dyn Error>> {
-    let rprofile = get_system_profile(&rver)?;
+    let rprofile = get_system_profile(rver)?;
     let lines = match read_lines(&rprofile) {
         Ok(x) => x,
         Err(e) => {
             OUTPUT.error(&format!(
                 "Cannot read lines from file {}: {}",
                 rprofile.display(),
-                e.to_string()
+                e
             ));
             error!(
                 "Cannot read lines from file {}: {}",
                 rprofile.display(),
-                e.to_string()
+                e
             );
             bail!(
                 "Cannot read lines from file {} @{}:{}, {}",
@@ -427,27 +424,24 @@ invisible(local({
 ## rig R_LIBS_USER end
 "#;
 
-        match append_to_file(&rprofile, vec![newlines.to_string()]) {
-            Err(e) => {
-                OUTPUT.error(&format!(
-                    "Cannot update file {}: {}",
-                    rprofile.display(),
-                    e.to_string()
-                ));
-                error!(
-                    "Cannot update file {}: {}",
-                    rprofile.display(),
-                    e.to_string()
-                );
-                bail!(
-                    "Cannot update file {} @{}:{}, {}",
-                    rprofile.display(),
-                    file!(),
-                    line!(),
-                    e.to_string()
-                );
-            }
-            _ => {}
+        if let Err(e) = append_to_file(&rprofile, vec![newlines.to_string()]) {
+            OUTPUT.error(&format!(
+                "Cannot update file {}: {}",
+                rprofile.display(),
+                e
+            ));
+            error!(
+                "Cannot update file {}: {}",
+                rprofile.display(),
+                e
+            );
+            bail!(
+                "Cannot update file {} @{}:{}, {}",
+                rprofile.display(),
+                file!(),
+                line!(),
+                e.to_string()
+            );
         };
     }
 
@@ -468,11 +462,11 @@ pub fn get_library_path_cache(rver: &str) -> Result<(PathBuf, PathBuf), Box<dyn 
         Err(e) => {
             OUTPUT.status(&format!(
                 "Failed to read location of library from cache: {}",
-                e.to_string()
+                e
             ));
             info!(
                 "Failed to read location of library from cache: {}",
-                e.to_string()
+                e
             );
             return get_library_path_nocache(rver);
         }
@@ -494,12 +488,12 @@ pub fn get_library_path_cache(rver: &str) -> Result<(PathBuf, PathBuf), Box<dyn 
             OUTPUT.error(&format!(
                 "Cannot read lines from file {}: {}",
                 config_path.display(),
-                e.to_string()
+                e
             ));
             error!(
                 "Cannot read lines from file {}: {}",
                 config_path.display(),
-                e.to_string()
+                e
             );
             bail!(
                 "Cannot read lines from file {} @{}:{}, {}",
@@ -510,7 +504,7 @@ pub fn get_library_path_cache(rver: &str) -> Result<(PathBuf, PathBuf), Box<dyn 
             )
         }
     };
-    let def_path = if conf_lines.len() > 0 {
+    let def_path = if !conf_lines.is_empty() {
         if conf_lines[0] == "main" {
             main_path.to_path_buf()
         } else {
@@ -549,12 +543,12 @@ pub fn get_library_path_nocache(rver: &str) -> Result<(PathBuf, PathBuf), Box<dy
             OUTPUT.error(&format!(
                 "Cannot parse library path from R output for R {}: {}",
                 rver,
-                err.to_string()
+                err
             ));
             error!(
                 "Cannot parse library path from R output for R {}: {}",
                 rver,
-                err.to_string()
+                err
             );
             bail!(
                 "Cannot query R_LIBS_USER for R {}: {}",
@@ -588,11 +582,11 @@ pub fn get_library_path_nocache(rver: &str) -> Result<(PathBuf, PathBuf), Box<dy
                 Err(e) => {
                     OUTPUT.error(&format!(
                         "Failed to save location of library in cache: {}",
-                        e.to_string()
+                        e
                     ));
                     error!(
                         "Failed to save location of library in cache: {}",
-                        e.to_string()
+                        e
                     );
                     bail!(
                         "Failed to save config @{}:{}, {}",

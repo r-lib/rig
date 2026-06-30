@@ -53,18 +53,18 @@ impl Config {
         let parent = config_file
             .parent()
             .ok_or(SimpleError::new("Invalid config file directory"))?;
-        std::fs::create_dir_all(&parent)?;
+        std::fs::create_dir_all(parent)?;
         std::fs::write(config_file, str)?;
         Ok(())
     }
 
     fn get_userlibrary(&self, rver: &str) -> Option<String> {
-        self.userlibrary.get(rver).and_then(|x| Some(x.to_string()))
+        self.userlibrary.get(rver).map(|x| x.to_string())
     }
 
     fn set_userlibrary(&mut self, rver: &str, value: Option<&str>) -> Result<(), Box<dyn Error>> {
         match value {
-            None => self.userlibrary.remove(&rver.to_string()),
+            None => self.userlibrary.remove(rver),
             Some(str) => self.userlibrary.insert(rver.to_string(), str.to_string()),
         };
         self.save()?;

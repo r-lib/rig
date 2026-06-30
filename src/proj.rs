@@ -57,7 +57,7 @@ fn proj_read_deps(input: &str, dev: bool) -> Result<PackageDependencies, Box<dyn
     let df: File = File::open(input)?;
     let desc = Deb822::from_reader(df)?;
 
-    if desc.len() == 0 {
+    if desc.is_empty() {
         OUTPUT.error("Empty DESCRIPTION file");
         error!("Empty DESCRIPTION file");
         bail!("Empty DESCRIPTION file");
@@ -133,7 +133,7 @@ fn sc_proj_deps(
                 cst += &format!("{} {}", cs.constraint_type, cs.version);
             }
             println!(" {{");
-            let comma = if cst == "" { "" } else { ", " };
+            let comma = if cst.is_empty() { "" } else { ", " };
             // TODO: should this be an array? Probably
             let types_str = pkg
                 .types
@@ -143,7 +143,7 @@ fn sc_proj_deps(
                 .join(", ");
             println!("     \"types\": \"{}\",", types_str);
             println!("     \"package\": \"{}\"{}", pkg.name, comma);
-            if cst != "" {
+            if !cst.is_empty() {
                 println!("     \"version\": \"{}\"", cst)
             }
             println!("  }}{}", if i == num - 1 { "" } else { "," });
@@ -208,7 +208,7 @@ fn sc_proj_solve_latest(
     reg.add_package_version(
         "R".to_string(),
         RegistryPackageVersion::new("R", r_version)?,
-        HashMap::with_hasher(rustc_hash::FxBuildHasher::default()),
+        HashMap::with_hasher(rustc_hash::FxBuildHasher),
     );
 
     // add base packages, these are always available
@@ -216,7 +216,7 @@ fn sc_proj_solve_latest(
         reg.add_package_version(
             bp.to_string(),
             RegistryPackageVersion::new(bp, r_version)?,
-            HashMap::with_hasher(rustc_hash::FxBuildHasher::default()),
+            HashMap::with_hasher(rustc_hash::FxBuildHasher),
         );
     }
 
@@ -257,7 +257,7 @@ fn sc_proj_solve_all(
     reg.add_package_version(
         "R".to_string(),
         RegistryPackageVersion::new("R", r_version)?,
-        HashMap::with_hasher(rustc_hash::FxBuildHasher::default()),
+        HashMap::with_hasher(rustc_hash::FxBuildHasher),
     );
 
     // add base packages, these are always available
@@ -265,7 +265,7 @@ fn sc_proj_solve_all(
         reg.add_package_version(
             bp.to_string(),
             RegistryPackageVersion::new(bp, r_version)?,
-            HashMap::with_hasher(rustc_hash::FxBuildHasher::default()),
+            HashMap::with_hasher(rustc_hash::FxBuildHasher),
         );
     }
 

@@ -64,14 +64,14 @@ pub fn run_as_user(cmd: String, args: Vec<String>, what: &str) -> Result<(), Box
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn r(version: &str, command: &str) -> Result<(), Box<dyn Error>> {
     let user = get_user()?;
-    let cmdline = Regex::new("[\n\r]")?.replace_all(&command, "").to_string();
+    let cmdline = Regex::new("[\n\r]")?.replace_all(command, "").to_string();
 
     if user.sudo {
         debug!("Sudo detected, using 'su' to act as user {:?}", user.user);
-        r_sudo(&version, &cmdline, &user)
+        r_sudo(version, &cmdline, &user)
     } else {
         debug!("No sudo detected, can call R directly");
-        r_nosudo(&version, &cmdline)
+        r_nosudo(version, &cmdline)
     }
 }
 

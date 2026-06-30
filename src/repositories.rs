@@ -159,6 +159,7 @@ pub fn add_repositories_comment(repos: &mut RepositoriesContents, comment: &str)
         .push((total_lines + 2, "## ".to_string() + comment));
 }
 
+#[allow(clippy::type_complexity)]
 fn read_tsv(
     path: &str,
 ) -> Result<(Vec<(usize, String)>, Option<Vec<String>>, Vec<Vec<String>>), Box<dyn std::error::Error>>
@@ -266,8 +267,8 @@ fn write_tsv(
             }
         } else {
             // Write header first if present and not yet written
-            if !header_written && headers.is_some() {
-                let header_line = format_tsv_row(headers.as_ref().unwrap())?;
+            if let (false, Some(headers)) = (header_written, headers.as_ref()) {
+                let header_line = format_tsv_row(headers)?;
                 writeln!(writer, "{}", header_line)?;
                 header_written = true;
             } else {

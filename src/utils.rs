@@ -40,7 +40,7 @@ pub fn osjoin(x: Vec<OsString>, sep: &str) -> String {
 }
 
 pub fn basename(path: &str) -> Option<&str> {
-    path.rsplitn(2, '/').next()
+    path.rsplit('/').next()
 }
 
 pub fn read_file_string(path: &Path) -> Result<String, Box<dyn Error>> {
@@ -58,7 +58,7 @@ pub fn read_lines(path: &Path) -> Result<Vec<String>, Box<dyn Error>> {
     Ok(result)
 }
 
-pub fn grep_lines(re: &Regex, lines: &Vec<String>) -> Vec<usize> {
+pub fn grep_lines(re: &Regex, lines: &[String]) -> Vec<usize> {
     lines
         .iter()
         .enumerate()
@@ -83,11 +83,11 @@ pub fn bak_file(path: &Path) -> PathBuf {
     path2
 }
 
-#[cfg(any(target_os = "macos"))]
+#[cfg(target_os = "macos")]
 pub fn replace_in_file(path: &Path, re: &Regex, sub: &str) -> Result<(), Box<dyn Error>> {
     let mut lines = read_lines(path)?;
     let mch = grep_lines(re, &lines);
-    if mch.len() > 0 {
+    if !mch.is_empty() {
         debug!("Updating {:?}", path);
         for m in mch {
             lines[m] = re.replace(&lines[m], sub).to_string();
@@ -95,7 +95,7 @@ pub fn replace_in_file(path: &Path, re: &Regex, sub: &str) -> Result<(), Box<dyn
         let path2 = bak_file(path);
         let mut f = File::create(&path2)?;
         for line in &lines {
-            write!(f, "{}\n", line)?;
+            writeln!(f, "{}", line)?;
         }
 
         let perms = std::fs::metadata(path)?.permissions();
@@ -112,10 +112,10 @@ pub fn append_to_file(path: &Path, extra: Vec<String>) -> Result<(), Box<dyn Err
     let path2 = bak_file(path);
     let mut f = File::create(&path2)?;
     for line in &lines {
-        write!(f, "{}\n", line)?;
+        writeln!(f, "{}", line)?;
     }
     for line in &extra {
-        write!(f, "{}\n", line)?;
+        writeln!(f, "{}", line)?;
     }
     let perms = std::fs::metadata(path)?.permissions();
     std::fs::set_permissions(&path2, perms)?;
@@ -185,7 +185,7 @@ pub fn read_version_link(path: &str) -> Result<Option<String>, Box<dyn Error>> {
 pub fn not_too_old(path: &std::path::PathBuf) -> bool {
     let meta = std::fs::metadata(path);
     match meta {
-        Err(_) => return false,
+        Err(_) => false,
         Ok(meta) => {
             let mtime = match meta.modified() {
                 Err(_) => return false,
@@ -457,7 +457,7 @@ fn format_cmd_arg(x: &str, val: &OsStr) -> OsString {
     ox
 }
 
-pub fn create_parent_dir_if_needed(path: &PathBuf) -> Result<(), Box<dyn Error>> {
+pub fn create_parent_dir_if_needed(path: &Path) -> Result<(), Box<dyn Error>> {
     if let Some(parent) = path.parent() {
         if !parent.exists() {
             std::fs::create_dir_all(parent)?;

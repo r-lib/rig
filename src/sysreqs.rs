@@ -198,11 +198,11 @@ pub fn sc_sysreqs_add(
     // Need to do this up front, so we sudo and won't call brew twice
     if gfortran {
         escalate("installing gfortran")?;
-        macos_install_gfortran(&arch)?;
+        macos_install_gfortran(arch)?;
     }
 
-    if srs.len() > 0 {
-        brew_install(&arch, srs)?;
+    if !srs.is_empty() {
+        brew_install(arch, srs)?;
     }
 
     Ok(())
@@ -227,7 +227,7 @@ fn find_brew(arch: &str) -> Result<(String, Vec<String>), Box<dyn Error>> {
     if is_arm64_machine() {
         Ok((
             "arch".to_string(),
-            vec![("-".to_string() + arch).into(), brew.into()],
+            vec![("-".to_string() + arch), brew.into()],
         ))
     } else {
         Ok((brew.to_string(), vec![]))
@@ -236,11 +236,11 @@ fn find_brew(arch: &str) -> Result<(String, Vec<String>), Box<dyn Error>> {
 
 #[cfg(target_os = "macos")]
 fn brew_install(arch: &str, pkgs: Vec<String>) -> Result<(), Box<dyn Error>> {
-    let brew = find_brew(&arch)?;
+    let brew = find_brew(arch)?;
     let mut args: Vec<String> = brew.1;
     args.push("install".into());
     for p in pkgs {
-        args.push(p.into());
+        args.push(p);
     }
 
     run_as_user(brew.0, args, "brew")?;
@@ -273,7 +273,7 @@ fn macos_install_gfortran_arm64() -> Result<(), Box<dyn Error>> {
             "Removing current gfortran installation from {}",
             old.display()
         );
-        match std::fs::remove_dir_all(&old) {
+        match std::fs::remove_dir_all(old) {
             Ok(_) => {}
             Err(err) => bail!("Failed to remove {}: {}", old.display(), err.to_string()),
         };
@@ -307,13 +307,11 @@ fn macos_install_gfortran_intel() -> Result<(), Box<dyn Error>> {
     // umount currently mounted gfortran images first, ignore errors
     OUTPUT.status("Trying to unmount leftover gfortran disk images");
     info!("Trying to unmount leftover gfortran disk images");
-    match run(
+    let _ = run(
         "umount".into(),
         vec!["/Volumes/gfortran-8.2-Mojave".into()],
         "umount",
-    ) {
-        _ => {}
-    };
+    );
 
     run("hdiutil".into(), vec!["attach".into(), target], "hdiutil")?;
 
@@ -330,19 +328,16 @@ fn macos_install_gfortran_intel() -> Result<(), Box<dyn Error>> {
     )?;
 
     // Ignore failure of unmount, it is not a tragedy...
-    match run(
+    if let Err(x) = run(
         "umount".into(),
         vec!["/Volumes/gfortran-8.2-Mojave".into()],
         "umount",
     ) {
-        Err(x) => {
-            OUTPUT.warn(&format!(
-                "Failed to unmount gfortran installer: {}",
-                x.to_string()
-            ));
-            warn!("Failed to unmount gfortran installer: {}", x.to_string())
-        }
-        _ => {}
+        OUTPUT.warn(&format!(
+            "Failed to unmount gfortran installer: {}",
+            x
+        ));
+        warn!("Failed to unmount gfortran installer: {}", x)
     };
 
     Ok(())

@@ -205,19 +205,16 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     system_fix_permissions(Some(vec![dirname.to_string()]))?;
     library_update_rprofile(&dirname.to_string())?;
     sc_system_make_links()?;
-    match alias {
-        // The `release`/`oldrel` aliases point at the native build. An
-        // x86_64 build on an arm64 machine gets an `-x86_64` suffix instead,
-        // to avoid colliding with the native alias.
-        Some(alias) => {
-            let alias = if fver.arch == "x86_64" && is_arm64_machine() {
-                format!("{}-x86_64", alias)
-            } else {
-                alias
-            };
-            add_alias(&dirname, &alias)?
-        }
-        None => {}
+    // The `release`/`oldrel` aliases point at the native build. An
+    // x86_64 build on an arm64 machine gets an `-x86_64` suffix instead,
+    // to avoid colliding with the native alias.
+    if let Some(alias) = alias {
+        let alias = if fver.arch == "x86_64" && is_arm64_machine() {
+            format!("{}-x86_64", alias)
+        } else {
+            alias
+        };
+        add_alias(&dirname, &alias)?
     };
 
     let setup = interpret_repos_args(args, true);
@@ -262,11 +259,11 @@ fn unpack_and_patch(target: &Path) -> Result<(PathBuf, PathBuf), Box<dyn Error>>
     if !output.status.success() {
         OUTPUT.error(&format!(
             "Failed to expand installer with pkgutil: {}",
-            output.status.to_string()
+            output.status
         ));
         error!(
             "Failed to expand installer with pkgutil: {}",
-            output.status.to_string()
+            output.status
         );
         bail!("pkgutil exited with {}", output.status.to_string());
     }
@@ -308,9 +305,9 @@ fn run_fc_cache(fc_cache: &Path) {
             OUTPUT.warn(&format!(
                 "Failed to run {}: {}",
                 fc_cache.display(),
-                err.to_string()
+                err
             ));
-            warn!("Failed to run {}: {}", fc_cache.display(), err.to_string());
+            warn!("Failed to run {}: {}", fc_cache.display(), err);
         }
         Ok(output) if !output.status.success() => {
             OUTPUT.warn(&format!(
@@ -370,14 +367,11 @@ fn safe_install(
     let mut cmd: OsString = os("installer");
     let mut args: Vec<OsString> = vec![];
 
-    match arch {
-        Some(arch) => {
-            if arch == "arm64" {
-                cmd = os("arch");
-                args = vec![os("-arm64"), os("installer")];
-            }
+    if let Some(arch) = arch {
+        if arch == "arm64" {
+            cmd = os("arch");
+            args = vec![os("-arm64"), os("installer")];
         }
-        None => {}
     };
 
     args.push(os("-pkg"));
@@ -387,7 +381,7 @@ fn safe_install(
 
     OUTPUT.status("Running installer");
     info!("Running installer");
-    run(cmd.into(), args, "installer")?;
+    run(cmd, args, "installer")?;
 
     let fc_cache = Path::new(R_ROOT_)
         .join(ver)
@@ -400,24 +394,24 @@ fn safe_install(
         OUTPUT.warn(&format!(
             "Failed to remove temporary installer {}: {}",
             pkg.display(),
-            err.to_string()
+            err
         ));
         warn!(
             "Failed to remove temporary file {}: {}",
             pkg.display(),
-            err.to_string()
+            err
         );
     }
     if let Err(err) = std::fs::remove_dir_all(&tmp) {
         OUTPUT.warn(&format!(
             "Failed to remove temporary directory {}: {}",
             tmp.display(),
-            err.to_string()
+            err
         ));
         warn!(
             "Failed to remove temporary directory {}: {}",
             tmp.display(),
-            err.to_string()
+            err
         );
     }
 
@@ -641,12 +635,12 @@ fn safe_user_install(
         OUTPUT.warn(&format!(
             "Failed to remove temporary directory {}: {}",
             tmp.display(),
-            err.to_string()
+            err
         ));
         warn!(
             "Failed to remove temporary directory {}: {}",
             tmp.display(),
-            err.to_string()
+            err
         );
     }
 
@@ -732,17 +726,14 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         OUTPUT.status(&format!("Removing {}", dir.display()));
         info!("Removing {}", dir.display());
         sc_system_forget()?;
-        match std::fs::remove_dir_all(&dir) {
-            Err(err) => {
-                OUTPUT.error(&format!(
-                    "Cannot remove {}: {}",
-                    dir.display(),
-                    err.to_string()
-                ));
-                error!("Cannot remove {}: {}", dir.display(), err.to_string());
-                bail!("Cannot remove {}: {}", dir.display(), err.to_string())
-            }
-            _ => {}
+        if let Err(err) = std::fs::remove_dir_all(&dir) {
+            OUTPUT.error(&format!(
+                "Cannot remove {}: {}",
+                dir.display(),
+                err
+            ));
+            error!("Cannot remove {}: {}", dir.display(), err);
+            bail!("Cannot remove {}: {}", dir.display(), err.to_string())
         };
     }
 
@@ -803,26 +794,23 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         let target = base.join(&ver).join(binpath);
         if !linkfile.exists() {
             debug!("Adding {} -> {}", linkfile.display(), target.display());
-            match symlink(&target, &linkfile) {
-                Err(err) => {
-                    umask(old_umask);
-                    OUTPUT.error(&format!(
-                        "Cannot create symlink {}: {}",
-                        linkfile.display(),
-                        err.to_string()
-                    ));
-                    error!(
-                        "Cannot create symlink {}: {}",
-                        linkfile.display(),
-                        err.to_string()
-                    );
-                    bail!(
-                        "Cannot create symlink {}: {}",
-                        linkfile.display(),
-                        err.to_string()
-                    )
-                }
-                _ => {}
+            if let Err(err) = symlink(&target, &linkfile) {
+                umask(old_umask);
+                OUTPUT.error(&format!(
+                    "Cannot create symlink {}: {}",
+                    linkfile.display(),
+                    err
+                ));
+                error!(
+                    "Cannot create symlink {}: {}",
+                    linkfile.display(),
+                    err
+                );
+                bail!(
+                    "Cannot create symlink {}: {}",
+                    linkfile.display(),
+                    err.to_string()
+                )
             };
         }
     }
@@ -845,22 +833,19 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
             Some(x) => x,
             None => continue,
         };
-        if re.is_match(&fnamestr) || re2.is_match(&fnamestr) {
+        if re.is_match(fnamestr) || re2.is_match(fnamestr) {
             match std::fs::read_link(&path) {
                 Err(_) => debug!("{} is not a symlink", path.display()),
                 Ok(target) => {
                     if !target.exists() {
                         debug!("Cleaning up {}", target.display());
-                        match std::fs::remove_file(&path) {
-                            Err(err) => {
-                                OUTPUT.warn(&format!(
-                                    "Failed to remove {}: {}",
-                                    path.display(),
-                                    err.to_string()
-                                ));
-                                warn!("Failed to remove {}: {}", path.display(), err.to_string())
-                            }
-                            _ => {}
+                        if let Err(err) = std::fs::remove_file(&path) {
+                            OUTPUT.warn(&format!(
+                                "Failed to remove {}: {}",
+                                path.display(),
+                                err
+                            ));
+                            warn!("Failed to remove {}: {}", path.display(), err)
                         }
                     }
                 }
@@ -872,8 +857,8 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
 }
 
 pub fn re_alias() -> Regex {
-    let re = Regex::new("^R-(next|devel|release|release-x86_64|oldrel|oldrel-x86_64)$").unwrap();
-    re
+    
+    Regex::new("^R-(next|devel|release|release-x86_64|oldrel|oldrel-x86_64)$").unwrap()
 }
 
 pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
@@ -896,7 +881,7 @@ pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
             Some(x) => x,
             None => continue,
         };
-        if re.is_match(&fnamestr) {
+        if re.is_match(fnamestr) {
             match std::fs::read_link(&path) {
                 Err(_) => debug!("{} is not a symlink", path.display()),
                 Ok(target) => {
@@ -1012,10 +997,10 @@ pub fn sc_system_allow_debugger_rstudio(_args: &ArgMatches) -> Result<(), Box<dy
         bail!("RStudio is not installed, at least not in /Applications/RStudio.app");
     }
 
-    let rsess = PathBuf::new().join("/Applications/RStudio.app/Contents/MacOS/rsession");
+    let rsess = PathBuf::from("/Applications/RStudio.app/Contents/MacOS/rsession");
     update_entitlements(rsess)?;
 
-    let rsessarm64 = PathBuf::new().join("/Applications/RStudio.app/Contents/MacOS/rsession-arm64");
+    let rsessarm64 = PathBuf::from("/Applications/RStudio.app/Contents/MacOS/rsession-arm64");
 
     if rsessarm64.exists() {
         update_entitlements(rsessarm64)?;
@@ -1026,26 +1011,23 @@ pub fn sc_system_allow_debugger_rstudio(_args: &ArgMatches) -> Result<(), Box<dy
 
 pub fn update_entitlements(path: PathBuf) -> Result<(), Box<dyn Error>> {
     let tmp_dir = std::env::temp_dir().join("rig");
-    match std::fs::create_dir_all(&tmp_dir) {
-        Err(err) => {
-            let dir = tmp_dir.to_str().unwrap_or_else(|| "???");
-            OUTPUT.error(&format!(
-                "Cannot create temporary directory {}: {}",
-                dir,
-                err.to_string()
-            ));
-            error!(
-                "Cannot create temporary directory {}: {}",
-                dir,
-                err.to_string()
-            );
-            bail!(
-                "Cannot craete temporary file in {}: {}",
-                dir,
-                err.to_string()
-            );
-        }
-        _ => {}
+    if let Err(err) = std::fs::create_dir_all(&tmp_dir) {
+        let dir = tmp_dir.to_str().unwrap_or("???");
+        OUTPUT.error(&format!(
+            "Cannot create temporary directory {}: {}",
+            dir,
+            err
+        ));
+        error!(
+            "Cannot create temporary directory {}: {}",
+            dir,
+            err
+        );
+        bail!(
+            "Cannot craete temporary file in {}: {}",
+            dir,
+            err.to_string()
+        );
     };
 
     OUTPUT.status(&format!("Updating entitlements of {}", path.display()));
@@ -1114,7 +1096,7 @@ pub fn update_entitlements(path: PathBuf) -> Result<(), Box<dyn Error>> {
         .output()?;
 
     if !out.status.success() {
-        OUTPUT.error(&format!("Cannot update entitlements"));
+        OUTPUT.error("Cannot update entitlements");
         error!("Cannot update entitlements");
         bail!("Cannot update entitlements");
     } else {
@@ -1179,19 +1161,19 @@ fn is_orthogonal(ver: &str) -> Result<bool, Box<dyn Error>> {
     if get_mode()? == crate::utils::Mode::User {
         return Ok(true);
     }
-    let base = Path::new(&get_r_root()?).join(&ver);
+    let base = Path::new(&get_r_root()?).join(ver);
     let re = Regex::new("R[.]framework/Resources")?;
     let rfile = base.join("Resources/bin/R");
     let lines = read_lines(&rfile)?;
     let mch = grep_lines(&re, &lines);
-    Ok(mch.len() == 0)
+    Ok(mch.is_empty())
 }
 
 fn make_orthogonal_(base: &Path, ver: &str) -> Result<(), Box<dyn Error>> {
     let re = Regex::new("R[.]framework/Resources")?;
     let re2 = Regex::new("[-]F/Library/Frameworks/R[.]framework/[.][.]")?;
 
-    let sub = "R.framework/Versions/".to_string() + &ver + "/Resources";
+    let sub = "R.framework/Versions/".to_string() + ver + "/Resources";
 
     let rfile = base.join("Resources/bin/R");
     replace_in_file(&rfile, &re, &sub).ok();
@@ -1203,13 +1185,13 @@ fn make_orthogonal_(base: &Path, ver: &str) -> Result<(), Box<dyn Error>> {
     replace_in_file(&ffile, &re, &sub).ok();
 
     let mfile = base.join("Resources/etc/Makeconf");
-    let sub = "-F/Library/Frameworks/R.framework/Versions/".to_string() + &ver;
+    let sub = "-F/Library/Frameworks/R.framework/Versions/".to_string() + ver;
     replace_in_file(&mfile, &re2, &sub).ok();
 
     let fake = base.join("R.framework");
     let fake = fake.as_path();
     // TODO: only ignore failure if files already exist
-    std::fs::create_dir_all(&fake).ok();
+    std::fs::create_dir_all(fake).ok();
     symlink("../Headers", fake.join("Headers")).ok();
     symlink("../Resources/lib", fake.join("Libraries")).ok();
     symlink("../PrivateHeaders", fake.join("PrivateHeaders")).ok();
@@ -1864,13 +1846,10 @@ pub fn sc_rstudio_(
     OUTPUT.status(&format!("Running open {}", cmdline));
     info!("Running open {}", cmdline);
 
-    match run(os("open"), args, "open") {
-        Err(e) => {
-            OUTPUT.error(&format!("RStudio failed to start: {}", e.to_string()));
-            error!("RStudio failed to start: {}", e.to_string());
-            bail!("RStudio failed to start: {}", e.to_string());
-        }
-        _ => {}
+    if let Err(e) = run(os("open"), args, "open") {
+        OUTPUT.error(&format!("RStudio failed to start: {}", e));
+        error!("RStudio failed to start: {}", e);
+        bail!("RStudio failed to start: {}", e.to_string());
     };
 
     Ok(())
@@ -1916,16 +1895,13 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
     if !r.exists() {
         debug!("Creating {}", r.display());
         let tgt = Path::new(&get_r_default_bindir()?).join("R");
-        match std::os::unix::fs::symlink(&tgt, &r) {
-            Err(e) => {
-                OUTPUT.warn(&format!(
-                    "Cannot create missing {}/R: {}",
-                    binary_dir,
-                    e.to_string()
-                ));
-                warn!("Cannot create missing {}/R: {}", binary_dir, e.to_string())
-            }
-            _ => {}
+        if let Err(e) = std::os::unix::fs::symlink(&tgt, &r) {
+            OUTPUT.warn(&format!(
+                "Cannot create missing {}/R: {}",
+                binary_dir,
+                e
+            ));
+            warn!("Cannot create missing {}/R: {}", binary_dir, e)
         };
     }
 
@@ -1933,20 +1909,17 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
     if !rscript.exists() {
         debug!("Creating {}", rscript.display());
         let tgt = Path::new(&get_r_default_bindir()?).join("Rscript");
-        match std::os::unix::fs::symlink(&tgt, &rscript) {
-            Err(e) => {
-                OUTPUT.warn(&format!(
-                    "Cannot create missing {}/Rscript: {}",
-                    binary_dir,
-                    e.to_string()
-                ));
-                warn!(
-                    "Cannot create missing {}/Rscript: {}",
-                    binary_dir,
-                    e.to_string()
-                )
-            }
-            _ => {}
+        if let Err(e) = std::os::unix::fs::symlink(&tgt, &rscript) {
+            OUTPUT.warn(&format!(
+                "Cannot create missing {}/Rscript: {}",
+                binary_dir,
+                e
+            ));
+            warn!(
+                "Cannot create missing {}/Rscript: {}",
+                binary_dir,
+                e
+            )
         };
     }
 
@@ -2194,12 +2167,12 @@ fn extract_pkg_version(filename: &OsStr) -> Result<RversionDir, Box<dyn Error>> 
             OUTPUT.error(&format!(
                 "Cannot extract version from .pkg file {}: {}",
                 filename.to_string_lossy(),
-                err.to_string()
+                err
             ));
             error!(
                 "Cannot extract version from .pkg file {}: {}",
                 filename.to_string_lossy(),
-                err.to_string()
+                err
             );
             bail!(
                 "Cannot extract version from .pkg file {}: {}",
@@ -2213,7 +2186,7 @@ fn extract_pkg_version(filename: &OsStr) -> Result<RversionDir, Box<dyn Error>> 
     let re = Regex::new("^R ([0-9]+[.][0-9]+[.][0-9])+.*$")?;
     let lines: Vec<&str> = lines.filter(|l| re.is_match(l)).collect();
 
-    if lines.len() == 0 {
+    if lines.is_empty() {
         OUTPUT.error(&format!(
             "Cannot extract version from .pkg file {}: no line with R version found",
             filename.to_string_lossy()
@@ -2240,8 +2213,7 @@ fn extract_pkg_version(filename: &OsStr) -> Result<RversionDir, Box<dyn Error>> 
     // newer one to '4.6'. So there is no way to determine the install dir name from the
     // version. Let's extract it from the pkg file for R 4.6.0.
 
-    let installdir: String;
-    if ver == "4.6.0" {
+    let installdir: String = if ver == "4.6.0" {
         let out = Command::new("pkgutil")
             .args(["--payload-files"])
             .arg(filename)
@@ -2252,12 +2224,12 @@ fn extract_pkg_version(filename: &OsStr) -> Result<RversionDir, Box<dyn Error>> 
                 OUTPUT.error(&format!(
                     "Cannot extract version from .pkg file {}: {}",
                     filename.to_string_lossy(),
-                    err.to_string()
+                    err
                 ));
                 error!(
                     "Cannot extract version from .pkg file {}: {}",
                     filename.to_string_lossy(),
-                    err.to_string()
+                    err
                 );
                 bail!(
                     "Cannot extract version from .pkg file {}: {}",
@@ -2269,7 +2241,7 @@ fn extract_pkg_version(filename: &OsStr) -> Result<RversionDir, Box<dyn Error>> 
 
         let mut lines = std.lines();
         let re = Regex::new(r"\./R\.framework/Versions/([0-9][^/]+)$")?;
-        installdir = match lines.find_map(|line| {
+        match lines.find_map(|line| {
             re.captures(line)
                 .and_then(|caps| caps.get(1))
                 .map(|m| m.as_str().to_string())
@@ -2285,15 +2257,15 @@ fn extract_pkg_version(filename: &OsStr) -> Result<RversionDir, Box<dyn Error>> 
         let x86_64 = Regex::new("X86_64")?;
         let ver_semver = semver::Version::parse(&ver).ok();
         let cutoff = semver::Version::new(4, 6, 0);
-        let arm64_no_suffix = ver_semver.map_or(false, |v| v >= cutoff);
-        installdir = if arch == "arm64" && !arm64_no_suffix {
+        let arm64_no_suffix = ver_semver.is_some_and(|v| v >= cutoff);
+        if arch == "arm64" && !arm64_no_suffix {
             minor + "-arm64"
         } else if x86_64.is_match(lines[0]) {
             minor + "-x86_64"
         } else {
             minor
-        };
-    }
+        }
+    };
 
     OUTPUT.success(&format!("This is R {} for {}.", ver, arch));
     info!("This is R {} for {}.", ver, arch);
@@ -2337,11 +2309,7 @@ pub fn is_arm64_machine() -> bool {
     if let Ok(mut proc) = proc {
         let out = proc.wait();
         if let Ok(out) = out {
-            if out.success() {
-                true
-            } else {
-                false
-            }
+            out.success()
         } else {
             false
         }

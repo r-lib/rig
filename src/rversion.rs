@@ -87,7 +87,7 @@ pub struct OsVersion {
 }
 
 fn serialize_path_with_forward_slashes<S>(
-    path: &std::path::PathBuf,
+    path: &std::path::Path,
     serializer: S,
 ) -> Result<S::Ok, S::Error>
 where
@@ -188,7 +188,7 @@ mod tests {
 
     #[test]
     fn ok_installed_version_sort() {
-        let mut versions = vec![ok_ver("4.2.0"), ok_ver("4.0.0"), ok_ver("4.1.0")];
+        let mut versions = [ok_ver("4.2.0"), ok_ver("4.0.0"), ok_ver("4.1.0")];
         versions.sort();
         assert_eq!(
             versions[0].version,

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use deb822_fast::Deb822;
@@ -222,9 +222,9 @@ fn parse_packages(dcf_path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
     // Check if decompressed data is RDS format
     // RDS files start with: 0x58 0x00 (X), 0x41 0x00 (A), or 0x42 0x00 (B)
     if data.len() >= 2 {
-        let is_rds = (data[0] == 0x58 && data[1] == 0x00)  // X format
-                  || (data[0] == 0x41 && data[1] == 0x00)  // A format
-                  || (data[0] == 0x42 && data[1] == 0x00); // B format
+        // X (0x58), A (0x41) or B (0x42) format, each followed by 0x00
+        let is_rds =
+            (data[0] == 0x58 || data[0] == 0x41 || data[0] == 0x42) && data[1] == 0x00;
 
         if is_rds {
             info!("Detected RDS format, parsing as RDS");
@@ -563,8 +563,7 @@ fn load_packages_from_db(
                 path: row.get(5)?,
                 built: row
                     .get::<_, Option<String>>(6)?
-                    .map(|s| serde_json::from_str(&s).ok())
-                    .flatten(),
+                    .and_then(|s| serde_json::from_str(&s).ok()),
                 license: row.get(7)?,
                 platform: row.get(8)?,
                 arch: row.get(9)?,
@@ -637,8 +636,7 @@ fn save_packages_to_db(
         let built_json = pkg
             .built
             .as_ref()
-            .map(|b| serde_json::to_string(b).ok())
-            .flatten();
+            .and_then(|b| serde_json::to_string(b).ok());
 
         stmt.execute(params![
             &pkg.name,
@@ -664,7 +662,7 @@ fn save_packages_to_db(
     Ok(())
 }
 
-fn repo_db_file(dcf_path: &PathBuf) -> Result<PathBuf, Box<dyn Error>> {
+fn repo_db_file(dcf_path: &Path) -> Result<PathBuf, Box<dyn Error>> {
     let parent = dcf_path
         .parent()
         .ok_or("Cannot determine parent directory for database file")?;
@@ -697,7 +695,7 @@ mod tests {
         );
 
         let packages = result.unwrap();
-        assert!(packages.len() > 0, "Expected at least one package");
+        assert!(!packages.is_empty(), "Expected at least one package");
 
         // Snapshot test the parsed packages
         insta::assert_debug_snapshot!(packages);
@@ -716,7 +714,7 @@ mod tests {
         );
 
         let packages = result.unwrap();
-        assert!(packages.len() > 0, "Expected at least one package");
+        assert!(!packages.is_empty(), "Expected at least one package");
 
         // Snapshot test the parsed binary packages
         insta::assert_debug_snapshot!(packages);
@@ -735,7 +733,7 @@ mod tests {
 
         // Name and version are required
         assert!(!first_pkg.name.is_empty());
-        assert!(first_pkg.version.to_string().len() > 0);
+        assert!(!first_pkg.version.to_string().is_empty());
 
         // Snapshot the first package to validate its structure
         insta::assert_debug_snapshot!(first_pkg);

@@ -161,6 +161,7 @@ where
     let library_path = library_path.to_path_buf();
     let r_binary = r_binary.to_string();
 
+    #[allow(clippy::too_many_arguments)]
     async fn try_start_packages<P>(
         package_map: Arc<HashMap<String, PackageInfo>>,
         installed: Arc<Mutex<HashSet<String>>>,
@@ -288,11 +289,7 @@ where
         }
 
         let currently_running = installing.lock().await.len();
-        let can_start = if currently_running < max_concurrent {
-            max_concurrent - currently_running
-        } else {
-            0
-        };
+        let can_start = max_concurrent.saturating_sub(currently_running);
 
         if can_start > 0 {
             let new_tasks = try_start_packages(

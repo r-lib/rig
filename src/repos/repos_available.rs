@@ -30,14 +30,14 @@ pub fn sc_repos_available(
                     extra = extra + &platforms.clone().join(" | ");
                 }
                 if let Some(archs) = &repoentry.archs {
-                    let comma = if extra != "" { ", " } else { "" };
+                    let comma = if !extra.is_empty() { ", " } else { "" };
                     extra = extra + comma + &archs.clone().join(" | ");
                 }
                 if let Some(rversions) = &repoentry.rversions {
-                    let comma = if extra != "" { ", " } else { "" };
+                    let comma = if !extra.is_empty() { ", " } else { "" };
                     extra = extra + comma + &rversions.clone().join(" | ");
                 }
-                if extra != "" {
+                if !extra.is_empty() {
                     extra = "(".to_string() + &extra + ")";
                 }
                 println!("  {} {}", repoentry.url, extra);

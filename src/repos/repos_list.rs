@@ -26,9 +26,9 @@ pub fn sc_repos_list(
     let mut repos = read_repositories_file(&repositories)?.data;
 
     if !all {
-        repos = repos.into_iter().filter(|x| x.default).collect();
+        repos.retain(|x| x.default);
     }
-    repos.sort_by(|a, b| b.default.cmp(&a.default));
+    repos.sort_by_key(|b| std::cmp::Reverse(b.default));
 
     let has_bioc = repos
         .iter()

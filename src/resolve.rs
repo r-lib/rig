@@ -62,8 +62,8 @@ pub async fn resolve_versions(
         match o {
             Ok(x) => out2.push(x),
             Err(x) => {
-                OUTPUT.error(&format!("Failed to resolve R version: {}", x.to_string()));
-                error!("Failed to resolve R version: {}", x.to_string());
+                OUTPUT.error(&format!("Failed to resolve R version: {}", x));
+                error!("Failed to resolve R version: {}", x);
                 bail!("Failed to resolve R version: {}", x.to_string())
             }
         };
@@ -89,20 +89,14 @@ async fn resolve_version(
 
     let version: String = unquote(&resp["version"].to_string());
     let dlurl = Some(unquote(&resp["url"].to_string()));
-    let ppm = match resp["ppm-binaries"].as_bool() {
-        Some(v) => v,
-        None => false,
-    };
-    let ppmurl = match resp["ppm-binary-url"].as_str() {
-        Some(v) => Some(v.to_string()),
-        None => None,
-    };
+    let ppm = resp["ppm-binaries"].as_bool().unwrap_or_default();
+    let ppmurl = resp["ppm-binary-url"].as_str().map(|v| v.to_string());
     Ok(Rversion {
         version: Some(version),
         url: dlurl,
         arch: Some(arch.to_string()),
-        ppm: ppm,
-        ppmurl: ppmurl,
+        ppm,
+        ppmurl,
     })
 }
 

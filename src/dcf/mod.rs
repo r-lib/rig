@@ -123,30 +123,22 @@ impl VersionConstraint {
     /// Parse a version constraint specification (e.g., ">= 4.0.0")
     /// The spec should NOT include surrounding parentheses
     pub fn from_str(spec: &str) -> Result<Self, Box<dyn Error>> {
-        let (constraint_type, version_str) = if spec.starts_with(">=") {
-            let ver = spec[2..].trim();
-            (VersionConstraintType::GreaterOrEqual, ver)
-        } else if spec.starts_with("<=") {
-            let ver = spec[2..].trim();
-            (VersionConstraintType::LessOrEqual, ver)
-        } else if spec.starts_with("==") {
-            let ver = spec[2..].trim();
-            (VersionConstraintType::Equal, ver)
-        } else if spec.starts_with('=') {
-            let ver = spec[1..].trim();
-            (VersionConstraintType::Equal, ver)
-        } else if spec.starts_with(">>") {
-            let ver = spec[2..].trim();
-            (VersionConstraintType::Greater, ver)
-        } else if spec.starts_with('>') {
-            let ver = spec[1..].trim();
-            (VersionConstraintType::Greater, ver)
-        } else if spec.starts_with("<<") {
-            let ver = spec[2..].trim();
-            (VersionConstraintType::Less, ver)
-        } else if spec.starts_with('<') {
-            let ver = spec[1..].trim();
-            (VersionConstraintType::Less, ver)
+        let (constraint_type, version_str) = if let Some(ver) = spec.strip_prefix(">=") {
+            (VersionConstraintType::GreaterOrEqual, ver.trim())
+        } else if let Some(ver) = spec.strip_prefix("<=") {
+            (VersionConstraintType::LessOrEqual, ver.trim())
+        } else if let Some(ver) = spec.strip_prefix("==") {
+            (VersionConstraintType::Equal, ver.trim())
+        } else if let Some(ver) = spec.strip_prefix('=') {
+            (VersionConstraintType::Equal, ver.trim())
+        } else if let Some(ver) = spec.strip_prefix(">>") {
+            (VersionConstraintType::Greater, ver.trim())
+        } else if let Some(ver) = spec.strip_prefix('>') {
+            (VersionConstraintType::Greater, ver.trim())
+        } else if let Some(ver) = spec.strip_prefix("<<") {
+            (VersionConstraintType::Less, ver.trim())
+        } else if let Some(ver) = spec.strip_prefix('<') {
+            (VersionConstraintType::Less, ver.trim())
         } else {
             bail!("Invalid version constraint: {}", spec)
         };
@@ -186,7 +178,7 @@ impl DepVersionSpec {
         let types: Vec<RDepType> = vec![RDepType::from_str(dep_type)?];
         let mut constraints = Vec::new();
 
-        if spec.len() > 0 {
+        if !spec.is_empty() {
             let specbytes = spec.as_bytes();
             if specbytes.first() != Some(&b'(') || specbytes.last() != Some(&b')') {
                 bail!("Invalid dependency version: {}", dep);
@@ -258,7 +250,7 @@ impl PackageDependencies {
         let mut result: Vec<DepVersionSpec> = Vec::new();
         for dep in deps.split(',') {
             let dep = dep.trim();
-            if dep.len() == 0 {
+            if dep.is_empty() {
                 continue;
             }
             result.push(DepVersionSpec::parse(dep, dep_type)?);
@@ -316,8 +308,8 @@ impl DCFBuilt {
 
         // First part: R version (e.g., "R 4.3.0") - strip the "R" prefix and any whitespace
         let r_part = parts[0].trim();
-        let r = if r_part.starts_with('R') {
-            r_part[1..].trim().to_string()
+        let r = if let Some(rest) = r_part.strip_prefix('R') {
+            rest.trim().to_string()
         } else {
             r_part.to_string()
         };
@@ -336,7 +328,7 @@ impl DCFBuilt {
         let os_type = parts[3].trim().to_string();
 
         Ok(DCFBuilt {
-            r: r,
+            r,
             platform,
             timestamp,
             os_type,
@@ -417,7 +409,7 @@ impl Package {
         let download_url = pkg.get("DownloadURL").map(|u| u.to_string());
         let built = pkg
             .get("Built")
-            .map(|b| DCFBuilt::from_str(b))
+            .map(DCFBuilt::from_str)
             .transpose()?;
         let license = pkg.get("License").map(|l| l.to_string());
         let platform = pkg.get("Platform").map(|p| p.to_string());

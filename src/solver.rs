@@ -53,9 +53,9 @@ pub fn rpackage_version_ranges_from_constraints(
     constraints: &PackageDependencies,
     dev: bool,
 ) -> HashMap<RPackageName, RPackageVersionRanges, rustc_hash::FxBuildHasher> {
-    let mut vranges = HashMap::with_hasher(rustc_hash::FxBuildHasher::default());
+    let mut vranges = HashMap::with_hasher(rustc_hash::FxBuildHasher);
     for dep in constraints.dependencies.iter() {
-        if !dev && dep.types.iter().all(|x| DEP_TYPES_SOFT.contains(&x)) {
+        if !dev && dep.types.iter().all(|x| DEP_TYPES_SOFT.contains(x)) {
             // we ignore soft dependencies for now, as they are not required for installation
             continue;
         }
@@ -93,6 +93,7 @@ pub struct RPackageRegistry {
     // for a package we have a list of versions
     versions: RefCell<HashMap<RPackageName, Vec<RegistryPackageVersion>>>,
     // for a package version, we have a list of dependencies
+    #[allow(clippy::type_complexity)]
     deps: RefCell<
         HashMap<
             (RPackageName, RegistryPackageVersion),
@@ -198,11 +199,10 @@ impl DependencyProvider for RPackageRegistry {
         package: &Self::P,
         range: &Self::VS,
     ) -> Result<Option<Self::V>, Self::Err> {
-        if !self.versions.borrow().contains_key(package) {
-            match self.get_all_versions(package) {
-                Err(_) => return Err(ProviderError::UnknownPackage),
-                _ => {}
-            };
+        if !self.versions.borrow().contains_key(package)
+            && self.get_all_versions(package).is_err()
+        {
+            return Err(ProviderError::UnknownPackage);
         }
 
         let best = self
@@ -227,10 +227,7 @@ impl DependencyProvider for RPackageRegistry {
         if let Some(deps) = self.deps.borrow().get(&key) {
             return Ok(Dependencies::Available(deps.clone()));
         }
-        match self.get_all_versions(package) {
-            Err(_) => return Err(ProviderError::UnknownPackage),
-            _ => {}
-        };
+        if self.get_all_versions(package).is_err() { return Err(ProviderError::UnknownPackage) };
         match self.deps.borrow().get(&key) {
             Some(res) => Ok(Dependencies::Available(res.clone())),
             None => Err(ProviderError::UnknownPackage),

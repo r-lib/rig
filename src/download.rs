@@ -89,7 +89,7 @@ pub fn download_file_sync(
     infinite_cache: bool,
 ) -> Result<OsString, Box<dyn Error>> {
     let tmp_dir = std::env::temp_dir().join("rig");
-    let target = tmp_dir.join(&filename);
+    let target = tmp_dir.join(filename);
     if target.exists() && (infinite_cache || not_too_old(&target)) {
         OUTPUT.success(&format!("{} is cached at {}", filename, target.display()));
         info!("{} is cached at {}", filename, target.display());
@@ -116,53 +116,47 @@ pub async fn download_file(
     let resp = match resp {
         Ok(resp) => resp.error_for_status(),
         Err(err) => {
-            OUTPUT.error(&format!("HTTP error at {}: {}", url, err.to_string()));
-            error!("HTTP error at {}: {}", url, err.to_string());
+            OUTPUT.error(&format!("HTTP error at {}: {}", url, err));
+            error!("HTTP error at {}: {}", url, err);
             bail!("HTTP error at {}: {}", url, err.to_string())
         }
     };
     let resp = match resp {
         Ok(resp) => resp,
         Err(err) => {
-            OUTPUT.error(&format!("HTTP error at {}: {}", url, err.to_string()));
-            error!("HTTP error at {}: {}", url, err.to_string());
+            OUTPUT.error(&format!("HTTP error at {}: {}", url, err));
+            error!("HTTP error at {}: {}", url, err);
             bail!("HTTP error at {}: {}", url, err.to_string())
         }
     };
 
     // If dirname(path) is / then this is None
     let dir = Path::new(&path).parent();
-    match dir {
-        Some(dir) => {
-            match std::fs::create_dir_all(dir) {
-                Err(err) => {
-                    let dir = dir.to_str().unwrap_or_else(|| "???");
-                    OUTPUT.error(&format!(
-                        "Cannot create directory {}: {}",
-                        dir,
-                        err.to_string()
-                    ));
-                    error!("Cannot create directory {}: {}", dir, err.to_string());
-                    bail!("Cannot create directory {}: {}", dir, err.to_string())
-                }
-                _ => {}
-            };
-        }
-        None => {}
+    if let Some(dir) = dir {
+        if let Err(err) = std::fs::create_dir_all(dir) {
+            let dir = dir.to_str().unwrap_or("???");
+            OUTPUT.error(&format!(
+                "Cannot create directory {}: {}",
+                dir,
+                err
+            ));
+            error!("Cannot create directory {}: {}", dir, err);
+            bail!("Cannot create directory {}: {}", dir, err.to_string())
+        };
     };
-    let file = File::create(&path);
+    let file = File::create(path);
     let mut file = match file {
         Ok(file) => file,
         Err(err) => {
             OUTPUT.error(&format!(
                 "Cannot create file '{}': {}",
                 path.display(),
-                err.to_string()
+                err
             ));
             error!(
                 "Cannot create file '{}': {}",
                 path.display(),
-                err.to_string()
+                err
             );
             bail!(
                 "Cannot create file '{}': {}",
@@ -177,43 +171,37 @@ pub async fn download_file(
         let chunk = match item {
             Ok(chunk) => chunk,
             Err(err) => {
-                OUTPUT.error(&format!("HTTP error at {}: {}", url, err.to_string()));
-                error!("HTTP error at {}: {}", url, err.to_string());
+                OUTPUT.error(&format!("HTTP error at {}: {}", url, err));
+                error!("HTTP error at {}: {}", url, err);
                 bail!("HTTP error at {}: {}", url, err.to_string())
             }
         };
-        match file.write(&chunk) {
-            Err(err) => {
-                OUTPUT.error(&format!(
-                    "Failed to write to file {}: {}",
-                    path.display(),
-                    err.to_string()
-                ));
-                error!(
-                    "Failed to write to file {}: {}",
-                    path.display(),
-                    err.to_string()
-                );
-                bail!(
-                    "Failed to write to file {}: {}",
-                    path.display(),
-                    err.to_string()
-                )
-            }
-            _ => {}
+        if let Err(err) = file.write(&chunk) {
+            OUTPUT.error(&format!(
+                "Failed to write to file {}: {}",
+                path.display(),
+                err
+            ));
+            error!(
+                "Failed to write to file {}: {}",
+                path.display(),
+                err
+            );
+            bail!(
+                "Failed to write to file {}: {}",
+                path.display(),
+                err.to_string()
+            )
         };
     }
 
-    match std::fs::rename(Path::new(&path), Path::new(&opath)) {
-        Err(err) => {
-            OUTPUT.error(&format!(
-                "Failed to rename downloaded file: {}",
-                err.to_string()
-            ));
-            error!("Failed to rename downloaded file: {}", err.to_string());
-            bail!("Failed to rename downloaded file: {}", err.to_string())
-        }
-        _ => {}
+    if let Err(err) = std::fs::rename(Path::new(&path), Path::new(&opath)) {
+        OUTPUT.error(&format!(
+            "Failed to rename downloaded file: {}",
+            err
+        ));
+        error!("Failed to rename downloaded file: {}", err);
+        bail!("Failed to rename downloaded file: {}", err.to_string())
     };
 
     Ok(())
@@ -223,7 +211,7 @@ pub fn download_json_sync(urls: Vec<String>) -> Result<Vec<serde_json::Value>, B
     let client = reqwest::Client::new();
     let client = &client;
     let resp = download_json_(client, urls)?;
-    return Ok(resp);
+    Ok(resp)
 }
 
 async fn download_if_newer(
@@ -385,6 +373,7 @@ pub fn download_first_available_(
 /// Returns a vector of results, one for each download request.
 /// Each result is Ok((true, etag)) if downloaded, Ok((false, None)) if cached, or Err if all URLs failed.
 #[cfg(test)]
+#[allow(clippy::type_complexity)]
 pub fn download_multiple_first_available_(
     downloads: Vec<(Vec<String>, PathBuf)>,
     update_older: Option<Duration>,
@@ -405,6 +394,7 @@ pub fn download_multiple_first_available_(
 
 #[cfg(test)]
 #[tokio::main]
+#[allow(clippy::type_complexity)]
 async fn download_multiple_first_available__(
     client: &reqwest::Client,
     downloads: Vec<(Vec<String>, PathBuf)>,
@@ -552,8 +542,8 @@ pub async fn download_json(
         match v {
             Ok(v) => vers2.push(v),
             Err(e) => {
-                OUTPUT.error(&format!("Cannot download JSON: {}", e.to_string()));
-                error!("Cannot download JSON: {}", e.to_string());
+                OUTPUT.error(&format!("Cannot download JSON: {}", e));
+                error!("Cannot download JSON: {}", e);
                 bail!("Cannot download JSON: {}", e.to_string())
             }
         };
@@ -618,8 +608,8 @@ mod tests {
         assert_eq!(results.len(), 2);
         assert!(results[0].is_ok());
         assert!(results[1].is_ok());
-        assert_eq!(results[0].as_ref().unwrap().0, true); // Downloaded
-        assert_eq!(results[1].as_ref().unwrap().0, true); // Downloaded
+        assert!(results[0].as_ref().unwrap().0); // Downloaded
+        assert!(results[1].as_ref().unwrap().0); // Downloaded
 
         // Verify files exist
         assert!(file1_path.exists());
@@ -661,7 +651,7 @@ mod tests {
 
         assert_eq!(results.len(), 1);
         assert!(results[0].is_ok());
-        assert_eq!(results[0].as_ref().unwrap().0, true); // Downloaded from fallback URL
+        assert!(results[0].as_ref().unwrap().0); // Downloaded from fallback URL
 
         // Verify file exists
         assert!(file1_path.exists());
@@ -713,7 +703,7 @@ mod tests {
 
         assert_eq!(results.len(), 2);
         assert!(results[0].is_ok());
-        assert_eq!(results[0].as_ref().unwrap().0, true); // Success
+        assert!(results[0].as_ref().unwrap().0); // Success
         assert!(results[1].is_err()); // Failed
 
         // Verify only file1 exists
@@ -758,7 +748,7 @@ mod tests {
 
         assert_eq!(results.len(), 1);
         assert!(results[0].is_ok());
-        assert_eq!(results[0].as_ref().unwrap().0, false); // Cached, not downloaded
+        assert!(!results[0].as_ref().unwrap().0); // Cached, not downloaded
 
         // Clean up
         let _ = std::fs::remove_file(&file1_path);

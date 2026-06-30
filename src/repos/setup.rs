@@ -177,15 +177,13 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
         let profile =
             root.clone() + "/" + &get_r_base_profile()?.replace("{}", &version_dir_key(&ver));
         debug!("Updating R profile at {}", profile);
-        let mut profile_lines = read_lines(&Path::new(&profile))?;
+        let mut profile_lines = read_lines(Path::new(&profile))?;
 
         // maybe already current?
-        if grep_lines(
+        if !grep_lines(
             &Regex::new(&HC_PROFILE_REPOS_MARKERS.current_start.to_string())?,
             &profile_lines,
-        )
-        .len()
-            > 0
+        ).is_empty()
         {
             continue;
         }
@@ -203,7 +201,7 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
         if start.len() == 1 && end.len() == 1 {
             // remove old version
             profile_lines.drain(start[0]..=end[0]);
-        } else if start.len() == 0 && end.len() == 0 {
+        } else if start.is_empty() && end.is_empty() {
             // nothing there, nothing to remove
         } else {
             OUTPUT.warn(&format!(
@@ -294,9 +292,9 @@ fn should_activate_repo(
     }
 
     // if archs are present, then they must match the current arch
-    if entry.archs.is_some() {
+    if let Some(archs) = &entry.archs {
         let mut ok = false;
-        for arch in entry.archs.as_ref().unwrap().iter() {
+        for arch in archs.iter() {
             if arch == &rdata.arch {
                 debug!("Repo '{}' matches arch '{}'", repo.name, arch);
                 ok = true;
@@ -309,9 +307,9 @@ fn should_activate_repo(
     }
 
     // if rversions are present, then one of them must be satisfied by the current R version
-    if entry.rversions.is_some() {
+    if let Some(rversions) = &entry.rversions {
         let mut ok = false;
-        for constraint in entry.rversions.as_ref().unwrap().iter() {
+        for constraint in rversions.iter() {
             let depconstraint = VersionConstraint::from_str(constraint)?;
             let dep = DepVersionSpec {
                 name: "R".to_string(),
@@ -338,6 +336,88 @@ fn should_activate_repo(
 #[cfg(target_os = "macos")]
 fn get_r_data(ver: &str) -> Result<RData, Box<dyn Error>> {
     get_r_data_common(ver)
+}
+
+fn get_r_data_common(ver: &str) -> Result<RData, Box<dyn Error>> {
+    let root: String = get_r_root_for(ver)?;
+    let statsdesc = root
+        + "/"
+        + &get_r_syslibpath()?.replace("{}", &version_dir_key(ver))
+        + "/stats/DESCRIPTION";
+    debug!("Getting architectture from {}.", statsdesc);
+    let lines = read_lines(Path::new(&statsdesc))?;
+    let re = Regex::new("^Built:[ ]?")?;
+    let bltidx = grep_lines(&re, &lines);
+    if bltidx.is_empty() {
+        OUTPUT.error(&format!(
+            "Could not find 'Built' field in {}, cannot determine architecture of R installation.",
+            statsdesc
+        ));
+        error!(
+            "Could not find 'Built' field in {}, cannot determine architecture of R installation.",
+            statsdesc
+        );
+        bail!(
+            "Could not find 'Built' in {}, cannot determine architecture of R installation.",
+            statsdesc
+        );
+    }
+    let blt = &lines[bltidx[0]];
+
+    // Remove "Built:" prefix and split by semicolons
+    let built = blt.strip_prefix("Built:").unwrap_or(blt).trim();
+    let parts: Vec<&str> = built.split(';').collect();
+
+    if parts.len() < 2 {
+        OUTPUT.error(&format!(
+            "Could not parse 'Built' field in {}, unexpected format: {}",
+            statsdesc, blt
+        ));
+        error!(
+            "Could not parse 'Built' field in {}, unexpected format: {}",
+            statsdesc, blt
+        );
+        bail!("Could not parse 'Built' field in {}: {}", statsdesc, blt);
+    }
+
+    let platform = parts[1].trim();
+    let parts2: Vec<&str> = platform.splitn(3, '-').collect();
+    if parts2.len() < 3 {
+        OUTPUT.error(&format!(
+            "Could not parse 'Built' field in {}, unexpected platform format: {}",
+            statsdesc, platform
+        ));
+        error!(
+            "Could not parse 'Built' field in {}, unexpected platform format: {}",
+            statsdesc, platform
+        );
+        bail!("Could not parse 'Built' field in {}: {}", statsdesc, blt);
+    }
+
+    let arch = parts2[0];
+
+    if arch.is_empty() {
+        OUTPUT.error(&format!(
+            "Could not parse 'Built' field in {}, missing architecture: {}",
+            statsdesc, blt,
+        ));
+        error!(
+            "Could not parse 'Built' field in {}, missing architecture: {}",
+            statsdesc, blt
+        );
+        bail!("Could not parse 'Built' field in {}: {}", statsdesc, blt);
+    }
+
+    let rver = parts[0].trim();
+    let rver = rver.strip_prefix("R").unwrap_or(rver).trim();
+
+    Ok(RData {
+        platform: platform.to_string(),
+        arch: arch.to_string(),
+        version: rver.to_string(),
+        distro: None,
+        release: None,
+    })
 }
 
 #[cfg(target_os = "linux")]
@@ -649,86 +729,4 @@ mod tests {
             "P3M-manylinux"
         ));
     }
-}
-
-fn get_r_data_common(ver: &str) -> Result<RData, Box<dyn Error>> {
-    let root: String = get_r_root_for(ver)?;
-    let statsdesc = root
-        + "/"
-        + &get_r_syslibpath()?.replace("{}", &version_dir_key(ver))
-        + "/stats/DESCRIPTION";
-    debug!("Getting architectture from {}.", statsdesc);
-    let lines = read_lines(Path::new(&statsdesc))?;
-    let re = Regex::new("^Built:[ ]?")?;
-    let bltidx = grep_lines(&re, &lines);
-    if bltidx.len() == 0 {
-        OUTPUT.error(&format!(
-            "Could not find 'Built' field in {}, cannot determine architecture of R installation.",
-            statsdesc
-        ));
-        error!(
-            "Could not find 'Built' field in {}, cannot determine architecture of R installation.",
-            statsdesc
-        );
-        bail!(
-            "Could not find 'Built' in {}, cannot determine architecture of R installation.",
-            statsdesc
-        );
-    }
-    let blt = &lines[bltidx[0]];
-
-    // Remove "Built:" prefix and split by semicolons
-    let built = blt.strip_prefix("Built:").unwrap_or(blt).trim();
-    let parts: Vec<&str> = built.split(';').collect();
-
-    if parts.len() < 2 {
-        OUTPUT.error(&format!(
-            "Could not parse 'Built' field in {}, unexpected format: {}",
-            statsdesc, blt
-        ));
-        error!(
-            "Could not parse 'Built' field in {}, unexpected format: {}",
-            statsdesc, blt
-        );
-        bail!("Could not parse 'Built' field in {}: {}", statsdesc, blt);
-    }
-
-    let platform = parts[1].trim();
-    let parts2: Vec<&str> = platform.splitn(3, '-').collect();
-    if parts2.len() < 3 {
-        OUTPUT.error(&format!(
-            "Could not parse 'Built' field in {}, unexpected platform format: {}",
-            statsdesc, platform
-        ));
-        error!(
-            "Could not parse 'Built' field in {}, unexpected platform format: {}",
-            statsdesc, platform
-        );
-        bail!("Could not parse 'Built' field in {}: {}", statsdesc, blt);
-    }
-
-    let arch = parts2[0];
-
-    if arch == "" {
-        OUTPUT.error(&format!(
-            "Could not parse 'Built' field in {}, missing architecture: {}",
-            statsdesc, blt,
-        ));
-        error!(
-            "Could not parse 'Built' field in {}, missing architecture: {}",
-            statsdesc, blt
-        );
-        bail!("Could not parse 'Built' field in {}: {}", statsdesc, blt);
-    }
-
-    let rver = parts[0].trim();
-    let rver = rver.strip_prefix("R").unwrap_or(rver).trim();
-
-    Ok(RData {
-        platform: platform.to_string(),
-        arch: arch.to_string(),
-        version: rver.to_string(),
-        distro: None,
-        release: None,
-    })
 }
