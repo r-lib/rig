@@ -100,21 +100,21 @@ pub fn detect_platform_impl() -> Result<OsVersion, Box<dyn Error>> {
 
     let re_id = Regex::new("^ID=")?;
     let wid_line = grep_lines(&re_id, &lines);
-    id = if wid_line.len() == 0 {
+    id = if wid_line.is_empty() {
         "".to_string()
     } else {
         let id_line = &lines[wid_line[0]];
-        let id = re_id.replace(&id_line, "").to_string();
+        let id = re_id.replace(id_line, "").to_string();
         unquote(&id)
     };
 
     let re_ver = Regex::new("^VERSION_ID=")?;
     let wver_line = grep_lines(&re_ver, &lines);
-    ver = if wver_line.len() == 0 {
+    ver = if wver_line.is_empty() {
         "".to_string()
     } else {
         let ver_line = &lines[wver_line[0]];
-        let ver = re_ver.replace(&ver_line, "").to_string();
+        let ver = re_ver.replace(ver_line, "").to_string();
         unquote(&ver)
     };
 

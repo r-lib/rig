@@ -225,25 +225,22 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
                     return Ok(());
                 } else {
                     debug!("{} is wrong, updating", linkfile.display());
-                    match std::fs::remove_file(&linkfile) {
-                        Err(err) => {
-                            OUTPUT.error(&format!(
-                                "Failed to delete {}, cannot update alias: {}",
-                                linkfile.display(),
-                                err.to_string()
-                            ));
-                            error!(
-                                "Failed to delete {}, cannot update alias: {}",
-                                linkfile.display(),
-                                err.to_string()
-                            );
-                            bail!(
-                                "Failed to delete {}, cannot update alias: {}",
-                                linkfile.display(),
-                                err.to_string()
-                            );
-                        }
-                        _ => {}
+                    if let Err(err) = std::fs::remove_file(&linkfile) {
+                        OUTPUT.error(&format!(
+                            "Failed to delete {}, cannot update alias: {}",
+                            linkfile.display(),
+                            err
+                        ));
+                        error!(
+                            "Failed to delete {}, cannot update alias: {}",
+                            linkfile.display(),
+                            err
+                        );
+                        bail!(
+                            "Failed to delete {}, cannot update alias: {}",
+                            linkfile.display(),
+                            err.to_string()
+                        );
                     }
                 }
             }
@@ -252,25 +249,18 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
 
     // If we are still here, then we need to create the link
     debug!("Adding {} -> {}", linkfile.display(), target.display());
-    match symlink(&target, &linkfile) {
-        Err(err) => {
-            OUTPUT.error(&format!(
-                "Cannot create alias {}: {}",
-                linkfile.display(),
-                err.to_string()
-            ));
-            error!(
-                "Cannot create alias {}: {}",
-                linkfile.display(),
-                err.to_string()
-            );
-            bail!(
-                "Cannot create alias {}: {}",
-                linkfile.display(),
-                err.to_string()
-            )
-        }
-        _ => {}
+    if let Err(err) = symlink(&target, &linkfile) {
+        OUTPUT.error(&format!(
+            "Cannot create alias {}: {}",
+            linkfile.display(),
+            err
+        ));
+        error!("Cannot create alias {}: {}", linkfile.display(), err);
+        bail!(
+            "Cannot create alias {}: {}",
+            linkfile.display(),
+            err.to_string()
+        )
     };
 
     Ok(())

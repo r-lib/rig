@@ -178,10 +178,10 @@ fn version_at_least(version: &str, minimum: &str) -> bool {
     };
     let v = parse(version);
     let m = parse(minimum);
-    for i in 0..m.len() {
+    for (i, &mi) in m.iter().enumerate() {
         let vi = v.get(i).copied().unwrap_or(0);
-        if vi != m[i] {
-            return vi > m[i];
+        if vi != mi {
+            return vi > mi;
         }
     }
     true
@@ -261,9 +261,9 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         }
     };
 
-    let filename = basename(&url).unwrap_or_else(|| "foo");
+    let filename = basename(&url).unwrap_or("foo");
     let tmp_dir = std::env::temp_dir().join("rig");
-    let target = tmp_dir.join(&filename);
+    let target = tmp_dir.join(filename);
     if target.exists() && not_too_old(&target) {
         OUTPUT.success(&format!("{} is cached at {}", filename, target.display()));
         info!("{} is cached at {}", filename, target.display());
@@ -271,7 +271,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         OUTPUT.status(&format!("Downloading {} -> {}", url, target.display()));
         info!("Downloading {} -> {}", url, target.display());
         let client = &reqwest::Client::new();
-        download_file(client, &url, &target.as_os_str())?;
+        download_file(client, &url, target.as_os_str())?;
     }
 
     let dirname = if mode == Mode::User {
@@ -303,9 +303,8 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         check_usr_bin_sed(&dirname.to_string())?;
     }
     sc_system_make_links()?;
-    match alias {
-        Some(alias) => add_alias(&dirname, &alias)?,
-        None => {}
+    if let Some(alias) = alias {
+        add_alias(&dirname, &alias)?
     };
 
     let setup = interpret_repos_args(args, true);
@@ -380,7 +379,7 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             || platform
                 .version
                 .as_ref()
-                .map_or(false, |v| v.starts_with("7.")))
+                .is_some_and(|v| v.starts_with("7.")))
     {
         Ok(LinuxTools {
             package_name: "R-{}".to_string(),
@@ -397,7 +396,7 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             || platform
                 .version
                 .as_ref()
-                .map_or(false, |v| v.starts_with("7.")))
+                .is_some_and(|v| v.starts_with("7.")))
     {
         Ok(LinuxTools{
             package_name: "R-{}".to_string(),
@@ -419,7 +418,7 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             || platform
                 .version
                 .as_ref()
-                .map_or(false, |v| v.starts_with("8.")))
+                .is_some_and(|v| v.starts_with("8.")))
     {
         Ok(LinuxTools {
             package_name: "R-{}".to_string(),
@@ -434,7 +433,7 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             || platform
                 .version
                 .as_ref()
-                .map_or(false, |v| v.starts_with("9.")))
+                .is_some_and(|v| v.starts_with("9.")))
     {
         Ok(LinuxTools {
             package_name: "R-{}".to_string(),
@@ -453,7 +452,7 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             || platform
                 .version
                 .as_ref()
-                .map_or(false, |v| v.starts_with("9.")))
+                .is_some_and(|v| v.starts_with("9.")))
     {
         let crb = "codeready-builder-for-rhel-9-".to_string() + &platform.arch + "-rpms";
         Ok(LinuxTools{
@@ -762,7 +761,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
             Some(x) => x,
             None => continue,
         };
-        if re.is_match(&fnamestr) {
+        if re.is_match(fnamestr) {
             match std::fs::read_link(&path) {
                 Err(_) => {
                     OUTPUT.warn(&format!("{} is not a symlink", path.display()));
@@ -772,16 +771,9 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                     if !target.exists() {
                         OUTPUT.status(&format!("Cleaning up {}", target.display()));
                         info!("Cleaning up {}", target.display());
-                        match std::fs::remove_file(&path) {
-                            Err(err) => {
-                                OUTPUT.warn(&format!(
-                                    "Failed to remove {}: {}",
-                                    path.display(),
-                                    err.to_string()
-                                ));
-                                warn!("Failed to remove {}: {}", path.display(), err.to_string())
-                            }
-                            _ => {}
+                        if let Err(err) = std::fs::remove_file(&path) {
+                            OUTPUT.warn(&format!("Failed to remove {}: {}", path.display(), err));
+                            warn!("Failed to remove {}: {}", path.display(), err)
                         }
                     }
                 }
@@ -792,8 +784,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
 }
 
 pub fn re_alias() -> Regex {
-    let re = Regex::new("^R-(release|oldrel)$").unwrap();
-    re
+    Regex::new("^R-(release|oldrel)$").unwrap()
 }
 
 pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
@@ -822,7 +813,7 @@ pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
             Some(x) => x,
             None => continue,
         };
-        if re.is_match(&fnamestr) {
+        if re.is_match(fnamestr) {
             trace!("Checking {}", path.display());
             match std::fs::read_link(&path) {
                 Err(_) => debug!("{} is not a symlink", path.display()),
@@ -852,21 +843,16 @@ pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
 }
 
 fn version_from_link(pb: PathBuf) -> Option<String> {
-    let osver = match pb
+    let osver = pb
         .parent()
         .and_then(|x| x.parent())
         .and_then(|x| x.file_name())
-    {
-        None => None,
-        Some(s) => Some(s.to_os_string()),
-    };
+        .map(|s| s.to_os_string());
 
-    let s = match osver {
+    match osver {
         None => None,
         Some(os) => os.into_string().ok(),
-    };
-
-    s
+    }
 }
 
 pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
@@ -979,7 +965,7 @@ if (Sys.getenv("PKG_SYSREQS") == "") Sys.setenv(PKG_SYSREQS = "false")
     for ver in vers {
         let ver = check_installed(&ver)?;
         let path = Path::new(&get_r_root()?).join(ver.as_str());
-        let profile = path.join("lib/R/library/base/R/Rprofile".to_string());
+        let profile = path.join("lib/R/library/base/R/Rprofile");
         if !profile.exists() {
             continue;
         }
@@ -1498,7 +1484,7 @@ fn check_usr_bin_sed(rver: &str) -> Result<(), Box<dyn Error>> {
     };
     let re_sed = Regex::new("^SED = /usr/bin/sed$")?;
     let idx_sed: Vec<usize> = grep_lines(&re_sed, &lines);
-    if idx_sed.len() == 0 {
+    if idx_sed.is_empty() {
         debug!("SED is not set in Makeconf, bailing.");
         return Ok(());
     }
@@ -1648,7 +1634,6 @@ pub fn set_cert_envvar() {
     match std::env::var("SSL_CERT_FILE") {
         Ok(_) => {
             debug!("SSL_CERT_FILE is already set, keeping it.");
-            return;
         }
         Err(_) => {
             let scertpath = "/usr/local/share/rig/cacert.pem";
@@ -1663,7 +1648,7 @@ pub fn set_cert_envvar() {
                 );
             }
         }
-    };
+    }
 }
 
 #[cfg(test)]
