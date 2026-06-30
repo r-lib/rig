@@ -74,6 +74,8 @@ jobs:
 
     - name: Run cargo tests
       run: |
+        cargo fmt --check
+        cargo clippy --all-targets -- -D warnings
         cargo test
 
     - name: Build rig
@@ -267,6 +269,7 @@ jobs:
 
     - name: Run cargo tests
       run: |
+        cargo clippy --all-targets -- -D warnings
         cargo test
 
     - name: Upload build as artifact
@@ -318,6 +321,7 @@ jobs:
 
     - name: Run cargo tests
       run: |
+        cargo clippy --all-targets -- -D warnings
         cargo test
       shell: bash
 
