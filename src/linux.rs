@@ -1197,13 +1197,33 @@ fn user_mode_install_spec(admin_dir: &str, aliases: &[Alias]) -> String {
     admin_dir.to_string()
 }
 
+fn expected_user_dirname(admin_root: &Path, admin_dir: &str) -> String {
+    match read_r_status(&admin_root.join(admin_dir)).as_deref() {
+        Some("Under development (unstable)") => "devel".to_string(),
+        Some(s) if !s.is_empty() => "next".to_string(),
+        _ => admin_dir.to_string(),
+    }
+}
+
 fn reinstall_in_user_mode(
     versions: &[String],
     aliases: &[Alias],
 ) -> Result<Vec<(String, String)>, Box<dyn Error>> {
     let exe = std::env::current_exe()?;
+    let admin_root = Path::new(R_ROOT_);
     let mut map: Vec<(String, String)> = vec![];
     for admin_dir in versions {
+        // Skip versions that are already installed in user mode.
+        let udir = expected_user_dirname(admin_root, admin_dir);
+        if sc_get_list()?.contains(&udir) {
+            OUTPUT.status(&format!(
+                "R '{}' is already installed in user mode, not reinstalling",
+                udir
+            ));
+            info!("R '{}' already installed in user mode, skipping", udir);
+            map.push((admin_dir.clone(), udir));
+            continue;
+        }
         let spec = user_mode_install_spec(admin_dir, aliases);
         OUTPUT.status(&format!("Reinstalling R '{}' in user mode", spec));
         info!("Reinstalling R '{}' in user mode", spec);
@@ -1847,6 +1867,37 @@ Usage: /lib/ld-musl-x86_64.so.1 [options] [--] pathname\n";
         // With no aliases at all the directory name is used verbatim, including
         // symbolic names like `devel`.
         assert_eq!(user_mode_install_spec("devel", &[]), "devel");
+    }
+
+    // Write an R installation's `lib/R/include/Rversion.h` declaring the given
+    // R_STATUS (empty for a released build).
+    fn write_rversion_h(root: &Path, dir: &str, status: &str) {
+        let incdir = root.join(dir).join("lib").join("R").join("include");
+        std::fs::create_dir_all(&incdir).unwrap();
+        std::fs::write(
+            incdir.join("Rversion.h"),
+            format!("#define R_STATUS \"{}\"\n", status),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn expected_user_dirname_uses_version_devel_and_next() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        // A released build keeps its version-number directory name.
+        write_rversion_h(root, "4.6.0", "");
+        assert_eq!(expected_user_dirname(root, "4.6.0"), "4.6.0");
+
+        // R-devel and R-next get their symbolic directory names.
+        write_rversion_h(root, "rdevel", "Under development (unstable)");
+        assert_eq!(expected_user_dirname(root, "rdevel"), "devel");
+        write_rversion_h(root, "rnext", "Prerelease");
+        assert_eq!(expected_user_dirname(root, "rnext"), "next");
+
+        // With no header to inspect, fall back to the directory name.
+        assert_eq!(expected_user_dirname(root, "4.4.3"), "4.4.3");
     }
 
     #[test]

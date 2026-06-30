@@ -1553,8 +1553,28 @@ fn user_mode_install_spec(
     Ok((version, arch))
 }
 
+fn expected_user_dirname(admin_root: &Path, admin_dir: &str) -> Option<String> {
+    let (version, arch) = read_built_version_arch(&admin_root.join(admin_dir)).ok()?;
+    // `include/` lives under `Resources/` in admin-mode framework installs.
+    let status = read_r_status(&admin_root.join(admin_dir).join("Resources"))
+        .or_else(|_| read_r_status(&admin_root.join(admin_dir)))
+        .unwrap_or_default();
+    let base = match status.as_str() {
+        "" => version,
+        "Under development (unstable)" => "devel".to_string(),
+        _ => "next".to_string(),
+    };
+    let dirname = if arch == "x86_64" && is_arm64_machine() {
+        format!("{}-x86_64", base)
+    } else {
+        base
+    };
+    Some(dirname)
+}
+
 // Reinstall the given admin-mode versions in user mode by spawning `rig add`
 // for each (so the full install path, including alias creation, is reused).
+// Versions that are already installed in user mode are not reinstalled.
 // Returns a mapping from each admin-mode directory name to the resulting
 // user-mode directory name, used to restore the default version.
 fn reinstall_in_user_mode(
@@ -1565,6 +1585,18 @@ fn reinstall_in_user_mode(
     let exe = std::env::current_exe()?;
     let mut map: Vec<(String, String)> = vec![];
     for admin_dir in versions {
+        // Skip versions that are already installed in user mode.
+        if let Some(udir) = expected_user_dirname(admin_root, admin_dir) {
+            if sc_get_list()?.contains(&udir) {
+                OUTPUT.status(&format!(
+                    "R '{}' is already installed in user mode, not reinstalling",
+                    udir
+                ));
+                info!("R '{}' already installed in user mode, skipping", udir);
+                map.push((admin_dir.clone(), udir));
+                continue;
+            }
+        }
         let (spec, arch) = match user_mode_install_spec(admin_root, admin_dir, aliases) {
             Ok(x) => x,
             Err(e) => {
@@ -2878,6 +2910,41 @@ mod tests {
     fn user_mode_install_spec_errors_when_description_missing() {
         let dir = tempfile::tempdir().unwrap();
         assert!(user_mode_install_spec(dir.path(), "4.2-arm64", &[]).is_err());
+    }
+
+    #[test]
+    fn expected_user_dirname_uses_version_devel_and_next() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        // A released arm64 build is named after its exact version number.
+        write_admin_install(root, "4.6-arm64", "4.6.0", "aarch64");
+        write_rversion_h(&root.join("4.6-arm64").join("Resources"), "");
+        assert_eq!(
+            expected_user_dirname(root, "4.6-arm64").as_deref(),
+            Some("4.6.0")
+        );
+
+        // R-devel and R-next get their symbolic directory names.
+        write_admin_install(root, "4.7-arm64", "4.7.0", "aarch64");
+        write_rversion_h(
+            &root.join("4.7-arm64").join("Resources"),
+            "Under development (unstable)",
+        );
+        assert_eq!(
+            expected_user_dirname(root, "4.7-arm64").as_deref(),
+            Some("devel")
+        );
+
+        write_admin_install(root, "4.7-next", "4.7.0", "aarch64");
+        write_rversion_h(&root.join("4.7-next").join("Resources"), "Prerelease");
+        assert_eq!(
+            expected_user_dirname(root, "4.7-next").as_deref(),
+            Some("next")
+        );
+
+        // An installation we cannot inspect yields None.
+        assert_eq!(expected_user_dirname(root, "missing"), None);
     }
 
     #[test]
