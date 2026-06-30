@@ -6,7 +6,7 @@ use log::{debug, info, warn};
 use regex::Regex;
 use tabular::*;
 use winreg::enums::*;
-use winreg::RegKey;
+use winreg::{RegKey, RegValue};
 
 use crate::common::*;
 use crate::escalate::*;
@@ -17,6 +17,15 @@ use crate::windows_arch::*;
 use super::{
     arch_of_name, get_links_dir, get_r_root_for, r_dirname, rig_name_for_arch, version_dir_key,
 };
+
+// The registry locations the Rtools installers record version info under: the
+// native (64-bit) view and the WOW6432Node view. The 32-bit legacy (2.x/3.x)
+// installers have their HKLM writes redirected to WOW6432Node, so both views
+// must be checked when reading, cleaning or relocating Rtools keys.
+const RTOOLS_REG_PATHS: [&str; 2] = [
+    "SOFTWARE\\R-core\\Rtools",
+    "SOFTWARE\\WOW6432Node\\R-core\\Rtools",
+];
 
 fn clean_registry_r(key: &RegKey) -> Result<(), Box<dyn Error>> {
     for nm in key.enum_keys() {
@@ -112,20 +121,14 @@ pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
 
     // Rtools registers in HKLM for admin installs and HKCU for per-user installs.
     let rtools_hive = rtools_registry_hive()?;
-    let rtools64 = rtools_hive.open_subkey("SOFTWARE\\R-core\\Rtools");
-    if let Ok(x) = rtools64 {
-        clean_registry_rtools(&x)?;
-        if x.enum_keys().count() == 0 {
-            rtools_hive.delete_subkey("SOFTWARE\\R-core\\Rtools")?;
+    for path in RTOOLS_REG_PATHS {
+        if let Ok(x) = rtools_hive.open_subkey(path) {
+            clean_registry_rtools(&x)?;
+            if x.enum_keys().count() == 0 {
+                rtools_hive.delete_subkey(path)?;
+            }
         }
-    };
-    let rtools32 = rtools_hive.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\Rtools");
-    if let Ok(x) = rtools32 {
-        clean_registry_rtools(&x)?;
-        if x.enum_keys().count() == 0 {
-            rtools_hive.delete_subkey("SOFTWARE\\WOW6432Node\\R-core\\Rtools")?;
-        }
-    };
+    }
 
     if get_mode()? == Mode::Admin {
         let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
@@ -388,13 +391,10 @@ pub(super) fn sc_rtools_ls(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(
 
     // Admin installs register under HKLM, per-user installs under HKCU.
     let hive = rtools_registry_hive()?;
-    let rtools32 = hive.open_subkey("SOFTWARE\\WOW6432Node\\R-core\\Rtools");
-    if let Ok(key) = rtools32 {
-        versions.append(&mut get_rtools_versions(&key)?);
-    }
-    let rtools64 = hive.open_subkey("SOFTWARE\\R-core\\Rtools");
-    if let Ok(key) = rtools64 {
-        versions.append(&mut get_rtools_versions(&key)?);
+    for path in RTOOLS_REG_PATHS {
+        if let Ok(key) = hive.open_subkey(path) {
+            versions.append(&mut get_rtools_versions(&key)?);
+        }
     }
 
     let json = args.get_flag("json") || mainargs.get_flag("json");
@@ -426,10 +426,7 @@ pub(super) fn sc_rtools_ls(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(
 pub(super) fn list_admin_rtools() -> Result<Vec<(String, String)>, Box<dyn Error>> {
     let mut out: Vec<(String, String)> = vec![];
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    for path in [
-        "SOFTWARE\\WOW6432Node\\R-core\\Rtools",
-        "SOFTWARE\\R-core\\Rtools",
-    ] {
+    for path in RTOOLS_REG_PATHS {
         if let Ok(key) = hklm.open_subkey(path) {
             for v in get_rtools_versions(&key)? {
                 if Path::new(&v.path).exists() {
@@ -449,10 +446,7 @@ pub(super) fn list_admin_rtools() -> Result<Vec<(String, String)>, Box<dyn Error
 pub(super) fn admin_rtools_paths() -> Result<Vec<String>, Box<dyn Error>> {
     let mut out: Vec<String> = vec![];
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    for path in [
-        "SOFTWARE\\WOW6432Node\\R-core\\Rtools",
-        "SOFTWARE\\R-core\\Rtools",
-    ] {
+    for path in RTOOLS_REG_PATHS {
         if let Ok(key) = hklm.open_subkey(path) {
             for v in get_rtools_versions(&key)? {
                 if Path::new(&v.path).exists() && !out.contains(&v.path) {
@@ -470,10 +464,7 @@ pub(super) fn admin_rtools_paths() -> Result<Vec<String>, Box<dyn Error>> {
 // are pruned by clean_admin_registry().
 pub(super) fn clean_admin_rtools_registry() -> Result<(), Box<dyn Error>> {
     let hive = RegKey::predef(HKEY_LOCAL_MACHINE);
-    for path in [
-        "SOFTWARE\\R-core\\Rtools",
-        "SOFTWARE\\WOW6432Node\\R-core\\Rtools",
-    ] {
+    for path in RTOOLS_REG_PATHS {
         if let Ok(key) = hive.open_subkey(path) {
             clean_registry_rtools(&key)?;
             if key.enum_keys().count() == 0 {
@@ -516,6 +507,118 @@ pub(super) fn get_latest_install_path(
         }
     }
     Ok(None)
+}
+
+// An in-memory snapshot of a registry subtree (values + child subkeys),
+// used to back up and recreate Rtools keys when relocating them between hives.
+#[derive(Default)]
+struct RegNode {
+    values: Vec<(String, RegValue)>,
+    subkeys: Vec<(String, RegNode)>,
+}
+
+// Read a registry subtree (raw values, to preserve their types, plus all
+// descendant subkeys) into a RegNode.
+fn read_reg_tree(key: &RegKey) -> Result<RegNode, Box<dyn Error>> {
+    let mut node = RegNode::default();
+    for v in key.enum_values() {
+        let (name, value) = v?;
+        node.values.push((name, value));
+    }
+    for k in key.enum_keys() {
+        let name = k?;
+        let sub = key.open_subkey(&name)?;
+        node.subkeys.push((name, read_reg_tree(&sub)?));
+    }
+    Ok(node)
+}
+
+// Write a RegNode's values and subkeys into an already-opened key.
+fn write_reg_tree(key: &RegKey, node: &RegNode) -> Result<(), Box<dyn Error>> {
+    for (name, value) in &node.values {
+        key.set_raw_value(name, value)?;
+    }
+    for (name, sub) in &node.subkeys {
+        let (subkey, _) = key.create_subkey(name)?;
+        write_reg_tree(&subkey, sub)?;
+    }
+    Ok(())
+}
+
+// Back up and restore HKLM registry because rtools 3.x and older overwrites it
+// even in user mode.
+pub(super) struct LegacyRtoolsRegRelocation {
+    backup: Vec<(&'static str, RegNode)>,
+    committed: bool,
+}
+
+impl LegacyRtoolsRegRelocation {
+    // Step 2: back up and clear any pre-existing HKLM Rtools keys, so that after
+    // the install HKLM\...\Rtools holds only what this installer wrote.
+    pub(super) fn begin() -> Result<Self, Box<dyn Error>> {
+        let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+        let mut backup = vec![];
+        for path in RTOOLS_REG_PATHS {
+            if let Ok(key) = hklm.open_subkey(path) {
+                let tree = read_reg_tree(&key)?;
+                drop(key);
+                hklm.delete_subkey_all(path)?;
+                debug!("Backed up and cleared HKLM\\{} before Rtools install", path);
+                backup.push((path, tree));
+            }
+        }
+        Ok(LegacyRtoolsRegRelocation {
+            backup,
+            committed: false,
+        })
+    }
+
+    // Steps 4 + 5: move the keys the installer wrote under HKLM into HKCU, then
+    // restore the original HKLM state from the backup taken in begin().
+    pub(super) fn commit(mut self) -> Result<(), Box<dyn Error>> {
+        let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        for path in RTOOLS_REG_PATHS {
+            if let Ok(src) = hklm.open_subkey(path) {
+                let tree = read_reg_tree(&src)?;
+                drop(src);
+                let (dst, _) = hkcu.create_subkey(path)?;
+                write_reg_tree(&dst, &tree)?;
+                hklm.delete_subkey_all(path)?;
+                debug!("Moved HKLM\\{0} -> HKCU\\{0} after Rtools install", path);
+            }
+        }
+        restore_reg_backup(&hklm, &self.backup);
+        self.committed = true;
+        Ok(())
+    }
+}
+
+impl Drop for LegacyRtoolsRegRelocation {
+    fn drop(&mut self) {
+        if !self.committed {
+            // The install failed after begin() cleared HKLM: best-effort restore
+            // so we never leave the system with the user's original Rtools keys
+            // missing.
+            let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+            restore_reg_backup(&hklm, &self.backup);
+        }
+    }
+}
+
+// Recreate the backed-up HKLM Rtools keys. Best-effort: failures are logged but
+// not propagated, since this runs both on the success and the cleanup paths.
+fn restore_reg_backup(hklm: &RegKey, backup: &[(&'static str, RegNode)]) {
+    for (path, tree) in backup {
+        match hklm.create_subkey(path) {
+            Ok((key, _)) => {
+                if let Err(e) = write_reg_tree(&key, tree) {
+                    warn!("Failed to restore HKLM\\{}: {}", path, e);
+                }
+            }
+            Err(e) => warn!("Failed to recreate HKLM\\{} for restore: {}", path, e),
+        }
+    }
 }
 
 #[cfg(test)]

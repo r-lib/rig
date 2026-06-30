@@ -5,7 +5,7 @@ pub use registry::sc_clean_registry;
 use registry::{
     add_user_bin_to_path, admin_rtools_paths, clean_admin_registry, clean_admin_rtools_registry,
     get_latest_install_path, list_admin_rtools, maybe_update_registry_default, sc_rtools_ls,
-    unset_registry_default, update_registry_default,
+    unset_registry_default, update_registry_default, LegacyRtoolsRegRelocation,
 };
 
 use regex::Regex;
@@ -581,14 +581,24 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<(), Box<dyn Error
         // In User mode install per-user (/CURRENTUSER) into the rig-managed rtools root,
         // which writes the Rtools registry key to HKCU. Admin mode keeps the system install.
         let mut cmd_args = vec![os("/VERYSILENT"), os("/SUPPRESSMSGBOXES")];
-        if get_mode()? == Mode::User {
+        let user_mode = get_mode()? == Mode::User;
+        if user_mode {
             if let Some(parent) = instdirpath.parent() {
                 std::fs::create_dir_all(parent)?;
             }
             cmd_args.push(os("/CURRENTUSER"));
             cmd_args.push(OsString::from(format!("/DIR={}", instdirpath.display())));
         }
-        run(target.into_os_string(), cmd_args, "installer")?;
+
+        // from admin shells rtools 3.x updates HKLM, always, work around that
+        let installer = target.into_os_string();
+        if user_mode && is_legacy_rtools(&item.version) && is_elevated::is_elevated() {
+            let reloc = LegacyRtoolsRegRelocation::begin()?;
+            run(installer, cmd_args, "installer")?;
+            reloc.commit()?;
+        } else {
+            run(installer, cmd_args, "installer")?;
+        }
     }
 
     // In user mode R finds Rtools via RTOOLS<NN>_HOME, which rig writes into each R
@@ -2085,6 +2095,20 @@ mod tests {
         assert!(!re.is_match("R-4.6.0.bat"));
         assert!(!re.is_match("R-4.6.0-x86_64.bat"));
         assert!(!re.is_match("R-oldrel-aarch64.bat"));
+    }
+
+    #[test]
+    fn is_legacy_rtools_matches_2x_and_3x_only() {
+        // 2.x and 3.x installers pick the hive from process elevation.
+        assert!(is_legacy_rtools("35"));
+        assert!(is_legacy_rtools("34"));
+        assert!(is_legacy_rtools("30"));
+        assert!(is_legacy_rtools("215"));
+        assert!(is_legacy_rtools("26"));
+        // 4.0+ honour /CURRENTUSER and need no relocation.
+        assert!(!is_legacy_rtools("40"));
+        assert!(!is_legacy_rtools("44"));
+        assert!(!is_legacy_rtools("45"));
     }
 
     #[test]
