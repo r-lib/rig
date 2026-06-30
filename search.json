@@ -372,7 +372,7 @@
     "href": "usage.html#windows-rig-system-subcommands",
     "title": "Usage",
     "section": "Windows rig system subcommands",
-    "text": "Windows rig system subcommands\nrig system add-pak                 -- install or update pak for an R version\nrig system clean-registry          -- clean stale R related entries in the registry\nrig detect-platform                -- detect operating system version and distribution\nrig system make-links              -- create R-* quick links\nrig system setup-user-lib          -- set up automatic user package libraries [alias: create-lib]\nrig system update-rtools40         -- update Rtools40 MSYS2 packages\nrig system user-mode               -- switch to user mode and clean up admin-mode installations",
+    "text": "Windows rig system subcommands\nrig system add-pak                 -- install or update pak for an R version\nrig system clean-registry          -- clean stale R related entries in the registry\nrig detect-platform                -- detect operating system version and distribution\nrig system fix-r-alias             -- Make the 'R' command start R in PowerShell\nrig system make-links              -- create R-* quick links\nrig system setup-user-lib          -- set up automatic user package libraries [alias: create-lib]\nrig system update-rtools40         -- update Rtools40 MSYS2 packages\nrig system user-mode               -- switch to user mode and clean up admin-mode installations",
     "crumbs": [
       "Guide",
       "Usage"
