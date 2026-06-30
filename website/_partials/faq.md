@@ -126,8 +126,7 @@
 >   requested otherwise.
 > - `rig install` downloads the EPEL package from
 >   https://dl.fedoraproject.org/pub/epel on RHEL systems.
-> - `rig system rtools` downloads Rtools from the following URLs on
->   Windows:
+> - `rig rtools` downloads Rtools from the following URLs on Windows:
 >   * https://github.com/r-hub/rtools44/releases,
 >   * https://github.com/r-hub/rtools43/releases,
 >   * https://github.com/r-hub/rtools42/releases,

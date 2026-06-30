@@ -16,6 +16,67 @@ use crate::windows_arch::*;
 
 std::include!("help-common.in");
 
+fn cmd_rtools() -> Command {
+    let cmd_rtools_ls = Command::new("list")
+        .about("List installed Rtools vesions [alias: ls]")
+        .long_about(HELP_RTOOLS_LS)
+        .display_order(0)
+        .aliases(["ls"])
+        .arg(
+            Arg::new("json")
+                .help("JSON output")
+                .long("json")
+                .num_args(0)
+                .required(false),
+        );
+    let cmd_rtools_add = Command::new("add")
+        .about("Install new Rtools version [alias: install]")
+        .long_about(HELP_RTOOLS_ADD)
+        .display_order(0)
+        .aliases(["install"])
+        .arg(
+            Arg::new("version")
+                .help("Rtools version to add, e.g. '43'")
+                .default_value("all"),
+        )
+        .arg(
+            Arg::new("arch")
+                .help("Architecture to install Rtools for (default: native arch).")
+                .short('a')
+                .long("arch")
+                .required(false)
+                .value_parser(["x86_64", "aarch64", "arm64"]),
+        );
+    let cmd_rtools_rm = Command::new("rm")
+        .about("Remove rtools versions [aliases: del, remove, delete]")
+        .long_about(HELP_RTOOLS_RM)
+        .display_order(0)
+        .aliases(["del", "remove", "delete"])
+        .arg(
+            Arg::new("version")
+                .help("versions to remove")
+                .action(clap::ArgAction::Append)
+                .required(false),
+        )
+        .arg(
+            Arg::new("arch")
+                .help("Architecture of Rtools to remove (default: native arch).")
+                .short('a')
+                .long("arch")
+                .required(false)
+                .value_parser(["x86_64", "aarch64", "arm64"]),
+        );
+
+    Command::new("rtools")
+        .about("Manage Rtools installations")
+        .display_order(0)
+        .hide(cfg!(not(target_os = "windows")))
+        .arg_required_else_help(true)
+        .subcommand(cmd_rtools_ls)
+        .subcommand(cmd_rtools_add)
+        .subcommand(cmd_rtools_rm)
+}
+
 pub fn rig_app() -> Command {
     let _arch_x86_64: &'static str = "x86_64";
     let _arch_arm64: &'static str = "arm64";
@@ -436,64 +497,10 @@ pub fn rig_app() -> Command {
             .long_about(HELP_SYSTEM_UPDATE_RTOOLS40);
         cmd_system = cmd_system.subcommand(cmd_system_update_rtools40);
 
-        let cmd_system_rtools_ls = Command::new("list")
-            .about("List installed Rtools vesions [alias: ls]")
-            .long_about(HELP_SYSTEM_RTOOLS_LS)
-            .display_order(0)
-            .aliases(["ls"])
-            .arg(
-                Arg::new("json")
-                    .help("JSON output")
-                    .long("json")
-                    .num_args(0)
-                    .required(false),
-            );
-        let cmd_system_rtools_add = Command::new("add")
-            .about("Install new Rtools version [alias: install]")
-            .long_about(HELP_SYSTEM_RTOOLS_ADD)
-            .display_order(0)
-            .aliases(["install"])
-            .arg(
-                Arg::new("version")
-                    .help("Rtools version to add, e.g. '43'")
-                    .default_value("all"),
-            )
-            .arg(
-                Arg::new("arch")
-                    .help("Architecture to install Rtools for (default: native arch).")
-                    .short('a')
-                    .long("arch")
-                    .required(false)
-                    .value_parser(["x86_64", "aarch64", "arm64"]),
-            );
-        let cmd_system_rtools_rm = Command::new("rm")
-            .about("Remove rtools versions [aliases: del, remove, delete]")
-            .long_about(HELP_SYSTEM_RTOOLS_RM)
-            .display_order(0)
-            .aliases(["del", "remove", "delete"])
-            .arg(
-                Arg::new("version")
-                    .help("versions to remove")
-                    .action(clap::ArgAction::Append)
-                    .required(false),
-            )
-            .arg(
-                Arg::new("arch")
-                    .help("Architecture of Rtools to remove (default: native arch).")
-                    .short('a')
-                    .long("arch")
-                    .required(false)
-                    .value_parser(["x86_64", "aarch64", "arm64"]),
-            );
-
-        let cmd_system_rtools = Command::new("rtools")
-            .about("Manage Rtools installations")
-            .display_order(0)
-            .hide(cfg!(not(target_os = "windows")))
-            .arg_required_else_help(true)
-            .subcommand(cmd_system_rtools_ls)
-            .subcommand(cmd_system_rtools_add)
-            .subcommand(cmd_system_rtools_rm);
+        // `rtools` is also available as a top-level command (`rig rtools`);
+        // the `rig system rtools` form is kept for backwards compatibility,
+        // but always hidden.
+        let cmd_system_rtools = cmd_rtools().hide(true);
         cmd_system = cmd_system.subcommand(cmd_system_rtools);
     }
 
@@ -1453,6 +1460,7 @@ pub fn rig_app() -> Command {
         .subcommand(cmd_add)
         .subcommand(cmd_rm)
         .subcommand(cmd_system)
+        .subcommand(cmd_rtools())
         .subcommand(cmd_resolve)
         .subcommand(cmd_rstudio)
         .subcommand(cmd_library)

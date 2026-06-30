@@ -296,6 +296,7 @@ Run `rig --help` and `rig <subcommand> --help` to see the documentation.
     rig resolve    -- resolve a symbolic R version
     rig rm         -- remove R versions [aliases: del, remove, delete]
     rig rstudio    -- start RStudio with specified R version
+    rig rtools     -- manage Rtools installations (on Windows only)
     rig run        -- run R, an R script or an R project
     rig sysreqs    -- manage R-related system libraries and tools (experimental)
     rig system     -- manage current installations
@@ -322,7 +323,6 @@ Run `rig <subcommand> --help` for information about a subcommand.
     rig system clean-registry          -- clean stale R related entries in the registry
     rig detect-platform                -- detect operating system version and distribution
     rig system make-links              -- create R-* quick links
-    rig system rtools                  -- manage Rtools installations
     rig system setup-user-lib          -- set up automatic user package libraries [alias: create-lib]
     rig system update-rtools40         -- update Rtools40 MSYS2 packages
 
@@ -597,8 +597,7 @@ Which domains does rig download files from?
 >   requested otherwise.
 > - `rig install` downloads the EPEL package from
 >   <https://dl.fedoraproject.org/pub/epel> on RHEL systems.
-> - `rig system rtools` downloads Rtools from the following URLs on
->   Windows:
+> - `rig rtools` downloads Rtools from the following URLs on Windows:
 >   - <https://github.com/r-hub/rtools44/releases>,
 >   - <https://github.com/r-hub/rtools43/releases>,
 >   - <https://github.com/r-hub/rtools42/releases>,

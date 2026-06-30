@@ -489,7 +489,7 @@ const HELP_SYSTEM_UPDATE_RTOOLS40: &str = "
 
   In admin mode this command needs an administrator account.";
 
-const HELP_SYSTEM_RTOOLS_LS: &str = "
+const HELP_RTOOLS_LS: &str = "
 \x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
   List installed Rtools versions on Windows.
 
@@ -497,7 +497,7 @@ const HELP_SYSTEM_RTOOLS_LS: &str = "
 
   Use the `--json` flag for JSON output.";
 
-const HELP_SYSTEM_RTOOLS_ADD: &str = "
+const HELP_RTOOLS_ADD: &str = "
   Install new Rtools versions on Windows.
 
   You can specify the new version(s) by their name, optionally with an
@@ -515,10 +515,10 @@ const HELP_SYSTEM_RTOOLS_ADD: &str = "
   In admin mode this command needs an administrator account.
 
 \x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
-  rig system rtools add 43
-  rig system rtools add all";
+  rig rtools add 43
+  rig rtools add all";
 
-const HELP_SYSTEM_RTOOLS_RM: &str = "
+const HELP_RTOOLS_RM: &str = "
   Remove Rtools versions on Windows.
 
   You can specify the version(s) to remove by their name, optionally with
@@ -529,4 +529,4 @@ const HELP_SYSTEM_RTOOLS_RM: &str = "
   In admin mode this command needs an administrator account.
 
 \x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
-  rig system rtools rm 43";
+  rig rtools rm 43";

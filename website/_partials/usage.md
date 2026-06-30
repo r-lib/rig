@@ -23,6 +23,7 @@ rig repos      -- manage package repositories
 rig resolve    -- resolve a symbolic R version
 rig rm         -- remove R versions [aliases: del, remove, delete]
 rig rstudio    -- start RStudio with specified R version
+rig rtools     -- manage Rtools installations (on Windows only)
 rig run        -- run R, an R script or an R project
 rig sysreqs    -- manage R-related system libraries and tools (experimental)
 rig system     -- manage current installations
@@ -54,7 +55,6 @@ rig system add-pak                 -- install or update pak for an R version
 rig system clean-registry          -- clean stale R related entries in the registry
 rig detect-platform                -- detect operating system version and distribution
 rig system make-links              -- create R-* quick links
-rig system rtools                  -- manage Rtools installations
 rig system setup-user-lib          -- set up automatic user package libraries [alias: create-lib]
 rig system update-rtools40         -- update Rtools40 MSYS2 packages
 rig system user-mode               -- switch to user mode and clean up admin-mode installations

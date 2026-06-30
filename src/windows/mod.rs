@@ -813,7 +813,7 @@ fn rm_rtools(ver: String, arch: Option<String>) -> Result<(), Box<dyn Error>> {
         if !arch_explicit && get_native_arch() == "aarch64" {
             OUTPUT.warn(&format!(
                 "If you installed the x86_64 Rtools, remove it with: \
-                 rig system rtools rm {} --arch x86_64",
+                 rig rtools rm {} --arch x86_64",
                 version
             ));
         }
