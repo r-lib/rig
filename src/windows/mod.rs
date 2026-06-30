@@ -3,7 +3,8 @@
 mod registry;
 pub use registry::sc_clean_registry;
 use registry::{
-    add_user_bin_to_path, get_latest_install_path, maybe_update_registry_default, sc_rtools_ls,
+    add_user_bin_to_path, admin_rtools_paths, clean_admin_registry, clean_admin_rtools_registry,
+    get_latest_install_path, list_admin_rtools, maybe_update_registry_default, sc_rtools_ls,
     unset_registry_default, update_registry_default,
 };
 
@@ -75,14 +76,26 @@ pub fn get_r_root_arch(arch: &str) -> Result<String, Box<dyn Error>> {
         // User mode: all arches share the same root; arch is encoded in the directory name
         return Ok(base);
     }
+    Ok(admin_r_root_arch(arch))
+}
+
+// The fixed admin-mode (system-wide) R installation root for a given
+// architecture. On an aarch64 host the native arm64 build lives in
+// `C:\Program Files\R-aarch64` and the cross-architecture x86_64 build in
+// `C:\Program Files (x86)\R`; everywhere else R lives in `C:\Program Files\R`.
+// This is the single source of truth for the admin roots, used both by
+// get_r_root_arch (in admin mode) and by the user-mode migration and
+// clean-admin-r (which act on the admin locations regardless of the
+// configured mode).
+pub(super) fn admin_r_root_arch(arch: &str) -> String {
     const R_ROOT_: &str = "C:\\Program Files\\R";
     const R_X86_ROOT_: &str = "C:\\Program Files (x86)\\R";
     const R_AARCH64_ROOT_: &str = "C:\\Program Files\\R-aarch64";
-    Ok(match arch {
+    match arch {
         "aarch64" | "arm64" => R_AARCH64_ROOT_.to_string(),
         "x86_64" if get_native_arch() == "aarch64" => R_X86_ROOT_.to_string(),
         _ => R_ROOT_.to_string(),
-    })
+    }
 }
 
 // Strip a trailing -x86_64, -aarch64, or -arm64 arch suffix from a rig name.
@@ -754,7 +767,10 @@ fn rm_rtools(ver: String, arch: Option<String>) -> Result<(), Box<dyn Error>> {
     info!("Removing {}", dir.display());
     match remove_dir_all(&dir) {
         Err(_err) => {
-            let cmd = format!("del -recurse -force {}", dir.display());
+            let cmd = format!(
+                "Remove-Item -Recurse -Force -LiteralPath '{}'",
+                dir.display().to_string().replace('\'', "''")
+            );
             let out = Command::new("powershell")
                 .args(["-command", &cmd])
                 .output()?;
@@ -995,13 +1011,528 @@ pub fn sc_system_make_orthogonal(_args: &ArgMatches) -> Result<(), Box<dyn Error
     Ok(())
 }
 
-pub fn sc_system_user_mode(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    // Not supported on Windows
+// ------------------------------------------------------------------------
+// `rig system user-mode` (Windows): switch rig to user mode and clean up an
+// existing admin-mode setup. Mirrors the macOS/Linux implementation:
+//
+//   1. Captures the admin-mode versions, default and aliases from the system
+//      locations (`C:\Program Files\R` and `C:\Program Files\R\bin`), before
+//      switching the mode.
+//   2. Switches the configured mode to `user`.
+//   3. Reinstalls the admin-mode versions in user mode (unless --no-reinstall)
+//      and restores the previous default version. Aliases are recreated by
+//      reinstalling via the alias name.
+//   4. Removes the admin-mode installations (the `C:\Program Files\R`
+//      directories and their registry entries) and the quick links. This needs
+//      administrator rights, so it is delegated to `rig system clean-admin-r`,
+//      which elevates on its own.
+
+// The admin-mode R installation roots to scan, derived from admin_r_root_arch()
+// so they stay in sync with get_r_root_arch(). Each entry is (root directory,
+// name suffix): the suffix is re-attached to recovered rig names, matching
+// sc_get_list() (the cross-arch x86_64 root on aarch64 gets `-x86_64`).
+fn admin_r_roots() -> Vec<(String, &'static str)> {
+    if get_native_arch() == "aarch64" {
+        vec![
+            (admin_r_root_arch("aarch64"), ""),
+            (admin_r_root_arch("x86_64"), "-x86_64"),
+        ]
+    } else {
+        vec![(admin_r_root_arch(get_native_arch()), "")]
+    }
+}
+
+// The admin-mode quick-link directory, regardless of the configured mode or any
+// `binary-dir` override. This mirrors get_binary_dir()'s admin default and is
+// always `<C:\Program Files\R>\bin`, even on aarch64 where R itself installs
+// elsewhere.
+const ADMIN_LINKS_DIR: &str = "C:\\Program Files\\R\\bin";
+
+pub fn sc_system_user_mode(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    let no_reinstall = args.get_flag("no-reinstall");
+    let keep_install = args.get_flag("keep-install");
+    let keep_links = args.get_flag("keep-links");
+
+    // 1. Capture the admin-mode setup from the system locations, before we
+    //    switch the configured mode.
+    let versions = list_admin_versions()?;
+    let default = find_admin_default()?;
+    let aliases = find_admin_aliases()?;
+    let rtools = list_admin_rtools()?;
+
+    // 2. Switch to user mode. We write the config and prime the in-process mode
+    //    (via the RIG_MODE env var, which child processes inherit) so that the
+    //    reinstallation below targets the user location. Read the persisted mode
+    //    first so we can report whether we actually switched.
+    let already_user = crate::config::get_global_config_value("mode")?.as_deref() == Some("user");
+    std::env::set_var("RIG_MODE", "user");
+    let _ = set_mode(Mode::User);
+    crate::config::set_global_config_value("mode", "user")?;
+    if already_user {
+        OUTPUT.success("rig already in user mode");
+        info!("rig already in user mode");
+    } else {
+        OUTPUT.success("Switched rig to user mode");
+        info!("Switched rig to user mode");
+    }
+
+    // 3. Reinstall the admin-mode versions in user mode and restore the
+    //    previous default version. Aliases are recreated automatically by
+    //    reinstalling via the alias name (see user_mode_install_spec()).
+    if no_reinstall {
+        if !versions.is_empty() {
+            OUTPUT.status("Not reinstalling R versions in user mode (--no-reinstall)");
+        }
+    } else if !versions.is_empty() {
+        let map = reinstall_in_user_mode(&versions, &aliases)?;
+        if let Some(adef) = &default {
+            match map.iter().find(|(a, _)| a == adef) {
+                Some((_, udef)) => {
+                    OUTPUT.status(&format!("Restoring default R version ({})", udef));
+                    if let Err(e) = sc_set_default(udef) {
+                        OUTPUT.warn(&format!("Could not restore default R version: {}", e));
+                        warn!("Could not restore default R version: {}", e);
+                    }
+                }
+                None => {
+                    OUTPUT.warn(&format!(
+                        "Could not restore the previous default R version ({})",
+                        adef
+                    ));
+                    warn!("Could not restore default R version {}", adef);
+                }
+            }
+        }
+    }
+
+    // 3b. Reinstall the admin-mode Rtools in user mode.
+    if no_reinstall {
+        if !rtools.is_empty() {
+            OUTPUT.status("Not reinstalling Rtools in user mode (--no-reinstall)");
+        }
+    } else {
+        reinstall_rtools_in_user_mode(&rtools)?;
+    }
+
+    // 4. Remove the admin-mode installations (unless `--keep-install`) and the
+    //    quick links (unless `--keep-links`). This needs administrator rights,
+    //    so it runs as a separate, self-elevating child process to avoid
+    //    re-running the user-side work above elevated.
+    clean_admin_installations(keep_install, keep_links)?;
+
     Ok(())
 }
 
-pub fn sc_system_clean_admin_r(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    // Not supported on Windows
+// List the admin-mode R version directories (named `R-<base>`) under the system
+// roots, returning rig names (with `-x86_64` suffix for the x86_64 root on
+// aarch64). Mirrors sc_get_list(), but works on the admin locations regardless
+// of the configured mode.
+fn list_admin_versions() -> Result<Vec<String>, Box<dyn Error>> {
+    let mut vers = Vec::new();
+    for (root, suffix) in admin_r_roots() {
+        let rootp = Path::new(&root);
+        if !rootp.exists() {
+            continue;
+        }
+        for de in std::fs::read_dir(rootp)? {
+            let path = de?.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let name = match path.file_name().and_then(|s| s.to_str()) {
+                Some(n) => n.to_string(),
+                None => continue,
+            };
+            // Version directories are named `R-<base>`; the `bin` links
+            // directory and `.rig-install-*` temporaries are not.
+            let base = match name.strip_prefix("R-") {
+                Some(b) => b,
+                None => continue,
+            };
+            if !path.join("bin").join("R.exe").exists() {
+                continue;
+            }
+            vers.push(format!("{}{}", base, suffix));
+        }
+    }
+    vers.sort();
+    Ok(vers)
+}
+
+// Read the admin-mode default R version from `C:\Program Files\R\bin\R.bat`,
+// whose first line is a `::<rig-name>` marker written by sc_set_default().
+fn find_admin_default() -> Result<Option<String>, Box<dyn Error>> {
+    let linkfile = Path::new(ADMIN_LINKS_DIR).join("R.bat");
+    if !linkfile.exists() {
+        return Ok(None);
+    }
+    let file = File::open(&linkfile)?;
+    match BufReader::new(file).lines().next() {
+        Some(line) => Ok(line?.strip_prefix("::").map(|rest| rest.trim().to_string())),
+        None => Ok(None),
+    }
+}
+
+// Recover the admin rig name a quick-link `.bat` file points at, from its
+// `@"<root>\R-<base>\bin\R" %*` line. On aarch64 a link into the x86_64 root
+// (`C:\Program Files (x86)\R`) yields a `-x86_64`-suffixed name.
+fn admin_name_from_link_line(line: &str) -> Option<String> {
+    let is_x86 = get_native_arch() == "aarch64"
+        && line.to_lowercase().contains("\\program files (x86)\\r\\");
+    for part in line.split('\\') {
+        if let Some(base) = part.strip_prefix("R-") {
+            // Skip the `R-aarch64` root directory component.
+            if base == "aarch64" {
+                continue;
+            }
+            return Some(if is_x86 {
+                format!("{}-x86_64", base)
+            } else {
+                base.to_string()
+            });
+        }
+    }
+    None
+}
+
+// Find the alias quick links (R-release, R-oldrel, ...) in the admin-mode links
+// directory and the rig name each points at.
+fn find_admin_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
+    let mut result: Vec<Alias> = vec![];
+    let bindir = Path::new(ADMIN_LINKS_DIR);
+    if !bindir.exists() {
+        return Ok(result);
+    }
+    let re = re_alias();
+    for de in std::fs::read_dir(bindir)? {
+        let path = de?.path();
+        let fname = match path.file_name().and_then(|s| s.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        if !re.is_match(&fname) {
+            continue;
+        }
+        let lines = read_lines(&path)?;
+        if lines.is_empty() {
+            continue;
+        }
+        if let Some(version) = admin_name_from_link_line(&lines[0]) {
+            // Strip the leading `R-` and trailing `.bat` to get the alias name.
+            result.push(Alias {
+                alias: fname[2..fname.len() - 4].to_string(),
+                version,
+            });
+        }
+    }
+    Ok(result)
+}
+
+// Determine how to reinstall an admin-mode version in user mode: the `rig add`
+// spec (an alias name when one points at the version, otherwise the bare
+// version) and the architecture to install.
+fn user_mode_install_spec(admin_name: &str, aliases: &[Alias]) -> (String, String) {
+    let arch = arch_of_name(admin_name).to_string();
+    for al in aliases {
+        if al.version == admin_name {
+            let spec = al
+                .alias
+                .strip_suffix("-x86_64")
+                .unwrap_or(&al.alias)
+                .to_string();
+            return (spec, arch);
+        }
+    }
+    (base_version(admin_name), arch)
+}
+
+// Reinstall the given admin-mode versions in user mode by spawning `rig add`
+// for each (so the full install path, including alias creation, is reused).
+// Returns a mapping from each admin-mode rig name to the resulting user-mode
+// rig name, used to restore the default version.
+fn reinstall_in_user_mode(
+    versions: &[String],
+    aliases: &[Alias],
+) -> Result<Vec<(String, String)>, Box<dyn Error>> {
+    let exe = std::env::current_exe()?;
+    let mut map: Vec<(String, String)> = vec![];
+    for admin_name in versions {
+        // A user-mode install of the same R release has the same rig name (the
+        // base version plus arch suffix are mode-independent), so if it is
+        // already present we skip the download/reinstall. We still (re)create
+        // any aliases that pointed at it, so the migrated setup is complete.
+        if sc_get_list()?.iter().any(|v| v == admin_name) {
+            OUTPUT.success(&format!(
+                "R '{}' is already installed in user mode",
+                admin_name
+            ));
+            info!(
+                "R '{}' already installed in user mode, not reinstalling",
+                admin_name
+            );
+            recreate_aliases_for(admin_name, aliases);
+            map.push((admin_name.clone(), admin_name.clone()));
+            continue;
+        }
+        let (spec, arch) = user_mode_install_spec(admin_name, aliases);
+        OUTPUT.status(&format!(
+            "Reinstalling R '{}' ({}) in user mode",
+            spec, arch
+        ));
+        info!("Reinstalling R '{}' ({}) in user mode", spec, arch);
+        let before = sc_get_list()?;
+        let status = Command::new(&exe)
+            .args(["add", &spec, "--arch", &arch, "--without-pak"])
+            .status()?;
+        if !status.success() {
+            OUTPUT.warn(&format!("Failed to reinstall R '{}' in user mode", spec));
+            warn!("Failed to reinstall R '{}' in user mode", spec);
+            continue;
+        }
+        let after = sc_get_list()?;
+        match after.iter().find(|v| !before.contains(v)) {
+            Some(udir) => map.push((admin_name.clone(), udir.clone())),
+            None => debug!(
+                "No new user-mode version directory after reinstalling '{}'",
+                spec
+            ),
+        }
+    }
+    Ok(map)
+}
+
+// (Re)create, in user mode, the aliases that pointed at the given admin-mode
+// version. Used when the version is already installed in user mode and so was
+// not reinstalled (the install path would otherwise have created the alias).
+fn recreate_aliases_for(admin_name: &str, aliases: &[Alias]) {
+    for al in aliases {
+        if al.version != admin_name {
+            continue;
+        }
+        if let Err(e) = add_alias(admin_name, &al.alias) {
+            OUTPUT.warn(&format!("Could not create R-{} alias: {}", al.alias, e));
+            warn!("Could not create R-{} alias: {}", al.alias, e);
+        }
+    }
+}
+
+// Reinstall the given admin-mode Rtools (version-name, arch) in user mode by
+// spawning `rig rtools add <version> --arch <arch>` for each, so the full
+// install path (download, registry, Renviron.site wiring) is reused. The
+// `RIG_MODE=user` env var we set earlier makes each child install into the
+// per-user location.
+fn reinstall_rtools_in_user_mode(rtools: &[(String, String)]) -> Result<(), Box<dyn Error>> {
+    if rtools.is_empty() {
+        return Ok(());
+    }
+    let exe = std::env::current_exe()?;
+    for (version, arch) in rtools {
+        // We are already in user mode here, so rtools_install_path() resolves to
+        // the per-user location; if that Rtools is already there, do not reinstall.
+        if rtools_install_path(version, arch)?.exists() {
+            OUTPUT.success(&format!(
+                "Rtools{} ({}) is already installed in user mode",
+                version, arch
+            ));
+            info!(
+                "Rtools{} ({}) already installed in user mode, not reinstalling",
+                version, arch
+            );
+            continue;
+        }
+        OUTPUT.status(&format!(
+            "Reinstalling Rtools{} ({}) in user mode",
+            version, arch
+        ));
+        info!("Reinstalling Rtools{} ({}) in user mode", version, arch);
+        let status = Command::new(&exe)
+            .args(["system", "rtools", "add", version, "--arch", arch])
+            .status()?;
+        if !status.success() {
+            OUTPUT.warn(&format!(
+                "Failed to reinstall Rtools{} ({}) in user mode",
+                version, arch
+            ));
+            warn!(
+                "Failed to reinstall Rtools{} ({}) in user mode",
+                version, arch
+            );
+        }
+    }
+    Ok(())
+}
+
+// Spawn `rig system clean-admin-r` to remove the admin-mode installations,
+// unless there is nothing to remove. The child elevates on its own.
+fn clean_admin_installations(keep_install: bool, keep_links: bool) -> Result<(), Box<dyn Error>> {
+    if !admin_cleanup_needed(keep_install, keep_links)? {
+        debug!("No admin-mode installations or links to clean up");
+        return Ok(());
+    }
+    if keep_install {
+        OUTPUT.status("Removing admin-mode links, keeping installations (this needs admin rights)");
+        info!("Removing admin-mode links, keeping installations");
+    } else {
+        OUTPUT.status("Removing admin-mode R and Rtools installations (this needs admin rights)");
+        info!("Removing admin-mode R and Rtools installations");
+    }
+    // Run the cleanup in admin mode (`--admin`), overriding the `RIG_MODE=user`
+    // we just set, so that `escalate()` in the child actually elevates — in user
+    // mode it is a no-op, and removing `C:\Program Files\R` needs admin rights.
+    let exe = std::env::current_exe()?;
+    let mut cmd = Command::new(&exe);
+    cmd.args(["--admin", "system", "clean-admin-r"]);
+    if keep_install {
+        cmd.arg("--keep-install");
+    }
+    if keep_links {
+        cmd.arg("--keep-links");
+    }
+    let status = cmd.status()?;
+    if !status.success() {
+        bail!("Failed to remove admin-mode R installations");
+    }
+    Ok(())
+}
+
+// Whether there are any admin-mode installations or quick links left to remove,
+// to avoid asking for elevation when there is nothing to do.
+fn admin_cleanup_needed(keep_install: bool, keep_links: bool) -> Result<bool, Box<dyn Error>> {
+    if !keep_install && (!list_admin_versions()?.is_empty() || !admin_rtools_paths()?.is_empty()) {
+        return Ok(true);
+    }
+    if keep_links {
+        return Ok(false);
+    }
+    let bindir = Path::new(ADMIN_LINKS_DIR);
+    let paths = match std::fs::read_dir(bindir) {
+        Ok(p) => p,
+        Err(_) => return Ok(false),
+    };
+    let re = re_alias();
+    for de in paths.flatten() {
+        if let Some(name) = de.path().file_name().and_then(|s| s.to_str()) {
+            if name == "R.bat"
+                || name == "Rscript.bat"
+                || name == "RS.bat"
+                || (name.starts_with("R-") && name.ends_with(".bat"))
+                || re.is_match(name)
+            {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
+}
+
+// Remove all admin-mode R installations: delete the `C:\Program Files\R`
+// version directories, the quick links, and the stale registry entries. This
+// operates on the system locations directly, regardless of the configured mode,
+// and elevates to administrator. It is invoked by `rig system user-mode`.
+pub fn sc_system_clean_admin_r(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    let keep_install = args.get_flag("keep-install");
+    let keep_links = args.get_flag("keep-links");
+
+    escalate("removing admin-mode R installations")?;
+
+    if !keep_install {
+        remove_admin_installations()?;
+        remove_admin_rtools()?;
+    }
+
+    if !keep_links {
+        remove_admin_links()?;
+    }
+
+    // Prune the HKLM registry entries that now point at removed directories.
+    if !keep_install {
+        clean_admin_registry()?;
+    }
+
+    Ok(())
+}
+
+// Remove all admin-mode Rtools installations: delete the `C:\Rtools*`
+// directories recorded under HKLM and prune their registry entries. Operates on
+// the system locations directly, regardless of the configured mode. Invoked by
+// `rig system clean-admin-r` unless `--keep-install` was given.
+fn remove_admin_rtools() -> Result<(), Box<dyn Error>> {
+    for path in admin_rtools_paths()? {
+        OUTPUT.status(&format!("Removing {}", path));
+        info!("Removing {}", path);
+        if let Err(e) = remove_dir_all(Path::new(&path)) {
+            OUTPUT.warn(&format!("Cannot remove {}: {}", path, e));
+            warn!("Cannot remove {}: {}", path, e);
+        }
+    }
+    clean_admin_rtools_registry()?;
+    Ok(())
+}
+
+fn remove_admin_installations() -> Result<(), Box<dyn Error>> {
+    for (root, _suffix) in admin_r_roots() {
+        let rootp = Path::new(&root);
+        if !rootp.exists() {
+            continue;
+        }
+        for de in std::fs::read_dir(rootp)? {
+            let path = de?.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let name = match path.file_name().and_then(|s| s.to_str()) {
+                Some(n) => n.to_string(),
+                None => continue,
+            };
+            if !name.starts_with("R-") {
+                continue;
+            }
+            OUTPUT.status(&format!("Removing {}", path.display()));
+            info!("Removing {}", path.display());
+            if let Err(e) = remove_dir_all(&path) {
+                OUTPUT.warn(&format!("Cannot remove {}: {}", path.display(), e));
+                warn!("Cannot remove {}: {}", path.display(), e);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn remove_admin_links() -> Result<(), Box<dyn Error>> {
+    let bindir = Path::new(ADMIN_LINKS_DIR);
+    let paths = match std::fs::read_dir(bindir) {
+        Ok(p) => p,
+        Err(_) => return Ok(()),
+    };
+    let re = re_alias();
+    for de in paths.flatten() {
+        let path = de.path();
+        let name = match path.file_name().and_then(|s| s.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        let is_link = name == "R.bat"
+            || name == "Rscript.bat"
+            || name == "RS.bat"
+            || re.is_match(&name)
+            || (name.starts_with("R-") && name.ends_with(".bat"));
+        if !is_link {
+            continue;
+        }
+        OUTPUT.status(&format!("Removing {}", path.display()));
+        info!("Removing {}", path.display());
+        if let Err(e) = std::fs::remove_file(&path) {
+            OUTPUT.warn(&format!("Cannot remove {}: {}", path.display(), e));
+            warn!("Cannot remove {}: {}", path.display(), e);
+        }
+    }
+
+    // Remove the now-empty `bin` links directory and admin roots, ignoring
+    // errors (they are non-empty if anything else still lives there).
+    let _ = std::fs::remove_dir(bindir);
+    for (root, _suffix) in admin_r_roots() {
+        let _ = std::fs::remove_dir(Path::new(&root));
+    }
     Ok(())
 }
 
@@ -1603,5 +2134,59 @@ mod tests {
             rtools_renviron_lines("35", "x86_64", Path::new("C:\\Rtools"), false),
             "PATH=\"C:/Rtools/bin;${PATH}\""
         );
+    }
+
+    #[test]
+    fn user_mode_install_spec_uses_alias_when_available() {
+        let aliases = vec![
+            Alias {
+                alias: "release".to_string(),
+                version: "4.6.0".to_string(),
+            },
+            Alias {
+                alias: "oldrel".to_string(),
+                version: "4.5.1".to_string(),
+            },
+        ];
+        // A version an alias points at is reinstalled via the alias name.
+        assert_eq!(
+            user_mode_install_spec("4.6.0", &aliases),
+            ("release".to_string(), get_native_arch().to_string())
+        );
+        assert_eq!(
+            user_mode_install_spec("4.5.1", &aliases),
+            ("oldrel".to_string(), get_native_arch().to_string())
+        );
+    }
+
+    #[test]
+    fn user_mode_install_spec_uses_version_without_alias() {
+        let aliases = vec![Alias {
+            alias: "release".to_string(),
+            version: "4.6.0".to_string(),
+        }];
+        assert_eq!(
+            user_mode_install_spec("4.4.3", &aliases),
+            ("4.4.3".to_string(), get_native_arch().to_string())
+        );
+        assert_eq!(
+            user_mode_install_spec("devel", &[]),
+            ("devel".to_string(), get_native_arch().to_string())
+        );
+    }
+
+    #[test]
+    fn admin_name_from_link_line_extracts_version() {
+        // Plain admin link into C:\Program Files\R.
+        assert_eq!(
+            admin_name_from_link_line("@\"C:\\Program Files\\R\\R-4.6.0\\bin\\R\" %*"),
+            Some("4.6.0".to_string())
+        );
+        assert_eq!(
+            admin_name_from_link_line("@\"C:\\Program Files\\R\\R-devel\\bin\\R\" %*"),
+            Some("devel".to_string())
+        );
+        // Not an R link.
+        assert_eq!(admin_name_from_link_line("@echo off"), None);
     }
 }

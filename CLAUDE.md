@@ -34,9 +34,12 @@ config keys:
 - `get_r_install_dir()` — R installation root (`RIG_R_INSTALL_DIR` /
   `r-install-dir`).
 
-`rig system user-mode` (macOS/Linux, `sc_system_user_mode` in `src/macos.rs`
-and `src/linux.rs`) switches an existing admin-mode setup to user mode,
-reinstalls the R versions, and cleans up the admin-mode files.
+`rig system user-mode` (`sc_system_user_mode` in `src/macos.rs`,
+`src/linux.rs` and `src/windows/mod.rs`) switches an existing admin-mode setup
+to user mode, reinstalls the R versions, and cleans up the admin-mode files.
+The actual removal of the system-wide installations and links is delegated to
+the hidden `rig system clean-admin-r` command, which self-escalates (`sudo` on
+Unix, gsudo/UAC on Windows).
 
 When editing docs or help text (`src/help-*.in`, the website under `website/`,
 `README.md`), describe both modes; do not present admin-mode directories or the
