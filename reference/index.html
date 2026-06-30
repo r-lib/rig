@@ -366,12 +366,101 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
       </ul>
   </li>
-        <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../reference/index.html" class="sidebar-item-text sidebar-link active">
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a href="../reference/index.html" class="sidebar-item-text sidebar-link active">
  <span class="menu-text">Reference</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/add.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig add</span></a>
   </div>
 </li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/available.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig available</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/config.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig config</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/default.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig default</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/library.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig library</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/list.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig list</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/proj.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig proj</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/repos.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig repos</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/resolve.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig resolve</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/rm.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig rm</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/rstudio.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig rstudio</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/run.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig run</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/sysreqs.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig sysreqs</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/system.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig system</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
   <a href="../articles/index.html" class="sidebar-item-text sidebar-link">
@@ -395,6 +484,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
    
   <ul>
   <li><a href="#command-line-reference" id="toc-command-line-reference" class="nav-link active" data-scroll-target="#command-line-reference">Command-line reference</a></li>
+  <li><a href="#rig" id="toc-rig" class="nav-link" data-scroll-target="#rig"><code>rig</code></a>
+  <ul class="collapse">
+  <li><a href="#commands" id="toc-commands" class="nav-link" data-scroll-target="#commands">Commands</a></li>
+  </ul></li>
   <li><a href="#reference-manuals" id="toc-reference-manuals" class="nav-link" data-scroll-target="#reference-manuals">Reference manuals</a></li>
   </ul>
 </nav>
@@ -425,16 +518,95 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p>Reference material for rig.</p>
 <section id="command-line-reference" class="level2">
 <h2 class="anchored" data-anchor-id="command-line-reference">Command-line reference</h2>
-<p>The full command-line reference is available from rig itself:</p>
+<p>This is the full command-line reference for rig, generated from the <code>--help</code> output of every command and subcommand. You can also get the same information from rig itself:</p>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> <span class="at">--help</span>                 <span class="co"># overview of all commands</span></span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> <span class="op">&lt;</span>subcommand<span class="op">&gt;</span> --help    <span class="co"># detailed help for a subcommand</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>See <a href="../usage.html">Usage</a> for the list of commands and the platform-specific <code>rig system</code> subcommands.</p>
-<!--
-A generated, browsable CLI reference can be added here. See
-`tools/gen-cli-reference.sh` (optional follow-up): it runs the built `rig`
-binary, captures `--help` output for every command, strips ANSI escapes and
-writes one page per command under `reference/cli/`.
--->
+<p>See <a href="../usage.html">Usage</a> for a more task-oriented walkthrough, including the platform-specific <code>rig system</code> subcommands.</p>
+<p>Each command has its own page, generated by <code>website/gen-cli-reference.sh</code> (run <code>make cli-reference</code>), which captures <code>--help</code> for every command and subcommand recursively.</p>
+<!-- Generated by website/gen-cli-reference.sh. Do not edit by hand. -->
+</section>
+<section id="rig" class="level2">
+<h2 class="anchored" data-anchor-id="rig"><code>rig</code></h2>
+<pre class="text"><code>Name:
+  rig - manage R installations
+
+Description:
+  rig manages your R installations, on macOS, Windows, and Linux. It can
+  install and set up multiple versions of R, and make sure that they work
+  together.
+  On macOS, R versions installed by rig do not interfere. You can run
+  multiple versions at the same time. rig also makes sure that packages
+  are installed into a user package library, so reinstalling R will not
+  wipe out your installed packages.
+  rig is under constant development. Feedback is much appreciated.
+  See https://github.com/r-lib/rig for bug reports.
+
+Usage: rig [OPTIONS] [COMMAND]
+
+Commands:
+  add        Install a new R version [alias: install]
+  available  List R versions available to install.
+  config     Manage rig configuration
+  default    Print or set default R version [alias: switch]
+  library    Manage package libraries [alias: lib] (experimental)
+  list       List installed R versions [alias: ls]
+  proj       Manage R projects (experimental)
+  repos      Manage package repositories
+  resolve    Resolve a symbolic R version
+  rm         Remove R versions [aliases: del, remove, delete]
+  rstudio    Start RStudio with specified R version
+  run        Run R, an R script or an R project
+  sysreqs    Manage R-related system libraries and tools (experimental)
+  system     Manage current installations
+  help       Print this message or the help of the given subcommand(s)
+
+Options:
+  -q, --quiet...    Suppress output (overrides `--verbose`)
+  -v, --verbose...  Verbose output
+      --json        Output JSON
+      --user        Run in user mode (overrides RIG_MODE and config)
+      --admin       Run in admin mode (overrides RIG_MODE and config)
+  -h, --help        Print help
+  -V, --version     Print version
+
+Examples:
+  # Add the latest development snapshot
+  rig add devel
+
+  # Add the latest release
+  rig add release
+
+  # Install specific version
+  rig add 4.1.2
+
+  # Install latest version within a minor branch
+  rig add 4.1
+
+  # List installed versions
+  rig list
+
+  # Set default version
+  rig default 4.0</code></pre>
+<section id="commands" class="level3">
+<h3 class="anchored" data-anchor-id="commands">Commands</h3>
+<!-- Generated by website/gen-cli-reference.sh. Do not edit by hand. -->
+<ul>
+<li><a href="../reference/add.html"><code>rig add</code></a> — Install a new R version [alias: install]</li>
+<li><a href="../reference/available.html"><code>rig available</code></a> — List R versions available to install.</li>
+<li><a href="../reference/config.html"><code>rig config</code></a> — Manage rig configuration</li>
+<li><a href="../reference/default.html"><code>rig default</code></a> — Print or set default R version [alias: switch]</li>
+<li><a href="../reference/library.html"><code>rig library</code></a> — Manage package libraries [alias: lib] (experimental)</li>
+<li><a href="../reference/list.html"><code>rig list</code></a> — List installed R versions [alias: ls]</li>
+<li><a href="../reference/proj.html"><code>rig proj</code></a> — Manage R projects (experimental)</li>
+<li><a href="../reference/repos.html"><code>rig repos</code></a> — Manage package repositories</li>
+<li><a href="../reference/resolve.html"><code>rig resolve</code></a> — Resolve a symbolic R version</li>
+<li><a href="../reference/rm.html"><code>rig rm</code></a> — Remove R versions [aliases: del, remove, delete]</li>
+<li><a href="../reference/rstudio.html"><code>rig rstudio</code></a> — Start RStudio with specified R version</li>
+<li><a href="../reference/run.html"><code>rig run</code></a> — Run R, an R script or an R project</li>
+<li><a href="../reference/sysreqs.html"><code>rig sysreqs</code></a> — Manage R-related system libraries and tools (experimental)</li>
+<li><a href="../reference/system.html"><code>rig system</code></a> — Manage current installations</li>
+</ul>
+</section>
 </section>
 <section id="reference-manuals" class="level2">
 <h2 class="anchored" data-anchor-id="reference-manuals">Reference manuals</h2>
