@@ -586,7 +586,6 @@ pub fn rig_app() -> Command {
         cmd_system = cmd_system.subcommand(cmd_system_update_certs);
     }
 
-    #[cfg(all(debug_assertions, any(target_os = "macos", target_os = "linux")))]
     {
         let cmd_system_user_mode = Command::new("user-mode")
             .about("Switch to user mode and clean up admin-mode installations")
@@ -608,7 +607,7 @@ pub fn rig_app() -> Command {
             )
             .arg(
                 Arg::new("keep-links")
-                    .help("Keep the admin-mode links in `/usr/local/bin`.")
+                    .help("Keep the admin-mode quick links, do not remove them.")
                     .long("keep-links")
                     .num_args(0)
                     .required(false),

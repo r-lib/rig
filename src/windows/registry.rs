@@ -150,6 +150,54 @@ pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+// Clean up the admin-mode (HKLM) R registry entries, used by
+// `rig system clean-admin-r`. Unlike sc_clean_registry(), which targets the
+// hive matching the configured mode, this always operates on HKEY_LOCAL_MACHINE
+// so it works after the mode has already been switched to `user`. It removes
+// the per-version subkeys whose install directory is gone, clears the recorded
+// default (the top-level `Current Version`/`InstallPath` values), and prunes the
+// stale uninstaller entries.
+pub(super) fn clean_admin_registry() -> Result<(), Box<dyn Error>> {
+    OUTPUT.status("Cleaning leftover registry entries");
+    info!("Cleaning leftover admin-mode registry entries");
+
+    let hive = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let r_keys = [
+        "SOFTWARE\\R-core\\R",
+        "SOFTWARE\\R-core\\R64",
+        "SOFTWARE\\WOW6432Node\\R-core\\R",
+        "SOFTWARE\\WOW6432Node\\R-core\\R32",
+        "SOFTWARE\\WOW6432Node\\R-core\\R64",
+    ];
+    for path in r_keys {
+        if let Ok(key) = hive.open_subkey(path) {
+            clean_registry_r(&key)?;
+        }
+        // Clear the recorded default version if it points nowhere anymore.
+        if let Ok(key) = hive.open_subkey_with_flags(path, KEY_READ | KEY_WRITE) {
+            let stale = match key.get_value::<String, _>("InstallPath") {
+                Ok(p) => !Path::new(&p).exists(),
+                Err(_) => false,
+            };
+            if stale {
+                let _ = key.delete_value("Current Version");
+                let _ = key.delete_value("InstallPath");
+            }
+        }
+    }
+
+    if let Ok(key) = hive.open_subkey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall") {
+        clean_registry_uninst(&key)?;
+    }
+    if let Ok(key) =
+        hive.open_subkey("SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall")
+    {
+        clean_registry_uninst(&key)?;
+    }
+
+    Ok(())
+}
+
 pub(super) fn maybe_update_registry_default() -> Result<(), Box<dyn Error>> {
     let links_dir = get_links_dir()?;
     let linkdir = Path::new(&links_dir);
@@ -368,6 +416,71 @@ pub(super) fn sc_rtools_ls(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(
         println!("{}", tab);
     }
 
+    Ok(())
+}
+
+// List the admin-mode (HKLM) installed Rtools as (version-name, arch) pairs,
+// e.g. ("44", "x86_64"). Used by `rig system user-mode` to reinstall them in
+// user mode. Reads HKLM directly regardless of the configured mode, and skips
+// entries whose install directory no longer exists.
+pub(super) fn list_admin_rtools() -> Result<Vec<(String, String)>, Box<dyn Error>> {
+    let mut out: Vec<(String, String)> = vec![];
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    for path in [
+        "SOFTWARE\\WOW6432Node\\R-core\\Rtools",
+        "SOFTWARE\\R-core\\Rtools",
+    ] {
+        if let Ok(key) = hklm.open_subkey(path) {
+            for v in get_rtools_versions(&key)? {
+                if Path::new(&v.path).exists() {
+                    out.push((v.name, v.arch));
+                }
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    Ok(out)
+}
+
+// Install paths of the admin-mode (HKLM) Rtools that still exist on disk, used
+// by `rig system clean-admin-r` to remove the admin-mode Rtools directories.
+// Reads HKLM directly regardless of the configured mode.
+pub(super) fn admin_rtools_paths() -> Result<Vec<String>, Box<dyn Error>> {
+    let mut out: Vec<String> = vec![];
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    for path in [
+        "SOFTWARE\\WOW6432Node\\R-core\\Rtools",
+        "SOFTWARE\\R-core\\Rtools",
+    ] {
+        if let Ok(key) = hklm.open_subkey(path) {
+            for v in get_rtools_versions(&key)? {
+                if Path::new(&v.path).exists() && !out.contains(&v.path) {
+                    out.push(v.path);
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
+// Prune the admin-mode (HKLM) Rtools registry entries whose install directory
+// no longer exists, after the admin-mode Rtools directories have been removed.
+// Deletes the now-empty `R-core\Rtools` keys. The matching uninstaller entries
+// are pruned by clean_admin_registry().
+pub(super) fn clean_admin_rtools_registry() -> Result<(), Box<dyn Error>> {
+    let hive = RegKey::predef(HKEY_LOCAL_MACHINE);
+    for path in [
+        "SOFTWARE\\R-core\\Rtools",
+        "SOFTWARE\\WOW6432Node\\R-core\\Rtools",
+    ] {
+        if let Ok(key) = hive.open_subkey(path) {
+            clean_registry_rtools(&key)?;
+            if key.enum_keys().count() == 0 {
+                let _ = hive.delete_subkey(path);
+            }
+        }
+    }
     Ok(())
 }
 
