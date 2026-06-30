@@ -437,6 +437,10 @@ fn rtools_dir_name(version: &str, arch: &str) -> String {
     format!("Rtools{}{}", versuffix, archsuffix)
 }
 
+fn is_legacy_rtools(version: &str) -> bool {
+    version.starts_with('2') || version.starts_with('3')
+}
+
 // User-mode folder basename for an Rtools version+arch: just the version without a dot,
 // e.g. "44", "40", "35". Following the same convention as the R installs, the native arch
 // gets no suffix and an x86_64 Rtools on an aarch64 host gets a "-x86_64" suffix (e.g. "44-x86_64").
@@ -513,8 +517,9 @@ fn renviron_path(path: &Path) -> String {
 // Values use forward slashes and are quoted so spaces in the path do not break parsing.
 fn rtools_renviron_lines(version: &str, arch: &str, rtools_path: &Path, user_mode: bool) -> String {
     let path = renviron_path(rtools_path);
-    if version == "35" {
-        // Rtools 3.5: prepend its bin/ to PATH (no RTOOLS<NN>_HOME mechanism).
+    if is_legacy_rtools(version) {
+        // Rtools 3.x and older (e.g. 3.5): prepend their bin/ to PATH; these predate
+        // the RTOOLS<NN>_HOME mechanism, and R 3.x finds gcc via Makeconf's BINPREF.
         format!("PATH=\"{}/bin;${{PATH}}\"", path)
     } else if version == "40" {
         // Rtools 4.0: R does not auto-derive PATH, so keep the explicit PATH line that
@@ -609,10 +614,11 @@ fn patch_for_rtools() -> Result<(), Box<dyn Error>> {
         let nn = &needed[0].version;
         let arch = &needed[0].arch;
 
-        // Admin mode keeps the historical behaviour: only Rtools 3.5/4.0 are patched, since
-        // the system Rtools installer sets RTOOLS<NN>_HOME for 4.2+ itself. In user mode rig
-        // must set RTOOLS<NN>_HOME itself, for every Rtools version R can find it through.
-        if !user_mode && nn != "35" && nn != "40" {
+        // Admin mode keeps the historical behaviour: only the legacy 3.x (e.g. 3.5) and
+        // 4.0 Rtools are patched, since the system Rtools installer sets RTOOLS<NN>_HOME
+        // for 4.2+ itself. In user mode rig must set RTOOLS<NN>_HOME itself, for every
+        // Rtools version R can find it through.
+        if !user_mode && !is_legacy_rtools(nn) && nn != "40" {
             continue;
         }
 
@@ -701,23 +707,27 @@ fn get_rtools_needed(
             }
         };
 
+        // Pick latest rtools that supports this R version
+        let mut best: Option<String> = None;
         for rtver in rtvers {
             let first = rtver["first"].as_str().ok_or(errmsg)?;
             let last = rtver["last"].as_str().ok_or(errmsg)?;
             let first = semver::Version::parse(first)?;
             let last = semver::Version::parse(last)?;
             if first <= sver && sver <= last {
-                let rtverver = rtver["version"].as_str().ok_or(errmsg)?.to_string();
-                debug!("R {} needs Rtools {} ({}).", rver_str, rtverver, r_arch);
-                if !res
-                    .iter()
-                    .any(|x| x.version == rtverver && x.arch == r_arch)
-                {
-                    res.push(NeededRtools {
-                        version: rtverver,
-                        arch: r_arch.clone(),
-                    });
-                }
+                best = Some(rtver["version"].as_str().ok_or(errmsg)?.to_string());
+            }
+        }
+        if let Some(rtverver) = best {
+            debug!("R {} needs Rtools {} ({}).", rver_str, rtverver, r_arch);
+            if !res
+                .iter()
+                .any(|x| x.version == rtverver && x.arch == r_arch)
+            {
+                res.push(NeededRtools {
+                    version: rtverver,
+                    arch: r_arch.clone(),
+                });
             }
         }
     }
@@ -2132,6 +2142,11 @@ mod tests {
         // 3.5 prepends <path>/bin to PATH.
         assert_eq!(
             rtools_renviron_lines("35", "x86_64", Path::new("C:\\Rtools"), false),
+            "PATH=\"C:/Rtools/bin;${PATH}\""
+        );
+        // Any legacy 3.x Rtools (e.g. 3.4) uses the same PATH/bin mechanism as 3.5.
+        assert_eq!(
+            rtools_renviron_lines("34", "x86_64", Path::new("C:\\Rtools"), false),
             "PATH=\"C:/Rtools/bin;${PATH}\""
         );
     }
