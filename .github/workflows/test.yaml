@@ -607,6 +607,7 @@ jobs:
         rig add release
         rig add oldrel
         rig default release
+        rig add rtools
         rig ls
 
     - name: Install a package from source (compilation)
@@ -647,6 +648,7 @@ jobs:
         rig add release
         rig add oldrel
         rig default release
+        rig add rtools
         rig ls
 
     - name: Install a package from source (compilation)
