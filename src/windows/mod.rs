@@ -789,9 +789,30 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 }
 
 fn rm_rtools(ver: String, arch: Option<String>) -> Result<(), Box<dyn Error>> {
+    let arch_explicit = arch.is_some();
     let arch = arch.unwrap_or_else(|| get_native_arch().to_string());
     let version = ver.trim_start_matches("rtools").to_string();
     let dir = rtools_install_path(&version, &arch)?;
+    if !dir.exists() {
+        OUTPUT.warn(&format!(
+            "Rtools {} ({}) is not installed at {}, skipping",
+            version,
+            arch,
+            dir.display()
+        ));
+        warn!("Rtools {} ({}) is not installed at {}", version, arch, dir.display());
+        // On aarch64 there is no native Rtools, so an x86_64 build is installed
+        // under a "-x86_64" suffixed directory. If the user did not pass --arch we
+        // defaulted to the (aarch64) native arch and looked in the wrong place.
+        if !arch_explicit && get_native_arch() == "aarch64" {
+            OUTPUT.warn(&format!(
+                "If you installed the x86_64 Rtools, remove it with: \
+                 rig system rtools rm {} --arch x86_64",
+                version
+            ));
+        }
+        return Ok(());
+    }
     OUTPUT.status(&format!("Removing {}", dir.display()));
     info!("Removing {}", dir.display());
     match remove_dir_all(&dir) {
