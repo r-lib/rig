@@ -610,12 +610,11 @@ jobs:
         rig ls
 
     - name: Install a package from source (compilation)
-      shell: bash
       run: |
         RS --version
-        RS -q -e 'R.home()'
-        RS -q -e 'install.packages("filelock", type = "source")'
-        RS -q -e 'library(filelock)'
+        RS -q -e "R.home()"
+        RS -q -e "install.packages('filelock', type = 'source')"
+        RS -q -e "library(filelock)"
 
   windows-aarch64-user-mode:
     if: ${{ github.event.inputs.inpwindowsaarch64 == '' || github.event.inputs.inpwindowsaarch64 == 'yes' }}
@@ -651,9 +650,8 @@ jobs:
         rig ls
 
     - name: Install a package from source (compilation)
-      shell: bash
       run: |
         RS --version
-        RS -q -e 'R.home()'
-        RS -q -e 'install.packages("filelock", type = "source")'
-        RS -q -e 'library(filelock)'
+        RS -q -e "R.home()"
+        RS -q -e "install.packages('filelock', type = 'source')"
+        RS -q -e "library(filelock)"
