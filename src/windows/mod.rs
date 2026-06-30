@@ -218,11 +218,7 @@ fn read_rversion_h(install_dir: &Path) -> Result<(String, String), Box<dyn Error
 
 fn user_install_name(install_dir: &Path, arch: &str) -> Result<String, Box<dyn Error>> {
     let (version, status) = read_rversion_h(install_dir)?;
-    let base = match status.as_str() {
-        "" => version,
-        "Under development (unstable)" => "devel".to_string(),
-        _ => "next".to_string(),
-    };
+    let base = crate::common::user_mode_dev_dirname(Some(&status)).unwrap_or(version);
     let name = rig_name_for_arch(&base, arch);
     debug!(
         "User install directory name is {} (R_STATUS = {:?})",
