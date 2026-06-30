@@ -1078,6 +1078,11 @@ pub fn update_entitlements(path: PathBuf) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+pub fn sc_system_fix_r_alias(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    // Nothing to do on macOS
+    Ok(())
+}
+
 pub fn sc_system_make_orthogonal(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     if get_mode()? == crate::utils::Mode::User {
         return Ok(());

@@ -1040,6 +1040,120 @@ pub fn sc_system_make_orthogonal(_args: &ArgMatches) -> Result<(), Box<dyn Error
     Ok(())
 }
 
+// Markers delimiting the block we manage, so the edit is idempotent and the
+// user can find (and, if they want, delete) it.
+const FIX_R_ALIAS_BEGIN: &str = "# >>> rig: enable the 'R' command >>>";
+const FIX_R_ALIAS_END: &str = "# <<< rig: enable the 'R' command <<<";
+
+// Ask a given PowerShell executable for its CurrentUserAllHosts profile path.
+// This respects Documents/OneDrive redirection. Returns None if the shell is
+// not installed or the query fails.
+fn ps_profile_path(shell: &str) -> Option<PathBuf> {
+    let out = Command::new(shell)
+        .args(["-NoProfile", "-Command", "$PROFILE.CurrentUserAllHosts"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if path.is_empty() {
+        None
+    } else {
+        Some(PathBuf::from(path))
+    }
+}
+
+// Remove the marked rig block (and the single trailing newline it leaves
+// behind) from the given profile content. Returns None if there is no block.
+fn remove_fix_r_alias_block(content: &str) -> Option<String> {
+    let begin = content.find(FIX_R_ALIAS_BEGIN)?;
+    let end_marker = content[begin..].find(FIX_R_ALIAS_END)? + begin;
+    // Extend past the closing marker, plus a single trailing newline if any.
+    let mut end = end_marker + FIX_R_ALIAS_END.len();
+    if content[end..].starts_with("\r\n") {
+        end += 2;
+    } else if content[end..].starts_with('\n') {
+        end += 1;
+    }
+    let mut result = String::with_capacity(content.len());
+    result.push_str(&content[..begin]);
+    result.push_str(&content[end..]);
+    Some(result)
+}
+
+pub fn sc_system_fix_r_alias(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    let undo = args.get_flag("undo");
+
+    let block = format!(
+        "{}\n# Remove the built-in 'r' -> Invoke-History alias so that 'R' starts R.\nif (Test-Path Alias:\\r) {{ Remove-Item Alias:\\r -Force }}\n{}\n",
+        FIX_R_ALIAS_BEGIN, FIX_R_ALIAS_END
+    );
+
+    // Find every PowerShell on the system and its per-user profile path. We
+    // de-duplicate, because `pwsh` and `powershell` can resolve to the same
+    // profile on some setups.
+    let mut profiles: Vec<PathBuf> = vec![];
+    for shell in ["pwsh", "powershell"] {
+        if let Some(p) = ps_profile_path(shell) {
+            if !profiles.contains(&p) {
+                profiles.push(p);
+            }
+        }
+    }
+
+    if profiles.is_empty() {
+        OUTPUT.warn("Could not find a PowerShell profile to update.");
+        warn!("`rig system fix-r-alias`: no PowerShell profile found");
+        return Ok(());
+    }
+
+    for profile in profiles {
+        let existing = std::fs::read_to_string(&profile).unwrap_or_default();
+
+        if undo {
+            match remove_fix_r_alias_block(&existing) {
+                None => {
+                    OUTPUT.status(&format!("{} not modified by rig", profile.display()));
+                    info!("{} has no rig 'R' alias block to remove", profile.display());
+                }
+                Some(content) => {
+                    std::fs::write(&profile, content)?;
+                    OUTPUT.status(&format!("Reverted {}", profile.display()));
+                    info!("Removed the rig 'R' alias block from {}", profile.display());
+                }
+            }
+            continue;
+        }
+
+        if existing.contains(FIX_R_ALIAS_BEGIN) {
+            OUTPUT.status(&format!("{} already updated", profile.display()));
+            info!(
+                "{} already contains the rig 'R' alias fix",
+                profile.display()
+            );
+            continue;
+        }
+
+        if let Some(parent) = profile.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        let mut content = existing;
+        if !content.is_empty() && !content.ends_with('\n') {
+            content.push('\n');
+        }
+        content.push_str(&block);
+        std::fs::write(&profile, content)?;
+
+        OUTPUT.status(&format!("Updated {}", profile.display()));
+        info!("Updated {} to enable the 'R' command", profile.display());
+    }
+
+    OUTPUT.status("Start a new PowerShell session for the change to take effect.");
+    Ok(())
+}
+
 // ------------------------------------------------------------------------
 // `rig system user-mode` (Windows): switch rig to user mode and clean up an
 // existing admin-mode setup. Mirrors the macOS/Linux implementation:

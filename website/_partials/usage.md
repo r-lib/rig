@@ -54,6 +54,7 @@ rig system user-mode               -- switch to user mode and clean up admin-mod
 rig system add-pak                 -- install or update pak for an R version
 rig system clean-registry          -- clean stale R related entries in the registry
 rig detect-platform                -- detect operating system version and distribution
+rig system fix-r-alias             -- Make the 'R' command start R in PowerShell
 rig system make-links              -- create R-* quick links
 rig system setup-user-lib          -- set up automatic user package libraries [alias: create-lib]
 rig system update-rtools40         -- update Rtools40 MSYS2 packages

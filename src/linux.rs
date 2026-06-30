@@ -995,6 +995,11 @@ pub fn sc_system_make_orthogonal(_args: &ArgMatches) -> Result<(), Box<dyn Error
     Ok(())
 }
 
+pub fn sc_system_fix_r_alias(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    // Nothing to do on Linux
+    Ok(())
+}
+
 pub fn sc_system_fix_permissions(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // Nothing to do on Linux
     Ok(())

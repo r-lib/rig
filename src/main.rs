@@ -280,6 +280,7 @@ fn sc_system(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Err
         Some(("no-openmp", s)) => sc_system_no_openmp(s),
         Some(("user-mode", s)) => sc_system_user_mode(s),
         Some(("clean-admin-r", s)) => sc_system_clean_admin_r(s),
+        Some(("fix-r-alias", s)) => sc_system_fix_r_alias(s),
         Some(("update-certs", _)) => sc_system_update_certs(),
         Some(("update-rtools40", _)) => sc_system_update_rtools40(),
         Some(("detect-platform", s)) => sc_system_detect_platform(s, mainargs),

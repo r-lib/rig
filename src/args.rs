@@ -502,6 +502,20 @@ pub fn rig_app() -> Command {
         // but always hidden.
         let cmd_system_rtools = cmd_rtools().hide(true);
         cmd_system = cmd_system.subcommand(cmd_system_rtools);
+
+        let cmd_system_fix_r_alias = Command::new("fix-r-alias")
+            .about("Make the 'R' command start R in PowerShell")
+            .display_order(0)
+            .hide(cfg!(not(target_os = "windows")))
+            .long_about(HELP_SYSTEM_FIX_R_ALIAS)
+            .arg(
+                Arg::new("undo")
+                    .help("Remove the block rig added to the PowerShell profile(s).")
+                    .long("undo")
+                    .num_args(0)
+                    .required(false),
+            );
+        cmd_system = cmd_system.subcommand(cmd_system_fix_r_alias);
     }
 
     {
