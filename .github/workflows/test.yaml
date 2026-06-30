@@ -443,3 +443,215 @@ jobs:
       run: |
         bats tests/test-windows.sh
       shell: bash
+
+  macos-user-mode:
+    if: ${{ github.event.inputs.inpmacos == '' || github.event.inputs.inpmacos == 'yes' }}
+    needs: macos
+    runs-on: ${{ matrix.config.os }}
+    name: ${{ matrix.config.os }} (user mode)
+    env:
+      RUST_BACKTRACE: 1
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - { os: macos-15-intel }
+          - { os: macos-latest }
+
+    steps:
+    - name: Download rig from artifacts
+      uses: actions/download-artifact@v8
+      with:
+        name: rig-${{ matrix.config.os }}
+        path: .
+
+    - name: Install rig into ~/.local/bin
+      run: |
+        mkdir -p "$HOME/.local/bin"
+        mv rig "$HOME/.local/bin/rig"
+        chmod +x "$HOME/.local/bin/rig"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+    - name: Switch rig to user mode
+      run: |
+        rig system user-mode
+
+    - name: Install R versions (user mode)
+      run: |
+        rig add release
+        rig add oldrel
+        rig default release
+        rig ls
+
+    - name: Install a package from source (compilation)
+      run: |
+        which R
+        R --version
+        R -q -e 'R.home()'
+        R -q -e 'install.packages("filelock", type = "source")'
+        R -q -e 'library(filelock)'
+
+  linux-user-mode-x86_64:
+    if: ${{ github.event.inputs.inplinuxx8664 == '' || github.event.inputs.inplinuxx8664 == 'yes' }}
+    needs: linux-build-x86_64
+    runs-on: ubuntu-latest
+    name: Linux user mode (x86_64)
+    env:
+      RUST_BACKTRACE: 1
+
+    steps:
+    - name: Download rig from artifacts
+      uses: actions/download-artifact@v8
+      with:
+        name: rig-linux-x86_64
+        path: .
+
+    - name: Install rig into ~/.local
+      run: |
+        mkdir -p "$HOME/.local"
+        tar xzf rig-*.tar.gz -C "$HOME/.local"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+    - name: Switch rig to user mode
+      run: |
+        rig system user-mode
+
+    - name: Install R versions (user mode)
+      run: |
+        rig add release
+        rig add oldrel
+        rig default release
+        rig ls
+
+    - name: Install a package from source (compilation)
+      run: |
+        which R
+        R --version
+        R -q -e 'R.home()'
+        R -q -e 'install.packages("filelock", type = "source", repos = "https://cloud.r-project.org")'
+        R -q -e 'library(filelock)'
+
+  linux-user-mode-aarch64:
+    if: ${{ github.event.inputs.inplinuxaarch64 == '' || github.event.inputs.inplinuxaarch64 == 'yes' }}
+    needs: linux-build-aarch64
+    runs-on: ubuntu-24.04-arm
+    name: Linux user mode (aarch64)
+    env:
+      RUST_BACKTRACE: 1
+
+    steps:
+    - name: Download rig from artifacts
+      uses: actions/download-artifact@v8
+      with:
+        name: rig-linux-aarch64
+        path: .
+
+    - name: Install rig into ~/.local
+      run: |
+        mkdir -p "$HOME/.local"
+        tar xzf rig-*.tar.gz -C "$HOME/.local"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+    - name: Switch rig to user mode
+      run: |
+        rig system user-mode
+
+    - name: Install R versions (user mode)
+      run: |
+        rig add release
+        rig add oldrel
+        rig default release
+        rig ls
+
+    - name: Install a package from source (compilation)
+      run: |
+        which R
+        R --version
+        R -q -e 'R.home()'
+        R -q -e 'install.packages("filelock", type = "source", repos = "https://cloud.r-project.org")'
+        R -q -e 'library(filelock)'
+
+  windows-user-mode:
+    if: ${{ github.event.inputs.inpwindows == '' || github.event.inputs.inpwindows == 'yes' }}
+    needs: windows
+    runs-on: windows-2022
+    name: Windows (user mode)
+    env:
+      RUST_BACKTRACE: 1
+
+    steps:
+    - name: Download rig from artifacts
+      uses: actions/download-artifact@v8
+      with:
+        name: rig-windows
+        path: .
+
+    - name: Install rig
+      run: |
+        Start-Process .\rig-*.exe -ArgumentList "/verysilent /suppressmsgboxes" -Wait -NoNewWindow
+
+    - name: Switch rig to user mode
+      shell: bash
+      run: |
+        rig system user-mode
+        echo "$USERPROFILE\\.local\\bin" >> "$GITHUB_PATH"
+
+    - name: Install R versions (user mode)
+      shell: bash
+      run: |
+        rig add release
+        rig add oldrel
+        rig default release
+        rig ls
+
+    - name: Install a package from source (compilation)
+      shell: bash
+      run: |
+        which R
+        R --version
+        R -q -e 'R.home()'
+        R -q -e 'install.packages("filelock", type = "source")'
+        R -q -e 'library(filelock)'
+
+  windows-aarch64-user-mode:
+    if: ${{ github.event.inputs.inpwindowsaarch64 == '' || github.event.inputs.inpwindowsaarch64 == 'yes' }}
+    needs: windows-aarch64
+    runs-on: windows-11-arm
+    name: Windows aarch64 (user mode)
+    env:
+      RUST_BACKTRACE: 1
+
+    steps:
+    - name: Download rig from artifacts
+      uses: actions/download-artifact@v8
+      with:
+        name: rig-windows-aarch64
+        path: .
+
+    - name: Install rig
+      run: |
+        Start-Process .\rig-*.exe -ArgumentList "/verysilent /suppressmsgboxes" -Wait -NoNewWindow
+
+    - name: Switch rig to user mode
+      shell: bash
+      run: |
+        rig system user-mode
+        echo "$USERPROFILE\\.local\\bin" >> "$GITHUB_PATH"
+
+    - name: Install R versions (user mode)
+      shell: bash
+      run: |
+        rig add release
+        rig add oldrel
+        rig default release
+        rig ls
+
+    - name: Install a package from source (compilation)
+      shell: bash
+      run: |
+        which R
+        R --version
+        R -q -e 'R.home()'
+        R -q -e 'install.packages("filelock", type = "source")'
+        R -q -e 'library(filelock)'
