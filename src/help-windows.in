@@ -216,9 +216,10 @@ const HELP_SYSTEM_USER_MODE: &str = "
 
     1. Sets the rig `mode` configuration to `user`.
     2. Reinstalls the admin-mode R versions in user mode, and restores
-       the previous default version and version aliases. It also
+       the previous default version and version aliases. R versions that
+       are already installed in user mode are not reinstalled. It also
        reinstalls the admin-mode Rtools versions in user mode. Use
-       `--no-reinstall` to skip this and only clean up.
+       `--no-reinstall` to skip this step entirely and only clean up.
     3. Removes the system-wide admin-mode R and Rtools installations.
     4. Removes the system-wide `R-*` quick links and the `R`/`Rscript`
        links.
