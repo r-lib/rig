@@ -296,10 +296,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             Ok(name) => name,
             Err(err) => {
                 let _ = remove_dir_all(&temp_dir);
-                OUTPUT.error(&format!(
-                    "Cannot determine installed R version: {}",
-                    err
-                ));
+                OUTPUT.error(&format!("Cannot determine installed R version: {}", err));
                 error!("Cannot determine installed R version: {}", err);
                 return Err(err);
             }
@@ -310,8 +307,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
                 let _ = remove_dir_all(&temp_dir);
                 let msg = format!(
                     "Cannot replace existing R installation at {}: {}",
-                    final_dir,
-                    err
+                    final_dir, err
                 );
                 OUTPUT.error(&msg);
                 error!("{}", msg);
@@ -322,14 +318,9 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             let _ = remove_dir_all(&temp_dir);
             OUTPUT.error(&format!(
                 "Cannot move R installation into {}: {}",
-                final_dir,
-                err
+                final_dir, err
             ));
-            error!(
-                "Cannot move R installation into {}: {}",
-                final_dir,
-                err
-            );
+            error!("Cannot move R installation into {}: {}", final_dir, err);
             return Err(err.into());
         }
         OUTPUT.status(&format!("Installed R as '{}'", rig_name));
@@ -656,7 +647,6 @@ fn patch_for_rtools() -> Result<(), Box<dyn Error>> {
 
         let mut file = OpenOptions::new()
             .create(true)
-            
             .append(true)
             .open(&envfile)?;
 
@@ -763,7 +753,9 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
                     "Removing default version, set new default with {}",
                     "rig default <version>".bold()
                 );
-                if let Err(e) = unset_default() { warn!("Failed to unset default version: {}", e) };
+                if let Err(e) = unset_default() {
+                    warn!("Failed to unset default version: {}", e)
+                };
             }
         }
 
@@ -899,11 +891,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                     match std::fs::remove_file(path.path()) {
                         Ok(_) => {}
                         Err(e) => {
-                            OUTPUT.warn(&format!(
-                                "Failed to remove {}: {}",
-                                filename,
-                                e
-                            ));
+                            OUTPUT.warn(&format!("Failed to remove {}: {}", filename, e));
                             warn!("Failed to remove {}: {}", filename, e);
                         }
                     }
@@ -920,7 +908,6 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
 }
 
 fn re_alias() -> Regex {
-    
     Regex::new("^R-(oldrel|release|next)(-x86_64)?[.]bat$").unwrap()
 }
 
@@ -1671,11 +1658,7 @@ pub fn unset_default() -> Result<(), Box<dyn Error>> {
         let f = linkdir.join(x);
         if f.exists() {
             if let Err(e) = std::fs::remove_file(&f) {
-                OUTPUT.warn(&format!(
-                    "Failed to remove {}: {}",
-                    f.display(),
-                    e
-                ));
+                OUTPUT.warn(&format!("Failed to remove {}: {}", f.display(), e));
                 warn!("Failed to remove {}: {}", f.display(), e)
             };
         }
@@ -1782,7 +1765,9 @@ pub fn get_rstudio_config_path() -> Result<std::path::PathBuf, Box<dyn Error>> {
     let mut xdg: Option<std::path::PathBuf> = None;
 
     // RSTUDIO_CONFIG_HOME may point to the final path
-    if let Ok(x) = std::env::var("RSTUDIO_CONFIG_HOME") { xdg = Some(std::path::PathBuf::from(x)) };
+    if let Ok(x) = std::env::var("RSTUDIO_CONFIG_HOME") {
+        xdg = Some(std::path::PathBuf::from(x))
+    };
 
     // XDG_CONFIG_HOME may point to the user config path
     if xdg.is_none() {
