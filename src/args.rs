@@ -127,9 +127,16 @@ pub fn rig_app() -> Command {
         };
     }
 
+    let styles = clap::builder::Styles::styled()
+        .header(clap::builder::styling::AnsiColor::Blue.on_default().bold())
+        .usage(clap::builder::styling::AnsiColor::Blue.on_default().bold())
+        .literal(clap::builder::styling::AnsiColor::Green.on_default())
+        .placeholder(clap::builder::styling::AnsiColor::Cyan.on_default());
+
     let mut rig = Command::new("RIG -- The R Installation Manager")
         .version(clap::crate_version!())
         .about(HELP_ABOUT_REAL.as_str())
+        .styles(styles)
         .arg_required_else_help(true)
         .term_width(80);
 

@@ -5,7 +5,7 @@ use lazy_static::lazy_static;
 const HELP_ARCH: &str = "Select architecture: arm64 or x86_64";
 
 const HELP_DEFAULT: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mDescription:\x1b[39m\x1b[22m
   Print or set the default R version. The default R version is the one that
   is started with the `R` command, via the `R` quick link in the rig binary
   directory (`~/.local/bin` in user mode).
@@ -28,7 +28,7 @@ const HELP_DEFAULT: &str = "
   `rig switch` is an alias of `rig default`.";
 
 const HELP_ADD: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mDescription:\x1b[39m\x1b[22m
   Download and install an R version, from the official sources. It keeps
   the already installed R versions, except on macOS in admin mode, where
   patch versions of the same minor overwrite each other.
@@ -68,7 +68,7 @@ const HELP_ADD: &str = "
   administrator rights. In admin mode you need an administrator account to
   run this command.";
 
-const HELP_ADD_EXAMPLES: &str = "\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
+const HELP_ADD_EXAMPLES: &str = "\x1b[1m\x1b[34mExamples:\x1b[39m\x1b[22m
   # Add the latest development snapshot
   rig add devel
 
@@ -91,7 +91,7 @@ const HELP_ADD_EXAMPLES: &str = "\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
   rig add rtools";
 
 const HELP_AVAILABLE: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mDescription:\x1b[39m\x1b[22m
   List R versions available to install.
 
   By default some releases are omitted from the output:
@@ -111,7 +111,7 @@ const HELP_AVAILABLE: &str = "
   Use `--all` to list all Rtools versions, even very old ones.";
 
 const HELP_LIBRARY: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mDescription:\x1b[39m\x1b[22m
   Manage package libraries [alias: lib] (experimental)
 
   rig supports multiple user package libraries. The usual user library is
@@ -133,10 +133,10 @@ const HELP_LIBRARY: &str = "
   `rig library` is currently experimental, and might change in future
   versions. Feedback is appreciated.";
 
-const HELP_ABOUT_PRE: &str = "\x1b[4m\x1b[1mName:\x1b[22m\x1b[24m
+const HELP_ABOUT_PRE: &str = "\x1b[1m\x1b[34mName:\x1b[39m\x1b[22m
   rig - manage R installations
 
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mDescription:\x1b[39m\x1b[22m
   rig manages your R installations, on macOS, Windows, and Linux. It can
   install and set up multiple versions of R, and make sure that they work
   together.";
@@ -151,7 +151,7 @@ lazy_static! {
 }
 
 const HELP_SYSTEM_LIB: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mDescription:\x1b[39m\x1b[22m
   Set up R to create user package libraries when started, by default for
   installed R versions.
 
@@ -159,7 +159,7 @@ const HELP_SYSTEM_LIB: &str = "
   install R, then you do not need to run it manually.";
 
 const HELP_RUN: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mDescription:\x1b[39m\x1b[22m
   Run R, an R script or an R project, using the selected R version.
 
   All of these examples allow an `--r-version` argument, to use a specific
@@ -186,13 +186,13 @@ const HELP_RUN: &str = "
   - Static web sites.";
 
 const HELP_LIST: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mDescription:\x1b[39m\x1b[22m
   List installed R versions. It does _not_ check if they are working
   properly.
 
   `rig ls` is an alias.";
 
-const HELP_RESOLVE_EXAMPLES: &str = "\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
+const HELP_RESOLVE_EXAMPLES: &str = "\x1b[1m\x1b[34mExamples:\x1b[39m\x1b[22m
   # Latest development snapshot
   rig resolve devel
 
@@ -206,12 +206,12 @@ const HELP_RESOLVE_EXAMPLES: &str = "\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
   rig resolve 4.1";
 
 const HELP_SYSTEM: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mDescription:\x1b[39m\x1b[22m
   Various commands to modify and configure the installed R versions.
   See their help pages for details. E.g. run `rig system make-links --help`.";
 
 const HELP_RESOLVE: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mDescription:\x1b[39m\x1b[22m
   Resolve R versions. Checks the version number of an R version (e.g.
   release, devel, etc.), and looks up the URL of the installer for it,
   if an installer is available.
@@ -229,7 +229,7 @@ const HELP_RESOLVE: &str = "
   - `rig resolve oldrel/n` is the latest release within the `n`th previous
     minor branch (`oldrel` is the same as `oldrel/1`).";
 
-const HELP_EXAMPLES: &str = "\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
+const HELP_EXAMPLES: &str = "\x1b[1m\x1b[34mExamples:\x1b[39m\x1b[22m
   # Add the latest development snapshot
   rig add devel
 
@@ -248,7 +248,7 @@ const HELP_EXAMPLES: &str = "\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
   # Set default version
   rig default 4.1.2";
 
-const HELP_DEFAULT_EXAMPLES: &str = "\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
+const HELP_DEFAULT_EXAMPLES: &str = "\x1b[1m\x1b[34mExamples:\x1b[39m\x1b[22m
   # Query default R version
   rig default
 
@@ -256,7 +256,7 @@ const HELP_DEFAULT_EXAMPLES: &str = "\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
   rig default 4.1.2";
 
 const HELP_SYSTEM_ADDPAK: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mDescription:\x1b[39m\x1b[22m
   Install/update pak for one or more R versions.
 
   * If `--all` is specified, then it installs pak for all current R
@@ -267,7 +267,7 @@ const HELP_SYSTEM_ADDPAK: &str = "
     R installation, if there is one (see `rig default`).";
 
 const HELP_RM: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mDescription:\x1b[39m\x1b[22m
   Remove an R installation. It keeps the users' package libraries.
 
   In user mode no administrator rights are needed. In admin mode you need
@@ -275,7 +275,7 @@ const HELP_RM: &str = "
   otherwise rig will ask for your password.";
 
 const HELP_SYSTEM_ORTHO: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mDescription:\x1b[39m\x1b[22m
   Make the current R installations orthogonal on macOS. This allows
   running multiple R versions at the same time.
 
@@ -291,7 +291,7 @@ const HELP_SYSTEM_ORTHO: &str = "
   password.";
 
 const HELP_SYSTEM_LINKS: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mDescription:\x1b[39m\x1b[22m
   Create quick links in the rig binary directory (`~/.local/bin` in user
   mode) for the current R installations. These let you directly run a
   specific R version. E.g. `R-4.6.0` will start R 4.6.0. It also creates
@@ -305,7 +305,7 @@ const HELP_SYSTEM_LINKS: &str = "
   otherwise rig will ask for your password.";
 
 const HELP_SYSTEM_FIXPERMS: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mDescription:\x1b[39m\x1b[22m
   Update the permissions of the current R versions on macOS, so only the
   administrator can install R packages into the system library.
   Together with `rig system create-lib` this facilitates keeping
@@ -321,7 +321,7 @@ const HELP_SYSTEM_FIXPERMS: &str = "
   password.";
 
 const HELP_SYSTEM_FORGET: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mDescription:\x1b[39m\x1b[22m
   Tell macOS to forget about the currently installed R versions.
   This is needed to have multiple R installations at the same time.
 
@@ -335,7 +335,7 @@ const HELP_SYSTEM_FORGET: &str = "
   `sudo rig system forget`, otherwise rig will ask for your password.";
 
 const HELP_SYSTEM_NO_OPENMP: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mDescription:\x1b[39m\x1b[22m
   Remove -fopenmp flags from the R configuration, to make R work with
   the Apple compilers, instead of CRAN's custom compilers. This is only
   needed for R 3.6.x and before.
@@ -350,7 +350,7 @@ const HELP_SYSTEM_NO_OPENMP: &str = "
   `sudo rig system no-openmp`, otherwise rig will ask for your password.";
 
 const HELP_SYSTEM_ALLOW_DEBUGGER: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mDescription:\x1b[39m\x1b[22m
   Update the entitlements of the R binary to allow debuggers on macOS. It
   adds the `get-task-allow` entitlement to the R binary. This is only
   needed for R installers 3.6 and later, previous versions are not signed.
@@ -367,7 +367,7 @@ const HELP_SYSTEM_ALLOW_DEBUGGER: &str = "
   password.";
 
 const HELP_SYSTEM_ALLOW_DEBUGGER_RSTUDIO: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mDescription:\x1b[39m\x1b[22m
   Update the entitlements of RStudio R process to allow debuggers on macOS.
   It adds the `get-task-allow` entitlement to the `rsession` (and
   `rsession-arm64` on arm64 hardware) binary.
@@ -382,7 +382,7 @@ const HELP_SYSTEM_ALLOW_DEBUGGER_RSTUDIO: &str = "
   password.";
 
 const HELP_SYSTEM_ALLOW_CORE_DUMPS: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mDescription:\x1b[39m\x1b[22m
   Update the entitlements of the R process to allow core dumps on macOS.
   This command is similar to `rig system allow-debugger` but it also makes
   sure that the `/cores` directory of core dumps is writeable by the
@@ -396,7 +396,7 @@ const HELP_SYSTEM_ALLOW_CORE_DUMPS: &str = "
   password.";
 
 const HELP_SYSTEM_USER_MODE: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mDescription:\x1b[39m\x1b[22m
   Switch rig to user mode and clean up the machine after admin mode.
 
   In user mode rig installs R into your home directory
@@ -423,7 +423,7 @@ const HELP_SYSTEM_USER_MODE: &str = "
   directory is touched and no administrator account or `sudo` is needed.";
 
 const HELP_RSTUDIO: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mDescription:\x1b[39m\x1b[22m
   Start RStudio with the specified R version.
 
   If `project-file` is an RStudio `.Rproj` file, or a directory containing
@@ -450,7 +450,7 @@ const HELP_RSTUDIO: &str = "
 
   On Windows, `rig rstudio` needs RStudio Desktop 2021.09.0+351 or later.
 
-\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mExamples:\x1b[39m\x1b[22m
   # With default R version
   rig rstudio
 
@@ -468,20 +468,20 @@ const HELP_RSTUDIO: &str = "
   rig rstudio cli.Rproj 4.0";
 
 const HELP_SYSREQS: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mDescription:\x1b[39m\x1b[22m
   Manage system libraries and tools. This currently includes a very
   restricted set of tools, that are needed for running `R CMD check`.
   Run `rig sysreqs list` for a complete list.";
 
 const HELP_SYSTEM_CLEANREG: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mDescription:\x1b[39m\x1b[22m
   Remove R and Rtools entries from the Windows registry, if the
   corresponding R or Rtools versions are not installed any more.
 
   This command does nothing on macOS and Linux.";
 
 const HELP_SYSTEM_FIX_R_ALIAS: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mDescription:\x1b[39m\x1b[22m
   Make the 'R' command start R in PowerShell.
 
   PowerShell ships a built-in 'r' alias for 'Invoke-History', and because
@@ -499,7 +499,7 @@ const HELP_SYSTEM_FIX_R_ALIAS: &str = "
   This command does nothing on macOS and Linux.";
 
 const HELP_SYSTEM_UPDATE_RTOOLS40: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mDescription:\x1b[39m\x1b[22m
   Update Rtools40 compilers and libraries to the latest builds by
   updating the MSYS2 packages in Rtools40 on Windows.
 
@@ -508,7 +508,7 @@ const HELP_SYSTEM_UPDATE_RTOOLS40: &str = "
   In admin mode this command needs an administrator account.";
 
 const HELP_RTOOLS_LS: &str = "
-\x1b[4m\x1b[1mDescription:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mDescription:\x1b[39m\x1b[22m
   List installed Rtools versions on Windows.
 
   It only lists versions that are added to the Windows Registry.
@@ -532,7 +532,7 @@ const HELP_RTOOLS_ADD: &str = "
 
   In admin mode this command needs an administrator account.
 
-\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mExamples:\x1b[39m\x1b[22m
   rig rtools add 43
   rig rtools add all";
 
@@ -546,5 +546,5 @@ const HELP_RTOOLS_RM: &str = "
 
   In admin mode this command needs an administrator account.
 
-\x1b[4m\x1b[1mExamples:\x1b[22m\x1b[24m
+\x1b[1m\x1b[34mExamples:\x1b[39m\x1b[22m
   rig rtools rm 43";
