@@ -27,6 +27,19 @@ const RTOOLS_REG_PATHS: [&str; 2] = [
     "SOFTWARE\\WOW6432Node\\R-core\\Rtools",
 ];
 
+// The "Add/Remove Programs" uninstall registry locations: the native (64-bit)
+// view and the WOW6432Node view. Inno Setup (used by the Rtools installers)
+// records one `<AppId>_is1` subkey per install here, and treats a pre-existing
+// entry as "already installed", so both views must be handled when relocating
+// the legacy Rtools keys.
+const UNINSTALL_REG_PATHS: [&str; 2] = [
+    "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+    "SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+];
+
+// Prefix of the Rtools uninstaller subkey names (e.g. "Rtools_is1").
+const RTOOLS_UNINST_PREFIX: &str = "Rtools";
+
 fn clean_registry_r(key: &RegKey) -> Result<(), Box<dyn Error>> {
     for nm in key.enum_keys() {
         let nm = nm?;
@@ -545,24 +558,59 @@ fn write_reg_tree(key: &RegKey, node: &RegNode) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+// Full paths (relative to the hive) of the child subkeys under any of
+// `parent_paths` whose name starts with `prefix`. Used to discover the Rtools
+// `<AppId>_is1` uninstaller entries, whose exact names are not known in advance,
+// so they can be relocated with the same subtree machinery as the fixed
+// R-core\Rtools keys.
+fn matching_subkey_paths(hive: &RegKey, parent_paths: &[&str], prefix: &str) -> Vec<String> {
+    let mut out = vec![];
+    for parent_path in parent_paths {
+        if let Ok(parent) = hive.open_subkey(parent_path) {
+            for name in parent.enum_keys().filter_map(|n| n.ok()) {
+                if name.starts_with(prefix) {
+                    out.push(format!("{}\\{}", parent_path, name));
+                }
+            }
+        }
+    }
+    out
+}
+
+// The HKLM registry subtrees that an Rtools install touches and that this
+// relocation backs up/moves: the fixed R-core\Rtools keys plus the Rtools
+// `<AppId>_is1` uninstaller entries currently present (discovered by name).
+fn rtools_reloc_paths(hklm: &RegKey) -> Vec<String> {
+    let mut paths: Vec<String> = RTOOLS_REG_PATHS.iter().map(|p| p.to_string()).collect();
+    paths.extend(matching_subkey_paths(
+        hklm,
+        &UNINSTALL_REG_PATHS,
+        RTOOLS_UNINST_PREFIX,
+    ));
+    paths
+}
+
 // Back up and restore HKLM registry because rtools 3.x and older overwrites it
 // even in user mode.
 pub(super) struct LegacyRtoolsRegRelocation {
-    backup: Vec<(&'static str, RegNode)>,
+    backup: Vec<(String, RegNode)>,
     committed: bool,
 }
 
 impl LegacyRtoolsRegRelocation {
     // Step 2: back up and clear any pre-existing HKLM Rtools keys, so that after
-    // the install HKLM\...\Rtools holds only what this installer wrote.
+    // the install they hold only what this installer wrote. Besides the
+    // R-core\Rtools keys this also covers the `<AppId>_is1` uninstaller entry
+    // under HKLM\...\Uninstall: rtools 3.x treats a pre-existing entry as
+    // "already installed" and refuses to run.
     pub(super) fn begin() -> Result<Self, Box<dyn Error>> {
         let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
         let mut backup = vec![];
-        for path in RTOOLS_REG_PATHS {
-            if let Ok(key) = hklm.open_subkey(path) {
+        for path in rtools_reloc_paths(&hklm) {
+            if let Ok(key) = hklm.open_subkey(&path) {
                 let tree = read_reg_tree(&key)?;
                 drop(key);
-                hklm.delete_subkey_all(path)?;
+                hklm.delete_subkey_all(&path)?;
                 debug!("Backed up and cleared HKLM\\{} before Rtools install", path);
                 backup.push((path, tree));
             }
@@ -573,18 +621,19 @@ impl LegacyRtoolsRegRelocation {
         })
     }
 
-    // Steps 4 + 5: move the keys the installer wrote under HKLM into HKCU, then
-    // restore the original HKLM state from the backup taken in begin().
+    // Steps 4 + 5: move the keys the installer wrote under HKLM into HKCU (where
+    // a per-user /CURRENTUSER install records them), then restore the original
+    // HKLM state from the backup taken in begin().
     pub(super) fn commit(mut self) -> Result<(), Box<dyn Error>> {
         let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-        for path in RTOOLS_REG_PATHS {
-            if let Ok(src) = hklm.open_subkey(path) {
+        for path in rtools_reloc_paths(&hklm) {
+            if let Ok(src) = hklm.open_subkey(&path) {
                 let tree = read_reg_tree(&src)?;
                 drop(src);
-                let (dst, _) = hkcu.create_subkey(path)?;
+                let (dst, _) = hkcu.create_subkey(&path)?;
                 write_reg_tree(&dst, &tree)?;
-                hklm.delete_subkey_all(path)?;
+                hklm.delete_subkey_all(&path)?;
                 debug!("Moved HKLM\\{0} -> HKCU\\{0} after Rtools install", path);
             }
         }
@@ -608,7 +657,7 @@ impl Drop for LegacyRtoolsRegRelocation {
 
 // Recreate the backed-up HKLM Rtools keys. Best-effort: failures are logged but
 // not propagated, since this runs both on the success and the cleanup paths.
-fn restore_reg_backup(hklm: &RegKey, backup: &[(&'static str, RegNode)]) {
+fn restore_reg_backup(hklm: &RegKey, backup: &[(String, RegNode)]) {
     for (path, tree) in backup {
         match hklm.create_subkey(path) {
             Ok((key, _)) => {
@@ -790,5 +839,67 @@ mod tests {
         assert_eq!(versions[1].version, "4.4");
         assert_eq!(versions[1].fullversion, "4.4.6459.5818");
         assert_eq!(versions[1].arch, "aarch64");
+    }
+
+    // ── matching_subkey_paths ────────────────────────────────────────────────
+
+    #[test]
+    fn matching_subkey_paths_returns_only_prefixed_children() {
+        let (root, _guard) = make_test_key("match_subkeys");
+        let parent_path = "SOFTWARE\\rig-test\\match_subkeys";
+
+        root.create_subkey("Rtools_is1").unwrap();
+        root.create_subkey("Rtools35").unwrap();
+        root.create_subkey("Python 3.12.0").unwrap();
+
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let mut got = matching_subkey_paths(&hkcu, &[parent_path], "Rtools");
+        got.sort();
+
+        assert_eq!(
+            got,
+            vec![
+                format!("{}\\Rtools35", parent_path),
+                format!("{}\\Rtools_is1", parent_path),
+            ]
+        );
+    }
+
+    #[test]
+    fn matching_subkey_paths_skips_missing_parent() {
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let got = matching_subkey_paths(&hkcu, &["SOFTWARE\\rig-test\\does-not-exist"], "Rtools");
+        assert!(got.is_empty());
+    }
+
+    // ── read_reg_tree / write_reg_tree / restore_reg_backup round-trip ───────
+
+    #[test]
+    fn reg_tree_round_trips_values_and_subkeys() {
+        let (root, _guard) = make_test_key("reg_tree");
+        let path = "SOFTWARE\\rig-test\\reg_tree\\Rtools_is1";
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+
+        // Populate a subtree with a value and a nested subkey.
+        let (k, _) = root.create_subkey("Rtools_is1").unwrap();
+        k.set_value("InstallLocation", &"C:\\rtools35").unwrap();
+        let (child, _) = k.create_subkey("inner").unwrap();
+        child.set_value("flag", &"1").unwrap();
+        drop(child);
+
+        // Snapshot, then delete it.
+        let tree = read_reg_tree(&k).unwrap();
+        drop(k);
+        hkcu.delete_subkey_all(path).unwrap();
+        assert!(root.open_subkey("Rtools_is1").is_err());
+
+        // Restoring recreates the values and the nested subkey.
+        restore_reg_backup(&hkcu, &[(path.to_string(), tree)]);
+        let restored = root.open_subkey("Rtools_is1").unwrap();
+        let loc: String = restored.get_value("InstallLocation").unwrap();
+        assert_eq!(loc, "C:\\rtools35");
+        let inner = restored.open_subkey("inner").unwrap();
+        let flag: String = inner.get_value("flag").unwrap();
+        assert_eq!(flag, "1");
     }
 }
