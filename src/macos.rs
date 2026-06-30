@@ -660,24 +660,27 @@ fn safe_user_install(
 // `-x86_64` suffix to avoid colliding with the native build.
 fn user_install_dirname(source_dir: &Path, fver: &RversionDir) -> Result<String, Box<dyn Error>> {
     let status = read_r_status(source_dir)?;
-    let base = match status.as_str() {
-        "" => fver.version.clone(),
-        "Under development (unstable)" => "devel".to_string(),
-        _ => "next".to_string(),
-    };
-
-    let dirname = if fver.arch == "x86_64" && is_arm64_machine() {
-        format!("{}-x86_64", base)
-    } else {
-        base
-    };
-
+    let dirname = user_dirname_for(&fver.version, &fver.arch, &status);
     debug!(
         "User install directory name is {} (R_STATUS = {:?})",
         dirname, status
     );
-
     Ok(dirname)
+}
+
+// Build the user-mode install directory name from a release's version,
+// architecture and R_STATUS value. Released builds use the version number,
+// R-devel/R-next use their symbolic names (see `user_mode_dev_dirname`); an
+// x86_64 build on an arm64 machine gets a `-x86_64` suffix to avoid colliding
+// with the native build.
+fn user_dirname_for(version: &str, arch: &str, status: &str) -> String {
+    let base = crate::common::user_mode_dev_dirname(Some(status))
+        .unwrap_or_else(|| version.to_string());
+    if arch == "x86_64" && is_arm64_machine() {
+        format!("{}-x86_64", base)
+    } else {
+        base
+    }
 }
 
 // Read the value of the `R_STATUS` macro from `include/Rversion.h`. It is an
@@ -1362,22 +1365,9 @@ pub fn sc_system_user_mode(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let default = read_version_link(&admin_root.join("Current").to_string_lossy())?;
     let aliases = find_admin_aliases()?;
 
-    // 2. Switch to user mode. We write the config and prime the in-process
-    //    mode (via the RIG_MODE env var, which child processes inherit) so
-    //    that the reinstallation below targets the user location. Read the
-    //    persisted mode first so we can report whether we actually switched.
-    let already_user =
-        crate::config::get_global_config_value("mode")?.as_deref() == Some("user");
-    std::env::set_var("RIG_MODE", "user");
-    let _ = set_mode(crate::utils::Mode::User);
-    crate::config::set_global_config_value("mode", "user")?;
-    if already_user {
-        OUTPUT.success("rig already in user mode");
-        info!("rig already in user mode");
-    } else {
-        OUTPUT.success("Switched rig to user mode");
-        info!("Switched rig to user mode");
-    }
+    // 2. Switch to user mode so the reinstallation below targets the user
+    //    location.
+    crate::common::switch_to_user_mode()?;
 
     // 3. Reinstall the admin-mode versions in user mode and restore the
     //    previous default version. Aliases are recreated automatically by
@@ -1388,24 +1378,7 @@ pub fn sc_system_user_mode(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         }
     } else if !versions.is_empty() {
         let map = reinstall_in_user_mode(admin_root, &versions, &aliases)?;
-        if let Some(adef) = &default {
-            match map.iter().find(|(a, _)| a == adef) {
-                Some((_, udef)) => {
-                    OUTPUT.status(&format!("Restoring default R version ({})", udef));
-                    if let Err(e) = sc_set_default(udef) {
-                        OUTPUT.warn(&format!("Could not restore default R version: {}", e));
-                        warn!("Could not restore default R version: {}", e);
-                    }
-                }
-                None => {
-                    OUTPUT.warn(&format!(
-                        "Could not restore the previous default R version ({})",
-                        adef
-                    ));
-                    warn!("Could not restore default R version {}", adef);
-                }
-            }
-        }
+        crate::common::restore_user_mode_default(&map, &default);
     }
 
     // 4. Remove the admin-mode installations (unless `--keep-install`) and
@@ -1560,17 +1533,7 @@ fn expected_user_dirname(admin_root: &Path, admin_dir: &str) -> Option<String> {
     let status = read_r_status(&admin_root.join(admin_dir).join("Resources"))
         .or_else(|_| read_r_status(&admin_root.join(admin_dir)))
         .unwrap_or_default();
-    let base = match status.as_str() {
-        "" => version,
-        "Under development (unstable)" => "devel".to_string(),
-        _ => "next".to_string(),
-    };
-    let dirname = if arch == "x86_64" && is_arm64_machine() {
-        format!("{}-x86_64", base)
-    } else {
-        base
-    };
-    Some(dirname)
+    Some(user_dirname_for(&version, &arch, &status))
 }
 
 // Reinstall the given admin-mode versions in user mode by spawning `rig add`

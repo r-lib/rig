@@ -6,7 +6,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use clap::ArgMatches;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use semver::Version;
 use simple_error::*;
 use tabular::*;
@@ -72,6 +72,73 @@ pub fn set_default_if_none(ver: String) -> Result<(), Box<dyn Error>> {
         sc_set_default(&ver)?;
     }
     Ok(())
+}
+
+// -- rig system user-mode ------------------------------------------------
+//
+// Helpers shared by `sc_system_user_mode` on macOS, Windows and Linux. The
+// per-platform code captures the admin-mode setup and reinstalls the versions;
+// these cover the parts that are identical on every platform.
+
+// Map an R_STATUS value to the symbolic user-mode directory name used for
+// development builds: `devel` for R-devel, `next` for R-next. Returns None for
+// released versions, which are named after their version number instead. The
+// status is read from the `R_STATUS` macro in `include/Rversion.h`: it is an
+// empty string for releases, "Under development (unstable)" for R-devel, and
+// another label (e.g. a prerelease string) for R-next.
+pub fn user_mode_dev_dirname(status: Option<&str>) -> Option<String> {
+    match status {
+        Some("Under development (unstable)") => Some("devel".to_string()),
+        Some(s) if !s.is_empty() => Some("next".to_string()),
+        _ => None,
+    }
+}
+
+// Switch rig's persisted and in-process mode to user mode. We write the config
+// and prime the in-process mode (via the RIG_MODE env var, which child
+// processes inherit) so that the subsequent reinstallation targets the user
+// location. The persisted mode is read first so we can report whether we
+// actually switched.
+pub fn switch_to_user_mode() -> Result<(), Box<dyn Error>> {
+    let already_user =
+        crate::config::get_global_config_value("mode")?.as_deref() == Some("user");
+    env::set_var("RIG_MODE", "user");
+    let _ = set_mode(Mode::User);
+    crate::config::set_global_config_value("mode", "user")?;
+    if already_user {
+        OUTPUT.success("rig already in user mode");
+        info!("rig already in user mode");
+    } else {
+        OUTPUT.success("Switched rig to user mode");
+        info!("Switched rig to user mode");
+    }
+    Ok(())
+}
+
+// Restore the previously-default R version after reinstalling in user mode.
+// `map` maps each admin-mode version name to the user-mode name it was
+// reinstalled as; `default` is the admin-mode default (if any).
+pub fn restore_user_mode_default(map: &[(String, String)], default: &Option<String>) {
+    let adef = match default {
+        Some(d) => d,
+        None => return,
+    };
+    match map.iter().find(|(a, _)| a == adef) {
+        Some((_, udef)) => {
+            OUTPUT.status(&format!("Restoring default R version ({})", udef));
+            if let Err(e) = sc_set_default(udef) {
+                OUTPUT.warn(&format!("Could not restore default R version: {}", e));
+                warn!("Could not restore default R version: {}", e);
+            }
+        }
+        None => {
+            OUTPUT.warn(&format!(
+                "Could not restore the previous default R version ({})",
+                adef
+            ));
+            warn!("Could not restore default R version {}", adef);
+        }
+    }
 }
 
 pub fn get_default_r_version() -> Result<Option<String>, Box<dyn Error>> {

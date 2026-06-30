@@ -1073,21 +1073,9 @@ pub fn sc_system_user_mode(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let aliases = find_admin_aliases()?;
     let rtools = list_admin_rtools()?;
 
-    // 2. Switch to user mode. We write the config and prime the in-process mode
-    //    (via the RIG_MODE env var, which child processes inherit) so that the
-    //    reinstallation below targets the user location. Read the persisted mode
-    //    first so we can report whether we actually switched.
-    let already_user = crate::config::get_global_config_value("mode")?.as_deref() == Some("user");
-    std::env::set_var("RIG_MODE", "user");
-    let _ = set_mode(Mode::User);
-    crate::config::set_global_config_value("mode", "user")?;
-    if already_user {
-        OUTPUT.success("rig already in user mode");
-        info!("rig already in user mode");
-    } else {
-        OUTPUT.success("Switched rig to user mode");
-        info!("Switched rig to user mode");
-    }
+    // 2. Switch to user mode so the reinstallation below targets the user
+    //    location.
+    crate::common::switch_to_user_mode()?;
 
     // 3. Reinstall the admin-mode versions in user mode and restore the
     //    previous default version. Aliases are recreated automatically by
@@ -1098,24 +1086,7 @@ pub fn sc_system_user_mode(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         }
     } else if !versions.is_empty() {
         let map = reinstall_in_user_mode(&versions, &aliases)?;
-        if let Some(adef) = &default {
-            match map.iter().find(|(a, _)| a == adef) {
-                Some((_, udef)) => {
-                    OUTPUT.status(&format!("Restoring default R version ({})", udef));
-                    if let Err(e) = sc_set_default(udef) {
-                        OUTPUT.warn(&format!("Could not restore default R version: {}", e));
-                        warn!("Could not restore default R version: {}", e);
-                    }
-                }
-                None => {
-                    OUTPUT.warn(&format!(
-                        "Could not restore the previous default R version ({})",
-                        adef
-                    ));
-                    warn!("Could not restore default R version {}", adef);
-                }
-            }
-        }
+        crate::common::restore_user_mode_default(&map, &default);
     }
 
     // 3b. Reinstall the admin-mode Rtools in user mode.
