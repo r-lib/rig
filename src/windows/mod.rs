@@ -425,8 +425,8 @@ struct NeededRtools {
     arch: String,
 }
 
-// Folder basename for an Rtools version+arch, mirroring the historical C:\Rtools layout:
-// "Rtools44", "Rtools44-aarch64", "Rtools40", and "Rtools" for 3.x (or an empty version).
+// Admin-mode folder basename for an Rtools version+arch, mirroring the historical C:\Rtools
+// layout: "Rtools44", "Rtools44-aarch64", "Rtools40", and "Rtools" for 3.x (or an empty version).
 fn rtools_dir_name(version: &str, arch: &str) -> String {
     let versuffix = if version.is_empty() || version.starts_with('3') {
         ""
@@ -437,10 +437,23 @@ fn rtools_dir_name(version: &str, arch: &str) -> String {
     format!("Rtools{}{}", versuffix, archsuffix)
 }
 
-// Full install path for an Rtools version+arch. In User mode this lives under the per-user
-// rtools root (default %APPDATA%\rig\data\rtools); in Admin mode it stays at C:\<name>.
+// User-mode folder basename for an Rtools version+arch: just the version without a dot,
+// e.g. "44", "40", "35". Following the same convention as the R installs, the native arch
+// gets no suffix and an x86_64 Rtools on an aarch64 host gets a "-x86_64" suffix (e.g. "44-x86_64").
+fn rtools_dir_name_user(version: &str, arch: &str) -> String {
+    rig_name_for_arch(version, arch)
+}
+
+// Full install path for an Rtools version+arch. In User mode Rtools goes into
+// <root>\<version> (root defaults to %APPDATA%\rig\data\rtools) via rtools_dir_name_user();
+// in Admin mode it keeps its historical name (C:\Rtools<version>, or <override>\Rtools<version>
+// if rtools-install-dir is set) via rtools_dir_name().
 fn rtools_install_path(version: &str, arch: &str) -> Result<PathBuf, Box<dyn Error>> {
-    let name = rtools_dir_name(version, arch);
+    let name = if get_mode()? == Mode::User {
+        rtools_dir_name_user(version, arch)
+    } else {
+        rtools_dir_name(version, arch)
+    };
     match get_rtools_install_dir()? {
         Some(root) => Ok(Path::new(&root).join(name)),
         None => Ok(Path::new("C:\\").join(name)),
@@ -2102,6 +2115,22 @@ mod tests {
         assert_eq!(rtools_dir_name("35", "x86_64"), "Rtools");
         assert_eq!(rtools_dir_name("", "x86_64"), "Rtools");
         assert_eq!(rtools_dir_name("", "aarch64"), "Rtools-aarch64");
+    }
+
+    #[test]
+    fn rtools_dir_name_user_is_bare_version() {
+        // User-mode names drop the "Rtools" prefix and keep the version, including for 3.x.
+        // The native arch gets no suffix; the cross-arch x86_64 build on aarch64 gets -x86_64.
+        let native = get_native_arch();
+        assert_eq!(rtools_dir_name_user("44", native), "44");
+        assert_eq!(rtools_dir_name_user("40", native), "40");
+        assert_eq!(rtools_dir_name_user("35", native), "35");
+        // rig_name_for_arch only suffixes the non-native x86_64 build on an aarch64 host.
+        if native == "aarch64" {
+            assert_eq!(rtools_dir_name_user("44", "x86_64"), "44-x86_64");
+        } else {
+            assert_eq!(rtools_dir_name_user("44", "x86_64"), "44");
+        }
     }
 
     #[test]
