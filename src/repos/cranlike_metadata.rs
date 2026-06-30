@@ -223,8 +223,7 @@ fn parse_packages(dcf_path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
     // RDS files start with: 0x58 0x00 (X), 0x41 0x00 (A), or 0x42 0x00 (B)
     if data.len() >= 2 {
         // X (0x58), A (0x41) or B (0x42) format, each followed by 0x00
-        let is_rds =
-            (data[0] == 0x58 || data[0] == 0x41 || data[0] == 0x42) && data[1] == 0x00;
+        let is_rds = (data[0] == 0x58 || data[0] == 0x41 || data[0] == 0x42) && data[1] == 0x00;
 
         if is_rds {
             info!("Detected RDS format, parsing as RDS");

@@ -137,11 +137,7 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
             linkfile.display(),
             err
         ));
-        error!(
-            "Cannot create alias {}: {}",
-            linkfile.display(),
-            err
-        );
+        error!("Cannot create alias {}: {}", linkfile.display(), err);
         bail!(
             "Cannot create alias {}: {}",
             linkfile.display(),

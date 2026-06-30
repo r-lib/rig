@@ -261,10 +261,7 @@ fn unpack_and_patch(target: &Path) -> Result<(PathBuf, PathBuf), Box<dyn Error>>
             "Failed to expand installer with pkgutil: {}",
             output.status
         ));
-        error!(
-            "Failed to expand installer with pkgutil: {}",
-            output.status
-        );
+        error!("Failed to expand installer with pkgutil: {}", output.status);
         bail!("pkgutil exited with {}", output.status.to_string());
     }
 
@@ -302,11 +299,7 @@ fn run_fc_cache(fc_cache: &Path) {
     debug!("Running {}", fc_cache.display());
     match Command::new(fc_cache).output() {
         Err(err) => {
-            OUTPUT.warn(&format!(
-                "Failed to run {}: {}",
-                fc_cache.display(),
-                err
-            ));
+            OUTPUT.warn(&format!("Failed to run {}: {}", fc_cache.display(), err));
             warn!("Failed to run {}: {}", fc_cache.display(), err);
         }
         Ok(output) if !output.status.success() => {
@@ -396,11 +389,7 @@ fn safe_install(
             pkg.display(),
             err
         ));
-        warn!(
-            "Failed to remove temporary file {}: {}",
-            pkg.display(),
-            err
-        );
+        warn!("Failed to remove temporary file {}: {}", pkg.display(), err);
     }
     if let Err(err) = std::fs::remove_dir_all(&tmp) {
         OUTPUT.warn(&format!(
@@ -668,8 +657,8 @@ fn user_install_dirname(source_dir: &Path, fver: &RversionDir) -> Result<String,
 // x86_64 build on an arm64 machine gets a `-x86_64` suffix to avoid colliding
 // with the native build.
 fn user_dirname_for(version: &str, arch: &str, status: &str) -> String {
-    let base = crate::common::user_mode_dev_dirname(Some(status))
-        .unwrap_or_else(|| version.to_string());
+    let base =
+        crate::common::user_mode_dev_dirname(Some(status)).unwrap_or_else(|| version.to_string());
     if arch == "x86_64" && is_arm64_machine() {
         format!("{}-x86_64", base)
     } else {
@@ -727,11 +716,7 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         info!("Removing {}", dir.display());
         sc_system_forget()?;
         if let Err(err) = std::fs::remove_dir_all(&dir) {
-            OUTPUT.error(&format!(
-                "Cannot remove {}: {}",
-                dir.display(),
-                err
-            ));
+            OUTPUT.error(&format!("Cannot remove {}: {}", dir.display(), err));
             error!("Cannot remove {}: {}", dir.display(), err);
             bail!("Cannot remove {}: {}", dir.display(), err.to_string())
         };
@@ -801,11 +786,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                     linkfile.display(),
                     err
                 ));
-                error!(
-                    "Cannot create symlink {}: {}",
-                    linkfile.display(),
-                    err
-                );
+                error!("Cannot create symlink {}: {}", linkfile.display(), err);
                 bail!(
                     "Cannot create symlink {}: {}",
                     linkfile.display(),
@@ -840,11 +821,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                     if !target.exists() {
                         debug!("Cleaning up {}", target.display());
                         if let Err(err) = std::fs::remove_file(&path) {
-                            OUTPUT.warn(&format!(
-                                "Failed to remove {}: {}",
-                                path.display(),
-                                err
-                            ));
+                            OUTPUT.warn(&format!("Failed to remove {}: {}", path.display(), err));
                             warn!("Failed to remove {}: {}", path.display(), err)
                         }
                     }
@@ -857,7 +834,6 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
 }
 
 pub fn re_alias() -> Regex {
-    
     Regex::new("^R-(next|devel|release|release-x86_64|oldrel|oldrel-x86_64)$").unwrap()
 }
 
@@ -1015,14 +991,9 @@ pub fn update_entitlements(path: PathBuf) -> Result<(), Box<dyn Error>> {
         let dir = tmp_dir.to_str().unwrap_or("???");
         OUTPUT.error(&format!(
             "Cannot create temporary directory {}: {}",
-            dir,
-            err
+            dir, err
         ));
-        error!(
-            "Cannot create temporary directory {}: {}",
-            dir,
-            err
-        );
+        error!("Cannot create temporary directory {}: {}", dir, err);
         bail!(
             "Cannot craete temporary file in {}: {}",
             dir,
@@ -1896,11 +1867,7 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
         debug!("Creating {}", r.display());
         let tgt = Path::new(&get_r_default_bindir()?).join("R");
         if let Err(e) = std::os::unix::fs::symlink(&tgt, &r) {
-            OUTPUT.warn(&format!(
-                "Cannot create missing {}/R: {}",
-                binary_dir,
-                e
-            ));
+            OUTPUT.warn(&format!("Cannot create missing {}/R: {}", binary_dir, e));
             warn!("Cannot create missing {}/R: {}", binary_dir, e)
         };
     }
@@ -1912,14 +1879,9 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
         if let Err(e) = std::os::unix::fs::symlink(&tgt, &rscript) {
             OUTPUT.warn(&format!(
                 "Cannot create missing {}/Rscript: {}",
-                binary_dir,
-                e
+                binary_dir, e
             ));
-            warn!(
-                "Cannot create missing {}/Rscript: {}",
-                binary_dir,
-                e
-            )
+            warn!("Cannot create missing {}/Rscript: {}", binary_dir, e)
         };
     }
 

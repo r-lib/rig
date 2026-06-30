@@ -86,12 +86,8 @@ fn ignore_sigint() {
             "Could not set up signal handler for SIGINT (CTRL+C): {}",
             e
         ));
-        warn!(
-            "Could not set up signal handler for SIGINT (CTRL+C): {}",
-            e
-        );
+        warn!("Could not set up signal handler for SIGINT (CTRL+C): {}", e);
     }
-    
 }
 
 fn sc_run_rver(

@@ -183,7 +183,8 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
         if !grep_lines(
             &Regex::new(&HC_PROFILE_REPOS_MARKERS.current_start.to_string())?,
             &profile_lines,
-        ).is_empty()
+        )
+        .is_empty()
         {
             continue;
         }

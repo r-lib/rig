@@ -514,7 +514,10 @@ fn renviron_path(path: &Path) -> String {
 fn rtools_renviron_lines(version: &str, arch: &str, rtools_path: &Path, user_mode: bool) -> String {
     let path = renviron_path(rtools_path);
     if is_legacy_rtools(version) {
-        format!("BINPREF=\"{}/mingw_$(WIN)/bin/\"\nPATH=\"{}/bin;${{PATH}}\"", path, path)
+        format!(
+            "BINPREF=\"{}/mingw_$(WIN)/bin/\"\nPATH=\"{}/bin;${{PATH}}\"",
+            path, path
+        )
     } else if version == "40" {
         // Rtools 4.0: R does not auto-derive PATH, so keep the explicit PATH line that
         // references RTOOLS40_HOME (set here in user mode, by the installer in admin mode).
@@ -798,7 +801,12 @@ fn rm_rtools(ver: String, arch: Option<String>) -> Result<(), Box<dyn Error>> {
             arch,
             dir.display()
         ));
-        warn!("Rtools {} ({}) is not installed at {}", version, arch, dir.display());
+        warn!(
+            "Rtools {} ({}) is not installed at {}",
+            version,
+            arch,
+            dir.display()
+        );
         // On aarch64 there is no native Rtools, so an x86_64 build is installed
         // under a "-x86_64" suffixed directory. If the user did not pass --arch we
         // defaulted to the (aarch64) native arch and looked in the wrong place.

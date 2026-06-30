@@ -199,8 +199,7 @@ impl DependencyProvider for RPackageRegistry {
         package: &Self::P,
         range: &Self::VS,
     ) -> Result<Option<Self::V>, Self::Err> {
-        if !self.versions.borrow().contains_key(package)
-            && self.get_all_versions(package).is_err()
+        if !self.versions.borrow().contains_key(package) && self.get_all_versions(package).is_err()
         {
             return Err(ProviderError::UnknownPackage);
         }
@@ -227,7 +226,9 @@ impl DependencyProvider for RPackageRegistry {
         if let Some(deps) = self.deps.borrow().get(&key) {
             return Ok(Dependencies::Available(deps.clone()));
         }
-        if self.get_all_versions(package).is_err() { return Err(ProviderError::UnknownPackage) };
+        if self.get_all_versions(package).is_err() {
+            return Err(ProviderError::UnknownPackage);
+        };
         match self.deps.borrow().get(&key) {
             Some(res) => Ok(Dependencies::Available(res.clone())),
             None => Err(ProviderError::UnknownPackage),

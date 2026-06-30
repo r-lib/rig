@@ -100,8 +100,7 @@ pub fn user_mode_dev_dirname(status: Option<&str>) -> Option<String> {
 // location. The persisted mode is read first so we can report whether we
 // actually switched.
 pub fn switch_to_user_mode() -> Result<(), Box<dyn Error>> {
-    let already_user =
-        crate::config::get_global_config_value("mode")?.as_deref() == Some("user");
+    let already_user = crate::config::get_global_config_value("mode")?.as_deref() == Some("user");
     env::set_var("RIG_MODE", "user");
     let _ = set_mode(Mode::User);
     crate::config::set_global_config_value("mode", "user")?;
@@ -287,11 +286,7 @@ pub fn system_add_pak(
         match r(&ver, "invisible()") {
             Ok(_) => {}
             Err(x) => {
-                OUTPUT.error(&format!(
-                    "Failed to to install pak for R {}: {}",
-                    ver,
-                    x
-                ));
+                OUTPUT.error(&format!("Failed to to install pak for R {}: {}", ver, x));
                 error!("Failed to to install pak for R {}: {}", ver, x);
                 bail!("Failed to to install pak for R {}: {}", ver, x.to_string())
             }
@@ -314,11 +309,7 @@ pub fn system_add_pak(
         match r(&ver, &cmd) {
             Ok(_) => {}
             Err(x) => {
-                OUTPUT.error(&format!(
-                    "Failed to install pak for R {}: {}",
-                    ver,
-                    x
-                ));
+                OUTPUT.error(&format!("Failed to install pak for R {}: {}", ver, x));
                 error!("Failed to install pak for R {}: {}", ver, x);
                 bail!("Failed to install pak for R {}: {}", ver, x.to_string())
             }
@@ -521,7 +512,8 @@ fn find_project_file(
         let proj = look_for_file(&dir, Regex::new("[.]Rproj$").unwrap())?;
         let projstr = proj
             .as_ref()
-            .and_then(|x| x.to_str()).map(|x| x.to_string());
+            .and_then(|x| x.to_str())
+            .map(|x| x.to_string());
         Ok((projstr, Some(std::ffi::OsString::from(path))))
     }
 }

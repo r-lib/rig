@@ -333,10 +333,7 @@ fn macos_install_gfortran_intel() -> Result<(), Box<dyn Error>> {
         vec!["/Volumes/gfortran-8.2-Mojave".into()],
         "umount",
     ) {
-        OUTPUT.warn(&format!(
-            "Failed to unmount gfortran installer: {}",
-            x
-        ));
+        OUTPUT.warn(&format!("Failed to unmount gfortran installer: {}", x));
         warn!("Failed to unmount gfortran installer: {}", x)
     };
 

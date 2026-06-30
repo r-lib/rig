@@ -135,11 +135,7 @@ pub async fn download_file(
     if let Some(dir) = dir {
         if let Err(err) = std::fs::create_dir_all(dir) {
             let dir = dir.to_str().unwrap_or("???");
-            OUTPUT.error(&format!(
-                "Cannot create directory {}: {}",
-                dir,
-                err
-            ));
+            OUTPUT.error(&format!("Cannot create directory {}: {}", dir, err));
             error!("Cannot create directory {}: {}", dir, err);
             bail!("Cannot create directory {}: {}", dir, err.to_string())
         };
@@ -148,16 +144,8 @@ pub async fn download_file(
     let mut file = match file {
         Ok(file) => file,
         Err(err) => {
-            OUTPUT.error(&format!(
-                "Cannot create file '{}': {}",
-                path.display(),
-                err
-            ));
-            error!(
-                "Cannot create file '{}': {}",
-                path.display(),
-                err
-            );
+            OUTPUT.error(&format!("Cannot create file '{}': {}", path.display(), err));
+            error!("Cannot create file '{}': {}", path.display(), err);
             bail!(
                 "Cannot create file '{}': {}",
                 path.display(),
@@ -182,11 +170,7 @@ pub async fn download_file(
                 path.display(),
                 err
             ));
-            error!(
-                "Failed to write to file {}: {}",
-                path.display(),
-                err
-            );
+            error!("Failed to write to file {}: {}", path.display(), err);
             bail!(
                 "Failed to write to file {}: {}",
                 path.display(),
@@ -196,10 +180,7 @@ pub async fn download_file(
     }
 
     if let Err(err) = std::fs::rename(Path::new(&path), Path::new(&opath)) {
-        OUTPUT.error(&format!(
-            "Failed to rename downloaded file: {}",
-            err
-        ));
+        OUTPUT.error(&format!("Failed to rename downloaded file: {}", err));
         error!("Failed to rename downloaded file: {}", err);
         bail!("Failed to rename downloaded file: {}", err.to_string())
     };

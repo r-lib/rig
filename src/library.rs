@@ -301,11 +301,7 @@ pub fn sc_library_set_default(name: &str) -> Result<(), Box<dyn Error>> {
                 rprofile.display(),
                 e
             ));
-            error!(
-                "Cannot read lines from file {}: {}",
-                rprofile.display(),
-                e
-            );
+            error!("Cannot read lines from file {}: {}", rprofile.display(), e);
             bail!(
                 "Cannot read lines from file {} @{}:{}, {}",
                 rprofile.display(),
@@ -349,11 +345,7 @@ pub fn library_update_rprofile(rver: &str) -> Result<(), Box<dyn Error>> {
                 rprofile.display(),
                 e
             ));
-            error!(
-                "Cannot read lines from file {}: {}",
-                rprofile.display(),
-                e
-            );
+            error!("Cannot read lines from file {}: {}", rprofile.display(), e);
             bail!(
                 "Cannot read lines from file {} @{}:{}, {}",
                 rprofile.display(),
@@ -425,16 +417,8 @@ invisible(local({
 "#;
 
         if let Err(e) = append_to_file(&rprofile, vec![newlines.to_string()]) {
-            OUTPUT.error(&format!(
-                "Cannot update file {}: {}",
-                rprofile.display(),
-                e
-            ));
-            error!(
-                "Cannot update file {}: {}",
-                rprofile.display(),
-                e
-            );
+            OUTPUT.error(&format!("Cannot update file {}: {}", rprofile.display(), e));
+            error!("Cannot update file {}: {}", rprofile.display(), e);
             bail!(
                 "Cannot update file {} @{}:{}, {}",
                 rprofile.display(),
@@ -464,10 +448,7 @@ pub fn get_library_path_cache(rver: &str) -> Result<(PathBuf, PathBuf), Box<dyn 
                 "Failed to read location of library from cache: {}",
                 e
             ));
-            info!(
-                "Failed to read location of library from cache: {}",
-                e
-            );
+            info!("Failed to read location of library from cache: {}", e);
             return get_library_path_nocache(rver);
         }
         Ok(main) => match main {
@@ -542,13 +523,11 @@ pub fn get_library_path_nocache(rver: &str) -> Result<(PathBuf, PathBuf), Box<dy
         Err(err) => {
             OUTPUT.error(&format!(
                 "Cannot parse library path from R output for R {}: {}",
-                rver,
-                err
+                rver, err
             ));
             error!(
                 "Cannot parse library path from R output for R {}: {}",
-                rver,
-                err
+                rver, err
             );
             bail!(
                 "Cannot query R_LIBS_USER for R {}: {}",
@@ -584,10 +563,7 @@ pub fn get_library_path_nocache(rver: &str) -> Result<(PathBuf, PathBuf), Box<dy
                         "Failed to save location of library in cache: {}",
                         e
                     ));
-                    error!(
-                        "Failed to save location of library in cache: {}",
-                        e
-                    );
+                    error!("Failed to save location of library in cache: {}", e);
                     bail!(
                         "Failed to save config @{}:{}, {}",
                         file!(),

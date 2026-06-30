@@ -407,10 +407,7 @@ impl Package {
         let file = pkg.get("File").map(|f| f.to_string());
         let path = pkg.get("Path").map(|p| p.to_string());
         let download_url = pkg.get("DownloadURL").map(|u| u.to_string());
-        let built = pkg
-            .get("Built")
-            .map(DCFBuilt::from_str)
-            .transpose()?;
+        let built = pkg.get("Built").map(DCFBuilt::from_str).transpose()?;
         let license = pkg.get("License").map(|l| l.to_string());
         let platform = pkg.get("Platform").map(|p| p.to_string());
         let arch = pkg.get("Arch").map(|a| a.to_string());
