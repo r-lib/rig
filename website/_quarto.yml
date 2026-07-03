@@ -28,8 +28,6 @@ website:
         contents:
           - text: "Installing rig"
             file: install.qmd
-          - text: "Usage"
-            file: usage.qmd
           - text: "macOS menu bar app"
             file: macos-app.qmd
           - text: "Docker containers"

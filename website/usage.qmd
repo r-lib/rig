@@ -1,5 +1,0 @@
----
-title: "Usage"
----
-
-{{< include _partials/usage.md >}}

@@ -1,4 +1,11 @@
 
+[workspace]
+# `xtask` is a dev-only helper crate (build tasks, run via `cargo xtask`); it is
+# not a member's dependency and never ships in the `rig` binary. default-members
+# is intentionally left unset so plain `cargo build`/`test` at the root operate
+# on the `rig` package only, as before.
+members = ["xtask"]
+
 [package]
 name = "rig"
 version = "0.10.0"

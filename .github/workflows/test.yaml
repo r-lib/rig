@@ -77,6 +77,8 @@ jobs:
         cargo fmt --check
         cargo clippy --all-targets -- -D warnings
         cargo test
+        cargo test -p xtask
+        cargo xtask gen-help --check
 
     - name: Build rig
       run: |

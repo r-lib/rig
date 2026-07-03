@@ -7,8 +7,9 @@
 #
 #   - one page per top-level command, website/reference/<cmd>.qmd, with the
 #     command's help and a section for each of its subcommands (recursively);
-#   - website/reference/_overview.md, the top-level `rig --help` output,
-#     included by reference/index.qmd;
+#   - website/reference/_overview.md, the top-level `rig` help rendered as
+#     rich Markdown (like the per-command pages), included by
+#     reference/index.qmd;
 #   - website/reference/_toc.md, a linked list of the command pages, also
 #     included by reference/index.qmd.
 #
@@ -26,6 +27,10 @@ set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 refdir="$here/website/reference"
+# Markdown help prose, keyed by command path (e.g. `system make-links` ->
+# src/help/system-make-links.md). Rendered here as rich HTML; the same files
+# are rendered to ANSI for `--help`.
+helpdir="$here/src/help"
 
 RIG="${1:-}"
 if [ -z "$RIG" ]; then
@@ -58,19 +63,209 @@ subcommands() {
     grep -vx 'help' || true
 }
 
+# Print a help Markdown file, shifting its ATX headings deeper by `$2` levels
+# so they nest under the command heading. Headings inside fenced code blocks
+# (e.g. `#` comments in shell examples) are left untouched.
+#
+# The `## Description` heading is dropped (its prose is kept): the description
+# is the command's lead-in and needs no heading of its own.
+#
+# The optional `$3` selects a portion of the file relative to its top-level
+# `## Examples` heading: `before` prints everything up to (but excluding) it,
+# `after` prints it and everything below, `all` (the default) prints the whole
+# file. This lets the caller slot the synopsis (Usage/Arguments/Options)
+# between the description and the examples.
+shift_headings() {
+  awk -v extra="$2" -v mode="${3:-all}" '
+    {
+      isfence = /^```/
+      if (isfence) infence = !infence
+      ishead = (!infence && !isfence && /^#{1,6} /)
+      if (ishead && /^#{1,6}[ \t]+Description[ \t]*$/) next
+      if (!infence && !isfence && /^## Examples([[:space:]]|$)/) inex = 1
+      show = (mode == "all") || (mode == "before" && !inex) || \
+             (mode == "after" && inex)
+      if (show) {
+        if (ishead) print extra $0
+        else print
+      }
+    }
+  ' "$1"
+}
+
+# Split each fenced code block on stdin into separate fenced blocks at blank
+# lines, preserving the fence's info string (e.g. ```sh). Runs of commands in
+# an Examples block, one per paragraph, thus become one code block each.
+# Blocks without internal blank lines pass through unchanged.
+split_code_blocks() {
+  awk '
+    !infence {
+      if ($0 ~ /^```/){ infence = 1; fence = $0; hascontent = 0; needsplit = 0 }
+      print; next
+    }
+    /^```/ { print; infence = 0; next }
+    /^[ \t]*$/ { if (hascontent) needsplit = 1; next }
+    {
+      if (needsplit){ print "```"; print ""; print fence; needsplit = 0 }
+      print; hascontent = 1
+    }
+  '
+}
+
+# Render the synopsis block of a command's `--help` (read from stdin: the lines
+# from `Usage:` up to, but not including, `Examples:`) as rich Markdown. The
+# `Usage:`, `Commands:`, `Arguments:` and `Options:` blocks become headings
+# (`$1` is the leading `#` string for their level); the option, argument and
+# subcommand entries become definition lists.
+#
+# If `$2` is non-empty the command is a pure container (it has subcommands):
+# its own `Usage:` and `Options:` are omitted, since they only repeat the
+# global usage/options that every subcommand already documents. Only the
+# `Commands:` (Subcommands) list is kept.
+render_synopsis() {
+  awk -v h="$1" -v cmdsonly="$2" -v cmdpath="$3" '
+    function trim(s){ sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
+    # Wrap `--flag` tokens in code spans, both so they read as code and so
+    # Pandoc smart typography does not turn the `--` into an en dash.
+    function wrapflags(s){ gsub(/--[A-Za-z0-9][A-Za-z0-9=-]*/, "`&`", s); return s }
+    function heading(text){
+      if (inusage){ print "```"; inusage = 0 }
+      print ""; print h " " text; print ""
+      needcolon = 0; started = 0; hadmeta = 0
+    }
+    function term(t, link,   label){
+      if (started) print ""
+      label = "`" t "`"
+      if (link != "") label = "[" label "](" link ")"
+      print label
+      needcolon = 1; started = 1; hadmeta = 0
+    }
+    function desc(d,  x){
+      x = wrapflags(d)
+      if (needcolon){ print ":   " x; needcolon = 0 } else print "    " x
+    }
+    function meta(m,  x){
+      x = wrapflags(m)
+      if (needcolon){ print ":   *" x "*"; needcolon = 0 }
+      else { if (!hadmeta) print ""; print "    *" x "*  " }
+      hadmeta = 1
+    }
+    BEGIN { section = ""; inusage = 0; gsub(/ /, "-", cmdpath) }
+    /^Usage:/ {
+      if (cmdsonly != ""){ section = "skip"; next }
+      heading("Usage"); print "```text"; inusage = 1
+      line = $0; sub(/^Usage:[ ]?/, "", line); print line
+      section = "usage"; next
+    }
+    /^Commands:/  { heading("Subcommands"); section = "list"; next }
+    /^Arguments:/ { heading("Arguments"); section = "defs"; next }
+    /^Options:/   {
+      if (cmdsonly != ""){ section = "skip"; next }
+      heading("Options"); section = "defs"; next
+    }
+    section == "skip" { next }
+    section == "usage" {
+      if ($0 ~ /^[ \t]*$/){ print "```"; inusage = 0; section = ""; next }
+      print trim($0); next
+    }
+    section == "list" {
+      if ($0 ~ /^[ \t]*$/) next
+      name = $1
+      if (name == "help") next
+      rest = $0; sub(/^[ \t]*[^ \t]+[ \t]*/, "", rest)
+      # Link each subcommand to its section further down the page. The section
+      # heading is `rig <cmdpath> <name>`, whose Pandoc anchor is that text
+      # lowercased with spaces turned into hyphens.
+      term(name, "#rig-" cmdpath "-" name)
+      if (rest != "") desc(trim(rest))
+      next
+    }
+    section == "defs" {
+      if ($0 ~ /^[ \t]*$/) next
+      match($0, /^ */); ind = RLENGTH
+      content = trim($0)
+      if (ind <= 6){
+        # A term line. In clap`s compact two-column layout the description sits
+        # on the same line, separated from the flags by a run of two or more
+        # spaces; split it off. In the wide (next-line) layout there is no such
+        # run and the whole line is the term.
+        if (match(content, /  +/)){
+          term(substr(content, 1, RSTART - 1))
+          d = trim(substr(content, RSTART + RLENGTH))
+          if (d != "") desc(d)
+        } else term(content)
+        next
+      }
+      if (content ~ /^\[.*\]$/) meta(content); else desc(content)
+      next
+    }
+    END { if (inusage) print "```" }
+  '
+}
+
 # Emit a Markdown section (to stdout) for the given command path and all of
 # its subcommands. $1 = header depth (number of leading #), rest = command
 # path (relative to `rig`).
+#
+# When src/help/<command-path>.md exists, its prose is rendered as rich
+# Markdown (headings shifted to sit under the command heading), with the
+# synopsis (Usage/Arguments/Options as headings and definition lists) slotted
+# between the description and the examples; the optional
+# src/help/<command-path>-examples.md is appended. Otherwise the full `--help`
+# output is shown verbatim in a code block.
+# Print `$1` `#` characters (an ATX heading prefix); nothing for depth <= 0.
+nhash() {
+  local n="$1" s=""
+  while [ "$n" -gt 0 ]; do s="$s#"; n=$((n - 1)); done
+  printf '%s' "$s"
+}
+
 emit() {
   local depth="$1"; shift
-  local hashes
-  hashes="$(printf '%.0s#' $(seq 1 "$depth"))"
-  local title="rig${*:+ $*}"
+  local hh extra sec title stem
+  hh="$(nhash "$depth")"
+  extra="$(nhash $((depth - 1)))"
+  # Headings for the synopsis sections sit one level below the command
+  # heading, alongside the `Examples` heading from the prose.
+  sec="$(nhash $((depth + 1)))"
+  title="rig${*:+ $*}"
+  stem="$(IFS=-; printf '%s' "$*")"
 
-  printf '%s `%s`\n\n' "$hashes" "$title"
-  printf '```text\n'
-  "$RIG" "$@" --help 2>&1
-  printf '```\n\n'
+  # The page's root command (depth 1) gets no heading of its own: the Quarto
+  # front-matter `title` already renders it as the page's H1, so printing it
+  # here would duplicate the command name at the top of every page.
+  if [ "$depth" -gt 1 ]; then
+    printf '%s `%s`\n\n' "$hh" "$title"
+  fi
+
+  if [ -n "$stem" ] && [ -f "$helpdir/$stem.md" ]; then
+    # Prose before the examples, then the synopsis (Usage/Arguments/Options),
+    # then the examples last, so the page reads description -> synopsis ->
+    # examples regardless of where the examples live in the source file.
+    shift_headings "$helpdir/$stem.md" "$extra" before | split_code_blocks
+    # Synopsis only: from `Usage:` up to (but not including) the `Examples:`
+    # block, rendered as rich Markdown. Container commands (those with a
+    # `Commands:` block) show only their subcommand list; per-command Usage
+    # and Options would just duplicate what each subcommand documents.
+    local synopsis cmdsonly=""
+    synopsis="$("$RIG" "$@" --help 2>&1 |
+      awk 'f && /^Examples:/ { exit } /^Usage:/ { f = 1 } f { print }')"
+    case $synopsis in
+      *"
+Commands:"*) cmdsonly=1 ;;
+    esac
+    printf '%s\n' "$synopsis" | render_synopsis "$sec" "$cmdsonly" "$*"
+    printf '\n'
+    shift_headings "$helpdir/$stem.md" "$extra" after | split_code_blocks
+    if [ -f "$helpdir/$stem-examples.md" ]; then
+      shift_headings "$helpdir/$stem-examples.md" "$extra" | split_code_blocks
+      printf '\n'
+    fi
+  else
+    printf '```text\n'
+    "$RIG" "$@" --help 2>&1
+    printf '```\n\n'
+  fi
 
   local sub
   for sub in $(subcommands "$@"); do
@@ -87,13 +282,33 @@ for f in "$refdir"/*.qmd; do
 done
 rm -f "$refdir/_overview.md" "$refdir/_toc.md"
 
-# Top-level overview (rig --help only, no recursion).
+# Top-level overview, rendered as rich Markdown like the per-command pages:
+# the description prose (src/help/about.md), then the synopsis (Usage and the
+# global Options), then the examples (src/help/examples.md). The Commands
+# block is dropped from the synopsis, since the linked table of contents below
+# (_toc.md) already lists the commands. Section headings sit one level below
+# the `## rig` heading.
 {
   printf '%s\n\n' "$MARKER"
   printf '## `rig`\n\n'
-  printf '```text\n'
-  "$RIG" --help 2>&1
-  printf '```\n'
+  # Description prose: drop the `Name` section and keep the `Description`
+  # prose, whose heading shift_headings removes.
+  shift_headings <(awk '/^## Description/ { p = 1 } p' "$helpdir/about.md") "#" |
+    split_code_blocks
+  # Synopsis: from `Usage:` up to (but not including) `Examples:`, then with
+  # the `Commands:` block stripped out, rendered as rich Markdown.
+  synopsis="$("$RIG" --help 2>&1 |
+    awk 'f && /^Examples:/ { exit } /^Usage:/ { f = 1 } f { print }' |
+    awk '
+      /^Commands:/ { inc = 1; next }
+      inc && /^[[:space:]]*$/ { inc = 0; next }
+      inc { next }
+      { print }
+    ')"
+  printf '%s\n' "$synopsis" | render_synopsis '###' '' ''
+  printf '\n'
+  # Examples, heading shifted to sit under the `## rig` heading.
+  shift_headings "$helpdir/examples.md" "#" | split_code_blocks
 } >"$refdir/_overview.md"
 
 # One page per top-level command, plus the linked table of contents.
@@ -116,10 +331,12 @@ printf '%s\n\n' "$MARKER" >>"$refdir/_toc.md"
     {
       printf -- '---\ntitle: "rig %s"\n---\n\n' "$name"
       printf '%s\n\n' "$MARKER"
-      emit 2 "$name"
+      emit 1 "$name"
     } >"$refdir/$name.qmd"
 
-    printf -- '- [`rig %s`](%s.qmd) — %s\n' "$name" "$name" "$desc" >>"$refdir/_toc.md"
+    # A definition list, matching the Subcommands lists on the per-command
+    # pages; the term links to the command's own page.
+    printf -- '[`rig %s`](%s.qmd)\n:   %s\n\n' "$name" "$name" "$desc" >>"$refdir/_toc.md"
   done
 
 echo "wrote per-command pages, _overview.md and _toc.md in $refdir"

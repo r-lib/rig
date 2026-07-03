@@ -1,0 +1,15 @@
+[package]
+name = "xtask"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Dev-only build tasks for rig (run with `cargo xtask <task>`). This crate is
+# never a dependency of the `rig` binary or `riglib`; it only builds when
+# invoked explicitly. Keeping the Markdown -> ANSI help renderer here keeps
+# `pulldown-cmark` off the `rig` binary's dependency graph entirely.
+
+[dependencies]
+# render the markdown help text (src/help/*.md) to the committed ANSI strings
+# in src/help-generated.in
+pulldown-cmark = { version = "0.12", default-features = false }

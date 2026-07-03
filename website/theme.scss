@@ -4,3 +4,14 @@
 // darkly (dark) theme otherwise uses a taller $navbar-padding-y (1rem) than
 // cosmo (light, 0.5rem), making the top bar jump taller in dark mode.
 $navbar-padding-y: 0.5rem;
+
+/*-- scss:rules --*/
+
+// The CLI reference renders each command's arguments, options and
+// subcommands as a definition list (term = flag, definition = description).
+// Bootstrap leaves the description flush with the term; indent it so each
+// description sits under, and clearly subordinate to, its flag.
+dd {
+  margin-left: 1.5rem;
+  margin-bottom: 0.5rem;
+}

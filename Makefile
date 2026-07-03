@@ -215,7 +215,12 @@ rig-$(VERSION)-macOS-unsigned-%.pkg: build.stamp tools/distribution.xml.in
 README.md: README.qmd website/_partials/intro.md website/_partials/feedback.md
 	quarto render README.qmd --to gfm
 
-.PHONY: readme docs docs-preview cli-reference
+.PHONY: help readme docs docs-preview cli-reference
+# Regenerate src/help-generated.in (the colored ANSI `--help` strings) from the
+# Markdown sources in src/help/*.md. Run after editing any of those files.
+help:
+	cargo xtask gen-help
+
 readme: README.md
 
 # Regenerate the command-line reference (website/reference/_commands.md) from

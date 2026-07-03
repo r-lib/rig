@@ -8,6 +8,13 @@ on:
       - 'README.qmd'
       - 'NEWS.md'
       - '.github/workflows/docs.yml'
+      # The CLI reference is generated from the built rig binary, so rebuild
+      # the site when the commands or their help prose change too.
+      - 'src/**'
+      - 'xtask/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'Makefile'
   workflow_dispatch:
 
 permissions:
@@ -25,8 +32,14 @@ jobs:
 
       - uses: quarto-dev/quarto-actions/setup@v2
 
+      # `make docs` regenerates the CLI reference from the rig binary
+      # (`make cli-reference`) before rendering, so we need a built rig.
+      # A debug build is enough; gen-cli-reference.sh falls back to it.
+      - name: Build rig
+        run: cargo build
+
       - name: Render site
-        run: quarto render website
+        run: make docs
 
       - name: Deploy to website branch
         uses: JamesIves/github-pages-deploy-action@v4
