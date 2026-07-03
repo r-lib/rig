@@ -22,6 +22,28 @@ use crate::windows_arch::*;
 // with `make help`. Do not edit `src/help-generated.in` by hand.
 std::include!("help-generated.in");
 
+fn add_name_headers(cmd: &mut Command, path: &str) {
+    // clap's default layout, minus `{about}` (moved to `before_long_help`).
+    const BODY: &str = "{before-help}{usage-heading} {usage}\n\n{all-args}{after-help}";
+
+    for sub in cmd.get_subcommands_mut() {
+        let full = format!("{} {}", path, sub.get_name());
+        if let Some(about) = sub.get_about().map(|s| s.ansi().to_string()) {
+            let template = format!(
+                "\u{1b}[1m\u{1b}[34mName:\u{1b}[39m\u{1b}[22m\n  {} - {}\n\n{}",
+                full, about, BODY
+            );
+            let long = sub.get_long_about().map(|s| s.ansi().to_string());
+            let mut updated = std::mem::take(sub).help_template(template);
+            if let Some(long) = long {
+                updated = updated.before_long_help(long);
+            }
+            *sub = updated;
+        }
+        add_name_headers(sub, &full);
+    }
+}
+
 fn cmd_rtools() -> Command {
     let cmd_rtools_ls = Command::new("list")
         .about(ABOUT_RTOOLS_LIST)
@@ -1516,6 +1538,8 @@ pub fn rig_app() -> Command {
         .subcommand(cmd_available)
         .subcommand(cmd_run)
         .after_help(HELP_EXAMPLES);
+
+    add_name_headers(&mut rig, "rig");
 
     rig
 }
