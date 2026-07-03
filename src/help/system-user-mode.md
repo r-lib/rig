@@ -1,3 +1,5 @@
+Switch to user mode and clean up admin-mode installations
+
 ## Description
 
 Switch rig to user mode and clean up the machine after admin mode.

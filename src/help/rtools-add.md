@@ -1,3 +1,7 @@
+Install new Rtools version [alias: install]
+
+## Description
+
 Install new Rtools versions on Windows.
 
 You can specify the new version(s) by their name, optionally with an

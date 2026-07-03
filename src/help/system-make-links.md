@@ -1,3 +1,5 @@
+Create R-* quick links
+
 ## Description
 
 Create quick links in the rig binary directory (`~/.local/bin` in user

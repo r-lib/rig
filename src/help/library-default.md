@@ -1,3 +1,5 @@
+Set the default library
+
 ## Description
 
 Show or set the default package library for the current R version.

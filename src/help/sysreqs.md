@@ -1,3 +1,5 @@
+Manage R-related system libraries and tools (experimental)
+
 ## Description
 
 Manage system libraries and tools. This currently includes a very

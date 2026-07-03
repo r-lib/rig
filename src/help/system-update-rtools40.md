@@ -1,3 +1,5 @@
+Update Rtools40 MSYS2 packages
+
 ## Description
 
 Update Rtools40 compilers and libraries to the latest builds by

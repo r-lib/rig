@@ -1,3 +1,5 @@
+Print the path to the rig config file
+
 ## Description
 
 Print the full path to the rig configuration file.

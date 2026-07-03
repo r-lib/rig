@@ -1,3 +1,5 @@
+Make system forget about R installations
+
 ## Description
 
 Tell macOS to forget about the currently installed R versions.

@@ -67,6 +67,10 @@ subcommands() {
 # so they nest under the command heading. Headings inside fenced code blocks
 # (e.g. `#` comments in shell examples) are left untouched.
 #
+# Any lead paragraph before the first heading is dropped: it is the command's
+# short summary (the clap `about`), which the page already conveys via its title
+# and the description below, so it is not repeated here.
+#
 # The `## Description` heading is dropped (its prose is kept): the description
 # is the command's lead-in and needs no heading of its own.
 #
@@ -81,6 +85,8 @@ shift_headings() {
       isfence = /^```/
       if (isfence) infence = !infence
       ishead = (!infence && !isfence && /^#{1,6} /)
+      if (ishead) seen = 1
+      if (!seen) next
       if (ishead && /^#{1,6}[ \t]+Description[ \t]*$/) next
       if (!infence && !isfence && /^## Examples([[:space:]]|$)/) inex = 1
       show = (mode == "all") || (mode == "before" && !inex) || \

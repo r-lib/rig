@@ -1,3 +1,5 @@
+Manage package libraries [alias: lib] (experimental)
+
 ## Description
 
 Manage package libraries [alias: lib] (experimental)

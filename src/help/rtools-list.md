@@ -1,3 +1,5 @@
+List installed Rtools versions [alias: ls]
+
 ## Description
 
 List installed Rtools versions on Windows.

@@ -1,3 +1,5 @@
+Restrict system library permissions to admin
+
 ## Description
 
 Update the permissions of the current R versions on macOS, so only the

@@ -1,3 +1,5 @@
+Print or set default R version [alias: switch]
+
 ## Description
 
 Print or set the default R version. The default R version is the one that

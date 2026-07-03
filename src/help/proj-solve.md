@@ -1,3 +1,5 @@
+Solve project dependencies
+
 ## Description
 
 Resolve the dependencies of an R project to a concrete set of package

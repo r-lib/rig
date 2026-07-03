@@ -1,3 +1,5 @@
+List the names of all config entries
+
 ## Description
 
 List the names of all rig configuration entries.

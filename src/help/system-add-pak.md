@@ -1,3 +1,5 @@
+Install or update pak for an R version
+
 ## Description
 
 Install/update pak for one or more R versions.

@@ -1,3 +1,5 @@
+Remove a library
+
 ## Description
 
 Remove a user package library of the current R version, including all

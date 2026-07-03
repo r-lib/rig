@@ -1,3 +1,5 @@
+Make installed versions orthogonal
+
 ## Description
 
 Make the current R installations orthogonal on macOS. This allows

@@ -1,3 +1,5 @@
+Clean stale R related entries in the registry
+
 ## Description
 
 Remove R and Rtools entries from the Windows registry, if the

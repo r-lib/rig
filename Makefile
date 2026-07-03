@@ -216,8 +216,10 @@ README.md: README.qmd website/_partials/intro.md website/_partials/feedback.md
 	quarto render README.qmd --to gfm
 
 .PHONY: help readme docs docs-preview cli-reference
-# Regenerate src/help-generated.in (the colored ANSI `--help` strings) from the
-# Markdown sources in src/help/*.md. Run after editing any of those files.
+# Regenerate src/help-generated.in (the colored ANSI short `about` and long
+# `--help` strings) from the Markdown sources in src/help/*.md. Each file's lead
+# paragraph is the short summary, the rest is the long help. Run after editing
+# any of those files.
 help:
 	cargo xtask gen-help
 

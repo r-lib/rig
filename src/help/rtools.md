@@ -1,3 +1,5 @@
+Manage Rtools installations
+
 ## Description
 
 Manage Rtools installations (Windows only).

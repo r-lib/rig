@@ -1,3 +1,5 @@
+Allow creating core dumps when R crashes
+
 ## Description
 
 Update the entitlements of the R process to allow core dumps on macOS.

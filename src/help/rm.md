@@ -1,3 +1,5 @@
+Remove R versions [aliases: del, remove, delete]
+
 ## Description
 
 Remove an R installation. It keeps the users' package libraries.

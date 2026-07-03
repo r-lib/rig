@@ -1,3 +1,5 @@
+List libraries [alias: ls]
+
 ## Description
 
 List the package libraries of the current R version [alias: ls].

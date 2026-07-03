@@ -1,3 +1,5 @@
+Allow debugging R with lldb and gdb
+
 ## Description
 
 Update the entitlements of the R binary to allow debuggers on macOS. It

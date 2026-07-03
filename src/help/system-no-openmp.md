@@ -1,3 +1,5 @@
+Remove OpenMP (-fopenmp) option for Apple compilers
+
 ## Description
 
 Remove -fopenmp flags from the R configuration, to make R work with

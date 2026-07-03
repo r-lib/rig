@@ -1,3 +1,5 @@
+Get a config entry
+
 ## Description
 
 Print the value of a rig configuration entry.

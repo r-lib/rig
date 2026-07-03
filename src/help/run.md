@@ -1,3 +1,5 @@
+Run R, an R script or an R project
+
 ## Description
 
 Run R, an R script or an R project, using the selected R version.

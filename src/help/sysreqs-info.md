@@ -1,3 +1,5 @@
+Information about a system tool
+
 ## Description
 
 Show information about a system library or tool (experimental, macOS

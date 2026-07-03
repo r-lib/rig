@@ -1,3 +1,5 @@
+List available R package repositories
+
 ## Description
 
 List the package repositories that rig knows about and can set up.

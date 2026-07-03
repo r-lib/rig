@@ -1,3 +1,5 @@
+Set a config entry
+
 ## Description
 
 Set a rig configuration entry.

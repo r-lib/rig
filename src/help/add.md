@@ -1,3 +1,5 @@
+Install a new R version [alias: install]
+
 ## Description
 
 Download and install an R version, from the official sources. It keeps

@@ -1,3 +1,5 @@
+Manage current installations
+
 ## Description
 
 Various commands to modify and configure the installed R versions.

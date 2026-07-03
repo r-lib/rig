@@ -41,9 +41,24 @@ The actual removal of the system-wide installations and links is delegated to
 the hidden `rig system clean-admin-r` command, which self-escalates (`sudo` on
 Unix, gsudo/UAC on Windows).
 
-When editing docs or help text (`src/help-*.in`, the website under `website/`,
+When editing docs or help text (`src/help/*.md`, the website under `website/`,
 `README.md`), describe both modes; do not present admin-mode directories or the
 `/usr/local/bin` binary location as the only behavior.
+
+## CLI help text
+
+Each command's help lives in one Markdown file, `src/help/<command-path>.md`
+(e.g. `system-add-pak.md` for `rig system add-pak`). Within a file, the **lead
+paragraph** before the first heading is the short summary (clap's `about`, shown
+in `-h` and the parent command's subcommand list) and everything from the
+`## Description` heading onward is the long help (`long_about`, shown in
+`--help`). The dev-only `xtask` crate renders both parts to colored ANSI and
+writes `ABOUT_*` / `HELP_*` `&str` constants to the committed
+`src/help-generated.in`, which `src/args.rs` includes and passes to
+`.about(...)` / `.long_about(...)`. Edit the Markdown, then regenerate with
+`make help` (`cargo xtask gen-help`); never hand-edit `src/help-generated.in`.
+CI runs `cargo xtask gen-help --check` to catch stale output. The same Markdown
+files are consumed by `website/gen-cli-reference.sh` for the web reference.
 
 ## Documentation website
 

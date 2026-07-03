@@ -1,3 +1,5 @@
+List available system libraries and tools
+
 ## Description
 
 List the system libraries and tools that rig can install (experimental,

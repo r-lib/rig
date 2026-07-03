@@ -1,3 +1,5 @@
+Manage rig configuration
+
 ## Description
 
 Manage the rig configuration file.

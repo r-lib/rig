@@ -1,3 +1,7 @@
+Remove rtools versions [aliases: del, remove, delete]
+
+## Description
+
 Remove Rtools versions on Windows.
 
 You can specify the version(s) to remove by their name, optionally with

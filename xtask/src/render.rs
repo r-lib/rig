@@ -173,9 +173,53 @@ pub(crate) fn md_to_ansi_impl(md: &str, color: bool) -> String {
     out
 }
 
+// Render a short, single-paragraph Markdown snippet to ANSI *without* any block
+// formatting -- no heading treatment and no leading indentation. Used for the
+// one-line command summary (`about`), which clap lays out in its own subcommand
+// table, so it must not carry the 2-space paragraph indent `md_to_ansi_impl`
+// adds. Inline `code`, **bold** and *italic* are still colored; soft/hard line
+// breaks collapse to single spaces.
+pub(crate) fn md_to_ansi_inline(md: &str, color: bool) -> String {
+    let parser = Parser::new_ext(md, Options::empty());
+    let mut out = String::new();
+    for ev in parser {
+        match ev {
+            Event::Text(t) => out.push_str(&t),
+            Event::Code(t) => {
+                if color {
+                    out.push_str("\x1b[32m");
+                    out.push_str(&t);
+                    out.push_str("\x1b[39m");
+                } else {
+                    out.push('`');
+                    out.push_str(&t);
+                    out.push('`');
+                }
+            }
+            Event::Start(Tag::Strong) | Event::End(TagEnd::Strong) if color => {
+                out.push_str(if matches!(ev, Event::Start(_)) {
+                    "\x1b[1m"
+                } else {
+                    "\x1b[22m"
+                });
+            }
+            Event::Start(Tag::Emphasis) | Event::End(TagEnd::Emphasis) if color => {
+                out.push_str(if matches!(ev, Event::Start(_)) {
+                    "\x1b[3m"
+                } else {
+                    "\x1b[23m"
+                });
+            }
+            Event::SoftBreak | Event::HardBreak => out.push(' '),
+            _ => {}
+        }
+    }
+    out.trim().to_string()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::md_to_ansi_impl;
+    use super::{md_to_ansi_impl, md_to_ansi_inline};
 
     #[test]
     fn plain_heading_and_paragraph() {
@@ -214,5 +258,18 @@ mod tests {
     fn code_block_is_indented() {
         let md = "Run:\n\n```sh\nrig add devel\n```";
         assert_eq!(md_to_ansi_impl(md, false), "  Run:\n\n  rig add devel");
+    }
+
+    #[test]
+    fn inline_has_no_indent_and_collapses_breaks() {
+        let md = "List installed R versions\n[alias: `ls`]";
+        assert_eq!(
+            md_to_ansi_inline(md, false),
+            "List installed R versions [alias: `ls`]"
+        );
+        assert_eq!(
+            md_to_ansi_inline("Use `R`.", true),
+            "Use \x1b[32mR\x1b[39m."
+        );
     }
 }

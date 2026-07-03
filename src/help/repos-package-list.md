@@ -1,3 +1,5 @@
+List packages in R package repositories
+
 ## Description
 
 List the packages available from the configured package repositories.

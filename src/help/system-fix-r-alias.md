@@ -1,3 +1,5 @@
+Make the 'R' command start R in PowerShell
+
 ## Description
 
 Make the 'R' command start R in PowerShell.

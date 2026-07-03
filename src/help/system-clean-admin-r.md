@@ -1,3 +1,5 @@
+Remove all admin-mode R installations and links
+
 ## Description
 
 Remove all admin-mode R installations and their quick links.

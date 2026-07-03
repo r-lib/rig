@@ -1,3 +1,5 @@
+Allow debugging RStudio with lldb and gdb
+
 ## Description
 
 Update the entitlements of RStudio R process to allow debuggers on macOS.

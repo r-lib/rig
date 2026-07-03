@@ -1,3 +1,5 @@
+List configured R package repositories
+
 ## Description
 
 List the package repositories configured for an R version.

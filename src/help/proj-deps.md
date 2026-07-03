@@ -1,3 +1,5 @@
+Show project dependencies
+
 ## Description
 
 Show the dependencies of an R project.

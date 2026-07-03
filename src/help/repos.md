@@ -1,3 +1,5 @@
+Manage package repositories
+
 ## Description
 
 Manage the R package repositories that rig configures for your R

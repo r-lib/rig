@@ -1,3 +1,5 @@
+Resolve a symbolic R version
+
 ## Description
 
 Resolve R versions. Checks the version number of an R version (e.g.

@@ -1,3 +1,5 @@
+List installed R versions [alias: ls]
+
 ## Description
 
 List installed R versions. It does _not_ check if they are working

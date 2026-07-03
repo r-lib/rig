@@ -1,3 +1,5 @@
+Detect operating system version and distribution.
+
 ## Description
 
 Detect and print the operating system version and distribution.
