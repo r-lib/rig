@@ -1545,5 +1545,91 @@ pub fn rig_app() -> Command {
 }
 
 pub fn parse_args() -> ArgMatches {
-    rig_app().get_matches()
+    match rig_app().try_get_matches() {
+        Ok(matches) => matches,
+        Err(e) => {
+            use clap::error::ErrorKind::*;
+            match e.kind() {
+                // Help output: page it when interactive, then exit cleanly.
+                DisplayHelp | DisplayHelpOnMissingArgumentOrSubcommand => {
+                    show_help(&e);
+                    std::process::exit(0);
+                }
+                // Version and real parse errors keep clap's default behavior
+                // (version -> stdout / exit 0, errors -> stderr / exit 2).
+                _ => e.exit(),
+            }
+        }
+    }
+}
+
+// Display clap help output, paging it through `$PAGER` (defaulting to `less`)
+// when stdout is a terminal, mirroring how git pages its help. When stdout is
+// not a terminal, or the pager is disabled/unavailable, the help is printed
+// directly (clap strips ANSI colors automatically for non-terminals).
+fn show_help(err: &clap::Error) {
+    use std::io::{IsTerminal, Write};
+    use std::process::{Command, Stdio};
+
+    // Non-interactive: let clap print (it auto-strips color) and return.
+    if !std::io::stdout().is_terminal() {
+        let _ = err.print();
+        return;
+    }
+
+    // Resolve the pager: RIG_PAGER -> PAGER -> `less`. An empty value or
+    // `cat` disables paging.
+    let pager = std::env::var("RIG_PAGER")
+        .or_else(|_| std::env::var("PAGER"))
+        .unwrap_or_else(|_| "less".to_string());
+    let pager = pager.trim();
+    if pager.is_empty() || pager == "cat" {
+        let _ = err.print();
+        return;
+    }
+
+    // Colored help text. `.ansi()` forces clap's own styling on even though we
+    // capture to a String; the ABOUT_*/HELP_* constants already carry escapes.
+    let text = err.render().ansi().to_string();
+
+    #[cfg(windows)]
+    let mut cmd = {
+        let mut c = Command::new("cmd");
+        c.arg("/C").arg(pager);
+        c
+    };
+    #[cfg(not(windows))]
+    let mut cmd = {
+        let mut c = Command::new("sh");
+        c.arg("-c").arg(pager);
+        c
+    };
+
+    // Sensible `less` defaults (like git): -F quit if one screen, -R keep
+    // colors, -X don't clear the screen. Only set when the user has not.
+    if pager.split_whitespace().next() == Some("less") && std::env::var_os("LESS").is_none() {
+        cmd.env("LESS", "FRX");
+    }
+
+    let child = cmd.stdin(Stdio::piped()).spawn();
+    let mut child = match child {
+        Ok(child) => child,
+        // Pager could not be started (e.g. no `less` on Windows): print directly.
+        Err(_) => {
+            let _ = err.print();
+            return;
+        }
+    };
+
+    if let Some(mut stdin) = child.stdin.take() {
+        if stdin.write_all(text.as_bytes()).is_err() {
+            // Writing failed (pager exited early, etc.): fall back to printing.
+            drop(stdin);
+            let _ = child.wait();
+            let _ = err.print();
+            return;
+        }
+    }
+
+    let _ = child.wait();
 }
