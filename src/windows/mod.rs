@@ -301,7 +301,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
                 return Err(err);
             }
         };
-        let final_dir = format!("{}\\{}", r_root, &rig_name);
+        let final_dir = format!("{}\\{}", r_root, rig_name);
         if Path::new(&final_dir).exists() {
             if let Err(err) = remove_dir_all(&final_dir) {
                 let _ = remove_dir_all(&temp_dir);
@@ -541,11 +541,11 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<(), Box<dyn Error
         if instdirpath.exists() {
             OUTPUT.success(&format!(
                 "Rtools{} ({}) is already installed",
-                &item.version, &item.arch
+                item.version, item.arch
             ));
             info!(
                 "Rtools{} ({}) is already installed",
-                &item.version, &item.arch
+                item.version, item.arch
             );
             continue;
         }

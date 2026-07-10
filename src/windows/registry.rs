@@ -47,7 +47,7 @@ fn clean_registry_r(key: &RegKey) -> Result<(), Box<dyn Error>> {
         let path: String = subkey.get_value("InstallPath")?;
         let path2 = Path::new(&path);
         if !path2.exists() {
-            debug!("Cleaning registry: R {} (not in {})", &nm, path);
+            debug!("Cleaning registry: R {} (not in {})", nm, path);
             key.delete_subkey_all(nm)?;
         }
     }
@@ -61,7 +61,7 @@ fn clean_registry_rtools(key: &RegKey) -> Result<(), Box<dyn Error>> {
         let path: String = subkey.get_value("InstallPath")?;
         let path2 = Path::new(&path);
         if !path2.exists() {
-            debug!("Cleaning registry: Rtools {} (not in {})", &nm, path);
+            debug!("Cleaning registry: Rtools {} (not in {})", nm, path);
             key.delete_subkey_all(nm)?;
         }
     }
