@@ -45,9 +45,9 @@ ul.task-list li input[type="checkbox"] {
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-15634bcf2e68342d4ad2dfa704d543f6.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-366cb8ec674e47143b072bc2c76f74d8.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="../site_libs/bootstrap/bootstrap-dark-785818dbc5d96fd52cb159fe6cdcecc7.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
-<link href="../site_libs/bootstrap/bootstrap-366cb8ec674e47143b072bc2c76f74d8.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-3532e298ff37c591783edef749a05417.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-dark-418e02f4d768829f2bbae831ff698b99.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<link href="../site_libs/bootstrap/bootstrap-3532e298ff37c591783edef749a05417.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -307,12 +307,6 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../usage.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Usage</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
   <a href="../macos-app.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">macOS menu bar app</span></a>
   </div>
@@ -414,14 +408,14 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/sysreqs.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">rig sysreqs</span></a>
+  <a href="../reference/system.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig system</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/system.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">rig system</span></a>
+  <a href="../reference/test.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig test</span></a>
   </div>
 </li>
       </ul>
@@ -448,11 +442,21 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#rig-proj" id="toc-rig-proj" class="nav-link active" data-scroll-target="#rig-proj"><code>rig proj</code></a>
+  <li><a href="#subcommands" id="toc-subcommands" class="nav-link active" data-scroll-target="#subcommands">Subcommands</a></li>
+  <li><a href="#rig-proj-deploy" id="toc-rig-proj-deploy" class="nav-link" data-scroll-target="#rig-proj-deploy"><code>rig proj deploy</code></a>
   <ul class="collapse">
-  <li><a href="#rig-proj-deploy" id="toc-rig-proj-deploy" class="nav-link" data-scroll-target="#rig-proj-deploy"><code>rig proj deploy</code></a></li>
-  <li><a href="#rig-proj-deps" id="toc-rig-proj-deps" class="nav-link" data-scroll-target="#rig-proj-deps"><code>rig proj deps</code></a></li>
-  <li><a href="#rig-proj-solve" id="toc-rig-proj-solve" class="nav-link" data-scroll-target="#rig-proj-solve"><code>rig proj solve</code></a></li>
+  <li><a href="#usage" id="toc-usage" class="nav-link" data-scroll-target="#usage">Usage</a></li>
+  <li><a href="#options" id="toc-options" class="nav-link" data-scroll-target="#options">Options</a></li>
+  </ul></li>
+  <li><a href="#rig-proj-deps" id="toc-rig-proj-deps" class="nav-link" data-scroll-target="#rig-proj-deps"><code>rig proj deps</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-1" id="toc-usage-1" class="nav-link" data-scroll-target="#usage-1">Usage</a></li>
+  <li><a href="#options-1" id="toc-options-1" class="nav-link" data-scroll-target="#options-1">Options</a></li>
+  </ul></li>
+  <li><a href="#rig-proj-solve" id="toc-rig-proj-solve" class="nav-link" data-scroll-target="#rig-proj-solve"><code>rig proj solve</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-2" id="toc-usage-2" class="nav-link" data-scroll-target="#usage-2">Usage</a></li>
+  <li><a href="#options-2" id="toc-options-2" class="nav-link" data-scroll-target="#options-2">Options</a></li>
   </ul></li>
   </ul>
 </nav>
@@ -481,79 +485,149 @@ ul.task-list li input[type="checkbox"] {
 
 
 <!-- Generated by website/gen-cli-reference.sh. Do not edit by hand. -->
-<section id="rig-proj" class="level2">
-<h2 class="anchored" data-anchor-id="rig-proj"><code>rig proj</code></h2>
-<pre class="text"><code>TODO
-
-Usage: rig proj [OPTIONS] [COMMAND]
-
-Commands:
-  deploy  Deploy project dependencies
-  deps    Show project dependencies
-  solve   Solve project dependencies
-  help    Print this message or the help of the given subcommand(s)
-
-Options:
-      --json
-          JSON output
-
-      --user
-          Run in user mode (overrides RIG_MODE and config)
-
-      --admin
-          Run in admin mode (overrides RIG_MODE and config)
-
-  -h, --help
-          Print help (see a summary with '-h')</code></pre>
-<section id="rig-proj-deploy" class="level3">
-<h3 class="anchored" data-anchor-id="rig-proj-deploy"><code>rig proj deploy</code></h3>
-<pre class="text"><code>Deploy project dependencies
-
-Usage: rig proj deploy [OPTIONS] --library &lt;library&gt;
-
-Options:
-  -l, --library &lt;library&gt;
-          Library path where packages should be installed
-      --r-binary &lt;r-binary&gt;
-          Path to R binary (default: R)
-      --max-concurrent &lt;max-concurrent&gt;
-          Maximum number of concurrent installations (default: 4)
-      --user
-          Run in user mode (overrides RIG_MODE and config)
-      --admin
-          Run in admin mode (overrides RIG_MODE and config)
-  -h, --help
-          Print help</code></pre>
+<p>Manage R projects (experimental).</p>
+<p>A project is a directory with a package manifest, typically a <code>DESCRIPTION</code> file, that declares the R packages the project depends on. <code>rig proj</code> resolves those dependencies against the configured package repositories and can install them into a project library.</p>
+<p><code>rig proj deps</code> shows the direct and recursive dependencies of the project. <code>rig proj solve</code> resolves the full dependency tree to a concrete set of package versions, and can write the result to an <code>renv.lock</code> file. <code>rig proj deploy</code> installs the resolved dependencies into a package library.</p>
+<p>Dependencies are resolved with rig’s built-in solver, so R does not need to be running for <code>rig proj deps</code> and <code>rig proj solve</code>.</p>
+<p><code>rig proj</code> is currently experimental, and might change in future versions. Feedback is appreciated.</p>
+<section id="subcommands" class="level2">
+<h2 class="anchored" data-anchor-id="subcommands">Subcommands</h2>
+<dl>
+<dt><a href="#rig-proj-deploy"><code>deploy</code></a></dt>
+<dd>
+Deploy project dependencies
+</dd>
+<dt><a href="#rig-proj-deps"><code>deps</code></a></dt>
+<dd>
+Show project dependencies
+</dd>
+<dt><a href="#rig-proj-solve"><code>solve</code></a></dt>
+<dd>
+Solve project dependencies
+</dd>
+</dl>
 </section>
-<section id="rig-proj-deps" class="level3">
-<h3 class="anchored" data-anchor-id="rig-proj-deps"><code>rig proj deps</code></h3>
-<pre class="text"><code>Show project dependencies
-
-Usage: rig proj deps [OPTIONS]
-
-Options:
-  -i, --input &lt;input&gt;  Project file to solve (e.g. DESCRIPTION)
-      --json           JSON output
-      --dev            Include dev (development) dependencies
-      --user           Run in user mode (overrides RIG_MODE and config)
-      --admin          Run in admin mode (overrides RIG_MODE and config)
-  -h, --help           Print help</code></pre>
+<section id="rig-proj-deploy" class="level2">
+<h2 class="anchored" data-anchor-id="rig-proj-deploy"><code>rig proj deploy</code></h2>
+<p>Install the resolved dependencies of an R project into a package library.</p>
+<p>rig solves the project dependencies and installs them into the library given by <code>--library</code>. Use <code>--r-binary</code> to select which R to build against (default: <code>R</code>) and <code>--max-concurrent</code> to limit the number of simultaneous installations (default: 4).</p>
+<section id="usage" class="level3">
+<h3 class="anchored" data-anchor-id="usage">Usage</h3>
+<pre class="text"><code>rig proj deploy [OPTIONS] --library &lt;library&gt;</code></pre>
 </section>
-<section id="rig-proj-solve" class="level3">
-<h3 class="anchored" data-anchor-id="rig-proj-solve"><code>rig proj solve</code></h3>
-<pre class="text"><code>Solve project dependencies
-
-Usage: rig proj solve [OPTIONS]
-
-Options:
-  -i, --input &lt;input&gt;          Project file to solve (e.g. DESCRIPTION)
-      --renv                   Output and renv.lock file
-      --json                   JSON output
-  -r, --r-version &lt;r-version&gt;  R version to solve dependencies for
-      --dev                    Include dev (development) dependencies
-      --user                   Run in user mode (overrides RIG_MODE and config)
-      --admin                  Run in admin mode (overrides RIG_MODE and config)
-  -h, --help                   Print help</code></pre>
+<section id="options" class="level3">
+<h3 class="anchored" data-anchor-id="options">Options</h3>
+<dl>
+<dt><code>-l, --library &lt;library&gt;</code></dt>
+<dd>
+Library path where packages should be installed
+</dd>
+<dt><code>--r-binary &lt;r-binary&gt;</code></dt>
+<dd>
+Path to R binary (default: R)
+</dd>
+<dt><code>--max-concurrent &lt;max-concurrent&gt;</code></dt>
+<dd>
+Maximum number of concurrent installations (default: 4)
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+</dl>
+</section>
+</section>
+<section id="rig-proj-deps" class="level2">
+<h2 class="anchored" data-anchor-id="rig-proj-deps"><code>rig proj deps</code></h2>
+<p>Show the dependencies of an R project.</p>
+<p>By default rig reads the project manifest (e.g.&nbsp;<code>DESCRIPTION</code>) in the current directory; use <code>--input</code> to point to a different file. Add <code>--dev</code> to include development dependencies.</p>
+<section id="usage-1" class="level3">
+<h3 class="anchored" data-anchor-id="usage-1">Usage</h3>
+<pre class="text"><code>rig proj deps [OPTIONS]</code></pre>
+</section>
+<section id="options-1" class="level3">
+<h3 class="anchored" data-anchor-id="options-1">Options</h3>
+<dl>
+<dt><code>-i, --input &lt;input&gt;</code></dt>
+<dd>
+Project file to solve (e.g.&nbsp;DESCRIPTION)
+</dd>
+<dt><code>--json</code></dt>
+<dd>
+JSON output
+</dd>
+<dt><code>--dev</code></dt>
+<dd>
+Include dev (development) dependencies
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+</dl>
+</section>
+</section>
+<section id="rig-proj-solve" class="level2">
+<h2 class="anchored" data-anchor-id="rig-proj-solve"><code>rig proj solve</code></h2>
+<p>Resolve the dependencies of an R project to a concrete set of package versions.</p>
+<p>rig reads the project manifest (e.g.&nbsp;<code>DESCRIPTION</code>; override with <code>--input</code>) and uses its built-in solver to find a compatible set of package versions from the configured repositories, without running R.</p>
+<p>Use <code>--r-version</code> to solve for a specific R version, <code>--dev</code> to include development dependencies, and <code>--renv</code> to write the result as an <code>renv.lock</code> file.</p>
+<section id="usage-2" class="level3">
+<h3 class="anchored" data-anchor-id="usage-2">Usage</h3>
+<pre class="text"><code>rig proj solve [OPTIONS]</code></pre>
+</section>
+<section id="options-2" class="level3">
+<h3 class="anchored" data-anchor-id="options-2">Options</h3>
+<dl>
+<dt><code>-i, --input &lt;input&gt;</code></dt>
+<dd>
+Project file to solve (e.g.&nbsp;DESCRIPTION)
+</dd>
+<dt><code>--renv</code></dt>
+<dd>
+Output and renv.lock file
+</dd>
+<dt><code>--json</code></dt>
+<dd>
+JSON output
+</dd>
+<dt><code>-r, --r-version &lt;r-version&gt;</code></dt>
+<dd>
+R version to solve dependencies for
+</dd>
+<dt><code>--dev</code></dt>
+<dd>
+Include dev (development) dependencies
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+</dl>
 
 
 </section>

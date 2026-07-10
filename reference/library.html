@@ -45,9 +45,9 @@ ul.task-list li input[type="checkbox"] {
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-15634bcf2e68342d4ad2dfa704d543f6.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-366cb8ec674e47143b072bc2c76f74d8.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="../site_libs/bootstrap/bootstrap-dark-785818dbc5d96fd52cb159fe6cdcecc7.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
-<link href="../site_libs/bootstrap/bootstrap-366cb8ec674e47143b072bc2c76f74d8.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-3532e298ff37c591783edef749a05417.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-dark-418e02f4d768829f2bbae831ff698b99.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<link href="../site_libs/bootstrap/bootstrap-3532e298ff37c591783edef749a05417.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -307,12 +307,6 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../usage.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Usage</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
   <a href="../macos-app.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">macOS menu bar app</span></a>
   </div>
@@ -414,14 +408,14 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/sysreqs.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">rig sysreqs</span></a>
+  <a href="../reference/system.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig system</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/system.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">rig system</span></a>
+  <a href="../reference/test.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig test</span></a>
   </div>
 </li>
       </ul>
@@ -448,12 +442,29 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#rig-library" id="toc-rig-library" class="nav-link active" data-scroll-target="#rig-library"><code>rig library</code></a>
+  <li><a href="#subcommands" id="toc-subcommands" class="nav-link active" data-scroll-target="#subcommands">Subcommands</a></li>
+  <li><a href="#rig-library-add" id="toc-rig-library-add" class="nav-link" data-scroll-target="#rig-library-add"><code>rig library add</code></a>
   <ul class="collapse">
-  <li><a href="#rig-library-add" id="toc-rig-library-add" class="nav-link" data-scroll-target="#rig-library-add"><code>rig library add</code></a></li>
-  <li><a href="#rig-library-default" id="toc-rig-library-default" class="nav-link" data-scroll-target="#rig-library-default"><code>rig library default</code></a></li>
-  <li><a href="#rig-library-list" id="toc-rig-library-list" class="nav-link" data-scroll-target="#rig-library-list"><code>rig library list</code></a></li>
-  <li><a href="#rig-library-rm" id="toc-rig-library-rm" class="nav-link" data-scroll-target="#rig-library-rm"><code>rig library rm</code></a></li>
+  <li><a href="#usage" id="toc-usage" class="nav-link" data-scroll-target="#usage">Usage</a></li>
+  <li><a href="#arguments" id="toc-arguments" class="nav-link" data-scroll-target="#arguments">Arguments</a></li>
+  <li><a href="#options" id="toc-options" class="nav-link" data-scroll-target="#options">Options</a></li>
+  </ul></li>
+  <li><a href="#rig-library-default" id="toc-rig-library-default" class="nav-link" data-scroll-target="#rig-library-default"><code>rig library default</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-1" id="toc-usage-1" class="nav-link" data-scroll-target="#usage-1">Usage</a></li>
+  <li><a href="#arguments-1" id="toc-arguments-1" class="nav-link" data-scroll-target="#arguments-1">Arguments</a></li>
+  <li><a href="#options-1" id="toc-options-1" class="nav-link" data-scroll-target="#options-1">Options</a></li>
+  </ul></li>
+  <li><a href="#rig-library-list" id="toc-rig-library-list" class="nav-link" data-scroll-target="#rig-library-list"><code>rig library list</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-2" id="toc-usage-2" class="nav-link" data-scroll-target="#usage-2">Usage</a></li>
+  <li><a href="#options-2" id="toc-options-2" class="nav-link" data-scroll-target="#options-2">Options</a></li>
+  </ul></li>
+  <li><a href="#rig-library-rm" id="toc-rig-library-rm" class="nav-link" data-scroll-target="#rig-library-rm"><code>rig library rm</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-3" id="toc-usage-3" class="nav-link" data-scroll-target="#usage-3">Usage</a></li>
+  <li><a href="#arguments-2" id="toc-arguments-2" class="nav-link" data-scroll-target="#arguments-2">Arguments</a></li>
+  <li><a href="#options-3" id="toc-options-3" class="nav-link" data-scroll-target="#options-3">Options</a></li>
   </ul></li>
   </ul>
 </nav>
@@ -482,105 +493,169 @@ ul.task-list li input[type="checkbox"] {
 
 
 <!-- Generated by website/gen-cli-reference.sh. Do not edit by hand. -->
-<section id="rig-library" class="level2">
-<h2 class="anchored" data-anchor-id="rig-library"><code>rig library</code></h2>
-<pre class="text"><code>Description:
-  Manage package libraries [alias: lib] (experimental)
-
-  rig supports multiple user package libraries. The usual user library is
-  called "main".
-
-  `rig library default` shows or sets the default library for the
-   current R version.
-  `rig library list` lists all libraries for the current R version.
-  `rig library add` adds a new library for the current R version.
-  `rig library rm` deletes a library, including all packages in it.
-  It is not possible to delete the current default library, and it is not
-  possible to delete the main library.
-
-  User libraries are implemented at the user level, no administrator or
-  root password is needed to add, set or delete them. If you delete an
-  R installation, the user package libraries and their configurations are
-  kept for all users on the system.
-
-  `rig library` is currently experimental, and might change in future
-  versions. Feedback is appreciated.
-
-Usage: rig library [OPTIONS] [COMMAND]
-
-Commands:
-  add      Add a new library
-  default  Set the default library
-  list     List libraries [alias: ls]
-  rm       Remove a library
-  help     Print this message or the help of the given subcommand(s)
-
-Options:
-      --json
-          JSON output
-
-      --user
-          Run in user mode (overrides RIG_MODE and config)
-
-      --admin
-          Run in admin mode (overrides RIG_MODE and config)
-
-  -h, --help
-          Print help (see a summary with '-h')</code></pre>
-<section id="rig-library-add" class="level3">
-<h3 class="anchored" data-anchor-id="rig-library-add"><code>rig library add</code></h3>
-<pre class="text"><code>Add a new library
-
-Usage: rig library add [OPTIONS] &lt;lib-name&gt;
-
-Arguments:
-  &lt;lib-name&gt;  name of new library
-
-Options:
-      --user   Run in user mode (overrides RIG_MODE and config)
-      --admin  Run in admin mode (overrides RIG_MODE and config)
-  -h, --help   Print help</code></pre>
+<p>Manage package libraries [alias: lib] (experimental)</p>
+<p>rig supports multiple user package libraries. The usual user library is called “main”.</p>
+<p><code>rig library default</code> shows or sets the default library for the current R version. <code>rig library list</code> lists all libraries for the current R version. <code>rig library add</code> adds a new library for the current R version. <code>rig library rm</code> deletes a library, including all packages in it. It is not possible to delete the current default library, and it is not possible to delete the main library.</p>
+<p>User libraries are implemented at the user level, no administrator or root password is needed to add, set or delete them. If you delete an R installation, the user package libraries and their configurations are kept for all users on the system.</p>
+<p><code>rig library</code> is currently experimental, and might change in future versions. Feedback is appreciated.</p>
+<section id="subcommands" class="level2">
+<h2 class="anchored" data-anchor-id="subcommands">Subcommands</h2>
+<dl>
+<dt><a href="#rig-library-add"><code>add</code></a></dt>
+<dd>
+Add a new library
+</dd>
+<dt><a href="#rig-library-default"><code>default</code></a></dt>
+<dd>
+Set the default library
+</dd>
+<dt><a href="#rig-library-list"><code>list</code></a></dt>
+<dd>
+List libraries [alias: ls]
+</dd>
+<dt><a href="#rig-library-rm"><code>rm</code></a></dt>
+<dd>
+Remove a library
+</dd>
+</dl>
 </section>
-<section id="rig-library-default" class="level3">
-<h3 class="anchored" data-anchor-id="rig-library-default"><code>rig library default</code></h3>
-<pre class="text"><code>Set the default library
-
-Usage: rig library default [OPTIONS] [lib-name]
-
-Arguments:
-  [lib-name]  library name to set as default
-
-Options:
-      --json   JSON output
-      --user   Run in user mode (overrides RIG_MODE and config)
-      --admin  Run in admin mode (overrides RIG_MODE and config)
-  -h, --help   Print help</code></pre>
+<section id="rig-library-add" class="level2">
+<h2 class="anchored" data-anchor-id="rig-library-add"><code>rig library add</code></h2>
+<p>Add a new user package library for the current R version.</p>
+<p>The new library is created empty. Adding a library does not change the default library; use <code>rig library default</code> to switch to it. No administrator rights are needed.</p>
+<section id="usage" class="level3">
+<h3 class="anchored" data-anchor-id="usage">Usage</h3>
+<pre class="text"><code>rig library add [OPTIONS] &lt;lib-name&gt;</code></pre>
 </section>
-<section id="rig-library-list" class="level3">
-<h3 class="anchored" data-anchor-id="rig-library-list"><code>rig library list</code></h3>
-<pre class="text"><code>List libraries [alias: ls]
-
-Usage: rig library list [OPTIONS]
-
-Options:
-      --json   JSON output
-      --user   Run in user mode (overrides RIG_MODE and config)
-      --admin  Run in admin mode (overrides RIG_MODE and config)
-  -h, --help   Print help</code></pre>
+<section id="arguments" class="level3">
+<h3 class="anchored" data-anchor-id="arguments">Arguments</h3>
+<dl>
+<dt><code>&lt;lib-name&gt;</code></dt>
+<dd>
+name of new library
+</dd>
+</dl>
 </section>
-<section id="rig-library-rm" class="level3">
-<h3 class="anchored" data-anchor-id="rig-library-rm"><code>rig library rm</code></h3>
-<pre class="text"><code>Remove a library
-
-Usage: rig library rm [OPTIONS] &lt;lib-name&gt;
-
-Arguments:
-  &lt;lib-name&gt;  name of library to remove
-
-Options:
-      --user   Run in user mode (overrides RIG_MODE and config)
-      --admin  Run in admin mode (overrides RIG_MODE and config)
-  -h, --help   Print help</code></pre>
+<section id="options" class="level3">
+<h3 class="anchored" data-anchor-id="options">Options</h3>
+<dl>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+</dl>
+</section>
+</section>
+<section id="rig-library-default" class="level2">
+<h2 class="anchored" data-anchor-id="rig-library-default"><code>rig library default</code></h2>
+<p>Show or set the default package library for the current R version.</p>
+<p>Call without arguments to print the current default library. Call with a library name to make it the default. New R sessions of the current R version will then use that library.</p>
+<section id="usage-1" class="level3">
+<h3 class="anchored" data-anchor-id="usage-1">Usage</h3>
+<pre class="text"><code>rig library default [OPTIONS] [lib-name]</code></pre>
+</section>
+<section id="arguments-1" class="level3">
+<h3 class="anchored" data-anchor-id="arguments-1">Arguments</h3>
+<dl>
+<dt><code>[lib-name]</code></dt>
+<dd>
+library name to set as default
+</dd>
+</dl>
+</section>
+<section id="options-1" class="level3">
+<h3 class="anchored" data-anchor-id="options-1">Options</h3>
+<dl>
+<dt><code>--json</code></dt>
+<dd>
+JSON output
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+</dl>
+</section>
+</section>
+<section id="rig-library-list" class="level2">
+<h2 class="anchored" data-anchor-id="rig-library-list"><code>rig library list</code></h2>
+<p>List the package libraries of the current R version [alias: ls].</p>
+<p>The default library is marked. See <code>rig library</code> for an overview of user package libraries.</p>
+<section id="usage-2" class="level3">
+<h3 class="anchored" data-anchor-id="usage-2">Usage</h3>
+<pre class="text"><code>rig library list [OPTIONS]</code></pre>
+</section>
+<section id="options-2" class="level3">
+<h3 class="anchored" data-anchor-id="options-2">Options</h3>
+<dl>
+<dt><code>--json</code></dt>
+<dd>
+JSON output
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+</dl>
+</section>
+</section>
+<section id="rig-library-rm" class="level2">
+<h2 class="anchored" data-anchor-id="rig-library-rm"><code>rig library rm</code></h2>
+<p>Remove a user package library of the current R version, including all packages installed in it.</p>
+<p>You cannot remove the current default library, and you cannot remove the main library. Switch to another library with <code>rig library default</code> first if needed.</p>
+<section id="usage-3" class="level3">
+<h3 class="anchored" data-anchor-id="usage-3">Usage</h3>
+<pre class="text"><code>rig library rm [OPTIONS] &lt;lib-name&gt;</code></pre>
+</section>
+<section id="arguments-2" class="level3">
+<h3 class="anchored" data-anchor-id="arguments-2">Arguments</h3>
+<dl>
+<dt><code>&lt;lib-name&gt;</code></dt>
+<dd>
+name of library to remove
+</dd>
+</dl>
+</section>
+<section id="options-3" class="level3">
+<h3 class="anchored" data-anchor-id="options-3">Options</h3>
+<dl>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+</dl>
 
 
 </section>

@@ -45,9 +45,9 @@ ul.task-list li input[type="checkbox"] {
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-15634bcf2e68342d4ad2dfa704d543f6.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-366cb8ec674e47143b072bc2c76f74d8.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="../site_libs/bootstrap/bootstrap-dark-785818dbc5d96fd52cb159fe6cdcecc7.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
-<link href="../site_libs/bootstrap/bootstrap-366cb8ec674e47143b072bc2c76f74d8.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-3532e298ff37c591783edef749a05417.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-dark-418e02f4d768829f2bbae831ff698b99.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<link href="../site_libs/bootstrap/bootstrap-3532e298ff37c591783edef749a05417.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -307,12 +307,6 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../usage.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Usage</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
   <a href="../macos-app.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">macOS menu bar app</span></a>
   </div>
@@ -414,14 +408,14 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/sysreqs.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">rig sysreqs</span></a>
+  <a href="../reference/system.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig system</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/system.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">rig system</span></a>
+  <a href="../reference/test.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig test</span></a>
   </div>
 </li>
       </ul>
@@ -448,12 +442,28 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#rig-config" id="toc-rig-config" class="nav-link active" data-scroll-target="#rig-config"><code>rig config</code></a>
+  <li><a href="#subcommands" id="toc-subcommands" class="nav-link active" data-scroll-target="#subcommands">Subcommands</a></li>
+  <li><a href="#rig-config-config-file-path" id="toc-rig-config-config-file-path" class="nav-link" data-scroll-target="#rig-config-config-file-path"><code>rig config config-file-path</code></a>
   <ul class="collapse">
-  <li><a href="#rig-config-config-file-path" id="toc-rig-config-config-file-path" class="nav-link" data-scroll-target="#rig-config-config-file-path"><code>rig config config-file-path</code></a></li>
-  <li><a href="#rig-config-get" id="toc-rig-config-get" class="nav-link" data-scroll-target="#rig-config-get"><code>rig config get</code></a></li>
-  <li><a href="#rig-config-list" id="toc-rig-config-list" class="nav-link" data-scroll-target="#rig-config-list"><code>rig config list</code></a></li>
-  <li><a href="#rig-config-set" id="toc-rig-config-set" class="nav-link" data-scroll-target="#rig-config-set"><code>rig config set</code></a></li>
+  <li><a href="#usage" id="toc-usage" class="nav-link" data-scroll-target="#usage">Usage</a></li>
+  <li><a href="#options" id="toc-options" class="nav-link" data-scroll-target="#options">Options</a></li>
+  </ul></li>
+  <li><a href="#rig-config-get" id="toc-rig-config-get" class="nav-link" data-scroll-target="#rig-config-get"><code>rig config get</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-1" id="toc-usage-1" class="nav-link" data-scroll-target="#usage-1">Usage</a></li>
+  <li><a href="#arguments" id="toc-arguments" class="nav-link" data-scroll-target="#arguments">Arguments</a></li>
+  <li><a href="#options-1" id="toc-options-1" class="nav-link" data-scroll-target="#options-1">Options</a></li>
+  </ul></li>
+  <li><a href="#rig-config-list" id="toc-rig-config-list" class="nav-link" data-scroll-target="#rig-config-list"><code>rig config list</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-2" id="toc-usage-2" class="nav-link" data-scroll-target="#usage-2">Usage</a></li>
+  <li><a href="#options-2" id="toc-options-2" class="nav-link" data-scroll-target="#options-2">Options</a></li>
+  </ul></li>
+  <li><a href="#rig-config-set" id="toc-rig-config-set" class="nav-link" data-scroll-target="#rig-config-set"><code>rig config set</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-3" id="toc-usage-3" class="nav-link" data-scroll-target="#usage-3">Usage</a></li>
+  <li><a href="#arguments-1" id="toc-arguments-1" class="nav-link" data-scroll-target="#arguments-1">Arguments</a></li>
+  <li><a href="#options-3" id="toc-options-3" class="nav-link" data-scroll-target="#options-3">Options</a></li>
   </ul></li>
   </ul>
 </nav>
@@ -482,74 +492,158 @@ ul.task-list li input[type="checkbox"] {
 
 
 <!-- Generated by website/gen-cli-reference.sh. Do not edit by hand. -->
-<section id="rig-config" class="level2">
-<h2 class="anchored" data-anchor-id="rig-config"><code>rig config</code></h2>
-<pre class="text"><code>Manage rig configuration
-
-Usage: rig config [OPTIONS] [COMMAND]
-
-Commands:
-  config-file-path  Print the path to the rig config file
-  get               Get a config entry
-  list              List the names of all config entries
-  set               Set a config entry
-  help              Print this message or the help of the given subcommand(s)
-
-Options:
-      --user   Run in user mode (overrides RIG_MODE and config)
-      --admin  Run in admin mode (overrides RIG_MODE and config)
-  -h, --help   Print help</code></pre>
-<section id="rig-config-config-file-path" class="level3">
-<h3 class="anchored" data-anchor-id="rig-config-config-file-path"><code>rig config config-file-path</code></h3>
-<pre class="text"><code>Print the path to the rig config file
-
-Usage: rig config config-file-path [OPTIONS]
-
-Options:
-      --user   Run in user mode (overrides RIG_MODE and config)
-      --admin  Run in admin mode (overrides RIG_MODE and config)
-  -h, --help   Print help</code></pre>
+<p>Manage the rig configuration file.</p>
+<p>rig reads a number of settings from a configuration file, e.g.&nbsp;the installation <code>mode</code> (user or admin), the quick-link directory (<code>binary-dir</code>) and the R installation root (<code>r-install-dir</code>). Most settings can also be overridden with environment variables.</p>
+<p><code>rig config config-file-path</code> prints the path to the config file. <code>rig config list</code> lists the names of all configuration entries. <code>rig config get</code> prints the value of a configuration entry. <code>rig config set</code> sets a configuration entry.</p>
+<section id="subcommands" class="level2">
+<h2 class="anchored" data-anchor-id="subcommands">Subcommands</h2>
+<dl>
+<dt><a href="#rig-config-config-file-path"><code>config-file-path</code></a></dt>
+<dd>
+Print the path to the rig config file
+</dd>
+<dt><a href="#rig-config-get"><code>get</code></a></dt>
+<dd>
+Get a config entry
+</dd>
+<dt><a href="#rig-config-list"><code>list</code></a></dt>
+<dd>
+List the names of all config entries
+</dd>
+<dt><a href="#rig-config-set"><code>set</code></a></dt>
+<dd>
+Set a config entry
+</dd>
+</dl>
 </section>
-<section id="rig-config-get" class="level3">
-<h3 class="anchored" data-anchor-id="rig-config-get"><code>rig config get</code></h3>
-<pre class="text"><code>Get a config entry
-
-Usage: rig config get [OPTIONS] &lt;key&gt;
-
-Arguments:
-  &lt;key&gt;  config key to get
-
-Options:
-      --json   JSON output
-      --user   Run in user mode (overrides RIG_MODE and config)
-      --admin  Run in admin mode (overrides RIG_MODE and config)
-  -h, --help   Print help</code></pre>
+<section id="rig-config-config-file-path" class="level2">
+<h2 class="anchored" data-anchor-id="rig-config-config-file-path"><code>rig config config-file-path</code></h2>
+<p>Print the full path to the rig configuration file.</p>
+<p>The file might not exist yet; rig creates it when you first set an entry with <code>rig config set</code>.</p>
+<section id="usage" class="level3">
+<h3 class="anchored" data-anchor-id="usage">Usage</h3>
+<pre class="text"><code>rig config config-file-path [OPTIONS]</code></pre>
 </section>
-<section id="rig-config-list" class="level3">
-<h3 class="anchored" data-anchor-id="rig-config-list"><code>rig config list</code></h3>
-<pre class="text"><code>List the names of all config entries
-
-Usage: rig config list [OPTIONS]
-
-Options:
-      --json   JSON output
-      --user   Run in user mode (overrides RIG_MODE and config)
-      --admin  Run in admin mode (overrides RIG_MODE and config)
-  -h, --help   Print help</code></pre>
+<section id="options" class="level3">
+<h3 class="anchored" data-anchor-id="options">Options</h3>
+<dl>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+</dl>
 </section>
-<section id="rig-config-set" class="level3">
-<h3 class="anchored" data-anchor-id="rig-config-set"><code>rig config set</code></h3>
-<pre class="text"><code>Set a config entry
-
-Usage: rig config set [OPTIONS] &lt;keyvalue&gt;
-
-Arguments:
-  &lt;keyvalue&gt;  key=value pair to set
-
-Options:
-      --user   Run in user mode (overrides RIG_MODE and config)
-      --admin  Run in admin mode (overrides RIG_MODE and config)
-  -h, --help   Print help</code></pre>
+</section>
+<section id="rig-config-get" class="level2">
+<h2 class="anchored" data-anchor-id="rig-config-get"><code>rig config get</code></h2>
+<p>Print the value of a rig configuration entry.</p>
+<p>Configuration keys are listed by <code>rig config list</code>.</p>
+<section id="usage-1" class="level3">
+<h3 class="anchored" data-anchor-id="usage-1">Usage</h3>
+<pre class="text"><code>rig config get [OPTIONS] &lt;key&gt;</code></pre>
+</section>
+<section id="arguments" class="level3">
+<h3 class="anchored" data-anchor-id="arguments">Arguments</h3>
+<dl>
+<dt><code>&lt;key&gt;</code></dt>
+<dd>
+config key to get
+</dd>
+</dl>
+</section>
+<section id="options-1" class="level3">
+<h3 class="anchored" data-anchor-id="options-1">Options</h3>
+<dl>
+<dt><code>--json</code></dt>
+<dd>
+JSON output
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+</dl>
+</section>
+</section>
+<section id="rig-config-list" class="level2">
+<h2 class="anchored" data-anchor-id="rig-config-list"><code>rig config list</code></h2>
+<p>List the names of all rig configuration entries.</p>
+<p>Use <code>rig config get &lt;key&gt;</code> to see the value of an entry, and <code>rig config set &lt;key&gt;=&lt;value&gt;</code> to change it.</p>
+<section id="usage-2" class="level3">
+<h3 class="anchored" data-anchor-id="usage-2">Usage</h3>
+<pre class="text"><code>rig config list [OPTIONS]</code></pre>
+</section>
+<section id="options-2" class="level3">
+<h3 class="anchored" data-anchor-id="options-2">Options</h3>
+<dl>
+<dt><code>--json</code></dt>
+<dd>
+JSON output
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+</dl>
+</section>
+</section>
+<section id="rig-config-set" class="level2">
+<h2 class="anchored" data-anchor-id="rig-config-set"><code>rig config set</code></h2>
+<p>Set a rig configuration entry.</p>
+<p>The argument is a <code>key=value</code> pair, e.g.&nbsp;<code>rig config set mode=user</code>. The configuration file is created if it does not exist yet. Use <code>rig config list</code> to see the available keys.</p>
+<section id="usage-3" class="level3">
+<h3 class="anchored" data-anchor-id="usage-3">Usage</h3>
+<pre class="text"><code>rig config set [OPTIONS] &lt;keyvalue&gt;</code></pre>
+</section>
+<section id="arguments-1" class="level3">
+<h3 class="anchored" data-anchor-id="arguments-1">Arguments</h3>
+<dl>
+<dt><code>&lt;keyvalue&gt;</code></dt>
+<dd>
+key=value pair to set
+</dd>
+</dl>
+</section>
+<section id="options-3" class="level3">
+<h3 class="anchored" data-anchor-id="options-3">Options</h3>
+<dl>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+</dl>
 
 
 </section>

@@ -23,6 +23,41 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
 </style>
 
 
@@ -45,9 +80,9 @@ ul.task-list li input[type="checkbox"] {
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-15634bcf2e68342d4ad2dfa704d543f6.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-366cb8ec674e47143b072bc2c76f74d8.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="../site_libs/bootstrap/bootstrap-dark-785818dbc5d96fd52cb159fe6cdcecc7.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
-<link href="../site_libs/bootstrap/bootstrap-366cb8ec674e47143b072bc2c76f74d8.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-3532e298ff37c591783edef749a05417.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-dark-418e02f4d768829f2bbae831ff698b99.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<link href="../site_libs/bootstrap/bootstrap-3532e298ff37c591783edef749a05417.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -307,12 +342,6 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../usage.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Usage</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
   <a href="../macos-app.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">macOS menu bar app</span></a>
   </div>
@@ -414,14 +443,14 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/sysreqs.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">rig sysreqs</span></a>
+  <a href="../reference/system.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig system</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/system.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">rig system</span></a>
+  <a href="../reference/test.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig test</span></a>
   </div>
 </li>
       </ul>
@@ -448,7 +477,9 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#rig-run" id="toc-rig-run" class="nav-link active" data-scroll-target="#rig-run"><code>rig run</code></a></li>
+  <li><a href="#usage" id="toc-usage" class="nav-link active" data-scroll-target="#usage">Usage</a></li>
+  <li><a href="#arguments" id="toc-arguments" class="nav-link" data-scroll-target="#arguments">Arguments</a></li>
+  <li><a href="#options" id="toc-options" class="nav-link" data-scroll-target="#options">Options</a></li>
   </ul>
 </nav>
     </div>
@@ -476,78 +507,89 @@ ul.task-list li input[type="checkbox"] {
 
 
 <!-- Generated by website/gen-cli-reference.sh. Do not edit by hand. -->
-<section id="rig-run" class="level2">
-<h2 class="anchored" data-anchor-id="rig-run"><code>rig run</code></h2>
-<pre class="text"><code>Description:
-  Run R, an R script or an R project, using the selected R version.
-
-  All of these examples allow an `--r-version` argument, to use a specific
-  R version.
-
-  Start R:
-    rig run
-  Run an R script:
-    rig run -f &lt;script-file&gt;
-  Evaluate an R expression:
-    rig run -e &lt;expression&gt;
-  Run a script from a package (from its `exec` directory):
-    rig run &lt;pkg&gt;::&lt;script&gt;
-  Run an R app:
-    rig run &lt;path-to-app&gt;
-
-  Currently supported apps are:
-  - Plumber APIs,
-  - Shiny apps,
-  - Quarto documents embedding Shiny apps,
-  - Quarto documents,
-  - Rmd documents,
-  - Rmd documents embedding Shiny apps,
-  - Static web sites.
-
-Usage: rig run [OPTIONS] [command]...
-
-Arguments:
-  [command]...
-          R script or project to run, with parameters
-
-Options:
-  -r, --r-version &lt;r-version&gt;
-          R version to use
-
-  -t, --app-type &lt;app-type&gt;
-          Explicitly specify app type to run
-          
-          [possible values: api, shiny, quarto-shiny, rmd-shiny, quarto-static, rmd-static, static]
-
-      --dry-run
-          Show the command, but do not run it
-
-      --startup
-          Print R startup message
-
-      --no-startup
-          Do not print R startup message
-
-      --echo
-          Print input to R
-
-      --no-echo
-          Do not print input to R
-
-  -e, --eval &lt;eval&gt;
-          R expression to evaluate
-
-      --user
-          Run in user mode (overrides RIG_MODE and config)
-
-      --admin
-          Run in admin mode (overrides RIG_MODE and config)
-
-  -f, --script &lt;script&gt;
-          R script file to run
-
-  -h, --help
-          Print help (see a summary with '-h')</code></pre>
+<p>Run R, an R script or an R project, using the selected R version.</p>
+<p>All of these examples allow an <code>--r-version</code> argument, to use a specific R version.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run                    <span class="co"># start R</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">-f</span> <span class="op">&lt;</span>script-file<span class="op">&gt;</span>   <span class="co"># run an R script</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">-e</span> <span class="op">&lt;</span>expression<span class="op">&gt;</span>    <span class="co"># evaluate an R expression</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="op">&lt;</span>pkg<span class="op">&gt;</span>::<span class="op">&lt;</span>script<span class="op">&gt;</span>    <span class="co"># run a script from a package's exec directory</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="op">&lt;</span>path-to-app<span class="op">&gt;</span>      <span class="co"># run an R app</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Currently supported apps are:</p>
+<ul>
+<li>Plumber APIs,</li>
+<li>Shiny apps,</li>
+<li>Quarto documents embedding Shiny apps,</li>
+<li>Quarto documents,</li>
+<li>Rmd documents,</li>
+<li>Rmd documents embedding Shiny apps,</li>
+<li>Static web sites.</li>
+</ul>
+<section id="usage" class="level2">
+<h2 class="anchored" data-anchor-id="usage">Usage</h2>
+<pre class="text"><code>rig run [OPTIONS] [command]...</code></pre>
+</section>
+<section id="arguments" class="level2">
+<h2 class="anchored" data-anchor-id="arguments">Arguments</h2>
+<dl>
+<dt><code>[command]...</code></dt>
+<dd>
+R script or project to run, with parameters
+</dd>
+</dl>
+</section>
+<section id="options" class="level2">
+<h2 class="anchored" data-anchor-id="options">Options</h2>
+<dl>
+<dt><code>-r, --r-version &lt;r-version&gt;</code></dt>
+<dd>
+R version to use
+</dd>
+<dt><code>-t, --app-type &lt;app-type&gt;</code></dt>
+<dd>
+Explicitly specify app type to run
+<em>[possible values: api, shiny, quarto-shiny, rmd-shiny, quarto-static, rmd-static, static]</em>
+</dd>
+<dt><code>--dry-run</code></dt>
+<dd>
+Show the command, but do not run it
+</dd>
+<dt><code>--startup</code></dt>
+<dd>
+Print R startup message
+</dd>
+<dt><code>--no-startup</code></dt>
+<dd>
+Do not print R startup message
+</dd>
+<dt><code>--echo</code></dt>
+<dd>
+Print input to R
+</dd>
+<dt><code>--no-echo</code></dt>
+<dd>
+Do not print input to R
+</dd>
+<dt><code>-e, --eval &lt;eval&gt;</code></dt>
+<dd>
+R expression to evaluate
+</dd>
+<dt><code>-f, --script &lt;script&gt;</code></dt>
+<dd>
+R script file to run
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+</dl>
 
 
 </section>

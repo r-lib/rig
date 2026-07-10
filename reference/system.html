@@ -45,9 +45,9 @@ ul.task-list li input[type="checkbox"] {
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-15634bcf2e68342d4ad2dfa704d543f6.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-366cb8ec674e47143b072bc2c76f74d8.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="../site_libs/bootstrap/bootstrap-dark-785818dbc5d96fd52cb159fe6cdcecc7.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
-<link href="../site_libs/bootstrap/bootstrap-366cb8ec674e47143b072bc2c76f74d8.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-3532e298ff37c591783edef749a05417.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-dark-418e02f4d768829f2bbae831ff698b99.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<link href="../site_libs/bootstrap/bootstrap-3532e298ff37c591783edef749a05417.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -307,12 +307,6 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../usage.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Usage</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
   <a href="../macos-app.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">macOS menu bar app</span></a>
   </div>
@@ -414,14 +408,14 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/sysreqs.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">rig sysreqs</span></a>
+  <a href="../reference/system.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">rig system</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/system.html" class="sidebar-item-text sidebar-link active">
- <span class="menu-text">rig system</span></a>
+  <a href="../reference/test.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig test</span></a>
   </div>
 </li>
       </ul>
@@ -448,20 +442,38 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#rig-system" id="toc-rig-system" class="nav-link active" data-scroll-target="#rig-system"><code>rig system</code></a>
+  <li><a href="#subcommands" id="toc-subcommands" class="nav-link active" data-scroll-target="#subcommands">Subcommands</a></li>
+  <li><a href="#rig-system-add-pak" id="toc-rig-system-add-pak" class="nav-link" data-scroll-target="#rig-system-add-pak"><code>rig system add-pak</code></a>
   <ul class="collapse">
-  <li><a href="#rig-system-add-pak" id="toc-rig-system-add-pak" class="nav-link" data-scroll-target="#rig-system-add-pak"><code>rig system add-pak</code></a></li>
-  <li><a href="#rig-system-allow-core-dumps" id="toc-rig-system-allow-core-dumps" class="nav-link" data-scroll-target="#rig-system-allow-core-dumps"><code>rig system allow-core-dumps</code></a></li>
-  <li><a href="#rig-system-allow-debugger" id="toc-rig-system-allow-debugger" class="nav-link" data-scroll-target="#rig-system-allow-debugger"><code>rig system allow-debugger</code></a></li>
-  <li><a href="#rig-system-allow-debugger-rstudio" id="toc-rig-system-allow-debugger-rstudio" class="nav-link" data-scroll-target="#rig-system-allow-debugger-rstudio"><code>rig system allow-debugger-rstudio</code></a></li>
-  <li><a href="#rig-system-detect-platform" id="toc-rig-system-detect-platform" class="nav-link" data-scroll-target="#rig-system-detect-platform"><code>rig system detect-platform</code></a></li>
-  <li><a href="#rig-system-fix-permissions" id="toc-rig-system-fix-permissions" class="nav-link" data-scroll-target="#rig-system-fix-permissions"><code>rig system fix-permissions</code></a></li>
-  <li><a href="#rig-system-forget" id="toc-rig-system-forget" class="nav-link" data-scroll-target="#rig-system-forget"><code>rig system forget</code></a></li>
-  <li><a href="#rig-system-make-links" id="toc-rig-system-make-links" class="nav-link" data-scroll-target="#rig-system-make-links"><code>rig system make-links</code></a></li>
-  <li><a href="#rig-system-make-orthogonal" id="toc-rig-system-make-orthogonal" class="nav-link" data-scroll-target="#rig-system-make-orthogonal"><code>rig system make-orthogonal</code></a></li>
-  <li><a href="#rig-system-no-openmp" id="toc-rig-system-no-openmp" class="nav-link" data-scroll-target="#rig-system-no-openmp"><code>rig system no-openmp</code></a></li>
-  <li><a href="#rig-system-setup-user-lib" id="toc-rig-system-setup-user-lib" class="nav-link" data-scroll-target="#rig-system-setup-user-lib"><code>rig system setup-user-lib</code></a></li>
-  <li><a href="#rig-system-user-mode" id="toc-rig-system-user-mode" class="nav-link" data-scroll-target="#rig-system-user-mode"><code>rig system user-mode</code></a></li>
+  <li><a href="#usage" id="toc-usage" class="nav-link" data-scroll-target="#usage">Usage</a></li>
+  <li><a href="#arguments" id="toc-arguments" class="nav-link" data-scroll-target="#arguments">Arguments</a></li>
+  <li><a href="#options" id="toc-options" class="nav-link" data-scroll-target="#options">Options</a></li>
+  </ul></li>
+  <li><a href="#rig-system-detect-platform" id="toc-rig-system-detect-platform" class="nav-link" data-scroll-target="#rig-system-detect-platform"><code>rig system detect-platform</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-1" id="toc-usage-1" class="nav-link" data-scroll-target="#usage-1">Usage</a></li>
+  <li><a href="#options-1" id="toc-options-1" class="nav-link" data-scroll-target="#options-1">Options</a></li>
+  </ul></li>
+  <li><a href="#rig-system-make-links" id="toc-rig-system-make-links" class="nav-link" data-scroll-target="#rig-system-make-links"><code>rig system make-links</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-2" id="toc-usage-2" class="nav-link" data-scroll-target="#usage-2">Usage</a></li>
+  <li><a href="#options-2" id="toc-options-2" class="nav-link" data-scroll-target="#options-2">Options</a></li>
+  </ul></li>
+  <li><a href="#rig-system-setup-user-lib" id="toc-rig-system-setup-user-lib" class="nav-link" data-scroll-target="#rig-system-setup-user-lib"><code>rig system setup-user-lib</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-3" id="toc-usage-3" class="nav-link" data-scroll-target="#usage-3">Usage</a></li>
+  <li><a href="#arguments-1" id="toc-arguments-1" class="nav-link" data-scroll-target="#arguments-1">Arguments</a></li>
+  <li><a href="#options-3" id="toc-options-3" class="nav-link" data-scroll-target="#options-3">Options</a></li>
+  </ul></li>
+  <li><a href="#rig-system-update-certs" id="toc-rig-system-update-certs" class="nav-link" data-scroll-target="#rig-system-update-certs"><code>rig system update-certs</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-4" id="toc-usage-4" class="nav-link" data-scroll-target="#usage-4">Usage</a></li>
+  <li><a href="#options-4" id="toc-options-4" class="nav-link" data-scroll-target="#options-4">Options</a></li>
+  </ul></li>
+  <li><a href="#rig-system-user-mode" id="toc-rig-system-user-mode" class="nav-link" data-scroll-target="#rig-system-user-mode"><code>rig system user-mode</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-5" id="toc-usage-5" class="nav-link" data-scroll-target="#usage-5">Usage</a></li>
+  <li><a href="#options-5" id="toc-options-5" class="nav-link" data-scroll-target="#options-5">Options</a></li>
   </ul></li>
   </ul>
 </nav>
@@ -490,406 +502,243 @@ ul.task-list li input[type="checkbox"] {
 
 
 <!-- Generated by website/gen-cli-reference.sh. Do not edit by hand. -->
-<section id="rig-system" class="level2">
-<h2 class="anchored" data-anchor-id="rig-system"><code>rig system</code></h2>
-<pre class="text"><code>Description:
-  Various commands to modify and configure the installed R versions.
-  See their help pages for details. E.g. run `rig system make-links --help`.
-
-Usage: rig system [OPTIONS] [COMMAND]
-
-Commands:
-  add-pak                 Install or update pak for an R version
-  allow-core-dumps        Allow creating core dumps when R crashes
-  allow-debugger          Allow debugging R with lldb and gdb
-  allow-debugger-rstudio  Allow debugging RStudio with lldb and gdb
-  detect-platform         Detect operating system version and distribution.
-  fix-permissions         Restrict system library permissions to admin
-  forget                  Make system forget about R installations
-  make-links              Create R-* quick links
-  make-orthogonal         Make installed versions orthogonal
-  no-openmp               Remove OpenMP (-fopenmp) option for Apple compilers
-  setup-user-lib          Set up automatic user package libraries [alias: create-lib]
-  user-mode               Switch to user mode and clean up admin-mode installations
-  help                    Print this message or the help of the given subcommand(s)
-
-Options:
-      --user
-          Run in user mode (overrides RIG_MODE and config)
-
-      --admin
-          Run in admin mode (overrides RIG_MODE and config)
-
-  -h, --help
-          Print help (see a summary with '-h')</code></pre>
-<section id="rig-system-add-pak" class="level3">
-<h3 class="anchored" data-anchor-id="rig-system-add-pak"><code>rig system add-pak</code></h3>
-<pre class="text"><code>Description:
-  Install/update pak for one or more R versions.
-
-  * If `--all` is specified, then it installs pak for all current R
-    installations.
-  * If one or more R versions are specified, then it installs pak for
-    those.
-  * If no R versions are specified, then it installs pak for the default
-    R installation (see `rig default`).
-
-Usage: rig system add-pak [OPTIONS] [version]...
-
-Arguments:
-  [version]...
-          R versions to install/update pak for
-
-Options:
-      --devel
-          Install the development version of pak (deprecated)
-
-      --pak-version &lt;pak-version&gt;
-          pak version to install.
-          
-          [default: stable]
-          [possible values: stable, rc, devel]
-
-      --all
-          Install pak for all R versions
-
-      --user
-          Run in user mode (overrides RIG_MODE and config)
-
-      --admin
-          Run in admin mode (overrides RIG_MODE and config)
-
-  -h, --help
-          Print help (see a summary with '-h')</code></pre>
+<p>Various commands to modify and configure the installed R versions. See their help pages for details. E.g. run <code>rig system make-links --help</code>.</p>
+<section id="subcommands" class="level2">
+<h2 class="anchored" data-anchor-id="subcommands">Subcommands</h2>
+<dl>
+<dt><a href="#rig-system-add-pak"><code>add-pak</code></a></dt>
+<dd>
+Install or update pak for an R version
+</dd>
+<dt><a href="#rig-system-detect-platform"><code>detect-platform</code></a></dt>
+<dd>
+Detect operating system version and distribution.
+</dd>
+<dt><a href="#rig-system-make-links"><code>make-links</code></a></dt>
+<dd>
+Create R-* quick links
+</dd>
+<dt><a href="#rig-system-setup-user-lib"><code>setup-user-lib</code></a></dt>
+<dd>
+Set up automatic user package libraries [alias: create-lib]
+</dd>
+<dt><a href="#rig-system-update-certs"><code>update-certs</code></a></dt>
+<dd>
+Download the CA certificate bundle and configure R to use it
+</dd>
+<dt><a href="#rig-system-user-mode"><code>user-mode</code></a></dt>
+<dd>
+Switch to user mode and clean up admin-mode installations
+</dd>
+</dl>
 </section>
-<section id="rig-system-allow-core-dumps" class="level3">
-<h3 class="anchored" data-anchor-id="rig-system-allow-core-dumps"><code>rig system allow-core-dumps</code></h3>
-<pre class="text"><code>Description:
-  Update the entitlements of the R process to allow core dumps. This
-  command is similar to `rig system allow-debugger` but it also makes
-  sure that the `/cores` directory of core dumps is writeable by the
-  current user. Don't forget to call `ulimit -c unlimited` from the
-  same shell before starting R.
-
-  This command is experimental. Please let us know at
-  https://github.com/r-lib/rig/issues if it does not work as
-  expected.
-
-  This command probably needs `sudo`: `sudo rig system allow-core-dumps`,
-  otherwise rig will ask for your password.
-
-Usage: rig system allow-core-dumps [OPTIONS] [version]...
-
-Arguments:
-  [version]...
-          R versions to update (default is the default R version)
-
-Options:
-      --all
-          Update all R versions
-
-      --user
-          Run in user mode (overrides RIG_MODE and config)
-
-      --admin
-          Run in admin mode (overrides RIG_MODE and config)
-
-  -h, --help
-          Print help (see a summary with '-h')</code></pre>
+<section id="rig-system-add-pak" class="level2">
+<h2 class="anchored" data-anchor-id="rig-system-add-pak"><code>rig system add-pak</code></h2>
+<p>Install/update pak for one or more R versions.</p>
+<ul>
+<li>If <code>--all</code> is specified, then it installs pak for all current R installations.</li>
+<li>If one or more R versions are specified, then it installs pak for those.</li>
+<li>If no R versions are specified, then it installs pak for the default R installation, if there is one (see <code>rig default</code>).</li>
+</ul>
+<section id="usage" class="level3">
+<h3 class="anchored" data-anchor-id="usage">Usage</h3>
+<pre class="text"><code>rig system add-pak [OPTIONS] [version]...</code></pre>
 </section>
-<section id="rig-system-allow-debugger" class="level3">
-<h3 class="anchored" data-anchor-id="rig-system-allow-debugger"><code>rig system allow-debugger</code></h3>
-<pre class="text"><code>Description:
-  Update the entitlements of the R process to allow debuggers. It adds
-  the `get-task-allow` entitlement to the R binary. This is only needed
-  for R installers 3.6 and later, previous versions are not signed.
-  Call `R -d lldb` to start `lldb` on `R`. (Or `R-x.y -d lldb` if you
-  want a non-default version.)
-
-  See also `rig system allow-debugger-rstudio`, which does the same for
-  R running in RStudio.
-
-  This command is experimental. Please let us know at
-  https://github.com/r-lib/rig/issues if it does not work as
-  expected.
-
-  This command probably needs `sudo`: `sudo rig system allow-debugger`,
-  otherwise rig will ask for your password.
-
-Usage: rig system allow-debugger [OPTIONS] [version]...
-
-Arguments:
-  [version]...
-          R versions to update (default is the default R version)
-
-Options:
-      --all
-          Update all R versions
-
-      --user
-          Run in user mode (overrides RIG_MODE and config)
-
-      --admin
-          Run in admin mode (overrides RIG_MODE and config)
-
-  -h, --help
-          Print help (see a summary with '-h')</code></pre>
+<section id="arguments" class="level3">
+<h3 class="anchored" data-anchor-id="arguments">Arguments</h3>
+<dl>
+<dt><code>[version]...</code></dt>
+<dd>
+R versions to install/update pak for
+</dd>
+</dl>
 </section>
-<section id="rig-system-allow-debugger-rstudio" class="level3">
-<h3 class="anchored" data-anchor-id="rig-system-allow-debugger-rstudio"><code>rig system allow-debugger-rstudio</code></h3>
-<pre class="text"><code>Description:
-  Update the entitlements of RStudio R process to allow debuggers. It adds
-  the `get-task-allow` entitlement to the `rsession` (and `rsession-arm64`
-  on arm64 hardware) binary.
-
-  See also `rig system allow-debugger`, which does the same for
-  R running outside of RStudio.
-
-  This command is experimental. Please let us know at
-  https://github.com/r-lib/rig/issues if it does not work as
-  expected.
-
-  This command probably needs `sudo`: `sudo rig system allow-debugger`,
-  otherwise rig will ask for your password.
-
-Usage: rig system allow-debugger-rstudio [OPTIONS]
-
-Options:
-      --user
-          Run in user mode (overrides RIG_MODE and config)
-
-      --admin
-          Run in admin mode (overrides RIG_MODE and config)
-
-  -h, --help
-          Print help (see a summary with '-h')</code></pre>
+<section id="options" class="level3">
+<h3 class="anchored" data-anchor-id="options">Options</h3>
+<dl>
+<dt><code>--devel</code></dt>
+<dd>
+Install the development version of pak (deprecated)
+</dd>
+<dt><code>--pak-version &lt;pak-version&gt;</code></dt>
+<dd>
+pak version to install.
+<em>[default: stable]</em><br>
+<em>[possible values: stable, rc, devel]</em>
+</dd>
+<dt><code>--all</code></dt>
+<dd>
+Install pak for all R versions
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+</dl>
 </section>
-<section id="rig-system-detect-platform" class="level3">
-<h3 class="anchored" data-anchor-id="rig-system-detect-platform"><code>rig system detect-platform</code></h3>
-<pre class="text"><code>Detect operating system version and distribution.
-
-Usage: rig system detect-platform [OPTIONS]
-
-Options:
-      --json   JSON output
-      --user   Run in user mode (overrides RIG_MODE and config)
-      --admin  Run in admin mode (overrides RIG_MODE and config)
-  -h, --help   Print help</code></pre>
 </section>
-<section id="rig-system-fix-permissions" class="level3">
-<h3 class="anchored" data-anchor-id="rig-system-fix-permissions"><code>rig system fix-permissions</code></h3>
-<pre class="text"><code>Description:
-  Update the permissions of the current R versions, so only the
-  administrator can install R packages into the system library.
-  Together with `rig system create-lib` this facilitates keeping
-  additional packages in a user library, instead of the system library.
-
-  `rig add` runs `rig system fix-permissions`, so if you only use rig to
-  install R, then you do not need to run it manually.
-
-  This command probably needs `sudo`: `sudo rig system fix-permissions`,
-  otherwise rig will ask for your password.
-
-Usage: rig system fix-permissions [OPTIONS] [version]...
-
-Arguments:
-  [version]...
-          R versions to update (default: all)
-
-Options:
-      --user
-          Run in user mode (overrides RIG_MODE and config)
-
-      --admin
-          Run in admin mode (overrides RIG_MODE and config)
-
-  -h, --help
-          Print help (see a summary with '-h')</code></pre>
+<section id="rig-system-detect-platform" class="level2">
+<h2 class="anchored" data-anchor-id="rig-system-detect-platform"><code>rig system detect-platform</code></h2>
+<p>Detect and print the operating system version and distribution.</p>
+<p>rig uses this information to choose the right R builds and package repositories. Use <code>--json</code> for machine-readable output.</p>
+<section id="usage-1" class="level3">
+<h3 class="anchored" data-anchor-id="usage-1">Usage</h3>
+<pre class="text"><code>rig system detect-platform [OPTIONS]</code></pre>
 </section>
-<section id="rig-system-forget" class="level3">
-<h3 class="anchored" data-anchor-id="rig-system-forget"><code>rig system forget</code></h3>
-<pre class="text"><code>Description:
-  Tell macOS to forget about the currently installed R versions.
-  This is needed to have multiple R installations at the same time.
-
-  `rig add` runs `rig system forget` before and after the installation,
-  so if you only use rig to install R, then you don't need to run this
-  command manually.
-
-  This command probably needs `sudo`: `sudo rig system forget`, otherwise
-  rig will ask for your password.
-
-Usage: rig system forget [OPTIONS]
-
-Options:
-      --user
-          Run in user mode (overrides RIG_MODE and config)
-
-      --admin
-          Run in admin mode (overrides RIG_MODE and config)
-
-  -h, --help
-          Print help (see a summary with '-h')</code></pre>
+<section id="options-1" class="level3">
+<h3 class="anchored" data-anchor-id="options-1">Options</h3>
+<dl>
+<dt><code>--json</code></dt>
+<dd>
+JSON output
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+</dl>
 </section>
-<section id="rig-system-make-links" class="level3">
-<h3 class="anchored" data-anchor-id="rig-system-make-links"><code>rig system make-links</code></h3>
-<pre class="text"><code>Description:
-  Create quick links in the rig binary directory (`~/.local/bin` in user
-  mode) for the current R installations. These let you directly run a
-  specific R version. E.g. `R-4.1` will start R 4.1.x.
-
-  `rig add` runs `rig system make-links`, so if you only use rig to
-  install R, then you do not need to run it manually.
-
-  In user mode no `sudo` is needed. In admin mode this command probably
-  needs `sudo`: `sudo rig system make-links`, otherwise rig will ask for
-  your password.
-
-Usage: rig system make-links [OPTIONS]
-
-Options:
-      --user
-          Run in user mode (overrides RIG_MODE and config)
-
-      --admin
-          Run in admin mode (overrides RIG_MODE and config)
-
-  -h, --help
-          Print help (see a summary with '-h')</code></pre>
 </section>
-<section id="rig-system-make-orthogonal" class="level3">
-<h3 class="anchored" data-anchor-id="rig-system-make-orthogonal"><code>rig system make-orthogonal</code></h3>
-<pre class="text"><code>Description:
-  Make the current R installations orthogonal. This allows running multiple
-  R versions at the same time, as long as they are started with their
-  quick links (see `rig system make-links --help`). For example you
-  can run a script using R 4.1.x in one terminal:
-
-  R-4.1 -q -f script1.R
-
-  while running another script using R 4.0.x in another terminal:
-
-  R-4.0 -q -f script2.R
-
-  `rig add` runs `rig system make-orthogonal`, so if you only use rig to
-  install R, then you do not need to run it manually.
-
-  This command probably needs `sudo`: `sudo rig system make-orthogonal`,
-  otherwise rig will aks for your password.
-
-Usage: rig system make-orthogonal [OPTIONS] [version]...
-
-Arguments:
-  [version]...
-          R versions to update (default: all)
-
-Options:
-      --user
-          Run in user mode (overrides RIG_MODE and config)
-
-      --admin
-          Run in admin mode (overrides RIG_MODE and config)
-
-  -h, --help
-          Print help (see a summary with '-h')</code></pre>
+<section id="rig-system-make-links" class="level2">
+<h2 class="anchored" data-anchor-id="rig-system-make-links"><code>rig system make-links</code></h2>
+<p>Create quick links in the rig binary directory (<code>~/.local/bin</code> in user mode) for the current R installations. These let you directly run a specific R version. E.g. <code>R-4.6.0</code> will start R 4.6.0. It also creates the <code>R</code> and <code>Rscript</code> links if they are missing.</p>
+<p><code>rig add</code> runs <code>rig system make-links</code>, so if you only use rig to install R, then you do not need to run it manually.</p>
+<p>In user mode no administrator rights are needed. In admin mode you need an administrator account to run this command or use <code>sudo</code> on Unix, otherwise rig will ask for your password.</p>
+<section id="usage-2" class="level3">
+<h3 class="anchored" data-anchor-id="usage-2">Usage</h3>
+<pre class="text"><code>rig system make-links [OPTIONS]</code></pre>
 </section>
-<section id="rig-system-no-openmp" class="level3">
-<h3 class="anchored" data-anchor-id="rig-system-no-openmp"><code>rig system no-openmp</code></h3>
-<pre class="text"><code>Description:
-  Remove -fopenmp flags from the R configuration, to make R work with
-  the Apple compilers, instead of CRAN's custom compilers. This is only
-  needed for R 3.6.x and before.
-
-  `rig add` runs `rig system no-openmp` after the installation, so if
-  only use rig to install R, then you don't need to run this command
-  manually.
-
-  This command probably needs `sudo`: `sudo rig system no-openmp`,
-  otherwise rig will ask for your password.
-
-Usage: rig system no-openmp [OPTIONS] [version]...
-
-Arguments:
-  [version]...
-          R versions to update (default: all)
-
-Options:
-      --user
-          Run in user mode (overrides RIG_MODE and config)
-
-      --admin
-          Run in admin mode (overrides RIG_MODE and config)
-
-  -h, --help
-          Print help (see a summary with '-h')</code></pre>
+<section id="options-2" class="level3">
+<h3 class="anchored" data-anchor-id="options-2">Options</h3>
+<dl>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+</dl>
 </section>
-<section id="rig-system-setup-user-lib" class="level3">
-<h3 class="anchored" data-anchor-id="rig-system-setup-user-lib"><code>rig system setup-user-lib</code></h3>
-<pre class="text"><code>Description:
-  Set up R to create user package libraries when started, by default for
-  installed R versions.
-
-  `rig add` runs `rig system create-lib`, so if you only use rig to
-  install R, then you do not need to run it manually.
-
-Usage: rig system setup-user-lib [OPTIONS] [version]...
-
-Arguments:
-  [version]...
-          R versions (default: all)
-
-Options:
-      --user
-          Run in user mode (overrides RIG_MODE and config)
-
-      --admin
-          Run in admin mode (overrides RIG_MODE and config)
-
-  -h, --help
-          Print help (see a summary with '-h')</code></pre>
 </section>
-<section id="rig-system-user-mode" class="level3">
-<h3 class="anchored" data-anchor-id="rig-system-user-mode"><code>rig system user-mode</code></h3>
-<pre class="text"><code>Description:
-  Switch rig to user mode and clean up the machine after admin mode.
-
-  In user mode rig installs R into your home directory
-  (`~/.local/share/rig/r`), and quick links into `~/.local/bin`, so that
-  rig never needs `sudo`. This command migrates an existing admin-mode
-  setup to user mode:
-
-    1. Sets the rig `mode` configuration to `user`.
-    2. Reinstalls the admin-mode R versions in user mode, and restores
-       the previous default version and version aliases. Use
-       `--no-reinstall` to skip this and only clean up.
-    3. Removes the admin-mode R installations from
-       `/Library/Frameworks/R.framework`.
-    4. Removes the `R-*` quick links and the `R`/`Rscript` links from
-       `/usr/local/bin`.
-
-  Steps 3 and 4 remove files outside your home directory, so this command
-  needs `sudo` and will ask for your password.
-
-  Use `--keep-install` to leave the admin-mode R installations in
-  `/Library/Frameworks/R.framework` in place (skipping step 3), and
-  `--keep-links` to leave the `/usr/local/bin` links in place (skipping
-  step 4). With both, nothing outside your home directory is touched and
-  `sudo` is not needed.
-
-Usage: rig system user-mode [OPTIONS]
-
-Options:
-      --no-reinstall
-          Do not reinstall admin-mode R versions in user mode.
-
-      --keep-install
-          Keep the admin-mode R installations, do not remove them.
-
-      --keep-links
-          Keep the admin-mode links in `/usr/local/bin`.
-
-  -h, --help
-          Print help (see a summary with '-h')</code></pre>
+<section id="rig-system-setup-user-lib" class="level2">
+<h2 class="anchored" data-anchor-id="rig-system-setup-user-lib"><code>rig system setup-user-lib</code></h2>
+<p>Set up R to create user package libraries when started, by default for installed R versions.</p>
+<p><code>rig add</code> runs <code>rig system create-lib</code>, so if you only use rig to install R, then you do not need to run it manually.</p>
+<section id="usage-3" class="level3">
+<h3 class="anchored" data-anchor-id="usage-3">Usage</h3>
+<pre class="text"><code>rig system setup-user-lib [OPTIONS] [version]...</code></pre>
+</section>
+<section id="arguments-1" class="level3">
+<h3 class="anchored" data-anchor-id="arguments-1">Arguments</h3>
+<dl>
+<dt><code>[version]...</code></dt>
+<dd>
+R versions (default: all)
+</dd>
+</dl>
+</section>
+<section id="options-3" class="level3">
+<h3 class="anchored" data-anchor-id="options-3">Options</h3>
+<dl>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+</dl>
+</section>
+</section>
+<section id="rig-system-update-certs" class="level2">
+<h2 class="anchored" data-anchor-id="rig-system-update-certs"><code>rig system update-certs</code></h2>
+<p>Download the CA certificate bundle and configure R to use it (Linux only).</p>
+<p>This helps R make HTTPS connections on systems where the default certificate store is missing or out of date.</p>
+<section id="usage-4" class="level3">
+<h3 class="anchored" data-anchor-id="usage-4">Usage</h3>
+<pre class="text"><code>rig system update-certs [OPTIONS]</code></pre>
+</section>
+<section id="options-4" class="level3">
+<h3 class="anchored" data-anchor-id="options-4">Options</h3>
+<dl>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+</dl>
+</section>
+</section>
+<section id="rig-system-user-mode" class="level2">
+<h2 class="anchored" data-anchor-id="rig-system-user-mode"><code>rig system user-mode</code></h2>
+<p>Switch rig to user mode and clean up the machine after admin mode.</p>
+<p>In user mode rig installs R into your home directory (<code>~/.local/share/rig/r</code> or <code>%APPDATA%\rig\data\r</code> on Windows), and quick links into <code>~/.local/bin</code>, so that rig never needs <code>sudo</code>. This command migrates an existing admin-mode setup to user mode:</p>
+<ol type="1">
+<li>Sets the rig <code>mode</code> configuration to <code>user</code>.</li>
+<li>Reinstalls the admin-mode R versions in user mode, and restores the previous default version and version aliases. R versions that are already installed in user mode are not reinstalled. Use <code>--no-reinstall</code> to skip this step entirely and only clean up.</li>
+<li>Removes the system-wide admin-mode R installations.</li>
+<li>Removes the system-wide <code>R-*</code> quick links and the <code>R</code>/<code>Rscript</code> links.</li>
+</ol>
+<p>Steps 3 and 4 remove files outside your home directory, so this command needs an administrator account or <code>sudo</code> on Unix, otherwise it will ask for your password.</p>
+<p>Use <code>--keep-install</code> to leave the admin-mode R installations in in place (skipping step 3), and <code>--keep-links</code> to leave the system-wide links in place (skipping step 4). With both, nothing outside your home directory is touched and no administrator account or <code>sudo</code> is needed.</p>
+<section id="usage-5" class="level3">
+<h3 class="anchored" data-anchor-id="usage-5">Usage</h3>
+<pre class="text"><code>rig system user-mode [OPTIONS]</code></pre>
+</section>
+<section id="options-5" class="level3">
+<h3 class="anchored" data-anchor-id="options-5">Options</h3>
+<dl>
+<dt><code>--no-reinstall</code></dt>
+<dd>
+Do not reinstall admin-mode R versions in user mode.
+</dd>
+<dt><code>--keep-install</code></dt>
+<dd>
+Keep the admin-mode R installations, do not remove them.
+</dd>
+<dt><code>--keep-links</code></dt>
+<dd>
+Keep the admin-mode quick links, do not remove them.
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+</dl>
 
 
 </section>

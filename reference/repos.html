@@ -45,9 +45,9 @@ ul.task-list li input[type="checkbox"] {
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-15634bcf2e68342d4ad2dfa704d543f6.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-366cb8ec674e47143b072bc2c76f74d8.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="../site_libs/bootstrap/bootstrap-dark-785818dbc5d96fd52cb159fe6cdcecc7.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
-<link href="../site_libs/bootstrap/bootstrap-366cb8ec674e47143b072bc2c76f74d8.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-3532e298ff37c591783edef749a05417.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-dark-418e02f4d768829f2bbae831ff698b99.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<link href="../site_libs/bootstrap/bootstrap-3532e298ff37c591783edef749a05417.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -307,12 +307,6 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../usage.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Usage</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
   <a href="../macos-app.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">macOS menu bar app</span></a>
   </div>
@@ -414,14 +408,14 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/sysreqs.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">rig sysreqs</span></a>
+  <a href="../reference/system.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig system</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/system.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">rig system</span></a>
+  <a href="../reference/test.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig test</span></a>
   </div>
 </li>
       </ul>
@@ -448,14 +442,38 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#rig-repos" id="toc-rig-repos" class="nav-link active" data-scroll-target="#rig-repos"><code>rig repos</code></a>
+  <li><a href="#subcommands" id="toc-subcommands" class="nav-link active" data-scroll-target="#subcommands">Subcommands</a></li>
+  <li><a href="#rig-repos-available" id="toc-rig-repos-available" class="nav-link" data-scroll-target="#rig-repos-available"><code>rig repos available</code></a>
   <ul class="collapse">
-  <li><a href="#rig-repos-available" id="toc-rig-repos-available" class="nav-link" data-scroll-target="#rig-repos-available"><code>rig repos available</code></a></li>
-  <li><a href="#rig-repos-list" id="toc-rig-repos-list" class="nav-link" data-scroll-target="#rig-repos-list"><code>rig repos list</code></a></li>
-  <li><a href="#rig-repos-package-info" id="toc-rig-repos-package-info" class="nav-link" data-scroll-target="#rig-repos-package-info"><code>rig repos package-info</code></a></li>
-  <li><a href="#rig-repos-package-list" id="toc-rig-repos-package-list" class="nav-link" data-scroll-target="#rig-repos-package-list"><code>rig repos package-list</code></a></li>
-  <li><a href="#rig-repos-package-versions" id="toc-rig-repos-package-versions" class="nav-link" data-scroll-target="#rig-repos-package-versions"><code>rig repos package-versions</code></a></li>
-  <li><a href="#rig-repos-setup" id="toc-rig-repos-setup" class="nav-link" data-scroll-target="#rig-repos-setup"><code>rig repos setup</code></a></li>
+  <li><a href="#usage" id="toc-usage" class="nav-link" data-scroll-target="#usage">Usage</a></li>
+  <li><a href="#options" id="toc-options" class="nav-link" data-scroll-target="#options">Options</a></li>
+  </ul></li>
+  <li><a href="#rig-repos-list" id="toc-rig-repos-list" class="nav-link" data-scroll-target="#rig-repos-list"><code>rig repos list</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-1" id="toc-usage-1" class="nav-link" data-scroll-target="#usage-1">Usage</a></li>
+  <li><a href="#options-1" id="toc-options-1" class="nav-link" data-scroll-target="#options-1">Options</a></li>
+  </ul></li>
+  <li><a href="#rig-repos-package-info" id="toc-rig-repos-package-info" class="nav-link" data-scroll-target="#rig-repos-package-info"><code>rig repos package-info</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-2" id="toc-usage-2" class="nav-link" data-scroll-target="#usage-2">Usage</a></li>
+  <li><a href="#arguments" id="toc-arguments" class="nav-link" data-scroll-target="#arguments">Arguments</a></li>
+  <li><a href="#options-2" id="toc-options-2" class="nav-link" data-scroll-target="#options-2">Options</a></li>
+  </ul></li>
+  <li><a href="#rig-repos-package-list" id="toc-rig-repos-package-list" class="nav-link" data-scroll-target="#rig-repos-package-list"><code>rig repos package-list</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-3" id="toc-usage-3" class="nav-link" data-scroll-target="#usage-3">Usage</a></li>
+  <li><a href="#options-3" id="toc-options-3" class="nav-link" data-scroll-target="#options-3">Options</a></li>
+  </ul></li>
+  <li><a href="#rig-repos-package-versions" id="toc-rig-repos-package-versions" class="nav-link" data-scroll-target="#rig-repos-package-versions"><code>rig repos package-versions</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-4" id="toc-usage-4" class="nav-link" data-scroll-target="#usage-4">Usage</a></li>
+  <li><a href="#arguments-1" id="toc-arguments-1" class="nav-link" data-scroll-target="#arguments-1">Arguments</a></li>
+  <li><a href="#options-4" id="toc-options-4" class="nav-link" data-scroll-target="#options-4">Options</a></li>
+  </ul></li>
+  <li><a href="#rig-repos-setup" id="toc-rig-repos-setup" class="nav-link" data-scroll-target="#rig-repos-setup"><code>rig repos setup</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-5" id="toc-usage-5" class="nav-link" data-scroll-target="#usage-5">Usage</a></li>
+  <li><a href="#options-5" id="toc-options-5" class="nav-link" data-scroll-target="#options-5">Options</a></li>
   </ul></li>
   </ul>
 </nav>
@@ -484,130 +502,269 @@ ul.task-list li input[type="checkbox"] {
 
 
 <!-- Generated by website/gen-cli-reference.sh. Do not edit by hand. -->
-<section id="rig-repos" class="level2">
-<h2 class="anchored" data-anchor-id="rig-repos"><code>rig repos</code></h2>
-<pre class="text"><code>TODO
-
-Usage: rig repos [OPTIONS] [COMMAND]
-
-Commands:
-  available         List available R package repositories
-  list              List configured R package repositories
-  package-info      Information about the package in the repositories
-  package-list      List packages in R package repositories
-  package-versions  List all versions of a package in the repositories
-  setup             Set up R package repositories
-  help              Print this message or the help of the given subcommand(s)
-
-Options:
-      --json
-          JSON output
-
-      --user
-          Run in user mode (overrides RIG_MODE and config)
-
-      --admin
-          Run in admin mode (overrides RIG_MODE and config)
-
-  -h, --help
-          Print help (see a summary with '-h')</code></pre>
-<section id="rig-repos-available" class="level3">
-<h3 class="anchored" data-anchor-id="rig-repos-available"><code>rig repos available</code></h3>
-<pre class="text"><code>List available R package repositories
-
-Usage: rig repos available [OPTIONS]
-
-Options:
-      --json   JSON output
-      --user   Run in user mode (overrides RIG_MODE and config)
-      --admin  Run in admin mode (overrides RIG_MODE and config)
-  -h, --help   Print help</code></pre>
+<p>Manage the R package repositories that rig configures for your R installations.</p>
+<p>rig sets up the repositories R uses to install packages (the <code>repos</code> option in R), typically a CRAN mirror and the Posit Public Package Manager (P3M). These are configured per R version, and you can control them when installing R (see the <code>--with-repos</code> and <code>--without-repos</code> options of <code>rig add</code>) or afterwards with the subcommands here.</p>
+<p><code>rig repos setup</code> (re)configures the repositories for one or all R versions. <code>rig repos list</code> shows the repositories currently configured for an R version. <code>rig repos available</code> lists the repositories rig knows about and can set up. <code>rig repos package-list</code> lists the packages available from the configured repositories.</p>
+<section id="subcommands" class="level2">
+<h2 class="anchored" data-anchor-id="subcommands">Subcommands</h2>
+<dl>
+<dt><a href="#rig-repos-available"><code>available</code></a></dt>
+<dd>
+List available R package repositories
+</dd>
+<dt><a href="#rig-repos-list"><code>list</code></a></dt>
+<dd>
+List configured R package repositories
+</dd>
+<dt><a href="#rig-repos-package-info"><code>package-info</code></a></dt>
+<dd>
+Information about the package in the repositories
+</dd>
+<dt><a href="#rig-repos-package-list"><code>package-list</code></a></dt>
+<dd>
+List packages in R package repositories
+</dd>
+<dt><a href="#rig-repos-package-versions"><code>package-versions</code></a></dt>
+<dd>
+List all versions of a package in the repositories
+</dd>
+<dt><a href="#rig-repos-setup"><code>setup</code></a></dt>
+<dd>
+Set up R package repositories
+</dd>
+</dl>
 </section>
-<section id="rig-repos-list" class="level3">
-<h3 class="anchored" data-anchor-id="rig-repos-list"><code>rig repos list</code></h3>
-<pre class="text"><code>List configured R package repositories
-
-Usage: rig repos list [OPTIONS]
-
-Options:
-      --json                   JSON output
-      --all                    Show all repositories, not just the default ones
-      --raw                    Do not resolve `%` variables in repository URLs.
-  -r, --r-version &lt;r-version&gt;  R version to list repositories for, instead of the default
-      --user                   Run in user mode (overrides RIG_MODE and config)
-      --admin                  Run in admin mode (overrides RIG_MODE and config)
-  -h, --help                   Print help</code></pre>
+<section id="rig-repos-available" class="level2">
+<h2 class="anchored" data-anchor-id="rig-repos-available"><code>rig repos available</code></h2>
+<p>List the package repositories that rig knows about and can set up.</p>
+<p>These are the repositories you can enable with <code>--with-repos</code> when running <code>rig add</code> or <code>rig repos setup</code>.</p>
+<section id="usage" class="level3">
+<h3 class="anchored" data-anchor-id="usage">Usage</h3>
+<pre class="text"><code>rig repos available [OPTIONS]</code></pre>
 </section>
-<section id="rig-repos-package-info" class="level3">
-<h3 class="anchored" data-anchor-id="rig-repos-package-info"><code>rig repos package-info</code></h3>
-<pre class="text"><code>Information about the package in the repositories
-
-Usage: rig repos package-info [OPTIONS] &lt;package&gt;
-
-Arguments:
-  &lt;package&gt;  package to show
-
-Options:
-  -v, --version &lt;version&gt;  package version to show (default: latest)
-      --json               JSON output
-      --user               Run in user mode (overrides RIG_MODE and config)
-      --admin              Run in admin mode (overrides RIG_MODE and config)
-  -h, --help               Print help</code></pre>
+<section id="options" class="level3">
+<h3 class="anchored" data-anchor-id="options">Options</h3>
+<dl>
+<dt><code>--json</code></dt>
+<dd>
+JSON output
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+</dl>
 </section>
-<section id="rig-repos-package-list" class="level3">
-<h3 class="anchored" data-anchor-id="rig-repos-package-list"><code>rig repos package-list</code></h3>
-<pre class="text"><code>List packages in R package repositories
-
-Usage: rig repos package-list [OPTIONS]
-
-Options:
-      --json                   JSON output
-      --platform &lt;platform&gt;    Platform to use, instead of the current
-      --r-version &lt;r-version&gt;  R version to use, instead of the default
-      --pkg-type &lt;pkg-type&gt;    Type of packages to list (e.g. source, binary)
-      --user                   Run in user mode (overrides RIG_MODE and config)
-      --admin                  Run in admin mode (overrides RIG_MODE and config)
-  -h, --help                   Print help</code></pre>
 </section>
-<section id="rig-repos-package-versions" class="level3">
-<h3 class="anchored" data-anchor-id="rig-repos-package-versions"><code>rig repos package-versions</code></h3>
-<pre class="text"><code>List all versions of a package in the repositories
-
-Usage: rig repos package-versions [OPTIONS] &lt;package&gt;
-
-Arguments:
-  &lt;package&gt;  package to show
-
-Options:
-      --json   JSON output
-      --user   Run in user mode (overrides RIG_MODE and config)
-      --admin  Run in admin mode (overrides RIG_MODE and config)
-  -h, --help   Print help</code></pre>
+<section id="rig-repos-list" class="level2">
+<h2 class="anchored" data-anchor-id="rig-repos-list"><code>rig repos list</code></h2>
+<p>List the package repositories configured for an R version.</p>
+<p>By default rig shows the repositories of the default R version; use <code>--r-version</code> to pick another. Add <code>--all</code> to include repositories that are not enabled by default, and <code>--raw</code> to show repository URLs without resolving the <code>%</code> variables in them.</p>
+<section id="usage-1" class="level3">
+<h3 class="anchored" data-anchor-id="usage-1">Usage</h3>
+<pre class="text"><code>rig repos list [OPTIONS]</code></pre>
 </section>
-<section id="rig-repos-setup" class="level3">
-<h3 class="anchored" data-anchor-id="rig-repos-setup"><code>rig repos setup</code></h3>
-<pre class="text"><code>Set up R package repositories
-
-Usage: rig repos setup [OPTIONS]
-
-Options:
-  -r, --r-version &lt;r-version&gt;
-          R version to set up repositories for (default: all)
-      --with-repos=&lt;with-repos&gt;
-          Repositories to enable, in addition to the ones enabled by default.
-          If --without-repos is also specified (without a value), then only these
-          repositories will be enabled.
-      --without-repos[=&lt;without-repos&gt;]
-          Do not set up package repositories.
-          Alternatively, specify which ones to skip, a comma-separated list.
-          If --with-repos is also specified, then only the repositories in that
-          argument will be enabled.
-      --user
-          Run in user mode (overrides RIG_MODE and config)
-      --admin
-          Run in admin mode (overrides RIG_MODE and config)
-  -h, --help
-          Print help</code></pre>
+<section id="options-1" class="level3">
+<h3 class="anchored" data-anchor-id="options-1">Options</h3>
+<dl>
+<dt><code>--json</code></dt>
+<dd>
+JSON output
+</dd>
+<dt><code>--all</code></dt>
+<dd>
+Show all repositories, not just the default ones
+</dd>
+<dt><code>--raw</code></dt>
+<dd>
+Do not resolve <code>%</code> variables in repository URLs.
+</dd>
+<dt><code>-r, --r-version &lt;r-version&gt;</code></dt>
+<dd>
+R version to list repositories for, instead of the default
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+</dl>
+</section>
+</section>
+<section id="rig-repos-package-info" class="level2">
+<h2 class="anchored" data-anchor-id="rig-repos-package-info"><code>rig repos package-info</code></h2>
+<p>Show information about a package in the configured repositories.</p>
+<p>By default the latest available version is shown; use <code>--version</code> to select a specific one.</p>
+<section id="usage-2" class="level3">
+<h3 class="anchored" data-anchor-id="usage-2">Usage</h3>
+<pre class="text"><code>rig repos package-info [OPTIONS] &lt;package&gt;</code></pre>
+</section>
+<section id="arguments" class="level3">
+<h3 class="anchored" data-anchor-id="arguments">Arguments</h3>
+<dl>
+<dt><code>&lt;package&gt;</code></dt>
+<dd>
+package to show
+</dd>
+</dl>
+</section>
+<section id="options-2" class="level3">
+<h3 class="anchored" data-anchor-id="options-2">Options</h3>
+<dl>
+<dt><code>-v, --version &lt;version&gt;</code></dt>
+<dd>
+package version to show (default: latest)
+</dd>
+<dt><code>--json</code></dt>
+<dd>
+JSON output
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+</dl>
+</section>
+</section>
+<section id="rig-repos-package-list" class="level2">
+<h2 class="anchored" data-anchor-id="rig-repos-package-list"><code>rig repos package-list</code></h2>
+<p>List the packages available from the configured package repositories.</p>
+<p>By default rig uses the default R version and the current platform; override these with <code>--r-version</code>, <code>--platform</code> and <code>--pkg-type</code> (e.g. <code>source</code> or <code>binary</code>).</p>
+<section id="usage-3" class="level3">
+<h3 class="anchored" data-anchor-id="usage-3">Usage</h3>
+<pre class="text"><code>rig repos package-list [OPTIONS]</code></pre>
+</section>
+<section id="options-3" class="level3">
+<h3 class="anchored" data-anchor-id="options-3">Options</h3>
+<dl>
+<dt><code>--json</code></dt>
+<dd>
+JSON output
+</dd>
+<dt><code>--platform &lt;platform&gt;</code></dt>
+<dd>
+Platform to use, instead of the current
+</dd>
+<dt><code>--r-version &lt;r-version&gt;</code></dt>
+<dd>
+R version to use, instead of the default
+</dd>
+<dt><code>--pkg-type &lt;pkg-type&gt;</code></dt>
+<dd>
+Type of packages to list (e.g.&nbsp;source, binary)
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+</dl>
+</section>
+</section>
+<section id="rig-repos-package-versions" class="level2">
+<h2 class="anchored" data-anchor-id="rig-repos-package-versions"><code>rig repos package-versions</code></h2>
+<p>List all versions of a package available from the configured repositories.</p>
+<section id="usage-4" class="level3">
+<h3 class="anchored" data-anchor-id="usage-4">Usage</h3>
+<pre class="text"><code>rig repos package-versions [OPTIONS] &lt;package&gt;</code></pre>
+</section>
+<section id="arguments-1" class="level3">
+<h3 class="anchored" data-anchor-id="arguments-1">Arguments</h3>
+<dl>
+<dt><code>&lt;package&gt;</code></dt>
+<dd>
+package to show
+</dd>
+</dl>
+</section>
+<section id="options-4" class="level3">
+<h3 class="anchored" data-anchor-id="options-4">Options</h3>
+<dl>
+<dt><code>--json</code></dt>
+<dd>
+JSON output
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+</dl>
+</section>
+</section>
+<section id="rig-repos-setup" class="level2">
+<h2 class="anchored" data-anchor-id="rig-repos-setup"><code>rig repos setup</code></h2>
+<p>Set up the package repositories for installed R versions.</p>
+<p>By default rig configures the repositories for all installed R versions; use <code>--r-version</code> to restrict it to one. Use <code>--with-repos</code> and <code>--without-repos</code> to control which repositories are enabled, the same way as for <code>rig add</code>.</p>
+<section id="usage-5" class="level3">
+<h3 class="anchored" data-anchor-id="usage-5">Usage</h3>
+<pre class="text"><code>rig repos setup [OPTIONS]</code></pre>
+</section>
+<section id="options-5" class="level3">
+<h3 class="anchored" data-anchor-id="options-5">Options</h3>
+<dl>
+<dt><code>-r, --r-version &lt;r-version&gt;</code></dt>
+<dd>
+R version to set up repositories for (default: all)
+</dd>
+<dt><code>--with-repos=&lt;with-repos&gt;</code></dt>
+<dd>
+Repositories to enable, in addition to the ones enabled by default. If <code>--without-repos</code> is also specified (without a value), then only these repositories will be enabled.
+</dd>
+<dt><code>--without-repos[=&lt;without-repos&gt;]</code></dt>
+<dd>
+Do not set up package repositories. Alternatively, specify which ones to skip, a comma-separated list. If <code>--with-repos</code> is also specified, then only the repositories in that argument will be enabled.
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+</dl>
 
 
 </section>

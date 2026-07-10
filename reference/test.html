@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>rig sysreqs – rig</title>
+<title>rig test – rig</title>
 <style>
 /* Default styles provided by pandoc.
 ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
@@ -45,9 +45,9 @@ ul.task-list li input[type="checkbox"] {
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-15634bcf2e68342d4ad2dfa704d543f6.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-366cb8ec674e47143b072bc2c76f74d8.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="../site_libs/bootstrap/bootstrap-dark-785818dbc5d96fd52cb159fe6cdcecc7.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
-<link href="../site_libs/bootstrap/bootstrap-366cb8ec674e47143b072bc2c76f74d8.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-3532e298ff37c591783edef749a05417.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-dark-418e02f4d768829f2bbae831ff698b99.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<link href="../site_libs/bootstrap/bootstrap-3532e298ff37c591783edef749a05417.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -264,7 +264,7 @@ ul.task-list li input[type="checkbox"] {
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../reference/sysreqs.html">rig sysreqs</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../reference/test.html">rig test</a></li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
       <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
@@ -303,12 +303,6 @@ ul.task-list li input[type="checkbox"] {
   <div class="sidebar-item-container"> 
   <a href="../install.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Installing rig</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../usage.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Usage</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -414,14 +408,14 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/sysreqs.html" class="sidebar-item-text sidebar-link active">
- <span class="menu-text">rig sysreqs</span></a>
+  <a href="../reference/system.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig system</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/system.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">rig system</span></a>
+  <a href="../reference/test.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">rig test</span></a>
   </div>
 </li>
       </ul>
@@ -448,12 +442,11 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#rig-sysreqs" id="toc-rig-sysreqs" class="nav-link active" data-scroll-target="#rig-sysreqs"><code>rig sysreqs</code></a>
-  <ul class="collapse">
-  <li><a href="#rig-sysreqs-add" id="toc-rig-sysreqs-add" class="nav-link" data-scroll-target="#rig-sysreqs-add"><code>rig sysreqs add</code></a></li>
-  <li><a href="#rig-sysreqs-info" id="toc-rig-sysreqs-info" class="nav-link" data-scroll-target="#rig-sysreqs-info"><code>rig sysreqs info</code></a></li>
-  <li><a href="#rig-sysreqs-list" id="toc-rig-sysreqs-list" class="nav-link" data-scroll-target="#rig-sysreqs-list"><code>rig sysreqs list</code></a></li>
-  </ul></li>
+  <li><a href="#rig-test-download-lockfile" id="toc-rig-test-download-lockfile" class="nav-link active" data-scroll-target="#rig-test-download-lockfile"><code>rig test download-lockfile</code></a></li>
+  <li><a href="#rig-test-parse-platform-string" id="toc-rig-test-parse-platform-string" class="nav-link" data-scroll-target="#rig-test-parse-platform-string"><code>rig test parse-platform-string</code></a></li>
+  <li><a href="#rig-test-platform-to-pkg-type" id="toc-rig-test-platform-to-pkg-type" class="nav-link" data-scroll-target="#rig-test-platform-to-pkg-type"><code>rig test platform-to-pkg-type</code></a></li>
+  <li><a href="#rig-test-read-packages-rds" id="toc-rig-test-read-packages-rds" class="nav-link" data-scroll-target="#rig-test-read-packages-rds"><code>rig test read-packages-rds</code></a></li>
+  <li><a href="#rig-test-read-rds" id="toc-rig-test-read-rds" class="nav-link" data-scroll-target="#rig-test-read-rds"><code>rig test read-rds</code></a></li>
   </ul>
 </nav>
     </div>
@@ -461,9 +454,9 @@ ul.task-list li input[type="checkbox"] {
 <main class="content" id="quarto-document-content">
 
 
-<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../reference/sysreqs.html">rig sysreqs</a></li></ol></nav>
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../reference/test.html">rig test</a></li></ol></nav>
 <div class="quarto-title">
-<h1 class="title">rig sysreqs</h1>
+<h1 class="title">rig test</h1>
 </div>
 
 
@@ -481,77 +474,97 @@ ul.task-list li input[type="checkbox"] {
 
 
 <!-- Generated by website/gen-cli-reference.sh. Do not edit by hand. -->
-<section id="rig-sysreqs" class="level2">
-<h2 class="anchored" data-anchor-id="rig-sysreqs"><code>rig sysreqs</code></h2>
-<pre class="text"><code>Description:
-  Manage system libraries and tools. This currently includes a very
-  restricted set of tools, that are needed for running `R CMD check`.
-  Run `rig sysreqs list` for a complete list.
+<pre class="text"><code>Name:
+  rig test - Run tests (for rig developers)
 
-Usage: rig sysreqs [OPTIONS] [COMMAND]
+Usage: rig test [OPTIONS] [COMMAND]
 
 Commands:
-  add   Install system library or tool
-  info  Information about a system tool
-  list  List available system libraries and tools
-  help  Print this message or the help of the given subcommand(s)
+  download-lockfile      Download packages in the pkg.lock file
+  parse-platform-string  Test parsing platform strings
+  platform-to-pkg-type   Test repo directory for platform string
+  read-packages-rds      Test reading packages from RDS files
+  read-rds               Test reading RDS files
+  help                   Print this message or the help of the given subcommand(s)
 
 Options:
-      --json
-          JSON output
+      --user   Run in user mode (overrides RIG_MODE and config)
+      --admin  Run in admin mode (overrides RIG_MODE and config)
+  -h, --help   Print help</code></pre>
+<section id="rig-test-download-lockfile" class="level2">
+<h2 class="anchored" data-anchor-id="rig-test-download-lockfile"><code>rig test download-lockfile</code></h2>
+<pre class="text"><code>Name:
+  rig test download-lockfile - Download packages in the pkg.lock file
 
-      --user
-          Run in user mode (overrides RIG_MODE and config)
-
-      --admin
-          Run in admin mode (overrides RIG_MODE and config)
-
-  -h, --help
-          Print help (see a summary with '-h')</code></pre>
-<section id="rig-sysreqs-add" class="level3">
-<h3 class="anchored" data-anchor-id="rig-sysreqs-add"><code>rig sysreqs add</code></h3>
-<pre class="text"><code>Install system library or tool
-
-Usage: rig sysreqs add [OPTIONS] &lt;name&gt;...
-
-Arguments:
-  &lt;name&gt;...  system tool to install
+Usage: rig test download-lockfile [OPTIONS]
 
 Options:
-  -a, --arch &lt;arch&gt;  Architecture to install for [default: arm64] [possible values: arm64, x86_64]
-      --user         Run in user mode (overrides RIG_MODE and config)
-      --admin        Run in admin mode (overrides RIG_MODE and config)
-  -h, --help         Print help</code></pre>
-</section>
-<section id="rig-sysreqs-info" class="level3">
-<h3 class="anchored" data-anchor-id="rig-sysreqs-info"><code>rig sysreqs info</code></h3>
-<pre class="text"><code>Information about a system tool
-
-Usage: rig sysreqs info [OPTIONS] &lt;name&gt;
-
-Arguments:
-  &lt;name&gt;  system tool to show
-
-Options:
-      --json   JSON output
       --user   Run in user mode (overrides RIG_MODE and config)
       --admin  Run in admin mode (overrides RIG_MODE and config)
   -h, --help   Print help</code></pre>
 </section>
-<section id="rig-sysreqs-list" class="level3">
-<h3 class="anchored" data-anchor-id="rig-sysreqs-list"><code>rig sysreqs list</code></h3>
-<pre class="text"><code>List available system libraries and tools
+<section id="rig-test-parse-platform-string" class="level2">
+<h2 class="anchored" data-anchor-id="rig-test-parse-platform-string"><code>rig test parse-platform-string</code></h2>
+<pre class="text"><code>Name:
+  rig test parse-platform-string - Test parsing platform strings
 
-Usage: rig sysreqs list [OPTIONS]
+Usage: rig test parse-platform-string [OPTIONS] &lt;platform&gt;
+
+Arguments:
+  &lt;platform&gt;  
 
 Options:
-      --json   JSON output
+      --user   Run in user mode (overrides RIG_MODE and config)
+      --admin  Run in admin mode (overrides RIG_MODE and config)
+  -h, --help   Print help</code></pre>
+</section>
+<section id="rig-test-platform-to-pkg-type" class="level2">
+<h2 class="anchored" data-anchor-id="rig-test-platform-to-pkg-type"><code>rig test platform-to-pkg-type</code></h2>
+<pre class="text"><code>Name:
+  rig test platform-to-pkg-type - Test repo directory for platform string
+
+Usage: rig test platform-to-pkg-type [OPTIONS] --r-version &lt;r-version&gt; &lt;platform&gt;
+
+Arguments:
+  &lt;platform&gt;  
+
+Options:
+      --r-version &lt;r-version&gt;  
+      --user                   Run in user mode (overrides RIG_MODE and config)
+      --admin                  Run in admin mode (overrides RIG_MODE and config)
+  -h, --help                   Print help</code></pre>
+</section>
+<section id="rig-test-read-packages-rds" class="level2">
+<h2 class="anchored" data-anchor-id="rig-test-read-packages-rds"><code>rig test read-packages-rds</code></h2>
+<pre class="text"><code>Name:
+  rig test read-packages-rds - Test reading packages from RDS files
+
+Usage: rig test read-packages-rds [OPTIONS] &lt;path&gt;
+
+Arguments:
+  &lt;path&gt;  
+
+Options:
+      --user   Run in user mode (overrides RIG_MODE and config)
+      --admin  Run in admin mode (overrides RIG_MODE and config)
+  -h, --help   Print help</code></pre>
+</section>
+<section id="rig-test-read-rds" class="level2">
+<h2 class="anchored" data-anchor-id="rig-test-read-rds"><code>rig test read-rds</code></h2>
+<pre class="text"><code>Name:
+  rig test read-rds - Test reading RDS files
+
+Usage: rig test read-rds [OPTIONS] &lt;path&gt;
+
+Arguments:
+  &lt;path&gt;  
+
+Options:
       --user   Run in user mode (overrides RIG_MODE and config)
       --admin  Run in admin mode (overrides RIG_MODE and config)
   -h, --help   Print help</code></pre>
 
 
-</section>
 </section>
 
 </main> <!-- /main -->

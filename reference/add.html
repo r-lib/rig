@@ -23,6 +23,41 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
 </style>
 
 
@@ -45,9 +80,9 @@ ul.task-list li input[type="checkbox"] {
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-15634bcf2e68342d4ad2dfa704d543f6.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-366cb8ec674e47143b072bc2c76f74d8.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="../site_libs/bootstrap/bootstrap-dark-785818dbc5d96fd52cb159fe6cdcecc7.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
-<link href="../site_libs/bootstrap/bootstrap-366cb8ec674e47143b072bc2c76f74d8.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-3532e298ff37c591783edef749a05417.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-dark-418e02f4d768829f2bbae831ff698b99.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<link href="../site_libs/bootstrap/bootstrap-3532e298ff37c591783edef749a05417.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -307,12 +342,6 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../usage.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Usage</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
   <a href="../macos-app.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">macOS menu bar app</span></a>
   </div>
@@ -414,14 +443,14 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/sysreqs.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">rig sysreqs</span></a>
+  <a href="../reference/system.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig system</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/system.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">rig system</span></a>
+  <a href="../reference/test.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig test</span></a>
   </div>
 </li>
       </ul>
@@ -448,7 +477,10 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#rig-add" id="toc-rig-add" class="nav-link active" data-scroll-target="#rig-add"><code>rig add</code></a></li>
+  <li><a href="#usage" id="toc-usage" class="nav-link active" data-scroll-target="#usage">Usage</a></li>
+  <li><a href="#arguments" id="toc-arguments" class="nav-link" data-scroll-target="#arguments">Arguments</a></li>
+  <li><a href="#options" id="toc-options" class="nav-link" data-scroll-target="#options">Options</a></li>
+  <li><a href="#examples" id="toc-examples" class="nav-link" data-scroll-target="#examples">Examples</a></li>
   </ul>
 </nav>
     </div>
@@ -476,113 +508,106 @@ ul.task-list li input[type="checkbox"] {
 
 
 <!-- Generated by website/gen-cli-reference.sh. Do not edit by hand. -->
-<section id="rig-add" class="level2">
-<h2 class="anchored" data-anchor-id="rig-add"><code>rig add</code></h2>
-<pre class="text"><code>Description:
-  Download and install an R version, from the official sources.
-  It keeps the already installed R versions, except versions within the
-  same minor branch, see below.
-
-  The desired R version can be specified in various ways:
-  - `rig add devel` adds the latest available development version,
-  - `rig add next` is the next version (patched, alpha, beta, rc, etc.),
-  - `rig add release` adds the latest release.
-  - `rig add x.y.z` adds a specific version.
-  - `rig add x.y` adds the latest release within the `x.y` minor branch.
-  - `rig add oldrel/n` adds the latest release within the `n`th previous
-    minor branch (`oldrel` is the same as `oldrel/1`).
-  - `rig add &lt;url&gt;` uses a `.pkg` installer from `&lt;url&gt;`.
-
-  In user mode rig installs R into your home directory and never needs
-  `sudo`. In admin mode you usually need to run this command with `sudo`:
-  `sudo rig add ...`, otherwise rig will need to ask for your password.
-
-  In admin mode on macOS rig cannot add multiple R versions from the same
-  minor branch. E.g. it is not possible to have R 4.1.1 and R 4.1.2
-  installed at the same time. Adding one of them will automatically remove
-  the other. In user mode there is no such restriction.
-
-  `rig add` will automatically call `rig system forget` before the
-  installation, to make sure that already installed R versions are kept.
-  It will also call the following rig command after the installation:
-  - `rig system forget`
-  - `rig system fix-permissions`
-  - `rig system make-orthogonal`
-  - `rig system create-lib`
-  - `rig system make-links`
-  See their help pages for details.
-
-Usage: rig add [OPTIONS] [str]
-
-Arguments:
-  [str]
-          R version to install
-          
-          [default: release]
-
-Options:
-      --with-repos=&lt;with-repos&gt;
-          Repositories to enable, in addition to the ones enabled by default.
-          If --without-repos is also specified (without a value), then only these
-          repositories will be enabled.
-
-      --without-repos[=&lt;without-repos&gt;]
-          Do not set up package repositories.
-          Alternatively, specify which ones to skip, a comma-separated list.
-          If --with-repos is also specified, then only the repositories in that
-          argument will be enabled.
-
-      --without-cran-mirror
-          Do not set the cloud CRAN mirror.
-          Deprecated in favor of --without-repos=cran.
-
-      --without-p3m
-          Do not set up P3M. This is the default on macOS.
-          Deprecated in favor of --without-repos=p3m. 
-          [alias: --without-rspm]
-
-      --without-pak
-          Do not install pak.
-
-      --pak-version &lt;pak-version&gt;
-          pak version to install.
-          
-          [default: stable]
-          [possible values: stable, rc, devel]
-
-  -a, --arch &lt;arch&gt;
-          Select macOS arch: arm64 or x86_64
-          
-          [default: arm64]
-          [possible values: arm64, x86_64]
-
-      --user
-          Run in user mode (overrides RIG_MODE and config)
-
-      --admin
-          Run in admin mode (overrides RIG_MODE and config)
-
-  -h, --help
-          Print help (see a summary with '-h')
-
-Examples:
-  # Add the latest development snapshot
-  rig add devel
-
-  # Add the latest release
-  rig add release
-
-  # Install specific version
-  rig add 4.1.2
-
-  # Install latest version within a minor branch
-  rig add 4.1
-
-  # Install arm64 build of R (default on arm64 macs)
-  rig add -a arm64 release
-
-  # Install x86_64 build of R (default on x86_64 macs)
-  rig add -a x86_64 release</code></pre>
+<p>Download and install an R version, from the official sources. It keeps the already installed R versions, except on macOS in admin mode, where patch versions of the same minor overwrite each other.</p>
+<p>On macOS and Windows rig uses the R builds at https://cran.r-project.org. On Linux rig uses the Posit R builds from https://github.com/rstudio/r-builds.</p>
+<p>The desired R version can be specified in various ways:</p>
+<ul>
+<li><code>rig add devel</code> adds the latest available development version,</li>
+<li><code>rig add next</code> is the next version (patched, alpha, beta, rc, etc.),</li>
+<li><code>rig add release</code> adds the latest release.</li>
+<li><code>rig add x.y.z</code> adds a specific version.</li>
+<li><code>rig add x.y</code> adds the latest release within the <code>x.y</code> minor branch.</li>
+<li><code>rig add oldrel/n</code> adds the latest release within the <code>n</code>th previous minor branch (<code>oldrel</code> is the same as <code>oldrel/1</code>).</li>
+<li><code>rig add &lt;url&gt;</code> uses a build from <code>&lt;url&gt;</code>.</li>
+</ul>
+<p>In user mode rig installs R into your home directory and never needs <code>sudo</code>. In admin mode you usually need to run this command with <code>sudo</code>: <code>sudo rig add ...</code>, otherwise rig will need to ask for your password.</p>
+<p>In admin mode on macOS rig cannot add multiple R versions from the same minor branch. E.g. it is not possible to have R 4.6.0 and R 4.6.1 installed at the same time. Adding one of them will automatically remove the other. In user mode there is no such restriction.</p>
+<p>You can use <code>rig add</code> to install Rtools:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> add rtools</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>will install all Rtools versions that are needed for the currently installed R versions. You can also request a specific Rtools version, e.g.&nbsp;<code>rig add rtools45</code>.</p>
+<p>In user mode rig installs R and Rtools into your user profile, without administrator rights. In admin mode you need an administrator account to run this command.</p>
+<section id="usage" class="level2">
+<h2 class="anchored" data-anchor-id="usage">Usage</h2>
+<pre class="text"><code>rig add [OPTIONS] [str]</code></pre>
+</section>
+<section id="arguments" class="level2">
+<h2 class="anchored" data-anchor-id="arguments">Arguments</h2>
+<dl>
+<dt><code>[str]</code></dt>
+<dd>
+R version to install
+<em>[default: release]</em>
+</dd>
+</dl>
+</section>
+<section id="options" class="level2">
+<h2 class="anchored" data-anchor-id="options">Options</h2>
+<dl>
+<dt><code>--with-repos=&lt;with-repos&gt;</code></dt>
+<dd>
+Repositories to enable, in addition to the ones enabled by default. If <code>--without-repos</code> is also specified (without a value), then only these repositories will be enabled.
+</dd>
+<dt><code>--without-repos[=&lt;without-repos&gt;]</code></dt>
+<dd>
+Do not set up package repositories. Alternatively, specify which ones to skip, a comma-separated list. If <code>--with-repos</code> is also specified, then only the repositories in that argument will be enabled.
+</dd>
+<dt><code>--without-cran-mirror</code></dt>
+<dd>
+Do not set the cloud CRAN mirror. Deprecated in favor of <code>--without-repos=cran</code>.
+</dd>
+<dt><code>--without-p3m</code></dt>
+<dd>
+Do not set up P3M. This is the default on macOS. Deprecated in favor of <code>--without-repos=p3m</code>.
+<em>[alias: <code>--without-rspm</code>]</em>
+</dd>
+<dt><code>--without-pak</code></dt>
+<dd>
+Do not install pak.
+</dd>
+<dt><code>--pak-version &lt;pak-version&gt;</code></dt>
+<dd>
+pak version to install.
+<em>[default: stable]</em><br>
+<em>[possible values: stable, rc, devel]</em>
+</dd>
+<dt><code>--without-sysreqs</code></dt>
+<dd>
+Do not set up system requirements installation.
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-a, --arch &lt;arch&gt;</code></dt>
+<dd>
+Select architecture: arm64 or x86_64
+</dd>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+</dl>
+</section>
+<section id="examples" class="level2">
+<h2 class="anchored" data-anchor-id="examples">Examples</h2>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Add the latest development snapshot</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> add devel</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Add the latest release</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> add release</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Install specific version</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> add 4.6.1</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Install latest version within a minor branch</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> add 4.6</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Install arm64 build of R (default on arm64 machines)</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> add <span class="at">-a</span> arm64 release</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Install x86_64 build of R (default on x86_64 machines)</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> add <span class="at">-a</span> x86_64 release</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Install all needed Rtools versions (Windows only)</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> add rtools</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 
 
 </section>
