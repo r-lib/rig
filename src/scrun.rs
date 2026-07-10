@@ -205,9 +205,9 @@ fn sc_run_app(
         Err(e) => {
             OUTPUT.error(&format!(
                 "Could no access files in R project at '{}': {}",
-                &proj, &e
+                proj, e
             ));
-            error!("Could no access files in R project at '{}': {}", &proj, &e);
+            error!("Could no access files in R project at '{}': {}", proj, e);
             bail!("Could no access files in R project at '{}': {}", &proj, &e);
         }
     };
@@ -470,7 +470,7 @@ fn read_yaml_header_string(file: &PathBuf) -> Result<Option<String>, Box<dyn Err
                 );
             }
         };
-        trace!("Got line: {}", &line);
+        trace!("Got line: {}", line);
 
         if re_empty.is_match(&line) {
             continue;
@@ -517,7 +517,7 @@ fn read_yaml_header_string(file: &PathBuf) -> Result<Option<String>, Box<dyn Err
             trace!("End of YAML header");
             break;
         } else {
-            trace!("YAML header: {}", &line);
+            trace!("YAML header: {}", line);
             header.push_str(&line);
             header.push('\n');
         }

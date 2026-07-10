@@ -856,10 +856,10 @@ fn sc_available_rtools_versions(
             let ver = unquote(&item["version"].to_string());
             if all || show(&ver) {
                 println!("{{");
-                println!("  \"version\": {},", &item["version"]);
-                println!("  \"first\": {},", &item["first"]);
-                println!("  \"last\": {},", &item["last"]);
-                println!("  \"url\": {}", &item["url"]);
+                println!("  \"version\": {},", item["version"]);
+                println!("  \"first\": {},", item["first"]);
+                println!("  \"last\": {},", item["last"]);
+                println!("  \"url\": {}", item["url"]);
                 println!("}}{}", if idx == num - 1 { "" } else { "," });
             }
         }
