@@ -1,5 +1,36 @@
 # rig 0.10.0 (not released yet)
 
+* rig now supports a **user mode** on all platforms, in addition to the
+  default admin mode. In user mode rig installs everything into the user's
+  home directory and never needs `sudo` or administrator privileges. R goes
+  into `~/.local/share/rig/r` (`%APPDATA%\rig\data\r` on Windows) and quick
+  links into `~/.local/bin` (`%USERPROFILE%\.local\bin` on Windows). Select
+  the mode with the `--user` / `--admin` global flags, the `RIG_MODE`
+  environment variable, or the `mode` key in the rig config file. The new
+  `rig system user-mode` command switches an existing admin-mode setup to
+  user mode.
+
+* rig has a new documentation website at <https://r-lib.github.io/rig/>,
+  including a full CLI reference and a guide to admin vs. user mode.
+
+* New `rig config` command to manage the rig configuration file.
+
+* New experimental `rig proj` command to manage R project dependencies.
+
+* `rig rtools` is now a top-level command (it used to be `rig system
+  rtools`).
+
+* On Linux, rig can now install portable R builds, for glibc- and
+  musl-based Linux distros. If there is no distro-specific build for your
+  platform, rig falls back to a portable build automatically.
+
+* New `rig system fix-r-alias` subcommand.
+
+* `rig rstudio --config-path` is now implemented on Linux and macOS.
+
+* rig now warns instead of failing when it encounters a broken R
+  installation (#346).
+
 # rig 0.8.1
 
 * The `RIG_PLATFORM` environment variable works correctly again (#325).
