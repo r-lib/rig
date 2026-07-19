@@ -5,7 +5,7 @@ Manage rig configuration
 Manage the rig configuration file.
 
 rig reads a number of settings from a configuration file, e.g. the
-installation `mode` ([user or admin](../articles/admin-vs-user-mode.qmd)), the quick-link directory
+installation `mode` ([user or admin](../admin-vs-user-mode.qmd)), the quick-link directory
 (`binary-dir`) and the R installation root (`r-install-dir`). Most
 settings can also be overridden with environment variables.
 

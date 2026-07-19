@@ -4,7 +4,7 @@ Print or set default R version [alias: switch]
 
 Print or set the default R version. The default R version is the one that
 is started with the `R` command, via the `R` quick link in the rig binary
-directory (`~/.local/bin` in [user mode](../articles/admin-vs-user-mode.qmd)).
+directory (`~/.local/bin` in [user mode](../admin-vs-user-mode.qmd)).
 
 Call without any arguments to see the current default. Call with the
 version number/name to set the default. Before setting a default, you

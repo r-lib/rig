@@ -60,17 +60,18 @@ writes `ABOUT_*` / `HELP_*` `&str` constants to the committed
 CI runs `cargo xtask gen-help --check` to catch stale output. The same Markdown
 files are consumed by `website/gen-cli-reference.sh` for the web reference.
 
-You may use **Markdown links** in help files, e.g. to point at an article or
+You may use **Markdown links** in help files, e.g. to point at a guide page or
 another command. The web CLI reference renders them as real links, while
 `--help` shows only the link *text* (the xtask ANSI renderer drops the URL). So
 wrapping words that are already in the prose, e.g. `[user mode](...)`, adds a
 link on the website without changing the terminal output at all —
 `src/help-generated.in` stays byte-for-byte identical. Because all help prose is
 rendered inside `website/reference/`, write link targets relative to that
-directory: `../articles/<slug>.qmd` for an article, `<cmd>.qmd` for a sibling
-reference page, `#rig-<cmd>-<sub>` for an on-page anchor, `../faq.qmd` /
-`../install.qmd` for guide pages. (This does not apply to clap flag/option help
-in `src/args.rs`, which is plain text on both the terminal and the web.)
+directory: `../<page>.qmd` for a guide page (e.g.
+`../admin-vs-user-mode.qmd`, `../faq.qmd`, `../install.qmd`), `<cmd>.qmd` for a
+sibling reference page, `#rig-<cmd>-<sub>` for an on-page anchor. (This does not
+apply to clap flag/option help in `src/args.rs`, which is plain text on both the
+terminal and the web.)
 
 ## Documentation website
 
@@ -81,9 +82,9 @@ file per section: `intro`, `features`, `known-issues`, `install`,
 that `{{< include >}}` a partial. Edit the partials, not the rendered HTML.
 
 - The site is **one level deep**: `index.qmd` (Get started — intro, quick
-  start, features, known issues) plus four flat Guide pages
-  (`install.qmd`, `macos-app.qmd`, `docker.qmd`, `faq.qmd`),
-  `reference/index.qmd`, `articles/index.qmd` and `news.qmd`. Do **not** add a
+  start, features, known issues) plus five flat Guide pages
+  (`install.qmd`, `admin-vs-user-mode.qmd`, `macos-app.qmd`, `docker.qmd`,
+  `faq.qmd`), `reference/index.qmd` and `news.qmd`. Do **not** add a
   further level of sub-pages. The one exception is the **generated** CLI
   reference: `reference/` holds one page per top-level rig command
   (`reference/<cmd>.qmd`, e.g. `add.qmd`, `system.qmd`), each with its
@@ -96,7 +97,7 @@ that `{{< include >}}` a partial. Edit the partials, not the rendered HTML.
   them up with `auto: "reference/*.qmd"`).
 - The layout is the uv-style three-column docs layout: a **permanent docked
   left sidebar** holds all navigation (Get started, a collapsible `Guide`
-  section with the four Guide pages, Reference, Articles, Changelog — see the
+  section with the five Guide pages, Reference, Changelog — see the
   `sidebar:` block in `_quarto.yml`), the content is in the middle, and the
   right-hand on-page TOC (`toc: true`) lists the current page's sections. The
   main navigation lives in the sidebar only; the top `navbar` is kept thin
@@ -118,8 +119,7 @@ that `{{< include >}}` a partial. Edit the partials, not the rendered HTML.
 - The site is deployed to the root of the GitHub Pages `gh-pages` branch on
   every push to the default branch, handled by `.github/workflows/docs.yml`.
 - `website/news.qmd` includes the repo's `NEWS.md`; keep the changelog in
-  `NEWS.md`. `website/reference/` and `website/articles/` hold the reference
-  manual(s) and articles/blog-post listings.
+  `NEWS.md`. `website/reference/` holds the generated CLI reference.
 
 ## Build Commands
 

@@ -36,6 +36,8 @@ website:
         contents:
           - text: "Installing rig"
             file: install.qmd
+          - text: "Admin mode vs user mode"
+            file: admin-vs-user-mode.qmd
           - text: "macOS menu bar app"
             file: macos-app.qmd
           - text: "Docker containers"
@@ -46,8 +48,6 @@ website:
         href: reference/index.qmd
         contents:
           - auto: "reference/*.qmd"
-      - text: "Articles"
-        file: articles/index.qmd
       - text: "Changelog"
         file: news.qmd
 

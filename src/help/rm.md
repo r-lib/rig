@@ -4,6 +4,6 @@ Remove R versions [aliases: del, remove, delete]
 
 Remove an R installation. It keeps the users' package libraries.
 
-In [user mode](../articles/admin-vs-user-mode.qmd) no administrator rights are needed. In admin mode you need
+In [user mode](../admin-vs-user-mode.qmd) no administrator rights are needed. In admin mode you need
 an administrator account to run this command or use `sudo` on Unix,
 otherwise rig will ask for your password.
