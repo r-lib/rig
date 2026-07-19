@@ -481,10 +481,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <ul class="collapse">
   <li><a href="#macos-installer" id="toc-macos-installer" class="nav-link" data-scroll-target="#macos-installer">macOS (installer)</a></li>
   <li><a href="#macos-homebrew" id="toc-macos-homebrew" class="nav-link" data-scroll-target="#macos-homebrew">macOS (Homebrew)</a></li>
+  <li><a href="#macos-user-install-no-admin" id="toc-macos-user-install-no-admin" class="nav-link" data-scroll-target="#macos-user-install-no-admin">macOS (user install, no admin)</a></li>
   </ul></li>
   <li><a href="#installing-rig-on-windows" id="toc-installing-rig-on-windows" class="nav-link" data-scroll-target="#installing-rig-on-windows">Installing rig on Windows</a>
   <ul class="collapse">
   <li><a href="#windows-installer" id="toc-windows-installer" class="nav-link" data-scroll-target="#windows-installer">Windows (installer)</a></li>
+  <li><a href="#windows-user-install-no-admin" id="toc-windows-user-install-no-admin" class="nav-link" data-scroll-target="#windows-user-install-no-admin">Windows (user install, no admin)</a></li>
   <li><a href="#windows-scoop" id="toc-windows-scoop" class="nav-link" data-scroll-target="#windows-scoop">Windows (Scoop)</a></li>
   <li><a href="#windows-chocolatey" id="toc-windows-chocolatey" class="nav-link" data-scroll-target="#windows-chocolatey">Windows (Chocolatey)</a></li>
   <li><a href="#windows-winget" id="toc-windows-winget" class="nav-link" data-scroll-target="#windows-winget">Windows (WinGet)</a></li>
@@ -497,7 +499,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#opensuse-and-sles-rpm-package" id="toc-opensuse-and-sles-rpm-package" class="nav-link" data-scroll-target="#opensuse-and-sles-rpm-package">OpenSUSE and SLES (RPM package)</a></li>
   <li><a href="#any-linux-distribution-tarball" id="toc-any-linux-distribution-tarball" class="nav-link" data-scroll-target="#any-linux-distribution-tarball">Any Linux distribution (tarball)</a></li>
   </ul></li>
-  <li><a href="#installing-auto-complete-on-macos-and-linux" id="toc-installing-auto-complete-on-macos-and-linux" class="nav-link" data-scroll-target="#installing-auto-complete-on-macos-and-linux">Installing auto-complete on macOS and Linux</a></li>
+  <li><a href="#installing-auto-complete" id="toc-installing-auto-complete" class="nav-link" data-scroll-target="#installing-auto-complete">Installing auto-complete</a>
+  <ul class="collapse">
+  <li><a href="#macos-and-linux" id="toc-macos-and-linux" class="nav-link" data-scroll-target="#macos-and-linux">macOS and Linux</a></li>
+  <li><a href="#windows" id="toc-windows" class="nav-link" data-scroll-target="#windows">Windows</a></li>
+  </ul></li>
   </ul>
 </nav>
     </div>
@@ -541,6 +547,19 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p>To update rig you can run</p>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">brew</span> upgrade <span class="at">--cask</span> rig</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
+<section id="macos-user-install-no-admin" class="level3">
+<h3 class="anchored" data-anchor-id="macos-user-install-no-admin">macOS (user install, no admin)</h3>
+<p>If you don’t have administrator rights, you can install rig entirely inside your home directory. The easiest way is the install script, which downloads the right build for your Mac, unpacks it into <code>~/.local</code>, and adds <code>~/.local/bin</code> to your <code>PATH</code>:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-LsSf</span> https://r-lib.github.io/rig/install.sh <span class="kw">|</span> <span class="fu">sh</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Then switch rig to user mode and install R:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> system user-mode</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> add release</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Alternatively, download the <code>rig-macos-&lt;arch&gt;-&lt;version&gt;.tar.gz</code> archive for your architecture (<code>arm64</code> or <code>x86_64</code>) from <a href="https://github.com/r-lib/rig/releases" class="uri">https://github.com/r-lib/rig/releases</a> and unpack it into <code>~/.local</code> yourself:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mkdir</span> <span class="at">-p</span> ~/.local</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-Ls</span> https://github.com/r-lib/rig/releases/download/latest/rig-macos-arm64-latest.tar.gz <span class="kw">|</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">tar</span> xz <span class="at">-C</span> ~/.local</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Make sure <code>~/.local/bin</code> is on your <code>PATH</code>. The binary in these archives is signed and notarized, so it runs without Gatekeeper warnings.</p>
+</section>
 </section>
 <section id="installing-rig-on-windows" class="level2">
 <h2 class="anchored" data-anchor-id="installing-rig-on-windows">Installing rig on Windows</h2>
@@ -550,20 +569,29 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p>Download the latest release from <a href="https://github.com/r-lib/rig/releases" class="uri">https://github.com/r-lib/rig/releases</a> and install it the usual way.</p>
 <p><code>rig</code> adds itself to the user’s path, but you might need to restart your terminal after the installation on Windows.</p>
 </section>
+<section id="windows-user-install-no-admin" class="level3">
+<h3 class="anchored" data-anchor-id="windows-user-install-no-admin">Windows (user install, no admin)</h3>
+<p>If you don’t have administrator rights, you can install rig into your user profile with the install script. It downloads the right build, unpacks it into <code>%USERPROFILE%\.local</code>, and adds <code>%USERPROFILE%\.local\bin</code> to your user <code>PATH</code>:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode powershell code-with-copy"><code class="sourceCode powershell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">irm</span> https<span class="op">://</span>r-lib<span class="op">.</span><span class="fu">github</span><span class="op">.</span><span class="fu">io</span><span class="op">/</span>rig<span class="op">/</span>install<span class="op">.</span><span class="fu">ps1</span> <span class="op">|</span> <span class="fu">iex</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Open a new terminal, then switch rig to user mode and install R:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode powershell code-with-copy"><code class="sourceCode powershell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>rig system user-mode</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>rig add release</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Alternatively, download the <code>rig-windows-&lt;arch&gt;-&lt;version&gt;.zip</code> archive (<code>x86_64</code> or <code>arm64</code>) from <a href="https://github.com/r-lib/rig/releases" class="uri">https://github.com/r-lib/rig/releases</a> and extract it into <code>%USERPROFILE%\.local</code>, then add <code>%USERPROFILE%\.local\bin</code> to your <code>PATH</code>.</p>
+</section>
 <section id="windows-scoop" class="level3">
 <h3 class="anchored" data-anchor-id="windows-scoop">Windows (Scoop)</h3>
 <p>If you use <a href="https://scoop.sh/">Scoop</a>, you can install rig from the scoop bucket at <a href="https://github.com/cderv/r-bucket#r-installation-manager-rig"><code>cderv/r-bucket</code></a>:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode powershell code-with-copy"><code class="sourceCode powershell"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>scoop bucket add r-bucket https<span class="op">://</span>github<span class="op">.</span><span class="fu">com</span><span class="op">/</span>cderv<span class="op">/</span>r-bucket<span class="op">.</span><span class="fu">git</span></span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>scoop install rig</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode powershell code-with-copy"><code class="sourceCode powershell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>scoop bucket add r-bucket https<span class="op">://</span>github<span class="op">.</span><span class="fu">com</span><span class="op">/</span>cderv<span class="op">/</span>r-bucket<span class="op">.</span><span class="fu">git</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>scoop install rig</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>To update run</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode powershell code-with-copy"><code class="sourceCode powershell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>scoop update rig</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode powershell code-with-copy"><code class="sourceCode powershell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>scoop update rig</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 <section id="windows-chocolatey" class="level3">
 <h3 class="anchored" data-anchor-id="windows-chocolatey">Windows (Chocolatey)</h3>
 <p>If you use <a href="https://chocolatey.org/">Chocolatey</a> (e.g.&nbsp;on GitHub Actions) you can install <code>rig</code> with</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode powershell code-with-copy"><code class="sourceCode powershell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>choco install rig</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode powershell code-with-copy"><code class="sourceCode powershell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>choco install rig</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>and upgrade to the latest version with</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode powershell code-with-copy"><code class="sourceCode powershell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>choco upgrade rig</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode powershell code-with-copy"><code class="sourceCode powershell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>choco upgrade rig</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 <section id="windows-winget" class="level3">
 <h3 class="anchored" data-anchor-id="windows-winget">Windows (WinGet)</h3>
@@ -648,13 +676,27 @@ Retired Linux distributions
   `which sudo` tar xz -C /usr/local</code></pre>
 </section>
 </section>
-<section id="installing-auto-complete-on-macos-and-linux" class="level2">
-<h2 class="anchored" data-anchor-id="installing-auto-complete-on-macos-and-linux">Installing auto-complete on macOS and Linux</h2>
-<p>The macOS and Linux installers also install completion files for <code>zsh</code> and <code>bash</code>.</p>
+<section id="installing-auto-complete" class="level2">
+<h2 class="anchored" data-anchor-id="installing-auto-complete">Installing auto-complete</h2>
+<p>All rig installers and archives ship shell completion files.</p>
+<section id="macos-and-linux" class="level3">
+<h3 class="anchored" data-anchor-id="macos-and-linux">macOS and Linux</h3>
+<p>The macOS and Linux installers install completion files for <code>zsh</code> and <code>bash</code> into system locations.</p>
 <p><code>zsh</code> completions work out of the box.</p>
 <p>For <code>bash</code> completions install the <code>bash-completion</code> package from Homebrew or your Linux distribution and make sure it is loaded from your <code>.bashrc</code>. (You don’t need to install <code>bash</code> from Homebrew, but you can if you like.)</p>
+<p>For <strong>user-mode</strong> installs the completion files are placed under the install prefix instead (e.g.&nbsp;<code>~/.local/share</code>):</p>
+<ul>
+<li><code>zsh</code>: add <code>~/.local/share/zsh/site-functions</code> to your <code>fpath</code> (before <code>compinit</code>).</li>
+<li><code>bash</code>: <code>bash-completion</code> picks up <code>~/.local/share/bash-completion/completions</code> automatically once it is loaded from your <code>.bashrc</code>.</li>
+</ul>
+</section>
+<section id="windows" class="level3">
+<h3 class="anchored" data-anchor-id="windows">Windows</h3>
+<p>The Windows installer and archive ship a PowerShell completion script. To enable tab-completion, dot-source it from your PowerShell profile (<code>$PROFILE</code>). For a user-mode archive install that is:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb19"><pre class="sourceCode powershell code-with-copy"><code class="sourceCode powershell"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="op">.</span> <span class="st">"</span><span class="va">$env</span><span class="op">:</span><span class="va">USERPROFILE</span><span class="st">\.local\share\rig\_rig.ps1"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 
 
+</section>
 </section>
 
 </main> <!-- /main -->
