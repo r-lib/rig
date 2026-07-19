@@ -1,4 +1,3 @@
-Choose your operating system below to see the available install methods.
 
 {{< include _partials/install-methods.md >}}
 

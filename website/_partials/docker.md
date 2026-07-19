@@ -91,5 +91,5 @@ For all containers:
 * Automatic system dependency installation via pak.
 * Linux binary packages are automatically installed from the
   [Posit Public Package Manager](https://packagemanager.posit.co/client/#/)
-  in x86_64 containers, on Ubuntu, Debian and OpenSUSE.
+  on supported distros, including Ubuntu, Debian and OpenSUSE.
 * Available on x86_64 and aarch64.
