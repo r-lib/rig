@@ -6,8 +6,9 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
+<meta name="description" content="How rig’s two installation modes differ, where files go on each platform, and how to switch between them.">
 
-<title>Articles – rig</title>
+<title>Admin mode vs user mode – rig</title>
 <style>
 /* Default styles provided by pandoc.
 ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
@@ -23,33 +24,66 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
 </style>
 
 
-<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
-<script src="../site_libs/quarto-nav/headroom.min.js"></script>
-<script src="../site_libs/clipboard/clipboard.min.js"></script>
-<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
-<script src="../site_libs/quarto-search/fuse.min.js"></script>
-<script src="../site_libs/quarto-search/quarto-search.js"></script>
-<meta name="quarto:offset" content="../">
-<link href="../assets/rig-app.png" rel="icon" type="image/png">
-<script src="../site_libs/quarto-listing/list.min.js"></script>
-<script src="../site_libs/quarto-listing/quarto-listing.js"></script>
-<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
-<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
-<script src="../site_libs/quarto-html/popper.min.js"></script>
-<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
-<script src="../site_libs/quarto-html/anchor.min.js"></script>
-<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-15634bcf2e68342d4ad2dfa704d543f6.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-0a6b7249c26820e032cb0bd839ff02b1.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-15634bcf2e68342d4ad2dfa704d543f6.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
-<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
-<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-319ba2c345d2f64272d6b514f02aaf6b.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="../site_libs/bootstrap/bootstrap-dark-833063da448a3ebf0c31dd1f7e43f7a9.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
-<link href="../site_libs/bootstrap/bootstrap-319ba2c345d2f64272d6b514f02aaf6b.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<link href="./assets/rig-app.png" rel="icon" type="image/png">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-15634bcf2e68342d4ad2dfa704d543f6.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-dark-0a6b7249c26820e032cb0bd839ff02b1.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-15634bcf2e68342d4ad2dfa704d543f6.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-319ba2c345d2f64272d6b514f02aaf6b.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-dark-833063da448a3ebf0c31dd1f7e43f7a9.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<link href="site_libs/bootstrap/bootstrap-319ba2c345d2f64272d6b514f02aaf6b.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -78,35 +112,6 @@ ul.task-list li input[type="checkbox"] {
   }
 }</script>
 <script>
-
-  window.document.addEventListener("DOMContentLoaded", function (_event) {
-    const listingTargetEl = window.document.querySelector('#listing-listing .list');
-    if (!listingTargetEl) {
-      // No listing discovered, do not attach.
-      return; 
-    }
-
-    const options = {
-      valueNames: ['listing-date','listing-title','listing-description',{ data: ['index'] },{ data: ['categories'] },{ data: ['listing-date-sort'] },{ data: ['listing-file-modified-sort'] }],
-      
-      searchColumns: [],
-    };
-
-    window['quarto-listings'] = window['quarto-listings'] || {};
-    window['quarto-listings']['listing-listing'] = new List('listing-listing', options);
-
-    if (window['quarto-listing-loaded']) {
-      window['quarto-listing-loaded']();
-    }
-  });
-
-  window.addEventListener('hashchange',() => {
-    if (window['quarto-listing-loaded']) {
-      window['quarto-listing-loaded']();
-    }
-  })
-  </script>
-<script>
   // Default to the dark theme on first visit when the browser/OS prefers dark.
   // Quarto chooses the initial theme from this localStorage sentinel; seeding
   // it here (before Quarto's toggle script runs) makes a first-time visitor
@@ -124,35 +129,6 @@ ul.task-list li input[type="checkbox"] {
   })();
 </script>
 
-  <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
-  <script defer="" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
-
-<script type="text/javascript">
-const typesetMath = (el) => {
-  if (window.MathJax) {
-    // MathJax Typeset
-    window.MathJax.typeset([el]);
-  } else if (window.katex) {
-    // KaTeX Render
-    var mathElements = el.getElementsByClassName("math");
-    var macros = [];
-    for (var i = 0; i < mathElements.length; i++) {
-      var texText = mathElements[i].firstChild;
-      if (mathElements[i].tagName == "SPAN" && texText && texText.data) {
-        window.katex.render(texText.data, mathElements[i], {
-          displayMode: mathElements[i].classList.contains('display'),
-          throwOnError: false,
-          macros: macros,
-          fleqn: false
-        });
-      }
-    }
-  }
-}
-window.Quarto = {
-  typesetMath
-};
-</script>
 
 </head>
 
@@ -325,7 +301,7 @@ window.Quarto = {
     <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
       <div class="navbar-container container-fluid">
       <div class="navbar-brand-container mx-auto">
-    <a class="navbar-brand" href="../index.html">
+    <a class="navbar-brand" href="./index.html">
     <span class="navbar-title">rig</span>
     </a>
   </div>
@@ -341,7 +317,7 @@ window.Quarto = {
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../articles/index.html">Articles</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./install.html">Guide</a></li><li class="breadcrumb-item"><a href="./admin-vs-user-mode.html">Admin mode vs user mode</a></li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
       <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
@@ -363,7 +339,7 @@ window.Quarto = {
     <ul class="list-unstyled mt-1">
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../index.html" class="sidebar-item-text sidebar-link">
+  <a href="./index.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Get started</span></a>
   </div>
 </li>
@@ -378,25 +354,31 @@ window.Quarto = {
       <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../install.html" class="sidebar-item-text sidebar-link">
+  <a href="./install.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Installing rig</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../macos-app.html" class="sidebar-item-text sidebar-link">
+  <a href="./admin-vs-user-mode.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Admin mode vs user mode</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./macos-app.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">macOS menu bar app</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../docker.html" class="sidebar-item-text sidebar-link">
+  <a href="./docker.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Docker containers</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../faq.html" class="sidebar-item-text sidebar-link">
+  <a href="./faq.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">FAQ</span></a>
   </div>
 </li>
@@ -404,7 +386,7 @@ window.Quarto = {
   </li>
         <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
-            <a href="../reference/index.html" class="sidebar-item-text sidebar-link">
+            <a href="./reference/index.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Reference</span></a>
           <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
             <i class="bi bi-chevron-right ms-2"></i>
@@ -413,97 +395,97 @@ window.Quarto = {
       <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/add.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/add.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig add</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/available.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/available.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig available</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/config.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/config.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig config</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/default.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/default.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig default</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/library.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/library.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig library</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/list.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/list.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig list</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/proj.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/proj.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig proj</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/repos.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/repos.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig repos</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/resolve.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/resolve.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig resolve</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/rm.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/rm.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig rm</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/rstudio.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/rstudio.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig rstudio</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/rtools.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/rtools.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig rtools</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/run.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/run.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig run</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/sysreqs.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/sysreqs.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig sysreqs</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/system.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/system.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig system</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/test.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/test.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig test</span></a>
   </div>
 </li>
@@ -511,13 +493,7 @@ window.Quarto = {
   </li>
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../articles/index.html" class="sidebar-item-text sidebar-link active">
- <span class="menu-text">Articles</span></a>
-  </div>
-</li>
-        <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../news.html" class="sidebar-item-text sidebar-link">
+  <a href="./news.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Changelog</span></a>
   </div>
 </li>
@@ -531,7 +507,13 @@ window.Quarto = {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#blog-posts-and-external-articles" id="toc-blog-posts-and-external-articles" class="nav-link active" data-scroll-target="#blog-posts-and-external-articles">Blog posts and external articles</a></li>
+  <li><a href="#at-a-glance" id="toc-at-a-glance" class="nav-link active" data-scroll-target="#at-a-glance">At a glance</a></li>
+  <li><a href="#admin-mode" id="toc-admin-mode" class="nav-link" data-scroll-target="#admin-mode">Admin mode</a></li>
+  <li><a href="#user-mode" id="toc-user-mode" class="nav-link" data-scroll-target="#user-mode">User mode</a></li>
+  <li><a href="#how-rig-picks-the-mode" id="toc-how-rig-picks-the-mode" class="nav-link" data-scroll-target="#how-rig-picks-the-mode">How rig picks the mode</a></li>
+  <li><a href="#switching-an-existing-setup-to-user-mode" id="toc-switching-an-existing-setup-to-user-mode" class="nav-link" data-scroll-target="#switching-an-existing-setup-to-user-mode">Switching an existing setup to user mode</a></li>
+  <li><a href="#advanced-custom-directories" id="toc-advanced-custom-directories" class="nav-link" data-scroll-target="#advanced-custom-directories">Advanced: custom directories</a></li>
+  <li><a href="#see-also" id="toc-see-also" class="nav-link" data-scroll-target="#see-also">See also</a></li>
   </ul>
 </nav>
     </div>
@@ -539,11 +521,16 @@ window.Quarto = {
 <main class="content" id="quarto-document-content">
 
 
-<header id="title-block-header" class="quarto-title-block default">
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./install.html">Guide</a></li><li class="breadcrumb-item"><a href="./admin-vs-user-mode.html">Admin mode vs user mode</a></li></ol></nav>
 <div class="quarto-title">
-<h1 class="title">Articles</h1>
+<h1 class="title">Admin mode vs user mode</h1>
 </div>
 
+<div>
+  <div class="description">
+    How rig’s two installation modes differ, where files go on each platform, and how to switch between them.
+  </div>
+</div>
 
 
 <div class="quarto-title-meta">
@@ -558,26 +545,181 @@ window.Quarto = {
 </header>
 
 
-<p>Longer-form articles and tutorials about rig.</p>
-<p>To add an article, drop a new <code>.qmd</code> file in <code>website/articles/</code> with a <code>title</code>, <code>date</code> and <code>description</code> in its front matter; it will appear in the list above automatically.</p>
-<section id="blog-posts-and-external-articles" class="level2">
-<h2 class="anchored" data-anchor-id="blog-posts-and-external-articles">Blog posts and external articles</h2>
-<p>Posts published elsewhere:</p>
-<!-- Add external links here, for example:
-- [Managing R versions with rig](https://example.com/post) — Example Blog, 2024
--->
-<p><em>None yet.</em></p>
-
+<p>rig can manage R in one of two modes. In the default <strong>admin mode</strong> R is installed system-wide, shared by every user on the machine, and most operations need <code>sudo</code> or an administrator account. In <strong>user mode</strong> rig installs everything into your home directory and never needs elevated privileges.</p>
+<p>The trade-off is simple: admin mode gives you a conventional, shared, system-wide R that any tool expects to find in the usual place; user mode lets you install and switch R versions on a machine where you have no administrator rights, at the cost of putting R somewhere non-standard and having to keep a directory on your <code>PATH</code>.</p>
+<section id="at-a-glance" class="level2">
+<h2 class="anchored" data-anchor-id="at-a-glance">At a glance</h2>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 21%">
+<col style="width: 39%">
+<col style="width: 39%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>Admin mode (default)</th>
+<th>User mode</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Privileges</td>
+<td><code>sudo</code> / administrator for most operations</td>
+<td>none</td>
+</tr>
+<tr class="even">
+<td>Shared between users</td>
+<td>yes</td>
+<td>no — just your account</td>
+</tr>
+<tr class="odd">
+<td>Needs <code>PATH</code> setup</td>
+<td>no (<code>/usr/local/bin</code> is usually on <code>PATH</code>)</td>
+<td>yes (the quick-link dir must be on <code>PATH</code>)</td>
+</tr>
+<tr class="even">
+<td>R install root</td>
+<td>platform default (below)</td>
+<td>in your home directory (below)</td>
+</tr>
+<tr class="odd">
+<td>Best for</td>
+<td>your own machine, shared servers you admin</td>
+<td>locked-down machines, no admin rights</td>
+</tr>
+</tbody>
+</table>
+<p>Where things go:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 11%">
+<col style="width: 7%">
+<col style="width: 39%">
+<col style="width: 41%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Platform</th>
+<th>Mode</th>
+<th>R install root</th>
+<th>Quick links (<code>R</code>, <code>Rscript</code>, <code>R-*</code>)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>macOS</td>
+<td>admin</td>
+<td><code>/Library/Frameworks/R.framework</code></td>
+<td><code>/usr/local/bin</code></td>
+</tr>
+<tr class="even">
+<td>macOS</td>
+<td>user</td>
+<td><code>~/.local/share/rig/r</code></td>
+<td><code>~/.local/bin</code></td>
+</tr>
+<tr class="odd">
+<td>Linux</td>
+<td>admin</td>
+<td><code>/opt/R</code></td>
+<td><code>/usr/local/bin</code></td>
+</tr>
+<tr class="even">
+<td>Linux</td>
+<td>user</td>
+<td><code>~/.local/share/rig/r</code></td>
+<td><code>~/.local/bin</code></td>
+</tr>
+<tr class="odd">
+<td>Windows</td>
+<td>admin</td>
+<td><code>C:\Program Files\R</code></td>
+<td><code>C:\Program Files\R\bin</code></td>
+</tr>
+<tr class="even">
+<td>Windows</td>
+<td>user</td>
+<td><code>%APPDATA%\rig\data\r</code></td>
+<td><code>%USERPROFILE%\.local\bin</code></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="admin-mode" class="level2">
+<h2 class="anchored" data-anchor-id="admin-mode">Admin mode</h2>
+<p>Admin mode is the current default. R is installed into the platform’s usual system location and rig creates quick links (<code>R</code>, <code>Rscript</code>, and versioned <code>R-4.5.1</code>-style links) in a system-wide binary directory that is normally already on everyone’s <code>PATH</code>.</p>
+<p>Because these locations are outside your home directory, operations that write to them — adding or removing an R version, switching the default, creating the quick links — switch to the root or administrator user as needed. On Unix rig runs <code>sudo</code> (prompting for your password); on Windows it elevates through a UAC prompt. On macOS admin mode also restricts the permissions of the system R library so that packages are not installed into it accidentally.</p>
+<p>This mode is the right choice on a server where you have administrator rights and want a single shared R for everyone.</p>
+</section>
+<section id="user-mode" class="level2">
+<h2 class="anchored" data-anchor-id="user-mode">User mode</h2>
+<p>In user mode rig installs R entirely inside your home directory and creates the quick links in a per-user binary directory. Nothing lives outside your account, so <strong>rig never needs <code>sudo</code> or an administrator account</strong> in this mode — it is designed for machines where you do not have, or do not want to use, elevated privileges.</p>
+<p>The one thing to take care of is your <code>PATH</code>: the quick-link directory (<code>~/.local/bin</code>, or <code>%USERPROFILE%\.local\bin</code> on Windows) must be on it for the <code>R</code> and <code>Rscript</code> commands to be found. The user-mode <a href="./install.html">install script</a> sets this up for you; if you install rig from an archive manually, add the directory yourself.</p>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Note
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>Admin mode is the default today, but a future version of rig is likely to make <strong>user mode the default</strong>. If you want to future-proof your setup — or you simply prefer an R installation that needs no elevated privileges — you can opt into user mode now with the steps below.</p>
+</div>
+</div>
+</section>
+<section id="how-rig-picks-the-mode" class="level2">
+<h2 class="anchored" data-anchor-id="how-rig-picks-the-mode">How rig picks the mode</h2>
+<p>rig resolves the mode from the first of these that is set, and otherwise defaults to admin mode:</p>
+<ol type="1">
+<li>The global <code>--user</code> / <code>--admin</code> flags on the command line.</li>
+<li>The <code>RIG_MODE</code> environment variable (<code>user</code> or <code>admin</code>).</li>
+<li>The <code>mode</code> key in the rig config file.</li>
+</ol>
+<p>So you can choose the mode at three different scopes:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Just this one command:</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> add release <span class="at">--user</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="co"># For a shell session (or exported in your profile):</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">RIG_MODE</span><span class="op">=</span>user</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Persistently, saved in the rig config file:</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> config set mode=user</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> config set mode=admin</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="switching-an-existing-setup-to-user-mode" class="level2">
+<h2 class="anchored" data-anchor-id="switching-an-existing-setup-to-user-mode">Switching an existing setup to user mode</h2>
+<p>If you already have an admin-mode setup, <code>rig system user-mode</code> migrates it in one step:</p>
+<ol type="1">
+<li>It sets the rig <code>mode</code> configuration to <code>user</code>.</li>
+<li>Reinstalls your admin-mode R versions in user mode and restores the previous default version and version aliases. (R versions already present in user mode are not reinstalled.)</li>
+<li>Removes the system-wide admin-mode R installations.</li>
+<li>Removes the system-wide quick links.</li>
+</ol>
+<p>Steps 3 and 4 delete files outside your home directory, so they need <code>sudo</code> or an administrator account — rig self-escalates for just that part. Use <code>--no-reinstall</code> to skip the reinstall and only clean up, or <code>--keep-install</code> and <code>--keep-links</code> to leave the admin-mode installations and/or links in place. With both <code>--keep-*</code> flags nothing outside your home directory is touched, so no elevated privileges are needed at all.</p>
+<p>To go back, set the mode to admin again (<code>rig config set mode=admin</code>) and reinstall the R versions you want.</p>
+</section>
+<section id="advanced-custom-directories" class="level2">
+<h2 class="anchored" data-anchor-id="advanced-custom-directories">Advanced: custom directories</h2>
+<p>If the user-mode defaults do not suit you, you can override either location via an environment variable or a config key:</p>
+<ul>
+<li>Quick-link directory: <code>RIG_BINARY_DIR</code> env var, or the <code>binary-dir</code> config key.</li>
+<li>R install root: <code>RIG_R_INSTALL_DIR</code> env var, or the <code>r-install-dir</code> config key.</li>
+</ul>
+</section>
+<section id="see-also" class="level2">
+<h2 class="anchored" data-anchor-id="see-also">See also</h2>
+<ul>
+<li>The <a href="./faq.html">FAQ</a> entry on installing R without admin permissions.</li>
+<li>The <a href="./install.html">install guide</a> for the user-mode install script and <code>PATH</code> setup.</li>
+</ul>
 
 
 </section>
 
-<div class="quarto-listing quarto-listing-container-default" id="listing-listing">
-<div class="list quarto-listing-default">
-
-</div>
-<div class="listing-no-matching d-none">No matching items</div>
-</div></main> <!-- /main -->
+</main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
   window.document.addEventListener("DOMContentLoaded", function (event) {
     // Ensure there is a toggle, if there isn't float one in the top right

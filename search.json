@@ -90,23 +90,91 @@
     ]
   },
   {
-    "objectID": "articles/index.html",
-    "href": "articles/index.html",
-    "title": "Articles",
+    "objectID": "admin-vs-user-mode.html",
+    "href": "admin-vs-user-mode.html",
+    "title": "Admin mode vs user mode",
     "section": "",
-    "text": "Longer-form articles and tutorials about rig.\nTo add an article, drop a new .qmd file in website/articles/ with a title, date and description in its front matter; it will appear in the list above automatically.",
+    "text": "rig can manage R in one of two modes. In the default admin mode R is installed system-wide, shared by every user on the machine, and most operations need sudo or an administrator account. In user mode rig installs everything into your home directory and never needs elevated privileges.\nThe trade-off is simple: admin mode gives you a conventional, shared, system-wide R that any tool expects to find in the usual place; user mode lets you install and switch R versions on a machine where you have no administrator rights, at the cost of putting R somewhere non-standard and having to keep a directory on your PATH.",
     "crumbs": [
-      "Articles"
+      "Guide",
+      "Admin mode vs user mode"
     ]
   },
   {
-    "objectID": "articles/index.html#blog-posts-and-external-articles",
-    "href": "articles/index.html#blog-posts-and-external-articles",
-    "title": "Articles",
-    "section": "Blog posts and external articles",
-    "text": "Blog posts and external articles\nPosts published elsewhere:\n\nNone yet.",
+    "objectID": "admin-vs-user-mode.html#at-a-glance",
+    "href": "admin-vs-user-mode.html#at-a-glance",
+    "title": "Admin mode vs user mode",
+    "section": "At a glance",
+    "text": "At a glance\n\n\n\n\n\n\n\n\n\nAdmin mode (default)\nUser mode\n\n\n\n\nPrivileges\nsudo / administrator for most operations\nnone\n\n\nShared between users\nyes\nno — just your account\n\n\nNeeds PATH setup\nno (/usr/local/bin is usually on PATH)\nyes (the quick-link dir must be on PATH)\n\n\nR install root\nplatform default (below)\nin your home directory (below)\n\n\nBest for\nyour own machine, shared servers you admin\nlocked-down machines, no admin rights\n\n\n\nWhere things go:\n\n\n\n\n\n\n\n\n\nPlatform\nMode\nR install root\nQuick links (R, Rscript, R-*)\n\n\n\n\nmacOS\nadmin\n/Library/Frameworks/R.framework\n/usr/local/bin\n\n\nmacOS\nuser\n~/.local/share/rig/r\n~/.local/bin\n\n\nLinux\nadmin\n/opt/R\n/usr/local/bin\n\n\nLinux\nuser\n~/.local/share/rig/r\n~/.local/bin\n\n\nWindows\nadmin\nC:\\Program Files\\R\nC:\\Program Files\\R\\bin\n\n\nWindows\nuser\n%APPDATA%\\rig\\data\\r\n%USERPROFILE%\\.local\\bin",
     "crumbs": [
-      "Articles"
+      "Guide",
+      "Admin mode vs user mode"
+    ]
+  },
+  {
+    "objectID": "admin-vs-user-mode.html#admin-mode",
+    "href": "admin-vs-user-mode.html#admin-mode",
+    "title": "Admin mode vs user mode",
+    "section": "Admin mode",
+    "text": "Admin mode\nAdmin mode is the current default. R is installed into the platform’s usual system location and rig creates quick links (R, Rscript, and versioned R-4.5.1-style links) in a system-wide binary directory that is normally already on everyone’s PATH.\nBecause these locations are outside your home directory, operations that write to them — adding or removing an R version, switching the default, creating the quick links — switch to the root or administrator user as needed. On Unix rig runs sudo (prompting for your password); on Windows it elevates through a UAC prompt. On macOS admin mode also restricts the permissions of the system R library so that packages are not installed into it accidentally.\nThis mode is the right choice on a server where you have administrator rights and want a single shared R for everyone.",
+    "crumbs": [
+      "Guide",
+      "Admin mode vs user mode"
+    ]
+  },
+  {
+    "objectID": "admin-vs-user-mode.html#user-mode",
+    "href": "admin-vs-user-mode.html#user-mode",
+    "title": "Admin mode vs user mode",
+    "section": "User mode",
+    "text": "User mode\nIn user mode rig installs R entirely inside your home directory and creates the quick links in a per-user binary directory. Nothing lives outside your account, so rig never needs sudo or an administrator account in this mode — it is designed for machines where you do not have, or do not want to use, elevated privileges.\nThe one thing to take care of is your PATH: the quick-link directory (~/.local/bin, or %USERPROFILE%\\.local\\bin on Windows) must be on it for the R and Rscript commands to be found. The user-mode install script sets this up for you; if you install rig from an archive manually, add the directory yourself.\n\n\n\n\n\n\nNote\n\n\n\nAdmin mode is the default today, but a future version of rig is likely to make user mode the default. If you want to future-proof your setup — or you simply prefer an R installation that needs no elevated privileges — you can opt into user mode now with the steps below.",
+    "crumbs": [
+      "Guide",
+      "Admin mode vs user mode"
+    ]
+  },
+  {
+    "objectID": "admin-vs-user-mode.html#how-rig-picks-the-mode",
+    "href": "admin-vs-user-mode.html#how-rig-picks-the-mode",
+    "title": "Admin mode vs user mode",
+    "section": "How rig picks the mode",
+    "text": "How rig picks the mode\nrig resolves the mode from the first of these that is set, and otherwise defaults to admin mode:\n\nThe global --user / --admin flags on the command line.\nThe RIG_MODE environment variable (user or admin).\nThe mode key in the rig config file.\n\nSo you can choose the mode at three different scopes:\n# Just this one command:\nrig add release --user\n\n# For a shell session (or exported in your profile):\nexport RIG_MODE=user\n\n# Persistently, saved in the rig config file:\nrig config set mode=user\nrig config set mode=admin",
+    "crumbs": [
+      "Guide",
+      "Admin mode vs user mode"
+    ]
+  },
+  {
+    "objectID": "admin-vs-user-mode.html#switching-an-existing-setup-to-user-mode",
+    "href": "admin-vs-user-mode.html#switching-an-existing-setup-to-user-mode",
+    "title": "Admin mode vs user mode",
+    "section": "Switching an existing setup to user mode",
+    "text": "Switching an existing setup to user mode\nIf you already have an admin-mode setup, rig system user-mode migrates it in one step:\n\nIt sets the rig mode configuration to user.\nReinstalls your admin-mode R versions in user mode and restores the previous default version and version aliases. (R versions already present in user mode are not reinstalled.)\nRemoves the system-wide admin-mode R installations.\nRemoves the system-wide quick links.\n\nSteps 3 and 4 delete files outside your home directory, so they need sudo or an administrator account — rig self-escalates for just that part. Use --no-reinstall to skip the reinstall and only clean up, or --keep-install and --keep-links to leave the admin-mode installations and/or links in place. With both --keep-* flags nothing outside your home directory is touched, so no elevated privileges are needed at all.\nTo go back, set the mode to admin again (rig config set mode=admin) and reinstall the R versions you want.",
+    "crumbs": [
+      "Guide",
+      "Admin mode vs user mode"
+    ]
+  },
+  {
+    "objectID": "admin-vs-user-mode.html#advanced-custom-directories",
+    "href": "admin-vs-user-mode.html#advanced-custom-directories",
+    "title": "Admin mode vs user mode",
+    "section": "Advanced: custom directories",
+    "text": "Advanced: custom directories\nIf the user-mode defaults do not suit you, you can override either location via an environment variable or a config key:\n\nQuick-link directory: RIG_BINARY_DIR env var, or the binary-dir config key.\nR install root: RIG_R_INSTALL_DIR env var, or the r-install-dir config key.",
+    "crumbs": [
+      "Guide",
+      "Admin mode vs user mode"
+    ]
+  },
+  {
+    "objectID": "admin-vs-user-mode.html#see-also",
+    "href": "admin-vs-user-mode.html#see-also",
+    "title": "Admin mode vs user mode",
+    "section": "See also",
+    "text": "See also\n\nThe FAQ entry on installing R without admin permissions.\nThe install guide for the user-mode install script and PATH setup.",
+    "crumbs": [
+      "Guide",
+      "Admin mode vs user mode"
     ]
   },
   {
