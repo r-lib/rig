@@ -42,3 +42,6 @@ _rim.ps1
 !/website/reference/index.qmd
 /website/reference/_overview.md
 /website/reference/_toc.md
+
+/.quarto/
+**/*.quarto_ipynb

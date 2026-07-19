@@ -1,6 +1,9 @@
 project:
   type: website
   output-dir: _site
+  # Writes _variables.yml with the crate version from ../Cargo.toml so the
+  # Get started hero can show it via {{< var version >}}.
+  pre-render: ./gen-version.sh
   # User-mode install scripts, served from the site root
   # (https://r-lib.github.io/rig/install.sh and install.ps1).
   resources:
@@ -55,4 +58,7 @@ format:
     theme:
       light: [cosmo, theme.scss]
       dark: [darkly, theme.scss]
+    # Seed the dark theme on first visit when the OS/browser prefers dark.
+    include-in-header:
+      - _dark-default.html
     toc: true

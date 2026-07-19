@@ -7,6 +7,11 @@ $navbar-padding-y: 0.5rem;
 
 /*-- scss:rules --*/
 
+// Colour links rather than underlining them.
+a {
+  text-decoration: none;
+}
+
 // The CLI reference renders each command's arguments, options and
 // subcommands as a definition list (term = flag, definition = description).
 // Bootstrap leaves the description flush with the term; indent it so each
@@ -14,4 +19,83 @@ $navbar-padding-y: 0.5rem;
 dd {
   margin-left: 1.5rem;
   margin-bottom: 0.5rem;
+}
+
+// Get started hero: wide intro column on the left, a narrow install card on
+// the right, laid out with the Quarto `.columns`/`.column` helpers (flex). The
+// box styling lives on this plain wrapper — not on the `.columns` flex row,
+// whose padding Quarto's column styles override. A subtle tinted background
+// sets the hero apart from the page. darkly leaves `--bs-secondary-bg` light,
+// so the tint is a translucent overlay with an explicit dark-mode override.
+.hero {
+  padding: 1.75rem 2rem;
+  border-radius: 0.5rem;
+  margin-bottom: 3.5rem;
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+body.quarto-dark .hero {
+  background-color: rgba(255, 255, 255, 0.07);
+}
+
+.hero .columns {
+  align-items: center;
+}
+
+// Large, lightweight "lead" text for the intro, with the key terms picked out.
+// Emphasis (`*...*`/`**...**`) is coloured rather than bolded, so it stands
+// out without weighing the blurb down.
+.hero-intro p {
+  font-size: 1.6rem;
+  line-height: 1.4;
+  font-weight: 300;
+  margin-bottom: 1rem;
+
+  strong,
+  em {
+    font-style: normal;
+    font-weight: inherit;
+    color: var(--bs-primary);
+  }
+}
+
+// The install card holds the version and the "Install rig for <OS>" button.
+// The button label and link are filled in from the detected browser OS (see
+// index.qmd); the smaller line below always offers all three platforms.
+.hero-install .install-cta {
+  padding-left: 1.5rem;
+  border-left: 1px solid rgba(128, 128, 128, 0.3);
+  text-align: left;
+}
+
+.install-cta {
+  .install-version {
+    display: block;
+  }
+
+  .btn {
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+
+  .install-cta-links {
+    margin-top: 0.75rem;
+    margin-bottom: 0;
+    font-size: 0.9rem;
+    opacity: 0.85;
+  }
+}
+
+// Stack the hero columns on narrow screens so the install card drops below the
+// intro instead of being squeezed.
+@media (max-width: 767.98px) {
+  .hero .columns {
+    display: block;
+  }
+  .hero .column {
+    width: 100% !important;
+  }
+  .hero-gap {
+    display: none;
+  }
 }

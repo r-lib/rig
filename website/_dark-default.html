@@ -1,0 +1,17 @@
+<script>
+  // Default to the dark theme on first visit when the browser/OS prefers dark.
+  // Quarto chooses the initial theme from this localStorage sentinel; seeding
+  // it here (before Quarto's toggle script runs) makes a first-time visitor
+  // with a dark OS start in dark mode. Once set — here or by the user clicking
+  // the toggle — the choice persists across visits.
+  (function () {
+    try {
+      var KEY = "quarto-color-scheme";
+      if (window.localStorage.getItem(KEY) === null &&
+          window.matchMedia &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches) {
+        window.localStorage.setItem(KEY, "alternate");
+      }
+    } catch (e) {}
+  })();
+</script>

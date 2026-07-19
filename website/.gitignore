@@ -2,3 +2,4 @@
 /_site/
 /_versioned/
 **/*.quarto_ipynb
+/_variables.yml

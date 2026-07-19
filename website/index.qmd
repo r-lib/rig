@@ -3,11 +3,60 @@ title: "The R Installation Manager"
 toc: false
 ---
 
+::::: {.hero}
+
+:::: {.columns}
+
+::: {.column .hero-intro width="62%"}
 {{< include _partials/intro.md >}}
+:::
+
+::: {.column .hero-gap width="3%"}
+:::
+
+::: {.column .hero-install width="35%"}
+
+::: {.install-cta}
+Latest version [**{{< var version >}}**](news.qmd){.install-version}
+
+```{=html}
+<a id="install-cta-button" class="btn btn-primary btn-lg" href="install.html">Install rig</a>
+<p class="install-cta-links">
+  or view install instructions for
+  <a href="install.html#macos">macOS</a>,
+  <a href="install.html#windows">Windows</a> or
+  <a href="install.html#linux">Linux</a>.
+</p>
+<script>
+(function () {
+  function detectOS() {
+    var p = (((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "")).toLowerCase();
+    var ua = (navigator.userAgent || "").toLowerCase();
+    if (p.indexOf("mac") > -1 || ua.indexOf("mac") > -1) return "macOS";
+    if (p.indexOf("win") > -1 || ua.indexOf("win") > -1) return "Windows";
+    if (p.indexOf("linux") > -1 || p.indexOf("x11") > -1 || ua.indexOf("linux") > -1) return "Linux";
+    return null;
+  }
+  var os = detectOS();
+  var btn = document.getElementById("install-cta-button");
+  if (btn && os) {
+    btn.textContent = "Install rig for " + os;
+    btn.setAttribute("href", "install.html#" + os.toLowerCase());
+  }
+})();
+</script>
+```
+:::
+
+:::
+
+::::
+
+:::::
 
 ## Quick start
 
-Install rig (see [Installing rig](install.qmd) for all options), then:
+Once rig is installed:
 
 ```sh
 rig add release      # install the latest R release
