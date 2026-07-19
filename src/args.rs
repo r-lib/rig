@@ -22,6 +22,44 @@ use crate::windows_arch::*;
 // with `make help`. Do not edit `src/help-generated.in` by hand.
 std::include!("help-generated.in");
 
+fn reference_mode() -> bool {
+    std::env::var_os("RIG_GEN_REFERENCE").is_some()
+}
+
+trait PlatformItem {
+    fn platform(self, os: &str) -> Self;
+}
+
+impl PlatformItem for Command {
+    fn platform(self, os: &str) -> Self {
+        if reference_mode() {
+            let about = self.get_about().map(|s| s.to_string());
+            let cmd = self.hide(false);
+            match about {
+                Some(about) => cmd.about(format!("{} {{platform:{}}}", about, os)),
+                None => cmd,
+            }
+        } else {
+            self.hide(std::env::consts::OS != os)
+        }
+    }
+}
+
+impl PlatformItem for Arg {
+    fn platform(self, os: &str) -> Self {
+        if reference_mode() {
+            let help = self.get_help().map(|s| s.to_string());
+            let arg = self.hide(false);
+            match help {
+                Some(help) => arg.help(format!("{} {{platform:{}}}", help, os)),
+                None => arg,
+            }
+        } else {
+            self.hide(std::env::consts::OS != os)
+        }
+    }
+}
+
 fn add_name_headers(cmd: &mut Command, path: &str) {
     // clap's default layout, minus `{about}` (moved to `before_long_help`).
     const BODY: &str = "{before-help}{usage-heading} {usage}\n\n{all-args}{after-help}";
@@ -99,7 +137,7 @@ fn cmd_rtools() -> Command {
         .about(ABOUT_RTOOLS)
         .long_about(HELP_RTOOLS)
         .display_order(0)
-        .hide(cfg!(not(target_os = "windows")))
+        .platform("windows")
         .arg_required_else_help(true)
         .subcommand(cmd_rtools_ls)
         .subcommand(cmd_rtools_add)
@@ -294,7 +332,7 @@ pub fn rig_app() -> Command {
                 .long("without-sysreqs")
                 .num_args(0)
                 .required(false)
-                .hide(cfg!(not(target_os = "linux"))),
+                .platform("linux"),
         );
     }
 
@@ -306,7 +344,7 @@ pub fn rig_app() -> Command {
                     .long("without-translations")
                     .num_args(0)
                     .required(false)
-                    .hide(cfg!(not(target_os = "windows"))),
+                    .platform("windows"),
             )
             .arg(
                 Arg::new("with-desktop-icon")
@@ -314,7 +352,7 @@ pub fn rig_app() -> Command {
                     .long("with-desktop-icon")
                     .num_args(0)
                     .required(false)
-                    .hide(cfg!(not(target_os = "windows"))),
+                    .platform("windows"),
             )
             .arg(
                 Arg::new("platform")
@@ -325,7 +363,7 @@ pub fn rig_app() -> Command {
                     )
                     .long("platform")
                     .required(false)
-                    .hide(cfg!(not(target_os = "linux"))),
+                    .platform("linux"),
             );
     }
 
@@ -531,14 +569,14 @@ pub fn rig_app() -> Command {
         let cmd_system_cleanreg = Command::new("clean-registry")
             .about(ABOUT_SYSTEM_CLEAN_REGISTRY)
             .display_order(0)
-            .hide(cfg!(not(target_os = "windows")))
+            .platform("windows")
             .long_about(HELP_SYSTEM_CLEAN_REGISTRY);
         cmd_system = cmd_system.subcommand(cmd_system_cleanreg);
 
         let cmd_system_update_rtools40 = Command::new("update-rtools40")
             .about(ABOUT_SYSTEM_UPDATE_RTOOLS40)
             .display_order(0)
-            .hide(cfg!(not(target_os = "windows")))
+            .platform("windows")
             .long_about(HELP_SYSTEM_UPDATE_RTOOLS40);
         cmd_system = cmd_system.subcommand(cmd_system_update_rtools40);
 
@@ -551,7 +589,7 @@ pub fn rig_app() -> Command {
         let cmd_system_fix_r_alias = Command::new("fix-r-alias")
             .about(ABOUT_SYSTEM_FIX_R_ALIAS)
             .display_order(0)
-            .hide(cfg!(not(target_os = "windows")))
+            .platform("windows")
             .long_about(HELP_SYSTEM_FIX_R_ALIAS)
             .arg(
                 Arg::new("undo")
@@ -570,7 +608,7 @@ pub fn rig_app() -> Command {
             .about(ABOUT_SYSTEM_MAKE_ORTHOGONAL)
             .long_about(HELP_SYSTEM_MAKE_ORTHOGONAL)
             .display_order(0)
-            .hide(cfg!(not(target_os = "macos")))
+            .platform("macos")
             .arg(
                 Arg::new("version")
                     .help("R versions to update (default: all)")
@@ -585,7 +623,7 @@ pub fn rig_app() -> Command {
             .about(ABOUT_SYSTEM_FIX_PERMISSIONS)
             .long_about(HELP_SYSTEM_FIX_PERMISSIONS)
             .display_order(0)
-            .hide(cfg!(not(target_os = "macos")))
+            .platform("macos")
             .arg(
                 Arg::new("version")
                     .help("R versions to update (default: all)")
@@ -601,7 +639,7 @@ pub fn rig_app() -> Command {
             .about(ABOUT_SYSTEM_NO_OPENMP)
             .long_about(HELP_SYSTEM_NO_OPENMP)
             .display_order(0)
-            .hide(cfg!(not(target_os = "macos")))
+            .platform("macos")
             .arg(
                 Arg::new("version")
                     .help("R versions to update (default: all)")
@@ -613,7 +651,7 @@ pub fn rig_app() -> Command {
             .about(ABOUT_SYSTEM_ALLOW_DEBUGGER)
             .long_about(HELP_SYSTEM_ALLOW_DEBUGGER)
             .display_order(0)
-            .hide(cfg!(not(target_os = "macos")))
+            .platform("macos")
             .arg(
                 Arg::new("all")
                     .help("Update all R versions")
@@ -631,14 +669,14 @@ pub fn rig_app() -> Command {
         let cmd_system_allow_debugger_rstudio = Command::new("allow-debugger-rstudio")
             .about(ABOUT_SYSTEM_ALLOW_DEBUGGER_RSTUDIO)
             .display_order(0)
-            .hide(cfg!(not(target_os = "macos")))
+            .platform("macos")
             .long_about(HELP_SYSTEM_ALLOW_DEBUGGER_RSTUDIO);
 
         let cmd_system_allow_core_dumps = Command::new("allow-core-dumps")
             .about(ABOUT_SYSTEM_ALLOW_CORE_DUMPS)
             .long_about(HELP_SYSTEM_ALLOW_CORE_DUMPS)
             .display_order(0)
-            .hide(cfg!(not(target_os = "macos")))
+            .platform("macos")
             .arg(
                 Arg::new("all")
                     .help("Update all R versions")
@@ -664,7 +702,7 @@ pub fn rig_app() -> Command {
         let cmd_system_forget = Command::new("forget")
             .about(ABOUT_SYSTEM_FORGET)
             .display_order(0)
-            .hide(cfg!(not(target_os = "macos")))
+            .platform("macos")
             .long_about(HELP_SYSTEM_FORGET);
 
         cmd_system = cmd_system.subcommand(cmd_system_forget);
@@ -675,7 +713,7 @@ pub fn rig_app() -> Command {
             .about(ABOUT_SYSTEM_UPDATE_CERTS)
             .long_about(HELP_SYSTEM_UPDATE_CERTS)
             .display_order(0)
-            .hide(cfg!(not(target_os = "linux")));
+            .platform("linux");
         cmd_system = cmd_system.subcommand(cmd_system_update_certs);
     }
 
@@ -977,7 +1015,7 @@ pub fn rig_app() -> Command {
         let cmd_sysreqs = Command::new("sysreqs")
             .about(ABOUT_SYSREQS)
             .display_order(0)
-            .hide(cfg!(not(target_os = "macos")))
+            .platform("macos")
             .long_about(HELP_SYSREQS)
             .arg_required_else_help(true)
             .arg(
@@ -1583,7 +1621,8 @@ fn command_on_path(cmd: &str) -> bool {
     // the common set) in addition to the bare name.
     #[cfg(windows)]
     let exts: Vec<String> = {
-        let pathext = std::env::var("PATHEXT").unwrap_or_else(|_| ".EXE;.CMD;.BAT;.COM".to_string());
+        let pathext =
+            std::env::var("PATHEXT").unwrap_or_else(|_| ".EXE;.CMD;.BAT;.COM".to_string());
         std::iter::once(String::new())
             .chain(pathext.split(';').map(|e| e.to_string()))
             .collect()

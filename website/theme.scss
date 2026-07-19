@@ -36,6 +36,30 @@ body.quarto-dark {
   }
 }
 
+// Platform badges in the CLI reference. Some commands and options only apply
+// to one operating system (e.g. `rig rtools` on Windows); the reference marks
+// them with a small pill next to the command/option so readers on any platform
+// know where they apply. `.rig-platform` is emitted by
+// website/gen-cli-reference.sh as a Pandoc span.
+.rig-platform {
+  display: inline-block;
+  font-size: 0.75em;
+  font-weight: 600;
+  line-height: 1;
+  vertical-align: middle;
+  padding: 0.25em 0.5em;
+  margin-left: 0.4em;
+  border-radius: 0.5rem;
+  white-space: nowrap;
+  color: var(--bs-primary);
+  background-color: rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(128, 128, 128, 0.3);
+}
+
+body.quarto-dark .rig-platform {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
 // Get started hero: wide intro column on the left, a narrow install card on
 // the right, laid out with the Quarto `.columns`/`.column` helpers (flex). The
 // box styling lives on this plain wrapper — not on the `.columns` flex row,
