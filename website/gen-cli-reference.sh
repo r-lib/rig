@@ -173,15 +173,52 @@ render_synopsis() {
       } else lastbadge = ""
       return s
     }
+    # Print a line, or, while buffering the Options section (sortmode), append
+    # it to the current entry so the entries can be reordered before printing.
+    function out(s){ if (sortmode) curbuf = curbuf s "\n"; else print s }
+    # Sort key for an option term: its long flag name (falling back to the
+    # short one), lowercased, so options sort alphabetically by name.
+    function sortkeyof(t,   s){
+      if (match(t, /--[A-Za-z0-9][A-Za-z0-9-]*/))
+        s = substr(t, RSTART + 2, RLENGTH - 2)
+      else if (match(t, /-[A-Za-z0-9]/))
+        s = substr(t, RSTART + 1, RLENGTH - 1)
+      else s = t
+      return tolower(s)
+    }
+    # Stash the option entry accumulated in curbuf into the pending list.
+    function flushcur(){
+      if (curbuf != ""){ nentry++; keys[nentry] = curkey; texts[nentry] = curbuf; curbuf = "" }
+    }
+    # Emit the buffered Options entries, sorted alphabetically by key, then
+    # leave sortmode. A no-op unless we are buffering options.
+    function flushopts(   i, j, tk, tt){
+      if (!sortmode) return
+      flushcur()
+      for (i = 2; i <= nentry; i++){
+        tk = keys[i]; tt = texts[i]; j = i - 1
+        while (j >= 1 && keys[j] > tk){ keys[j+1] = keys[j]; texts[j+1] = texts[j]; j-- }
+        keys[j+1] = tk; texts[j+1] = tt
+      }
+      for (i = 1; i <= nentry; i++){ if (i > 1) print ""; printf "%s", texts[i] }
+      nentry = 0; sortmode = 0
+    }
     function heading(text){
+      flushopts()
       if (inusage){ print "```"; inusage = 0 }
       print ""; print h " " text; print ""
       needcolon = 0; started = 0; hadmeta = 0
     }
     function term(t, link,   label){
-      if (started) print ""
       label = "`" t "`"
       if (link != "") label = "[" label "](" link ")"
+      if (sortmode){
+        flushcur()
+        curkey = sortkeyof(t); curbuf = label "\n"
+        needcolon = 1; started = 1; hadmeta = 0
+        return
+      }
+      if (started) print ""
       print label
       needcolon = 1; started = 1; hadmeta = 0
     }
@@ -189,12 +226,12 @@ render_synopsis() {
       d = stripbadge(d)
       x = wrapflags(d)
       if (lastbadge != "") x = x " [" lastbadge "]{.rig-platform}"
-      if (needcolon){ print ":   " x; needcolon = 0 } else print "    " x
+      if (needcolon){ out(":   " x); needcolon = 0 } else out("    " x)
     }
     function meta(m,  x){
       x = wrapflags(m)
-      if (needcolon){ print ":   *" x "*"; needcolon = 0 }
-      else { if (!hadmeta) print ""; print "    *" x "*  " }
+      if (needcolon){ out(":   *" x "*"); needcolon = 0 }
+      else { if (!hadmeta) out(""); out("    *" x "*  ") }
       hadmeta = 1
     }
     BEGIN { section = ""; inusage = 0; gsub(/ /, "-", cmdpath) }
@@ -208,7 +245,7 @@ render_synopsis() {
     /^Arguments:/ { heading("Arguments"); section = "defs"; next }
     /^Options:/   {
       if (cmdsonly != ""){ section = "skip"; next }
-      heading("Options"); section = "defs"; next
+      heading("Options"); section = "defs"; sortmode = 1; next
     }
     section == "skip" { next }
     section == "usage" {
@@ -246,7 +283,7 @@ render_synopsis() {
       if (content ~ /^\[.*\]$/) meta(content); else desc(content)
       next
     }
-    END { if (inusage) print "```" }
+    END { flushopts(); if (inusage) print "```" }
   '
 }
 
