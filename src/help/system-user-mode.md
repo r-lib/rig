@@ -2,7 +2,7 @@ Switch to user mode and clean up admin-mode installations
 
 ## Description
 
-Switch rig to user mode and clean up the machine after admin mode.
+Switch rig to [user mode](../articles/admin-vs-user-mode.qmd) and clean up the machine after admin mode.
 
 In user mode rig installs R into your home directory
 (`~/.local/share/rig/r` or `%APPDATA%\rig\data\r` on Windows),

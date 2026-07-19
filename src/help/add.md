@@ -3,7 +3,7 @@ Install a new R version [alias: install]
 ## Description
 
 Download and install an R version, from the official sources. It keeps
-the already installed R versions, except on macOS in admin mode, where
+the already installed R versions, except on macOS in [admin mode](../articles/admin-vs-user-mode.qmd), where
 patch versions of the same minor overwrite each other.
 
 On macOS and Windows rig uses the R builds at https://cran.r-project.org.

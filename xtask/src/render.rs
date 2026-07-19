@@ -261,6 +261,27 @@ mod tests {
     }
 
     #[test]
+    fn markdown_link_keeps_text_drops_url() {
+        // Markdown links are the general "web link" mechanism for help files:
+        // the website renders them as real links, while `--help` shows only the
+        // link text (the URL is dropped). Wrapping existing words in a link
+        // therefore leaves the ANSI output byte-for-byte unchanged.
+        let md = "Switch to [user mode](../articles/admin-vs-user-mode.qmd) first.";
+        assert_eq!(md_to_ansi_impl(md, false), "  Switch to user mode first.");
+        // Inline `code` inside the link text is still rendered.
+        let md = "See [`rig`](rig.qmd) help.";
+        assert_eq!(md_to_ansi_impl(md, false), "  See `rig` help.");
+    }
+
+    #[test]
+    fn inline_markdown_link_keeps_text_drops_url() {
+        assert_eq!(
+            md_to_ansi_inline("Run in [user mode](x.qmd)", false),
+            "Run in user mode"
+        );
+    }
+
+    #[test]
     fn inline_has_no_indent_and_collapses_breaks() {
         let md = "List installed R versions\n[alias: `ls`]";
         assert_eq!(

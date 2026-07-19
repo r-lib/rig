@@ -1,0 +1,137 @@
+---
+title: "Admin mode vs user mode"
+date: "2026-07-19"
+description: "How rig's two installation modes differ, where files go on each platform, and how to switch between them."
+---
+
+rig can manage R in one of two modes. In the default **admin mode** R is
+installed system-wide, shared by every user on the machine, and most operations
+need `sudo` or an administrator account. In **user mode** rig installs
+everything into your home directory and never needs elevated privileges.
+
+The trade-off is simple: admin mode gives you a conventional, shared,
+system-wide R that any tool expects to find in the usual place; user mode lets
+you install and switch R versions on a machine where you have no administrator
+rights, at the cost of putting R somewhere non-standard and having to keep a
+directory on your `PATH`.
+
+## At a glance
+
+|                        | Admin mode (default)                       | User mode                                  |
+|------------------------|--------------------------------------------|--------------------------------------------|
+| Privileges             | `sudo` / administrator for most operations | none, ever                                 |
+| Shared between users   | yes                                        | no — just your account                     |
+| Needs `PATH` setup     | no (`/usr/local/bin` is usually on `PATH`) | yes (the quick-link dir must be on `PATH`)  |
+| R install root         | platform default (below)                   | in your home directory (below)             |
+| Best for               | your own machine, shared servers you admin | locked-down machines, no admin rights      |
+
+Where things go:
+
+| Platform | Mode  | R install root                    | Quick links (`R`, `Rscript`, `R-*`) |
+|----------|-------|-----------------------------------|-------------------------------------|
+| macOS    | admin | `/Library/Frameworks/R.framework` | `/usr/local/bin`                    |
+| macOS    | user  | `~/.local/share/rig/r`            | `~/.local/bin`                      |
+| Linux    | admin | `/opt/R`                          | `/usr/local/bin`                    |
+| Linux    | user  | `~/.local/share/rig/r`            | `~/.local/bin`                      |
+| Windows  | admin | `C:\Program Files\R`              | `C:\Program Files\R\bin`            |
+| Windows  | user  | `%APPDATA%\rig\data\r`            | `%USERPROFILE%\.local\bin`          |
+
+## Admin mode
+
+Admin mode is the current default. R is installed into the platform's usual
+system location and rig creates quick links (`R`, `Rscript`, and versioned
+`R-4.5.1`-style links) in a system-wide binary directory that is normally
+already on everyone's `PATH`.
+
+Because these locations are outside your home directory, operations that write
+to them — adding or removing an R version, switching the default, creating the
+quick links — switch to the root or administrator user as needed. On Unix rig
+runs `sudo` (prompting for your password); on Windows it elevates through a UAC
+prompt. On macOS admin mode also restricts the permissions of the system R
+library so that packages are not installed into it accidentally.
+
+This is the mode used by the macOS menu bar app and by the system installers,
+and it is the right choice on your own machine or on a server where you have
+administrator rights and want a single shared R for everyone.
+
+## User mode
+
+In user mode rig installs R entirely inside your home directory and creates the
+quick links in a per-user binary directory. Nothing lives outside your account,
+so **rig never needs `sudo` or an administrator account** in this mode — it is
+designed for machines where you do not have, or do not want to use, elevated
+privileges.
+
+The one thing to take care of is your `PATH`: the quick-link directory
+(`~/.local/bin`, or `%USERPROFILE%\.local\bin` on Windows) must be on it for the
+`R` and `Rscript` commands to be found. The user-mode [install
+script](../install.qmd) sets this up for you; if you unpack an archive manually,
+add the directory yourself.
+
+::: {.callout-note}
+Admin mode is the default today, but a future version of rig is likely to make
+**user mode the default**. If you want to future-proof your setup — or you
+simply prefer an R installation that needs no elevated privileges — you can opt
+into user mode now with the steps below.
+:::
+
+## How rig picks the mode
+
+rig resolves the mode from the first of these that is set, and otherwise
+defaults to admin mode:
+
+1. The global `--user` / `--admin` flags on the command line.
+2. The `RIG_MODE` environment variable (`user` or `admin`).
+3. The `mode` key in the rig config file.
+
+So you can choose the mode at three different scopes:
+
+```sh
+# Just this one command:
+rig add release --user
+
+# For a shell session (or exported in your profile):
+export RIG_MODE=user
+
+# Persistently, saved in the rig config file:
+rig config set mode=user
+rig config set mode=admin
+```
+
+## Switching an existing setup to user mode
+
+If you already have an admin-mode setup, `rig system user-mode` migrates it in
+one step. It:
+
+1. Sets the rig `mode` configuration to `user`.
+2. Reinstalls your admin-mode R versions in user mode and restores the previous
+   default version and version aliases. (R versions already present in user mode
+   are not reinstalled.)
+3. Removes the system-wide admin-mode R installations.
+4. Removes the system-wide quick links.
+
+Steps 3 and 4 delete files outside your home directory, so they need `sudo` or
+an administrator account — rig self-escalates for just that part. Use
+`--no-reinstall` to skip the reinstall and only clean up, or `--keep-install`
+and `--keep-links` to leave the admin-mode installations and/or links in place.
+With both `--keep-*` flags nothing outside your home directory is touched, so no
+elevated privileges are needed at all.
+
+To go back, set the mode to admin again (`rig config set mode=admin`) and
+reinstall the R versions you want.
+
+## Advanced: custom directories
+
+If the defaults do not suit you, you can override either location independently
+of the mode, via an environment variable or a config key:
+
+- Quick-link directory: `RIG_BINARY_DIR` env var, or the `binary-dir` config
+  key.
+- R install root: `RIG_R_INSTALL_DIR` env var, or the `r-install-dir` config
+  key.
+
+## See also
+
+- The [FAQ](../faq.qmd) entry on installing R without admin permissions.
+- The [install guide](../install.qmd) for the user-mode install script and
+  `PATH` setup.

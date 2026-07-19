@@ -2,8 +2,8 @@ Create R-* quick links
 
 ## Description
 
-Create quick links in the rig binary directory (`~/.local/bin` in user
-mode) for the current R installations. These let you directly run a
+Create quick links in the rig binary directory (`~/.local/bin` in [user
+mode](../articles/admin-vs-user-mode.qmd)) for the current R installations. These let you directly run a
 specific R version. E.g. `R-4.6.0` will start R 4.6.0. It also creates
 the `R` and `Rscript` links if they are missing.
 

@@ -2,7 +2,7 @@ Remove all admin-mode R installations and links
 
 ## Description
 
-Remove all admin-mode R installations and their quick links.
+Remove all [admin-mode](../articles/admin-vs-user-mode.qmd) R installations and their quick links.
 
 This is an internal helper used by `rig system user-mode` to clean up a
 previous admin-mode setup. It self-escalates to obtain the required

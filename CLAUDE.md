@@ -60,6 +60,18 @@ writes `ABOUT_*` / `HELP_*` `&str` constants to the committed
 CI runs `cargo xtask gen-help --check` to catch stale output. The same Markdown
 files are consumed by `website/gen-cli-reference.sh` for the web reference.
 
+You may use **Markdown links** in help files, e.g. to point at an article or
+another command. The web CLI reference renders them as real links, while
+`--help` shows only the link *text* (the xtask ANSI renderer drops the URL). So
+wrapping words that are already in the prose, e.g. `[user mode](...)`, adds a
+link on the website without changing the terminal output at all —
+`src/help-generated.in` stays byte-for-byte identical. Because all help prose is
+rendered inside `website/reference/`, write link targets relative to that
+directory: `../articles/<slug>.qmd` for an article, `<cmd>.qmd` for a sibling
+reference page, `#rig-<cmd>-<sub>` for an on-page anchor, `../faq.qmd` /
+`../install.qmd` for guide pages. (This does not apply to clap flag/option help
+in `src/args.rs`, which is plain text on both the terminal and the web.)
+
 ## Documentation website
 
 The full user documentation is a Quarto website under `website/` (see
