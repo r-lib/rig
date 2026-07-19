@@ -281,6 +281,17 @@ jobs:
         name: rig-${{ matrix.config.os }}
         path: target/release/rig
 
+    - name: Build user-mode tarball
+      run: make macos-tarball
+      shell: bash
+
+    - name: Upload user-mode tarball as artifact
+      uses: actions/upload-artifact@v7
+      if: success()
+      with:
+        name: rig-macos-tarball-${{ matrix.config.os }}
+        path: 'rig-*-macos.tar.gz'
+
     - name: Install rig
       run: |
         sudo cp target/release/rig /usr/local/bin/
@@ -345,6 +356,12 @@ jobs:
       with:
         name: rig-windows
         path: 'rig-*.exe'
+
+    - uses: actions/upload-artifact@v7
+      if: success()
+      with:
+        name: rig-windows-zip
+        path: 'rig-*-windows.zip'
 
   windows-aarch64-test:
     if: ${{ github.event.inputs.inpwindows == '' || github.event.inputs.inpwindows == 'yes' }}
@@ -437,6 +454,12 @@ jobs:
         name: rig-windows-aarch64
         path: 'rig-*.exe'
 
+    - uses: actions/upload-artifact@v7
+      if: success()
+      with:
+        name: rig-windows-aarch64-zip
+        path: 'rig-*-windows.zip'
+
     - name: Install rig
       run: |
         Start-Process .\rig-*.exe -ArgumentList "/verysilent /suppressmsgboxes" -Wait -NoNewWindow
@@ -466,17 +489,16 @@ jobs:
           - { os: macos-latest }
 
     steps:
-    - name: Download rig from artifacts
+    - name: Download rig tarball from artifacts
       uses: actions/download-artifact@v8
       with:
-        name: rig-${{ matrix.config.os }}
+        name: rig-macos-tarball-${{ matrix.config.os }}
         path: .
 
-    - name: Install rig into ~/.local/bin
+    - name: Install rig into ~/.local
       run: |
-        mkdir -p "$HOME/.local/bin"
-        mv rig "$HOME/.local/bin/rig"
-        chmod +x "$HOME/.local/bin/rig"
+        mkdir -p "$HOME/.local"
+        tar xzf rig-*-macos.tar.gz -C "$HOME/.local"
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
     - name: Switch rig to user mode
@@ -587,21 +609,23 @@ jobs:
       RUST_BACKTRACE: 1
 
     steps:
-    - name: Download rig from artifacts
+    - name: Download rig zip from artifacts
       uses: actions/download-artifact@v8
       with:
-        name: rig-windows
+        name: rig-windows-zip
         path: .
 
-    - name: Install rig
+    - name: Install rig into %USERPROFILE%\.local
       run: |
-        Start-Process .\rig-*.exe -ArgumentList "/verysilent /suppressmsgboxes" -Wait -NoNewWindow
+        $zip = Get-ChildItem rig-*-windows.zip | Select-Object -First 1
+        New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.local" | Out-Null
+        Expand-Archive -Path $zip.FullName -DestinationPath "$env:USERPROFILE\.local" -Force
+        Add-Content -Path $env:GITHUB_PATH -Value "$env:USERPROFILE\.local\bin"
 
     - name: Switch rig to user mode
       shell: bash
       run: |
         rig system user-mode
-        echo "$USERPROFILE\\.local\\bin" >> "$GITHUB_PATH"
 
     - name: Install R versions (user mode)
       shell: bash
@@ -628,21 +652,23 @@ jobs:
       RUST_BACKTRACE: 1
 
     steps:
-    - name: Download rig from artifacts
+    - name: Download rig zip from artifacts
       uses: actions/download-artifact@v8
       with:
-        name: rig-windows-aarch64
+        name: rig-windows-aarch64-zip
         path: .
 
-    - name: Install rig
+    - name: Install rig into %USERPROFILE%\.local
       run: |
-        Start-Process .\rig-*.exe -ArgumentList "/verysilent /suppressmsgboxes" -Wait -NoNewWindow
+        $zip = Get-ChildItem rig-*-windows.zip | Select-Object -First 1
+        New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.local" | Out-Null
+        Expand-Archive -Path $zip.FullName -DestinationPath "$env:USERPROFILE\.local" -Force
+        Add-Content -Path $env:GITHUB_PATH -Value "$env:USERPROFILE\.local\bin"
 
     - name: Switch rig to user mode
       shell: bash
       run: |
         rig system user-mode
-        echo "$USERPROFILE\\.local\\bin" >> "$GITHUB_PATH"
 
     - name: Install R versions (user mode)
       shell: bash

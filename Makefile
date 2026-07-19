@@ -20,12 +20,36 @@ Rig.app/build-arm64/Build/Products/Release/Rig.app: Rig.app
 
 # -------------------------------------------------------------------------
 
-win: rig-$(VERSION).exe
+win: rig-$(VERSION).exe win-zip
 
 rig-$(VERSION).exe: target/release/rig.exe rig.iss gsudo.exe
 	find target/release -name _rig.ps1 -exec cp \{\} _rig.ps1 \;
 	"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" rig.iss
 	cp output\mysetup.exe $@
+
+# User-mode archive for Windows: rig.exe + gsudo.exe (so admin-mode
+# escalation still works) + shell completions, laid out to be extracted
+# into %USERPROFILE%\.local by an unprivileged user. No Inno Setup, no
+# elevation. Uses 7-Zip, which is preinstalled on GitHub Windows runners.
+win-zip: rig-$(VERSION)-windows.zip
+
+rig-$(VERSION)-windows.zip: target/release/rig.exe gsudo.exe
+	rm -rf zipdir
+	mkdir -p zipdir/bin \
+	    zipdir/share/bash-completion/completions \
+	    zipdir/share/elvish/lib \
+	    zipdir/share/fish/vendor_completions.d \
+	    zipdir/share/zsh/site-functions \
+	    zipdir/share/rig
+	cp target/release/rig.exe zipdir/bin/
+	cp gsudo.exe zipdir/bin/
+	find target/release/build -name rig.bash -exec cp \{\} zipdir/share/bash-completion/completions \;
+	find target/release/build -name rig.elv -exec cp \{\} zipdir/share/elvish/lib \;
+	find target/release/build -name rig.fish -exec cp \{\} zipdir/share/fish/vendor_completions.d \;
+	find target/release/build -name _rig -exec cp \{\} zipdir/share/zsh/site-functions \;
+	find target/release/build -name _rig.ps1 -exec cp \{\} zipdir/share/rig \;
+	rm -f $@
+	cd zipdir && 7z a ../$@ bin share
 
 gsudo.exe:
 	mkdir -p gsudo
@@ -157,7 +181,8 @@ target/x86_64-apple-darwin/release/rig: $(SOURCES)
 	rm -rf target/x86_64-apple-darwin/release/build/rig-*
 	cargo build --target x86_64-apple-darwin --release
 
-release: rig-$(VERSION)-macOS-arm64.pkg rig-$(VERSION)-macOS-x86_64.pkg
+release: rig-$(VERSION)-macOS-arm64.pkg rig-$(VERSION)-macOS-x86_64.pkg \
+	 rig-$(VERSION)-macOS-arm64.tar.gz rig-$(VERSION)-macOS-x86_64.tar.gz
 
 rig-$(VERSION)-macOS-%.pkg: rig-unnotarized-%.pkg tools/gon.hcl.in
 	if [[ "x$$AC_PASSWORD" == "x" ]]; then \
@@ -208,6 +233,45 @@ rig-$(VERSION)-macOS-unsigned-%.pkg: build.stamp tools/distribution.xml.in
 		$@
 	cat tools/distribution.xml.in | sed "s/{{VERSION}}/$(VERSION)/g" | \
 		 sed "s/{{ARCH}}/$*/g" > tools/distribution.xml
+
+# ------------------------------------------------------------------------
+# User-mode archives for macOS.
+#
+# These mirror the Linux tarball layout (bin/rig + share/** completions,
+# no Linux-only cacert.pem) and are meant to be extracted into ~/.local by
+# an unprivileged user. `macos_tarball` assembles one archive; $(1) is the
+# source `rig` binary and $(2) the output tar.gz.
+define macos_tarball
+	rm -rf tarball-tmp
+	mkdir -p tarball-tmp/bin \
+	    tarball-tmp/share/bash-completion/completions \
+	    tarball-tmp/share/elvish/lib \
+	    tarball-tmp/share/fish/vendor_completions.d \
+	    tarball-tmp/share/zsh/site-functions
+	cp $(1) tarball-tmp/bin/rig
+	find target/release/build -name rig.bash -exec cp \{\} tarball-tmp/share/bash-completion/completions \;
+	find target/release/build -name rig.elv -exec cp \{\} tarball-tmp/share/elvish/lib \;
+	find target/release/build -name rig.fish -exec cp \{\} tarball-tmp/share/fish/vendor_completions.d \;
+	find target/release/build -name _rig -exec cp \{\} tarball-tmp/share/zsh/site-functions \;
+	tar cz -C tarball-tmp -f $(2) bin share
+	rm -rf tarball-tmp
+endef
+
+# Credential-free host-architecture tarball, built straight from
+# `cargo build --release`. This is what CI produces and tests; no pkg,
+# no signing, no notarization, no xcodebuild.
+macos-tarball: rig-$(VERSION)-macos.tar.gz
+
+rig-$(VERSION)-macos.tar.gz: target/release/rig
+	strip -x target/release/rig
+	$(call macos_tarball,target/release/rig,$@)
+
+# Signed + notarized per-arch release tarballs. These depend on the
+# notarized .pkg so the binary they package is the one whose cdhash was
+# registered with Apple (it passes Gatekeeper's online check even as a
+# loose binary). Requires signing credentials; run as part of `make macos`.
+rig-$(VERSION)-macOS-%.tar.gz: rig-$(VERSION)-macOS-%.pkg
+	$(call macos_tarball,build-$*/usr/local/bin/rig,$@)
 
 # README.md is the short landing page, generated from README.qmd (which
 # includes shared partials from website/_partials). The full documentation
@@ -289,11 +353,12 @@ coverage-ci:
 	rustup component add llvm-tools-preview
 	cargo llvm-cov --lcov --output-path lcov.info
 
-.PHONY: release clean all macos win linux Rig.app shell-linux \
-	linux-in-docker linux-amd64-in-docker linux-arm64-in-docker \
+.PHONY: release clean all macos macos-tarball win win-zip linux Rig.app \
+	shell-linux linux-in-docker linux-amd64-in-docker linux-arm64-in-docker \
 	linux-test-all coverage coverage-ci
 
 clean:
 	cargo clean
 	rm -rf build.stamp build-* Resources *.pkg tools/distribution.xml \
-		tools/gon.hcl Output *.exe *.deb *.rpm *.tar.gz build
+		tools/gon.hcl Output *.exe *.deb *.rpm *.tar.gz *.zip build \
+		tarball-tmp zipdir

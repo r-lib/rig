@@ -28,6 +28,38 @@ To update rig you can run
 brew upgrade --cask rig
 ```
 
+### macOS (user install, no admin)
+
+If you don't have administrator rights, you can install rig entirely inside
+your home directory. The easiest way is the install script, which downloads
+the right build for your Mac, unpacks it into `~/.local`, and adds
+`~/.local/bin` to your `PATH`:
+
+```sh
+curl -LsSf https://r-lib.github.io/rig/install.sh | sh
+```
+
+Then switch rig to user mode and install R:
+
+```sh
+rig system user-mode
+rig add release
+```
+
+Alternatively, download the `rig-macos-<arch>-<version>.tar.gz` archive for
+your architecture (`arm64` or `x86_64`) from
+<https://github.com/r-lib/rig/releases> and unpack it into `~/.local`
+yourself:
+
+```sh
+mkdir -p ~/.local
+curl -Ls https://github.com/r-lib/rig/releases/download/latest/rig-macos-arm64-latest.tar.gz |
+  tar xz -C ~/.local
+```
+
+Make sure `~/.local/bin` is on your `PATH`. The binary in these archives is
+signed and notarized, so it runs without Gatekeeper warnings.
+
 ## Installing rig on Windows
 
 There are several possible ways to install rig on Windows: with our
@@ -40,6 +72,29 @@ and install it the usual way.
 
 `rig` adds itself to the user's path, but you might need to restart your
 terminal after the installation on Windows.
+
+### Windows (user install, no admin)
+
+If you don't have administrator rights, you can install rig into your user
+profile with the install script. It downloads the right build, unpacks it into
+`%USERPROFILE%\.local`, and adds `%USERPROFILE%\.local\bin` to your user
+`PATH`:
+
+``` powershell
+irm https://r-lib.github.io/rig/install.ps1 | iex
+```
+
+Open a new terminal, then switch rig to user mode and install R:
+
+``` powershell
+rig system user-mode
+rig add release
+```
+
+Alternatively, download the `rig-windows-<arch>-<version>.zip` archive
+(`x86_64` or `arm64`) from <https://github.com/r-lib/rig/releases> and extract
+it into `%USERPROFILE%\.local`, then add `%USERPROFILE%\.local\bin` to your
+`PATH`.
 
 ### Windows (Scoop)
 
@@ -180,13 +235,35 @@ curl -Ls https://github.com/r-lib/rig/releases/download/latest/rig-linux-$(arch)
   `which sudo` tar xz -C /usr/local
 ```
 
-## Installing auto-complete on macOS and Linux
+## Installing auto-complete
 
-The macOS and Linux installers also install completion files for `zsh`
-and `bash`.
+All rig installers and archives ship shell completion files.
+
+### macOS and Linux
+
+The macOS and Linux installers install completion files for `zsh` and `bash`
+into system locations.
 
 `zsh` completions work out of the box.
 
 For `bash` completions install the `bash-completion` package from Homebrew
 or your Linux distribution and make sure it is loaded from your `.bashrc`.
 (You don't need to install `bash` from Homebrew, but you can if you like.)
+
+For **user-mode** installs the completion files are placed under the install
+prefix instead (e.g. `~/.local/share`):
+
+- `zsh`: add `~/.local/share/zsh/site-functions` to your `fpath` (before
+  `compinit`).
+- `bash`: `bash-completion` picks up `~/.local/share/bash-completion/completions`
+  automatically once it is loaded from your `.bashrc`.
+
+### Windows
+
+The Windows installer and archive ship a PowerShell completion script. To
+enable tab-completion, dot-source it from your PowerShell profile (`$PROFILE`).
+For a user-mode archive install that is:
+
+``` powershell
+. "$env:USERPROFILE\.local\share\rig\_rig.ps1"
+```

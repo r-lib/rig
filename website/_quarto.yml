@@ -1,6 +1,11 @@
 project:
   type: website
   output-dir: _site
+  # User-mode install scripts, served from the site root
+  # (https://r-lib.github.io/rig/install.sh and install.ps1).
+  resources:
+    - install.sh
+    - install.ps1
 
 website:
   title: "rig"
