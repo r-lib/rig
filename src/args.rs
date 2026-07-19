@@ -315,6 +315,17 @@ pub fn rig_app() -> Command {
                     .num_args(0)
                     .required(false)
                     .hide(cfg!(not(target_os = "windows"))),
+            )
+            .arg(
+                Arg::new("platform")
+                    .help(
+                        "Install the build for this platform, instead of \
+                         auto-detecting it. Use `linux-portable` to install \
+                         a portable (glibc/musl) build.",
+                    )
+                    .long("platform")
+                    .required(false)
+                    .hide(cfg!(not(target_os = "linux"))),
             );
     }
 

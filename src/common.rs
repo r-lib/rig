@@ -563,19 +563,32 @@ pub(crate) fn normalize_rig_platform(rp: &str) -> String {
     }
 }
 
+// Whether the platform was chosen explicitly via --platform or RIG_PLATFORM
+#[cfg(target_os = "linux")]
+pub fn platform_explicitly_set(args: &ArgMatches) -> bool {
+    if env::var("RIG_PLATFORM").is_ok() {
+        return true;
+    }
+    if args.try_contains_id("platform").is_ok() {
+        return args.get_one::<String>("platform").is_some();
+    }
+    false
+}
+
 pub fn get_platform(args: &ArgMatches) -> Result<String, Box<dyn Error>> {
-    // rig add does not have a --platform argument, only auto-detect
+    // Some subcommands (e.g. `rig available`, and `rig add` on Linux) accept a
+    // `--platform` argument; others only auto-detect.
     if args.try_contains_id("platform").is_ok() {
         let platform = args.get_one::<String>("platform");
         if let Some(x) = platform {
-            return Ok(x.to_string());
+            return finalize_platform(x.to_string());
         }
     };
 
     if let Ok(rp) = env::var("RIG_PLATFORM") {
         let rp = normalize_rig_platform(&rp);
         debug!("Using RIG_PLATFORM: {}.", rp);
-        return Ok(rp);
+        return finalize_platform(rp);
     }
 
     #[allow(unused_mut)]
@@ -599,7 +612,16 @@ pub fn get_platform(args: &ArgMatches) -> Result<String, Box<dyn Error>> {
 
     debug!("Auto-detected platform: {}.", os);
 
-    Ok(os)
+    finalize_platform(os)
+}
+
+#[allow(unused_mut)]
+fn finalize_platform(mut platform: String) -> Result<String, Box<dyn Error>> {
+    #[cfg(target_os = "linux")]
+    {
+        platform = crate::linux::maybe_expand_portable(&platform)?;
+    }
+    Ok(platform)
 }
 
 pub fn get_arch(platform: &str, args: &ArgMatches) -> String {

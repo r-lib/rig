@@ -25,7 +25,11 @@ const API_ROOT: &str = "https://api.r-hub.io/rversions/"; // must end with '/'
 
 pub fn get_resolve(args: &ArgMatches) -> Result<Rversion, Box<dyn Error>> {
     let platform = get_platform(args)?;
-    let arch = get_arch(&platform, args);
+    get_resolve_for(args, &platform)
+}
+
+pub fn get_resolve_for(args: &ArgMatches, platform: &str) -> Result<Rversion, Box<dyn Error>> {
+    let arch = get_arch(platform, args);
     let str: &String = args.get_one("str").unwrap();
     let eps = vec![str.to_string()];
 
@@ -38,7 +42,7 @@ pub fn get_resolve(args: &ArgMatches) -> Result<Rversion, Box<dyn Error>> {
             ppmurl: None,
         })
     } else {
-        Ok(resolve_versions(eps, &platform, &arch)?[0].to_owned())
+        Ok(resolve_versions(eps, platform, &arch)?[0].to_owned())
     }
 }
 

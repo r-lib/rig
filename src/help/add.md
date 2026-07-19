@@ -10,6 +10,15 @@ On macOS and Windows rig uses the R builds at https://cran.r-project.org.
 On Linux rig uses the Posit R builds from
 https://github.com/rstudio/r-builds.
 
+On Linux, in user mode rig always installs a portable build, selected for
+your C library (glibc or musl). In admin mode rig installs a
+distro-specific build by default, but you can install a portable build
+instead with `--platform linux-portable` (or a specific portable platform,
+e.g. `--platform linux-manylinux-2.34`). If there is no distro-specific
+build for your platform, rig falls back to a portable build automatically.
+Admin-mode portable builds are installed into `/opt/R/<version>`, just like
+distro-specific builds.
+
 The desired R version can be specified in various ways:
 
 - `rig add devel` adds the latest available development version,

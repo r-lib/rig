@@ -22,7 +22,7 @@ use crate::library::*;
 use crate::output::OUTPUT;
 use crate::platform::*;
 use crate::repos::*;
-use crate::resolve::get_resolve;
+use crate::resolve::get_resolve_for;
 use crate::run::*;
 use crate::utils::*;
 
@@ -223,6 +223,23 @@ pub fn user_mode_platform() -> Result<String, Box<dyn Error>> {
     Ok(platform.to_string())
 }
 
+pub fn is_portable_platform(platform: &str) -> bool {
+    platform.starts_with("linux-manylinux") || platform.starts_with("linux-musllinux")
+}
+
+pub fn is_portable_archive(target: &Path) -> bool {
+    let name = target.to_string_lossy();
+    name.ends_with(".tar.gz") || name.ends_with(".tgz")
+}
+
+pub fn maybe_expand_portable(platform: &str) -> Result<String, Box<dyn Error>> {
+    if platform == "linux-portable" || platform == "portable" {
+        user_mode_platform()
+    } else {
+        Ok(platform.to_string())
+    }
+}
+
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     if args.value_source("arch") == Some(clap::parser::ValueSource::CommandLine) {
         OUTPUT.error("`--arch` is not supported on Linux.");
@@ -241,7 +258,33 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         println!("{}", uid);
     }
 
-    let version = get_resolve(args)?;
+    // Decide which build to install.
+    let platform = get_platform(args)?;
+    let mut install_platform = platform.clone();
+    let version = match get_resolve_for(args, &platform) {
+        Ok(v) => v,
+        Err(e) => {
+            if mode == Mode::Admin
+                && !platform_explicitly_set(args)
+                && !is_portable_platform(&platform)
+            {
+                let portable = user_mode_platform()?;
+                OUTPUT.warn(&format!(
+                    "No distro-specific R build for platform `{}`, \
+                     falling back to the portable build `{}`.",
+                    platform, portable
+                ));
+                warn!(
+                    "No build for platform {}, falling back to portable build {}",
+                    platform, portable
+                );
+                install_platform = portable.clone();
+                get_resolve_for(args, &portable)?
+            } else {
+                return Err(e);
+            }
+        }
+    };
     let alias = get_alias(args);
     let ver = version.version.to_owned();
     let verstr = match ver {
@@ -274,8 +317,9 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         download_file(client, &url, target.as_os_str())?;
     }
 
-    let dirname = if mode == Mode::User {
-        safe_user_install(&target, &version)?
+    let portable = is_portable_archive(&target);
+    let dirname = if portable {
+        safe_user_install(&target, &version, &install_platform)?
     } else {
         let platform = detect_platform()?;
         add_package(target.as_os_str(), &platform)?
@@ -289,9 +333,9 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // when a default was already set.
     if mode == Mode::User {
         make_current_r_links()?;
-        // Download the CA certificate bundle (if not already present) and point
-        // this installation at it. A failure here (e.g. no network) should not
-        // abort the install, so only warn.
+    }
+
+    if portable {
         if let Err(e) = setup_user_cert(&dirname.to_string(), false) {
             OUTPUT.warn(&format!("Could not set up CA certificate bundle: {}", e));
             warn!("Could not set up CA certificate bundle: {}", e);
@@ -299,7 +343,8 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     }
 
     library_update_rprofile(&dirname.to_string())?;
-    if mode == Mode::Admin {
+    // The `SED = /usr/bin/sed` fixup only matters for distro-compiled R.
+    if mode == Mode::Admin && !portable {
         check_usr_bin_sed(&dirname.to_string())?;
     }
     sc_system_make_links()?;
@@ -527,7 +572,11 @@ fn add_package(path: &OsStr, platform: &OsVersion) -> Result<String, Box<dyn Err
 // User-mode installation: unpack a portable R build (a `.tar.gz`) into the
 // per-user R root (`~/.local/share/rig/r/<version>`), the same place macOS uses.
 // No privilege escalation and no system package manager.
-fn safe_user_install(target: &Path, version: &Rversion) -> Result<String, Box<dyn Error>> {
+fn safe_user_install(
+    target: &Path,
+    version: &Rversion,
+    platform: &str,
+) -> Result<String, Box<dyn Error>> {
     let root = PathBuf::from(get_r_root()?);
     std::fs::create_dir_all(&root)?;
 
@@ -570,7 +619,7 @@ fn safe_user_install(target: &Path, version: &Rversion) -> Result<String, Box<dy
         let _ = std::fs::remove_dir_all(&staging);
     }
 
-    write_install_metadata(&dest)?;
+    write_install_metadata(&dest, platform)?;
 
     OUTPUT.success(&format!("Installed R to {}", dest.display()));
     info!("Installed R to {}", dest.display());
@@ -578,11 +627,11 @@ fn safe_user_install(target: &Path, version: &Rversion) -> Result<String, Box<dy
     Ok(dirname)
 }
 
-// Write a `metadata.json` file at the top level of a user-mode R installation,
-// recording the platform of the portable build (the manylinux/musllinux distro
-// string, selected by libc).
-fn write_install_metadata(dest: &Path) -> Result<(), Box<dyn Error>> {
-    let platform = user_mode_platform()?;
+// Write a `metadata.json` file at the top level of a portable R installation,
+// recording the platform of the build (the manylinux/musllinux distro string).
+// Its presence also marks the installation as portable (vs. a distro package),
+// which the removal path relies on.
+fn write_install_metadata(dest: &Path, platform: &str) -> Result<(), Box<dyn Error>> {
     let metadata = serde_json::json!({ "platform": platform });
     let path = dest.join("metadata.json");
     debug!("Writing installation metadata to {}", path.display());
@@ -673,17 +722,14 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     }
     let vers = vers.unwrap();
 
-    // In admin mode R is a system package, so we ask the package manager to
-    // remove it. In user mode it is just an unpacked directory tree.
-    let tools = if mode == Mode::Admin {
-        Some(select_linux_tools(&detect_platform()?)?)
-    } else {
-        None
-    };
+    let rroot = get_r_root()?;
     for ver in vers {
         let ver = check_installed(ver)?;
+        let dir = Path::new(&rroot).join(&ver);
+        let portable = read_install_platform(&dir).is_some();
 
-        if let Some(ref tools) = tools {
+        if mode == Mode::Admin && !portable {
+            let tools = select_linux_tools(&detect_platform()?)?;
             let pkgname = tools.package_name.replace("{}", &ver);
             let opkgname = OsStr::new(&pkgname);
             let cmd = format_cmd_args(tools.is_installed.clone(), opkgname);
@@ -702,9 +748,6 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             }
         }
 
-        let rroot = get_r_root()?;
-        let dir = Path::new(&rroot);
-        let dir = dir.join(&ver);
         if dir.exists() {
             OUTPUT.status(&format!("Removing {}", dir.display()));
             info!("Removing {}", dir.display());
@@ -1507,17 +1550,22 @@ fn check_usr_bin_sed(rver: &str) -> Result<(), Box<dyn Error>> {
 // project) that user-mode installations download and point R at.
 pub const CACERT_URL: &str = "https://curl.se/ca/cacert.pem";
 
-// Path to the user-mode CA certificate bundle. It lives in an `etc` directory
-// next to the R installations under the rig data directory, e.g.
-// `~/.local/share/rig/etc/cacert.pem`.
+// Path to the CA certificate bundle used by portable R builds. In user mode it
+// lives in an `etc` directory next to the R installations under the rig data
+// directory, e.g. `~/.local/share/rig/etc/cacert.pem`. In admin mode (where
+// there is no separate data directory) it lives under the R root, i.e.
+// `/opt/R/etc/cacert.pem`.
 fn get_user_cert_path() -> Result<PathBuf, Box<dyn Error>> {
-    let rdir = get_r_install_dir()?
-        .ok_or_else(|| SimpleError::new("No user-mode R installation directory"))?;
-    // `r-install-dir` is `<data>/r`; keep the bundle in a sibling `etc`.
-    let data = Path::new(&rdir)
-        .parent()
-        .ok_or_else(|| SimpleError::new("Cannot determine rig data directory"))?;
-    Ok(data.join("etc").join("cacert.pem"))
+    match get_r_install_dir()? {
+        Some(rdir) => {
+            // `r-install-dir` is `<data>/r`; keep the bundle in a sibling `etc`.
+            let data = Path::new(&rdir)
+                .parent()
+                .ok_or_else(|| SimpleError::new("Cannot determine rig data directory"))?;
+            Ok(data.join("etc").join("cacert.pem"))
+        }
+        None => Ok(Path::new(&get_r_root()?).join("etc").join("cacert.pem")),
+    }
 }
 
 // `Renviron.site` of an installed R version.
