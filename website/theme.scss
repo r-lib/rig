@@ -21,6 +21,21 @@ dd {
   margin-bottom: 0.5rem;
 }
 
+// The flags/terms in those definition lists are inline `<code>` inside `<dt>`
+// (and sometimes `<dd>`). Quarto's dark theme only rewrites the light default
+// `code` background (#f8f9fa) for code within `p`/`li`/`td`, so code in a
+// definition list keeps the near-white background under the dark theme's light
+// code text — rendering the argument and option names unreadable (white on
+// white). Give definition-list code the same dark translucent background
+// Quarto uses for inline code elsewhere.
+body.quarto-dark {
+  dt code:not(.sourceCode),
+  dd code:not(.sourceCode) {
+    background-color: rgba(67, 67, 67, 0.65);
+    padding: 0.2em;
+  }
+}
+
 // Get started hero: wide intro column on the left, a narrow install card on
 // the right, laid out with the Quarto `.columns`/`.column` helpers (flex). The
 // box styling lives on this plain wrapper — not on the `.columns` flex row,
