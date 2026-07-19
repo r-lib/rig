@@ -1574,6 +1574,34 @@ pub fn parse_args() -> ArgMatches {
     }
 }
 
+fn command_on_path(cmd: &str) -> bool {
+    let path = match std::env::var_os("PATH") {
+        Some(p) => p,
+        None => return false,
+    };
+    // On Windows, executables carry an extension; check PATHEXT (defaulting to
+    // the common set) in addition to the bare name.
+    #[cfg(windows)]
+    let exts: Vec<String> = {
+        let pathext = std::env::var("PATHEXT").unwrap_or_else(|_| ".EXE;.CMD;.BAT;.COM".to_string());
+        std::iter::once(String::new())
+            .chain(pathext.split(';').map(|e| e.to_string()))
+            .collect()
+    };
+    #[cfg(not(windows))]
+    let exts: Vec<String> = vec![String::new()];
+
+    for dir in std::env::split_paths(&path) {
+        for ext in &exts {
+            let candidate = dir.join(format!("{}{}", cmd, ext));
+            if candidate.is_file() {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 // Display clap help output, paging it through `$PAGER` (defaulting to `less`)
 // when stdout is a terminal, mirroring how git pages its help. When stdout is
 // not a terminal, or the pager is disabled/unavailable, the help is printed
@@ -1595,6 +1623,11 @@ fn show_help(err: &clap::Error) {
         .unwrap_or_else(|_| "less".to_string());
     let pager = pager.trim();
     if pager.is_empty() || pager == "cat" {
+        let _ = err.print();
+        return;
+    }
+
+    if pager.split_whitespace().next() == Some("less") && !command_on_path("less") {
         let _ = err.print();
         return;
     }
