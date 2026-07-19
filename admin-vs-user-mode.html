@@ -703,10 +703,10 @@ Note
 </section>
 <section id="advanced-custom-directories" class="level2">
 <h2 class="anchored" data-anchor-id="advanced-custom-directories">Advanced: custom directories</h2>
-<p>If the user-mode defaults do not suit you, you can override either location via an environment variable or a config key:</p>
+<p>You can override where rig puts things with an environment variable or a config key:</p>
 <ul>
-<li>Quick-link directory: <code>RIG_BINARY_DIR</code> env var, or the <code>binary-dir</code> config key.</li>
-<li>R install root: <code>RIG_R_INSTALL_DIR</code> env var, or the <code>r-install-dir</code> config key.</li>
+<li><strong>Quick-link directory</strong> — <code>RIG_BINARY_DIR</code> env var, or the <code>binary-dir</code> config key. This applies in both modes, overriding the default <code>/usr/local/bin</code> (admin) or <code>~/.local/bin</code> (user).</li>
+<li><strong>R install root</strong> — <code>RIG_R_INSTALL_DIR</code> env var, or the <code>r-install-dir</code> config key. This only takes effect in user mode. In admin mode R is installed by the platform installer (the Apple <code>.pkg</code>, the Windows installer, or a Linux distribution package) to its fixed system location and cannot be relocated.</li>
 </ul>
 </section>
 <section id="see-also" class="level2">

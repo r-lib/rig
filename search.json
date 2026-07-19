@@ -160,7 +160,7 @@
     "href": "admin-vs-user-mode.html#advanced-custom-directories",
     "title": "Admin mode vs user mode",
     "section": "Advanced: custom directories",
-    "text": "Advanced: custom directories\nIf the user-mode defaults do not suit you, you can override either location via an environment variable or a config key:\n\nQuick-link directory: RIG_BINARY_DIR env var, or the binary-dir config key.\nR install root: RIG_R_INSTALL_DIR env var, or the r-install-dir config key.",
+    "text": "Advanced: custom directories\nYou can override where rig puts things with an environment variable or a config key:\n\nQuick-link directory — RIG_BINARY_DIR env var, or the binary-dir config key. This applies in both modes, overriding the default /usr/local/bin (admin) or ~/.local/bin (user).\nR install root — RIG_R_INSTALL_DIR env var, or the r-install-dir config key. This only takes effect in user mode. In admin mode R is installed by the platform installer (the Apple .pkg, the Windows installer, or a Linux distribution package) to its fixed system location and cannot be relocated.",
     "crumbs": [
       "Guide",
       "Admin mode vs user mode"
