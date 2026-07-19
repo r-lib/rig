@@ -539,6 +539,17 @@ ul.task-list li input[type="checkbox"] {
 
 <section id="rig-0.10.0-not-released-yet" class="level1">
 <h1>rig 0.10.0 (not released yet)</h1>
+<ul>
+<li><p>rig now supports a <strong>user mode</strong> on all platforms, in addition to the default admin mode. In user mode rig installs everything into the user’s home directory and never needs <code>sudo</code> or administrator privileges. R goes into <code>~/.local/share/rig/r</code> (<code>%APPDATA%\rig\data\r</code> on Windows) and quick links into <code>~/.local/bin</code> (<code>%USERPROFILE%\.local\bin</code> on Windows). Select the mode with the <code>--user</code> / <code>--admin</code> global flags, the <code>RIG_MODE</code> environment variable, or the <code>mode</code> key in the rig config file. The new <code>rig system user-mode</code> command switches an existing admin-mode setup to user mode.</p></li>
+<li><p>rig has a new documentation website at <a href="https://r-lib.github.io/rig/" class="uri">https://r-lib.github.io/rig/</a>, including a full CLI reference and a guide to admin vs.&nbsp;user mode.</p></li>
+<li><p>New <code>rig config</code> command to manage the rig configuration file.</p></li>
+<li><p>New experimental <code>rig proj</code> command to manage R project dependencies.</p></li>
+<li><p><code>rig rtools</code> is now a top-level command (it used to be <code>rig system rtools</code>).</p></li>
+<li><p>On Linux, rig can now install portable R builds, for glibc- and musl-based Linux distros. If there is no distro-specific build for your platform, rig falls back to a portable build automatically.</p></li>
+<li><p>New <code>rig system fix-r-alias</code> subcommand.</p></li>
+<li><p><code>rig rstudio --config-path</code> is now implemented on Linux and macOS.</p></li>
+<li><p>rig now warns instead of failing when it encounters a broken R installation (#346).</p></li>
+</ul>
 </section>
 <section id="rig-0.8.1" class="level1">
 <h1>rig 0.8.1</h1>

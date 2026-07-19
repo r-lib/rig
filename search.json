@@ -1,5 +1,15 @@
 [
   {
+    "objectID": "news.html",
+    "href": "news.html",
+    "title": "Changelog",
+    "section": "",
+    "text": "rig now supports a user mode on all platforms, in addition to the default admin mode. In user mode rig installs everything into the user’s home directory and never needs sudo or administrator privileges. R goes into ~/.local/share/rig/r (%APPDATA%\\rig\\data\\r on Windows) and quick links into ~/.local/bin (%USERPROFILE%\\.local\\bin on Windows). Select the mode with the --user / --admin global flags, the RIG_MODE environment variable, or the mode key in the rig config file. The new rig system user-mode command switches an existing admin-mode setup to user mode.\nrig has a new documentation website at https://r-lib.github.io/rig/, including a full CLI reference and a guide to admin vs. user mode.\nNew rig config command to manage the rig configuration file.\nNew experimental rig proj command to manage R project dependencies.\nrig rtools is now a top-level command (it used to be rig system rtools).\nOn Linux, rig can now install portable R builds, for glibc- and musl-based Linux distros. If there is no distro-specific build for your platform, rig falls back to a portable build automatically.\nNew rig system fix-r-alias subcommand.\nrig rstudio --config-path is now implemented on Linux and macOS.\nrig now warns instead of failing when it encounters a broken R installation (#346).",
+    "crumbs": [
+      "Changelog"
+    ]
+  },
+  {
     "objectID": "news.html#windows",
     "href": "news.html#windows",
     "title": "Changelog",
@@ -1301,7 +1311,7 @@
   {
     "objectID": "index.html",
     "href": "index.html",
-    "title": "The R Installation Manager",
+    "title": "rig – the R Installation Manager",
     "section": "",
     "text": "Run and manage multiple versions of R side by side on macOS, Windows and Linux.\nRig is a standalone tool, with no system requirements, for system admins and users.\n\n\n\n\nLatest version 0.10.0-alpha\nInstall rig\n\n  or view install instructions for\n  macOS,\n  Windows or\n  Linux.",
     "crumbs": [
@@ -1311,7 +1321,7 @@
   {
     "objectID": "index.html#quick-start",
     "href": "index.html#quick-start",
-    "title": "The R Installation Manager",
+    "title": "rig – the R Installation Manager",
     "section": "Quick start",
     "text": "Quick start\nOnce rig is installed:\nrig add release      # install the latest R release\nrig list             # list installed R versions\nrig default 4.5.1    # set the default R version",
     "crumbs": [
@@ -1321,19 +1331,9 @@
   {
     "objectID": "index.html#features",
     "href": "index.html#features",
-    "title": "The R Installation Manager",
+    "title": "rig – the R Installation Manager",
     "section": "Features",
     "text": "Features\n\nWorks on macOS, Windows and Linux.\nSupports many Linux distributions, see list below.\nEasy installation and update, no system requirements on any platform.\nInstall multiple R versions.\nSelect the default R version, for the terminal and RStudio.\nSelect R version to install using symbolic names: devel, next, release, oldrel, etc.\nList R versions available to install.\nRun multiple versions at the same time using quick links. E.g. R-4.1 or R-4.1.2 starts R 4.1.x. Quick links are automatically added to the user’s path.\nOn macOS it comes with a menu bar app that shows the default R version and lets you select it interactively. See more.\nOn arm64 macs select between x86_64 and arm64 versions or R, or install both.\nSets up the default CRAN mirror and PPM. (Only if you are not using RStudio or Positron!)\nInstalls pak and set up automatic system requirements installation.\nCreates and configures user level package libraries.\nRestricts permissions to the system library. (On macOS, not needed on Windows and Linux).\nIncludes auto-complete for zsh and bash, on macOS and Linux.\nUpdates R installations to allow debugging with lldb, and to allow core dumps, on macOS.\nInstalls the appropriate Rtools versions on Windows and sets them up.\nCleans up stale R-related entries from the Windows registry.\nOptional user mode installs R entirely into your home directory, with no sudo or administrator rights needed. In the default admin mode rig installs R system-wide and switches to the root/administrator user as needed. See the FAQ.\nSupports JSON output for scripting.",
-    "crumbs": [
-      "Get started"
-    ]
-  },
-  {
-    "objectID": "index.html#known-issues",
-    "href": "index.html#known-issues",
-    "title": "The R Installation Manager",
-    "section": "Known issues",
-    "text": "Known issues\n\nOn macOS, R.app often does not work if you install multiple R versions.\n\nFound another issue? Please report it in our issue tracker.",
     "crumbs": [
       "Get started"
     ]
