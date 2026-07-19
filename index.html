@@ -573,27 +573,41 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="features" class="level2">
 <h2 class="anchored" data-anchor-id="features">Features</h2>
+<p><strong>Multiple R versions, side by side</strong></p>
 <ul>
-<li>Works on macOS, Windows and Linux.</li>
-<li>Supports many Linux distributions, see <a href="./install.html#id-supported-linux-distributions">list below</a>.</li>
-<li>Easy installation and update, no system requirements on any platform.</li>
-<li>Install multiple R versions.</li>
-<li>Select the default R version, for the terminal and RStudio.</li>
-<li>Select R version to install using symbolic names: <code>devel</code>, <code>next</code>, <code>release</code>, <code>oldrel</code>, etc.</li>
-<li>List R versions available to install.</li>
-<li>Run multiple versions <em>at the same</em> time using quick links. E.g. <code>R-4.1</code> or <code>R-4.1.2</code> starts R 4.1.x. Quick links are automatically added to the user’s path.</li>
-<li>On macOS it comes with a menu bar app that shows the default R version and lets you select it interactively. <a href="./macos-app.html">See more</a>.</li>
-<li>On arm64 macs select between x86_64 and arm64 versions or R, or install both.</li>
-<li>Sets up the default CRAN mirror and <a href="https://packagemanager.posit.co/">PPM</a>. (Only if you are not using RStudio or Positron!)</li>
-<li>Installs <a href="https://pak.r-lib.org">pak</a> and set up automatic <a href="https://pak.r-lib.org/dev/reference/sysreqs.html">system requirements installation</a>.</li>
-<li>Creates and configures user level package libraries.</li>
-<li>Restricts permissions to the system library. (On macOS, not needed on Windows and Linux).</li>
-<li>Includes auto-complete for <code>zsh</code> and <code>bash</code>, on macOS and Linux.</li>
-<li>Updates R installations to allow debugging with <code>lldb</code>, and to allow core dumps, on macOS.</li>
-<li>Installs the appropriate Rtools versions on Windows and sets them up.</li>
-<li>Cleans up stale R-related entries from the Windows registry.</li>
-<li>Optional <em>user mode</em> installs R entirely into your home directory, with no <code>sudo</code> or administrator rights needed. In the default <em>admin mode</em> rig installs R system-wide and switches to the root/administrator user as needed. See the <a href="./faq.html">FAQ</a>.</li>
-<li>Supports JSON output for scripting.</li>
+<li>Install as many R versions as you like, and switch the default for the terminal, RStudio and Positron.</li>
+<li>Select versions by symbolic name: <code>release</code>, <code>devel</code>, <code>next</code>, <code>oldrel</code>, or by exact version.</li>
+<li>Run several versions <em>at the same time</em> via quick links: <code>R-4.5</code> or <code>R-4.5.1</code> starts the matching R. Quick links are added to your path automatically.</li>
+<li>List the versions you have installed, and the versions available to install.</li>
+<li>On arm64 macs, choose between x86_64 and arm64 builds of R, or install both.</li>
+<li>On arm64 Windows, install x86_64 and aarch64 builds of R.</li>
+</ul>
+<p><strong>Cross-platform and self-contained</strong></p>
+<ul>
+<li>Works on macOS, Windows and Linux — with native builds for many <a href="./install.html#id-supported-linux-distributions">Linux distributions</a>, and portable builds that run on any glibc- or musl-based Linux.</li>
+<li>A single standalone tool with no system requirements — easy to install and update on every platform.</li>
+<li>Two installation modes: the default <em>admin mode</em> installs R system-wide (elevating to root/administrator only when needed), while <em>user mode</em> installs everything into your home directory with no <code>sudo</code> or administrator rights. See <a href="./admin-vs-user-mode.html">admin vs.&nbsp;user mode</a>.</li>
+<li>On Linux, installs distro-specific builds where available, and otherwise falls back to portable glibc/musl builds automatically — so rig works even on distributions without a dedicated build.</li>
+</ul>
+<p><strong>Package management, set up for you</strong></p>
+<ul>
+<li>Configures the default CRAN mirror and <a href="https://packagemanager.posit.co/">PPM</a> binary repositories.</li>
+<li>Installs <a href="https://pak.r-lib.org">pak</a> and enables automatic <a href="https://pak.r-lib.org/dev/reference/sysreqs.html">system requirements installation</a>.</li>
+<li>Creates and configures per-user package libraries.</li>
+<li><code>rig repos</code> manages package repositories across all your R versions.</li>
+</ul>
+<p><strong>Run R, scripts and apps</strong></p>
+<ul>
+<li><code>rig run</code> starts R, runs a script or expression, or launches an app — Shiny apps, Plumber APIs, Quarto and R Markdown documents, and static sites — with the R version you choose.</li>
+<li><code>rig proj</code> (experimental) resolves and installs R project dependencies with a built-in solver, and can write an <code>renv.lock</code>, without needing R to be running.</li>
+</ul>
+<p><strong>Platform niceties</strong></p>
+<ul>
+<li>A macOS menu bar app shows the default R version and lets you switch it interactively. <a href="./macos-app.html">See more</a>.</li>
+<li>Installs and configures the right Rtools versions on Windows, and cleans up stale R entries from the Windows registry.</li>
+<li>Shell auto-completion for <code>zsh</code> and <code>bash</code> on macOS and Linux, and for PowerShell on Windows.</li>
+<li>On macOS, sets up R for debugging with <code>lldb</code> and enables core dumps.</li>
+<li>JSON output for scripting, and a <code>rig config</code> command to manage rig’s own configuration.</li>
 </ul>
 
 
