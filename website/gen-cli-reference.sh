@@ -173,9 +173,11 @@ render_synopsis() {
       } else lastbadge = ""
       return s
     }
-    # Print a line, or, while buffering the Options section (sortmode), append
-    # it to the current entry so the entries can be reordered before printing.
-    function out(s){ if (sortmode) curbuf = curbuf s "\n"; else print s }
+    # Buffer a body line for the current definition-list entry. The entry (its
+    # term line plus its body) is emitted lazily by emitcur, once its full
+    # extent is known, so a platform badge found anywhere in the body can be
+    # moved onto the term line rather than left trailing the description.
+    function out(s){ curbody = curbody s "\n" }
     # Sort key for an option term: its long flag name (falling back to the
     # short one), lowercased, so options sort alphabetically by name.
     function sortkeyof(t,   s){
@@ -186,15 +188,28 @@ render_synopsis() {
       else s = t
       return tolower(s)
     }
-    # Stash the option entry accumulated in curbuf into the pending list.
-    function flushcur(){
-      if (curbuf != ""){ nentry++; keys[nentry] = curkey; texts[nentry] = curbuf; curbuf = "" }
+    # Emit the current entry: its term line, with any platform badge found in
+    # the body appended to it, followed by the buffered body. In sortmode the
+    # assembled entry is stashed for later alphabetical printing; otherwise it
+    # is printed immediately, blank-line-separated from the previous entry.
+    function emitcur(   line){
+      if (curterm == "") return
+      line = curterm
+      if (curbadge != "") line = line " [" curbadge "]{.rig-platform}"
+      if (sortmode){
+        nentry++; keys[nentry] = curkey; texts[nentry] = line "\n" curbody
+      } else {
+        if (emitted) print ""
+        printf "%s", line "\n" curbody
+        emitted = 1
+      }
+      curterm = ""; curbody = ""; curbadge = ""
     }
     # Emit the buffered Options entries, sorted alphabetically by key, then
     # leave sortmode. A no-op unless we are buffering options.
     function flushopts(   i, j, tk, tt){
       if (!sortmode) return
-      flushcur()
+      emitcur()
       for (i = 2; i <= nentry; i++){
         tk = keys[i]; tt = texts[i]; j = i - 1
         while (j >= 1 && keys[j] > tk){ keys[j+1] = keys[j]; texts[j+1] = texts[j]; j-- }
@@ -205,27 +220,24 @@ render_synopsis() {
     }
     function heading(text){
       flushopts()
+      emitcur()
       if (inusage){ print "```"; inusage = 0 }
       print ""; print h " " text; print ""
-      needcolon = 0; started = 0; hadmeta = 0
+      needcolon = 0; hadmeta = 0; emitted = 0
     }
     function term(t, link,   label){
       label = "`" t "`"
       if (link != "") label = "[" label "](" link ")"
-      if (sortmode){
-        flushcur()
-        curkey = sortkeyof(t); curbuf = label "\n"
-        needcolon = 1; started = 1; hadmeta = 0
-        return
-      }
-      if (started) print ""
-      print label
-      needcolon = 1; started = 1; hadmeta = 0
+      emitcur()
+      curterm = label
+      if (sortmode) curkey = sortkeyof(t)
+      needcolon = 1; hadmeta = 0
     }
     function desc(d,  x){
       d = stripbadge(d)
+      if (lastbadge != "" && curbadge == "") curbadge = lastbadge
       x = wrapflags(d)
-      if (lastbadge != "") x = x " [" lastbadge "]{.rig-platform}"
+      if (x == "") return
       if (needcolon){ out(":   " x); needcolon = 0 } else out("    " x)
     }
     function meta(m,  x){
@@ -283,7 +295,7 @@ render_synopsis() {
       if (content ~ /^\[.*\]$/) meta(content); else desc(content)
       next
     }
-    END { flushopts(); if (inusage) print "```" }
+    END { flushopts(); emitcur(); if (inusage) print "```" }
   '
 }
 
