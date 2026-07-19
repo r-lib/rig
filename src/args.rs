@@ -320,7 +320,7 @@ pub fn rig_app() -> Command {
                 Arg::new("platform")
                     .help(
                         "Install the build for this platform, instead of \
-                         auto-detecting it. Use `linux-portable` to install \
+                         auto-detecting it.\nUse `linux-portable` to install \
                          a portable (glibc/musl) build.",
                     )
                     .long("platform")
