@@ -1,5 +1,5 @@
 
-VERSION=$(shell grep "^version" Cargo.toml | head -1 | tr -cd '0-9.')
+VERSION=$(shell grep "^version" Cargo.toml | head -1 | sed -E 's/^version[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/')
 SOURCES=$(wildcard src/*.rs) $(wildcard src/*.in)
 
 all:

@@ -8,7 +8,7 @@ members = ["xtask"]
 
 [package]
 name = "rig"
-version = "0.10.0"
+version = "0.10.0-alpha"
 edition = "2021"
 authors = ["Gábor Csárdi <csardi.gabor@gmail.com>"]
 license = "MIT"
