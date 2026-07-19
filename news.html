@@ -45,9 +45,9 @@ ul.task-list li input[type="checkbox"] {
 <link href="site_libs/quarto-html/quarto-syntax-highlighting-15634bcf2e68342d4ad2dfa704d543f6.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="site_libs/bootstrap/bootstrap-08068100fd2b9800a972a6828dbb93db.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="site_libs/bootstrap/bootstrap-dark-4fffe477df4ea096b4e20badbf14ec62.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
-<link href="site_libs/bootstrap/bootstrap-08068100fd2b9800a972a6828dbb93db.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-319ba2c345d2f64272d6b514f02aaf6b.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-dark-833063da448a3ebf0c31dd1f7e43f7a9.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<link href="site_libs/bootstrap/bootstrap-319ba2c345d2f64272d6b514f02aaf6b.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -75,6 +75,23 @@ ul.task-list li input[type="checkbox"] {
     "search-label": "Search"
   }
 }</script>
+<script>
+  // Default to the dark theme on first visit when the browser/OS prefers dark.
+  // Quarto chooses the initial theme from this localStorage sentinel; seeding
+  // it here (before Quarto's toggle script runs) makes a first-time visitor
+  // with a dark OS start in dark mode. Once set — here or by the user clicking
+  // the toggle — the choice persists across visits.
+  (function () {
+    try {
+      var KEY = "quarto-color-scheme";
+      if (window.localStorage.getItem(KEY) === null &&
+          window.matchMedia &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches) {
+        window.localStorage.setItem(KEY, "alternate");
+      }
+    } catch (e) {}
+  })();
+</script>
 
 
 </head>
@@ -402,8 +419,20 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="./reference/rtools.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig rtools</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="./reference/run.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig run</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/sysreqs.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig sysreqs</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -443,7 +472,7 @@ ul.task-list li input[type="checkbox"] {
    
   <ul>
   <li><a href="#rig-0.10.0-not-released-yet" id="toc-rig-0.10.0-not-released-yet" class="nav-link active" data-scroll-target="#rig-0.10.0-not-released-yet">rig 0.10.0 (not released yet)</a></li>
-  <li><a href="#rig-0.8.1-not-released-yet" id="toc-rig-0.8.1-not-released-yet" class="nav-link" data-scroll-target="#rig-0.8.1-not-released-yet">rig 0.8.1 (not released yet)</a></li>
+  <li><a href="#rig-0.8.1" id="toc-rig-0.8.1" class="nav-link" data-scroll-target="#rig-0.8.1">rig 0.8.1</a></li>
   <li><a href="#rig-0.8.0" id="toc-rig-0.8.0" class="nav-link" data-scroll-target="#rig-0.8.0">rig 0.8.0</a></li>
   <li><a href="#rig-0.7.1" id="toc-rig-0.7.1" class="nav-link" data-scroll-target="#rig-0.7.1">rig 0.7.1</a></li>
   <li><a href="#rig-0.7.0" id="toc-rig-0.7.0" class="nav-link" data-scroll-target="#rig-0.7.0">rig 0.7.0</a></li>
@@ -511,8 +540,8 @@ ul.task-list li input[type="checkbox"] {
 <section id="rig-0.10.0-not-released-yet" class="level1">
 <h1>rig 0.10.0 (not released yet)</h1>
 </section>
-<section id="rig-0.8.1-not-released-yet" class="level1">
-<h1>rig 0.8.1 (not released yet)</h1>
+<section id="rig-0.8.1" class="level1">
+<h1>rig 0.8.1</h1>
 <ul>
 <li><p>The <code>RIG_PLATFORM</code> environment variable works correctly again (#325).</p></li>
 <li><p>rig can now install R &gt; 4.6.0 (current R-devel) correctly on macOS.</p></li>

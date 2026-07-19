@@ -45,9 +45,9 @@ ul.task-list li input[type="checkbox"] {
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-15634bcf2e68342d4ad2dfa704d543f6.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-08068100fd2b9800a972a6828dbb93db.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="../site_libs/bootstrap/bootstrap-dark-4fffe477df4ea096b4e20badbf14ec62.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
-<link href="../site_libs/bootstrap/bootstrap-08068100fd2b9800a972a6828dbb93db.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-319ba2c345d2f64272d6b514f02aaf6b.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-dark-833063da448a3ebf0c31dd1f7e43f7a9.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<link href="../site_libs/bootstrap/bootstrap-319ba2c345d2f64272d6b514f02aaf6b.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -75,6 +75,23 @@ ul.task-list li input[type="checkbox"] {
     "search-label": "Search"
   }
 }</script>
+<script>
+  // Default to the dark theme on first visit when the browser/OS prefers dark.
+  // Quarto chooses the initial theme from this localStorage sentinel; seeding
+  // it here (before Quarto's toggle script runs) makes a first-time visitor
+  // with a dark OS start in dark mode. Once set — here or by the user clicking
+  // the toggle — the choice persists across visits.
+  (function () {
+    try {
+      var KEY = "quarto-color-scheme";
+      if (window.localStorage.getItem(KEY) === null &&
+          window.matchMedia &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches) {
+        window.localStorage.setItem(KEY, "alternate");
+      }
+    } catch (e) {}
+  })();
+</script>
 
 
 </head>
@@ -402,8 +419,20 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/rtools.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig rtools</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/run.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig run</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/sysreqs.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig sysreqs</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -545,14 +574,6 @@ Set up R package repositories
 <section id="options" class="level3">
 <h3 class="anchored" data-anchor-id="options">Options</h3>
 <dl>
-<dt><code>--json</code></dt>
-<dd>
-JSON output
-</dd>
-<dt><code>--user</code></dt>
-<dd>
-Run in user mode (overrides RIG_MODE and config)
-</dd>
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
@@ -560,6 +581,14 @@ Run in admin mode (overrides RIG_MODE and config)
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
+</dd>
+<dt><code>--json</code></dt>
+<dd>
+JSON output
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
 </dd>
 </dl>
 </section>
@@ -575,33 +604,33 @@ Print help (see a summary with ‘-h’)
 <section id="options-1" class="level3">
 <h3 class="anchored" data-anchor-id="options-1">Options</h3>
 <dl>
-<dt><code>--json</code></dt>
+<dt><code>--admin</code></dt>
 <dd>
-JSON output
+Run in admin mode (overrides RIG_MODE and config)
 </dd>
 <dt><code>--all</code></dt>
 <dd>
 Show all repositories, not just the default ones
 </dd>
-<dt><code>--raw</code></dt>
+<dt><code>-h, --help</code></dt>
 <dd>
-Do not resolve <code>%</code> variables in repository URLs.
+Print help (see a summary with ‘-h’)
+</dd>
+<dt><code>--json</code></dt>
+<dd>
+JSON output
 </dd>
 <dt><code>-r, --r-version &lt;r-version&gt;</code></dt>
 <dd>
 R version to list repositories for, instead of the default
 </dd>
+<dt><code>--raw</code></dt>
+<dd>
+Do not resolve <code>%</code> variables in repository URLs.
+</dd>
 <dt><code>--user</code></dt>
 <dd>
 Run in user mode (overrides RIG_MODE and config)
-</dd>
-<dt><code>--admin</code></dt>
-<dd>
-Run in admin mode (overrides RIG_MODE and config)
-</dd>
-<dt><code>-h, --help</code></dt>
-<dd>
-Print help (see a summary with ‘-h’)
 </dd>
 </dl>
 </section>
@@ -626,9 +655,13 @@ package to show
 <section id="options-2" class="level3">
 <h3 class="anchored" data-anchor-id="options-2">Options</h3>
 <dl>
-<dt><code>-v, --version &lt;version&gt;</code></dt>
+<dt><code>--admin</code></dt>
 <dd>
-package version to show (default: latest)
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
 </dd>
 <dt><code>--json</code></dt>
 <dd>
@@ -638,13 +671,9 @@ JSON output
 <dd>
 Run in user mode (overrides RIG_MODE and config)
 </dd>
-<dt><code>--admin</code></dt>
+<dt><code>-v, --version &lt;version&gt;</code></dt>
 <dd>
-Run in admin mode (overrides RIG_MODE and config)
-</dd>
-<dt><code>-h, --help</code></dt>
-<dd>
-Print help (see a summary with ‘-h’)
+package version to show (default: latest)
 </dd>
 </dl>
 </section>
@@ -660,9 +689,21 @@ Print help (see a summary with ‘-h’)
 <section id="options-3" class="level3">
 <h3 class="anchored" data-anchor-id="options-3">Options</h3>
 <dl>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
 <dt><code>--json</code></dt>
 <dd>
 JSON output
+</dd>
+<dt><code>--pkg-type &lt;pkg-type&gt;</code></dt>
+<dd>
+Type of packages to list (e.g.&nbsp;source, binary)
 </dd>
 <dt><code>--platform &lt;platform&gt;</code></dt>
 <dd>
@@ -672,21 +713,9 @@ Platform to use, instead of the current
 <dd>
 R version to use, instead of the default
 </dd>
-<dt><code>--pkg-type &lt;pkg-type&gt;</code></dt>
-<dd>
-Type of packages to list (e.g.&nbsp;source, binary)
-</dd>
 <dt><code>--user</code></dt>
 <dd>
 Run in user mode (overrides RIG_MODE and config)
-</dd>
-<dt><code>--admin</code></dt>
-<dd>
-Run in admin mode (overrides RIG_MODE and config)
-</dd>
-<dt><code>-h, --help</code></dt>
-<dd>
-Print help (see a summary with ‘-h’)
 </dd>
 </dl>
 </section>
@@ -710,14 +739,6 @@ package to show
 <section id="options-4" class="level3">
 <h3 class="anchored" data-anchor-id="options-4">Options</h3>
 <dl>
-<dt><code>--json</code></dt>
-<dd>
-JSON output
-</dd>
-<dt><code>--user</code></dt>
-<dd>
-Run in user mode (overrides RIG_MODE and config)
-</dd>
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
@@ -725,6 +746,14 @@ Run in admin mode (overrides RIG_MODE and config)
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
+</dd>
+<dt><code>--json</code></dt>
+<dd>
+JSON output
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
 </dd>
 </dl>
 </section>
@@ -740,9 +769,21 @@ Print help (see a summary with ‘-h’)
 <section id="options-5" class="level3">
 <h3 class="anchored" data-anchor-id="options-5">Options</h3>
 <dl>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
 <dt><code>-r, --r-version &lt;r-version&gt;</code></dt>
 <dd>
 R version to set up repositories for (default: all)
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
 </dd>
 <dt><code>--with-repos=&lt;with-repos&gt;</code></dt>
 <dd>
@@ -751,18 +792,6 @@ Repositories to enable, in addition to the ones enabled by default. If <code>--w
 <dt><code>--without-repos[=&lt;without-repos&gt;]</code></dt>
 <dd>
 Do not set up package repositories. Alternatively, specify which ones to skip, a comma-separated list. If <code>--with-repos</code> is also specified, then only the repositories in that argument will be enabled.
-</dd>
-<dt><code>--user</code></dt>
-<dd>
-Run in user mode (overrides RIG_MODE and config)
-</dd>
-<dt><code>--admin</code></dt>
-<dd>
-Run in admin mode (overrides RIG_MODE and config)
-</dd>
-<dt><code>-h, --help</code></dt>
-<dd>
-Print help (see a summary with ‘-h’)
 </dd>
 </dl>
 

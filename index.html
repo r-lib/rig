@@ -80,9 +80,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="site_libs/quarto-html/quarto-syntax-highlighting-15634bcf2e68342d4ad2dfa704d543f6.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="site_libs/bootstrap/bootstrap-08068100fd2b9800a972a6828dbb93db.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="site_libs/bootstrap/bootstrap-dark-4fffe477df4ea096b4e20badbf14ec62.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
-<link href="site_libs/bootstrap/bootstrap-08068100fd2b9800a972a6828dbb93db.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-319ba2c345d2f64272d6b514f02aaf6b.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-dark-833063da448a3ebf0c31dd1f7e43f7a9.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<link href="site_libs/bootstrap/bootstrap-319ba2c345d2f64272d6b514f02aaf6b.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -110,6 +110,23 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     "search-label": "Search"
   }
 }</script>
+<script>
+  // Default to the dark theme on first visit when the browser/OS prefers dark.
+  // Quarto chooses the initial theme from this localStorage sentinel; seeding
+  // it here (before Quarto's toggle script runs) makes a first-time visitor
+  // with a dark OS start in dark mode. Once set — here or by the user clicking
+  // the toggle — the choice persists across visits.
+  (function () {
+    try {
+      var KEY = "quarto-color-scheme";
+      if (window.localStorage.getItem(KEY) === null &&
+          window.matchMedia &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches) {
+        window.localStorage.setItem(KEY, "alternate");
+      }
+    } catch (e) {}
+  })();
+</script>
 
 
 </head>
@@ -437,8 +454,20 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="./reference/rtools.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig rtools</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="./reference/run.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig run</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./reference/sysreqs.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig sysreqs</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -496,10 +525,48 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </header>
 
 
-<p><strong>rig</strong> is the R Installation Manager: a command line tool that installs, removes, configures and switches between multiple versions of R on macOS, Windows and Linux. It works without system requirements on any platform, lets you select R versions with symbolic names like <code>release</code>, <code>oldrel</code> or <code>devel</code>, runs multiple R versions side by side via quick links, and sets up user package libraries, <a href="https://pak.r-lib.org">pak</a> and the default CRAN mirror for you. On macOS it also ships a menu bar app for viewing and switching the default R version.</p>
+<div class="hero">
+<div class="columns">
+<div class="column hero-intro" style="width:62%;">
+<p>Run and manage multiple versions of R side by side on <em>macOS</em>, <em>Windows</em> and <em>Linux</em>.</p>
+<p>Rig is a <em>standalone tool</em>, with no system requirements, for <em>system admins</em> and <em>users</em>.</p>
+</div><div class="column hero-gap" style="width:3%;">
+
+</div><div class="column hero-install" style="width:35%;">
+<div class="install-cta">
+<p>Latest version <a href="./news.html" class="install-version"><strong>0.10.0-alpha</strong></a></p>
+<a id="install-cta-button" class="btn btn-primary btn-lg" href="install.html">Install rig</a>
+<p class="install-cta-links">
+  or view install instructions for
+  <a href="install.html#macos">macOS</a>,
+  <a href="install.html#windows">Windows</a> or
+  <a href="install.html#linux">Linux</a>.
+</p>
+<script>
+(function () {
+  function detectOS() {
+    var p = (((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "")).toLowerCase();
+    var ua = (navigator.userAgent || "").toLowerCase();
+    if (p.indexOf("mac") > -1 || ua.indexOf("mac") > -1) return "macOS";
+    if (p.indexOf("win") > -1 || ua.indexOf("win") > -1) return "Windows";
+    if (p.indexOf("linux") > -1 || p.indexOf("x11") > -1 || ua.indexOf("linux") > -1) return "Linux";
+    return null;
+  }
+  var os = detectOS();
+  var btn = document.getElementById("install-cta-button");
+  if (btn && os) {
+    btn.textContent = "Install rig for " + os;
+    btn.setAttribute("href", "install.html#" + os.toLowerCase());
+  }
+})();
+</script>
+</div>
+</div>
+</div>
+</div>
 <section id="quick-start" class="level2">
 <h2 class="anchored" data-anchor-id="quick-start">Quick start</h2>
-<p>Install rig (see <a href="./install.html">Installing rig</a> for all options), then:</p>
+<p>Once rig is installed:</p>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> add release      <span class="co"># install the latest R release</span></span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> list             <span class="co"># list installed R versions</span></span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> default 4.5.1    <span class="co"># set the default R version</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>

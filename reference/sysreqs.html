@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>rig proj – rig</title>
+<title>rig sysreqs – rig</title>
 <style>
 /* Default styles provided by pandoc.
 ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
@@ -281,7 +281,7 @@ ul.task-list li input[type="checkbox"] {
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../reference/proj.html">rig proj</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../reference/sysreqs.html">rig sysreqs</a></li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
       <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
@@ -389,7 +389,7 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/proj.html" class="sidebar-item-text sidebar-link active">
+  <a href="../reference/proj.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig proj</span></a>
   </div>
 </li>
@@ -431,7 +431,7 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/sysreqs.html" class="sidebar-item-text sidebar-link">
+  <a href="../reference/sysreqs.html" class="sidebar-item-text sidebar-link active">
  <span class="menu-text">rig sysreqs</span></a>
   </div>
 </li>
@@ -472,17 +472,19 @@ ul.task-list li input[type="checkbox"] {
    
   <ul>
   <li><a href="#subcommands" id="toc-subcommands" class="nav-link active" data-scroll-target="#subcommands">Subcommands</a></li>
-  <li><a href="#rig-proj-deploy" id="toc-rig-proj-deploy" class="nav-link" data-scroll-target="#rig-proj-deploy"><code>rig proj deploy</code></a>
+  <li><a href="#rig-sysreqs-add" id="toc-rig-sysreqs-add" class="nav-link" data-scroll-target="#rig-sysreqs-add"><code>rig sysreqs add</code></a>
   <ul class="collapse">
   <li><a href="#usage" id="toc-usage" class="nav-link" data-scroll-target="#usage">Usage</a></li>
+  <li><a href="#arguments" id="toc-arguments" class="nav-link" data-scroll-target="#arguments">Arguments</a></li>
   <li><a href="#options" id="toc-options" class="nav-link" data-scroll-target="#options">Options</a></li>
   </ul></li>
-  <li><a href="#rig-proj-deps" id="toc-rig-proj-deps" class="nav-link" data-scroll-target="#rig-proj-deps"><code>rig proj deps</code></a>
+  <li><a href="#rig-sysreqs-info" id="toc-rig-sysreqs-info" class="nav-link" data-scroll-target="#rig-sysreqs-info"><code>rig sysreqs info</code></a>
   <ul class="collapse">
   <li><a href="#usage-1" id="toc-usage-1" class="nav-link" data-scroll-target="#usage-1">Usage</a></li>
+  <li><a href="#arguments-1" id="toc-arguments-1" class="nav-link" data-scroll-target="#arguments-1">Arguments</a></li>
   <li><a href="#options-1" id="toc-options-1" class="nav-link" data-scroll-target="#options-1">Options</a></li>
   </ul></li>
-  <li><a href="#rig-proj-solve" id="toc-rig-proj-solve" class="nav-link" data-scroll-target="#rig-proj-solve"><code>rig proj solve</code></a>
+  <li><a href="#rig-sysreqs-list" id="toc-rig-sysreqs-list" class="nav-link" data-scroll-target="#rig-sysreqs-list"><code>rig sysreqs list</code></a>
   <ul class="collapse">
   <li><a href="#usage-2" id="toc-usage-2" class="nav-link" data-scroll-target="#usage-2">Usage</a></li>
   <li><a href="#options-2" id="toc-options-2" class="nav-link" data-scroll-target="#options-2">Options</a></li>
@@ -494,9 +496,9 @@ ul.task-list li input[type="checkbox"] {
 <main class="content" id="quarto-document-content">
 
 
-<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../reference/proj.html">rig proj</a></li></ol></nav>
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../reference/sysreqs.html">rig sysreqs</a></li></ol></nav>
 <div class="quarto-title">
-<h1 class="title">rig proj</h1>
+<h1 class="title">rig sysreqs</h1>
 </div>
 
 
@@ -514,35 +516,41 @@ ul.task-list li input[type="checkbox"] {
 
 
 <!-- Generated by website/gen-cli-reference.sh. Do not edit by hand. -->
-<p>Manage R projects (experimental).</p>
-<p>A project is a directory with a package manifest, typically a <code>DESCRIPTION</code> file, that declares the R packages the project depends on. <code>rig proj</code> resolves those dependencies against the configured package repositories and can install them into a project library.</p>
-<p><code>rig proj deps</code> shows the direct and recursive dependencies of the project. <code>rig proj solve</code> resolves the full dependency tree to a concrete set of package versions, and can write the result to an <code>renv.lock</code> file. <code>rig proj deploy</code> installs the resolved dependencies into a package library.</p>
-<p>Dependencies are resolved with rig’s built-in solver, so R does not need to be running for <code>rig proj deps</code> and <code>rig proj solve</code>.</p>
-<p><code>rig proj</code> is currently experimental, and might change in future versions. Feedback is appreciated.</p>
+<p><span class="rig-platform">macOS only</span></p>
+<p>Manage system libraries and tools. This currently includes a very restricted set of tools, that are needed for running <code>R CMD check</code>. Run <code>rig sysreqs list</code> for a complete list.</p>
 <section id="subcommands" class="level2">
 <h2 class="anchored" data-anchor-id="subcommands">Subcommands</h2>
 <dl>
-<dt><a href="#rig-proj-deploy"><code>deploy</code></a></dt>
+<dt><a href="#rig-sysreqs-add"><code>add</code></a></dt>
 <dd>
-Deploy project dependencies
+Install system library or tool
 </dd>
-<dt><a href="#rig-proj-deps"><code>deps</code></a></dt>
+<dt><a href="#rig-sysreqs-info"><code>info</code></a></dt>
 <dd>
-Show project dependencies
+Information about a system tool
 </dd>
-<dt><a href="#rig-proj-solve"><code>solve</code></a></dt>
+<dt><a href="#rig-sysreqs-list"><code>list</code></a></dt>
 <dd>
-Solve project dependencies
+List available system libraries and tools
 </dd>
 </dl>
 </section>
-<section id="rig-proj-deploy" class="level2">
-<h2 class="anchored" data-anchor-id="rig-proj-deploy"><code>rig proj deploy</code></h2>
-<p>Install the resolved dependencies of an R project into a package library.</p>
-<p>rig solves the project dependencies and installs them into the library given by <code>--library</code>. Use <code>--r-binary</code> to select which R to build against (default: <code>R</code>) and <code>--max-concurrent</code> to limit the number of simultaneous installations (default: 4).</p>
+<section id="rig-sysreqs-add" class="level2">
+<h2 class="anchored" data-anchor-id="rig-sysreqs-add"><code>rig sysreqs add</code></h2>
+<p>Install a system library or tool that R packages need to build or run (experimental, macOS only).</p>
+<p>Specify one or more tool names; see <code>rig sysreqs list</code> for the available ones. Use <code>--arch</code> to install for a specific architecture; by default the native architecture is used.</p>
 <section id="usage" class="level3">
 <h3 class="anchored" data-anchor-id="usage">Usage</h3>
-<pre class="text"><code>rig proj deploy [OPTIONS] --library &lt;library&gt;</code></pre>
+<pre class="text"><code>rig sysreqs add [OPTIONS] &lt;name&gt;...</code></pre>
+</section>
+<section id="arguments" class="level3">
+<h3 class="anchored" data-anchor-id="arguments">Arguments</h3>
+<dl>
+<dt><code>&lt;name&gt;...</code></dt>
+<dd>
+system tool to install
+</dd>
+</dl>
 </section>
 <section id="options" class="level3">
 <h3 class="anchored" data-anchor-id="options">Options</h3>
@@ -551,21 +559,15 @@ Solve project dependencies
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
+<dt><code>-a, --arch &lt;arch&gt;</code></dt>
+<dd>
+Architecture to install for
+<em>[default: ]</em><br>
+<em>[possible values: arm64, x86_64]</em>
+</dd>
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
-</dd>
-<dt><code>-l, --library &lt;library&gt;</code></dt>
-<dd>
-Library path where packages should be installed
-</dd>
-<dt><code>--max-concurrent &lt;max-concurrent&gt;</code></dt>
-<dd>
-Maximum number of concurrent installations (default: 4)
-</dd>
-<dt><code>--r-binary &lt;r-binary&gt;</code></dt>
-<dd>
-Path to R binary (default: R)
 </dd>
 <dt><code>--user</code></dt>
 <dd>
@@ -574,13 +576,22 @@ Run in user mode (overrides RIG_MODE and config)
 </dl>
 </section>
 </section>
-<section id="rig-proj-deps" class="level2">
-<h2 class="anchored" data-anchor-id="rig-proj-deps"><code>rig proj deps</code></h2>
-<p>Show the dependencies of an R project.</p>
-<p>By default rig reads the project manifest (e.g.&nbsp;<code>DESCRIPTION</code>) in the current directory; use <code>--input</code> to point to a different file. Add <code>--dev</code> to include development dependencies.</p>
+<section id="rig-sysreqs-info" class="level2">
+<h2 class="anchored" data-anchor-id="rig-sysreqs-info"><code>rig sysreqs info</code></h2>
+<p>Show information about a system library or tool (experimental, macOS only).</p>
+<p>Prints details of the named tool, e.g.&nbsp;its version and whether it is installed. Use <code>rig sysreqs list</code> to see the available tool names.</p>
 <section id="usage-1" class="level3">
 <h3 class="anchored" data-anchor-id="usage-1">Usage</h3>
-<pre class="text"><code>rig proj deps [OPTIONS]</code></pre>
+<pre class="text"><code>rig sysreqs info [OPTIONS] &lt;name&gt;</code></pre>
+</section>
+<section id="arguments-1" class="level3">
+<h3 class="anchored" data-anchor-id="arguments-1">Arguments</h3>
+<dl>
+<dt><code>&lt;name&gt;</code></dt>
+<dd>
+system tool to show
+</dd>
+</dl>
 </section>
 <section id="options-1" class="level3">
 <h3 class="anchored" data-anchor-id="options-1">Options</h3>
@@ -589,17 +600,9 @@ Run in user mode (overrides RIG_MODE and config)
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
-<dt><code>--dev</code></dt>
-<dd>
-Include dev (development) dependencies
-</dd>
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
-</dd>
-<dt><code>-i, --input &lt;input&gt;</code></dt>
-<dd>
-Project file to solve (e.g.&nbsp;DESCRIPTION)
 </dd>
 <dt><code>--json</code></dt>
 <dd>
@@ -612,14 +615,13 @@ Run in user mode (overrides RIG_MODE and config)
 </dl>
 </section>
 </section>
-<section id="rig-proj-solve" class="level2">
-<h2 class="anchored" data-anchor-id="rig-proj-solve"><code>rig proj solve</code></h2>
-<p>Resolve the dependencies of an R project to a concrete set of package versions.</p>
-<p>rig reads the project manifest (e.g.&nbsp;<code>DESCRIPTION</code>; override with <code>--input</code>) and uses its built-in solver to find a compatible set of package versions from the configured repositories, without running R.</p>
-<p>Use <code>--r-version</code> to solve for a specific R version, <code>--dev</code> to include development dependencies, and <code>--renv</code> to write the result as an <code>renv.lock</code> file.</p>
+<section id="rig-sysreqs-list" class="level2">
+<h2 class="anchored" data-anchor-id="rig-sysreqs-list"><code>rig sysreqs list</code></h2>
+<p>List the system libraries and tools that rig can install (experimental, macOS only).</p>
+<p>See <code>rig sysreqs info &lt;name&gt;</code> for details about a specific tool, and <code>rig sysreqs add &lt;name&gt;</code> to install one.</p>
 <section id="usage-2" class="level3">
 <h3 class="anchored" data-anchor-id="usage-2">Usage</h3>
-<pre class="text"><code>rig proj solve [OPTIONS]</code></pre>
+<pre class="text"><code>rig sysreqs list [OPTIONS]</code></pre>
 </section>
 <section id="options-2" class="level3">
 <h3 class="anchored" data-anchor-id="options-2">Options</h3>
@@ -628,29 +630,13 @@ Run in user mode (overrides RIG_MODE and config)
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
-<dt><code>--dev</code></dt>
-<dd>
-Include dev (development) dependencies
-</dd>
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
 </dd>
-<dt><code>-i, --input &lt;input&gt;</code></dt>
-<dd>
-Project file to solve (e.g.&nbsp;DESCRIPTION)
-</dd>
 <dt><code>--json</code></dt>
 <dd>
 JSON output
-</dd>
-<dt><code>-r, --r-version &lt;r-version&gt;</code></dt>
-<dd>
-R version to solve dependencies for
-</dd>
-<dt><code>--renv</code></dt>
-<dd>
-Output and renv.lock file
 </dd>
 <dt><code>--user</code></dt>
 <dd>

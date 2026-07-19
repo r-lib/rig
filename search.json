@@ -147,7 +147,7 @@
     "href": "reference/default.html#options",
     "title": "rig default",
     "section": "Options",
-    "text": "Options\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "Options\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig default"
@@ -169,7 +169,7 @@
     "href": "reference/add.html",
     "title": "rig add",
     "section": "",
-    "text": "Download and install an R version, from the official sources. It keeps the already installed R versions, except on macOS in admin mode, where patch versions of the same minor overwrite each other.\nOn macOS and Windows rig uses the R builds at https://cran.r-project.org. On Linux rig uses the Posit R builds from https://github.com/rstudio/r-builds.\nThe desired R version can be specified in various ways:\nIn user mode rig installs R into your home directory and never needs sudo. In admin mode you usually need to run this command with sudo: sudo rig add ..., otherwise rig will need to ask for your password.\nIn admin mode on macOS rig cannot add multiple R versions from the same minor branch. E.g. it is not possible to have R 4.6.0 and R 4.6.1 installed at the same time. Adding one of them will automatically remove the other. In user mode there is no such restriction.\nYou can use rig add to install Rtools:\nwill install all Rtools versions that are needed for the currently installed R versions. You can also request a specific Rtools version, e.g. rig add rtools45.\nIn user mode rig installs R and Rtools into your user profile, without administrator rights. In admin mode you need an administrator account to run this command.",
+    "text": "Download and install an R version, from the official sources. It keeps the already installed R versions, except on macOS in admin mode, where patch versions of the same minor overwrite each other.\nOn macOS and Windows rig uses the R builds at https://cran.r-project.org. On Linux rig uses the Posit R builds from https://github.com/rstudio/r-builds.\nOn Linux, in user mode rig always installs a portable build, selected for your C library (glibc or musl). In admin mode rig installs a distro-specific build by default, but you can install a portable build instead with --platform linux-portable (or a specific portable platform, e.g. --platform linux-manylinux-2.34). If there is no distro-specific build for your platform, rig falls back to a portable build automatically. Admin-mode portable builds are installed into /opt/R/&lt;version&gt;, just like distro-specific builds.\nThe desired R version can be specified in various ways:\nIn user mode rig installs R into your home directory and never needs sudo. In admin mode you usually need to run this command with sudo: sudo rig add ..., otherwise rig will need to ask for your password.\nIn admin mode on macOS rig cannot add multiple R versions from the same minor branch. E.g. it is not possible to have R 4.6.0 and R 4.6.1 installed at the same time. Adding one of them will automatically remove the other. In user mode there is no such restriction.\nYou can use rig add to install Rtools:\nwill install all Rtools versions that are needed for the currently installed R versions. You can also request a specific Rtools version, e.g. rig add rtools45.\nIn user mode rig installs R and Rtools into your user profile, without administrator rights. In admin mode you need an administrator account to run this command.",
     "crumbs": [
       "Reference",
       "rig add"
@@ -202,7 +202,7 @@
     "href": "reference/add.html#options",
     "title": "rig add",
     "section": "Options",
-    "text": "Options\n\n--with-repos=&lt;with-repos&gt;\n\nRepositories to enable, in addition to the ones enabled by default. If --without-repos is also specified (without a value), then only these repositories will be enabled.\n\n--without-repos[=&lt;without-repos&gt;]\n\nDo not set up package repositories. Alternatively, specify which ones to skip, a comma-separated list. If --with-repos is also specified, then only the repositories in that argument will be enabled.\n\n--without-cran-mirror\n\nDo not set the cloud CRAN mirror. Deprecated in favor of --without-repos=cran.\n\n--without-p3m\n\nDo not set up P3M. This is the default on macOS. Deprecated in favor of --without-repos=p3m.\n[alias: --without-rspm]\n\n--without-pak\n\nDo not install pak.\n\n--pak-version &lt;pak-version&gt;\n\npak version to install.\n[default: stable]\n[possible values: stable, rc, devel]\n\n--without-sysreqs\n\nDo not set up system requirements installation.\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n-a, --arch &lt;arch&gt;\n\nSelect architecture: arm64 or x86_64\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "Options\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-a, --arch &lt;arch&gt;\n\nSelect architecture: arm64 or x86_64\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--pak-version &lt;pak-version&gt;\n\npak version to install.\n[default: stable]\n[possible values: stable, rc, devel]\n\n--platform &lt;platform&gt; Linux only\n\nInstall the build for this platform, instead of auto-detecting it. Use linux-portable to install a portable (glibc/musl) build.\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--with-desktop-icon Windows only\n\nInstall a desktop icon.\n\n--with-repos=&lt;with-repos&gt;\n\nRepositories to enable, in addition to the ones enabled by default. If --without-repos is also specified (without a value), then only these repositories will be enabled.\n\n--without-cran-mirror\n\nDo not set the cloud CRAN mirror. Deprecated in favor of --without-repos=cran.\n\n--without-p3m\n\nDo not set up P3M. This is the default on macOS. Deprecated in favor of --without-repos=p3m.\n[alias: --without-rspm]\n\n--without-pak\n\nDo not install pak.\n\n--without-repos[=&lt;without-repos&gt;]\n\nDo not set up package repositories. Alternatively, specify which ones to skip, a comma-separated list. If --with-repos is also specified, then only the repositories in that argument will be enabled.\n\n--without-sysreqs Linux only\n\nDo not set up system requirements installation.\n\n--without-translations Windows only\n\nDo not install translations.",
     "crumbs": [
       "Reference",
       "rig add"
@@ -224,9 +224,64 @@
     "href": "reference/index.html",
     "title": "Reference",
     "section": "",
-    "text": "Commands\n\n\nrig add\n\nInstall a new R version [alias: install]\n\nrig available\n\nList R versions available to install.\n\nrig config\n\nManage rig configuration\n\nrig default\n\nPrint or set default R version [alias: switch]\n\nrig library\n\nManage package libraries [alias: lib] (experimental)\n\nrig list\n\nList installed R versions [alias: ls]\n\nrig proj\n\nManage R projects (experimental)\n\nrig repos\n\nManage package repositories\n\nrig resolve\n\nResolve a symbolic R version\n\nrig rm\n\nRemove R versions [aliases: del, remove, delete]\n\nrig rstudio\n\nStart RStudio with specified R version\n\nrig run\n\nRun R, an R script or an R project\n\nrig system\n\nManage current installations\n\nrig test\n\nRun tests (for rig developers)",
+    "text": "Commands\n\n\nrig add\n\nInstall a new R version [alias: install]\n\nrig available\n\nList R versions available to install.\n\nrig config\n\nManage rig configuration\n\nrig default\n\nPrint or set default R version [alias: switch]\n\nrig library\n\nManage package libraries [alias: lib] (experimental)\n\nrig list\n\nList installed R versions [alias: ls]\n\nrig proj\n\nManage R projects (experimental)\n\nrig repos\n\nManage package repositories\n\nrig resolve\n\nResolve a symbolic R version\n\nrig rm\n\nRemove R versions [aliases: del, remove, delete]\n\nrig rstudio\n\nStart RStudio with specified R version\n\nrig rtools Windows only\n\nManage Rtools installations\n\nrig run\n\nRun R, an R script or an R project\n\nrig sysreqs macOS only\n\nManage R-related system libraries and tools (experimental)\n\nrig system\n\nManage current installations\n\nrig test\n\nRun tests (for rig developers)",
     "crumbs": [
       "Reference"
+    ]
+  },
+  {
+    "objectID": "reference/sysreqs.html",
+    "href": "reference/sysreqs.html",
+    "title": "rig sysreqs",
+    "section": "",
+    "text": "macOS only\nManage system libraries and tools. This currently includes a very restricted set of tools, that are needed for running R CMD check. Run rig sysreqs list for a complete list.",
+    "crumbs": [
+      "Reference",
+      "rig sysreqs"
+    ]
+  },
+  {
+    "objectID": "reference/sysreqs.html#subcommands",
+    "href": "reference/sysreqs.html#subcommands",
+    "title": "rig sysreqs",
+    "section": "Subcommands",
+    "text": "Subcommands\n\nadd\n\nInstall system library or tool\n\ninfo\n\nInformation about a system tool\n\nlist\n\nList available system libraries and tools",
+    "crumbs": [
+      "Reference",
+      "rig sysreqs"
+    ]
+  },
+  {
+    "objectID": "reference/sysreqs.html#rig-sysreqs-add",
+    "href": "reference/sysreqs.html#rig-sysreqs-add",
+    "title": "rig sysreqs",
+    "section": "rig sysreqs add",
+    "text": "rig sysreqs add\nInstall a system library or tool that R packages need to build or run (experimental, macOS only).\nSpecify one or more tool names; see rig sysreqs list for the available ones. Use --arch to install for a specific architecture; by default the native architecture is used.\n\nUsage\nrig sysreqs add [OPTIONS] &lt;name&gt;...\n\n\nArguments\n\n&lt;name&gt;...\n\nsystem tool to install\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-a, --arch &lt;arch&gt;\n\nArchitecture to install for\n[default: ]\n[possible values: arm64, x86_64]\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig sysreqs"
+    ]
+  },
+  {
+    "objectID": "reference/sysreqs.html#rig-sysreqs-info",
+    "href": "reference/sysreqs.html#rig-sysreqs-info",
+    "title": "rig sysreqs",
+    "section": "rig sysreqs info",
+    "text": "rig sysreqs info\nShow information about a system library or tool (experimental, macOS only).\nPrints details of the named tool, e.g. its version and whether it is installed. Use rig sysreqs list to see the available tool names.\n\nUsage\nrig sysreqs info [OPTIONS] &lt;name&gt;\n\n\nArguments\n\n&lt;name&gt;\n\nsystem tool to show\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig sysreqs"
+    ]
+  },
+  {
+    "objectID": "reference/sysreqs.html#rig-sysreqs-list",
+    "href": "reference/sysreqs.html#rig-sysreqs-list",
+    "title": "rig sysreqs",
+    "section": "rig sysreqs list",
+    "text": "rig sysreqs list\nList the system libraries and tools that rig can install (experimental, macOS only).\nSee rig sysreqs info &lt;name&gt; for details about a specific tool, and rig sysreqs add &lt;name&gt; to install one.\n\nUsage\nrig sysreqs list [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig sysreqs"
     ]
   },
   {
@@ -267,7 +322,7 @@
     "href": "reference/run.html#options",
     "title": "rig run",
     "section": "Options",
-    "text": "Options\n\n-r, --r-version &lt;r-version&gt;\n\nR version to use\n\n-t, --app-type &lt;app-type&gt;\n\nExplicitly specify app type to run\n[possible values: api, shiny, quarto-shiny, rmd-shiny, quarto-static, rmd-static, static]\n\n--dry-run\n\nShow the command, but do not run it\n\n--startup\n\nPrint R startup message\n\n--no-startup\n\nDo not print R startup message\n\n--echo\n\nPrint input to R\n\n--no-echo\n\nDo not print input to R\n\n-e, --eval &lt;eval&gt;\n\nR expression to evaluate\n\n-f, --script &lt;script&gt;\n\nR script file to run\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "Options\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-t, --app-type &lt;app-type&gt;\n\nExplicitly specify app type to run\n[possible values: api, shiny, quarto-shiny, rmd-shiny, quarto-static, rmd-static, static]\n\n--dry-run\n\nShow the command, but do not run it\n\n--echo\n\nPrint input to R\n\n-e, --eval &lt;eval&gt;\n\nR expression to evaluate\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--no-echo\n\nDo not print input to R\n\n--no-startup\n\nDo not print R startup message\n\n-r, --r-version &lt;r-version&gt;\n\nR version to use\n\n-f, --script &lt;script&gt;\n\nR script file to run\n\n--startup\n\nPrint R startup message\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig run"
@@ -311,7 +366,7 @@
     "href": "reference/resolve.html#options",
     "title": "rig resolve",
     "section": "Options",
-    "text": "Options\n\n--json\n\nJSON output\n\n--platform &lt;platform&gt;\n\nUse this platform, instead of auto-detecting it.\n\n-a, --arch &lt;arch&gt;\n\nUse this architecture, instead of auto-detecting it.\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "Options\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-a, --arch &lt;arch&gt;\n\nUse this architecture, instead of auto-detecting it.\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--platform &lt;platform&gt;\n\nUse this platform, instead of auto-detecting it.\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig resolve"
@@ -355,7 +410,7 @@
     "href": "reference/library.html#rig-library-add",
     "title": "rig library",
     "section": "rig library add",
-    "text": "rig library add\nAdd a new user package library for the current R version.\nThe new library is created empty. Adding a library does not change the default library; use rig library default to switch to it. No administrator rights are needed.\n\nUsage\nrig library add [OPTIONS] &lt;lib-name&gt;\n\n\nArguments\n\n&lt;lib-name&gt;\n\nname of new library\n\n\n\n\nOptions\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "rig library add\nAdd a new user package library for the current R version.\nThe new library is created empty. Adding a library does not change the default library; use rig library default to switch to it. No administrator rights are needed.\n\nUsage\nrig library add [OPTIONS] &lt;lib-name&gt;\n\n\nArguments\n\n&lt;lib-name&gt;\n\nname of new library\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig library"
@@ -366,7 +421,7 @@
     "href": "reference/library.html#rig-library-default",
     "title": "rig library",
     "section": "rig library default",
-    "text": "rig library default\nShow or set the default package library for the current R version.\nCall without arguments to print the current default library. Call with a library name to make it the default. New R sessions of the current R version will then use that library.\n\nUsage\nrig library default [OPTIONS] [lib-name]\n\n\nArguments\n\n[lib-name]\n\nlibrary name to set as default\n\n\n\n\nOptions\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "rig library default\nShow or set the default package library for the current R version.\nCall without arguments to print the current default library. Call with a library name to make it the default. New R sessions of the current R version will then use that library.\n\nUsage\nrig library default [OPTIONS] [lib-name]\n\n\nArguments\n\n[lib-name]\n\nlibrary name to set as default\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig library"
@@ -377,7 +432,7 @@
     "href": "reference/library.html#rig-library-list",
     "title": "rig library",
     "section": "rig library list",
-    "text": "rig library list\nList the package libraries of the current R version [alias: ls].\nThe default library is marked. See rig library for an overview of user package libraries.\n\nUsage\nrig library list [OPTIONS]\n\n\nOptions\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "rig library list\nList the package libraries of the current R version [alias: ls].\nThe default library is marked. See rig library for an overview of user package libraries.\n\nUsage\nrig library list [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig library"
@@ -388,7 +443,7 @@
     "href": "reference/library.html#rig-library-rm",
     "title": "rig library",
     "section": "rig library rm",
-    "text": "rig library rm\nRemove a user package library of the current R version, including all packages installed in it.\nYou cannot remove the current default library, and you cannot remove the main library. Switch to another library with rig library default first if needed.\n\nUsage\nrig library rm [OPTIONS] &lt;lib-name&gt;\n\n\nArguments\n\n&lt;lib-name&gt;\n\nname of library to remove\n\n\n\n\nOptions\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "rig library rm\nRemove a user package library of the current R version, including all packages installed in it.\nYou cannot remove the current default library, and you cannot remove the main library. Switch to another library with rig library default first if needed.\n\nUsage\nrig library rm [OPTIONS] &lt;lib-name&gt;\n\n\nArguments\n\n&lt;lib-name&gt;\n\nname of library to remove\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig library"
@@ -487,7 +542,7 @@
     "href": "reference/config.html#rig-config-config-file-path",
     "title": "rig config",
     "section": "rig config config-file-path",
-    "text": "rig config config-file-path\nPrint the full path to the rig configuration file.\nThe file might not exist yet; rig creates it when you first set an entry with rig config set.\n\nUsage\nrig config config-file-path [OPTIONS]\n\n\nOptions\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "rig config config-file-path\nPrint the full path to the rig configuration file.\nThe file might not exist yet; rig creates it when you first set an entry with rig config set.\n\nUsage\nrig config config-file-path [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig config"
@@ -498,7 +553,7 @@
     "href": "reference/config.html#rig-config-get",
     "title": "rig config",
     "section": "rig config get",
-    "text": "rig config get\nPrint the value of a rig configuration entry.\nConfiguration keys are listed by rig config list.\n\nUsage\nrig config get [OPTIONS] &lt;key&gt;\n\n\nArguments\n\n&lt;key&gt;\n\nconfig key to get\n\n\n\n\nOptions\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "rig config get\nPrint the value of a rig configuration entry.\nConfiguration keys are listed by rig config list.\n\nUsage\nrig config get [OPTIONS] &lt;key&gt;\n\n\nArguments\n\n&lt;key&gt;\n\nconfig key to get\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig config"
@@ -509,7 +564,7 @@
     "href": "reference/config.html#rig-config-list",
     "title": "rig config",
     "section": "rig config list",
-    "text": "rig config list\nList the names of all rig configuration entries.\nUse rig config get &lt;key&gt; to see the value of an entry, and rig config set &lt;key&gt;=&lt;value&gt; to change it.\n\nUsage\nrig config list [OPTIONS]\n\n\nOptions\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "rig config list\nList the names of all rig configuration entries.\nUse rig config get &lt;key&gt; to see the value of an entry, and rig config set &lt;key&gt;=&lt;value&gt; to change it.\n\nUsage\nrig config list [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig config"
@@ -520,51 +575,18 @@
     "href": "reference/config.html#rig-config-set",
     "title": "rig config",
     "section": "rig config set",
-    "text": "rig config set\nSet a rig configuration entry.\nThe argument is a key=value pair, e.g. rig config set mode=user. The configuration file is created if it does not exist yet. Use rig config list to see the available keys.\n\nUsage\nrig config set [OPTIONS] &lt;keyvalue&gt;\n\n\nArguments\n\n&lt;keyvalue&gt;\n\nkey=value pair to set\n\n\n\n\nOptions\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "rig config set\nSet a rig configuration entry.\nThe argument is a key=value pair, e.g. rig config set mode=user. The configuration file is created if it does not exist yet. Use rig config list to see the available keys.\n\nUsage\nrig config set [OPTIONS] &lt;keyvalue&gt;\n\n\nArguments\n\n&lt;keyvalue&gt;\n\nkey=value pair to set\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig config"
     ]
   },
   {
-    "objectID": "install.html",
-    "href": "install.html",
+    "objectID": "install.html#supported-linux-distributions",
+    "href": "install.html#supported-linux-distributions",
     "title": "Installing rig",
-    "section": "",
-    "text": "You can use one of our installers or our Homebrew tap.\n\n\nDownload the latest release from https://github.com/r-lib/rig/releases and install it the usual way.\n\n\n\nIf you use Homebrew (Intel or Arm version), you can install rig from our tap:\nbrew tap r-lib/rig\nbrew trust r-lib/rig\nbrew install --cask rig\nYou can use x86_64 rig on Arm macs, and it will be able to install Arm builds of R. But you cannot use Arm rig on Intel macs. If you use both brew versions, only install rig with one of them.\nTo update rig you can run\nbrew upgrade --cask rig\n\n\n\nIf you don’t have administrator rights, you can install rig entirely inside your home directory. The easiest way is the install script, which downloads the right build for your Mac, unpacks it into ~/.local, and adds ~/.local/bin to your PATH:\ncurl -LsSf https://r-lib.github.io/rig/install.sh | sh\nThen switch rig to user mode and install R:\nrig system user-mode\nrig add release\nAlternatively, download the rig-macos-&lt;arch&gt;-&lt;version&gt;.tar.gz archive for your architecture (arm64 or x86_64) from https://github.com/r-lib/rig/releases and unpack it into ~/.local yourself:\nmkdir -p ~/.local\ncurl -Ls https://github.com/r-lib/rig/releases/download/latest/rig-macos-arm64-latest.tar.gz |\n  tar xz -C ~/.local\nMake sure ~/.local/bin is on your PATH. The binary in these archives is signed and notarized, so it runs without Gatekeeper warnings.",
-    "crumbs": [
-      "Guide",
-      "Installing rig"
-    ]
-  },
-  {
-    "objectID": "install.html#installing-rig-on-macos",
-    "href": "install.html#installing-rig-on-macos",
-    "title": "Installing rig",
-    "section": "",
-    "text": "You can use one of our installers or our Homebrew tap.\n\n\nDownload the latest release from https://github.com/r-lib/rig/releases and install it the usual way.\n\n\n\nIf you use Homebrew (Intel or Arm version), you can install rig from our tap:\nbrew tap r-lib/rig\nbrew trust r-lib/rig\nbrew install --cask rig\nYou can use x86_64 rig on Arm macs, and it will be able to install Arm builds of R. But you cannot use Arm rig on Intel macs. If you use both brew versions, only install rig with one of them.\nTo update rig you can run\nbrew upgrade --cask rig\n\n\n\nIf you don’t have administrator rights, you can install rig entirely inside your home directory. The easiest way is the install script, which downloads the right build for your Mac, unpacks it into ~/.local, and adds ~/.local/bin to your PATH:\ncurl -LsSf https://r-lib.github.io/rig/install.sh | sh\nThen switch rig to user mode and install R:\nrig system user-mode\nrig add release\nAlternatively, download the rig-macos-&lt;arch&gt;-&lt;version&gt;.tar.gz archive for your architecture (arm64 or x86_64) from https://github.com/r-lib/rig/releases and unpack it into ~/.local yourself:\nmkdir -p ~/.local\ncurl -Ls https://github.com/r-lib/rig/releases/download/latest/rig-macos-arm64-latest.tar.gz |\n  tar xz -C ~/.local\nMake sure ~/.local/bin is on your PATH. The binary in these archives is signed and notarized, so it runs without Gatekeeper warnings.",
-    "crumbs": [
-      "Guide",
-      "Installing rig"
-    ]
-  },
-  {
-    "objectID": "install.html#installing-rig-on-windows",
-    "href": "install.html#installing-rig-on-windows",
-    "title": "Installing rig",
-    "section": "Installing rig on Windows",
-    "text": "Installing rig on Windows\nThere are several possible ways to install rig on Windows: with our installer, scoop, choco or winget.\n\nWindows (installer)\nDownload the latest release from https://github.com/r-lib/rig/releases and install it the usual way.\nrig adds itself to the user’s path, but you might need to restart your terminal after the installation on Windows.\n\n\nWindows (user install, no admin)\nIf you don’t have administrator rights, you can install rig into your user profile with the install script. It downloads the right build, unpacks it into %USERPROFILE%\\.local, and adds %USERPROFILE%\\.local\\bin to your user PATH:\nirm https://r-lib.github.io/rig/install.ps1 | iex\nOpen a new terminal, then switch rig to user mode and install R:\nrig system user-mode\nrig add release\nAlternatively, download the rig-windows-&lt;arch&gt;-&lt;version&gt;.zip archive (x86_64 or arm64) from https://github.com/r-lib/rig/releases and extract it into %USERPROFILE%\\.local, then add %USERPROFILE%\\.local\\bin to your PATH.\n\n\nWindows (Scoop)\nIf you use Scoop, you can install rig from the scoop bucket at cderv/r-bucket:\nscoop bucket add r-bucket https://github.com/cderv/r-bucket.git\nscoop install rig\nTo update run\nscoop update rig\n\n\nWindows (Chocolatey)\nIf you use Chocolatey (e.g. on GitHub Actions) you can install rig with\nchoco install rig\nand upgrade to the latest version with\nchoco upgrade rig\n\n\nWindows (WinGet)\nAn easy way to install rig on Windows 10 and above is to use the built-in WinGet package manager. The name of the package is posit.rig.\nwinget install posit.rig\nNote that updating a WinGet package typically takes some time, so WinGet might not have the latest version of rig.",
-    "crumbs": [
-      "Guide",
-      "Installing rig"
-    ]
-  },
-  {
-    "objectID": "install.html#installing-rig-on-linux",
-    "href": "install.html#installing-rig-on-linux",
-    "title": "Installing rig",
-    "section": "Installing rig on Linux",
-    "text": "Installing rig on Linux\nOn Linux you can install rig from a DEB or RPM package, or from a tarball.\n\nSupported Linux distributions \n\nDebian 12, 13\nUbuntu 20.04, 22.04, 24.04, 26.04\nFedora Linux 42, 43\nOpenSUSE 15.6, 16.0\nSUSE Linux Enterprise 15 SP6\nRed Hat Enterprise Linux 7, 8, 9, 10\nAlmaLinux 8, 9, 10\nRocky Linux 8, 9 10\n\nWe use the R builds from the Posit R-builds project.\n\n\nRetired Linux distributions\n\nThese are not updated any more, no new R builds are added for them, but existing R builds still work.\n\nCentOS 6 (only x86_64, last R version: 4.0.4),\nCentOS 7 (last R version: 4.4.3),\nCentOS 8 (last R version: 4.4.3),\nDebian 9 (last R version: 4.2.1),\nDebian 10 (last R version: 4.4.3),\nFedora 37 (last R version: 4.3.2),\nFedora 38 (last R version: 4.4.2),\nFedora 39 (last R version: 4.4.3),\nFedora 40 (last R version: 4.5.1),\nFedora 41 (last R version: 4.5.3),\nOpenSUSE 42 (only x86_64, last R version: 4.2.1),\nOpenSUSE 15.1 (only x86_64, last R version: 4.1.2),\nOpenSUSE 15.2 (only x86_64, last R version: 4.1.3),\nOpenSUSE 15.3 (last R version: x86_64: 4.4.3, aarch64: 4.3.1),\nOpenSUSE 15.4 (last R version: 4.4.0),\nOpenSUSE 15.5 (last R version: 4.4.3),\nSUSE Linux Enterprise 15 (only x86_64, last R version: 4.1.2),\nSUSE Linux Enterprise 15.1 (only x86_64, last R version: 4.1.2),\nSUSE Linux Enterprise 15.2 (only x86_64, last R version: 4.1.3),\nSUSE Linux Enterprise 15.3 (last R version: x86_64: 4.4.3, aarch64: 4.3.1),\nSUSE Linux Enterprise 15.4 (last R version: 4.4.0),\nSUSE Linux Enterprise 15.5 (last R version: 4.4.3),\nUbuntu 16.04 (only x86_64, last R version: 4.1.2),\nUbuntu 18.04 (last R version: 4.3.1).\n\n\n\n\nUbuntu and Debian (DEB package)\nOn any Ubuntu or Debian distro, you can use our package repository to install rig. First you add our key to your config:\n`which sudo` curl -L https://rig.r-pkg.org/deb/rig.gpg -o /etc/apt/trusted.gpg.d/rig.gpg\nThen add the rig repository:\n`which sudo` sh -c 'echo \"deb http://rig.r-pkg.org/deb rig main\" &gt; /etc/apt/sources.list.d/rig.list'\nIf you already added both the key and the repository, then install the r-rig package (rig is a different package in Debian and Ubuntu):\n`which sudo` apt update\n`which sudo` apt install r-rig\n\n\nRHEL, Fedora, Rocky Linux, Almalinux, etc. (RPM package)\nOn most RPM based distros (except for OpenSUSE and SLES) you can install our RPM package directly:\n`which sudo` yum install -y https://github.com/r-lib/rig/releases/download/latest/r-rig-latest-1.$(arch).rpm\n\n\nOpenSUSE and SLES (RPM package)\nOn OpenSUSE and SLES use zypper instead of yum:\n`which sudo` zypper install -y --allow-unsigned-rpm https://github.com/r-lib/rig/releases/download/latest/r-rig-latest-1.$(arch).rpm\n\n\nAny Linux distribution (tarball)\nDownload the latest release from https://github.com/r-lib/rig/releases and uncompress it to /usr/local\ncurl -Ls https://github.com/r-lib/rig/releases/download/latest/rig-linux-$(arch)-latest.tar.gz |\n  `which sudo` tar xz -C /usr/local",
+    "section": "Supported Linux distributions ",
+    "text": "Supported Linux distributions \n\nDebian 12, 13\nUbuntu 20.04, 22.04, 24.04, 26.04\nFedora Linux 42, 43\nOpenSUSE 15.6, 16.0\nSUSE Linux Enterprise 15 SP6\nRed Hat Enterprise Linux 7, 8, 9, 10\nAlmaLinux 8, 9, 10\nRocky Linux 8, 9 10\n\nWe use the R builds from the Posit R-builds project.\n\n\nRetired Linux distributions\n\nThese are not updated any more, no new R builds are added for them, but existing R builds still work.\n\nCentOS 6 (only x86_64, last R version: 4.0.4),\nCentOS 7 (last R version: 4.4.3),\nCentOS 8 (last R version: 4.4.3),\nDebian 9 (last R version: 4.2.1),\nDebian 10 (last R version: 4.4.3),\nFedora 37 (last R version: 4.3.2),\nFedora 38 (last R version: 4.4.2),\nFedora 39 (last R version: 4.4.3),\nFedora 40 (last R version: 4.5.1),\nFedora 41 (last R version: 4.5.3),\nOpenSUSE 42 (only x86_64, last R version: 4.2.1),\nOpenSUSE 15.1 (only x86_64, last R version: 4.1.2),\nOpenSUSE 15.2 (only x86_64, last R version: 4.1.3),\nOpenSUSE 15.3 (last R version: x86_64: 4.4.3, aarch64: 4.3.1),\nOpenSUSE 15.4 (last R version: 4.4.0),\nOpenSUSE 15.5 (last R version: 4.4.3),\nSUSE Linux Enterprise 15 (only x86_64, last R version: 4.1.2),\nSUSE Linux Enterprise 15.1 (only x86_64, last R version: 4.1.2),\nSUSE Linux Enterprise 15.2 (only x86_64, last R version: 4.1.3),\nSUSE Linux Enterprise 15.3 (last R version: x86_64: 4.4.3, aarch64: 4.3.1),\nSUSE Linux Enterprise 15.4 (last R version: 4.4.0),\nSUSE Linux Enterprise 15.5 (last R version: 4.4.3),\nUbuntu 16.04 (only x86_64, last R version: 4.1.2),\nUbuntu 18.04 (last R version: 4.3.1).",
     "crumbs": [
       "Guide",
       "Installing rig"
@@ -608,7 +630,7 @@
     "href": "docker.html#docker-container-features",
     "title": "Docker containers with rig",
     "section": "Docker container features",
-    "text": "Docker container features\nFor all containers:\n\nrig is pre-installed, so you can easily add or remove R versions.\nhttps://github.com/r-lib/pak is installed for all R versions.\nAutomatic system dependency installation via pak.\nLinux binary packages are automatically installed from the Posit Public Package Manager in x86_64 containers, on Ubuntu, Debian and OpenSUSE.\nAvailable on x86_64 and aarch64.",
+    "text": "Docker container features\nFor all containers:\n\nrig is pre-installed, so you can easily add or remove R versions.\nhttps://github.com/r-lib/pak is installed for all R versions.\nAutomatic system dependency installation via pak.\nLinux binary packages are automatically installed from the Posit Public Package Manager on supported distros, including Ubuntu, Debian and OpenSUSE.\nAvailable on x86_64 and aarch64.",
     "crumbs": [
       "Guide",
       "Docker containers"
@@ -652,7 +674,7 @@
     "href": "reference/repos.html#rig-repos-available",
     "title": "rig repos",
     "section": "rig repos available",
-    "text": "rig repos available\nList the package repositories that rig knows about and can set up.\nThese are the repositories you can enable with --with-repos when running rig add or rig repos setup.\n\nUsage\nrig repos available [OPTIONS]\n\n\nOptions\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "rig repos available\nList the package repositories that rig knows about and can set up.\nThese are the repositories you can enable with --with-repos when running rig add or rig repos setup.\n\nUsage\nrig repos available [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig repos"
@@ -663,7 +685,7 @@
     "href": "reference/repos.html#rig-repos-list",
     "title": "rig repos",
     "section": "rig repos list",
-    "text": "rig repos list\nList the package repositories configured for an R version.\nBy default rig shows the repositories of the default R version; use --r-version to pick another. Add --all to include repositories that are not enabled by default, and --raw to show repository URLs without resolving the % variables in them.\n\nUsage\nrig repos list [OPTIONS]\n\n\nOptions\n\n--json\n\nJSON output\n\n--all\n\nShow all repositories, not just the default ones\n\n--raw\n\nDo not resolve % variables in repository URLs.\n\n-r, --r-version &lt;r-version&gt;\n\nR version to list repositories for, instead of the default\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "rig repos list\nList the package repositories configured for an R version.\nBy default rig shows the repositories of the default R version; use --r-version to pick another. Add --all to include repositories that are not enabled by default, and --raw to show repository URLs without resolving the % variables in them.\n\nUsage\nrig repos list [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n--all\n\nShow all repositories, not just the default ones\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n-r, --r-version &lt;r-version&gt;\n\nR version to list repositories for, instead of the default\n\n--raw\n\nDo not resolve % variables in repository URLs.\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig repos"
@@ -674,7 +696,7 @@
     "href": "reference/repos.html#rig-repos-package-info",
     "title": "rig repos",
     "section": "rig repos package-info",
-    "text": "rig repos package-info\nShow information about a package in the configured repositories.\nBy default the latest available version is shown; use --version to select a specific one.\n\nUsage\nrig repos package-info [OPTIONS] &lt;package&gt;\n\n\nArguments\n\n&lt;package&gt;\n\npackage to show\n\n\n\n\nOptions\n\n-v, --version &lt;version&gt;\n\npackage version to show (default: latest)\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "rig repos package-info\nShow information about a package in the configured repositories.\nBy default the latest available version is shown; use --version to select a specific one.\n\nUsage\nrig repos package-info [OPTIONS] &lt;package&gt;\n\n\nArguments\n\n&lt;package&gt;\n\npackage to show\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n-v, --version &lt;version&gt;\n\npackage version to show (default: latest)",
     "crumbs": [
       "Reference",
       "rig repos"
@@ -685,7 +707,7 @@
     "href": "reference/repos.html#rig-repos-package-list",
     "title": "rig repos",
     "section": "rig repos package-list",
-    "text": "rig repos package-list\nList the packages available from the configured package repositories.\nBy default rig uses the default R version and the current platform; override these with --r-version, --platform and --pkg-type (e.g. source or binary).\n\nUsage\nrig repos package-list [OPTIONS]\n\n\nOptions\n\n--json\n\nJSON output\n\n--platform &lt;platform&gt;\n\nPlatform to use, instead of the current\n\n--r-version &lt;r-version&gt;\n\nR version to use, instead of the default\n\n--pkg-type &lt;pkg-type&gt;\n\nType of packages to list (e.g. source, binary)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "rig repos package-list\nList the packages available from the configured package repositories.\nBy default rig uses the default R version and the current platform; override these with --r-version, --platform and --pkg-type (e.g. source or binary).\n\nUsage\nrig repos package-list [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--pkg-type &lt;pkg-type&gt;\n\nType of packages to list (e.g. source, binary)\n\n--platform &lt;platform&gt;\n\nPlatform to use, instead of the current\n\n--r-version &lt;r-version&gt;\n\nR version to use, instead of the default\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig repos"
@@ -696,7 +718,7 @@
     "href": "reference/repos.html#rig-repos-package-versions",
     "title": "rig repos",
     "section": "rig repos package-versions",
-    "text": "rig repos package-versions\nList all versions of a package available from the configured repositories.\n\nUsage\nrig repos package-versions [OPTIONS] &lt;package&gt;\n\n\nArguments\n\n&lt;package&gt;\n\npackage to show\n\n\n\n\nOptions\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "rig repos package-versions\nList all versions of a package available from the configured repositories.\n\nUsage\nrig repos package-versions [OPTIONS] &lt;package&gt;\n\n\nArguments\n\n&lt;package&gt;\n\npackage to show\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig repos"
@@ -707,7 +729,7 @@
     "href": "reference/repos.html#rig-repos-setup",
     "title": "rig repos",
     "section": "rig repos setup",
-    "text": "rig repos setup\nSet up the package repositories for installed R versions.\nBy default rig configures the repositories for all installed R versions; use --r-version to restrict it to one. Use --with-repos and --without-repos to control which repositories are enabled, the same way as for rig add.\n\nUsage\nrig repos setup [OPTIONS]\n\n\nOptions\n\n-r, --r-version &lt;r-version&gt;\n\nR version to set up repositories for (default: all)\n\n--with-repos=&lt;with-repos&gt;\n\nRepositories to enable, in addition to the ones enabled by default. If --without-repos is also specified (without a value), then only these repositories will be enabled.\n\n--without-repos[=&lt;without-repos&gt;]\n\nDo not set up package repositories. Alternatively, specify which ones to skip, a comma-separated list. If --with-repos is also specified, then only the repositories in that argument will be enabled.\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "rig repos setup\nSet up the package repositories for installed R versions.\nBy default rig configures the repositories for all installed R versions; use --r-version to restrict it to one. Use --with-repos and --without-repos to control which repositories are enabled, the same way as for rig add.\n\nUsage\nrig repos setup [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n-r, --r-version &lt;r-version&gt;\n\nR version to set up repositories for (default: all)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--with-repos=&lt;with-repos&gt;\n\nRepositories to enable, in addition to the ones enabled by default. If --without-repos is also specified (without a value), then only these repositories will be enabled.\n\n--without-repos[=&lt;without-repos&gt;]\n\nDo not set up package repositories. Alternatively, specify which ones to skip, a comma-separated list. If --with-repos is also specified, then only the repositories in that argument will be enabled.",
     "crumbs": [
       "Reference",
       "rig repos"
@@ -729,7 +751,7 @@
     "href": "reference/system.html#subcommands",
     "title": "rig system",
     "section": "Subcommands",
-    "text": "Subcommands\n\nadd-pak\n\nInstall or update pak for an R version\n\ndetect-platform\n\nDetect operating system version and distribution.\n\nmake-links\n\nCreate R-* quick links\n\nsetup-user-lib\n\nSet up automatic user package libraries [alias: create-lib]\n\nupdate-certs\n\nDownload the CA certificate bundle and configure R to use it\n\nuser-mode\n\nSwitch to user mode and clean up admin-mode installations",
+    "text": "Subcommands\n\nadd-pak\n\nInstall or update pak for an R version\n\nallow-core-dumps macOS only\n\nAllow creating core dumps when R crashes\n\nallow-debugger macOS only\n\nAllow debugging R with lldb and gdb\n\nallow-debugger-rstudio macOS only\n\nAllow debugging RStudio with lldb and gdb\n\nclean-registry Windows only\n\nClean stale R related entries in the registry\n\ndetect-platform\n\nDetect operating system version and distribution.\n\nfix-permissions macOS only\n\nRestrict system library permissions to admin\n\nfix-r-alias Windows only\n\nMake the ‘R’ command start R in PowerShell\n\nforget macOS only\n\nMake system forget about R installations\n\nmake-links\n\nCreate R-* quick links\n\nmake-orthogonal macOS only\n\nMake installed versions orthogonal\n\nno-openmp macOS only\n\nRemove OpenMP (-fopenmp) option for Apple compilers\n\nsetup-user-lib\n\nSet up automatic user package libraries [alias: create-lib]\n\nupdate-certs Linux only\n\nDownload the CA certificate bundle and configure R to use it\n\nupdate-rtools40 Windows only\n\nUpdate Rtools40 MSYS2 packages\n\nuser-mode\n\nSwitch to user mode and clean up admin-mode installations",
     "crumbs": [
       "Reference",
       "rig system"
@@ -740,7 +762,51 @@
     "href": "reference/system.html#rig-system-add-pak",
     "title": "rig system",
     "section": "rig system add-pak",
-    "text": "rig system add-pak\nInstall/update pak for one or more R versions.\n\nIf --all is specified, then it installs pak for all current R installations.\nIf one or more R versions are specified, then it installs pak for those.\nIf no R versions are specified, then it installs pak for the default R installation, if there is one (see rig default).\n\n\nUsage\nrig system add-pak [OPTIONS] [version]...\n\n\nArguments\n\n[version]...\n\nR versions to install/update pak for\n\n\n\n\nOptions\n\n--devel\n\nInstall the development version of pak (deprecated)\n\n--pak-version &lt;pak-version&gt;\n\npak version to install.\n[default: stable]\n[possible values: stable, rc, devel]\n\n--all\n\nInstall pak for all R versions\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "rig system add-pak\nInstall/update pak for one or more R versions.\n\nIf --all is specified, then it installs pak for all current R installations.\nIf one or more R versions are specified, then it installs pak for those.\nIf no R versions are specified, then it installs pak for the default R installation, if there is one (see rig default).\n\n\nUsage\nrig system add-pak [OPTIONS] [version]...\n\n\nArguments\n\n[version]...\n\nR versions to install/update pak for\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n--all\n\nInstall pak for all R versions\n\n--devel\n\nInstall the development version of pak (deprecated)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--pak-version &lt;pak-version&gt;\n\npak version to install.\n[default: stable]\n[possible values: stable, rc, devel]\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig system"
+    ]
+  },
+  {
+    "objectID": "reference/system.html#rig-system-allow-core-dumps-macos-only",
+    "href": "reference/system.html#rig-system-allow-core-dumps-macos-only",
+    "title": "rig system",
+    "section": "rig system allow-core-dumps macOS only",
+    "text": "rig system allow-core-dumps macOS only\nUpdate the entitlements of the R process to allow core dumps on macOS. This command is similar to rig system allow-debugger but it also makes sure that the /cores directory of core dumps is writeable by the current user. Don’t forget to call ulimit -c unlimited from the same shell before starting R.\nThis command does nothing on Windows and Linux and in user mode.\nIn admin mode this command probably needs sudo: sudo rig system allow-core-dumps, otherwise rig will ask for your password.\n\nUsage\nrig system allow-core-dumps [OPTIONS] [version]...\n\n\nArguments\n\n[version]...\n\nR versions to update (default is the default R version)\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n--all\n\nUpdate all R versions\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig system"
+    ]
+  },
+  {
+    "objectID": "reference/system.html#rig-system-allow-debugger-macos-only",
+    "href": "reference/system.html#rig-system-allow-debugger-macos-only",
+    "title": "rig system",
+    "section": "rig system allow-debugger macOS only",
+    "text": "rig system allow-debugger macOS only\nUpdate the entitlements of the R binary to allow debuggers on macOS. It adds the get-task-allow entitlement to the R binary. This is only needed for R installers 3.6 and later, previous versions are not signed. Call R -d lldb to start lldb on R. (Or R-x.y -d lldb if you want a non-default version.)\nSee also rig system allow-debugger-rstudio, which does the same for R running in RStudio.\nThis command does nothing on Windows and Linux and in user mode.\nIn admin mode this command probably needs sudo: sudo rig system allow-debugger, otherwise rig will ask for your password.\n\nUsage\nrig system allow-debugger [OPTIONS] [version]...\n\n\nArguments\n\n[version]...\n\nR versions to update (default is the default R version)\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n--all\n\nUpdate all R versions\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig system"
+    ]
+  },
+  {
+    "objectID": "reference/system.html#rig-system-allow-debugger-rstudio-macos-only",
+    "href": "reference/system.html#rig-system-allow-debugger-rstudio-macos-only",
+    "title": "rig system",
+    "section": "rig system allow-debugger-rstudio macOS only",
+    "text": "rig system allow-debugger-rstudio macOS only\nUpdate the entitlements of RStudio R process to allow debuggers on macOS. It adds the get-task-allow entitlement to the rsession (and rsession-arm64 on arm64 hardware) binary.\nSee also rig system allow-debugger, which does the same for R running outside of RStudio.\nThis command does nothing on Windows and Linux.\nThis command probably needs sudo: sudo rig system allow-debugger-rstudio, otherwise rig will ask for your password.\n\nUsage\nrig system allow-debugger-rstudio [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig system"
+    ]
+  },
+  {
+    "objectID": "reference/system.html#rig-system-clean-registry-windows-only",
+    "href": "reference/system.html#rig-system-clean-registry-windows-only",
+    "title": "rig system",
+    "section": "rig system clean-registry Windows only",
+    "text": "rig system clean-registry Windows only\nRemove R and Rtools entries from the Windows registry, if the corresponding R or Rtools versions are not installed any more.\nThis command does nothing on macOS and Linux.\n\nUsage\nrig system clean-registry [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig system"
@@ -751,7 +817,40 @@
     "href": "reference/system.html#rig-system-detect-platform",
     "title": "rig system",
     "section": "rig system detect-platform",
-    "text": "rig system detect-platform\nDetect and print the operating system version and distribution.\nrig uses this information to choose the right R builds and package repositories. Use --json for machine-readable output.\n\nUsage\nrig system detect-platform [OPTIONS]\n\n\nOptions\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "rig system detect-platform\nDetect and print the operating system version and distribution.\nrig uses this information to choose the right R builds and package repositories. Use --json for machine-readable output.\n\nUsage\nrig system detect-platform [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig system"
+    ]
+  },
+  {
+    "objectID": "reference/system.html#rig-system-fix-permissions-macos-only",
+    "href": "reference/system.html#rig-system-fix-permissions-macos-only",
+    "title": "rig system",
+    "section": "rig system fix-permissions macOS only",
+    "text": "rig system fix-permissions macOS only\nUpdate the permissions of the current R versions on macOS, so only the administrator can install R packages into the system library. Together with rig system create-lib this facilitates keeping additional packages in a user library, instead of the system library.\nThis command does nothing on Windows and Linux and in user mode.\nrig add runs rig system fix-permissions, so if you only use rig to install R, then you do not need to run it manually.\nIn admin mode this command probably needs sudo: sudo rig system fix-permissions, otherwise rig will ask for your password.\n\nUsage\nrig system fix-permissions [OPTIONS] [version]...\n\n\nArguments\n\n[version]...\n\nR versions to update (default: all)\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig system"
+    ]
+  },
+  {
+    "objectID": "reference/system.html#rig-system-fix-r-alias-windows-only",
+    "href": "reference/system.html#rig-system-fix-r-alias-windows-only",
+    "title": "rig system",
+    "section": "rig system fix-r-alias Windows only",
+    "text": "rig system fix-r-alias Windows only\nMake the ‘R’ command start R in PowerShell.\nPowerShell ships a built-in ‘r’ alias for ‘Invoke-History’, and because aliases take precedence over external commands, typing ‘R’ reruns the previous command instead of starting R. This command removes that alias in your PowerShell profile so that ‘R’ starts R via rig’s quick link.\nIt edits the ‘CurrentUserAllHosts’ profile of every PowerShell it finds (both ‘pwsh’ and ‘powershell’), in an idempotent, clearly marked block. Start a new PowerShell session for the change to take effect.\nUse the ‘–undo’ flag to remove the block rig added, leaving the rest of the PowerShell profile(s) untouched.\nThis command does nothing on macOS and Linux.\n\nUsage\nrig system fix-r-alias [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--undo\n\nRemove the block rig added to the PowerShell profile(s).\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig system"
+    ]
+  },
+  {
+    "objectID": "reference/system.html#rig-system-forget-macos-only",
+    "href": "reference/system.html#rig-system-forget-macos-only",
+    "title": "rig system",
+    "section": "rig system forget macOS only",
+    "text": "rig system forget macOS only\nTell macOS to forget about the currently installed R versions. This is needed to have multiple R installations at the same time.\nThis command does nothing on Windows and Linux and in user mode.\nrig add runs rig system forget before and after the installation, so if you only use rig to install R, then you don’t need to run this command manually.\nIn admin mode this command probably needs sudo: sudo rig system forget, otherwise rig will ask for your password.\n\nUsage\nrig system forget [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig system"
@@ -762,7 +861,29 @@
     "href": "reference/system.html#rig-system-make-links",
     "title": "rig system",
     "section": "rig system make-links",
-    "text": "rig system make-links\nCreate quick links in the rig binary directory (~/.local/bin in user mode) for the current R installations. These let you directly run a specific R version. E.g. R-4.6.0 will start R 4.6.0. It also creates the R and Rscript links if they are missing.\nrig add runs rig system make-links, so if you only use rig to install R, then you do not need to run it manually.\nIn user mode no administrator rights are needed. In admin mode you need an administrator account to run this command or use sudo on Unix, otherwise rig will ask for your password.\n\nUsage\nrig system make-links [OPTIONS]\n\n\nOptions\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "rig system make-links\nCreate quick links in the rig binary directory (~/.local/bin in user mode) for the current R installations. These let you directly run a specific R version. E.g. R-4.6.0 will start R 4.6.0. It also creates the R and Rscript links if they are missing.\nrig add runs rig system make-links, so if you only use rig to install R, then you do not need to run it manually.\nIn user mode no administrator rights are needed. In admin mode you need an administrator account to run this command or use sudo on Unix, otherwise rig will ask for your password.\n\nUsage\nrig system make-links [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig system"
+    ]
+  },
+  {
+    "objectID": "reference/system.html#rig-system-make-orthogonal-macos-only",
+    "href": "reference/system.html#rig-system-make-orthogonal-macos-only",
+    "title": "rig system",
+    "section": "rig system make-orthogonal macOS only",
+    "text": "rig system make-orthogonal macOS only\nMake the current R installations orthogonal on macOS. This allows running multiple R versions at the same time.\nThis command does nothing on Windows and Linux, where R installations are automatically orthogonal. It also does nothing in user mode, as user mode installations are always orthogonal.\nrig add runs rig system make-orthogonal automatically, you do not need to run it manually.\nIn admin mode this command probably needs sudo: sudo rig system make-orthogonal, otherwise rig will ask for your password.\n\nUsage\nrig system make-orthogonal [OPTIONS] [version]...\n\n\nArguments\n\n[version]...\n\nR versions to update (default: all)\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig system"
+    ]
+  },
+  {
+    "objectID": "reference/system.html#rig-system-no-openmp-macos-only",
+    "href": "reference/system.html#rig-system-no-openmp-macos-only",
+    "title": "rig system",
+    "section": "rig system no-openmp macOS only",
+    "text": "rig system no-openmp macOS only\nRemove -fopenmp flags from the R configuration, to make R work with the Apple compilers, instead of CRAN’s custom compilers. This is only needed for R 3.6.x and before.\nrig add runs rig system no-openmp after the installation, so if only use rig to install R, then you don’t need to run this command manually.\nThis command does nothing on Windows and Linux and in user mode.\nIn admin mode this command probably needs sudo: sudo rig system no-openmp, otherwise rig will ask for your password.\n\nUsage\nrig system no-openmp [OPTIONS] [version]...\n\n\nArguments\n\n[version]...\n\nR versions to update (default: all)\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig system"
@@ -773,18 +894,29 @@
     "href": "reference/system.html#rig-system-setup-user-lib",
     "title": "rig system",
     "section": "rig system setup-user-lib",
-    "text": "rig system setup-user-lib\nSet up R to create user package libraries when started, by default for installed R versions.\nrig add runs rig system create-lib, so if you only use rig to install R, then you do not need to run it manually.\n\nUsage\nrig system setup-user-lib [OPTIONS] [version]...\n\n\nArguments\n\n[version]...\n\nR versions (default: all)\n\n\n\n\nOptions\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "rig system setup-user-lib\nSet up R to create user package libraries when started, by default for installed R versions.\nrig add runs rig system create-lib, so if you only use rig to install R, then you do not need to run it manually.\n\nUsage\nrig system setup-user-lib [OPTIONS] [version]...\n\n\nArguments\n\n[version]...\n\nR versions (default: all)\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig system"
     ]
   },
   {
-    "objectID": "reference/system.html#rig-system-update-certs",
-    "href": "reference/system.html#rig-system-update-certs",
+    "objectID": "reference/system.html#rig-system-update-certs-linux-only",
+    "href": "reference/system.html#rig-system-update-certs-linux-only",
     "title": "rig system",
-    "section": "rig system update-certs",
-    "text": "rig system update-certs\nDownload the CA certificate bundle and configure R to use it (Linux only).\nThis helps R make HTTPS connections on systems where the default certificate store is missing or out of date.\n\nUsage\nrig system update-certs [OPTIONS]\n\n\nOptions\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "section": "rig system update-certs Linux only",
+    "text": "rig system update-certs Linux only\nDownload the CA certificate bundle and configure R to use it (Linux only).\nThis helps R make HTTPS connections on systems where the default certificate store is missing or out of date.\n\nUsage\nrig system update-certs [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig system"
+    ]
+  },
+  {
+    "objectID": "reference/system.html#rig-system-update-rtools40-windows-only",
+    "href": "reference/system.html#rig-system-update-rtools40-windows-only",
+    "title": "rig system",
+    "section": "rig system update-rtools40 Windows only",
+    "text": "rig system update-rtools40 Windows only\nUpdate Rtools40 compilers and libraries to the latest builds by updating the MSYS2 packages in Rtools40 on Windows.\nThis command does nothing on macOS and Linux.\nIn admin mode this command needs an administrator account.\n\nUsage\nrig system update-rtools40 [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig system"
@@ -795,7 +927,7 @@
     "href": "reference/system.html#rig-system-user-mode",
     "title": "rig system",
     "section": "rig system user-mode",
-    "text": "rig system user-mode\nSwitch rig to user mode and clean up the machine after admin mode.\nIn user mode rig installs R into your home directory (~/.local/share/rig/r or %APPDATA%\\rig\\data\\r on Windows), and quick links into ~/.local/bin, so that rig never needs sudo. This command migrates an existing admin-mode setup to user mode:\n\nSets the rig mode configuration to user.\nReinstalls the admin-mode R versions in user mode, and restores the previous default version and version aliases. R versions that are already installed in user mode are not reinstalled. Use --no-reinstall to skip this step entirely and only clean up.\nRemoves the system-wide admin-mode R installations.\nRemoves the system-wide R-* quick links and the R/Rscript links.\n\nSteps 3 and 4 remove files outside your home directory, so this command needs an administrator account or sudo on Unix, otherwise it will ask for your password.\nUse --keep-install to leave the admin-mode R installations in in place (skipping step 3), and --keep-links to leave the system-wide links in place (skipping step 4). With both, nothing outside your home directory is touched and no administrator account or sudo is needed.\n\nUsage\nrig system user-mode [OPTIONS]\n\n\nOptions\n\n--no-reinstall\n\nDo not reinstall admin-mode R versions in user mode.\n\n--keep-install\n\nKeep the admin-mode R installations, do not remove them.\n\n--keep-links\n\nKeep the admin-mode quick links, do not remove them.\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "rig system user-mode\nSwitch rig to user mode and clean up the machine after admin mode.\nIn user mode rig installs R into your home directory (~/.local/share/rig/r or %APPDATA%\\rig\\data\\r on Windows), and quick links into ~/.local/bin, so that rig never needs sudo. This command migrates an existing admin-mode setup to user mode:\n\nSets the rig mode configuration to user.\nReinstalls the admin-mode R versions in user mode, and restores the previous default version and version aliases. R versions that are already installed in user mode are not reinstalled. Use --no-reinstall to skip this step entirely and only clean up.\nRemoves the system-wide admin-mode R installations.\nRemoves the system-wide R-* quick links and the R/Rscript links.\n\nSteps 3 and 4 remove files outside your home directory, so this command needs an administrator account or sudo on Unix, otherwise it will ask for your password.\nUse --keep-install to leave the admin-mode R installations in in place (skipping step 3), and --keep-links to leave the system-wide links in place (skipping step 4). With both, nothing outside your home directory is touched and no administrator account or sudo is needed.\n\nUsage\nrig system user-mode [OPTIONS]\n\n\nOptions\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--keep-install\n\nKeep the admin-mode R installations, do not remove them.\n\n--keep-links\n\nKeep the admin-mode quick links, do not remove them.\n\n--no-reinstall\n\nDo not reinstall admin-mode R versions in user mode.",
     "crumbs": [
       "Reference",
       "rig system"
@@ -828,7 +960,7 @@
     "href": "reference/available.html#options",
     "title": "rig available",
     "section": "Options",
-    "text": "Options\n\n--json\n\nJSON output\n\n--all\n\nList all available versions.\n\n--platform &lt;platform&gt;\n\nUse this platform, instead of auto-detecting it.\n\n--list-distros\n\nList supported Linux distributions instead of R versions.\n\n--list-rtools-versions\n\nList available Rtools versions instead of R versions.\n\n-a, --arch &lt;arch&gt;\n\nUse this architecture, instead of auto-detecting it.\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "Options\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n--all\n\nList all available versions.\n\n-a, --arch &lt;arch&gt;\n\nUse this architecture, instead of auto-detecting it.\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--list-distros\n\nList supported Linux distributions instead of R versions.\n\n--list-rtools-versions\n\nList available Rtools versions instead of R versions.\n\n--platform &lt;platform&gt;\n\nUse this platform, instead of auto-detecting it.\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig available"
@@ -872,10 +1004,65 @@
     "href": "reference/rm.html#options",
     "title": "rig rm",
     "section": "Options",
-    "text": "Options\n\n--all\n\nremove all versions (TODO)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "Options\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n--all\n\nremove all versions (TODO)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig rm"
+    ]
+  },
+  {
+    "objectID": "reference/rtools.html",
+    "href": "reference/rtools.html",
+    "title": "rig rtools",
+    "section": "",
+    "text": "Windows only\nManage Rtools installations (Windows only).\nRtools is the collection of build tools (compilers, make, etc.) needed to build R packages from source on Windows. Each R version needs a matching Rtools version.\nrig rtools list lists the installed Rtools versions. rig rtools add installs Rtools, by default every version needed by the currently installed R versions. rig rtools rm removes Rtools versions.\nOn non-Windows platforms this command does nothing and is hidden.",
+    "crumbs": [
+      "Reference",
+      "rig rtools"
+    ]
+  },
+  {
+    "objectID": "reference/rtools.html#subcommands",
+    "href": "reference/rtools.html#subcommands",
+    "title": "rig rtools",
+    "section": "Subcommands",
+    "text": "Subcommands\n\nadd\n\nInstall new Rtools version [alias: install]\n\nlist\n\nList installed Rtools versions [alias: ls]\n\nrm\n\nRemove rtools versions [aliases: del, remove, delete]",
+    "crumbs": [
+      "Reference",
+      "rig rtools"
+    ]
+  },
+  {
+    "objectID": "reference/rtools.html#rig-rtools-add",
+    "href": "reference/rtools.html#rig-rtools-add",
+    "title": "rig rtools",
+    "section": "rig rtools add",
+    "text": "rig rtools add\nInstall new Rtools versions on Windows.\nYou can specify the new version(s) by their name, optionally with an ‘rtools’ prefix, e.g. ‘43’ or ‘rtools43’.\nIf version is ‘all’ (the default), then all Rtools versions that are required for the currently installed R versions will be installed.\nIn user mode (RIG_MODE=user) Rtools is installed per-user, without administrator rights, into %APPDATA%\\rig\\data\\rtools (override with the RIG_RTOOLS_INSTALL_DIR environment variable or the rtools-install-dir config setting). rig points each R version at it by setting RTOOLS&lt;ver&gt;_HOME in that R version’s etc\\Renviron.site.\nIn admin mode this command needs an administrator account.\n\nUsage\nrig rtools add [OPTIONS] [version]\n\n\nArguments\n\n[version]\n\nRtools version to add, e.g. ‘43’\n[default: all]\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-a, --arch &lt;arch&gt;\n\nArchitecture to install Rtools for (default: native arch).\n[possible values: x86_64, aarch64, arm64]\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n\n\n\nExamples\nrig rtools add 43\nrig rtools add all",
+    "crumbs": [
+      "Reference",
+      "rig rtools"
+    ]
+  },
+  {
+    "objectID": "reference/rtools.html#rig-rtools-list",
+    "href": "reference/rtools.html#rig-rtools-list",
+    "title": "rig rtools",
+    "section": "rig rtools list",
+    "text": "rig rtools list\nList installed Rtools versions on Windows.\nIt only lists versions that are added to the Windows Registry.\nUse the --json flag for JSON output.\n\nUsage\nrig rtools list [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig rtools"
+    ]
+  },
+  {
+    "objectID": "reference/rtools.html#rig-rtools-rm",
+    "href": "reference/rtools.html#rig-rtools-rm",
+    "title": "rig rtools",
+    "section": "rig rtools rm",
+    "text": "rig rtools rm\nRemove Rtools versions on Windows.\nYou can specify the version(s) to remove by their name, optionally with an ‘rtools’ prefix, e.g. ‘43’ or ‘rtools43’.\nIf no version is specified, then it does nothing.\nIn admin mode this command needs an administrator account.\n\nUsage\nrig rtools rm [OPTIONS] [version]...\n\n\nArguments\n\n[version]...\n\nversions to remove\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-a, --arch &lt;arch&gt;\n\nArchitecture of Rtools to remove (default: native arch).\n[possible values: x86_64, aarch64, arm64]\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n\n\n\nExamples\nrig rtools rm 43",
+    "crumbs": [
+      "Reference",
+      "rig rtools"
     ]
   },
   {
@@ -905,7 +1092,7 @@
     "href": "reference/proj.html#rig-proj-deploy",
     "title": "rig proj",
     "section": "rig proj deploy",
-    "text": "rig proj deploy\nInstall the resolved dependencies of an R project into a package library.\nrig solves the project dependencies and installs them into the library given by --library. Use --r-binary to select which R to build against (default: R) and --max-concurrent to limit the number of simultaneous installations (default: 4).\n\nUsage\nrig proj deploy [OPTIONS] --library &lt;library&gt;\n\n\nOptions\n\n-l, --library &lt;library&gt;\n\nLibrary path where packages should be installed\n\n--r-binary &lt;r-binary&gt;\n\nPath to R binary (default: R)\n\n--max-concurrent &lt;max-concurrent&gt;\n\nMaximum number of concurrent installations (default: 4)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "rig proj deploy\nInstall the resolved dependencies of an R project into a package library.\nrig solves the project dependencies and installs them into the library given by --library. Use --r-binary to select which R to build against (default: R) and --max-concurrent to limit the number of simultaneous installations (default: 4).\n\nUsage\nrig proj deploy [OPTIONS] --library &lt;library&gt;\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n-l, --library &lt;library&gt;\n\nLibrary path where packages should be installed\n\n--max-concurrent &lt;max-concurrent&gt;\n\nMaximum number of concurrent installations (default: 4)\n\n--r-binary &lt;r-binary&gt;\n\nPath to R binary (default: R)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig proj"
@@ -916,7 +1103,7 @@
     "href": "reference/proj.html#rig-proj-deps",
     "title": "rig proj",
     "section": "rig proj deps",
-    "text": "rig proj deps\nShow the dependencies of an R project.\nBy default rig reads the project manifest (e.g. DESCRIPTION) in the current directory; use --input to point to a different file. Add --dev to include development dependencies.\n\nUsage\nrig proj deps [OPTIONS]\n\n\nOptions\n\n-i, --input &lt;input&gt;\n\nProject file to solve (e.g. DESCRIPTION)\n\n--json\n\nJSON output\n\n--dev\n\nInclude dev (development) dependencies\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "rig proj deps\nShow the dependencies of an R project.\nBy default rig reads the project manifest (e.g. DESCRIPTION) in the current directory; use --input to point to a different file. Add --dev to include development dependencies.\n\nUsage\nrig proj deps [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n--dev\n\nInclude dev (development) dependencies\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n-i, --input &lt;input&gt;\n\nProject file to solve (e.g. DESCRIPTION)\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig proj"
@@ -927,7 +1114,7 @@
     "href": "reference/proj.html#rig-proj-solve",
     "title": "rig proj",
     "section": "rig proj solve",
-    "text": "rig proj solve\nResolve the dependencies of an R project to a concrete set of package versions.\nrig reads the project manifest (e.g. DESCRIPTION; override with --input) and uses its built-in solver to find a compatible set of package versions from the configured repositories, without running R.\nUse --r-version to solve for a specific R version, --dev to include development dependencies, and --renv to write the result as an renv.lock file.\n\nUsage\nrig proj solve [OPTIONS]\n\n\nOptions\n\n-i, --input &lt;input&gt;\n\nProject file to solve (e.g. DESCRIPTION)\n\n--renv\n\nOutput and renv.lock file\n\n--json\n\nJSON output\n\n-r, --r-version &lt;r-version&gt;\n\nR version to solve dependencies for\n\n--dev\n\nInclude dev (development) dependencies\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "rig proj solve\nResolve the dependencies of an R project to a concrete set of package versions.\nrig reads the project manifest (e.g. DESCRIPTION; override with --input) and uses its built-in solver to find a compatible set of package versions from the configured repositories, without running R.\nUse --r-version to solve for a specific R version, --dev to include development dependencies, and --renv to write the result as an renv.lock file.\n\nUsage\nrig proj solve [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n--dev\n\nInclude dev (development) dependencies\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n-i, --input &lt;input&gt;\n\nProject file to solve (e.g. DESCRIPTION)\n\n--json\n\nJSON output\n\n-r, --r-version &lt;r-version&gt;\n\nR version to solve dependencies for\n\n--renv\n\nOutput and renv.lock file\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig proj"
@@ -960,7 +1147,7 @@
     "href": "reference/list.html#options",
     "title": "rig list",
     "section": "Options",
-    "text": "Options\n\n--json\n\nJSON output\n\n--plain\n\nplain output, only the version names, one per line\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "Options\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--plain\n\nplain output, only the version names, one per line\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig list"
@@ -1004,7 +1191,7 @@
     "href": "reference/rstudio.html#options",
     "title": "rig rstudio",
     "section": "Options",
-    "text": "Options\n\n--config-path\n\nDo not start RStudio, only print the path of the RStudio config directory\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)",
+    "text": "Options\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n--config-path\n\nDo not start RStudio, only print the path of the RStudio config directory\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig rstudio"
@@ -1048,7 +1235,7 @@
     "href": "index.html",
     "title": "The R Installation Manager",
     "section": "",
-    "text": "rig is the R Installation Manager: a command line tool that installs, removes, configures and switches between multiple versions of R on macOS, Windows and Linux. It works without system requirements on any platform, lets you select R versions with symbolic names like release, oldrel or devel, runs multiple R versions side by side via quick links, and sets up user package libraries, pak and the default CRAN mirror for you. On macOS it also ships a menu bar app for viewing and switching the default R version.",
+    "text": "Run and manage multiple versions of R side by side on macOS, Windows and Linux.\nRig is a standalone tool, with no system requirements, for system admins and users.\n\n\n\n\nLatest version 0.10.0-alpha\nInstall rig\n\n  or view install instructions for\n  macOS,\n  Windows or\n  Linux.",
     "crumbs": [
       "Get started"
     ]
@@ -1058,7 +1245,7 @@
     "href": "index.html#quick-start",
     "title": "The R Installation Manager",
     "section": "Quick start",
-    "text": "Quick start\nInstall rig (see Installing rig for all options), then:\nrig add release      # install the latest R release\nrig list             # list installed R versions\nrig default 4.5.1    # set the default R version",
+    "text": "Quick start\nOnce rig is installed:\nrig add release      # install the latest R release\nrig list             # list installed R versions\nrig default 4.5.1    # set the default R version",
     "crumbs": [
       "Get started"
     ]

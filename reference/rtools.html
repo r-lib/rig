@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>rig proj – rig</title>
+<title>rig rtools – rig</title>
 <style>
 /* Default styles provided by pandoc.
 ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
@@ -22,6 +22,41 @@ ul.task-list li input[type="checkbox"] {
   width: 0.8em;
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
 }
 </style>
 
@@ -281,7 +316,7 @@ ul.task-list li input[type="checkbox"] {
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../reference/proj.html">rig proj</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../reference/rtools.html">rig rtools</a></li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
       <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
@@ -389,7 +424,7 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/proj.html" class="sidebar-item-text sidebar-link active">
+  <a href="../reference/proj.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig proj</span></a>
   </div>
 </li>
@@ -419,7 +454,7 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/rtools.html" class="sidebar-item-text sidebar-link">
+  <a href="../reference/rtools.html" class="sidebar-item-text sidebar-link active">
  <span class="menu-text">rig rtools</span></a>
   </div>
 </li>
@@ -472,20 +507,24 @@ ul.task-list li input[type="checkbox"] {
    
   <ul>
   <li><a href="#subcommands" id="toc-subcommands" class="nav-link active" data-scroll-target="#subcommands">Subcommands</a></li>
-  <li><a href="#rig-proj-deploy" id="toc-rig-proj-deploy" class="nav-link" data-scroll-target="#rig-proj-deploy"><code>rig proj deploy</code></a>
+  <li><a href="#rig-rtools-add" id="toc-rig-rtools-add" class="nav-link" data-scroll-target="#rig-rtools-add"><code>rig rtools add</code></a>
   <ul class="collapse">
   <li><a href="#usage" id="toc-usage" class="nav-link" data-scroll-target="#usage">Usage</a></li>
+  <li><a href="#arguments" id="toc-arguments" class="nav-link" data-scroll-target="#arguments">Arguments</a></li>
   <li><a href="#options" id="toc-options" class="nav-link" data-scroll-target="#options">Options</a></li>
+  <li><a href="#examples" id="toc-examples" class="nav-link" data-scroll-target="#examples">Examples</a></li>
   </ul></li>
-  <li><a href="#rig-proj-deps" id="toc-rig-proj-deps" class="nav-link" data-scroll-target="#rig-proj-deps"><code>rig proj deps</code></a>
+  <li><a href="#rig-rtools-list" id="toc-rig-rtools-list" class="nav-link" data-scroll-target="#rig-rtools-list"><code>rig rtools list</code></a>
   <ul class="collapse">
   <li><a href="#usage-1" id="toc-usage-1" class="nav-link" data-scroll-target="#usage-1">Usage</a></li>
   <li><a href="#options-1" id="toc-options-1" class="nav-link" data-scroll-target="#options-1">Options</a></li>
   </ul></li>
-  <li><a href="#rig-proj-solve" id="toc-rig-proj-solve" class="nav-link" data-scroll-target="#rig-proj-solve"><code>rig proj solve</code></a>
+  <li><a href="#rig-rtools-rm" id="toc-rig-rtools-rm" class="nav-link" data-scroll-target="#rig-rtools-rm"><code>rig rtools rm</code></a>
   <ul class="collapse">
   <li><a href="#usage-2" id="toc-usage-2" class="nav-link" data-scroll-target="#usage-2">Usage</a></li>
+  <li><a href="#arguments-1" id="toc-arguments-1" class="nav-link" data-scroll-target="#arguments-1">Arguments</a></li>
   <li><a href="#options-2" id="toc-options-2" class="nav-link" data-scroll-target="#options-2">Options</a></li>
+  <li><a href="#examples-1" id="toc-examples-1" class="nav-link" data-scroll-target="#examples-1">Examples</a></li>
   </ul></li>
   </ul>
 </nav>
@@ -494,9 +533,9 @@ ul.task-list li input[type="checkbox"] {
 <main class="content" id="quarto-document-content">
 
 
-<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../reference/proj.html">rig proj</a></li></ol></nav>
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../reference/rtools.html">rig rtools</a></li></ol></nav>
 <div class="quarto-title">
-<h1 class="title">rig proj</h1>
+<h1 class="title">rig rtools</h1>
 </div>
 
 
@@ -514,35 +553,48 @@ ul.task-list li input[type="checkbox"] {
 
 
 <!-- Generated by website/gen-cli-reference.sh. Do not edit by hand. -->
-<p>Manage R projects (experimental).</p>
-<p>A project is a directory with a package manifest, typically a <code>DESCRIPTION</code> file, that declares the R packages the project depends on. <code>rig proj</code> resolves those dependencies against the configured package repositories and can install them into a project library.</p>
-<p><code>rig proj deps</code> shows the direct and recursive dependencies of the project. <code>rig proj solve</code> resolves the full dependency tree to a concrete set of package versions, and can write the result to an <code>renv.lock</code> file. <code>rig proj deploy</code> installs the resolved dependencies into a package library.</p>
-<p>Dependencies are resolved with rig’s built-in solver, so R does not need to be running for <code>rig proj deps</code> and <code>rig proj solve</code>.</p>
-<p><code>rig proj</code> is currently experimental, and might change in future versions. Feedback is appreciated.</p>
+<p><span class="rig-platform">Windows only</span></p>
+<p>Manage Rtools installations (Windows only).</p>
+<p>Rtools is the collection of build tools (compilers, <code>make</code>, etc.) needed to build R packages from source on Windows. Each R version needs a matching Rtools version.</p>
+<p><code>rig rtools list</code> lists the installed Rtools versions. <code>rig rtools add</code> installs Rtools, by default every version needed by the currently installed R versions. <code>rig rtools rm</code> removes Rtools versions.</p>
+<p>On non-Windows platforms this command does nothing and is hidden.</p>
 <section id="subcommands" class="level2">
 <h2 class="anchored" data-anchor-id="subcommands">Subcommands</h2>
 <dl>
-<dt><a href="#rig-proj-deploy"><code>deploy</code></a></dt>
+<dt><a href="#rig-rtools-add"><code>add</code></a></dt>
 <dd>
-Deploy project dependencies
+Install new Rtools version [alias: install]
 </dd>
-<dt><a href="#rig-proj-deps"><code>deps</code></a></dt>
+<dt><a href="#rig-rtools-list"><code>list</code></a></dt>
 <dd>
-Show project dependencies
+List installed Rtools versions [alias: ls]
 </dd>
-<dt><a href="#rig-proj-solve"><code>solve</code></a></dt>
+<dt><a href="#rig-rtools-rm"><code>rm</code></a></dt>
 <dd>
-Solve project dependencies
+Remove rtools versions [aliases: del, remove, delete]
 </dd>
 </dl>
 </section>
-<section id="rig-proj-deploy" class="level2">
-<h2 class="anchored" data-anchor-id="rig-proj-deploy"><code>rig proj deploy</code></h2>
-<p>Install the resolved dependencies of an R project into a package library.</p>
-<p>rig solves the project dependencies and installs them into the library given by <code>--library</code>. Use <code>--r-binary</code> to select which R to build against (default: <code>R</code>) and <code>--max-concurrent</code> to limit the number of simultaneous installations (default: 4).</p>
+<section id="rig-rtools-add" class="level2">
+<h2 class="anchored" data-anchor-id="rig-rtools-add"><code>rig rtools add</code></h2>
+<p>Install new Rtools versions on Windows.</p>
+<p>You can specify the new version(s) by their name, optionally with an ‘rtools’ prefix, e.g.&nbsp;‘43’ or ‘rtools43’.</p>
+<p>If <code>version</code> is ‘all’ (the default), then all Rtools versions that are required for the currently installed R versions will be installed.</p>
+<p>In user mode (<code>RIG_MODE=user</code>) Rtools is installed per-user, without administrator rights, into <code>%APPDATA%\rig\data\rtools</code> (override with the <code>RIG_RTOOLS_INSTALL_DIR</code> environment variable or the <code>rtools-install-dir</code> config setting). rig points each R version at it by setting <code>RTOOLS&lt;ver&gt;_HOME</code> in that R version’s <code>etc\Renviron.site</code>.</p>
+<p>In admin mode this command needs an administrator account.</p>
 <section id="usage" class="level3">
 <h3 class="anchored" data-anchor-id="usage">Usage</h3>
-<pre class="text"><code>rig proj deploy [OPTIONS] --library &lt;library&gt;</code></pre>
+<pre class="text"><code>rig rtools add [OPTIONS] [version]</code></pre>
+</section>
+<section id="arguments" class="level3">
+<h3 class="anchored" data-anchor-id="arguments">Arguments</h3>
+<dl>
+<dt><code>[version]</code></dt>
+<dd>
+Rtools version to add, e.g.&nbsp;‘43’
+<em>[default: all]</em>
+</dd>
+</dl>
 </section>
 <section id="options" class="level3">
 <h3 class="anchored" data-anchor-id="options">Options</h3>
@@ -551,21 +603,14 @@ Solve project dependencies
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
+<dt><code>-a, --arch &lt;arch&gt;</code></dt>
+<dd>
+Architecture to install Rtools for (default: native arch).
+<em>[possible values: x86_64, aarch64, arm64]</em>
+</dd>
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
-</dd>
-<dt><code>-l, --library &lt;library&gt;</code></dt>
-<dd>
-Library path where packages should be installed
-</dd>
-<dt><code>--max-concurrent &lt;max-concurrent&gt;</code></dt>
-<dd>
-Maximum number of concurrent installations (default: 4)
-</dd>
-<dt><code>--r-binary &lt;r-binary&gt;</code></dt>
-<dd>
-Path to R binary (default: R)
 </dd>
 <dt><code>--user</code></dt>
 <dd>
@@ -573,14 +618,20 @@ Run in user mode (overrides RIG_MODE and config)
 </dd>
 </dl>
 </section>
+<section id="examples" class="level3">
+<h3 class="anchored" data-anchor-id="examples">Examples</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> rtools add 43</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> rtools add all</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
-<section id="rig-proj-deps" class="level2">
-<h2 class="anchored" data-anchor-id="rig-proj-deps"><code>rig proj deps</code></h2>
-<p>Show the dependencies of an R project.</p>
-<p>By default rig reads the project manifest (e.g.&nbsp;<code>DESCRIPTION</code>) in the current directory; use <code>--input</code> to point to a different file. Add <code>--dev</code> to include development dependencies.</p>
+</section>
+<section id="rig-rtools-list" class="level2">
+<h2 class="anchored" data-anchor-id="rig-rtools-list"><code>rig rtools list</code></h2>
+<p>List installed Rtools versions on Windows.</p>
+<p>It only lists versions that are added to the Windows Registry.</p>
+<p>Use the <code>--json</code> flag for JSON output.</p>
 <section id="usage-1" class="level3">
 <h3 class="anchored" data-anchor-id="usage-1">Usage</h3>
-<pre class="text"><code>rig proj deps [OPTIONS]</code></pre>
+<pre class="text"><code>rig rtools list [OPTIONS]</code></pre>
 </section>
 <section id="options-1" class="level3">
 <h3 class="anchored" data-anchor-id="options-1">Options</h3>
@@ -589,17 +640,9 @@ Run in user mode (overrides RIG_MODE and config)
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
-<dt><code>--dev</code></dt>
-<dd>
-Include dev (development) dependencies
-</dd>
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
-</dd>
-<dt><code>-i, --input &lt;input&gt;</code></dt>
-<dd>
-Project file to solve (e.g.&nbsp;DESCRIPTION)
 </dd>
 <dt><code>--json</code></dt>
 <dd>
@@ -612,14 +655,24 @@ Run in user mode (overrides RIG_MODE and config)
 </dl>
 </section>
 </section>
-<section id="rig-proj-solve" class="level2">
-<h2 class="anchored" data-anchor-id="rig-proj-solve"><code>rig proj solve</code></h2>
-<p>Resolve the dependencies of an R project to a concrete set of package versions.</p>
-<p>rig reads the project manifest (e.g.&nbsp;<code>DESCRIPTION</code>; override with <code>--input</code>) and uses its built-in solver to find a compatible set of package versions from the configured repositories, without running R.</p>
-<p>Use <code>--r-version</code> to solve for a specific R version, <code>--dev</code> to include development dependencies, and <code>--renv</code> to write the result as an <code>renv.lock</code> file.</p>
+<section id="rig-rtools-rm" class="level2">
+<h2 class="anchored" data-anchor-id="rig-rtools-rm"><code>rig rtools rm</code></h2>
+<p>Remove Rtools versions on Windows.</p>
+<p>You can specify the version(s) to remove by their name, optionally with an ‘rtools’ prefix, e.g.&nbsp;‘43’ or ‘rtools43’.</p>
+<p>If no version is specified, then it does nothing.</p>
+<p>In admin mode this command needs an administrator account.</p>
 <section id="usage-2" class="level3">
 <h3 class="anchored" data-anchor-id="usage-2">Usage</h3>
-<pre class="text"><code>rig proj solve [OPTIONS]</code></pre>
+<pre class="text"><code>rig rtools rm [OPTIONS] [version]...</code></pre>
+</section>
+<section id="arguments-1" class="level3">
+<h3 class="anchored" data-anchor-id="arguments-1">Arguments</h3>
+<dl>
+<dt><code>[version]...</code></dt>
+<dd>
+versions to remove
+</dd>
+</dl>
 </section>
 <section id="options-2" class="level3">
 <h3 class="anchored" data-anchor-id="options-2">Options</h3>
@@ -628,35 +681,24 @@ Run in user mode (overrides RIG_MODE and config)
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
-<dt><code>--dev</code></dt>
+<dt><code>-a, --arch &lt;arch&gt;</code></dt>
 <dd>
-Include dev (development) dependencies
+Architecture of Rtools to remove (default: native arch).
+<em>[possible values: x86_64, aarch64, arm64]</em>
 </dd>
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
-</dd>
-<dt><code>-i, --input &lt;input&gt;</code></dt>
-<dd>
-Project file to solve (e.g.&nbsp;DESCRIPTION)
-</dd>
-<dt><code>--json</code></dt>
-<dd>
-JSON output
-</dd>
-<dt><code>-r, --r-version &lt;r-version&gt;</code></dt>
-<dd>
-R version to solve dependencies for
-</dd>
-<dt><code>--renv</code></dt>
-<dd>
-Output and renv.lock file
 </dd>
 <dt><code>--user</code></dt>
 <dd>
 Run in user mode (overrides RIG_MODE and config)
 </dd>
 </dl>
+</section>
+<section id="examples-1" class="level3">
+<h3 class="anchored" data-anchor-id="examples-1">Examples</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> rtools rm 43</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 
 
 </section>
