@@ -796,7 +796,7 @@
     "href": "reference/repos.html#rig-repos-package-versions",
     "title": "rig repos",
     "section": "rig repos package-versions",
-    "text": "rig repos package-versions\nList all versions of a package available from the configured repositories.\n\nUsage\nrig repos package-versions [OPTIONS] &lt;package&gt;\n\n\nArguments\n\n&lt;package&gt;\n\npackage to show\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "text": "rig repos package-versions\nList all versions of a package known to the CRAN metadata database, oldest first. For each version rig shows its publication date, its R version requirement and its number of hard dependencies (Depends, Imports and LinkingTo, excluding R and the base packages); the latest version is marked.\nUse --json to print the full crandb record for every version, including the complete metadata and dependency lists. See rig repos package-info for a detailed view of a single version.\n\nUsage\nrig repos package-versions [OPTIONS] &lt;package&gt;\n\n\nArguments\n\n&lt;package&gt;\n\npackage to show\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig repos"

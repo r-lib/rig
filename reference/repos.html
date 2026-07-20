@@ -722,7 +722,8 @@ Run in user mode (overrides RIG_MODE and config)
 </section>
 <section id="rig-repos-package-versions" class="level2">
 <h2 class="anchored" data-anchor-id="rig-repos-package-versions"><code>rig repos package-versions</code></h2>
-<p>List all versions of a package available from the configured repositories.</p>
+<p>List all versions of a package known to the CRAN metadata database, oldest first. For each version rig shows its publication date, its R version requirement and its number of hard dependencies (<code>Depends</code>, <code>Imports</code> and <code>LinkingTo</code>, excluding R and the base packages); the latest version is marked.</p>
+<p>Use <code>--json</code> to print the full crandb record for every version, including the complete metadata and dependency lists. See <a href="#rig-repos-package-info"><code>rig repos package-info</code></a> for a detailed view of a single version.</p>
 <section id="usage-4" class="level3">
 <h3 class="anchored" data-anchor-id="usage-4">Usage</h3>
 <pre class="text"><code>rig repos package-versions [OPTIONS] &lt;package&gt;</code></pre>
