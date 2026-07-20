@@ -232,7 +232,7 @@ fn print_package_info(info: &serde_json::Value) {
     let str_field = |k: &str| -> Option<String> {
         info.get(k)
             .and_then(|v| v.as_str())
-            .map(|s| reflow(s))
+            .map(reflow)
             .filter(|s| !s.is_empty())
     };
 
@@ -254,7 +254,14 @@ fn print_package_info(info: &serde_json::Value) {
     println!("{}", header);
 
     if let Some(title) = str_field("Title") {
-        println!("{}", if color { title.italic().to_string() } else { title });
+        println!(
+            "{}",
+            if color {
+                title.italic().to_string()
+            } else {
+                title
+            }
+        );
     }
 
     if let Some(desc) = str_field("Description") {
@@ -287,10 +294,11 @@ fn print_package_info(info: &serde_json::Value) {
     }
 
     // -- Dependencies ------------------------------------------------------
-    let dep_fields: Vec<(&str, String)> = ["Depends", "Imports", "LinkingTo", "Suggests", "Enhances"]
-        .iter()
-        .filter_map(|k| info.get(*k).and_then(format_deps).map(|v| (*k, v)))
-        .collect();
+    let dep_fields: Vec<(&str, String)> =
+        ["Depends", "Imports", "LinkingTo", "Suggests", "Enhances"]
+            .iter()
+            .filter_map(|k| info.get(*k).and_then(format_deps).map(|v| (*k, v)))
+            .collect();
     if !dep_fields.is_empty() {
         println!();
         for (label, value) in dep_fields {
@@ -432,10 +440,7 @@ mod tests {
     fn format_deps_shows_constraints_and_skips_wildcards() {
         let deps = serde_json::json!({ "R": ">= 3.5.0", "utils": "*" });
         // serde_json orders object keys, so output is deterministic.
-        assert_eq!(
-            format_deps(&deps),
-            Some("R (>= 3.5.0), utils".to_string())
-        );
+        assert_eq!(format_deps(&deps), Some("R (>= 3.5.0), utils".to_string()));
     }
 
     #[test]

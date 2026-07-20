@@ -8,10 +8,7 @@ use crate::dcf::*;
 use crate::download::download_if_newer_;
 use crate::utils::*;
 
-pub fn get_cran_package_version(
-    package: &str,
-    version: &str,
-) -> Result<Value, Box<dyn Error>> {
+pub fn get_cran_package_version(package: &str, version: &str) -> Result<Value, Box<dyn Error>> {
     let mut url = "https://crandb.r-pkg.org/".to_string() + package;
     if version != "latest" {
         url += "/";
