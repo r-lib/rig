@@ -215,6 +215,17 @@
             },
             {
                 "name": "P3M",
+                "url": "https://packagemanager.posit.co/cran/__linux__/resolute/latest",
+                "platforms": [
+                    "*-linux-gnu-ubuntu-26.04"
+                ],
+                "archs": [
+                    "x86_64",
+                    "aarch64"
+                ]
+            },
+            {
+                "name": "P3M",
                 "url": "https://packagemanager.posit.co/cran/__linux__/bullseye/latest",
                 "platforms": [
                     "*-linux-gnu-debian-11"
