@@ -33,6 +33,7 @@ mod setup;
 pub use setup::repos_setup;
 mod crandb;
 pub use crandb::get_all_cran_package_versions;
+use crandb::CranVersionRow;
 
 pub fn sc_repos(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
@@ -382,27 +383,88 @@ fn sc_repos_package_versions(
 ) -> Result<(), Box<dyn Error>> {
     let package: String = args.get_one::<String>("package").unwrap().to_string();
 
-    let mut rows = crandb::get_all_cran_package_versions(&package, None)?;
+    // `--json` dumps the full crandb record, mirroring `package-info --json`.
+    if args.get_flag("json") {
+        let json = crandb::fetch_crandb_all(&package, None)?;
+        println!("{}", serde_json::to_string_pretty(&json)?);
+        return Ok(());
+    }
+
+    let info = crandb::get_cran_package_versions_info(&package, None)?;
+    if info.rows.is_empty() {
+        bail!(
+            "Could not find package '{}' in the CRAN metadata database.",
+            package
+        );
+    }
+
+    let mut rows = info.rows;
     rows.sort_by(|a, b| a.version.cmp(&b.version));
 
-    let mut tab: Table = Table::new("{:<}   {:<}   {:<}");
-    tab.add_row(row!("Package", "Version", "Dependencies"));
-    tab.add_heading("------------------------------------------------------------------------");
-    for row in rows {
-        let deps_str: String = row
-            .dependencies
-            .dependencies
-            .iter()
-            .map(|x| format!("{}", x))
-            .collect::<Vec<String>>()
-            .join(", ");
+    print_package_versions(&info.name, info.latest.as_deref(), info.archived, &rows);
 
-        tab.add_row(row!(&row.name, &row.version, &deps_str));
+    Ok(())
+}
+
+/// Pretty-print the version table for `rig repos package-versions`.
+///
+/// A colored header line names the package, the number of versions and the
+/// latest one; the table then lists each version with its publication date, R
+/// requirement and hard-dependency count, marking the latest version. The full
+/// per-version metadata is available via `--json`.
+fn print_package_versions(
+    name: &str,
+    latest: Option<&str>,
+    archived: bool,
+    rows: &[CranVersionRow],
+) {
+    use owo_colors::OwoColorize;
+
+    let color = std::io::stdout().is_terminal() && env::var_os("NO_COLOR").is_none();
+
+    // -- Header ------------------------------------------------------------
+    let count = rows.len();
+    let ver_word = if count == 1 { "version" } else { "versions" };
+    let mut header = if color {
+        format!("{} — {} {}", name.cyan().bold(), count, ver_word)
+    } else {
+        format!("{} — {} {}", name, count, ver_word)
+    };
+    let mut tags: Vec<String> = vec![];
+    if let Some(latest) = latest {
+        tags.push(format!("latest {}", latest));
+    }
+    if archived {
+        tags.push("archived".to_string());
+    }
+    if !tags.is_empty() {
+        let tag = format!("({})", tags.join(", "));
+        header.push(' ');
+        header.push_str(&if color { tag.dimmed().to_string() } else { tag });
+    }
+    println!("{}", header);
+    println!();
+
+    // -- Table -------------------------------------------------------------
+    let mut tab: Table = Table::new("{:<}   {:<}   {:<}   {:>}   {:<}");
+    tab.add_row(row!("Version", "Published", "R", "Deps", ""));
+    tab.add_heading("-------------------------------------------------------");
+    for row in rows {
+        let marker = if latest == Some(row.version.original.as_str()) {
+            "← latest"
+        } else {
+            ""
+        };
+        tab.add_row(row!(
+            &row.version,
+            row.date.as_deref().unwrap_or("?"),
+            row.r_requirement.as_deref().unwrap_or(""),
+            &row.num_deps,
+            marker
+        ));
     }
 
     print!("{}", tab);
-
-    Ok(())
 }
 
 #[cfg(test)]
