@@ -680,8 +680,9 @@ package version to show (default: latest)
 </section>
 <section id="rig-repos-package-list" class="level2">
 <h2 class="anchored" data-anchor-id="rig-repos-package-list"><code>rig repos package-list</code></h2>
-<p>List the packages available from the configured package repositories.</p>
+<p>List the packages available from the configured package repositories, ordered by name. For each package rig shows its version and its number of hard dependencies (<code>Depends</code>, <code>Imports</code> and <code>LinkingTo</code>, excluding R and the base packages). A header line reports the total number of packages and the R version and package type they were resolved for.</p>
 <p>By default rig uses the default R version and the current platform; override these with <code>--r-version</code>, <code>--platform</code> and <code>--pkg-type</code> (e.g. <code>source</code> or <code>binary</code>).</p>
+<p>Use <code>--json</code> to print the full listing as JSON, including the complete dependency lists for every package. See <a href="#rig-repos-package-info"><code>rig repos package-info</code></a> for a detailed view of a single package and <a href="#rig-repos-package-versions"><code>rig repos package-versions</code></a> to list all versions of a package.</p>
 <section id="usage-3" class="level3">
 <h3 class="anchored" data-anchor-id="usage-3">Usage</h3>
 <pre class="text"><code>rig repos package-list [OPTIONS]</code></pre>
