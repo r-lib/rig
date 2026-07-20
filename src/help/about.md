@@ -1,6 +1,6 @@
 ## Name
 
-rig - manage R installations
+rig {version} - manage R installations
 
 ## Description
 

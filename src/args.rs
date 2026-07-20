@@ -200,9 +200,13 @@ pub fn rig_app() -> Command {
         .literal(clap::builder::styling::AnsiColor::Green.on_default())
         .placeholder(clap::builder::styling::AnsiColor::Cyan.on_default());
 
+    // The `{version}` placeholder in the `Name:` line of `about.md` is filled
+    // in here, so the top-level help shows the current rig version.
+    let about = HELP_ABOUT.replace("{version}", clap::crate_version!());
+
     let mut rig = Command::new("RIG -- The R Installation Manager")
         .version(clap::crate_version!())
-        .about(HELP_ABOUT)
+        .about(about)
         .styles(styles)
         .arg_required_else_help(true)
         .term_width(80);
