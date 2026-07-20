@@ -7,7 +7,9 @@ use simple_error::*;
 use tabular::*;
 
 use crate::common::*;
+use crate::dcf::{Package, RDepType};
 use crate::hardcoded::*;
+use crate::proj::BASE_PKGS;
 use crate::repositories::*;
 
 #[cfg(target_os = "macos")]
@@ -160,28 +162,128 @@ fn sc_repos_package_list(
     } else {
         "source".to_string()
     };
-    let packages = repos_get_packages("https://cloud.r-project.org", &pkg_type, &r_version)?;
+    let mut packages = repos_get_packages("https://cloud.r-project.org", &pkg_type, &r_version)?;
+    // Order the listing case-insensitively by package name, breaking ties by
+    // version, so the output is stable regardless of how the metadata was
+    // stored or downloaded.
+    packages.sort_by(|a, b| {
+        a.name
+            .to_lowercase()
+            .cmp(&b.name.to_lowercase())
+            .then_with(|| a.version.cmp(&b.version))
+    });
+
+    // Echo the platform in the header only when the user asked for a specific
+    // one; otherwise the package type already conveys the relevant flavor.
+    let platform_label = if args.contains_id("platform") {
+        Some(
+            platform
+                .rig_platform
+                .clone()
+                .unwrap_or_else(|| platform.arch.clone()),
+        )
+    } else {
+        None
+    };
 
     if args.get_flag("json") || mainargs.get_flag("json") {
-        // TODO
+        print_package_list_json(&packages)?;
     } else {
-        let mut tab: Table = Table::new("{:<}   {:<}   {:<}");
-        tab.add_row(row!("Package", "Version", "Dependencies"));
-        tab.add_heading("------------------------------------------------------------------------");
-        for pkg in packages.iter() {
-            let deps_str: String = pkg
-                .dependencies
-                .dependencies
-                .iter()
-                .map(|x| format!("{}", x))
-                .collect::<Vec<String>>()
-                .join(", ");
-            tab.add_row(row!(&pkg.name, &pkg.version, deps_str));
-        }
-
-        print!("{}", tab);
+        print_package_list(&packages, &r_version, &pkg_type, platform_label.as_deref());
     }
 
+    Ok(())
+}
+
+/// Count the hard dependencies of a package: `Depends`, `Imports` and
+/// `LinkingTo`, excluding R itself and the base packages. This matches the
+/// `Deps` column of `rig repos package-versions`.
+fn num_hard_deps(pkg: &Package) -> usize {
+    pkg.dependencies
+        .dependencies
+        .iter()
+        .filter(|d| {
+            d.name != "R"
+                && !BASE_PKGS.contains(&d.name.as_str())
+                && d.types.iter().any(|t| {
+                    matches!(
+                        t,
+                        RDepType::Depends | RDepType::Imports | RDepType::LinkingTo
+                    )
+                })
+        })
+        .count()
+}
+
+/// Pretty-print the package listing for `rig repos package-list`.
+///
+/// A colored header line names the number of packages and the context they
+/// were resolved for (R version, package type, platform); the table then lists
+/// each package with its version and hard-dependency count. The full
+/// dependency lists are available via `--json`.
+fn print_package_list(
+    packages: &[Package],
+    r_version: &str,
+    pkg_type: &str,
+    platform: Option<&str>,
+) {
+    use owo_colors::OwoColorize;
+
+    let color = std::io::stdout().is_terminal() && env::var_os("NO_COLOR").is_none();
+
+    // -- Header ------------------------------------------------------------
+    let count = packages.len();
+    let pkg_word = if count == 1 { "package" } else { "packages" };
+    let head = if color {
+        format!("{} {}", count.cyan().bold(), pkg_word)
+    } else {
+        format!("{} {}", count, pkg_word)
+    };
+    let tag = match platform {
+        Some(platform) => format!("(R {}, {}, {})", r_version, pkg_type, platform),
+        None => format!("(R {}, {})", r_version, pkg_type),
+    };
+    println!(
+        "{} {}",
+        head,
+        if color { tag.dimmed().to_string() } else { tag }
+    );
+    if count == 0 {
+        return;
+    }
+    println!();
+
+    // -- Table -------------------------------------------------------------
+    let mut tab: Table = Table::new("{:<}   {:<}   {:>}");
+    tab.add_row(row!("Package", "Version", "Deps"));
+    tab.add_heading("------------------------------------------------------------");
+    for pkg in packages {
+        tab.add_row(row!(&pkg.name, &pkg.version, num_hard_deps(pkg)));
+    }
+
+    print!("{}", tab);
+}
+
+/// Print the package listing as a JSON array, one object per package, with the
+/// full dependency information (name, types and version constraints).
+fn print_package_list_json(packages: &[Package]) -> Result<(), Box<dyn Error>> {
+    #[derive(serde::Serialize)]
+    struct PackageListEntry<'a> {
+        package: &'a str,
+        version: String,
+        dependencies: &'a [crate::dcf::DepVersionSpec],
+    }
+
+    let entries: Vec<PackageListEntry> = packages
+        .iter()
+        .map(|pkg| PackageListEntry {
+            package: &pkg.name,
+            version: pkg.version.to_string(),
+            dependencies: &pkg.dependencies.dependencies,
+        })
+        .collect();
+
+    println!("{}", serde_json::to_string_pretty(&entries)?);
     Ok(())
 }
 
@@ -470,6 +572,47 @@ fn print_package_versions(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dcf::{DepVersionSpec, RPackageVersion};
+
+    fn dep(name: &str, ty: RDepType) -> DepVersionSpec {
+        DepVersionSpec {
+            name: name.to_string(),
+            types: vec![ty],
+            constraints: vec![],
+        }
+    }
+
+    fn pkg_with_deps(deps: Vec<DepVersionSpec>) -> Package {
+        Package::from_crandb(
+            "test".to_string(),
+            RPackageVersion::from_str("1.0").unwrap(),
+            deps,
+        )
+    }
+
+    #[test]
+    fn num_hard_deps_counts_hard_deps_only() {
+        // R, the base package `utils` and the Suggests dependency do not count;
+        // cli (Imports), Rcpp (LinkingTo) and MASS (Depends) do.
+        let pkg = pkg_with_deps(vec![
+            dep("R", RDepType::Depends),
+            dep("utils", RDepType::Imports),
+            dep("MASS", RDepType::Depends),
+            dep("cli", RDepType::Imports),
+            dep("Rcpp", RDepType::LinkingTo),
+            dep("testthat", RDepType::Suggests),
+        ]);
+        assert_eq!(num_hard_deps(&pkg), 3);
+    }
+
+    #[test]
+    fn num_hard_deps_zero_when_no_hard_deps() {
+        let pkg = pkg_with_deps(vec![
+            dep("R", RDepType::Depends),
+            dep("knitr", RDepType::Suggests),
+        ]);
+        assert_eq!(num_hard_deps(&pkg), 0);
+    }
 
     #[test]
     fn reflow_collapses_newlines_and_spaces() {
