@@ -14,4 +14,11 @@ if [ -z "$version" ]; then
   exit 1
 fi
 
-printf 'version: "%s"\n' "$version" > _variables.yml
+# Only rewrite _variables.yml when the content actually changes. Quarto watches
+# _variables.yml during `quarto preview`; rewriting it on every pre-render (this
+# script runs before each render) would re-dirty the file and make the preview
+# server fire a page `reload` on every navigation, aborting internal link clicks.
+new_content=$(printf 'version: "%s"\n' "$version")
+if [ ! -f _variables.yml ] || [ "$(cat _variables.yml)" != "$new_content" ]; then
+  printf '%s\n' "$new_content" > _variables.yml
+fi
