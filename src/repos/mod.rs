@@ -1,5 +1,6 @@
 use std::env;
 use std::error::Error;
+use std::io::IsTerminal;
 
 use clap::ArgMatches;
 use simple_error::*;
@@ -196,20 +197,174 @@ fn sc_repos_package_info(
     };
 
     let info = crandb::get_cran_package_version(&package, &ver)?;
+
+    // crandb replies with an `error` object (e.g. `not_found`) instead of the
+    // package metadata when the package or version does not exist.
+    if info.get("Package").is_none() || info.get("error").is_some() {
+        let which = if ver == "latest" {
+            format!("package '{}'", package)
+        } else {
+            format!("package '{}' version '{}'", package, ver)
+        };
+        bail!("Could not find {} in the CRAN metadata database.", which);
+    }
+
     if args.get_flag("json") {
         let json = serde_json::to_string_pretty(&info)?;
         println!("{}", json);
     } else {
-        let mut tab: Table = Table::new("{:<}   {:<}");
-        tab.add_row(row!("Field", "Value"));
-        tab.add_heading("------------------------------------------------------------------------");
-        for (k, v) in info.iter() {
-            tab.add_row(row!(k, v));
-        }
-        print!("{}", tab);
+        print_package_info(&info);
     }
 
     Ok(())
+}
+
+/// Pretty-print package metadata (as returned by crandb) to stdout.
+///
+/// The most useful fields are grouped into a header (name, version, title,
+/// description), a metadata block and a dependency block; noisy internal
+/// fields (checksums, timestamps, `Config/*` entries, ...) are omitted. The
+/// full record is still available via `--json`.
+fn print_package_info(info: &serde_json::Value) {
+    use owo_colors::OwoColorize;
+
+    let color = std::io::stdout().is_terminal() && env::var_os("NO_COLOR").is_none();
+    let str_field = |k: &str| -> Option<String> {
+        info.get(k)
+            .and_then(|v| v.as_str())
+            .map(|s| reflow(s))
+            .filter(|s| !s.is_empty())
+    };
+
+    // -- Header ------------------------------------------------------------
+    let name = str_field("Package").unwrap_or_default();
+    let version = str_field("Version").unwrap_or_default();
+    let repo = str_field("Repository");
+
+    let mut header = if color {
+        format!("{} {}", name.cyan().bold(), version.bold())
+    } else {
+        format!("{} {}", name, version)
+    };
+    if let Some(repo) = &repo {
+        let tag = format!("({})", repo);
+        header.push(' ');
+        header.push_str(&if color { tag.dimmed().to_string() } else { tag });
+    }
+    println!("{}", header);
+
+    if let Some(title) = str_field("Title") {
+        println!("{}", if color { title.italic().to_string() } else { title });
+    }
+
+    if let Some(desc) = str_field("Description") {
+        println!();
+        for line in wrap(&desc, 78) {
+            println!("{}", line);
+        }
+    }
+
+    // -- Metadata ----------------------------------------------------------
+    let label_width = 14;
+    let mut meta: Vec<(&str, String)> = vec![];
+    for (label, key) in [
+        ("Maintainer", "Maintainer"),
+        ("License", "License"),
+        ("Published", "Date/Publication"),
+        ("URL", "URL"),
+        ("BugReports", "BugReports"),
+        ("Compilation", "NeedsCompilation"),
+    ] {
+        if let Some(v) = str_field(key) {
+            meta.push((label, v));
+        }
+    }
+    if !meta.is_empty() {
+        println!();
+        for (label, value) in meta {
+            print_field(label, &value, label_width, color);
+        }
+    }
+
+    // -- Dependencies ------------------------------------------------------
+    let dep_fields: Vec<(&str, String)> = ["Depends", "Imports", "LinkingTo", "Suggests", "Enhances"]
+        .iter()
+        .filter_map(|k| info.get(*k).and_then(format_deps).map(|v| (*k, v)))
+        .collect();
+    if !dep_fields.is_empty() {
+        println!();
+        for (label, value) in dep_fields {
+            print_field(label, &value, label_width, color);
+        }
+    }
+}
+
+/// Print a single `label   value` line, wrapping long values under the label.
+fn print_field(label: &str, value: &str, width: usize, color: bool) {
+    use owo_colors::OwoColorize;
+    let padded = format!("{:width$}", label);
+    let shown_label = if color {
+        padded.dimmed().to_string()
+    } else {
+        padded
+    };
+    let indent = " ".repeat(width);
+    let lines = wrap(value, 78usize.saturating_sub(width));
+    for (i, line) in lines.iter().enumerate() {
+        if i == 0 {
+            println!("{}{}", shown_label, line);
+        } else {
+            println!("{}{}", indent, line);
+        }
+    }
+}
+
+/// Format a crandb dependency object (`{"pkg": "*" | ">= x.y"}`) as a
+/// comma-separated list, showing version constraints where present.
+fn format_deps(value: &serde_json::Value) -> Option<String> {
+    let obj = value.as_object()?;
+    if obj.is_empty() {
+        return None;
+    }
+    let parts: Vec<String> = obj
+        .iter()
+        .map(|(name, spec)| match spec.as_str() {
+            Some("*") | None => name.to_string(),
+            Some(s) => format!("{} ({})", name, s),
+        })
+        .collect();
+    Some(parts.join(", "))
+}
+
+/// Collapse runs of whitespace (including the newlines DCF fields carry) into
+/// single spaces.
+fn reflow(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Word-wrap `text` to at most `width` columns, keeping words intact.
+fn wrap(text: &str, width: usize) -> Vec<String> {
+    let width = width.max(1);
+    let mut lines: Vec<String> = vec![];
+    let mut line = String::new();
+    for word in text.split_whitespace() {
+        if line.is_empty() {
+            line.push_str(word);
+        } else if line.len() + 1 + word.len() <= width {
+            line.push(' ');
+            line.push_str(word);
+        } else {
+            lines.push(std::mem::take(&mut line));
+            line.push_str(word);
+        }
+    }
+    if !line.is_empty() {
+        lines.push(line);
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    lines
 }
 
 fn sc_repos_package_versions(
@@ -240,4 +395,52 @@ fn sc_repos_package_versions(
     print!("{}", tab);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reflow_collapses_newlines_and_spaces() {
+        assert_eq!(reflow("a\nb  c\n  d"), "a b c d");
+        assert_eq!(reflow("  spaced  out  "), "spaced out");
+        assert_eq!(reflow(""), "");
+    }
+
+    #[test]
+    fn wrap_keeps_words_intact_within_width() {
+        let lines = wrap("the quick brown fox", 10);
+        assert_eq!(lines, vec!["the quick", "brown fox"]);
+        for line in &lines {
+            assert!(line.len() <= 10);
+        }
+    }
+
+    #[test]
+    fn wrap_does_not_split_overlong_words() {
+        let lines = wrap("supercalifragilistic word", 8);
+        assert_eq!(lines, vec!["supercalifragilistic", "word"]);
+    }
+
+    #[test]
+    fn wrap_empty_yields_single_empty_line() {
+        assert_eq!(wrap("", 10), vec![String::new()]);
+    }
+
+    #[test]
+    fn format_deps_shows_constraints_and_skips_wildcards() {
+        let deps = serde_json::json!({ "R": ">= 3.5.0", "utils": "*" });
+        // serde_json orders object keys, so output is deterministic.
+        assert_eq!(
+            format_deps(&deps),
+            Some("R (>= 3.5.0), utils".to_string())
+        );
+    }
+
+    #[test]
+    fn format_deps_empty_object_is_none() {
+        assert_eq!(format_deps(&serde_json::json!({})), None);
+        assert_eq!(format_deps(&serde_json::json!("not an object")), None);
+    }
 }

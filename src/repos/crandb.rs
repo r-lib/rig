@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::error::Error;
 
 use log::debug;
@@ -12,7 +11,7 @@ use crate::utils::*;
 pub fn get_cran_package_version(
     package: &str,
     version: &str,
-) -> Result<BTreeMap<String, String>, Box<dyn Error>> {
+) -> Result<Value, Box<dyn Error>> {
     let mut url = "https://crandb.r-pkg.org/".to_string() + package;
     if version != "latest" {
         url += "/";
@@ -31,16 +30,7 @@ pub fn get_cran_package_version(
     let contents = contents.replace("<U+000a>", " ");
     let json: Value = serde_json::from_str(&contents)?;
 
-    let mut result: BTreeMap<String, String> = BTreeMap::new();
-    if let Some(json) = json.as_object() {
-        for (k, v) in json {
-            if v.is_string() {
-                result.insert(k.to_string(), v.as_str().unwrap().to_string());
-            }
-        }
-    }
-
-    Ok(result)
+    Ok(json)
 }
 
 pub fn get_all_cran_package_versions(
