@@ -80,9 +80,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="site_libs/quarto-html/quarto-syntax-highlighting-15634bcf2e68342d4ad2dfa704d543f6.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="site_libs/bootstrap/bootstrap-319ba2c345d2f64272d6b514f02aaf6b.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="site_libs/bootstrap/bootstrap-dark-833063da448a3ebf0c31dd1f7e43f7a9.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
-<link href="site_libs/bootstrap/bootstrap-319ba2c345d2f64272d6b514f02aaf6b.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-39da5b5d6771211ad20dee919e4c707e.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-dark-783bc85af6571d992b8d41b9925e95e9.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<link href="site_libs/bootstrap/bootstrap-39da5b5d6771211ad20dee919e4c707e.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -627,12 +627,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="rhel-fedora-rocky-linux-almalinux-etc.-rpm-package" class="level3">
 <h3 class="anchored" data-anchor-id="rhel-fedora-rocky-linux-almalinux-etc.-rpm-package">RHEL, Fedora, Rocky Linux, Almalinux, etc. (RPM package)</h3>
 <p>On most RPM based distros (except for OpenSUSE and SLES) you can install our RPM package directly:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb17"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="kw">`</span><span class="fu">which</span> sudo<span class="kw">`</span> yum install <span class="at">-y</span> https://github.com/r-lib/rig/releases/download/latest/r-rig-latest-1.<span class="va">$(</span><span class="fu">arch</span><span class="va">)</span>.rpm</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb17"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="kw">`</span><span class="fu">which</span> sudo<span class="kw">`</span> yum install <span class="at">-y</span> <span class="dt">\</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>  https://github.com/r-lib/rig/releases/download/latest/r-rig-latest-1.<span class="va">$(</span><span class="fu">arch</span><span class="va">)</span>.rpm</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 <section id="opensuse-and-sles-rpm-package" class="level3">
 <h3 class="anchored" data-anchor-id="opensuse-and-sles-rpm-package">OpenSUSE and SLES (RPM package)</h3>
 <p>On OpenSUSE and SLES use <code>zypper</code> instead of <code>yum</code>:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb18"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="kw">`</span><span class="fu">which</span> sudo<span class="kw">`</span> zypper install <span class="at">-y</span> <span class="at">--allow-unsigned-rpm</span> https://github.com/r-lib/rig/releases/download/latest/r-rig-latest-1.<span class="va">$(</span><span class="fu">arch</span><span class="va">)</span>.rpm</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb18"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="kw">`</span><span class="fu">which</span> sudo<span class="kw">`</span> zypper install <span class="at">-y</span> <span class="at">--allow-unsigned-rpm</span> <span class="dt">\</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>  https://github.com/r-lib/rig/releases/download/latest/r-rig-latest-1.<span class="va">$(</span><span class="fu">arch</span><span class="va">)</span>.rpm</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 <section id="any-linux-distribution-tarball" class="level3">
 <h3 class="anchored" data-anchor-id="any-linux-distribution-tarball">Any Linux distribution (tarball)</h3>
