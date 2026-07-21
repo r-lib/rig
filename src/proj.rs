@@ -8,7 +8,7 @@ use std::sync::Arc;
 use clap::ArgMatches;
 use deb822_fast::Deb822;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use log::{debug, error, info};
+use log::{error, info};
 use pubgrub::{resolve, SelectedDependencies};
 use simple_error::*;
 use tabular::*;
@@ -176,27 +176,18 @@ fn sc_proj_deps(
     Ok(())
 }
 
-fn sc_proj_solve_latest(
+fn sc_proj_solve_deps(
     r_version: &str,
     deps: &PackageDependencies,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
-    OUTPUT.status("Solving dependencies with latest package versions");
-    info!("Solving dependencies with latest package versions");
-    let pkgs = repos_get_packages("https://cloud.r-project.org/", "source", "4.5.2")?;
-    let reg: RPackageRegistry = RPackageRegistry::default();
+    OUTPUT.status("Solving dependencies");
+    info!("Solving dependencies");
 
-    debug!("Adding {} packages to the registry", pkgs.len());
-    for pkg in pkgs.iter() {
-        let v = RegistryPackageVersion {
-            name: pkg.name.clone(),
-            version: pkg.version.clone(),
-        };
-        reg.add_package_version(
-            pkg.name.clone(),
-            v,
-            rpackage_version_ranges_from_constraints(&pkg.dependencies, false),
-        );
-    }
+    // The registry lazily loads each package's versions from the local database
+    // (current PACKAGES merged with the full ALLPACKAGES history) as the solver
+    // visits them, instead of preloading the entire CRAN version history.
+    let loader = DbSourcePackageLoader::new("https://cloud.r-project.org/", r_version)?;
+    let reg: RPackageRegistry = RPackageRegistry::with_loader(Box::new(loader));
 
     reg.add_package_version(
         "_project".to_string(),
@@ -229,58 +220,9 @@ fn sc_proj_solve_latest(
     match solution {
         Ok(sol) => Ok((reg, sol)),
         Err(e) => {
-            OUTPUT.error(&format!(
-                "Solver failed with latest package versions: {}",
-                e
-            ));
-            error!("Solver failed with latest package versions: {}", e);
-            bail!("Solver failed with latest package versions: {}", e)
-        }
-    }
-}
-
-fn sc_proj_solve_all(
-    r_version: &str,
-    deps: &PackageDependencies,
-) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
-    OUTPUT.status("Solving dependencies with all package versions");
-    info!("Solving dependencies with all package versions");
-    let reg: RPackageRegistry = RPackageRegistry::default();
-
-    reg.add_package_version(
-        "_project".to_string(),
-        RegistryPackageVersion::new("_project", "1.0.0")?,
-        rpackage_version_ranges_from_constraints(deps, true),
-    );
-
-    // add R itself, for now a hardcoded version
-    reg.add_package_version(
-        "R".to_string(),
-        RegistryPackageVersion::new("R", r_version)?,
-        HashMap::with_hasher(rustc_hash::FxBuildHasher),
-    );
-
-    // add base packages, these are always available
-    for bp in BASE_PKGS.iter() {
-        reg.add_package_version(
-            bp.to_string(),
-            RegistryPackageVersion::new(bp, r_version)?,
-            HashMap::with_hasher(rustc_hash::FxBuildHasher),
-        );
-    }
-
-    let solution = resolve(
-        &reg,
-        "_project".to_string(),
-        RegistryPackageVersion::new("_project", "1.0.0")?,
-    );
-
-    match solution {
-        Ok(sol) => Ok((reg, sol)),
-        Err(e) => {
-            OUTPUT.error(&format!("Solver failed with all package versions: {}", e));
-            error!("Solver failed with all package versions: {}", e);
-            bail!("Solver failed with all package versions: {}", e)
+            OUTPUT.error(&format!("Solver failed: {}", e));
+            error!("Solver failed: {}", e);
+            bail!("Solver failed: {}", e)
         }
     }
 }
@@ -339,33 +281,13 @@ fn sc_proj_solve(
         });
     };
 
-    // try latest version first
-    let (registry, solution);
-    let try1 = sc_proj_solve_latest(&rver, &pkg_deps);
-    match try1 {
-        Ok((reg, sol)) => {
-            registry = reg;
-            solution = sol;
-            OUTPUT.success("Solved using latest package versions");
-            info!("Solved using latest package versions");
-        }
-        Err(_) => {
-            let try2 = sc_proj_solve_all(&rver, &pkg_deps);
-            match try2 {
-                Ok((reg, sol)) => {
-                    registry = reg;
-                    solution = sol;
-                    OUTPUT.success("Solved using all package versions");
-                    info!("Solved using all package versions");
-                }
-                Err(e) => {
-                    OUTPUT.error(&format!("Solver failed: {}", e));
-                    error!("Solver failed: {}", e);
-                    bail!("Solver failed: {}", e);
-                }
-            }
-        }
-    };
+    // A single solver over the full CRAN version history: it picks the latest
+    // in-range version of each package first and only falls back to older
+    // versions when a constraint forces it, so the common case still resolves
+    // to the latest versions.
+    let (registry, solution) = sc_proj_solve_deps(&rver, &pkg_deps)?;
+    OUTPUT.success("Solved dependencies");
+    info!("Solved dependencies");
 
     if args.get_flag("renv") {
         let renv = REnvLockfile::from_solution(&registry, &solution);

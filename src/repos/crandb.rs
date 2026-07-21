@@ -66,26 +66,6 @@ fn crandb_version_deps(data: &Value) -> Result<PackageDependencies, Box<dyn Erro
     Ok(pkg_deps)
 }
 
-pub fn get_all_cran_package_versions(
-    package: &str,
-    client: Option<&reqwest::Client>,
-) -> Result<Vec<Package>, Box<dyn Error>> {
-    let json = fetch_crandb_all(package, client)?;
-    let versions = &json["versions"];
-
-    let mut rows: Vec<Package> = vec![];
-    if let Some(versions) = versions.as_object() {
-        for (ver, data) in versions {
-            let pkg_deps = crandb_version_deps(data)?;
-            let pver: RPackageVersion = RPackageVersion::from_str(ver)?;
-            let pkg = Package::from_crandb(package.to_string(), pver, pkg_deps.dependencies);
-            rows.push(pkg);
-        }
-    }
-
-    Ok(rows)
-}
-
 /// A single row of `rig repos package-versions` output: a version, when it was
 /// published, its R version requirement and how many hard dependencies it has.
 #[derive(Debug)]

@@ -1,17 +1,25 @@
 use std::cell::RefCell;
 use std::cmp::Reverse;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
 
+use log::debug;
 use pubgrub::*;
 use serde::{Deserialize, Serialize};
 use simple_error::bail;
 
 use crate::dcf::*;
-use crate::repos::*;
 
 type RPackageName = String;
+
+/// A source of package metadata that the registry can query lazily, one package
+/// at a time, instead of preloading every version up front. Returns all known
+/// versions of `package` (with their dependencies); an empty vector means the
+/// package is unknown.
+pub trait PackageVersionLoader {
+    fn load_versions(&self, package: &str) -> Result<Vec<crate::dcf::Package>, Box<dyn Error>>;
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RegistryPackageVersion {
@@ -100,10 +108,25 @@ pub struct RPackageRegistry {
             HashMap<RPackageName, RPackageVersionRanges, rustc_hash::FxBuildHasher>,
         >,
     >,
-    client: RefCell<Option<reqwest::Client>>,
+    // Packages whose versions have already been resolved: either added
+    // explicitly via `add_package_version`, or lazily loaded (even if the
+    // loader found nothing). Used to avoid re-querying the loader.
+    loaded: RefCell<HashSet<RPackageName>>,
+    // Optional lazy metadata source. When set, packages are loaded on first
+    // access instead of being preloaded; when `None`, the registry only knows
+    // what was added explicitly.
+    loader: Option<Box<dyn PackageVersionLoader>>,
 }
 
 impl RPackageRegistry {
+    /// A registry that lazily loads package versions from `loader` on demand.
+    pub fn with_loader(loader: Box<dyn PackageVersionLoader>) -> Self {
+        RPackageRegistry {
+            loader: Some(loader),
+            ..Default::default()
+        }
+    }
+
     pub fn add_package_version(
         &self,
         pkg: RPackageName,
@@ -121,6 +144,10 @@ impl RPackageRegistry {
                 .borrow_mut()
                 .insert(pkg.clone(), vec![ver.clone()]);
         }
+        // Once a package has any explicit version it is considered resolved, so
+        // the lazy loader is not consulted for it (this protects injected
+        // packages like R, the base packages and `_project`).
+        self.loaded.borrow_mut().insert(pkg.clone());
         // TODO: PACKAGES has multiple copies of the same version for Recommended packages,
         // but that does not matter for now, they should have the same dependencies.
         if !self.deps.borrow().contains_key(&(pkg.clone(), ver.clone())) {
@@ -128,21 +155,36 @@ impl RPackageRegistry {
         }
     }
 
-    fn get_all_versions(&self, pkg: &RPackageName) -> Result<(), Box<dyn Error>> {
-        if self.client.borrow().is_none() {
-            self.client.replace(Some(reqwest::Client::new()));
+    /// Ensure a package's versions are available, loading them from the lazy
+    /// loader on first access. A package with no versions (unknown) is still
+    /// marked loaded so it is not queried again.
+    fn ensure_loaded(&self, pkg: &RPackageName) {
+        if self.loaded.borrow().contains(pkg) {
+            return;
         }
-        let vers = get_all_cran_package_versions(pkg, self.client.borrow().as_ref())?;
-        for package in vers {
-            let vranges = rpackage_version_ranges_from_constraints(&package.dependencies, false);
-            let v = RegistryPackageVersion {
-                name: package.name,
-                version: package.version.clone(),
-            };
-            self.add_package_version(pkg.clone(), v, vranges);
+        if let Some(loader) = &self.loader {
+            match loader.load_versions(pkg) {
+                Ok(packages) => {
+                    for package in packages {
+                        let ranges =
+                            rpackage_version_ranges_from_constraints(&package.dependencies, false);
+                        let v = RegistryPackageVersion {
+                            name: pkg.clone(),
+                            version: package.version.clone(),
+                        };
+                        self.add_package_version(pkg.clone(), v, ranges);
+                    }
+                }
+                Err(e) => {
+                    debug!("Failed to load versions for package '{}': {}", pkg, e);
+                }
+            }
         }
-        Ok(())
+        // Mark loaded even when the loader found nothing, so a genuinely unknown
+        // package is reported as such instead of being queried repeatedly.
+        self.loaded.borrow_mut().insert(pkg.clone());
     }
+
     pub fn get_dependency_summary(
         &self,
         package: &RPackageName,
@@ -185,6 +227,7 @@ impl DependencyProvider for RPackageRegistry {
         range: &Self::VS,
         _stats: &PackageResolutionStatistics,
     ) -> Self::Priority {
+        self.ensure_loaded(package);
         let count = self
             .versions
             .borrow()
@@ -199,8 +242,10 @@ impl DependencyProvider for RPackageRegistry {
         package: &Self::P,
         range: &Self::VS,
     ) -> Result<Option<Self::V>, Self::Err> {
-        if !self.versions.borrow().contains_key(package) && self.get_all_versions(package).is_err()
-        {
+        // Load the package's versions on demand; an unknown package (none found)
+        // cannot be resolved.
+        self.ensure_loaded(package);
+        if !self.versions.borrow().contains_key(package) {
             return Err(ProviderError::UnknownPackage);
         }
 
@@ -221,16 +266,12 @@ impl DependencyProvider for RPackageRegistry {
         package: &Self::P,
         version: &Self::V,
     ) -> Result<Dependencies<Self::P, Self::VS, Self::M>, Self::Err> {
-        // Look up explicitly stored dependencies
+        // Look up the version's dependencies, loading the package on demand. A
+        // still-missing entry means the package/version is unknown.
+        self.ensure_loaded(package);
         let key = (package.clone(), version.clone());
-        if let Some(deps) = self.deps.borrow().get(&key) {
-            return Ok(Dependencies::Available(deps.clone()));
-        }
-        if self.get_all_versions(package).is_err() {
-            return Err(ProviderError::UnknownPackage);
-        };
         match self.deps.borrow().get(&key) {
-            Some(res) => Ok(Dependencies::Available(res.clone())),
+            Some(deps) => Ok(Dependencies::Available(deps.clone())),
             None => Err(ProviderError::UnknownPackage),
         }
     }

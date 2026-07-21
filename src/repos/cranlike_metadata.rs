@@ -7,19 +7,21 @@ use std::sync::Arc;
 
 use deb822_fast::Deb822;
 use flate2::read::GzDecoder;
-use log::{error, info};
+use log::{debug, error, info};
 use rds2rust::RObject;
 use rds2rust::RObject::*;
 use rds2rust::VectorData;
 use rusqlite::{params, Connection};
 use simple_error::bail;
 use xz2::read::XzDecoder;
+use zstd::stream::read::Decoder as ZstdDecoder;
 
 use crate::cache::get_cache_dir;
 use crate::dcf::*;
 use crate::download::download_first_available_;
 use crate::output::OUTPUT;
 use crate::rds::*;
+use crate::solver::PackageVersionLoader;
 use crate::utils::{calculate_hash, create_parent_dir_if_needed};
 
 fn package_type_to_path(pkg_type: &str, r_version: &str) -> Result<String, Box<dyn Error>> {
@@ -82,6 +84,17 @@ fn minor_r_version(r_version: &str) -> Result<String, Box<dyn Error>> {
     Ok(format!("{}.{}", version.major, version.minor))
 }
 
+/// Candidate metadata URLs for a repo path, in preference order: `PACKAGES.gz`,
+/// `PACKAGES.rds`, `PACKAGES`. The plain `PACKAGES` URL doubles as the cache-key
+/// for the temporary download file.
+fn cranlike_urls(repo_url: &str, path: &str) -> [String; 3] {
+    [
+        repo_url.to_string() + "/" + path + "/PACKAGES.gz",
+        repo_url.to_string() + "/" + path + "/PACKAGES.rds",
+        repo_url.to_string() + "/" + path + "/PACKAGES",
+    ]
+}
+
 pub fn repos_get_packages(
     repo_url: &str,
     pkg_type: &str,
@@ -89,24 +102,217 @@ pub fn repos_get_packages(
 ) -> Result<Vec<Package>, Box<dyn Error>> {
     let r_version = minor_r_version(r_version)?;
     let path = package_type_to_path(pkg_type, &r_version)?;
-    let repo_url_gz = repo_url.to_string() + "/" + &path + "/PACKAGES.gz";
-    let repo_url_rds = repo_url.to_string() + "/" + &path + "/PACKAGES.rds";
-    let repo_url_plain = repo_url.to_string() + "/" + &path + "/PACKAGES";
-    let repo_urls: Vec<&str> = vec![
-        repo_url_gz.as_str(),
-        repo_url_rds.as_str(),
-        repo_url_plain.as_str(),
-    ];
+    let urls = cranlike_urls(repo_url, &path);
+    let repo_urls: Vec<&str> = urls.iter().map(|s| s.as_str()).collect();
 
+    // The cache file name is derived from the plain PACKAGES URL, preserving
+    // the existing on-disk cache layout.
+    get_packages_cached(
+        &repo_urls,
+        &urls[2],
+        repo_url,
+        pkg_type,
+        Some(&r_version),
+        &path,
+    )
+}
+
+/// Ensure the current source `PACKAGES` metadata for `repo_url` is downloaded
+/// and stored in the database (respecting the 24h / etag cache), without
+/// loading the rows into memory.
+fn ensure_cran_source_fresh(repo_url: &str, r_version: &str) -> Result<(), Box<dyn Error>> {
+    let r_version = minor_r_version(r_version)?;
+    let path = package_type_to_path("source", &r_version)?;
+    let urls = cranlike_urls(repo_url, &path);
+    let repo_urls: Vec<&str> = urls.iter().map(|s| s.as_str()).collect();
+    ensure_packages_cached(
+        &repo_urls,
+        &urls[2],
+        repo_url,
+        "source",
+        Some(&r_version),
+        &path,
+    )?;
+    Ok(())
+}
+
+/// Ensure the ALLPACKAGES history is downloaded and stored in the database
+/// (respecting the 24h / etag cache), without loading the rows into memory.
+fn ensure_allpackages_fresh() -> Result<(), Box<dyn Error>> {
+    let url = allpackages_url();
+    ensure_packages_cached(&[url.as_str()], &url, &url, "source", None, "ALLPACKAGES")?;
+    Ok(())
+}
+
+/// A [`PackageVersionLoader`] backed by the shared SQLite database. It queries a
+/// single package's versions on demand from the current `PACKAGES` and the
+/// ALLPACKAGES history, so the solver only materializes the packages it
+/// actually visits instead of the whole CRAN version history.
+pub struct DbSourcePackageLoader {
+    conn: Connection,
+    /// repo ids to search, in priority order: current `PACKAGES` first, then
+    /// the ALLPACKAGES history. Duplicate versions from later repos are dropped.
+    repo_ids: Vec<i64>,
+}
+
+impl DbSourcePackageLoader {
+    /// Ensure both metadata sources are fresh in the database, then open a
+    /// connection ready to serve per-package queries.
+    pub fn new(repo_url: &str, r_version: &str) -> Result<Self, Box<dyn Error>> {
+        ensure_cran_source_fresh(repo_url, r_version)?;
+        ensure_allpackages_fresh()?;
+
+        // Both sources live in the single shared packages.db in the cache dir.
+        let repo_local = repo_local_file(&allpackages_url())?;
+        let repo_db = repo_db_file(&repo_local)?;
+        let conn = Connection::open(&repo_db)?;
+
+        let mut repo_ids = source_repo_ids(&conn, repo_url, "source")?;
+        repo_ids.extend(source_repo_ids(&conn, &allpackages_url(), "source")?);
+
+        Ok(DbSourcePackageLoader { conn, repo_ids })
+    }
+}
+
+/// Resolve the repo id(s) for a given `(url, pkg_type)` in the shared database.
+fn source_repo_ids(
+    conn: &Connection,
+    url: &str,
+    pkg_type: &str,
+) -> Result<Vec<i64>, Box<dyn Error>> {
+    let url = url.trim_end_matches('/');
+    let mut stmt = conn.prepare("SELECT id FROM repos WHERE url = ?1 AND pkg_type = ?2")?;
+    let ids = stmt
+        .query_map(params![url, pkg_type], |row| row.get::<_, i64>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(ids)
+}
+
+impl PackageVersionLoader for DbSourcePackageLoader {
+    fn load_versions(&self, package: &str) -> Result<Vec<Package>, Box<dyn Error>> {
+        // Query by name only: this uses the `(name, ...)` index and touches just
+        // the handful of rows for this package, whereas adding `repo_id = ?`
+        // makes SQLite pick the repo_id index and scan the whole (200k-row)
+        // ALLPACKAGES repo. We filter to our repos and dedup by version here.
+        //
+        // `repo_ids` is in priority order (current PACKAGES first, then the
+        // ALLPACKAGES history); on a version present in both, the lower-index
+        // repo wins.
+        let priority: HashMap<i64, usize> = self
+            .repo_ids
+            .iter()
+            .enumerate()
+            .map(|(i, &id)| (id, i))
+            .collect();
+
+        let mut best: HashMap<String, (usize, String)> = HashMap::new();
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT version, dependencies, repo_id FROM packages WHERE name = ?1",
+        )?;
+        let rows = stmt.query_map(params![package], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
+        })?;
+        for row in rows {
+            let (ver, deps_json, repo_id) = row?;
+            let prio = match priority.get(&repo_id) {
+                Some(p) => *p,
+                None => continue, // row from a repo we do not source from
+            };
+            match best.get(&ver) {
+                Some((existing, _)) if *existing <= prio => {}
+                _ => {
+                    best.insert(ver, (prio, deps_json));
+                }
+            }
+        }
+
+        let mut out: Vec<Package> = Vec::with_capacity(best.len());
+        for (ver, (_prio, deps_json)) in best {
+            let version = RPackageVersion::from_str(&ver)?;
+            let deps: PackageDependencies = serde_json::from_str(&deps_json)?;
+            out.push(Package::from_crandb(
+                package.to_string(),
+                version,
+                deps.dependencies,
+            ));
+        }
+        Ok(out)
+    }
+}
+
+/// URL of the CRAN-wide ALLPACKAGES metadata (every version of every package
+/// ever published on CRAN), overridable via the `RIG_ALLPACKAGES_URL` env var.
+fn allpackages_url() -> String {
+    std::env::var("RIG_ALLPACKAGES_URL")
+        .unwrap_or_else(|_| "https://cran-data.r-pkg.org/ALLPACKAGES.zst".to_string())
+}
+
+/// Outcome of ensuring a cranlike metadata file is present and fresh in the DB.
+enum CacheState {
+    /// The metadata was (re)downloaded and parsed; the packages are in hand.
+    FreshlyParsed(Vec<Package>),
+    /// The database already holds a fresh copy; nothing was parsed.
+    Cached,
+}
+
+/// Download-with-etag / 24h-cache / parse / store / load a cranlike metadata
+/// file into the shared SQLite database.
+///
+/// `candidate_urls` are tried in order (first success wins). `cache_key` names
+/// the temporary download file (hashed), while `repo_url_key` + `pkg_type` +
+/// `path` identify the repo row in the database.
+fn get_packages_cached(
+    candidate_urls: &[&str],
+    cache_key: &str,
+    repo_url_key: &str,
+    pkg_type: &str,
+    r_version: Option<&str>,
+    path: &str,
+) -> Result<Vec<Package>, Box<dyn Error>> {
+    match ensure_packages_cached(
+        candidate_urls,
+        cache_key,
+        repo_url_key,
+        pkg_type,
+        r_version,
+        path,
+    )? {
+        CacheState::FreshlyParsed(packages) => Ok(packages),
+        CacheState::Cached => {
+            let repo_local = repo_local_file(cache_key)?;
+            let repo_db = repo_db_file(&repo_local)?;
+            let packages = load_packages_from_db(&repo_db, repo_url_key, pkg_type)?;
+            info!("Loaded {} packages from database cache", packages.len());
+            Ok(packages)
+        }
+    }
+}
+
+/// Ensure a cranlike metadata file is present and fresh in the SQLite database,
+/// downloading and parsing it if the 24h / etag cache is stale. Does **not**
+/// load the stored rows back into memory when the cache is already fresh, so
+/// callers that query the database lazily avoid materializing everything.
+fn ensure_packages_cached(
+    candidate_urls: &[&str],
+    cache_key: &str,
+    repo_url_key: &str,
+    pkg_type: &str,
+    r_version: Option<&str>,
+    path: &str,
+) -> Result<CacheState, Box<dyn Error>> {
     // Use a temporary file for downloads (will be deleted after parsing)
-    let repo_local = repo_local_file(&repo_url_plain)?;
+    let repo_local = repo_local_file(cache_key)?;
     let repo_db = repo_db_file(&repo_local)?;
 
     // Ensure database schema exists early
     ensure_db_schema(&repo_db)?;
 
     // Check if we have recent data in the database
-    let should_download = match is_repo_cache_recent(&repo_db, repo_url, pkg_type) {
+    let should_download = match is_repo_cache_recent(&repo_db, repo_url_key, pkg_type) {
         Ok(is_recent) => {
             if is_recent {
                 info!("Database cache is recent, skipping download");
@@ -123,14 +329,17 @@ pub fn repos_get_packages(
 
     let (dl_status, new_etag) = if should_download {
         create_parent_dir_if_needed(&repo_local)?;
-        info!("Checking for repo metadata updates from {}", repo_url_plain);
+        info!(
+            "Checking for repo metadata updates from {}",
+            candidate_urls[0]
+        );
 
         // Try to get existing etag from database
-        let existing_etag = get_repo_etag(&repo_db, repo_url, pkg_type).ok();
+        let existing_etag = get_repo_etag(&repo_db, repo_url_key, pkg_type).ok();
 
         // Download with etag (will return false if 304 Not Modified or file is cached)
         download_first_available_(
-            &repo_urls,
+            candidate_urls,
             &repo_local,
             None,
             None,
@@ -142,47 +351,114 @@ pub fn repos_get_packages(
     };
 
     if dl_status {
-        info!("Downloaded new repo metadata to {}", repo_local.display());
-        // Parse DCF/RDS file and save to database
-        let packages = parse_packages(&repo_local)?;
-
-        // Save to database with the etag from the download
-        save_packages_to_db(
-            &packages,
+        let packages = parse_store_and_cleanup(
+            &repo_local,
             &repo_db,
-            repo_url,
-            Some(&r_version),
+            repo_url_key,
+            r_version,
             pkg_type,
-            &path,
+            path,
             new_etag.as_deref(),
         )?;
-
-        // Delete the temporary data file after saving to database
-        if let Err(e) = std::fs::remove_file(&repo_local) {
-            info!(
-                "Could not delete temporary file {}: {}",
-                repo_local.display(),
-                e
-            );
-        }
-
-        info!("Saved {} packages to database cache", packages.len());
-        Ok(packages)
-    } else {
-        info!("Repo metadata is up to date (cached)");
-        // Load from database cache
-        match load_packages_from_db(&repo_db, repo_url, pkg_type) {
-            Ok(packages) => {
-                info!("Loaded {} packages from database cache", packages.len());
-                Ok(packages)
-            }
-            Err(e) => {
-                OUTPUT.error("Failed to load package metadata, database is corrupt?");
-                error!("Failed to load package metadata from database: {}", e);
-                bail!("Failed to load package metadata from database: {}", e)
-            }
-        }
+        return Ok(CacheState::FreshlyParsed(packages));
     }
+
+    info!("Repo metadata is up to date (cached)");
+    // The database should hold the rows. It may not if a previous run
+    // downloaded the metadata but was interrupted (or aborted) before storing
+    // it: the cached download file then looks fresh while the database is
+    // empty. Recover by forcing a fresh download rather than dead-ending on a
+    // "database is corrupt" error.
+    if repo_has_packages(&repo_db, repo_url_key, pkg_type)? {
+        return Ok(CacheState::Cached);
+    }
+
+    info!("Cached metadata missing from database, forcing a fresh download");
+    // Drop the stale download file so it is not treated as cached, and download
+    // without an etag to force a full response.
+    let _ = std::fs::remove_file(&repo_local);
+    create_parent_dir_if_needed(&repo_local)?;
+    let (dl_status, new_etag) =
+        download_first_available_(candidate_urls, &repo_local, None, None, None)?;
+    if !dl_status {
+        OUTPUT.error("Failed to load package metadata, database is corrupt?");
+        error!(
+            "Failed to recover package metadata from {}",
+            candidate_urls[0]
+        );
+        bail!(
+            "Failed to refresh package metadata from {}",
+            candidate_urls[0]
+        );
+    }
+    let packages = parse_store_and_cleanup(
+        &repo_local,
+        &repo_db,
+        repo_url_key,
+        r_version,
+        pkg_type,
+        path,
+        new_etag.as_deref(),
+    )?;
+    Ok(CacheState::FreshlyParsed(packages))
+}
+
+/// Whether the database holds at least one package row for the given repo.
+fn repo_has_packages(
+    db_path: &PathBuf,
+    repo_url: &str,
+    pkg_type: &str,
+) -> Result<bool, Box<dyn Error>> {
+    let conn = Connection::open(db_path)?;
+    let repo_url = repo_url.trim_end_matches('/');
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM packages p
+         JOIN repos r ON p.repo_id = r.id
+         WHERE r.url = ?1 AND r.pkg_type = ?2",
+        params![repo_url, pkg_type],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
+}
+
+/// Parse a freshly downloaded cranlike metadata file, store it in the database,
+/// delete the temporary download, and return the parsed packages.
+#[allow(clippy::too_many_arguments)]
+fn parse_store_and_cleanup(
+    repo_local: &PathBuf,
+    repo_db: &PathBuf,
+    repo_url_key: &str,
+    r_version: Option<&str>,
+    pkg_type: &str,
+    path: &str,
+    etag: Option<&str>,
+) -> Result<Vec<Package>, Box<dyn Error>> {
+    info!("Downloaded new repo metadata to {}", repo_local.display());
+    // Parse DCF/RDS file and save to database
+    let packages = parse_packages(repo_local)?;
+
+    // Save to database with the etag from the download
+    save_packages_to_db(
+        &packages,
+        repo_db,
+        repo_url_key,
+        r_version,
+        pkg_type,
+        path,
+        etag,
+    )?;
+
+    // Delete the temporary data file after saving to database
+    if let Err(e) = std::fs::remove_file(repo_local) {
+        info!(
+            "Could not delete temporary file {}: {}",
+            repo_local.display(),
+            e
+        );
+    }
+
+    info!("Saved {} packages to database cache", packages.len());
+    Ok(packages)
 }
 
 fn parse_packages(dcf_path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
@@ -191,6 +467,7 @@ fn parse_packages(dcf_path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
     // Peek at first 6 bytes to check for compression magic numbers
     // gzip: 0x1f, 0x8b (2 bytes)
     // xz: 0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00 (6 bytes: 0xFD, '7', 'z', 'X', 'Z', 0x00)
+    // zstd: 0x28, 0xB5, 0x2F, 0xFD (4 bytes)
     let mut magic = [0u8; 6];
     let bytes_read = file.read(&mut magic)?;
 
@@ -209,6 +486,12 @@ fn parse_packages(dcf_path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
     } else if bytes_read >= 6 && magic == [0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00] {
         // XZ compressed
         let mut decoder = XzDecoder::new(file);
+        let mut data = Vec::new();
+        decoder.read_to_end(&mut data)?;
+        data
+    } else if bytes_read >= 4 && magic[0..4] == [0x28, 0xB5, 0x2F, 0xFD] {
+        // Zstandard compressed (e.g. ALLPACKAGES.zst)
+        let mut decoder = ZstdDecoder::new(file)?;
         let mut data = Vec::new();
         decoder.read_to_end(&mut data)?;
         data
@@ -239,8 +522,29 @@ fn parse_packages(dcf_path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
 
     let mut packages: Vec<Package> = vec![];
 
+    // Historical metadata (e.g. ALLPACKAGES) contains a handful of very old
+    // packages with malformed dependency fields (stray URLs, junk version
+    // constraints, ...). Skip those individual paragraphs with a warning
+    // rather than aborting the whole file.
+    let mut skipped = 0usize;
     for pkg in desc.iter() {
-        packages.push(Package::from_dcf_paragraph(pkg)?);
+        match Package::from_dcf_paragraph(pkg) {
+            Ok(p) => packages.push(p),
+            Err(e) => {
+                skipped += 1;
+                let ident = pkg
+                    .get("Package")
+                    .map(|name| match pkg.get("Version") {
+                        Some(ver) => format!("{} {}", name, ver),
+                        None => name.to_string(),
+                    })
+                    .unwrap_or_else(|| "<unknown package>".to_string());
+                debug!("Skipping unparseable package metadata for {}: {}", ident, e);
+            }
+        }
+    }
+    if skipped > 0 {
+        info!("Skipped {} package(s) with unparseable metadata", skipped);
     }
 
     Ok(packages)
@@ -681,6 +985,84 @@ fn repo_local_file(url: &str) -> Result<PathBuf, Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parse_packages_zstd() {
+        use std::io::Write;
+
+        // A small DCF PACKAGES file with two versions of pkgA (as ALLPACKAGES
+        // would carry) plus pkgB.
+        let dcf = "\
+Package: pkgA
+Version: 1.0.0
+Imports: pkgB
+
+Package: pkgA
+Version: 0.9.0
+
+Package: pkgB
+Version: 2.1.0
+Depends: R (>= 3.5.0)
+";
+        let compressed = zstd::stream::encode_all(dcf.as_bytes(), 0).unwrap();
+        // Sanity check: the zstd magic bytes parse_packages sniffs for.
+        assert_eq!(&compressed[0..4], &[0x28, 0xB5, 0x2F, 0xFD]);
+
+        let mut path = std::env::temp_dir();
+        path.push(format!("rig-test-allpackages-{}.zst", std::process::id()));
+        File::create(&path).unwrap().write_all(&compressed).unwrap();
+
+        let result = parse_packages(&path);
+        let _ = std::fs::remove_file(&path);
+
+        let packages = result.expect("parse zstd-compressed PACKAGES");
+        assert_eq!(packages.len(), 3);
+        let mut vers: Vec<_> = packages
+            .iter()
+            .filter(|p| p.name == "pkgA")
+            .map(|p| p.version.to_string())
+            .collect();
+        vers.sort();
+        assert_eq!(vers, vec!["0.9.0".to_string(), "1.0.0".to_string()]);
+    }
+
+    #[test]
+    fn test_parse_packages_skips_malformed_paragraphs() {
+        use std::io::Write;
+
+        // pkgBad has a stray URL where a version constraint should be, mirroring
+        // the malformed historical CRAN metadata in ALLPACKAGES. It must be
+        // skipped without aborting the parse of the good packages.
+        let dcf = "\
+Package: pkgGood
+Version: 1.0.0
+
+Package: pkgBad
+Version: 0.1.0
+Depends: methods (http://www.example.com)
+
+Package: pkgAlsoGood
+Version: 2.0.0
+Imports: pkgGood
+";
+        let mut path = std::env::temp_dir();
+        path.push(format!(
+            "rig-test-malformed-{}.PACKAGES",
+            std::process::id()
+        ));
+        File::create(&path)
+            .unwrap()
+            .write_all(dcf.as_bytes())
+            .unwrap();
+
+        let result = parse_packages(&path);
+        let _ = std::fs::remove_file(&path);
+
+        let packages = result.expect("parse must not abort on a malformed paragraph");
+        let mut names: Vec<_> = packages.iter().map(|p| p.name.as_str()).collect();
+        names.sort();
+        assert_eq!(names, vec!["pkgAlsoGood", "pkgGood"]);
+    }
 
     #[test]
     fn test_parse_packages_from_rds_src() {

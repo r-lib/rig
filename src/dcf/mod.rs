@@ -365,7 +365,8 @@ pub struct Package {
 }
 
 impl Package {
-    /// Create a Package from CRANDB data (name, version, and dependencies)
+    /// Create a Package from name, version and dependencies only (the other
+    /// metadata fields, e.g. download URL, are left unset).
     pub fn from_crandb(
         name: String,
         version: RPackageVersion,

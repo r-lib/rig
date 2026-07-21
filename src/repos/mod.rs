@@ -30,11 +30,10 @@ use repos_available::sc_repos_available;
 mod repos_list;
 use repos_list::sc_repos_list;
 pub mod cranlike_metadata;
-pub use cranlike_metadata::repos_get_packages;
+pub use cranlike_metadata::{repos_get_packages, DbSourcePackageLoader};
 mod setup;
 pub use setup::repos_setup;
 mod crandb;
-pub use crandb::get_all_cran_package_versions;
 use crandb::CranVersionRow;
 
 pub fn sc_repos(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {

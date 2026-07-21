@@ -47,6 +47,8 @@ flate2 = "1.0"
 tar = "0.4"
 # xz compression/decompression
 xz2 = { version = "0.1", features = ["static"] }
+# zstd decompression (ALLPACKAGES.zst)
+zstd = "0.13"
 # run external commands and pipe their output
 duct = "0.13.5"
 # to set the mtime of files when downloading
