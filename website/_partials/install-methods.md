@@ -175,7 +175,8 @@ On most RPM based distros (except for OpenSUSE and SLES) you can install
 our RPM package directly:
 
 ```sh
-`which sudo` yum install -y https://github.com/r-lib/rig/releases/download/latest/r-rig-latest-1.$(arch).rpm
+`which sudo` yum install -y \
+  https://github.com/r-lib/rig/releases/download/latest/r-rig-latest-1.$(arch).rpm
 ```
 
 ### OpenSUSE and SLES (RPM package)
@@ -183,7 +184,8 @@ our RPM package directly:
 On OpenSUSE and SLES use `zypper` instead of `yum`:
 
 ```sh
-`which sudo` zypper install -y --allow-unsigned-rpm https://github.com/r-lib/rig/releases/download/latest/r-rig-latest-1.$(arch).rpm
+`which sudo` zypper install -y --allow-unsigned-rpm \
+  https://github.com/r-lib/rig/releases/download/latest/r-rig-latest-1.$(arch).rpm
 ```
 
 ### Any Linux distribution (tarball)

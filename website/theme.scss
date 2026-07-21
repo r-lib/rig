@@ -5,6 +5,14 @@
 // cosmo (light, 0.5rem), making the top bar jump taller in dark mode.
 $navbar-padding-y: 0.5rem;
 
+// A readable accent blue for the dark theme. darkly's `--bs-primary`
+// (#375a7f) is a dark navy that all but disappears on the dark page
+// background, so anything that leans on the primary colour for *text* (the
+// hero emphasis, the platform badges) needs a lightened blue in dark mode.
+// cosmo's own primary (#2780e3) stays readable on the light background, so
+// this only applies under `body.quarto-dark`.
+$rig-accent-dark: #6ea8fe;
+
 /*-- scss:rules --*/
 
 // Colour links rather than underlining them.
@@ -22,15 +30,22 @@ dd {
 }
 
 // The flags/terms in those definition lists are inline `<code>` inside `<dt>`
-// (and sometimes `<dd>`). Quarto's dark theme only rewrites the light default
-// `code` background (#f8f9fa) for code within `p`/`li`/`td`, so code in a
-// definition list keeps the near-white background under the dark theme's light
-// code text — rendering the argument and option names unreadable (white on
-// white). Give definition-list code the same dark translucent background
-// Quarto uses for inline code elsewhere.
+// (and sometimes `<dd>`), and each subcommand's section heading is inline
+// `<code>` inside an `<h2>`/`<h3>`/... (e.g. `## `rig rtools add``). Quarto's
+// dark theme only rewrites the light default `code` background (#f8f9fa) for
+// code within `p`/`li`/`td`, so code in a definition list or a heading keeps
+// the near-white background under the dark theme's light code text —
+// rendering those names unreadable (white on white). Give that code the same
+// dark translucent background Quarto uses for inline code elsewhere.
 body.quarto-dark {
   dt code:not(.sourceCode),
-  dd code:not(.sourceCode) {
+  dd code:not(.sourceCode),
+  h1 code:not(.sourceCode),
+  h2 code:not(.sourceCode),
+  h3 code:not(.sourceCode),
+  h4 code:not(.sourceCode),
+  h5 code:not(.sourceCode),
+  h6 code:not(.sourceCode) {
     background-color: rgba(67, 67, 67, 0.65);
     padding: 0.2em;
   }
@@ -57,6 +72,7 @@ body.quarto-dark {
 }
 
 body.quarto-dark .rig-platform {
+  color: $rig-accent-dark;
   background-color: rgba(255, 255, 255, 0.1);
 }
 
@@ -95,6 +111,13 @@ body.quarto-dark .hero {
     font-style: normal;
     font-weight: inherit;
     color: var(--bs-primary);
+  }
+}
+
+body.quarto-dark .hero-intro p {
+  strong,
+  em {
+    color: $rig-accent-dark;
   }
 }
 
