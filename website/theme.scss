@@ -33,13 +33,16 @@ dd {
 // (and sometimes `<dd>`), and each subcommand's section heading is inline
 // `<code>` inside an `<h2>`/`<h3>`/... (e.g. `## `rig rtools add``). Quarto's
 // dark theme only rewrites the light default `code` background (#f8f9fa) for
-// code within `p`/`li`/`td`, so code in a definition list or a heading keeps
-// the near-white background under the dark theme's light code text —
-// rendering those names unreadable (white on white). Give that code the same
-// dark translucent background Quarto uses for inline code elsewhere.
+// code within `p`/`li`/`td`, so code in a definition list, a heading, or a
+// table *header* cell (`th`, e.g. the "Quick links (`R`, `Rscript`, `R-*`)"
+// column heading in the admin-vs-user-mode tables) keeps the near-white
+// background under the dark theme's light code text — rendering those names
+// unreadable (white on white). Give that code the same dark translucent
+// background Quarto uses for inline code elsewhere.
 body.quarto-dark {
   dt code:not(.sourceCode),
   dd code:not(.sourceCode),
+  th code:not(.sourceCode),
   h1 code:not(.sourceCode),
   h2 code:not(.sourceCode),
   h3 code:not(.sourceCode),
