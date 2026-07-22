@@ -2,6 +2,8 @@
 VERSION=$(shell grep "^version" Cargo.toml | head -1 | sed -E 's/^version[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/')
 SOURCES=$(wildcard src/*.rs) $(wildcard src/*.in)
 
+ARCH ?= $(shell uname -m)
+
 all:
 	@echo "Call 'make win', 'make macos' or 'make linux'"
 
@@ -31,9 +33,9 @@ rig-$(VERSION).exe: target/release/rig.exe rig.iss gsudo.exe
 # escalation still works) + shell completions, laid out to be extracted
 # into %USERPROFILE%\.local by an unprivileged user. No Inno Setup, no
 # elevation. Uses 7-Zip, which is preinstalled on GitHub Windows runners.
-win-zip: rig-$(VERSION)-windows.zip
+win-zip: rig-windows-$(ARCH)-$(VERSION).zip
 
-rig-$(VERSION)-windows.zip: target/release/rig.exe gsudo.exe
+rig-windows-$(ARCH)-$(VERSION).zip: target/release/rig.exe gsudo.exe
 	rm -rf zipdir
 	mkdir -p zipdir/bin \
 	    zipdir/share/bash-completion/completions \
@@ -70,7 +72,8 @@ linux: export OPENSSL_INCLUDE_DIR = /usr/local/include/
 linux: export OPENSSL_LIB_DIR = /usr/local/lib/
 linux: export OPENSSL_STATIC = 1
 linux: export DEP_OPENSSL_INCLUDE = /usr/local/include/
-linux: rig-$(VERSION).tar.gz r-rig-$(VERSION).deb r-rig-$(VERSION).rpm
+linux: rig-$(VERSION).tar.gz rig-linux-$(ARCH)-$(VERSION).tar.gz \
+	r-rig-$(VERSION).deb r-rig-$(VERSION).rpm
 
 rig-$(VERSION).tar.gz: target/release/rig
 	ls -l target/release/rig
@@ -89,6 +92,9 @@ rig-$(VERSION).tar.gz: target/release/rig
 	mkdir -p build/share/rig
 	curl -L -o build/share/rig/cacert.pem 'https://curl.se/ca/cacert.pem'
 	tar cz -C build -f $@ bin share
+
+rig-linux-$(ARCH)-$(VERSION).tar.gz: rig-$(VERSION).tar.gz
+	cp $< $@
 
 r-rig-$(VERSION).deb: rig-$(VERSION).tar.gz tools/linux/make-deb.sh
 	VERSION=$(VERSION) ./tools/linux/make-deb.sh $< $@
@@ -182,7 +188,7 @@ target/x86_64-apple-darwin/release/rig: $(SOURCES)
 	cargo build --target x86_64-apple-darwin --release
 
 release: rig-$(VERSION)-macOS-arm64.pkg rig-$(VERSION)-macOS-x86_64.pkg \
-	 rig-$(VERSION)-macOS-arm64.tar.gz rig-$(VERSION)-macOS-x86_64.tar.gz
+	 rig-macos-arm64-$(VERSION).tar.gz rig-macos-x86_64-$(VERSION).tar.gz
 
 rig-$(VERSION)-macOS-%.pkg: rig-unnotarized-%.pkg tools/gon.hcl.in
 	if [[ "x$$AC_PASSWORD" == "x" ]]; then \
@@ -270,7 +276,9 @@ rig-$(VERSION)-macos.tar.gz: target/release/rig
 # notarized .pkg so the binary they package is the one whose cdhash was
 # registered with Apple (it passes Gatekeeper's online check even as a
 # loose binary). Requires signing credentials; run as part of `make macos`.
-rig-$(VERSION)-macOS-%.tar.gz: rig-$(VERSION)-macOS-%.pkg
+
+# `rig-macos-<arch>-<version>.tar.gz` for user-mode install scripts
+rig-macos-%-$(VERSION).tar.gz: rig-$(VERSION)-macOS-%.pkg
 	$(call macos_tarball,build-$*/usr/local/bin/rig,$@)
 
 # README.md is the short landing page, generated from README.qmd (which
