@@ -1337,5 +1337,25 @@
     "crumbs": [
       "Get started"
     ]
+  },
+  {
+    "objectID": "index.html#sponsors",
+    "href": "index.html#sponsors",
+    "title": "rig – the R Installation Manager",
+    "section": "Sponsors",
+    "text": "Sponsors\n\n\n\n\nsignpath logo\n\n\nFree code signing on Windows provided by SignPath.io, certificate by SignPath Foundation",
+    "crumbs": [
+      "Get started"
+    ]
+  },
+  {
+    "objectID": "index.html#license",
+    "href": "index.html#license",
+    "title": "rig – the R Installation Manager",
+    "section": "📘 License",
+    "text": "📘 License\nMIT 2021-2026 © Posit Software, PBC.",
+    "crumbs": [
+      "Get started"
+    ]
   }
 ]
