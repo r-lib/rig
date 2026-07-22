@@ -13,6 +13,7 @@ Install, remove, configure R versions.
 - 📦  <a href="#id-container">Docker containers with rig</a>
 - 🤝  <a href="#id-feedback">Feedback</a>
 - ❓  <a href="#id-faq">FAQ</a>
+- 🙏  <a href="#id-sponsors">Sponsors</a>
 - 📘  <a href="#id-license">License</a>
 
 ## 🚀  Features <a id="id-features">
@@ -611,7 +612,7 @@ Which domains does rig download files from?
 
 </details>
 
-## Sponsors
+## 🙏  Sponsors <a id="id-sponsors">
 
 <img src="https://raw.githubusercontent.com/r-lib/rig/main/website/assets/signpath.svg"
   width="40" align="middle" alt="signpath logo"> Free code signing on Windows
