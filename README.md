@@ -185,10 +185,7 @@ project](https://github.com/rstudio/r-builds#r-builds).
 
 <details>
 
-<summary>
-
-Retired Linux distributions
-</summary>
+<summary>Retired Linux distributions</summary>
 
 These are not updated any more, no new R builds are added for them, but
 existing R builds still work.
@@ -457,10 +454,7 @@ Please open an issue in our issue tracker at
 
 <details>
 
-<summary>
-
-Why does rig create a user package library?
-</summary>
+<summary>Why does rig create a user package library?</summary>
 
 > Installing non-base packages into a user package library has several
 > benefits:
@@ -479,10 +473,7 @@ Why does rig create a user package library?
 
 <details>
 
-<summary>
-
-Why does rig install pak?
-</summary>
+<summary>Why does rig install pak?</summary>
 
 > To be able to install R packages efficiently, from CRAN, Bioconductor
 > or GitHub, right from the start. pak also supports installing system
@@ -495,10 +486,7 @@ Why does rig install pak?
 
 <details>
 
-<summary>
-
-Why does rig change the permissions of the system library (on macOS)?
-</summary>
+<summary>Why does rig change the permissions of the system library (on macOS)?</summary>
 
 > To make sure that you don’t install packages accidentally into the
 > system library. See “Why does rig create a user package library?”
@@ -508,10 +496,7 @@ Why does rig change the permissions of the system library (on macOS)?
 
 <details>
 
-<summary>
-
-Why does rig set the default CRAN mirror?
-</summary>
+<summary>Why does rig set the default CRAN mirror?</summary>
 
 > To avoid the extra work the users need to spend on this.
 >
@@ -528,10 +513,7 @@ Why does rig set the default CRAN mirror?
 
 <details>
 
-<summary>
-
-Why does rig set up P3M?
-</summary>
+<summary>Why does rig set up P3M?</summary>
 
 > P3M ([Posit Public Package
 > Manager](https://packagemanager.posit.co/client/#/)) is generally
@@ -549,10 +531,7 @@ Why does rig set up P3M?
 
 <details>
 
-<summary>
-
-Can rig install R without admin permissions
-</summary>
+<summary>Can rig install R without admin permissions</summary>
 
 > No, currently it cannot.
 
@@ -560,10 +539,7 @@ Can rig install R without admin permissions
 
 <details>
 
-<summary>
-
-How is rig different from RSwitch?
-</summary>
+<summary>How is rig different from RSwitch?</summary>
 
 > While there is a small overlap in functionality, rig and
 > [RSwitch](https://rud.is/rswitch/) are very different. I suggest you
@@ -580,10 +556,7 @@ How is rig different from RSwitch?
 
 <details>
 
-<summary>
-
-Which domains does rig download files from?
-</summary>
+<summary>Which domains does rig download files from?</summary>
 
 > Here is the list of domains that you need to enable in your proxy.
 > Note that some of these, in particular the GitHub ones, might trigger
