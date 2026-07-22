@@ -24,7 +24,16 @@
   ```
   (https://github.com/mitchellh/gon is now archived, I had to compile my
   own fork, from https://github.com/UniversalMediaServer.)
-- [ ] Download the artifacts for the new version for Windows & Linux (x2)
+- [ ] Get the signed Windows builds from SignPath:
+  - Run the `sign-windows.yaml` Action manually (`workflow_dispatch`),
+    selecting the `release-signing` signing policy. It builds and signs
+    both the x86_64 and aarch64 installers.
+  - Approve each signing request in the SignPath UI if prompted.
+  - Download the `rig-windows-x86_64-signed` and `rig-windows-aarch64-signed`
+    artifacts from the workflow run; use these signed `.exe` files for the
+    release (not the unsigned CI artifacts). Rename them to
+    `rig-windows-${VERSION}.exe` and `rig-windows-arm64-${VERSION}.exe`.
+- [ ] Download the artifacts for the new version for Linux (x2)
 - [ ] Create tag for the current version, push to GH.
 - [ ] Create release on GH, add the installers.
 - [ ] Test the macOS installers. (The rest are tested in the CI.)

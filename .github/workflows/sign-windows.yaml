@@ -1,7 +1,16 @@
-name: Sign
+name: sign-windows.yaml
 
 on:
   workflow_dispatch:
+    inputs:
+      signing-policy:
+        description: 'SignPath signing policy'
+        required: true
+        default: 'test-signing'
+        type: choice
+        options:
+          - test-signing
+          - release-signing
 
 env:
   RUST_BACKTRACE: 1
@@ -9,8 +18,18 @@ env:
 jobs:
 
   windows:
-    runs-on: windows-2022
-    name: Windows (signed)
+    runs-on: ${{ matrix.config.runner }}
+    name: ${{ matrix.config.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: Windows x86_64 (signed)
+            runner: windows-2022
+            arch: x86_64
+          - name: Windows aarch64 (signed)
+            runner: windows-11-arm
+            arch: aarch64
 
     steps:
 
@@ -35,7 +54,7 @@ jobs:
     - uses: actions/upload-artifact@v7
       id: upload-unsigned-artifact
       with:
-        name: rig-windows-unsigned
+        name: rig-windows-${{ matrix.config.arch }}-unsigned
         path: 'rig-*.exe'
 
     - uses: signpath/github-action-submit-signing-request@v2
@@ -43,12 +62,12 @@ jobs:
         api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
         organization-id: 'ce0224dd-53d3-46e4-8e82-b71df4fcef90'
         project-slug: 'rig'
-        signing-policy-slug: 'test-signing'
+        signing-policy-slug: '${{ inputs.signing-policy }}'
         github-artifact-id: '${{ steps.upload-unsigned-artifact.outputs.artifact-id }}'
         wait-for-completion: true
         output-artifact-directory: 'signed'
 
     - uses: actions/upload-artifact@v7
       with:
-        name: rig-windows-signed
+        name: rig-windows-${{ matrix.config.arch }}-signed
         path: 'signed/*'
