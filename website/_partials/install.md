@@ -5,7 +5,7 @@
 
 - Debian 12, 13
 - Ubuntu 20.04, 22.04, 24.04, 26.04
-- Fedora Linux 43
+- Fedora Linux 43, 44
 - OpenSUSE 15.6, 16.0
 - SUSE Linux Enterprise 15 SP6
 - Red Hat Enterprise Linux 7, 8, 9, 10
