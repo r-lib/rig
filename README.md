@@ -614,8 +614,8 @@ Which domains does rig download files from?
 ## Sponsors
 
 <img src="https://raw.githubusercontent.com/r-lib/rig/main/website/assets/signpath.svg"
-  width="40" alt="signpath logo"> Free code signing on Windows provided by
-[SignPath.io](https://signpath.io), certificate by
+  width="40" align="middle" alt="signpath logo"> Free code signing on Windows
+provided by [SignPath.io](https://signpath.io), certificate by
 [SignPath Foundation](https://signpath.org)
 
 ## 📘   License <a id="id-license">
