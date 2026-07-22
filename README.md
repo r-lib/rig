@@ -172,7 +172,7 @@ tarball.
 
 - Debian 13
 - Ubuntu 20.04, 22.04, 24.04, 26.04
-- Fedora Linux 42, 43
+- Fedora Linux 43
 - OpenSUSE 15.6, 16.0
 - SUSE Linux Enterprise 15 SP6
 - Red Hat Enterprise Linux 7, 8, 9, 10
@@ -204,6 +204,7 @@ existing R builds still work.
 - Fedora 39 (last R version: 4.4.3),
 - Fedora 40 (last R version: 4.5.1),
 - Fedora 41 (last R version: 4.5.3),
+- Fedora 42 (last R version: 4.6.1),
 - OpenSUSE 42 (only x86_64, last R version: 4.2.1),
 - OpenSUSE 15.1 (only x86_64, last R version: 4.1.2),
 - OpenSUSE 15.2 (only x86_64, last R version: 4.1.3),
@@ -396,8 +397,6 @@ containers:
 | `ghcr.io/r-lib/rig/debian-13-devel` | Debian 13 | devel (daily) | `debian-devel`, `debian-latest-devel` |
 | `ghcr.io/r-lib/rig/fedora-43-release` | Fedora 43 | release | `fedora`, `fedora-release`, `fedora-latest`, `fedora-latest-release`, `fedora-43` |
 | `ghcr.io/r-lib/rig/fedora-43-devel` | Fedora 43 | devel | `fedora-devel`, `fedora-latest-devel` |
-| `ghcr.io/r-lib/rig/fedora-42-release` | Fedora 42 | release | `fedora-42` |
-| `ghcr.io/r-lib/rig/fedora-42-devel` | Fedora 42 | devel |  |
 | `ghcr.io/r-lib/rig/opensuse-16.0-release` | OpenSUSE Leap 16.0 | release | `opensuse`, `opensuse-release`, `opensuse-latest`, `opensuse-latest-release`, `opensuse-16.0` |
 | `ghcr.io/r-lib/rig/opensuse-16.0-devel` | OpenSUSE Leap 16.0 | devel (daily) | `opensuse-devel`, `opensuse-latest-devel` |
 | `ghcr.io/r-lib/rig/opensuse-15.6-release` | OpenSUSE Leap 15.6 | release | `opensuse-15.6` |
@@ -423,8 +422,6 @@ For convenience, we also create these tags:
 | `ghcr.io/r-lib/rig/debian-13` | `debian-13-release` | Latest R release on Debian 13. |
 | `ghcr.io/r-lib/rig/debian-devel` | `debian-13-devel` | R devel on latest Debian. |
 | `ghcr.io/r-lib/rig/fedora` | `fedora-43-release` | Latest R release on latest Fedora. |
-| `ghcr.io/r-lib/rig/fedora-43` | `fedora-43-release` | Latest R release on Fedora 43. |
-| `ghcr.io/r-lib/rig/fedora-42` | `fedora-42-release` | Latest R release on Fedora 42. |
 | `ghcr.io/r-lib/rig/fedora-devel` | `fedora-43-devel` | R devel on latest Fedora. |
 | `ghcr.io/r-lib/rig/opensuse` | `opensuse-16.0-release` | Latest R release on latest OpenSUSE. |
 | `ghcr.io/r-lib/rig/opensuse-16.0` | `opensuse-16.0-release` | Latest R release on OpenSUSE 16.0. |

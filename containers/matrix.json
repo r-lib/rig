@@ -232,43 +232,6 @@
         ]
     },
     {
-        "name": "fedora-42-release",
-        "aliases": [
-            "fedora-42-release",
-            "fedora",
-            "fedora-42",
-            "fedora-release",
-            "release"
-        ],
-        "dir": "fedora",
-        "args": [
-            "RELEASE=42",
-            "RVERSION=release"
-        ],
-        "tags": [
-            "ghcr.io/r-lib/rig/fedora-42-release:latest",
-            "ghcr.io/r-lib/rig/fedora-42:latest"
-        ]
-    },
-    {
-        "name": "fedora-42-devel",
-        "aliases": [
-            "fedora-42-devel",
-            "fedora",
-            "fedora-42",
-            "fedora-devel",
-            "devel"
-        ],
-        "dir": "fedora",
-        "args": [
-            "RELEASE=42",
-            "RVERSION=devel"
-        ],
-        "tags": [
-            "ghcr.io/r-lib/rig/fedora-42-devel:latest"
-        ]
-    },
-    {
         "name": "fedora-43-release",
         "aliases": [
             "fedora-43-release",

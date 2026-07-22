@@ -5,7 +5,7 @@
 
 - Debian 12, 13
 - Ubuntu 20.04, 22.04, 24.04, 26.04
-- Fedora Linux 42, 43
+- Fedora Linux 43
 - OpenSUSE 15.6, 16.0
 - SUSE Linux Enterprise 15 SP6
 - Red Hat Enterprise Linux 7, 8, 9, 10
@@ -29,6 +29,7 @@ but existing R builds still work.
 - Fedora 39 (last R version: 4.4.3),
 - Fedora 40 (last R version: 4.5.1),
 - Fedora 41 (last R version: 4.5.3),
+- Fedora 42 (last R version: 4.6.1),
 - OpenSUSE 42 (only x86_64, last R version: 4.2.1),
 - OpenSUSE 15.1 (only x86_64, last R version: 4.1.2),
 - OpenSUSE 15.2 (only x86_64, last R version: 4.1.3),
