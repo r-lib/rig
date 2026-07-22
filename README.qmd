@@ -28,6 +28,10 @@ rig default 4.5.1    # set the default R version
 
 {{< include website/_partials/feedback.md >}}
 
+## Sponsors
+
+{{< include _partials/sponsors.md >}}
+
 ## 📘 License
 
 MIT 2021-2026 © Posit Software, PBC.

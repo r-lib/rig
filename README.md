@@ -611,6 +611,12 @@ Which domains does rig download files from?
 
 </details>
 
+## Sponsors
+
+![signpath logo](https://raw.githubusercontent.com/r-lib/rig/main/website/assets/signpath.svg)
+Free code signing on Windows provided by [SignPath.io](https://signpath.io),
+certificate by [SignPath Foundation](https://signpath.org)
+
 ## 📘   License <a id="id-license">
 
-MIT 2021-2024 © Posit Software, PBC.
+MIT 2021-2026 © Posit Software, PBC.
