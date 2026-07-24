@@ -361,7 +361,7 @@ jobs:
       if: success()
       with:
         name: rig-windows-zip
-        path: 'rig-*-windows.zip'
+        path: 'rig-windows-*.zip'
 
   windows-aarch64-test:
     if: ${{ github.event.inputs.inpwindows == '' || github.event.inputs.inpwindows == 'yes' }}
@@ -458,7 +458,7 @@ jobs:
       if: success()
       with:
         name: rig-windows-aarch64-zip
-        path: 'rig-*-windows.zip'
+        path: 'rig-windows-*.zip'
 
     - name: Install rig
       run: |
@@ -617,7 +617,7 @@ jobs:
 
     - name: Install rig into %USERPROFILE%\.local
       run: |
-        $zip = Get-ChildItem rig-*-windows.zip | Select-Object -First 1
+        $zip = Get-ChildItem rig-windows-*.zip | Select-Object -First 1
         New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.local" | Out-Null
         Expand-Archive -Path $zip.FullName -DestinationPath "$env:USERPROFILE\.local" -Force
         Add-Content -Path $env:GITHUB_PATH -Value "$env:USERPROFILE\.local\bin"
@@ -660,7 +660,7 @@ jobs:
 
     - name: Install rig into %USERPROFILE%\.local
       run: |
-        $zip = Get-ChildItem rig-*-windows.zip | Select-Object -First 1
+        $zip = Get-ChildItem rig-windows-*.zip | Select-Object -First 1
         New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.local" | Out-Null
         Expand-Archive -Path $zip.FullName -DestinationPath "$env:USERPROFILE\.local" -Force
         Add-Content -Path $env:GITHUB_PATH -Value "$env:USERPROFILE\.local\bin"
