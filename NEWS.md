@@ -1,4 +1,4 @@
-# rig 0.10.0 (not released yet)
+# rig 0.10.0-alpha (pre-release)
 
 * rig now supports a **user mode** on all platforms, in addition to the
   default admin mode. In user mode rig installs everything into the user's
