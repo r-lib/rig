@@ -133,7 +133,7 @@ jobs:
     - name: Uncompress rig build
       run: |
         mkdir build
-        tar xzf rig-*.tar.gz -C build
+        tar xzf rig-linux-*.tar.gz -C build
         find build
 
     - name: Test
@@ -221,7 +221,7 @@ jobs:
     - name: Uncompress rig build
       run: |
         mkdir build
-        tar xzf rig-*.tar.gz -C build
+        tar xzf rig-linux-*.tar.gz -C build
         find build
 
     - name: Test
@@ -538,7 +538,7 @@ jobs:
     - name: Install rig into ~/.local
       run: |
         mkdir -p "$HOME/.local"
-        tar xzf rig-*.tar.gz -C "$HOME/.local"
+        tar xzf rig-linux-*.tar.gz -C "$HOME/.local"
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
     - name: Switch rig to user mode
@@ -578,7 +578,7 @@ jobs:
     - name: Install rig into ~/.local
       run: |
         mkdir -p "$HOME/.local"
-        tar xzf rig-*.tar.gz -C "$HOME/.local"
+        tar xzf rig-linux-*.tar.gz -C "$HOME/.local"
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
     - name: Switch rig to user mode
