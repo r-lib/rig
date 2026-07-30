@@ -389,9 +389,7 @@ fn get_rtools_versions(rtoolskey: &RegKey) -> Result<Vec<RtoolsVersion>, Box<dyn
             .to_lowercase();
         let arch = if pathl.contains("-aarch64") {
             "aarch64".to_string()
-        } else if pathl.contains("-x86_64") {
-            "x86_64".to_string()
-        } else if basename.starts_with("rtools") {
+        } else if pathl.contains("-x86_64") || basename.starts_with("rtools") {
             "x86_64".to_string()
         } else {
             get_native_arch().to_string()
