@@ -381,11 +381,20 @@ fn get_rtools_versions(rtoolskey: &RegKey) -> Result<Vec<RtoolsVersion>, Box<dyn
         let version = verparts[0..2].join(".");
         // e.g. 43
         let name = verparts[0..2].join("");
-        // derive arch from install path: -aarch64 in path => aarch64, else x86_64
-        let arch = if path.to_lowercase().contains("-aarch64") {
+        let pathl = path.to_lowercase();
+        let basename = Path::new(&path)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        let arch = if pathl.contains("-aarch64") {
             "aarch64".to_string()
-        } else {
+        } else if pathl.contains("-x86_64") {
             "x86_64".to_string()
+        } else if basename.starts_with("rtools") {
+            "x86_64".to_string()
+        } else {
+            get_native_arch().to_string()
         };
         versions.push(RtoolsVersion {
             name,
@@ -819,26 +828,51 @@ mod tests {
         k.set_value("InstallPath", &"C:\\rtools43").unwrap();
         drop(k);
 
-        // aarch64: "-aarch64" appears in path.
+        // admin aarch64: "-aarch64" appears in path.
         let (k, _) = root.create_subkey("4.4.6459.5818").unwrap();
         k.set_value("FullVersion", &"4.4.6459.5818").unwrap();
         k.set_value("InstallPath", &"C:\\rtools44-aarch64").unwrap();
         drop(k);
 
+        // user mode, native arch: no suffix (…\rtools\45).
+        let (k, _) = root.create_subkey("4.5.6768.6492").unwrap();
+        k.set_value("FullVersion", &"4.5.6768.6492").unwrap();
+        k.set_value("InstallPath", &"C:\\Users\\me\\AppData\\Roaming\\rig\\data\\rtools\\45")
+            .unwrap();
+        drop(k);
+
+        // user mode, x86_64 build on an aarch64 host: "-x86_64" suffix.
+        let (k, _) = root.create_subkey("4.2.6100.6100").unwrap();
+        k.set_value("FullVersion", &"4.2.6100.6100").unwrap();
+        k.set_value("InstallPath", &"C:\\Users\\me\\AppData\\Roaming\\rig\\data\\rtools\\42-x86_64")
+            .unwrap();
+        drop(k);
+
         let mut versions = get_rtools_versions(&root).unwrap();
         versions.sort_by(|a, b| a.version.cmp(&b.version));
 
-        assert_eq!(versions.len(), 2);
+        assert_eq!(versions.len(), 4);
 
-        assert_eq!(versions[0].name, "43");
-        assert_eq!(versions[0].version, "4.3");
-        assert_eq!(versions[0].fullversion, "4.3.5948.5818");
+        assert_eq!(versions[0].name, "42");
+        assert_eq!(versions[0].version, "4.2");
+        assert_eq!(versions[0].fullversion, "4.2.6100.6100");
         assert_eq!(versions[0].arch, "x86_64");
 
-        assert_eq!(versions[1].name, "44");
-        assert_eq!(versions[1].version, "4.4");
-        assert_eq!(versions[1].fullversion, "4.4.6459.5818");
-        assert_eq!(versions[1].arch, "aarch64");
+        assert_eq!(versions[1].name, "43");
+        assert_eq!(versions[1].version, "4.3");
+        assert_eq!(versions[1].fullversion, "4.3.5948.5818");
+        assert_eq!(versions[1].arch, "x86_64");
+
+        assert_eq!(versions[2].name, "44");
+        assert_eq!(versions[2].version, "4.4");
+        assert_eq!(versions[2].fullversion, "4.4.6459.5818");
+        assert_eq!(versions[2].arch, "aarch64");
+
+        // Unsuffixed user-mode directory resolves to the native arch.
+        assert_eq!(versions[3].name, "45");
+        assert_eq!(versions[3].version, "4.5");
+        assert_eq!(versions[3].fullversion, "4.5.6768.6492");
+        assert_eq!(versions[3].arch, get_native_arch());
     }
 
     // ── matching_subkey_paths ────────────────────────────────────────────────
