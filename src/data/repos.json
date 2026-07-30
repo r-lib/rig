@@ -376,6 +376,25 @@
         ]
     },
     {
+        "name": "r-universe/bioc",
+        "title": "R-universe Bioconductor mirror",
+        "description": "TODO",
+        "enabled": false,
+        "repos": [
+            {
+                "name": "r-universe/bioc",
+                "url": "https://bioc.r-universe.dev",
+                "platforms": [
+                    "windows",
+                    "*-mingw32"
+                ],
+                "archs": [
+                    "aarch64"
+                ]
+            }
+        ]
+    },
+    {
         "name": "CRAN",
         "title": "The Comprehensive R Archive Network",
         "description": "TODO",
