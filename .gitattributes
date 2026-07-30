@@ -1,0 +1,5 @@
+# Embedded data files are written verbatim into R profiles / config files,
+# so their line endings must stay LF regardless of the platform they are
+# checked out on. A CRLF checkout of repositories.R broke profile marker
+# matching on Windows (see src/hardcoded.rs).
+src/data/repositories.R text eol=lf

@@ -14,7 +14,10 @@ pub static HC_REPOS: Lazy<Vec<Repository>> = Lazy::new(|| {
 
 pub static HC_PROFILE_REPOS: Lazy<String> = Lazy::new(|| {
     let data = include_str!("data/repositories.R");
-    data.to_string()
+    // Normalize line endings. The embedded file may be checked out with CRLF
+    // (e.g. on Windows without a .gitattributes rule), but we always write and
+    // match the profile with LF-terminated lines.
+    data.replace("\r\n", "\n")
 });
 
 pub struct ProfileReposMarkers {
@@ -25,7 +28,11 @@ pub struct ProfileReposMarkers {
 
 pub static HC_PROFILE_REPOS_MARKERS: Lazy<ProfileReposMarkers> = Lazy::new(|| {
     let data = include_str!("data/repositories.R");
-    let lines = data.trim().split('\n').collect::<Vec<&str>>();
+    // Use `lines()` (not `split('\n')`) so a CRLF checkout of the embedded file
+    // does not leave stray '\r' on the markers. Those markers are matched as
+    // regexes against `read_lines()` output, which is always CR-stripped, so a
+    // trailing '\r' here would make them never match and break profile parsing.
+    let lines = data.trim().lines().collect::<Vec<&str>>();
     ProfileReposMarkers {
         generic_start: lines[0].to_string(),
         current_start: lines[1].to_string(),
