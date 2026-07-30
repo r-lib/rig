@@ -1,99 +1,99 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://r-lib.github.io/rig/news.html</loc>
-    <lastmod>2026-07-22T11:32:39.496Z</lastmod>
-  </url>
-  <url>
-    <loc>https://r-lib.github.io/rig/admin-vs-user-mode.html</loc>
-    <lastmod>2026-07-22T11:32:39.495Z</lastmod>
-  </url>
-  <url>
-    <loc>https://r-lib.github.io/rig/reference/default.html</loc>
-    <lastmod>2026-07-22T11:33:49.546Z</lastmod>
-  </url>
-  <url>
-    <loc>https://r-lib.github.io/rig/reference/add.html</loc>
-    <lastmod>2026-07-22T11:33:49.383Z</lastmod>
-  </url>
-  <url>
-    <loc>https://r-lib.github.io/rig/reference/index.html</loc>
-    <lastmod>2026-07-22T11:32:39.496Z</lastmod>
-  </url>
-  <url>
-    <loc>https://r-lib.github.io/rig/reference/sysreqs.html</loc>
-    <lastmod>2026-07-22T11:33:50.236Z</lastmod>
-  </url>
-  <url>
-    <loc>https://r-lib.github.io/rig/reference/run.html</loc>
-    <lastmod>2026-07-22T11:33:50.137Z</lastmod>
-  </url>
-  <url>
-    <loc>https://r-lib.github.io/rig/reference/resolve.html</loc>
-    <lastmod>2026-07-22T11:33:49.971Z</lastmod>
+    <loc>https://r-lib.github.io/rig/reference/list.html</loc>
+    <lastmod>2026-07-30T12:34:14.770Z</lastmod>
   </url>
   <url>
     <loc>https://r-lib.github.io/rig/reference/library.html</loc>
-    <lastmod>2026-07-22T11:33:49.657Z</lastmod>
+    <lastmod>2026-07-30T12:34:14.748Z</lastmod>
   </url>
   <url>
-    <loc>https://r-lib.github.io/rig/reference/test.html</loc>
-    <lastmod>2026-07-22T11:33:50.726Z</lastmod>
+    <loc>https://r-lib.github.io/rig/reference/resolve.html</loc>
+    <lastmod>2026-07-30T12:34:15.042Z</lastmod>
   </url>
   <url>
-    <loc>https://r-lib.github.io/rig/reference/config.html</loc>
-    <lastmod>2026-07-22T11:33:49.520Z</lastmod>
+    <loc>https://r-lib.github.io/rig/reference/add.html</loc>
+    <lastmod>2026-07-30T12:34:14.494Z</lastmod>
   </url>
   <url>
-    <loc>https://r-lib.github.io/rig/install.html</loc>
-    <lastmod>2026-07-22T11:32:39.496Z</lastmod>
-  </url>
-  <url>
-    <loc>https://r-lib.github.io/rig/docker.html</loc>
-    <lastmod>2026-07-22T11:32:39.495Z</lastmod>
-  </url>
-  <url>
-    <loc>https://r-lib.github.io/rig/macos-app.html</loc>
-    <lastmod>2026-07-22T11:32:39.496Z</lastmod>
-  </url>
-  <url>
-    <loc>https://r-lib.github.io/rig/reference/repos.html</loc>
-    <lastmod>2026-07-22T11:33:49.940Z</lastmod>
-  </url>
-  <url>
-    <loc>https://r-lib.github.io/rig/reference/system.html</loc>
-    <lastmod>2026-07-22T11:33:50.645Z</lastmod>
-  </url>
-  <url>
-    <loc>https://r-lib.github.io/rig/reference/available.html</loc>
-    <lastmod>2026-07-22T11:33:49.405Z</lastmod>
+    <loc>https://r-lib.github.io/rig/reference/sysreqs.html</loc>
+    <lastmod>2026-07-30T12:34:15.298Z</lastmod>
   </url>
   <url>
     <loc>https://r-lib.github.io/rig/reference/rm.html</loc>
-    <lastmod>2026-07-22T11:33:49.992Z</lastmod>
+    <lastmod>2026-07-30T12:34:15.063Z</lastmod>
   </url>
   <url>
-    <loc>https://r-lib.github.io/rig/reference/rtools.html</loc>
-    <lastmod>2026-07-22T11:33:50.115Z</lastmod>
+    <loc>https://r-lib.github.io/rig/reference/test.html</loc>
+    <lastmod>2026-07-30T12:34:15.747Z</lastmod>
   </url>
   <url>
     <loc>https://r-lib.github.io/rig/reference/proj.html</loc>
-    <lastmod>2026-07-22T11:33:49.774Z</lastmod>
+    <lastmod>2026-07-30T12:34:14.857Z</lastmod>
   </url>
   <url>
-    <loc>https://r-lib.github.io/rig/reference/list.html</loc>
-    <lastmod>2026-07-22T11:33:49.681Z</lastmod>
+    <loc>https://r-lib.github.io/rig/reference/repos.html</loc>
+    <lastmod>2026-07-30T12:34:15.017Z</lastmod>
   </url>
   <url>
-    <loc>https://r-lib.github.io/rig/reference/rstudio.html</loc>
-    <lastmod>2026-07-22T11:33:50.018Z</lastmod>
+    <loc>https://r-lib.github.io/rig/docker.html</loc>
+    <lastmod>2026-07-30T12:33:09.269Z</lastmod>
+  </url>
+  <url>
+    <loc>https://r-lib.github.io/rig/admin-vs-user-mode.html</loc>
+    <lastmod>2026-07-30T12:33:09.268Z</lastmod>
   </url>
   <url>
     <loc>https://r-lib.github.io/rig/faq.html</loc>
-    <lastmod>2026-07-22T11:32:39.495Z</lastmod>
+    <lastmod>2026-07-30T12:33:09.269Z</lastmod>
+  </url>
+  <url>
+    <loc>https://r-lib.github.io/rig/install.html</loc>
+    <lastmod>2026-07-30T12:33:09.269Z</lastmod>
+  </url>
+  <url>
+    <loc>https://r-lib.github.io/rig/macos-app.html</loc>
+    <lastmod>2026-07-30T12:33:09.269Z</lastmod>
+  </url>
+  <url>
+    <loc>https://r-lib.github.io/rig/news.html</loc>
+    <lastmod>2026-07-30T12:33:09.269Z</lastmod>
   </url>
   <url>
     <loc>https://r-lib.github.io/rig/index.html</loc>
-    <lastmod>2026-07-22T11:32:39.495Z</lastmod>
+    <lastmod>2026-07-30T12:33:09.269Z</lastmod>
+  </url>
+  <url>
+    <loc>https://r-lib.github.io/rig/reference/rstudio.html</loc>
+    <lastmod>2026-07-30T12:34:15.093Z</lastmod>
+  </url>
+  <url>
+    <loc>https://r-lib.github.io/rig/reference/rtools.html</loc>
+    <lastmod>2026-07-30T12:34:15.187Z</lastmod>
+  </url>
+  <url>
+    <loc>https://r-lib.github.io/rig/reference/system.html</loc>
+    <lastmod>2026-07-30T12:34:15.676Z</lastmod>
+  </url>
+  <url>
+    <loc>https://r-lib.github.io/rig/reference/available.html</loc>
+    <lastmod>2026-07-30T12:34:14.514Z</lastmod>
+  </url>
+  <url>
+    <loc>https://r-lib.github.io/rig/reference/index.html</loc>
+    <lastmod>2026-07-30T12:33:09.269Z</lastmod>
+  </url>
+  <url>
+    <loc>https://r-lib.github.io/rig/reference/run.html</loc>
+    <lastmod>2026-07-30T12:34:15.207Z</lastmod>
+  </url>
+  <url>
+    <loc>https://r-lib.github.io/rig/reference/config.html</loc>
+    <lastmod>2026-07-30T12:34:14.619Z</lastmod>
+  </url>
+  <url>
+    <loc>https://r-lib.github.io/rig/reference/default.html</loc>
+    <lastmod>2026-07-30T12:34:14.643Z</lastmod>
   </url>
 </urlset>
