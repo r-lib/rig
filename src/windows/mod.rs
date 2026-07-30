@@ -328,7 +328,18 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         Some(rig_name)
     } else {
         run(target, cmd_args, "installer")?;
-        get_latest_install_path(&installed_arch)?
+        match get_latest_install_path(&installed_arch)? {
+            Some(dir) => Some(dir),
+            None => {
+                let msg = "Installation failed: could not find the newly installed R \
+                    in the registry. This usually means the installer failed, e.g. \
+                    because there was not enough space on the disk."
+                    .to_string();
+                OUTPUT.error(&msg);
+                error!("{}", msg);
+                bail!("{}", msg);
+            }
+        }
     };
 
     match dirname {
@@ -582,6 +593,22 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<(), Box<dyn Error
         } else {
             run(installer, cmd_args, "installer")?;
         }
+
+        if !instdirpath.exists() {
+            let msg = format!(
+                "Failed to install Rtools{} ({}): the installer did not create {}. \
+                 This usually means the installation failed, e.g. because there was \
+                 not enough space on the disk.",
+                item.version,
+                item.arch,
+                instdirpath.display()
+            );
+            OUTPUT.error(&msg);
+            error!("{}", msg);
+            bail!("{}", msg);
+        }
+        OUTPUT.success(&format!("Installed Rtools{} ({})", item.version, item.arch));
+        info!("Installed Rtools{} ({})", item.version, item.arch);
     }
 
     // In user mode R finds Rtools via RTOOLS<NN>_HOME, which rig writes into each R
