@@ -837,15 +837,21 @@ mod tests {
         // user mode, native arch: no suffix (…\rtools\45).
         let (k, _) = root.create_subkey("4.5.6768.6492").unwrap();
         k.set_value("FullVersion", &"4.5.6768.6492").unwrap();
-        k.set_value("InstallPath", &"C:\\Users\\me\\AppData\\Roaming\\rig\\data\\rtools\\45")
-            .unwrap();
+        k.set_value(
+            "InstallPath",
+            &"C:\\Users\\me\\AppData\\Roaming\\rig\\data\\rtools\\45",
+        )
+        .unwrap();
         drop(k);
 
         // user mode, x86_64 build on an aarch64 host: "-x86_64" suffix.
         let (k, _) = root.create_subkey("4.2.6100.6100").unwrap();
         k.set_value("FullVersion", &"4.2.6100.6100").unwrap();
-        k.set_value("InstallPath", &"C:\\Users\\me\\AppData\\Roaming\\rig\\data\\rtools\\42-x86_64")
-            .unwrap();
+        k.set_value(
+            "InstallPath",
+            &"C:\\Users\\me\\AppData\\Roaming\\rig\\data\\rtools\\42-x86_64",
+        )
+        .unwrap();
         drop(k);
 
         let mut versions = get_rtools_versions(&root).unwrap();
