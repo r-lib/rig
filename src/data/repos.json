@@ -353,6 +353,29 @@
         ]
     },
     {
+        "name": "r-universe/cran",
+        "title": "R-universe CRAN mirror",
+        "description": "TODO",
+        "enabled": {
+            "platforms": [
+                "aarch64-*-mingw32"
+            ]
+        },
+        "repos": [
+            {
+                "name": "r-universe/cran",
+                "url": "https://cran.r-universe.dev",
+                "platforms": [
+                    "windows",
+                    "*-mingw32"
+                ],
+                "archs": [
+                    "aarch64"
+                ]
+            }
+        ]
+    },
+    {
         "name": "CRAN",
         "title": "The Comprehensive R Archive Network",
         "description": "TODO",
