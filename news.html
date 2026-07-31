@@ -547,6 +547,7 @@ ul.task-list li input[type="checkbox"] {
 <li><p>rig has a new documentation website at <a href="https://r-lib.github.io/rig/" class="uri">https://r-lib.github.io/rig/</a>, including a full CLI reference and a guide to admin vs.&nbsp;user mode.</p></li>
 <li><p>New <code>rig config</code> command to manage the rig configuration file.</p></li>
 <li><p>New experimental <code>rig proj</code> command to manage R project dependencies.</p></li>
+<li><p><code>rig run --cmd &lt;command&gt; [args...]</code> now runs <code>R CMD &lt;command&gt; [args...]</code> with the selected R version.</p></li>
 <li><p><code>rig rtools</code> is now a top-level command (it used to be <code>rig system rtools</code>).</p></li>
 <li><p>On Linux, rig can now install portable R builds, for glibc- and musl-based Linux distros. If there is no distro-specific build for your platform, rig falls back to a portable build automatically.</p></li>
 <li><p>New <code>rig system fix-r-alias</code> subcommand.</p></li>

@@ -697,7 +697,7 @@
     "href": "news.html",
     "title": "Changelog",
     "section": "",
-    "text": "rig now supports a user mode on all platforms, in addition to the default admin mode. In user mode rig installs everything into the user’s home directory and never needs sudo or administrator privileges. R goes into ~/.local/share/rig/r (%APPDATA%\\rig\\data\\r on Windows) and quick links into ~/.local/bin (%USERPROFILE%\\.local\\bin on Windows). Select the mode with the --user / --admin global flags, the RIG_MODE environment variable, or the mode key in the rig config file. The new rig system user-mode command switches an existing admin-mode setup to user mode.\nrig has a new documentation website at https://r-lib.github.io/rig/, including a full CLI reference and a guide to admin vs. user mode.\nNew rig config command to manage the rig configuration file.\nNew experimental rig proj command to manage R project dependencies.\nrig rtools is now a top-level command (it used to be rig system rtools).\nOn Linux, rig can now install portable R builds, for glibc- and musl-based Linux distros. If there is no distro-specific build for your platform, rig falls back to a portable build automatically.\nNew rig system fix-r-alias subcommand.\nrig rstudio --config-path is now implemented on Linux and macOS.\nrig now warns instead of failing when it encounters a broken R installation (#346).",
+    "text": "rig now supports a user mode on all platforms, in addition to the default admin mode. In user mode rig installs everything into the user’s home directory and never needs sudo or administrator privileges. R goes into ~/.local/share/rig/r (%APPDATA%\\rig\\data\\r on Windows) and quick links into ~/.local/bin (%USERPROFILE%\\.local\\bin on Windows). Select the mode with the --user / --admin global flags, the RIG_MODE environment variable, or the mode key in the rig config file. The new rig system user-mode command switches an existing admin-mode setup to user mode.\nrig has a new documentation website at https://r-lib.github.io/rig/, including a full CLI reference and a guide to admin vs. user mode.\nNew rig config command to manage the rig configuration file.\nNew experimental rig proj command to manage R project dependencies.\nrig run --cmd &lt;command&gt; [args...] now runs R CMD &lt;command&gt; [args...] with the selected R version.\nrig rtools is now a top-level command (it used to be rig system rtools).\nOn Linux, rig can now install portable R builds, for glibc- and musl-based Linux distros. If there is no distro-specific build for your platform, rig falls back to a portable build automatically.\nNew rig system fix-r-alias subcommand.\nrig rstudio --config-path is now implemented on Linux and macOS.\nrig now warns instead of failing when it encounters a broken R installation (#346).",
     "crumbs": [
       "Changelog"
     ]
@@ -1220,7 +1220,7 @@
     "href": "reference/run.html#arguments",
     "title": "rig run",
     "section": "Arguments",
-    "text": "Arguments\n\n[command]...\n\nR script or project to run, with parameters",
+    "text": "Arguments\n\n[command]...\n\nR script, project or R CMD command to run, with parameters",
     "crumbs": [
       "Reference",
       "rig run"
@@ -1231,7 +1231,7 @@
     "href": "reference/run.html#options",
     "title": "rig run",
     "section": "Options",
-    "text": "Options\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-t, --app-type &lt;app-type&gt;\n\nExplicitly specify app type to run\n[possible values: api, shiny, quarto-shiny, rmd-shiny, quarto-static, rmd-static, static]\n\n--dry-run\n\nShow the command, but do not run it\n\n--echo\n\nPrint input to R\n\n-e, --eval &lt;eval&gt;\n\nR expression to evaluate\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--no-echo\n\nDo not print input to R\n\n--no-startup\n\nDo not print R startup message\n\n-r, --r-version &lt;r-version&gt;\n\nR version to use\n\n-f, --script &lt;script&gt;\n\nR script file to run\n\n--startup\n\nPrint R startup message\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "text": "Options\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-t, --app-type &lt;app-type&gt;\n\nExplicitly specify app type to run\n[possible values: api, shiny, quarto-shiny, rmd-shiny, quarto-static, rmd-static, static]\n\n--cmd\n\nRun R CMD &lt;command&gt; with the trailing arguments\n\n--dry-run\n\nShow the command, but do not run it\n\n--echo\n\nPrint input to R\n\n-e, --eval &lt;eval&gt;\n\nR expression to evaluate\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--no-echo\n\nDo not print input to R\n\n--no-startup\n\nDo not print R startup message\n\n-r, --r-version &lt;r-version&gt;\n\nR version to use\n\n-f, --script &lt;script&gt;\n\nR script file to run\n\n--startup\n\nPrint R startup message\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig run"
