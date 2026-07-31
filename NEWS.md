@@ -17,6 +17,9 @@
 
 * New experimental `rig proj` command to manage R project dependencies.
 
+* `rig run --cmd <command> [args...]` now runs `R CMD <command> [args...]`
+  with the selected R version.
+
 * `rig rtools` is now a top-level command (it used to be `rig system
   rtools`).
 

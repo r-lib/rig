@@ -1156,8 +1156,24 @@ pub fn rig_app() -> Command {
                 .conflicts_with("eval"),
         )
         .arg(
+            Arg::new("cmd")
+                .help("Run `R CMD <command>` with the trailing arguments")
+                .long("cmd")
+                .action(clap::ArgAction::SetTrue)
+                .required(false)
+                .conflicts_with_all([
+                    "eval",
+                    "script",
+                    "app-type",
+                    "startup",
+                    "no-startup",
+                    "echo",
+                    "no-echo",
+                ]),
+        )
+        .arg(
             Arg::new("command")
-                .help("R script or project to run, with parameters")
+                .help("R script, project or R CMD command to run, with parameters")
                 .required(false)
                 .action(clap::ArgAction::Append),
         );
@@ -1597,8 +1613,39 @@ pub fn rig_app() -> Command {
     rig
 }
 
+// With `rig run --cmd <command> [args...]` everything after `--cmd` is passed
+// on to `R CMD <command>`, including arguments that happen to be rig's own
+// flags, e.g. `rig run --cmd check --help`. Insert the `--` separator that
+// tells clap to stop parsing arguments, so users don't need to type it.
+// Nothing after the first `--cmd` token is modified, and `--cmd` is not an
+// argument of any other rig command.
+fn rcmd_argv<I>(argv: I) -> Vec<std::ffi::OsString>
+where
+    I: IntoIterator<Item = std::ffi::OsString>,
+{
+    use std::ffi::{OsStr, OsString};
+    let mut out: Vec<OsString> = Vec::new();
+    let mut argv = argv.into_iter();
+    while let Some(arg) = argv.next() {
+        let is_cmd = arg.as_os_str() == OsStr::new("--cmd");
+        out.push(arg);
+        if !is_cmd {
+            continue;
+        }
+        let rest: Vec<OsString> = argv.collect();
+        if let Some(first) = rest.first() {
+            if first.as_os_str() != OsStr::new("--") {
+                out.push(OsString::from("--"));
+            }
+        }
+        out.extend(rest);
+        break;
+    }
+    out
+}
+
 pub fn parse_args() -> ArgMatches {
-    match rig_app().try_get_matches() {
+    match rig_app().try_get_matches_from(rcmd_argv(std::env::args_os())) {
         Ok(matches) => matches,
         Err(e) => {
             use clap::error::ErrorKind::*;
@@ -1719,4 +1766,106 @@ fn show_help(err: &clap::Error) {
     }
 
     let _ = child.wait();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::OsString;
+
+    fn rcmd(argv: &[&str]) -> Vec<String> {
+        rcmd_argv(argv.iter().map(OsString::from))
+            .iter()
+            .map(|x| x.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    #[test]
+    fn test_rcmd_argv_no_cmd() {
+        assert_eq!(
+            rcmd(&["rig", "run", "-e", "1+1"]),
+            ["rig", "run", "-e", "1+1"]
+        );
+        assert_eq!(rcmd(&[]), Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_rcmd_argv_inserts_separator() {
+        assert_eq!(
+            rcmd(&["rig", "run", "--cmd", "check", "pkg.tar.gz"]),
+            ["rig", "run", "--cmd", "--", "check", "pkg.tar.gz"]
+        );
+    }
+
+    #[test]
+    fn test_rcmd_argv_keeps_rig_flags_before_cmd() {
+        assert_eq!(
+            rcmd(&[
+                "rig",
+                "run",
+                "-r",
+                "4.5.1",
+                "--dry-run",
+                "--cmd",
+                "check",
+                "--help"
+            ]),
+            [
+                "rig",
+                "run",
+                "-r",
+                "4.5.1",
+                "--dry-run",
+                "--cmd",
+                "--",
+                "check",
+                "--help"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_rcmd_argv_explicit_separator() {
+        assert_eq!(
+            rcmd(&["rig", "run", "--cmd", "--", "check", "."]),
+            ["rig", "run", "--cmd", "--", "check", "."]
+        );
+    }
+
+    #[test]
+    fn test_rcmd_argv_no_arguments_after_cmd() {
+        assert_eq!(rcmd(&["rig", "run", "--cmd"]), ["rig", "run", "--cmd"]);
+    }
+
+    #[test]
+    fn test_rcmd_argv_only_first_cmd() {
+        assert_eq!(
+            rcmd(&["rig", "run", "--cmd", "check", "--cmd", "x"]),
+            ["rig", "run", "--cmd", "--", "check", "--cmd", "x"]
+        );
+    }
+
+    #[test]
+    fn test_run_cmd_args() {
+        let m = rig_app()
+            .try_get_matches_from(rcmd_argv(
+                [
+                    "rig",
+                    "run",
+                    "--dry-run",
+                    "--cmd",
+                    "check",
+                    "--no-manual",
+                    ".",
+                ]
+                .iter()
+                .map(OsString::from),
+            ))
+            .unwrap();
+        let run = m.subcommand_matches("run").unwrap();
+        assert!(run.get_flag("cmd"));
+        assert!(run.get_flag("dry-run"));
+        let cmdargs: Vec<&String> = run.get_many::<String>("command").unwrap().collect();
+        assert_eq!(cmdargs, ["check", "--no-manual", "."]);
+    }
 }
