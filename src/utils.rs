@@ -263,6 +263,17 @@ pub enum Mode {
     Admin,
 }
 
+impl std::fmt::Display for Mode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // The same spellings parse_mode() accepts, so the reported mode can be
+        // fed back into RIG_MODE or the `mode` config key.
+        match self {
+            Mode::User => write!(f, "user"),
+            Mode::Admin => write!(f, "admin"),
+        }
+    }
+}
+
 fn parse_mode(s: &str) -> Option<Mode> {
     match s {
         "user" => Some(Mode::User),

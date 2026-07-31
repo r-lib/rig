@@ -15,6 +15,10 @@
 
 * New `rig config` command to manage the rig configuration file.
 
+* New `rig system dirs` command to show the directories rig uses. Also,
+  `rig system r-dir`, `rig system binary-dir` and `rig system rtools-dir`
+  (Windows only) commands each print a single path.
+
 * New experimental `rig proj` command to manage R project dependencies.
 
 * `rig run --cmd <command> [args...]` now runs `R CMD <command> [args...]`

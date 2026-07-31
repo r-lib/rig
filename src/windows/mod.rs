@@ -95,6 +95,32 @@ pub(super) fn admin_r_root_arch(arch: &str) -> String {
     }
 }
 
+// The effective Rtools installation root, i.e. the directory the Rtools version
+// directories are created in. In user mode (and whenever `rtools-install-dir` /
+// RIG_RTOOLS_INSTALL_DIR is set) this is get_rtools_install_dir(); in admin mode
+// Rtools keeps its historical location directly under the drive root, so the
+// root is `C:\` and the version is in the directory name (C:\Rtools45,
+// C:\Rtools44-aarch64). This is the single source of truth: both
+// rtools_install_path() and `rig system rtools-dir` go through it.
+pub fn get_rtools_root() -> Result<String, Box<dyn Error>> {
+    match get_rtools_install_dir()? {
+        Some(root) => Ok(ensure_dir_root(root)),
+        None => Ok("C:\\".to_string()),
+    }
+}
+
+// A bare drive letter ("D:") is drive-*relative* in Path::join, so "D:" joined
+// with "Rtools45" is "D:Rtools45" and not "D:\Rtools45". get_rtools_install_dir()
+// strips trailing backslashes, which turns a `D:\` override into exactly that,
+// so put the separator back.
+fn ensure_dir_root(mut dir: String) -> String {
+    let bytes = dir.as_bytes();
+    if bytes.len() == 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
+        dir.push('\\');
+    }
+    dir
+}
+
 // Strip a trailing -x86_64, -aarch64, or -arm64 arch suffix from a rig name.
 pub fn base_version(name: &str) -> String {
     for suffix in &["-x86_64", "-aarch64", "-arm64"] {
@@ -407,7 +433,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn normalize_arch(arch: &str) -> String {
+pub(crate) fn normalize_arch(arch: &str) -> String {
     match arch {
         "arm64" => "aarch64".to_string(),
         other => other.to_string(),
@@ -452,10 +478,7 @@ fn rtools_install_path(version: &str, arch: &str) -> Result<PathBuf, Box<dyn Err
     } else {
         rtools_dir_name(version, arch)
     };
-    match get_rtools_install_dir()? {
-        Some(root) => Ok(Path::new(&root).join(name)),
-        None => Ok(Path::new("C:\\").join(name)),
-    }
+    Ok(Path::new(&get_rtools_root()?).join(name))
 }
 
 // The environment variable R uses to locate Rtools, e.g. RTOOLS44_HOME on x86_64 and
@@ -2117,6 +2140,24 @@ pub fn get_r_binary_x64(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ensure_dir_root_restores_the_drive_separator() {
+        // A bare drive letter would be drive-relative in Path::join.
+        assert_eq!(ensure_dir_root("D:".to_string()), "D:\\");
+        assert_eq!(
+            Path::new(&ensure_dir_root("D:".to_string())).join("Rtools45"),
+            Path::new("D:\\Rtools45")
+        );
+        // Everything else is left alone.
+        assert_eq!(ensure_dir_root("D:\\tools".to_string()), "D:\\tools");
+        assert_eq!(
+            ensure_dir_root("C:\\Program Files".to_string()),
+            "C:\\Program Files"
+        );
+        assert_eq!(ensure_dir_root("".to_string()), "");
+        assert_eq!(ensure_dir_root("42".to_string()), "42");
+    }
 
     // Drop guard: removes the temp install tree when the test ends.
     struct TempDir(PathBuf);

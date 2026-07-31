@@ -801,6 +801,58 @@ pub fn rig_app() -> Command {
 
     cmd_system = cmd_system.subcommand(cmd_system_detect_platform);
 
+    // `--arch` only changes the answer on Windows, where the admin mode R
+    // installation root is architecture dependent, so it is hidden elsewhere.
+    // It is still defined on every platform, so that scripts do not break, and
+    // it must not have a default value: `_default_arch` is empty on Linux and
+    // would fail the value parser. (This is why `rig add --arch` and
+    // `rig available --arch` need a `#[cfg]` block and this one does not.)
+    fn arch_arg() -> Arg {
+        Arg::new("arch")
+            .help("Architecture of the R installation root (default: native arch).")
+            .short('a')
+            .long("arch")
+            .required(false)
+            .value_parser(["x86_64", "aarch64", "arm64"])
+            .platform("windows")
+    }
+
+    let cmd_system_dirs = Command::new("dirs")
+        .about(ABOUT_SYSTEM_DIRS)
+        .long_about(HELP_SYSTEM_DIRS)
+        .display_order(0)
+        .arg(
+            Arg::new("json")
+                .help("JSON output")
+                .long("json")
+                .num_args(0)
+                .required(false),
+        )
+        .arg(arch_arg());
+
+    let cmd_system_r_dir = Command::new("r-dir")
+        .about(ABOUT_SYSTEM_R_DIR)
+        .long_about(HELP_SYSTEM_R_DIR)
+        .display_order(0)
+        .arg(arch_arg());
+
+    let cmd_system_rtools_dir = Command::new("rtools-dir")
+        .about(ABOUT_SYSTEM_RTOOLS_DIR)
+        .long_about(HELP_SYSTEM_RTOOLS_DIR)
+        .display_order(0)
+        .platform("windows");
+
+    let cmd_system_binary_dir = Command::new("binary-dir")
+        .about(ABOUT_SYSTEM_BINARY_DIR)
+        .long_about(HELP_SYSTEM_BINARY_DIR)
+        .display_order(0);
+
+    cmd_system = cmd_system
+        .subcommand(cmd_system_dirs)
+        .subcommand(cmd_system_r_dir)
+        .subcommand(cmd_system_rtools_dir)
+        .subcommand(cmd_system_binary_dir);
+
     cmd_system = cmd_system
         .subcommand(cmd_system_links)
         .subcommand(cmd_system_lib)
@@ -1867,5 +1919,63 @@ mod tests {
         assert!(run.get_flag("dry-run"));
         let cmdargs: Vec<&String> = run.get_many::<String>("command").unwrap().collect();
         assert_eq!(cmdargs, ["check", "--no-manual", "."]);
+    }
+
+    // The `rig system dirs` family. These tests run on every platform, so they
+    // are also the guard that the items that are merely *hidden* off Windows
+    // stay defined everywhere.
+
+    fn sysargs(argv: &[&str]) -> ArgMatches {
+        let m = rig_app().try_get_matches_from(argv).unwrap();
+        m.subcommand_matches("system").unwrap().to_owned()
+    }
+
+    #[test]
+    fn test_system_dirs_args() {
+        let m = sysargs(&["rig", "system", "dirs"]);
+        let dirs = m.subcommand_matches("dirs").unwrap();
+        assert!(!dirs.get_flag("json"));
+
+        let m = sysargs(&["rig", "system", "dirs", "--json"]);
+        assert!(m.subcommand_matches("dirs").unwrap().get_flag("json"));
+
+        // The global --json also works, and must precede the subcommand.
+        let m = rig_app()
+            .try_get_matches_from(["rig", "--json", "system", "dirs"])
+            .unwrap();
+        assert!(m.get_flag("json"));
+    }
+
+    #[test]
+    fn test_system_dir_commands_are_defined_on_all_platforms() {
+        // `rtools-dir` is hidden off Windows, but it must still parse, so that
+        // scripts can call it unconditionally.
+        let m = sysargs(&["rig", "system", "rtools-dir"]);
+        assert!(m.subcommand_matches("rtools-dir").is_some());
+
+        let m = sysargs(&["rig", "system", "binary-dir"]);
+        assert!(m.subcommand_matches("binary-dir").is_some());
+    }
+
+    #[test]
+    fn test_system_r_dir_arch() {
+        // Same as above: --arch is hidden off Windows, but always defined.
+        let m = sysargs(&["rig", "system", "r-dir", "--arch", "aarch64"]);
+        let rdir = m.subcommand_matches("r-dir").unwrap();
+        assert_eq!(rdir.get_one::<String>("arch"), Some(&"aarch64".to_string()));
+
+        // No default value: an empty one would fail the value parser on Linux.
+        let m = sysargs(&["rig", "system", "r-dir"]);
+        let rdir = m.subcommand_matches("r-dir").unwrap();
+        assert_eq!(rdir.get_one::<String>("arch"), None);
+
+        // `dirs` takes --arch as well.
+        let m = sysargs(&["rig", "system", "dirs", "-a", "arm64"]);
+        let dirs = m.subcommand_matches("dirs").unwrap();
+        assert_eq!(dirs.get_one::<String>("arch"), Some(&"arm64".to_string()));
+
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "system", "r-dir", "--arch", "amd64"])
+            .is_err());
     }
 }

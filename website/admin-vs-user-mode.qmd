@@ -35,6 +35,11 @@ Where things go:
 | Windows  | admin | `C:\Program Files\R`              | `C:\Program Files\R\bin`            |
 | Windows  | user  | `%APPDATA%\rig\data\r`            | `%USERPROFILE%\.local\bin`          |
 
+`rig system dirs` prints the directories rig actually uses on your machine, in
+the current mode and after applying any [configuration](reference/config.qmd)
+overrides. It works even if no R version is installed yet, so you can use it to
+see where `rig add` will put things.
+
 ## Admin mode
 
 Admin mode is the current default. R is installed into the platform's usual

@@ -10,6 +10,68 @@ teardown() {
     true
 }
 
+# These run before any `rig add`, on purpose: they must work with no R
+# installed, which is when they are the most useful.
+
+@test "system dirs" {
+    run rig -q system dirs
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "^Mode  *admin$"
+    echo "$output" | grep -q "^Architecture  *\(arm64\|x86_64\)$"
+    echo "$output" | grep -q "^R root  */Library/Frameworks/R[.]framework/Versions$"
+    echo "$output" | grep -q "^Binary dir  */usr/local/bin$"
+    echo "$output" | grep -q "^Config file  */"
+    # rtools-dir is Windows only
+    echo "$output" | grep -vq "^Rtools root"
+
+    run rig -q system dirs --json
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q '"r_root": "/Library/Frameworks/R.framework/Versions"'
+    echo "$output" | grep -q '"arch":'
+    echo "$output" | grep -vq '"rtools_root"'
+
+    run rig -q --json system dirs
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q '"binary_dir": "/usr/local/bin"'
+}
+
+@test "system r-dir, binary-dir, rtools-dir" {
+    run rig -q system r-dir
+    [[ "$status" -eq 0 ]]
+    [[ "$output" = "/Library/Frameworks/R.framework/Versions" ]]
+
+    run rig -q system binary-dir
+    [[ "$status" -eq 0 ]]
+    [[ "$output" = "/usr/local/bin" ]]
+
+    # both architectures share a root on macOS, so --arch is accepted and ignored
+    run rig -q system r-dir --arch x86_64
+    [[ "$status" -eq 0 ]]
+    [[ "$output" = "/Library/Frameworks/R.framework/Versions" ]]
+
+    # the effective value follows the overrides
+    run env RIG_R_INSTALL_DIR=/tmp/rig-r rig -q system r-dir
+    [[ "$output" = "/tmp/rig-r" ]]
+    run env RIG_BINARY_DIR=/tmp/rig-bin rig -q system binary-dir
+    [[ "$output" = "/tmp/rig-bin" ]]
+
+    run env RIG_MODE=user rig -q system r-dir
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "/[.]local/share/rig/r$"
+    run rig -q --user system binary-dir
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "/[.]local/bin$"
+
+    # `dirs` and the single-value commands agree
+    run rig -q system dirs --json
+    echo "$output" | grep -q "\"r_root\": \"$(rig -q system r-dir)\""
+
+    # hidden no-op off Windows
+    run rig -q system rtools-dir
+    [[ "$status" -eq 0 ]]
+    [[ -z "$output" ]]
+}
+
 @test "add" {
     if ! rig ls | grep -q '^[* ] 4.1'; then
         run sudo rig add 4.1 -a x86_64
