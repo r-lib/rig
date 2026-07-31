@@ -13,6 +13,7 @@ rig run -f <script-file>   # run an R script
 rig run -e <expression>    # evaluate an R expression
 rig run <pkg>::<script>    # run a script from a package's exec directory
 rig run <path-to-app>      # run an R app
+rig run --cmd <command>    # run `R CMD <command>`
 ```
 
 Currently supported apps are:

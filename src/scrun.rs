@@ -29,9 +29,6 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
     };
     let rbin = get_r_binary(&rver)?.to_string_lossy().into_owned();
 
-    let eval = args.get_one::<String>("eval");
-    let script = args.get_one::<String>("script");
-
     let cmdargs = args.get_many::<String>("command");
     let cmdargs: Vec<String> = match cmdargs {
         None => vec![],
@@ -39,6 +36,14 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
     };
 
     let dry_run = args.get_flag("dry-run");
+
+    // R CMD must be before other arguments.
+    if args.get_flag("cmd") {
+        return sc_run_cmd(rbin, cmdargs, dry_run);
+    }
+
+    let eval = args.get_one::<String>("eval");
+    let script = args.get_one::<String>("script");
 
     let startup = args.get_flag("startup");
     let echo = args.get_flag("echo");
@@ -170,6 +175,77 @@ fn sc_run_script(
     trace!("Running {} with arguments {:?}", rbin, args2);
     let _status = Command::new(rbin).args(args2).status()?;
     match _status.code() {
+        Some(code) => Ok(code),
+        None => Ok(-1),
+    }
+}
+
+// Flags that R only accepts _between_ `R` and `CMD`, where they apply to the
+// R processes that the `R CMD` command runs. `--arch` belongs here as well,
+// but it takes a value (`--arch=<name>` or `--arch <name>`), so it does not
+// fit this simple list and `split_r_cmd_args()` handles it separately.
+const R_CMD_R_FLAGS: [&str; 4] = [
+    "--no-environ",
+    "--no-init-file",
+    "--no-site-file",
+    "--vanilla",
+];
+
+// Splits the arguments of `rig run --cmd` into R options that need to go
+// before `CMD`, and the `R CMD` command and its own arguments. R only accepts
+// these options before `CMD`, but users should not need to care about where
+// exactly they put them, so we pick them out and move them into place.
+// No `R CMD` command has an option with these names, so this is unambiguous.
+fn split_r_cmd_args(cmdargs: Vec<String>) -> (Vec<String>, Vec<String>) {
+    let mut ropts: Vec<String> = vec![];
+    let mut rest: Vec<String> = vec![];
+    // A `--` separator is not needed, but drop it if the user typed one anyway.
+    let mut sep = false;
+    let mut cmdargs = cmdargs.into_iter();
+    while let Some(arg) = cmdargs.next() {
+        if !sep && arg == "--" {
+            sep = true;
+        } else if R_CMD_R_FLAGS.contains(&arg.as_str()) || arg.starts_with("--arch=") {
+            ropts.push(arg);
+        } else if arg == "--arch" {
+            // `--arch <name>`, the sub-architecture is the next argument
+            ropts.push(arg);
+            if let Some(arch) = cmdargs.next() {
+                ropts.push(arch);
+            }
+        } else {
+            rest.push(arg);
+        }
+    }
+
+    (ropts, rest)
+}
+
+// Runs `<R binary> [R options] CMD <command> [args...]`, i.e. `rig run --cmd <command>
+// [args...]`. `cmdargs[0]` is the `R CMD` command (e.g. `check`), the rest are
+// its arguments, and they are passed on verbatim.
+fn sc_run_cmd(rbin: String, cmdargs: Vec<String>, dry_run: bool) -> Result<i32, Box<dyn Error>> {
+    let (ropts, cmdargs) = split_r_cmd_args(cmdargs);
+
+    if cmdargs.is_empty() {
+        OUTPUT.error("'--cmd' needs an R CMD command, e.g. `rig run --cmd check .`");
+        error!("'--cmd' needs an R CMD command");
+        bail!("'--cmd' needs an R CMD command");
+    }
+
+    let mut args2: Vec<String> = ropts;
+    args2.push("CMD".to_string());
+    args2.extend(cmdargs);
+
+    if dry_run {
+        println!("\"{}\" {:?}", rbin, args2);
+        return Ok(0);
+    }
+
+    ignore_sigint();
+    trace!("Running {} with arguments {:?}", rbin, args2);
+    let status = Command::new(rbin).args(args2).status()?;
+    match status.code() {
         Some(code) => Ok(code),
         None => Ok(-1),
     }
@@ -595,4 +671,80 @@ fn sc_run_package_script(
         None => std::process::exit(-1),
         Some(code) => std::process::exit(code),
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn split(args: &[&str]) -> (Vec<String>, Vec<String>) {
+        split_r_cmd_args(args.iter().map(|x| x.to_string()).collect())
+    }
+
+    #[test]
+    fn test_split_r_cmd_args_no_r_options() {
+        let (ropts, rest) = split(&["check", "pkg.tar.gz", "--no-manual"]);
+        assert!(ropts.is_empty());
+        assert_eq!(rest, ["check", "pkg.tar.gz", "--no-manual"]);
+    }
+
+    #[test]
+    fn test_split_r_cmd_args_r_options_are_moved() {
+        // before and after the command, and mixed with the command's own options
+        for args in [
+            ["--vanilla", "check", "pkg.tar.gz"],
+            ["check", "--vanilla", "pkg.tar.gz"],
+            ["check", "pkg.tar.gz", "--vanilla"],
+        ] {
+            let (ropts, rest) = split(&args);
+            assert_eq!(ropts, ["--vanilla"]);
+            assert_eq!(rest, ["check", "pkg.tar.gz"]);
+        }
+
+        let (ropts, rest) = split(&[
+            "INSTALL",
+            "--no-environ",
+            "--no-multiarch",
+            "--no-init-file",
+            "--no-site-file",
+            "pkg.tar.gz",
+        ]);
+        assert_eq!(ropts, ["--no-environ", "--no-init-file", "--no-site-file"]);
+        assert_eq!(rest, ["INSTALL", "--no-multiarch", "pkg.tar.gz"]);
+    }
+
+    #[test]
+    fn test_split_r_cmd_args_arch() {
+        let (ropts, rest) = split(&["check", "--arch", "x86_64", "."]);
+        assert_eq!(ropts, ["--arch", "x86_64"]);
+        assert_eq!(rest, ["check", "."]);
+
+        let (ropts, rest) = split(&["--arch=x86_64", "check", "."]);
+        assert_eq!(ropts, ["--arch=x86_64"]);
+        assert_eq!(rest, ["check", "."]);
+
+        // a missing --arch value is R's problem to report
+        let (ropts, rest) = split(&["check", "--arch"]);
+        assert_eq!(ropts, ["--arch"]);
+        assert_eq!(rest, ["check"]);
+    }
+
+    #[test]
+    fn test_split_r_cmd_args_separator() {
+        let (ropts, rest) = split(&["--", "check", "."]);
+        assert!(ropts.is_empty());
+        assert_eq!(rest, ["check", "."]);
+
+        // only the first one, the rest are the command's arguments
+        let (ropts, rest) = split(&["--", "check", "--", "."]);
+        assert!(ropts.is_empty());
+        assert_eq!(rest, ["check", "--", "."]);
+    }
+
+    #[test]
+    fn test_split_r_cmd_args_only_r_options() {
+        let (ropts, rest) = split(&["--vanilla"]);
+        assert_eq!(ropts, ["--vanilla"]);
+        assert!(rest.is_empty());
+    }
 }
