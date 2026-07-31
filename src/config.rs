@@ -34,6 +34,12 @@ fn rig_config_file() -> Result<PathBuf, Box<dyn Error>> {
     Ok(config_file)
 }
 
+// The path of the rig configuration file. It does not need to exist.
+// Used by `rig config config-file-path` and `rig system dirs`.
+pub fn config_file_path() -> Result<PathBuf, Box<dyn Error>> {
+    rig_config_file()
+}
+
 impl Config {
     fn load() -> Result<Config, Box<dyn Error>> {
         let config_file = rig_config_file()?;
