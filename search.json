@@ -565,7 +565,7 @@
     "href": "admin-vs-user-mode.html#at-a-glance",
     "title": "Admin mode vs user mode",
     "section": "At a glance",
-    "text": "At a glance\n\n\n\n\n\n\n\n\n\nAdmin mode (default)\nUser mode\n\n\n\n\nPrivileges\nsudo / administrator for most operations\nnone\n\n\nShared between users\nyes\nno — just your account\n\n\nNeeds PATH setup\nno (/usr/local/bin is usually on PATH)\nyes (the quick-link dir must be on PATH)\n\n\nR install root\nplatform default (below)\nin your home directory (below)\n\n\nBest for\nyour own machine, shared servers you admin\nlocked-down machines, no admin rights\n\n\n\nWhere things go:\n\n\n\n\n\n\n\n\n\nPlatform\nMode\nR install root\nQuick links (R, Rscript, R-*)\n\n\n\n\nmacOS\nadmin\n/Library/Frameworks/R.framework\n/usr/local/bin\n\n\nmacOS\nuser\n~/.local/share/rig/r\n~/.local/bin\n\n\nLinux\nadmin\n/opt/R\n/usr/local/bin\n\n\nLinux\nuser\n~/.local/share/rig/r\n~/.local/bin\n\n\nWindows\nadmin\nC:\\Program Files\\R\nC:\\Program Files\\R\\bin\n\n\nWindows\nuser\n%APPDATA%\\rig\\data\\r\n%USERPROFILE%\\.local\\bin",
+    "text": "At a glance\n\n\n\n\n\n\n\n\n\nAdmin mode (default)\nUser mode\n\n\n\n\nPrivileges\nsudo / administrator for most operations\nnone\n\n\nShared between users\nyes\nno — just your account\n\n\nNeeds PATH setup\nno (/usr/local/bin is usually on PATH)\nyes (the quick-link dir must be on PATH)\n\n\nR install root\nplatform default (below)\nin your home directory (below)\n\n\nBest for\nyour own machine, shared servers you admin\nlocked-down machines, no admin rights\n\n\n\nWhere things go:\n\n\n\n\n\n\n\n\n\nPlatform\nMode\nR install root\nQuick links (R, Rscript, R-*)\n\n\n\n\nmacOS\nadmin\n/Library/Frameworks/R.framework\n/usr/local/bin\n\n\nmacOS\nuser\n~/.local/share/rig/r\n~/.local/bin\n\n\nLinux\nadmin\n/opt/R\n/usr/local/bin\n\n\nLinux\nuser\n~/.local/share/rig/r\n~/.local/bin\n\n\nWindows\nadmin\nC:\\Program Files\\R\nC:\\Program Files\\R\\bin\n\n\nWindows\nuser\n%APPDATA%\\rig\\data\\r\n%USERPROFILE%\\.local\\bin\n\n\n\nrig system dirs prints the directories rig actually uses on your machine, in the current mode and after applying any configuration overrides. It works even if no R version is installed yet, so you can use it to see where rig add will put things.",
     "crumbs": [
       "Guide",
       "Admin mode vs user mode"
@@ -697,7 +697,7 @@
     "href": "news.html",
     "title": "Changelog",
     "section": "",
-    "text": "rig now supports a user mode on all platforms, in addition to the default admin mode. In user mode rig installs everything into the user’s home directory and never needs sudo or administrator privileges. R goes into ~/.local/share/rig/r (%APPDATA%\\rig\\data\\r on Windows) and quick links into ~/.local/bin (%USERPROFILE%\\.local\\bin on Windows). Select the mode with the --user / --admin global flags, the RIG_MODE environment variable, or the mode key in the rig config file. The new rig system user-mode command switches an existing admin-mode setup to user mode.\nrig has a new documentation website at https://r-lib.github.io/rig/, including a full CLI reference and a guide to admin vs. user mode.\nNew rig config command to manage the rig configuration file.\nNew experimental rig proj command to manage R project dependencies.\nrig run --cmd &lt;command&gt; [args...] now runs R CMD &lt;command&gt; [args...] with the selected R version.\nrig rtools is now a top-level command (it used to be rig system rtools).\nOn Linux, rig can now install portable R builds, for glibc- and musl-based Linux distros. If there is no distro-specific build for your platform, rig falls back to a portable build automatically.\nNew rig system fix-r-alias subcommand.\nrig rstudio --config-path is now implemented on Linux and macOS.\nrig now warns instead of failing when it encounters a broken R installation (#346).",
+    "text": "rig now supports a user mode on all platforms, in addition to the default admin mode. In user mode rig installs everything into the user’s home directory and never needs sudo or administrator privileges. R goes into ~/.local/share/rig/r (%APPDATA%\\rig\\data\\r on Windows) and quick links into ~/.local/bin (%USERPROFILE%\\.local\\bin on Windows). Select the mode with the --user / --admin global flags, the RIG_MODE environment variable, or the mode key in the rig config file. The new rig system user-mode command switches an existing admin-mode setup to user mode.\nrig has a new documentation website at https://r-lib.github.io/rig/, including a full CLI reference and a guide to admin vs. user mode.\nNew rig config command to manage the rig configuration file.\nNew rig system dirs command to show the directories rig uses. Also, rig system r-dir, rig system binary-dir and rig system rtools-dir (Windows only) commands each print a single path.\nNew experimental rig proj command to manage R project dependencies.\nrig run --cmd &lt;command&gt; [args...] now runs R CMD &lt;command&gt; [args...] with the selected R version.\nrig rtools is now a top-level command (it used to be rig system rtools).\nOn Linux, rig can now install portable R builds, for glibc- and musl-based Linux distros. If there is no distro-specific build for your platform, rig falls back to a portable build automatically.\nNew rig system fix-r-alias subcommand.\nrig rstudio --config-path is now implemented on Linux and macOS.\nrig now warns instead of failing when it encounters a broken R installation (#346).",
     "crumbs": [
       "Changelog"
     ]
@@ -968,7 +968,7 @@
     "href": "reference/system.html#subcommands",
     "title": "rig system",
     "section": "Subcommands",
-    "text": "Subcommands\n\nadd-pak\n\nInstall or update pak for an R version\n\nallow-core-dumps macOS only\n\nAllow creating core dumps when R crashes\n\nallow-debugger macOS only\n\nAllow debugging R with lldb and gdb\n\nallow-debugger-rstudio macOS only\n\nAllow debugging RStudio with lldb and gdb\n\nclean-registry Windows only\n\nClean stale R related entries in the registry\n\ndetect-platform\n\nDetect operating system version and distribution.\n\nfix-permissions macOS only\n\nRestrict system library permissions to admin\n\nfix-r-alias Windows only\n\nMake the ‘R’ command start R in PowerShell\n\nforget macOS only\n\nMake system forget about R installations\n\nmake-links\n\nCreate R-* quick links\n\nmake-orthogonal macOS only\n\nMake installed versions orthogonal\n\nno-openmp macOS only\n\nRemove OpenMP (-fopenmp) option for Apple compilers\n\nsetup-user-lib\n\nSet up automatic user package libraries [alias: create-lib]\n\nupdate-certs Linux only\n\nDownload the CA certificate bundle and configure R to use it\n\nupdate-rtools40 Windows only\n\nUpdate Rtools40 MSYS2 packages\n\nuser-mode\n\nSwitch to user mode and clean up admin-mode installations",
+    "text": "Subcommands\n\nadd-pak\n\nInstall or update pak for an R version\n\nallow-core-dumps macOS only\n\nAllow creating core dumps when R crashes\n\nallow-debugger macOS only\n\nAllow debugging R with lldb and gdb\n\nallow-debugger-rstudio macOS only\n\nAllow debugging RStudio with lldb and gdb\n\nbinary-dir\n\nPrint the quick link directory\n\nclean-registry Windows only\n\nClean stale R related entries in the registry\n\ndetect-platform\n\nDetect operating system version and distribution.\n\ndirs\n\nPrint the directories rig uses\n\nfix-permissions macOS only\n\nRestrict system library permissions to admin\n\nfix-r-alias Windows only\n\nMake the ‘R’ command start R in PowerShell\n\nforget macOS only\n\nMake system forget about R installations\n\nmake-links\n\nCreate R-* quick links\n\nmake-orthogonal macOS only\n\nMake installed versions orthogonal\n\nno-openmp macOS only\n\nRemove OpenMP (-fopenmp) option for Apple compilers\n\nr-dir\n\nPrint the R installation root\n\nrtools-dir Windows only\n\nPrint the Rtools installation root\n\nsetup-user-lib\n\nSet up automatic user package libraries [alias: create-lib]\n\nupdate-certs Linux only\n\nDownload the CA certificate bundle and configure R to use it\n\nupdate-rtools40 Windows only\n\nUpdate Rtools40 MSYS2 packages\n\nuser-mode\n\nSwitch to user mode and clean up admin-mode installations",
     "crumbs": [
       "Reference",
       "rig system"
@@ -1019,6 +1019,17 @@
     ]
   },
   {
+    "objectID": "reference/system.html#rig-system-binary-dir",
+    "href": "reference/system.html#rig-system-binary-dir",
+    "title": "rig system",
+    "section": "rig system binary-dir",
+    "text": "rig system binary-dir\nPrint the directory rig creates the quick links (R-4.5.1, R-release, etc.) in, and nothing else, for use in a shell script.\nThis directory needs to be on the path for the quick links to work; see rig system make-links. It depends on the mode and can be overridden with the RIG_BINARY_DIR environment variable or the binary-dir configuration entry.\nThis command works even if no R version is installed yet, and the directory itself need not exist.\nrig system dirs prints this directory together with all the other directories rig uses.\n\nUsage\nrig system binary-dir [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig system"
+    ]
+  },
+  {
     "objectID": "reference/system.html#rig-system-clean-registry-windows-only",
     "href": "reference/system.html#rig-system-clean-registry-windows-only",
     "title": "rig system",
@@ -1035,6 +1046,17 @@
     "title": "rig system",
     "section": "rig system detect-platform",
     "text": "rig system detect-platform\nDetect and print the operating system version and distribution.\nrig uses this information to choose the right R builds and package repositories. Use --json for machine-readable output.\n\nUsage\nrig system detect-platform [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig system"
+    ]
+  },
+  {
+    "objectID": "reference/system.html#rig-system-dirs",
+    "href": "reference/system.html#rig-system-dirs",
+    "title": "rig system",
+    "section": "rig system dirs",
+    "text": "rig system dirs\nPrint the directories rig uses: where R (and on Windows Rtools) is installed, where the quick links are created, and where rig keeps its own configuration, data, cache and log files.\nThis works even if no R version is installed yet, so you can use it to see where rig add will put things. Use --json for machine-readable output.\nrig system dirs prints the directories rig will actually use, after applying the mode, the environment variables and the configuration file. rig config get in contrast prints only an explicit override from the configuration file, and prints nothing when the default applies.\n\n\n\nReported\nEnvironment variable\nConfig entry\n\n\n\n\nmode\nRIG_MODE\nmode\n\n\nr_root\nRIG_R_INSTALL_DIR\nr-install-dir\n\n\nrtools_root\nRIG_RTOOLS_INSTALL_DIR\nrtools-install-dir\n\n\nbinary_dir\nRIG_BINARY_DIR\nbinary-dir\n\n\n\n--user and --admin also override the mode, for a single invocation.\nThe reported architecture is the architecture of the machine, spelled the way rig add --arch spells it on this platform. (This is not always the spelling rig system detect-platform uses, which reports aarch64 on Apple silicon.) On Windows the R installation root depends on the architecture in admin mode, and --arch reports the root of another architecture. Elsewhere both architectures share a root, and --arch is ignored.\nrtools_root is only reported on Windows. In admin mode it is the drive root, because Rtools keeps its historical location there, e.g. Rtools 4.5 is installed into C:\\Rtools45.\nSee also rig system r-dir, rig system binary-dir and rig system rtools-dir, which each print a single path, and rig config config-file-path.\n\nUsage\nrig system dirs [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-a, --arch &lt;arch&gt; Windows only\n\nArchitecture of the R installation root (default: native arch).\n[possible values: x86_64, aarch64, arm64]\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig system"
@@ -1101,6 +1123,28 @@
     "title": "rig system",
     "section": "rig system no-openmp macOS only",
     "text": "rig system no-openmp macOS only\nRemove -fopenmp flags from the R configuration, to make R work with the Apple compilers, instead of CRAN’s custom compilers. This is only needed for R 3.6.x and before.\nrig add runs rig system no-openmp after the installation, so if only use rig to install R, then you don’t need to run this command manually.\nThis command does nothing on Windows and Linux and in user mode.\nIn admin mode this command probably needs sudo: sudo rig system no-openmp, otherwise rig will ask for your password.\n\nUsage\nrig system no-openmp [OPTIONS] [version]...\n\n\nArguments\n\n[version]...\n\nR versions to update (default: all)\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig system"
+    ]
+  },
+  {
+    "objectID": "reference/system.html#rig-system-r-dir",
+    "href": "reference/system.html#rig-system-r-dir",
+    "title": "rig system",
+    "section": "rig system r-dir",
+    "text": "rig system r-dir\nPrint the directory rig installs R versions into, and nothing else, e.g. for use in a shell script:\ncd \"$(rig system r-dir)\"\nThis is the directory that contains the directories of the individual R versions; it is not an R installation itself. Use rig list --json for the paths of the installed R versions.\nThe R installation root depends on the mode and can be overridden with the RIG_R_INSTALL_DIR environment variable or the r-install-dir configuration entry. This command works even if no R version is installed yet, and the directory itself need not exist.\nOn Windows the admin mode R installation root depends on the architecture, and --arch prints the root of another architecture. Elsewhere both architectures share a root and --arch is ignored.\nrig system dirs prints this directory together with all the other directories rig uses.\n\nUsage\nrig system r-dir [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-a, --arch &lt;arch&gt; Windows only\n\nArchitecture of the R installation root (default: native arch).\n[possible values: x86_64, aarch64, arm64]\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig system"
+    ]
+  },
+  {
+    "objectID": "reference/system.html#rig-system-rtools-dir-windows-only",
+    "href": "reference/system.html#rig-system-rtools-dir-windows-only",
+    "title": "rig system",
+    "section": "rig system rtools-dir Windows only",
+    "text": "rig system rtools-dir Windows only\nPrint the directory rig installs Rtools versions into, and nothing else, for use in a shell script (Windows only).\nThis is the directory that contains the Rtools directories. In admin mode it is the drive root, because Rtools keeps its historical location there: Rtools 4.5 is installed into C:\\Rtools45, and its aarch64 build into C:\\Rtools44-aarch64. In user mode it is a directory in the user’s home. It can be overridden with the RIG_RTOOLS_INSTALL_DIR environment variable or the rtools-install-dir configuration entry.\nThis command works even if no Rtools version is installed yet. Use rig rtools list for the paths of the installed Rtools versions.\nOn non-Windows platforms this command prints nothing and is hidden.\n\nUsage\nrig system rtools-dir [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
       "rig system"
