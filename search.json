@@ -797,7 +797,7 @@
     "href": "index.html",
     "title": "rig – the R Installation Manager",
     "section": "",
-    "text": "Run and manage multiple versions of R side by side on macOS, Windows and Linux.\nRig is a standalone tool, with no system requirements, for system admins and users.\n\n\n\n\nLatest version 0.10.0-alpha\nInstall rig\n\n  or view install instructions for\n  macOS,\n  Windows or\n  Linux.",
+    "text": "Run and manage multiple versions of R side by side on macOS, Windows and Linux.\nRig is a standalone tool, with no system requirements, for system admins and users.\n\n\n\n\nLatest version 0.10.0-alpha2\nInstall rig\n\n  or view install instructions for\n  macOS,\n  Windows or\n  Linux.",
     "crumbs": [
       "Get started"
     ]
