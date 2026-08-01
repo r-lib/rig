@@ -1,4 +1,4 @@
-# rig 0.10.0-alpha (pre-release)
+# rig 0.10.0-alpha2 (pre-release)
 
 * rig now supports a **user mode** on all platforms, in addition to the
   default admin mode. In user mode rig installs everything into the user's
@@ -29,7 +29,7 @@
 
 * On Windows, `R CMD config` now works without manually putting Rtools on
   the `PATH`. So do `R CMD sh`, `R CMD make` and `rig run --cmd config`.
- 
+
 * On Linux, rig can now install portable R builds, for glibc- and
   musl-based Linux distros. If there is no distro-specific build for your
   platform, rig falls back to a portable build automatically.
