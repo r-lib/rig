@@ -14,7 +14,7 @@ In user mode (`RIG_MODE=user`) Rtools is installed per-user, without
 administrator rights, into `%APPDATA%\rig\data\rtools` (override with the
 `RIG_RTOOLS_INSTALL_DIR` environment variable or the `rtools-install-dir`
 config setting). rig points each R version at it by setting `RTOOLS<ver>_HOME`
-in that R version's `etc\Renviron.site`.
+in that R version's `etc\Renviron.site` and `etc\Rcmd_environ`.
 
 In admin mode this command needs an administrator account.
 

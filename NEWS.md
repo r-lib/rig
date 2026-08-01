@@ -27,6 +27,9 @@
 * `rig rtools` is now a top-level command (it used to be `rig system
   rtools`).
 
+* On Windows, `R CMD config` now works without manually putting Rtools on
+  the `PATH`. So do `R CMD sh`, `R CMD make` and `rig run --cmd config`.
+ 
 * On Linux, rig can now install portable R builds, for glibc- and
   musl-based Linux distros. If there is no distro-specific build for your
   platform, rig falls back to a portable build automatically.

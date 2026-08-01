@@ -11,7 +11,6 @@ use std::error::Error;
 use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::fs::File;
-use std::fs::OpenOptions;
 use std::io::Write;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -558,6 +557,111 @@ fn rtools_renviron_lines(version: &str, arch: &str, rtools_path: &Path, user_mod
     }
 }
 
+fn rtools_rcmd_environ_lines(
+    version: &str,
+    arch: &str,
+    rtools_path: &Path,
+    user_mode: bool,
+) -> String {
+    let base = rtools_renviron_lines(version, arch, rtools_path, user_mode);
+    if is_legacy_rtools(version) || version == "40" {
+        // These already come with an explicit PATH line that includes sh's directory.
+        base
+    } else {
+        format!(
+            "{}\nPATH=\"${{{var}}}/usr/bin;${{PATH}}\"",
+            base,
+            var = rtools_home_var(version, arch)
+        )
+    }
+}
+
+const RIG_BLOCK_START: &str = "# added by rig, do not update by hand-----";
+const RIG_BLOCK_END: &str = "# ----------------------------------------";
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum BlockPos {
+    Append,
+    Prepend,
+}
+
+fn line_end_len(s: &str) -> usize {
+    if s.starts_with("\r\n") {
+        2
+    } else if s.starts_with('\n') {
+        1
+    } else {
+        0
+    }
+}
+
+fn remove_rig_block(s: &str) -> String {
+    let start = match s.find(RIG_BLOCK_START) {
+        Some(i) => i,
+        None => return s.to_string(),
+    };
+    let mut from = start;
+    if from > 0 && s.as_bytes()[from - 1] == b'\n' {
+        from -= 1;
+    }
+    let to = match s[start..].find(RIG_BLOCK_END) {
+        Some(i) => {
+            let mut to = start + i + RIG_BLOCK_END.len();
+            to += line_end_len(&s[to..]);
+            to += line_end_len(&s[to..]);
+            to
+        }
+        None => s.len(),
+    };
+    let mut out = String::with_capacity(s.len());
+    out.push_str(&s[..from]);
+    out.push_str(&s[to..]);
+    out
+}
+
+fn render_rig_block(existing: &str, body: &str, pos: BlockPos) -> String {
+    let kept = remove_rig_block(existing);
+    match pos {
+        // Byte-identical to what rig <= 0.9.x appended, so an already patched
+        // Renviron.site is not rewritten.
+        BlockPos::Append => format!(
+            "{}\n{}\n{}\n{}\n\n",
+            kept, RIG_BLOCK_START, body, RIG_BLOCK_END
+        ),
+        BlockPos::Prepend => format!(
+            "{}\n{}\n{}\n\n{}",
+            RIG_BLOCK_START, body, RIG_BLOCK_END, kept
+        ),
+    }
+}
+
+fn patch_env_file(path: &Path, body: &str, pos: BlockPos) {
+    let existing = match std::fs::read_to_string(path) {
+        Ok(x) => x,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => {
+            OUTPUT.warn(&format!("Couldn't read {}: {}", path.display(), e));
+            warn!("Couldn't read {}: {}", path.display(), e);
+            return;
+        }
+    };
+    let new = render_rig_block(&existing, body, pos);
+    if new == existing {
+        debug!("{} is already up to date", path.display());
+        return;
+    }
+    debug!("Updating {}", path.display());
+    let mut tmpname = path.file_name().unwrap_or_default().to_os_string();
+    tmpname.push(".rig-new");
+    let tmp = path.with_file_name(tmpname);
+    let write = std::fs::write(&tmp, &new).and_then(|_| std::fs::rename(&tmp, path));
+    if let Err(e) = write {
+        let _ = std::fs::remove_file(&tmp);
+        OUTPUT.warn(&format!("Couldn't update {}: {}", path.display(), e));
+        warn!("Couldn't update {}: {}", path.display(), e);
+    }
+}
+
 fn add_rtools(version: String, arch: Option<String>) -> Result<(), Box<dyn Error>> {
     let needed: Vec<NeededRtools> = if version == "rtools" {
         get_rtools_needed(None, arch.as_deref())?
@@ -634,12 +738,11 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<(), Box<dyn Error
         info!("Installed Rtools{} ({})", item.version, item.arch);
     }
 
-    // In user mode R finds Rtools via RTOOLS<NN>_HOME, which rig writes into each R
-    // version's Renviron.site. Re-run the patch now so an Rtools installed after R is
-    // picked up (patch_for_rtools is idempotent and only acts on installed Rtools).
-    if get_mode()? == Mode::User {
-        patch_for_rtools()?;
-    }
+    // Re-run the patch now so an Rtools installed after R is picked up, and so that
+    // `rig rtools add` re-applies the patch to R versions installed by an older rig.
+    // patch_for_rtools() is idempotent, decides itself which R versions need patching,
+    // and only acts on Rtools that is actually installed.
+    patch_for_rtools()?;
 
     Ok(())
 }
@@ -674,40 +777,25 @@ fn patch_for_rtools() -> Result<(), Box<dyn Error>> {
 
         let ver_rroot = get_r_root_for(&ver)?;
         let ver_base = version_dir_key(&ver);
-        let envfile = Path::new(&ver_rroot)
+        let etc = Path::new(&ver_rroot)
             .join(r_dirname(&ver_base)?)
-            .join("etc")
-            .join("Renviron.site");
-
-        // Skip if this Renviron.site has already been patched by rig.
-        if envfile.exists() {
-            let file = File::open(&envfile)?;
-            let reader = BufReader::new(file);
-            let mut patched = false;
-            for line in reader.lines() {
-                if line?.starts_with("# added by rig") {
-                    patched = true;
-                    break;
-                }
-            }
-            if patched {
-                continue;
-            }
+            .join("etc");
+        if !etc.exists() {
+            OUTPUT.warn(&format!("{} does not exist, skipping", etc.display()));
+            warn!("{} does not exist, skipping", etc.display());
+            continue;
         }
 
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&envfile)?;
-
-        let head = "\n# added by rig, do not update by hand-----\n";
-        let tail = "\n# ----------------------------------------\n";
-        let body = rtools_renviron_lines(nn, arch, &rtools_path, user_mode);
-
-        if let Err(e) = writeln!(file, "{}{}{}", head, body, tail) {
-            OUTPUT.warn(&format!("Couldn't write to Renviron.site file: {}", e));
-            warn!("Couldn't write to Renviron.site file: {}", e);
-        }
+        patch_env_file(
+            &etc.join("Renviron.site"),
+            &rtools_renviron_lines(nn, arch, &rtools_path, user_mode),
+            BlockPos::Append,
+        );
+        patch_env_file(
+            &etc.join("Rcmd_environ"),
+            &rtools_rcmd_environ_lines(nn, arch, &rtools_path, user_mode),
+            BlockPos::Prepend,
+        );
     }
 
     Ok(())
@@ -2340,6 +2428,176 @@ mod tests {
         assert_eq!(
             rtools_renviron_lines("35", "x86_64", Path::new("C:\\rt\\35"), true),
             "BINPREF=\"C:/rt/35/mingw_$(WIN)/bin/\"\nPATH=\"C:/rt/35/bin;${PATH}\""
+        );
+    }
+
+    #[test]
+    fn rtools_rcmd_environ_lines_per_version() {
+        // 4.2+ also gets an explicit usr/bin PATH line, so `R CMD config` finds sh
+        assert_eq!(
+            rtools_rcmd_environ_lines("45", "aarch64", Path::new("C:\\rt\\45"), true),
+            "RTOOLS45_AARCH64_HOME=\"C:/rt/45\"\n\
+             PATH=\"${RTOOLS45_AARCH64_HOME}/usr/bin;${PATH}\""
+        );
+        assert_eq!(
+            rtools_rcmd_environ_lines("44", "x86_64", Path::new("C:\\rt\\Rtools44"), true),
+            "RTOOLS44_HOME=\"C:/rt/Rtools44\"\n\
+             PATH=\"${RTOOLS44_HOME}/usr/bin;${PATH}\""
+        );
+        // 4.0 and legacy 3.x already have a PATH line covering sh's directory
+        for (nn, path) in [("40", "C:\\rt\\Rtools40"), ("35", "C:\\Rtools")] {
+            for user_mode in [true, false] {
+                let p = Path::new(path);
+                assert_eq!(
+                    rtools_rcmd_environ_lines(nn, "x86_64", p, user_mode),
+                    rtools_renviron_lines(nn, "x86_64", p, user_mode)
+                );
+            }
+        }
+    }
+
+    fn legacy_appended_block(body: &str) -> String {
+        let head = "\n# added by rig, do not update by hand-----\n";
+        let tail = "\n# ----------------------------------------\n";
+        format!("{}{}{}\n", head, body, tail)
+    }
+
+    #[test]
+    fn render_rig_block_append_matches_legacy_bytes() {
+        let body = "RTOOLS45_HOME=\"C:/rt/45\"";
+        assert_eq!(
+            render_rig_block("", body, BlockPos::Append),
+            legacy_appended_block(body)
+        );
+        let existing = "FOO=bar\r\n";
+        assert_eq!(
+            render_rig_block(existing, body, BlockPos::Append),
+            existing.to_string() + &legacy_appended_block(body)
+        );
+    }
+
+    #[test]
+    fn render_rig_block_is_a_fixed_point() {
+        let body = "RTOOLS45_HOME=\"C:/rt/45\"";
+        for existing in ["", "FOO=bar\n", "FOO=bar\r\nBAZ=1\r\n"] {
+            for pos in [BlockPos::Append, BlockPos::Prepend] {
+                let once = render_rig_block(existing, body, pos);
+                let twice = render_rig_block(&once, body, pos);
+                assert_eq!(once, twice, "existing={:?} pos={:?}", existing, pos);
+                assert_eq!(once.matches(RIG_BLOCK_START).count(), 1);
+                assert_eq!(once.matches(RIG_BLOCK_END).count(), 1);
+            }
+        }
+    }
+
+    #[test]
+    fn render_rig_block_replaces_stale_body() {
+        let old = render_rig_block("FOO=bar\n", "RTOOLS45_HOME=\"C:/old\"", BlockPos::Append);
+        let new = render_rig_block(&old, "RTOOLS45_HOME=\"C:/new\"", BlockPos::Append);
+        assert!(!new.contains("C:/old"));
+        assert!(new.contains("C:/new"));
+        assert!(new.starts_with("FOO=bar\n"));
+        assert_eq!(new.matches(RIG_BLOCK_START).count(), 1);
+    }
+
+    #[test]
+    fn render_rig_block_prepend_keeps_the_file_verbatim() {
+        // R's own lines must survive byte for byte, in place, after rig's block,
+        // including their line endings if they happen to be CRLF.
+        let existing =
+            "## from R.sh\r\nR_OSTYPE=windows\r\nPATH=\"${R_RTOOLS45_PATH};${PATH}/\"\r\n";
+        let out = render_rig_block(existing, "RTOOLS45_HOME=\"C:/rt/45\"", BlockPos::Prepend);
+        assert!(out.starts_with(RIG_BLOCK_START));
+        assert!(out.ends_with(existing));
+        // rig's own block uses LF, whatever the rest of the file does.
+        assert!(out.contains("RTOOLS45_HOME=\"C:/rt/45\"\n#"));
+    }
+
+    #[test]
+    fn render_rig_block_switches_position() {
+        let body = "RTOOLS45_HOME=\"C:/rt/45\"";
+        let appended = render_rig_block("FOO=bar\n", body, BlockPos::Append);
+        let moved = render_rig_block(&appended, body, BlockPos::Prepend);
+        assert!(moved.starts_with(RIG_BLOCK_START));
+        assert!(moved.ends_with("FOO=bar\n"));
+        assert_eq!(moved.matches(RIG_BLOCK_START).count(), 1);
+
+        let back = render_rig_block(&moved, body, BlockPos::Append);
+        assert_eq!(back, appended);
+    }
+
+    #[test]
+    fn render_rig_block_handles_unterminated_block() {
+        // A block without its end marker (a truncated write) is dropped entirely,
+        // rather than left behind to be duplicated.
+        let broken = format!("FOO=bar\n\n{}\nRTOOLS45_HOME=\"C:/old\"\n", RIG_BLOCK_START);
+        let out = render_rig_block(&broken, "RTOOLS45_HOME=\"C:/new\"", BlockPos::Append);
+        assert!(!out.contains("C:/old"));
+        assert_eq!(out.matches(RIG_BLOCK_START).count(), 1);
+        // Only the block is gone, the file's own lines stay.
+        assert_eq!(
+            out,
+            "FOO=bar\n".to_string() + &legacy_appended_block("RTOOLS45_HOME=\"C:/new\"")
+        );
+    }
+
+    // A decorative line of dashes that happens to look like the end marker, but comes
+    // before the start marker, must not be mistaken for the end of rig's block.
+    #[test]
+    fn render_rig_block_ignores_dashes_before_the_block() {
+        let existing = format!("{}\nFOO=bar\n", RIG_BLOCK_END);
+        let out = render_rig_block(&existing, "X=1", BlockPos::Append);
+        let out2 = render_rig_block(&out, "X=1", BlockPos::Append);
+        assert_eq!(out, out2);
+        assert!(out.starts_with(&existing));
+    }
+
+    #[test]
+    fn patch_env_file_patches_each_file_on_its_own() {
+        let (root, _g) = fake_install("4.5.3", "");
+        let etc = root.join("etc");
+        std::fs::create_dir_all(&etc).unwrap();
+        let site = etc.join("Renviron.site");
+        let rcmd = etc.join("Rcmd_environ");
+        let body = "RTOOLS45_HOME=\"C:/rt/45\"";
+        // An R version installed by an older rig: Renviron.site is patched already,
+        // Rcmd_environ is not. The patched file must not be touched, the other one must
+        // still be patched.
+        let site_before = "R_PLATFORM_PKGTYPE=\"x\"\n".to_string() + &legacy_appended_block(body);
+        let rcmd_before = "## from R.sh\r\nR_OSTYPE=windows\r\n";
+        std::fs::write(&site, &site_before).unwrap();
+        std::fs::write(&rcmd, rcmd_before).unwrap();
+
+        patch_env_file(&site, body, BlockPos::Append);
+        patch_env_file(&rcmd, body, BlockPos::Prepend);
+        assert_eq!(std::fs::read_to_string(&site).unwrap(), site_before);
+        let rcmd_after = std::fs::read_to_string(&rcmd).unwrap();
+        assert!(rcmd_after.starts_with(RIG_BLOCK_START));
+        assert!(rcmd_after.ends_with(rcmd_before));
+
+        // Running again changes nothing.
+        patch_env_file(&site, body, BlockPos::Append);
+        patch_env_file(&rcmd, body, BlockPos::Prepend);
+        assert_eq!(std::fs::read_to_string(&site).unwrap(), site_before);
+        assert_eq!(std::fs::read_to_string(&rcmd).unwrap(), rcmd_after);
+    }
+
+    #[test]
+    fn patch_env_file_creates_a_missing_file() {
+        let (root, _g) = fake_install("4.5.3", "");
+        let etc = root.join("etc");
+        std::fs::create_dir_all(&etc).unwrap();
+        let site = etc.join("Renviron.site");
+        patch_env_file(&site, "X=1", BlockPos::Append);
+        assert_eq!(
+            std::fs::read_to_string(&site).unwrap(),
+            legacy_appended_block("X=1")
+        );
+        // No leftover temporary file.
+        assert_eq!(
+            std::fs::read_dir(&etc).unwrap().count(),
+            1,
+            "only Renviron.site is left in etc"
         );
     }
 
