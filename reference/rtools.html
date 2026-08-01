@@ -583,7 +583,7 @@ Remove rtools versions [aliases: del, remove, delete]
 <p>Install new Rtools versions on Windows.</p>
 <p>You can specify the new version(s) by their name, optionally with an ‘rtools’ prefix, e.g.&nbsp;‘43’ or ‘rtools43’.</p>
 <p>If <code>version</code> is ‘all’ (the default), then all Rtools versions that are required for the currently installed R versions will be installed.</p>
-<p>In user mode (<code>RIG_MODE=user</code>) Rtools is installed per-user, without administrator rights, into <code>%APPDATA%\rig\data\rtools</code> (override with the <code>RIG_RTOOLS_INSTALL_DIR</code> environment variable or the <code>rtools-install-dir</code> config setting). rig points each R version at it by setting <code>RTOOLS&lt;ver&gt;_HOME</code> in that R version’s <code>etc\Renviron.site</code>.</p>
+<p>In user mode (<code>RIG_MODE=user</code>) Rtools is installed per-user, without administrator rights, into <code>%APPDATA%\rig\data\rtools</code> (override with the <code>RIG_RTOOLS_INSTALL_DIR</code> environment variable or the <code>rtools-install-dir</code> config setting). rig points each R version at it by setting <code>RTOOLS&lt;ver&gt;_HOME</code> in that R version’s <code>etc\Renviron.site</code> and <code>etc\Rcmd_environ</code>.</p>
 <p>In admin mode this command needs an administrator account.</p>
 <section id="usage" class="level3">
 <h3 class="anchored" data-anchor-id="usage">Usage</h3>

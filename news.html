@@ -550,6 +550,7 @@ ul.task-list li input[type="checkbox"] {
 <li><p>New experimental <code>rig proj</code> command to manage R project dependencies.</p></li>
 <li><p><code>rig run --cmd &lt;command&gt; [args...]</code> now runs <code>R CMD &lt;command&gt; [args...]</code> with the selected R version.</p></li>
 <li><p><code>rig rtools</code> is now a top-level command (it used to be <code>rig system rtools</code>).</p></li>
+<li><p>On Windows, <code>R CMD config</code> now works without manually putting Rtools on the <code>PATH</code>. So do <code>R CMD sh</code>, <code>R CMD make</code> and <code>rig run --cmd config</code>.</p></li>
 <li><p>On Linux, rig can now install portable R builds, for glibc- and musl-based Linux distros. If there is no distro-specific build for your platform, rig falls back to a portable build automatically.</p></li>
 <li><p>New <code>rig system fix-r-alias</code> subcommand.</p></li>
 <li><p><code>rig rstudio --config-path</code> is now implemented on Linux and macOS.</p></li>
