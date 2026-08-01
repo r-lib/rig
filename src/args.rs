@@ -4,7 +4,7 @@
 
 // crates used here need to go in build-dependencies as well !!!
 
-use clap::{Arg, ArgMatches, Command};
+use clap::{Arg, ArgGroup, ArgMatches, Command};
 
 #[cfg(target_os = "macos")]
 use log::warn;
@@ -801,20 +801,15 @@ pub fn rig_app() -> Command {
 
     cmd_system = cmd_system.subcommand(cmd_system_detect_platform);
 
-    // `--arch` only changes the answer on Windows, where the admin mode R
-    // installation root is architecture dependent, so it is hidden elsewhere.
-    // It is still defined on every platform, so that scripts do not break, and
-    // it must not have a default value: `_default_arch` is empty on Linux and
-    // would fail the value parser. (This is why `rig add --arch` and
-    // `rig available --arch` need a `#[cfg]` block and this one does not.)
-    fn arch_arg() -> Arg {
-        Arg::new("arch")
-            .help("Architecture of the R installation root (default: native arch).")
-            .short('a')
-            .long("arch")
+    // Each of these prints a single directory, as a bare path, for use in
+    // scripts. They are mutually exclusive (see the `dir` group below), and
+    // `--rtools` is hidden off Windows, where there is no Rtools.
+    fn dir_arg(name: &'static str, help: &'static str) -> Arg {
+        Arg::new(name)
+            .help(help)
+            .long(name)
+            .num_args(0)
             .required(false)
-            .value_parser(["x86_64", "aarch64", "arm64"])
-            .platform("windows")
     }
 
     let cmd_system_dirs = Command::new("dirs")
@@ -828,30 +823,31 @@ pub fn rig_app() -> Command {
                 .num_args(0)
                 .required(false),
         )
-        .arg(arch_arg());
+        .arg(dir_arg("r", "Print the R installation root only."))
+        .arg(dir_arg("rtools", "Print the Rtools installation root only.").platform("windows"))
+        .arg(dir_arg("binary", "Print the quick link directory only."))
+        .arg(dir_arg("data", "Print rig's data directory only."))
+        .arg(dir_arg("cache", "Print rig's cache directory only."))
+        .arg(dir_arg("log", "Print rig's log directory only.").alias("logs"))
+        .group(ArgGroup::new("dir").args(["r", "rtools", "binary", "data", "cache", "log"]))
+        // `--arch` only changes the answer on Windows, where the admin mode R
+        // installation root is architecture dependent, so it is hidden
+        // elsewhere. It is still defined on every platform, so that scripts do
+        // not break, and it must not have a default value: `_default_arch` is
+        // empty on Linux and would fail the value parser. (This is why
+        // `rig add --arch` and `rig available --arch` need a `#[cfg]` block and
+        // this one does not.)
+        .arg(
+            Arg::new("arch")
+                .help("Architecture of the R installation root (default: native arch).")
+                .short('a')
+                .long("arch")
+                .required(false)
+                .value_parser(["x86_64", "aarch64", "arm64"])
+                .platform("windows"),
+        );
 
-    let cmd_system_r_dir = Command::new("r-dir")
-        .about(ABOUT_SYSTEM_R_DIR)
-        .long_about(HELP_SYSTEM_R_DIR)
-        .display_order(0)
-        .arg(arch_arg());
-
-    let cmd_system_rtools_dir = Command::new("rtools-dir")
-        .about(ABOUT_SYSTEM_RTOOLS_DIR)
-        .long_about(HELP_SYSTEM_RTOOLS_DIR)
-        .display_order(0)
-        .platform("windows");
-
-    let cmd_system_binary_dir = Command::new("binary-dir")
-        .about(ABOUT_SYSTEM_BINARY_DIR)
-        .long_about(HELP_SYSTEM_BINARY_DIR)
-        .display_order(0);
-
-    cmd_system = cmd_system
-        .subcommand(cmd_system_dirs)
-        .subcommand(cmd_system_r_dir)
-        .subcommand(cmd_system_rtools_dir)
-        .subcommand(cmd_system_binary_dir);
+    cmd_system = cmd_system.subcommand(cmd_system_dirs);
 
     cmd_system = cmd_system
         .subcommand(cmd_system_links)
@@ -1947,35 +1943,47 @@ mod tests {
     }
 
     #[test]
-    fn test_system_dir_commands_are_defined_on_all_platforms() {
-        // `rtools-dir` is hidden off Windows, but it must still parse, so that
-        // scripts can call it unconditionally.
-        let m = sysargs(&["rig", "system", "rtools-dir"]);
-        assert!(m.subcommand_matches("rtools-dir").is_some());
+    fn test_system_dirs_selectors() {
+        for sel in ["r", "rtools", "binary", "data", "cache", "log"] {
+            // `--rtools` is hidden off Windows, but it must still parse, so
+            // that scripts can call it unconditionally.
+            let m = sysargs(&["rig", "system", "dirs", &format!("--{}", sel)]);
+            let dirs = m.subcommand_matches("dirs").unwrap();
+            assert!(dirs.get_flag(sel), "--{} is not set", sel);
+            // Setting one must not set any of the others.
+            for other in ["r", "rtools", "binary", "data", "cache", "log"] {
+                assert_eq!(dirs.get_flag(other), other == sel);
+            }
+        }
 
-        let m = sysargs(&["rig", "system", "binary-dir"]);
-        assert!(m.subcommand_matches("binary-dir").is_some());
+        // --logs is an alias of --log.
+        let m = sysargs(&["rig", "system", "dirs", "--logs"]);
+        assert!(m.subcommand_matches("dirs").unwrap().get_flag("log"));
+
+        // The selectors are mutually exclusive.
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "system", "dirs", "--r", "--binary"])
+            .is_err());
     }
 
     #[test]
-    fn test_system_r_dir_arch() {
-        // Same as above: --arch is hidden off Windows, but always defined.
-        let m = sysargs(&["rig", "system", "r-dir", "--arch", "aarch64"]);
-        let rdir = m.subcommand_matches("r-dir").unwrap();
-        assert_eq!(rdir.get_one::<String>("arch"), Some(&"aarch64".to_string()));
+    fn test_system_dirs_arch() {
+        // --arch is hidden off Windows, but always defined.
+        let m = sysargs(&["rig", "system", "dirs", "--arch", "aarch64"]);
+        let dirs = m.subcommand_matches("dirs").unwrap();
+        assert_eq!(dirs.get_one::<String>("arch"), Some(&"aarch64".to_string()));
 
-        // No default value: an empty one would fail the value parser on Linux.
-        let m = sysargs(&["rig", "system", "r-dir"]);
-        let rdir = m.subcommand_matches("r-dir").unwrap();
-        assert_eq!(rdir.get_one::<String>("arch"), None);
-
-        // `dirs` takes --arch as well.
         let m = sysargs(&["rig", "system", "dirs", "-a", "arm64"]);
         let dirs = m.subcommand_matches("dirs").unwrap();
         assert_eq!(dirs.get_one::<String>("arch"), Some(&"arm64".to_string()));
 
+        // No default value: an empty one would fail the value parser on Linux.
+        let m = sysargs(&["rig", "system", "dirs"]);
+        let dirs = m.subcommand_matches("dirs").unwrap();
+        assert_eq!(dirs.get_one::<String>("arch"), None);
+
         assert!(rig_app()
-            .try_get_matches_from(["rig", "system", "r-dir", "--arch", "amd64"])
+            .try_get_matches_from(["rig", "system", "dirs", "--arch", "amd64"])
             .is_err());
     }
 }

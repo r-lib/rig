@@ -1,6 +1,6 @@
-// The directories rig uses: `rig system dirs` prints all of them, and
-// `rig system r-dir`, `rig system rtools-dir` and `rig system binary-dir`
-// print a single one, for use in scripts.
+// The directories rig uses: `rig system dirs` prints all of them, and with one
+// of the `--r`, `--rtools`, `--binary`, `--data`, `--cache` and `--log` flags
+// it prints a single one, as a bare path, for use in scripts.
 //
 // All of these report the *effective* values, i.e. what rig will actually use,
 // after applying the mode, the RIG_* environment variables and the config file.
@@ -21,9 +21,12 @@ use std::error::Error;
 use std::path::PathBuf;
 
 use clap::ArgMatches;
+use log::error;
+use simple_error::bail;
 use tabular::{row, Table};
 
 use crate::cache::{get_cache_dir, get_data_dir, get_logs_dir};
+use crate::output::OUTPUT;
 use crate::utils::{get_binary_dir, get_mode};
 
 #[cfg(target_os = "linux")]
@@ -150,10 +153,48 @@ fn dirs_rows(dirs: &RigDirs) -> Vec<(&'static str, &str)> {
     rows
 }
 
+// The flags that select a single directory, in the order they are reported.
+// clap makes them mutually exclusive, via the `dir` argument group.
+const SELECTORS: [&str; 6] = ["r", "rtools", "binary", "data", "cache", "log"];
+
+fn selected_dir(args: &ArgMatches) -> Option<&'static str> {
+    SELECTORS.into_iter().find(|sel| args.get_flag(sel))
+}
+
 pub fn sc_system_dirs(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    let json = args.get_flag("json") || mainargs.get_flag("json");
+
+    // With one of the selector flags we print a single bare path and nothing
+    // else, so that it can be used as `$(rig system dirs --r)`. Quoting that
+    // as JSON would defeat the purpose, so refuse the combination instead of
+    // silently ignoring one of the two flags. `rig system dirs --json` is the
+    // machine-readable form of all of them at once.
+    if let Some(sel) = selected_dir(args) {
+        if json {
+            OUTPUT.error(&format!("--{} cannot be used with --json", sel));
+            error!("the argument '--{}' cannot be used with '--json'", sel);
+            bail!("the argument '--{}' cannot be used with '--json'", sel);
+        }
+        match sel {
+            "r" => println!("{}", r_root(&arch_arg(args))?),
+            "rtools" => {
+                // On macOS and Linux this prints nothing, like the other Rtools
+                // commands, so that scripts can call it unconditionally.
+                #[cfg(target_os = "windows")]
+                println!("{}", get_rtools_root()?);
+            }
+            "binary" => println!("{}", get_binary_dir()?),
+            "data" => println!("{}", path_string(get_data_dir()?)),
+            "cache" => println!("{}", path_string(get_cache_dir()?)),
+            "log" => println!("{}", path_string(get_logs_dir()?)),
+            _ => unreachable!(),
+        }
+        return Ok(());
+    }
+
     let dirs = rig_dirs(&arch_arg(args))?;
 
-    if args.get_flag("json") || mainargs.get_flag("json") {
+    if json {
         println!("{}", serde_json::to_string_pretty(&dirs)?);
     } else {
         let mut tab = Table::new("{:<}  {:<}");
@@ -163,30 +204,6 @@ pub fn sc_system_dirs(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Bo
         print!("{}", tab);
     }
 
-    Ok(())
-}
-
-// The single-value commands below print one bare path and nothing else, so that
-// they can be used as `$(rig system r-dir)`. They have no `--json` flag (as
-// `rig config config-file-path` does not), so they must not query one: the
-// `json` argument id does not exist for them and clap panics on an unknown id.
-// The machine-readable form of all of this is `rig system dirs --json`.
-
-pub fn sc_system_r_dir(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    println!("{}", r_root(&arch_arg(args))?);
-    Ok(())
-}
-
-pub fn sc_system_rtools_dir() -> Result<(), Box<dyn Error>> {
-    // On macOS and Linux this is a hidden no-op, like the other Rtools
-    // commands, so that scripts can call it unconditionally.
-    #[cfg(target_os = "windows")]
-    println!("{}", get_rtools_root()?);
-    Ok(())
-}
-
-pub fn sc_system_binary_dir() -> Result<(), Box<dyn Error>> {
-    println!("{}", get_binary_dir()?);
     Ok(())
 }
 
@@ -201,6 +218,24 @@ mod tests {
     // test that sets RIG_MODE would leak into all the other tests. The
     // mode/override matrix is covered by the BATS tests instead, which run a
     // fresh rig process for every case.
+
+    #[test]
+    fn selectors_match_the_argument_group() {
+        // A flag in the `dir` group that is missing from SELECTORS would parse
+        // but do nothing, so keep the two in sync.
+        let app = crate::args::rig_app();
+        let system = app.find_subcommand("system").unwrap();
+        let dirs = system.find_subcommand("dirs").unwrap();
+        let group = dirs
+            .get_groups()
+            .find(|g| g.get_id() == "dir")
+            .expect("no `dir` argument group");
+        let mut args: Vec<String> = group.get_args().map(|id| id.to_string()).collect();
+        args.sort();
+        let mut expected: Vec<String> = SELECTORS.iter().map(|s| s.to_string()).collect();
+        expected.sort();
+        assert_eq!(args, expected);
+    }
 
     #[test]
     fn native_arch_is_an_accepted_arch_name() {

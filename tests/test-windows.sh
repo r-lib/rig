@@ -117,42 +117,52 @@ teardown() {
     echo "$output" | grep -q '"arch"'
 }
 
-@test "system r-dir, binary-dir, rtools-dir" {
-    run rig -q system r-dir
+@test "system dirs, single directory" {
+    run rig -q system dirs --r
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^C:.Program Files.R"
 
     # the admin mode R root is architecture dependent on Windows
-    run rig -q system r-dir --arch x86_64
+    run rig -q system dirs --r --arch x86_64
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
-    run rig -q system r-dir --arch arm64
+    run rig -q system dirs --r --arch arm64
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
-    [[ "$output" = "$(rig -q system r-dir --arch aarch64)" ]]
+    [[ "$output" = "$(rig -q system dirs --r --arch aarch64)" ]]
 
     # Rtools keeps its historical C:\Rtools<version> location in admin mode
-    run rig -q system rtools-dir
+    run rig -q system dirs --rtools
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^C:.$"
 
-    run rig -q system binary-dir
+    run rig -q system dirs --binary
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^C:.Program Files.R.bin$"
 
-    run env RIG_MODE=user rig -q system rtools-dir
+    run env RIG_MODE=user rig -q system dirs --rtools
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "rig.data.rtools$"
+
+    # the selectors are mutually exclusive and cannot be combined with --json
+    run rig -q system dirs --r --binary
+    echo "status = ${status}"
+    echo "output = ${output}"
+    [[ ! "$status" -eq 0 ]]
+    run rig -q system dirs --r --json
+    echo "status = ${status}"
+    echo "output = ${output}"
+    [[ ! "$status" -eq 0 ]]
 }
 
 @test "list" {
