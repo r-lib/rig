@@ -40,34 +40,46 @@ teardown() {
     echo "$output" | grep -q '"binary_dir": "/usr/local/bin"'
 }
 
-@test "system r-dir, binary-dir, rtools-dir" {
-    run rig -q system r-dir
+@test "system dirs, single directory" {
+    run rig -q system dirs --r
     [[ "$status" -eq 0 ]]
     [[ "$output" = "/opt/R" ]]
 
-    run rig -q system binary-dir
+    run rig -q system dirs --binary
     [[ "$status" -eq 0 ]]
     [[ "$output" = "/usr/local/bin" ]]
 
+    for opt in --data --cache --log; do
+	run rig -q system dirs $opt
+	[[ "$status" -eq 0 ]]
+	echo "$output" | grep -q "^/"
+    done
+
     # the effective value follows the overrides
-    run env RIG_R_INSTALL_DIR=/tmp/rig-r rig -q system r-dir
+    run env RIG_R_INSTALL_DIR=/tmp/rig-r rig -q system dirs --r
     [[ "$output" = "/tmp/rig-r" ]]
-    run env RIG_BINARY_DIR=/tmp/rig-bin rig -q system binary-dir
+    run env RIG_BINARY_DIR=/tmp/rig-bin rig -q system dirs --binary
     [[ "$output" = "/tmp/rig-bin" ]]
 
-    run env RIG_MODE=user rig -q system r-dir
+    run env RIG_MODE=user rig -q system dirs --r
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "/[.]local/share/rig/r$"
-    run rig -q --user system binary-dir
+    run rig -q --user system dirs --binary
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "/[.]local/bin$"
 
-    # `dirs` and the single-value commands agree
+    # the single directory and the overview agree
     run rig -q system dirs --json
-    echo "$output" | grep -q "\"r_root\": \"$(rig -q system r-dir)\""
+    echo "$output" | grep -q "\"r_root\": \"$(rig -q system dirs --r)\""
+
+    # the selectors are mutually exclusive and cannot be combined with --json
+    run rig -q system dirs --r --binary
+    [[ ! "$status" -eq 0 ]]
+    run rig -q system dirs --r --json
+    [[ ! "$status" -eq 0 ]]
 
     # hidden no-op off Windows
-    run rig -q system rtools-dir
+    run rig -q system dirs --rtools
     [[ "$status" -eq 0 ]]
     [[ -z "$output" ]]
 }
