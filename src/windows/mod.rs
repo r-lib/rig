@@ -539,12 +539,12 @@ fn rtools_renviron_lines(version: &str, arch: &str, rtools_path: &Path, user_mod
             path, path
         )
     } else if version == "40" {
-        // Rtools 4.0: R does not auto-derive PATH, so keep the explicit PATH line that
-        // references RTOOLS40_HOME (set here in user mode, by the installer in admin mode).
         let var = rtools_home_var(version, arch);
         let mut s = String::new();
         if user_mode {
             s += &format!("{}=\"{}\"\n", var, path);
+        } else {
+            s += &format!("{var}=\"${{{var}:-{path}}}\"\n", var = var, path = path);
         }
         s += &format!(
             "PATH=\"${{{var}}}/ucrt64/bin;${{{var}}}/usr/bin;${{PATH}}\"",
@@ -2410,9 +2410,8 @@ mod tests {
         let l40 = rtools_renviron_lines("40", "x86_64", Path::new("C:\\rt\\Rtools40"), true);
         assert!(l40.starts_with("RTOOLS40_HOME=\"C:/rt/Rtools40\"\n"));
         assert!(l40.contains("${RTOOLS40_HOME}/ucrt64/bin"));
-        // 4.0 in admin mode keeps only the PATH line (installer sets the var).
         let l40a = rtools_renviron_lines("40", "x86_64", Path::new("C:\\Rtools40"), false);
-        assert!(!l40a.contains("RTOOLS40_HOME=\""));
+        assert!(l40a.starts_with("RTOOLS40_HOME=\"${RTOOLS40_HOME:-C:/Rtools40}\"\n"));
         assert!(l40a.contains("${RTOOLS40_HOME}/usr/bin"));
         // 3.5 prepends <path>/bin to PATH.
         assert_eq!(
