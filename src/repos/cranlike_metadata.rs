@@ -248,7 +248,7 @@ impl PackageVersionLoader for DbSourcePackageLoader {
 /// ever published on CRAN), overridable via the `RIG_ALLPACKAGES_URL` env var.
 fn allpackages_url() -> String {
     std::env::var("RIG_ALLPACKAGES_URL")
-        .unwrap_or_else(|_| "https://cran-data.r-pkg.org/ALLPACKAGES.zst".to_string())
+        .unwrap_or_else(|_| "https://ppm.r-pkg.org/ALLPACKAGES.zst".to_string())
 }
 
 /// Outcome of ensuring a cranlike metadata file is present and fresh in the DB.
