@@ -74,9 +74,13 @@ pub fn get_alias(args: &ArgMatches) -> Option<String> {
 
 #[cfg(target_os = "macos")]
 pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
+    let mode = crate::utils::get_mode()?;
     let msg = "Adding R-".to_string() + alias + " alias";
-    if crate::utils::get_mode()? == crate::utils::Mode::Admin {
+    if mode == crate::utils::Mode::Admin {
         escalate(&msg)?;
+    } else {
+        let binary_dir = get_binary_dir()?;
+        std::fs::create_dir_all(&binary_dir)?;
     }
 
     check_local_bin_path()?;

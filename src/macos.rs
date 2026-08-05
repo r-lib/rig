@@ -740,9 +740,12 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     let binary_dir = get_binary_dir()?;
     let mode = get_mode()?;
-    if mode == crate::utils::Mode::Admin && access(binary_dir.as_str(), AccessFlags::W_OK).is_err()
-    {
-        escalate("making R-* quick links")?;
+    if mode == crate::utils::Mode::Admin {
+        if access(binary_dir.as_str(), AccessFlags::W_OK).is_err() {
+            escalate("making R-* quick links")?;
+        }
+    } else {
+        std::fs::create_dir_all(&binary_dir)?;
     }
     check_local_bin_path()?;
     let vers = sc_get_list()?;
@@ -1864,8 +1867,11 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
         }
     };
 
-    check_local_bin_path()?;
     let binary_dir = get_binary_dir()?;
+    if get_mode()? == crate::utils::Mode::User {
+        std::fs::create_dir_all(&binary_dir)?;
+    }
+    check_local_bin_path()?;
 
     let r = Path::new(&binary_dir).join("R");
     if !r.exists() {

@@ -590,11 +590,16 @@ pub fn check_local_bin_path() -> Result<(), Box<dyn Error>> {
         usr_local_bin_idx
     );
 
-    let needs_add = match (local_bin_idx, usr_local_bin_idx) {
-        (None, _) => true,
-        (Some(l), Some(u)) if l > u => true,
-        _ => false,
-    };
+    // Only user mode puts rig's quick links into ~/.local/bin, so only user
+    // mode has a reason to edit the user's shell startup files. In admin mode
+    // we merely warn below if the binary directory is not on the PATH.
+    let mode = get_mode()?;
+    let needs_add = mode == Mode::User
+        && match (local_bin_idx, usr_local_bin_idx) {
+            (None, _) => true,
+            (Some(l), Some(u)) if l > u => true,
+            _ => false,
+        };
 
     if needs_add && !ADD_DONE.swap(true, Ordering::Relaxed) {
         debug!(
@@ -602,6 +607,8 @@ pub fn check_local_bin_path() -> Result<(), Box<dyn Error>> {
             local_bin.display()
         );
         add_local_bin_to_path()?;
+    } else if mode == Mode::Admin {
+        debug!("Admin mode, not touching shell startup files");
     } else if !needs_add {
         debug!(
             "{} is already correctly placed on PATH",
@@ -811,6 +818,26 @@ mod tests {
             }
             // Should succeed without error regardless of WARN_DONE state.
             check_local_bin_path().unwrap();
+        });
+    }
+
+    #[test]
+    fn test_check_local_bin_path_admin_mode_does_not_touch_dotfiles() {
+        with_temp_home(|home| {
+            let zshrc = home.join(".zshrc");
+            fs::write(&zshrc, "# existing\n").unwrap();
+            unsafe {
+                std::env::set_var("PATH", "/usr/local/bin:/usr/bin:/bin");
+            }
+            set_mode(Mode::Admin).unwrap();
+
+            check_local_bin_path().unwrap();
+
+            // ~/.local/bin is not on the PATH here, but in admin mode rig has
+            // no business editing the user's shell startup files.
+            assert_eq!(fs::read_to_string(&zshrc).unwrap(), "# existing\n");
+            assert!(!home.join(".local/bin/rigenv").exists());
+            assert!(!home.join(".profile").exists());
         });
     }
 

@@ -41,6 +41,9 @@
 * rig now warns instead of failing when it encounters a broken R
   installation (#346).
 
+* rig now does not edit the shell startup files in admin mode,
+  like rig 0.8.1 did on macOS. rig now only does this in user mode.
+
 # rig 0.8.1
 
 * The `RIG_PLATFORM` environment variable works correctly again (#325).
