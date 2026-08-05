@@ -474,7 +474,8 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#rig-0.10.0-alpha2-pre-release" id="toc-rig-0.10.0-alpha2-pre-release" class="nav-link active" data-scroll-target="#rig-0.10.0-alpha2-pre-release">rig 0.10.0-alpha2 (pre-release)</a></li>
+  <li><a href="#rig-0.10.0-not-released-yet" id="toc-rig-0.10.0-not-released-yet" class="nav-link active" data-scroll-target="#rig-0.10.0-not-released-yet">rig 0.10.0 (not released yet)</a></li>
+  <li><a href="#rig-0.10.0-alpha2-pre-release" id="toc-rig-0.10.0-alpha2-pre-release" class="nav-link" data-scroll-target="#rig-0.10.0-alpha2-pre-release">rig 0.10.0-alpha2 (pre-release)</a></li>
   <li><a href="#rig-0.8.1" id="toc-rig-0.8.1" class="nav-link" data-scroll-target="#rig-0.8.1">rig 0.8.1</a></li>
   <li><a href="#rig-0.8.0" id="toc-rig-0.8.0" class="nav-link" data-scroll-target="#rig-0.8.0">rig 0.8.0</a></li>
   <li><a href="#rig-0.7.1" id="toc-rig-0.7.1" class="nav-link" data-scroll-target="#rig-0.7.1">rig 0.7.1</a></li>
@@ -540,6 +541,13 @@ ul.task-list li input[type="checkbox"] {
 </header>
 
 
+<section id="rig-0.10.0-not-released-yet" class="level1">
+<h1>rig 0.10.0 (not released yet)</h1>
+<ul>
+<li><p>rig now does not edit the shell startup files in admin mode, like rig 0.8.1 did on macOS. rig now only does this in user mode.</p></li>
+<li><p><code>rig repos available</code> now prints a compact table. New <code>rig repos available &lt;name&gt;</code> shows complete information about a single repository.</p></li>
+</ul>
+</section>
 <section id="rig-0.10.0-alpha2-pre-release" class="level1">
 <h1>rig 0.10.0-alpha2 (pre-release)</h1>
 <ul>
@@ -555,7 +563,6 @@ ul.task-list li input[type="checkbox"] {
 <li><p>New <code>rig system fix-r-alias</code> subcommand.</p></li>
 <li><p><code>rig rstudio --config-path</code> is now implemented on Linux and macOS.</p></li>
 <li><p>rig now warns instead of failing when it encounters a broken R installation (#346).</p></li>
-<li><p>rig now does not edit the shell startup files in admin mode, like rig 0.8.1 did on macOS. rig now only does this in user mode.</p></li>
 </ul>
 </section>
 <section id="rig-0.8.1" class="level1">
