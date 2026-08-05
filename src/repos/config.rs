@@ -11,20 +11,6 @@ pub enum Enabled {
     OnPlatforms { platforms: Vec<String> },
 }
 
-impl Enabled {
-    /// A short human-readable description of the default-enabled state, used by
-    /// `rig repos list`.
-    pub fn describe(&self) -> String {
-        match self {
-            Enabled::Always(true) => "Yes".to_string(),
-            Enabled::Always(false) => "No".to_string(),
-            Enabled::OnPlatforms { platforms } => {
-                format!("On platforms: {}", platforms.join(" | "))
-            }
-        }
-    }
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RepoEntry {
     pub name: String,

@@ -1476,6 +1476,11 @@ pub fn rig_app() -> Command {
                         .long("json")
                         .num_args(0)
                         .required(false),
+                )
+                .arg(
+                    Arg::new("name")
+                        .help("Repository to show in detail, e.g. 'P3M' (case insensitive)")
+                        .required(false),
                 ),
         )
         .subcommand(

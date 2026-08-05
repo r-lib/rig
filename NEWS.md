@@ -3,6 +3,10 @@
 * rig now does not edit the shell startup files in admin mode,
   like rig 0.8.1 did on macOS. rig now only does this in user mode.
 
+* `rig repos available` now prints a compact table. New
+  `rig repos available <name>` shows complete information about a single
+  repository.
+
 # rig 0.10.0-alpha2 (pre-release)
 
 * rig now supports a **user mode** on all platforms, in addition to the
