@@ -1,3 +1,8 @@
+# rig 0.10.0 (not released yet)
+
+* rig now does not edit the shell startup files in admin mode,
+  like rig 0.8.1 did on macOS. rig now only does this in user mode.
+
 # rig 0.10.0-alpha2 (pre-release)
 
 * rig now supports a **user mode** on all platforms, in addition to the
@@ -40,9 +45,6 @@
 
 * rig now warns instead of failing when it encounters a broken R
   installation (#346).
-
-* rig now does not edit the shell startup files in admin mode,
-  like rig 0.8.1 did on macOS. rig now only does this in user mode.
 
 # rig 0.8.1
 
