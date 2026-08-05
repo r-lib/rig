@@ -2,7 +2,7 @@
     {
         "name": "P3M",
         "title": "Posit Public Package Manager",
-        "description": "TODO",
+        "description": "Posit's public CRAN mirror. It serves pre-compiled binary packages for Windows, macOS and many Linux distributions.",
         "enabled": true,
         "repos": [
             {
@@ -259,7 +259,7 @@
     {
         "name": "P3M-manylinux",
         "title": "Posit Package Manager manylinux portable packages",
-        "description": "TODO",
+        "description": "Distribution-independent Linux binary packages from Posit Package Manager, built for manylinux_2_28, i.e. glibc 2.28 or newer.",
         "enabled": {
             "platforms": [
                 "*-linux-gnu-manylinux-*"
@@ -282,7 +282,7 @@
     {
         "name": "RHUB",
         "title": "R-Hub repositories",
-        "description": "TODO",
+        "description": "Linux binary package repositories built by R-hub and served from GitHub. Mainly for the R-hub containers.",
         "enabled": false,
         "repos": [
             {
@@ -355,7 +355,7 @@
     {
         "name": "r-universe/cran",
         "title": "R-universe CRAN mirror",
-        "description": "TODO",
+        "description": "R-universe's mirror of CRAN. The only repository serving arm64 Windows binary packages.",
         "enabled": {
             "platforms": [
                 "aarch64-*-mingw32"
@@ -378,7 +378,7 @@
     {
         "name": "r-universe/bioc",
         "title": "R-universe Bioconductor mirror",
-        "description": "TODO",
+        "description": "R-universe's mirror of Bioconductor, with arm64 Windows binary packages.",
         "enabled": false,
         "repos": [
             {
@@ -397,7 +397,7 @@
     {
         "name": "CRAN",
         "title": "The Comprehensive R Archive Network",
-        "description": "TODO",
+        "description": "The canonical R package repository, through the cloud.r-project.org CDN.",
         "enabled": true,
         "repos": [
             {
@@ -409,7 +409,7 @@
     {
         "name": "CRAN-archive",
         "title": "CRAN archive",
-        "description": "TODO",
+        "description": "CRAN's archive of Windows and macOS binary packages for R versions that the main CRAN mirrors no longer serve.",
         "enabled": true,
         "repos": [
             {
@@ -430,7 +430,7 @@
     {
         "name": "Bioconductor",
         "title": "Open source software for Bioinformatics",
-        "description": "TODO",
+        "description": "The Bioconductor software, annotation, experiment data, workflow and book repositories. The URLs are expanded to the Bioconductor mirror and the Bioconductor version that matches the current R version.",
         "enabled": false,
         "repos": [
             {
