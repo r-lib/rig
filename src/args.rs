@@ -1571,6 +1571,10 @@ pub fn rig_app() -> Command {
         let cmd_test = Command::new("test")
             .about("Run tests (for rig developers)")
             .display_order(0)
+            // Developer-only command; it exists in debug builds only, but the
+            // website's CLI reference is generated from a debug build on CI, so
+            // keep it out of the reference explicitly.
+            .hide(reference_mode())
             .arg_required_else_help(true)
             .subcommand(
                 Command::new("download-lockfile")
