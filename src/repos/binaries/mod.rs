@@ -38,15 +38,22 @@
 //!   picking one.
 //! * **There is no aggregate index** — no `ALLBINARIES`, no directory listing.
 //!   It is one HTTP request per package, so the index is fetched on demand and
-//!   cached as a file rather than being bulk-imported into `packages.db`.
+//!   cached per package rather than being bulk-imported into `packages.db`.
+//!
+//! Parsing that TSV costs a couple of milliseconds per package, and rig is a
+//! CLI, so the cost would be paid on every invocation. It is not: the TSV is
+//! parsed once, out of the response body, and what gets cached is a columnar
+//! blob that later runs read directly. The TSV itself is never written to
+//! disk. See [`blob`] for the format and [`load_binary_index`] for the flow.
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::error::Error;
+use std::fmt;
 use std::fs;
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use log::*;
 use serde::Deserialize;
@@ -54,9 +61,16 @@ use simple_error::bail;
 use zstd::stream::read::Decoder as ZstdDecoder;
 
 use crate::cache::get_cache_dir;
-use crate::dcf::RPackageVersion;
-use crate::download::download_optional_if_newer_;
+use crate::download::{download_optional_if_newer_, fetch_optional_if_modified_, ConditionalFetch};
+
+/// How long a cached index or status document is used without asking the
+/// server, matching the default in `crate::download`.
+const DEFAULT_TTL: Duration = Duration::from_secs(24 * 60 * 60);
+
+pub mod blob;
 use crate::rversion::OsVersion;
+use blob::IndexBlob;
+pub use blob::LinkingTo;
 
 /// Magic bytes of a zstd frame.
 const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
@@ -109,26 +123,9 @@ pub struct BinaryRow {
     pub linkingto: Vec<LinkingToRef>,
 }
 
-impl BinaryRow {
-    /// Whether this row is the source tarball rather than a built binary.
-    pub fn is_source(&self) -> bool {
-        self.platform == "source"
-    }
-}
-
-/// A package's parsed binary index.
-pub struct BinaryIndex {
-    package: String,
-    rows: Vec<BinaryRow>,
-    /// Versions in the order they first appear in the file.
-    versions: Vec<String>,
-    /// Version -> indices into `rows`, in file order.
-    by_version: HashMap<String, Vec<usize>>,
-}
-
-/// The cache file backing a package's index, and how we got it.
-pub struct CachedIndexFile {
-    pub path: PathBuf,
+/// A package's index, and how we got it.
+pub struct CachedIndex {
+    pub index: BinaryIndex,
     /// True if this run fetched new content, false if the cached copy was
     /// reused (either younger than the TTL, or revalidated with a 304).
     pub downloaded: bool,
@@ -165,17 +162,52 @@ pub fn validate_package_name(package: &str) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// Cache path of a package's index, `<cache>/binaries/<package>.tsv.zst`.
-pub fn binary_index_local_file(package: &str) -> Result<PathBuf, Box<dyn Error>> {
+/// Cache path of a package's columnar blob,
+/// `<cache>/binaries/<package>.v<n>.rbi`.
+///
+/// This is the only copy of the index we keep: the TSV the server sends is
+/// parsed straight from memory and never lands on disk.
+///
+/// The format version is part of the *name*, so a rig that understands a newer
+/// layout does not find the old file at all rather than reading one it would
+/// have to reject.
+pub fn binary_index_blob_file(package: &str) -> Result<PathBuf, Box<dyn Error>> {
     validate_package_name(package)?;
     Ok(get_cache_dir()?
         .join("binaries")
-        .join(format!("{}.tsv.zst", package)))
+        .join(format!("{}.v{}.rbi", package, blob::FORMAT_VERSION)))
 }
 
-/// Sidecar holding the ETag of the cached index.
-fn etag_file(index_path: &Path) -> PathBuf {
-    let mut name = index_path.as_os_str().to_os_string();
+/// Cache path of a blob's marker file,
+/// `<cache>/binaries/<package>.v<n>.etag`.
+///
+/// It holds the `ETag` of the response the blob was built from, and it does
+/// double duty as the blob's commit marker and its freshness clock:
+///
+/// * It is written *after* the blob, so its presence means the blob beside it
+///   was written in full. A run interrupted between the two leaves a blob with
+///   no marker, which the next run re-downloads rather than trusting.
+/// * Its mtime is when we last knew the blob to be current — set when the blob
+///   is built, and again whenever the server answers 304. That is what the TTL
+///   is measured against, so a revalidated index does not get re-checked on
+///   every invocation.
+///
+/// It carries the same format version as the blob it describes, because it
+/// describes *that* blob and not whatever a different rig would have built.
+/// An empty file means the response carried no `ETag`: still a valid marker,
+/// just nothing to revalidate with.
+pub fn binary_index_etag_file(package: &str) -> Result<PathBuf, Box<dyn Error>> {
+    validate_package_name(package)?;
+    Ok(get_cache_dir()?.join("binaries").join(format!(
+        "{}.v{}.etag",
+        package,
+        blob::FORMAT_VERSION
+    )))
+}
+
+/// Sidecar holding the ETag of a cached file.
+fn etag_file(path: &Path) -> PathBuf {
+    let mut name = path.as_os_str().to_os_string();
     name.push(".etag");
     PathBuf::from(name)
 }
@@ -221,25 +253,138 @@ fn ensure_cached_file(
     }
 }
 
-/// Download a package's index if the cached copy is missing or older than
-/// `ttl` (24 hours by default), and return the cache file.
+/// Load a package's binary index, downloading it if what we have is missing,
+/// unusable, or older than `ttl` (24 hours by default).
 ///
 /// Returns `Ok(None)` if P3M has no index for this package (404). Note that
-/// this is only ever observed when we actually make a request: while a cached
-/// copy is younger than `ttl` it is served without asking.
-pub fn ensure_binary_index_cached(
+/// this is only ever observed when we actually make a request: while the
+/// cached blob is younger than `ttl` it is used without asking.
+///
+/// The blob is the only artifact kept; the TSV is parsed out of the response
+/// body and discarded. That means the blob is authoritative rather than
+/// derived, so the two ways of losing it are handled explicitly:
+///
+/// * **A blob that will not open** is discarded along with its marker, and the
+///   refetch is unconditional. Sending `If-None-Match` here would earn a 304
+///   and no body, leaving us with nothing to parse.
+/// * **A marker with no readable blob beside it** — the crash window between
+///   the two writes — is deleted for the same reason.
+///
+/// Concurrent `rig` runs are safe but not serialized. Both writes are atomic
+/// renames, so a reader always sees a whole file, and neither process can
+/// observe the other's partial state. Two runs that fetch at once can still
+/// interleave into a marker describing the *other* run's blob; that needs the
+/// server's content to have changed between the two fetches, and the worst it
+/// costs is a needless refetch, or an index one snapshot stale until the TTL
+/// expires. Nothing is lost, because a blob is only ever replaced by another
+/// complete blob.
+pub fn load_binary_index(
     package: &str,
     ttl: Option<Duration>,
-) -> Result<Option<CachedIndexFile>, Box<dyn Error>> {
-    let path = binary_index_local_file(package)?;
+) -> Result<Option<CachedIndex>, Box<dyn Error>> {
+    let blob_path = binary_index_blob_file(package)?;
+    let etag_path = binary_index_etag_file(package)?;
+    let ttl = ttl.unwrap_or(DEFAULT_TTL);
+
+    let cached = read_cached_blob(&blob_path);
+    if cached.is_none() {
+        // A marker without a usable blob would suppress the download, or ask
+        // for a 304 we could not use.
+        let _ = fs::remove_file(&etag_path);
+    }
+
+    if cached.is_some() && file_age(&etag_path).is_some_and(|age| age < ttl) {
+        info!("{} is up to date, skipping download", blob_path.display());
+        return Ok(cached.map(|index| CachedIndex {
+            index,
+            downloaded: false,
+        }));
+    }
+
+    // Only ask for a 304 if we still hold the content one would refer to.
+    let etag = cached
+        .as_ref()
+        .and_then(|_| fs::read_to_string(&etag_path).ok())
+        .filter(|e| !e.is_empty());
+
     let url = binary_index_url(package);
-    match ensure_cached_file(&url, &path, ttl)? {
-        None => {
+    match fetch_optional_if_modified_(&url, etag.as_deref(), None)? {
+        ConditionalFetch::NotFound => {
             debug!("No binary index for package '{}'", package);
             Ok(None)
         }
-        Some(downloaded) => Ok(Some(CachedIndexFile { path, downloaded })),
+
+        ConditionalFetch::NotModified => match cached {
+            Some(index) => {
+                // Restart the TTL: we just confirmed the blob is current.
+                let _ = filetime::set_file_mtime(&etag_path, filetime::FileTime::now());
+                Ok(Some(CachedIndex {
+                    index,
+                    downloaded: false,
+                }))
+            }
+            // We did not send `If-None-Match`, so this is the server ignoring
+            // the request rather than anything we can recover from here.
+            None => bail!("Server answered 304 for {} without being asked", url),
+        },
+
+        ConditionalFetch::Fetched { bytes, etag } => {
+            let rows = parse_binaries_tsv(&bytes)?;
+            let built = blob::build(package, &rows)?;
+            debug!(
+                "Built binary index blob for '{}' ({} rows, {} bytes)",
+                package,
+                rows.len(),
+                built.len()
+            );
+            // The blob first, its marker second: a marker means the blob
+            // beside it is complete. A cache we cannot write is a slow next
+            // run, not a failure of this one, so neither write is fatal — but
+            // the marker must not outlive a blob that never landed.
+            match write_atomically(&blob_path, &built) {
+                Ok(()) => {
+                    if let Err(err) =
+                        write_atomically(&etag_path, etag.unwrap_or_default().as_bytes())
+                    {
+                        debug!("Could not write {}: {}", etag_path.display(), err);
+                    }
+                }
+                Err(err) => {
+                    debug!("Could not write {}: {}", blob_path.display(), err);
+                    let _ = fs::remove_file(&etag_path);
+                }
+            }
+            Ok(Some(CachedIndex {
+                index: BinaryIndex::open_blob(&built)?,
+                downloaded: true,
+            }))
+        }
     }
+}
+
+/// Open a cached blob, treating an unusable one as absent.
+///
+/// It is a cache file, so a truncated or corrupt one is something to replace
+/// rather than to report.
+fn read_cached_blob(path: &Path) -> Option<BinaryIndex> {
+    let bytes = fs::read(path).ok()?;
+    match BinaryIndex::open_blob(&bytes) {
+        Ok(index) => {
+            debug!("Opened binary index blob at {}", path.display());
+            Some(index)
+        }
+        Err(err) => {
+            debug!("Discarding unusable blob at {}: {}", path.display(), err);
+            None
+        }
+    }
+}
+
+/// How long ago `path` was last written, or `None` if it does not exist or the
+/// clock disagrees with it.
+fn file_age(path: &Path) -> Option<Duration> {
+    let modified = fs::metadata(path).and_then(|m| m.modified()).ok()?;
+    SystemTime::now().duration_since(modified).ok()
 }
 
 /// Wrap `bytes` in a zstd decoder if it is a zstd frame, else read it as is.
@@ -348,77 +493,184 @@ pub fn parse_binaries_tsv(bytes: &[u8]) -> Result<Vec<BinaryRow>, Box<dyn Error>
     Ok(rows)
 }
 
-/// Compare two package versions the way R does, by numeric components.
+/// A package version, borrowed from the index.
 ///
-/// The index files are sorted as *strings*, which puts `0.10.0` and `0.11.1`
-/// between `0.1.2.1` and `0.2.0` — so the last version in a file is not the
-/// newest one. Versions that do not parse sort lowest rather than winning by
-/// accident.
-fn compare_versions(a: &str, b: &str) -> Ordering {
-    let key = |v: &str| RPackageVersion::from_str(v).ok().map(|p| p.components);
-    key(a).cmp(&key(b)).then_with(|| a.cmp(b))
+/// The index stores the components [`RPackageVersion`] would parse out, so
+/// ordering one is a slice comparison rather than a re-parse. Versions that do
+/// not parse have no components, which sorts them below every version that
+/// does rather than letting them win by accident.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VersionRef<'a> {
+    pub original: &'a str,
+    pub components: &'a [u32],
+}
+
+impl Ord for VersionRef<'_> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        // An empty component list means the version did not parse, and `[]` is
+        // already `Less` than any non-empty list.
+        self.components
+            .cmp(other.components)
+            .then_with(|| self.original.cmp(other.original))
+    }
+}
+
+impl PartialOrd for VersionRef<'_> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl fmt::Display for VersionRef<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.original)
+    }
+}
+
+/// One row of a package's binary index, borrowed from it.
+///
+/// Every accessor is a pair of integer reads and a slice into the index, so
+/// nothing here allocates. Use [`BinaryRowRef::to_owned`] to lift a row out.
+#[derive(Clone, Copy)]
+pub struct BinaryRowRef<'a> {
+    index: &'a BinaryIndex,
+    row: usize,
+}
+
+impl<'a> BinaryRowRef<'a> {
+    pub fn version(&self) -> VersionRef<'a> {
+        self.index.version(self.index.blob.row_version(self.row))
+    }
+
+    /// `source`, `macos`, `windows`, or a Linux codename such as `jammy`.
+    pub fn platform(&self) -> &'a str {
+        self.index.blob.row_platform(self.row)
+    }
+
+    /// `*` for source rows, otherwise `x86_64` or `arm64` (note: `arm64`, not
+    /// the `aarch64` that `std::env::consts::ARCH` uses).
+    pub fn arch(&self) -> &'a str {
+        self.index.blob.row_arch(self.row)
+    }
+
+    /// `*` for source rows, otherwise a minor R version such as `4.5`.
+    pub fn r_version(&self) -> &'a str {
+        self.index.blob.row_r_version(self.row)
+    }
+
+    /// Hash of the upstream CRAN source tarball, *not* a checksum for
+    /// [`BinaryRowRef::url`]. See the module docs.
+    pub fn sha256(&self) -> &'a str {
+        self.index.blob.row_sha256(self.row)
+    }
+
+    pub fn url(&self) -> &'a str {
+        self.index.blob.row_url(self.row)
+    }
+
+    /// Empty on source rows and for packages without `LinkingTo:`.
+    pub fn linkingto(&self) -> impl Iterator<Item = LinkingTo<'a>> + 'a {
+        self.index.blob.linkingto(self.row)
+    }
+
+    /// Whether this row is the source tarball rather than a built binary.
+    pub fn is_source(&self) -> bool {
+        self.platform() == "source"
+    }
+
+    /// Lift a row out of the index, copying its strings.
+    pub fn to_owned(self) -> BinaryRow {
+        BinaryRow {
+            version: self.version().original.to_string(),
+            platform: self.platform().to_string(),
+            arch: self.arch().to_string(),
+            r_version: self.r_version().to_string(),
+            sha256: self.sha256().to_string(),
+            url: self.url().to_string(),
+            linkingto: self
+                .linkingto()
+                .map(|l| LinkingToRef {
+                    package: l.package.to_string(),
+                    version: l.version.to_string(),
+                    sha256: l.sha256.to_string(),
+                })
+                .collect(),
+        }
+    }
+}
+
+impl fmt::Debug for BinaryRowRef<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        (*self).to_owned().fmt(f)
+    }
+}
+
+/// A package's binary index, backed by the columnar blob it was read from.
+pub struct BinaryIndex {
+    blob: IndexBlob,
 }
 
 impl BinaryIndex {
-    /// Build an index from already-parsed rows.
-    pub fn from_rows(package: &str, rows: Vec<BinaryRow>) -> BinaryIndex {
-        let mut versions: Vec<String> = vec![];
-        let mut by_version: HashMap<String, Vec<usize>> = HashMap::new();
-        for (i, row) in rows.iter().enumerate() {
-            let entry = by_version.entry(row.version.clone()).or_insert_with(|| {
-                versions.push(row.version.clone());
-                vec![]
-            });
-            entry.push(i);
-        }
-        versions.sort_by(|a, b| compare_versions(a, b));
-        BinaryIndex {
-            package: package.to_string(),
-            rows,
-            versions,
-            by_version,
-        }
-    }
-
-    /// Parse an index from a file on disk.
-    pub fn from_file(package: &str, path: &Path) -> Result<BinaryIndex, Box<dyn Error>> {
-        let bytes = fs::read(path)?;
-        Ok(BinaryIndex::from_rows(package, parse_binaries_tsv(&bytes)?))
+    /// Read an index from an already-encoded blob.
+    pub fn open_blob(bytes: &[u8]) -> Result<BinaryIndex, Box<dyn Error>> {
+        Ok(BinaryIndex {
+            blob: IndexBlob::open(bytes)?,
+        })
     }
 
     pub fn package(&self) -> &str {
-        &self.package
+        self.blob.package()
     }
 
-    pub fn rows(&self) -> &[BinaryRow] {
-        &self.rows
+    pub fn num_rows(&self) -> usize {
+        self.blob.nrows()
     }
 
     /// All known versions, oldest first.
     ///
     /// Sorted numerically, *not* in the order they appear in the index: those
     /// files are sorted as strings, so `0.9.5` comes last while `0.11.1` is the
-    /// newest. See [`compare_versions`].
+    /// newest.
     pub fn versions(&self) -> &[String] {
-        &self.versions
+        self.blob.versions()
     }
 
-    /// The newest version in the index.
-    pub fn latest_version(&self) -> Option<&str> {
-        self.versions.last().map(|v| v.as_str())
+    /// The `i`th version, with its parsed components.
+    pub fn version(&self, i: usize) -> VersionRef<'_> {
+        VersionRef {
+            original: self.versions().get(i).map(|v| v.as_str()).unwrap_or(""),
+            components: self.blob.version_components(i),
+        }
     }
 
-    fn rows_for_version(&self, version: &str) -> impl Iterator<Item = &BinaryRow> {
-        self.by_version
-            .get(version)
-            .map(|v| v.as_slice())
-            .unwrap_or(&[])
-            .iter()
-            .map(|i| &self.rows[*i])
+    /// The newest version in the index, with its parsed components.
+    pub fn latest_version(&self) -> Option<VersionRef<'_>> {
+        self.versions()
+            .len()
+            .checked_sub(1)
+            .map(|last| self.version(last))
+    }
+
+    /// Position of a version in [`BinaryIndex::versions`].
+    ///
+    /// A scan: the versions are ordered numerically, so they are not in string
+    /// order to binary-search, and there are at most a couple of hundred of
+    /// them.
+    pub fn version_index(&self, version: &str) -> Option<usize> {
+        self.versions().iter().position(|v| v == version)
+    }
+
+    /// The rows of one version, in file order.
+    pub fn rows_for_version(&self, version: &str) -> impl Iterator<Item = BinaryRowRef<'_>> + '_ {
+        let range = match self.version_index(version) {
+            Some(i) => self.blob.version_rows(i),
+            None => 0..0,
+        };
+        range.map(|row| BinaryRowRef { index: self, row })
     }
 
     /// The source tarball row for a version, if any.
-    pub fn source_row(&self, version: &str) -> Option<&BinaryRow> {
+    pub fn source_row(&self, version: &str) -> Option<BinaryRowRef<'_>> {
         self.rows_for_version(version).find(|r| r.is_source())
     }
 
@@ -436,9 +688,9 @@ impl BinaryIndex {
         platform: &str,
         arch: &str,
         r_version: &str,
-    ) -> Vec<&BinaryRow> {
+    ) -> Vec<BinaryRowRef<'_>> {
         self.rows_for_version(version)
-            .filter(|r| r.platform == platform && r.arch == arch && r.r_version == r_version)
+            .filter(|r| r.platform() == platform && r.arch() == arch && r.r_version() == r_version)
             .collect()
     }
 
@@ -453,20 +705,40 @@ impl BinaryIndex {
         platform: &str,
         arch: &str,
         r_version: &str,
-    ) -> Option<&BinaryRow> {
+    ) -> Option<BinaryRowRef<'_>> {
         self.binary_rows(version, platform, arch, r_version).pop()
     }
 
     /// Distinct platforms a version has artifacts for, in file order.
     pub fn platforms_for(&self, version: &str) -> Vec<&str> {
-        let mut seen = vec![];
+        let mut seen: Vec<&str> = vec![];
         for row in self.rows_for_version(version) {
-            if !seen.contains(&row.platform.as_str()) {
-                seen.push(row.platform.as_str());
+            if !seen.contains(&row.platform()) {
+                seen.push(row.platform());
             }
         }
         seen
     }
+}
+
+/// Write a file so that a reader sees either the old contents or the new ones,
+/// never a partial write: two `rig` processes can be doing this at once.
+fn write_atomically(path: &Path, bytes: &[u8]) -> Result<(), Box<dyn Error>> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut tmp = path.as_os_str().to_os_string();
+    tmp.push(format!(".{}.tmp", std::process::id()));
+    let tmp = PathBuf::from(tmp);
+    if let Err(err) = fs::write(&tmp, bytes) {
+        let _ = fs::remove_file(&tmp);
+        return Err(err.into());
+    }
+    if let Err(err) = fs::rename(&tmp, path) {
+        let _ = fs::remove_file(&tmp);
+        return Err(err.into());
+    }
+    Ok(())
 }
 
 /// URL of P3M's status document, overridable with `RIG_PPM_STATUS_URL`.
@@ -668,8 +940,11 @@ mod tests {
         fs::read(PathBuf::from("tests/fixtures/binaries").join(name)).unwrap()
     }
 
+    /// Build an index the way [`BinaryIndex::load`] does, through the blob
+    /// encoder, so these tests exercise the on-disk format too.
     fn index(package: &str, name: &str) -> BinaryIndex {
-        BinaryIndex::from_rows(package, parse_binaries_tsv(&fixture(name)).unwrap())
+        let rows = parse_binaries_tsv(&fixture(name)).unwrap();
+        BinaryIndex::open_blob(&blob::build(package, &rows).unwrap()).unwrap()
     }
 
     #[test]
@@ -687,14 +962,12 @@ mod tests {
             src.url,
             "https://p3m.dev/cran/2025-01-01/src/contrib/testpkg_1.0.0.tar.gz"
         );
-        assert!(src.is_source());
         // Source rows carry a trailing empty `linkingto`.
         assert!(src.linkingto.is_empty());
 
         assert_eq!(rows[1].platform, "macos");
         assert_eq!(rows[1].arch, "arm64");
         assert_eq!(rows[1].r_version, "4.5");
-        assert!(!rows[1].is_source());
     }
 
     #[test]
@@ -751,16 +1024,15 @@ mod tests {
         let rows = idx.binary_rows("3.0.1", "macos", "arm64", "4.5");
         assert_eq!(rows.len(), 1);
         assert_eq!(
-            rows[0].url,
+            rows[0].url(),
             "https://p3m.dev/cran/2026-07-14/bin/macosx/big-sur-arm64/contrib/4.5/zip_3.0.1.tgz"
         );
         assert_eq!(
-            rows[0].linkingto,
-            vec![LinkingToRef {
-                package: "cli".to_string(),
-                version: "3.6.6".to_string(),
-                sha256: "b2b58d6dd82f5798b335e39c00591686a01fd3e94399ef898e146173e36f18f9"
-                    .to_string(),
+            rows[0].linkingto().collect::<Vec<_>>(),
+            vec![LinkingTo {
+                package: "cli",
+                version: "3.6.6",
+                sha256: "b2b58d6dd82f5798b335e39c00591686a01fd3e94399ef898e146173e36f18f9",
             }]
         );
     }
@@ -769,9 +1041,9 @@ mod tests {
     fn parses_multi_entry_linkingto() {
         let idx = index("dplyr", "dplyr.tsv.zst");
         let rows = idx.binary_rows("0.7.4", "xenial", "x86_64", "3.4");
-        let lt = &rows[0].linkingto;
+        let lt: Vec<LinkingTo> = rows[0].linkingto().collect();
         assert_eq!(lt.len(), 4);
-        let names: Vec<&str> = lt.iter().map(|l| l.package.as_str()).collect();
+        let names: Vec<&str> = lt.iter().map(|l| l.package).collect();
         assert_eq!(names, vec!["BH", "Rcpp", "bindrcpp", "plogr"]);
         // Versions can contain dashes.
         assert_eq!(lt[0].version, "1.65.0-1");
@@ -796,15 +1068,18 @@ mod tests {
     fn finds_the_source_row() {
         let idx = index("pak", "pak.tsv.zst");
         let src = idx.source_row("0.9.5").unwrap();
+        assert!(src.is_source());
         assert_eq!(
-            src.url,
+            src.url(),
             "https://p3m.dev/cran/2026-04-27/src/contrib/pak_0.9.5.tar.gz"
         );
         assert_eq!(
-            src.sha256,
+            src.sha256(),
             "f5f8997ccfaab842b67c4b708dfb34963bb13c0830741101aae9c866c979139c"
         );
-        assert!(src.linkingto.is_empty());
+        assert_eq!(src.linkingto().count(), 0);
+        assert_eq!(src.version().original, "0.9.5");
+        assert_eq!(src.version().components, [0, 9, 5]);
     }
 
     #[test]
@@ -812,8 +1087,9 @@ mod tests {
         let idx = index("pak", "pak.tsv.zst");
         let rows = idx.binary_rows("0.9.5", "macos", "arm64", "4.5");
         assert_eq!(rows.len(), 1);
+        assert!(!rows[0].is_source());
         assert_eq!(
-            rows[0].url,
+            rows[0].url(),
             "https://p3m.dev/cran/2026-04-27/bin/macosx/big-sur-arm64/contrib/4.5/pak_0.9.5.tgz"
         );
     }
@@ -830,12 +1106,7 @@ mod tests {
         // The candidates are distinguished by `linkingto`, not by anything else.
         let fingerprints: Vec<Vec<(&str, &str)>> = rows
             .iter()
-            .map(|r| {
-                r.linkingto
-                    .iter()
-                    .map(|l| (l.package.as_str(), l.version.as_str()))
-                    .collect()
-            })
+            .map(|r| r.linkingto().map(|l| (l.package, l.version)).collect())
             .collect();
         let mut unique = fingerprints.clone();
         unique.sort();
@@ -843,7 +1114,7 @@ mod tests {
         assert_eq!(unique.len(), 7);
 
         // Every candidate has its own URL, too.
-        let mut urls: Vec<&str> = rows.iter().map(|r| r.url.as_str()).collect();
+        let mut urls: Vec<&str> = rows.iter().map(|r| r.url()).collect();
         urls.sort();
         urls.dedup();
         assert_eq!(urls.len(), 7);
@@ -855,7 +1126,7 @@ mod tests {
         let latest = idx
             .latest_binary_row("0.7.4", "xenial", "x86_64", "3.4")
             .unwrap();
-        assert_eq!(latest.url, rows[6].url);
+        assert_eq!(latest.url(), rows[6].url());
     }
 
     #[test]
@@ -893,20 +1164,37 @@ mod tests {
     #[test]
     fn orders_versions_numerically_not_as_strings() {
         let pak = index("pak", "pak.tsv.zst");
-        assert_eq!(pak.latest_version(), Some("0.11.1"));
+        let latest = pak.latest_version().unwrap();
+        assert_eq!(latest.original, "0.11.1");
+        assert_eq!(latest.components, [0, 11, 1]);
         assert_eq!(pak.versions().first().map(|s| s.as_str()), Some("0.1.2"));
 
         // The raw file really is in the misleading order.
         let rows = parse_binaries_tsv(&fixture("pak.tsv.zst")).unwrap();
         assert_eq!(rows.last().unwrap().version, "0.9.5");
 
-        // Ordering rules, including dashed and unequal-length versions.
-        assert_eq!(compare_versions("0.11.1", "0.9.5"), Ordering::Greater);
-        assert_eq!(compare_versions("0.9.3-1", "0.9.4"), Ordering::Less);
-        assert_eq!(compare_versions("0.8.0", "0.8.0.1"), Ordering::Less);
-        assert_eq!(compare_versions("1.0.0", "1.0.0"), Ordering::Equal);
-        // Unparseable versions lose rather than winning by accident.
-        assert_eq!(compare_versions("not-a-version", "0.0.1"), Ordering::Less);
+        // The stored list really is ascending by `VersionRef`'s ordering.
+        let all: Vec<VersionRef> = (0..pak.versions().len()).map(|i| pak.version(i)).collect();
+        assert!(all.windows(2).all(|w| w[0] < w[1]));
+    }
+
+    /// Ordering rules, including dashed and unequal-length versions.
+    #[test]
+    fn version_ordering_rules() {
+        let v = |original, components: &'static [u32]| VersionRef {
+            original,
+            components,
+        };
+        assert!(v("0.11.1", &[0, 11, 1]) > v("0.9.5", &[0, 9, 5]));
+        assert!(v("0.9.3-1", &[0, 9, 3, 1]) < v("0.9.4", &[0, 9, 4]));
+        assert!(v("0.8.0", &[0, 8, 0]) < v("0.8.0.1", &[0, 8, 0, 1]));
+        assert_eq!(
+            v("1.0.0", &[1, 0, 0]).cmp(&v("1.0.0", &[1, 0, 0])),
+            Ordering::Equal
+        );
+        // Unparseable versions have no components, and lose rather than
+        // winning by accident.
+        assert!(v("not-a-version", &[]) < v("0.0.1", &[0, 0, 1]));
     }
 
     #[test]
@@ -929,6 +1217,89 @@ mod tests {
             binary_index_url("dplyr"),
             "https://ppm.r-pkg.org/binaries/dplyr.tsv.zst"
         );
+    }
+
+    /// The marker carries the same format version as the blob it describes: it
+    /// records the ETag *that blob* was built from, which says nothing about a
+    /// blob some other rig would build.
+    #[test]
+    fn blob_and_marker_share_a_format_version() {
+        let blob = binary_index_blob_file("dplyr").unwrap();
+        let etag = binary_index_etag_file("dplyr").unwrap();
+        assert_eq!(
+            blob.file_name().unwrap(),
+            format!("dplyr.v{}.rbi", blob::FORMAT_VERSION).as_str()
+        );
+        assert_eq!(
+            etag.file_name().unwrap(),
+            format!("dplyr.v{}.etag", blob::FORMAT_VERSION).as_str()
+        );
+        assert_eq!(blob.parent(), etag.parent());
+        // Both go through the same name check, so neither can escape the cache.
+        assert!(binary_index_blob_file("../evil").is_err());
+        assert!(binary_index_etag_file("../evil").is_err());
+    }
+
+    /// A reader must see either the whole old file or the whole new one, and
+    /// no temp file may be left behind.
+    #[test]
+    fn writes_atomically_without_leaving_litter() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sub").join("f.rbi");
+        write_atomically(&path, b"first").unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"first");
+        write_atomically(&path, b"second").unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"second");
+
+        let left: Vec<_> = fs::read_dir(path.parent().unwrap())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(left, ["f.rbi"]);
+    }
+
+    /// The blob is the only copy of the data, so an unusable one has to be
+    /// noticed here — the caller's response is to refetch unconditionally.
+    #[test]
+    fn treats_an_unusable_blob_as_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("x.v1.rbi");
+        assert!(read_cached_blob(&path).is_none(), "missing");
+
+        let rows = parse_binaries_tsv(&fixture("simple.tsv")).unwrap();
+        let good = blob::build("testpkg", &rows).unwrap();
+        fs::write(&path, &good).unwrap();
+        let index = read_cached_blob(&path).expect("a good blob should open");
+        assert_eq!(index.package(), "testpkg");
+        assert_eq!(index.num_rows(), 6);
+
+        fs::write(&path, &good[..good.len() / 2]).unwrap();
+        assert!(read_cached_blob(&path).is_none(), "truncated");
+
+        let mut corrupt = good.clone();
+        corrupt[4] = 99; // format version
+        fs::write(&path, &corrupt).unwrap();
+        assert!(read_cached_blob(&path).is_none(), "wrong format version");
+
+        fs::write(&path, b"").unwrap();
+        assert!(read_cached_blob(&path).is_none(), "empty");
+    }
+
+    #[test]
+    fn ages_a_file_from_its_mtime() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("marker");
+        assert!(file_age(&path).is_none(), "a missing file has no age");
+
+        fs::write(&path, b"").unwrap();
+        assert!(file_age(&path).unwrap() < DEFAULT_TTL);
+
+        // What the 304 path does, and what a marker older than the TTL means.
+        let long_ago = SystemTime::now() - DEFAULT_TTL * 2;
+        filetime::set_file_mtime(&path, filetime::FileTime::from_system_time(long_ago)).unwrap();
+        assert!(file_age(&path).unwrap() > DEFAULT_TTL);
+        filetime::set_file_mtime(&path, filetime::FileTime::now()).unwrap();
+        assert!(file_age(&path).unwrap() < DEFAULT_TTL);
     }
 
     fn os(arch: &str, os: &str, distro: Option<&str>, version: Option<&str>) -> OsVersion {
@@ -1109,7 +1480,11 @@ mod tests {
     #[test]
     fn produced_platforms_exist_in_a_real_index() {
         let dplyr = index("dplyr", "dplyr.tsv.zst");
-        let seen: Vec<&str> = dplyr.rows().iter().map(|r| r.platform.as_str()).collect();
+        let seen: Vec<&str> = dplyr
+            .versions()
+            .iter()
+            .flat_map(|v| dplyr.platforms_for(v))
+            .collect();
         for (distro, version) in [
             ("ubuntu", "22.04"),
             ("ubuntu", "24.04"),

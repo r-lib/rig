@@ -84,12 +84,10 @@ fn sc_test_binary_index(
     validate_package_name(package)?;
 
     println!("URL:        {}", binary_index_url(package));
-    println!(
-        "Cache file: {}",
-        binary_index_local_file(package)?.display()
-    );
+    println!("Blob:       {}", binary_index_blob_file(package)?.display());
+    println!("ETag:       {}", binary_index_etag_file(package)?.display());
 
-    let cached = match ensure_binary_index_cached(package, None)? {
+    let cached = match load_binary_index(package, None)? {
         None => {
             println!("Result:     no binary index for '{}' (404)", package);
             return Ok(());
@@ -105,9 +103,9 @@ fn sc_test_binary_index(
         }
     );
 
-    let index = BinaryIndex::from_file(package, &cached.path)?;
+    let index = &cached.index;
     println!("Package:    {}", index.package());
-    println!("Rows:       {}", index.rows().len());
+    println!("Rows:       {}", index.num_rows());
     println!("Versions:   {}", index.versions().len());
 
     // Resolve the target we are asking about. Default to this machine.
@@ -135,7 +133,7 @@ fn sc_test_binary_index(
     println!("Version:    {}", version);
 
     match index.source_row(&version) {
-        Some(row) => println!("\nSource:\n  {}", row.url),
+        Some(row) => println!("\nSource:\n  {}", row.url()),
         None => println!("\nSource:\n  (none)"),
     }
 
@@ -153,13 +151,12 @@ fn sc_test_binary_index(
         let rows = index.binary_rows(&version, &ppm_plat, &ppm_arch, &r_minor);
         println!("\nBinaries for R {} ({} candidates):", r_minor, rows.len());
         for row in rows.iter() {
-            println!("  {}", row.url);
-            if !row.linkingto.is_empty() {
-                let lt: Vec<String> = row
-                    .linkingto
-                    .iter()
-                    .map(|l| format!("{}@{}", l.package, l.version))
-                    .collect();
+            println!("  {}", row.url());
+            let lt: Vec<String> = row
+                .linkingto()
+                .map(|l| format!("{}@{}", l.package, l.version))
+                .collect();
+            if !lt.is_empty() {
                 println!("    built against: {}", lt.join(", "));
             }
         }
@@ -169,7 +166,7 @@ fn sc_test_binary_index(
             if let Some(row) = index.latest_binary_row(&version, &ppm_plat, &ppm_arch, &r_minor) {
                 println!(
                     "\nNewest snapshot (arbitrary among the above):\n  {}",
-                    row.url
+                    row.url()
                 );
             }
         }

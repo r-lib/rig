@@ -349,6 +349,91 @@ pub fn download_first_available_(
     download_first_available__(client_, urls, local_path, etag)
 }
 
+/// What a conditional fetch found. See [`fetch_optional_if_modified_`].
+pub enum ConditionalFetch {
+    /// The server has no such resource (404).
+    NotFound,
+    /// The server confirmed the caller's copy is still current (304). There is
+    /// no body to go with this.
+    NotModified,
+    /// New content, with the `ETag` identifying it if the server sent one.
+    Fetched {
+        bytes: Vec<u8>,
+        etag: Option<String>,
+    },
+}
+
+/// Conditionally fetch a resource into memory.
+///
+/// Like `download_optional_if_newer_`, but nothing is written to disk and
+/// there is no TTL check: the caller decides when to call this and what to
+/// keep. That is what you want when the downloaded bytes are not the artifact
+/// being cached — the binary indices are parsed and stored in a different
+/// format entirely, so writing the response out only to delete it again would
+/// be pure overhead.
+///
+/// Passing `etag` sends `If-None-Match`. Only do that while you still hold the
+/// content it describes: a 304 comes with no body, so asking for one you
+/// cannot use leaves you with nothing.
+pub fn fetch_optional_if_modified_(
+    url: &str,
+    etag: Option<&str>,
+    client: Option<&reqwest::Client>,
+) -> Result<ConditionalFetch, Box<dyn Error>> {
+    let client_ = match client {
+        Some(c) => c,
+        None => &reqwest::Client::new(),
+    };
+    fetch_optional_if_modified__(client_, url, etag)
+}
+
+#[tokio::main]
+async fn fetch_optional_if_modified__(
+    client: &reqwest::Client,
+    url: &str,
+    etag: Option<&str>,
+) -> Result<ConditionalFetch, Box<dyn Error>> {
+    fetch_optional_if_modified(client, url, etag).await
+}
+
+async fn fetch_optional_if_modified(
+    client: &reqwest::Client,
+    url: &str,
+    etag: Option<&str>,
+) -> Result<ConditionalFetch, Box<dyn Error>> {
+    let mut req = client.get(url);
+    if let Some(etag) = etag {
+        req = req.header("If-None-Match", etag);
+    }
+    info!("Checking for updates for {}", url);
+    let resp = req.send().await?;
+
+    match resp.status() {
+        StatusCode::NOT_MODIFIED => Ok(ConditionalFetch::NotModified),
+
+        StatusCode::OK => {
+            let etag = resp
+                .headers()
+                .get("etag")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string());
+            let bytes = resp.bytes().await?.to_vec();
+            Ok(ConditionalFetch::Fetched { bytes, etag })
+        }
+
+        StatusCode::NOT_FOUND => {
+            debug!("No such resource (404): {}", url);
+            Ok(ConditionalFetch::NotFound)
+        }
+
+        status => {
+            OUTPUT.error(&format!("Failed to download {}, status: {}", url, status));
+            error!("Failed to download {}, status: {}", url, status);
+            bail!("Failed to download {}, status: {}", url, status);
+        }
+    }
+}
+
 /// Like `download_if_newer`, but a 404 is a normal outcome rather than an
 /// error: it returns `Ok(None)` instead of failing and printing to the
 /// terminal. Used for optional per-package metadata that simply may not exist
