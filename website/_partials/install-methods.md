@@ -142,9 +142,38 @@ WinGet might not have the latest version of rig.
 
 ## Linux
 
-On Linux you can install rig from a DEB or RPM package, or from a tarball.
-See the [supported distributions](install.qmd#id-supported-linux-distributions)
-below.
+On Linux you can install rig into your home directory without administrator
+rights, or system-wide from a DEB or RPM package, or from a tarball. See the
+[supported distributions](install.qmd#id-supported-linux-distributions) below.
+
+### User install (no admin rights needed)
+
+Use our install script, which downloads the right build for your machine,
+unpacks it into `~/.local`, and adds `~/.local/bin` to your `PATH`:
+
+```sh
+curl -LsSf https://r-lib.github.io/rig/install.sh | sh
+```
+
+Then switch rig to user mode and install R:
+
+```sh
+rig system user-mode
+rig add release
+```
+
+Alternatively, download the `rig-linux-<arch>-<version>.tar.gz` archive for
+your architecture (`x86_64` or `aarch64`) from
+<https://github.com/r-lib/rig/releases> and unpack it into `~/.local`
+yourself:
+
+```sh
+mkdir -p ~/.local
+curl -Ls https://github.com/r-lib/rig/releases/download/latest/rig-linux-$(arch)-latest.tar.gz |
+  tar xz -C ~/.local
+```
+
+Make sure `~/.local/bin` is on your `PATH`.
 
 ### Ubuntu and Debian (DEB package)
 
