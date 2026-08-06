@@ -349,6 +349,110 @@ pub fn download_first_available_(
     download_first_available__(client_, urls, local_path, etag)
 }
 
+/// Like `download_if_newer`, but a 404 is a normal outcome rather than an
+/// error: it returns `Ok(None)` instead of failing and printing to the
+/// terminal. Used for optional per-package metadata that simply may not exist
+/// for a given package.
+///
+/// Nothing is written to `local_path` unless the server answers 200, which
+/// matters because the 404 response body is a ~27 KB HTML error page.
+#[allow(clippy::type_complexity)]
+async fn download_optional_if_newer(
+    client: &reqwest::Client,
+    url: &str,
+    local_path: &PathBuf,
+    etag: Option<&str>,
+) -> Result<Option<(bool, Option<String>)>, Box<dyn Error>> {
+    let mut req = client.get(url);
+    if local_path.exists() {
+        if let Some(etag_value) = etag {
+            req = req.header("If-None-Match", etag_value);
+        }
+    }
+    info!("Checking for updates for {}", local_path.display());
+    let resp = req.send().await?;
+
+    match resp.status() {
+        StatusCode::NOT_MODIFIED => {
+            filetime::set_file_mtime(local_path, FileTime::now())?;
+            Ok(Some((false, None)))
+        }
+
+        StatusCode::OK => {
+            let new_etag = resp
+                .headers()
+                .get("etag")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string());
+
+            let bytes = resp.bytes().await?;
+            fs::write(local_path, &bytes)?;
+            Ok(Some((true, new_etag)))
+        }
+
+        StatusCode::NOT_FOUND => {
+            debug!("No such resource (404): {}", url);
+            Ok(None)
+        }
+
+        status => {
+            OUTPUT.error(&format!("Failed to download {}, status: {}", url, status));
+            error!("Failed to download {}, status: {}", url, status);
+            bail!("Failed to download {}, status: {}", url, status);
+        }
+    }
+}
+
+#[tokio::main]
+#[allow(clippy::type_complexity)]
+async fn download_optional_if_newer__(
+    client: &reqwest::Client,
+    url: &str,
+    local_path: &PathBuf,
+    etag: Option<&str>,
+) -> Result<Option<(bool, Option<String>)>, Box<dyn Error>> {
+    download_optional_if_newer(client, url, local_path, etag).await
+}
+
+/// Sync wrapper for `download_optional_if_newer`.
+///
+/// Returns `Ok(None)` if the server answered 404, `Ok(Some((true, etag)))` if a
+/// new file was downloaded, and `Ok(Some((false, None)))` if the local copy is
+/// still considered up to date (either younger than `update_older`, or
+/// revalidated with a 304).
+#[allow(clippy::type_complexity)]
+pub fn download_optional_if_newer_(
+    url: &str,
+    local_path: &PathBuf,
+    update_older: Option<Duration>,
+    client: Option<&reqwest::Client>,
+    etag: Option<&str>,
+) -> Result<Option<(bool, Option<String>)>, Box<dyn Error>> {
+    let update_older = match update_older {
+        Some(dur) => dur,
+        None => Duration::from_hours(24),
+    };
+
+    if local_path.exists() {
+        let metadata = fs::metadata(local_path)?;
+        let modified = metadata.modified()?;
+        let elapsed = SystemTime::now().duration_since(modified)?;
+
+        if elapsed < update_older {
+            // File is newer than the threshold, skip update
+            info!("{} is up to date, skipping download", local_path.display());
+            return Ok(Some((false, None)));
+        }
+    }
+
+    let client_ = match client {
+        Some(c) => c,
+        None => &reqwest::Client::new(),
+    };
+
+    download_optional_if_newer__(client_, url, local_path, etag)
+}
+
 /// Download multiple files concurrently, each from a list of candidate URLs.
 /// Each download will try its URLs in order until one succeeds.
 /// Returns a vector of results, one for each download request.

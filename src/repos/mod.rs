@@ -31,6 +31,7 @@ mod repos_list;
 use repos_list::sc_repos_list;
 pub mod cranlike_metadata;
 pub use cranlike_metadata::{repos_get_packages, DbSourcePackageLoader};
+pub mod binaries;
 mod setup;
 pub use setup::repos_setup;
 mod crandb;

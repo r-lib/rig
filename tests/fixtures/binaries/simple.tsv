@@ -1,0 +1,7 @@
+package	version	platform	arch	r_version	sha256	url	linkingto
+testpkg	1.0.0	source	*	*	aaaa0000	https://p3m.dev/cran/2025-01-01/src/contrib/testpkg_1.0.0.tar.gz	
+testpkg	1.0.0	macos	arm64	4.5	aaaa0000	https://p3m.dev/cran/2025-01-01/bin/macosx/big-sur-arm64/contrib/4.5/testpkg_1.0.0.tgz	cli@3.6.6=cccc1111
+testpkg	1.0.0	windows	x86_64	4.5	aaaa0000	https://p3m.dev/cran/2025-01-01/bin/windows/contrib/4.5/testpkg_1.0.0.zip	cli@3.6.6=cccc1111
+testpkg	1.0.0	jammy	x86_64	4.5	aaaa0000	https://p3m.dev/cran/2025-01-01/bin/linux/jammy-x86_64/4.5/src/contrib/testpkg_1.0.0.tar.gz	cli@3.6.6=cccc1111
+testpkg	1.1.0	source	*	*	bbbb0000	https://p3m.dev/cran/2025-06-01/src/contrib/testpkg_1.1.0.tar.gz	
+testpkg	1.1.0	macos	arm64	4.5	bbbb0000	https://p3m.dev/cran/2025-06-01/bin/macosx/big-sur-arm64/contrib/4.5/testpkg_1.1.0.tgz	BH@1.87.0-1=dddd2222,cli@3.6.6=cccc1111

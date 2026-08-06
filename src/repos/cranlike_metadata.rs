@@ -65,7 +65,7 @@ fn package_type_to_path(pkg_type: &str, r_version: &str) -> Result<String, Box<d
     }
 }
 
-fn minor_r_version(r_version: &str) -> Result<String, Box<dyn Error>> {
+pub(crate) fn minor_r_version(r_version: &str) -> Result<String, Box<dyn Error>> {
     // If version has only 2 parts (e.g., "4.3"), append ".0" for semver parsing
     let version_str = if r_version.matches('.').count() == 1 {
         format!("{}.0", r_version)

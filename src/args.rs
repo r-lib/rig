@@ -1601,6 +1601,27 @@ pub fn rig_app() -> Command {
                     .display_order(0)
                     .arg(Arg::new("platform").required(true))
                     .arg(Arg::new("r-version").required(true).long("r-version")),
+            )
+            .subcommand(
+                Command::new("binary-index")
+                    .about("Show a package's binary index from P3M")
+                    .display_order(0)
+                    .arg(Arg::new("package").required(true))
+                    .arg(
+                        Arg::new("version")
+                            .help("package version to show, defaults to the newest")
+                            .long("version"),
+                    )
+                    .arg(
+                        Arg::new("platform")
+                            .help("target platform, defaults to the current one")
+                            .long("platform"),
+                    )
+                    .arg(
+                        Arg::new("r-version")
+                            .help("target R version, needed to look up binaries")
+                            .long("r-version"),
+                    ),
             );
         rig = rig.subcommand(cmd_test);
     }
