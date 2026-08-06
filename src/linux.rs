@@ -993,8 +993,8 @@ pub fn sc_get_default() -> Result<Option<String>, Box<dyn Error>> {
 }
 
 fn set_sysreqs_false(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
-    OUTPUT.status("Setting up automatic system requirements installation.");
-    info!("Setting up automatic system requirements installation.");
+    OUTPUT.status("Disabling automatic system requirements installation.");
+    info!("Disabling automatic system requirements installation.");
 
     let vers = match vers {
         Some(x) => x,
