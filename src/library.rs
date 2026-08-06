@@ -315,14 +315,14 @@ pub fn sc_library_set_default(name: &str) -> Result<(), Box<dyn Error>> {
     let idx_start = grep_lines(&re_start, &lines);
     if idx_start.is_empty() {
         OUTPUT.error(&format!(
-            "Library config not set up yet for R {}. Please run `rig system create-lib`.",
+            "Library config not set up yet for R {}. Please run `rig system setup-user-lib`.",
             rver
         ));
         error!(
-            "Library config not set up yet for R {}. Please run `rig system create-lib`.",
+            "Library config not set up yet for R {}. Please run `rig system setup-user-lib`.",
             rver
         );
-        bail!("Library config not set up yet, call `rig system create-lib`");
+        bail!("Library config not set up yet, call `rig system setup-user-lib`");
     }
 
     // This if for the Rig.app, to update the title in the status bar.

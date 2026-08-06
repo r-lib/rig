@@ -7,6 +7,8 @@
   `rig repos available <name>` shows complete information about a single
   repository.
 
+* `rig system setup-user-lib` (and its `create-lib` alias) now works again.
+
 # rig 0.10.0-alpha2 (pre-release)
 
 * rig now supports a **user mode** on all platforms, in addition to the

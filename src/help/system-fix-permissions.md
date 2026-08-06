@@ -4,7 +4,7 @@ Restrict system library permissions to admin
 
 Update the permissions of the current R versions on macOS, so only the
 administrator can install R packages into the system library.
-Together with `rig system create-lib` this facilitates keeping
+Together with `rig system setup-user-lib` this facilitates keeping
 additional packages in a user library, instead of the system library.
 
 This command does nothing on Windows and Linux and in user mode.

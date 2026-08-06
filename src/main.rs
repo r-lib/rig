@@ -273,7 +273,7 @@ fn sc_system(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Err
         Some(("allow-debugger", s)) => sc_system_allow_debugger(s),
         Some(("allow-debugger-rstudio", s)) => sc_system_allow_debugger_rstudio(s),
         Some(("clean-registry", _)) => sc_clean_registry(),
-        Some(("create-lib", s)) => sc_system_create_lib(s),
+        Some(("setup-user-lib", s)) => sc_system_setup_user_lib(s),
         Some(("dirs", s)) => crate::dirs::sc_system_dirs(s, mainargs),
         Some(("make-links", _)) => sc_system_make_links(),
         Some(("make-orthogonal", s)) => sc_system_make_orthogonal(s),
@@ -287,7 +287,12 @@ fn sc_system(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Err
         Some(("update-rtools40", _)) => sc_system_update_rtools40(),
         Some(("detect-platform", s)) => sc_system_detect_platform(s, mainargs),
         Some(("rtools", s)) => sc_system_rtools(s, mainargs),
-        _ => Ok(()), // unreachable
+        // Every subcommand defined in `args.rs` has an arm above, so this is
+        // only reached if one is renamed there without updating this list.
+        // Bail instead of silently doing nothing, so that such a mismatch
+        // fails loudly rather than becoming a no-op that exits with 0.
+        Some((name, _)) => bail!("Internal error: unknown `rig system` subcommand: {}", name),
+        None => Ok(()),
     }
 }
 
@@ -297,7 +302,8 @@ fn sc_library(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Er
         Some(("add", s)) => sc_library_add(s),
         Some(("rm", s)) => sc_library_rm(s),
         Some(("default", s)) => sc_library_default(s, args, mainargs),
-        _ => Ok(()), // unreachable
+        Some((name, _)) => bail!("Internal error: unknown `rig library` subcommand: {}", name),
+        None => Ok(()),
     }
 }
 
@@ -419,7 +425,7 @@ fn sc_default(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Er
 
 // ------------------------------------------------------------------------
 
-pub fn sc_system_create_lib(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+pub fn sc_system_setup_user_lib(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let vers = args.get_many::<String>("version");
     let vers: Vec<String> = match vers {
         None => sc_get_list()?,
