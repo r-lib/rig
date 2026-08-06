@@ -312,7 +312,18 @@
     "href": "reference/test.html",
     "title": "rig test",
     "section": "",
-    "text": "Name:\n  rig test - Run tests (for rig developers)\n\nUsage: rig test [OPTIONS] [COMMAND]\n\nCommands:\n  download-lockfile      Download packages in the pkg.lock file\n  parse-platform-string  Test parsing platform strings\n  platform-to-pkg-type   Test repo directory for platform string\n  read-packages-rds      Test reading packages from RDS files\n  read-rds               Test reading RDS files\n  help                   Print this message or the help of the given subcommand(s)\n\nOptions:\n      --user   Run in user mode (overrides RIG_MODE and config)\n      --admin  Run in admin mode (overrides RIG_MODE and config)\n  -h, --help   Print help",
+    "text": "Name:\n  rig test - Run tests (for rig developers)\n\nUsage: rig test [OPTIONS] [COMMAND]\n\nCommands:\n  binary-index           Show a package's binary index from P3M\n  download-lockfile      Download packages in the pkg.lock file\n  parse-platform-string  Test parsing platform strings\n  platform-to-pkg-type   Test repo directory for platform string\n  read-packages-rds      Test reading packages from RDS files\n  read-rds               Test reading RDS files\n  help                   Print this message or the help of the given subcommand(s)\n\nOptions:\n      --user   Run in user mode (overrides RIG_MODE and config)\n      --admin  Run in admin mode (overrides RIG_MODE and config)\n  -h, --help   Print help",
+    "crumbs": [
+      "Reference",
+      "rig test"
+    ]
+  },
+  {
+    "objectID": "reference/test.html#rig-test-binary-index",
+    "href": "reference/test.html#rig-test-binary-index",
+    "title": "rig test",
+    "section": "rig test binary-index",
+    "text": "rig test binary-index\nName:\n  rig test binary-index - Show a package's binary index from P3M\n\nUsage: rig test binary-index [OPTIONS] &lt;package&gt;\n\nArguments:\n  &lt;package&gt;  \n\nOptions:\n      --version &lt;version&gt;      package version to show, defaults to the newest\n      --platform &lt;platform&gt;    target platform, defaults to the current one\n      --r-version &lt;r-version&gt;  target R version, needed to look up binaries\n      --user                   Run in user mode (overrides RIG_MODE and config)\n      --admin                  Run in admin mode (overrides RIG_MODE and config)\n  -h, --help                   Print help",
     "crumbs": [
       "Reference",
       "rig test"

@@ -474,7 +474,8 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#rig-test-download-lockfile" id="toc-rig-test-download-lockfile" class="nav-link active" data-scroll-target="#rig-test-download-lockfile"><code>rig test download-lockfile</code></a></li>
+  <li><a href="#rig-test-binary-index" id="toc-rig-test-binary-index" class="nav-link active" data-scroll-target="#rig-test-binary-index"><code>rig test binary-index</code></a></li>
+  <li><a href="#rig-test-download-lockfile" id="toc-rig-test-download-lockfile" class="nav-link" data-scroll-target="#rig-test-download-lockfile"><code>rig test download-lockfile</code></a></li>
   <li><a href="#rig-test-parse-platform-string" id="toc-rig-test-parse-platform-string" class="nav-link" data-scroll-target="#rig-test-parse-platform-string"><code>rig test parse-platform-string</code></a></li>
   <li><a href="#rig-test-platform-to-pkg-type" id="toc-rig-test-platform-to-pkg-type" class="nav-link" data-scroll-target="#rig-test-platform-to-pkg-type"><code>rig test platform-to-pkg-type</code></a></li>
   <li><a href="#rig-test-read-packages-rds" id="toc-rig-test-read-packages-rds" class="nav-link" data-scroll-target="#rig-test-read-packages-rds"><code>rig test read-packages-rds</code></a></li>
@@ -512,6 +513,7 @@ ul.task-list li input[type="checkbox"] {
 Usage: rig test [OPTIONS] [COMMAND]
 
 Commands:
+  binary-index           Show a package's binary index from P3M
   download-lockfile      Download packages in the pkg.lock file
   parse-platform-string  Test parsing platform strings
   platform-to-pkg-type   Test repo directory for platform string
@@ -523,6 +525,24 @@ Options:
       --user   Run in user mode (overrides RIG_MODE and config)
       --admin  Run in admin mode (overrides RIG_MODE and config)
   -h, --help   Print help</code></pre>
+<section id="rig-test-binary-index" class="level2">
+<h2 class="anchored" data-anchor-id="rig-test-binary-index"><code>rig test binary-index</code></h2>
+<pre class="text"><code>Name:
+  rig test binary-index - Show a package's binary index from P3M
+
+Usage: rig test binary-index [OPTIONS] &lt;package&gt;
+
+Arguments:
+  &lt;package&gt;  
+
+Options:
+      --version &lt;version&gt;      package version to show, defaults to the newest
+      --platform &lt;platform&gt;    target platform, defaults to the current one
+      --r-version &lt;r-version&gt;  target R version, needed to look up binaries
+      --user                   Run in user mode (overrides RIG_MODE and config)
+      --admin                  Run in admin mode (overrides RIG_MODE and config)
+  -h, --help                   Print help</code></pre>
+</section>
 <section id="rig-test-download-lockfile" class="level2">
 <h2 class="anchored" data-anchor-id="rig-test-download-lockfile"><code>rig test download-lockfile</code></h2>
 <pre class="text"><code>Name:
