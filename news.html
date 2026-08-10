@@ -491,8 +491,7 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#rig-0.10.0-not-released-yet" id="toc-rig-0.10.0-not-released-yet" class="nav-link active" data-scroll-target="#rig-0.10.0-not-released-yet">rig 0.10.0 (not released yet)</a></li>
-  <li><a href="#rig-0.10.0-alpha2-pre-release" id="toc-rig-0.10.0-alpha2-pre-release" class="nav-link" data-scroll-target="#rig-0.10.0-alpha2-pre-release">rig 0.10.0-alpha2 (pre-release)</a></li>
+  <li><a href="#rig-0.10.0-beta" id="toc-rig-0.10.0-beta" class="nav-link active" data-scroll-target="#rig-0.10.0-beta">rig 0.10.0-beta</a></li>
   <li><a href="#rig-0.8.1" id="toc-rig-0.8.1" class="nav-link" data-scroll-target="#rig-0.8.1">rig 0.8.1</a></li>
   <li><a href="#rig-0.8.0" id="toc-rig-0.8.0" class="nav-link" data-scroll-target="#rig-0.8.0">rig 0.8.0</a></li>
   <li><a href="#rig-0.7.1" id="toc-rig-0.7.1" class="nav-link" data-scroll-target="#rig-0.7.1">rig 0.7.1</a></li>
@@ -558,17 +557,12 @@ ul.task-list li input[type="checkbox"] {
 </header>
 
 
-<section id="rig-0.10.0-not-released-yet" class="level1">
-<h1>rig 0.10.0 (not released yet)</h1>
+<section id="rig-0.10.0-beta" class="level1">
+<h1>rig 0.10.0-beta</h1>
 <ul>
 <li><p>rig now does not edit the shell startup files in admin mode, like rig 0.8.1 did on macOS. rig now only does this in user mode.</p></li>
 <li><p><code>rig repos available</code> now prints a compact table. New <code>rig repos available &lt;name&gt;</code> shows complete information about a single repository.</p></li>
 <li><p><code>rig system setup-user-lib</code> (and its <code>create-lib</code> alias) now works again.</p></li>
-</ul>
-</section>
-<section id="rig-0.10.0-alpha2-pre-release" class="level1">
-<h1>rig 0.10.0-alpha2 (pre-release)</h1>
-<ul>
 <li><p>rig now supports a <strong>user mode</strong> on all platforms, in addition to the default admin mode. In user mode rig installs everything into the user’s home directory and never needs <code>sudo</code> or administrator privileges. R goes into <code>~/.local/share/rig/r</code> (<code>%APPDATA%\rig\data\r</code> on Windows) and quick links into <code>~/.local/bin</code> (<code>%USERPROFILE%\.local\bin</code> on Windows). Select the mode with the <code>--user</code> / <code>--admin</code> global flags, the <code>RIG_MODE</code> environment variable, or the <code>mode</code> key in the rig config file. The new <code>rig system user-mode</code> command switches an existing admin-mode setup to user mode.</p></li>
 <li><p>rig has a new documentation website at <a href="https://r-lib.github.io/rig/" class="uri">https://r-lib.github.io/rig/</a>, including a full CLI reference and a guide to admin vs.&nbsp;user mode.</p></li>
 <li><p>New <code>rig config</code> command to manage the rig configuration file.</p></li>
