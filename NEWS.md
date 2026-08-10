@@ -1,4 +1,4 @@
-# rig 0.10.0 (not released yet)
+# rig 0.10.0-beta
 
 * rig now does not edit the shell startup files in admin mode,
   like rig 0.8.1 did on macOS. rig now only does this in user mode.
@@ -8,8 +8,6 @@
   repository.
 
 * `rig system setup-user-lib` (and its `create-lib` alias) now works again.
-
-# rig 0.10.0-alpha2 (pre-release)
 
 * rig now supports a **user mode** on all platforms, in addition to the
   default admin mode. In user mode rig installs everything into the user's

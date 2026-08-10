@@ -17,7 +17,7 @@
 # Options (also settable via environment variables):
 #
 #   --prefix=DIR       Install prefix              (RIG_PREFIX, default $HOME/.local)
-#   --version=X.Y.Z    Version to install          (RIG_VERSION, default: 0.10.0-alpha2)
+#   --version=X.Y.Z    Version to install          (RIG_VERSION, default: 0.10.0-beta)
 #   --no-modify-path   Do not edit shell rc files  (RIG_NO_MODIFY_PATH=1)
 #   -h, --help         Show this help and exit
 
@@ -25,7 +25,7 @@ set -eu
 
 REPO="r-lib/rig"
 PREFIX="${RIG_PREFIX:-$HOME/.local}"
-VERSION="${RIG_VERSION:-0.10.0-alpha2}"
+VERSION="${RIG_VERSION:-0.10.0-beta}"
 MODIFY_PATH=1
 if [ "${RIG_NO_MODIFY_PATH:-0}" != "0" ]; then MODIFY_PATH=0; fi
 

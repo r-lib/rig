@@ -20,7 +20,7 @@
     (or $env:RIG_PREFIX if set).
 
 .PARAMETER Version
-    Version to install, e.g. 0.10.0. Default: 0.10.0-alpha2
+    Version to install, e.g. 0.10.0. Default: 0.10.0-beta
     (or $env:RIG_VERSION if set).
 
 .PARAMETER NoModifyPath
@@ -29,7 +29,7 @@
 [CmdletBinding()]
 param(
     [string] $Prefix       = $(if ($env:RIG_PREFIX) { $env:RIG_PREFIX } else { "$env:USERPROFILE\.local" }),
-    [string] $Version      = $(if ($env:RIG_VERSION) { $env:RIG_VERSION } else { "0.10.0-alpha2" }),
+    [string] $Version      = $(if ($env:RIG_VERSION) { $env:RIG_VERSION } else { "0.10.0-beta" }),
     [switch] $NoModifyPath
 )
 
