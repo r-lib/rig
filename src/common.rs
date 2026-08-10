@@ -551,6 +551,101 @@ fn get_project_version(path: &str) -> Result<Option<String>, Box<dyn Error>> {
     }
 }
 
+// -- Positron ------------------------------------------------------------
+
+pub fn ensure_positron_custom_root_folders() -> Result<(), Box<dyn Error>> {
+    // Only user mode installs R outside of the directories Positron already
+    // knows about.
+    if get_mode()? != Mode::User {
+        return Ok(());
+    }
+
+    if let Some(val) = crate::config::get_global_config_value("positron-setup")? {
+        if val == "false" {
+            debug!("Skipping Positron setup (positron-setup=false in rig config)");
+            return Ok(());
+        }
+    }
+
+    let positron_dir = positron_user_data_dir()?;
+    if !positron_dir.exists() {
+        debug!("Skipping Positron setup; Positron not found");
+        return Ok(());
+    }
+    let settings_path = positron_dir.join("User").join("settings.json");
+    let r_root = get_r_root()?;
+    const KEY: &str = "positron.r.customRootFolders";
+
+    let mut settings: serde_json::Value = if settings_path.exists() {
+        let contents = std::fs::read_to_string(&settings_path)?;
+        serde_json::from_str(&contents)?
+    } else {
+        serde_json::Value::Object(serde_json::Map::new())
+    };
+
+    let obj = settings
+        .as_object_mut()
+        .ok_or_else(|| SimpleError::new("Positron settings.json is not a JSON object"))?;
+
+    match obj.get_mut(KEY) {
+        Some(serde_json::Value::Array(arr)) => {
+            // Already contains our path — nothing to do
+            if arr.iter().any(|v| v.as_str() == Some(r_root.as_str())) {
+                return Ok(());
+            }
+            // Append our path to the existing list
+            arr.push(serde_json::Value::String(r_root.clone()));
+            OUTPUT.success("Registered rig R versions in Positron");
+            info!("Appended \"{}\" to Positron setting '{}'", r_root, KEY);
+        }
+        Some(other) => {
+            // Unexpected type — leave it alone and inform
+            info!(
+                "Positron setting '{}' is not an array ({}); not modifying",
+                KEY, other
+            );
+            return Ok(());
+        }
+        None => {
+            obj.insert(KEY.to_string(), serde_json::json!([r_root]));
+            OUTPUT.success("Registered rig R versions in Positron");
+            info!("Set Positron setting '{}' = [\"{}\"]", KEY, r_root);
+        }
+    }
+    if let Some(parent) = settings_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&settings_path, serde_json::to_string_pretty(&settings)?)?;
+
+    Ok(())
+}
+
+fn positron_user_data_dir() -> Result<PathBuf, Box<dyn Error>> {
+    const APP_NAME: &str = "Positron";
+
+    if let Ok(appdata) = env::var("VSCODE_APPDATA") {
+        if !appdata.is_empty() {
+            return Ok(PathBuf::from(appdata).join(APP_NAME));
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    let appdata = PathBuf::from(env::var("APPDATA")?);
+
+    #[cfg(target_os = "macos")]
+    let appdata = PathBuf::from(env::var("HOME")?)
+        .join("Library")
+        .join("Application Support");
+
+    #[cfg(target_os = "linux")]
+    let appdata = match env::var("XDG_CONFIG_HOME") {
+        Ok(x) if !x.is_empty() => PathBuf::from(x),
+        _ => PathBuf::from(env::var("HOME")?).join(".config"),
+    };
+
+    Ok(appdata.join(APP_NAME))
+}
+
 // -- rig avilable --------------------------------------------------------
 
 pub(crate) fn normalize_rig_platform(rp: &str) -> String {

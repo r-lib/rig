@@ -36,9 +36,9 @@ configuration file takes precedence over rig's built-in default.
   mode (so Rtools 4.5 goes into `C:\rtools45`) and to
   `%APPDATA%\rig\data\rtools` in user mode.
 
-- `positron-setup`: macOS only. Set it to `false` to stop rig from adding its
-  R installation root to Positron's `positron.r.customRootFolders` setting.
-  Any other value, and the default, keep the Positron setup on.
+- `positron-setup`: [user mode](../admin-vs-user-mode.qmd) only. Set it to `false` to stop rig from
+  adding its R installation root to Positron's `positron.r.customRootFolders`
+  setting. Any other value, and the default, keep the Positron setup on.
 
 - `userlibrary`: a JSON object that maps R versions to user library paths.
   rig maintains this entry itself, as a cache for the `rig library`

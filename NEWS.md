@@ -19,7 +19,7 @@
   `rig system user-mode` command switches an existing admin-mode setup to
   user mode.
 
-* rig has a new documentation website at <https://r-lib.github.io/rig/>,
+* rig has a new documentation website at <https://rig.r-lib.org/>,
   including a full CLI reference and a guide to admin vs. user mode.
 
 * New `rig config` command to manage the rig configuration file.

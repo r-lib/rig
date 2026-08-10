@@ -398,6 +398,12 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     };
     patch_for_rtools()?;
     maybe_update_registry_default()?;
+    if get_mode()? == Mode::User {
+        if let Err(e) = ensure_positron_custom_root_folders() {
+            OUTPUT.warn(&format!("Could not update Positron settings: {}", e));
+            warn!("Could not update Positron settings: {}", e);
+        }
+    }
 
     match dirname {
         None => {
@@ -1896,6 +1902,16 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
     file3.write_all(cnt3.as_bytes())?;
 
     update_registry_default()?;
+
+    if get_mode()? == Mode::User {
+        if let Err(e) = ensure_positron_custom_root_folders() {
+            OUTPUT.warn(&format!(
+                "Could not register rig R versions in Positron: {}",
+                e
+            ));
+            warn!("Could not update Positron settings: {}", e);
+        }
+    }
 
     Ok(())
 }

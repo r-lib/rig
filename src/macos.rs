@@ -1975,69 +1975,6 @@ fn ensure_rstudio_which_r_plist() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn ensure_positron_custom_root_folders() -> Result<(), Box<dyn Error>> {
-    if let Some(val) = crate::config::get_global_config_value("positron-setup")? {
-        if val == "false" {
-            debug!("Skipping Positron setup (positron-setup=false in rig config)");
-            return Ok(());
-        }
-    }
-
-    let home = std::env::var("HOME")?;
-    let positron_dir = format!("{}/Library/Application Support/Positron", home);
-    if !Path::new(&positron_dir).exists() {
-        debug!("Skipping Positron setup; Positron not found");
-        return Ok(());
-    }
-    let settings_path_str = format!("{}/User/settings.json", positron_dir);
-    let settings_path = Path::new(&settings_path_str);
-    let r_root = get_r_root()?;
-    const KEY: &str = "positron.r.customRootFolders";
-
-    let mut settings: serde_json::Value = if settings_path.exists() {
-        let contents = std::fs::read_to_string(settings_path)?;
-        serde_json::from_str(&contents)?
-    } else {
-        serde_json::Value::Object(serde_json::Map::new())
-    };
-
-    let obj = settings
-        .as_object_mut()
-        .ok_or_else(|| SimpleError::new("Positron settings.json is not a JSON object"))?;
-
-    match obj.get_mut(KEY) {
-        Some(serde_json::Value::Array(arr)) => {
-            // Already contains our path — nothing to do
-            if arr.iter().any(|v| v.as_str() == Some(r_root.as_str())) {
-                return Ok(());
-            }
-            // Append our path to the existing list
-            arr.push(serde_json::Value::String(r_root.clone()));
-            OUTPUT.success("Registered rig R versions in Positron");
-            info!("Appended \"{}\" to Positron setting '{}'", r_root, KEY);
-        }
-        Some(other) => {
-            // Unexpected type — leave it alone and inform
-            info!(
-                "Positron setting '{}' is not an array ({}); not modifying",
-                KEY, other
-            );
-            return Ok(());
-        }
-        None => {
-            obj.insert(KEY.to_string(), serde_json::json!([r_root]));
-            OUTPUT.success("Registered rig R versions in Positron");
-            info!("Set Positron setting '{}' = [\"{}\"]", KEY, r_root);
-        }
-    }
-    if let Some(parent) = settings_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(settings_path, serde_json::to_string_pretty(&settings)?)?;
-
-    Ok(())
-}
-
 fn is_rstudio_installed() -> bool {
     Path::new("/Applications/RStudio.app/Contents/MacOS/rsession").exists()
 }
