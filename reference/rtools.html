@@ -339,21 +339,44 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
         </div>
     <div class="sidebar-menu-container"> 
     <ul class="list-unstyled mt-1">
-        <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../index.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Get started</span></a>
-  </div>
-</li>
         <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
- <span class="menu-text">Guide</span></a>
+            <a href="../tutorial.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Tutorials</span></a>
           <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
             <i class="bi bi-chevron-right ms-2"></i>
           </a> 
       </div>
       <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorial-user.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">User mode</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorial-admin.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Admin mode</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../tutorial-migrate.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Migrate to user mode</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
+ <span class="menu-text">Guide</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
   <a href="../install.html" class="sidebar-item-text sidebar-link">
@@ -390,11 +413,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       <div class="sidebar-item-container"> 
             <a href="../reference/index.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Reference</span></a>
-          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true" aria-label="Toggle section">
             <i class="bi bi-chevron-right ms-2"></i>
           </a> 
       </div>
-      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
+      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
   <a href="../reference/add.html" class="sidebar-item-text sidebar-link">
@@ -560,20 +583,21 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <dl>
 <dt><a href="#rig-rtools-add"><code>add</code></a></dt>
 <dd>
-Install new Rtools version [alias: install]
+Install new Rtools version (alias: <code>install</code>)
 </dd>
 <dt><a href="#rig-rtools-list"><code>list</code></a></dt>
 <dd>
-List installed Rtools versions [alias: ls]
+List installed Rtools versions (alias: <code>ls</code>)
 </dd>
 <dt><a href="#rig-rtools-rm"><code>rm</code></a></dt>
 <dd>
-Remove rtools versions [aliases: del, remove, delete]
+Remove rtools versions (aliases: <code>del</code>, <code>remove</code>, <code>delete</code>)
 </dd>
 </dl>
 </section>
 <section id="rig-rtools-add" class="level2">
 <h2 class="anchored" data-anchor-id="rig-rtools-add"><code>rig rtools add</code></h2>
+<p>Alias: <code>rig rtools install</code></p>
 <p>Install new Rtools versions on Windows.</p>
 <p>You can specify the new version(s) by their name, optionally with an ‘rtools’ prefix, e.g.&nbsp;‘43’ or ‘rtools43’.</p>
 <p>If <code>version</code> is ‘all’ (the default), then all Rtools versions that are required for the currently installed R versions will be installed.</p>
@@ -623,6 +647,7 @@ Run in user mode (overrides RIG_MODE and config)
 </section>
 <section id="rig-rtools-list" class="level2">
 <h2 class="anchored" data-anchor-id="rig-rtools-list"><code>rig rtools list</code></h2>
+<p>Alias: <code>rig rtools ls</code></p>
 <p>List installed Rtools versions on Windows.</p>
 <p>It only lists versions that are added to the Windows Registry.</p>
 <p>Use the <code>--json</code> flag for JSON output.</p>
@@ -654,6 +679,7 @@ Run in user mode (overrides RIG_MODE and config)
 </section>
 <section id="rig-rtools-rm" class="level2">
 <h2 class="anchored" data-anchor-id="rig-rtools-rm"><code>rig rtools rm</code></h2>
+<p>Aliases: <code>rig rtools del</code>, <code>rig rtools remove</code>, <code>rig rtools delete</code></p>
 <p>Remove Rtools versions on Windows.</p>
 <p>You can specify the version(s) to remove by their name, optionally with an ‘rtools’ prefix, e.g.&nbsp;‘43’ or ‘rtools43’.</p>
 <p>If no version is specified, then it does nothing.</p>
@@ -702,6 +728,150 @@ Run in user mode (overrides RIG_MODE and config)
 </section>
 
 </main> <!-- /main -->
+<!--
+Quarto turns the headings inside a `::: {.panel-tabset}` block into tab buttons,
+and drops every heading inside the tabset from the on-page table of contents.
+On the tutorial pages that hides all the steps, because the whole tutorial body
+lives inside per-OS tabs.
+
+This script rebuilds the right-hand TOC from the DOM: one entry for the active
+tab (labelled with the tab's name, e.g. "macOS") plus the headings inside it,
+in document order with everything else on the page. It re-runs when the reader
+switches tabs, or when Quarto restores a remembered tab from localStorage on
+`pageshow`.
+
+It runs synchronously, before quarto.js installs its scroll handler, so the
+initial TOC gets Quarto's own active-section highlighting; after a tab switch
+the highlighting is maintained by the handler installed here.
+-->
+<script>
+(function () {
+  const toc = document.querySelector('nav#TOC');
+  const main = document.querySelector('main');
+  if (!toc || !main || !main.querySelector('.panel-tabset')) return;
+
+  const tocDepth = 3;
+
+  const headingText = (el) => {
+    const clone = el.cloneNode(true);
+    clone.querySelectorAll('.anchorjs-link, .anchor-link').forEach((a) => a.remove());
+    return clone.textContent.trim();
+  };
+
+  // Flat, document-order list of { level, target, text }.
+  const collect = (root, items) => {
+    for (const child of root.children) {
+      if (child.classList.contains('panel-tabset')) {
+        const pane = child.querySelector('.tab-content > .tab-pane.active');
+        const tab = child.querySelector('.nav-tabs .nav-link.active');
+        if (!pane) continue;
+        const inner = [];
+        collect(pane, inner);
+        if (tab && pane.id && inner.length) {
+          items.push({
+            level: inner[0].level - 1,
+            target: '#' + pane.id,
+            text: headingText(tab),
+          });
+        }
+        items.push(...inner);
+        continue;
+      }
+      if (/^H[1-6]$/.test(child.tagName)) {
+        const id = child.getAttribute('data-anchor-id') || child.id ||
+          (child.parentElement && child.parentElement.id);
+        if (id) {
+          items.push({
+            level: Number(child.tagName[1]),
+            target: '#' + id,
+            text: headingText(child),
+          });
+        }
+        continue;
+      }
+      collect(child, items);
+    }
+  };
+
+  const build = (items) => {
+    const root = document.createElement('ul');
+    const top = Math.min(...items.map((i) => i.level));
+    const stack = [{ level: top, ul: root, lastLi: null }];
+    for (const item of items) {
+      if (item.level - top + 1 > tocDepth) continue;
+      while (stack.length > 1 && item.level < stack[stack.length - 1].level) stack.pop();
+      let frame = stack[stack.length - 1];
+      if (item.level > frame.level) {
+        let ul = frame.ul;
+        if (frame.lastLi) {
+          ul = document.createElement('ul');
+          frame.lastLi.appendChild(ul);
+        }
+        frame = { level: item.level, ul: ul, lastLi: null };
+        stack.push(frame);
+      }
+      const li = document.createElement('li');
+      const a = document.createElement('a');
+      a.href = item.target;
+      a.id = 'toc-' + item.target.slice(1);
+      a.className = 'nav-link';
+      a.setAttribute('data-scroll-target', item.target);
+      a.textContent = item.text;
+      li.appendChild(a);
+      frame.ul.appendChild(li);
+      frame.lastLi = li;
+    }
+    return root;
+  };
+
+  const render = () => {
+    const items = [];
+    collect(main, items);
+    if (!items.length) return;
+    const fresh = build(items);
+    const old = toc.querySelector('ul');
+    if (old) {
+      old.replaceWith(fresh);
+    } else {
+      toc.appendChild(fresh);
+    }
+    highlight();
+  };
+
+  // Same rule as quarto.js: the last section whose top has scrolled past.
+  const sectionMargin = 200;
+  const highlight = () => {
+    const links = Array.from(toc.querySelectorAll('a[data-scroll-target]'));
+    if (!links.length) return;
+    const sections = links.map((a) => document.getElementById(a.getAttribute('href').slice(1)));
+    let current = 0;
+    if (window.innerHeight + window.pageYOffset >= document.body.offsetHeight) {
+      current = sections.length - 1;
+    } else {
+      for (let i = 0; i < sections.length; i++) {
+        if (sections[i] && window.pageYOffset >= sections[i].offsetTop - sectionMargin) {
+          current = i;
+        }
+      }
+    }
+    links.forEach((a, i) => a.classList.toggle('active', i === current));
+  };
+
+  render();
+
+  // Quarto restores grouped tabsets on `pageshow` and toggles the tab classes
+  // in a click handler, so re-render on the next tick, once those have run.
+  const rerender = () => window.setTimeout(render, 0);
+  window.addEventListener('pageshow', rerender);
+  document.addEventListener('shown.bs.tab', rerender);
+  document.addEventListener('click', (event) => {
+    if (event.target.closest('.panel-tabset .nav-tabs .nav-link')) rerender();
+  });
+  document.addEventListener('DOMContentLoaded', () => {
+    window.addEventListener('scroll', highlight, { passive: true });
+  });
+})();
+</script>
 <script id="quarto-html-after-body" type="application/javascript">
   window.document.addEventListener("DOMContentLoaded", function (event) {
     // Ensure there is a toggle, if there isn't float one in the top right

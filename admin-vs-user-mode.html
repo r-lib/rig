@@ -6,7 +6,6 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="description" content="How rig’s two installation modes differ, where files go on each platform, and how to switch between them.">
 
 <title>Admin mode vs user mode – rig</title>
 <style>
@@ -340,21 +339,44 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
         </div>
     <div class="sidebar-menu-container"> 
     <ul class="list-unstyled mt-1">
-        <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="./index.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Get started</span></a>
-  </div>
-</li>
         <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
- <span class="menu-text">Guide</span></a>
+            <a href="./tutorial.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Tutorials</span></a>
           <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
             <i class="bi bi-chevron-right ms-2"></i>
           </a> 
       </div>
       <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./tutorial-user.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">User mode</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./tutorial-admin.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Admin mode</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./tutorial-migrate.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Migrate to user mode</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
+ <span class="menu-text">Guide</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
   <a href="./install.html" class="sidebar-item-text sidebar-link">
@@ -391,11 +413,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       <div class="sidebar-item-container"> 
             <a href="./reference/index.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Reference</span></a>
-          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true" aria-label="Toggle section">
             <i class="bi bi-chevron-right ms-2"></i>
           </a> 
       </div>
-      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
+      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
   <a href="./reference/add.html" class="sidebar-item-text sidebar-link">
@@ -504,11 +526,16 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#at-a-glance" id="toc-at-a-glance" class="nav-link active" data-scroll-target="#at-a-glance">At a glance</a></li>
+  <li><a href="#at-a-glance" id="toc-at-a-glance" class="nav-link active" data-scroll-target="#at-a-glance">At a glance</a>
+  <ul class="collapse">
+  <li><a href="#pros-and-cons" id="toc-pros-and-cons" class="nav-link" data-scroll-target="#pros-and-cons">Pros and cons</a></li>
+  <li><a href="#where-things-go" id="toc-where-things-go" class="nav-link" data-scroll-target="#where-things-go">Where things go</a></li>
+  </ul></li>
   <li><a href="#admin-mode" id="toc-admin-mode" class="nav-link" data-scroll-target="#admin-mode">Admin mode</a></li>
   <li><a href="#user-mode" id="toc-user-mode" class="nav-link" data-scroll-target="#user-mode">User mode</a></li>
   <li><a href="#how-rig-picks-the-mode" id="toc-how-rig-picks-the-mode" class="nav-link" data-scroll-target="#how-rig-picks-the-mode">How rig picks the mode</a></li>
   <li><a href="#switching-an-existing-setup-to-user-mode" id="toc-switching-an-existing-setup-to-user-mode" class="nav-link" data-scroll-target="#switching-an-existing-setup-to-user-mode">Switching an existing setup to user mode</a></li>
+  <li><a href="#mixing-admin-and-user-mode" id="toc-mixing-admin-and-user-mode" class="nav-link" data-scroll-target="#mixing-admin-and-user-mode">Mixing admin and user mode</a></li>
   <li><a href="#advanced-custom-directories" id="toc-advanced-custom-directories" class="nav-link" data-scroll-target="#advanced-custom-directories">Advanced: custom directories</a></li>
   <li><a href="#see-also" id="toc-see-also" class="nav-link" data-scroll-target="#see-also">See also</a></li>
   </ul>
@@ -523,11 +550,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h1 class="title">Admin mode vs user mode</h1>
 </div>
 
-<div>
-  <div class="description">
-    How rig’s two installation modes differ, where files go on each platform, and how to switch between them.
-  </div>
-</div>
 
 
 <div class="quarto-title-meta">
@@ -542,65 +564,79 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </header>
 
 
-<p>rig can manage R in one of two modes. In the default <strong>admin mode</strong> R is installed system-wide, shared by every user on the machine, and most operations need <code>sudo</code> or an administrator account. In <strong>user mode</strong> rig installs everything into your home directory and never needs elevated privileges.</p>
-<p>The trade-off is simple: admin mode gives you a conventional, shared, system-wide R that any tool expects to find in the usual place; user mode lets you install and switch R versions on a machine where you have no administrator rights, at the cost of putting R somewhere non-standard and having to keep a directory on your <code>PATH</code>.</p>
+<p>rig can manage R installations in one of two modes. The current default is <strong>admin mode</strong>: R is installed system-wide, shared by every user on the machine, and most operations need <code>sudo</code> or an administrator account. In <strong>user mode</strong> rig installs everything into your home directory and never needs elevated privileges.</p>
 <section id="at-a-glance" class="level2">
 <h2 class="anchored" data-anchor-id="at-a-glance">At a glance</h2>
+<section id="pros-and-cons" class="level3">
+<h3 class="anchored" data-anchor-id="pros-and-cons">Pros and cons</h3>
 <table class="caption-top table">
-<colgroup>
-<col style="width: 21%">
-<col style="width: 39%">
-<col style="width: 39%">
-</colgroup>
 <thead>
 <tr class="header">
 <th></th>
-<th>Admin mode (default)</th>
 <th>User mode</th>
+<th>Admin mode</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>Privileges</td>
-<td><code>sudo</code> / administrator for most operations</td>
-<td>none</td>
+<td>Best for</td>
+<td>most users and use cases</td>
+<td>shared servers, native Linux packages<sup>1</sup></td>
 </tr>
 <tr class="even">
-<td>Shared between users</td>
-<td>yes</td>
-<td>no — just your account</td>
+<td>Required privileges</td>
+<td>none</td>
+<td><code>sudo</code> / administrator for many operations</td>
 </tr>
 <tr class="odd">
-<td>Needs <code>PATH</code> setup</td>
-<td>no (<code>/usr/local/bin</code> is usually on <code>PATH</code>)</td>
-<td>yes (the quick-link dir must be on <code>PATH</code>)</td>
+<td>Shared between users</td>
+<td>no</td>
+<td>yes</td>
 </tr>
 <tr class="even">
 <td>R install root</td>
-<td>platform default (below)</td>
-<td>in your home directory (below)</td>
+<td>in your home directory (see below)</td>
+<td>platform default (see below)</td>
 </tr>
 <tr class="odd">
-<td>Best for</td>
-<td>your own machine, shared servers you admin</td>
-<td>locked-down machines, no admin rights</td>
+<td>Needs <code>PATH</code> setup</td>
+<td>possibly<sup>1</sup></td>
+<td>usually no</td>
+</tr>
+<tr class="even">
+<td>Supported Linux distros</td>
+<td>all glibc and musl distros<sup>2</sup></td>
+<td><a href="./install.html#id-supported-linux-distributions">selected</a><sup>3</sup></td>
+</tr>
+<tr class="odd">
+<td>Multiple patch versions on macOS</td>
+<td>yes</td>
+<td>no<sup>4</sup></td>
 </tr>
 </tbody>
 </table>
-<p>Where things go:</p>
+<ol type="1">
+<li><p>In user mode, the rig binary directory must be on your <code>PATH</code> for the <code>R</code> and <code>Rscript</code> commands to be found. rig helps with this and patches your shell profiles if the R binary directory is not already on your <code>PATH</code>.</p></li>
+<li><p>In user mode, on Linux, rig supports all glibc (&gt;= 2.28) and musl (&gt;= 1.2) distros. It uses self-contained R builds that do not depend on the system package manager or system packages. It sets up Posit Package Manager’s manylinux R package repositories to install self-contained binary R packages.</p></li>
+<li><p>In admin mode, on supported Linux distributions, rig installs R through the system package manager, so it is managed like any other distro package. R’s and R packages’ system libraries are shared with other users and also managed by the system package manager. System libraries for R packages can be automatically installed by <a href="https://pak.r-lib.org">pak</a>.</p></li>
+<li><p>In admin mode on macOS, rig can only install one patch version of any given minor version of R. For example, if you install R 4.5.1, rig will remove any other 4.5.x version that is already installed.</p></li>
+</ol>
+</section>
+<section id="where-things-go" class="level3">
+<h3 class="anchored" data-anchor-id="where-things-go">Where things go</h3>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 11%">
+<col style="width: 10%">
 <col style="width: 7%">
-<col style="width: 39%">
-<col style="width: 41%">
+<col style="width: 37%">
+<col style="width: 44%">
 </colgroup>
 <thead>
 <tr class="header">
 <th>Platform</th>
 <th>Mode</th>
 <th>R install root</th>
-<th>Quick links (<code>R</code>, <code>Rscript</code>, <code>R-*</code>)</th>
+<th>Binary directory (<code>R</code>, <code>Rscript</code>, <code>R-*</code>)</th>
 </tr>
 </thead>
 <tbody>
@@ -642,18 +678,19 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 </tbody>
 </table>
-<p><code>rig system dirs</code> prints the directories rig actually uses on your machine, in the current mode and after applying any <a href="./reference/config.html">configuration</a> overrides. It works even if no R version is installed yet, so you can use it to see where <code>rig add</code> will put things.</p>
+<p><code>rig system dirs</code> prints the directories rig actually uses on your machine, in the current mode and after applying any <a href="./reference/config.html">configuration</a> overrides. It works without an R installation and is a good way to see where <code>rig add</code> will put things.</p>
+</section>
 </section>
 <section id="admin-mode" class="level2">
 <h2 class="anchored" data-anchor-id="admin-mode">Admin mode</h2>
-<p>Admin mode is the current default. R is installed into the platform’s usual system location and rig creates quick links (<code>R</code>, <code>Rscript</code>, and versioned <code>R-4.5.1</code>-style links) in a system-wide binary directory that is normally already on everyone’s <code>PATH</code>.</p>
-<p>Because these locations are outside your home directory, operations that write to them — adding or removing an R version, switching the default, creating the quick links — switch to the root or administrator user as needed. On Unix rig runs <code>sudo</code> (prompting for your password); on Windows it elevates through a UAC prompt. On macOS admin mode also restricts the permissions of the system R library so that packages are not installed into it accidentally.</p>
-<p>This mode is the right choice on a server where you have administrator rights and want a single shared R for everyone.</p>
+<p>Admin mode is the current default, for historical reasons. Previous versions of rig only supported admin mode. R is installed into the platform’s usual system location and rig creates startup links (<code>R</code>, <code>Rscript</code>), and versioned <code>R-4.5.1</code>-style quick links in a system-wide binary directory that is normally already on everyone’s <code>PATH</code>.</p>
+<p>Because these locations are outside your home directory, operations that write to them, e.g.&nbsp;adding or removing an R version, switching the default, creating the startup and quick links, switch to the root or administrator user as needed. On Unix rig runs <code>sudo</code> (prompting for your password); on Windows it elevates through a UAC prompt. On macOS admin mode also restricts the permissions of the system R library so that packages are not installed into it accidentally.</p>
+<p>Admin mode may be the right choice on a server where you have administrator rights and want a single shared R for everyone. It may also be the right choice on Linux if you want rig to install R and R’s and R packages’ system dependencies through the system package manager so that it is managed like any other distro package.</p>
 </section>
 <section id="user-mode" class="level2">
 <h2 class="anchored" data-anchor-id="user-mode">User mode</h2>
-<p>In user mode rig installs R entirely inside your home directory and creates the quick links in a per-user binary directory. Nothing lives outside your account, so <strong>rig never needs <code>sudo</code> or an administrator account</strong> in this mode — it is designed for machines where you do not have, or do not want to use, elevated privileges.</p>
-<p>The one thing to take care of is your <code>PATH</code>: the quick-link directory (<code>~/.local/bin</code>, or <code>%USERPROFILE%\.local\bin</code> on Windows) must be on it for the <code>R</code> and <code>Rscript</code> commands to be found. The user-mode <a href="./install.html">install script</a> sets this up for you; if you install rig from an archive manually, add the directory yourself.</p>
+<p>In user mode rig installs R entirely inside your home directory and creates the startup and quick links in a per-user binary directory. Nothing lives outside your account, so <strong>rig never needs <code>sudo</code> or an administrator account</strong> in this mode. It is designed for machines where you do not have, or do not want to use, elevated privileges.</p>
+<p>The one thing to take care of is your <code>PATH</code>: the rig binary directory (<code>~/.local/bin</code>, or <code>%USERPROFILE%\.local\bin</code> on Windows) must be on it for the <code>R</code> and <code>Rscript</code> commands to be found. The user-mode <a href="./install.html">install script</a> sets this up for you; if you install rig from an archive manually. rig also checks if your <code>PATH</code> is set up correctly, and if not, it patches your shell profiles on Unix and updates your user environment variables on Windows.</p>
 <div class="callout callout-style-default callout-note callout-titled">
 <div class="callout-header d-flex align-content-center">
 <div class="callout-icon-container">
@@ -664,7 +701,7 @@ Note
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p>Admin mode is the default today, but a future version of rig is likely to make <strong>user mode the default</strong>. If you want to future-proof your setup — or you simply prefer an R installation that needs no elevated privileges — you can opt into user mode now with the steps below.</p>
+<p>Admin mode is the default today, but a future version of rig will make <strong>user mode the default</strong>. If you want to future-proof your setup, you can opt into user mode (or admin mode) explicitly now with the steps below.</p>
 </div>
 </div>
 </section>
@@ -694,22 +731,28 @@ Note
 <li>It sets the rig <code>mode</code> configuration to <code>user</code>.</li>
 <li>Reinstalls your admin-mode R versions in user mode and restores the previous default version and version aliases. (R versions already present in user mode are not reinstalled.)</li>
 <li>Removes the system-wide admin-mode R installations.</li>
-<li>Removes the system-wide quick links.</li>
+<li>Removes the system-wide startup and quick links.</li>
 </ol>
-<p>Steps 3 and 4 delete files outside your home directory, so they need <code>sudo</code> or an administrator account — rig self-escalates for just that part. Use <code>--no-reinstall</code> to skip the reinstall and only clean up, or <code>--keep-install</code> and <code>--keep-links</code> to leave the admin-mode installations and/or links in place. With both <code>--keep-*</code> flags nothing outside your home directory is touched, so no elevated privileges are needed at all.</p>
+<p>Steps 3 and 4 delete files outside your home directory, so they need <code>sudo</code> or an administrator account, rig asks for your password for just that part. Use <code>--no-reinstall</code> to skip the reinstall and only clean up, or <code>--keep-install</code> and <code>--keep-links</code> to leave the admin-mode installations and/or links in place. With both <code>--keep-*</code> flags nothing outside your home directory is touched, so no elevated privileges are needed at all.</p>
 <p>To go back, set the mode to admin again (<code>rig config set mode=admin</code>) and reinstall the R versions you want.</p>
+</section>
+<section id="mixing-admin-and-user-mode" class="level2">
+<h2 class="anchored" data-anchor-id="mixing-admin-and-user-mode">Mixing admin and user mode</h2>
+<p>You can mix admin and user mode on the same machine, but it is not recommended. The main reason is that it is easy to set up your <code>PATH</code> incorrectly and end up with the wrong <code>R</code> and <code>Rscript</code> commands being found. E.g. on macOS or Linux both <code>/usr/local/bin/R</code> and <code>~/.local/bin/R</code> exist and the one that is found first on your <code>PATH</code> is used.</p>
 </section>
 <section id="advanced-custom-directories" class="level2">
 <h2 class="anchored" data-anchor-id="advanced-custom-directories">Advanced: custom directories</h2>
 <p>You can override where rig puts things with an environment variable or a config key:</p>
 <ul>
-<li><strong>Quick-link directory</strong> — <code>RIG_BINARY_DIR</code> env var, or the <code>binary-dir</code> config key. This applies in both modes, overriding the default <code>/usr/local/bin</code> (admin) or <code>~/.local/bin</code> (user).</li>
-<li><strong>R install root</strong> — <code>RIG_R_INSTALL_DIR</code> env var, or the <code>r-install-dir</code> config key. This only takes effect in user mode. In admin mode R is installed by the platform installer (the Apple <code>.pkg</code>, the Windows installer, or a Linux distribution package) to its fixed system location and cannot be relocated.</li>
+<li><strong>Quick-link directory</strong>: <code>RIG_BINARY_DIR</code> env var, or the <code>binary-dir</code> config key. This applies in both modes, overriding the default <code>/usr/local/bin</code> (admin) or <code>~/.local/bin</code> (user). If you change this, rig never modifies your shell config files or your <code>PATH</code> in the Windows registry.</li>
+<li><strong>R install root</strong>: <code>RIG_R_INSTALL_DIR</code> env var, or the <code>r-install-dir</code> config key. This only takes effect in user mode. In admin mode R is installed by the platform installer (the Apple <code>.pkg</code>, the Windows installer, or a Linux distribution package) to its fixed system location and cannot be relocated.</li>
 </ul>
 </section>
 <section id="see-also" class="level2">
 <h2 class="anchored" data-anchor-id="see-also">See also</h2>
 <ul>
+<li>The tutorials for step-by-step walkthroughs: getting started in <a href="./tutorial-admin.html">admin mode</a> or <a href="./tutorial-user.html">user mode</a>.</li>
+<li>If you want to switch from admin to user mode, see <a href="./tutorial-migrate.html">migrating an existing setup to user mode</a>.</li>
 <li>The <a href="./faq.html">FAQ</a> entry on installing R without admin permissions.</li>
 <li>The <a href="./install.html">install guide</a> for the user-mode install script and <code>PATH</code> setup.</li>
 </ul>
@@ -718,6 +761,150 @@ Note
 </section>
 
 </main> <!-- /main -->
+<!--
+Quarto turns the headings inside a `::: {.panel-tabset}` block into tab buttons,
+and drops every heading inside the tabset from the on-page table of contents.
+On the tutorial pages that hides all the steps, because the whole tutorial body
+lives inside per-OS tabs.
+
+This script rebuilds the right-hand TOC from the DOM: one entry for the active
+tab (labelled with the tab's name, e.g. "macOS") plus the headings inside it,
+in document order with everything else on the page. It re-runs when the reader
+switches tabs, or when Quarto restores a remembered tab from localStorage on
+`pageshow`.
+
+It runs synchronously, before quarto.js installs its scroll handler, so the
+initial TOC gets Quarto's own active-section highlighting; after a tab switch
+the highlighting is maintained by the handler installed here.
+-->
+<script>
+(function () {
+  const toc = document.querySelector('nav#TOC');
+  const main = document.querySelector('main');
+  if (!toc || !main || !main.querySelector('.panel-tabset')) return;
+
+  const tocDepth = 3;
+
+  const headingText = (el) => {
+    const clone = el.cloneNode(true);
+    clone.querySelectorAll('.anchorjs-link, .anchor-link').forEach((a) => a.remove());
+    return clone.textContent.trim();
+  };
+
+  // Flat, document-order list of { level, target, text }.
+  const collect = (root, items) => {
+    for (const child of root.children) {
+      if (child.classList.contains('panel-tabset')) {
+        const pane = child.querySelector('.tab-content > .tab-pane.active');
+        const tab = child.querySelector('.nav-tabs .nav-link.active');
+        if (!pane) continue;
+        const inner = [];
+        collect(pane, inner);
+        if (tab && pane.id && inner.length) {
+          items.push({
+            level: inner[0].level - 1,
+            target: '#' + pane.id,
+            text: headingText(tab),
+          });
+        }
+        items.push(...inner);
+        continue;
+      }
+      if (/^H[1-6]$/.test(child.tagName)) {
+        const id = child.getAttribute('data-anchor-id') || child.id ||
+          (child.parentElement && child.parentElement.id);
+        if (id) {
+          items.push({
+            level: Number(child.tagName[1]),
+            target: '#' + id,
+            text: headingText(child),
+          });
+        }
+        continue;
+      }
+      collect(child, items);
+    }
+  };
+
+  const build = (items) => {
+    const root = document.createElement('ul');
+    const top = Math.min(...items.map((i) => i.level));
+    const stack = [{ level: top, ul: root, lastLi: null }];
+    for (const item of items) {
+      if (item.level - top + 1 > tocDepth) continue;
+      while (stack.length > 1 && item.level < stack[stack.length - 1].level) stack.pop();
+      let frame = stack[stack.length - 1];
+      if (item.level > frame.level) {
+        let ul = frame.ul;
+        if (frame.lastLi) {
+          ul = document.createElement('ul');
+          frame.lastLi.appendChild(ul);
+        }
+        frame = { level: item.level, ul: ul, lastLi: null };
+        stack.push(frame);
+      }
+      const li = document.createElement('li');
+      const a = document.createElement('a');
+      a.href = item.target;
+      a.id = 'toc-' + item.target.slice(1);
+      a.className = 'nav-link';
+      a.setAttribute('data-scroll-target', item.target);
+      a.textContent = item.text;
+      li.appendChild(a);
+      frame.ul.appendChild(li);
+      frame.lastLi = li;
+    }
+    return root;
+  };
+
+  const render = () => {
+    const items = [];
+    collect(main, items);
+    if (!items.length) return;
+    const fresh = build(items);
+    const old = toc.querySelector('ul');
+    if (old) {
+      old.replaceWith(fresh);
+    } else {
+      toc.appendChild(fresh);
+    }
+    highlight();
+  };
+
+  // Same rule as quarto.js: the last section whose top has scrolled past.
+  const sectionMargin = 200;
+  const highlight = () => {
+    const links = Array.from(toc.querySelectorAll('a[data-scroll-target]'));
+    if (!links.length) return;
+    const sections = links.map((a) => document.getElementById(a.getAttribute('href').slice(1)));
+    let current = 0;
+    if (window.innerHeight + window.pageYOffset >= document.body.offsetHeight) {
+      current = sections.length - 1;
+    } else {
+      for (let i = 0; i < sections.length; i++) {
+        if (sections[i] && window.pageYOffset >= sections[i].offsetTop - sectionMargin) {
+          current = i;
+        }
+      }
+    }
+    links.forEach((a, i) => a.classList.toggle('active', i === current));
+  };
+
+  render();
+
+  // Quarto restores grouped tabsets on `pageshow` and toggles the tab classes
+  // in a click handler, so re-render on the next tick, once those have run.
+  const rerender = () => window.setTimeout(render, 0);
+  window.addEventListener('pageshow', rerender);
+  document.addEventListener('shown.bs.tab', rerender);
+  document.addEventListener('click', (event) => {
+    if (event.target.closest('.panel-tabset .nav-tabs .nav-link')) rerender();
+  });
+  document.addEventListener('DOMContentLoaded', () => {
+    window.addEventListener('scroll', highlight, { passive: true });
+  });
+})();
+</script>
 <script id="quarto-html-after-body" type="application/javascript">
   window.document.addEventListener("DOMContentLoaded", function (event) {
     // Ensure there is a toggle, if there isn't float one in the top right

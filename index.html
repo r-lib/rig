@@ -319,7 +319,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./index.html">Get started</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item">rig – the R Installation Manager</li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
       <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
@@ -339,21 +339,44 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
         </div>
     <div class="sidebar-menu-container"> 
     <ul class="list-unstyled mt-1">
-        <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="./index.html" class="sidebar-item-text sidebar-link active">
- <span class="menu-text">Get started</span></a>
-  </div>
-</li>
         <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
-            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
- <span class="menu-text">Guide</span></a>
+            <a href="./tutorial.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Tutorials</span></a>
           <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
             <i class="bi bi-chevron-right ms-2"></i>
           </a> 
       </div>
       <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./tutorial-user.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">User mode</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./tutorial-admin.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Admin mode</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="./tutorial-migrate.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Migrate to user mode</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
+ <span class="menu-text">Guide</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
   <a href="./install.html" class="sidebar-item-text sidebar-link">
@@ -390,11 +413,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       <div class="sidebar-item-container"> 
             <a href="./reference/index.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Reference</span></a>
-          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true" aria-label="Toggle section">
             <i class="bi bi-chevron-right ms-2"></i>
           </a> 
       </div>
-      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
+      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
   <a href="./reference/add.html" class="sidebar-item-text sidebar-link">
@@ -563,10 +586,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 <section id="quick-start" class="level2">
 <h2 class="anchored" data-anchor-id="quick-start">Quick start</h2>
-<p>Once rig is installed:</p>
+<p>Once rig is <a href="./install.html">installed</a>:</p>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> add release      <span class="co"># install the latest R release</span></span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> list             <span class="co"># list installed R versions</span></span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> default 4.5.1    <span class="co"># set the default R version</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>For a step-by-step walkthrough on macOS, Windows or Linux, see the <a href="./tutorial.html">tutorials</a>.</p>
 </section>
 <section id="features" class="level2">
 <h2 class="anchored" data-anchor-id="features">Features</h2>
@@ -576,31 +600,30 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <li>Select versions by symbolic name: <code>release</code>, <code>devel</code>, <code>next</code>, <code>oldrel</code>, or by exact version.</li>
 <li>Run several versions <em>at the same time</em> via quick links: <code>R-4.5</code> or <code>R-4.5.1</code> starts the matching R. Quick links are added to your path automatically.</li>
 <li>List the versions you have installed, and the versions available to install.</li>
-<li>On arm64 macs, choose between x86_64 and arm64 builds of R, or install both.</li>
-<li>On arm64 Windows, install x86_64 and aarch64 builds of R.</li>
+<li>On arm64 macs and Windows, choose between x86_64 and arm64 builds of R, or install both.</li>
 </ul>
 <p><strong>Cross-platform and self-contained</strong></p>
 <ul>
-<li>Works on macOS, Windows and Linux — with native builds for many <a href="./install.html#id-supported-linux-distributions">Linux distributions</a>, and portable builds that run on any glibc- or musl-based Linux.</li>
-<li>A single standalone tool with no system requirements — easy to install and update on every platform.</li>
-<li>Two installation modes: the default <em>admin mode</em> installs R system-wide (elevating to root/administrator only when needed), while <em>user mode</em> installs everything into your home directory with no <code>sudo</code> or administrator rights. See <a href="./admin-vs-user-mode.html">admin vs.&nbsp;user mode</a>.</li>
-<li>On Linux, installs distro-specific builds where available, and otherwise falls back to portable glibc/musl builds automatically — so rig works even on distributions without a dedicated build.</li>
+<li>Works on macOS, Windows and Linux. Has native builds for many <a href="./install.html#id-supported-linux-distributions">Linux distributions</a>, and portable builds that run on any glibc- or musl-based Linux.</li>
+<li>A single standalone tool with no system requirements. Easy to install and update on every platform.</li>
+<li>Two <a href="./admin-vs-user-mode.html">installation modes</a>: the default <em>admin mode</em> installs R system-wide (elevating to root/administrator only when needed), while <em>user mode</em> installs everything into your home directory with no <code>sudo</code> or administrator rights.</li>
+<li>On Linux, installs distro-specific builds where available, and otherwise falls back to portable glibc/musl builds automatically.</li>
 </ul>
 <p><strong>Package management, set up for you</strong></p>
 <ul>
 <li>Configures the default CRAN mirror and <a href="https://packagemanager.posit.co/">PPM</a> binary repositories.</li>
 <li>Installs <a href="https://pak.r-lib.org">pak</a> and enables automatic <a href="https://pak.r-lib.org/dev/reference/sysreqs.html">system requirements installation</a>.</li>
 <li>Creates and configures per-user package libraries.</li>
-<li><code>rig repos</code> manages package repositories across all your R versions.</li>
+<li><a href="./reference/repos.html"><code>rig repos</code></a> manages package repositories across all your R versions.</li>
 </ul>
 <p><strong>Run R, scripts and apps</strong></p>
 <ul>
-<li><code>rig run</code> starts R, runs a script or expression, or launches an app — Shiny apps, Plumber APIs, Quarto and R Markdown documents, and static sites — with the R version you choose.</li>
-<li><code>rig proj</code> (experimental) resolves and installs R project dependencies with a built-in solver, and can write an <code>renv.lock</code>, without needing R to be running.</li>
+<li><code>rig run</code> starts R, runs a script or expression, or launches an app: Shiny apps, Plumber APIs, Quarto and R Markdown documents, and static sites, with the R version you choose.</li>
+<li><code>rig proj</code> (experimental) resolves and installs R project dependencies with a built-in solver, and can write an <code>renv.lock</code>, without running R.</li>
 </ul>
 <p><strong>Platform niceties</strong></p>
 <ul>
-<li>A macOS menu bar app shows the default R version and lets you switch it interactively. <a href="./macos-app.html">See more</a>.</li>
+<li>A <a href="./macos-app.html">macOS menu bar app</a> shows the default R version and lets you switch it interactively.</li>
 <li>Installs and configures the right Rtools versions on Windows, and cleans up stale R entries from the Windows registry.</li>
 <li>Shell auto-completion for <code>zsh</code> and <code>bash</code> on macOS and Linux, and for PowerShell on Windows.</li>
 <li>On macOS, sets up R for debugging with <code>lldb</code> and enables core dumps.</li>
@@ -622,6 +645,150 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 
 </main> <!-- /main -->
+<!--
+Quarto turns the headings inside a `::: {.panel-tabset}` block into tab buttons,
+and drops every heading inside the tabset from the on-page table of contents.
+On the tutorial pages that hides all the steps, because the whole tutorial body
+lives inside per-OS tabs.
+
+This script rebuilds the right-hand TOC from the DOM: one entry for the active
+tab (labelled with the tab's name, e.g. "macOS") plus the headings inside it,
+in document order with everything else on the page. It re-runs when the reader
+switches tabs, or when Quarto restores a remembered tab from localStorage on
+`pageshow`.
+
+It runs synchronously, before quarto.js installs its scroll handler, so the
+initial TOC gets Quarto's own active-section highlighting; after a tab switch
+the highlighting is maintained by the handler installed here.
+-->
+<script>
+(function () {
+  const toc = document.querySelector('nav#TOC');
+  const main = document.querySelector('main');
+  if (!toc || !main || !main.querySelector('.panel-tabset')) return;
+
+  const tocDepth = 3;
+
+  const headingText = (el) => {
+    const clone = el.cloneNode(true);
+    clone.querySelectorAll('.anchorjs-link, .anchor-link').forEach((a) => a.remove());
+    return clone.textContent.trim();
+  };
+
+  // Flat, document-order list of { level, target, text }.
+  const collect = (root, items) => {
+    for (const child of root.children) {
+      if (child.classList.contains('panel-tabset')) {
+        const pane = child.querySelector('.tab-content > .tab-pane.active');
+        const tab = child.querySelector('.nav-tabs .nav-link.active');
+        if (!pane) continue;
+        const inner = [];
+        collect(pane, inner);
+        if (tab && pane.id && inner.length) {
+          items.push({
+            level: inner[0].level - 1,
+            target: '#' + pane.id,
+            text: headingText(tab),
+          });
+        }
+        items.push(...inner);
+        continue;
+      }
+      if (/^H[1-6]$/.test(child.tagName)) {
+        const id = child.getAttribute('data-anchor-id') || child.id ||
+          (child.parentElement && child.parentElement.id);
+        if (id) {
+          items.push({
+            level: Number(child.tagName[1]),
+            target: '#' + id,
+            text: headingText(child),
+          });
+        }
+        continue;
+      }
+      collect(child, items);
+    }
+  };
+
+  const build = (items) => {
+    const root = document.createElement('ul');
+    const top = Math.min(...items.map((i) => i.level));
+    const stack = [{ level: top, ul: root, lastLi: null }];
+    for (const item of items) {
+      if (item.level - top + 1 > tocDepth) continue;
+      while (stack.length > 1 && item.level < stack[stack.length - 1].level) stack.pop();
+      let frame = stack[stack.length - 1];
+      if (item.level > frame.level) {
+        let ul = frame.ul;
+        if (frame.lastLi) {
+          ul = document.createElement('ul');
+          frame.lastLi.appendChild(ul);
+        }
+        frame = { level: item.level, ul: ul, lastLi: null };
+        stack.push(frame);
+      }
+      const li = document.createElement('li');
+      const a = document.createElement('a');
+      a.href = item.target;
+      a.id = 'toc-' + item.target.slice(1);
+      a.className = 'nav-link';
+      a.setAttribute('data-scroll-target', item.target);
+      a.textContent = item.text;
+      li.appendChild(a);
+      frame.ul.appendChild(li);
+      frame.lastLi = li;
+    }
+    return root;
+  };
+
+  const render = () => {
+    const items = [];
+    collect(main, items);
+    if (!items.length) return;
+    const fresh = build(items);
+    const old = toc.querySelector('ul');
+    if (old) {
+      old.replaceWith(fresh);
+    } else {
+      toc.appendChild(fresh);
+    }
+    highlight();
+  };
+
+  // Same rule as quarto.js: the last section whose top has scrolled past.
+  const sectionMargin = 200;
+  const highlight = () => {
+    const links = Array.from(toc.querySelectorAll('a[data-scroll-target]'));
+    if (!links.length) return;
+    const sections = links.map((a) => document.getElementById(a.getAttribute('href').slice(1)));
+    let current = 0;
+    if (window.innerHeight + window.pageYOffset >= document.body.offsetHeight) {
+      current = sections.length - 1;
+    } else {
+      for (let i = 0; i < sections.length; i++) {
+        if (sections[i] && window.pageYOffset >= sections[i].offsetTop - sectionMargin) {
+          current = i;
+        }
+      }
+    }
+    links.forEach((a, i) => a.classList.toggle('active', i === current));
+  };
+
+  render();
+
+  // Quarto restores grouped tabsets on `pageshow` and toggles the tab classes
+  // in a click handler, so re-render on the next tick, once those have run.
+  const rerender = () => window.setTimeout(render, 0);
+  window.addEventListener('pageshow', rerender);
+  document.addEventListener('shown.bs.tab', rerender);
+  document.addEventListener('click', (event) => {
+    if (event.target.closest('.panel-tabset .nav-tabs .nav-link')) rerender();
+  });
+  document.addEventListener('DOMContentLoaded', () => {
+    window.addEventListener('scroll', highlight, { passive: true });
+  });
+})();
+</script>
 <script id="quarto-html-after-body" type="application/javascript">
   window.document.addEventListener("DOMContentLoaded", function (event) {
     // Ensure there is a toggle, if there isn't float one in the top right
