@@ -618,6 +618,8 @@ fn safe_user_install(
     debug!("Moving {} to {}", content.display(), dest.display());
     std::fs::rename(&content, &dest)?;
 
+    patch_r_home_dir(&dest)?;
+
     // Clean up the staging wrapper if we descended into a subdirectory.
     if staging.exists() {
         let _ = std::fs::remove_dir_all(&staging);
@@ -629,6 +631,47 @@ fn safe_user_install(
     info!("Installed R to {}", dest.display());
 
     Ok(dirname)
+}
+
+fn patch_r_home_dir(dest: &Path) -> Result<(), Box<dyn Error>> {
+    let home = dest.join("lib").join("R");
+    let scripts = [dest.join("bin").join("R"), home.join("bin").join("R")];
+    for script in scripts {
+        if !script.exists() {
+            debug!(
+                "No R shell wrapper at {}, not patching R_HOME_DIR",
+                script.display()
+            );
+            continue;
+        }
+        let content = std::fs::read_to_string(&script)?;
+        match patch_r_home_dir_script(&content, &home.display().to_string()) {
+            Some(patched) => {
+                debug!(
+                    "Patching R_HOME_DIR in {} to {}",
+                    script.display(),
+                    home.display()
+                );
+                // Writing to the existing file keeps its permissions.
+                std::fs::write(&script, patched)?;
+            }
+            None => {
+                debug!("No R_HOME_DIR assignment in {}", script.display());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn patch_r_home_dir_script(content: &str, home: &str) -> Option<String> {
+    let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
+    let idx = lines.iter().position(|l| l.starts_with("R_HOME_DIR="))?;
+    lines[idx] = format!("R_HOME_DIR=\"{}\"", home);
+    let mut out = lines.join("\n");
+    if content.ends_with('\n') {
+        out.push('\n');
+    }
+    Some(out)
 }
 
 // Write a `metadata.json` file at the top level of a portable R installation,
@@ -1917,6 +1960,58 @@ Usage: /lib/ld-musl-x86_64.so.1 [options] [--] pathname\n";
 
         // With no header to inspect, fall back to the directory name.
         assert_eq!(expected_user_dirname(root, "4.4.3"), "4.4.3");
+    }
+
+    // The beginning of the `bin/R` wrapper of a portable build, as configured
+    // with `--prefix=/opt/R/4.6.1`.
+    const R_WRAPPER: &str = "#!/bin/sh\n\
+         # Shell wrapper for R executable.\n\
+         \n\
+         R_HOME_DIR=\"/opt/R/4.6.1/lib/R\"\n\
+         if test \"${R_HOME_DIR}\" = \"/opt/R/4.6.1/lib/R\"; then\n\
+         \x20  case \"linux-gnu\" in\n\
+         \x20  linux*)\n\
+         \x20    if [ -x \"/opt/R/4.6.1/${libnn}/R/bin/exec/R\" ]; then\n\
+         \x20       R_HOME_DIR=\"/opt/R/4.6.1/${libnn}/R\"\n\
+         \x20    fi\n\
+         \x20    ;;\n\
+         \x20 esac\n\
+         fi\n\
+         # Override R_HOME_DIR for relocatable installation\n\
+         R_HOME_DIR=\"$(dirname \"$(dirname \"$(readlink -f \"$0\")\")\")/lib/R\"\n\
+         R_HOME=\"${R_HOME_DIR}\"\n";
+
+    #[test]
+    fn patch_r_home_dir_script_replaces_first_assignment_only() {
+        let out = patch_r_home_dir_script(R_WRAPPER, "/home/u/.local/share/rig/r/4.6.1/lib/R")
+            .expect("wrapper has an R_HOME_DIR assignment");
+
+        // Positron reads the first `R_HOME_DIR=` line, so that one now points at
+        // the real installation.
+        let first = out
+            .lines()
+            .find(|l| l.starts_with("R_HOME_DIR="))
+            .expect("patched wrapper still has an assignment");
+        assert_eq!(
+            first,
+            "R_HOME_DIR=\"/home/u/.local/share/rig/r/4.6.1/lib/R\""
+        );
+
+        // The `if test` line Positron also looks for is untouched, and so are
+        // the indented assignments and the relocatable override.
+        assert!(out.contains("if test \"${R_HOME_DIR}\" = \"/opt/R/4.6.1/lib/R\"; then"));
+        assert!(out.contains("     R_HOME_DIR=\"/opt/R/4.6.1/${libnn}/R\""));
+        assert!(out
+            .contains("R_HOME_DIR=\"$(dirname \"$(dirname \"$(readlink -f \"$0\")\")\")/lib/R\""));
+        assert_eq!(out.lines().count(), R_WRAPPER.lines().count());
+        assert!(out.ends_with("R_HOME=\"${R_HOME_DIR}\"\n"));
+    }
+
+    #[test]
+    fn patch_r_home_dir_script_without_assignment() {
+        assert!(patch_r_home_dir_script("#!/bin/sh\necho hi\n", "/home/u/r/lib/R").is_none());
+        // A reference to `${R_HOME_DIR}` is not an assignment.
+        assert!(patch_r_home_dir_script("echo \"${R_HOME_DIR}\"\n", "/home/u/r/lib/R").is_none());
     }
 
     #[test]
