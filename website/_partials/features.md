@@ -9,24 +9,22 @@
   automatically.
 * List the versions you have installed, and the versions available to
   install.
-* On arm64 macs, choose between x86_64 and arm64 builds of R, or install
-  both.
-* On arm64 Windows, install x86_64 and aarch64 builds of R.
+* On arm64 macs and Windows, choose between x86_64 and arm64 builds of R,
+  or install both.
 
 **Cross-platform and self-contained**
 
-* Works on macOS, Windows and Linux — with native builds for many
+* Works on macOS, Windows and Linux. Has native builds for many
   [Linux distributions](install.qmd#id-supported-linux-distributions), and
   portable builds that run on any glibc- or musl-based Linux.
-* A single standalone tool with no system requirements — easy to install
+* A single standalone tool with no system requirements. Easy to install
   and update on every platform.
-* Two installation modes: the default *admin mode* installs R system-wide
-  (elevating to root/administrator only when needed), while *user mode*
-  installs everything into your home directory with no `sudo` or
-  administrator rights. See [admin vs. user mode](admin-vs-user-mode.qmd).
+* Two [installation modes](admin-vs-user-mode.qmd): the default
+  *admin mode* installs R system-wide (elevating to root/administrator only
+  when needed), while *user mode* installs everything into your home
+  directory with no `sudo` or administrator rights.
 * On Linux, installs distro-specific builds where available, and otherwise
-  falls back to portable glibc/musl builds automatically — so rig works
-  even on distributions without a dedicated build.
+  falls back to portable glibc/musl builds automatically.
 
 **Package management, set up for you**
 
@@ -35,21 +33,21 @@
 * Installs [pak](https://pak.r-lib.org) and enables automatic
   [system requirements installation](https://pak.r-lib.org/dev/reference/sysreqs.html).
 * Creates and configures per-user package libraries.
-* `rig repos` manages package repositories across all your R versions.
+* [`rig repos`](reference/repos.qmd) manages package repositories across
+  all your R versions.
 
 **Run R, scripts and apps**
 
-* `rig run` starts R, runs a script or expression, or launches an app —
+* `rig run` starts R, runs a script or expression, or launches an app:
   Shiny apps, Plumber APIs, Quarto and R Markdown documents, and static
-  sites — with the R version you choose.
+  sites, with the R version you choose.
 * `rig proj` (experimental) resolves and installs R project dependencies
-  with a built-in solver, and can write an `renv.lock`, without needing R
-  to be running.
+  with a built-in solver, and can write an `renv.lock`, without running R.
 
 **Platform niceties**
 
-* A macOS menu bar app shows the default R version and lets you switch it
-  interactively. [See more](macos-app.qmd).
+* A [macOS menu bar app](macos-app.qmd) shows the default R version and
+  lets you switch it interactively.
 * Installs and configures the right Rtools versions on Windows, and cleans
   up stale R entries from the Windows registry.
 * Shell auto-completion for `zsh` and `bash` on macOS and Linux, and for

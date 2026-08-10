@@ -1,7 +1,10 @@
 
 {{< include _partials/install-methods.md >}}
 
-## Supported Linux distributions <a id="id-supported-linux-distributions"></a>
+Once rig is installed, the [tutorials](tutorial.qmd) walk you through
+installing R, switching between versions and installing packages.
+
+## Supported Linux distributions {#id-supported-linux-distributions}
 
 - Debian 12, 13
 - Ubuntu 20.04, 22.04, 24.04, 26.04
@@ -11,9 +14,6 @@
 - Red Hat Enterprise Linux 7, 8, 9, 10
 - AlmaLinux 8, 9, 10
 - Rocky Linux 8, 9 10
-
-We use the R builds from the Posit
-[R-builds project](https://github.com/rstudio/r-builds#r-builds).
 
 <details><summary>Retired Linux distributions</summary>
 These are not updated any more, no new R builds are added for them,
@@ -45,6 +45,9 @@ but existing R builds still work.
 - Ubuntu 16.04 (only x86_64, last R version: 4.1.2),
 - Ubuntu 18.04 (last R version: 4.3.1).
 </details>
+
+We use Linux builds or R from the Posit
+[R-builds project](https://github.com/rstudio/r-builds#r-builds).
 
 ## Installing auto-complete
 

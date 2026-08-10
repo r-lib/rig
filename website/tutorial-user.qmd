@@ -1,0 +1,38 @@
+---
+title: "Getting started in user mode"
+---
+
+In **user mode** rig keeps everything inside your home directory, so **it never
+needs `sudo` or an administrator account**. Use this on a machine where you do
+not have administrator rights, or where you would rather not touch system
+directories.
+
+If you do administer the machine and want a conventional system-wide R, follow
+[Getting started in admin mode](tutorial-admin.qmd) instead. For the trade-offs
+between the two modes, see [Admin mode vs user
+mode](admin-vs-user-mode.qmd).
+
+{{< include _partials/before-you-start.md >}}
+
+---
+
+::: {.panel-tabset group="os"}
+
+{{< include _partials/tutorial-user-macos.md >}}
+
+{{< include _partials/tutorial-user-windows.md >}}
+
+{{< include _partials/tutorial-user-linux.md >}}
+
+:::
+
+# Where to next
+
+- [Admin mode vs user mode](admin-vs-user-mode.qmd): the concepts behind the
+  two modes, and how to put rig's directories somewhere else.
+- [CLI reference](reference/index.qmd): every command and flag.
+- [`rig repos`](reference/repos.qmd): change which package repositories your R
+  versions use.
+- [Docker containers](docker.qmd): ready-made rig images for CI and
+  reproducible builds.
+- [FAQ](faq.qmd): the questions people ask most often.

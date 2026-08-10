@@ -82,8 +82,10 @@ file per section: `intro`, `features`, `known-issues`, `install`,
 that `{{< include >}}` a partial. Edit the partials, not the rendered HTML.
 
 - The site is **one level deep**: `index.qmd` (Get started — intro, quick
-  start, features, known issues) plus five flat Guide pages
-  (`install.qmd`, `admin-vs-user-mode.qmd`, `macos-app.qmd`, `docker.qmd`,
+  start, features, known issues) plus the flat Guide pages
+  (`install.qmd`, the tutorials — `tutorial.qmd` (hub), `tutorial-admin.qmd`,
+  `tutorial-user.qmd`, `tutorial-migrate.qmd` —, `admin-vs-user-mode.qmd`,
+  `macos-app.qmd`, `docker.qmd`,
   `faq.qmd`), `reference/index.qmd` and `news.qmd`. Do **not** add a
   further level of sub-pages. The one exception is the **generated** CLI
   reference: `reference/` holds one page per top-level rig command
@@ -97,7 +99,9 @@ that `{{< include >}}` a partial. Edit the partials, not the rendered HTML.
   them up with `auto: "reference/*.qmd"`).
 - The layout is the uv-style three-column docs layout: a **permanent docked
   left sidebar** holds all navigation (Get started, a collapsible `Guide`
-  section with the five Guide pages, Reference, Changelog — see the
+  section with the Guide pages — including a nested `Tutorials` section that
+  links to `tutorial.qmd` and lists the three tutorial pages —, Reference,
+  Changelog — see the
   `sidebar:` block in `_quarto.yml`), the content is in the middle, and the
   right-hand on-page TOC (`toc: true`) lists the current page's sections. The
   main navigation lives in the sidebar only; the top `navbar` is kept thin

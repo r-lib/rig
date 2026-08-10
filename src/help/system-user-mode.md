@@ -23,6 +23,6 @@ needs an administrator account or `sudo` on Unix, otherwise it will ask
 for your password.
 
 Use `--keep-install` to leave the admin-mode R installations in
-in place (skipping step 3), and `--keep-links` to leave the system-wide
+place (skipping step 3), and `--keep-links` to leave the system-wide
 links in place (skipping step 4). With both, nothing outside your home
 directory is touched and no administrator account or `sudo` is needed.

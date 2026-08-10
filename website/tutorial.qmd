@@ -1,0 +1,22 @@
+---
+title: "Tutorials"
+---
+
+These tutorials walk you through your first R installation with rig, to
+running R and installing packages.
+
+See [Admin mode vs user mode](admin-vs-user-mode.qmd) for more details
+on the two modes and how to pick between them.
+
+1. [**Getting started in user mode**](tutorial-user.qmd) \
+   rig installs everything into your home directory and does not need
+   an administrator account. Best choice for most users.
+
+2. [**Getting started in admin mode**](tutorial-admin.qmd) \
+   R is installed system-wide and shared by everyone on the machine. You
+   need an administrator account to do this, and rig asks for your password
+   when it needs to.
+
+3. [**Migrate to user mode**](tutorial-migrate.qmd) \
+   You already have an admin-mode rig setup and want to move it into your
+   home directory.

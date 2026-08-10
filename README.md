@@ -54,8 +54,8 @@ Install, remove, configure R versions.
 
 ## 🐞  Known Issues <a id="id-known-issues">
 
-- On macOS, R.app often does not work if you install multiple R
-  versions.
+- On macOS, R.app (the built-in macOS GUI) often does not work if you
+  install multiple R versions.
 
 Found another issue? Please report it in our [issue
 tracker](https://github.com/r-lib/rig/issues).

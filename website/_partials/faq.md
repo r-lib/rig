@@ -30,7 +30,9 @@
 <summary>Why does rig change the permissions of the system library
 (on macOS)?</summary>
 >
-> To make sure that you don't install packages accidentally into the system
+> In admin mode rig changes the permissions of the system library from
+> the default user-writeable to admin-writeable. This is to make sure that
+> you don't install packages accidentally into the system
 > library. See "Why does rig create a user package library?" above.
 >
 </details>
@@ -40,14 +42,14 @@
 >
 > To avoid the extra work the users need to spend on this.
 >
-> The https://cloud.r-project.org mirror is usually better than the
-> other, in that it is a CDN that is close to most users, and that it is
+> The <https://cloud.r-project.org> mirror is usually better than the
+> others, in that it is a CDN that is close to most users, and that it is
 > updated more often.
 >
 > If you want to use a different mirror, you can set the `repos` option
 > in your `.Rprofile`, so the rig repo settings will be ignored.
 >
-> You can also use the `--without-cran-mirror` option of `rig add`.
+> You can also use the `--without-repos=cran` option of `rig add`.
 >
 </details>
 
@@ -63,20 +65,19 @@
 > On Windows, it includes up to date binary packages for older R versions as
 > well.
 >
-> To avoid P3M use the `--without-p3m` option (or the legacy `--without-rspm`)
-> option of `rig add`.
+> To avoid P3M use the `--without-repos=p3m` option of `rig add`.
 >
 </details>
 
 <details>
 <summary>Can rig install R without admin permissions</summary>
 >
-> Yes. rig has a *user mode* that installs everything into your home
-> directory, so it never needs `sudo` or administrator rights. In user
-> mode rig installs R into `~/.local/share/rig/r` (`%APPDATA%\rig\data\r`
-> on Windows) and creates quick links in `~/.local/bin`
-> (`%USERPROFILE%\.local\bin` on Windows), which need to be on your
-> `PATH`.
+> Yes. rig has a [*user mode*](admin-vs-user-mode.qmd) that installs
+> everything into your home directory, so it never needs `sudo` or
+> administrator rights. In user mode rig installs R into
+> `~/.local/share/rig/r` (`%APPDATA%\rig\data\r` on Windows) and creates
+> startup links and quick links in `~/.local/bin`
+> (`%USERPROFILE%\.local\bin` on Windows), which need to be on your `PATH`.
 >
 > `rig system user-mode` switches to user mode and migrates an existing
 > admin-mode setup (see `rig system user-mode --help`).
@@ -101,10 +102,14 @@
 > I suggest you look over the features of both to decide which one suits
 > your needs better.
 >
-> If you like rig and also like the extra features of RSwitch, then you can
-> use them together just fine: changing the default R version in RSwitch also
-> changes it in rig and vice versa. You can use the rig cli and the RSwitch
-> app together, or you can also use both menu bar apps at the same time.
+> If you run rig in admin mode and also like the extra features of RSwitch,
+> then you can use them together just fine: changing the default R version
+> in RSwitch also changes it in rig and vice versa. You can use the rig
+> cli and the RSwitch app together, or you can also use both menu bar apps
+> at the same time.
+>
+> However, you can't use RSwitch with rig if you use rig in user mode,
+> because RSwitch only works with admin mode R installations.
 >
 </details>
 

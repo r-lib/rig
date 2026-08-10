@@ -56,13 +56,16 @@ Latest version [**{{< var version >}}**](news.qmd){.install-version}
 
 ## Quick start
 
-Once rig is installed:
+Once rig is [installed](install.qmd):
 
 ```sh
 rig add release      # install the latest R release
 rig list             # list installed R versions
 rig default 4.5.1    # set the default R version
 ```
+
+For a step-by-step walkthrough on macOS, Windows or Linux, see the
+[tutorials](tutorial.qmd).
 
 ## Features
 

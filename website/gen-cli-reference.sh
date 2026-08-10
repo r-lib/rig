@@ -331,8 +331,15 @@ emit() {
   # The page's root command (depth 1) gets no heading of its own: the Quarto
   # front-matter `title` already renders it as the page's H1, so printing it
   # here would duplicate the command name at the top of every page.
+  #
+  # The heading carries an explicit `rig-<cmd>-<sub>` id rather than relying on
+  # the one Pandoc derives from the heading text. Platform-specific commands
+  # get a `[Windows only]{.rig-platform}` badge appended to the text, and that
+  # badge would otherwise end up in the derived id (`rig-system-fix-r-alias`
+  # would become `rig-system-fix-r-alias-windows-only`), breaking every link
+  # to it -- including the subcommand list on the same page.
   if [ "$depth" -gt 1 ]; then
-    printf '%s `%s`%s\n\n' "$hh" "$title" "$(badge "$plat")"
+    printf '%s `%s`%s {#rig-%s}\n\n' "$hh" "$title" "$(badge "$plat")" "$stem"
   fi
 
   if [ -n "$stem" ] && [ -f "$helpdir/$stem.md" ]; then

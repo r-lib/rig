@@ -1,0 +1,133 @@
+---
+title: "Migrating to user mode"
+---
+
+If you already have an admin-mode setup, one command moves it into your home
+directory:
+
+```sh
+rig system user-mode
+```
+
+It does four things:
+
+1. Sets the rig `mode` configuration to `user`.
+2. Reinstalls your admin-mode R versions in user mode, and restores the previous
+   default version and your version aliases. Versions already installed in user
+   mode are not reinstalled.
+3. Removes the system-wide admin-mode R installations.
+4. Removes the system-wide quick links.
+
+Run it as your normal user, **not** under `sudo`. Steps 3 and 4 touch files
+outside your home directory, so rig asks your password for those, and only for
+those. Three flags control how much it does:
+
+- `--no-reinstall`: only switch and clean up, do not reinstall R.
+- `--keep-install`: leave the system-wide R installations alone.
+- `--keep-links`: leave the system-wide quick links alone.
+
+With both `--keep-*` flags nothing outside your home directory is touched, so
+the whole migration needs no admin privileges at all.
+
+If you do not have an admin-mode setup yet, start with [Getting started in user
+mode](tutorial-user.qmd) instead. See [Admin mode vs user
+mode](admin-vs-user-mode.qmd) for what changes when you switch.
+
+::: {.panel-tabset group="os"}
+
+## macOS
+
+```sh
+rig system user-mode
+```
+
+The cleanup step needs your password. It removes the R versions from
+`/Library/Frameworks/R.framework`, tells the system to forget the installer
+receipts (`pkgutil --forget`), and removes the `/usr/local/bin` links, but only
+those that actually point into the R framework, so links you made yourself are
+left alone.
+
+The [menu bar app](macos-app.qmd) is installed separately from the R versions,
+so it is not affected and keeps working with your user-mode installations.
+
+Then verify, in a new terminal:
+
+```sh
+rig system dirs   # Mode user, R root under your home directory
+rig list          # your versions, with the default and aliases restored
+which R           # ~/.local/bin/R, not /usr/local/bin/R
+```
+
+## Windows
+
+``` powershell
+rig system user-mode
+```
+
+The cleanup step triggers a UAC prompt. It removes the R installations from
+`C:\Program Files\R`, the quick links in `C:\Program Files\R\bin`, and the
+matching registry entries.
+
+On Windows the migration handles **Rtools** as well: your admin-mode Rtools
+installations are reinstalled under your user profile and the system-wide ones
+removed. `--no-reinstall` skips that too.
+
+Then verify, in a new terminal:
+
+``` powershell
+rig system dirs   # Mode user, R root under your user profile
+rig list          # your versions, with the default and aliases restored
+rig rtools list   # your Rtools installations
+Get-Command R     # in .local\bin, not in C:\Program Files\R\bin
+```
+
+## Linux
+
+```sh
+rig system user-mode
+```
+
+Since user mode needs a portable R build, rig checks first that one exists for
+your machine.
+
+The cleanup step needs your password. It removes your distribution's R
+packages, the `/opt/R/<version>` directories, and the `/usr/local/bin` links,
+but only those that actually point into `/opt/R`, so links you made yourself are
+left alone.
+
+Then verify, in a new terminal:
+
+```sh
+rig system dirs   # Mode user, R root under your home directory
+rig list          # your versions, with the default and aliases restored
+which R           # ~/.local/bin/R, not /usr/local/bin/R
+```
+
+:::
+
+## Package libraries
+
+If you use the default rig setup, then your package libraries live in your
+home directory and they are shared between admin and user mode R
+installations. Nothing needs to be done for them.
+
+## Going back to admin mode
+
+Set the mode back and reinstall the versions you want:
+
+```sh
+rig config set mode=admin
+rig add release
+```
+
+The user-mode installations under your home directory stay where they are;
+remove them with `rig rm` first if you want them gone.
+
+## Where to next
+
+- [Getting started in user mode](tutorial-user.qmd): the day-to-day commands in
+  user mode, including the `PATH` setup.
+- [Admin mode vs user mode](admin-vs-user-mode.qmd): the concepts behind the
+  two modes, and how to put rig's directories somewhere else.
+- [CLI reference](reference/index.qmd): every command and flag.
+- [FAQ](faq.qmd): the questions people ask most often.

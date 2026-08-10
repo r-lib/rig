@@ -28,10 +28,17 @@ website:
     search: true
     # Keep all top-level entries (e.g. the "Guide" section) expanded; never
     # collapse them. collapse-level must exceed the sidebar's nesting depth.
-    collapse-level: 3
+    collapse-level: 4
     contents:
-      - text: "Get started"
-        file: index.qmd
+      - section: "Tutorials"
+        href: tutorial.qmd
+        contents:
+          - text: "User mode"
+            file: tutorial-user.qmd
+          - text: "Admin mode"
+            file: tutorial-admin.qmd
+          - text: "Migrate to user mode"
+            file: tutorial-migrate.qmd
       - section: "Guide"
         contents:
           - text: "Installing rig"
@@ -61,4 +68,8 @@ format:
     # Seed the dark theme on first visit when the OS/browser prefers dark.
     include-in-header:
       - _dark-default.html
+    # Puts the headings inside `.panel-tabset` blocks (the per-OS tabs in the
+    # tutorials) into the on-page table of contents; Quarto drops them.
+    include-after-body:
+      - _tabset-toc.html
     toc: true

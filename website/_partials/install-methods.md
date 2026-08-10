@@ -2,7 +2,7 @@
 
 ## macOS
 
-### User install (command line only)
+### Method 1: user install (command line rig only)
 
 Use our install script, which downloads the right build for your Mac,
 unpacks it into `~/.local`, and adds `~/.local/bin` to your `PATH`:
@@ -32,12 +32,16 @@ curl -Ls https://github.com/r-lib/rig/releases/download/latest/rig-macos-arm64-l
 Make sure `~/.local/bin` is on your `PATH`. The binary in these archives is
 signed and notarized, so it runs without Gatekeeper warnings.
 
-### System install (with menu bar app)
+---
+
+### Method 2: system install (with menu bar app)
 
 Download the latest release from <https://github.com/r-lib/rig/releases>
 and install it the usual way.
 
-### Homebrew
+---
+
+### Method 3: system install with Homebrew
 
 #### Menu bar app + command line app:
 
@@ -47,7 +51,7 @@ brew install r-rig-app
 
 This is a homebrew cask and needs your password to install.
 
-#### Command line app:
+#### Command line app only:
 
 ```sh
 brew install r-rig
@@ -65,7 +69,7 @@ brew upgrade r-rig-app
 
 ## Windows
 
-### User install
+### Method 1: user install (no admin rights needed)
 
 If you don't have administrator rights, you can install rig into your user
 profile with the install script. It downloads the right build, unpacks it into
@@ -88,7 +92,9 @@ Alternatively, download the `rig-windows-<arch>-<version>.zip` archive
 it into `%USERPROFILE%\.local`, then add `%USERPROFILE%\.local\bin` to your
 `PATH`.
 
-### System install
+---
+
+### Method 2: system install
 
 Download the latest release from <https://github.com/r-lib/rig/releases>
 and install it the usual way.
@@ -96,7 +102,9 @@ and install it the usual way.
 `rig` adds itself to the user's path, but you might need to restart your
 terminal after the installation on Windows.
 
-### Scoop
+---
+
+### Method 3: Scoop
 
 If you use [Scoop](https://scoop.sh/), you can install rig from the scoop
 bucket at
@@ -113,7 +121,9 @@ To update run
 scoop update rig
 ```
 
-### Chocolatey
+---
+
+### Method 4: Chocolatey
 
 If you use [Chocolatey](https://chocolatey.org/) (e.g. on GitHub
 Actions) you can install `rig` with
@@ -128,7 +138,9 @@ and upgrade to the latest version with
 choco upgrade rig
 ```
 
-### WinGet
+---
+
+### Method 5: WinGet
 
 An easy way to install rig on Windows 10 and above is to use the
 built-in WinGet package manager. The name of the package is `posit.rig`.
@@ -137,16 +149,15 @@ built-in WinGet package manager. The name of the package is `posit.rig`.
 winget install posit.rig
 ```
 
-Note that updating a WinGet package typically takes some time, so
-WinGet might not have the latest version of rig.
-
 ## Linux
 
 On Linux you can install rig into your home directory without administrator
 rights, or system-wide from a DEB or RPM package, or from a tarball. See the
-[supported distributions](install.qmd#id-supported-linux-distributions) below.
+[supported distributions](install.qmd#id-supported-linux-distributions) below
+for admin mode rig. In user mode rig runs on any glibc (>=2.28) or musl
+(>=1.2) based Linux.
 
-### User install (no admin rights needed)
+### Method 1: User install (no admin rights needed)
 
 Use our install script, which downloads the right build for your machine,
 unpacks it into `~/.local`, and adds `~/.local/bin` to your `PATH`:
@@ -175,7 +186,9 @@ curl -Ls https://github.com/r-lib/rig/releases/download/latest/rig-linux-$(arch)
 
 Make sure `~/.local/bin` is on your `PATH`.
 
-### Ubuntu and Debian (DEB package)
+---
+
+### Method 2: Ubuntu and Debian (DEB package)
 
 On any Ubuntu or Debian distro, you can use our package repository to
 install rig. First you add our key to your config:
@@ -198,7 +211,9 @@ package (`rig` is a different package in Debian and Ubuntu):
 `which sudo` apt install r-rig
 ```
 
-### RHEL, Fedora, Rocky Linux, Almalinux, etc. (RPM package)
+---
+
+### Method 3: RHEL, Fedora, Rocky Linux, Almalinux, etc. (RPM package)
 
 On most RPM based distros (except for OpenSUSE and SLES) you can install
 our RPM package directly:
@@ -208,7 +223,9 @@ our RPM package directly:
   https://github.com/r-lib/rig/releases/download/latest/r-rig-latest-1.$(arch).rpm
 ```
 
-### OpenSUSE and SLES (RPM package)
+---
+
+### Method 4: OpenSUSE and SLES (RPM package)
 
 On OpenSUSE and SLES use `zypper` instead of `yum`:
 
@@ -217,7 +234,9 @@ On OpenSUSE and SLES use `zypper` instead of `yum`:
   https://github.com/r-lib/rig/releases/download/latest/r-rig-latest-1.$(arch).rpm
 ```
 
-### Any Linux distribution (tarball)
+---
+
+### Method 5: Any Linux distribution (tarball)
 
 Download the latest release from <https://github.com/r-lib/rig/releases>
 and uncompress it to `/usr/local`

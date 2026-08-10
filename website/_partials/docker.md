@@ -1,20 +1,23 @@
+We maintain some Docker container images that come with rig and R
+pre-installed, for convenience.
+
 Use the `ghcr.io/r-lib/rig/r` Docker container to easily run multiple
 R versions.
-It is currently based on Ubuntu 22.04 and contains rig and the six latest
-R versions, including R-next and R-devel.
-It is available for x86_64 and arm64 systems:
+It is currently based on Ubuntu 24.04 and contains rig and the seven latest
+R versions, including R-next and R-devel. It is available for x86_64 and
+arm64 systems:
 
 ```
 > docker run ghcr.io/r-lib/rig/r rig ls
 * name   version    aliases
 ------------------------------------------
-  4.1.3
   4.2.3
   4.3.3
-  4.4.3             oldrel
-* 4.5.1             release
-  devel  (R 4.6.0)
-  next   (R 4.5.1)
+  4.4.3
+  4.5.3             oldrel
+* 4.6.1             release
+  devel  (R 4.7.0)
+  next   (R 4.6.1)
 ```
 
 See this image on
@@ -23,8 +26,7 @@ See this image on
 ## All containers
 
 We also have other containers with rig and either R-devel and R-release
-preinstalled, on various Linux distros.
-Here is a table of all containers:
+preinstalled, on various Linux distros. Here is a table of all containers:
 
 Name                                      | OS                 | R version      | Tags
 ------------------------------------------|--------------------|----------------|------------------------------------------------------------------------------------------------
