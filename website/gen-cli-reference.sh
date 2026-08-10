@@ -54,6 +54,10 @@ export TERM=dumb
 # platforms where they are no-ops) so the reference documents them on every
 # platform. rig tags each revealed item with a `{platform:<os>}` sentinel in
 # its help text, which we strip and render as a badge below.
+#
+# In this mode rig also tags every command that has aliases (which are hidden
+# in `--help`) with an `{aliases:<a>,<b>}` sentinel in its help text, which we
+# strip and render as an `Alias:` line on the command's page.
 export RIG_GEN_REFERENCE=1
 
 # Render a platform badge (a Pandoc span, styled by website/theme.scss) from an
@@ -66,9 +70,28 @@ badge() {
   esac
 }
 
-# List the (non-help) subcommand names from a command's --help output. The
-# names live in the "Commands:" block, indented, first whitespace-delimited
-# token per line, terminated by a blank line.
+# Render the `Alias:` line of a command from a comma-separated list of alias
+# names ($1) and the command path the aliases replace the last word of ($2...,
+# e.g. `rtools list` -> `rig rtools ls`); prints nothing for an empty list.
+aliasline() {
+  local aliases="$1"; shift
+  local prefix="rig${*:+ $*}" a out=""
+  [ -n "$aliases" ] || return 0
+  prefix="${prefix% *}"
+  local IFS=,
+  for a in $aliases; do
+    out="${out:+$out, }\`$prefix $a\`"
+  done
+  case $aliases in
+    *,*) printf 'Aliases: %s\n\n' "$out" ;;
+    *)   printf 'Alias: %s\n\n' "$out" ;;
+  esac
+}
+
+# List the (non-help) subcommand names from a command's --help output, with
+# their `{platform:<os>}` and `{aliases:<a>,<b>}` sentinels (empty when the
+# subcommand has none). The names live in the "Commands:" block, indented,
+# first whitespace-delimited token per line, terminated by a blank line.
 subcommands() {
   "$RIG" "$@" --help 2>&1 |
     awk '
@@ -78,10 +101,13 @@ subcommands() {
         os = ""
         if (match($0, /\{platform:[a-z]+\}/))
           os = substr($0, RSTART + 10, RLENGTH - 11)
-        print $1 "\t" os
+        aliases = ""
+        if (match($0, /\{aliases:[^}]+\}/))
+          aliases = substr($0, RSTART + 9, RLENGTH - 10)
+        print $1 "|" os "|" aliases
       }
     ' |
-    grep -v $'^help\t' || true
+    grep -v "^help|" || true
 }
 
 # Print a help Markdown file, shifting its ATX headings deeper by `$2` levels
@@ -233,9 +259,24 @@ render_synopsis() {
       if (sortmode) curkey = sortkeyof(t)
       needcolon = 1; hadmeta = 0
     }
+    # Strip an `{aliases:<a>,<b>}` sentinel from `s`, appending the alias names
+    # to the description as a parenthetical, e.g. `(alias: `ls`)`.
+    function stripaliases(s,   list, n, i, parts, out){
+      if (!match(s, /\{aliases:[^}]+\}/)) return s
+      list = substr(s, RSTART + 9, RLENGTH - 10)
+      s = trim(substr(s, 1, RSTART - 1) substr(s, RSTART + RLENGTH))
+      # A hand-written `[aliases: ...]` note in the summary (src/help/*.md, for
+      # the terminal, where aliases are hidden) is dropped: we render the real
+      # list instead.
+      sub(/ *\[alias(es)?:[^]]*\]$/, "", s)
+      n = split(list, parts, ",")
+      for (i = 1; i <= n; i++) out = out (i > 1 ? ", " : "") "`" parts[i] "`"
+      return s " (" (n > 1 ? "aliases" : "alias") ": " out ")"
+    }
     function desc(d,  x){
       d = stripbadge(d)
       if (lastbadge != "" && curbadge == "") curbadge = lastbadge
+      d = stripaliases(d)
       x = wrapflags(d)
       if (x == "") return
       if (needcolon){ out(":   " x); needcolon = 0 } else out("    " x)
@@ -319,6 +360,7 @@ nhash() {
 emit() {
   local depth="$1"; shift
   local plat="$1"; shift
+  local aliases="$1"; shift
   local hh extra sec title stem
   hh="$(nhash "$depth")"
   extra="$(nhash $((depth - 1)))"
@@ -341,6 +383,9 @@ emit() {
   if [ "$depth" -gt 1 ]; then
     printf '%s `%s`%s {#rig-%s}\n\n' "$hh" "$title" "$(badge "$plat")" "$stem"
   fi
+
+  # The command's aliases, if any, right under its heading.
+  aliasline "$aliases" "$@"
 
   if [ -n "$stem" ] && [ -f "$helpdir/$stem.md" ]; then
     # Prose before the examples, then the synopsis (Usage/Arguments/Options),
@@ -371,9 +416,12 @@ Commands:"*) cmdsonly=1 ;;
     printf '```\n\n'
   fi
 
-  local sub subplat
-  while IFS=$'\t' read -r sub subplat; do
-    emit "$((depth + 1))" "$subplat" "$@" "$sub"
+  # `|`-separated, not tab-separated: tab is an IFS whitespace character, so
+  # `read` would collapse the empty `os` field of a command that has aliases
+  # but is not platform-specific.
+  local sub subplat subaliases
+  while IFS='|' read -r sub subplat subaliases; do
+    emit "$((depth + 1))" "$subplat" "$subaliases" "$@" "$sub"
   done < <(subcommands "$@")
 }
 
@@ -434,11 +482,20 @@ printf '%s\n\n' "$MARKER" >>"$refdir/_toc.md"
   while IFS=$'\t' read -r name desc; do
     # Strip the `{platform:<os>}` sentinel from a platform-specific command's
     # description, keeping the os tag to render a badge on the page and in the
-    # table of contents.
+    # table of contents. Likewise for the `{aliases:<a>,<b>}` sentinel of a
+    # command that has aliases.
     os=""
     if [[ $desc =~ \{platform:([a-z]+)\} ]]; then
       os="${BASH_REMATCH[1]}"
       desc="$(printf '%s' "$desc" | sed -E 's/ *\{platform:[a-z]+\}//')"
+    fi
+    aliases=""
+    if [[ $desc =~ \{aliases:([^}]+)\} ]]; then
+      aliases="${BASH_REMATCH[1]}"
+      # Also drop a hand-written `[aliases: ...]` note (written for the
+      # terminal, where aliases are hidden); we render the real list instead.
+      desc="$(printf '%s' "$desc" |
+        sed -E 's/ *\{aliases:[^}]+\}//; s/ *\[alias(es)?:[^]]*\]$//')"
     fi
     {
       printf -- '---\ntitle: "rig %s"\n---\n\n' "$name"
@@ -447,12 +504,22 @@ printf '%s\n\n' "$MARKER" >>"$refdir/_toc.md"
       # the command itself is printed as the first content line.
       pagebadge="$(badge "$os")"
       [ -n "$pagebadge" ] && printf '%s\n\n' "${pagebadge# }"
-      emit 1 "$os" "$name"
+      emit 1 "$os" "$aliases" "$name"
     } >"$refdir/$name.qmd"
 
     # A definition list, matching the Subcommands lists on the per-command
-    # pages; the term links to the command's own page.
-    printf -- '[`rig %s`](%s.qmd)%s\n:   %s\n\n' "$name" "$name" "$(badge "$os")" "$desc" >>"$refdir/_toc.md"
+    # pages; the term links to the command's own page. Aliases are shown as a
+    # parenthetical, as in those lists.
+    aliastext=""
+    if [ -n "$aliases" ]; then
+      alist="$(printf '%s' "$aliases" | sed -E 's/([^,]+)/`\1`/g; s/,/, /g')"
+      case $aliases in
+        *,*) aliastext=" (aliases: $alist)" ;;
+        *)   aliastext=" (alias: $alist)" ;;
+      esac
+    fi
+    printf -- '[`rig %s`](%s.qmd)%s\n:   %s%s\n\n' \
+      "$name" "$name" "$(badge "$os")" "$desc" "$aliastext" >>"$refdir/_toc.md"
   done
 
 echo "wrote per-command pages, _overview.md and _toc.md in $refdir"

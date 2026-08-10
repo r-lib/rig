@@ -39,6 +39,10 @@ pub(crate) fn md_to_ansi_impl(md: &str, color: bool) -> String {
     // Stack of list counters: None for a bullet list, Some(n) for the next
     // number in an ordered list.
     let mut lists: Vec<Option<u64>> = Vec::new();
+    // Stack of open list items: None until the item's marker has been emitted,
+    // Some(width) afterwards, so that the further paragraphs of a loose item
+    // line up with the first one instead of getting a second marker.
+    let mut items: Vec<Option<usize>> = Vec::new();
     let mut in_code_block = false;
     let mut last: Option<HelpBlock> = None;
 
@@ -67,6 +71,38 @@ pub(crate) fn md_to_ansi_impl(md: &str, color: bool) -> String {
         }
     };
 
+    // Emit the text of a list item: the first block of the item carries the
+    // bullet or the number, the further blocks of a loose item are indented to
+    // line up under it.
+    let emit_item = |out: &mut String,
+                     text: &str,
+                     lists: &mut Vec<Option<u64>>,
+                     items: &mut Vec<Option<usize>>,
+                     last: Option<HelpBlock>| {
+        sep(out, last, HelpBlock::Item);
+        let (prefix, cont) = match items.last() {
+            Some(Some(width)) => (" ".repeat(*width), " ".repeat(*width)),
+            _ => {
+                let depth = lists.len().max(1);
+                let marker = match lists.last_mut() {
+                    Some(Some(n)) => {
+                        let m = format!("{}. ", *n);
+                        *n += 1;
+                        m
+                    }
+                    _ => "- ".to_string(),
+                };
+                let prefix = format!("{}{}", " ".repeat(HELP_INDENT * depth), marker);
+                let width = prefix.chars().count();
+                if let Some(state) = items.last_mut() {
+                    *state = Some(width);
+                }
+                (prefix, " ".repeat(width))
+            }
+        };
+        emit(out, text, &prefix, &cont);
+    };
+
     for ev in parser {
         match ev {
             // -- block starts ---------------------------------------------
@@ -78,6 +114,7 @@ pub(crate) fn md_to_ansi_impl(md: &str, color: bool) -> String {
             }
             Event::Start(Tag::Item) => {
                 inline.clear();
+                items.push(None);
             }
             Event::Start(Tag::CodeBlock(_)) => {
                 in_code_block = true;
@@ -97,31 +134,30 @@ pub(crate) fn md_to_ansi_impl(md: &str, color: bool) -> String {
                 }
                 last = Some(HelpBlock::Heading);
             }
+            // The paragraphs of a loose list item belong to the item, not to
+            // the enclosing block, so they get the item's indentation. Their
+            // blocks are separated by a blank line, like any other paragraph,
+            // which is also what puts a blank line between loose items.
             Event::End(TagEnd::Paragraph) => {
-                sep(&mut out, last, HelpBlock::Other);
-                let indent = " ".repeat(HELP_INDENT);
-                emit(&mut out, inline.trim_end(), &indent, &indent);
+                if items.is_empty() {
+                    sep(&mut out, last, HelpBlock::Other);
+                    let indent = " ".repeat(HELP_INDENT);
+                    emit(&mut out, inline.trim_end(), &indent, &indent);
+                } else {
+                    emit_item(&mut out, inline.trim_end(), &mut lists, &mut items, last);
+                }
+                inline.clear();
                 last = Some(HelpBlock::Other);
             }
-            // A tight list item carries its text directly; a nested list
-            // flushes the parent's text early, leaving nothing here.
-            Event::End(TagEnd::Item) if !inline.trim_end().is_empty() => {
-                sep(&mut out, last, HelpBlock::Item);
-                let depth = lists.len().max(1);
-                let marker = match lists.last_mut() {
-                    Some(Some(n)) => {
-                        let m = format!("{}. ", *n);
-                        *n += 1;
-                        m
-                    }
-                    _ => "- ".to_string(),
-                };
-                let pad = " ".repeat(HELP_INDENT * depth);
-                let prefix = format!("{}{}", pad, marker);
-                let cont = " ".repeat(prefix.chars().count());
-                emit(&mut out, inline.trim_end(), &prefix, &cont);
-                inline.clear();
-                last = Some(HelpBlock::Item);
+            // A tight list item carries its text directly; in a loose list the
+            // paragraph above has already emitted it, leaving nothing here.
+            Event::End(TagEnd::Item) => {
+                if !inline.trim_end().is_empty() {
+                    emit_item(&mut out, inline.trim_end(), &mut lists, &mut items, last);
+                    inline.clear();
+                    last = Some(HelpBlock::Item);
+                }
+                items.pop();
             }
             Event::End(TagEnd::List(_)) => {
                 lists.pop();
@@ -245,6 +281,18 @@ mod tests {
         assert_eq!(
             md_to_ansi_impl(md, false),
             "D:\n  Ways:\n\n  - first item that is\n    wrapped onto two lines\n  - second"
+        );
+    }
+
+    // A blank line between the items makes the list loose, i.e. each item's
+    // text is a paragraph. It must still be emitted once, with the marker, and
+    // a further paragraph of the same item lines up under the first one.
+    #[test]
+    fn loose_list_items_are_not_duplicated() {
+        let md = "- first item\n\n- second item\n\n  more about the second";
+        assert_eq!(
+            md_to_ansi_impl(md, false),
+            "  - first item\n\n  - second item\n\n    more about the second"
         );
     }
 

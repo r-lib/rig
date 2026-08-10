@@ -6,9 +6,9 @@ Download and install an R version, from the official sources. It keeps
 the already installed R versions, except on macOS in [admin mode](../admin-vs-user-mode.qmd), where
 patch versions of the same minor overwrite each other.
 
-On macOS and Windows rig uses the R builds at https://cran.r-project.org.
+On macOS and Windows rig uses the R builds at <https://cran.r-project.org>.
 On Linux rig uses the Posit R builds from
-https://github.com/rstudio/r-builds.
+<https://github.com/rstudio/r-builds>.
 
 On Linux, in user mode rig always installs a portable build, selected for
 your C library (glibc or musl). In admin mode rig installs a

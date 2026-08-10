@@ -22,6 +22,16 @@ use crate::windows_arch::*;
 // with `make help`. Do not edit `src/help-generated.in` by hand.
 std::include!("help-generated.in");
 
+// Accepted values of `--pak-version`. "rc" is deprecated: it is the same as
+// "stable" now, so we still accept it, but do not advertise it in the help.
+fn pak_version_values() -> clap::builder::PossibleValuesParser {
+    clap::builder::PossibleValuesParser::new([
+        clap::builder::PossibleValue::new("stable"),
+        clap::builder::PossibleValue::new("rc").hide(true),
+        clap::builder::PossibleValue::new("devel"),
+    ])
+}
+
 fn reference_mode() -> bool {
     std::env::var_os("RIG_GEN_REFERENCE").is_some()
 }
@@ -79,6 +89,26 @@ fn add_name_headers(cmd: &mut Command, path: &str) {
             *sub = updated;
         }
         add_name_headers(sub, &full);
+    }
+}
+
+// Tag every aliased subcommand's `about` with an `{aliases:<a>,<b>}` sentinel,
+// so that `website/gen-cli-reference.sh` can pick the aliases up from the
+// `--help` output and document them. Only used in reference mode.
+//
+// Must run *after* `add_name_headers`, which bakes the `about` text into each
+// subcommand's `Name:` help template; otherwise the sentinel would show up
+// there as well.
+fn add_alias_markers(cmd: &mut Command) {
+    for sub in cmd.get_subcommands_mut() {
+        let aliases: Vec<String> = sub.get_all_aliases().map(|a| a.to_string()).collect();
+        if !aliases.is_empty() {
+            if let Some(about) = sub.get_about().map(|s| s.to_string()) {
+                let about = format!("{} {{aliases:{}}}", about, aliases.join(","));
+                *sub = std::mem::take(sub).about(about);
+            }
+        }
+        add_alias_markers(sub);
     }
 }
 
@@ -325,7 +355,7 @@ pub fn rig_app() -> Command {
                 .help("pak version to install.")
                 .long("pak-version")
                 .required(false)
-                .value_parser(["stable", "rc", "devel"])
+                .value_parser(pak_version_values())
                 .default_value("stable"),
         );
 
@@ -419,13 +449,6 @@ pub fn rig_app() -> Command {
             Arg::new("version")
                 .help("versions to remove")
                 .action(clap::ArgAction::Append)
-                .required(false),
-        )
-        .arg(
-            Arg::new("all")
-                .help("remove all versions (TODO)")
-                .long("all")
-                .num_args(0)
                 .required(false),
         );
 
@@ -549,7 +572,7 @@ pub fn rig_app() -> Command {
                 .help("pak version to install.")
                 .long("pak-version")
                 .required(false)
-                .value_parser(["stable", "rc", "devel"])
+                .value_parser(pak_version_values())
                 .default_value("stable"),
         )
         .arg(
@@ -1687,6 +1710,10 @@ pub fn rig_app() -> Command {
         .after_help(HELP_EXAMPLES);
 
     add_name_headers(&mut rig, "rig");
+
+    if reference_mode() {
+        add_alias_markers(&mut rig);
+    }
 
     rig
 }
