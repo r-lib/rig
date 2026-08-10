@@ -141,6 +141,51 @@ fn set_c_strings(
 
 // ------------------------------------------------------------------------
 
+// The installation mode rig is configured for ("user" or "admin"). The menu
+// bar app has no shell environment, so it cannot see RIG_MODE, but
+// get_mode() also reads the `mode` key of the rig config file, which is
+// where `rig system user-mode` records it.
+
+#[no_mangle]
+pub extern "C" fn rig_mode(ptr: *mut libc::c_char, size: libc::size_t) -> libc::c_int {
+    match utils::get_mode() {
+        Ok(mode) => match set_c_string(&mode.to_string(), ptr, size) {
+            Ok(x) => x,
+            Err(_) => {
+                set_error("Buffer too short for rig mode");
+                ERROR_BUFFER_SHORT
+            }
+        },
+        Err(e) => {
+            let msg = e.to_string();
+            set_error(&msg);
+            ERROR_DEFAULT_FAILED
+        }
+    }
+}
+
+// The directory the R versions are installed into. This is
+// /Library/Frameworks/R.framework/Versions in admin mode and
+// ~/.local/share/rig/r in user mode. The app watches it for changes.
+
+#[no_mangle]
+pub extern "C" fn rig_r_root(ptr: *mut libc::c_char, size: libc::size_t) -> libc::c_int {
+    match get_r_root() {
+        Ok(root) => match set_c_string(&root, ptr, size) {
+            Ok(x) => x,
+            Err(_) => {
+                set_error("Buffer too short for R root directory");
+                ERROR_BUFFER_SHORT
+            }
+        },
+        Err(e) => {
+            let msg = e.to_string();
+            set_error(&msg);
+            ERROR_DEFAULT_FAILED
+        }
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn rig_get_default(ptr: *mut libc::c_char, size: libc::size_t) -> libc::c_int {
     let def = sc_get_default();

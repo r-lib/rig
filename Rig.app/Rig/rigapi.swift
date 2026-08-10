@@ -26,6 +26,39 @@ func rigLastError() -> String {
     return msg
 }
 
+// "user" or "admin". The app has no shell environment, so it cannot see
+// RIG_MODE; rig reads the `mode` key of its configuration file instead.
+func rigMode() throws -> String {
+    var buffer = Data(count: 1024)
+    let n = buffer.count
+    var err: Int32 = 0
+    buffer.withUnsafeMutableBytes({(p: UnsafeMutablePointer<CChar>) -> Void in
+        err = rig_mode(p, n)
+    })
+    if err != 0 {
+        throw RigError.error(msg: rigLastError())
+    }
+
+    return String(data: buffer.prefix(while: { $0 != 0 }), encoding: .utf8)!
+}
+
+// The directory the R versions are installed into, which depends on the mode:
+// /Library/Frameworks/R.framework/Versions in admin mode,
+// ~/.local/share/rig/r in user mode.
+func rigRRoot() throws -> String {
+    var buffer = Data(count: 4096)
+    let n = buffer.count
+    var err: Int32 = 0
+    buffer.withUnsafeMutableBytes({(p: UnsafeMutablePointer<CChar>) -> Void in
+        err = rig_r_root(p, n)
+    })
+    if err != 0 {
+        throw RigError.error(msg: rigLastError())
+    }
+
+    return String(data: buffer.prefix(while: { $0 != 0 }), encoding: .utf8)!
+}
+
 func rigDefault() throws -> String? {
     var buffer = Data(count: 1024)
     let n = buffer.count

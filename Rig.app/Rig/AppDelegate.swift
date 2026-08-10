@@ -16,6 +16,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var statusBarItem: NSStatusItem!
     var statusBarMenu: NSMenu!
     var watcher: DirectoryWatcher?
+    // The directory `watcher` is watching, see updateWatcher().
+    var watchedPath: String?
 
     private var window: NSWindow!
 
@@ -44,12 +46,47 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusBarItem.button?.action = #selector(self.statusBarButtonClicked(sender:))
         statusBarItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
 
-        let fileManager = FileManager.default
-        let versions = "/Library/Frameworks/R.framework/Versions"
-        if fileManager.fileExists(atPath: versions) {
-            watcher = DirectoryWatcher(withPath: versions, callback: { directoryWatcher in
+        updateWatcher()
+    }
+
+    // The directory the R versions are installed into. This is
+    // /Library/Frameworks/R.framework/Versions in admin mode and
+    // ~/.local/share/rig/r in user mode, so ask rig instead of hard-coding it.
+    func rRoot() -> String {
+        return (try? rigRRoot()) ?? "/Library/Frameworks/R.framework/Versions"
+    }
+
+    // Watch the R root directory for changes, to keep the menu bar title in
+    // sync with `rig default`. If the root does not exist yet -- in user mode
+    // it is only created by the first `rig add` -- watch its closest existing
+    // parent instead, and switch over to the root itself once it shows up.
+    func updateWatcher() {
+        guard let path = closestExistingDirectory(rRoot()) else { return }
+        if path == watchedPath { return }
+        watchedPath = path
+        watcher = DirectoryWatcher(withPath: path, callback: { [weak self] _ in
+            // Re-arming the watcher deallocates the one whose callback we are
+            // in, so do this after the event handler returned.
+            DispatchQueue.main.async {
+                guard let self = self else { return }
                 self.setStatusBarTitle()
-            })
+                self.updateWatcher()
+            }
+        })
+    }
+
+    func closestExistingDirectory(_ path: String) -> String? {
+        let fileManager = FileManager.default
+        var url = URL(fileURLWithPath: path).standardizedFileURL
+        while true {
+            if fileManager.fileExists(atPath: url.path) {
+                return url.path
+            }
+            let parent = url.deletingLastPathComponent().standardizedFileURL
+            if parent.path == url.path {
+                return nil
+            }
+            url = parent
         }
     }
 
@@ -176,9 +213,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func selectVersion(_ sender: NSMenuItem?) {
         let ver = sender!.representedObject as! String
-        let info = """
-Check if you have write permissions tp
-/Library/Frameworks/R.frameworks/Versions/Current
+        let current = rRoot() + "/Current"
+        let mode = (try? rigMode()) ?? "admin"
+        let info = mode == "user" ? """
+Check if you have write permissions to
+\(current)
+and its parent directory.
+""" : """
+Check if you have write permissions to
+\(current)
 and its parent directory. You can also run
 rig system fix-permissions
 from a shell. (It will need an admin password.)
