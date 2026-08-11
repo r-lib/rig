@@ -136,6 +136,77 @@
 </details>
 
 <details>
+<summary>How do I install my own fonts, without administrator rights?</summary>
+>
+> You never need to touch rig's font configuration for this. On all three
+> platforms there is a per-user font directory that R (and rig's font
+> configuration on Linux) already looks at, and installing a font is just a
+> matter of copying the font file there. Do *not* edit the `fonts.conf`
+> files that rig writes: rig rewrites them on every install, so your
+> changes would be lost.
+>
+> **Linux.** Copy the font files into `~/.local/share/fonts`
+> (or `~/.fonts`):
+>
+> ```sh
+> mkdir -p ~/.local/share/fonts
+> cp MyFont-*.ttf ~/.local/share/fonts/
+> ```
+>
+> The `fonts.conf` that rig writes for the portable R builds lists both
+> directories, so every R version rig installed picks the new fonts up.
+> You do not need to run `fc-cache`: fontconfig notices that the font
+> directory is newer than its cache and rescans it at startup. (You *can*
+> run the host's `fc-cache` if it has one, but it might write a cache in a
+> different format version than the fontconfig bundled in the R build,
+> in which case it has no effect.)
+>
+> Do not put your own fonts into rig's own font directory
+> (`rig system dirs --fonts`): rig deletes and re-extracts that directory
+> when it re-downloads the fallback fonts.
+>
+> **macOS.** Copy the font files into `~/Library/Fonts`, or open them in
+> Font Book and install them "for this user only":
+>
+> ```sh
+> cp MyFont-*.ttf ~/Library/Fonts/
+> ```
+>
+> This works for the quartz devices (which use CoreText, and see
+> `~/Library/Fonts` automatically) and for the cairo and X11 devices: the
+> `fonts.conf` in the R installation lists `~/Library/Fonts`,
+> `~/.local/share/fonts` and `~/.fonts`. If a new font does not show up in
+> a cairo device, refresh the fontconfig cache with the `fc-cache` in the
+> R installation, which knows where R's configuration is:
+>
+> ```sh
+> "$(R RHOME)/bin/fc-cache" -f
+> ```
+>
+> **Windows.** R uses the system font list on Windows, not fontconfig, and
+> rig does not configure fonts at all there. To install a font for
+> yourself only, right-click the font file in Explorer and choose
+> *Install for current user* (or open it and click *Install* — Windows
+> installs it into `%LOCALAPPDATA%\Microsoft\Windows\Fonts` for your user,
+> without administrator rights).
+>
+> Then map it to an R font family before using it in the `windows()`
+> device, using the font's real family name:
+>
+> ```r
+> windowsFonts(myfont = windowsFont("My Font"))
+> plot(1, family = "myfont")
+> ```
+>
+> The [ragg](https://ragg.r-lib.org/) and
+> [systemfonts](https://systemfonts.r-lib.org/) packages find per-user
+> fonts without this extra step on all three platforms; use
+> `systemfonts::system_fonts()` to check that a font was installed
+> correctly.
+>
+</details>
+
+<details>
 <summary>Which domains does rig download files from?</summary>
 >
 > Here is the list of domains that you need to enable in your proxy.
