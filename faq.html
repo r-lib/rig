@@ -26,6 +26,41 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
 </style>
 
 
@@ -48,9 +83,9 @@ ul.task-list li input[type="checkbox"] {
 <link href="site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="site_libs/bootstrap/bootstrap-b206b9f871adaf04482dbc5f635fb1e6.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="site_libs/bootstrap/bootstrap-dark-303e532fb61c418e3267ba9f761738ed.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
-<link href="site_libs/bootstrap/bootstrap-b206b9f871adaf04482dbc5f635fb1e6.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-b3d9cfcfe83306dc0c29403b25520f83.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-dark-ca1a18ec42dc484396ee078b8ce5bc1d.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<link href="site_libs/bootstrap/bootstrap-b3d9cfcfe83306dc0c29403b25520f83.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -600,6 +635,28 @@ Why does rig install fonts on Linux?
 <p>The portable R builds rig installs on Linux bundle the fontconfig library, but not its configuration and not any fonts. On a minimal system — a slim container, Alpine, a bare server — R then has nothing to render text with, and crashes on the first plot.</p>
 <p>So after installing a portable build, <code>rig add</code> writes a <code>fonts.conf</code> and downloads a small subset of the DejaVu fonts next to the R installations, and sets <code>FONTCONFIG_FILE</code> in the R installation’s base <code>Rprofile</code> to point at the configuration. Run <code>rig system dirs --fonts</code> to see where they are.</p>
 <p>The configuration also lists the standard system font directories (<code>/usr/share/fonts</code>, <code>~/.local/share/fonts</code>, …), so your own fonts keep working. If you only want the configuration and not the extra fonts, use <code>rig add --without-fonts</code>. If you set <code>FONTCONFIG_FILE</code> yourself, rig’s setting is ignored.</p>
+</blockquote>
+</details>
+<details>
+<summary>
+How do I install my own fonts, without administrator rights?
+</summary>
+<blockquote class="blockquote">
+<p>You never need to touch rig’s font configuration for this. On all three platforms there is a per-user font directory that R (and rig’s font configuration on Linux) already looks at, and installing a font is just a matter of copying the font file there. Do <em>not</em> edit the <code>fonts.conf</code> files that rig writes: rig rewrites them on every install, so your changes would be lost.</p>
+<p><strong>Linux.</strong> Copy the font files into <code>~/.local/share/fonts</code> (or <code>~/.fonts</code>):</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mkdir</span> <span class="at">-p</span> ~/.local/share/fonts</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">cp</span> MyFont-<span class="pp">*</span>.ttf ~/.local/share/fonts/</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The <code>fonts.conf</code> that rig writes for the portable R builds lists both directories, so every R version rig installed picks the new fonts up. You do not need to run <code>fc-cache</code>: fontconfig notices that the font directory is newer than its cache and rescans it at startup. (You <em>can</em> run the host’s <code>fc-cache</code> if it has one, but it might write a cache in a different format version than the fontconfig bundled in the R build, in which case it has no effect.)</p>
+<p>Do not put your own fonts into rig’s own font directory (<code>rig system dirs --fonts</code>): rig deletes and re-extracts that directory when it re-downloads the fallback fonts.</p>
+<p><strong>macOS.</strong> Copy the font files into <code>~/Library/Fonts</code>, or open them in Font Book and install them “for this user only”:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cp</span> MyFont-<span class="pp">*</span>.ttf ~/Library/Fonts/</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>This works for the quartz devices (which use CoreText, and see <code>~/Library/Fonts</code> automatically) and for the cairo and X11 devices: the <code>fonts.conf</code> in the R installation lists <code>~/Library/Fonts</code>, <code>~/.local/share/fonts</code> and <code>~/.fonts</code>. If a new font does not show up in a cairo device, refresh the fontconfig cache with the <code>fc-cache</code> in the R installation, which knows where R’s configuration is:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="st">"</span><span class="va">$(</span><span class="ex">R</span> RHOME<span class="va">)</span><span class="st">/bin/fc-cache"</span> <span class="at">-f</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><strong>Windows.</strong> R uses the system font list on Windows, not fontconfig, and rig does not configure fonts at all there. To install a font for yourself only, right-click the font file in Explorer and choose <em>Install for current user</em> (or open it and click <em>Install</em> — Windows installs it into <code>%LOCALAPPDATA%\Microsoft\Windows\Fonts</code> for your user, without administrator rights).</p>
+<p>Then map it to an R font family before using it in the <code>windows()</code> device, using the font’s real family name:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">windowsFonts</span>(<span class="at">myfont =</span> <span class="fu">windowsFont</span>(<span class="st">"My Font"</span>))</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(<span class="dv">1</span>, <span class="at">family =</span> <span class="st">"myfont"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The <a href="https://ragg.r-lib.org/">ragg</a> and <a href="https://systemfonts.r-lib.org/">systemfonts</a> packages find per-user fonts without this extra step on all three platforms; use <code>systemfonts::system_fonts()</code> to check that a font was installed correctly.</p>
 </blockquote>
 </details>
 <details>
