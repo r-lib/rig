@@ -406,7 +406,6 @@ fn get_rtools_versions(rtoolskey: &RegKey) -> Result<Vec<RtoolsVersion>, Box<dyn
 }
 
 pub(super) fn sc_rtools_ls(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
-    escalate("listing Rtools in the registry")?;
     let mut versions: Vec<RtoolsVersion> = vec![];
 
     // Admin installs register under HKLM, per-user installs under HKCU.
