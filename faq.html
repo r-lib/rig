@@ -594,6 +594,16 @@ How is rig different from RSwitch?
 </details>
 <details>
 <summary>
+Why does rig install fonts on Linux?
+</summary>
+<blockquote class="blockquote">
+<p>The portable R builds rig installs on Linux bundle the fontconfig library, but not its configuration and not any fonts. On a minimal system — a slim container, Alpine, a bare server — R then has nothing to render text with, and crashes on the first plot.</p>
+<p>So after installing a portable build, <code>rig add</code> writes a <code>fonts.conf</code> and downloads a small subset of the DejaVu fonts next to the R installations, and sets <code>FONTCONFIG_FILE</code> in the R installation’s base <code>Rprofile</code> to point at the configuration. Run <code>rig system dirs --fonts</code> to see where they are.</p>
+<p>The configuration also lists the standard system font directories (<code>/usr/share/fonts</code>, <code>~/.local/share/fonts</code>, …), so your own fonts keep working. If you only want the configuration and not the extra fonts, use <code>rig add --without-fonts</code>. If you set <code>FONTCONFIG_FILE</code> yourself, rig’s setting is ignored.</p>
+</blockquote>
+</details>
+<details>
+<summary>
 Which domains does rig download files from?
 </summary>
 <blockquote class="blockquote">
@@ -612,6 +622,7 @@ Which domains does rig download files from?
 <li>https://cloud.r-project.org/bin/windows/Rtools</li>
 </ul></li>
 <li>https://github.com/R-macos/gcc-darwin-arm64/releases, https://github.com/fxcoudert/gfortran-for-macOS/releases and whatever domains Homebrew is using, to download system packages for <code>rig sysreqs</code> on macOS.</li>
+<li><code>rig add</code> downloads https://curl.se/ca/cacert.pem (the CA bundle) and the fallback fonts from https://github.com/r-lib/rig/releases for the portable Linux R builds.</li>
 </ul>
 </blockquote>
 </details>

@@ -561,6 +561,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p>Download and install an R version, from the official sources. It keeps the already installed R versions, except on macOS in <a href="../admin-vs-user-mode.html">admin mode</a>, where patch versions of the same minor overwrite each other.</p>
 <p>On macOS and Windows rig uses the R builds at <a href="https://cran.r-project.org" class="uri">https://cran.r-project.org</a>. On Linux rig uses the Posit R builds from <a href="https://github.com/rstudio/r-builds" class="uri">https://github.com/rstudio/r-builds</a>.</p>
 <p>On Linux, in user mode rig always installs a portable build, selected for your C library (glibc or musl). In admin mode rig installs a distro-specific build by default, but you can install a portable build instead with <code>--platform linux-portable</code> (or a specific portable platform, e.g.&nbsp;<code>--platform linux-manylinux-2.34</code>). If there is no distro-specific build for your platform, rig falls back to a portable build automatically. Admin-mode portable builds are installed into <code>/opt/R/&lt;version&gt;</code>, just like distro-specific builds.</p>
+<p>The portable builds bundle the fontconfig library, but no fontconfig configuration and no fonts, so on a minimal system R cannot render text at all. After installing a portable build rig therefore writes a <code>fonts.conf</code> and downloads a small set of fallback fonts, next to the R installations (see <code>rig system dirs --fonts</code>), and points R at them. The configuration also lists the standard system font directories, so your own fonts keep working. Use <code>--without-fonts</code> to skip the font download and use only the fonts that are already installed on the system. Setting <code>FONTCONFIG_FILE</code> yourself overrides all of this. Set <code>RIG_FONTS_URL</code> (and optionally <code>RIG_FONTS_SHA256</code>) to download the fonts from a mirror instead.</p>
 <p>The desired R version can be specified in various ways:</p>
 <ul>
 <li><code>rig add devel</code> adds the latest available development version,</li>
@@ -631,6 +632,10 @@ Repositories to enable, in addition to the ones enabled by default. If <code>--w
 <dt><code>--without-cran-mirror</code></dt>
 <dd>
 Do not set the cloud CRAN mirror. Deprecated in favor of <code>--without-repos=cran</code>.
+</dd>
+<dt><code>--without-fonts</code> <span class="rig-platform">Linux only</span></dt>
+<dd>
+Do not download fallback fonts. rig still writes the fontconfig configuration, but R will only see the fonts that are already installed on the system.
 </dd>
 <dt><code>--without-p3m</code></dt>
 <dd>
