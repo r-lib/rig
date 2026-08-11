@@ -623,6 +623,10 @@ fn safe_user_install(
     std::fs::rename(&content, &dest)?;
 
     patch_r_home_dir(&dest)?;
+    if let Err(e) = shim_bundled_xcursor(&dest) {
+        OUTPUT.warn(&format!("Could not shim libXcursor: {}", e));
+        warn!("Could not shim libXcursor: {}", e);
+    }
 
     // Clean up the staging wrapper if we descended into a subdirectory.
     if staging.exists() {
@@ -676,6 +680,60 @@ fn patch_r_home_dir_script(content: &str, home: &str) -> Option<String> {
         out.push('\n');
     }
     Some(out)
+}
+
+// The name the bundled libX11 passes to `dlopen()`, and the name of the shim we
+// put next to it. See `shim_bundled_xcursor()`.
+const XCURSOR_SONAME: &str = "libXcursor.so.1";
+
+// Work around https://github.com/rstudio/r-builds/issues/341
+fn shim_bundled_xcursor(dest: &Path) -> Result<(), Box<dyn Error>> {
+    let libs = dest.join("lib").join("R").join("lib").join(".libs");
+    if !libs.exists() {
+        debug!("No {}, no bundled libraries to shim", libs.display());
+        return Ok(());
+    }
+
+    let mut libx11: Option<String> = None;
+    let mut libxau: Option<String> = None;
+    for entry in std::fs::read_dir(&libs)? {
+        let name = entry?.file_name().to_string_lossy().to_string();
+        if name.starts_with("libXcursor") {
+            // A build that ships its own libXcursor (or an install we already
+            // shimmed) needs no help from us.
+            debug!("{} has {}, not shimming libXcursor", libs.display(), name);
+            return Ok(());
+        } else if name.starts_with("libX11-") {
+            libx11 = Some(name);
+        } else if name.starts_with("libXau-") {
+            libxau = Some(name);
+        }
+    }
+
+    let libx11 = match libx11 {
+        Some(name) => name,
+        None => {
+            debug!(
+                "No bundled libX11 in {}, not shimming libXcursor",
+                libs.display()
+            );
+            return Ok(());
+        }
+    };
+    let target = libxau.unwrap_or(libx11);
+
+    let link = libs.join(XCURSOR_SONAME);
+    if link.symlink_metadata().is_ok() {
+        std::fs::remove_file(&link)?;
+    }
+    debug!(
+        "Shimming dlopen(\"{}\") in {} with {}",
+        XCURSOR_SONAME,
+        libs.display(),
+        target
+    );
+    std::os::unix::fs::symlink(&target, &link)?;
+    Ok(())
 }
 
 // Write a `metadata.json` file at the top level of a portable R installation,
@@ -2259,6 +2317,82 @@ Usage: /lib/ld-musl-x86_64.so.1 [options] [--] pathname\n";
         let sha = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824";
         assert!(check_sha256(&file, sha).is_ok());
         assert!(check_sha256(&file, &"0".repeat(64)).is_err());
+    }
+
+    // Create the bundled library directory of a portable R installation, with
+    // the given library file names in it.
+    fn write_bundled_libs(root: &Path, names: &[&str]) -> PathBuf {
+        let libs = root.join("lib").join("R").join("lib").join(".libs");
+        std::fs::create_dir_all(&libs).unwrap();
+        for name in names {
+            std::fs::write(libs.join(name), b"").unwrap();
+        }
+        libs
+    }
+
+    #[test]
+    fn shim_bundled_xcursor_links_to_libxau() {
+        let dir = tempfile::tempdir().unwrap();
+        let libs = write_bundled_libs(
+            dir.path(),
+            &["libX11-6f69f3d8.so.6", "libXau-54347979.so.6", "libcurl.so"],
+        );
+        shim_bundled_xcursor(dir.path()).unwrap();
+        let link = libs.join("libXcursor.so.1");
+        assert_eq!(
+            std::fs::read_link(&link).unwrap(),
+            PathBuf::from("libXau-54347979.so.6")
+        );
+        // The shim must be loadable, i.e. the link must resolve.
+        assert!(link.exists());
+    }
+
+    #[test]
+    fn shim_bundled_xcursor_falls_back_to_libx11() {
+        let dir = tempfile::tempdir().unwrap();
+        let libs = write_bundled_libs(dir.path(), &["libX11-6f69f3d8.so.6"]);
+        shim_bundled_xcursor(dir.path()).unwrap();
+        assert_eq!(
+            std::fs::read_link(libs.join("libXcursor.so.1")).unwrap(),
+            PathBuf::from("libX11-6f69f3d8.so.6")
+        );
+    }
+
+    #[test]
+    fn shim_bundled_xcursor_is_idempotent() {
+        let dir = tempfile::tempdir().unwrap();
+        let libs = write_bundled_libs(
+            dir.path(),
+            &["libX11-6f69f3d8.so.6", "libXau-54347979.so.6"],
+        );
+        shim_bundled_xcursor(dir.path()).unwrap();
+        shim_bundled_xcursor(dir.path()).unwrap();
+        assert_eq!(
+            std::fs::read_link(libs.join("libXcursor.so.1")).unwrap(),
+            PathBuf::from("libXau-54347979.so.6")
+        );
+    }
+
+    #[test]
+    fn shim_bundled_xcursor_skips_builds_that_need_no_shim() {
+        // A build that bundles its own libXcursor is left alone.
+        let dir = tempfile::tempdir().unwrap();
+        let libs = write_bundled_libs(
+            dir.path(),
+            &["libX11-6f69f3d8.so.6", "libXcursor-1234abcd.so.1"],
+        );
+        shim_bundled_xcursor(dir.path()).unwrap();
+        assert!(!libs.join("libXcursor.so.1").exists());
+
+        // So is a build without a bundled libX11 ...
+        let dir = tempfile::tempdir().unwrap();
+        let libs = write_bundled_libs(dir.path(), &["libcurl-52199be6.so.4"]);
+        shim_bundled_xcursor(dir.path()).unwrap();
+        assert!(!libs.join("libXcursor.so.1").exists());
+
+        // ... and an installation with no bundled libraries at all.
+        let dir = tempfile::tempdir().unwrap();
+        assert!(shim_bundled_xcursor(dir.path()).is_ok());
     }
 
     #[test]
