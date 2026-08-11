@@ -19,6 +19,17 @@ build for your platform, rig falls back to a portable build automatically.
 Admin-mode portable builds are installed into `/opt/R/<version>`, just like
 distro-specific builds.
 
+The portable builds bundle the fontconfig library, but no fontconfig
+configuration and no fonts, so on a minimal system R cannot render text at
+all. After installing a portable build rig therefore writes a `fonts.conf`
+and downloads a small set of fallback fonts, next to the R installations
+(see `rig system dirs --fonts`), and points R at them. The configuration
+also lists the standard system font directories, so your own fonts keep
+working. Use `--without-fonts` to skip the font download and use only the
+fonts that are already installed on the system. Setting `FONTCONFIG_FILE`
+yourself overrides all of this. Set `RIG_FONTS_URL` (and optionally
+`RIG_FONTS_SHA256`) to download the fonts from a mirror instead.
+
 The desired R version can be specified in various ways:
 
 - `rig add devel` adds the latest available development version,

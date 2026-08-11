@@ -26,6 +26,8 @@ teardown() {
     echo "$output" | grep -q "^R root  */opt/R$"
     echo "$output" | grep -q "^Binary dir  */usr/local/bin$"
     echo "$output" | grep -q "^Config file  */"
+    # the fontconfig dir is Linux only
+    echo "$output" | grep -q "^Fonts dir  */opt/R/fontconfig$"
     # rtools-dir is Windows only
     echo "$output" | grep -vq "^Rtools root"
 
@@ -33,6 +35,7 @@ teardown() {
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q '"r_root": "/opt/R"'
     echo "$output" | grep -q '"arch":'
+    echo "$output" | grep -q '"fonts_dir": "/opt/R/fontconfig"'
     echo "$output" | grep -vq '"rtools_root"'
 
     run rig -q --json system dirs
@@ -68,9 +71,20 @@ teardown() {
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "/[.]local/bin$"
 
+    # the fontconfig dir sits next to the R installations, in both modes
+    run rig -q system dirs --fonts
+    [[ "$status" -eq 0 ]]
+    [[ "$output" = "/opt/R/fontconfig" ]]
+    run rig -q --user system dirs --fonts
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "/[.]local/share/rig/fontconfig$"
+    run env RIG_R_INSTALL_DIR=/tmp/rig-r rig -q system dirs --fonts
+    [[ "$output" = "/tmp/fontconfig" ]]
+
     # the single directory and the overview agree
     run rig -q system dirs --json
     echo "$output" | grep -q "\"r_root\": \"$(rig -q system dirs --r)\""
+    echo "$output" | grep -q "\"fonts_dir\": \"$(rig -q system dirs --fonts)\""
 
     # the selectors are mutually exclusive and cannot be combined with --json
     run rig -q system dirs --r --binary

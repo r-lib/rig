@@ -1,6 +1,6 @@
 // The directories rig uses: `rig system dirs` prints all of them, and with one
-// of the `--r`, `--rtools`, `--binary`, `--data`, `--cache` and `--log` flags
-// it prints a single one, as a bare path, for use in scripts.
+// of the `--r`, `--rtools`, `--binary`, `--data`, `--fonts`, `--cache` and
+// `--log` flags it prints a single one, as a bare path, for use in scripts.
 //
 // All of these report the *effective* values, i.e. what rig will actually use,
 // after applying the mode, the RIG_* environment variables and the config file.
@@ -10,8 +10,9 @@
 // is exactly when the answer is most useful.
 //
 // This module is cross-platform, with #[cfg(target_os = "windows")] islands for
-// the Rtools root and the architecture-dependent Windows R roots, in the style
-// of src/platform.rs. It is deliberately not part of src/lib.rs, which is the
+// the Rtools root and the architecture-dependent Windows R roots, and a
+// #[cfg(target_os = "linux")] one for the fontconfig directory, in the style of
+// src/platform.rs. It is deliberately not part of src/lib.rs, which is the
 // macOS menu bar app's static library and does not include command modules.
 //
 // Note: the module name is safe as long as rig does not depend on the `dirs`
@@ -30,7 +31,7 @@ use crate::output::OUTPUT;
 use crate::utils::{get_binary_dir, get_mode};
 
 #[cfg(target_os = "linux")]
-use crate::linux::get_r_root;
+use crate::linux::{get_fontconfig_dir, get_r_root};
 #[cfg(target_os = "macos")]
 use crate::macos::get_r_root;
 #[cfg(target_os = "windows")]
@@ -51,6 +52,10 @@ pub struct RigDirs {
     pub binary_dir: String,
     pub config_file: String,
     pub data_dir: String,
+    // Where rig keeps the fonts.conf and the fallback fonts for the portable R
+    // builds. Linux only: the macOS and Windows R builds ship their own.
+    #[cfg(target_os = "linux")]
+    pub fonts_dir: String,
     pub cache_dir: String,
     pub logs_dir: String,
 }
@@ -132,6 +137,8 @@ pub fn rig_dirs(arch: &str) -> Result<RigDirs, Box<dyn Error>> {
         binary_dir: get_binary_dir()?,
         config_file: path_string(crate::config::config_file_path()?),
         data_dir: path_string(get_data_dir()?),
+        #[cfg(target_os = "linux")]
+        fonts_dir: path_string(get_fontconfig_dir()?),
         cache_dir: path_string(get_cache_dir()?),
         logs_dir: path_string(get_logs_dir()?),
     })
@@ -148,6 +155,8 @@ fn dirs_rows(dirs: &RigDirs) -> Vec<(&'static str, &str)> {
     rows.push(("Binary dir", dirs.binary_dir.as_str()));
     rows.push(("Config file", dirs.config_file.as_str()));
     rows.push(("Data dir", dirs.data_dir.as_str()));
+    #[cfg(target_os = "linux")]
+    rows.push(("Fonts dir", dirs.fonts_dir.as_str()));
     rows.push(("Cache dir", dirs.cache_dir.as_str()));
     rows.push(("Logs dir", dirs.logs_dir.as_str()));
     rows
@@ -155,7 +164,7 @@ fn dirs_rows(dirs: &RigDirs) -> Vec<(&'static str, &str)> {
 
 // The flags that select a single directory, in the order they are reported.
 // clap makes them mutually exclusive, via the `dir` argument group.
-const SELECTORS: [&str; 6] = ["r", "rtools", "binary", "data", "cache", "log"];
+const SELECTORS: [&str; 7] = ["r", "rtools", "binary", "data", "fonts", "cache", "log"];
 
 fn selected_dir(args: &ArgMatches) -> Option<&'static str> {
     SELECTORS.into_iter().find(|sel| args.get_flag(sel))
@@ -185,6 +194,12 @@ pub fn sc_system_dirs(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Bo
             }
             "binary" => println!("{}", get_binary_dir()?),
             "data" => println!("{}", path_string(get_data_dir()?)),
+            "fonts" => {
+                // On macOS and Windows this prints nothing, like `--rtools` off
+                // Windows, so that scripts can call it unconditionally.
+                #[cfg(target_os = "linux")]
+                println!("{}", path_string(get_fontconfig_dir()?));
+            }
             "cache" => println!("{}", path_string(get_cache_dir()?)),
             "log" => println!("{}", path_string(get_logs_dir()?)),
             _ => unreachable!(),
@@ -259,6 +274,8 @@ mod tests {
             binary_dir: "binary-dir".to_string(),
             config_file: "config-file".to_string(),
             data_dir: "data-dir".to_string(),
+            #[cfg(target_os = "linux")]
+            fonts_dir: "fonts-dir".to_string(),
             cache_dir: "cache-dir".to_string(),
             logs_dir: "logs-dir".to_string(),
         };
@@ -267,13 +284,11 @@ mod tests {
         if cfg!(target_os = "windows") {
             expected.push("rtools_root");
         }
-        expected.extend([
-            "binary_dir",
-            "config_file",
-            "data_dir",
-            "cache_dir",
-            "logs_dir",
-        ]);
+        expected.extend(["binary_dir", "config_file", "data_dir"]);
+        if cfg!(target_os = "linux") {
+            expected.push("fonts_dir");
+        }
+        expected.extend(["cache_dir", "logs_dir"]);
 
         // serde_json's Map sorts its keys, so compare the key set here and the
         // order of the actual output separately, below.

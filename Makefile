@@ -287,7 +287,14 @@ rig-macos-%-$(VERSION).tar.gz: rig-$(VERSION)-macOS-%.pkg
 README.md: README.qmd website/_partials/intro.md website/_partials/feedback.md
 	quarto render README.qmd --to gfm
 
-.PHONY: help readme docs docs-preview cli-reference
+.PHONY: help readme docs docs-preview cli-reference fonts-asset
+
+# Build the fallback font asset that rig downloads for the portable Linux R
+# builds. This is published once, to its own non-moving GitHub release tag, and
+# is not part of a rig release; see tools/make-fonts-asset.sh.
+fonts-asset:
+	./tools/make-fonts-asset.sh
+
 # Regenerate src/help-generated.in (the colored ANSI short `about` and long
 # `--help` strings) from the Markdown sources in src/help/*.md. Each file's lead
 # paragraph is the short summary, the rest is the long help. Run after editing

@@ -114,6 +114,28 @@
 </details>
 
 <details>
+<summary>Why does rig install fonts on Linux?</summary>
+>
+> The portable R builds rig installs on Linux bundle the fontconfig
+> library, but not its configuration and not any fonts. On a minimal
+> system — a slim container, Alpine, a bare server — R then has nothing to
+> render text with, and crashes on the first plot.
+>
+> So after installing a portable build, `rig add` writes a `fonts.conf`
+> and downloads a small subset of the DejaVu fonts next to the R
+> installations, and sets `FONTCONFIG_FILE` in the R installation's base
+> `Rprofile` to point at the configuration. Run `rig system dirs --fonts`
+> to see where they are.
+>
+> The configuration also lists the standard system font directories
+> (`/usr/share/fonts`, `~/.local/share/fonts`, ...), so your own fonts
+> keep working. If you only want the configuration and not the extra
+> fonts, use `rig add --without-fonts`. If you set `FONTCONFIG_FILE`
+> yourself, rig's setting is ignored.
+>
+</details>
+
+<details>
 <summary>Which domains does rig download files from?</summary>
 >
 > Here is the list of domains that you need to enable in your proxy.
@@ -140,4 +162,7 @@
 >   https://github.com/fxcoudert/gfortran-for-macOS/releases and whatever
 >   domains Homebrew is using, to download system packages for
 >   `rig sysreqs` on macOS.
+> - `rig add` downloads https://curl.se/ca/cacert.pem (the CA bundle) and
+>   the fallback fonts from https://github.com/r-lib/rig/releases for the
+>   portable Linux R builds.
 </details>

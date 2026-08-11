@@ -371,6 +371,21 @@ pub fn rig_app() -> Command {
     }
 
     {
+        cmd_add = cmd_add.arg(
+            Arg::new("without-fonts")
+                .help(
+                    "Do not download fallback fonts. rig still writes the\n\
+                    fontconfig configuration, but R will only see the fonts\n\
+                    that are already installed on the system.",
+                )
+                .long("without-fonts")
+                .num_args(0)
+                .required(false)
+                .platform("linux"),
+        );
+    }
+
+    {
         cmd_add = cmd_add
             .arg(
                 Arg::new("without-translations")
@@ -850,9 +865,12 @@ pub fn rig_app() -> Command {
         .arg(dir_arg("rtools", "Print the Rtools installation root only.").platform("windows"))
         .arg(dir_arg("binary", "Print the quick link directory only."))
         .arg(dir_arg("data", "Print rig's data directory only."))
+        .arg(dir_arg("fonts", "Print the fontconfig directory only.").platform("linux"))
         .arg(dir_arg("cache", "Print rig's cache directory only."))
         .arg(dir_arg("log", "Print rig's log directory only.").alias("logs"))
-        .group(ArgGroup::new("dir").args(["r", "rtools", "binary", "data", "cache", "log"]))
+        .group(
+            ArgGroup::new("dir").args(["r", "rtools", "binary", "data", "fonts", "cache", "log"]),
+        )
         // `--arch` only changes the answer on Windows, where the admin mode R
         // installation root is architecture dependent, so it is hidden
         // elsewhere. It is still defined on every platform, so that scripts do
@@ -2001,14 +2019,15 @@ mod tests {
 
     #[test]
     fn test_system_dirs_selectors() {
-        for sel in ["r", "rtools", "binary", "data", "cache", "log"] {
-            // `--rtools` is hidden off Windows, but it must still parse, so
-            // that scripts can call it unconditionally.
+        for sel in ["r", "rtools", "binary", "data", "fonts", "cache", "log"] {
+            // `--rtools` is hidden off Windows and `--fonts` off Linux, but
+            // they must still parse, so that scripts can call them
+            // unconditionally.
             let m = sysargs(&["rig", "system", "dirs", &format!("--{}", sel)]);
             let dirs = m.subcommand_matches("dirs").unwrap();
             assert!(dirs.get_flag(sel), "--{} is not set", sel);
             // Setting one must not set any of the others.
-            for other in ["r", "rtools", "binary", "data", "cache", "log"] {
+            for other in ["r", "rtools", "binary", "data", "fonts", "cache", "log"] {
                 assert_eq!(dirs.get_flag(other), other == sel);
             }
         }

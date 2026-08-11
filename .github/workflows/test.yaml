@@ -560,6 +560,15 @@ jobs:
         R -q -e 'install.packages("filelock", type = "source", repos = "https://cloud.r-project.org")'
         R -q -e 'library(filelock)'
 
+    - name: Render text with the cairo device
+      run: |
+        rig system dirs --fonts
+        ls "$(rig system dirs --fonts)"
+        Rscript -e 'f <- tempfile(fileext = ".png"); png(f); plot(1); text(1, 1, "hello"); dev.off(); stopifnot(file.info(f)$size > 1000)'
+        # --vanilla skips Renviron.site, so this checks that FONTCONFIG_FILE
+        # is set from the base Rprofile.
+        Rscript --vanilla -e 'f <- tempfile(fileext = ".png"); png(f); plot(1); text(1, 1, "hello"); dev.off(); stopifnot(file.info(f)$size > 1000)'
+
   linux-user-mode-aarch64:
     if: ${{ github.event.inputs.inplinuxaarch64 == '' || github.event.inputs.inplinuxaarch64 == 'yes' }}
     needs: linux-build-aarch64
@@ -599,6 +608,68 @@ jobs:
         R -q -e 'R.home()'
         R -q -e 'install.packages("filelock", type = "source", repos = "https://cloud.r-project.org")'
         R -q -e 'library(filelock)'
+
+    - name: Render text with the cairo device
+      run: |
+        rig system dirs --fonts
+        ls "$(rig system dirs --fonts)"
+        Rscript -e 'f <- tempfile(fileext = ".png"); png(f); plot(1); text(1, 1, "hello"); dev.off(); stopifnot(file.info(f)$size > 1000)'
+        # --vanilla skips Renviron.site, so this checks that FONTCONFIG_FILE
+        # is set from the base Rprofile.
+        Rscript --vanilla -e 'f <- tempfile(fileext = ".png"); png(f); plot(1); text(1, 1, "hello"); dev.off(); stopifnot(file.info(f)$size > 1000)'
+
+  # The real regression test for the fontconfig setup: a container with no
+  # fontconfig configuration and no fonts at all, which is where the portable
+  # R builds used to crash on the first plot.
+  linux-user-mode-no-fontconfig:
+    if: ${{ github.event.inputs.inplinuxx8664 == '' || github.event.inputs.inplinuxx8664 == 'yes' }}
+    needs: linux-build-x86_64
+    runs-on: ubuntu-latest
+    name: Linux user mode, no system fontconfig (x86_64)
+    container: debian:13-slim
+    env:
+      RUST_BACKTRACE: 1
+      RIG_MODE: user
+
+    steps:
+    - name: Install the bare minimum
+      run: |
+        apt-get update
+        apt-get install -y --no-install-recommends ca-certificates curl
+        # Deliberately no `fontconfig` and no font package.
+        test ! -e /etc/fonts
+
+    - name: Download rig from artifacts
+      uses: actions/download-artifact@v8
+      with:
+        name: rig-linux-x86_64
+        path: .
+
+    - name: Install rig into ~/.local
+      run: |
+        mkdir -p "$HOME/.local"
+        tar xzf rig-linux-*.tar.gz -C "$HOME/.local"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+    - name: Install R
+      run: |
+        rig add release
+        rig ls
+
+    - name: Render text with the cairo device
+      run: |
+        ls "$(rig system dirs --fonts)/fonts"
+        Rscript -e 'f <- tempfile(fileext = ".png"); png(f); plot(1); text(1, 1, "hello"); dev.off(); stopifnot(file.info(f)$size > 1000)'
+        Rscript --vanilla -e 'f <- tempfile(fileext = ".png"); png(f); plot(1); text(1, 1, "hello"); dev.off(); stopifnot(file.info(f)$size > 1000)'
+
+    - name: --without-fonts is idempotent and keeps the existing fonts
+      run: |
+        rig add oldrel --without-fonts
+        # The fonts an earlier install downloaded must still be configured.
+        grep -q "$(rig system dirs --fonts)/fonts" "$(rig system dirs --fonts)/fonts.conf"
+        # And exactly one rig block in the base Rprofile, after two installs.
+        rig add release
+        test "$(grep -c '## rig FONTCONFIG_FILE start' "$(rig system dirs --r)/current/lib/R/library/base/R/Rprofile")" = 1
 
   windows-user-mode:
     if: ${{ github.event.inputs.inpwindows == '' || github.event.inputs.inpwindows == 'yes' }}

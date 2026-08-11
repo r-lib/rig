@@ -82,6 +82,11 @@ teardown() {
     run rig -q system dirs --rtools
     [[ "$status" -eq 0 ]]
     [[ -z "$output" ]]
+
+    # hidden no-op off Linux
+    run rig -q system dirs --fonts
+    [[ "$status" -eq 0 ]]
+    [[ -z "$output" ]]
 }
 
 @test "add" {

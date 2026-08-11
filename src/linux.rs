@@ -344,6 +344,10 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             OUTPUT.warn(&format!("Could not set up CA certificate bundle: {}", e));
             warn!("Could not set up CA certificate bundle: {}", e);
         }
+        // Unlike the CA bundle this is fatal: the portable builds bundle
+        // libfontconfig but no fontconfig configuration and no fonts, so
+        // without this R crashes on the first plot on a minimal system.
+        setup_user_fonts(&dirname.to_string(), !args.get_flag("without-fonts"), false)?;
     }
 
     library_update_rprofile(&dirname.to_string())?;
@@ -1681,13 +1685,21 @@ const CERT_BLOCK_END: &str = "## rig SSL_CERT_FILE end";
 // re-running with a new path is idempotent and leaves the rest of the file
 // untouched.
 fn render_renviron_cert(existing: &str, cert: &str) -> String {
-    // Keep everything outside a previous rig block, dropping the old block.
+    let body = format!("SSL_CERT_FILE={}\nCURL_CA_BUNDLE={}", cert, cert);
+    render_fenced_block(existing, CERT_BLOCK_START, CERT_BLOCK_END, &body)
+}
+
+// Replace (or append) a rig-owned block delimited by `start` and `end` in
+// `existing`, keeping everything outside it. Used for both the `Renviron.site`
+// CA-bundle block and the base `Rprofile` fontconfig block, so re-running with
+// a new path updates the block in place instead of duplicating it.
+fn render_fenced_block(existing: &str, start: &str, end: &str, body: &str) -> String {
     let mut kept: Vec<String> = Vec::new();
     let mut in_block = false;
     for line in existing.lines() {
         match line.trim() {
-            CERT_BLOCK_START => in_block = true,
-            CERT_BLOCK_END => in_block = false,
+            l if l == start => in_block = true,
+            l if l == end => in_block = false,
             _ if !in_block => kept.push(line.to_string()),
             _ => {}
         }
@@ -1701,10 +1713,7 @@ fn render_renviron_cert(existing: &str, cert: &str) -> String {
     if !out.is_empty() {
         out.push('\n');
     }
-    out.push_str(&format!(
-        "{}\nSSL_CERT_FILE={}\nCURL_CA_BUNDLE={}\n{}\n",
-        CERT_BLOCK_START, cert, cert, CERT_BLOCK_END
-    ));
+    out.push_str(&format!("{}\n{}\n{}\n", start, body, end));
     out
 }
 
@@ -1737,6 +1746,286 @@ pub fn sc_system_update_certs() -> Result<(), Box<dyn Error>> {
         OUTPUT.success(&format!("Configured CA certificate bundle for R {}", ver));
         info!("Configured CA certificate bundle for R {}", ver);
     }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Fontconfig setup for the portable R builds.
+//
+// The portable builds bundle libfontconfig (and cairo, pango, freetype), but
+// not fontconfig's *data*: no `/etc/fonts/fonts.conf` and no font files. On a
+// host that has no system fontconfig — slim containers, Alpine, bare servers —
+// R then dies as soon as it draws text. Posit's own DEB/RPM packages of the
+// same builds paper over this with a `fontconfig` package dependency; the
+// tarball rig installs has no such mechanism.
+//
+// So rig writes its own `fonts.conf` next to the R installations, downloads a
+// small fallback font set, and points R at the config with `FONTCONFIG_FILE`.
+// The config also lists the usual system font directories, so a host that does
+// have fonts keeps using them.
+
+// The fallback fonts rig installs: a subset of DejaVu, built by
+// `tools/make-fonts-asset.sh` and published to its own non-moving release tag.
+// Update both constants together when the asset changes.
+pub const RIG_FONTS_URL: &str =
+    "https://github.com/r-lib/rig/releases/download/assets-fonts-v1/rig-fonts-1.tar.gz";
+pub const RIG_FONTS_SHA256: &str =
+    "e4ea3f61675bd90761eff7e4c9864f9b3a688ed36c332beb03c87eea4c88c771";
+
+// The fontconfig directory: `fonts.conf` plus the downloaded `fonts/`. Like the
+// CA bundle this is version independent, so it lives next to the R
+// installations rather than inside one of them, i.e.
+// `~/.local/share/rig/fontconfig` in user mode and `/opt/R/fontconfig` for
+// admin-mode portable installations.
+pub fn get_fontconfig_dir() -> Result<PathBuf, Box<dyn Error>> {
+    match get_r_install_dir()? {
+        Some(rdir) => {
+            // `r-install-dir` is `<data>/r`; keep the fonts in a sibling.
+            let data = Path::new(&rdir)
+                .parent()
+                .ok_or_else(|| SimpleError::new("Cannot determine rig data directory"))?;
+            Ok(data.join("fontconfig"))
+        }
+        None => Ok(Path::new(&get_r_root()?).join("fontconfig")),
+    }
+}
+
+fn get_fonts_dir() -> Result<PathBuf, Box<dyn Error>> {
+    Ok(get_fontconfig_dir()?.join("fonts"))
+}
+
+fn get_fonts_conf_path() -> Result<PathBuf, Box<dyn Error>> {
+    Ok(get_fontconfig_dir()?.join("fonts.conf"))
+}
+
+// The font asset to download, and the checksum to check it against. Both can be
+// overridden, to point rig at a mirror or a local copy; overriding the URL
+// without also overriding the checksum turns the check off, because the
+// built-in one cannot possibly match.
+fn get_fonts_source() -> (String, Option<String>) {
+    match std::env::var("RIG_FONTS_URL") {
+        Ok(url) if !url.is_empty() => (url, std::env::var("RIG_FONTS_SHA256").ok()),
+        _ => (
+            RIG_FONTS_URL.to_string(),
+            Some(
+                std::env::var("RIG_FONTS_SHA256").unwrap_or_else(|_| RIG_FONTS_SHA256.to_string()),
+            ),
+        ),
+    }
+}
+
+// Download and unpack the fallback fonts, unless they are already there. Errors
+// are fatal: an R that cannot render text is worse than a failed `rig add`, and
+// `rig add --without-fonts` is the supported way to skip this.
+fn download_fonts(force: bool) -> Result<(), Box<dyn Error>> {
+    let fonts = get_fonts_dir()?;
+    if fonts.join("DejaVuSans.ttf").exists() && !force {
+        debug!("Fallback fonts already present at {}", fonts.display());
+        return Ok(());
+    }
+
+    let (url, sha256) = get_fonts_source();
+    let tmp_dir = std::env::temp_dir().join("rig");
+    std::fs::create_dir_all(&tmp_dir)?;
+    let filename = basename(&url).unwrap_or("rig-fonts.tar.gz");
+    let target = tmp_dir.join(filename);
+
+    OUTPUT.status(&format!(
+        "Downloading fallback fonts {} -> {}",
+        url,
+        fonts.display()
+    ));
+    info!("Downloading fallback fonts {} -> {}", url, target.display());
+    let client = &reqwest::Client::new();
+    if let Err(e) = download_file(client, &url, target.as_os_str()) {
+        bail!(
+            "Cannot download the fallback fonts from {}: {}.\n        \
+             Use `rig add --without-fonts` to install R without them.",
+            url,
+            e
+        );
+    }
+
+    if let Some(sha256) = sha256 {
+        if let Err(e) = check_sha256(&target, &sha256) {
+            // A corrupt or tampered download must not be left in the cache, or
+            // every later run would fail on the same file.
+            let _ = std::fs::remove_file(&target);
+            return Err(e);
+        }
+    } else {
+        debug!("No checksum for {}, skipping the check", url);
+    }
+
+    let root = get_fontconfig_dir()?;
+    std::fs::create_dir_all(&root)?;
+    // Unpack into a staging directory next to the destination, so the final
+    // rename stays on the same filesystem, as in `safe_user_install`.
+    let staging = root.join(format!(".rig-extract-{}", std::process::id()));
+    if staging.exists() {
+        std::fs::remove_dir_all(&staging)?;
+    }
+    std::fs::create_dir_all(&staging)?;
+
+    let install = || -> Result<(), Box<dyn Error>> {
+        unpack_tar_gz(&target, &staging)?;
+        let content = staging.join("fonts");
+        if !content.exists() {
+            bail!(
+                "Invalid font archive at {}: no top level `fonts` directory",
+                target.display()
+            );
+        }
+        if fonts.exists() {
+            std::fs::remove_dir_all(&fonts)?;
+        }
+        std::fs::rename(&content, &fonts)?;
+        Ok(())
+    };
+    let result = install();
+    let _ = std::fs::remove_dir_all(&staging);
+    result?;
+
+    OUTPUT.success(&format!("Installed fallback fonts to {}", fonts.display()));
+    info!("Installed fallback fonts to {}", fonts.display());
+    Ok(())
+}
+
+fn check_sha256(path: &Path, expected: &str) -> Result<(), Box<dyn Error>> {
+    use sha2::{Digest, Sha256};
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    std::io::copy(&mut file, &mut hasher)?;
+    let got = hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect::<String>();
+    if got != expected {
+        bail!(
+            "Checksum mismatch for {}: expected {}, got {}",
+            path.display(),
+            expected,
+            got
+        );
+    }
+    debug!("Checksum of {} is {}, as expected", path.display(), got);
+    Ok(())
+}
+
+// The `fonts.conf` rig installs. It is self-contained on purpose: it does not
+// include the host's fontconfig configuration, whose syntax may be newer than
+// the libfontconfig bundled in the R build understands. It does list the
+// standard system font directories, so system and user fonts still work.
+//
+// `prefix="xdg"` needs fontconfig >= 2.11.91; the bundled ones are much newer.
+fn render_fonts_conf(rig_fonts_dir: Option<&Path>) -> String {
+    let rig_dir = match rig_fonts_dir {
+        Some(dir) => format!("  <dir>{}</dir>\n", xml_escape(&dir.display().to_string())),
+        None => String::new(),
+    };
+    format!(
+        r#"<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+<!-- Generated by rig. Do not edit, rig rewrites this file. -->
+<fontconfig>
+  <dir>/usr/share/fonts</dir>
+  <dir>/usr/local/share/fonts</dir>
+  <dir>/usr/share/X11/fonts/Type1</dir>
+  <dir>/usr/share/X11/fonts/TTF</dir>
+  <dir prefix="xdg">fonts</dir>
+  <dir>~/.fonts</dir>
+{rig_dir}  <cachedir prefix="xdg">fontconfig</cachedir>
+  <cachedir>~/.cache/fontconfig</cachedir>
+
+  <!-- R's cairo and X11 devices ask for these family names. -->
+  <alias><family>sans</family><accept><family>sans-serif</family></accept></alias>
+  <alias><family>mono</family><accept><family>monospace</family></accept></alias>
+  <alias><family>Helvetica</family><accept><family>sans-serif</family></accept></alias>
+  <alias><family>Arial</family><accept><family>sans-serif</family></accept></alias>
+  <alias><family>Times</family><accept><family>serif</family></accept></alias>
+  <alias><family>Courier</family><accept><family>monospace</family></accept></alias>
+
+  <!-- Fall back to the fonts rig installs when the host has none. -->
+  <alias><family>sans-serif</family><prefer><family>DejaVu Sans</family></prefer></alias>
+  <alias><family>serif</family><prefer><family>DejaVu Serif</family></prefer></alias>
+  <alias><family>monospace</family><prefer><family>DejaVu Sans Mono</family></prefer></alias>
+
+  <!-- Anything still unresolved gets the default sans face. -->
+  <match target="pattern">
+    <test qual="all" name="family" compare="not_eq"><string>sans-serif</string></test>
+    <test qual="all" name="family" compare="not_eq"><string>serif</string></test>
+    <test qual="all" name="family" compare="not_eq"><string>monospace</string></test>
+    <edit name="family" mode="append_last"><string>sans-serif</string></edit>
+  </match>
+</fontconfig>
+"#
+    )
+}
+
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+// Write `fonts.conf`. The rig font directory is listed whenever it actually
+// exists, so `--without-fonts` on a later install does not silently drop the
+// fonts an earlier install downloaded.
+fn write_fonts_conf() -> Result<PathBuf, Box<dyn Error>> {
+    let path = get_fonts_conf_path()?;
+    let fonts = get_fonts_dir()?;
+    let rig_fonts = if fonts.is_dir() { Some(&*fonts) } else { None };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    debug!("Writing fontconfig configuration to {}", path.display());
+    std::fs::write(&path, render_fonts_conf(rig_fonts))?;
+    Ok(path)
+}
+
+const FONTS_BLOCK_START: &str = "## rig FONTCONFIG_FILE start";
+const FONTS_BLOCK_END: &str = "## rig FONTCONFIG_FILE end";
+
+// The `FONTCONFIG_FILE` setting goes into the *base* `Rprofile` rather than
+// `Renviron.site`, because `R --vanilla` skips the latter, and a `--vanilla` R
+// that segfaults on the first `plot()` is exactly the case we are fixing. The
+// R code has to parse on every R version rig can install, so no `|>` and no
+// `\(x)`.
+fn render_rprofile_fontconfig(existing: &str, fonts_conf: &str) -> String {
+    let body = format!(
+        "local({{\n  \
+           fc <- \"{}\"\n  \
+           if (Sys.getenv(\"FONTCONFIG_FILE\") == \"\" && file.exists(fc))\n    \
+             Sys.setenv(FONTCONFIG_FILE = fc)\n\
+         }})",
+        fonts_conf.replace('\\', "\\\\").replace('"', "\\\"")
+    );
+    render_fenced_block(existing, FONTS_BLOCK_START, FONTS_BLOCK_END, &body)
+}
+
+fn configure_fontconfig(rver: &str, fonts_conf: &Path) -> Result<(), Box<dyn Error>> {
+    let rprofile = get_system_profile(rver)?;
+    let existing = std::fs::read_to_string(&rprofile).unwrap_or_default();
+    let out = render_rprofile_fontconfig(&existing, &fonts_conf.to_string_lossy());
+    debug!("Configuring FONTCONFIG_FILE in {}", rprofile.display());
+    std::fs::write(&rprofile, out)?;
+    Ok(())
+}
+
+// Set up fontconfig for a portable R installation: download the fallback fonts
+// (unless `--without-fonts`), (re)write `fonts.conf`, and point the R version at
+// it. Called automatically after a portable install.
+fn setup_user_fonts(rver: &str, with_fonts: bool, force: bool) -> Result<(), Box<dyn Error>> {
+    if with_fonts {
+        download_fonts(force)?;
+    } else {
+        debug!("Not downloading fallback fonts, --without-fonts was given");
+    }
+    let fonts_conf = write_fonts_conf()?;
+    configure_fontconfig(rver, &fonts_conf)?;
+    OUTPUT.success(&format!("Configured fontconfig for R {}", rver));
+    info!("Configured fontconfig for R {}", rver);
     Ok(())
 }
 
@@ -1900,6 +2189,76 @@ Usage: /lib/ld-musl-x86_64.so.1 [options] [--] pathname\n";
         // A second run with the same path is a no-op on the contents.
         let third = render_renviron_cert(&second, "/new/cacert.pem");
         assert_eq!(third, second);
+    }
+
+    #[test]
+    fn render_fonts_conf_lists_the_rig_font_dir() {
+        let dir = PathBuf::from("/home/u/.local/share/rig/fontconfig/fonts");
+        let with = render_fonts_conf(Some(&dir));
+        assert!(with.contains("<dir>/home/u/.local/share/rig/fontconfig/fonts</dir>"));
+        // The system directories are listed either way.
+        assert!(with.contains("<dir>/usr/share/fonts</dir>"));
+
+        let without = render_fonts_conf(None);
+        assert!(!without.contains("fontconfig/fonts</dir>"));
+        assert!(without.contains("<dir>/usr/share/fonts</dir>"));
+
+        // Byte-stable across calls, so re-running `rig add` does not churn the
+        // file.
+        assert_eq!(with, render_fonts_conf(Some(&dir)));
+    }
+
+    #[test]
+    fn render_fonts_conf_escapes_xml_in_the_path() {
+        // Unusual, but a `&` in $HOME must not produce invalid XML.
+        let dir = PathBuf::from("/home/a&b/.local/share/rig/fontconfig/fonts");
+        let out = render_fonts_conf(Some(&dir));
+        assert!(out.contains("<dir>/home/a&amp;b/.local/share/rig/fontconfig/fonts</dir>"));
+    }
+
+    #[test]
+    fn render_rprofile_fontconfig_into_empty_file() {
+        let out = render_rprofile_fontconfig("", "/home/u/.local/share/rig/fontconfig/fonts.conf");
+        assert!(out.starts_with(FONTS_BLOCK_START));
+        assert!(out.ends_with(&format!("{}\n", FONTS_BLOCK_END)));
+        assert!(out.contains("fc <- \"/home/u/.local/share/rig/fontconfig/fonts.conf\""));
+        assert!(out.contains("Sys.setenv(FONTCONFIG_FILE = fc)"));
+    }
+
+    #[test]
+    fn render_rprofile_fontconfig_preserves_the_library_block() {
+        // rig also owns a `## rig R_LIBS_USER` block in the same file; it must
+        // survive untouched.
+        let existing = "## rig R_LIBS_USER start\ninvisible(local({}))\n## rig R_LIBS_USER end\n";
+        let out = render_rprofile_fontconfig(existing, "/etc/fonts.conf");
+        assert!(out.contains("## rig R_LIBS_USER start"));
+        assert!(out.contains("## rig R_LIBS_USER end"));
+        assert!(out.contains("invisible(local({}))"));
+        assert!(out.contains("fc <- \"/etc/fonts.conf\""));
+    }
+
+    #[test]
+    fn render_rprofile_fontconfig_is_idempotent() {
+        let first = render_rprofile_fontconfig("options(warn = 1)\n", "/old/fonts.conf");
+        let second = render_rprofile_fontconfig(&first, "/new/fonts.conf");
+        assert_eq!(second.matches(FONTS_BLOCK_START).count(), 1);
+        assert_eq!(second.matches(FONTS_BLOCK_END).count(), 1);
+        assert!(!second.contains("/old/fonts.conf"));
+        assert!(second.starts_with("options(warn = 1)\n"));
+
+        let third = render_rprofile_fontconfig(&second, "/new/fonts.conf");
+        assert_eq!(third, second);
+    }
+
+    #[test]
+    fn check_sha256_accepts_the_right_digest() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("f");
+        std::fs::write(&file, b"hello").unwrap();
+        // sha256("hello")
+        let sha = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824";
+        assert!(check_sha256(&file, sha).is_ok());
+        assert!(check_sha256(&file, &"0".repeat(64)).is_err());
     }
 
     #[test]

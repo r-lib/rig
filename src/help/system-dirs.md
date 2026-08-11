@@ -3,8 +3,10 @@ Print the directories rig uses
 ## Description
 
 Print the directories rig uses: where R and (on Windows) Rtools is
-installed, where the quick links are created, and where rig keeps its own
-configuration, data, cache and log files.
+installed, where the quick links are created, where (on Linux) rig keeps
+the fontconfig configuration and the fallback fonts of the portable R
+builds, and where rig keeps its own configuration, data, cache and log
+files.
 
 The directories themselves may not exist.
 
@@ -37,3 +39,7 @@ directory that contains the Rtools directories. Use `rig list --json` and
 
 The Rtools installation root is only reported on Windows.
 On non-Windows platforms `--rtools` prints nothing and is hidden.
+
+The fontconfig directory is only reported on Linux, where it holds the
+`fonts.conf` and the fallback fonts that rig installs for the portable R
+builds. On non-Linux platforms `--fonts` prints nothing and is hidden.

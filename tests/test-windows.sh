@@ -154,6 +154,13 @@ teardown() {
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "rig.data.rtools$"
 
+    # hidden no-op off Linux
+    run rig -q system dirs --fonts
+    echo "status = ${status}"
+    echo "output = ${output}"
+    [[ "$status" -eq 0 ]]
+    [[ -z "$output" ]]
+
     # the selectors are mutually exclusive and cannot be combined with --json
     run rig -q system dirs --r --binary
     echo "status = ${status}"
