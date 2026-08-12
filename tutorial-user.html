@@ -556,6 +556,19 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <p>In <strong>user mode</strong> rig keeps everything inside your home directory, so <strong>it never needs <code>sudo</code> or an administrator account</strong>. Use this on a machine where you do not have administrator rights, or where you would rather not touch system directories.</p>
 <p>If you do administer the machine and want a conventional system-wide R, follow <a href="./tutorial-admin.html">Getting started in admin mode</a> instead. For the trade-offs between the two modes, see <a href="./admin-vs-user-mode.html">Admin mode vs user mode</a>.</p>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Warning
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>User mode is newer than admin mode and has seen less use, so you are more likely to run into rough edges with it. This is most true on Linux, where user mode relies on portable (manylinux or musl) R builds and manylinux R packages. If you can use an administrator account and do not need R in your home directory, <a href="./tutorial-admin.html">admin mode</a> is the more conservative choice today. Please <a href="https://github.com/r-lib/rig/issues">report</a> any problem you hit.</p>
+</div>
+</div>
 <section id="before-you-start" class="level2">
 <h2 class="anchored" data-anchor-id="before-you-start">0. Before you start</h2>
 <p><a href="./install.html">Install rig</a> first. Check that rig works and see where it puts things:</p>
@@ -785,6 +798,7 @@ Binary dir    /home/you/.local/bin
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb34"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> add release</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>No password prompt this time: everything is written under your home directory.</p>
 <p>In user mode rig always installs a <strong>portable</strong> R build, one that does not depend on your distribution’s packages, picked for your libc (glibc or musl). Very old glibc versions are not supported; if yours is too old, rig says so instead of installing a broken R. rig also downloads a CA certificate bundle and points R at it, so HTTPS works even where the system store is missing or stale; you can re-run that step with <code>rig system update-certs</code>.</p>
+<p>These portable builds are newer than the distro-specific builds that admin mode installs, and they are not as thoroughly tested yet, so you may hit the occasional rough edge with them. If that is a problem for you and you do have an administrator account, consider <a href="./tutorial-admin.html">admin mode</a> instead. Either way, please <a href="https://github.com/r-lib/rig/issues">report</a> what you run into.</p>
 <p>Besides unpacking R, <code>rig add</code> also configures the CRAN and <a href="https://p3m.dev/">P3M</a> repositories (P3M serves pre-compiled, self-contained Linux binaries, which makes installing packages faster and more robust), installs <a href="https://pak.r-lib.org/">pak</a>, sets R up to use a user package library, creates the quick links, and (if this is your first R version) makes the newly installed version the default.</p>
 </section>
 <section id="make-sure-.localbin-is-on-your-path-1" class="level2">
@@ -834,7 +848,7 @@ Binary dir    /home/you/.local/bin
 <p><code>rig add</code> installs pak by default, so you can install R packages straight away:</p>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb42"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a><span class="ex">R</span> <span class="at">-q</span> <span class="at">-e</span> <span class="st">'pak::pkg_install("dplyr")'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Packages go into a per-user, per-version library that rig configured R to create automatically, so packages for different R versions never collide.</p>
-<p>Many R packages need system libraries to build and run. pak can install those with your distribution’s package manager, but that needs <code>sudo</code>, which is exactly what user mode avoids. rig sets up P3M’s manylinux package repository binaries on glibc based Linux systems to fix this. These binary packages are self-contained and do not need any system libraries to run.</p>
+<p>Many R packages need system libraries to build and run. pak can install those with your distribution’s package manager, but that needs <code>sudo</code>, which is exactly what user mode avoids. rig sets up P3M’s manylinux package repository binaries on glibc based Linux systems to fix this. These binary packages are self-contained and do not need any system libraries to run. The manylinux repository is fairly new, though, and not as thoroughly tested as P3M’s distro-specific repositories, so occasional problems with individual packages are still to be expected.</p>
 <p>If P3M is missing a binary for a certain package, then you need to install this package form source. If the package needs system libraries, then you’ll need to install them yourself, or ask an administrator to install them.</p>
 <p>P3M does not have binary packages for musl libc based Linux distributions (e.g.&nbsp;Alpine Linux).</p>
 <p>If you want more than one library for the same R version, e.g.&nbsp;one per project, see the <a href="./reference/library.html"><code>rig library</code></a> command.</p>

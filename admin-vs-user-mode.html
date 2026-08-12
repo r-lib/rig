@@ -565,6 +565,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 
 <p>rig can manage R installations in one of two modes. The current default is <strong>admin mode</strong>: R is installed system-wide, shared by every user on the machine, and most operations need <code>sudo</code> or an administrator account. In <strong>user mode</strong> rig installs everything into your home directory and never needs elevated privileges.</p>
+<p>Admin mode is the older and better tested of the two, and it is what most rig users run today. User mode is newer, and on Linux it relies on portable (manylinux/musllinux) R builds and manylinux R packages that are still maturing. Pick admin mode if you can use an administrator account and want the best-trodden path; pick user mode if you cannot, or do not want to, touch system directories.</p>
 <section id="at-a-glance" class="level2">
 <h2 class="anchored" data-anchor-id="at-a-glance">At a glance</h2>
 <section id="pros-and-cons" class="level3">
@@ -580,45 +581,51 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>Best for</td>
-<td>most users and use cases</td>
-<td>shared servers, native Linux packages<sup>1</sup></td>
+<td>machines without admin rights</td>
+<td>shared servers, native Linux packages<sup>2</sup></td>
 </tr>
 <tr class="even">
+<td>Maturity</td>
+<td>newer, less tested, esp.&nbsp;on Linux<sup>1</sup></td>
+<td>oldest and best tested, current default</td>
+</tr>
+<tr class="odd">
 <td>Required privileges</td>
 <td>none</td>
 <td><code>sudo</code> / administrator for many operations</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>Shared between users</td>
 <td>no</td>
 <td>yes</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td>R install root</td>
 <td>in your home directory (see below)</td>
 <td>platform default (see below)</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>Needs <code>PATH</code> setup</td>
-<td>possibly<sup>1</sup></td>
+<td>possibly<sup>3</sup></td>
 <td>usually no</td>
 </tr>
-<tr class="even">
-<td>Supported Linux distros</td>
-<td>all glibc and musl distros<sup>2</sup></td>
-<td><a href="./install.html#id-supported-linux-distributions">selected</a><sup>3</sup></td>
-</tr>
 <tr class="odd">
+<td>Supported Linux distros</td>
+<td>all glibc and musl distros<sup>4</sup></td>
+<td><a href="./install.html#id-supported-linux-distributions">selected</a><sup>2</sup></td>
+</tr>
+<tr class="even">
 <td>Multiple patch versions on macOS</td>
 <td>yes</td>
-<td>no<sup>4</sup></td>
+<td>no<sup>5</sup></td>
 </tr>
 </tbody>
 </table>
 <ol type="1">
+<li><p>User mode is a recent addition to rig, so it has seen much less use than admin mode. This is most noticeable on Linux, where user mode always installs a portable R build and uses manylinux R packages; both are newer and less widely exercised than the distro-specific builds and packages that admin mode uses. Please <a href="https://github.com/r-lib/rig/issues">report</a> any problem you run into.</p></li>
+<li><p>In admin mode, on supported Linux distributions, rig installs R through the system package manager, so it is managed like any other distro package. R’s and R packages’ system libraries are shared with other users and also managed by the system package manager. System libraries for R packages can be automatically installed by <a href="https://pak.r-lib.org">pak</a>.</p></li>
 <li><p>In user mode, the rig binary directory must be on your <code>PATH</code> for the <code>R</code> and <code>Rscript</code> commands to be found. rig helps with this and patches your shell profiles if the R binary directory is not already on your <code>PATH</code>.</p></li>
 <li><p>In user mode, on Linux, rig supports all glibc (&gt;= 2.28) and musl (&gt;= 1.2) distros. It uses self-contained R builds that do not depend on the system package manager or system packages. It sets up Posit Package Manager’s manylinux R package repositories to install self-contained binary R packages.</p></li>
-<li><p>In admin mode, on supported Linux distributions, rig installs R through the system package manager, so it is managed like any other distro package. R’s and R packages’ system libraries are shared with other users and also managed by the system package manager. System libraries for R packages can be automatically installed by <a href="https://pak.r-lib.org">pak</a>.</p></li>
 <li><p>In admin mode on macOS, rig can only install one patch version of any given minor version of R. For example, if you install R 4.5.1, rig will remove any other 4.5.x version that is already installed.</p></li>
 </ol>
 </section>
@@ -686,24 +693,26 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p>Admin mode is the current default, for historical reasons. Previous versions of rig only supported admin mode. R is installed into the platform’s usual system location and rig creates startup links (<code>R</code>, <code>Rscript</code>), and versioned <code>R-4.5.1</code>-style quick links in a system-wide binary directory that is normally already on everyone’s <code>PATH</code>.</p>
 <p>Because these locations are outside your home directory, operations that write to them, e.g.&nbsp;adding or removing an R version, switching the default, creating the startup and quick links, switch to the root or administrator user as needed. On Unix rig runs <code>sudo</code> (prompting for your password); on Windows it elevates through a UAC prompt. On macOS admin mode also restricts the permissions of the system R library so that packages are not installed into it accidentally.</p>
 <p>Admin mode may be the right choice on a server where you have administrator rights and want a single shared R for everyone. It may also be the right choice on Linux if you want rig to install R and R’s and R packages’ system dependencies through the system package manager so that it is managed like any other distro package.</p>
+<p>It is also the mode with the most mileage on it: rig only supported admin mode for years, so if you have an administrator account and no reason to prefer user mode, this is the safer default today, on Linux in particular.</p>
 </section>
 <section id="user-mode" class="level2">
 <h2 class="anchored" data-anchor-id="user-mode">User mode</h2>
 <p>In user mode rig installs R entirely inside your home directory and creates the startup and quick links in a per-user binary directory. Nothing lives outside your account, so <strong>rig never needs <code>sudo</code> or an administrator account</strong> in this mode. It is designed for machines where you do not have, or do not want to use, elevated privileges.</p>
 <p>The one thing to take care of is your <code>PATH</code>: the rig binary directory (<code>~/.local/bin</code>, or <code>%USERPROFILE%\.local\bin</code> on Windows) must be on it for the <code>R</code> and <code>Rscript</code> commands to be found. The user-mode <a href="./install.html">install script</a> sets this up for you; if you install rig from an archive manually. rig also checks if your <code>PATH</code> is set up correctly, and if not, it patches your shell profiles on Unix and updates your user environment variables on Windows.</p>
-<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout callout-style-default callout-warning callout-titled">
 <div class="callout-header d-flex align-content-center">
 <div class="callout-icon-container">
 <i class="callout-icon"></i>
 </div>
 <div class="callout-title-container flex-fill">
-Note
+<span class="screen-reader-only">Warning</span>User mode is newer
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p>Admin mode is the default today, but a future version of rig will make <strong>user mode the default</strong>. If you want to future-proof your setup, you can opt into user mode (or admin mode) explicitly now with the steps below.</p>
+<p>User mode is a much more recent feature than admin mode, so it is less tested. On Linux especially: user mode always installs a portable (manylinux or musl) R build and uses manylinux R packages from P3M, and those are not as battle-hardened as the distro-specific builds and packages of admin mode. If you have an administrator account and no particular reason to keep R inside your home directory, admin mode is the more conservative choice for now. Either way, please <a href="https://github.com/r-lib/rig/issues">report</a> problems you hit.</p>
 </div>
 </div>
+<p>Whichever mode you decide on, you can pin it explicitly with the steps below, instead of relying on rig’s default.</p>
 </section>
 <section id="how-rig-picks-the-mode" class="level2">
 <h2 class="anchored" data-anchor-id="how-rig-picks-the-mode">How rig picks the mode</h2>

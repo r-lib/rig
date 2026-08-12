@@ -1279,6 +1279,7 @@ Run in user mode (overrides RIG_MODE and config)
 <li>Removes the system-wide <code>R-*</code> quick links and the <code>R</code>/<code>Rscript</code> links.</li>
 </ol>
 <p>Steps 3 and 4 remove files outside your home directory, so this command needs an administrator account or <code>sudo</code> on Unix, otherwise it will ask for your password.</p>
+<p>Note that admin mode is rig’s default and the better tested mode, so there is no need to switch a working admin-mode setup. On Linux in particular, user mode uses portable (manylinux or musl) R builds and manylinux R packages, which are newer and less tested than the distro-specific builds and packages of admin mode. To go back to admin mode, run <code>rig config set mode=admin</code> and reinstall the R versions you want.</p>
 <p>Use <code>--keep-install</code> to leave the admin-mode R installations in place (skipping step 3), and <code>--keep-links</code> to leave the system-wide links in place (skipping step 4). With both, nothing outside your home directory is touched and no administrator account or <code>sudo</code> is needed.</p>
 <section id="usage-16" class="level3">
 <h3 class="anchored" data-anchor-id="usage-16">Usage</h3>

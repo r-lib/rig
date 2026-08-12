@@ -515,10 +515,10 @@ ul.task-list li input[type="checkbox"] {
 <p>These tutorials walk you through your first R installation with rig, to running R and installing packages.</p>
 <p>See <a href="./admin-vs-user-mode.html">Admin mode vs user mode</a> for more details on the two modes and how to pick between them.</p>
 <ol type="1">
-<li><p><a href="./tutorial-user.html"><strong>Getting started in user mode</strong></a><br>
-rig installs everything into your home directory and does not need an administrator account. Best choice for most users.</p></li>
 <li><p><a href="./tutorial-admin.html"><strong>Getting started in admin mode</strong></a><br>
-R is installed system-wide and shared by everyone on the machine. You need an administrator account to do this, and rig asks for your password when it needs to.</p></li>
+R is installed system-wide and shared by everyone on the machine. You need an administrator account to do this, and rig asks for your password when it needs to. This is rig’s default mode, and the better tested one.</p></li>
+<li><p><a href="./tutorial-user.html"><strong>Getting started in user mode</strong></a><br>
+rig installs everything into your home directory and does not need an administrator account. Use it if you have no administrator rights, or do not want R in system directories. It is a newer mode, and less tested than admin mode, especially on Linux.</p></li>
 <li><p><a href="./tutorial-migrate.html"><strong>Migrate to user mode</strong></a><br>
 You already have an admin-mode rig setup and want to move it into your home directory.</p></li>
 </ol>

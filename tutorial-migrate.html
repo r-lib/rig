@@ -572,6 +572,19 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </ul>
 <p>With both <code>--keep-*</code> flags nothing outside your home directory is touched, so the whole migration needs no admin privileges at all.</p>
 <p>If you do not have an admin-mode setup yet, start with <a href="./tutorial-user.html">Getting started in user mode</a> instead. See <a href="./admin-vs-user-mode.html">Admin mode vs user mode</a> for what changes when you switch.</p>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Warning
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>There is no need to migrate a working admin-mode setup. Admin mode is still rig’s default and the better tested mode, so only switch if you actually want R inside your home directory, e.g.&nbsp;because you are losing administrator rights on the machine. On Linux, be aware that user mode swaps your distro-specific R build and R packages for portable (manylinux or musl) builds and manylinux packages, which are newer and less tested. If it does not work out, you can <a href="#going-back-to-admin-mode">go back to admin mode</a>.</p>
+</div>
+</div>
 <div class="tabset-margin-container"></div><div class="panel-tabset" data-group="os">
 <ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-1-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-1-1" role="tab" aria-controls="tabset-1-1" aria-selected="true" href="">macOS</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-1-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-1-2" role="tab" aria-controls="tabset-1-2" aria-selected="false" href="">Windows</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-1-3-tab" data-bs-toggle="tab" data-bs-target="#tabset-1-3" role="tab" aria-controls="tabset-1-3" aria-selected="false" href="">Linux</a></li></ul>
 <div class="tab-content" data-group="os">
