@@ -6,6 +6,8 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use clap::ArgMatches;
+use jsonc_parser::cst::{CstInputValue, CstRootNode};
+use jsonc_parser::ParseOptions;
 use log::{debug, error, info, warn};
 use semver::Version;
 use simple_error::*;
@@ -574,50 +576,95 @@ pub fn ensure_positron_custom_root_folders() -> Result<(), Box<dyn Error>> {
     }
     let settings_path = positron_dir.join("User").join("settings.json");
     let r_root = get_r_root()?;
-    const KEY: &str = "positron.r.customRootFolders";
 
-    let mut settings: serde_json::Value = if settings_path.exists() {
-        let contents = std::fs::read_to_string(&settings_path)?;
-        serde_json::from_str(&contents)?
+    let contents = if settings_path.exists() {
+        std::fs::read_to_string(&settings_path)?
     } else {
-        serde_json::Value::Object(serde_json::Map::new())
+        "{}".to_string()
     };
 
-    let obj = settings
-        .as_object_mut()
-        .ok_or_else(|| SimpleError::new("Positron settings.json is not a JSON object"))?;
+    let new_contents = match add_to_json_string_array(
+        &contents,
+        POSITRON_ROOTS_KEY,
+        &r_root,
+        "Positron settings.json",
+    )? {
+        Some(x) => x,
+        // Already there, or the key has an unexpected type
+        None => return Ok(()),
+    };
 
-    match obj.get_mut(KEY) {
-        Some(serde_json::Value::Array(arr)) => {
-            // Already contains our path — nothing to do
-            if arr.iter().any(|v| v.as_str() == Some(r_root.as_str())) {
-                return Ok(());
-            }
-            // Append our path to the existing list
-            arr.push(serde_json::Value::String(r_root.clone()));
-            OUTPUT.success("Registered rig R versions in Positron");
-            info!("Appended \"{}\" to Positron setting '{}'", r_root, KEY);
-        }
-        Some(other) => {
-            // Unexpected type — leave it alone and inform
-            info!(
-                "Positron setting '{}' is not an array ({}); not modifying",
-                KEY, other
-            );
-            return Ok(());
-        }
-        None => {
-            obj.insert(KEY.to_string(), serde_json::json!([r_root]));
-            OUTPUT.success("Registered rig R versions in Positron");
-            info!("Set Positron setting '{}' = [\"{}\"]", KEY, r_root);
-        }
-    }
     if let Some(parent) = settings_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(&settings_path, serde_json::to_string_pretty(&settings)?)?;
+    std::fs::write(&settings_path, new_contents)?;
+    OUTPUT.success("Registered rig R versions in Positron");
 
     Ok(())
+}
+
+const POSITRON_ROOTS_KEY: &str = "positron.r.customRootFolders";
+
+// Add `value` to the string array at `key` of a JSON object, creating the
+// array if needed. Returns the new file contents, or `None` if nothing needs
+// to change: either `value` is already in the array, or `key` is set to
+// something that is not an array, in which case we leave it alone.
+//
+// Editor settings files are JSONC: they may contain comments and trailing
+// commas, and users care about their formatting. So we parse the text into a
+// concrete syntax tree and edit that in place, instead of re-serializing a
+// `serde_json::Value`, which would drop comments and reformat everything.
+fn add_to_json_string_array(
+    contents: &str,
+    key: &str,
+    value: &str,
+    what: &str,
+) -> Result<Option<String>, Box<dyn Error>> {
+    let root = CstRootNode::parse(contents, &ParseOptions::default())?;
+    let obj = root
+        .object_value_or_create()
+        .ok_or_else(|| SimpleError::new(format!("{} is not a JSON object", what)))?;
+
+    match obj.get(key) {
+        Some(prop) => {
+            let arr = match prop.array_value() {
+                Some(arr) => arr,
+                None => {
+                    // Unexpected type — leave it alone and inform
+                    info!(
+                        "{}: setting '{}' is not an array ({}); not modifying",
+                        what,
+                        key,
+                        prop.value()
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "".to_string())
+                    );
+                    return Ok(None);
+                }
+            };
+            // Already contains our value — nothing to do
+            let have = arr.elements().iter().any(|el| {
+                el.as_string_lit()
+                    .and_then(|s| s.decoded_value().ok())
+                    .as_deref()
+                    == Some(value)
+            });
+            if have {
+                return Ok(None);
+            }
+            arr.append(CstInputValue::String(value.to_string()));
+            info!("{}: appended \"{}\" to setting '{}'", what, value, key);
+        }
+        None => {
+            obj.append(
+                key,
+                CstInputValue::Array(vec![CstInputValue::String(value.to_string())]),
+            );
+            info!("{}: set setting '{}' = [\"{}\"]", what, key, value);
+        }
+    }
+
+    Ok(Some(root.to_string()))
 }
 
 fn positron_user_data_dir() -> Result<PathBuf, Box<dyn Error>> {
@@ -1007,6 +1054,66 @@ fn sc_available_rtools_versions(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn add_root(contents: &str) -> Option<String> {
+        add_to_json_string_array(contents, POSITRON_ROOTS_KEY, "/home/u/r", "settings.json")
+            .unwrap()
+    }
+
+    #[test]
+    fn test_json_array_new_key() {
+        assert_eq!(
+            add_root("{}").unwrap(),
+            "{\n  \"positron.r.customRootFolders\": [\"/home/u/r\"]\n}"
+        );
+    }
+
+    #[test]
+    fn test_json_array_keeps_comments() {
+        let inp = r#"{
+  // R settings
+  "positron.r.customRootFolders": [
+    "/opt/R" // system R
+  ],
+  /* editor */
+  "editor.fontSize": 12,
+}
+"#;
+        let out = add_root(inp).unwrap();
+        assert!(out.contains("// R settings"));
+        assert!(out.contains("// system R"));
+        assert!(out.contains("/* editor */"));
+        assert!(out.contains("\"/opt/R\""));
+        assert!(out.contains("\"/home/u/r\""));
+        // trailing comma of the object is kept
+        assert!(out.contains("\"editor.fontSize\": 12,"));
+    }
+
+    #[test]
+    fn test_json_array_already_there() {
+        let inp = r#"{
+  // keep me
+  "positron.r.customRootFolders": ["/home/u/r"]
+}
+"#;
+        assert_eq!(add_root(inp), None);
+    }
+
+    #[test]
+    fn test_json_array_wrong_type() {
+        let inp = r#"{ "positron.r.customRootFolders": "/home/u/r" }"#;
+        assert_eq!(add_root(inp), None);
+    }
+
+    #[test]
+    fn test_json_array_empty_file() {
+        assert!(add_root("")
+            .unwrap()
+            .contains("\"positron.r.customRootFolders\""));
+        assert!(add_root("// only a comment\n")
+            .unwrap()
+            .contains("// only a comment"));
+    }
 
     #[test]
     fn test_normalize_rig_platform_short_linux() {

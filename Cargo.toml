@@ -58,6 +58,8 @@ futures = "0.3.17"
 futures-util = "0.3.14"
 # to match patterns in repos.json files
 globset = "0.4.18"
+# JSONC (JSON with comments), to edit Positron/VS Code settings.json in place
+jsonc-parser = { version = "0.33", features = ["cst"] }
 # lazy static variables
 lazy_static = "1.4.0"
 # calling Rust from C
