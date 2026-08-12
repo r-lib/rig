@@ -22,6 +22,13 @@ Steps 3 and 4 remove files outside your home directory, so this command
 needs an administrator account or `sudo` on Unix, otherwise it will ask
 for your password.
 
+Note that admin mode is rig's default and the better tested mode, so there
+is no need to switch a working admin-mode setup. On Linux in particular,
+user mode uses portable (manylinux or musl) R builds and manylinux R
+packages, which are newer and less tested than the distro-specific builds
+and packages of admin mode. To go back to admin mode, run
+`rig config set mode=admin` and reinstall the R versions you want.
+
 Use `--keep-install` to leave the admin-mode R installations in
 place (skipping step 3), and `--keep-links` to leave the system-wide
 links in place (skipping step 4). With both, nothing outside your home

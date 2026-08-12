@@ -33,6 +33,16 @@ If you do not have an admin-mode setup yet, start with [Getting started in user
 mode](tutorial-user.qmd) instead. See [Admin mode vs user
 mode](admin-vs-user-mode.qmd) for what changes when you switch.
 
+::: {.callout-warning}
+There is no need to migrate a working admin-mode setup. Admin mode is still
+rig's default and the better tested mode, so only switch if you actually want
+R inside your home directory, e.g. because you are losing administrator
+rights on the machine. On Linux, be aware that user mode swaps your
+distro-specific R build and R packages for portable (manylinux or musl)
+builds and manylinux packages, which are newer and less tested. If it does
+not work out, you can [go back to admin mode](#going-back-to-admin-mode).
+:::
+
 ::: {.panel-tabset group="os"}
 
 ## macOS

@@ -21,8 +21,8 @@
   and update on every platform.
 * Two [installation modes](admin-vs-user-mode.qmd): the default
   *admin mode* installs R system-wide (elevating to root/administrator only
-  when needed), while *user mode* installs everything into your home
-  directory with no `sudo` or administrator rights.
+  when needed), while the newer *user mode* installs everything into your
+  home directory with no `sudo` or administrator rights.
 * On Linux, installs distro-specific builds where available, and otherwise
   falls back to portable glibc/musl builds automatically.
 

@@ -17,7 +17,9 @@ instead with `--platform linux-portable` (or a specific portable platform,
 e.g. `--platform linux-manylinux-2.34`). If there is no distro-specific
 build for your platform, rig falls back to a portable build automatically.
 Admin-mode portable builds are installed into `/opt/R/<version>`, just like
-distro-specific builds.
+distro-specific builds. The portable builds are newer and less tested than
+the distro-specific ones, so please report problems at
+<https://github.com/r-lib/rig/issues>.
 
 The portable builds bundle the fontconfig library, but no fontconfig
 configuration and no fonts, so on a minimal system R cannot render text at

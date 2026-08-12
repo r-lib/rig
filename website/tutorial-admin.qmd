@@ -8,9 +8,11 @@ In **admin mode** R goes into the platform's usual system-wide location, and the
 and rig asks for your password when needed. Choose this on your own laptop, or
 on a server you administer.
 
-If you cannot use an administrator account, or would rather not touch system
-directories, follow [Getting started in user mode](tutorial-user.qmd) instead.
-See [Admin mode vs user mode](admin-vs-user-mode.qmd) for the trade-offs.
+This is rig's default mode, and the one with the most mileage on it, so it is
+also the best tested. If you cannot use an administrator account, or would
+rather not touch system directories, follow [Getting started in user
+mode](tutorial-user.qmd) instead. See [Admin mode vs user
+mode](admin-vs-user-mode.qmd) for the trade-offs.
 
 {{< include _partials/before-you-start.md >}}
 

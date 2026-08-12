@@ -12,6 +12,16 @@ If you do administer the machine and want a conventional system-wide R, follow
 between the two modes, see [Admin mode vs user
 mode](admin-vs-user-mode.qmd).
 
+::: {.callout-warning}
+User mode is newer than admin mode and has seen less use, so you are more
+likely to run into rough edges with it. This is most true on Linux, where
+user mode relies on portable (manylinux or musl) R builds and manylinux R
+packages. If you can use an administrator account and do not need R in your
+home directory, [admin mode](tutorial-admin.qmd) is the more conservative
+choice today. Please [report](https://github.com/r-lib/rig/issues) any
+problem you hit.
+:::
+
 {{< include _partials/before-you-start.md >}}
 
 ---

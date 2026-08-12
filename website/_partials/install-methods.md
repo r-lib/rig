@@ -11,7 +11,9 @@ unpacks it into `~/.local`, and adds `~/.local/bin` to your `PATH`:
 curl -LsSf https://r-lib.github.io/rig/install.sh | sh
 ```
 
-Then switch rig to user mode and install R:
+Then install R. rig still defaults to admin mode, which installs R
+system-wide; add the first command below to keep R in your home directory
+too ([user mode](admin-vs-user-mode.qmd)):
 
 ```sh
 rig system user-mode
@@ -80,7 +82,9 @@ profile with the install script. It downloads the right build, unpacks it into
 irm https://r-lib.github.io/rig/install.ps1 | iex
 ```
 
-Open a new terminal, then switch rig to user mode and install R:
+Open a new terminal, then install R. rig still defaults to admin mode, which
+installs R system-wide; add the first command below to keep R in your user
+profile too ([user mode](admin-vs-user-mode.qmd)):
 
 ``` powershell
 rig system user-mode
@@ -166,7 +170,9 @@ unpacks it into `~/.local`, and adds `~/.local/bin` to your `PATH`:
 curl -LsSf https://r-lib.github.io/rig/install.sh | sh
 ```
 
-Then switch rig to user mode and install R:
+Then install R. rig still defaults to admin mode, which installs R
+system-wide; add the first command below to keep R in your home directory
+too ([user mode](admin-vs-user-mode.qmd)):
 
 ```sh
 rig system user-mode

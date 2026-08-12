@@ -1,4 +1,11 @@
 
+Some of the methods below install rig itself into your home directory, others
+system-wide. That choice is independent of the [mode](admin-vs-user-mode.qmd)
+rig installs *R* in: rig defaults to admin mode either way, and you switch to
+user mode explicitly with `rig system user-mode`. Admin mode is the older and
+better tested mode, so if you have an administrator account and no reason to
+keep R in your home directory, you can skip that step.
+
 {{< include _partials/install-methods.md >}}
 
 Once rig is installed, the [tutorials](tutorial.qmd) walk you through

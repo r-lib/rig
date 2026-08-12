@@ -90,7 +90,13 @@
 > any rig command.
 >
 > The default is still *admin mode*, which installs R system-wide and
-> needs `sudo` (or an administrator account on Windows).
+> needs `sudo` (or an administrator account on Windows). Admin mode is
+> also the older and better tested mode, especially on Linux, where user
+> mode installs portable (manylinux or musl) R builds and uses manylinux
+> R packages, both of which are newer and less widely used than the
+> distro-specific builds and packages of admin mode. If you do have an
+> administrator account, and no reason to keep R in your home directory,
+> stay in admin mode for now.
 >
 </details>
 

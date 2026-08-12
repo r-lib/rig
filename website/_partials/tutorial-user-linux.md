@@ -42,6 +42,13 @@ instead of installing a broken R. rig also downloads a CA certificate bundle
 and points R at it, so HTTPS works even where the system store is missing or
 stale; you can re-run that step with `rig system update-certs`.
 
+These portable builds are newer than the distro-specific builds that admin
+mode installs, and they are not as thoroughly tested yet, so you may hit the
+occasional rough edge with them. If that is a problem for you and you do have
+an administrator account, consider [admin mode](tutorial-admin.qmd) instead.
+Either way, please [report](https://github.com/r-lib/rig/issues) what you run
+into.
+
 Besides unpacking R, `rig add` also configures the CRAN and
 [P3M](https://p3m.dev/) repositories (P3M serves pre-compiled, self-contained
 Linux binaries, which makes installing packages faster and more robust), installs
@@ -142,7 +149,10 @@ Many R packages need system libraries to build and run. pak can install those
 with your distribution's package manager, but that needs `sudo`, which is
 exactly what user mode avoids. rig sets up P3M's manylinux package repository
 binaries on glibc based Linux systems to fix this. These binary packages
-are self-contained and do not need any system libraries to run.
+are self-contained and do not need any system libraries to run. The manylinux
+repository is fairly new, though, and not as thoroughly tested as P3M's
+distro-specific repositories, so occasional problems with individual packages
+are still to be expected.
 
 If P3M is missing a binary for a certain package, then you need to install
 this package form source. If the package needs system libraries, then
