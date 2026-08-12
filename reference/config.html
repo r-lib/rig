@@ -48,9 +48,9 @@ ul.task-list li input[type="checkbox"] {
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-b3d9cfcfe83306dc0c29403b25520f83.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="../site_libs/bootstrap/bootstrap-dark-ca1a18ec42dc484396ee078b8ce5bc1d.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
-<link href="../site_libs/bootstrap/bootstrap-b3d9cfcfe83306dc0c29403b25520f83.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-b206b9f871adaf04482dbc5f635fb1e6.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-dark-303e532fb61c418e3267ba9f761738ed.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<link href="../site_libs/bootstrap/bootstrap-b206b9f871adaf04482dbc5f635fb1e6.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -552,7 +552,7 @@ ul.task-list li input[type="checkbox"] {
 <li><p><code>binary-dir</code> (<code>RIG_BINARY_DIR</code>): the directory rig puts the quick links (<code>R-4.5.1</code>, <code>R-release</code>, etc.) into. Defaults to <code>/usr/local/bin</code> in admin mode and <code>~/.local/bin</code> in user mode. On Windows the defaults are <code>C:\Program Files\R\bin</code> and <code>%USERPROFILE%\.local\bin</code>.</p></li>
 <li><p><code>r-install-dir</code> (<code>RIG_R_INSTALL_DIR</code>): the root directory of the R installations, i.e.&nbsp;the directory that holds the directories of the individual R versions. Defaults to the platform’s system-wide location in admin mode (<code>/opt/R</code> on Linux, <code>/Library/Frameworks/R.framework</code> on macOS, <code>C:\Program Files\R</code> on Windows), and to <code>~/.local/share/rig/r</code> (<code>%APPDATA%\rig\data\r</code> on Windows) in user mode. On Windows this entry only applies in user mode; the admin-mode root is fixed, because it also depends on the architecture.</p></li>
 <li><p><code>rtools-install-dir</code> (<code>RIG_RTOOLS_INSTALL_DIR</code>): Windows only, the directory that holds the Rtools installations. Defaults to <code>C:\</code> in admin mode (so Rtools 4.5 goes into <code>C:\rtools45</code>) and to <code>%APPDATA%\rig\data\rtools</code> in user mode.</p></li>
-<li><p><code>positron-setup</code>: <a href="../admin-vs-user-mode.html">user mode</a> only. Set it to <code>false</code> to stop rig from adding its R installation root to Positron’s <code>positron.r.customRootFolders</code> setting. Any other value, and the default, keep the Positron setup on.</p></li>
+<li><p><code>positron-setup</code>: <a href="../admin-vs-user-mode.html">user mode</a> only. Set it to <code>false</code> to stop rig from updating Positron’s settings: adding its R installation root to <code>positron.r.customRootFolders</code>, and pointing <code>positron.r.interpreters.default</code> at the <a href="../reference/default.html">default</a> R version. Any other value, and the default, keep the Positron setup on.</p></li>
 <li><p><code>userlibrary</code>: a JSON object that maps R versions to user library paths. rig maintains this entry itself, as a cache for the <code>rig library</code> commands; you don’t normally need to edit or set it.</p></li>
 </ul>
 <p><code>rig config list</code> lists the entries that are currently in the configuration file, which is typically fewer than the entries above, because rig only writes an entry once you set it.</p>
