@@ -6,7 +6,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use clap::ArgMatches;
-use jsonc_parser::cst::{CstInputValue, CstRootNode};
+use jsonc_parser::cst::{CstInputValue, CstObject, CstRootNode};
 use jsonc_parser::ParseOptions;
 use log::{debug, error, info, warn};
 use semver::Version;
@@ -555,83 +555,130 @@ fn get_project_version(path: &str) -> Result<Option<String>, Box<dyn Error>> {
 
 // -- Positron ------------------------------------------------------------
 
-pub fn ensure_positron_custom_root_folders() -> Result<(), Box<dyn Error>> {
-    // Only user mode installs R outside of the directories Positron already
-    // knows about.
-    if get_mode()? != Mode::User {
+// Register rig's R installation root in Positron, and, if `default_ver` is
+// set, also make that R version Positron's default. Both settings live in the
+// same file, so we read, parse and write it once.
+pub fn ensure_positron_setup(default_ver: Option<&str>) -> Result<(), Box<dyn Error>> {
+    let settings_path = match positron_settings_path()? {
+        Some(x) => x,
+        None => return Ok(()),
+    };
+    let r_root = get_r_root()?;
+    let contents = read_positron_settings(&settings_path)?;
+
+    let root = CstRootNode::parse(&contents, &ParseOptions::default())?;
+    let obj = root
+        .object_value_or_create()
+        .ok_or_else(|| SimpleError::new(format!("{} is not a JSON object", POSITRON_SETTINGS)))?;
+
+    let mut changed =
+        add_to_json_string_array(&obj, POSITRON_ROOTS_KEY, &r_root, POSITRON_SETTINGS);
+
+    if let Some(ver) = default_ver {
+        let rbin = positron_r_binary(ver)?;
+        let rbin = rbin.to_string_lossy();
+        changed |= set_json_string(
+            &obj,
+            POSITRON_DEFAULT_KEY,
+            &rbin,
+            &r_root,
+            POSITRON_SETTINGS,
+        );
+    }
+
+    // Nothing to update
+    if !changed {
         return Ok(());
+    }
+
+    write_positron_settings(&settings_path, &root.to_string())?;
+    // `rig default` is quiet about this, it only updates the default R version
+    // that is already registered in Positron.
+    if default_ver.is_none() {
+        OUTPUT.success("Updated Positron settings");
+    }
+
+    Ok(())
+}
+
+const POSITRON_ROOTS_KEY: &str = "positron.r.customRootFolders";
+const POSITRON_DEFAULT_KEY: &str = "positron.r.interpreters.default";
+const POSITRON_SETTINGS: &str = "Positron settings.json";
+
+// The R binary of `ver`, as Positron records it. Positron compares its default
+// R setting to the R binary paths it discovered, as plain strings, so we have
+// to write the exact same path here. It resolves symbolic links while
+// discovering, so the `Current` link is not an option, we need the versioned
+// path. On Windows it looks for `bin\x64\R.exe` first and only falls back to
+// `bin\R.exe` (which exists as well) if that is missing, e.g. on aarch64.
+#[cfg(target_os = "windows")]
+fn positron_r_binary(ver: &str) -> Result<PathBuf, Box<dyn Error>> {
+    let x64 = get_r_binary_x64(ver)?;
+    if x64.exists() {
+        return Ok(x64);
+    }
+    get_r_binary(ver)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn positron_r_binary(ver: &str) -> Result<PathBuf, Box<dyn Error>> {
+    get_r_binary(ver)
+}
+
+// Path of Positron's user settings file, or `None` if no update.
+fn positron_settings_path() -> Result<Option<PathBuf>, Box<dyn Error>> {
+    if get_mode()? != Mode::User {
+        return Ok(None);
     }
 
     if let Some(val) = crate::config::get_global_config_value("positron-setup")? {
         if val == "false" {
             debug!("Skipping Positron setup (positron-setup=false in rig config)");
-            return Ok(());
+            return Ok(None);
         }
     }
 
     let positron_dir = positron_user_data_dir()?;
     if !positron_dir.exists() {
         debug!("Skipping Positron setup; Positron not found");
-        return Ok(());
+        return Ok(None);
     }
-    let settings_path = positron_dir.join("User").join("settings.json");
-    let r_root = get_r_root()?;
 
-    let contents = if settings_path.exists() {
-        std::fs::read_to_string(&settings_path)?
+    Ok(Some(positron_dir.join("User").join("settings.json")))
+}
+
+fn read_positron_settings(path: &Path) -> Result<String, Box<dyn Error>> {
+    if path.exists() {
+        Ok(std::fs::read_to_string(path)?)
     } else {
-        "{}".to_string()
-    };
+        Ok("{}".to_string())
+    }
+}
 
-    let new_contents = match add_to_json_string_array(
-        &contents,
-        POSITRON_ROOTS_KEY,
-        &r_root,
-        "Positron settings.json",
-    )? {
-        Some(x) => x,
-        // Already there, or the key has an unexpected type
-        None => return Ok(()),
-    };
-
-    if let Some(parent) = settings_path.parent() {
+fn write_positron_settings(path: &Path, contents: &str) -> Result<(), Box<dyn Error>> {
+    if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(&settings_path, new_contents)?;
-    OUTPUT.success("Registered rig R versions in Positron");
-
+    std::fs::write(path, contents)?;
     Ok(())
 }
 
-const POSITRON_ROOTS_KEY: &str = "positron.r.customRootFolders";
-
-// Add `value` to the string array at `key` of a JSON object, creating the
-// array if needed. Returns the new file contents, or `None` if nothing needs
-// to change: either `value` is already in the array, or `key` is set to
-// something that is not an array, in which case we leave it alone.
+// Add `value` to the string array at `key` of `obj`, creating the array if
+// needed. Returns whether `obj` was changed: it is left alone if `value` is
+// already in the array, or if `key` is set to something that is not an array.
 //
 // Editor settings files are JSONC: they may contain comments and trailing
-// commas, and users care about their formatting. So we parse the text into a
-// concrete syntax tree and edit that in place, instead of re-serializing a
-// `serde_json::Value`, which would drop comments and reformat everything.
-fn add_to_json_string_array(
-    contents: &str,
-    key: &str,
-    value: &str,
-    what: &str,
-) -> Result<Option<String>, Box<dyn Error>> {
-    let root = CstRootNode::parse(contents, &ParseOptions::default())?;
-    let obj = root
-        .object_value_or_create()
-        .ok_or_else(|| SimpleError::new(format!("{} is not a JSON object", what)))?;
-
+// commas, and users care about their formatting. So we edit the concrete
+// syntax tree in place, instead of re-serializing a `serde_json::Value`,
+// which would drop comments and reformat everything.
+fn add_to_json_string_array(obj: &CstObject, key: &str, value: &str, what: &str) -> bool {
     match obj.get(key) {
         Some(prop) => {
             let arr = match prop.array_value() {
                 Some(arr) => arr,
                 None => {
                     // Unexpected type — leave it alone and inform
-                    info!(
+                    debug!(
                         "{}: setting '{}' is not an array ({}); not modifying",
                         what,
                         key,
@@ -639,7 +686,7 @@ fn add_to_json_string_array(
                             .map(|v| v.to_string())
                             .unwrap_or_else(|| "".to_string())
                     );
-                    return Ok(None);
+                    return false;
                 }
             };
             // Already contains our value — nothing to do
@@ -650,21 +697,63 @@ fn add_to_json_string_array(
                     == Some(value)
             });
             if have {
-                return Ok(None);
+                return false;
             }
             arr.append(CstInputValue::String(value.to_string()));
-            info!("{}: appended \"{}\" to setting '{}'", what, value, key);
+            debug!("{}: appended \"{}\" to setting '{}'", what, value, key);
         }
         None => {
             obj.append(
                 key,
                 CstInputValue::Array(vec![CstInputValue::String(value.to_string())]),
             );
-            info!("{}: set setting '{}' = [\"{}\"]", what, key, value);
+            debug!("{}: set setting '{}' = [\"{}\"]", what, key, value);
         }
     }
 
-    Ok(Some(root.to_string()))
+    true
+}
+
+// Set the string at `key` of `obj` to `value`, creating the key if needed.
+// Returns whether `obj` was changed: it is left alone if `key` is already set
+// to `value`, or if it is set to something rig does not manage, i.e. a value
+// that is not a string, or a path outside of `owned_dir`. The latter is the
+// user's own setting.
+fn set_json_string(obj: &CstObject, key: &str, value: &str, owned_dir: &str, what: &str) -> bool {
+    match obj.get(key) {
+        Some(prop) => {
+            let old = prop
+                .value()
+                .and_then(|v| v.as_string_lit())
+                .and_then(|s| s.decoded_value().ok());
+            let old = match old {
+                Some(old) => old,
+                None => {
+                    // Unexpected type — leave it alone and inform
+                    debug!("{}: setting '{}' is not a string; not modifying", what, key);
+                    return false;
+                }
+            };
+            if old == value {
+                return false;
+            }
+            if !Path::new(&old).starts_with(owned_dir) {
+                debug!(
+                    "{}: setting '{}' is \"{}\", which is not an R version managed \
+                     by rig; not modifying",
+                    what, key, old
+                );
+                return false;
+            }
+            prop.set_value(CstInputValue::String(value.to_string()));
+        }
+        None => {
+            obj.append(key, CstInputValue::String(value.to_string()));
+        }
+    }
+    debug!("{}: set setting '{}' = \"{}\"", what, key, value);
+
+    true
 }
 
 fn positron_user_data_dir() -> Result<PathBuf, Box<dyn Error>> {
@@ -1055,9 +1144,22 @@ fn sc_available_rtools_versions(
 mod tests {
     use super::*;
 
+    // Apply `f` to the parsed `contents`, and return the new contents, or
+    // `None` if `f` did not change anything.
+    fn edit(contents: &str, f: impl Fn(&CstObject) -> bool) -> Option<String> {
+        let root = CstRootNode::parse(contents, &ParseOptions::default()).unwrap();
+        let obj = root.object_value_or_create().unwrap();
+        if f(&obj) {
+            Some(root.to_string())
+        } else {
+            None
+        }
+    }
+
     fn add_root(contents: &str) -> Option<String> {
-        add_to_json_string_array(contents, POSITRON_ROOTS_KEY, "/home/u/r", "settings.json")
-            .unwrap()
+        edit(contents, |obj| {
+            add_to_json_string_array(obj, POSITRON_ROOTS_KEY, "/home/u/r", "settings.json")
+        })
     }
 
     #[test]
@@ -1113,6 +1215,82 @@ mod tests {
         assert!(add_root("// only a comment\n")
             .unwrap()
             .contains("// only a comment"));
+    }
+
+    fn set_default(contents: &str) -> Option<String> {
+        edit(contents, |obj| {
+            set_json_string(
+                obj,
+                POSITRON_DEFAULT_KEY,
+                "/home/u/r/4.5.1/bin/R",
+                "/home/u/r",
+                "settings.json",
+            )
+        })
+    }
+
+    #[test]
+    fn test_json_string_new_key() {
+        assert_eq!(
+            set_default("{}").unwrap(),
+            "{\n  \"positron.r.interpreters.default\": \"/home/u/r/4.5.1/bin/R\"\n}"
+        );
+    }
+
+    #[test]
+    fn test_json_string_updates_rig_version() {
+        let inp = r#"{
+  // R settings
+  "positron.r.interpreters.default": "/home/u/r/4.4.2/bin/R",
+  "editor.fontSize": 12
+}
+"#;
+        let out = set_default(inp).unwrap();
+        assert!(out.contains("// R settings"));
+        assert!(out.contains("\"positron.r.interpreters.default\": \"/home/u/r/4.5.1/bin/R\""));
+        assert!(!out.contains("4.4.2"));
+    }
+
+    #[test]
+    fn test_json_string_already_there() {
+        let inp = r#"{ "positron.r.interpreters.default": "/home/u/r/4.5.1/bin/R" }"#;
+        assert_eq!(set_default(inp), None);
+    }
+
+    #[test]
+    fn test_json_string_keeps_foreign_value() {
+        // Not one of our R versions, the user set this themselves
+        let inp = r#"{ "positron.r.interpreters.default": "/usr/lib/R/bin/R" }"#;
+        assert_eq!(set_default(inp), None);
+        // `/home/u/rig-other` is not within `/home/u/r`
+        let inp = r#"{ "positron.r.interpreters.default": "/home/u/rig-other/bin/R" }"#;
+        assert_eq!(set_default(inp), None);
+    }
+
+    #[test]
+    fn test_json_string_wrong_type() {
+        let inp = r#"{ "positron.r.interpreters.default": ["/home/u/r/4.5.1/bin/R"] }"#;
+        assert_eq!(set_default(inp), None);
+    }
+
+    #[test]
+    fn test_json_both_settings_in_one_pass() {
+        let out = edit("{\n  // mine\n}\n", |obj| {
+            let roots =
+                add_to_json_string_array(obj, POSITRON_ROOTS_KEY, "/home/u/r", "settings.json");
+            let default = set_json_string(
+                obj,
+                POSITRON_DEFAULT_KEY,
+                "/home/u/r/4.5.1/bin/R",
+                "/home/u/r",
+                "settings.json",
+            );
+            roots || default
+        })
+        .unwrap();
+        assert!(out.contains("// mine"));
+        assert!(out.contains("\"positron.r.customRootFolders\": [\"/home/u/r\"]"));
+        assert!(out.contains("\"positron.r.interpreters.default\": \"/home/u/r/4.5.1/bin/R\""));
     }
 
     #[test]

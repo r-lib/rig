@@ -399,7 +399,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     patch_for_rtools()?;
     maybe_update_registry_default()?;
     if get_mode()? == Mode::User {
-        if let Err(e) = ensure_positron_custom_root_folders() {
+        if let Err(e) = ensure_positron_setup(None) {
             OUTPUT.warn(&format!("Could not update Positron settings: {}", e));
             warn!("Could not update Positron settings: {}", e);
         }
@@ -1904,7 +1904,7 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
     update_registry_default()?;
 
     if get_mode()? == Mode::User {
-        if let Err(e) = ensure_positron_custom_root_folders() {
+        if let Err(e) = ensure_positron_setup(Some(&ver)) {
             OUTPUT.warn(&format!(
                 "Could not register rig R versions in Positron: {}",
                 e

@@ -333,7 +333,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // when a default was already set.
     if mode == Mode::User {
         make_current_r_links()?;
-        if let Err(e) = ensure_positron_custom_root_folders() {
+        if let Err(e) = ensure_positron_setup(None) {
             OUTPUT.warn(&format!("Could not update Positron settings: {}", e));
             warn!("Could not update Positron settings: {}", e);
         }
@@ -1088,14 +1088,14 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
     std::fs::remove_file(&cur).ok();
 
     // Add current link
-    let path = Path::new(&get_r_root()?).join(ver);
+    let path = Path::new(&get_r_root()?).join(&ver);
     trace!("Adding symlink at {}", cur);
     std::os::unix::fs::symlink(&path, &cur)?;
 
     make_current_r_links()?;
 
     if mode == Mode::User {
-        if let Err(e) = ensure_positron_custom_root_folders() {
+        if let Err(e) = ensure_positron_setup(Some(&ver)) {
             OUTPUT.warn(&format!(
                 "Could not register rig R versions in Positron: {}",
                 e

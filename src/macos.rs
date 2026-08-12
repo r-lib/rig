@@ -185,7 +185,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let dirname = if mode == crate::utils::Mode::User {
         let install_dir = std::path::PathBuf::from(get_r_root()?);
         let dirname = safe_user_install(target, &fver, install_dir)?;
-        if let Err(e) = ensure_positron_custom_root_folders() {
+        if let Err(e) = ensure_positron_setup(None) {
             OUTPUT.warn(&format!("Could not update Positron settings: {}", e));
             warn!("Could not update Positron settings: {}", e);
         }
@@ -1904,7 +1904,7 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
             ));
             warn!("Could not install RSTUDIO_WHICH_R LaunchAgent: {}", e);
         }
-        if let Err(e) = ensure_positron_custom_root_folders() {
+        if let Err(e) = ensure_positron_setup(Some(&ver)) {
             OUTPUT.warn(&format!(
                 "Could not register rig R versions in Positron: {}",
                 e
