@@ -21,10 +21,49 @@ pub trait PackageVersionLoader {
     fn load_versions(&self, package: &str) -> Result<Vec<crate::dcf::Package>, Box<dyn Error>>;
 }
 
+/// Which artifact of a package version gets installed.
+///
+/// This is part of the solver's version type rather than a choice made after
+/// solving, because a binary build is only usable if the `LinkingTo` dependency
+/// versions it was compiled against are the ones the solve actually picks.
+/// Expressing that as dependencies *of the artifact* is what lets pubgrub
+/// backtrack to another build, or to the source tarball, instead of us silently
+/// installing a binary whose ABI does not match its dependencies.
+///
+/// `LowerBound` and `UpperBound` are not artifacts anybody can install. They
+/// exist so that a constraint on a *version* becomes a range that covers, or
+/// excludes, all of that version's artifacts — see
+/// [`rpackage_version_ranges_from_constraints`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum Artifact {
+    /// Sorts below every real artifact of the same version.
+    LowerBound,
+    /// The source tarball. Always available, so it is the fallback.
+    Source,
+    /// The `n`th row of the package's binary index. Binaries sort above the
+    /// source tarball, so `choose_version` prefers them at equal versions, and
+    /// later rows (newer P3M snapshots) above earlier ones.
+    Binary(u32),
+    /// Sorts above every real artifact of the same version.
+    UpperBound,
+}
+
+impl Artifact {
+    pub fn is_binary(&self) -> bool {
+        matches!(self, Artifact::Binary(_))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RegistryPackageVersion {
     pub name: RPackageName,
     pub version: RPackageVersion,
+    #[serde(default = "artifact_source")]
+    pub artifact: Artifact,
+}
+
+fn artifact_source() -> Artifact {
+    Artifact::Source
 }
 
 impl RegistryPackageVersion {
@@ -32,13 +71,39 @@ impl RegistryPackageVersion {
         Ok(RegistryPackageVersion {
             name: name.to_string(),
             version: RPackageVersion::from_str(version_str)?,
+            artifact: Artifact::Source,
         })
+    }
+
+    /// A version used only as a range boundary, never as a candidate.
+    fn bound(name: &str, version: &RPackageVersion, artifact: Artifact) -> Self {
+        RegistryPackageVersion {
+            name: name.to_string(),
+            version: version.clone(),
+            artifact,
+        }
+    }
+
+    /// The range that covers every artifact of one version.
+    fn artifacts_of(name: &str, version: &RPackageVersion) -> RPackageVersionRanges {
+        // `between` is half-open, and `UpperBound` is not a candidate, so this is
+        // every artifact of `version` and nothing else.
+        RPackageVersionRanges::between(
+            RegistryPackageVersion::bound(name, version, Artifact::LowerBound),
+            RegistryPackageVersion::bound(name, version, Artifact::UpperBound),
+        )
     }
 }
 
 impl Ord for RegistryPackageVersion {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.version.cmp(&other.version)
+        // The name is deliberately not compared: pubgrub only ever orders
+        // versions of one and the same package. The artifact is the least
+        // significant key, so a newer version always beats an older one and a
+        // binary only wins against the same version's source tarball.
+        self.version
+            .cmp(&other.version)
+            .then_with(|| self.artifact.cmp(&other.artifact))
     }
 }
 
@@ -50,8 +115,13 @@ impl PartialOrd for RegistryPackageVersion {
 
 impl fmt::Display for RegistryPackageVersion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.version)?;
-        Ok(())
+        // The artifact is shown because pubgrub's conflict reports are written in
+        // terms of versions, and "1.1.4 (binary 3)" versus "1.1.4" is exactly the
+        // distinction those reports need to explain a LinkingTo conflict.
+        match self.artifact {
+            Artifact::Binary(row) => write!(f, "{} (binary {})", self.version, row),
+            _ => write!(f, "{}", self.version),
+        }
     }
 }
 
@@ -69,31 +139,102 @@ pub fn rpackage_version_ranges_from_constraints(
         }
         let mut vs = RPackageVersionRanges::full();
         for cs in dep.constraints.iter() {
-            let ver = RegistryPackageVersion {
-                name: dep.name.clone(),
-                version: cs.version.clone(),
-            };
+            // A DESCRIPTION constraint is on the version, and says nothing about
+            // which artifact of it to use, so each bound has to fall outside the
+            // whole run of that version's artifacts: `>= 1.2` includes 1.2's
+            // source *and* binary rows, while `> 1.2` excludes all of them.
+            let lo = RegistryPackageVersion::bound(&dep.name, &cs.version, Artifact::LowerBound);
+            let hi = RegistryPackageVersion::bound(&dep.name, &cs.version, Artifact::UpperBound);
             match cs.constraint_type {
                 VersionConstraintType::Less => {
-                    vs = vs.intersection(&Range::strictly_lower_than(ver));
+                    vs = vs.intersection(&Range::strictly_lower_than(lo));
                 }
                 VersionConstraintType::LessOrEqual => {
-                    vs = vs.intersection(&Range::lower_than(ver));
+                    vs = vs.intersection(&Range::strictly_lower_than(hi));
                 }
                 VersionConstraintType::Equal => {
-                    vs = vs.intersection(&Range::singleton(ver));
+                    vs = vs.intersection(&RegistryPackageVersion::artifacts_of(
+                        &dep.name,
+                        &cs.version,
+                    ));
                 }
                 VersionConstraintType::Greater => {
-                    vs = vs.intersection(&Range::strictly_higher_than(ver));
+                    vs = vs.intersection(&Range::higher_than(hi));
                 }
                 VersionConstraintType::GreaterOrEqual => {
-                    vs = vs.intersection(&Range::higher_than(ver));
+                    vs = vs.intersection(&Range::higher_than(lo));
                 }
             }
         }
         vranges.insert(dep.name.clone(), vs);
     }
     vranges
+}
+
+/// What a package version's dependencies look like when it is installed from a
+/// binary build: the version's own dependencies, with every `LinkingTo`
+/// dependency pinned to the version the binary was compiled against.
+///
+/// Returns `None` when the build must not be offered at all:
+///
+/// * a `linkingto` entry naming something the version does not declare a
+///   dependency on would add a dependency that is not in the source metadata,
+///   and it would then also leak into the lockfile's dependency lists;
+/// * a pin that contradicts the declared range can never hold, so the build is
+///   dead weight for the solver.
+///
+/// `R` and the base packages are skipped: the solver equates their version with
+/// the R version, which is not what a `linkingto` entry means.
+fn binary_artifact_deps(
+    source: &HashMap<RPackageName, RPackageVersionRanges, rustc_hash::FxBuildHasher>,
+    binary: &BinaryArtifact,
+) -> Option<HashMap<RPackageName, RPackageVersionRanges, rustc_hash::FxBuildHasher>> {
+    let mut deps = source.clone();
+    for (name, version) in binary.linkingto.iter() {
+        if name == "R" || crate::proj::BASE_PKGS.contains(&name.as_str()) {
+            continue;
+        }
+        let declared = deps.get(name)?;
+        let pinned = declared.intersection(&RegistryPackageVersion::artifacts_of(name, version));
+        if pinned.is_empty() {
+            return None;
+        }
+        deps.insert(name.clone(), pinned);
+    }
+    Some(deps)
+}
+
+/// One binary build of one package version, as the solver needs to see it.
+#[derive(Debug, Clone)]
+pub struct BinaryArtifact {
+    pub version: RPackageVersion,
+    /// Row index in the package's binary index, i.e. the payload of
+    /// [`Artifact::Binary`]. Two builds of the same version differ in nothing
+    /// else, so this is what identifies them.
+    pub row: u32,
+    pub url: String,
+    /// The `LinkingTo` dependency versions this build was compiled against.
+    pub linkingto: Vec<(RPackageName, RPackageVersion)>,
+}
+
+/// Everything a binary index knows about one package, for one build target.
+#[derive(Debug, Default)]
+pub struct PackageArtifacts {
+    pub binaries: Vec<BinaryArtifact>,
+    /// Source tarball URLs, by version. The index carries these too, and they
+    /// are snapshot-pinned, unlike the CRAN URLs we would otherwise guess.
+    pub source_urls: HashMap<RPackageVersion, String>,
+}
+
+/// A source of binary artifacts for one build target, queried lazily per package
+/// just like [`PackageVersionLoader`].
+pub trait BinaryIndexLoader {
+    /// The binary builds of `package` available for the target. An empty result
+    /// means the package has no binaries, which is not an error.
+    fn load_artifacts(&self, package: &str) -> Result<PackageArtifacts, Box<dyn Error>>;
+
+    /// How the target is spelled in a lockfile, e.g. `macos-arm64`.
+    fn target_name(&self) -> String;
 }
 
 #[derive(Default)]
@@ -116,15 +257,45 @@ pub struct RPackageRegistry {
     // access instead of being preloaded; when `None`, the registry only knows
     // what was added explicitly.
     loader: Option<Box<dyn PackageVersionLoader>>,
+    // Optional binary artifacts for the target being solved for. When `None`,
+    // only source artifacts are offered, which is what `--platform source` does.
+    binaries: Option<Box<dyn BinaryIndexLoader>>,
+    // Download URL of every artifact we offered, for the lockfile writers. The
+    // solver itself never looks at these.
+    urls: RefCell<HashMap<(RPackageName, RegistryPackageVersion), String>>,
 }
 
 impl RPackageRegistry {
-    /// A registry that lazily loads package versions from `loader` on demand.
-    pub fn with_loader(loader: Box<dyn PackageVersionLoader>) -> Self {
+    /// A registry that lazily loads package versions from `loader` on demand,
+    /// and also offers the binary builds `binaries` knows about. With no
+    /// `binaries` loader only source artifacts are offered.
+    pub fn with_loaders(
+        loader: Box<dyn PackageVersionLoader>,
+        binaries: Option<Box<dyn BinaryIndexLoader>>,
+    ) -> Self {
         RPackageRegistry {
             loader: Some(loader),
+            binaries,
             ..Default::default()
         }
+    }
+
+    /// The download URL of a resolved artifact, when we know one.
+    pub fn artifact_url(
+        &self,
+        package: &RPackageName,
+        version: &RegistryPackageVersion,
+    ) -> Option<String> {
+        self.urls
+            .borrow()
+            .get(&(package.clone(), version.clone()))
+            .cloned()
+    }
+
+    /// The build target binaries were resolved for, `None` for a source-only
+    /// solve.
+    pub fn binary_target(&self) -> Option<String> {
+        self.binaries.as_ref().map(|b| b.target_name())
     }
 
     pub fn add_package_version(
@@ -158,6 +329,10 @@ impl RPackageRegistry {
     /// Ensure a package's versions are available, loading them from the lazy
     /// loader on first access. A package with no versions (unknown) is still
     /// marked loaded so it is not queried again.
+    ///
+    /// Every version gets a source artifact, plus one candidate per binary build
+    /// the target has. Binary builds of versions the source metadata does not
+    /// know are skipped: without dependencies there is nothing to install.
     fn ensure_loaded(&self, pkg: &RPackageName) {
         if self.loaded.borrow().contains(pkg) {
             return;
@@ -165,14 +340,47 @@ impl RPackageRegistry {
         if let Some(loader) = &self.loader {
             match loader.load_versions(pkg) {
                 Ok(packages) => {
+                    let artifacts = self.load_artifacts(pkg);
                     for package in packages {
                         let ranges =
                             rpackage_version_ranges_from_constraints(&package.dependencies, false);
-                        let v = RegistryPackageVersion {
+                        let src = RegistryPackageVersion {
                             name: pkg.clone(),
                             version: package.version.clone(),
+                            artifact: Artifact::Source,
                         };
-                        self.add_package_version(pkg.clone(), v, ranges);
+                        if let Some(url) = artifacts.source_urls.get(&package.version) {
+                            self.urls
+                                .borrow_mut()
+                                .insert((pkg.clone(), src.clone()), url.clone());
+                        }
+                        self.add_package_version(pkg.clone(), src, ranges.clone());
+                        for bin in artifacts
+                            .binaries
+                            .iter()
+                            .filter(|b| b.version == package.version)
+                        {
+                            match binary_artifact_deps(&ranges, bin) {
+                                Some(deps) => {
+                                    let v = RegistryPackageVersion {
+                                        name: pkg.clone(),
+                                        version: package.version.clone(),
+                                        artifact: Artifact::Binary(bin.row),
+                                    };
+                                    self.urls
+                                        .borrow_mut()
+                                        .insert((pkg.clone(), v.clone()), bin.url.clone());
+                                    self.add_package_version(pkg.clone(), v, deps);
+                                }
+                                None => {
+                                    debug!(
+                                        "Not offering binary {} {} (row {}): its LinkingTo \
+                                        versions cannot be satisfied",
+                                        pkg, bin.version, bin.row
+                                    );
+                                }
+                            }
+                        }
                     }
                 }
                 Err(e) => {
@@ -183,6 +391,22 @@ impl RPackageRegistry {
         // Mark loaded even when the loader found nothing, so a genuinely unknown
         // package is reported as such instead of being queried repeatedly.
         self.loaded.borrow_mut().insert(pkg.clone());
+    }
+
+    /// The binary builds of a package, or nothing if this is a source-only solve
+    /// or the index could not be read. A missing index is not fatal: we just
+    /// install from source.
+    fn load_artifacts(&self, pkg: &RPackageName) -> PackageArtifacts {
+        match &self.binaries {
+            None => PackageArtifacts::default(),
+            Some(binaries) => match binaries.load_artifacts(pkg) {
+                Ok(artifacts) => artifacts,
+                Err(e) => {
+                    debug!("Failed to load binary artifacts for '{}': {}", pkg, e);
+                    PackageArtifacts::default()
+                }
+            },
+        }
     }
 
     pub fn get_dependency_summary(
@@ -274,5 +498,294 @@ impl DependencyProvider for RPackageRegistry {
             Some(deps) => Ok(Dependencies::Available(deps.clone())),
             None => Err(ProviderError::UnknownPackage),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn version(v: &str) -> RPackageVersion {
+        RPackageVersion::from_str(v).unwrap()
+    }
+
+    fn source(name: &str, v: &str) -> RegistryPackageVersion {
+        RegistryPackageVersion {
+            name: name.to_string(),
+            version: version(v),
+            artifact: Artifact::Source,
+        }
+    }
+
+    fn binary(name: &str, v: &str, row: u32) -> RegistryPackageVersion {
+        RegistryPackageVersion {
+            name: name.to_string(),
+            version: version(v),
+            artifact: Artifact::Binary(row),
+        }
+    }
+
+    /// `Imports:`-style dependency string, which is what the DB gives us.
+    fn imports(deps: &str) -> PackageDependencies {
+        PackageDependencies::from_str(deps, "Imports").unwrap()
+    }
+
+    fn ranges(
+        deps: &str,
+    ) -> HashMap<RPackageName, RPackageVersionRanges, rustc_hash::FxBuildHasher> {
+        rpackage_version_ranges_from_constraints(&imports(deps), false)
+    }
+
+    #[test]
+    fn artifacts_sort_below_the_next_version() {
+        assert!(source("a", "1.0.0") < binary("a", "1.0.0", 0));
+        assert!(binary("a", "1.0.0", 0) < binary("a", "1.0.0", 1));
+        // The version is the significant key: no artifact of 1.0.0 reaches 1.0.1.
+        assert!(binary("a", "1.0.0", u32::MAX) < source("a", "1.0.1"));
+    }
+
+    #[test]
+    fn version_constraints_cover_every_artifact() {
+        // `>= 1.0.0` and `<= 1.0.0` must admit both artifacts of 1.0.0, and
+        // `> 1.0.0` / `< 1.0.0` must admit neither.
+        for (spec, source_in, binary_in) in [
+            ("p (>= 1.0.0)", true, true),
+            ("p (<= 1.0.0)", true, true),
+            ("p (== 1.0.0)", true, true),
+            ("p (> 1.0.0)", false, false),
+            ("p (< 1.0.0)", false, false),
+        ] {
+            let vs = &ranges(spec)["p"];
+            assert_eq!(
+                vs.contains(&source("p", "1.0.0")),
+                source_in,
+                "source artifact, {}",
+                spec
+            );
+            assert_eq!(
+                vs.contains(&binary("p", "1.0.0", 7)),
+                binary_in,
+                "binary artifact, {}",
+                spec
+            );
+        }
+    }
+
+    #[test]
+    fn strict_bounds_still_admit_the_neighbouring_versions() {
+        let vs = &ranges("p (> 1.0.0)")["p"];
+        assert!(vs.contains(&source("p", "1.0.1")));
+        assert!(!vs.contains(&binary("p", "0.9.9", 3)));
+
+        let vs = &ranges("p (< 1.0.0)")["p"];
+        assert!(vs.contains(&binary("p", "0.9.9", 3)));
+        assert!(!vs.contains(&source("p", "1.0.1")));
+    }
+
+    #[test]
+    fn equality_admits_nothing_else() {
+        let vs = &ranges("p (== 1.0.0)")["p"];
+        assert!(!vs.contains(&source("p", "0.9.9")));
+        assert!(!vs.contains(&source("p", "1.0.1")));
+        assert!(!vs.contains(&source("p", "1.0.0.1")));
+    }
+
+    // ---------------------------------------------------------------------
+    // Solving with binaries
+
+    struct StubSource {
+        packages: Vec<(&'static str, &'static str, &'static str)>,
+    }
+
+    impl PackageVersionLoader for StubSource {
+        fn load_versions(&self, package: &str) -> Result<Vec<crate::dcf::Package>, Box<dyn Error>> {
+            Ok(self
+                .packages
+                .iter()
+                .filter(|(name, _, _)| *name == package)
+                .map(|(name, v, deps)| {
+                    crate::dcf::Package::from_crandb(
+                        name.to_string(),
+                        version(v),
+                        imports(deps).dependencies,
+                    )
+                })
+                .collect())
+        }
+    }
+
+    struct StubBinaries {
+        /// package, version, row, `LinkingTo` pins as `pkg=version` pairs.
+        builds: Vec<(&'static str, &'static str, u32, &'static str)>,
+    }
+
+    impl BinaryIndexLoader for StubBinaries {
+        fn load_artifacts(&self, package: &str) -> Result<PackageArtifacts, Box<dyn Error>> {
+            let binaries = self
+                .builds
+                .iter()
+                .filter(|(name, _, _, _)| *name == package)
+                .map(|(name, v, row, pins)| BinaryArtifact {
+                    version: version(v),
+                    row: *row,
+                    url: format!("https://example.com/bin/{}_{}.bin", name, v),
+                    linkingto: pins
+                        .split(',')
+                        .filter(|p| !p.is_empty())
+                        .map(|p| {
+                            let (pkg, pin) = p.split_once('=').unwrap();
+                            (pkg.to_string(), version(pin))
+                        })
+                        .collect(),
+                })
+                .collect();
+            Ok(PackageArtifacts {
+                binaries,
+                source_urls: HashMap::new(),
+            })
+        }
+
+        fn target_name(&self) -> String {
+            "testos-x86_64".to_string()
+        }
+    }
+
+    /// Solve `deps` against the stubs, returning the solution keyed by package.
+    fn solve(
+        source: StubSource,
+        binaries: Option<StubBinaries>,
+        deps: &str,
+    ) -> (
+        RPackageRegistry,
+        HashMap<String, RegistryPackageVersion, rustc_hash::FxBuildHasher>,
+    ) {
+        let binaries = binaries.map(|b| Box::new(b) as Box<dyn BinaryIndexLoader>);
+        let reg = RPackageRegistry::with_loaders(Box::new(source), binaries);
+        reg.add_package_version(
+            "_project".to_string(),
+            RegistryPackageVersion::new("_project", "1.0.0").unwrap(),
+            ranges(deps),
+        );
+        let solution = resolve(
+            &reg,
+            "_project".to_string(),
+            RegistryPackageVersion::new("_project", "1.0.0").unwrap(),
+        )
+        .unwrap();
+        (reg, solution)
+    }
+
+    #[test]
+    fn a_binary_wins_against_the_source_tarball() {
+        let (reg, solution) = solve(
+            StubSource {
+                packages: vec![("a", "1.0.0", "")],
+            },
+            Some(StubBinaries {
+                builds: vec![("a", "1.0.0", 2, ""), ("a", "1.0.0", 5, "")],
+            }),
+            "a",
+        );
+        // The newest build of the newest version.
+        assert_eq!(solution["a"], binary("a", "1.0.0", 5));
+        assert_eq!(
+            reg.artifact_url(&"a".to_string(), &solution["a"]).unwrap(),
+            "https://example.com/bin/a_1.0.0.bin"
+        );
+        assert_eq!(reg.binary_target().unwrap(), "testos-x86_64");
+    }
+
+    #[test]
+    fn a_newer_version_beats_a_binary_of_an_older_one() {
+        let (_reg, solution) = solve(
+            StubSource {
+                packages: vec![("a", "1.0.0", ""), ("a", "2.0.0", "")],
+            },
+            Some(StubBinaries {
+                builds: vec![("a", "1.0.0", 1, "")],
+            }),
+            "a",
+        );
+        assert_eq!(solution["a"], source("a", "2.0.0"));
+    }
+
+    #[test]
+    fn a_binary_pins_the_versions_it_was_built_against() {
+        let (_reg, solution) = solve(
+            StubSource {
+                packages: vec![
+                    ("a", "1.0.0", "b (>= 1.0.0)"),
+                    ("b", "1.0.0", ""),
+                    ("b", "2.0.0", ""),
+                ],
+            },
+            Some(StubBinaries {
+                builds: vec![("a", "1.0.0", 1, "b=1.0.0")],
+            }),
+            "a",
+        );
+        // Choosing the binary of `a` forces `b` back to the version it was
+        // compiled against, even though 2.0.0 is allowed by the DESCRIPTION.
+        assert_eq!(solution["a"], binary("a", "1.0.0", 1));
+        assert_eq!(solution["b"], source("b", "1.0.0"));
+    }
+
+    #[test]
+    fn an_unsatisfiable_pin_falls_back_to_the_source_tarball() {
+        let (reg, solution) = solve(
+            StubSource {
+                packages: vec![
+                    ("a", "1.0.0", "b (>= 1.0.0)"),
+                    // Something else in the project needs the newer `b`, which the
+                    // only binary build of `a` was not compiled against.
+                    ("c", "1.0.0", "b (== 2.0.0)"),
+                    ("b", "1.0.0", ""),
+                    ("b", "2.0.0", ""),
+                ],
+            },
+            Some(StubBinaries {
+                builds: vec![("a", "1.0.0", 1, "b=1.0.0")],
+            }),
+            "a, c",
+        );
+        assert_eq!(solution["a"], source("a", "1.0.0"));
+        assert_eq!(solution["b"], source("b", "2.0.0"));
+        // The pins never leak into the dependency list the lockfiles record.
+        let mut deps = reg
+            .get_dependency_summary(&"a".to_string(), &solution["a"])
+            .unwrap();
+        deps.sort();
+        assert_eq!(deps, vec!["b".to_string()]);
+    }
+
+    #[test]
+    fn builds_we_cannot_describe_are_not_offered() {
+        // A build whose `linkingto` names something the package does not depend
+        // on, and one for a version the source metadata does not know: neither is
+        // a candidate, so the solve falls back to the source tarball.
+        let (_reg, solution) = solve(
+            StubSource {
+                packages: vec![("a", "1.0.0", "")],
+            },
+            Some(StubBinaries {
+                builds: vec![("a", "1.0.0", 1, "b=1.0.0"), ("a", "9.9.9", 2, "")],
+            }),
+            "a",
+        );
+        assert_eq!(solution["a"], source("a", "1.0.0"));
+    }
+
+    #[test]
+    fn without_a_binary_loader_only_source_is_offered() {
+        let (reg, solution) = solve(
+            StubSource {
+                packages: vec![("a", "1.0.0", "")],
+            },
+            None,
+            "a",
+        );
+        assert_eq!(solution["a"], source("a", "1.0.0"));
+        assert!(reg.binary_target().is_none());
+        assert!(reg.artifact_url(&"a".to_string(), &solution["a"]).is_none());
     }
 }

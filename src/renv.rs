@@ -169,7 +169,7 @@ impl REnvLockfile {
                 k.to_string(),
                 REnvLockfilePackage {
                     Package: k.to_string(),
-                    Version: v.to_string(),
+                    Version: v.version.to_string(),
                     Source: "Repository".to_string(),
                     Repository: Some("CRAN".to_string()),
                     Depends: Some(deps),
@@ -180,7 +180,7 @@ impl REnvLockfile {
         }
         REnvLockfile {
             R: REnvLockfileR {
-                Version: solution.get("R").unwrap().to_string(),
+                Version: solution.get("R").unwrap().version.to_string(),
                 Repositories: vec![REnvLockfileRepository {
                     Name: "CRAN".to_string(),
                     URL: "https://cloud.r-project.org".to_string(),

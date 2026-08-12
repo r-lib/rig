@@ -1347,6 +1347,18 @@ pub fn rig_app() -> Command {
                         .required(false),
                 )
                 .arg(
+                    Arg::new("platform")
+                        .help(
+                            "Platform to solve binary packages for, e.g. macos, windows,\n\
+                            ubuntu-24.04, or a full platform string like\n\
+                            aarch64-unknown-linux-gnu-ubuntu-24.04 (default: this machine).\n\
+                            Use --platform source to solve for source packages only.",
+                        )
+                        .long("platform")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
                     Arg::new("dev")
                         .help("Include dev (development) dependencies")
                         .long("dev")

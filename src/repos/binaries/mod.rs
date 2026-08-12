@@ -68,6 +68,7 @@ use crate::download::{download_optional_if_newer_, fetch_optional_if_modified_, 
 const DEFAULT_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 
 pub mod blob;
+pub mod loader;
 use crate::rversion::OsVersion;
 use blob::IndexBlob;
 pub use blob::LinkingTo;
@@ -538,6 +539,15 @@ pub struct BinaryRowRef<'a> {
 }
 
 impl<'a> BinaryRowRef<'a> {
+    /// Position of this row in the whole index.
+    ///
+    /// This is the identity of a build: rows that share
+    /// `(version, platform, arch, r_version)` differ only in their `linkingto`,
+    /// so there is nothing else to tell them apart by.
+    pub fn row_index(&self) -> usize {
+        self.row
+    }
+
     pub fn version(&self) -> VersionRef<'a> {
         self.index.version(self.index.blob.row_version(self.row))
     }

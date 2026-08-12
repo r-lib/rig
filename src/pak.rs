@@ -39,42 +39,85 @@ pub struct PakLockfile {
     pub packages: Vec<PakLockfilePackage>,
 }
 
+/// Where a downloaded artifact is put, relative to the download directory.
+///
+/// P3M URLs carry the repository layout the file belongs to
+/// (`.../bin/macosx/big-sur-arm64/contrib/4.5/pak_0.9.5.tgz`), and everything
+/// from the `src/` or `bin/` component onwards is exactly that path. Anything we
+/// cannot read that way falls back to the bare file name, which is still unique
+/// per package version.
+fn target_path(url: &str, fallback: &str) -> String {
+    let path = url.split('?').next().unwrap_or(url);
+    let mut pieces = path.split('/');
+    let mut rest: Vec<&str> = vec![];
+    for piece in pieces.by_ref() {
+        if piece == "src" || piece == "bin" {
+            rest.push(piece);
+            break;
+        }
+    }
+    if rest.is_empty() {
+        return fallback.to_string();
+    }
+    rest.extend(pieces);
+    rest.join("/")
+}
+
 impl PakLockfile {
     pub fn from_solution(
         registry: &RPackageRegistry,
         solution: &HashMap<String, RegistryPackageVersion, rustc_hash::FxBuildHasher>,
     ) -> PakLockfile {
+        let r_version = solution
+            .get("R")
+            .map(|r| r.version.to_string())
+            .unwrap_or_default();
+        let platform = registry.binary_target();
         let mut pkgs = vec![];
         for (k, v) in solution.iter() {
             if k == "R" || k == "_project" || BASE_PKGS.contains(&k.as_str()) {
                 continue;
             }
-            let filename = format!("{}_{}.tar.gz", k, v);
             let deps = registry
                 .get_dependency_summary(k, v)
                 .unwrap()
                 .into_iter()
                 .filter(|dep| dep != "R" && !BASE_PKGS.contains(&dep.as_str()))
                 .collect();
-            let dl1 = format!("https://cloud.r-project.org/src/contrib/{}", filename);
-            let dl2 = format!(
-                "https://cloud.r-project.org/src/contrib/Archive/{}/{}",
-                k, filename
-            );
+            let binary = v.artifact.is_binary();
+            // The index's URL is snapshot-pinned; the CRAN ones are guesses, and
+            // there are two of them because a version that has been superseded
+            // has moved into the archive.
+            let filename = format!("{}_{}.tar.gz", k, v.version);
+            let sources = match registry.artifact_url(k, v) {
+                Some(url) => vec![url],
+                None => vec![
+                    format!("https://cloud.r-project.org/src/contrib/{}", filename),
+                    format!(
+                        "https://cloud.r-project.org/src/contrib/Archive/{}/{}",
+                        k, filename
+                    ),
+                ],
+            };
+            let target = target_path(&sources[0], &format!("src/contrib/{}", filename));
             pkgs.push(PakLockfilePackage {
                 r#ref: k.to_string(),
                 package: k.to_string(),
-                version: v.to_string(),
+                version: v.version.to_string(),
                 r#type: "standard".to_string(),
                 direct: false,
-                binary: false,
+                binary,
                 dependencies: deps,
                 vignettes: false,
                 metadata: HashMap::new(),
-                sources: vec![dl1, dl2],
-                target: "src/contrib/".to_string() + &filename,
-                platform: "source".to_string(),
-                rversion: "4.5.2".to_string(),
+                sources,
+                target,
+                platform: if binary {
+                    platform.clone().unwrap_or_else(|| "source".to_string())
+                } else {
+                    "source".to_string()
+                },
+                rversion: r_version.clone(),
                 directpkg: false,
                 license: "UNKNOWN".to_string(),
                 dep_types: vec![],
@@ -87,9 +130,45 @@ impl PakLockfile {
         PakLockfile {
             lockfile_version: 1,
             os: std::env::consts::OS.to_string(),
-            r_version: "4.5.2".to_string(),
-            platform: std::env::consts::ARCH.to_string(),
+            r_version,
+            platform: platform.unwrap_or_else(|| std::env::consts::ARCH.to_string()),
             packages: pkgs,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn target_path_follows_the_repository_layout() {
+        assert_eq!(
+            target_path(
+                "https://p3m.dev/cran/2026-04-27/bin/macosx/big-sur-arm64/contrib/4.5/pak_0.9.5.tgz",
+                "fallback"
+            ),
+            "bin/macosx/big-sur-arm64/contrib/4.5/pak_0.9.5.tgz"
+        );
+        assert_eq!(
+            target_path(
+                "https://p3m.dev/cran/2026-04-27/src/contrib/pak_0.9.5.tar.gz",
+                "fallback"
+            ),
+            "src/contrib/pak_0.9.5.tar.gz"
+        );
+        // Linux binaries live under a second `src/contrib`, and the first
+        // component we recognise is the right one.
+        assert_eq!(
+            target_path(
+                "https://p3m.dev/cran/2026-04-27/bin/linux/jammy-x86_64/4.5/src/contrib/pak_0.9.5.tar.gz",
+                "fallback"
+            ),
+            "bin/linux/jammy-x86_64/4.5/src/contrib/pak_0.9.5.tar.gz"
+        );
+        assert_eq!(
+            target_path("https://example.com/pak.tgz", "fallback"),
+            "fallback"
+        );
     }
 }

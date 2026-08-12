@@ -20,7 +20,9 @@ use crate::download::download_multiple_first_available_with_progress;
 use crate::install::{install_package_tree_with_progress, PackageInfo};
 use crate::output::OUTPUT;
 use crate::pak::PakLockfile;
+use crate::platform::{detect_platform, parse_platform_string};
 use crate::renv::*;
+use crate::repos::binaries::loader::{BinaryTarget, P3mBinaryLoader};
 use crate::repos::*;
 use crate::solver::*;
 use crate::utils::create_parent_dir_if_needed;
@@ -176,9 +178,56 @@ fn sc_proj_deps(
     Ok(())
 }
 
+/// The P3M build target to resolve binary packages for.
+///
+/// `--platform source` means "source only", and so does a platform P3M has no
+/// binaries for. Not being able to look up P3M's targets at all is an error:
+/// falling back to source packages silently would produce a lockfile that does
+/// not say what the caller asked for. Use `--platform source` to ask for that.
+fn proj_binary_target(
+    platform: Option<&String>,
+    r_version: &str,
+) -> Result<Option<BinaryTarget>, Box<dyn Error>> {
+    let platform = match platform {
+        Some(p) if p == "source" => {
+            info!("Solving for source packages only");
+            return Ok(None);
+        }
+        Some(p) => parse_platform_string(p)?,
+        None => detect_platform()?,
+    };
+
+    let target = match BinaryTarget::detect(&platform, r_version) {
+        Ok(target) => target,
+        Err(err) => {
+            // The error itself is reported by the download layer and again by
+            // main, so this only adds the way out.
+            OUTPUT.error(
+                "Cannot look up binary package targets. \
+                Use --platform source to solve for source packages only.",
+            );
+            error!("Cannot look up binary package targets: {}", err);
+            return Err(err);
+        }
+    };
+
+    match &target {
+        Some(target) => info!("Solving for binary target {}", target.name()),
+        None => {
+            let name = platform.rig_platform.as_deref().unwrap_or(&platform.os);
+            OUTPUT.warn(&format!(
+                "No binary packages for {}, using source packages",
+                name
+            ));
+        }
+    }
+    Ok(target)
+}
+
 fn sc_proj_solve_deps(
     r_version: &str,
     deps: &PackageDependencies,
+    target: Option<BinaryTarget>,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
     OUTPUT.status("Solving dependencies");
     info!("Solving dependencies");
@@ -187,7 +236,13 @@ fn sc_proj_solve_deps(
     // (current PACKAGES merged with the full ALLPACKAGES history) as the solver
     // visits them, instead of preloading the entire CRAN version history.
     let loader = DbSourcePackageLoader::new("https://cloud.r-project.org/", r_version)?;
-    let reg: RPackageRegistry = RPackageRegistry::with_loader(Box::new(loader));
+    // Binary builds are candidates alongside the source tarball, so that the
+    // `LinkingTo` versions a build was compiled against become constraints the
+    // solver can backtrack over. Their indices are fetched lazily too, one
+    // request per package the solve visits.
+    let binaries: Option<Box<dyn BinaryIndexLoader>> =
+        target.map(|t| Box::new(P3mBinaryLoader::new(t)) as Box<dyn BinaryIndexLoader>);
+    let reg: RPackageRegistry = RPackageRegistry::with_loaders(Box::new(loader), binaries);
 
     reg.add_package_version(
         "_project".to_string(),
@@ -229,11 +284,11 @@ fn sc_proj_solve_deps(
 
 fn solution_to_sorted_vec(
     solution: &SelectedDependencies<RPackageRegistry>,
-) -> Vec<(String, RPackageVersion)> {
-    let mut vec: Vec<(String, RPackageVersion)> = solution
+) -> Vec<(String, RegistryPackageVersion)> {
+    let mut vec: Vec<(String, RegistryPackageVersion)> = solution
         .iter()
         .filter(|(pkg, _ver)| *pkg != "_project")
-        .map(|(pkg, ver)| (pkg.clone(), ver.version.clone()))
+        .map(|(pkg, ver)| (pkg.clone(), ver.clone()))
         .collect();
     vec.sort_by(|a, b| {
         // Put "R" first, always
@@ -281,11 +336,13 @@ fn sc_proj_solve(
         });
     };
 
+    let target = proj_binary_target(args.get_one::<String>("platform"), &rver)?;
+
     // A single solver over the full CRAN version history: it picks the latest
     // in-range version of each package first and only falls back to older
     // versions when a constraint forces it, so the common case still resolves
     // to the latest versions.
-    let (registry, solution) = sc_proj_solve_deps(&rver, &pkg_deps)?;
+    let (registry, solution) = sc_proj_solve_deps(&rver, &pkg_deps, target)?;
     OUTPUT.success("Solved dependencies");
     info!("Solved dependencies");
 
@@ -302,11 +359,18 @@ fn sc_proj_solve(
     info!("Written package lockfile to pkg.lock");
 
     let sorted_solution = solution_to_sorted_vec(&solution);
-    let mut tab: Table = Table::new("{:<}   {:<}");
-    tab.add_row(row!["package", "version"]);
-    tab.add_heading("-------------------------");
+    let mut tab: Table = Table::new("{:<}   {:<}   {:<}");
+    tab.add_row(row!["package", "version", "type"]);
+    tab.add_heading("-------------------------------------");
     for (pkg, ver) in sorted_solution.iter() {
-        tab.add_row(row!(pkg, ver));
+        let kind = if pkg == "R" || BASE_PKGS.contains(&pkg.as_str()) {
+            ""
+        } else if ver.artifact.is_binary() {
+            "binary"
+        } else {
+            "source"
+        };
+        tab.add_row(row!(pkg, &ver.version, kind));
     }
     println!("{}", tab);
 
