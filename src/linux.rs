@@ -623,6 +623,10 @@ fn safe_user_install(
     std::fs::rename(&content, &dest)?;
 
     patch_r_home_dir(&dest)?;
+    if let Err(e) = patch_renviron_tar(&dest) {
+        OUTPUT.warn(&format!("Could not set TAR in Renviron: {}", e));
+        warn!("Could not set TAR in Renviron: {}", e);
+    }
     if let Err(e) = shim_bundled_xcursor(&dest) {
         OUTPUT.warn(&format!("Could not shim libXcursor: {}", e));
         warn!("Could not shim libXcursor: {}", e);
@@ -675,6 +679,59 @@ fn patch_r_home_dir_script(content: &str, home: &str) -> Option<String> {
     let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
     let idx = lines.iter().position(|l| l.starts_with("R_HOME_DIR="))?;
     lines[idx] = format!("R_HOME_DIR=\"{}\"", home);
+    let mut out = lines.join("\n");
+    if content.ends_with('\n') {
+        out.push('\n');
+    }
+    Some(out)
+}
+
+// The portable builds are configured on a machine where GNU tar is installed as
+// `gtar`, so their `etc/Renviron` has `TAR=${TAR-'/usr/bin/gtar'}`, a path that
+// does not exist on most Linux systems. Point `TAR` at `/usr/bin/tar` instead,
+// which is GNU tar on Linux.
+fn patch_renviron_tar(dest: &Path) -> Result<(), Box<dyn Error>> {
+    let renviron = dest.join("lib").join("R").join("etc").join("Renviron");
+    if !renviron.exists() {
+        debug!("No {}, not patching TAR", renviron.display());
+        return Ok(());
+    }
+    let tar = preferred_tar();
+    let content = std::fs::read_to_string(&renviron)?;
+    match patch_renviron_tar_content(&content, tar) {
+        Some(patched) => {
+            debug!("Patching TAR in {} to {}", renviron.display(), tar);
+            // Writing to the existing file keeps its permissions.
+            std::fs::write(&renviron, patched)?;
+        }
+        None => {
+            debug!("No TAR default to patch in {}", renviron.display());
+        }
+    }
+    Ok(())
+}
+
+// The tar `Renviron` should default to: `/usr/bin/tar`, unless it is missing and
+// the `/usr/bin/gtar` the build was configured with is actually there.
+fn preferred_tar() -> &'static str {
+    if !Path::new("/usr/bin/tar").exists() && Path::new("/usr/bin/gtar").exists() {
+        "/usr/bin/gtar"
+    } else {
+        "/usr/bin/tar"
+    }
+}
+
+// Set the `TAR` default in the contents of `etc/Renviron` to `tar`, keeping the
+// `${TAR-...}` fallback form, so a `TAR` from the environment still wins.
+// Returns `None` if there is no `TAR=` line, or it already has this default.
+fn patch_renviron_tar_content(content: &str, tar: &str) -> Option<String> {
+    let want = format!("TAR=${{TAR-'{}'}}", tar);
+    let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
+    let idx = lines.iter().position(|l| l.starts_with("TAR="))?;
+    if lines[idx] == want {
+        return None;
+    }
+    lines[idx] = want;
     let mut out = lines.join("\n");
     if content.ends_with('\n') {
         out.push('\n');
@@ -2505,6 +2562,39 @@ Usage: /lib/ld-musl-x86_64.so.1 [options] [--] pathname\n";
         assert!(patch_r_home_dir_script("#!/bin/sh\necho hi\n", "/home/u/r/lib/R").is_none());
         // A reference to `${R_HOME_DIR}` is not an assignment.
         assert!(patch_r_home_dir_script("echo \"${R_HOME_DIR}\"\n", "/home/u/r/lib/R").is_none());
+    }
+
+    // The relevant part of `etc/Renviron` of a portable build.
+    const RENVIRON: &str = "R_GZIPCMD=${R_GZIPCMD-'/usr/bin/gzip'}\n\
+         TAR=${TAR-'/usr/bin/gtar'}\n\
+         R_UNZIPCMD=${R_UNZIPCMD-'/usr/bin/unzip'}\n";
+
+    #[test]
+    fn patch_renviron_tar_content_replaces_gtar_default() {
+        let out = patch_renviron_tar_content(RENVIRON, "/usr/bin/tar")
+            .expect("Renviron has a TAR default");
+        assert_eq!(
+            out,
+            "R_GZIPCMD=${R_GZIPCMD-'/usr/bin/gzip'}\n\
+             TAR=${TAR-'/usr/bin/tar'}\n\
+             R_UNZIPCMD=${R_UNZIPCMD-'/usr/bin/unzip'}\n"
+        );
+    }
+
+    #[test]
+    fn patch_renviron_tar_content_leaves_matching_default() {
+        // Already the wanted default, or `gtar` on a system that only has that.
+        let tar = RENVIRON.replace("gtar", "tar");
+        assert!(patch_renviron_tar_content(&tar, "/usr/bin/tar").is_none());
+        assert!(patch_renviron_tar_content(RENVIRON, "/usr/bin/gtar").is_none());
+    }
+
+    #[test]
+    fn patch_renviron_tar_content_without_tar_line() {
+        assert!(patch_renviron_tar_content("R_GZIPCMD=/usr/bin/gzip\n", "/usr/bin/tar").is_none());
+        // `R_TAR` and a reference to `${TAR}` are not `TAR` assignments.
+        assert!(patch_renviron_tar_content("R_TAR=/usr/bin/gtar\n", "/usr/bin/tar").is_none());
+        assert!(patch_renviron_tar_content("echo ${TAR}\n", "/usr/bin/tar").is_none());
     }
 
     #[test]
