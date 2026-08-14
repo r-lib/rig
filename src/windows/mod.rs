@@ -2263,26 +2263,20 @@ mod tests {
         assert_eq!(ensure_dir_root("42".to_string()), "42");
     }
 
-    // Drop guard: removes the temp install tree when the test ends.
-    struct TempDir(PathBuf);
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
-
     // Write a fake installed R tree with an `include/Rversion.h` holding the
-    // given version and status, and return its root (with a cleanup guard).
-    fn fake_install(version: &str, status: &str) -> (PathBuf, TempDir) {
-        let root = std::env::temp_dir().join(format!(
-            "rig-test-{}-{}",
-            std::process::id(),
-            // Unique per call within a process.
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+    // given version and status, and return its root, together with the
+    // `tempfile::TempDir` guard that removes the tree when the test ends.
+    //
+    // The directory name must come from `tempfile`, and not from a timestamp:
+    // the Windows system clock only ticks every ~15 ms, so two of these tests
+    // running in parallel could pick the same name, and then each saw the
+    // other's files (and deleted the shared tree from under it).
+    fn fake_install(version: &str, status: &str) -> (PathBuf, tempfile::TempDir) {
+        let guard = tempfile::Builder::new()
+            .prefix("rig-test-")
+            .tempdir()
+            .expect("create temporary directory");
+        let root = guard.path().to_path_buf();
         let inc = root.join("include");
         std::fs::create_dir_all(&inc).expect("create include dir");
         // Split "4.6.0" into R_MAJOR "4" and R_MINOR "6.0", as R's header does.
@@ -2297,7 +2291,7 @@ mod tests {
             major, minor, status
         );
         std::fs::write(inc.join("Rversion.h"), content).expect("write Rversion.h");
-        (root.clone(), TempDir(root))
+        (root, guard)
     }
 
     #[test]
