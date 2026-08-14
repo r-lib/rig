@@ -414,7 +414,7 @@ fn patch_user_r_script(source_dir: &Path, home_dir: &Path) -> Result<(), Box<dyn
     let home_escaped = home_dir.display().to_string().replace('$', "$$");
     let sub = format!(
         "R_HOME_DIR={}\n\
-         R_HOME_DIR=$$(cd \"$$(dirname \"$$(realpath \"$$0\")\")/..\" && pwd -P)\n\
+         R_HOME_DIR=$$(cd \"$$(/usr/bin/dirname \"$$(/bin/realpath \"$$0\")\")/..\" && pwd -P)\n\
          export DYLD_LIBRARY_PATH=\"$${{R_HOME_DIR}}/lib\"",
         home_escaped
     );
@@ -487,11 +487,11 @@ fn replace_user_rscript(source_dir: &Path) -> Result<(), Box<dyn Error>> {
     let scripts: [(PathBuf, &str); 2] = [
         (
             source_dir.join("bin").join("Rscript"),
-            "$(cd \"$(dirname \"$(realpath \"$0\")\")/..\" && pwd -P)",
+            "$(cd \"$(/usr/bin/dirname \"$(/bin/realpath \"$0\")\")/..\" && pwd -P)",
         ),
         (
             source_dir.join("Rscript"),
-            "$(cd \"$(dirname \"$(realpath \"$0\")\")\" && pwd -P)",
+            "$(cd \"$(/usr/bin/dirname \"$(/bin/realpath \"$0\")\")\" && pwd -P)",
         ),
     ];
 
@@ -508,7 +508,7 @@ fn replace_user_rscript(source_dir: &Path) -> Result<(), Box<dyn Error>> {
             "#!/bin/sh\n\
              RHOME={}\n\
              export RHOME\n\
-             exec \"$(dirname \"$(realpath \"$0\")\")/Rscript.orig\" \"$@\"\n",
+             exec \"$(/usr/bin/dirname \"$(/bin/realpath \"$0\")\")/Rscript.orig\" \"$@\"\n",
             rhome_expr
         );
         debug!("Writing wrapper Rscript to {}", rscript.display());
@@ -541,10 +541,10 @@ fn replace_user_fontconfig(source_dir: &Path) -> Result<(), Box<dyn Error>> {
     std::fs::copy(&fc_cache, &fc_cache_orig)?;
 
     let content = "#!/bin/sh\n\
-                   RHOME=$(cd \"$(dirname \"$(realpath \"$0\")\")/..\" && pwd -P)\n\
+                   RHOME=$(cd \"$(/usr/bin/dirname \"$(/bin/realpath \"$0\")\")/..\" && pwd -P)\n\
                    FONTCONFIG_FILE=\"$RHOME/fontconfig/fonts/fonts.conf\"\n\
                    export FONTCONFIG_FILE\n\
-                   exec \"$(dirname \"$(realpath \"$0\")\")/fc-cache.orig\" \"$@\"\n";
+                   exec \"$(/usr/bin/dirname \"$(/bin/realpath \"$0\")\")/fc-cache.orig\" \"$@\"\n";
     debug!("Writing wrapper fc-cache to {}", fc_cache.display());
     std::fs::write(&fc_cache, content)?;
     let mut perms = std::fs::metadata(&fc_cache)?.permissions();
@@ -2257,9 +2257,9 @@ mod tests {
         assert!(!content.contains("R_HOME_DIR=/Library/Frameworks/R.framework/Resources"));
         assert!(content.contains("R_HOME_DIR=/opt/r/4.6-arm64"));
         // Self-locating override added with $-escapes correctly applied.
-        assert!(
-            content.contains("R_HOME_DIR=$(cd \"$(dirname \"$(realpath \"$0\")\")/..\" && pwd -P)")
-        );
+        assert!(content.contains(
+            "R_HOME_DIR=$(cd \"$(/usr/bin/dirname \"$(/bin/realpath \"$0\")\")/..\" && pwd -P)"
+        ));
         // DYLD line added; ${R_HOME_DIR} stays literal (not eaten as a regex group).
         assert!(content.contains("export DYLD_LIBRARY_PATH=\"${R_HOME_DIR}/lib\""));
         // Trailing content survives.
