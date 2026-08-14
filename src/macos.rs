@@ -19,6 +19,7 @@ use regex::Regex;
 use simple_error::*;
 
 use crate::alias::*;
+use crate::cache::ensure_download_dir;
 use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
@@ -148,7 +149,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         None => calculate_hash(&url),
     };
     let filename = prefix + "-" + basename(&url).unwrap_or("foo");
-    let tmp_dir = std::env::temp_dir().join("rig");
+    let tmp_dir = ensure_download_dir()?;
     let target = tmp_dir.join(&filename);
     let cache = target.exists() && not_too_old(&target);
     let target_str = target.to_owned().into_os_string();
@@ -989,20 +990,7 @@ pub fn sc_system_allow_debugger_rstudio(_args: &ArgMatches) -> Result<(), Box<dy
 }
 
 pub fn update_entitlements(path: PathBuf) -> Result<(), Box<dyn Error>> {
-    let tmp_dir = std::env::temp_dir().join("rig");
-    if let Err(err) = std::fs::create_dir_all(&tmp_dir) {
-        let dir = tmp_dir.to_str().unwrap_or("???");
-        OUTPUT.error(&format!(
-            "Cannot create temporary directory {}: {}",
-            dir, err
-        ));
-        error!("Cannot create temporary directory {}: {}", dir, err);
-        bail!(
-            "Cannot craete temporary file in {}: {}",
-            dir,
-            err.to_string()
-        );
-    };
+    let tmp_dir = ensure_download_dir()?;
 
     OUTPUT.status(&format!("Updating entitlements of {}", path.display()));
     info!("Updating entitlements of {}", path.display());

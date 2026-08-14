@@ -1,6 +1,7 @@
 // The directories rig uses: `rig system dirs` prints all of them, and with one
-// of the `--r`, `--rtools`, `--binary`, `--data`, `--fonts`, `--cache` and
-// `--log` flags it prints a single one, as a bare path, for use in scripts.
+// of the `--r`, `--rtools`, `--binary`, `--data`, `--fonts`, `--cache`,
+// `--download` and `--log` flags it prints a single one, as a bare path, for
+// use in scripts.
 //
 // All of these report the *effective* values, i.e. what rig will actually use,
 // after applying the mode, the RIG_* environment variables and the config file.
@@ -26,7 +27,7 @@ use log::error;
 use simple_error::bail;
 use tabular::{row, Table};
 
-use crate::cache::{get_cache_dir, get_data_dir, get_logs_dir};
+use crate::cache::{get_cache_dir, get_data_dir, get_download_dir, get_logs_dir};
 use crate::output::OUTPUT;
 use crate::utils::{get_binary_dir, get_mode};
 
@@ -57,6 +58,9 @@ pub struct RigDirs {
     #[cfg(target_os = "linux")]
     pub fonts_dir: String,
     pub cache_dir: String,
+    // Where rig downloads the R (and on Windows the Rtools) installers before
+    // it installs them. Per effective uid, see get_download_dir().
+    pub download_dir: String,
     pub logs_dir: String,
 }
 
@@ -140,6 +144,7 @@ pub fn rig_dirs(arch: &str) -> Result<RigDirs, Box<dyn Error>> {
         #[cfg(target_os = "linux")]
         fonts_dir: path_string(get_fontconfig_dir()?),
         cache_dir: path_string(get_cache_dir()?),
+        download_dir: path_string(get_download_dir()?),
         logs_dir: path_string(get_logs_dir()?),
     })
 }
@@ -158,13 +163,16 @@ fn dirs_rows(dirs: &RigDirs) -> Vec<(&'static str, &str)> {
     #[cfg(target_os = "linux")]
     rows.push(("Fonts dir", dirs.fonts_dir.as_str()));
     rows.push(("Cache dir", dirs.cache_dir.as_str()));
+    rows.push(("Download dir", dirs.download_dir.as_str()));
     rows.push(("Logs dir", dirs.logs_dir.as_str()));
     rows
 }
 
 // The flags that select a single directory, in the order they are reported.
 // clap makes them mutually exclusive, via the `dir` argument group.
-const SELECTORS: [&str; 7] = ["r", "rtools", "binary", "data", "fonts", "cache", "log"];
+const SELECTORS: [&str; 8] = [
+    "r", "rtools", "binary", "data", "fonts", "cache", "download", "log",
+];
 
 fn selected_dir(args: &ArgMatches) -> Option<&'static str> {
     SELECTORS.into_iter().find(|sel| args.get_flag(sel))
@@ -201,6 +209,7 @@ pub fn sc_system_dirs(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Bo
                 println!("{}", path_string(get_fontconfig_dir()?));
             }
             "cache" => println!("{}", path_string(get_cache_dir()?)),
+            "download" => println!("{}", path_string(get_download_dir()?)),
             "log" => println!("{}", path_string(get_logs_dir()?)),
             _ => unreachable!(),
         }
@@ -277,6 +286,7 @@ mod tests {
             #[cfg(target_os = "linux")]
             fonts_dir: "fonts-dir".to_string(),
             cache_dir: "cache-dir".to_string(),
+            download_dir: "download-dir".to_string(),
             logs_dir: "logs-dir".to_string(),
         };
 
@@ -288,7 +298,7 @@ mod tests {
         if cfg!(target_os = "linux") {
             expected.push("fonts_dir");
         }
-        expected.extend(["cache_dir", "logs_dir"]);
+        expected.extend(["cache_dir", "download_dir", "logs_dir"]);
 
         // serde_json's Map sorts its keys, so compare the key set here and the
         // order of the actual output separately, below.

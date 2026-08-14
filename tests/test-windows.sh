@@ -108,6 +108,7 @@ teardown() {
     echo "$output" | grep -q "^R root  *C:.Program Files.R"
     echo "$output" | grep -q "^Rtools root  *C:"
     echo "$output" | grep -q "^Binary dir  *C:.Program Files.R.bin$"
+    echo "$output" | grep -q "^Download dir  *.*.rig$"
 
     run rig -q system dirs --json
     echo "status = ${status}"
@@ -153,6 +154,19 @@ teardown() {
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "rig.data.rtools$"
+
+    # %TEMP% is already per user, so the download dir is not decorated here
+    run rig -q system dirs --download
+    echo "status = ${status}"
+    echo "output = ${output}"
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q ".rig$"
+
+    run env RIG_DOWNLOAD_DIR=C:\\rig-dl rig -q system dirs --download
+    echo "status = ${status}"
+    echo "output = ${output}"
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "rig-dl$"
 
     # hidden no-op off Linux
     run rig -q system dirs --fonts

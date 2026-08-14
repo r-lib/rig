@@ -28,6 +28,7 @@ teardown() {
     echo "$output" | grep -q "^Config file  */"
     # the fontconfig dir is Linux only
     echo "$output" | grep -q "^Fonts dir  */opt/R/fontconfig$"
+    echo "$output" | grep -q "^Download dir  */tmp/rig-$(id -u)$"
     # rtools-dir is Windows only
     echo "$output" | grep -vq "^Rtools root"
 
@@ -36,6 +37,7 @@ teardown() {
     echo "$output" | grep -q '"r_root": "/opt/R"'
     echo "$output" | grep -q '"arch":'
     echo "$output" | grep -q '"fonts_dir": "/opt/R/fontconfig"'
+    echo "$output" | grep -q "\"download_dir\": \"/tmp/rig-$(id -u)\""
     echo "$output" | grep -vq '"rtools_root"'
 
     run rig -q --json system dirs
@@ -52,17 +54,26 @@ teardown() {
     [[ "$status" -eq 0 ]]
     [[ "$output" = "/usr/local/bin" ]]
 
-    for opt in --data --cache --log; do
+    for opt in --data --cache --download --log; do
 	run rig -q system dirs $opt
 	[[ "$status" -eq 0 ]]
 	echo "$output" | grep -q "^/"
     done
+
+    # the download directory is per user id, and not per mode: rig escalates
+    # before it downloads in admin mode, so the uid already tells the two apart
+    run rig -q system dirs --download
+    [[ "$output" = "/tmp/rig-$(id -u)" ]]
+    run rig -q --user system dirs --download
+    [[ "$output" = "/tmp/rig-$(id -u)" ]]
 
     # the effective value follows the overrides
     run env RIG_R_INSTALL_DIR=/tmp/rig-r rig -q system dirs --r
     [[ "$output" = "/tmp/rig-r" ]]
     run env RIG_BINARY_DIR=/tmp/rig-bin rig -q system dirs --binary
     [[ "$output" = "/tmp/rig-bin" ]]
+    run env RIG_DOWNLOAD_DIR=/tmp/rig-dl rig -q system dirs --download
+    [[ "$output" = "/tmp/rig-dl" ]]
 
     run env RIG_MODE=user rig -q system dirs --r
     [[ "$status" -eq 0 ]]

@@ -867,10 +867,14 @@ pub fn rig_app() -> Command {
         .arg(dir_arg("data", "Print rig's data directory only."))
         .arg(dir_arg("fonts", "Print the fontconfig directory only.").platform("linux"))
         .arg(dir_arg("cache", "Print rig's cache directory only."))
+        .arg(dir_arg(
+            "download",
+            "Print rig's installer download directory only.",
+        ))
         .arg(dir_arg("log", "Print rig's log directory only.").alias("logs"))
-        .group(
-            ArgGroup::new("dir").args(["r", "rtools", "binary", "data", "fonts", "cache", "log"]),
-        )
+        .group(ArgGroup::new("dir").args([
+            "r", "rtools", "binary", "data", "fonts", "cache", "download", "log",
+        ]))
         // `--arch` only changes the answer on Windows, where the admin mode R
         // installation root is architecture dependent, so it is hidden
         // elsewhere. It is still defined on every platform, so that scripts do

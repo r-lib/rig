@@ -697,7 +697,7 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<(), Box<dyn Error
         let url = rtver.url;
         let filename = "rtools-".to_string() + &item.version + "-" + &item.arch + ".exe";
 
-        let tmp_dir = std::env::temp_dir().join("rig");
+        let tmp_dir = crate::cache::ensure_download_dir()?;
         let target = tmp_dir.join(&filename);
         OUTPUT.status(&format!("Downloading {} -> {}", url, target.display()));
         info!("Downloading {} -> {}", url, target.display());

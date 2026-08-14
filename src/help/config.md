@@ -36,6 +36,17 @@ configuration file takes precedence over rig's built-in default.
   mode (so Rtools 4.5 goes into `C:\rtools45`) and to
   `%APPDATA%\rig\data\rtools` in user mode.
 
+- `download-dir` (`RIG_DOWNLOAD_DIR`): the directory rig downloads the R (and
+  on Windows the Rtools) installers into, before installing them. Defaults to
+  `rig-<uid>` in the system temporary directory, e.g. `/tmp/rig-1000`, and to
+  `rig` under `%TEMP%` on Windows. The user id is part of the default name on
+  purpose: in [admin mode](../admin-vs-user-mode.qmd) rig downloads as `root`,
+  in user mode as you, and a directory shared between them would only be
+  writable by whoever created it first. For the same reason rig refuses to use
+  the default directory if it is a symbolic link, or if it is owned by another
+  user, or if other users can write into it. A directory you configure here is
+  created but not checked.
+
 - `positron-setup`: [user mode](../admin-vs-user-mode.qmd) only. Set it to `false` to stop rig from
   updating Positron's settings: adding its R installation root to
   `positron.r.customRootFolders`, and pointing

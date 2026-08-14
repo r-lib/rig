@@ -1,3 +1,8 @@
+# rig 0.10.0 (not released yet)
+
+* rig now uses a user-dependent download directory, to avoid interference
+  between users.
+
 # rig 0.10.0-beta
 
 * rig now does not edit the shell startup files in admin mode,
@@ -25,9 +30,9 @@
 * New `rig config` command to manage the rig configuration file.
 
 * New `rig system dirs` command to show the directories rig uses. With
-  `--r`, `--binary`, `--data`, `--cache`, `--log`, `--rtools` (Windows
-  only) or `--fonts` (Linux only) it prints a single path, for use in
-  scripts.
+  `--r`, `--binary`, `--data`, `--cache`, `--download`, `--log`, `--rtools`
+  (Windows only) or `--fonts` (Linux only) it prints a single path, for use
+  in scripts.
 
 * New experimental `rig proj` command to manage R project dependencies.
 

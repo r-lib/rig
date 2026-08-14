@@ -41,6 +41,7 @@ pub fn escalate(task: &str) -> Result<(), Box<dyn Error>> {
         with_env(&[
             "RIG_HOME",
             "RIG_BINARY_DIR",
+            "RIG_DOWNLOAD_DIR",
             "RIG_FONTS_SHA256",
             "RIG_FONTS_URL",
             "RIG_MODE",

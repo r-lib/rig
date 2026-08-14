@@ -15,6 +15,7 @@ use simple_error::*;
 use crate::rversion::*;
 
 use crate::alias::*;
+use crate::cache::ensure_download_dir;
 use crate::common::*;
 use crate::download::*;
 use crate::escalate::*;
@@ -305,7 +306,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     };
 
     let filename = basename(&url).unwrap_or("foo");
-    let tmp_dir = std::env::temp_dir().join("rig");
+    let tmp_dir = ensure_download_dir()?;
     let target = tmp_dir.join(filename);
     if target.exists() && not_too_old(&target) {
         OUTPUT.success(&format!("{} is cached at {}", filename, target.display()));
@@ -1940,8 +1941,7 @@ fn download_fonts(force: bool) -> Result<(), Box<dyn Error>> {
     }
 
     let (url, sha256) = get_fonts_source();
-    let tmp_dir = std::env::temp_dir().join("rig");
-    std::fs::create_dir_all(&tmp_dir)?;
+    let tmp_dir = ensure_download_dir()?;
     let filename = basename(&url).unwrap_or("rig-fonts.tar.gz");
     let target = tmp_dir.join(filename);
 

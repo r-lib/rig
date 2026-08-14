@@ -21,6 +21,8 @@ teardown() {
     echo "$output" | grep -q "^R root  */Library/Frameworks/R[.]framework/Versions$"
     echo "$output" | grep -q "^Binary dir  */usr/local/bin$"
     echo "$output" | grep -q "^Config file  */"
+    # TMPDIR is already per user on macOS, so only the trailing uid is fixed
+    echo "$output" | grep -q "^Download dir  */.*rig-$(id -u)$"
     # rtools-dir is Windows only
     echo "$output" | grep -vq "^Rtools root"
 
@@ -44,11 +46,19 @@ teardown() {
     [[ "$status" -eq 0 ]]
     [[ "$output" = "/usr/local/bin" ]]
 
-    for opt in --data --cache --log; do
+    for opt in --data --cache --download --log; do
 	run rig -q system dirs $opt
 	[[ "$status" -eq 0 ]]
 	echo "$output" | grep -q "^/"
     done
+
+    # the download directory is per user id, and not per mode: rig escalates
+    # before it downloads in admin mode, so the uid already tells the two apart
+    run rig -q system dirs --download
+    echo "$output" | grep -q "rig-$(id -u)$"
+    dl="$output"
+    run rig -q --user system dirs --download
+    [[ "$output" = "$dl" ]]
 
     # both architectures share a root on macOS, so --arch is accepted and ignored
     run rig -q system dirs --r --arch x86_64
@@ -60,6 +70,8 @@ teardown() {
     [[ "$output" = "/tmp/rig-r" ]]
     run env RIG_BINARY_DIR=/tmp/rig-bin rig -q system dirs --binary
     [[ "$output" = "/tmp/rig-bin" ]]
+    run env RIG_DOWNLOAD_DIR=/tmp/rig-dl rig -q system dirs --download
+    [[ "$output" = "/tmp/rig-dl" ]]
 
     run env RIG_MODE=user rig -q system dirs --r
     [[ "$status" -eq 0 ]]

@@ -59,7 +59,7 @@ pub fn download_r(args: &ArgMatches) -> Result<(Rversion, OsString), Box<dyn Err
     filename.push("-");
     filename.push(basename(&url).unwrap_or("foo"));
     let filename_path = Path::new(&filename);
-    let tmp_dir = std::env::temp_dir().join("rig");
+    let tmp_dir = crate::cache::ensure_download_dir()?;
     let target = tmp_dir.join(&filename);
     if target.exists() && not_too_old(&target) {
         OUTPUT.success(&format!(
@@ -88,7 +88,7 @@ pub fn download_file_sync(
     filename: &str,
     infinite_cache: bool,
 ) -> Result<OsString, Box<dyn Error>> {
-    let tmp_dir = std::env::temp_dir().join("rig");
+    let tmp_dir = crate::cache::ensure_download_dir()?;
     let target = tmp_dir.join(filename);
     if target.exists() && (infinite_cache || not_too_old(&target)) {
         OUTPUT.success(&format!("{} is cached at {}", filename, target.display()));
