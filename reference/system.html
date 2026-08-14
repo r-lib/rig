@@ -906,7 +906,7 @@ Run in user mode (overrides RIG_MODE and config)
 </section>
 <section id="rig-system-dirs" class="level2">
 <h2 class="anchored" data-anchor-id="rig-system-dirs"><code>rig system dirs</code></h2>
-<p>Print the directories rig uses: where R and (on Windows) Rtools is installed, where the quick links are created, where (on Linux) rig keeps the fontconfig configuration and the fallback fonts of the portable R builds, and where rig keeps its own configuration, data, cache and log files.</p>
+<p>Print the directories rig uses: where R and (on Windows) Rtools is installed, where the quick links are created, where (on Linux) rig keeps the fontconfig configuration and the fallback fonts of the portable R builds, where rig downloads the installers to, and where rig keeps its own configuration, data, cache and log files.</p>
 <p>The directories themselves may not exist.</p>
 <p>Use <code>--json</code> for machine-readable output.</p>
 <p>The output contains the directories in effect. They may be the defaults, or configured via the rig config file or environment variables.</p>
@@ -920,6 +920,7 @@ Run in user mode (overrides RIG_MODE and config)
 <p><code>--r</code> is the directory that <em>contains</em> the directories of the individual R versions; it is not an R installation itself. Similarly <code>--rtools</code> is the directory that contains the Rtools directories. Use <code>rig list --json</code> and <code>rig rtools list</code> for the paths of the installed versions.</p>
 <p>The Rtools installation root is only reported on Windows. On non-Windows platforms <code>--rtools</code> prints nothing and is hidden.</p>
 <p>The fontconfig directory is only reported on Linux, where it holds the <code>fonts.conf</code> and the fallback fonts that rig installs for the portable R builds. On non-Linux platforms <code>--fonts</code> prints nothing and is hidden.</p>
+<p><code>--download</code> is the directory rig downloads the installers into. It is in the system temporary directory and its name contains your user id, so that <a href="../admin-vs-user-mode.html">admin and user mode</a> installs, and different users of the same machine, never share it. See the <code>download-dir</code> <a href="../reference/config.html">configuration entry</a> to change it.</p>
 </section>
 <section id="usage-6" class="level3">
 <h3 class="anchored" data-anchor-id="usage-6">Usage</h3>
@@ -948,6 +949,10 @@ Print rig’s cache directory only.
 <dt><code>--data</code></dt>
 <dd>
 Print rig’s data directory only.
+</dd>
+<dt><code>--download</code></dt>
+<dd>
+Print rig’s installer download directory only.
 </dd>
 <dt><code>--fonts</code> <span class="rig-platform">Linux only</span></dt>
 <dd>

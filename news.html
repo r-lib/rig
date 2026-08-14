@@ -491,7 +491,8 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#rig-0.10.0-beta" id="toc-rig-0.10.0-beta" class="nav-link active" data-scroll-target="#rig-0.10.0-beta">rig 0.10.0-beta</a></li>
+  <li><a href="#rig-0.10.0-not-released-yet" id="toc-rig-0.10.0-not-released-yet" class="nav-link active" data-scroll-target="#rig-0.10.0-not-released-yet">rig 0.10.0 (not released yet)</a></li>
+  <li><a href="#rig-0.10.0-beta" id="toc-rig-0.10.0-beta" class="nav-link" data-scroll-target="#rig-0.10.0-beta">rig 0.10.0-beta</a></li>
   <li><a href="#rig-0.8.1" id="toc-rig-0.8.1" class="nav-link" data-scroll-target="#rig-0.8.1">rig 0.8.1</a></li>
   <li><a href="#rig-0.8.0" id="toc-rig-0.8.0" class="nav-link" data-scroll-target="#rig-0.8.0">rig 0.8.0</a></li>
   <li><a href="#rig-0.7.1" id="toc-rig-0.7.1" class="nav-link" data-scroll-target="#rig-0.7.1">rig 0.7.1</a></li>
@@ -557,6 +558,12 @@ ul.task-list li input[type="checkbox"] {
 </header>
 
 
+<section id="rig-0.10.0-not-released-yet" class="level1">
+<h1>rig 0.10.0 (not released yet)</h1>
+<ul>
+<li>rig now uses a user-dependent download directory, to avoid interference between users.</li>
+</ul>
+</section>
 <section id="rig-0.10.0-beta" class="level1">
 <h1>rig 0.10.0-beta</h1>
 <ul>
@@ -566,7 +573,7 @@ ul.task-list li input[type="checkbox"] {
 <li><p>rig now supports a <strong>user mode</strong> on all platforms, in addition to the default admin mode. In user mode rig installs everything into the user’s home directory and never needs <code>sudo</code> or administrator privileges. R goes into <code>~/.local/share/rig/r</code> (<code>%APPDATA%\rig\data\r</code> on Windows) and quick links into <code>~/.local/bin</code> (<code>%USERPROFILE%\.local\bin</code> on Windows). Select the mode with the <code>--user</code> / <code>--admin</code> global flags, the <code>RIG_MODE</code> environment variable, or the <code>mode</code> key in the rig config file. The new <code>rig system user-mode</code> command switches an existing admin-mode setup to user mode.</p></li>
 <li><p>rig has a new documentation website at <a href="https://rig.r-lib.org/" class="uri">https://rig.r-lib.org/</a>, including a full CLI reference and a guide to admin vs.&nbsp;user mode.</p></li>
 <li><p>New <code>rig config</code> command to manage the rig configuration file.</p></li>
-<li><p>New <code>rig system dirs</code> command to show the directories rig uses. With <code>--r</code>, <code>--binary</code>, <code>--data</code>, <code>--cache</code>, <code>--log</code>, <code>--rtools</code> (Windows only) or <code>--fonts</code> (Linux only) it prints a single path, for use in scripts.</p></li>
+<li><p>New <code>rig system dirs</code> command to show the directories rig uses. With <code>--r</code>, <code>--binary</code>, <code>--data</code>, <code>--cache</code>, <code>--download</code>, <code>--log</code>, <code>--rtools</code> (Windows only) or <code>--fonts</code> (Linux only) it prints a single path, for use in scripts.</p></li>
 <li><p>New experimental <code>rig proj</code> command to manage R project dependencies.</p></li>
 <li><p><code>rig run --cmd &lt;command&gt; [args...]</code> now runs <code>R CMD &lt;command&gt; [args...]</code> with the selected R version.</p></li>
 <li><p><code>rig rtools</code> is now a top-level command (it used to be <code>rig system rtools</code>).</p></li>
