@@ -12,7 +12,7 @@ use std::error::Error;
 use log::*;
 
 use crate::dcf::RPackageVersion;
-use crate::repos::binaries::{load_binary_index, BinaryIndex, PpmStatus};
+use crate::repos::binaries::{load_binary_index, prefetch_binary_indices, BinaryIndex, PpmStatus};
 use crate::repos::cranlike_metadata::minor_r_version;
 use crate::rversion::OsVersion;
 use crate::solver::{BinaryArtifact, BinaryIndexLoader, PackageArtifacts};
@@ -82,6 +82,10 @@ impl BinaryIndexLoader for P3mBinaryLoader {
 
     fn target_name(&self) -> String {
         self.target.name()
+    }
+
+    fn prefetch(&self, packages: &[String]) {
+        prefetch_binary_indices(packages, None);
     }
 }
 

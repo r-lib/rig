@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 use std::cmp::Reverse;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::error::Error;
 use std::fmt;
 
@@ -191,7 +191,7 @@ fn binary_artifact_deps(
 ) -> Option<HashMap<RPackageName, RPackageVersionRanges, rustc_hash::FxBuildHasher>> {
     let mut deps = source.clone();
     for (name, version) in binary.linkingto.iter() {
-        if name == "R" || crate::proj::BASE_PKGS.contains(&name.as_str()) {
+        if is_base_package(name) {
             continue;
         }
         let declared = deps.get(name)?;
@@ -202,6 +202,12 @@ fn binary_artifact_deps(
         deps.insert(name.clone(), pinned);
     }
     Some(deps)
+}
+
+/// Whether a name is R itself or one of the base packages, which ship with R
+/// and so are never downloaded, resolved or looked up in a binary index.
+fn is_base_package(name: &str) -> bool {
+    name == "R" || crate::proj::BASE_PKGS.contains(&name)
 }
 
 /// One binary build of one package version, as the solver needs to see it.
@@ -235,6 +241,14 @@ pub trait BinaryIndexLoader {
 
     /// How the target is spelled in a lockfile, e.g. `macos-arm64`.
     fn target_name(&self) -> String;
+
+    /// Warm whatever [`BinaryIndexLoader::load_artifacts`] reads, for many
+    /// packages at once, so that a loader with a per-package round trip can pay
+    /// them concurrently instead of one at a time.
+    ///
+    /// Purely an optimization: doing nothing is a valid implementation, and
+    /// `load_artifacts` must behave the same whether or not this ran.
+    fn prefetch(&self, _packages: &[String]) {}
 }
 
 #[derive(Default)]
@@ -393,6 +407,71 @@ impl RPackageRegistry {
         self.loaded.borrow_mut().insert(pkg.clone());
     }
 
+    /// Warm the binary loader's cache for everything the solve is likely to
+    /// visit, before solving starts.
+    ///
+    /// [`RPackageRegistry::ensure_loaded`] fetches one package's binary index at
+    /// a time, exactly when pubgrub first looks at that package, so on a cold
+    /// cache the solve stops for a network round trip at every package it
+    /// discovers. The packages are predictable, though: they are the transitive
+    /// closure of the project's dependencies, which the *source* metadata
+    /// already describes and which is local. So we walk that closure first and
+    /// hand the whole list to the loader, which can fetch it in parallel.
+    ///
+    /// The closure is taken over the newest version of each package, which is
+    /// what a solve visits when nothing forces it to backtrack. That makes this
+    /// an approximation in both directions — a backtracking solve reaches
+    /// versions with dependencies the newest one does not have, and a solve that
+    /// picks an old version never looks at some of what we fetched. Neither
+    /// matters: `ensure_loaded` still loads whatever was missed, and a package
+    /// fetched needlessly only costs one request.
+    pub fn prefetch_binaries(&self, roots: &[RPackageName]) {
+        let (binaries, loader) = match (&self.binaries, &self.loader) {
+            (Some(binaries), Some(loader)) => (binaries, loader),
+            // Source-only solve, or nothing to walk the closure with.
+            _ => return,
+        };
+
+        let mut seen: HashSet<RPackageName> = HashSet::new();
+        let mut queue: VecDeque<RPackageName> = VecDeque::new();
+        let mut closure: Vec<RPackageName> = vec![];
+        for root in roots {
+            if !is_base_package(root) && seen.insert(root.clone()) {
+                queue.push_back(root.clone());
+            }
+        }
+
+        while let Some(pkg) = queue.pop_front() {
+            closure.push(pkg.clone());
+            let versions = match loader.load_versions(&pkg) {
+                Ok(versions) => versions,
+                Err(e) => {
+                    debug!("Failed to load versions for package '{}': {}", pkg, e);
+                    continue;
+                }
+            };
+            let newest = match versions.iter().max_by(|a, b| a.version.cmp(&b.version)) {
+                Some(newest) => newest,
+                None => continue,
+            };
+            for dep in newest.dependencies.dependencies.iter() {
+                // Soft dependencies are not installed, so the solver never
+                // visits them — see `rpackage_version_ranges_from_constraints`.
+                if dep.types.iter().all(|t| DEP_TYPES_SOFT.contains(t)) {
+                    continue;
+                }
+                if is_base_package(&dep.name) {
+                    continue;
+                }
+                if seen.insert(dep.name.clone()) {
+                    queue.push_back(dep.name.clone());
+                }
+            }
+        }
+
+        binaries.prefetch(&closure);
+    }
+
     /// The binary builds of a package, or nothing if this is a source-only solve
     /// or the index could not be read. A missing index is not fatal: we just
     /// install from source.
@@ -504,6 +583,7 @@ impl DependencyProvider for RPackageRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::rc::Rc;
 
     fn version(v: &str) -> RPackageVersion {
         RPackageVersion::from_str(v).unwrap()
@@ -607,16 +687,32 @@ mod tests {
                     crate::dcf::Package::from_crandb(
                         name.to_string(),
                         version(v),
-                        imports(deps).dependencies,
+                        stub_deps(deps).dependencies,
                     )
                 })
                 .collect())
         }
     }
 
+    /// Dependencies of a stub package: `Imports`, plus whatever follows a `|`
+    /// as `Suggests`, e.g. `"b (>= 1.0.0) | c"`.
+    fn stub_deps(spec: &str) -> PackageDependencies {
+        match spec.split_once('|') {
+            None => imports(spec),
+            Some((hard, soft)) => {
+                let mut deps = imports(hard);
+                deps.append(&mut PackageDependencies::from_str(soft, "Suggests").unwrap());
+                deps
+            }
+        }
+    }
+
+    #[derive(Default)]
     struct StubBinaries {
         /// package, version, row, `LinkingTo` pins as `pkg=version` pairs.
         builds: Vec<(&'static str, &'static str, u32, &'static str)>,
+        /// What `prefetch` was called with, for the tests that check it.
+        prefetched: Rc<RefCell<Vec<String>>>,
     }
 
     impl BinaryIndexLoader for StubBinaries {
@@ -647,6 +743,10 @@ mod tests {
 
         fn target_name(&self) -> String {
             "testos-x86_64".to_string()
+        }
+
+        fn prefetch(&self, packages: &[String]) {
+            self.prefetched.borrow_mut().extend_from_slice(packages);
         }
     }
 
@@ -683,6 +783,7 @@ mod tests {
             },
             Some(StubBinaries {
                 builds: vec![("a", "1.0.0", 2, ""), ("a", "1.0.0", 5, "")],
+                ..Default::default()
             }),
             "a",
         );
@@ -703,6 +804,7 @@ mod tests {
             },
             Some(StubBinaries {
                 builds: vec![("a", "1.0.0", 1, "")],
+                ..Default::default()
             }),
             "a",
         );
@@ -721,6 +823,7 @@ mod tests {
             },
             Some(StubBinaries {
                 builds: vec![("a", "1.0.0", 1, "b=1.0.0")],
+                ..Default::default()
             }),
             "a",
         );
@@ -745,6 +848,7 @@ mod tests {
             },
             Some(StubBinaries {
                 builds: vec![("a", "1.0.0", 1, "b=1.0.0")],
+                ..Default::default()
             }),
             "a, c",
         );
@@ -769,10 +873,88 @@ mod tests {
             },
             Some(StubBinaries {
                 builds: vec![("a", "1.0.0", 1, "b=1.0.0"), ("a", "9.9.9", 2, "")],
+                ..Default::default()
             }),
             "a",
         );
         assert_eq!(solution["a"], source("a", "1.0.0"));
+    }
+
+    /// Build a registry on the stubs, and hand back the list `prefetch` sees.
+    fn registry(
+        source: StubSource,
+        binaries: StubBinaries,
+    ) -> (RPackageRegistry, Rc<RefCell<Vec<String>>>) {
+        let prefetched = binaries.prefetched.clone();
+        let reg = RPackageRegistry::with_loaders(
+            Box::new(source),
+            Some(Box::new(binaries) as Box<dyn BinaryIndexLoader>),
+        );
+        (reg, prefetched)
+    }
+
+    fn prefetched_for(source: StubSource, roots: &[&str]) -> Vec<String> {
+        let (reg, prefetched) = registry(source, StubBinaries::default());
+        let roots: Vec<String> = roots.iter().map(|r| r.to_string()).collect();
+        reg.prefetch_binaries(&roots);
+        let mut names = prefetched.borrow().clone();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn prefetching_walks_the_whole_dependency_closure() {
+        // A diamond, so a package reached twice is still prefetched once, plus a
+        // package nothing depends on, which is not prefetched at all.
+        let names = prefetched_for(
+            StubSource {
+                packages: vec![
+                    ("a", "1.0.0", "b, c"),
+                    ("b", "1.0.0", "d"),
+                    ("c", "1.0.0", "d"),
+                    ("d", "1.0.0", ""),
+                    ("unrelated", "1.0.0", ""),
+                ],
+            },
+            &["a"],
+        );
+        assert_eq!(names, ["a", "b", "c", "d"]);
+    }
+
+    #[test]
+    fn prefetching_skips_what_the_solver_never_downloads() {
+        let names = prefetched_for(
+            StubSource {
+                packages: vec![
+                    // The newest version is what the closure follows: 2.0.0
+                    // needs `c`, and the `b` that only 1.0.0 needed is left to
+                    // the lazy path in case the solve backtracks to it.
+                    ("a", "1.0.0", "b"),
+                    ("a", "2.0.0", "R (>= 4.0.0), stats, c | suggested"),
+                    ("b", "1.0.0", ""),
+                    ("c", "1.0.0", ""),
+                    ("suggested", "1.0.0", ""),
+                ],
+            },
+            // R and the base packages are not downloadable, whether they are
+            // roots or dependencies.
+            &["a", "utils"],
+        );
+        assert_eq!(names, ["a", "c"]);
+    }
+
+    #[test]
+    fn without_a_binary_loader_there_is_nothing_to_prefetch() {
+        // No loader to prefetch into, and nothing that could fail: a
+        // source-only solve never asks about binaries.
+        let reg = RPackageRegistry::with_loaders(
+            Box::new(StubSource {
+                packages: vec![("a", "1.0.0", "b"), ("b", "1.0.0", "")],
+            }),
+            None,
+        );
+        reg.prefetch_binaries(&["a".to_string()]);
+        assert!(reg.binary_target().is_none());
     }
 
     #[test]

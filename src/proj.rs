@@ -229,7 +229,6 @@ fn sc_proj_solve_deps(
     deps: &PackageDependencies,
     target: Option<BinaryTarget>,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
-    OUTPUT.status("Solving dependencies");
     info!("Solving dependencies");
 
     // The registry lazily loads each package's versions from the local database
@@ -266,6 +265,14 @@ fn sc_proj_solve_deps(
         );
     }
 
+    // The binary indices are one HTTP request per package, and the solver would
+    // otherwise make them one at a time, as it discovers each package. Fetch
+    // them for the whole dependency closure up front instead, in parallel.
+    OUTPUT.status("Downloading binary package metadata");
+    let roots: Vec<String> = deps.dependencies.iter().map(|d| d.name.clone()).collect();
+    reg.prefetch_binaries(&roots);
+
+    OUTPUT.status("Solving dependencies");
     let solution = resolve(
         &reg,
         "_project".to_string(),
