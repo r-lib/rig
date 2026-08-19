@@ -27,7 +27,7 @@ teardown() {
     echo "$output" | grep -q "^Binary dir  */usr/local/bin$"
     echo "$output" | grep -q "^Config file  */"
     # the fontconfig dir is Linux only
-    echo "$output" | grep -q "^Fonts dir  */opt/R/fontconfig$"
+    echo "$output" | grep -q "^Fonts dir  */opt/rig/fontconfig$"
     echo "$output" | grep -q "^Download dir  */tmp/rig-$(id -u)$"
     # rtools-dir is Windows only
     echo "$output" | grep -vq "^Rtools root"
@@ -36,7 +36,7 @@ teardown() {
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q '"r_root": "/opt/R"'
     echo "$output" | grep -q '"arch":'
-    echo "$output" | grep -q '"fonts_dir": "/opt/R/fontconfig"'
+    echo "$output" | grep -q '"fonts_dir": "/opt/rig/fontconfig"'
     echo "$output" | grep -q "\"download_dir\": \"/tmp/rig-$(id -u)\""
     echo "$output" | grep -vq '"rtools_root"'
 
@@ -82,10 +82,11 @@ teardown() {
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "/[.]local/bin$"
 
-    # the fontconfig dir sits next to the R installations, in both modes
+    # the fontconfig dir is outside of the R installations, in both modes:
+    # in rig's own directory in admin mode, in the data directory in user mode
     run rig -q system dirs --fonts
     [[ "$status" -eq 0 ]]
-    [[ "$output" = "/opt/R/fontconfig" ]]
+    [[ "$output" = "/opt/rig/fontconfig" ]]
     run rig -q --user system dirs --fonts
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "/[.]local/share/rig/fontconfig$"
