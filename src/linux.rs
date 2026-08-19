@@ -1,5 +1,6 @@
 #![cfg(target_os = "linux")]
 
+use globset::{Glob, GlobMatcher};
 use regex::Regex;
 use std::error::Error;
 use std::ffi::OsStr;
@@ -29,6 +30,11 @@ use crate::utils::*;
 
 pub const R_ROOT_: &str = "/opt/R";
 pub const R_VERSIONDIR: &str = "{}";
+
+// The version independent directories of admin-mode portable installations.
+pub const ADMIN_LIB_DIR: &str = "/opt/rig/lib";
+pub const ADMIN_ETC_DIR: &str = "/opt/rig/etc";
+pub const ADMIN_FONTCONFIG_DIR: &str = "/opt/rig/fontconfig";
 
 // Portable R builds used for user-mode installation. These "distros" resolve to
 // relocatable `.tar.gz` files on the R-hub version server, picked by libc type.
@@ -632,6 +638,10 @@ fn safe_user_install(
         OUTPUT.warn(&format!("Could not shim libXcursor: {}", e));
         warn!("Could not shim libXcursor: {}", e);
     }
+    if let Err(e) = setup_user_libs(&dest) {
+        OUTPUT.warn(&format!("Could not set up bundled libraries: {}", e));
+        warn!("Could not set up bundled libraries: {}", e);
+    }
 
     // Clean up the staging wrapper if we descended into a subdirectory.
     if staging.exists() {
@@ -794,6 +804,215 @@ fn shim_bundled_xcursor(dest: &Path) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+const USER_LIBS: &[(&str, &str)] = &[
+    ("libX11-*.so.6", "libX11.so.6"),
+    ("libXext-*.so.6", "libXext.so.6"),
+    ("libXrender-*.so.1", "libXrender.so.1"),
+    ("libICE-*.so.6", "libICE.so.6"),
+    ("libSM-*.so.6", "libSM.so.6"),
+    ("libgobject-2-*.0.so.0", "libgobject-2.0.so.0"),
+    ("libglib-2-*.0.so.0", "libglib-2.0.so.0"),
+    ("libXau-*.so.6", "libXau.so.6"),
+    ("libxcb-*.so.1", "libxcb.so.1"),
+    ("libuuid-*.so.1", "libuuid.so.1"),
+    ("libpcre-*.so.1", "libpcre.so.1"),
+    ("libffi-*.so.8", "libffi.so.8"),
+];
+
+pub fn get_user_lib_dir() -> Result<PathBuf, Box<dyn Error>> {
+    match get_r_install_dir()? {
+        Some(rdir) => {
+            // `r-install-dir` is `<data>/r`; keep the libraries in a sibling.
+            let data = Path::new(&rdir)
+                .parent()
+                .ok_or_else(|| SimpleError::new("Cannot determine rig data directory"))?;
+            Ok(data.join("lib"))
+        }
+        None => Ok(PathBuf::from(ADMIN_LIB_DIR)),
+    }
+}
+
+fn user_lib_globs() -> Result<Vec<GlobMatcher>, Box<dyn Error>> {
+    let mut globs = Vec::with_capacity(USER_LIBS.len());
+    for (pattern, _) in USER_LIBS {
+        globs.push(Glob::new(pattern)?.compile_matcher());
+    }
+    Ok(globs)
+}
+
+fn prune_user_libs(libdir: &Path) -> Result<(), Box<dyn Error>> {
+    if !libdir.exists() {
+        return Ok(());
+    }
+    let globs = user_lib_globs()?;
+    for entry in std::fs::read_dir(libdir)? {
+        let entry = entry?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        let ours = USER_LIBS.iter().any(|(_, soname)| *soname == name)
+            || globs.iter().any(|glob| glob.is_match(&name));
+        if !ours {
+            debug!("Keeping {} in {}", name, libdir.display());
+            continue;
+        }
+        let path = entry.path();
+        debug!("Removing {}", path.display());
+        std::fs::remove_file(&path)?;
+    }
+    Ok(())
+}
+
+fn copy_user_libs(libs: &Path, libdir: &Path) -> Result<(), Box<dyn Error>> {
+    if !libs.exists() {
+        debug!("No {}, no bundled libraries to copy", libs.display());
+        return Ok(());
+    }
+    std::fs::create_dir_all(libdir)?;
+    prune_user_libs(libdir)?;
+
+    let mut names: Vec<String> = std::fs::read_dir(libs)?
+        .flatten()
+        .map(|entry| entry.file_name().to_string_lossy().to_string())
+        .collect();
+    names.sort();
+
+    for (pattern, soname) in USER_LIBS {
+        let glob = Glob::new(pattern)?.compile_matcher();
+        let found = match names.iter().find(|name| glob.is_match(name.as_str())) {
+            Some(name) => name,
+            None => {
+                OUTPUT.warn(&format!(
+                    "No {} in {}, {} will not be available",
+                    pattern,
+                    libs.display(),
+                    soname
+                ));
+                warn!(
+                    "No {} in {}, not copying {}",
+                    pattern,
+                    libs.display(),
+                    soname
+                );
+                continue;
+            }
+        };
+
+        let from = libs.join(found);
+        let to = libdir.join(found);
+        debug!("Copying {} -> {}", from.display(), to.display());
+        std::fs::copy(&from, &to)?;
+
+        let link = libdir.join(soname);
+        if link.symlink_metadata().is_ok() {
+            std::fs::remove_file(&link)?;
+        }
+        debug!("Linking {} -> {}", link.display(), found);
+        // A relative target, so the directory can be moved as a whole.
+        symlink(found, &link)?;
+    }
+    Ok(())
+}
+
+const LDPATHS_BLOCK_START: &str = "## rig LD_LIBRARY_PATH start";
+const LDPATHS_BLOCK_END: &str = "## rig LD_LIBRARY_PATH end";
+
+fn render_ldpaths_lib_dir(existing: &str, dir: &str) -> String {
+    let body = format!(
+        "LD_LIBRARY_PATH=\"${{LD_LIBRARY_PATH:+${{LD_LIBRARY_PATH}}:}}{}\"\n\
+         export LD_LIBRARY_PATH",
+        shell_escape_dquoted(dir)
+    );
+    render_fenced_block(existing, LDPATHS_BLOCK_START, LDPATHS_BLOCK_END, &body)
+}
+
+// Escape a path for use inside a double-quoted shell string.
+fn shell_escape_dquoted(path: &str) -> String {
+    let mut out = String::with_capacity(path.len());
+    for chr in path.chars() {
+        if matches!(chr, '\\' | '"' | '$' | '`') {
+            out.push('\\');
+        }
+        out.push(chr);
+    }
+    out
+}
+
+fn patch_ldpaths(dest: &Path, libdir: &Path) -> Result<(), Box<dyn Error>> {
+    let etc = dest.join("lib").join("R").join("etc");
+    let mut files = vec![etc.join("ldpaths")];
+    // `R_ARCH` is empty on the builds rig installs, but a sub-architecture
+    // directory is cheap to cover.
+    if let Ok(entries) = std::fs::read_dir(&etc) {
+        for entry in entries.flatten() {
+            let sub = entry.path().join("ldpaths");
+            if sub.is_file() {
+                files.push(sub);
+            }
+        }
+    }
+
+    let dir = libdir.to_string_lossy().to_string();
+    for file in files {
+        if !file.exists() {
+            debug!("No {}, not patching LD_LIBRARY_PATH", file.display());
+            continue;
+        }
+        let existing = std::fs::read_to_string(&file)?;
+        let out = render_ldpaths_lib_dir(&existing, &dir);
+        if out == existing {
+            debug!("{} already has {} on LD_LIBRARY_PATH", file.display(), dir);
+            continue;
+        }
+        debug!("Adding {} to LD_LIBRARY_PATH in {}", dir, file.display());
+        // Writing to the existing file keeps its permissions.
+        std::fs::write(&file, out)?;
+    }
+    Ok(())
+}
+
+fn setup_user_libs(dest: &Path) -> Result<(), Box<dyn Error>> {
+    let libdir = get_user_lib_dir()?;
+    let libs = dest.join("lib").join("R").join("lib").join(".libs");
+    copy_user_libs(&libs, &libdir)?;
+    // Not conditional on the copy having found anything: an earlier
+    // installation may have populated the directory.
+    patch_ldpaths(dest, &libdir)?;
+    Ok(())
+}
+
+fn cleanup_user_libs() -> Result<(), Box<dyn Error>> {
+    let rroot = get_r_root()?;
+    let left = sc_get_list()?
+        .iter()
+        .any(|ver| read_install_platform(&Path::new(&rroot).join(ver)).is_some());
+    if left {
+        debug!("Portable R installations left, keeping the rig library directory");
+        return Ok(());
+    }
+    remove_user_lib_dir(&get_user_lib_dir()?)
+}
+
+fn remove_user_lib_dir(libdir: &Path) -> Result<(), Box<dyn Error>> {
+    if !libdir.exists() {
+        return Ok(());
+    }
+    prune_user_libs(libdir)?;
+    debug!("Removing {}", libdir.display());
+    if let Err(err) = std::fs::remove_dir(libdir) {
+        debug!("Not removing {}: {}", libdir.display(), err);
+        return Ok(());
+    }
+    // `/opt/rig` only ever holds rig's own directories, so clean it up as well
+    // once it is empty (`remove_dir` fails, harmlessly, if it is not).
+    if libdir == Path::new(ADMIN_LIB_DIR) {
+        if let Some(parent) = libdir.parent() {
+            if let Err(err) = std::fs::remove_dir(parent) {
+                debug!("Not removing {}: {}", parent.display(), err);
+            }
+        }
+    }
+    Ok(())
+}
+
 // Write a `metadata.json` file at the top level of a portable R installation,
 // recording the platform of the build (the manylinux/musllinux distro string).
 // Its presence also marks the installation as portable (vs. a distro package),
@@ -920,6 +1139,14 @@ pub fn sc_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             info!("Removing {}", dir.display());
             std::fs::remove_dir_all(&dir)?;
         }
+    }
+
+    if let Err(e) = cleanup_user_libs() {
+        OUTPUT.warn(&format!(
+            "Could not clean up the rig library directory: {}",
+            e
+        ));
+        warn!("Could not clean up the rig library directory: {}", e);
     }
 
     sc_system_make_links()?;
@@ -1513,6 +1740,28 @@ pub fn sc_system_clean_admin_r(args: &ArgMatches) -> Result<(), Box<dyn Error>> 
 }
 
 fn remove_admin_installations() -> Result<(), Box<dyn Error>> {
+    for dir in [ADMIN_ETC_DIR, ADMIN_FONTCONFIG_DIR] {
+        let path = Path::new(dir);
+        if !path.exists() {
+            continue;
+        }
+        OUTPUT.status(&format!("Removing {}", dir));
+        info!("Removing {}", dir);
+        if let Err(e) = std::fs::remove_dir_all(path) {
+            OUTPUT.warn(&format!("Cannot remove {}: {}", dir, e));
+            warn!("Cannot remove {}: {}", dir, e);
+        }
+    }
+
+    // The shared library directory of the admin-mode portable installations.
+    // `get_user_lib_dir()` is of no use here: by the time this runs the mode is
+    // already user, so it would resolve to (and delete) the user-mode directory
+    // that the migration has just populated.
+    if let Err(e) = remove_user_lib_dir(Path::new(ADMIN_LIB_DIR)) {
+        OUTPUT.warn(&format!("Cannot remove {}: {}", ADMIN_LIB_DIR, e));
+        warn!("Cannot remove {}: {}", ADMIN_LIB_DIR, e);
+    }
+
     let admin_root = Path::new(R_ROOT_);
     let versions = list_admin_versions(admin_root)?;
     if versions.is_empty() {
@@ -1730,8 +1979,9 @@ pub const CACERT_URL: &str = "https://curl.se/ca/cacert.pem";
 // Path to the CA certificate bundle used by portable R builds. In user mode it
 // lives in an `etc` directory next to the R installations under the rig data
 // directory, e.g. `~/.local/share/rig/etc/cacert.pem`. In admin mode (where
-// there is no separate data directory) it lives under the R root, i.e.
-// `/opt/R/etc/cacert.pem`.
+// there is no separate data directory) it lives in rig's own directory, i.e.
+// `/opt/rig/etc/cacert.pem`; it cannot go under `/opt/R`, because every
+// directory there is an R installation.
 fn get_user_cert_path() -> Result<PathBuf, Box<dyn Error>> {
     match get_r_install_dir()? {
         Some(rdir) => {
@@ -1741,7 +1991,7 @@ fn get_user_cert_path() -> Result<PathBuf, Box<dyn Error>> {
                 .ok_or_else(|| SimpleError::new("Cannot determine rig data directory"))?;
             Ok(data.join("etc").join("cacert.pem"))
         }
-        None => Ok(Path::new(&get_r_root()?).join("etc").join("cacert.pem")),
+        None => Ok(Path::new(ADMIN_ETC_DIR).join("cacert.pem")),
     }
 }
 
@@ -1891,8 +2141,9 @@ pub const RIG_FONTS_SHA256: &str =
 // The fontconfig directory: `fonts.conf` plus the downloaded `fonts/`. Like the
 // CA bundle this is version independent, so it lives next to the R
 // installations rather than inside one of them, i.e.
-// `~/.local/share/rig/fontconfig` in user mode and `/opt/R/fontconfig` for
-// admin-mode portable installations.
+// `~/.local/share/rig/fontconfig` in user mode and `/opt/rig/fontconfig` for
+// admin-mode portable installations (not `/opt/R/fontconfig`, because every
+// directory under `/opt/R` is an R installation).
 pub fn get_fontconfig_dir() -> Result<PathBuf, Box<dyn Error>> {
     match get_r_install_dir()? {
         Some(rdir) => {
@@ -1902,7 +2153,7 @@ pub fn get_fontconfig_dir() -> Result<PathBuf, Box<dyn Error>> {
                 .ok_or_else(|| SimpleError::new("Cannot determine rig data directory"))?;
             Ok(data.join("fontconfig"))
         }
-        None => Ok(Path::new(&get_r_root()?).join("fontconfig")),
+        None => Ok(PathBuf::from(ADMIN_FONTCONFIG_DIR)),
     }
 }
 
@@ -2450,6 +2701,187 @@ Usage: /lib/ld-musl-x86_64.so.1 [options] [--] pathname\n";
         // ... and an installation with no bundled libraries at all.
         let dir = tempfile::tempdir().unwrap();
         assert!(shim_bundled_xcursor(dir.path()).is_ok());
+    }
+
+    // The bundled libraries `copy_user_libs()` looks for, as a real build names
+    // them, plus some it must not touch.
+    const BUNDLED_LIBS: &[&str] = &[
+        "libX11-6f69f3d8.so.6",
+        "libXext-a2b40b1f.so.6",
+        "libXrender-0f2e0bf4.so.1",
+        "libICE-c2f4b1a9.so.6",
+        "libSM-53d40b8e.so.6",
+        "libgobject-2-91b5e4a7.0.so.0",
+        "libglib-2-7d1c5a30.0.so.0",
+        "libXau-54347979.so.6",
+        "libxcb-d155e40a.so.1",
+        "libuuid-90fde5d9.so.1",
+        "libpcre-7e45cee7.so.1",
+        "libffi-0b118a5a.so.8",
+        "libcurl-52199be6.so.4",
+        "libR.so",
+    ];
+
+    #[test]
+    fn copy_user_libs_copies_and_links_the_bundled_libraries() {
+        let dir = tempfile::tempdir().unwrap();
+        let libs = write_bundled_libs(dir.path(), BUNDLED_LIBS);
+        let libdir = tempfile::tempdir().unwrap();
+        let libdir = libdir.path();
+
+        copy_user_libs(&libs, libdir).unwrap();
+
+        for (_, soname) in USER_LIBS {
+            let link = libdir.join(soname);
+            let target = std::fs::read_link(&link).unwrap();
+            // A relative link, and it must resolve, or nothing can load it.
+            assert!(target.is_relative(), "{} is not relative", target.display());
+            assert!(link.exists(), "{} does not resolve", link.display());
+            assert!(libdir.join(&target).is_file());
+        }
+        assert_eq!(
+            std::fs::read_link(libdir.join("libglib-2.0.so.0")).unwrap(),
+            PathBuf::from("libglib-2-7d1c5a30.0.so.0")
+        );
+
+        // The rest of the bundled libraries stay where they are.
+        assert!(!libdir.join("libcurl-52199be6.so.4").exists());
+        assert!(!libdir.join("libR.so").exists());
+    }
+
+    #[test]
+    fn copy_user_libs_prunes_earlier_copies() {
+        let dir = tempfile::tempdir().unwrap();
+        let libs = write_bundled_libs(dir.path(), BUNDLED_LIBS);
+        let libdir = tempfile::tempdir().unwrap();
+        let libdir = libdir.path();
+
+        // The copies of an R version installed earlier, with other hashes, and a
+        // file that is not rig's.
+        std::fs::write(libdir.join("libX11-deadbeef.so.6"), b"").unwrap();
+        symlink("libX11-deadbeef.so.6", libdir.join("libX11.so.6")).unwrap();
+        std::fs::write(libdir.join("libfoo.so.1"), b"").unwrap();
+
+        copy_user_libs(&libs, libdir).unwrap();
+
+        assert!(!libdir.join("libX11-deadbeef.so.6").exists());
+        assert_eq!(
+            std::fs::read_link(libdir.join("libX11.so.6")).unwrap(),
+            PathBuf::from("libX11-6f69f3d8.so.6")
+        );
+        assert!(libdir.join("libfoo.so.1").exists());
+    }
+
+    #[test]
+    fn copy_user_libs_tolerates_missing_libraries() {
+        // A build that bundles none of them, and one with no bundled libraries
+        // at all: a warning each, but no error.
+        let dir = tempfile::tempdir().unwrap();
+        let libs = write_bundled_libs(dir.path(), &["libR.so"]);
+        let libdir = tempfile::tempdir().unwrap();
+        assert!(copy_user_libs(&libs, libdir.path()).is_ok());
+        assert!(!libdir.path().join("libX11.so.6").exists());
+
+        let dir = tempfile::tempdir().unwrap();
+        assert!(copy_user_libs(&dir.path().join(".libs"), libdir.path()).is_ok());
+    }
+
+    #[test]
+    fn remove_user_lib_dir_keeps_foreign_files() {
+        let libdir = tempfile::tempdir().unwrap();
+        let libdir = libdir.path();
+        std::fs::write(libdir.join("libX11-6f69f3d8.so.6"), b"").unwrap();
+        symlink("libX11-6f69f3d8.so.6", libdir.join("libX11.so.6")).unwrap();
+        std::fs::write(libdir.join("notes.txt"), b"").unwrap();
+
+        remove_user_lib_dir(libdir).unwrap();
+
+        // rig's libraries are gone, so the directory could go, but it holds
+        // something else, so it stays.
+        assert!(!libdir.join("libX11-6f69f3d8.so.6").exists());
+        assert!(libdir.join("libX11.so.6").symlink_metadata().is_err());
+        assert!(libdir.join("notes.txt").exists());
+        assert!(libdir.is_dir());
+    }
+
+    #[test]
+    fn remove_user_lib_dir_removes_an_empty_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let libdir = dir.path().join("lib");
+        std::fs::create_dir(&libdir).unwrap();
+        std::fs::write(libdir.join("libSM-53d40b8e.so.6"), b"").unwrap();
+        remove_user_lib_dir(&libdir).unwrap();
+        assert!(!libdir.exists());
+
+        // A directory that is not there at all is fine, too.
+        assert!(remove_user_lib_dir(&libdir).is_ok());
+    }
+
+    // The tail of `etc/ldpaths` of a portable build.
+    const LDPATHS: &str = ": ${R_LD_LIBRARY_PATH=${R_HOME}/lib}\n\
+         if test -z \"${LD_LIBRARY_PATH}\"; then\n\
+         \x20 LD_LIBRARY_PATH=\"${R_LD_LIBRARY_PATH}\"\n\
+         else\n\
+         \x20 LD_LIBRARY_PATH=\"${R_LD_LIBRARY_PATH}:${LD_LIBRARY_PATH}\"\n\
+         fi\n\
+         export LD_LIBRARY_PATH\n";
+
+    #[test]
+    fn render_ldpaths_lib_dir_appends_the_library_directory() {
+        let out = render_ldpaths_lib_dir(LDPATHS, "/home/u/.local/share/rig/lib");
+
+        // Everything ldpaths does is kept, and rig's block comes after it, so
+        // the rig directory ends up last on `LD_LIBRARY_PATH`.
+        assert!(out.starts_with(LDPATHS));
+        assert_eq!(
+            &out[LDPATHS.len()..],
+            "## rig LD_LIBRARY_PATH start\n\
+             LD_LIBRARY_PATH=\"${LD_LIBRARY_PATH:+${LD_LIBRARY_PATH}:}/home/u/.local/share/rig/lib\"\n\
+             export LD_LIBRARY_PATH\n\
+             ## rig LD_LIBRARY_PATH end\n"
+        );
+    }
+
+    #[test]
+    fn render_ldpaths_lib_dir_is_idempotent() {
+        let first = render_ldpaths_lib_dir(LDPATHS, "/old/lib");
+        let second = render_ldpaths_lib_dir(&first, "/new/lib");
+        assert_eq!(second.matches(LDPATHS_BLOCK_START).count(), 1);
+        assert_eq!(second.matches(LDPATHS_BLOCK_END).count(), 1);
+        assert!(!second.contains("/old/lib"));
+        assert!(second.starts_with(LDPATHS));
+
+        let third = render_ldpaths_lib_dir(&second, "/new/lib");
+        assert_eq!(third, second);
+    }
+
+    #[test]
+    fn render_ldpaths_lib_dir_escapes_the_directory() {
+        let out = render_ldpaths_lib_dir(LDPATHS, "/home/a b/$x\"/lib");
+        assert!(out.contains("LD_LIBRARY_PATH:+${LD_LIBRARY_PATH}:}/home/a b/\\$x\\\"/lib\""));
+    }
+
+    #[test]
+    fn patch_ldpaths_patches_every_ldpaths_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let etc = dir.path().join("lib").join("R").join("etc");
+        std::fs::create_dir_all(etc.join("x86_64")).unwrap();
+        std::fs::write(etc.join("ldpaths"), LDPATHS).unwrap();
+        std::fs::write(etc.join("x86_64").join("ldpaths"), LDPATHS).unwrap();
+
+        let libdir = Path::new("/home/u/.local/share/rig/lib");
+        patch_ldpaths(dir.path(), libdir).unwrap();
+        patch_ldpaths(dir.path(), libdir).unwrap();
+
+        for file in [etc.join("ldpaths"), etc.join("x86_64").join("ldpaths")] {
+            let out = std::fs::read_to_string(&file).unwrap();
+            assert_eq!(out.matches(LDPATHS_BLOCK_START).count(), 1);
+            assert!(out.contains("/home/u/.local/share/rig/lib"));
+        }
+
+        // An installation without an `ldpaths` is not an error.
+        let dir = tempfile::tempdir().unwrap();
+        assert!(patch_ldpaths(dir.path(), libdir).is_ok());
     }
 
     #[test]
