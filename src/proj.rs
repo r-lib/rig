@@ -228,6 +228,7 @@ fn sc_proj_solve_deps(
     r_version: &str,
     deps: &PackageDependencies,
     target: Option<BinaryTarget>,
+    prefer_binary: Option<usize>,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
     info!("Solving dependencies");
 
@@ -241,7 +242,8 @@ fn sc_proj_solve_deps(
     // request per package the solve visits.
     let binaries: Option<Box<dyn BinaryIndexLoader>> =
         target.map(|t| Box::new(P3mBinaryLoader::new(t)) as Box<dyn BinaryIndexLoader>);
-    let reg: RPackageRegistry = RPackageRegistry::with_loaders(Box::new(loader), binaries);
+    let reg: RPackageRegistry =
+        RPackageRegistry::with_loaders(Box::new(loader), binaries).prefer_binary(prefer_binary);
 
     reg.add_package_version(
         "_project".to_string(),
@@ -345,11 +347,18 @@ fn sc_proj_solve(
 
     let target = proj_binary_target(args.get_one::<String>("platform"), &rver)?;
 
+    let prefer_binary = args.get_one::<usize>("prefer-binary").copied();
+    if prefer_binary.is_some() && target.is_none() {
+        OUTPUT.warn("There are no binary packages to prefer, ignoring --prefer-binary");
+        info!("Ignoring --prefer-binary: solving for source packages only");
+    }
+
     // A single solver over the full CRAN version history: it picks the latest
     // in-range version of each package first and only falls back to older
     // versions when a constraint forces it, so the common case still resolves
-    // to the latest versions.
-    let (registry, solution) = sc_proj_solve_deps(&rver, &pkg_deps, target)?;
+    // to the latest versions. With `--prefer-binary` it also falls back to an
+    // older version to get a binary package instead of a source one.
+    let (registry, solution) = sc_proj_solve_deps(&rver, &pkg_deps, target, prefer_binary)?;
     OUTPUT.success("Solved dependencies");
     info!("Solved dependencies");
 
@@ -366,8 +375,8 @@ fn sc_proj_solve(
     info!("Written package lockfile to pkg.lock");
 
     let sorted_solution = solution_to_sorted_vec(&solution);
-    let mut tab: Table = Table::new("{:<}   {:<}   {:<}");
-    tab.add_row(row!["package", "version", "type"]);
+    let mut tab: Table = Table::new("{:<}   {:<}   {:<}   {:<}");
+    tab.add_row(row!["package", "version", "type", ""]);
     tab.add_heading("-------------------------------------");
     for (pkg, ver) in sorted_solution.iter() {
         let kind = if pkg == "R" || BASE_PKGS.contains(&pkg.as_str()) {
@@ -377,7 +386,20 @@ fn sc_proj_solve(
         } else {
             "source"
         };
-        tab.add_row(row!(pkg, &ver.version, kind));
+        // Only set when `--prefer-binary` traded this version for a binary, so
+        // that a version an ordinary constraint pushed back is not reported as
+        // if the flag had done it.
+        let note = match registry.held_back_from(pkg, ver) {
+            Some(latest) => {
+                info!(
+                    "Held {} back to {} for a binary package, latest is {}",
+                    pkg, ver.version, latest
+                );
+                format!("held back for a binary package, latest is {}", latest)
+            }
+            None => String::new(),
+        };
+        tab.add_row(row!(pkg, &ver.version, kind, note));
     }
     println!("{}", tab);
 

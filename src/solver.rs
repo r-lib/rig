@@ -277,6 +277,10 @@ pub struct RPackageRegistry {
     // Download URL of every artifact we offered, for the lockfile writers. The
     // solver itself never looks at these.
     urls: RefCell<HashMap<(RPackageName, RegistryPackageVersion), String>>,
+    // How many newest binaries win. Can be None.
+    prefer_binary: Option<usize>,
+    // Passed over newer version that does not have a binary.
+    held_back: RefCell<HashMap<(RPackageName, RegistryPackageVersion), RPackageVersion>>,
 }
 
 impl RPackageRegistry {
@@ -292,6 +296,25 @@ impl RPackageRegistry {
             binaries,
             ..Default::default()
         }
+    }
+
+    /// Let an older binary win against the most recent version.
+    pub fn prefer_binary(mut self, lookback: Option<usize>) -> Self {
+        self.prefer_binary = lookback;
+        self
+    }
+
+    /// The version `choose_version` passed over when it picked `version` for
+    /// having a binary, if that is why this artifact was chosen.
+    pub fn held_back_from(
+        &self,
+        package: &RPackageName,
+        version: &RegistryPackageVersion,
+    ) -> Option<RPackageVersion> {
+        self.held_back
+            .borrow()
+            .get(&(package.clone(), version.clone()))
+            .cloned()
     }
 
     /// The download URL of a resolved artifact, when we know one.
@@ -548,20 +571,49 @@ impl DependencyProvider for RPackageRegistry {
         // Load the package's versions on demand; an unknown package (none found)
         // cannot be resolved.
         self.ensure_loaded(package);
-        if !self.versions.borrow().contains_key(package) {
-            return Err(ProviderError::UnknownPackage);
-        }
+        let versions = self.versions.borrow();
+        let vlist = match versions.get(package) {
+            Some(vlist) => vlist,
+            None => return Err(ProviderError::UnknownPackage),
+        };
+        let in_range: Vec<&RegistryPackageVersion> =
+            vlist.iter().filter(|v| range.contains(v)).collect();
 
-        let best = self
-            .versions
-            .borrow()
-            .get(package)
-            .into_iter()
-            .flat_map(|vlist| vlist.iter())
-            .filter(|v| range.contains(v))
-            .cloned()
-            .max();
-        Ok(best)
+        // Choice without a binary preference.
+        let latest = match in_range.iter().copied().max() {
+            Some(latest) => latest,
+            None => return Ok(None),
+        };
+        let lookback = match self.prefer_binary {
+            None => return Ok(Some(latest.clone())),
+            Some(lookback) => lookback,
+        };
+
+        // Only the `lookback` newest versions may win on having a binary.
+        let mut vs: Vec<&RPackageVersion> = in_range.iter().map(|v| &v.version).collect();
+        vs.sort_unstable();
+        vs.dedup();
+        let floor = vs[vs.len().saturating_sub(lookback.max(1))];
+
+        let eligible = |v: &RegistryPackageVersion| v.artifact.is_binary() && &v.version >= floor;
+        let best = in_range
+            .iter()
+            .copied()
+            // A tie on eligibility falls back to the normal ordering, so this
+            // picks the newest eligible binary, or else exactly `latest`.
+            .max_by(|a, b| eligible(a).cmp(&eligible(b)).then_with(|| a.cmp(b)))
+            .unwrap_or(latest);
+
+        if best.version < latest.version {
+            debug!(
+                "Choosing {} {} over {}: it has a binary package",
+                package, best, latest.version
+            );
+            self.held_back
+                .borrow_mut()
+                .insert((package.clone(), best.clone()), latest.version.clone());
+        }
+        Ok(Some(best.clone()))
     }
 
     fn get_dependencies(
@@ -759,8 +811,22 @@ mod tests {
         RPackageRegistry,
         HashMap<String, RegistryPackageVersion, rustc_hash::FxBuildHasher>,
     ) {
+        solve_preferring_binaries(source, binaries, deps, None)
+    }
+
+    /// [`solve`], with `--prefer-binary=lookback`.
+    fn solve_preferring_binaries(
+        source: StubSource,
+        binaries: Option<StubBinaries>,
+        deps: &str,
+        lookback: Option<usize>,
+    ) -> (
+        RPackageRegistry,
+        HashMap<String, RegistryPackageVersion, rustc_hash::FxBuildHasher>,
+    ) {
         let binaries = binaries.map(|b| Box::new(b) as Box<dyn BinaryIndexLoader>);
-        let reg = RPackageRegistry::with_loaders(Box::new(source), binaries);
+        let reg =
+            RPackageRegistry::with_loaders(Box::new(source), binaries).prefer_binary(lookback);
         reg.add_package_version(
             "_project".to_string(),
             RegistryPackageVersion::new("_project", "1.0.0").unwrap(),
@@ -878,6 +944,155 @@ mod tests {
             "a",
         );
         assert_eq!(solution["a"], source("a", "1.0.0"));
+    }
+
+    // ---------------------------------------------------------------------
+    // Preferring binaries over newer versions (`--prefer-binary`)
+
+    /// The `a_newer_version_beats_a_binary_of_an_older_one` case, with the
+    /// preference turned on: `2.0.0` has no binary, `1.0.0` does, and the
+    /// preference is what makes the older version win.
+    fn solve_preferring(lookback: Option<usize>) -> (RPackageRegistry, RegistryPackageVersion) {
+        let (reg, solution) = solve_preferring_binaries(
+            StubSource {
+                packages: vec![("a", "1.0.0", ""), ("a", "2.0.0", "")],
+            },
+            Some(StubBinaries {
+                builds: vec![("a", "1.0.0", 1, "")],
+                ..Default::default()
+            }),
+            "a",
+            lookback,
+        );
+        let chosen = solution["a"].clone();
+        (reg, chosen)
+    }
+
+    #[test]
+    fn a_binary_can_win_against_a_newer_version() {
+        let (reg, chosen) = solve_preferring(Some(3));
+        assert_eq!(chosen, binary("a", "1.0.0", 1));
+        // And the version it was chosen over is reported.
+        assert_eq!(
+            reg.held_back_from(&"a".to_string(), &chosen),
+            Some(version("2.0.0"))
+        );
+    }
+
+    #[test]
+    fn a_binary_outside_the_window_does_not_win() {
+        let (reg, solution) = solve_preferring_binaries(
+            StubSource {
+                packages: vec![
+                    ("a", "1.0.0", ""),
+                    ("a", "2.0.0", ""),
+                    ("a", "3.0.0", ""),
+                    ("a", "4.0.0", ""),
+                ],
+            },
+            Some(StubBinaries {
+                // Three versions back, so outside a window of three.
+                builds: vec![("a", "1.0.0", 1, "")],
+                ..Default::default()
+            }),
+            "a",
+            Some(3),
+        );
+        assert_eq!(solution["a"], source("a", "4.0.0"));
+        assert_eq!(reg.held_back_from(&"a".to_string(), &solution["a"]), None);
+    }
+
+    #[test]
+    fn a_window_of_one_is_the_default_behaviour() {
+        // Only the newest version is eligible, so there is nothing to trade.
+        let (reg, chosen) = solve_preferring(Some(1));
+        assert_eq!(chosen, source("a", "2.0.0"));
+        assert_eq!(reg.held_back_from(&"a".to_string(), &chosen), None);
+    }
+
+    #[test]
+    fn the_preference_never_holds_a_version_back_for_nothing() {
+        let (reg, solution) = solve_preferring_binaries(
+            StubSource {
+                packages: vec![("a", "1.0.0", ""), ("a", "2.0.0", "")],
+            },
+            Some(StubBinaries::default()),
+            "a",
+            Some(3),
+        );
+        assert_eq!(solution["a"], source("a", "2.0.0"));
+        assert_eq!(reg.held_back_from(&"a".to_string(), &solution["a"]), None);
+    }
+
+    #[test]
+    fn a_version_a_constraint_ruled_out_is_not_reported_as_held_back() {
+        // The project asks for the older version itself, so its binary is the
+        // newest candidate there is: the preference did not trade anything.
+        let (reg, solution) = solve_preferring_binaries(
+            StubSource {
+                packages: vec![("a", "1.0.0", ""), ("a", "2.0.0", "")],
+            },
+            Some(StubBinaries {
+                builds: vec![("a", "1.0.0", 1, "")],
+                ..Default::default()
+            }),
+            "a (<= 1.0.0)",
+            Some(3),
+        );
+        assert_eq!(solution["a"], binary("a", "1.0.0", 1));
+        assert_eq!(reg.held_back_from(&"a".to_string(), &solution["a"]), None);
+    }
+
+    #[test]
+    fn a_preferred_binary_still_pins_what_it_was_built_against() {
+        let (_reg, solution) = solve_preferring_binaries(
+            StubSource {
+                packages: vec![
+                    ("a", "1.0.0", "b (>= 1.0.0)"),
+                    ("a", "2.0.0", "b (>= 1.0.0)"),
+                    ("b", "1.0.0", ""),
+                    ("b", "2.0.0", ""),
+                ],
+            },
+            Some(StubBinaries {
+                builds: vec![("a", "1.0.0", 1, "b=1.0.0")],
+                ..Default::default()
+            }),
+            "a",
+            Some(3),
+        );
+        // Trading a version for a binary drags its `LinkingTo` dependencies back
+        // with it: this is why the window is bounded.
+        assert_eq!(solution["a"], binary("a", "1.0.0", 1));
+        assert_eq!(solution["b"], source("b", "1.0.0"));
+    }
+
+    #[test]
+    fn an_unsatisfiable_preferred_binary_backtracks_to_the_newest_version() {
+        let (reg, solution) = solve_preferring_binaries(
+            StubSource {
+                packages: vec![
+                    ("a", "1.0.0", "b (>= 1.0.0)"),
+                    ("a", "2.0.0", "b (>= 1.0.0)"),
+                    // Something else in the project needs the newer `b`, which
+                    // the binary build of `a` 1.0.0 was not compiled against.
+                    ("c", "1.0.0", "b (== 2.0.0)"),
+                    ("b", "1.0.0", ""),
+                    ("b", "2.0.0", ""),
+                ],
+            },
+            Some(StubBinaries {
+                builds: vec![("a", "1.0.0", 1, "b=1.0.0")],
+                ..Default::default()
+            }),
+            "a, c",
+            Some(3),
+        );
+        // The preference is a heuristic, so the solve still finds the answer that
+        // works, and the abandoned choice is not reported as held back.
+        assert_eq!(solution["a"], source("a", "2.0.0"));
+        assert_eq!(solution["b"], source("b", "2.0.0"));
+        assert_eq!(reg.held_back_from(&"a".to_string(), &solution["a"]), None);
     }
 
     /// Build a registry on the stubs, and hand back the list `prefetch` sees.

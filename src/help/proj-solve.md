@@ -23,6 +23,19 @@ because a binary is only usable together with the exact versions of its
 conflict with the rest of the project, rig picks another build of that
 package, or falls back to its source tarball.
 
+By default a binary build never changes *which version* rig picks: the
+newest suitable version wins, and a binary of it is used if there is one.
+Pass `--prefer-binary` to let an older version win instead, when the newest
+one has no binary but an older one does — typically because a version was
+released so recently that it has not been built yet. Only the three newest
+versions of a package are considered; `--prefer-binary=5` considers five.
+Versions held back this way are marked in the output.
+
+Trading a version away for a binary is not free: the binary pins its
+`LinkingTo` dependencies to the versions it was compiled against, and those
+dependencies then prefer their own binaries in turn, so a whole project can
+end up on older versions.
+
 By default rig solves for the machine it runs on. Use `--platform` to solve
 for a different one, e.g. to write a lockfile on macOS for a Linux
 deployment:
@@ -33,7 +46,8 @@ rig proj solve --platform ubuntu-24.04
 
 `--platform source` solves for source packages only, and does not download
 any binary package metadata. rig also falls back to source packages when
-there are no binaries for a platform at all.
+there are no binaries for a platform at all. There is then nothing for
+`--prefer-binary` to prefer, and rig ignores it.
 
 The `pkg.lock` file records, for every package, whether it is a source or a
 binary package and the URL it is downloaded from.
