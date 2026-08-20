@@ -233,9 +233,9 @@ fn sc_proj_solve_deps(
     info!("Solving dependencies");
 
     // The registry lazily loads each package's versions from the local database
-    // (current PACKAGES merged with the full ALLPACKAGES history) as the solver
-    // visits them, instead of preloading the entire CRAN version history.
-    let loader = DbSourcePackageLoader::new("https://cloud.r-project.org/", r_version)?;
+    // (the full ALLPACKAGES history) as the solver visits them, instead of
+    // preloading the entire CRAN version history.
+    let loader = DbSourcePackageLoader::new()?;
     // Binary builds are candidates alongside the source tarball, so that the
     // `LinkingTo` versions a build was compiled against become constraints the
     // solver can backtrack over. Their indices are fetched lazily too, one

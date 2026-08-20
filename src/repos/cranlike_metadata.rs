@@ -117,25 +117,6 @@ pub fn repos_get_packages(
     )
 }
 
-/// Ensure the current source `PACKAGES` metadata for `repo_url` is downloaded
-/// and stored in the database (respecting the 24h / etag cache), without
-/// loading the rows into memory.
-fn ensure_cran_source_fresh(repo_url: &str, r_version: &str) -> Result<(), Box<dyn Error>> {
-    let r_version = minor_r_version(r_version)?;
-    let path = package_type_to_path("source", &r_version)?;
-    let urls = cranlike_urls(repo_url, &path);
-    let repo_urls: Vec<&str> = urls.iter().map(|s| s.as_str()).collect();
-    ensure_packages_cached(
-        &repo_urls,
-        &urls[2],
-        repo_url,
-        "source",
-        Some(&r_version),
-        &path,
-    )?;
-    Ok(())
-}
-
 /// Ensure the ALLPACKAGES history is downloaded and stored in the database
 /// (respecting the 24h / etag cache), without loading the rows into memory.
 fn ensure_allpackages_fresh() -> Result<(), Box<dyn Error>> {
@@ -145,30 +126,31 @@ fn ensure_allpackages_fresh() -> Result<(), Box<dyn Error>> {
 }
 
 /// A [`PackageVersionLoader`] backed by the shared SQLite database. It queries a
-/// single package's versions on demand from the current `PACKAGES` and the
-/// ALLPACKAGES history, so the solver only materializes the packages it
-/// actually visits instead of the whole CRAN version history.
+/// single package's versions on demand from the ALLPACKAGES history, so the
+/// solver only materializes the packages it actually visits instead of the whole
+/// CRAN version history.
+///
+/// ALLPACKAGES already lists every version of every package ever published on
+/// CRAN, including the current ones, so the current `PACKAGES` file of a CRAN
+/// mirror is not consulted: it would only add versions published in the window
+/// between the last ALLPACKAGES rebuild and now.
 pub struct DbSourcePackageLoader {
     conn: Connection,
-    /// repo ids to search, in priority order: current `PACKAGES` first, then
-    /// the ALLPACKAGES history. Duplicate versions from later repos are dropped.
+    /// repo ids of the ALLPACKAGES history to search.
     repo_ids: Vec<i64>,
 }
 
 impl DbSourcePackageLoader {
-    /// Ensure both metadata sources are fresh in the database, then open a
-    /// connection ready to serve per-package queries.
-    pub fn new(repo_url: &str, r_version: &str) -> Result<Self, Box<dyn Error>> {
-        ensure_cran_source_fresh(repo_url, r_version)?;
+    /// Ensure the metadata is fresh in the database, then open a connection
+    /// ready to serve per-package queries.
+    pub fn new() -> Result<Self, Box<dyn Error>> {
         ensure_allpackages_fresh()?;
 
-        // Both sources live in the single shared packages.db in the cache dir.
         let repo_local = repo_local_file(&allpackages_url())?;
         let repo_db = repo_db_file(&repo_local)?;
         let conn = Connection::open(&repo_db)?;
 
-        let mut repo_ids = source_repo_ids(&conn, repo_url, "source")?;
-        repo_ids.extend(source_repo_ids(&conn, &allpackages_url(), "source")?);
+        let repo_ids = source_repo_ids(&conn, &allpackages_url(), "source")?;
 
         Ok(DbSourcePackageLoader { conn, repo_ids })
     }
@@ -194,18 +176,7 @@ impl PackageVersionLoader for DbSourcePackageLoader {
         // the handful of rows for this package, whereas adding `repo_id = ?`
         // makes SQLite pick the repo_id index and scan the whole (200k-row)
         // ALLPACKAGES repo. We filter to our repos and dedup by version here.
-        //
-        // `repo_ids` is in priority order (current PACKAGES first, then the
-        // ALLPACKAGES history); on a version present in both, the lower-index
-        // repo wins.
-        let priority: HashMap<i64, usize> = self
-            .repo_ids
-            .iter()
-            .enumerate()
-            .map(|(i, &id)| (id, i))
-            .collect();
-
-        let mut best: HashMap<String, (usize, String)> = HashMap::new();
+        let mut best: HashMap<String, String> = HashMap::new();
         let mut stmt = self.conn.prepare_cached(
             "SELECT version, dependencies, repo_id FROM packages WHERE name = ?1",
         )?;
@@ -218,20 +189,14 @@ impl PackageVersionLoader for DbSourcePackageLoader {
         })?;
         for row in rows {
             let (ver, deps_json, repo_id) = row?;
-            let prio = match priority.get(&repo_id) {
-                Some(p) => *p,
-                None => continue, // row from a repo we do not source from
-            };
-            match best.get(&ver) {
-                Some((existing, _)) if *existing <= prio => {}
-                _ => {
-                    best.insert(ver, (prio, deps_json));
-                }
+            if !self.repo_ids.contains(&repo_id) {
+                continue; // row from a repo we do not source from
             }
+            best.entry(ver).or_insert(deps_json);
         }
 
         let mut out: Vec<Package> = Vec::with_capacity(best.len());
-        for (ver, (_prio, deps_json)) in best {
+        for (ver, deps_json) in best {
             let version = RPackageVersion::from_str(&ver)?;
             let deps: PackageDependencies = serde_json::from_str(&deps_json)?;
             out.push(Package::from_crandb(
