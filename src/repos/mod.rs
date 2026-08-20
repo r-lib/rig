@@ -3,11 +3,12 @@ use std::error::Error;
 use std::io::IsTerminal;
 
 use clap::ArgMatches;
+use lazy_static::lazy_static;
 use simple_error::*;
 use tabular::*;
 
 use crate::common::*;
-use crate::dcf::{Package, RDepType};
+use crate::dcf::{Package, RDepType, RPackageVersion};
 use crate::hardcoded::*;
 use crate::proj::BASE_PKGS;
 use crate::repositories::*;
@@ -34,8 +35,6 @@ pub use cranlike_metadata::{repos_get_packages, DbSourcePackageLoader};
 pub mod binaries;
 mod setup;
 pub use setup::repos_setup;
-mod crandb;
-use crandb::CranVersionRow;
 mod manifest;
 
 pub fn sc_repos(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
@@ -468,27 +467,129 @@ fn sc_repos_package_versions(
 ) -> Result<(), Box<dyn Error>> {
     let package: String = args.get_one::<String>("package").unwrap().to_string();
 
-    // `--json` dumps the full crandb record, mirroring `package-info --json`.
+    let versions = manifest::get_package_versions(&package)?;
+    if versions.is_empty() {
+        bail!("Could not find package '{}' on CRAN.", package);
+    }
+
+    // `--json` dumps the full DESCRIPTION of every version, mirroring
+    // `package-info --json`.
     if args.get_flag("json") {
-        let json = crandb::fetch_crandb_all(&package, None)?;
-        println!("{}", serde_json::to_string_pretty(&json)?);
+        let descs: Vec<&serde_json::Value> = versions.iter().map(|v| &v.description).collect();
+        println!("{}", serde_json::to_string_pretty(&descs)?);
         return Ok(());
     }
 
-    let info = crandb::get_cran_package_versions_info(&package, None)?;
-    if info.rows.is_empty() {
-        bail!(
-            "Could not find package '{}' in the CRAN metadata database.",
-            package
-        );
-    }
+    let latest = versions.last().map(|v| v.version.original.clone());
+    let rows: Vec<PackageVersionRow> = versions.iter().map(package_version_row).collect();
 
-    let mut rows = info.rows;
-    rows.sort_by(|a, b| a.version.cmp(&b.version));
-
-    print_package_versions(&info.name, info.latest.as_deref(), info.archived, &rows);
+    print_package_versions(&package, latest.as_deref(), &rows);
 
     Ok(())
+}
+
+/// A single row of `rig repos package-versions` output: a version, when it was
+/// published, its R version requirement and how many hard dependencies it has.
+struct PackageVersionRow {
+    version: RPackageVersion,
+    /// Publication date as `YYYY-MM-DD`, if the DESCRIPTION carries one.
+    date: Option<String>,
+    /// R version requirement (e.g. `>= 3.5.0`), or `None` when unconstrained.
+    r_requirement: Option<String>,
+    /// Number of hard dependencies (Depends / Imports / LinkingTo), excluding R
+    /// and the base packages.
+    num_deps: usize,
+}
+
+/// When a version was published, as `YYYY-MM-DD`.
+///
+/// `Date/Publication` is authoritative but only exists from about 2009 on, so
+/// older versions fall back to `Packaged` and `Date`. Neither of those is a
+/// formatted date field: `Packaged` is `date()` output in R versions of that
+/// era (`Tue Feb 28 14:17:08 2006; csardi`) and `Date` is free-form prose
+/// (`Januar 25, 2005`). Values we cannot read confidently are dropped.
+fn publication_date(desc: &serde_json::Value) -> Option<String> {
+    ["Date/Publication", "Packaged", "Date"]
+        .iter()
+        .filter_map(|k| desc.get(*k).and_then(|v| v.as_str()))
+        .find_map(parse_date)
+}
+
+/// Read a `YYYY-MM-DD` date from the start of a DESCRIPTION date field, either
+/// already ISO formatted or in R's `date()` format.
+fn parse_date(value: &str) -> Option<String> {
+    lazy_static! {
+        static ref ISO: regex::Regex = regex::Regex::new(r"^\s*(\d{4}-\d{2}-\d{2})").unwrap();
+        static ref CTIME: regex::Regex = regex::Regex::new(
+            r"^\s*[[:alpha:]]{3}\s+([[:alpha:]]{3})\s+(\d{1,2})\s+[\d:]+\s+(\d{4})"
+        )
+        .unwrap();
+    }
+
+    if let Some(caps) = ISO.captures(value) {
+        return Some(caps[1].to_string());
+    }
+
+    let caps = CTIME.captures(value)?;
+    let month = match &caps[1].to_lowercase()[..] {
+        "jan" => 1,
+        "feb" => 2,
+        "mar" => 3,
+        "apr" => 4,
+        "may" => 5,
+        "jun" => 6,
+        "jul" => 7,
+        "aug" => 8,
+        "sep" => 9,
+        "oct" => 10,
+        "nov" => 11,
+        "dec" => 12,
+        _ => return None,
+    };
+    let day: u32 = caps[2].parse().ok()?;
+    Some(format!("{}-{:02}-{:02}", &caps[3], month, day))
+}
+
+/// Summarize one version's DESCRIPTION into a table row.
+fn package_version_row(version: &manifest::PackageVersion) -> PackageVersionRow {
+    let date = publication_date(&version.description);
+
+    let r_requirement = version
+        .dependencies
+        .dependencies
+        .iter()
+        .find(|d| d.name == "R")
+        .filter(|d| !d.constraints.is_empty())
+        .map(|d| {
+            d.constraints
+                .iter()
+                .map(|c| format!("{} {}", c.constraint_type, c.version))
+                .collect::<Vec<_>>()
+                .join(", ")
+        });
+
+    let num_deps = version
+        .dependencies
+        .dependencies
+        .iter()
+        .filter(|d| {
+            d.name != "R"
+                && !BASE_PKGS.contains(&d.name.as_str())
+                && d.types.iter().any(|t| {
+                    matches!(
+                        t,
+                        RDepType::Depends | RDepType::Imports | RDepType::LinkingTo
+                    )
+                })
+        })
+        .count();
+
+    PackageVersionRow {
+        version: version.version.clone(),
+        date,
+        r_requirement,
+        num_deps,
+    }
 }
 
 /// Pretty-print the version table for `rig repos package-versions`.
@@ -497,12 +598,7 @@ fn sc_repos_package_versions(
 /// latest one; the table then lists each version with its publication date, R
 /// requirement and hard-dependency count, marking the latest version. The full
 /// per-version metadata is available via `--json`.
-fn print_package_versions(
-    name: &str,
-    latest: Option<&str>,
-    archived: bool,
-    rows: &[CranVersionRow],
-) {
+fn print_package_versions(name: &str, latest: Option<&str>, rows: &[PackageVersionRow]) {
     use owo_colors::OwoColorize;
 
     let color = std::io::stdout().is_terminal() && env::var_os("NO_COLOR").is_none();
@@ -518,9 +614,6 @@ fn print_package_versions(
     let mut tags: Vec<String> = vec![];
     if let Some(latest) = latest {
         tags.push(format!("latest {}", latest));
-    }
-    if archived {
-        tags.push("archived".to_string());
     }
     if !tags.is_empty() {
         let tag = format!("({})", tags.join(", "));
@@ -622,6 +715,52 @@ mod tests {
     #[test]
     fn wrap_empty_yields_single_empty_line() {
         assert_eq!(wrap("", 10), vec![String::new()]);
+    }
+
+    #[test]
+    fn parse_date_reads_iso_and_r_date_output() {
+        assert_eq!(
+            parse_date("2026-07-22 15:50:07 UTC").as_deref(),
+            Some("2026-07-22")
+        );
+        assert_eq!(
+            parse_date("2009-05-07 11:20:43 UTC; ripley").as_deref(),
+            Some("2009-05-07")
+        );
+        // R's `date()` output, as old `Packaged` fields carry it.
+        assert_eq!(
+            parse_date("Tue Feb 28 14:17:08 2006; csardi").as_deref(),
+            Some("2006-02-28")
+        );
+        assert_eq!(
+            parse_date("Wed Aug  9 23:13:10 2006; csardi").as_deref(),
+            Some("2006-08-09")
+        );
+        // Free-form prose is not a date we can trust.
+        assert_eq!(parse_date("Januar 25, 2005"), None);
+        assert_eq!(parse_date("Feb 14, 2008"), None);
+        assert_eq!(parse_date(""), None);
+    }
+
+    #[test]
+    fn publication_date_prefers_the_publication_field() {
+        let desc = serde_json::json!({
+            "Date/Publication": "2009-10-28 07:15:48",
+            "Packaged": "Thu Oct 15 09:24:40 2009; ripley",
+            "Date": "2009-10-15",
+        });
+        assert_eq!(publication_date(&desc).as_deref(), Some("2009-10-28"));
+
+        // Before `Date/Publication` existed, `Packaged` is the best we have.
+        let desc = serde_json::json!({
+            "Packaged": "Tue Feb 28 14:17:08 2006; csardi",
+            "Date": "Januar 25, 2005",
+        });
+        assert_eq!(publication_date(&desc).as_deref(), Some("2006-02-28"));
+
+        // An unreadable `Date` alone leaves the date unknown.
+        let desc = serde_json::json!({ "Date": "Januar 25, 2005" });
+        assert_eq!(publication_date(&desc), None);
     }
 
     #[test]
