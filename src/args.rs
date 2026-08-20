@@ -1012,6 +1012,14 @@ pub fn rig_app() -> Command {
                         .long("json")
                         .num_args(0)
                         .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version to operate on, instead of the default")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false),
                 ),
         )
         .subcommand(
@@ -1023,6 +1031,14 @@ pub fn rig_app() -> Command {
                     Arg::new("lib-name")
                         .help("name of new library")
                         .required(true),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version to operate on, instead of the default")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false),
                 ),
         )
         .subcommand(
@@ -1034,6 +1050,14 @@ pub fn rig_app() -> Command {
                     Arg::new("lib-name")
                         .help("name of library to remove")
                         .required(true),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version to operate on, instead of the default")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false),
                 ),
         )
         .subcommand(
@@ -1051,6 +1075,14 @@ pub fn rig_app() -> Command {
                         .help("JSON output")
                         .long("json")
                         .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version to operate on, instead of the default")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
                         .required(false),
                 ),
         );

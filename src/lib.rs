@@ -376,7 +376,7 @@ pub extern "C" fn rig_lib_set_default(ptr: *const libc::c_char) -> libc::c_int {
         Err(_) => return ERROR_INVALID_INPUT,
     };
 
-    match sc_library_set_default(ver) {
+    match sc_library_set_default(ver, None) {
         Ok(_) => SUCCESS,
         Err(e) => {
             let msg = e.to_string();

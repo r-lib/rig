@@ -17,18 +17,35 @@ use crate::windows::*;
 #[cfg(target_os = "linux")]
 use crate::linux::*;
 
+use crate::common::check_installed;
 use crate::config::*;
 use crate::escalate::*;
 use crate::output::OUTPUT;
 use crate::rversion::*;
 use crate::utils::*;
 
+fn library_rver(args: &ArgMatches) -> Result<String, Box<dyn Error>> {
+    match args.get_one::<String>("r-version") {
+        Some(rver) => check_installed(rver),
+        None => match sc_get_default()? {
+            Some(x) => Ok(x),
+            None => {
+                OUTPUT
+                    .error("Please set default R version or use `--r-version` for `rig library`.");
+                error!("Need to set default R version for `rig library`.");
+                bail!("Need to set default R version for `rig library`.")
+            }
+        },
+    }
+}
+
 pub fn sc_library_ls(
     args: &ArgMatches,
     libargs: &ArgMatches,
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
-    let libs: Vec<PkgLibrary> = sc_library_get_list(None, false)?;
+    let rver = library_rver(args)?;
+    let libs: Vec<PkgLibrary> = sc_library_get_list(Some(rver), false)?;
     if args.get_flag("json") || libargs.get_flag("json") || mainargs.get_flag("json") {
         println!("{}", serde_json::to_string_pretty(&libs)?);
     } else {
@@ -119,14 +136,7 @@ pub fn sc_library_get_list(
 
 pub fn sc_library_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let new: String = args.get_one::<String>("lib-name").unwrap().to_string();
-    let rver = match sc_get_default()? {
-        Some(x) => x,
-        None => {
-            OUTPUT.error("Please set default R version for `rig library`.");
-            error!("Need to set default R version for `rig library`.");
-            bail!("Need to set default R version for `rig library`.");
-        }
-    };
+    let rver = library_rver(args)?;
     let libs = sc_library_get_list(Some(rver.to_string()), false)?;
     let names: Vec<String> = libs.iter().map(|x| x.name.to_owned()).collect();
     if names.contains(&new) {
@@ -164,14 +174,7 @@ pub fn sc_library_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         bail!("Cannot remove the main library");
     }
 
-    let rver = match sc_get_default()? {
-        Some(x) => x,
-        None => {
-            OUTPUT.error("Please set default R version for `rig library`.");
-            error!("Need to set default R version for `rig library`.");
-            bail!("Need to set default R version for `rig library`.")
-        }
-    };
+    let rver = library_rver(args)?;
     let libs = sc_library_get_list(Some(rver.to_string()), false)?;
 
     let mut dir: Option<PathBuf> = None;
@@ -207,11 +210,12 @@ pub fn sc_library_default(
     libargs: &ArgMatches,
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
+    let rver = library_rver(args)?;
     if args.get_one::<String>("lib-name").is_some() {
         let name: String = args.get_one::<String>("lib-name").unwrap().to_string();
-        sc_library_set_default(&name)
+        sc_library_set_default(&name, Some(&rver))
     } else {
-        let default = sc_library_get_default()?;
+        let default = sc_library_get_default(&rver)?;
         if args.get_flag("json") || libargs.get_flag("json") || mainargs.get_flag("json") {
             println!("{}", serde_json::to_string_pretty(&default)?);
         } else {
@@ -221,17 +225,8 @@ pub fn sc_library_default(
     }
 }
 
-fn sc_library_get_default() -> Result<PkgLibrary, Box<dyn Error>> {
-    let rver = match sc_get_default()? {
-        Some(x) => x,
-        None => {
-            OUTPUT.error("Please set default R version for `rig library`.");
-            error!("Need to set default R version for `rig library`.");
-            bail!("Need to set default R version for `rig library`.");
-        }
-    };
-
-    let (_main, default) = get_library_path(&rver, false)?;
+fn sc_library_get_default(rver: &str) -> Result<PkgLibrary, Box<dyn Error>> {
+    let (_main, default) = get_library_path(rver, false)?;
     let mut name = "main".to_string();
 
     if let Some(last) = default.file_name() {
@@ -251,14 +246,18 @@ fn sc_library_get_default() -> Result<PkgLibrary, Box<dyn Error>> {
     })
 }
 
-pub fn sc_library_set_default(name: &str) -> Result<(), Box<dyn Error>> {
-    let rver = match sc_get_default()? {
-        Some(x) => x,
-        None => {
-            OUTPUT.error("Please set default R version for `rig library`.");
-            error!("Need to set default R version for `rig library`.");
-            bail!("Need to set default R version for `rig library`.");
-        }
+
+pub fn sc_library_set_default(name: &str, rver: Option<&str>) -> Result<(), Box<dyn Error>> {
+    let rver = match rver {
+        Some(x) => x.to_string(),
+        None => match sc_get_default()? {
+            Some(x) => x,
+            None => {
+                OUTPUT.error("Please set default R version for `rig library`.");
+                error!("Need to set default R version for `rig library`.");
+                bail!("Need to set default R version for `rig library`.");
+            }
+        },
     };
     let libs = sc_library_get_list(Some(rver.to_string()), false)?;
 
@@ -327,9 +326,13 @@ pub fn sc_library_set_default(name: &str) -> Result<(), Box<dyn Error>> {
 
     // This if for the Rig.app, to update the title in the status bar.
     // It watches the current version, so we change that to trigger an update.
+    // Only do this if we changed the library of the default R version,
+    // otherwise we would switch the default R version to `rver`.
     #[cfg(target_os = "macos")]
     {
-        if sc_set_default(&rver).is_err() {};
+        if let Ok(Some(def)) = sc_get_default() {
+            if def == rver && sc_set_default(&rver).is_err() {};
+        }
     }
 
     Ok(())

@@ -1,5 +1,9 @@
 # rig 0.10.0 (not released yet)
 
+* `rig library add`, `rig library default`, `rig library list` and
+  `rig library rm` have a new `--r-version` (`-r`) option, to operate on
+  the libraries of an R version other than the default one.
+
 * rig now uses a user-dependent download directory, to avoid interference
   between users.
 
