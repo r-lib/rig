@@ -323,8 +323,10 @@ pub(super) fn add_user_bin_to_path() -> Result<(), Box<dyn Error>> {
     // Decode UTF-16 LE registry string (strip null terminator).
     let words: Vec<u16> = raw
         .bytes
-        .chunks_exact(2)
-        .map(|b| u16::from_le_bytes([b[0], b[1]]))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|b| u16::from_le_bytes(*b))
         .take_while(|&c| c != 0)
         .collect();
     let current_path = String::from_utf16_lossy(&words);

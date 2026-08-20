@@ -348,8 +348,10 @@ fn read_u32(body: &[u8], at: usize) -> u32 {
 /// already checked that the section fits.
 fn section(body: &[u8], at: usize, n: usize) -> impl Iterator<Item = u32> + '_ {
     body[at..at + 4 * n]
-        .chunks_exact(4)
-        .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|c| u32::from_le_bytes(*c))
 }
 
 /// A parsed index, borrowed from the blob it was read from.
