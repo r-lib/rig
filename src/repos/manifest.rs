@@ -46,9 +46,23 @@ fn manifest_base_url() -> String {
         .unwrap_or_else(|_| "https://rspm-sync.rstudio.com/manifest/v4/1/data".to_string())
 }
 
-/// The DESCRIPTION of `package` at `version` (`"latest"` for the most recent
-/// version), as a JSON object of DCF field name to value.
-pub fn get_package_description(package: &str, version: &str) -> Result<Value, Box<dyn Error>> {
+/// Everything `rig repos package-info` shows about one package version: the
+/// DESCRIPTION fields plus the README, if P3M has one.
+pub struct PackageInfo {
+    /// The DESCRIPTION fields, as a JSON object of field name to value.
+    pub description: Value,
+    /// The README of the package, in the format `readme_type` names.
+    pub readme: Option<String>,
+    /// `"md"`, `"txt"`, ... as P3M reports it.
+    pub readme_type: Option<String>,
+}
+
+/// The DESCRIPTION and README of `package` at `version` (`"latest"` for the
+/// most recent version).
+pub fn get_package_description(
+    package: &str,
+    version: &str,
+) -> Result<PackageInfo, Box<dyn Error>> {
     let versions = allpackages_versions(package)?;
     if versions.is_empty() {
         bail!("Could not find package '{}' on CRAN.", package);
@@ -65,14 +79,18 @@ pub fn get_package_description(package: &str, version: &str) -> Result<Value, Bo
     };
 
     let manifest = fetch_manifest(package, &snapshot)?;
-    let raw_desc = match find_raw_desc(&manifest, wanted) {
+    let entry = match find_raw_desc(&manifest, wanted) {
         Some(d) => d,
         None => bail!(
             "P3M has no DESCRIPTION for version '{}' in its metadata.",
             wanted.version.original
         ),
     };
-    parse_description(&raw_desc)
+    Ok(PackageInfo {
+        description: parse_description(&entry.raw_desc)?,
+        readme: entry.readme,
+        readme_type: entry.readme_type,
+    })
 }
 
 /// One version of a package, as `rig repos package-versions` needs it.
@@ -111,7 +129,7 @@ pub fn get_package_versions(package: &str) -> Result<Vec<PackageVersion>, Box<dy
         let manifest = fetch_manifest(package, date)?;
         for version in &versions {
             match find_raw_desc(&manifest, version) {
-                Some(raw_desc) => out.push(package_version(version, &raw_desc)?),
+                Some(entry) => out.push(package_version(version, &entry.raw_desc)?),
                 None => todo.push(version),
             }
         }
@@ -130,7 +148,7 @@ pub fn get_package_versions(package: &str) -> Result<Vec<PackageVersion>, Box<dy
         }
         let manifest = &manifests[&date];
         match find_raw_desc(manifest, version) {
-            Some(raw_desc) => out.push(package_version(version, &raw_desc)?),
+            Some(entry) => out.push(package_version(version, &entry.raw_desc)?),
             None => debug!(
                 "P3M has no DESCRIPTION for {} {}, skipping it",
                 package, version.version.original
@@ -216,13 +234,20 @@ fn fetch_manifest(package: &str, date: &str) -> Result<Value, Box<dyn Error>> {
     Ok(serde_json::from_str(&contents)?)
 }
 
-/// Find the manifest entry belonging to `wanted` and return its `raw_desc`.
+/// The parts of a manifest entry rig uses: the DESCRIPTION and the README.
+struct ManifestEntry {
+    raw_desc: String,
+    readme: Option<String>,
+    readme_type: Option<String>,
+}
+
+/// Find the manifest entry belonging to `wanted`.
 ///
 /// Entries are first matched on the sha256 of the original CRAN tarball, which
 /// identifies exactly the file ALLPACKAGES lists. When CRAN re-releases a
 /// version the hashes differ even though the version does not, so a second pass
 /// matches on the `Version:` field of the DESCRIPTION.
-fn find_raw_desc(manifest: &Value, wanted: &AllPackagesVersion) -> Option<String> {
+fn find_raw_desc(manifest: &Value, wanted: &AllPackagesVersion) -> Option<ManifestEntry> {
     let entries = || {
         ["Current", "Archived"]
             .into_iter()
@@ -231,20 +256,41 @@ fn find_raw_desc(manifest: &Value, wanted: &AllPackagesVersion) -> Option<String
             .flatten()
             .filter_map(|entry| {
                 let raw_desc = entry.get("raw_desc")?.as_str()?;
-                Some((entry.get("sha256sum").and_then(|v| v.as_str()), raw_desc))
+                Some((
+                    entry.get("sha256sum").and_then(|v| v.as_str()),
+                    raw_desc,
+                    entry,
+                ))
             })
     };
 
+    let entry_of = |raw_desc: &str, entry: &Value| ManifestEntry {
+        raw_desc: raw_desc.to_string(),
+        readme: str_value(entry, "readme"),
+        readme_type: str_value(entry, "readme_type"),
+    };
+
     if let Some(sha) = wanted.sha256sum.as_deref() {
-        if let Some((_, raw_desc)) = entries().find(|(entry_sha, _)| *entry_sha == Some(sha)) {
-            return Some(raw_desc.to_string());
+        if let Some((_, raw_desc, entry)) =
+            entries().find(|(entry_sha, _, _)| *entry_sha == Some(sha))
+        {
+            return Some(entry_of(raw_desc, entry));
         }
     }
 
     let version = wanted.version.original.as_str();
     entries()
-        .find(|(_, raw_desc)| desc_version(raw_desc).as_deref() == Some(version))
-        .map(|(_, raw_desc)| raw_desc.to_string())
+        .find(|(_, raw_desc, _)| desc_version(raw_desc).as_deref() == Some(version))
+        .map(|(_, raw_desc, entry)| entry_of(raw_desc, entry))
+}
+
+/// A non-empty string field of a JSON object.
+fn str_value(entry: &Value, key: &str) -> Option<String> {
+    entry
+        .get(key)
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
 }
 
 /// The `Version:` field of a DESCRIPTION, without parsing the whole file.
@@ -332,11 +378,11 @@ mod tests {
         });
 
         let wanted = ver("0.9.3", "2026-04-17", Some("bbbb"));
-        let desc = find_raw_desc(&manifest, &wanted).unwrap();
+        let desc = find_raw_desc(&manifest, &wanted).unwrap().raw_desc;
         assert_eq!(desc_version(&desc).as_deref(), Some("0.9.3"));
 
         let wanted = ver("0.9.2", "2026-04-17", Some("cccc"));
-        let desc = find_raw_desc(&manifest, &wanted).unwrap();
+        let desc = find_raw_desc(&manifest, &wanted).unwrap().raw_desc;
         assert_eq!(desc_version(&desc).as_deref(), Some("0.9.2"));
 
         let wanted = ver("0.9.4", "2026-04-18", Some("dddd"));
@@ -357,13 +403,49 @@ mod tests {
         });
 
         let wanted = ver("1.0.0", "2026-01-01", Some("zzzz"));
-        let desc = find_raw_desc(&manifest, &wanted).unwrap();
+        let desc = find_raw_desc(&manifest, &wanted).unwrap().raw_desc;
         assert_eq!(desc_version(&desc).as_deref(), Some("1.0.0"));
 
         // Without a hash the version field is all we have.
         let wanted = ver("0.9.0", "2026-01-01", None);
-        let desc = find_raw_desc(&manifest, &wanted).unwrap();
+        let desc = find_raw_desc(&manifest, &wanted).unwrap().raw_desc;
         assert_eq!(desc_version(&desc).as_deref(), Some("0.9.0"));
+    }
+
+    #[test]
+    fn readme_is_taken_from_the_matched_entry() {
+        let manifest = serde_json::json!({
+            "Current": [
+                {
+                    "sha256sum": "aaaa",
+                    "raw_desc": "Package: pkg\nVersion: 1.0.0\n",
+                    "readme": "# pkg\n\nHello.\n",
+                    "readme_type": "md",
+                },
+            ],
+            "Archived": [
+                { "sha256sum": "bbbb", "raw_desc": "Package: pkg\nVersion: 0.9.0\n" },
+                {
+                    "sha256sum": "cccc",
+                    "raw_desc": "Package: pkg\nVersion: 0.8.0\n",
+                    "readme": "",
+                    "readme_type": null,
+                },
+            ],
+        });
+
+        let entry = find_raw_desc(&manifest, &ver("1.0.0", "2026-01-01", Some("aaaa"))).unwrap();
+        assert_eq!(entry.readme.as_deref(), Some("# pkg\n\nHello.\n"));
+        assert_eq!(entry.readme_type.as_deref(), Some("md"));
+
+        // No readme keys at all, and empty / null ones, are both `None`.
+        let entry = find_raw_desc(&manifest, &ver("0.9.0", "2026-01-01", Some("bbbb"))).unwrap();
+        assert_eq!(entry.readme, None);
+        assert_eq!(entry.readme_type, None);
+
+        let entry = find_raw_desc(&manifest, &ver("0.8.0", "2026-01-01", Some("cccc"))).unwrap();
+        assert_eq!(entry.readme, None);
+        assert_eq!(entry.readme_type, None);
     }
 
     #[test]

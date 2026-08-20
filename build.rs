@@ -2,6 +2,12 @@ use clap_complete::shells::{Bash, Elvish, Fish, PowerShell, Zsh};
 use std::env;
 use std::io::Error;
 
+// `src/args.rs` is compiled into the build script as well, so the modules it
+// uses have to exist here, too.
+#[allow(dead_code)]
+#[path = "src/pager.rs"]
+mod pager;
+
 include!("src/args.rs");
 
 fn main() -> Result<(), Error> {

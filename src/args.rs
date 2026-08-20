@@ -1849,42 +1849,12 @@ pub fn parse_args() -> ArgMatches {
     }
 }
 
-fn command_on_path(cmd: &str) -> bool {
-    let path = match std::env::var_os("PATH") {
-        Some(p) => p,
-        None => return false,
-    };
-    // On Windows, executables carry an extension; check PATHEXT (defaulting to
-    // the common set) in addition to the bare name.
-    #[cfg(windows)]
-    let exts: Vec<String> = {
-        let pathext =
-            std::env::var("PATHEXT").unwrap_or_else(|_| ".EXE;.CMD;.BAT;.COM".to_string());
-        std::iter::once(String::new())
-            .chain(pathext.split(';').map(|e| e.to_string()))
-            .collect()
-    };
-    #[cfg(not(windows))]
-    let exts: Vec<String> = vec![String::new()];
-
-    for dir in std::env::split_paths(&path) {
-        for ext in &exts {
-            let candidate = dir.join(format!("{}{}", cmd, ext));
-            if candidate.is_file() {
-                return true;
-            }
-        }
-    }
-    false
-}
-
 // Display clap help output, paging it through `$PAGER` (defaulting to `less`)
 // when stdout is a terminal, mirroring how git pages its help. When stdout is
 // not a terminal, or the pager is disabled/unavailable, the help is printed
 // directly (clap strips ANSI colors automatically for non-terminals).
 fn show_help(err: &clap::Error) {
-    use std::io::{IsTerminal, Write};
-    use std::process::{Command, Stdio};
+    use std::io::IsTerminal;
 
     // Non-interactive: let clap print (it auto-strips color) and return.
     if !std::io::stdout().is_terminal() {
@@ -1892,66 +1862,9 @@ fn show_help(err: &clap::Error) {
         return;
     }
 
-    // Resolve the pager: RIG_PAGER -> PAGER -> `less`. An empty value or
-    // `cat` disables paging.
-    let pager = std::env::var("RIG_PAGER")
-        .or_else(|_| std::env::var("PAGER"))
-        .unwrap_or_else(|_| "less".to_string());
-    let pager = pager.trim();
-    if pager.is_empty() || pager == "cat" {
-        let _ = err.print();
-        return;
-    }
-
-    if pager.split_whitespace().next() == Some("less") && !command_on_path("less") {
-        let _ = err.print();
-        return;
-    }
-
     // Colored help text. `.ansi()` forces clap's own styling on even though we
     // capture to a String; the ABOUT_*/HELP_* constants already carry escapes.
-    let text = err.render().ansi().to_string();
-
-    #[cfg(windows)]
-    let mut cmd = {
-        let mut c = Command::new("cmd");
-        c.arg("/C").arg(pager);
-        c
-    };
-    #[cfg(not(windows))]
-    let mut cmd = {
-        let mut c = Command::new("sh");
-        c.arg("-c").arg(pager);
-        c
-    };
-
-    // Sensible `less` defaults (like git): -F quit if one screen, -R keep
-    // colors, -X don't clear the screen. Only set when the user has not.
-    if pager.split_whitespace().next() == Some("less") && std::env::var_os("LESS").is_none() {
-        cmd.env("LESS", "FRX");
-    }
-
-    let child = cmd.stdin(Stdio::piped()).spawn();
-    let mut child = match child {
-        Ok(child) => child,
-        // Pager could not be started (e.g. no `less` on Windows): print directly.
-        Err(_) => {
-            let _ = err.print();
-            return;
-        }
-    };
-
-    if let Some(mut stdin) = child.stdin.take() {
-        if stdin.write_all(text.as_bytes()).is_err() {
-            // Writing failed (pager exited early, etc.): fall back to printing.
-            drop(stdin);
-            let _ = child.wait();
-            let _ = err.print();
-            return;
-        }
-    }
-
-    let _ = child.wait();
+    crate::pager::page_text(&err.render().ansi().to_string());
 }
 
 #[cfg(test)]

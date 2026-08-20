@@ -45,6 +45,7 @@ mod hardcoded;
 mod install;
 mod library;
 mod output;
+mod pager;
 mod pak;
 mod platform;
 mod proj;

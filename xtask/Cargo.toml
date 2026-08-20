@@ -6,8 +6,9 @@ publish = false
 
 # Dev-only build tasks for rig (run with `cargo xtask <task>`). This crate is
 # never a dependency of the `rig` binary or `riglib`; it only builds when
-# invoked explicitly. Keeping the Markdown -> ANSI help renderer here keeps
-# `pulldown-cmark` off the `rig` binary's dependency graph entirely.
+# invoked explicitly. Keeping the Markdown -> ANSI help renderer here means
+# `--help` does no rendering at run time; the output is committed to
+# src/help-generated.in.
 
 [dependencies]
 # render the markdown help text (src/help/*.md) to the committed ANSI strings

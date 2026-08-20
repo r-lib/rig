@@ -101,6 +101,13 @@ owo-colors = "4.1"
 sudo = "0.6.0"
 # printing tables to the console
 tabular = "0.2.0"
+# rendering package READMEs (markdown) in the terminal
+termimad = "0.35"
+# locate links, images and code spans in package READMEs, to turn them into
+# terminal hyperlinks before termimad renders the markdown
+pulldown-cmark = { version = "0.12", default-features = false }
+# GitHub emoji shortcodes (`:rocket:`) in package READMEs
+emojis = "0.9"
 tokio = { version = "1", features = ["full"] }
 # for pubgrub
 version-ranges = "0.1.2"

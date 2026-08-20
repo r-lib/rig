@@ -36,6 +36,8 @@ pub mod binaries;
 mod setup;
 pub use setup::repos_setup;
 mod manifest;
+mod readme;
+use readme::format_readme;
 
 pub fn sc_repos(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
@@ -302,27 +304,35 @@ fn sc_repos_package_info(
     let info = manifest::get_package_description(&package, &ver)?;
 
     if args.get_flag("json") {
-        let json = serde_json::to_string_pretty(&info)?;
+        let json = serde_json::to_string_pretty(&info.description)?;
         println!("{}", json);
     } else {
-        print_package_info(&info);
+        // Whether to color has to be decided here, before the pager is
+        // started: from then on our stdout is the pager's pipe. `less` is run
+        // with `-R`, so it passes the escapes through.
+        let color = std::io::stdout().is_terminal() && env::var_os("NO_COLOR").is_none();
+        // The README makes this output long, so page it, as for `--help`.
+        crate::pager::page_text(&format_package_info(&info, color));
     }
 
     Ok(())
 }
 
-/// Pretty-print package metadata (the fields of a DESCRIPTION file) to stdout.
+/// Format package metadata (the fields of a DESCRIPTION file, plus the README
+/// if P3M has one) for the terminal.
 ///
 /// The most useful fields are grouped into a header (name, version, title,
 /// description), a metadata block and a dependency block; noisy internal
 /// fields (checksums, timestamps, `Config/*` entries, ...) are omitted. The
 /// full record is still available via `--json`.
-fn print_package_info(info: &serde_json::Value) {
+fn format_package_info(info: &manifest::PackageInfo, color: bool) -> String {
     use owo_colors::OwoColorize;
+    use std::fmt::Write;
 
-    let color = std::io::stdout().is_terminal() && env::var_os("NO_COLOR").is_none();
+    let mut out = String::new();
+    let desc = &info.description;
     let str_field = |k: &str| -> Option<String> {
-        info.get(k)
+        desc.get(k)
             .and_then(|v| v.as_str())
             .map(reflow)
             .filter(|s| !s.is_empty())
@@ -343,10 +353,11 @@ fn print_package_info(info: &serde_json::Value) {
         header.push(' ');
         header.push_str(&if color { tag.dimmed().to_string() } else { tag });
     }
-    println!("{}", header);
+    let _ = writeln!(out, "{}", header);
 
     if let Some(title) = str_field("Title") {
-        println!(
+        let _ = writeln!(
+            out,
             "{}",
             if color {
                 title.italic().to_string()
@@ -356,10 +367,10 @@ fn print_package_info(info: &serde_json::Value) {
         );
     }
 
-    if let Some(desc) = str_field("Description") {
-        println!();
-        for line in wrap(&desc, 78) {
-            println!("{}", line);
+    if let Some(description) = str_field("Description") {
+        let _ = writeln!(out);
+        for line in wrap(&description, 78) {
+            let _ = writeln!(out, "{}", line);
         }
     }
 
@@ -379,9 +390,9 @@ fn print_package_info(info: &serde_json::Value) {
         }
     }
     if !meta.is_empty() {
-        println!();
+        let _ = writeln!(out);
         for (label, value) in meta {
-            print_field(label, &value, label_width, color);
+            write_field(&mut out, label, &value, label_width, color);
         }
     }
 
@@ -389,19 +400,62 @@ fn print_package_info(info: &serde_json::Value) {
     let dep_fields: Vec<(&str, String)> =
         ["Depends", "Imports", "LinkingTo", "Suggests", "Enhances"]
             .iter()
-            .filter_map(|k| info.get(*k).and_then(format_deps).map(|v| (*k, v)))
+            .filter_map(|k| desc.get(*k).and_then(format_deps).map(|v| (*k, v)))
             .collect();
     if !dep_fields.is_empty() {
-        println!();
+        let _ = writeln!(out);
         for (label, value) in dep_fields {
-            print_field(label, &value, label_width, color);
+            write_field(&mut out, label, &value, label_width, color);
         }
     }
+
+    // -- README ------------------------------------------------------------
+    if let Some(readme) = format_readme(info, color) {
+        // A rule and a centered banner, to set the README apart from the
+        // metadata above it. Both are as wide as the rendered README.
+        let heading = "README";
+        let width = readme::README_WIDTH;
+        let rule = "\u{2500}".repeat(width);
+        let indent = " ".repeat(width.saturating_sub(heading.len()) / 2);
+        let _ = writeln!(out);
+        let _ = writeln!(
+            out,
+            "{}",
+            if color {
+                rule.dimmed().to_string()
+            } else {
+                rule
+            }
+        );
+        let _ = writeln!(out);
+        let _ = writeln!(
+            out,
+            "{}{}",
+            indent,
+            if color {
+                heading.bold().to_string()
+            } else {
+                heading.to_string()
+            }
+        );
+        let _ = writeln!(out);
+        let _ = write!(out, "{}", readme);
+    }
+
+    out
 }
 
 /// Print a single `label   value` line, wrapping long values under the label.
 fn print_field(label: &str, value: &str, width: usize, color: bool) {
+    let mut out = String::new();
+    write_field(&mut out, label, value, width, color);
+    print!("{}", out);
+}
+
+/// Write a single `label   value` line, wrapping long values under the label.
+fn write_field(out: &mut String, label: &str, value: &str, width: usize, color: bool) {
     use owo_colors::OwoColorize;
+    use std::fmt::Write;
     let padded = format!("{:width$}", label);
     let shown_label = if color {
         padded.dimmed().to_string()
@@ -412,9 +466,9 @@ fn print_field(label: &str, value: &str, width: usize, color: bool) {
     let lines = wrap(value, 78usize.saturating_sub(width));
     for (i, line) in lines.iter().enumerate() {
         if i == 0 {
-            println!("{}{}", shown_label, line);
+            let _ = writeln!(out, "{}{}", shown_label, line);
         } else {
-            println!("{}{}", indent, line);
+            let _ = writeln!(out, "{}{}", indent, line);
         }
     }
 }
@@ -715,6 +769,37 @@ mod tests {
     #[test]
     fn wrap_empty_yields_single_empty_line() {
         assert_eq!(wrap("", 10), vec![String::new()]);
+    }
+
+    fn info_with_readme(readme: Option<&str>, readme_type: Option<&str>) -> manifest::PackageInfo {
+        manifest::PackageInfo {
+            description: serde_json::json!({ "Package": "pkg", "Version": "1.0.0" }),
+            readme: readme.map(|s| s.to_string()),
+            readme_type: readme_type.map(|s| s.to_string()),
+        }
+    }
+
+    #[test]
+    fn package_info_ends_with_the_readme() {
+        let mut info = info_with_readme(Some("Hello.\n"), Some("txt"));
+        info.description = serde_json::json!({
+            "Package": "pkg",
+            "Version": "1.0.0",
+            "Title": "A package",
+            "Imports": "cli",
+        });
+        let out = format_package_info(&info, false);
+        assert!(out.starts_with("pkg 1.0.0\nA package\n"));
+        assert!(out.contains("Imports       cli\n"));
+        let rule = "\u{2500}".repeat(readme::README_WIDTH);
+        assert!(
+            out.ends_with(&format!("{}\n\n{:>42}\n\nHello.\n", rule, "README")),
+            "{:?}",
+            out
+        );
+
+        let info = info_with_readme(None, None);
+        assert!(!format_package_info(&info, false).contains("README"));
     }
 
     #[test]
