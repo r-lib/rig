@@ -396,7 +396,13 @@ async fn fetch_optional_if_modified__(
     fetch_optional_if_modified(client, url, etag).await
 }
 
-async fn fetch_optional_if_modified(
+/// The async form of [`fetch_optional_if_modified_`], for callers that already
+/// have a runtime and want several of these in flight at once.
+///
+/// An unexpected status is returned as an error and only logged, never printed:
+/// every caller of this decides for itself whether a failed metadata fetch is
+/// worth telling the user about, and for the speculative ones it is not.
+pub async fn fetch_optional_if_modified(
     client: &reqwest::Client,
     url: &str,
     etag: Option<&str>,
@@ -427,7 +433,6 @@ async fn fetch_optional_if_modified(
         }
 
         status => {
-            OUTPUT.error(&format!("Failed to download {}, status: {}", url, status));
             error!("Failed to download {}, status: {}", url, status);
             bail!("Failed to download {}, status: {}", url, status);
         }

@@ -1347,6 +1347,33 @@ pub fn rig_app() -> Command {
                         .required(false),
                 )
                 .arg(
+                    Arg::new("platform")
+                        .help(
+                            "Platform to solve binary packages for, e.g. macos, windows,\n\
+                            ubuntu-24.04, or a full platform string like\n\
+                            aarch64-unknown-linux-gnu-ubuntu-24.04 (default: this machine).\n\
+                            Use --platform source to solve for source packages only.",
+                        )
+                        .long("platform")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("prefer-binary")
+                        .help(
+                            "Prefer an older version that has a binary package over a\n\
+                            newer one that does not. Optionally give how many of the\n\
+                            newest versions to consider, e.g. --prefer-binary=5\n\
+                            (default: 3).",
+                        )
+                        .long("prefer-binary")
+                        .num_args(0..=1)
+                        .require_equals(true)
+                        .default_missing_value("3")
+                        .value_parser(clap::value_parser!(usize))
+                        .required(false),
+                )
+                .arg(
                     Arg::new("dev")
                         .help("Include dev (development) dependencies")
                         .long("dev")

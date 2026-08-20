@@ -47,7 +47,7 @@
 //! disk. See [`blob`] for the format and [`load_binary_index`] for the flow.
 
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
 use std::fs;
@@ -55,19 +55,30 @@ use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
+use futures::stream::StreamExt;
 use log::*;
 use serde::Deserialize;
 use simple_error::bail;
 use zstd::stream::read::Decoder as ZstdDecoder;
 
 use crate::cache::get_cache_dir;
-use crate::download::{download_optional_if_newer_, fetch_optional_if_modified_, ConditionalFetch};
+use crate::download::{
+    download_optional_if_newer_, fetch_optional_if_modified, fetch_optional_if_modified_,
+    ConditionalFetch,
+};
 
 /// How long a cached index or status document is used without asking the
 /// server, matching the default in `crate::download`.
 const DEFAULT_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 
+/// How many indices [`prefetch_binary_indices`] has in flight at once. There is
+/// one request per package and they are small, so the whole batch is round-trip
+/// bound; the limit is there to be a good citizen towards P3M rather than to
+/// protect us.
+const PREFETCH_CONCURRENCY: usize = 16;
+
 pub mod blob;
+pub mod loader;
 use crate::rversion::OsVersion;
 use blob::IndexBlob;
 pub use blob::LinkingTo;
@@ -282,11 +293,10 @@ pub fn load_binary_index(
     package: &str,
     ttl: Option<Duration>,
 ) -> Result<Option<CachedIndex>, Box<dyn Error>> {
-    let blob_path = binary_index_blob_file(package)?;
     let etag_path = binary_index_etag_file(package)?;
     let ttl = ttl.unwrap_or(DEFAULT_TTL);
 
-    let cached = read_cached_blob(&blob_path);
+    let cached = read_cached_blob(&binary_index_blob_file(package)?);
     if cached.is_none() {
         // A marker without a usable blob would suppress the download, or ask
         // for a 304 we could not use.
@@ -294,7 +304,10 @@ pub fn load_binary_index(
     }
 
     if cached.is_some() && file_age(&etag_path).is_some_and(|age| age < ttl) {
-        info!("{} is up to date, skipping download", blob_path.display());
+        info!(
+            "Binary index of '{}' is up to date, skipping download",
+            package
+        );
         return Ok(cached.map(|index| CachedIndex {
             index,
             downloaded: false,
@@ -316,8 +329,7 @@ pub fn load_binary_index(
 
         ConditionalFetch::NotModified => match cached {
             Some(index) => {
-                // Restart the TTL: we just confirmed the blob is current.
-                let _ = filetime::set_file_mtime(&etag_path, filetime::FileTime::now());
+                restart_ttl(package);
                 Ok(Some(CachedIndex {
                     index,
                     downloaded: false,
@@ -328,38 +340,166 @@ pub fn load_binary_index(
             None => bail!("Server answered 304 for {} without being asked", url),
         },
 
-        ConditionalFetch::Fetched { bytes, etag } => {
-            let rows = parse_binaries_tsv(&bytes)?;
-            let built = blob::build(package, &rows)?;
-            debug!(
-                "Built binary index blob for '{}' ({} rows, {} bytes)",
-                package,
-                rows.len(),
-                built.len()
-            );
-            // The blob first, its marker second: a marker means the blob
-            // beside it is complete. A cache we cannot write is a slow next
-            // run, not a failure of this one, so neither write is fatal — but
-            // the marker must not outlive a blob that never landed.
-            match write_atomically(&blob_path, &built) {
-                Ok(()) => {
-                    if let Err(err) =
-                        write_atomically(&etag_path, etag.unwrap_or_default().as_bytes())
-                    {
-                        debug!("Could not write {}: {}", etag_path.display(), err);
-                    }
-                }
-                Err(err) => {
-                    debug!("Could not write {}: {}", blob_path.display(), err);
-                    let _ = fs::remove_file(&etag_path);
-                }
+        ConditionalFetch::Fetched { bytes, etag } => Ok(Some(CachedIndex {
+            index: BinaryIndex::open_blob(&store_index(package, &bytes, etag)?)?,
+            downloaded: true,
+        })),
+    }
+}
+
+/// Parse a downloaded index and put it in the cache, returning the blob that
+/// was built from it.
+///
+/// The blob is written first and its marker second: a marker means the blob
+/// beside it is complete. A cache we cannot write is a slow next run, not a
+/// failure of this one, so neither write is fatal — but the marker must not
+/// outlive a blob that never landed.
+fn store_index(package: &str, tsv: &[u8], etag: Option<String>) -> Result<Vec<u8>, Box<dyn Error>> {
+    let rows = parse_binaries_tsv(tsv)?;
+    let built = blob::build(package, &rows)?;
+    debug!(
+        "Built binary index blob for '{}' ({} rows, {} bytes)",
+        package,
+        rows.len(),
+        built.len()
+    );
+    let blob_path = binary_index_blob_file(package)?;
+    let etag_path = binary_index_etag_file(package)?;
+    match write_atomically(&blob_path, &built) {
+        Ok(()) => {
+            if let Err(err) = write_atomically(&etag_path, etag.unwrap_or_default().as_bytes()) {
+                debug!("Could not write {}: {}", etag_path.display(), err);
             }
-            Ok(Some(CachedIndex {
-                index: BinaryIndex::open_blob(&built)?,
-                downloaded: true,
-            }))
+        }
+        Err(err) => {
+            debug!("Could not write {}: {}", blob_path.display(), err);
+            let _ = fs::remove_file(&etag_path);
         }
     }
+    Ok(built)
+}
+
+/// Note that a cached blob was just confirmed current, so the TTL is measured
+/// from now instead of from when it was downloaded.
+fn restart_ttl(package: &str) {
+    if let Ok(etag_path) = binary_index_etag_file(package) {
+        let _ = filetime::set_file_mtime(&etag_path, filetime::FileTime::now());
+    }
+}
+
+/// What a package needs before its index can be read.
+enum Prefetch {
+    /// The cached blob is younger than the TTL, so there is nothing to do.
+    Cached,
+    /// A request is needed, sending this `ETag` if there is one to revalidate
+    /// with.
+    Fetch(Option<String>),
+}
+
+/// Decide whether `package` needs a request.
+///
+/// Unlike [`load_binary_index`] this only checks that a blob is *there*, it
+/// does not open it: prefetching is a head start, and a blob that turns out to
+/// be unusable is `load_binary_index`'s problem when it gets to it.
+fn prefetch_plan(package: &str, ttl: Duration) -> Result<Prefetch, Box<dyn Error>> {
+    let blob_path = binary_index_blob_file(package)?;
+    let etag_path = binary_index_etag_file(package)?;
+    if !blob_path.exists() {
+        let _ = fs::remove_file(&etag_path);
+        return Ok(Prefetch::Fetch(None));
+    }
+    if file_age(&etag_path).is_some_and(|age| age < ttl) {
+        return Ok(Prefetch::Cached);
+    }
+    Ok(Prefetch::Fetch(
+        fs::read_to_string(&etag_path)
+            .ok()
+            .filter(|e| !e.is_empty()),
+    ))
+}
+
+/// Fill the cache for many packages at once, with several requests in flight.
+///
+/// [`load_binary_index`] makes one blocking request per package, so a solve
+/// that walks a hundred packages pays a hundred round trips end to end. Given
+/// the packages up front, this pays them concurrently instead, and leaves
+/// exactly what `load_binary_index` would have written.
+///
+/// It is best effort and reports nothing: every package it fails on is simply
+/// one that `load_binary_index` fetches itself later. Packages whose cached
+/// index is still fresh cost nothing here, so calling this with more packages
+/// than the solve turns out to need is cheap on a warm cache.
+pub fn prefetch_binary_indices(packages: &[String], ttl: Option<Duration>) {
+    let ttl = ttl.unwrap_or(DEFAULT_TTL);
+    let mut seen: HashSet<&str> = HashSet::new();
+    let mut todo: Vec<(String, Option<String>)> = vec![];
+    for package in packages {
+        if !seen.insert(package.as_str()) {
+            continue;
+        }
+        match prefetch_plan(package, ttl) {
+            Ok(Prefetch::Cached) => {}
+            Ok(Prefetch::Fetch(etag)) => todo.push((package.clone(), etag)),
+            Err(err) => debug!("Not prefetching binary index of '{}': {}", package, err),
+        }
+    }
+
+    if todo.is_empty() {
+        debug!("All {} binary indices are up to date", seen.len());
+        return;
+    }
+    debug!(
+        "Prefetching {} of {} binary indices, {} at a time",
+        todo.len(),
+        seen.len(),
+        PREFETCH_CONCURRENCY
+    );
+    if let Err(err) = prefetch_all(&todo) {
+        debug!("Could not prefetch binary indices: {}", err);
+    }
+}
+
+/// The request half of [`prefetch_binary_indices`], on its own runtime.
+///
+/// Parsing an index and building its blob takes a couple of milliseconds, which
+/// is why it happens on the blocking pool: it overlaps with the requests still
+/// in flight instead of being tacked onto the end of them.
+#[tokio::main]
+async fn prefetch_all(todo: &[(String, Option<String>)]) -> Result<(), Box<dyn Error>> {
+    let client = reqwest::Client::new();
+    futures::stream::iter(todo.iter().map(|(package, etag)| {
+        let client = &client;
+        async move {
+            let url = binary_index_url(package);
+            match fetch_optional_if_modified(client, &url, etag.as_deref()).await {
+                Err(err) => debug!("Could not prefetch {}: {}", url, err),
+                Ok(ConditionalFetch::NotFound) => {
+                    debug!("No binary index for package '{}'", package)
+                }
+                Ok(ConditionalFetch::NotModified) => restart_ttl(package),
+                Ok(ConditionalFetch::Fetched { bytes, etag }) => {
+                    let package = package.clone();
+                    let stored = tokio::task::spawn_blocking(move || {
+                        store_index(&package, &bytes, etag)
+                            .map(|_| ())
+                            .map_err(|e| {
+                                format!("Could not store binary index of '{}': {}", package, e)
+                            })
+                    })
+                    .await;
+                    match stored {
+                        Ok(Err(err)) => debug!("{}", err),
+                        Err(err) => debug!("Binary index prefetch task failed: {}", err),
+                        Ok(Ok(())) => {}
+                    }
+                }
+            }
+        }
+    }))
+    .buffer_unordered(PREFETCH_CONCURRENCY)
+    .count()
+    .await;
+    Ok(())
 }
 
 /// Open a cached blob, treating an unusable one as absent.
@@ -538,6 +678,15 @@ pub struct BinaryRowRef<'a> {
 }
 
 impl<'a> BinaryRowRef<'a> {
+    /// Position of this row in the whole index.
+    ///
+    /// This is the identity of a build: rows that share
+    /// `(version, platform, arch, r_version)` differ only in their `linkingto`,
+    /// so there is nothing else to tell them apart by.
+    pub fn row_index(&self) -> usize {
+        self.row
+    }
+
     pub fn version(&self) -> VersionRef<'a> {
         self.index.version(self.index.blob.row_version(self.row))
     }
