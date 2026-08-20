@@ -26,6 +26,41 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
 </style>
 
 
@@ -504,6 +539,7 @@ ul.task-list li input[type="checkbox"] {
   </ul></li>
   <li><a href="#rig-proj-solve" id="toc-rig-proj-solve" class="nav-link" data-scroll-target="#rig-proj-solve"><code>rig proj solve</code></a>
   <ul class="collapse">
+  <li><a href="#source-and-binary-packages" id="toc-source-and-binary-packages" class="nav-link" data-scroll-target="#source-and-binary-packages">Source and binary packages</a></li>
   <li><a href="#usage-2" id="toc-usage-2" class="nav-link" data-scroll-target="#usage-2">Usage</a></li>
   <li><a href="#options-2" id="toc-options-2" class="nav-link" data-scroll-target="#options-2">Options</a></li>
   </ul></li>
@@ -637,6 +673,16 @@ Run in user mode (overrides RIG_MODE and config)
 <p>Resolve the dependencies of an R project to a concrete set of package versions.</p>
 <p>rig reads the project manifest (e.g.&nbsp;<code>DESCRIPTION</code>; override with <code>--input</code>) and uses its built-in solver to find a compatible set of package versions from the configured repositories, without running R.</p>
 <p>Use <code>--r-version</code> to solve for a specific R version, <code>--dev</code> to include development dependencies, and <code>--renv</code> to write the result as an <code>renv.lock</code> file.</p>
+<section id="source-and-binary-packages" class="level3">
+<h3 class="anchored" data-anchor-id="source-and-binary-packages">Source and binary packages</h3>
+<p>The solver considers binary packages as well as source packages, and prefers a binary build when one is available for the same version. Which artifact each package is installed from is part of what the solve decides, because a binary is only usable together with the exact versions of its <code>LinkingTo</code> dependencies that it was compiled against. If those versions conflict with the rest of the project, rig picks another build of that package, or falls back to its source tarball.</p>
+<p>By default a binary build never changes <em>which version</em> rig picks: the newest suitable version wins, and a binary of it is used if there is one. Pass <code>--prefer-binary</code> to let an older version win instead, when the newest one has no binary but an older one does — typically because a version was released so recently that it has not been built yet. Only the three newest versions of a package are considered; <code>--prefer-binary=5</code> considers five. Versions held back this way are marked in the output.</p>
+<p>Trading a version away for a binary is not free: the binary pins its <code>LinkingTo</code> dependencies to the versions it was compiled against, and those dependencies then prefer their own binaries in turn, so a whole project can end up on older versions.</p>
+<p>By default rig solves for the machine it runs on. Use <code>--platform</code> to solve for a different one, e.g.&nbsp;to write a lockfile on macOS for a Linux deployment:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> proj solve <span class="at">--platform</span> ubuntu-24.04</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><code>--platform source</code> solves for source packages only, and does not download any binary package metadata. rig also falls back to source packages when there are no binaries for a platform at all. There is then nothing for <code>--prefer-binary</code> to prefer, and rig ignores it.</p>
+<p>The <code>pkg.lock</code> file records, for every package, whether it is a source or a binary package and the URL it is downloaded from.</p>
+</section>
 <section id="usage-2" class="level3">
 <h3 class="anchored" data-anchor-id="usage-2">Usage</h3>
 <pre class="text"><code>rig proj solve [OPTIONS]</code></pre>
@@ -663,6 +709,14 @@ Project file to solve (e.g.&nbsp;DESCRIPTION)
 <dt><code>--json</code></dt>
 <dd>
 JSON output
+</dd>
+<dt><code>--platform &lt;platform&gt;</code></dt>
+<dd>
+Platform to solve binary packages for, e.g.&nbsp;macos, windows, ubuntu-24.04, or a full platform string like aarch64-unknown-linux-gnu-ubuntu-24.04 (default: this machine). Use <code>--platform</code> source to solve for source packages only.
+</dd>
+<dt><code>--prefer-binary[=&lt;prefer-binary&gt;]</code></dt>
+<dd>
+Prefer an older version that has a binary package over a newer one that does not. Optionally give how many of the newest versions to consider, e.g.&nbsp;<code>--prefer-binary=5</code> (default: 3).
 </dd>
 <dt><code>-r, --r-version &lt;r-version&gt;</code></dt>
 <dd>
