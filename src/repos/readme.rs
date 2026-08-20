@@ -634,6 +634,7 @@ mod tests {
             description: serde_json::json!({ "Package": "pkg", "Version": "1.0.0" }),
             readme: readme.map(|s| s.to_string()),
             readme_type: readme_type.map(|s| s.to_string()),
+            archived: None,
         }
     }
 

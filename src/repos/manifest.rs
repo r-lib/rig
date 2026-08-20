@@ -35,7 +35,9 @@ use simple_error::bail;
 use crate::cache::get_cache_dir;
 use crate::dcf::{Package, PackageDependencies, RPackageVersion};
 use crate::download::download_if_newer_;
-use crate::repos::cranlike_metadata::{allpackages_versions, AllPackagesVersion};
+use crate::repos::cranlike_metadata::{
+    allpackages_versions, archived_package, AllPackagesVersion, ArchivedPackage,
+};
 use crate::utils::*;
 
 /// Base URL of the P3M sync manifests, overridable via the
@@ -55,6 +57,9 @@ pub struct PackageInfo {
     pub readme: Option<String>,
     /// `"md"`, `"txt"`, ... as P3M reports it.
     pub readme_type: Option<String>,
+    /// Set when CRAN has archived the package. This is a property of the
+    /// package, not of the version shown.
+    pub archived: Option<ArchivedPackage>,
 }
 
 /// The DESCRIPTION and README of `package` at `version` (`"latest"` for the
@@ -90,6 +95,7 @@ pub fn get_package_description(
         description: parse_description(&entry.raw_desc)?,
         readme: entry.readme,
         readme_type: entry.readme_type,
+        archived: archived_package(package)?,
     })
 }
 

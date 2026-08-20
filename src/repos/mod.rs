@@ -31,6 +31,7 @@ use repos_available::sc_repos_available;
 mod repos_list;
 use repos_list::sc_repos_list;
 pub mod cranlike_metadata;
+use cranlike_metadata::ArchivedPackage;
 pub use cranlike_metadata::{repos_get_packages, DbSourcePackageLoader};
 pub mod binaries;
 mod setup;
@@ -301,9 +302,10 @@ fn sc_repos_package_info(
         "latest".to_string()
     };
 
-    let info = manifest::get_package_description(&package, &ver)?;
+    let mut info = manifest::get_package_description(&package, &ver)?;
 
     if args.get_flag("json") {
+        add_archived_field(&mut info.description, info.archived.as_ref());
         let json = serde_json::to_string_pretty(&info.description)?;
         println!("{}", json);
     } else {
@@ -316,6 +318,15 @@ fn sc_repos_package_info(
     }
 
     Ok(())
+}
+
+fn add_archived_field(desc: &mut serde_json::Value, archived: Option<&ArchivedPackage>) {
+    if let (Some(archived), Some(obj)) = (archived, desc.as_object_mut()) {
+        obj.insert(
+            "Archived".to_string(),
+            serde_json::Value::String(archived.archived.clone()),
+        );
+    }
 }
 
 /// Format package metadata (the fields of a DESCRIPTION file, plus the README
@@ -387,6 +398,19 @@ fn format_package_info(info: &manifest::PackageInfo, color: bool) -> String {
     ] {
         if let Some(v) = str_field(key) {
             meta.push((label, v));
+        }
+        if key == "Date/Publication" {
+            if let Some(archived) = &info.archived {
+                let note = format!("{} (removed from CRAN)", archived.archived);
+                meta.push((
+                    "Archived",
+                    if color {
+                        note.yellow().to_string()
+                    } else {
+                        note
+                    },
+                ));
+            }
         }
     }
     if !meta.is_empty() {
@@ -521,14 +545,19 @@ fn sc_repos_package_versions(
 ) -> Result<(), Box<dyn Error>> {
     let package: String = args.get_one::<String>("package").unwrap().to_string();
 
-    let versions = manifest::get_package_versions(&package)?;
+    let mut versions = manifest::get_package_versions(&package)?;
     if versions.is_empty() {
         bail!("Could not find package '{}' on CRAN.", package);
     }
 
+    let archived = cranlike_metadata::archived_package(&package)?;
+
     // `--json` dumps the full DESCRIPTION of every version, mirroring
     // `package-info --json`.
     if args.get_flag("json") {
+        for version in versions.iter_mut() {
+            add_archived_field(&mut version.description, archived.as_ref());
+        }
         let descs: Vec<&serde_json::Value> = versions.iter().map(|v| &v.description).collect();
         println!("{}", serde_json::to_string_pretty(&descs)?);
         return Ok(());
@@ -537,7 +566,7 @@ fn sc_repos_package_versions(
     let latest = versions.last().map(|v| v.version.original.clone());
     let rows: Vec<PackageVersionRow> = versions.iter().map(package_version_row).collect();
 
-    print_package_versions(&package, latest.as_deref(), &rows);
+    print_package_versions(&package, latest.as_deref(), archived.as_ref(), &rows);
 
     Ok(())
 }
@@ -648,11 +677,17 @@ fn package_version_row(version: &manifest::PackageVersion) -> PackageVersionRow 
 
 /// Pretty-print the version table for `rig repos package-versions`.
 ///
-/// A colored header line names the package, the number of versions and the
-/// latest one; the table then lists each version with its publication date, R
-/// requirement and hard-dependency count, marking the latest version. The full
-/// per-version metadata is available via `--json`.
-fn print_package_versions(name: &str, latest: Option<&str>, rows: &[PackageVersionRow]) {
+/// A colored header line names the package, the number of versions, the latest
+/// one and, for a package CRAN has archived, the date it was archived; the table
+/// then lists each version with its publication date, R requirement and
+/// hard-dependency count, marking the latest version. The full per-version
+/// metadata is available via `--json`.
+fn print_package_versions(
+    name: &str,
+    latest: Option<&str>,
+    archived: Option<&ArchivedPackage>,
+    rows: &[PackageVersionRow],
+) {
     use owo_colors::OwoColorize;
 
     let color = std::io::stdout().is_terminal() && env::var_os("NO_COLOR").is_none();
@@ -667,12 +702,21 @@ fn print_package_versions(name: &str, latest: Option<&str>, rows: &[PackageVersi
     };
     let mut tags: Vec<String> = vec![];
     if let Some(latest) = latest {
-        tags.push(format!("latest {}", latest));
+        let tag = format!("latest {}", latest);
+        tags.push(if color { tag.dimmed().to_string() } else { tag });
+    }
+    if let Some(archived) = archived {
+        let tag = format!("archived {}", archived.archived);
+        tags.push(if color { tag.yellow().to_string() } else { tag });
     }
     if !tags.is_empty() {
-        let tag = format!("({})", tags.join(", "));
+        let (open, close) = if color {
+            ("(".dimmed().to_string(), ")".dimmed().to_string())
+        } else {
+            ("(".to_string(), ")".to_string())
+        };
         header.push(' ');
-        header.push_str(&if color { tag.dimmed().to_string() } else { tag });
+        header.push_str(&format!("{}{}{}", open, tags.join(", "), close));
     }
     println!("{}", header);
     println!();
@@ -776,6 +820,7 @@ mod tests {
             description: serde_json::json!({ "Package": "pkg", "Version": "1.0.0" }),
             readme: readme.map(|s| s.to_string()),
             readme_type: readme_type.map(|s| s.to_string()),
+            archived: None,
         }
     }
 

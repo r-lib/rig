@@ -366,6 +366,9 @@ pub struct Package {
     // `SHA256Original` in ALLPACKAGES, and its own rewritten tarball's hash
     // `SHA256`, which we do not keep.
     pub sha256sum: Option<String>,
+    // the date CRAN archived the package, as `YYYY-MM-DD`. Only the
+    // ARCHIVEDPACKAGES feed has this field, every other repo leaves it unset.
+    pub archived: Option<String>,
 }
 
 impl Package {
@@ -391,6 +394,7 @@ impl Package {
             internals_id: None,
             filesize: None,
             sha256sum: None,
+            archived: None,
         }
     }
 
@@ -421,6 +425,7 @@ impl Package {
         let internals_id = pkg.get("InternalsID").map(|i| i.to_string());
         let filesize = pkg.get("Filesize").and_then(|s| s.parse::<u64>().ok());
         let sha256sum = pkg.get("SHA256Original").map(|s| s.to_string());
+        let archived = pkg.get("Archived").map(|a| a.to_string());
 
         Ok(Package {
             name,
@@ -437,6 +442,7 @@ impl Package {
             internals_id,
             filesize,
             sha256sum,
+            archived,
         })
     }
 }

@@ -117,11 +117,32 @@ pub fn repos_get_packages(
     )
 }
 
-/// Ensure the ALLPACKAGES history is downloaded and stored in the database
-/// (respecting the 24h / etag cache), without loading the rows into memory.
 fn ensure_allpackages_fresh() -> Result<(), Box<dyn Error>> {
     let url = allpackages_url();
-    ensure_packages_cached(&[url.as_str()], &url, &url, "source", None, "ALLPACKAGES")?;
+    ensure_packages_cached(
+        &[url.as_str()],
+        &url,
+        &url,
+        "source",
+        None,
+        "ALLPACKAGES",
+        Feed::Cranlike,
+    )?;
+    ensure_archived_fresh()?;
+    Ok(())
+}
+
+fn ensure_archived_fresh() -> Result<(), Box<dyn Error>> {
+    let url = archivedpackages_url();
+    ensure_packages_cached(
+        &[url.as_str()],
+        &url,
+        &url,
+        "source",
+        None,
+        "ARCHIVEDPACKAGES",
+        Feed::Archived,
+    )?;
     Ok(())
 }
 
@@ -279,9 +300,69 @@ fn allpackages_url() -> String {
         .unwrap_or_else(|_| "https://ppm.r-pkg.org/ALLPACKAGES.zst".to_string())
 }
 
+fn archivedpackages_url() -> String {
+    std::env::var("RIG_ARCHIVEDPACKAGES_URL")
+        .unwrap_or_else(|_| "https://ppm.r-pkg.org/ARCHIVEDPACKAGES.zst".to_string())
+}
+
+#[derive(Debug, Clone)]
+pub struct ArchivedPackage {
+    /// The date CRAN archived the package, as `YYYY-MM-DD`.
+    pub archived: String,
+}
+
+/// Whether CRAN has archived `package`, and if so when.
+pub fn archived_package(package: &str) -> Result<Option<ArchivedPackage>, Box<dyn Error>> {
+    ensure_archived_fresh()?;
+
+    let repo_local = repo_local_file(&archivedpackages_url())?;
+    let repo_db = repo_db_file(&repo_local)?;
+    archived_package_in_db(&repo_db, &archivedpackages_url(), package)
+}
+
+/// The `archived_packages` row of `package` for the feed at `feed_url`, without
+/// refreshing anything.
+fn archived_package_in_db(
+    db_path: &PathBuf,
+    feed_url: &str,
+    package: &str,
+) -> Result<Option<ArchivedPackage>, Box<dyn Error>> {
+    let conn = Connection::open(db_path)?;
+    let repo_ids = source_repo_ids(&conn, feed_url, "source")?;
+
+    let mut stmt =
+        conn.prepare("SELECT archived, repo_id FROM archived_packages WHERE name = ?1")?;
+    let rows = stmt.query_map(params![package], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    })?;
+
+    for row in rows {
+        let (archived, repo_id) = row?;
+        if !repo_ids.contains(&repo_id) {
+            continue; // row from a feed we do not use
+        }
+        return Ok(Some(ArchivedPackage { archived }));
+    }
+
+    Ok(None)
+}
+
+/// Which metadata feed is being cached, i.e. how a freshly downloaded file is
+/// stored and which table holds its rows.
+#[derive(Clone, Copy, PartialEq)]
+enum Feed {
+    /// A cranlike `PACKAGES` / `ALLPACKAGES` file, stored in the `packages`
+    /// table.
+    Cranlike,
+    /// The `ARCHIVEDPACKAGES` file, stored in the `archived_packages` table.
+    Archived,
+}
+
 /// Outcome of ensuring a cranlike metadata file is present and fresh in the DB.
 enum CacheState {
     /// The metadata was (re)downloaded and parsed; the packages are in hand.
+    /// [`Feed::Archived`] returns no packages here: its rows go straight to the
+    /// database and no caller wants them in memory.
     FreshlyParsed(Vec<Package>),
     /// The database already holds a fresh copy; nothing was parsed.
     Cached,
@@ -308,6 +389,7 @@ fn get_packages_cached(
         pkg_type,
         r_version,
         path,
+        Feed::Cranlike,
     )? {
         CacheState::FreshlyParsed(packages) => Ok(packages),
         CacheState::Cached => {
@@ -324,6 +406,7 @@ fn get_packages_cached(
 /// downloading and parsing it if the 24h / etag cache is stale. Does **not**
 /// load the stored rows back into memory when the cache is already fresh, so
 /// callers that query the database lazily avoid materializing everything.
+#[allow(clippy::too_many_arguments)]
 fn ensure_packages_cached(
     candidate_urls: &[&str],
     cache_key: &str,
@@ -331,6 +414,7 @@ fn ensure_packages_cached(
     pkg_type: &str,
     r_version: Option<&str>,
     path: &str,
+    feed: Feed,
 ) -> Result<CacheState, Box<dyn Error>> {
     // Use a temporary file for downloads (will be deleted after parsing)
     let repo_local = repo_local_file(cache_key)?;
@@ -387,6 +471,7 @@ fn ensure_packages_cached(
             pkg_type,
             path,
             new_etag.as_deref(),
+            feed,
         )?;
         return Ok(CacheState::FreshlyParsed(packages));
     }
@@ -397,7 +482,7 @@ fn ensure_packages_cached(
     // it: the cached download file then looks fresh while the database is
     // empty. Recover by forcing a fresh download rather than dead-ending on a
     // "database is corrupt" error.
-    if repo_has_packages(&repo_db, repo_url_key, pkg_type)? {
+    if repo_has_packages(&repo_db, repo_url_key, pkg_type, feed)? {
         return Ok(CacheState::Cached);
     }
 
@@ -427,30 +512,42 @@ fn ensure_packages_cached(
         pkg_type,
         path,
         new_etag.as_deref(),
+        feed,
     )?;
     Ok(CacheState::FreshlyParsed(packages))
 }
 
-/// Whether the database holds at least one package row for the given repo.
+/// Whether the database holds at least one row for the given repo, in the table
+/// the feed stores its rows in.
 fn repo_has_packages(
     db_path: &PathBuf,
     repo_url: &str,
     pkg_type: &str,
+    feed: Feed,
 ) -> Result<bool, Box<dyn Error>> {
     let conn = Connection::open(db_path)?;
     let repo_url = repo_url.trim_end_matches('/');
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM packages p
-         JOIN repos r ON p.repo_id = r.id
-         WHERE r.url = ?1 AND r.pkg_type = ?2",
-        params![repo_url, pkg_type],
-        |row| row.get(0),
-    )?;
+    let query = match feed {
+        Feed::Cranlike => {
+            "SELECT COUNT(*) FROM packages p
+             JOIN repos r ON p.repo_id = r.id
+             WHERE r.url = ?1 AND r.pkg_type = ?2"
+        }
+        Feed::Archived => {
+            "SELECT COUNT(*) FROM archived_packages p
+             JOIN repos r ON p.repo_id = r.id
+             WHERE r.url = ?1 AND r.pkg_type = ?2"
+        }
+    };
+    let count: i64 = conn.query_row(query, params![repo_url, pkg_type], |row| row.get(0))?;
     Ok(count > 0)
 }
 
-/// Parse a freshly downloaded cranlike metadata file, store it in the database,
-/// delete the temporary download, and return the parsed packages.
+/// Parse a freshly downloaded metadata file, store it in the database, delete
+/// the temporary download, and return the parsed packages.
+///
+/// [`Feed::Archived`] stores its rows in the `archived_packages` table and
+/// returns an empty vector: those rows are only ever queried per package.
 #[allow(clippy::too_many_arguments)]
 fn parse_store_and_cleanup(
     repo_local: &PathBuf,
@@ -460,21 +557,27 @@ fn parse_store_and_cleanup(
     pkg_type: &str,
     path: &str,
     etag: Option<&str>,
+    feed: Feed,
 ) -> Result<Vec<Package>, Box<dyn Error>> {
     info!("Downloaded new repo metadata to {}", repo_local.display());
     // Parse DCF/RDS file and save to database
     let packages = parse_packages(repo_local)?;
 
     // Save to database with the etag from the download
-    save_packages_to_db(
-        &packages,
-        repo_db,
-        repo_url_key,
-        r_version,
-        pkg_type,
-        path,
-        etag,
-    )?;
+    match feed {
+        Feed::Cranlike => save_packages_to_db(
+            &packages,
+            repo_db,
+            repo_url_key,
+            r_version,
+            pkg_type,
+            path,
+            etag,
+        )?,
+        Feed::Archived => {
+            save_archived_to_db(&packages, repo_db, repo_url_key, pkg_type, path, etag)?
+        }
+    }
 
     // Delete the temporary data file after saving to database
     if let Err(e) = std::fs::remove_file(repo_local) {
@@ -486,7 +589,10 @@ fn parse_store_and_cleanup(
     }
 
     info!("Saved {} packages to database cache", packages.len());
-    Ok(packages)
+    match feed {
+        Feed::Cranlike => Ok(packages),
+        Feed::Archived => Ok(vec![]),
+    }
 }
 
 fn parse_packages(dcf_path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
@@ -750,6 +856,8 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
             internals_id: na_to_none(&internals_id),
             filesize: na_to_none(&filesize).and_then(|s| s.parse::<u64>().ok()),
             sha256sum: na_to_none(&sha256sum),
+            // Only the ARCHIVEDPACKAGES DCF feed has this, no RDS repo does.
+            archived: None,
         };
         packages.push(pkg);
     }
@@ -812,6 +920,24 @@ fn ensure_db_schema(db_path: &PathBuf) -> Result<(), Box<dyn Error>> {
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_packages_repo_id
          ON packages (repo_id)",
+        [],
+    )?;
+
+    // The packages CRAN has archived (ARCHIVEDPACKAGES), one row per package
+    // with the date it was archived.
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS archived_packages (
+            name TEXT NOT NULL,
+            archived TEXT NOT NULL,
+            repo_id INTEGER NOT NULL,
+            FOREIGN KEY (repo_id) REFERENCES repos(id)
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_archived_packages_name
+         ON archived_packages (name)",
         [],
     )?;
 
@@ -907,6 +1033,9 @@ fn load_packages_from_db(
                 internals_id: row.get(11)?,
                 filesize: row.get(12)?,
                 sha256sum: row.get(13)?,
+                // The `packages` table does not store this: archived packages
+                // live in their own table, see `archived_package()`.
+                archived: None,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -1001,6 +1130,68 @@ fn save_packages_to_db(
     Ok(())
 }
 
+/// Store the ARCHIVEDPACKAGES records in the `archived_packages` table.
+fn save_archived_to_db(
+    packages: &[Package],
+    db_path: &PathBuf,
+    repo_url: &str,
+    pkg_type: &str,
+    path: &str,
+    etag: Option<&str>,
+) -> Result<(), Box<dyn Error>> {
+    let mut conn = Connection::open(db_path)?;
+    let repo_url = repo_url.trim_end_matches('/');
+
+    let tx = conn.transaction()?;
+
+    // The repo row is what carries the etag and the `last_updated` timestamp
+    // the 24h cache checks, so it is written the same way as for `packages`.
+    tx.execute(
+        "INSERT OR IGNORE INTO repos (url, pkg_type, r_version, path, etag) VALUES (?1, ?2, NULL, ?3, ?4)",
+        params![repo_url, pkg_type, path, etag],
+    )?;
+
+    tx.execute(
+        "UPDATE repos SET etag = ?1, last_updated = CURRENT_TIMESTAMP
+         WHERE url = ?2 AND pkg_type = ?3 AND r_version IS NULL AND path = ?4",
+        params![etag, repo_url, pkg_type, path],
+    )?;
+
+    let repo_id: i64 = tx.query_row(
+        "SELECT id FROM repos WHERE url = ?1 AND pkg_type = ?2 AND r_version IS NULL AND path = ?3",
+        params![repo_url, pkg_type, path],
+        |row| row.get(0),
+    )?;
+
+    tx.execute(
+        "DELETE FROM archived_packages WHERE repo_id = ?1",
+        params![repo_id],
+    )?;
+
+    let mut stmt = tx.prepare(
+        "INSERT INTO archived_packages (name, archived, repo_id)
+         VALUES (?1, ?2, ?3)",
+    )?;
+
+    let mut stored = 0usize;
+    for pkg in packages {
+        // Every record of this feed has an `Archived` field; a record without
+        // one carries no information we could store.
+        let archived = match &pkg.archived {
+            Some(archived) => archived,
+            None => continue,
+        };
+        stmt.execute(params![&pkg.name, archived, repo_id])?;
+        stored += 1;
+    }
+
+    drop(stmt); // Drop statement before committing
+    tx.commit()?;
+
+    info!("Saved {} archived packages to database cache", stored);
+    Ok(())
+}
+
 fn repo_db_file(dcf_path: &Path) -> Result<PathBuf, Box<dyn Error>> {
     let parent = dcf_path
         .parent()
@@ -1060,6 +1251,98 @@ Depends: R (>= 3.5.0)
             .collect();
         vers.sort();
         assert_eq!(vers, vec!["0.9.0".to_string(), "1.0.0".to_string()]);
+    }
+
+    #[test]
+    fn test_parse_packages_reads_archived() {
+        use std::io::Write;
+
+        // ARCHIVEDPACKAGES has the same shape as ALLPACKAGES, with one extra
+        // field: the date CRAN archived the package.
+        let dcf = "\
+Package: gpclib
+Version: 1.5-6
+Depends: R (>= 3.0.0), methods
+License: GPL-2
+Snapshot: 2020-03-02
+DownloadURL: https://p3m.dev/cran/2020-03-02/src/contrib/gpclib_1.5-6.tar.gz
+Archived: 2020-03-08
+
+Package: pkgB
+Version: 2.1.0
+";
+        let compressed = zstd::stream::encode_all(dcf.as_bytes(), 0).unwrap();
+        let mut path = std::env::temp_dir();
+        path.push(format!(
+            "rig-test-archivedpackages-{}.zst",
+            std::process::id()
+        ));
+        File::create(&path).unwrap().write_all(&compressed).unwrap();
+
+        let result = parse_packages(&path);
+        let _ = std::fs::remove_file(&path);
+
+        let packages = result.expect("parse zstd-compressed ARCHIVEDPACKAGES");
+        let a = packages.iter().find(|p| p.name == "gpclib").unwrap();
+        assert_eq!(a.archived.as_deref(), Some("2020-03-08"));
+        // A record without the field, as every other repo's records are.
+        let b = packages.iter().find(|p| p.name == "pkgB").unwrap();
+        assert_eq!(b.archived, None);
+    }
+
+    /// A minimal ARCHIVEDPACKAGES record, as `save_archived_to_db` sees it.
+    fn archived_record(name: &str, archived: Option<&str>) -> Package {
+        let mut pkg = Package::from_crandb(
+            name.to_string(),
+            RPackageVersion::from_str("1.0.0").unwrap(),
+            vec![],
+        );
+        pkg.archived = archived.map(|a| a.to_string());
+        pkg
+    }
+
+    #[test]
+    fn test_archived_packages_round_trip() {
+        let url = "https://example.com/ARCHIVEDPACKAGES.zst";
+        let mut db = std::env::temp_dir();
+        db.push(format!("rig-test-archived-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&db);
+        ensure_db_schema(&db).unwrap();
+
+        let packages = vec![
+            archived_record("gpclib", Some("2020-03-08")),
+            archived_record("zipcode", Some("2018-05-14")),
+            // Not from this feed, so there is nothing to record about it.
+            archived_record("pkgB", None),
+        ];
+        save_archived_to_db(&packages, &db, url, "source", "ARCHIVEDPACKAGES", None).unwrap();
+
+        let found = archived_package_in_db(&db, url, "gpclib").unwrap();
+        assert_eq!(found.map(|a| a.archived), Some("2020-03-08".to_string()));
+        assert!(archived_package_in_db(&db, url, "pkgB").unwrap().is_none());
+        assert!(archived_package_in_db(&db, url, "nosuch")
+            .unwrap()
+            .is_none());
+
+        // A refreshed feed replaces the old rows: CRAN un-archives packages,
+        // and such a package has to stop being reported as archived.
+        save_archived_to_db(
+            &[archived_record("gpclib", Some("2020-03-08"))],
+            &db,
+            url,
+            "source",
+            "ARCHIVEDPACKAGES",
+            None,
+        )
+        .unwrap();
+        assert!(archived_package_in_db(&db, url, "gpclib")
+            .unwrap()
+            .is_some());
+        assert!(archived_package_in_db(&db, url, "zipcode")
+            .unwrap()
+            .is_none());
+
+        let _ = std::fs::remove_file(&db);
     }
 
     #[test]

@@ -8,6 +8,10 @@ By default the latest available version is shown; use `--version` to
 select a specific one, including versions that CRAN has archived. Use
 `--json` to print all `DESCRIPTION` fields.
 
+If CRAN has archived the package, i.e. removed it from the current
+repository, rig shows the date it was archived, next to the publication
+date of the version. `--json` reports it as an extra `Archived` field.
+
 The README of the package is shown as well, when the repository has one.
 Since this can be long, the output is paged through `$RIG_PAGER`,
 `$PAGER`, or `less`, unless it is redirected to a file or a pipe. Set
