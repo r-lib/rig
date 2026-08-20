@@ -244,6 +244,7 @@ expression: packages
         graphics_api_version: None,
         internals_id: None,
         filesize: None,
+        sha256sum: None,
     },
     Package {
         name: "dplyr",
@@ -648,6 +649,7 @@ expression: packages
         graphics_api_version: None,
         internals_id: None,
         filesize: None,
+        sha256sum: None,
     },
     Package {
         name: "rlang",
@@ -870,5 +872,6 @@ expression: packages
         graphics_api_version: None,
         internals_id: None,
         filesize: None,
+        sha256sum: None,
     },
 ]

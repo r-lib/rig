@@ -246,7 +246,6 @@ fn sc_library_get_default(rver: &str) -> Result<PkgLibrary, Box<dyn Error>> {
     })
 }
 
-
 pub fn sc_library_set_default(name: &str, rver: Option<&str>) -> Result<(), Box<dyn Error>> {
     let rver = match rver {
         Some(x) => x.to_string(),

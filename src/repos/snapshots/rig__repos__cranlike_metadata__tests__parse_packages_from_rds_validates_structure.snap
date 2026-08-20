@@ -243,4 +243,5 @@ Package {
     graphics_api_version: None,
     internals_id: None,
     filesize: None,
+    sha256sum: None,
 }

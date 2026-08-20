@@ -209,6 +209,69 @@ impl PackageVersionLoader for DbSourcePackageLoader {
     }
 }
 
+/// One version of a package in the ALLPACKAGES history, with the fields that
+/// identify the original CRAN tarball it was built from.
+#[derive(Debug, Clone)]
+pub struct AllPackagesVersion {
+    pub version: RPackageVersion,
+    /// P3M snapshot URL of the source tarball, e.g.
+    /// `https://p3m.dev/cran/2026-06-08/src/contrib/pak_0.10.0.tar.gz`.
+    pub download_url: Option<String>,
+    /// sha256 of the original CRAN tarball (ALLPACKAGES' `SHA256Original`).
+    pub sha256sum: Option<String>,
+}
+
+impl AllPackagesVersion {
+    /// The P3M snapshot date the version was published in, as `YYYY-MM-DD`,
+    /// taken from the date component of [`Self::download_url`].
+    pub fn snapshot(&self) -> Option<String> {
+        let url = self.download_url.as_deref()?;
+        let re = regex::Regex::new(r"/(\d{4}-\d{2}-\d{2})/").ok()?;
+        Some(re.captures(url)?.get(1)?.as_str().to_string())
+    }
+}
+
+/// Every version of `package` in the ALLPACKAGES history, refreshing the
+/// metadata first if the cache is stale.
+pub fn allpackages_versions(package: &str) -> Result<Vec<AllPackagesVersion>, Box<dyn Error>> {
+    ensure_allpackages_fresh()?;
+
+    let repo_local = repo_local_file(&allpackages_url())?;
+    let repo_db = repo_db_file(&repo_local)?;
+    let conn = Connection::open(&repo_db)?;
+    let repo_ids = source_repo_ids(&conn, &allpackages_url(), "source")?;
+
+    // Query by name only, for the same reason as `load_versions()` above: it
+    // keeps SQLite on the `(name, ...)` index instead of scanning the whole
+    // ALLPACKAGES repo.
+    let mut stmt = conn.prepare(
+        "SELECT version, download_url, sha256sum, repo_id FROM packages WHERE name = ?1",
+    )?;
+    let rows = stmt.query_map(params![package], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, Option<String>>(1)?,
+            row.get::<_, Option<String>>(2)?,
+            row.get::<_, i64>(3)?,
+        ))
+    })?;
+
+    let mut out: Vec<AllPackagesVersion> = vec![];
+    for row in rows {
+        let (ver, download_url, sha256sum, repo_id) = row?;
+        if !repo_ids.contains(&repo_id) {
+            continue; // row from a repo we do not source from
+        }
+        out.push(AllPackagesVersion {
+            version: RPackageVersion::from_str(&ver)?,
+            download_url,
+            sha256sum,
+        });
+    }
+
+    Ok(out)
+}
+
 /// URL of the CRAN-wide ALLPACKAGES metadata (every version of every package
 /// ever published on CRAN), overridable via the `RIG_ALLPACKAGES_URL` env var.
 fn allpackages_url() -> String {
@@ -621,6 +684,7 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
         "GraphicsAPIVersion",
         "InternalsID",
         "Filesize",
+        "SHA256Original",
     ];
     let mut cols: HashMap<&str, Vec<Arc<str>>> = HashMap::new();
     let nacol: Vec<Arc<str>> = vec!["NA".into(); dim.0];
@@ -667,6 +731,7 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
         let graphics_api_version = cols.get("GraphicsAPIVersion").unwrap()[i].clone();
         let internals_id = cols.get("InternalsID").unwrap()[i].clone();
         let filesize = cols.get("Filesize").unwrap()[i].clone();
+        let sha256sum = cols.get("SHA256Original").unwrap()[i].clone();
 
         let pkg = Package {
             name: name.to_string(),
@@ -684,6 +749,7 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
             graphics_api_version: na_to_none(&graphics_api_version),
             internals_id: na_to_none(&internals_id),
             filesize: na_to_none(&filesize).and_then(|s| s.parse::<u64>().ok()),
+            sha256sum: na_to_none(&sha256sum),
         };
         packages.push(pkg);
     }
@@ -728,6 +794,7 @@ fn ensure_db_schema(db_path: &PathBuf) -> Result<(), Box<dyn Error>> {
             graphics_api_version TEXT,
             internals_id TEXT,
             filesize INTEGER,
+            sha256sum TEXT,
             repo_id INTEGER NOT NULL,
             FOREIGN KEY (repo_id) REFERENCES repos(id)
         )",
@@ -816,7 +883,8 @@ fn load_packages_from_db(
 
     let mut stmt = conn.prepare(
         "SELECT name, version, dependencies, download_url, file, path, built,
-                license, platform, arch, graphics_api_version, internals_id, filesize
+                license, platform, arch, graphics_api_version, internals_id, filesize,
+                sha256sum
          FROM packages WHERE repo_id = ?1",
     )?;
 
@@ -838,6 +906,7 @@ fn load_packages_from_db(
                 graphics_api_version: row.get(10)?,
                 internals_id: row.get(11)?,
                 filesize: row.get(12)?,
+                sha256sum: row.get(13)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -895,8 +964,9 @@ fn save_packages_to_db(
     let mut stmt = tx.prepare(
         "INSERT INTO packages
          (name, version, dependencies, download_url, file, path, built,
-          license, platform, arch, graphics_api_version, internals_id, filesize, repo_id)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+          license, platform, arch, graphics_api_version, internals_id, filesize,
+          sha256sum, repo_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
     )?;
 
     for pkg in packages {
@@ -920,6 +990,7 @@ fn save_packages_to_db(
             &pkg.graphics_api_version,
             &pkg.internals_id,
             pkg.filesize,
+            &pkg.sha256sum,
             repo_id,
         ])?;
     }
@@ -989,6 +1060,42 @@ Depends: R (>= 3.5.0)
             .collect();
         vers.sort();
         assert_eq!(vers, vec!["0.9.0".to_string(), "1.0.0".to_string()]);
+    }
+
+    #[test]
+    fn test_parse_packages_reads_sha256original() {
+        use std::io::Write;
+
+        // ALLPACKAGES carries both hashes: `SHA256Original` is the upstream CRAN
+        // tarball's hash (what we keep as `sha256sum`), `SHA256` is P3M's
+        // rewritten tarball (ignored).
+        let dcf = "\
+Package: pkgA
+Version: 1.0.0
+SHA256: a03ad0480203b160eea4dab532ceec78e924c9d4c6f793fe9d4e9ca3666697f3
+SHA256Original: 43901f7baa265b0262b708dd4c09072768cbb1f8e32123bb07824e0ebfadda5a
+
+Package: pkgB
+Version: 2.1.0
+";
+        let mut path = std::env::temp_dir();
+        path.push(format!("rig-test-sha256-{}.PACKAGES", std::process::id()));
+        File::create(&path)
+            .unwrap()
+            .write_all(dcf.as_bytes())
+            .unwrap();
+
+        let result = parse_packages(&path);
+        let _ = std::fs::remove_file(&path);
+
+        let packages = result.expect("parse PACKAGES with SHA256Original");
+        let a = packages.iter().find(|p| p.name == "pkgA").unwrap();
+        assert_eq!(
+            a.sha256sum.as_deref(),
+            Some("43901f7baa265b0262b708dd4c09072768cbb1f8e32123bb07824e0ebfadda5a")
+        );
+        let b = packages.iter().find(|p| p.name == "pkgB").unwrap();
+        assert_eq!(b.sha256sum, None);
     }
 
     #[test]

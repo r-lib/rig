@@ -1,6 +1,5 @@
 use std::error::Error;
 
-use log::debug;
 use serde_json::Value;
 
 use crate::cache::get_cache_dir;
@@ -8,28 +7,6 @@ use crate::dcf::*;
 use crate::download::download_if_newer_;
 use crate::proj::BASE_PKGS;
 use crate::utils::*;
-
-pub fn get_cran_package_version(package: &str, version: &str) -> Result<Value, Box<dyn Error>> {
-    let mut url = "https://crandb.r-pkg.org/".to_string() + package;
-    if version != "latest" {
-        url += "/";
-        url += version;
-    }
-    debug!("Fetching package info from {}", url);
-    let mut local = get_cache_dir()?;
-    local.push("package-metadata");
-    local.push("package-".to_string() + package + "-" + version + ".json");
-    debug!("Local cache file: {}", local.display());
-
-    create_parent_dir_if_needed(&local)?;
-    let (_downloaded, _etag) = download_if_newer_(&url, &local, None, None)?;
-
-    let contents: String = read_file_string(&local)?;
-    let contents = contents.replace("<U+000a>", " ");
-    let json: Value = serde_json::from_str(&contents)?;
-
-    Ok(json)
-}
 
 /// Download and parse the crandb `<package>/all` record, which lists every
 /// (current and archived) version of a package together with a `latest`

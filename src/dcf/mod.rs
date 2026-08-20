@@ -362,6 +362,10 @@ pub struct Package {
     pub graphics_api_version: Option<String>,
     pub internals_id: Option<String>,
     pub filesize: Option<u64>,
+    // sha256 of the original (upstream CRAN) package file. P3M calls this
+    // `SHA256Original` in ALLPACKAGES, and its own rewritten tarball's hash
+    // `SHA256`, which we do not keep.
+    pub sha256sum: Option<String>,
 }
 
 impl Package {
@@ -386,6 +390,7 @@ impl Package {
             graphics_api_version: None,
             internals_id: None,
             filesize: None,
+            sha256sum: None,
         }
     }
 
@@ -415,6 +420,7 @@ impl Package {
         let graphics_api_version = pkg.get("GraphicsAPIVersion").map(|g| g.to_string());
         let internals_id = pkg.get("InternalsID").map(|i| i.to_string());
         let filesize = pkg.get("Filesize").and_then(|s| s.parse::<u64>().ok());
+        let sha256sum = pkg.get("SHA256Original").map(|s| s.to_string());
 
         Ok(Package {
             name,
@@ -430,6 +436,7 @@ impl Package {
             graphics_api_version,
             internals_id,
             filesize,
+            sha256sum,
         })
     }
 }

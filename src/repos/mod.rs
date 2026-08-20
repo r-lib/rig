@@ -36,6 +36,7 @@ mod setup;
 pub use setup::repos_setup;
 mod crandb;
 use crandb::CranVersionRow;
+mod manifest;
 
 pub fn sc_repos(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
@@ -299,18 +300,7 @@ fn sc_repos_package_info(
         "latest".to_string()
     };
 
-    let info = crandb::get_cran_package_version(&package, &ver)?;
-
-    // crandb replies with an `error` object (e.g. `not_found`) instead of the
-    // package metadata when the package or version does not exist.
-    if info.get("Package").is_none() || info.get("error").is_some() {
-        let which = if ver == "latest" {
-            format!("package '{}'", package)
-        } else {
-            format!("package '{}' version '{}'", package, ver)
-        };
-        bail!("Could not find {} in the CRAN metadata database.", which);
-    }
+    let info = manifest::get_package_description(&package, &ver)?;
 
     if args.get_flag("json") {
         let json = serde_json::to_string_pretty(&info)?;
@@ -322,7 +312,7 @@ fn sc_repos_package_info(
     Ok(())
 }
 
-/// Pretty-print package metadata (as returned by crandb) to stdout.
+/// Pretty-print package metadata (the fields of a DESCRIPTION file) to stdout.
 ///
 /// The most useful fields are grouped into a header (name, version, title,
 /// description), a metadata block and a dependency block; noisy internal
@@ -430,21 +420,14 @@ fn print_field(label: &str, value: &str, width: usize, color: bool) {
     }
 }
 
-/// Format a crandb dependency object (`{"pkg": "*" | ">= x.y"}`) as a
-/// comma-separated list, showing version constraints where present.
+/// Format a DESCRIPTION dependency field (`cli (>= 3.2.0), glue`), which DCF
+/// wraps over several lines, as a single comma-separated list.
 fn format_deps(value: &serde_json::Value) -> Option<String> {
-    let obj = value.as_object()?;
-    if obj.is_empty() {
+    let deps = reflow(value.as_str()?);
+    if deps.is_empty() {
         return None;
     }
-    let parts: Vec<String> = obj
-        .iter()
-        .map(|(name, spec)| match spec.as_str() {
-            Some("*") | None => name.to_string(),
-            Some(s) => format!("{} ({})", name, s),
-        })
-        .collect();
-    Some(parts.join(", "))
+    Some(deps)
 }
 
 /// Collapse runs of whitespace (including the newlines DCF fields carry) into
@@ -642,15 +625,19 @@ mod tests {
     }
 
     #[test]
-    fn format_deps_shows_constraints_and_skips_wildcards() {
-        let deps = serde_json::json!({ "R": ">= 3.5.0", "utils": "*" });
-        // serde_json orders object keys, so output is deterministic.
-        assert_eq!(format_deps(&deps), Some("R (>= 3.5.0), utils".to_string()));
+    fn format_deps_reflows_a_dcf_field() {
+        // DCF wraps long dependency fields over several indented lines.
+        let deps = serde_json::json!("R (>= 3.5.0), utils,\n        cli (>= 3.2.0)");
+        assert_eq!(
+            format_deps(&deps),
+            Some("R (>= 3.5.0), utils, cli (>= 3.2.0)".to_string())
+        );
     }
 
     #[test]
-    fn format_deps_empty_object_is_none() {
+    fn format_deps_empty_field_is_none() {
+        assert_eq!(format_deps(&serde_json::json!("")), None);
+        assert_eq!(format_deps(&serde_json::json!("   ")), None);
         assert_eq!(format_deps(&serde_json::json!({})), None);
-        assert_eq!(format_deps(&serde_json::json!("not an object")), None);
     }
 }
