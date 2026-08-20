@@ -551,6 +551,7 @@ ul.task-list li input[type="checkbox"] {
 <li><code>rig library add</code> adds a new library for the current R version.</li>
 <li><code>rig library rm</code> deletes a library, including all packages in it. It is not possible to delete the current default library, and it is not possible to delete the main library.</li>
 </ul>
+<p>Each subcommand operates on the default R version, unless you select another installed R version with <code>--r-version</code>.</p>
 <p>User libraries are implemented at the user level, no administrator or root password is needed to add, set or delete them. If you delete an R installation, the user package libraries and their configurations are kept for all users on the system.</p>
 <p><code>rig library</code> is currently experimental, and might change in future versions. Feedback is appreciated.</p>
 <section id="subcommands" class="level2">
@@ -578,6 +579,7 @@ Remove a library
 <h2 class="anchored" data-anchor-id="rig-library-add"><code>rig library add</code></h2>
 <p>Add a new user package library for the current R version.</p>
 <p>The new library is created empty. Adding a library does not change the default library; use <code>rig library default</code> to switch to it. No administrator rights are needed.</p>
+<p>Use <code>--r-version</code> to add a library for another installed R version, instead of the default one.</p>
 <section id="usage" class="level3">
 <h3 class="anchored" data-anchor-id="usage">Usage</h3>
 <pre class="text"><code>rig library add [OPTIONS] &lt;lib-name&gt;</code></pre>
@@ -602,6 +604,10 @@ Run in admin mode (overrides RIG_MODE and config)
 <dd>
 Print help (see a summary with ‘-h’)
 </dd>
+<dt><code>-r, --r-version &lt;r-version&gt;</code></dt>
+<dd>
+R version to operate on, instead of the default
+</dd>
 <dt><code>--user</code></dt>
 <dd>
 Run in user mode (overrides RIG_MODE and config)
@@ -613,6 +619,7 @@ Run in user mode (overrides RIG_MODE and config)
 <h2 class="anchored" data-anchor-id="rig-library-default"><code>rig library default</code></h2>
 <p>Show or set the default package library for the current R version.</p>
 <p>Call without arguments to print the current default library. Call with a library name to make it the default. New R sessions of the current R version will then use that library.</p>
+<p>Use <code>--r-version</code> to show or set the default library of another installed R version, instead of the default one.</p>
 <section id="usage-1" class="level3">
 <h3 class="anchored" data-anchor-id="usage-1">Usage</h3>
 <pre class="text"><code>rig library default [OPTIONS] [lib-name]</code></pre>
@@ -641,6 +648,10 @@ Print help (see a summary with ‘-h’)
 <dd>
 JSON output
 </dd>
+<dt><code>-r, --r-version &lt;r-version&gt;</code></dt>
+<dd>
+R version to operate on, instead of the default
+</dd>
 <dt><code>--user</code></dt>
 <dd>
 Run in user mode (overrides RIG_MODE and config)
@@ -653,6 +664,7 @@ Run in user mode (overrides RIG_MODE and config)
 <p>Alias: <code>rig library ls</code></p>
 <p>List the package libraries of the current R version [alias: ls].</p>
 <p>The default library is marked. See <code>rig library</code> for an overview of user package libraries.</p>
+<p>Use <code>--r-version</code> to list the libraries of another installed R version, instead of the default one.</p>
 <section id="usage-2" class="level3">
 <h3 class="anchored" data-anchor-id="usage-2">Usage</h3>
 <pre class="text"><code>rig library list [OPTIONS]</code></pre>
@@ -672,6 +684,10 @@ Print help (see a summary with ‘-h’)
 <dd>
 JSON output
 </dd>
+<dt><code>-r, --r-version &lt;r-version&gt;</code></dt>
+<dd>
+R version to operate on, instead of the default
+</dd>
 <dt><code>--user</code></dt>
 <dd>
 Run in user mode (overrides RIG_MODE and config)
@@ -683,6 +699,7 @@ Run in user mode (overrides RIG_MODE and config)
 <h2 class="anchored" data-anchor-id="rig-library-rm"><code>rig library rm</code></h2>
 <p>Remove a user package library of the current R version, including all packages installed in it.</p>
 <p>You cannot remove the current default library, and you cannot remove the main library. Switch to another library with <code>rig library default</code> first if needed.</p>
+<p>Use <code>--r-version</code> to remove a library of another installed R version, instead of the default one.</p>
 <section id="usage-3" class="level3">
 <h3 class="anchored" data-anchor-id="usage-3">Usage</h3>
 <pre class="text"><code>rig library rm [OPTIONS] &lt;lib-name&gt;</code></pre>
@@ -706,6 +723,10 @@ Run in admin mode (overrides RIG_MODE and config)
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
+</dd>
+<dt><code>-r, --r-version &lt;r-version&gt;</code></dt>
+<dd>
+R version to operate on, instead of the default
 </dd>
 <dt><code>--user</code></dt>
 <dd>
