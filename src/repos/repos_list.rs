@@ -3,47 +3,19 @@ use std::error::Error;
 use clap::ArgMatches;
 use tabular::*;
 
-use crate::common::get_r_version_data_version;
-use crate::common::sc_get_default_or_fail;
-use crate::repos::*;
+use crate::repos::configured::configured_repos;
 
 pub fn sc_repos_list(
     args: &ArgMatches,
     _libargs: &ArgMatches,
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
-    let rver = match args.get_one::<String>("r-version") {
-        Some(v) => v.to_string(),
-        None => sc_get_default_or_fail()?,
-    };
-    let all = args.get_flag("all");
-
-    let root: String = get_r_root_for(&rver)?;
-    let repositories = root.clone()
-        + "/"
-        + &get_r_etc_path()?.replace("{}", &version_dir_key(&rver))
-        + "/repositories";
-    let mut repos = read_repositories_file(&repositories)?.data;
-
-    if !all {
-        repos.retain(|x| x.default);
-    }
-    repos.sort_by_key(|b| std::cmp::Reverse(b.default));
-
-    let has_bioc = repos
-        .iter()
-        .any(|x| x.url.contains("%v") || x.url.contains("%bm"));
-    if !args.get_flag("raw") && has_bioc {
-        let numver = get_r_version_data_version(&rver)?;
-        let biocver = r_version_to_bioc_version(&numver)?;
-        let biocmirror = match env::var("R_BIOC_MIRROR") {
-            Ok(v) => v,
-            Err(_) => "https://bioconductor.org".to_string(),
-        };
-        for repo in repos.iter_mut() {
-            repo.url = repo.url.replace("%v", &biocver).replace("%bm", &biocmirror);
-        }
-    }
+    let cfg = configured_repos(
+        args.get_one::<String>("r-version").map(|x| x.as_str()),
+        args.get_flag("all"),
+        !args.get_flag("raw"),
+    )?;
+    let repos = cfg.repos;
 
     if args.get_flag("json") || mainargs.get_flag("json") {
         println!("{}", serde_json::to_string_pretty(&repos)?);

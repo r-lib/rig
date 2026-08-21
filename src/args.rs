@@ -1673,6 +1673,41 @@ pub fn rig_app() -> Command {
                         .required(false),
                 ),
         )
+        .subcommand(
+            Command::new("status")
+                .about(ABOUT_REPOS_STATUS)
+                .long_about(HELP_REPOS_STATUS)
+                .display_order(0)
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("all")
+                        .help("Check all repositories, not just the default ones")
+                        .long("all")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("raw")
+                        .help("Show repository URLs without resolving `%` variables.")
+                        .long("raw")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version to check repositories for, instead of the default")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false),
+                ),
+        )
         // .subcommand(
         //     Command::new("reset")
         //         .about("Reset R package repositories to rig or R default")
@@ -2054,5 +2089,54 @@ mod tests {
         assert!(rig_app()
             .try_get_matches_from(["rig", "system", "dirs", "--arch", "amd64"])
             .is_err());
+    }
+
+    #[test]
+    fn test_repos_status_args() {
+        let m = rig_app()
+            .try_get_matches_from(["rig", "repos", "status"])
+            .unwrap();
+        let repos = m.subcommand_matches("repos").unwrap();
+        let status = repos.subcommand_matches("status").unwrap();
+        assert!(!status.get_flag("json"));
+        assert!(!status.get_flag("all"));
+        assert!(!status.get_flag("raw"));
+        assert_eq!(status.get_one::<String>("r-version"), None);
+
+        let m = rig_app()
+            .try_get_matches_from(["rig", "repos", "status", "--all", "--raw", "-r", "4.4.1"])
+            .unwrap();
+        let status = m
+            .subcommand_matches("repos")
+            .unwrap()
+            .subcommand_matches("status")
+            .unwrap();
+        assert!(status.get_flag("all"));
+        assert!(status.get_flag("raw"));
+        assert_eq!(
+            status.get_one::<String>("r-version"),
+            Some(&"4.4.1".to_string())
+        );
+
+        // --json works at all three levels.
+        let m = rig_app()
+            .try_get_matches_from(["rig", "repos", "status", "--json"])
+            .unwrap();
+        assert!(m
+            .subcommand_matches("repos")
+            .unwrap()
+            .subcommand_matches("status")
+            .unwrap()
+            .get_flag("json"));
+
+        let m = rig_app()
+            .try_get_matches_from(["rig", "repos", "--json", "status"])
+            .unwrap();
+        assert!(m.subcommand_matches("repos").unwrap().get_flag("json"));
+
+        let m = rig_app()
+            .try_get_matches_from(["rig", "--json", "repos", "status"])
+            .unwrap();
+        assert!(m.get_flag("json"));
     }
 }

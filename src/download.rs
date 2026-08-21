@@ -439,6 +439,126 @@ pub async fn fetch_optional_if_modified(
     }
 }
 
+// ------------------------------------------------------------------------
+// probing URLs
+// ------------------------------------------------------------------------
+
+/// How long a single probe may take before it is reported as a timeout.
+const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// What a URL probe found. See [`probe_url`].
+///
+/// A probe never fails: an unreachable host, a TLS error or a timeout is a
+/// result to report, not an error to propagate, because the caller is asking
+/// about the state of the server in the first place.
+#[derive(Debug, Clone)]
+pub struct UrlProbe {
+    pub url: String,
+    /// The HTTP status code, or `None` if the request never got a response.
+    pub status: Option<u16>,
+    /// The transport error, if the request never got a response.
+    pub error: Option<String>,
+    /// Time from sending the request to having the response headers. The body
+    /// is never read, so this does not include the size of the resource.
+    pub elapsed_ms: u128,
+    /// The `Last-Modified` header, verbatim, if the server sent one.
+    pub last_modified: Option<String>,
+}
+
+/// Ask a server about a resource, without downloading it: a `HEAD` request,
+/// timed, keeping the status and the `Last-Modified` header.
+///
+/// Some servers do not implement `HEAD` (405, 501); those are retried once as a
+/// single-byte ranged `GET`, which every static file server answers.
+pub async fn probe_url(client: &reqwest::Client, url: &str) -> UrlProbe {
+    info!("Probing {}", url);
+    let start = std::time::Instant::now();
+    let mut resp = client.head(url).timeout(PROBE_TIMEOUT).send().await;
+
+    if let Ok(r) = &resp {
+        if r.status() == StatusCode::METHOD_NOT_ALLOWED || r.status() == StatusCode::NOT_IMPLEMENTED
+        {
+            debug!("HEAD not supported by {}, retrying with a ranged GET", url);
+            resp = client
+                .get(url)
+                .header("Range", "bytes=0-0")
+                .timeout(PROBE_TIMEOUT)
+                .send()
+                .await;
+        }
+    }
+
+    let elapsed_ms = start.elapsed().as_millis();
+
+    match resp {
+        Ok(resp) => {
+            let last_modified = resp
+                .headers()
+                .get("last-modified")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string());
+            UrlProbe {
+                url: url.to_string(),
+                status: Some(resp.status().as_u16()),
+                error: None,
+                elapsed_ms,
+                last_modified,
+            }
+        }
+        Err(err) => {
+            debug!("Failed to probe {}: {}", url, err);
+            UrlProbe {
+                url: url.to_string(),
+                status: None,
+                error: Some(probe_error_message(&err)),
+                elapsed_ms,
+                last_modified: None,
+            }
+        }
+    }
+}
+
+/// A short, printable description of why a probe got no response.
+///
+/// `reqwest`'s own `Display` is a chain of wrapper types
+/// ("error sending request for url (...): ..."), which is too long for a table
+/// cell, so the interesting cases get their own word and everything else falls
+/// back to the innermost source.
+fn probe_error_message(err: &reqwest::Error) -> String {
+    if err.is_timeout() {
+        return "timeout".to_string();
+    }
+    if err.is_connect() {
+        return "cannot connect".to_string();
+    }
+    if err.is_redirect() {
+        return "too many redirects".to_string();
+    }
+
+    let mut src: &dyn Error = err;
+    while let Some(next) = src.source() {
+        src = next;
+    }
+    src.to_string()
+}
+
+/// Probe several URLs at once, returning the results in the order of the input.
+#[tokio::main]
+pub async fn probe_urls_(urls: &[String]) -> Vec<UrlProbe> {
+    // `reqwest::Client::new()` has no timeout of its own, and one shared client
+    // means one connection pool for the repositories that share a host.
+    let client = match reqwest::Client::builder().timeout(PROBE_TIMEOUT).build() {
+        Ok(c) => c,
+        Err(_) => reqwest::Client::new(),
+    };
+    let client = &client;
+    future::join_all(
+        urls.iter()
+            .map(|url| async move { probe_url(client, url).await }),
+    )
+    .await
+}
+
 /// Like `download_if_newer`, but a 404 is a normal outcome rather than an
 /// error: it returns `Ok(None)` instead of failing and printing to the
 /// terminal. Used for optional per-package metadata that simply may not exist

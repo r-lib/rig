@@ -24,7 +24,10 @@ use crate::rds::*;
 use crate::solver::PackageVersionLoader;
 use crate::utils::{calculate_hash, create_parent_dir_if_needed};
 
-fn package_type_to_path(pkg_type: &str, r_version: &str) -> Result<String, Box<dyn Error>> {
+pub(crate) fn package_type_to_path(
+    pkg_type: &str,
+    r_version: &str,
+) -> Result<String, Box<dyn Error>> {
     use regex::Regex;
 
     if pkg_type == "source" {
@@ -87,7 +90,7 @@ pub(crate) fn minor_r_version(r_version: &str) -> Result<String, Box<dyn Error>>
 /// Candidate metadata URLs for a repo path, in preference order: `PACKAGES.gz`,
 /// `PACKAGES.rds`, `PACKAGES`. The plain `PACKAGES` URL doubles as the cache-key
 /// for the temporary download file.
-fn cranlike_urls(repo_url: &str, path: &str) -> [String; 3] {
+pub(crate) fn cranlike_urls(repo_url: &str, path: &str) -> [String; 3] {
     [
         repo_url.to_string() + "/" + path + "/PACKAGES.gz",
         repo_url.to_string() + "/" + path + "/PACKAGES.rds",

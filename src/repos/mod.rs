@@ -5,7 +5,6 @@ use clap::ArgMatches;
 use simple_error::*;
 
 use crate::hardcoded::*;
-use crate::repositories::*;
 
 #[cfg(target_os = "macos")]
 use crate::macos::*;
@@ -18,12 +17,15 @@ use crate::linux::*;
 
 mod config;
 pub use config::{get_repos_config, RepoEntry, Repository};
+mod configured;
 mod interpret_repos_args;
 pub use interpret_repos_args::interpret_repos_args;
 mod repos_available;
 use repos_available::sc_repos_available;
 mod repos_list;
 use repos_list::sc_repos_list;
+mod repos_status;
+use repos_status::sc_repos_status;
 pub mod cranlike_metadata;
 pub use cranlike_metadata::DbSourcePackageLoader;
 pub mod binaries;
@@ -40,6 +42,7 @@ pub fn sc_repos(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn 
         // Some(("reset", s)) => sc_repos_reset(s, args, mainargs),
         // Some(("rm", s)) => sc_repos_rm(s, args, mainargs),
         Some(("setup", s)) => sc_repos_setup(s, args, mainargs),
+        Some(("status", s)) => sc_repos_status(s, args, mainargs),
         _ => Ok(()), // unreachable
     }
 }

@@ -1,5 +1,7 @@
 # rig 0.10.0 (not released yet)
 
+* New `rig repos status` checks the configured package repositories.
+
 * The package metadata commands moved from `rig repos` to a new `rig pkg`
   command: `rig pkg available` and `rig pkg info`.
 
