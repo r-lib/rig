@@ -12,18 +12,21 @@ If CRAN has archived the package, i.e. removed it from the current
 repository, rig shows the date it was archived, next to the publication
 date of the version. `--json` reports it as an extra `Archived` field.
 
-The README of the package is shown as well, when the repository has one.
-Since this can be long, the output is paged through `$RIG_PAGER`,
-`$PAGER`, or `less`, unless it is redirected to a file or a pipe. Set
-`RIG_PAGER=cat` to turn paging off.
+## README of a package
 
-Markdown READMEs are rendered for the terminal. GitHub emoji shortcodes
-like `:rocket:` become emoji, and links and images become clickable
-terminal hyperlinks on their link text, so a badge shows as its name
-instead of two long URLs. When the output is redirected, or `NO_COLOR` is
-set, the link target is written out as `text (url)` instead. HTML
-comments and tags are dropped, an `<img>` leaving its `alt` text behind,
-and paragraphs are rewrapped to the width of the output.
+`--readme` prints the README of the package, instead of its metadata,
+exactly as the repository stores it, i.e. not rendered and not paged. It
+works together with `--version`, to get the README of an older version,
+but not with `--versions`.
+
+`--readme --json` prints an object with the `package` and `version` the
+README belongs to, the `readme` itself, and the `format` it is written
+in. The format is the one the repository reports, e.g. `md` for markdown
+or `txt` for plain text.
+
+A package without a README is not an error. `--readme` then prints
+nothing, and `--readme --json` prints `null` for both `readme` and
+`format`.
 
 ## All versions of a package
 

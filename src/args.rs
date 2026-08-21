@@ -1512,6 +1512,14 @@ pub fn rig_app() -> Command {
                         .conflicts_with("version"),
                 )
                 .arg(
+                    Arg::new("readme")
+                        .help("Show the README of the package, instead of its metadata")
+                        .long("readme")
+                        .num_args(0)
+                        .required(false)
+                        .conflicts_with("versions"),
+                )
+                .arg(
                     Arg::new("json")
                         .help("JSON output")
                         .long("json")

@@ -20,8 +20,6 @@ use crate::repos::cranlike_metadata::{self, repos_get_packages, ArchivedPackage}
 use crate::textfmt::{reflow, wrap, write_field};
 
 mod manifest;
-mod readme;
-use readme::format_readme;
 
 pub fn sc_pkg(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
@@ -205,20 +203,66 @@ fn sc_pkg_info(
 
     let mut info = manifest::get_package_description(&package, &ver)?;
 
+    if args.get_flag("readme") {
+        return pkg_info_readme(&info, args.get_flag("json"));
+    }
+
     if args.get_flag("json") {
         add_archived_field(&mut info.description, info.archived.as_ref());
         let json = serde_json::to_string_pretty(&info.description)?;
         println!("{}", json);
     } else {
-        // Whether to color has to be decided here, before the pager is
-        // started: from then on our stdout is the pager's pipe. `less` is run
-        // with `-R`, so it passes the escapes through.
         let color = std::io::stdout().is_terminal() && env::var_os("NO_COLOR").is_none();
-        // The README makes this output long, so page it, as for `--help`.
-        crate::pager::page_text(&format_package_info(&info, color));
+        print!("{}", format_package_info(&info, color));
     }
 
     Ok(())
+}
+
+/// `--readme`: the README of the package, as the repository stores it, i.e.
+/// not rendered for the terminal. `--json` adds the format it is written in,
+/// which the repository reports and we pass through unchanged, so it can be
+/// `rst` or `html` as well as `md` or `txt`.
+///
+/// A package without a README is not an error, it prints nothing (or an
+/// object with null fields for `--json`).
+fn pkg_info_readme(info: &manifest::PackageInfo, json: bool) -> Result<(), Box<dyn Error>> {
+    let readme = info.readme.as_deref().filter(|s| !s.is_empty());
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&readme_json(info))?);
+    } else if let Some(readme) = readme {
+        // As-is, except that we make sure it ends with a newline.
+        print!("{}", readme);
+        if !readme.ends_with('\n') {
+            println!();
+        }
+    }
+
+    Ok(())
+}
+
+#[derive(serde::Serialize)]
+struct ReadmeJson<'a> {
+    package: Option<&'a str>,
+    version: Option<&'a str>,
+    format: Option<&'a str>,
+    readme: Option<&'a str>,
+}
+
+fn readme_json(info: &manifest::PackageInfo) -> ReadmeJson<'_> {
+    let readme = info.readme.as_deref().filter(|s| !s.is_empty());
+    // The name and version of the resolved package, so that the default
+    // (`latest`) reports the actual version number.
+    let field = |k: &str| info.description.get(k).and_then(|v| v.as_str());
+    ReadmeJson {
+        package: field("Package"),
+        version: field("Version"),
+        // The repository can have a README without a type, or the other way
+        // around; a format without a README would be meaningless.
+        format: readme.and(info.readme_type.as_deref()),
+        readme,
+    }
 }
 
 fn add_archived_field(desc: &mut serde_json::Value, archived: Option<&ArchivedPackage>) {
@@ -230,13 +274,14 @@ fn add_archived_field(desc: &mut serde_json::Value, archived: Option<&ArchivedPa
     }
 }
 
-/// Format package metadata (the fields of a DESCRIPTION file, plus the README
-/// if P3M has one) for the terminal.
+/// Format package metadata (the fields of a DESCRIPTION file) for the
+/// terminal.
 ///
 /// The most useful fields are grouped into a header (name, version, title,
 /// description), a metadata block and a dependency block; noisy internal
 /// fields (checksums, timestamps, `Config/*` entries, ...) are omitted. The
-/// full record is still available via `--json`.
+/// full record is still available via `--json`, and the README via
+/// `--readme`.
 fn format_package_info(info: &manifest::PackageInfo, color: bool) -> String {
     use owo_colors::OwoColorize;
     use std::fmt::Write;
@@ -332,39 +377,6 @@ fn format_package_info(info: &manifest::PackageInfo, color: bool) -> String {
         for (label, value) in dep_fields {
             write_field(&mut out, label, &value, label_width, color);
         }
-    }
-
-    // -- README ------------------------------------------------------------
-    if let Some(readme) = format_readme(info, color) {
-        // A rule and a centered banner, to set the README apart from the
-        // metadata above it. Both are as wide as the rendered README.
-        let heading = "README";
-        let width = readme::README_WIDTH;
-        let rule = "\u{2500}".repeat(width);
-        let indent = " ".repeat(width.saturating_sub(heading.len()) / 2);
-        let _ = writeln!(out);
-        let _ = writeln!(
-            out,
-            "{}",
-            if color {
-                rule.dimmed().to_string()
-            } else {
-                rule
-            }
-        );
-        let _ = writeln!(out);
-        let _ = writeln!(
-            out,
-            "{}{}",
-            indent,
-            if color {
-                heading.bold().to_string()
-            } else {
-                heading.to_string()
-            }
-        );
-        let _ = writeln!(out);
-        let _ = write!(out, "{}", readme);
     }
 
     out
@@ -635,8 +647,10 @@ mod tests {
     }
 
     #[test]
-    fn package_info_ends_with_the_readme() {
-        let mut info = info_with_readme(Some("Hello.\n"), Some("txt"));
+    fn package_info_has_no_readme() {
+        // The README is only shown by `--readme`, never as part of the
+        // metadata page.
+        let mut info = info_with_readme(Some("Hello, README.\n"), Some("txt"));
         info.description = serde_json::json!({
             "Package": "pkg",
             "Version": "1.0.0",
@@ -645,16 +659,46 @@ mod tests {
         });
         let out = format_package_info(&info, false);
         assert!(out.starts_with("pkg 1.0.0\nA package\n"));
-        assert!(out.contains("Imports       cli\n"));
-        let rule = "\u{2500}".repeat(readme::README_WIDTH);
-        assert!(
-            out.ends_with(&format!("{}\n\n{:>42}\n\nHello.\n", rule, "README")),
-            "{:?}",
-            out
+        assert!(out.ends_with("Imports       cli\n"), "{:?}", out);
+        assert!(!out.contains("README"));
+    }
+
+    #[test]
+    fn readme_json_reports_the_readme_and_its_format() {
+        let info = info_with_readme(Some("# pkg\n"), Some("md"));
+        assert_eq!(
+            serde_json::to_value(readme_json(&info)).unwrap(),
+            serde_json::json!({
+                "package": "pkg",
+                "version": "1.0.0",
+                "format": "md",
+                "readme": "# pkg\n",
+            })
         );
 
-        let info = info_with_readme(None, None);
-        assert!(!format_package_info(&info, false).contains("README"));
+        // Formats we do not know anything about are passed through as they
+        // are.
+        let info = info_with_readme(Some("pkg\n===\n"), Some("rst"));
+        assert_eq!(
+            serde_json::to_value(readme_json(&info)).unwrap()["format"],
+            serde_json::json!("rst")
+        );
+    }
+
+    #[test]
+    fn readme_json_is_null_without_a_readme() {
+        // A missing README, and an empty or type-less one, are all "no
+        // README".
+        for info in [
+            info_with_readme(None, None),
+            info_with_readme(Some(""), Some("md")),
+            info_with_readme(None, Some("md")),
+        ] {
+            let json = serde_json::to_value(readme_json(&info)).unwrap();
+            assert_eq!(json["readme"], serde_json::Value::Null);
+            assert_eq!(json["format"], serde_json::Value::Null);
+            assert_eq!(json["package"], serde_json::json!("pkg"));
+        }
     }
 
     #[test]

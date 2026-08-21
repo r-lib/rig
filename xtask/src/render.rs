@@ -11,10 +11,7 @@
 //! Rendering happens here, in the dev-only `xtask` crate, at generation time;
 //! the output is committed to `src/help-generated.in`, so `--help` pays no
 //! rendering cost at run time. clap strips the ANSI on non-terminal output,
-//! exactly as it did for the previous hand-written strings. (`rig` itself also
-//! depends on `pulldown-cmark` now, for the package READMEs in
-//! `src/repos/readme.rs`, but that is a separate renderer -- this one only
-//! ever runs at build time.)
+//! exactly as it did for the previous hand-written strings.
 
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 
