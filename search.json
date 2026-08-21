@@ -1026,7 +1026,7 @@
     "href": "reference/repos.html#subcommands",
     "title": "rig repos",
     "section": "Subcommands",
-    "text": "Subcommands\n\navailable\n\nList available R package repositories\n\nlist\n\nList configured R package repositories\n\nsetup\n\nSet up R package repositories",
+    "text": "Subcommands\n\navailable\n\nList available R package repositories\n\nlist\n\nList configured R package repositories\n\nsetup\n\nSet up R package repositories\n\nstatus\n\nCheck the configured R package repositories",
     "crumbs": [
       "Reference",
       "rig repos"
@@ -1060,6 +1060,17 @@
     "title": "rig repos",
     "section": "rig repos setup",
     "text": "rig repos setup\nSet up the package repositories for installed R versions.\nBy default rig configures the repositories for all installed R versions; use --r-version to restrict it to one. Use --with-repos and --without-repos to control which repositories are enabled, the same way as for rig add.\n\nUsage\nrig repos setup [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n-r, --r-version &lt;r-version&gt;\n\nR version to set up repositories for (default: all)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--with-repos=&lt;with-repos&gt;\n\nRepositories to enable, in addition to the ones enabled by default. If --without-repos is also specified (without a value), then only these repositories will be enabled.\n\n--without-repos[=&lt;without-repos&gt;]\n\nDo not set up package repositories. Alternatively, specify which ones to skip, a comma-separated list. If --with-repos is also specified, then only the repositories in that argument will be enabled.",
+    "crumbs": [
+      "Reference",
+      "rig repos"
+    ]
+  },
+  {
+    "objectID": "reference/repos.html#rig-repos-status",
+    "href": "reference/repos.html#rig-repos-status",
+    "title": "rig repos",
+    "section": "rig repos status",
+    "text": "rig repos status\nCheck the package repositories configured for an R version: how quickly each one responds, whether it responds at all, what kinds of packages it serves, and how fresh its package index is.\nrig checks the same repositories that rig repos list shows, in the same order. By default these are the repositories of the default R version; use --r-version to pick another one. Add --all to include repositories that are not enabled by default.\n\nThe report\nFor each repository rig prints:\n\nping — how long the repository took to answer a request for the package index. rig asks for the very index R would use on this machine, for the selected R version, so this is the latency you pay when installing a package. It is a HEAD request: the index itself is not downloaded, and the time does not depend on how large it is.\nstatus — ok if the index is there. source only means the repository has no index for this platform and R version, but it does have source packages. Anything else is the HTTP status code the server returned, or why it returned nothing at all, e.g. timeout or cannot connect.\ntypes — the package types the R installation’s repositories file declares for the repository: source, win (Windows binaries) and mac (macOS binaries). These are declarations, not measurements; the status column is what says whether the index for this platform is really there.\nupdated — the Last-Modified date of the package index, i.e. how fresh the repository’s view of the packages is.\nurl — the repository URL, with the Bioconductor %v and %bm variables resolved. Use --raw to print the URLs unresolved; rig still resolves them internally, since an unresolved URL cannot be checked.\n\nA repository whose types column ends in * serves prebuilt Linux binaries as source packages. Linux binaries have no package type of their own in R, so a Posit Package Manager repository offers them from a distribution-specific URL instead, and rig recognizes those URLs.\nThe repositories are checked in parallel, so the command takes about as long as the slowest repository, not as long as all of them together. An unreachable repository is reported in its row; it does not fail the command.\n\n\nUsage\nrig repos status [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n--all\n\nCheck all repositories, not just the default ones\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n-r, --r-version &lt;r-version&gt;\n\nR version to check repositories for, instead of the default\n\n--raw\n\nShow repository URLs without resolving % variables.\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n\n\n\nExamples\n# Check the repositories of the default R version\nrig repos status\n# Include repositories that are not enabled by default\nrig repos status --all\n# Check the repositories of another R version\nrig repos status --r-version 4.4.1\n# Machine readable output, with the exact URLs, statuses and timings\nrig repos status --json",
     "crumbs": [
       "Reference",
       "rig repos"
@@ -1665,7 +1676,7 @@
     "href": "news.html",
     "title": "Changelog",
     "section": "",
-    "text": "The package metadata commands moved from rig repos to a new rig pkg command: rig pkg available and rig pkg info.\nrig library add, rig library default, rig library list and rig library rm have a new --r-version (-r) option, to operate on the libraries of an R version other than the default one.\nrig now uses a user-dependent download directory, to avoid interference between users.",
+    "text": "New rig repos status checks the configured package repositories.\nThe package metadata commands moved from rig repos to a new rig pkg command: rig pkg available and rig pkg info.\nrig library add, rig library default, rig library list and rig library rm have a new --r-version (-r) option, to operate on the libraries of an R version other than the default one.\nrig now uses a user-dependent download directory, to avoid interference between users.",
     "crumbs": [
       "Changelog"
     ]

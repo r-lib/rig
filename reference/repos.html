@@ -550,6 +550,13 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#usage-2" id="toc-usage-2" class="nav-link" data-scroll-target="#usage-2">Usage</a></li>
   <li><a href="#options-2" id="toc-options-2" class="nav-link" data-scroll-target="#options-2">Options</a></li>
   </ul></li>
+  <li><a href="#rig-repos-status" id="toc-rig-repos-status" class="nav-link" data-scroll-target="#rig-repos-status"><code>rig repos status</code></a>
+  <ul class="collapse">
+  <li><a href="#the-report" id="toc-the-report" class="nav-link" data-scroll-target="#the-report">The report</a></li>
+  <li><a href="#usage-3" id="toc-usage-3" class="nav-link" data-scroll-target="#usage-3">Usage</a></li>
+  <li><a href="#options-3" id="toc-options-3" class="nav-link" data-scroll-target="#options-3">Options</a></li>
+  <li><a href="#examples-1" id="toc-examples-1" class="nav-link" data-scroll-target="#examples-1">Examples</a></li>
+  </ul></li>
   </ul>
 </nav>
     </div>
@@ -594,6 +601,10 @@ List configured R package repositories
 <dt><a href="#rig-repos-setup"><code>setup</code></a></dt>
 <dd>
 Set up R package repositories
+</dd>
+<dt><a href="#rig-repos-status"><code>status</code></a></dt>
+<dd>
+Check the configured R package repositories
 </dd>
 </dl>
 </section>
@@ -723,6 +734,72 @@ Repositories to enable, in addition to the ones enabled by default. If <code>--w
 Do not set up package repositories. Alternatively, specify which ones to skip, a comma-separated list. If <code>--with-repos</code> is also specified, then only the repositories in that argument will be enabled.
 </dd>
 </dl>
+</section>
+</section>
+<section id="rig-repos-status" class="level2">
+<h2 class="anchored" data-anchor-id="rig-repos-status"><code>rig repos status</code></h2>
+<p>Check the package repositories configured for an R version: how quickly each one responds, whether it responds at all, what kinds of packages it serves, and how fresh its package index is.</p>
+<p>rig checks the same repositories that <a href="../reference/repos.html#rig-repos-list"><code>rig repos list</code></a> shows, in the same order. By default these are the repositories of the default R version; use <code>--r-version</code> to pick another one. Add <code>--all</code> to include repositories that are not enabled by default.</p>
+<section id="the-report" class="level3">
+<h3 class="anchored" data-anchor-id="the-report">The report</h3>
+<p>For each repository rig prints:</p>
+<ul>
+<li><p><code>ping</code> — how long the repository took to answer a request for the package index. rig asks for the very index R would use on this machine, for the selected R version, so this is the latency you pay when installing a package. It is a <code>HEAD</code> request: the index itself is not downloaded, and the time does not depend on how large it is.</p></li>
+<li><p><code>status</code> — <code>ok</code> if the index is there. <code>source only</code> means the repository has no index for this platform and R version, but it does have source packages. Anything else is the HTTP status code the server returned, or why it returned nothing at all, e.g.&nbsp;<code>timeout</code> or <code>cannot connect</code>.</p></li>
+<li><p><code>types</code> — the package types the R installation’s <code>repositories</code> file declares for the repository: <code>source</code>, <code>win</code> (Windows binaries) and <code>mac</code> (macOS binaries). These are declarations, not measurements; the <code>status</code> column is what says whether the index for <em>this</em> platform is really there.</p></li>
+<li><p><code>updated</code> — the <code>Last-Modified</code> date of the package index, i.e.&nbsp;how fresh the repository’s view of the packages is.</p></li>
+<li><p><code>url</code> — the repository URL, with the Bioconductor <code>%v</code> and <code>%bm</code> variables resolved. Use <code>--raw</code> to print the URLs unresolved; rig still resolves them internally, since an unresolved URL cannot be checked.</p></li>
+</ul>
+<p>A repository whose <code>types</code> column ends in <code>*</code> serves prebuilt <strong>Linux binaries</strong> as source packages. Linux binaries have no package type of their own in R, so a Posit Package Manager repository offers them from a distribution-specific URL instead, and rig recognizes those URLs.</p>
+<p>The repositories are checked in parallel, so the command takes about as long as the slowest repository, not as long as all of them together. An unreachable repository is reported in its row; it does not fail the command.</p>
+</section>
+<section id="usage-3" class="level3">
+<h3 class="anchored" data-anchor-id="usage-3">Usage</h3>
+<pre class="text"><code>rig repos status [OPTIONS]</code></pre>
+</section>
+<section id="options-3" class="level3">
+<h3 class="anchored" data-anchor-id="options-3">Options</h3>
+<dl>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--all</code></dt>
+<dd>
+Check all repositories, not just the default ones
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+<dt><code>--json</code></dt>
+<dd>
+JSON output
+</dd>
+<dt><code>-r, --r-version &lt;r-version&gt;</code></dt>
+<dd>
+R version to check repositories for, instead of the default
+</dd>
+<dt><code>--raw</code></dt>
+<dd>
+Show repository URLs without resolving <code>%</code> variables.
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+</dl>
+</section>
+<section id="examples-1" class="level3">
+<h3 class="anchored" data-anchor-id="examples-1">Examples</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Check the repositories of the default R version</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> repos status</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Include repositories that are not enabled by default</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> repos status <span class="at">--all</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Check the repositories of another R version</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> repos status <span class="at">--r-version</span> 4.4.1</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Machine readable output, with the exact URLs, statuses and timings</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> repos status <span class="at">--json</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 
 
 </section>
