@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>rig config – rig</title>
+<title>rig pkg – rig</title>
 <style>
 /* Default styles provided by pandoc.
 ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
@@ -284,7 +284,7 @@ ul.task-list li input[type="checkbox"] {
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../reference/config.html">rig config</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../reference/pkg.html">rig pkg</a></li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
       <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
@@ -397,7 +397,7 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/config.html" class="sidebar-item-text sidebar-link active">
+  <a href="../reference/config.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig config</span></a>
   </div>
 </li>
@@ -421,7 +421,7 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/pkg.html" class="sidebar-item-text sidebar-link">
+  <a href="../reference/pkg.html" class="sidebar-item-text sidebar-link active">
  <span class="menu-text">rig pkg</span></a>
   </div>
 </li>
@@ -497,29 +497,18 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#configuration-entries" id="toc-configuration-entries" class="nav-link active" data-scroll-target="#configuration-entries">Configuration entries</a></li>
-  <li><a href="#subcommands" id="toc-subcommands" class="nav-link" data-scroll-target="#subcommands">Subcommands</a></li>
-  <li><a href="#rig-config-config-file-path" id="toc-rig-config-config-file-path" class="nav-link" data-scroll-target="#rig-config-config-file-path"><code>rig config config-file-path</code></a>
+  <li><a href="#subcommands" id="toc-subcommands" class="nav-link active" data-scroll-target="#subcommands">Subcommands</a></li>
+  <li><a href="#rig-pkg-available" id="toc-rig-pkg-available" class="nav-link" data-scroll-target="#rig-pkg-available"><code>rig pkg available</code></a>
   <ul class="collapse">
   <li><a href="#usage" id="toc-usage" class="nav-link" data-scroll-target="#usage">Usage</a></li>
   <li><a href="#options" id="toc-options" class="nav-link" data-scroll-target="#options">Options</a></li>
   </ul></li>
-  <li><a href="#rig-config-get" id="toc-rig-config-get" class="nav-link" data-scroll-target="#rig-config-get"><code>rig config get</code></a>
+  <li><a href="#rig-pkg-info" id="toc-rig-pkg-info" class="nav-link" data-scroll-target="#rig-pkg-info"><code>rig pkg info</code></a>
   <ul class="collapse">
+  <li><a href="#all-versions-of-a-package" id="toc-all-versions-of-a-package" class="nav-link" data-scroll-target="#all-versions-of-a-package">All versions of a package</a></li>
   <li><a href="#usage-1" id="toc-usage-1" class="nav-link" data-scroll-target="#usage-1">Usage</a></li>
   <li><a href="#arguments" id="toc-arguments" class="nav-link" data-scroll-target="#arguments">Arguments</a></li>
   <li><a href="#options-1" id="toc-options-1" class="nav-link" data-scroll-target="#options-1">Options</a></li>
-  </ul></li>
-  <li><a href="#rig-config-list" id="toc-rig-config-list" class="nav-link" data-scroll-target="#rig-config-list"><code>rig config list</code></a>
-  <ul class="collapse">
-  <li><a href="#usage-2" id="toc-usage-2" class="nav-link" data-scroll-target="#usage-2">Usage</a></li>
-  <li><a href="#options-2" id="toc-options-2" class="nav-link" data-scroll-target="#options-2">Options</a></li>
-  </ul></li>
-  <li><a href="#rig-config-set" id="toc-rig-config-set" class="nav-link" data-scroll-target="#rig-config-set"><code>rig config set</code></a>
-  <ul class="collapse">
-  <li><a href="#usage-3" id="toc-usage-3" class="nav-link" data-scroll-target="#usage-3">Usage</a></li>
-  <li><a href="#arguments-1" id="toc-arguments-1" class="nav-link" data-scroll-target="#arguments-1">Arguments</a></li>
-  <li><a href="#options-3" id="toc-options-3" class="nav-link" data-scroll-target="#options-3">Options</a></li>
   </ul></li>
   </ul>
 </nav>
@@ -528,9 +517,9 @@ ul.task-list li input[type="checkbox"] {
 <main class="content" id="quarto-document-content">
 
 
-<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../reference/config.html">rig config</a></li></ol></nav>
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../reference/pkg.html">rig pkg</a></li></ol></nav>
 <div class="quarto-title">
-<h1 class="title">rig config</h1>
+<h1 class="title">rig pkg</h1>
 </div>
 
 
@@ -548,50 +537,30 @@ ul.task-list li input[type="checkbox"] {
 
 
 <!-- Generated by website/gen-cli-reference.sh. Do not edit by hand. -->
-<p>Manage the rig configuration file.</p>
-<p>rig reads a number of settings from a configuration file. The configuration file is a JSON file, <code>rig config config-file-path</code> prints its path, and <code>rig system dirs</code> shows it together with the other directories rig uses.</p>
-<p>Most settings can also be overridden with an environment variable. The environment variable takes precedence over the configuration file, and the configuration file takes precedence over rig’s built-in default.</p>
-<section id="configuration-entries" class="level2">
-<h2 class="anchored" data-anchor-id="configuration-entries">Configuration entries</h2>
-<ul>
-<li><p><code>mode</code> (<code>RIG_MODE</code>): the installation mode, either <code>user</code> or <code>admin</code>, see <a href="../admin-vs-user-mode.html">user and admin mode</a>. Defaults to <code>admin</code>.</p></li>
-<li><p><code>binary-dir</code> (<code>RIG_BINARY_DIR</code>): the directory rig puts the quick links (<code>R-4.5.1</code>, <code>R-release</code>, etc.) into. Defaults to <code>/usr/local/bin</code> in admin mode and <code>~/.local/bin</code> in user mode. On Windows the defaults are <code>C:\Program Files\R\bin</code> and <code>%USERPROFILE%\.local\bin</code>.</p></li>
-<li><p><code>r-install-dir</code> (<code>RIG_R_INSTALL_DIR</code>): the root directory of the R installations, i.e.&nbsp;the directory that holds the directories of the individual R versions. Defaults to the platform’s system-wide location in admin mode (<code>/opt/R</code> on Linux, <code>/Library/Frameworks/R.framework</code> on macOS, <code>C:\Program Files\R</code> on Windows), and to <code>~/.local/share/rig/r</code> (<code>%APPDATA%\rig\data\r</code> on Windows) in user mode. On Windows this entry only applies in user mode; the admin-mode root is fixed, because it also depends on the architecture.</p></li>
-<li><p><code>rtools-install-dir</code> (<code>RIG_RTOOLS_INSTALL_DIR</code>): Windows only, the directory that holds the Rtools installations. Defaults to <code>C:\</code> in admin mode (so Rtools 4.5 goes into <code>C:\rtools45</code>) and to <code>%APPDATA%\rig\data\rtools</code> in user mode.</p></li>
-<li><p><code>download-dir</code> (<code>RIG_DOWNLOAD_DIR</code>): the directory rig downloads the R (and on Windows the Rtools) installers into, before installing them. Defaults to <code>rig-&lt;uid&gt;</code> in the system temporary directory, e.g.&nbsp;<code>/tmp/rig-1000</code>, and to <code>rig</code> under <code>%TEMP%</code> on Windows. The user id is part of the default name on purpose: in <a href="../admin-vs-user-mode.html">admin mode</a> rig downloads as <code>root</code>, in user mode as you, and a directory shared between them would only be writable by whoever created it first. For the same reason rig refuses to use the default directory if it is a symbolic link, or if it is owned by another user, or if other users can write into it. A directory you configure here is created but not checked.</p></li>
-<li><p><code>positron-setup</code>: <a href="../admin-vs-user-mode.html">user mode</a> only. Set it to <code>false</code> to stop rig from updating Positron’s settings: adding its R installation root to <code>positron.r.customRootFolders</code>, and pointing <code>positron.r.interpreters.default</code> at the <a href="../reference/default.html">default</a> R version. Any other value, and the default, keep the Positron setup on.</p></li>
-<li><p><code>userlibrary</code>: a JSON object that maps R versions to user library paths. rig maintains this entry itself, as a cache for the <code>rig library</code> commands; you don’t normally need to edit or set it.</p></li>
-</ul>
-<p><code>rig config list</code> lists the entries that are currently in the configuration file, which is typically fewer than the entries above, because rig only writes an entry once you set it.</p>
-</section>
+<p>Look up R packages in the package repositories rig configures for your R installations, without starting R.</p>
+<p><a href="#rig-pkg-available"><code>rig pkg available</code></a> lists every package the repositories offer, and <a href="#rig-pkg-info"><code>rig pkg info</code></a> shows the <code>DESCRIPTION</code> of one package, or, with <code>--versions</code>, all of its versions.</p>
+<p>The repositories themselves are managed by <a href="../reference/repos.html"><code>rig repos</code></a>.</p>
 <section id="subcommands" class="level2">
 <h2 class="anchored" data-anchor-id="subcommands">Subcommands</h2>
 <dl>
-<dt><a href="#rig-config-config-file-path"><code>config-file-path</code></a></dt>
+<dt><a href="#rig-pkg-available"><code>available</code></a></dt>
 <dd>
-Print the path to the rig config file
+List packages available in the R package repositories
 </dd>
-<dt><a href="#rig-config-get"><code>get</code></a></dt>
+<dt><a href="#rig-pkg-info"><code>info</code></a></dt>
 <dd>
-Get a config entry
-</dd>
-<dt><a href="#rig-config-list"><code>list</code></a></dt>
-<dd>
-List the names of all config entries
-</dd>
-<dt><a href="#rig-config-set"><code>set</code></a></dt>
-<dd>
-Set a config entry
+Information about a package in the repositories
 </dd>
 </dl>
 </section>
-<section id="rig-config-config-file-path" class="level2">
-<h2 class="anchored" data-anchor-id="rig-config-config-file-path"><code>rig config config-file-path</code></h2>
-<p>Print the full path to the rig configuration file.</p>
-<p>The file might not exist yet; rig creates it when you first set an entry with <code>rig config set</code>.</p>
+<section id="rig-pkg-available" class="level2">
+<h2 class="anchored" data-anchor-id="rig-pkg-available"><code>rig pkg available</code></h2>
+<p>List the packages available from the configured package repositories, ordered by name. For each package rig shows its version and its number of hard dependencies (<code>Depends</code>, <code>Imports</code> and <code>LinkingTo</code>, excluding R and the base packages). A header line reports the total number of packages and the R version and package type they were resolved for.</p>
+<p>By default rig uses the default R version and the current platform; override these with <code>--r-version</code>, <code>--platform</code> and <code>--pkg-type</code> (e.g. <code>source</code> or <code>binary</code>).</p>
+<p>Use <code>--json</code> to print the full listing as JSON, including the complete dependency lists for every package. See <a href="#rig-pkg-info"><code>rig pkg info</code></a> for a detailed view of a single package, and <code>rig pkg info --versions</code> to list all versions of a package.</p>
 <section id="usage" class="level3">
 <h3 class="anchored" data-anchor-id="usage">Usage</h3>
-<pre class="text"><code>rig config config-file-path [OPTIONS]</code></pre>
+<pre class="text"><code>rig pkg available [OPTIONS]</code></pre>
 </section>
 <section id="options" class="level3">
 <h3 class="anchored" data-anchor-id="options">Options</h3>
@@ -604,6 +573,22 @@ Run in admin mode (overrides RIG_MODE and config)
 <dd>
 Print help (see a summary with ‘-h’)
 </dd>
+<dt><code>--json</code></dt>
+<dd>
+JSON output
+</dd>
+<dt><code>--pkg-type &lt;pkg-type&gt;</code></dt>
+<dd>
+Type of packages to list (e.g.&nbsp;source, binary)
+</dd>
+<dt><code>--platform &lt;platform&gt;</code></dt>
+<dd>
+Platform to use, instead of the current
+</dd>
+<dt><code>--r-version &lt;r-version&gt;</code></dt>
+<dd>
+R version to use, instead of the default
+</dd>
 <dt><code>--user</code></dt>
 <dd>
 Run in user mode (overrides RIG_MODE and config)
@@ -611,20 +596,29 @@ Run in user mode (overrides RIG_MODE and config)
 </dl>
 </section>
 </section>
-<section id="rig-config-get" class="level2">
-<h2 class="anchored" data-anchor-id="rig-config-get"><code>rig config get</code></h2>
-<p>Print the value of a rig configuration entry.</p>
-<p>Configuration keys are listed by <code>rig config list</code>.</p>
+<section id="rig-pkg-info" class="level2">
+<h2 class="anchored" data-anchor-id="rig-pkg-info"><code>rig pkg info</code></h2>
+<p>Show information about a package on CRAN, from its <code>DESCRIPTION</code> file.</p>
+<p>By default the latest available version is shown; use <code>--version</code> to select a specific one, including versions that CRAN has archived. Use <code>--json</code> to print all <code>DESCRIPTION</code> fields.</p>
+<p>If CRAN has archived the package, i.e.&nbsp;removed it from the current repository, rig shows the date it was archived, next to the publication date of the version. <code>--json</code> reports it as an extra <code>Archived</code> field.</p>
+<p>The README of the package is shown as well, when the repository has one. Since this can be long, the output is paged through <code>$RIG_PAGER</code>, <code>$PAGER</code>, or <code>less</code>, unless it is redirected to a file or a pipe. Set <code>RIG_PAGER=cat</code> to turn paging off.</p>
+<p>Markdown READMEs are rendered for the terminal. GitHub emoji shortcodes like <code>:rocket:</code> become emoji, and links and images become clickable terminal hyperlinks on their link text, so a badge shows as its name instead of two long URLs. When the output is redirected, or <code>NO_COLOR</code> is set, the link target is written out as <code>text (url)</code> instead. HTML comments and tags are dropped, an <code>&lt;img&gt;</code> leaving its <code>alt</code> text behind, and paragraphs are rewrapped to the width of the output.</p>
+<section id="all-versions-of-a-package" class="level3">
+<h3 class="anchored" data-anchor-id="all-versions-of-a-package">All versions of a package</h3>
+<p><code>--versions</code> lists all versions of the package ever published on CRAN, oldest first, instead of the details of a single version. For each version rig shows its publication date, its R version requirement and its number of hard dependencies (<code>Depends</code>, <code>Imports</code> and <code>LinkingTo</code>, excluding R and the base packages); the latest version is marked. It cannot be combined with <code>--version</code>.</p>
+<p>For a package CRAN has archived, i.e.&nbsp;removed from the current repository, the header also shows the date it was archived. This applies to the package as a whole, so all of its versions are archived.</p>
+<p><code>--versions --json</code> prints the full <code>DESCRIPTION</code> of every version, each with an extra <code>Archived</code> field for an archived package.</p>
+</section>
 <section id="usage-1" class="level3">
 <h3 class="anchored" data-anchor-id="usage-1">Usage</h3>
-<pre class="text"><code>rig config get [OPTIONS] &lt;key&gt;</code></pre>
+<pre class="text"><code>rig pkg info [OPTIONS] &lt;package&gt;</code></pre>
 </section>
 <section id="arguments" class="level3">
 <h3 class="anchored" data-anchor-id="arguments">Arguments</h3>
 <dl>
-<dt><code>&lt;key&gt;</code></dt>
+<dt><code>&lt;package&gt;</code></dt>
 <dd>
-config key to get
+package to show
 </dd>
 </dl>
 </section>
@@ -647,70 +641,13 @@ JSON output
 <dd>
 Run in user mode (overrides RIG_MODE and config)
 </dd>
-</dl>
-</section>
-</section>
-<section id="rig-config-list" class="level2">
-<h2 class="anchored" data-anchor-id="rig-config-list"><code>rig config list</code></h2>
-<p>List the names of all rig configuration entries.</p>
-<p>Use <code>rig config get &lt;key&gt;</code> to see the value of an entry, and <code>rig config set &lt;key&gt;=&lt;value&gt;</code> to change it.</p>
-<section id="usage-2" class="level3">
-<h3 class="anchored" data-anchor-id="usage-2">Usage</h3>
-<pre class="text"><code>rig config list [OPTIONS]</code></pre>
-</section>
-<section id="options-2" class="level3">
-<h3 class="anchored" data-anchor-id="options-2">Options</h3>
-<dl>
-<dt><code>--admin</code></dt>
+<dt><code>-v, --version &lt;version&gt;</code></dt>
 <dd>
-Run in admin mode (overrides RIG_MODE and config)
+package version to show (default: latest)
 </dd>
-<dt><code>-h, --help</code></dt>
+<dt><code>--versions</code></dt>
 <dd>
-Print help (see a summary with ‘-h’)
-</dd>
-<dt><code>--json</code></dt>
-<dd>
-JSON output
-</dd>
-<dt><code>--user</code></dt>
-<dd>
-Run in user mode (overrides RIG_MODE and config)
-</dd>
-</dl>
-</section>
-</section>
-<section id="rig-config-set" class="level2">
-<h2 class="anchored" data-anchor-id="rig-config-set"><code>rig config set</code></h2>
-<p>Set a rig configuration entry.</p>
-<p>The argument is a <code>key=value</code> pair, e.g.&nbsp;<code>rig config set mode=user</code>. The configuration file is created if it does not exist yet. See <code>rig config --help</code> for the known keys, and <code>rig config list</code> for the entries that are already in the configuration file.</p>
-<section id="usage-3" class="level3">
-<h3 class="anchored" data-anchor-id="usage-3">Usage</h3>
-<pre class="text"><code>rig config set [OPTIONS] &lt;keyvalue&gt;</code></pre>
-</section>
-<section id="arguments-1" class="level3">
-<h3 class="anchored" data-anchor-id="arguments-1">Arguments</h3>
-<dl>
-<dt><code>&lt;keyvalue&gt;</code></dt>
-<dd>
-key=value pair to set
-</dd>
-</dl>
-</section>
-<section id="options-3" class="level3">
-<h3 class="anchored" data-anchor-id="options-3">Options</h3>
-<dl>
-<dt><code>--admin</code></dt>
-<dd>
-Run in admin mode (overrides RIG_MODE and config)
-</dd>
-<dt><code>-h, --help</code></dt>
-<dd>
-Print help (see a summary with ‘-h’)
-</dd>
-<dt><code>--user</code></dt>
-<dd>
-Run in user mode (overrides RIG_MODE and config)
+List all versions of the package, instead of the details of one
 </dd>
 </dl>
 
