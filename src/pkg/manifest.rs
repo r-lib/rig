@@ -48,7 +48,7 @@ fn manifest_base_url() -> String {
         .unwrap_or_else(|_| "https://rspm-sync.rstudio.com/manifest/v4/1/data".to_string())
 }
 
-/// Everything `rig repos package-info` shows about one package version: the
+/// Everything `rig pkg info` shows about one package version: the
 /// DESCRIPTION fields plus the README, if P3M has one.
 pub struct PackageInfo {
     /// The DESCRIPTION fields, as a JSON object of field name to value.
@@ -99,7 +99,7 @@ pub fn get_package_description(
     })
 }
 
-/// One version of a package, as `rig repos package-versions` needs it.
+/// One version of a package, as `rig pkg info --versions` needs it.
 pub struct PackageVersion {
     pub version: RPackageVersion,
     /// All DESCRIPTION fields, for `--json`.

@@ -47,6 +47,7 @@ mod library;
 mod output;
 mod pager;
 mod pak;
+mod pkg;
 mod platform;
 mod proj;
 mod rds;
@@ -59,10 +60,12 @@ mod rversion;
 mod solver;
 mod sysreqs;
 mod test;
+mod textfmt;
 mod utils;
 
 use cache::get_logs_dir;
 use library::*;
+use pkg::*;
 use platform::*;
 use proj::*;
 use repos::*;
@@ -253,6 +256,7 @@ fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
         Some(("rm", sub)) => sc_rm(sub)?,
         Some(("system", sub)) => sc_system(sub, args)?,
         Some(("rtools", sub)) => sc_system_rtools(sub, args)?,
+        Some(("pkg", sub)) => sc_pkg(sub, args)?,
         Some(("repos", sub)) => sc_repos(sub, args)?,
         Some(("resolve", sub)) => sc_resolve(sub, args)?,
         Some(("rstudio", sub)) => sc_rstudio(sub)?,

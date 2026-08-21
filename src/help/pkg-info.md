@@ -1,4 +1,4 @@
-Information about the package in the repositories
+Information about a package in the repositories
 
 ## Description
 
@@ -24,3 +24,19 @@ instead of two long URLs. When the output is redirected, or `NO_COLOR` is
 set, the link target is written out as `text (url)` instead. HTML
 comments and tags are dropped, an `<img>` leaving its `alt` text behind,
 and paragraphs are rewrapped to the width of the output.
+
+## All versions of a package
+
+`--versions` lists all versions of the package ever published on CRAN,
+oldest first, instead of the details of a single version. For each version
+rig shows its publication date, its R version requirement and its number
+of hard dependencies (`Depends`, `Imports` and `LinkingTo`, excluding R
+and the base packages); the latest version is marked. It cannot be
+combined with `--version`.
+
+For a package CRAN has archived, i.e. removed from the current
+repository, the header also shows the date it was archived. This applies
+to the package as a whole, so all of its versions are archived.
+
+`--versions --json` prints the full `DESCRIPTION` of every version, each
+with an extra `Archived` field for an archived package.

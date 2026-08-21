@@ -1,6 +1,7 @@
 use std::error::Error;
 
 use clap::ArgMatches;
+use tabular::*;
 
 use crate::common::get_r_version_data_version;
 use crate::common::sc_get_default_or_fail;

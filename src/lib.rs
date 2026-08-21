@@ -38,6 +38,7 @@ mod resolve;
 mod run;
 mod rversion;
 mod solver;
+mod textfmt;
 mod utils;
 use common::*;
 use library::*;

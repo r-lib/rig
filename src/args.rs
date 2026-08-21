@@ -1444,6 +1444,84 @@ pub fn rig_app() -> Command {
         );
     rig = rig.subcommand(cmd_proj);
 
+    let cmd_pkg = Command::new("pkg")
+        .about(ABOUT_PKG)
+        .long_about(HELP_PKG)
+        .display_order(0)
+        .arg_required_else_help(true)
+        .arg(
+            Arg::new("json")
+                .help("JSON output")
+                .long("json")
+                .num_args(0)
+                .required(false),
+        )
+        .subcommand(
+            Command::new("available")
+                .about(ABOUT_PKG_AVAILABLE)
+                .long_about(HELP_PKG_AVAILABLE)
+                .display_order(0)
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("platform")
+                        .help("Platform to use, instead of the current")
+                        .long("platform")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version to use, instead of the default")
+                        .long("r-version")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("pkg-type")
+                        .help("Type of packages to list (e.g. source, binary)")
+                        .long("pkg-type")
+                        .num_args(1)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("info")
+                .about(ABOUT_PKG_INFO)
+                .long_about(HELP_PKG_INFO)
+                .display_order(0)
+                .arg(Arg::new("package").help("package to show").required(true))
+                .arg(
+                    Arg::new("version")
+                        .long("version")
+                        .short('v')
+                        .help("package version to show (default: latest)")
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("versions")
+                        .help("List all versions of the package, instead of the details of one")
+                        .long("versions")
+                        .num_args(0)
+                        .required(false)
+                        .conflicts_with("version"),
+                )
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                ),
+        );
+
+    rig = rig.subcommand(cmd_pkg);
+
     let cmd_repos_setup = Command::new("setup")
         .about(ABOUT_REPOS_SETUP)
         .long_about(HELP_REPOS_SETUP)
@@ -1584,75 +1662,6 @@ pub fn rig_app() -> Command {
                 .arg(
                     Arg::new("name")
                         .help("Repository to show in detail, e.g. 'P3M' (case insensitive)")
-                        .required(false),
-                ),
-        )
-        .subcommand(
-            Command::new("package-list")
-                .about(ABOUT_REPOS_PACKAGE_LIST)
-                .long_about(HELP_REPOS_PACKAGE_LIST)
-                .display_order(0)
-                .arg(
-                    Arg::new("json")
-                        .help("JSON output")
-                        .long("json")
-                        .num_args(0)
-                        .required(false),
-                )
-                .arg(
-                    Arg::new("platform")
-                        .help("Platform to use, instead of the current")
-                        .long("platform")
-                        .num_args(1)
-                        .required(false),
-                )
-                .arg(
-                    Arg::new("r-version")
-                        .help("R version to use, instead of the default")
-                        .long("r-version")
-                        .num_args(1)
-                        .required(false),
-                )
-                .arg(
-                    Arg::new("pkg-type")
-                        .help("Type of packages to list (e.g. source, binary)")
-                        .long("pkg-type")
-                        .num_args(1)
-                        .required(false),
-                ),
-        )
-        .subcommand(
-            Command::new("package-info")
-                .about(ABOUT_REPOS_PACKAGE_INFO)
-                .long_about(HELP_REPOS_PACKAGE_INFO)
-                .display_order(0)
-                .arg(Arg::new("package").help("package to show").required(true))
-                .arg(
-                    Arg::new("version")
-                        .long("version")
-                        .short('v')
-                        .help("package version to show (default: latest)")
-                        .required(false),
-                )
-                .arg(
-                    Arg::new("json")
-                        .help("JSON output")
-                        .long("json")
-                        .num_args(0)
-                        .required(false),
-                ),
-        )
-        .subcommand(
-            Command::new("package-versions")
-                .about(ABOUT_REPOS_PACKAGE_VERSIONS)
-                .long_about(HELP_REPOS_PACKAGE_VERSIONS)
-                .display_order(0)
-                .arg(Arg::new("package").help("package to show").required(true))
-                .arg(
-                    Arg::new("json")
-                        .help("JSON output")
-                        .long("json")
-                        .num_args(0)
                         .required(false),
                 ),
         )

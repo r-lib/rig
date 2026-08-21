@@ -1,4 +1,4 @@
-List packages in R package repositories
+List packages available in the R package repositories
 
 ## Description
 
@@ -14,6 +14,5 @@ override these with `--r-version`, `--platform` and `--pkg-type` (e.g.
 
 Use `--json` to print the full listing as JSON, including the complete
 dependency lists for every package. See
-[`rig repos package-info`](#rig-repos-package-info) for a detailed view of
-a single package and [`rig repos package-versions`](#rig-repos-package-versions)
-to list all versions of a package.
+[`rig pkg info`](#rig-pkg-info) for a detailed view of a single package,
+and `rig pkg info --versions` to list all versions of a package.

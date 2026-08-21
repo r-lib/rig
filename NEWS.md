@@ -1,5 +1,8 @@
 # rig 0.10.0 (not released yet)
 
+* The package metadata commands moved from `rig repos` to a new `rig pkg`
+  command: `rig pkg available` and `rig pkg info`.
+
 * `rig library add`, `rig library default`, `rig library list` and
   `rig library rm` have a new `--r-version` (`-r`) option, to operate on
   the libraries of an R version other than the default one.

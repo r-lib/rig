@@ -7,7 +7,8 @@ use simple_error::*;
 use tabular::*;
 
 use super::config::{Enabled, RepoEntry, Repository};
-use super::{get_repos_config, print_field, reflow, wrap};
+use super::get_repos_config;
+use crate::textfmt::{print_field, reflow, wrap};
 
 pub fn sc_repos_available(
     args: &ArgMatches,
