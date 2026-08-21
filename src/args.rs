@@ -1530,6 +1530,106 @@ pub fn rig_app() -> Command {
 
     rig = rig.subcommand(cmd_pkg);
 
+    let cmd_ppm = Command::new("ppm")
+        .about(ABOUT_PPM)
+        .long_about(HELP_PPM)
+        .display_order(0)
+        .arg_required_else_help(true)
+        .arg(
+            Arg::new("json")
+                .help("JSON output")
+                .long("json")
+                .num_args(0)
+                .required(false),
+        )
+        .subcommand(
+            Command::new("builds")
+                .about(ABOUT_PPM_BUILDS)
+                .long_about(HELP_PPM_BUILDS)
+                .display_order(0)
+                .arg(
+                    Arg::new("package")
+                        .help("package to list the builds of")
+                        .required(true),
+                )
+                .arg(
+                    Arg::new("version")
+                        .help("package version to list (default: all)")
+                        .long("version")
+                        .short('v')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("platforms")
+                .about(ABOUT_PPM_PLATFORMS)
+                .long_about(HELP_PPM_PLATFORMS)
+                .display_order(0)
+                .arg(
+                    Arg::new("all")
+                        .help("Also list the platforms P3M has retired")
+                        .long("all")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("r-versions")
+                .about(ABOUT_PPM_R_VERSIONS)
+                .long_about(HELP_PPM_R_VERSIONS)
+                .display_order(0)
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("status")
+                .about(ABOUT_PPM_STATUS)
+                .long_about(HELP_PPM_STATUS)
+                .display_order(0)
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("url")
+                .about(ABOUT_PPM_URL)
+                .long_about(HELP_PPM_URL)
+                .display_order(0)
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                ),
+        );
+
+    rig = rig.subcommand(cmd_ppm);
+
     let cmd_repos_setup = Command::new("setup")
         .about(ABOUT_REPOS_SETUP)
         .long_about(HELP_REPOS_SETUP)
@@ -2136,6 +2236,101 @@ mod tests {
 
         let m = rig_app()
             .try_get_matches_from(["rig", "--json", "repos", "status"])
+            .unwrap();
+        assert!(m.get_flag("json"));
+    }
+
+    #[test]
+    fn test_ppm_args() {
+        // Every subcommand `sc_ppm` dispatches on has to exist here, or the
+        // dispatch bails out.
+        for name in ["builds", "platforms", "r-versions", "status", "url"] {
+            let argv: Vec<&str> = if name == "builds" {
+                vec!["rig", "ppm", name, "dplyr"]
+            } else {
+                vec!["rig", "ppm", name]
+            };
+            let m = rig_app().try_get_matches_from(argv).unwrap();
+            assert!(
+                m.subcommand_matches("ppm")
+                    .unwrap()
+                    .subcommand_matches(name)
+                    .is_some(),
+                "rig ppm {} did not parse",
+                name
+            );
+        }
+
+        let m = rig_app()
+            .try_get_matches_from(["rig", "ppm", "builds", "dplyr"])
+            .unwrap();
+        let builds = m
+            .subcommand_matches("ppm")
+            .unwrap()
+            .subcommand_matches("builds")
+            .unwrap();
+        assert_eq!(
+            builds.get_one::<String>("package"),
+            Some(&"dplyr".to_string())
+        );
+        assert_eq!(builds.get_one::<String>("version"), None);
+        assert!(!builds.get_flag("json"));
+
+        // --version and its short form land in the same place.
+        for argv in [
+            ["rig", "ppm", "builds", "dplyr", "--version", "1.1.4"],
+            ["rig", "ppm", "builds", "dplyr", "-v", "1.1.4"],
+        ] {
+            let m = rig_app().try_get_matches_from(argv).unwrap();
+            let builds = m
+                .subcommand_matches("ppm")
+                .unwrap()
+                .subcommand_matches("builds")
+                .unwrap();
+            assert_eq!(
+                builds.get_one::<String>("version"),
+                Some(&"1.1.4".to_string())
+            );
+        }
+
+        // The package is required, and `ppm` alone is not a command.
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "ppm", "builds"])
+            .is_err());
+        assert!(rig_app().try_get_matches_from(["rig", "ppm"]).is_err());
+
+        // `platforms` hides the retired targets unless asked.
+        let platforms = |argv: &[&str]| {
+            rig_app()
+                .try_get_matches_from(argv.to_vec())
+                .unwrap()
+                .subcommand_matches("ppm")
+                .unwrap()
+                .subcommand_matches("platforms")
+                .unwrap()
+                .get_flag("all")
+        };
+        assert!(!platforms(&["rig", "ppm", "platforms"]));
+        assert!(platforms(&["rig", "ppm", "platforms", "--all"]));
+
+        // --json works at all three levels.
+        let m = rig_app()
+            .try_get_matches_from(["rig", "ppm", "status", "--json"])
+            .unwrap();
+        assert!(m
+            .subcommand_matches("ppm")
+            .unwrap()
+            .subcommand_matches("status")
+            .unwrap()
+            .get_flag("json"));
+
+        let m = rig_app()
+            .try_get_matches_from(["rig", "ppm", "--json", "builds", "dplyr"])
+            .unwrap();
+        assert!(m.subcommand_matches("ppm").unwrap().get_flag("json"));
+
+        let m = rig_app()
+            .try_get_matches_from(["rig", "--json", "ppm", "url"])
             .unwrap();
         assert!(m.get_flag("json"));
     }

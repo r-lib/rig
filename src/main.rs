@@ -49,6 +49,7 @@ mod pager;
 mod pak;
 mod pkg;
 mod platform;
+mod ppm;
 mod proj;
 mod rds;
 mod renv;
@@ -67,6 +68,7 @@ use cache::get_logs_dir;
 use library::*;
 use pkg::*;
 use platform::*;
+use ppm::*;
 use proj::*;
 use repos::*;
 use sysreqs::*;
@@ -257,6 +259,7 @@ fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
         Some(("system", sub)) => sc_system(sub, args)?,
         Some(("rtools", sub)) => sc_system_rtools(sub, args)?,
         Some(("pkg", sub)) => sc_pkg(sub, args)?,
+        Some(("ppm", sub)) => sc_ppm(sub, args)?,
         Some(("repos", sub)) => sc_repos(sub, args)?,
         Some(("resolve", sub)) => sc_resolve(sub, args)?,
         Some(("rstudio", sub)) => sc_rstudio(sub)?,
