@@ -505,6 +505,7 @@ ul.task-list li input[type="checkbox"] {
   </ul></li>
   <li><a href="#rig-pkg-info" id="toc-rig-pkg-info" class="nav-link" data-scroll-target="#rig-pkg-info"><code>rig pkg info</code></a>
   <ul class="collapse">
+  <li><a href="#readme-of-a-package" id="toc-readme-of-a-package" class="nav-link" data-scroll-target="#readme-of-a-package">README of a package</a></li>
   <li><a href="#all-versions-of-a-package" id="toc-all-versions-of-a-package" class="nav-link" data-scroll-target="#all-versions-of-a-package">All versions of a package</a></li>
   <li><a href="#usage-1" id="toc-usage-1" class="nav-link" data-scroll-target="#usage-1">Usage</a></li>
   <li><a href="#arguments" id="toc-arguments" class="nav-link" data-scroll-target="#arguments">Arguments</a></li>
@@ -601,8 +602,12 @@ Run in user mode (overrides RIG_MODE and config)
 <p>Show information about a package on CRAN, from its <code>DESCRIPTION</code> file.</p>
 <p>By default the latest available version is shown; use <code>--version</code> to select a specific one, including versions that CRAN has archived. Use <code>--json</code> to print all <code>DESCRIPTION</code> fields.</p>
 <p>If CRAN has archived the package, i.e.&nbsp;removed it from the current repository, rig shows the date it was archived, next to the publication date of the version. <code>--json</code> reports it as an extra <code>Archived</code> field.</p>
-<p>The README of the package is shown as well, when the repository has one. Since this can be long, the output is paged through <code>$RIG_PAGER</code>, <code>$PAGER</code>, or <code>less</code>, unless it is redirected to a file or a pipe. Set <code>RIG_PAGER=cat</code> to turn paging off.</p>
-<p>Markdown READMEs are rendered for the terminal. GitHub emoji shortcodes like <code>:rocket:</code> become emoji, and links and images become clickable terminal hyperlinks on their link text, so a badge shows as its name instead of two long URLs. When the output is redirected, or <code>NO_COLOR</code> is set, the link target is written out as <code>text (url)</code> instead. HTML comments and tags are dropped, an <code>&lt;img&gt;</code> leaving its <code>alt</code> text behind, and paragraphs are rewrapped to the width of the output.</p>
+<section id="readme-of-a-package" class="level3">
+<h3 class="anchored" data-anchor-id="readme-of-a-package">README of a package</h3>
+<p><code>--readme</code> prints the README of the package, instead of its metadata, exactly as the repository stores it, i.e.&nbsp;not rendered and not paged. It works together with <code>--version</code>, to get the README of an older version, but not with <code>--versions</code>.</p>
+<p><code>--readme --json</code> prints an object with the <code>package</code> and <code>version</code> the README belongs to, the <code>readme</code> itself, and the <code>format</code> it is written in. The format is the one the repository reports, e.g.&nbsp;<code>md</code> for markdown or <code>txt</code> for plain text.</p>
+<p>A package without a README is not an error. <code>--readme</code> then prints nothing, and <code>--readme --json</code> prints <code>null</code> for both <code>readme</code> and <code>format</code>.</p>
+</section>
 <section id="all-versions-of-a-package" class="level3">
 <h3 class="anchored" data-anchor-id="all-versions-of-a-package">All versions of a package</h3>
 <p><code>--versions</code> lists all versions of the package ever published on CRAN, oldest first, instead of the details of a single version. For each version rig shows its publication date, its R version requirement and its number of hard dependencies (<code>Depends</code>, <code>Imports</code> and <code>LinkingTo</code>, excluding R and the base packages); the latest version is marked. It cannot be combined with <code>--version</code>.</p>
@@ -636,6 +641,10 @@ Print help (see a summary with ‘-h’)
 <dt><code>--json</code></dt>
 <dd>
 JSON output
+</dd>
+<dt><code>--readme</code></dt>
+<dd>
+Show the README of the package, instead of its metadata
 </dd>
 <dt><code>--user</code></dt>
 <dd>
