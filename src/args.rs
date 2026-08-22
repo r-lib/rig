@@ -1641,6 +1641,49 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("remove")
+                .aliases(["rm"])
+                .about(ABOUT_PKG_REMOVE)
+                .long_about(HELP_PKG_REMOVE)
+                .display_order(0)
+                .arg(
+                    Arg::new("package")
+                        .help("packages to remove")
+                        .required(true)
+                        .num_args(1..),
+                )
+                .arg(
+                    Arg::new("library")
+                        .help("Library name or path, instead of the default library")
+                        .long("library")
+                        .short('l')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version to operate on, instead of the default")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("force")
+                        .help("Remove base packages as well, which R itself needs")
+                        .long("force")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
             Command::new("tree")
                 .about(ABOUT_PKG_TREE)
                 .long_about(HELP_PKG_TREE)

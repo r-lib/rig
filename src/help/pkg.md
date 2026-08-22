@@ -14,9 +14,10 @@ directly or, with `--recursive`, transitively, and
 [`rig pkg tree`](#rig-pkg-tree) shows those transitive dependencies as a
 tree instead of a table.
 
-[`rig pkg list`](#rig-pkg-list) is the one subcommand that reads a package
-library instead of the repositories: it lists the packages that are
-actually installed.
+[`rig pkg list`](#rig-pkg-list) and
+[`rig pkg remove`](#rig-pkg-remove) are the subcommands that work on a
+package library instead of the repositories: they list the packages that
+are actually installed, and delete some of them.
 
 The repositories themselves are managed by [`rig repos`](repos.qmd), the
 libraries by [`rig library`](library.qmd).

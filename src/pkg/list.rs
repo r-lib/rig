@@ -59,10 +59,21 @@ pub fn sc_pkg_list(
 /// `name` and `rversion` are only known for a library of an R installation, and
 /// are unset when `--library` named a directory directly: rig does not need to
 /// know which R version, if any, that directory belongs to, and never asks.
-struct ResolvedLibrary {
-    name: Option<String>,
-    path: PathBuf,
-    rversion: Option<String>,
+pub(super) struct ResolvedLibrary {
+    pub(super) name: Option<String>,
+    pub(super) path: PathBuf,
+    pub(super) rversion: Option<String>,
+}
+
+impl ResolvedLibrary {
+    /// How to name this library in the header line of a listing: the R version
+    /// and library name it belongs to, when it has them, and always its path.
+    pub(super) fn tag(&self) -> String {
+        match (&self.rversion, &self.name) {
+            (Some(rver), Some(name)) => format!("(R {}, {}: {})", rver, name, self.path.display()),
+            _ => format!("({})", self.path.display()),
+        }
+    }
 }
 
 /// Resolve `--library`, in three cases:
@@ -73,7 +84,7 @@ struct ResolvedLibrary {
 ///   `rig library list` prints them;
 /// * without `--library` it is the default library of the R version, i.e. the
 ///   path `rig library default --json` reports.
-fn resolve_library(args: &ArgMatches) -> Result<ResolvedLibrary, Box<dyn Error>> {
+pub(super) fn resolve_library(args: &ArgMatches) -> Result<ResolvedLibrary, Box<dyn Error>> {
     let lib = args.get_one::<String>("library");
 
     if let Some(lib) = lib {
@@ -125,9 +136,13 @@ fn resolve_library(args: &ArgMatches) -> Result<ResolvedLibrary, Box<dyn Error>>
 /// this is a report on what is installed, so a version rig cannot parse is
 /// still shown as it is.
 #[derive(Debug)]
-struct InstalledPackage {
-    package: String,
-    version: String,
+pub(super) struct InstalledPackage {
+    pub(super) package: String,
+    pub(super) version: String,
+    /// The directory the package is installed in, i.e. the one holding its
+    /// `DESCRIPTION`. Usually named after the package, but the `Package` field
+    /// of the `DESCRIPTION` is what `package` reports, so the two can differ.
+    pub(super) path: PathBuf,
     built_r: Option<String>,
     platform: Option<String>,
     /// Where the package came from: the repository name (`CRAN`) for a
@@ -145,7 +160,7 @@ struct InstalledPackage {
 /// (see [`crate::library::sc_library_get_list`]) live in the main library
 /// directory, and a package whose installation was interrupted has no
 /// `DESCRIPTION` yet.
-fn read_installed(path: &Path) -> Result<Vec<InstalledPackage>, Box<dyn Error>> {
+pub(super) fn read_installed(path: &Path) -> Result<Vec<InstalledPackage>, Box<dyn Error>> {
     debug!("Listing packages in {}", path.display());
 
     let entries = match std::fs::read_dir(path) {
@@ -227,6 +242,7 @@ fn read_package(dir: &Path, dir_name: &str) -> Result<Option<InstalledPackage>, 
     Ok(Some(InstalledPackage {
         package,
         version,
+        path: dir.to_path_buf(),
         built_r: built.as_ref().map(|x| x.r.clone()),
         platform: built.and_then(|x| x.platform),
         source,
@@ -348,10 +364,7 @@ fn print_installed(lib: &ResolvedLibrary, pkgs: &[InstalledPackage]) {
     } else {
         format!("{} {}", count, pkg_word)
     };
-    let tag = match (&lib.rversion, &lib.name) {
-        (Some(rver), Some(name)) => format!("(R {}, {}: {})", rver, name, lib.path.display()),
-        _ => format!("({})", lib.path.display()),
-    };
+    let tag = lib.tag();
     println!(
         "{} {}",
         head,
