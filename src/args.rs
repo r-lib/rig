@@ -1611,6 +1611,36 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("list")
+                .aliases(["ls"])
+                .about(ABOUT_PKG_LIST)
+                .long_about(HELP_PKG_LIST)
+                .display_order(0)
+                .arg(
+                    Arg::new("library")
+                        .help("Library name or path, instead of the default library")
+                        .long("library")
+                        .short('l')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version to operate on, instead of the default")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
             Command::new("tree")
                 .about(ABOUT_PKG_TREE)
                 .long_about(HELP_PKG_TREE)

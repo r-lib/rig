@@ -20,6 +20,7 @@ use crate::repos::cranlike_metadata::{self, repos_get_packages, ArchivedPackage}
 use crate::textfmt::{reflow, wrap, write_field};
 
 pub(crate) mod deps;
+mod list;
 mod manifest;
 #[cfg(test)]
 mod stub;
@@ -30,6 +31,7 @@ pub fn sc_pkg(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Er
         Some(("available", s)) => sc_pkg_available(s, args, mainargs),
         Some(("deps", s)) => deps::sc_pkg_deps(s, args, mainargs),
         Some(("info", s)) => sc_pkg_info(s, args, mainargs),
+        Some(("list", s)) => list::sc_pkg_list(s, args, mainargs),
         Some(("tree", s)) => tree::sc_pkg_tree(s, args, mainargs),
         _ => Ok(()), // unreachable
     }

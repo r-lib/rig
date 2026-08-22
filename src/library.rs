@@ -24,16 +24,17 @@ use crate::output::OUTPUT;
 use crate::rversion::*;
 use crate::utils::*;
 
-fn library_rver(args: &ArgMatches) -> Result<String, Box<dyn Error>> {
+/// The R version a command with an `--r-version` argument operates on: the one
+/// it names, or else the default R version.
+pub(crate) fn library_rver(args: &ArgMatches) -> Result<String, Box<dyn Error>> {
     match args.get_one::<String>("r-version") {
         Some(rver) => check_installed(rver),
         None => match sc_get_default()? {
             Some(x) => Ok(x),
             None => {
-                OUTPUT
-                    .error("Please set default R version or use `--r-version` for `rig library`.");
-                error!("Need to set default R version for `rig library`.");
-                bail!("Need to set default R version for `rig library`.")
+                OUTPUT.error("Please set a default R version or use `--r-version`.");
+                error!("Need to set default R version.");
+                bail!("Need to set default R version.")
             }
         },
     }
@@ -225,7 +226,7 @@ pub fn sc_library_default(
     }
 }
 
-fn sc_library_get_default(rver: &str) -> Result<PkgLibrary, Box<dyn Error>> {
+pub(crate) fn sc_library_get_default(rver: &str) -> Result<PkgLibrary, Box<dyn Error>> {
     let (_main, default) = get_library_path(rver, false)?;
     let mut name = "main".to_string();
 
