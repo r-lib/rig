@@ -2,10 +2,11 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::install::{format_linkingto, REMOTE_HASH_FIELD, REMOTE_LINKINGTO_FIELD};
 use crate::proj::BASE_PKGS;
 use crate::solver::*;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all(serialize = "snake_case"))]
 pub struct PakLockfilePackage {
     pub r#ref: String,
@@ -85,6 +86,34 @@ impl PakLockfile {
                 .filter(|dep| dep != "R" && !BASE_PKGS.contains(&dep.as_str()))
                 .collect();
             let binary = v.artifact.is_binary();
+            // Provenance of the artifact, so that a lockfile install records the
+            // same `RemoteHash` / `RemoteLinkingToHashes` a direct install does.
+            // A binary knows what it was compiled against; a source build is
+            // compiled against whatever the solve picked, so its provenance is
+            // read off the solution.
+            let mut metadata: HashMap<String, String> = HashMap::new();
+            if let Some(sha) = registry.artifact_sha256(k, v) {
+                metadata.insert(REMOTE_HASH_FIELD.to_string(), sha);
+            }
+            let linkingto = if binary {
+                registry.artifact_linkingto(k, v)
+            } else {
+                registry
+                    .linkingto_names(k, v)
+                    .into_iter()
+                    .filter_map(|dep| {
+                        let dv = solution.get(&dep)?;
+                        let sha = registry.artifact_sha256(&dep, dv)?;
+                        Some((dep, dv.version.to_string(), sha))
+                    })
+                    .collect()
+            };
+            if !linkingto.is_empty() {
+                metadata.insert(
+                    REMOTE_LINKINGTO_FIELD.to_string(),
+                    format_linkingto(&linkingto),
+                );
+            }
             // The index's URL is snapshot-pinned; the CRAN ones are guesses, and
             // there are two of them because a version that has been superseded
             // has moved into the archive.
@@ -109,7 +138,7 @@ impl PakLockfile {
                 binary,
                 dependencies: deps,
                 vignettes: false,
-                metadata: HashMap::new(),
+                metadata,
                 sources,
                 target,
                 platform: if binary {

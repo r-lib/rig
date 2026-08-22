@@ -2,8 +2,7 @@ use std::cell::Cell;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs::{self, File};
-use std::path::PathBuf;
-use std::sync::Arc;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use clap::ArgMatches;
@@ -18,9 +17,11 @@ use crate::cache::get_cache_dir;
 use crate::common::get_default_r_version;
 use crate::dcf::*;
 use crate::download::download_multiple_first_available_with_progress;
-use crate::install::{install_package_tree_with_progress, PackageInfo};
+use crate::install::{
+    install_packages, parse_linkingto, PackageInfo, REMOTE_HASH_FIELD, REMOTE_LINKINGTO_FIELD,
+};
 use crate::output::OUTPUT;
-use crate::pak::PakLockfile;
+use crate::pak::{PakLockfile, PakLockfilePackage};
 use crate::pkg::deps::{
     dep_count, print_deps_json, print_deps_recursive, print_header, type_list, walk_deps,
 };
@@ -252,7 +253,7 @@ fn sc_proj_tree(
 /// binaries for. Not being able to look up P3M's targets at all is an error:
 /// falling back to source packages silently would produce a lockfile that does
 /// not say what the caller asked for. Use `--platform source` to ask for that.
-fn proj_binary_target(
+pub(crate) fn proj_binary_target(
     platform: Option<&String>,
     r_version: &str,
 ) -> Result<Option<BinaryTarget>, Box<dyn Error>> {
@@ -292,7 +293,7 @@ fn proj_binary_target(
     Ok(target)
 }
 
-fn sc_proj_solve_deps(
+pub(crate) fn sc_proj_solve_deps(
     r_version: &str,
     deps: &PackageDependencies,
     target: Option<BinaryTarget>,
@@ -494,12 +495,7 @@ fn sc_proj_deploy(
     // Build Vec<PackageInfo> from lockfile
     let mut packages: Vec<PackageInfo> = Vec::new();
     for pkg in &lockfile.packages {
-        let file_path = cache_dir.join("packages").join(&pkg.target);
-        packages.push(PackageInfo {
-            name: pkg.package.clone(),
-            file_path,
-            dependencies: pkg.dependencies.clone(),
-        });
+        packages.push(lockfile_package_info(pkg, &cache_dir));
     }
 
     // Get library path - required argument
@@ -535,61 +531,49 @@ fn sc_proj_deploy(
         library_path.display()
     );
 
-    // Create progress bar for installation
-    let install_pb = ProgressBar::new(total_packages as u64);
-    install_pb.set_style(
-        ProgressStyle::default_bar()
-            .template("{msg} [{bar:40.green/blue}] {pos}/{len} packages")
-            .unwrap()
-            .progress_chars("=>-"),
-    );
-    install_pb.set_message("Installing");
+    let installed = install_packages(packages, &library_path, r_binary, max_concurrent)?;
 
-    // Track installation progress
-    let installed_count = Cell::new(0);
-
-    // Create print function that uses progress bar's println
-    let print_fn = Arc::new({
-        let pb = install_pb.clone();
-        move |msg: &str| {
-            pb.println(msg);
-        }
-    });
-
-    // Create a tokio runtime to run the async installation
-    let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(install_package_tree_with_progress(
-        packages,
-        &library_path,
-        r_binary,
-        max_concurrent,
-        Some(print_fn),
-        Some(|_pkg_name: &str, success: bool| {
-            if success {
-                installed_count.set(installed_count.get() + 1);
-                install_pb.inc(1);
-            }
-        }),
-    ))?;
-
-    install_pb.finish_with_message(format!(
-        "Complete: {} packages installed",
-        installed_count.get()
+    OUTPUT.success(&format!(
+        "Deployment complete, installed {} packages",
+        installed
     ));
-
-    OUTPUT.success("Deployment complete!");
-    info!("Deployment complete!");
+    info!("Deployment complete, installed {} packages", installed);
     Ok(())
+}
+
+/// What to install for one lockfile entry, including the provenance
+/// `PakLockfile::from_solution` recorded in its `metadata`.
+pub(crate) fn lockfile_package_info(pkg: &PakLockfilePackage, cache_dir: &Path) -> PackageInfo {
+    PackageInfo {
+        name: pkg.package.clone(),
+        version: pkg.version.clone(),
+        binary: pkg.binary,
+        file_path: cache_dir.join("packages").join(&pkg.target),
+        dependencies: pkg.dependencies.clone(),
+        hash: pkg.metadata.get(REMOTE_HASH_FIELD).cloned(),
+        linkingto: pkg
+            .metadata
+            .get(REMOTE_LINKINGTO_FIELD)
+            .map(|s| parse_linkingto(s))
+            .unwrap_or_default(),
+    }
 }
 
 /// Cache package files forever. They are immutable on PPM.
 /// This will be different for CRAN and CRAN-like repositories.
-const PACKAGE_FILE_TTL: Duration = Duration::MAX;
+pub(crate) const PACKAGE_FILE_TTL: Duration = Duration::MAX;
 
 pub fn proj_download() -> Result<(), Box<dyn Error>> {
     let lockfile_content = fs::read_to_string("pkg.lock")?;
     let lockfile: PakLockfile = serde_json::from_str(&lockfile_content)?;
+    download_lockfile_packages(&lockfile)
+}
 
+/// Download every package a lockfile names into the package cache.
+///
+/// Split out from [`proj_download`] so that `rig pkg install`, which solves in
+/// memory and never writes a lockfile, can use it too.
+pub(crate) fn download_lockfile_packages(lockfile: &PakLockfile) -> Result<(), Box<dyn Error>> {
     // Get cache directory
     let cache_dir = get_cache_dir()?;
 

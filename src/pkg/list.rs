@@ -23,6 +23,7 @@ use simple_error::*;
 use tabular::*;
 
 use crate::dcf::DCFBuilt;
+use crate::install::{parse_linkingto, REMOTE_HASH_FIELD, REMOTE_LINKINGTO_FIELD};
 use crate::library::{library_rver, sc_library_get_default, sc_library_get_list};
 use crate::textfmt::reflow;
 
@@ -78,8 +79,8 @@ impl ResolvedLibrary {
 
 /// Resolve `--library`, in three cases:
 ///
-/// * an existing directory is used as it is, without consulting R at all, so
-///   this also works with no R version installed;
+/// * a directory path is used as it is, without consulting R at all, so this
+///   also works with no R version installed;
 /// * any other `--library` value is a library name of the R version, as
 ///   `rig library list` prints them;
 /// * without `--library` it is the default library of the R version, i.e. the
@@ -88,8 +89,8 @@ pub(super) fn resolve_library(args: &ArgMatches) -> Result<ResolvedLibrary, Box<
     let lib = args.get_one::<String>("library");
 
     if let Some(lib) = lib {
-        if Path::new(lib).is_dir() {
-            debug!("Listing packages in library directory {}", lib);
+        if Path::new(lib).is_dir() || looks_like_path(lib) {
+            debug!("Using library directory {}", lib);
             return Ok(ResolvedLibrary {
                 name: None,
                 path: PathBuf::from(lib),
@@ -127,6 +128,18 @@ pub(super) fn resolve_library(args: &ArgMatches) -> Result<ResolvedLibrary, Box<
     })
 }
 
+/// Whether a `--library` value is meant as a path rather than a library name.
+///
+/// An existing directory is unambiguous, but a directory rig is about to create
+/// is not there to be looked at yet, and a mistyped path should not be reported
+/// as an unknown library name. A library name is a single path component — that
+/// is how `rig library add` creates them — so anything with a separator in it,
+/// or anchored to a root, is a path.
+fn looks_like_path(lib: &str) -> bool {
+    let path = Path::new(lib);
+    path.is_absolute() || path.components().count() > 1 || lib.starts_with('~')
+}
+
 // ------------------------------------------------------------------------
 // Reading the library
 
@@ -151,6 +164,37 @@ pub(super) struct InstalledPackage {
     /// Which remote, for a package that was not installed from a repository:
     /// the `user/repo` of a GitHub install, the URL of a git one, etc.
     remote: Option<String>,
+    /// The `RemoteHash` field, i.e. which upstream CRAN artifact this package
+    /// was installed from. Only `rig pkg install` writes it, so it is unset for
+    /// anything installed by R, pak or renv.
+    pub(super) hash: Option<String>,
+    /// The `RemoteLinkingToHashes` field: what the package was compiled against,
+    /// as `(package, version, sha256)`.
+    pub(super) linkingto: Vec<(String, String, String)>,
+}
+
+#[cfg(test)]
+impl InstalledPackage {
+    /// An installed package with only the fields the install planner looks at,
+    /// so that its tests do not need a library on disk.
+    pub(super) fn for_test(
+        package: &str,
+        version: &str,
+        hash: Option<&str>,
+        linkingto: Vec<(String, String, String)>,
+    ) -> InstalledPackage {
+        InstalledPackage {
+            package: package.to_string(),
+            version: version.to_string(),
+            path: PathBuf::from(package),
+            built_r: None,
+            platform: None,
+            source: None,
+            remote: None,
+            hash: hash.map(|x| x.to_string()),
+            linkingto,
+        }
+    }
 }
 
 /// The packages installed in the library at `path`, unordered.
@@ -239,6 +283,14 @@ fn read_package(dir: &Path, dir_name: &str) -> Result<Option<InstalledPackage>, 
 
     let (source, remote) = read_source(para);
 
+    // Written by `rig pkg install`, absent from anything else, which is exactly
+    // what makes a package without them a candidate for reinstallation.
+    let hash = para.get(REMOTE_HASH_FIELD).map(reflow);
+    let linkingto = para
+        .get(REMOTE_LINKINGTO_FIELD)
+        .map(|x| parse_linkingto(&reflow(x)))
+        .unwrap_or_default();
+
     Ok(Some(InstalledPackage {
         package,
         version,
@@ -247,6 +299,8 @@ fn read_package(dir: &Path, dir_name: &str) -> Result<Option<InstalledPackage>, 
         platform: built.and_then(|x| x.platform),
         source,
         remote,
+        hash,
+        linkingto,
     }))
 }
 

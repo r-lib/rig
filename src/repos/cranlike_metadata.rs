@@ -200,34 +200,37 @@ impl PackageVersionLoader for DbSourcePackageLoader {
         // the handful of rows for this package, whereas adding `repo_id = ?`
         // makes SQLite pick the repo_id index and scan the whole (200k-row)
         // ALLPACKAGES repo. We filter to our repos and dedup by version here.
-        let mut best: HashMap<String, String> = HashMap::new();
+        // `sha256sum` comes along for the ride: it is the identity of the
+        // upstream CRAN tarball, which `rig pkg install` records in the
+        // installed package as `RemoteHash`. It is the only source of that hash
+        // on a source-only solve, where no binary index is loaded at all.
+        let mut best: HashMap<String, (String, Option<String>)> = HashMap::new();
         let mut stmt = self.conn.prepare_cached(
-            "SELECT version, dependencies, repo_id FROM packages WHERE name = ?1",
+            "SELECT version, dependencies, sha256sum, repo_id FROM packages WHERE name = ?1",
         )?;
         let rows = stmt.query_map(params![package], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
-                row.get::<_, i64>(2)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, i64>(3)?,
             ))
         })?;
         for row in rows {
-            let (ver, deps_json, repo_id) = row?;
+            let (ver, deps_json, sha256sum, repo_id) = row?;
             if !self.repo_ids.contains(&repo_id) {
                 continue; // row from a repo we do not source from
             }
-            best.entry(ver).or_insert(deps_json);
+            best.entry(ver).or_insert((deps_json, sha256sum));
         }
 
         let mut out: Vec<Package> = Vec::with_capacity(best.len());
-        for (ver, deps_json) in best {
+        for (ver, (deps_json, sha256sum)) in best {
             let version = RPackageVersion::from_str(&ver)?;
             let deps: PackageDependencies = serde_json::from_str(&deps_json)?;
-            out.push(Package::from_crandb(
-                package.to_string(),
-                version,
-                deps.dependencies,
-            ));
+            let mut pkg = Package::from_crandb(package.to_string(), version, deps.dependencies);
+            pkg.sha256sum = sha256sum;
+            out.push(pkg);
         }
         Ok(out)
     }

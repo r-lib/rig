@@ -8,8 +8,10 @@
   from `rig repos` moved to `rig pkg`: `rig pkg available` and
   `rig pkg info`. `rig pkg deps` lists the packages a package needs, in a
   table, and `rig pkg tree` shows the same dependencies as a tree.
-  `rig pkg list` lists the packages installed in a library, and
-  `rig pkg remove` deletes packages from a library.
+  `rig pkg list` lists the packages installed in a library,
+  `rig pkg remove` deletes packages from a library, and
+  `rig pkg install` installs packages, and their dependencies, into a
+  library.
 
 * `rig proj deps` has a new `--recursive` (`-r`) option, to show the whole
   dependency closure of the project.

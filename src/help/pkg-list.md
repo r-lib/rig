@@ -31,9 +31,9 @@ A field the package's `DESCRIPTION` does not have is shown as `-`. Use
 `--json` for machine readable output, which reports the repository or remote
 type as `source` and the remote itself as `remote`, separately.
 
-This is the only `rig pkg` subcommand that reads an *installed* library; the
-others, e.g. [`rig pkg available`](#rig-pkg-available), read the package
-repositories that packages are installed *from*.
+This subcommand and [`rig pkg remove`](#rig-pkg-remove) read an *installed*
+library; the others, e.g. [`rig pkg available`](#rig-pkg-available), read the
+package repositories that packages are installed *from*.
 
 ## Which library
 

@@ -117,6 +117,9 @@ pub fn artifacts_for_target(index: &BinaryIndex, target: &BinaryTarget) -> Packa
                 out.source_urls
                     .entry(parsed.clone())
                     .or_insert_with(|| row.url().to_string());
+                out.source_sha256
+                    .entry(parsed.clone())
+                    .or_insert_with(|| row.sha256().to_string());
                 continue;
             }
             if row.platform() != target.platform
@@ -129,7 +132,7 @@ pub fn artifacts_for_target(index: &BinaryIndex, target: &BinaryTarget) -> Packa
             let mut ok = true;
             for lt in row.linkingto() {
                 match RPackageVersion::from_str(lt.version) {
-                    Ok(v) => linkingto.push((lt.package.to_string(), v)),
+                    Ok(v) => linkingto.push((lt.package.to_string(), v, lt.sha256.to_string())),
                     Err(_) => {
                         debug!(
                             "Skipping binary {} {} (row {}): unparseable LinkingTo version \
@@ -152,6 +155,7 @@ pub fn artifacts_for_target(index: &BinaryIndex, target: &BinaryTarget) -> Packa
                 version: parsed.clone(),
                 row: row.row_index() as u32,
                 url: row.url().to_string(),
+                sha256: row.sha256().to_string(),
                 linkingto,
             });
         }
@@ -234,8 +238,8 @@ mod tests {
             .filter_map(|b| {
                 b.linkingto
                     .iter()
-                    .find(|(p, _)| p == "plogr")
-                    .map(|(_, v)| v.original.clone())
+                    .find(|(p, _, _)| p == "plogr")
+                    .map(|(_, v, _)| v.original.clone())
             })
             .collect();
         assert!(plogr.len() > 1);

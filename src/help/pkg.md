@@ -3,8 +3,8 @@ Manage R packages (experimental)
 ## Description
 
 Look up R packages, in the package repositories rig configures for your R
-installations and in the libraries they are installed into, without
-starting R.
+installations and in the libraries they are installed into, and install
+them, mostly without starting R.
 
 [`rig pkg available`](#rig-pkg-available) lists every package the
 repositories offer, [`rig pkg info`](#rig-pkg-info) shows the
@@ -14,10 +14,12 @@ directly or, with `--recursive`, transitively, and
 [`rig pkg tree`](#rig-pkg-tree) shows those transitive dependencies as a
 tree instead of a table.
 
+[`rig pkg install`](#rig-pkg-install),
 [`rig pkg list`](#rig-pkg-list) and
 [`rig pkg remove`](#rig-pkg-remove) are the subcommands that work on a
-package library instead of the repositories: they list the packages that
-are actually installed, and delete some of them.
+package library instead of the repositories: they install packages and
+their dependencies into it, list the packages that are actually installed,
+and delete some of them.
 
 The repositories themselves are managed by [`rig repos`](repos.qmd), the
 libraries by [`rig library`](library.qmd).

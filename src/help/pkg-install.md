@@ -1,0 +1,95 @@
+Install packages from the repositories
+
+## Description
+
+Install one or more R packages, and everything they need, into an R package
+library.
+
+```
+rig pkg install cli glue
+```
+
+```
+✓ Solved dependencies
+2 of 2 packages to install (R 4.4.1, main: /Users/gaborcsardi/Library/R/arm64/4.4/library)
+Package  Version  Type    Action   Reason
+cli      3.6.3    binary  install  not installed
+glue     1.8.0    binary  install  not installed
+✓ Installed 2 packages (R 4.4.1, main: /Users/gaborcsardi/Library/R/arm64/4.4/library)
+```
+
+rig resolves the whole dependency tree first, the same way
+[`rig proj solve`](proj.qmd) does for a project, so a package is only
+installed if every package it needs can be installed with it, at versions
+that work together. `--dry-run` runs the resolution and reports what it
+would install, without installing anything.
+
+Package names are case sensitive, as they are in R. Naming the same package
+twice is not an error, it is installed once.
+
+## Binary and source packages
+
+A binary package is a package that has already been built for your platform
+and R version. Installing one is unpacking it into the library, so rig does
+that itself and never starts R.
+
+A package with no binary build is installed from its source tarball, with
+`R CMD INSTALL`, which does start R, and needs whatever that package needs
+to compile. The output of the compilation goes into a log file per package,
+in a `_logs` directory inside the library, and rig points at the log when an
+installation fails.
+
+`--platform` installs for a platform other than this machine's, and
+`--platform source` installs source packages only. `--prefer-binary` trades
+a newer version for an older one that has a binary build, which is useful
+when compiling is expensive; it takes the number of versions to look back
+through, e.g. `--prefer-binary=5`, and defaults to 3.
+
+## What gets skipped
+
+rig does not install a package that is already installed and up to date, so
+running the same command twice does nothing the second time.
+
+Being up to date is more than having the right version number. A repository
+can publish several builds of one version, and a package with compiled code
+only works with the versions of the packages it was compiled against — an R
+that loads a package built against a different one can crash rather than
+complain. So rig keeps track of which build each package it installs came
+from, and what that build was compiled against, and reinstalls a package
+whose build is no longer the one the resolution picked.
+
+That check cascades: replacing a package also replaces the packages that
+were compiled against it, and the packages compiled against those.
+
+rig only knows this about packages it installed itself, so a package that R,
+pak or renv installed is always reinstalled rather than assumed to match.
+`--reinstall` installs everything in the resolution regardless.
+
+## Which library
+
+By default rig installs into the default library of the default R version,
+i.e. the library that [`rig library default`](library.qmd) reports, and the
+one R installs packages into.
+
+`--library` (`-l`) selects another library. It takes either the name of a
+library of the R version, as [`rig library list`](library.qmd) prints them,
+or the path of a library directory:
+
+```
+rig pkg install --library myproject cli
+rig pkg install --library /usr/lib/R/site-library cli
+```
+
+A path is used as it is, and is created if it does not exist yet, so it does
+not need to belong to an R version rig manages.
+
+`--r-version` (`-r`) selects the library of another R version, instead of
+the default one, as it does for the [`rig library`](library.qmd) commands.
+It has no effect on which library `--library` names when that is a path, but
+it still decides which binary packages fit, and which `R` installs a source
+package.
+
+In [admin mode](../admin-vs-user-mode.qmd) the site and system libraries of
+an R installation belong to the administrator, so installing into them needs
+`sudo` (an administrator account on Windows). Your own user library never
+does.

@@ -190,7 +190,7 @@ fn binary_artifact_deps(
     binary: &BinaryArtifact,
 ) -> Option<HashMap<RPackageName, RPackageVersionRanges, rustc_hash::FxBuildHasher>> {
     let mut deps = source.clone();
-    for (name, version) in binary.linkingto.iter() {
+    for (name, version, _sha256) in binary.linkingto.iter() {
         if is_base_package(name) {
             continue;
         }
@@ -219,8 +219,14 @@ pub struct BinaryArtifact {
     /// else, so this is what identifies them.
     pub row: u32,
     pub url: String,
-    /// The `LinkingTo` dependency versions this build was compiled against.
-    pub linkingto: Vec<(RPackageName, RPackageVersion)>,
+    /// Hash of the upstream CRAN source tarball this version was built from.
+    /// The same on every platform's build of a version, and not a checksum of
+    /// anything downloadable — see `crate::repos::binaries`.
+    pub sha256: String,
+    /// The `LinkingTo` dependency versions this build was compiled against, with
+    /// their own upstream-CRAN hashes. This, not [`BinaryArtifact::sha256`], is
+    /// what tells two builds of the same version apart.
+    pub linkingto: Vec<(RPackageName, RPackageVersion, String)>,
 }
 
 /// Everything a binary index knows about one package, for one build target.
@@ -230,6 +236,9 @@ pub struct PackageArtifacts {
     /// Source tarball URLs, by version. The index carries these too, and they
     /// are snapshot-pinned, unlike the CRAN URLs we would otherwise guess.
     pub source_urls: HashMap<RPackageVersion, String>,
+    /// Upstream-CRAN hashes of the source tarballs, by version, from the same
+    /// index rows as [`PackageArtifacts::source_urls`].
+    pub source_sha256: HashMap<RPackageVersion, String>,
 }
 
 /// A source of binary artifacts for one build target, queried lazily per package
@@ -277,6 +286,22 @@ pub struct RPackageRegistry {
     // Download URL of every artifact we offered, for the lockfile writers. The
     // solver itself never looks at these.
     urls: RefCell<HashMap<(RPackageName, RegistryPackageVersion), String>>,
+    // Upstream-CRAN hash of every artifact we offered, recorded alongside
+    // `urls` and, like it, never read by the solver itself. `rig pkg install`
+    // writes it into the installed package's DESCRIPTION, as `RemoteHash`, to
+    // recognize later what an installed package came from.
+    sha256: RefCell<HashMap<(RPackageName, RegistryPackageVersion), String>>,
+    // Build provenance of every *binary* artifact we offered: the `LinkingTo`
+    // dependency versions it was compiled against, with their own hashes, as
+    // `(package, version, sha256)`. Empty for source artifacts, which have no
+    // build to be provenant of.
+    #[allow(clippy::type_complexity)]
+    linkingto:
+        RefCell<HashMap<(RPackageName, RegistryPackageVersion), Vec<(String, String, String)>>>,
+    // The names in each artifact's `LinkingTo:` field, for source artifacts,
+    // where the provenance has to be assembled from the solution instead: a
+    // source build compiles against whatever version the solve picked.
+    linkingto_names: RefCell<HashMap<(RPackageName, RegistryPackageVersion), Vec<RPackageName>>>,
     // How many newest binaries win. Can be None.
     prefer_binary: Option<usize>,
     // Passed over newer version that does not have a binary.
@@ -327,6 +352,53 @@ impl RPackageRegistry {
             .borrow()
             .get(&(package.clone(), version.clone()))
             .cloned()
+    }
+
+    /// The upstream-CRAN hash of a resolved artifact, when we know one.
+    ///
+    /// This identifies the CRAN artifact the version was built from. It is *not*
+    /// a checksum of what the artifact's URL serves, and must not be used to
+    /// verify a download — see the `crate::repos::binaries` module docs.
+    pub fn artifact_sha256(
+        &self,
+        package: &RPackageName,
+        version: &RegistryPackageVersion,
+    ) -> Option<String> {
+        self.sha256
+            .borrow()
+            .get(&(package.clone(), version.clone()))
+            .cloned()
+    }
+
+    /// The `LinkingTo` build provenance of a resolved *binary* artifact, as
+    /// `(package, version, sha256)`. Empty for a source artifact; use
+    /// [`RPackageRegistry::linkingto_names`] and the solution for those.
+    pub fn artifact_linkingto(
+        &self,
+        package: &RPackageName,
+        version: &RegistryPackageVersion,
+    ) -> Vec<(String, String, String)> {
+        self.linkingto
+            .borrow()
+            .get(&(package.clone(), version.clone()))
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// The names in a resolved artifact's `LinkingTo:` field.
+    ///
+    /// A source package is compiled against whichever versions of these the
+    /// solve picked, so its provenance can only be read off the solution.
+    pub fn linkingto_names(
+        &self,
+        package: &RPackageName,
+        version: &RegistryPackageVersion,
+    ) -> Vec<RPackageName> {
+        self.linkingto_names
+            .borrow()
+            .get(&(package.clone(), version.clone()))
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// The build target binaries were resolved for, `None` for a source-only
@@ -381,6 +453,17 @@ impl RPackageRegistry {
                     for package in packages {
                         let ranges =
                             rpackage_version_ranges_from_constraints(&package.dependencies, false);
+                        // The `LinkingTo:` names, needed for both artifact
+                        // kinds: a binary's provenance is checked against them,
+                        // and a source build's has to be assembled from them.
+                        let lt_names: Vec<RPackageName> = package
+                            .dependencies
+                            .dependencies
+                            .iter()
+                            .filter(|d| d.types.contains(&RDepType::LinkingTo))
+                            .filter(|d| !is_base_package(&d.name))
+                            .map(|d| d.name.clone())
+                            .collect();
                         let src = RegistryPackageVersion {
                             name: pkg.clone(),
                             version: package.version.clone(),
@@ -390,6 +473,25 @@ impl RPackageRegistry {
                             self.urls
                                 .borrow_mut()
                                 .insert((pkg.clone(), src.clone()), url.clone());
+                        }
+                        // The index's source row is authoritative when we have
+                        // one; the source metadata's own `SHA256Original` is the
+                        // fallback, and the only thing available for a
+                        // source-only solve, where no index is loaded at all.
+                        if let Some(sha) = artifacts
+                            .source_sha256
+                            .get(&package.version)
+                            .cloned()
+                            .or_else(|| package.sha256sum.clone())
+                        {
+                            self.sha256
+                                .borrow_mut()
+                                .insert((pkg.clone(), src.clone()), sha);
+                        }
+                        if !lt_names.is_empty() {
+                            self.linkingto_names
+                                .borrow_mut()
+                                .insert((pkg.clone(), src.clone()), lt_names.clone());
                         }
                         self.add_package_version(pkg.clone(), src, ranges.clone());
                         for bin in artifacts
@@ -407,6 +509,26 @@ impl RPackageRegistry {
                                     self.urls
                                         .borrow_mut()
                                         .insert((pkg.clone(), v.clone()), bin.url.clone());
+                                    self.sha256
+                                        .borrow_mut()
+                                        .insert((pkg.clone(), v.clone()), bin.sha256.clone());
+                                    if !bin.linkingto.is_empty() {
+                                        let prov: Vec<(String, String, String)> = bin
+                                            .linkingto
+                                            .iter()
+                                            .map(|(n, ver, sha)| {
+                                                (n.clone(), ver.to_string(), sha.clone())
+                                            })
+                                            .collect();
+                                        self.linkingto
+                                            .borrow_mut()
+                                            .insert((pkg.clone(), v.clone()), prov);
+                                    }
+                                    if !lt_names.is_empty() {
+                                        self.linkingto_names
+                                            .borrow_mut()
+                                            .insert((pkg.clone(), v.clone()), lt_names.clone());
+                                    }
                                     self.add_package_version(pkg.clone(), v, deps);
                                 }
                                 None => {
@@ -777,12 +899,17 @@ mod tests {
                     version: version(v),
                     row: *row,
                     url: format!("https://example.com/bin/{}_{}.bin", name, v),
+                    sha256: format!("sha-{}-{}", name, v),
                     linkingto: pins
                         .split(',')
                         .filter(|p| !p.is_empty())
                         .map(|p| {
                             let (pkg, pin) = p.split_once('=').unwrap();
-                            (pkg.to_string(), version(pin))
+                            (
+                                pkg.to_string(),
+                                version(pin),
+                                format!("sha-{}-{}", pkg, pin),
+                            )
                         })
                         .collect(),
                 })
@@ -790,6 +917,7 @@ mod tests {
             Ok(PackageArtifacts {
                 binaries,
                 source_urls: HashMap::new(),
+                source_sha256: HashMap::new(),
             })
         }
 
