@@ -24,6 +24,10 @@ the `Depth` column giving its distance from the project, and the
 package metadata of the repositories, which rig downloads if it does not
 have it yet.
 
+[`rig proj tree`](#rig-proj-tree) shows the same closure as a tree, laid
+out by the shape of the dependency graph, so you can see *how* each
+package is pulled in and not only *that* it is.
+
 A recursive listing only ever follows hard dependencies, also below a
 development dependency added by `--dev`, so `--dev --recursive` means the
 project's own dev dependencies plus everything they need to be installed.

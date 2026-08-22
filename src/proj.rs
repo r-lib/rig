@@ -24,6 +24,7 @@ use crate::pak::PakLockfile;
 use crate::pkg::deps::{
     dep_count, print_deps_json, print_deps_recursive, print_header, type_list, walk_deps,
 };
+use crate::pkg::tree::proj_tree;
 use crate::platform::{detect_platform, parse_platform_string};
 use crate::renv::*;
 use crate::repos::binaries::loader::{BinaryTarget, P3mBinaryLoader};
@@ -51,6 +52,7 @@ pub const BASE_PKGS: &[&str] = &[
 pub fn sc_proj(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
         Some(("deps", s)) => sc_proj_deps(s, args, mainargs),
+        Some(("tree", s)) => sc_proj_tree(s, args, mainargs),
         Some(("solve", s)) => sc_proj_solve(s, args, mainargs),
         Some(("deploy", s)) => sc_proj_deploy(s, args, mainargs),
         _ => Ok(()), // unreachable
@@ -209,6 +211,33 @@ fn proj_deps_recursive(pkg: &Package, json: bool) -> Result<(), Box<dyn Error>> 
     }
 
     Ok(())
+}
+
+/// The transitive dependency closure of a project, as the tree
+/// `rig pkg tree` prints for a package.
+///
+/// The same closure [`proj_deps_recursive`] lists in a flat table, so the two
+/// read the manifest the same way and follow the same edges; only the layout
+/// differs.
+fn sc_proj_tree(
+    args: &ArgMatches,
+    projargs: &ArgMatches,
+    mainargs: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+    let dev = args.get_flag("dev");
+    let no_base = args.get_flag("no-base");
+    let json = args.get_flag("json") || projargs.get_flag("json") || mainargs.get_flag("json");
+    let default_input = "DESCRIPTION".to_string();
+    let input: &String = args.get_one::<String>("input").unwrap_or(&default_input);
+    let pkg = proj_read_deps(input, dev)?;
+
+    proj_tree(
+        &pkg.name,
+        &pkg.version,
+        &pkg.dependencies.dependencies,
+        no_base,
+        json,
+    )
 }
 
 /// The P3M build target to resolve binary packages for.

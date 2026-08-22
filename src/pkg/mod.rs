@@ -23,7 +23,7 @@ pub(crate) mod deps;
 mod manifest;
 #[cfg(test)]
 mod stub;
-mod tree;
+pub(crate) mod tree;
 
 pub fn sc_pkg(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {

@@ -35,7 +35,8 @@ and the version requirement it is needed with, if it has one.
 
 By default the tree of the latest version of the package is shown; use
 `--version` to ask about a specific one, including versions that CRAN has
-archived.
+archived. [`rig proj tree`](proj.qmd#rig-proj-tree) shows the same tree for the
+dependencies a project declares, instead of a package's.
 
 ## Repeated packages
 

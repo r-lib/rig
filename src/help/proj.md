@@ -11,13 +11,15 @@ repositories and can install them into a project library.
 
 `rig proj deps` shows the direct and recursive dependencies of the
 project.
+`rig proj tree` shows the recursive dependencies as a tree, so you can
+see how each package is pulled in.
 `rig proj solve` resolves the full dependency tree to a concrete set of
 package versions, and can write the result to an `renv.lock` file.
 `rig proj deploy` installs the resolved dependencies into a package
 library.
 
 Dependencies are resolved with rig's built-in solver, so R does not need
-to be running for `rig proj deps` and `rig proj solve`.
+to be running for `rig proj deps`, `rig proj tree` and `rig proj solve`.
 
 `rig proj` is currently experimental, and might change in future
 versions. Feedback is appreciated.

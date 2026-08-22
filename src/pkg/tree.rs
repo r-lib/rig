@@ -40,11 +40,44 @@ pub fn sc_pkg_tree(
     let loader = DbSourcePackageLoader::new()?;
     let tree = dep_tree(&loader, &package, &ver, dev, no_base)?;
 
+    print_tree(&tree, json)
+}
+
+/// `rig proj tree`: the dependency tree of a project's manifest.
+///
+/// The root is the project itself, which is not a package in the repositories,
+/// so the walk starts from the dependency list `crate::proj::proj_read_deps`
+/// read from the manifest. That list has already had the soft dependencies
+/// dropped unless `--dev`, so the walk takes it as it is — the same `dev = true`
+/// `rig proj deps --recursive` passes to [`super::deps::walk_deps`].
+pub(crate) fn proj_tree(
+    root_name: &str,
+    root_version: &RPackageVersion,
+    root_deps: &[DepVersionSpec],
+    no_base: bool,
+    json: bool,
+) -> Result<(), Box<dyn Error>> {
+    let loader = DbSourcePackageLoader::new()?;
+    let tree = tree_from_deps(
+        &loader,
+        root_name,
+        Some(root_version.clone()),
+        root_deps,
+        true,
+        no_base,
+    );
+
+    print_tree(&tree, json)
+}
+
+/// Print a tree, as one nested JSON object with `--json`, otherwise as the
+/// colored tree, with the color left out when stdout is not a terminal.
+fn print_tree(tree: &DepTree, json: bool) -> Result<(), Box<dyn Error>> {
     if json {
-        print_tree_json(&tree)?;
+        print_tree_json(tree)?;
     } else {
         let color = std::io::stdout().is_terminal() && env::var_os("NO_COLOR").is_none();
-        print!("{}", render_tree(&tree, color));
+        print!("{}", render_tree(tree, color));
     }
 
     Ok(())
@@ -100,16 +133,41 @@ fn dep_tree(
     no_base: bool,
 ) -> Result<DepTree, Box<dyn Error>> {
     let root = root_package(loader, package, ver)?;
+    Ok(tree_from_deps(
+        loader,
+        package,
+        Some(root.version),
+        &root.dependencies.dependencies,
+        dev,
+        no_base,
+    ))
+}
+
+/// The dependency tree below a list of direct dependencies, e.g. the ones a
+/// package version declares or the ones a project's `DESCRIPTION` does.
+///
+/// `root_name` and `root_version` are only the label of the header line; the
+/// root does not have to be a package the repositories know about, which is what
+/// lets a project be one. See [`dep_tree`] for what the walk does and does not
+/// follow.
+fn tree_from_deps(
+    loader: &dyn PackageVersionLoader,
+    root_name: &str,
+    root_version: Option<RPackageVersion>,
+    root_deps: &[DepVersionSpec],
+    dev: bool,
+    no_base: bool,
+) -> DepTree {
     let mut newest = Newest::new(loader);
 
     // The root's subtree *is* the tree, so it counts as expanded from the
     // start: a cycle that comes back to it collapses into a `(*)` leaf.
     let mut expanded: HashSet<String> = HashSet::new();
-    expanded.insert(package.to_string());
+    expanded.insert(root_name.to_string());
     let mut seen: HashSet<String> = HashSet::new();
 
     let children = children_of(
-        &root.dependencies.dependencies,
+        root_deps,
         &mut newest,
         &mut expanded,
         &mut seen,
@@ -119,8 +177,8 @@ fn dep_tree(
 
     let mut tree = DepTree {
         root: TreeNode {
-            name: package.to_string(),
-            version: Some(root.version),
+            name: root_name.to_string(),
+            version: root_version,
             types: vec![],
             requires: vec![],
             children,
@@ -130,7 +188,7 @@ fn dep_tree(
     };
     prune_empty_repeats(&mut tree.root);
 
-    Ok(tree)
+    tree
 }
 
 /// Turn the dependency list of one package into the nodes below it, expanding
@@ -460,7 +518,7 @@ fn print_tree_json(tree: &DepTree) -> Result<(), Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pkg::stub::Stub;
+    use crate::pkg::stub::{stub_deps, Stub};
 
     /// The tree as `(indent, label)` pairs, so a test can assert on the shape
     /// without the box-drawing noise.
@@ -778,6 +836,148 @@ mod tests {
 
         let err = dep_tree(&stub, "a", "9.9.9", false, false).unwrap_err();
         assert!(err.to_string().contains("Could not find version"));
+    }
+
+    // ---------------------------------------------------------------------
+    // A project as the root, i.e. `rig proj tree`
+
+    /// The tree of a project, the way `rig proj tree` builds it: the root is
+    /// not a package in the database, only its dependencies are, and the soft
+    /// dependencies were already filtered by `proj_read_deps`, so the walk runs
+    /// with `dev = true`.
+    fn project_tree(stub: &Stub, deps: &str, no_base: bool) -> DepTree {
+        let root = stub_deps(deps);
+        tree_from_deps(
+            stub,
+            "myproj",
+            Some(RPackageVersion::from_str("0.1.0").unwrap()),
+            &root.dependencies,
+            true,
+            no_base,
+        )
+    }
+
+    #[test]
+    fn a_project_root_needs_no_package_in_the_database() {
+        let stub = Stub {
+            packages: vec![
+                ("b", "1.0.0", "Depends: R (>= 4.1.0); Imports: c, utils"),
+                ("c", "2.0.0", "Imports: d"),
+                ("d", "3.0.0", "Imports: e"),
+                ("e", "4.0.0", ""),
+                ("t", "1.0.0", "Imports: d"),
+            ],
+        };
+
+        let tree = project_tree(&stub, "Imports: b (>= 0.9.0); Suggests: t", false);
+
+        assert_eq!(tree.root.name, "myproj");
+        assert_eq!(tree.root.version.as_ref().unwrap().original, "0.1.0");
+        assert_eq!(tree.total, 7);
+        assert_eq!(
+            render_tree(&tree, false).lines().next().unwrap(),
+            "myproj 0.1.0 — 2 direct, 7 total"
+        );
+        assert_eq!(
+            lines(&tree),
+            vec![
+                "└── b 1.0.0 (>= 0.9.0)",
+                "    ├── R (>= 4.1.0) [D]",
+                "    ├── c 2.0.0",
+                "    │   └── d 3.0.0",
+                "    │       └── e 4.0.0",
+                "    └── utils",
+                // The soft dependency the manifest kept gets its own section,
+                // and its own Suggests is not followed below it.
+                "[Suggests]",
+                "└── t 1.0.0",
+                "    └── d 3.0.0 (*)",
+            ]
+        );
+    }
+
+    /// The project tree and `rig proj deps --recursive` must agree on what the
+    /// closure is: they read the same manifest and follow the same edges, so
+    /// the tree's distinct non-root package names are exactly the rows of the
+    /// flat listing.
+    #[test]
+    fn the_project_tree_covers_the_same_closure_as_the_flat_listing() {
+        let stub = Stub {
+            packages: vec![
+                ("b", "1.0.0", "Depends: R (>= 4.1.0); Imports: c, stats"),
+                ("c", "2.0.0", "Imports: d, gone"),
+                ("d", "3.0.0", "Imports: b"),
+                ("t", "1.0.0", "Imports: d; Suggests: tt"),
+                ("tt", "1.0.0", ""),
+            ],
+        };
+        let deps = "Imports: b; LinkingTo: cpp11; Suggests: t";
+
+        let tree = project_tree(&stub, deps, false);
+        let mut in_tree: Vec<String> = names(&tree.root).into_iter().collect();
+        in_tree.sort();
+
+        let root = stub_deps(deps);
+        let (rows, num_direct) =
+            super::super::deps::walk_deps(&stub, "myproj", &root.dependencies, true);
+        let mut flat = super::super::deps::dep_row_names(&rows);
+        flat.sort();
+
+        assert_eq!(in_tree, flat);
+        assert_eq!(tree.total, flat.len());
+        assert_eq!(tree.root.children.len(), num_direct);
+    }
+
+    #[test]
+    fn no_base_drops_r_and_the_base_packages_from_a_project_tree() {
+        let stub = Stub {
+            packages: vec![("b", "1.0.0", "Imports: utils, c"), ("c", "2.0.0", "")],
+        };
+
+        let deps = "Depends: R (>= 4.1.0); Imports: b, stats";
+        let tree = project_tree(&stub, deps, false);
+        assert_eq!(tree.total, 5);
+        assert_eq!(
+            shape(&tree),
+            vec![
+                (0, "R (>= 4.1.0) [D]".to_string()),
+                (0, "b 1.0.0".to_string()),
+                (1, "c 2.0.0".to_string()),
+                (1, "utils".to_string()),
+                (0, "stats".to_string()),
+            ]
+        );
+
+        let tree = project_tree(&stub, deps, true);
+        assert_eq!(tree.total, 2);
+        assert_eq!(
+            shape(&tree),
+            vec![(0, "b 1.0.0".to_string()), (1, "c 2.0.0".to_string())]
+        );
+    }
+
+    /// A project whose manifest names a package that is also in the
+    /// repositories, and that its own closure depends on: the root is expanded
+    /// from the start, so the cycle back to it is a `(*)` leaf, not a loop.
+    #[test]
+    fn a_cycle_back_to_the_project_terminates() {
+        let stub = Stub {
+            packages: vec![
+                ("myproj", "0.0.1", "Imports: neverseen"),
+                ("b", "1.0.0", "Imports: myproj"),
+                ("neverseen", "1.0.0", ""),
+            ],
+        };
+
+        let tree = project_tree(&stub, "Imports: b", false);
+        assert_eq!(
+            shape(&tree),
+            vec![
+                (0, "b 1.0.0".to_string()),
+                // The database's `myproj` is not expanded: the root is.
+                (1, "myproj 0.0.1 (*)".to_string()),
+            ]
+        );
     }
 
     // ---------------------------------------------------------------------

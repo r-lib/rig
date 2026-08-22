@@ -1352,6 +1352,41 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("tree")
+                .about(ABOUT_PROJ_TREE)
+                .long_about(HELP_PROJ_TREE)
+                .display_order(0)
+                .arg(
+                    Arg::new("input")
+                        .help("Project file to solve (e.g. DESCRIPTION)")
+                        .long("input")
+                        .short('i')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("dev")
+                        .help("Include dev (development) dependencies")
+                        .long("dev")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("no-base")
+                        .help("Leave out R and the base packages")
+                        .long("no-base")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
             Command::new("solve")
                 .about(ABOUT_PROJ_SOLVE)
                 .long_about(HELP_PROJ_SOLVE)

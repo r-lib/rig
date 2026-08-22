@@ -212,6 +212,14 @@ pub(super) fn recursive_dep_names(
     Ok(rows.into_iter().map(|row| row.name).collect())
 }
 
+/// The packages of a [`walk_deps`] listing, by name. Lets [`super::tree`] check
+/// that a project tree walks the same closure `rig proj deps --recursive` does,
+/// without exposing [`DepRow`]'s fields outside the module.
+#[cfg(test)]
+pub(super) fn dep_row_names(rows: &[DepRow]) -> Vec<String> {
+    rows.iter().map(|row| row.name.clone()).collect()
+}
+
 /// Record `dep` as a dependency of `parent`, `depth` steps from the queried
 /// package, and return whether this is the first time we see it.
 ///
