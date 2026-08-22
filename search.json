@@ -466,7 +466,7 @@
     "href": "reference/index.html",
     "title": "Reference",
     "section": "",
-    "text": "Commands\n\n\nrig add\n\nInstall a new R version (alias: install)\n\nrig available\n\nList R versions available to install.\n\nrig config\n\nManage rig configuration\n\nrig default\n\nPrint or set default R version (alias: switch)\n\nrig library\n\nManage package libraries [alias: lib] (experimental) (alias: lib)\n\nrig list\n\nList installed R versions (alias: ls)\n\nrig pkg\n\nManage R packages (experimental)\n\nrig proj\n\nManage R projects (experimental)\n\nrig repos\n\nManage package repositories\n\nrig resolve\n\nResolve a symbolic R version\n\nrig rm\n\nRemove R versions (aliases: del, remove, delete)\n\nrig rstudio\n\nStart RStudio with specified R version\n\nrig rtools Windows only\n\nManage Rtools installations\n\nrig run\n\nRun R, an R script or an R project\n\nrig sysreqs macOS only\n\nManage R-related system libraries and tools (experimental)\n\nrig system\n\nManage current installations",
+    "text": "Commands\n\n\nrig add\n\nInstall a new R version (alias: install)\n\nrig available\n\nList R versions available to install.\n\nrig config\n\nManage rig configuration\n\nrig default\n\nPrint or set default R version (alias: switch)\n\nrig library\n\nManage package libraries [alias: lib] (experimental) (alias: lib)\n\nrig list\n\nList installed R versions (alias: ls)\n\nrig pkg\n\nManage R packages (experimental)\n\nrig ppm\n\nQuery Posit Package Manager (experimental)\n\nrig proj\n\nManage R projects (experimental)\n\nrig repos\n\nManage package repositories\n\nrig resolve\n\nResolve a symbolic R version\n\nrig rm\n\nRemove R versions (aliases: del, remove, delete)\n\nrig rstudio\n\nStart RStudio with specified R version\n\nrig rtools Windows only\n\nManage Rtools installations\n\nrig run\n\nRun R, an R script or an R project\n\nrig sysreqs macOS only\n\nManage R-related system libraries and tools (experimental)\n\nrig system\n\nManage current installations",
     "crumbs": [
       "Reference"
     ]
@@ -626,6 +626,248 @@
     ]
   },
   {
+    "objectID": "reference/ppm.html",
+    "href": "reference/ppm.html",
+    "title": "rig ppm",
+    "section": "",
+    "text": "Ask Posit Package Manager (P3M) what it offers: which platforms and R versions it builds binary packages for, and which builds exist for a package. Nothing here changes anything on your machine.\nrig ppm platforms and rig ppm r-versions list the build targets and R versions, rig ppm status shows P3M’s whole status report, rig ppm builds lists the published builds of one package, and rig ppm url prints the URL rig is talking to.\nThis is about P3M itself. To manage the repositories configured for your R installations, including P3M ones, use rig repos; to look up package metadata in those repositories, use rig pkg.",
+    "crumbs": [
+      "Reference",
+      "rig ppm"
+    ]
+  },
+  {
+    "objectID": "reference/ppm.html#which-server",
+    "href": "reference/ppm.html#which-server",
+    "title": "rig ppm",
+    "section": "Which server",
+    "text": "Which server\nBy default rig reports on the public instance, https://packagemanager.posit.co. Set the PACKAGEMANAGER_ADDRESS environment variable to the base URL of your own P3M instance to report on that instead. rig ppm url prints whichever one is in effect.\nOne command is different: rig ppm builds reads a package build index that rig publishes itself, derived from P3M, because P3M has no endpoint that lists a package’s builds. That index always comes from rig’s own host, and PACKAGEMANAGER_ADDRESS does not redirect it.",
+    "crumbs": [
+      "Reference",
+      "rig ppm"
+    ]
+  },
+  {
+    "objectID": "reference/ppm.html#subcommands",
+    "href": "reference/ppm.html#subcommands",
+    "title": "rig ppm",
+    "section": "Subcommands",
+    "text": "Subcommands\n\nbuilds\n\nList the published builds of a package\n\nplatforms\n\nList the platforms Posit Package Manager builds for\n\nr-versions\n\nList the R versions Posit Package Manager builds for\n\nstatus\n\nShow the Posit Package Manager status report\n\nurl\n\nPrint the Posit Package Manager URL",
+    "crumbs": [
+      "Reference",
+      "rig ppm"
+    ]
+  },
+  {
+    "objectID": "reference/ppm.html#rig-ppm-builds",
+    "href": "reference/ppm.html#rig-ppm-builds",
+    "title": "rig ppm",
+    "section": "rig ppm builds",
+    "text": "rig ppm builds\nList every source and binary artifact Posit Package Manager has published for one R package, with the URL of each, oldest version first, so the latest version is the last thing printed. Use --version to restrict the listing to a single package version.\nP3M has no endpoint that lists a package’s builds, so rig reads a build index it publishes itself, one compressed file per package, derived from P3M. That index comes from rig’s own host, and unlike the rest of rig ppm it is not affected by PACKAGEMANAGER_ADDRESS. Once fetched it is cached, so repeated queries about the same package are local.\n\nThe columns\n\nversion — the package version, as published.\nplatform — source for the CRAN source tarball, otherwise the build target: macos, windows, or a Linux target name such as jammy. rig ppm platforms lists the target names.\narch, r_version — the architecture and minor R version the binary is for. Both are * on a source row, which is architecture- and version-independent.\nlinkingto — the package versions the binary was compiled against, for packages with a LinkingTo: field. This column is what tells otherwise identical rows apart. P3M republishes a binary when a compiled-against dependency changes, so the same version, platform, architecture and R version can legitimately have several builds; linkingto is the only difference between them.\nurl — where to download that artifact. The date in the URL is the CRAN snapshot the build was published against.\n\n--json output adds a sha256 for each row, and for each linkingto entry. Be careful with it: it is the hash of the original CRAN source tarball, repeated on every platform row of a version. It is not the hash of the binary on that row, and not even the hash of what its own URL serves, because P3M rewrites the Repository: field of the DESCRIPTION before serving it. Treat it as an identity key for the upstream CRAN release, not as a checksum to verify a download against.\n\n\nUsage\nrig ppm builds [OPTIONS] &lt;package&gt;\n\n\nArguments\n\n&lt;package&gt;\n\npackage to list the builds of\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n-v, --version &lt;version&gt;\n\npackage version to list (default: all)\n\n\n\n\nExamples\n# Every build of a package, latest version last\nrig ppm builds cli\n# Just one version\nrig ppm builds dplyr --version 1.1.4\n# The builds for one R version and platform\nrig ppm builds dplyr --json |\n  jq '.[] | select(.r_version == \"4.5\" and .platform == \"jammy\")'",
+    "crumbs": [
+      "Reference",
+      "rig ppm"
+    ]
+  },
+  {
+    "objectID": "reference/ppm.html#rig-ppm-platforms",
+    "href": "reference/ppm.html#rig-ppm-platforms",
+    "title": "rig ppm",
+    "section": "rig ppm platforms",
+    "text": "rig ppm platforms\nList the build targets Posit Package Manager currently offers.\nP3M also reports the targets it has retired — on the public instance those are more than half of the list — and none of them is something to build against today, so they are left out. Add --all to list them too, with a hidden column marking which is which. --all applies to --json as well.\nApart from that the list is as P3M reports it: targets it serves but does not build binaries for are included, and the several entries that share one platform are not merged.\n\nThe columns\n\nname — P3M’s name for the entry.\nos — linux, macos or windows.\nplatform — the name this target goes by in a package’s build index, so this is the value to match against the platform column of rig ppm builds. Several entries can share one: CentOS 7 and RHEL 7 both use the centos7 binaries.\ndistribution and release — the distribution P3M builds the target on, which is not always the one it serves. The rhel9 target is built on Rocky Linux, so its distribution is rockylinux.\narch — the architectures this target is built for. Most Linux targets are x86_64 only.\nbinaries — whether P3M builds binary packages for the target at all. Where this is off, the target is still served, from source.\nhidden — only shown with --all: set on the targets P3M no longer advertises, i.e. retired distribution releases. Their binaries stay downloadable, which is why they can be listed at all.\n\nThe manylinux_2_28 target is the generic glibc build P3M serves to any Linux it has no specific target for. It appears under the distribution it happens to be built on, not the ones it serves.\nrig reuses P3M’s status document for up to a day, so this command normally answers without contacting the server.\n\n\nUsage\nrig ppm platforms [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n--all\n\nAlso list the platforms P3M has retired\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig ppm"
+    ]
+  },
+  {
+    "objectID": "reference/ppm.html#rig-ppm-r-versions",
+    "href": "reference/ppm.html#rig-ppm-r-versions",
+    "title": "rig ppm",
+    "section": "rig ppm r-versions",
+    "text": "rig ppm r-versions\nList the minor R versions Posit Package Manager builds binary packages for, newest first, one per line and without a header, so the output can be piped straight into other commands.\nThese are minor versions, e.g. 4.5, because that is the granularity R uses for binary compatibility: a package built for R 4.5 works with every R 4.5.x.\nrig reuses P3M’s status document for up to a day, so this command normally answers without contacting the server.\n\nUsage\nrig ppm r-versions [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig ppm"
+    ]
+  },
+  {
+    "objectID": "reference/ppm.html#rig-ppm-status",
+    "href": "reference/ppm.html#rig-ppm-status",
+    "title": "rig ppm",
+    "section": "rig ppm status",
+    "text": "rig ppm status\nShow the full status report of a Posit Package Manager instance: what it is and what it is configured for, then the R versions, build targets, Bioconductor releases and macOS build flavors it serves.\n\nThe report\nThe first block is the instance itself: its version and build_date, the name of its CRAN repository, whether R and Python are configured, whether binary packages are enabled, whether it requires authentication, and how long its license still covers it.\nThen four tables:\n\nR versions — the minor R versions binaries are built for. Same list as rig ppm r-versions.\nBuild targets — the platforms, as reported, retired ones included. Same table as rig ppm platforms --all, which documents the columns.\nBioconductor versions — each Bioconductor release, the R version it goes with, and the CRAN snapshot it is pinned to.\nmacOS binaries — the macOS build flavor used for each R version, per architecture. default is what a newer R version gets. An empty cell means there are no macOS binaries for that R version and architecture.\n\nAn instance may report fields rig does not show. Use --json to see the status document in full; nothing is dropped from it.\nUnlike the other rig ppm commands, this one always contacts the server, because part of what it reports is live state. It therefore needs network access even when the other commands do not.\n\n\nWhich server\nhttps://packagemanager.posit.co by default, or the instance PACKAGEMANAGER_ADDRESS names. RIG_PPM_STATUS_URL overrides the URL of the status document alone and wins over PACKAGEMANAGER_ADDRESS; the report’s first line shows the URL actually used.\n\n\nUsage\nrig ppm status [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n\n\n\nExamples\n# The public instance\nrig ppm status\n# Your own instance\nPACKAGEMANAGER_ADDRESS=https://ppm.example.com rig ppm status\n# The complete status document, including fields rig does not display\nrig ppm status --json",
+    "crumbs": [
+      "Reference",
+      "rig ppm"
+    ]
+  },
+  {
+    "objectID": "reference/ppm.html#rig-ppm-url",
+    "href": "reference/ppm.html#rig-ppm-url",
+    "title": "rig ppm",
+    "section": "rig ppm url",
+    "text": "rig ppm url\nPrint the base URL of the Posit Package Manager instance the other rig ppm commands report on, and nothing else, so it can be used directly in a script:\ncurl \"$(rig ppm url)/__api__/repos\"\nThis is https://packagemanager.posit.co unless the PACKAGEMANAGER_ADDRESS environment variable is set, in which case it is that, with any trailing slash removed.\nThe RIG_PPM_STATUS_URL environment variable overrides the URL of the status document alone, and takes precedence over PACKAGEMANAGER_ADDRESS for that one document. If you set it, this command still prints the base URL, while rig ppm status reports on the instance RIG_PPM_STATUS_URL names and shows which URL that was.\n\nUsage\nrig ppm url [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig ppm"
+    ]
+  },
+  {
+    "objectID": "reference/resolve.html",
+    "href": "reference/resolve.html",
+    "title": "rig resolve",
+    "section": "",
+    "text": "Resolve R versions. Checks the version number of an R version (e.g. release, devel, etc.), and looks up the URL of the installer for it, if an installer is available.\nIt prints the R version number, and after a space the URL of the installer. If no installer is available for this R version and the current platform, the URL is NA.\nAn R version can be specified in various ways:",
+    "crumbs": [
+      "Reference",
+      "rig resolve"
+    ]
+  },
+  {
+    "objectID": "reference/resolve.html#usage",
+    "href": "reference/resolve.html#usage",
+    "title": "rig resolve",
+    "section": "Usage",
+    "text": "Usage\nrig resolve [OPTIONS] &lt;str&gt;",
+    "crumbs": [
+      "Reference",
+      "rig resolve"
+    ]
+  },
+  {
+    "objectID": "reference/resolve.html#arguments",
+    "href": "reference/resolve.html#arguments",
+    "title": "rig resolve",
+    "section": "Arguments",
+    "text": "Arguments\n\n&lt;str&gt;\n\nsymbolic version string to resolve",
+    "crumbs": [
+      "Reference",
+      "rig resolve"
+    ]
+  },
+  {
+    "objectID": "reference/resolve.html#options",
+    "href": "reference/resolve.html#options",
+    "title": "rig resolve",
+    "section": "Options",
+    "text": "Options\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-a, --arch &lt;arch&gt;\n\nUse this architecture, instead of auto-detecting it.\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--platform &lt;platform&gt;\n\nUse this platform, instead of auto-detecting it.\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig resolve"
+    ]
+  },
+  {
+    "objectID": "reference/resolve.html#examples",
+    "href": "reference/resolve.html#examples",
+    "title": "rig resolve",
+    "section": "Examples",
+    "text": "Examples\n# Latest development snapshot\nrig resolve devel\n# Latest release (that has an installer available)\nrig resolve release\n# URL for a specific version\nrig resolve 4.1.2\n# Latest version within a minor branch\nrig resolve 4.1",
+    "crumbs": [
+      "Reference",
+      "rig resolve"
+    ]
+  },
+  {
+    "objectID": "reference/rm.html",
+    "href": "reference/rm.html",
+    "title": "rig rm",
+    "section": "",
+    "text": "Aliases: rig del, rig remove, rig delete\nRemove an R installation. It keeps the users’ package libraries.\nIn user mode no administrator rights are needed. In admin mode you need an administrator account to run this command or use sudo on Unix, otherwise rig will ask for your password.",
+    "crumbs": [
+      "Reference",
+      "rig rm"
+    ]
+  },
+  {
+    "objectID": "reference/rm.html#usage",
+    "href": "reference/rm.html#usage",
+    "title": "rig rm",
+    "section": "Usage",
+    "text": "Usage\nrig rm [OPTIONS] [version]...",
+    "crumbs": [
+      "Reference",
+      "rig rm"
+    ]
+  },
+  {
+    "objectID": "reference/rm.html#arguments",
+    "href": "reference/rm.html#arguments",
+    "title": "rig rm",
+    "section": "Arguments",
+    "text": "Arguments\n\n[version]...\n\nversions to remove",
+    "crumbs": [
+      "Reference",
+      "rig rm"
+    ]
+  },
+  {
+    "objectID": "reference/rm.html#options",
+    "href": "reference/rm.html#options",
+    "title": "rig rm",
+    "section": "Options",
+    "text": "Options\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig rm"
+    ]
+  },
+  {
+    "objectID": "reference/add.html",
+    "href": "reference/add.html",
+    "title": "rig add",
+    "section": "",
+    "text": "Alias: rig install\nDownload and install an R version, from the official sources. It keeps the already installed R versions, except on macOS in admin mode, where patch versions of the same minor overwrite each other.\nOn macOS and Windows rig uses the R builds at https://cran.r-project.org. On Linux rig uses the Posit R builds from https://github.com/rstudio/r-builds.\nOn Linux, in user mode rig always installs a portable build, selected for your C library (glibc or musl). In admin mode rig installs a distro-specific build by default, but you can install a portable build instead with --platform linux-portable (or a specific portable platform, e.g. --platform linux-manylinux-2.34). If there is no distro-specific build for your platform, rig falls back to a portable build automatically. Admin-mode portable builds are installed into /opt/R/&lt;version&gt;, just like distro-specific builds. The portable builds are newer and less tested than the distro-specific ones, so please report problems at https://github.com/r-lib/rig/issues.\nThe portable builds bundle the fontconfig library, but no fontconfig configuration and no fonts, so on a minimal system R cannot render text at all. After installing a portable build rig therefore writes a fonts.conf and downloads a small set of fallback fonts, next to the R installations (see rig system dirs --fonts), and points R at them. The configuration also lists the standard system font directories, so your own fonts keep working. Use --without-fonts to skip the font download and use only the fonts that are already installed on the system. Setting FONTCONFIG_FILE yourself overrides all of this. Set RIG_FONTS_URL (and optionally RIG_FONTS_SHA256) to download the fonts from a mirror instead.\nThe desired R version can be specified in various ways:\nIn user mode rig installs R into your home directory and never needs sudo. In admin mode you usually need to run this command with sudo: sudo rig add ..., otherwise rig will need to ask for your password.\nIn admin mode on macOS rig cannot add multiple R versions from the same minor branch. E.g. it is not possible to have R 4.6.0 and R 4.6.1 installed at the same time. Adding one of them will automatically remove the other. In user mode there is no such restriction.\nYou can use rig add to install Rtools:\nwill install all Rtools versions that are needed for the currently installed R versions. You can also request a specific Rtools version, e.g. rig add rtools45.\nIn user mode rig installs R and Rtools into your user profile, without administrator rights. In admin mode you need an administrator account to run this command.",
+    "crumbs": [
+      "Reference",
+      "rig add"
+    ]
+  },
+  {
+    "objectID": "reference/add.html#usage",
+    "href": "reference/add.html#usage",
+    "title": "rig add",
+    "section": "Usage",
+    "text": "Usage\nrig add [OPTIONS] [str]",
+    "crumbs": [
+      "Reference",
+      "rig add"
+    ]
+  },
+  {
+    "objectID": "reference/add.html#arguments",
+    "href": "reference/add.html#arguments",
+    "title": "rig add",
+    "section": "Arguments",
+    "text": "Arguments\n\n[str]\n\nR version to install\n[default: release]",
+    "crumbs": [
+      "Reference",
+      "rig add"
+    ]
+  },
+  {
+    "objectID": "reference/add.html#options",
+    "href": "reference/add.html#options",
+    "title": "rig add",
+    "section": "Options",
+    "text": "Options\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-a, --arch &lt;arch&gt;\n\nSelect architecture: arm64 or x86_64\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--pak-version &lt;pak-version&gt;\n\npak version to install.\n[default: stable]\n[possible values: stable, devel]\n\n--platform &lt;platform&gt; Linux only\n\nInstall the build for this platform, instead of auto-detecting it. Use linux-portable to install a portable (glibc/musl) build.\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--with-desktop-icon Windows only\n\nInstall a desktop icon.\n\n--with-repos=&lt;with-repos&gt;\n\nRepositories to enable, in addition to the ones enabled by default. If --without-repos is also specified (without a value), then only these repositories will be enabled.\n\n--without-cran-mirror\n\nDo not set the cloud CRAN mirror. Deprecated in favor of --without-repos=cran.\n\n--without-fonts Linux only\n\nDo not download fallback fonts. rig still writes the fontconfig configuration, but R will only see the fonts that are already installed on the system.\n\n--without-p3m\n\nDo not set up P3M. This is the default on macOS. Deprecated in favor of --without-repos=p3m.\n[alias: --without-rspm]\n\n--without-pak\n\nDo not install pak.\n\n--without-repos[=&lt;without-repos&gt;]\n\nDo not set up package repositories. Alternatively, specify which ones to skip, a comma-separated list. If --with-repos is also specified, then only the repositories in that argument will be enabled.\n\n--without-sysreqs Linux only\n\nDo not set up system requirements installation.\n\n--without-translations Windows only\n\nDo not install translations.",
+    "crumbs": [
+      "Reference",
+      "rig add"
+    ]
+  },
+  {
+    "objectID": "reference/add.html#examples",
+    "href": "reference/add.html#examples",
+    "title": "rig add",
+    "section": "Examples",
+    "text": "Examples\n# Add the latest development snapshot\nrig add devel\n# Add the latest release\nrig add release\n# Install specific version\nrig add 4.6.1\n# Install latest version within a minor branch\nrig add 4.6\n# Install arm64 build of R (default on arm64 machines)\nrig add -a arm64 release\n# Install x86_64 build of R (default on x86_64 machines)\nrig add -a x86_64 release\n# Install all needed Rtools versions (Windows only)\nrig add rtools",
+    "crumbs": [
+      "Reference",
+      "rig add"
+    ]
+  },
+  {
     "objectID": "reference/library.html",
     "href": "reference/library.html",
     "title": "rig library",
@@ -689,160 +931,6 @@
     "crumbs": [
       "Reference",
       "rig library"
-    ]
-  },
-  {
-    "objectID": "reference/add.html",
-    "href": "reference/add.html",
-    "title": "rig add",
-    "section": "",
-    "text": "Alias: rig install\nDownload and install an R version, from the official sources. It keeps the already installed R versions, except on macOS in admin mode, where patch versions of the same minor overwrite each other.\nOn macOS and Windows rig uses the R builds at https://cran.r-project.org. On Linux rig uses the Posit R builds from https://github.com/rstudio/r-builds.\nOn Linux, in user mode rig always installs a portable build, selected for your C library (glibc or musl). In admin mode rig installs a distro-specific build by default, but you can install a portable build instead with --platform linux-portable (or a specific portable platform, e.g. --platform linux-manylinux-2.34). If there is no distro-specific build for your platform, rig falls back to a portable build automatically. Admin-mode portable builds are installed into /opt/R/&lt;version&gt;, just like distro-specific builds. The portable builds are newer and less tested than the distro-specific ones, so please report problems at https://github.com/r-lib/rig/issues.\nThe portable builds bundle the fontconfig library, but no fontconfig configuration and no fonts, so on a minimal system R cannot render text at all. After installing a portable build rig therefore writes a fonts.conf and downloads a small set of fallback fonts, next to the R installations (see rig system dirs --fonts), and points R at them. The configuration also lists the standard system font directories, so your own fonts keep working. Use --without-fonts to skip the font download and use only the fonts that are already installed on the system. Setting FONTCONFIG_FILE yourself overrides all of this. Set RIG_FONTS_URL (and optionally RIG_FONTS_SHA256) to download the fonts from a mirror instead.\nThe desired R version can be specified in various ways:\nIn user mode rig installs R into your home directory and never needs sudo. In admin mode you usually need to run this command with sudo: sudo rig add ..., otherwise rig will need to ask for your password.\nIn admin mode on macOS rig cannot add multiple R versions from the same minor branch. E.g. it is not possible to have R 4.6.0 and R 4.6.1 installed at the same time. Adding one of them will automatically remove the other. In user mode there is no such restriction.\nYou can use rig add to install Rtools:\nwill install all Rtools versions that are needed for the currently installed R versions. You can also request a specific Rtools version, e.g. rig add rtools45.\nIn user mode rig installs R and Rtools into your user profile, without administrator rights. In admin mode you need an administrator account to run this command.",
-    "crumbs": [
-      "Reference",
-      "rig add"
-    ]
-  },
-  {
-    "objectID": "reference/add.html#usage",
-    "href": "reference/add.html#usage",
-    "title": "rig add",
-    "section": "Usage",
-    "text": "Usage\nrig add [OPTIONS] [str]",
-    "crumbs": [
-      "Reference",
-      "rig add"
-    ]
-  },
-  {
-    "objectID": "reference/add.html#arguments",
-    "href": "reference/add.html#arguments",
-    "title": "rig add",
-    "section": "Arguments",
-    "text": "Arguments\n\n[str]\n\nR version to install\n[default: release]",
-    "crumbs": [
-      "Reference",
-      "rig add"
-    ]
-  },
-  {
-    "objectID": "reference/add.html#options",
-    "href": "reference/add.html#options",
-    "title": "rig add",
-    "section": "Options",
-    "text": "Options\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-a, --arch &lt;arch&gt;\n\nSelect architecture: arm64 or x86_64\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--pak-version &lt;pak-version&gt;\n\npak version to install.\n[default: stable]\n[possible values: stable, devel]\n\n--platform &lt;platform&gt; Linux only\n\nInstall the build for this platform, instead of auto-detecting it. Use linux-portable to install a portable (glibc/musl) build.\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n--with-desktop-icon Windows only\n\nInstall a desktop icon.\n\n--with-repos=&lt;with-repos&gt;\n\nRepositories to enable, in addition to the ones enabled by default. If --without-repos is also specified (without a value), then only these repositories will be enabled.\n\n--without-cran-mirror\n\nDo not set the cloud CRAN mirror. Deprecated in favor of --without-repos=cran.\n\n--without-fonts Linux only\n\nDo not download fallback fonts. rig still writes the fontconfig configuration, but R will only see the fonts that are already installed on the system.\n\n--without-p3m\n\nDo not set up P3M. This is the default on macOS. Deprecated in favor of --without-repos=p3m.\n[alias: --without-rspm]\n\n--without-pak\n\nDo not install pak.\n\n--without-repos[=&lt;without-repos&gt;]\n\nDo not set up package repositories. Alternatively, specify which ones to skip, a comma-separated list. If --with-repos is also specified, then only the repositories in that argument will be enabled.\n\n--without-sysreqs Linux only\n\nDo not set up system requirements installation.\n\n--without-translations Windows only\n\nDo not install translations.",
-    "crumbs": [
-      "Reference",
-      "rig add"
-    ]
-  },
-  {
-    "objectID": "reference/add.html#examples",
-    "href": "reference/add.html#examples",
-    "title": "rig add",
-    "section": "Examples",
-    "text": "Examples\n# Add the latest development snapshot\nrig add devel\n# Add the latest release\nrig add release\n# Install specific version\nrig add 4.6.1\n# Install latest version within a minor branch\nrig add 4.6\n# Install arm64 build of R (default on arm64 machines)\nrig add -a arm64 release\n# Install x86_64 build of R (default on x86_64 machines)\nrig add -a x86_64 release\n# Install all needed Rtools versions (Windows only)\nrig add rtools",
-    "crumbs": [
-      "Reference",
-      "rig add"
-    ]
-  },
-  {
-    "objectID": "reference/rm.html",
-    "href": "reference/rm.html",
-    "title": "rig rm",
-    "section": "",
-    "text": "Aliases: rig del, rig remove, rig delete\nRemove an R installation. It keeps the users’ package libraries.\nIn user mode no administrator rights are needed. In admin mode you need an administrator account to run this command or use sudo on Unix, otherwise rig will ask for your password.",
-    "crumbs": [
-      "Reference",
-      "rig rm"
-    ]
-  },
-  {
-    "objectID": "reference/rm.html#usage",
-    "href": "reference/rm.html#usage",
-    "title": "rig rm",
-    "section": "Usage",
-    "text": "Usage\nrig rm [OPTIONS] [version]...",
-    "crumbs": [
-      "Reference",
-      "rig rm"
-    ]
-  },
-  {
-    "objectID": "reference/rm.html#arguments",
-    "href": "reference/rm.html#arguments",
-    "title": "rig rm",
-    "section": "Arguments",
-    "text": "Arguments\n\n[version]...\n\nversions to remove",
-    "crumbs": [
-      "Reference",
-      "rig rm"
-    ]
-  },
-  {
-    "objectID": "reference/rm.html#options",
-    "href": "reference/rm.html#options",
-    "title": "rig rm",
-    "section": "Options",
-    "text": "Options\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
-    "crumbs": [
-      "Reference",
-      "rig rm"
-    ]
-  },
-  {
-    "objectID": "reference/resolve.html",
-    "href": "reference/resolve.html",
-    "title": "rig resolve",
-    "section": "",
-    "text": "Resolve R versions. Checks the version number of an R version (e.g. release, devel, etc.), and looks up the URL of the installer for it, if an installer is available.\nIt prints the R version number, and after a space the URL of the installer. If no installer is available for this R version and the current platform, the URL is NA.\nAn R version can be specified in various ways:",
-    "crumbs": [
-      "Reference",
-      "rig resolve"
-    ]
-  },
-  {
-    "objectID": "reference/resolve.html#usage",
-    "href": "reference/resolve.html#usage",
-    "title": "rig resolve",
-    "section": "Usage",
-    "text": "Usage\nrig resolve [OPTIONS] &lt;str&gt;",
-    "crumbs": [
-      "Reference",
-      "rig resolve"
-    ]
-  },
-  {
-    "objectID": "reference/resolve.html#arguments",
-    "href": "reference/resolve.html#arguments",
-    "title": "rig resolve",
-    "section": "Arguments",
-    "text": "Arguments\n\n&lt;str&gt;\n\nsymbolic version string to resolve",
-    "crumbs": [
-      "Reference",
-      "rig resolve"
-    ]
-  },
-  {
-    "objectID": "reference/resolve.html#options",
-    "href": "reference/resolve.html#options",
-    "title": "rig resolve",
-    "section": "Options",
-    "text": "Options\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-a, --arch &lt;arch&gt;\n\nUse this architecture, instead of auto-detecting it.\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--platform &lt;platform&gt;\n\nUse this platform, instead of auto-detecting it.\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
-    "crumbs": [
-      "Reference",
-      "rig resolve"
-    ]
-  },
-  {
-    "objectID": "reference/resolve.html#examples",
-    "href": "reference/resolve.html#examples",
-    "title": "rig resolve",
-    "section": "Examples",
-    "text": "Examples\n# Latest development snapshot\nrig resolve devel\n# Latest release (that has an installer available)\nrig resolve release\n# URL for a specific version\nrig resolve 4.1.2\n# Latest version within a minor branch\nrig resolve 4.1",
-    "crumbs": [
-      "Reference",
-      "rig resolve"
     ]
   },
   {
@@ -1676,7 +1764,7 @@
     "href": "news.html",
     "title": "Changelog",
     "section": "",
-    "text": "New rig repos status checks the configured package repositories.\nThe package metadata commands moved from rig repos to a new rig pkg command: rig pkg available and rig pkg info.\nrig library add, rig library default, rig library list and rig library rm have a new --r-version (-r) option, to operate on the libraries of an R version other than the default one.\nrig now uses a user-dependent download directory, to avoid interference between users.",
+    "text": "New rig ppm command queries Posit Package Manager.\nNew rig repos status checks the configured package repositories.\nThe package metadata commands moved from rig repos to a new rig pkg command: rig pkg available and rig pkg info.\nrig library add, rig library default, rig library list and rig library rm have a new --r-version (-r) option, to operate on the libraries of an R version other than the default one.\nrig now uses a user-dependent download directory, to avoid interference between users.",
     "crumbs": [
       "Changelog"
     ]

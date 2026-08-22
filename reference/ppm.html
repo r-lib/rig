@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>rig available – rig</title>
+<title>rig ppm – rig</title>
 <style>
 /* Default styles provided by pandoc.
 ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
@@ -25,6 +25,41 @@ ul.task-list li input[type="checkbox"] {
   width: 0.8em;
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
 }
 </style>
 
@@ -284,7 +319,7 @@ ul.task-list li input[type="checkbox"] {
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../reference/available.html">rig available</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../reference/ppm.html">rig ppm</a></li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
       <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
@@ -391,7 +426,7 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/available.html" class="sidebar-item-text sidebar-link active">
+  <a href="../reference/available.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig available</span></a>
   </div>
 </li>
@@ -427,7 +462,7 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/ppm.html" class="sidebar-item-text sidebar-link">
+  <a href="../reference/ppm.html" class="sidebar-item-text sidebar-link active">
  <span class="menu-text">rig ppm</span></a>
   </div>
 </li>
@@ -503,8 +538,40 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#usage" id="toc-usage" class="nav-link active" data-scroll-target="#usage">Usage</a></li>
+  <li><a href="#which-server" id="toc-which-server" class="nav-link active" data-scroll-target="#which-server">Which server</a></li>
+  <li><a href="#subcommands" id="toc-subcommands" class="nav-link" data-scroll-target="#subcommands">Subcommands</a></li>
+  <li><a href="#rig-ppm-builds" id="toc-rig-ppm-builds" class="nav-link" data-scroll-target="#rig-ppm-builds"><code>rig ppm builds</code></a>
+  <ul class="collapse">
+  <li><a href="#the-columns" id="toc-the-columns" class="nav-link" data-scroll-target="#the-columns">The columns</a></li>
+  <li><a href="#usage" id="toc-usage" class="nav-link" data-scroll-target="#usage">Usage</a></li>
+  <li><a href="#arguments" id="toc-arguments" class="nav-link" data-scroll-target="#arguments">Arguments</a></li>
   <li><a href="#options" id="toc-options" class="nav-link" data-scroll-target="#options">Options</a></li>
+  <li><a href="#examples" id="toc-examples" class="nav-link" data-scroll-target="#examples">Examples</a></li>
+  </ul></li>
+  <li><a href="#rig-ppm-platforms" id="toc-rig-ppm-platforms" class="nav-link" data-scroll-target="#rig-ppm-platforms"><code>rig ppm platforms</code></a>
+  <ul class="collapse">
+  <li><a href="#the-columns-1" id="toc-the-columns-1" class="nav-link" data-scroll-target="#the-columns-1">The columns</a></li>
+  <li><a href="#usage-1" id="toc-usage-1" class="nav-link" data-scroll-target="#usage-1">Usage</a></li>
+  <li><a href="#options-1" id="toc-options-1" class="nav-link" data-scroll-target="#options-1">Options</a></li>
+  </ul></li>
+  <li><a href="#rig-ppm-r-versions" id="toc-rig-ppm-r-versions" class="nav-link" data-scroll-target="#rig-ppm-r-versions"><code>rig ppm r-versions</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-2" id="toc-usage-2" class="nav-link" data-scroll-target="#usage-2">Usage</a></li>
+  <li><a href="#options-2" id="toc-options-2" class="nav-link" data-scroll-target="#options-2">Options</a></li>
+  </ul></li>
+  <li><a href="#rig-ppm-status" id="toc-rig-ppm-status" class="nav-link" data-scroll-target="#rig-ppm-status"><code>rig ppm status</code></a>
+  <ul class="collapse">
+  <li><a href="#the-report" id="toc-the-report" class="nav-link" data-scroll-target="#the-report">The report</a></li>
+  <li><a href="#which-server-1" id="toc-which-server-1" class="nav-link" data-scroll-target="#which-server-1">Which server</a></li>
+  <li><a href="#usage-3" id="toc-usage-3" class="nav-link" data-scroll-target="#usage-3">Usage</a></li>
+  <li><a href="#options-3" id="toc-options-3" class="nav-link" data-scroll-target="#options-3">Options</a></li>
+  <li><a href="#examples-1" id="toc-examples-1" class="nav-link" data-scroll-target="#examples-1">Examples</a></li>
+  </ul></li>
+  <li><a href="#rig-ppm-url" id="toc-rig-ppm-url" class="nav-link" data-scroll-target="#rig-ppm-url"><code>rig ppm url</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-4" id="toc-usage-4" class="nav-link" data-scroll-target="#usage-4">Usage</a></li>
+  <li><a href="#options-4" id="toc-options-4" class="nav-link" data-scroll-target="#options-4">Options</a></li>
+  </ul></li>
   </ul>
 </nav>
     </div>
@@ -512,9 +579,9 @@ ul.task-list li input[type="checkbox"] {
 <main class="content" id="quarto-document-content">
 
 
-<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../reference/available.html">rig available</a></li></ol></nav>
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../reference/ppm.html">rig ppm</a></li></ol></nav>
 <div class="quarto-title">
-<h1 class="title">rig available</h1>
+<h1 class="title">rig ppm</h1>
 </div>
 
 
@@ -532,33 +599,73 @@ ul.task-list li input[type="checkbox"] {
 
 
 <!-- Generated by website/gen-cli-reference.sh. Do not edit by hand. -->
-<p>List R versions available to install.</p>
-<p>By default some releases are omitted from the output:</p>
-<ul>
-<li>Versions older than R 3.0.0 are omitted. The installation of these might not work at all.</li>
-<li>Only the latest release is shown for each minor version. E.g. R 4.2.3 is listed, but other R 4.2.x versions are not. Use <code>--all</code> to list all versions.</li>
-</ul>
-<p>Use <code>--json</code> to return the output in JSON. JSON output includes the full time stamp (if available) and the download URL as well.</p>
-<p>With the <code>--list-distros</code> flag it lists supported Linux distributions.</p>
-<p>With the <code>--list-rtools-versions</code> flag it lists supported Rtools versions. Rtools contains tools to build R and R packages on Windows. Use <code>--all</code> to list all Rtools versions, even very old ones.</p>
-<section id="usage" class="level2">
-<h2 class="anchored" data-anchor-id="usage">Usage</h2>
-<pre class="text"><code>rig available [OPTIONS]</code></pre>
+<p>Ask Posit Package Manager (P3M) what it offers: which platforms and R versions it builds binary packages for, and which builds exist for a package. Nothing here changes anything on your machine.</p>
+<p><a href="#rig-ppm-platforms"><code>rig ppm platforms</code></a> and <a href="#rig-ppm-r-versions"><code>rig ppm r-versions</code></a> list the build targets and R versions, <a href="#rig-ppm-status"><code>rig ppm status</code></a> shows P3M’s whole status report, <a href="#rig-ppm-builds"><code>rig ppm builds</code></a> lists the published builds of one package, and <a href="#rig-ppm-url"><code>rig ppm url</code></a> prints the URL rig is talking to.</p>
+<p>This is about P3M itself. To manage the repositories configured for your R installations, including P3M ones, use <a href="../reference/repos.html"><code>rig repos</code></a>; to look up package metadata in those repositories, use <a href="../reference/pkg.html"><code>rig pkg</code></a>.</p>
+<section id="which-server" class="level2">
+<h2 class="anchored" data-anchor-id="which-server">Which server</h2>
+<p>By default rig reports on the public instance, <code>https://packagemanager.posit.co</code>. Set the <code>PACKAGEMANAGER_ADDRESS</code> environment variable to the base URL of your own P3M instance to report on that instead. <code>rig ppm url</code> prints whichever one is in effect.</p>
+<p>One command is different: <code>rig ppm builds</code> reads a package build index that rig publishes itself, derived from P3M, because P3M has no endpoint that lists a package’s builds. That index always comes from rig’s own host, and <code>PACKAGEMANAGER_ADDRESS</code> does not redirect it.</p>
 </section>
-<section id="options" class="level2">
-<h2 class="anchored" data-anchor-id="options">Options</h2>
+<section id="subcommands" class="level2">
+<h2 class="anchored" data-anchor-id="subcommands">Subcommands</h2>
+<dl>
+<dt><a href="#rig-ppm-builds"><code>builds</code></a></dt>
+<dd>
+List the published builds of a package
+</dd>
+<dt><a href="#rig-ppm-platforms"><code>platforms</code></a></dt>
+<dd>
+List the platforms Posit Package Manager builds for
+</dd>
+<dt><a href="#rig-ppm-r-versions"><code>r-versions</code></a></dt>
+<dd>
+List the R versions Posit Package Manager builds for
+</dd>
+<dt><a href="#rig-ppm-status"><code>status</code></a></dt>
+<dd>
+Show the Posit Package Manager status report
+</dd>
+<dt><a href="#rig-ppm-url"><code>url</code></a></dt>
+<dd>
+Print the Posit Package Manager URL
+</dd>
+</dl>
+</section>
+<section id="rig-ppm-builds" class="level2">
+<h2 class="anchored" data-anchor-id="rig-ppm-builds"><code>rig ppm builds</code></h2>
+<p>List every source and binary artifact Posit Package Manager has published for one R package, with the URL of each, oldest version first, so the latest version is the last thing printed. Use <code>--version</code> to restrict the listing to a single package version.</p>
+<p>P3M has no endpoint that lists a package’s builds, so rig reads a build index it publishes itself, one compressed file per package, derived from P3M. That index comes from rig’s own host, and unlike the rest of <a href="../reference/ppm.html"><code>rig ppm</code></a> it is not affected by <code>PACKAGEMANAGER_ADDRESS</code>. Once fetched it is cached, so repeated queries about the same package are local.</p>
+<section id="the-columns" class="level3">
+<h3 class="anchored" data-anchor-id="the-columns">The columns</h3>
+<ul>
+<li><p><code>version</code> — the package version, as published.</p></li>
+<li><p><code>platform</code> — <code>source</code> for the CRAN source tarball, otherwise the build target: <code>macos</code>, <code>windows</code>, or a Linux target name such as <code>jammy</code>. <a href="../reference/ppm.html#rig-ppm-platforms"><code>rig ppm platforms</code></a> lists the target names.</p></li>
+<li><p><code>arch</code>, <code>r_version</code> — the architecture and minor R version the binary is for. Both are <code>*</code> on a source row, which is architecture- and version-independent.</p></li>
+<li><p><code>linkingto</code> — the package versions the binary was compiled against, for packages with a <code>LinkingTo:</code> field. <strong>This column is what tells otherwise identical rows apart.</strong> P3M republishes a binary when a compiled-against dependency changes, so the same version, platform, architecture and R version can legitimately have several builds; <code>linkingto</code> is the only difference between them.</p></li>
+<li><p><code>url</code> — where to download that artifact. The date in the URL is the CRAN snapshot the build was published against.</p></li>
+</ul>
+<p><code>--json</code> output adds a <code>sha256</code> for each row, and for each <code>linkingto</code> entry. Be careful with it: it is the hash of the <em>original CRAN</em> source tarball, repeated on every platform row of a version. It is not the hash of the binary on that row, and not even the hash of what its own URL serves, because P3M rewrites the <code>Repository:</code> field of the <code>DESCRIPTION</code> before serving it. Treat it as an identity key for the upstream CRAN release, not as a checksum to verify a download against.</p>
+</section>
+<section id="usage" class="level3">
+<h3 class="anchored" data-anchor-id="usage">Usage</h3>
+<pre class="text"><code>rig ppm builds [OPTIONS] &lt;package&gt;</code></pre>
+</section>
+<section id="arguments" class="level3">
+<h3 class="anchored" data-anchor-id="arguments">Arguments</h3>
+<dl>
+<dt><code>&lt;package&gt;</code></dt>
+<dd>
+package to list the builds of
+</dd>
+</dl>
+</section>
+<section id="options" class="level3">
+<h3 class="anchored" data-anchor-id="options">Options</h3>
 <dl>
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
-</dd>
-<dt><code>--all</code></dt>
-<dd>
-List all available versions.
-</dd>
-<dt><code>-a, --arch &lt;arch&gt;</code></dt>
-<dd>
-Use this architecture, instead of auto-detecting it.
 </dd>
 <dt><code>-h, --help</code></dt>
 <dd>
@@ -568,17 +675,186 @@ Print help (see a summary with ‘-h’)
 <dd>
 JSON output
 </dd>
-<dt><code>--list-distros</code></dt>
+<dt><code>--user</code></dt>
 <dd>
-List supported Linux distributions instead of R versions.
+Run in user mode (overrides RIG_MODE and config)
 </dd>
-<dt><code>--list-rtools-versions</code></dt>
+<dt><code>-v, --version &lt;version&gt;</code></dt>
 <dd>
-List available Rtools versions instead of R versions.
+package version to list (default: all)
 </dd>
-<dt><code>--platform &lt;platform&gt;</code></dt>
+</dl>
+</section>
+<section id="examples" class="level3">
+<h3 class="anchored" data-anchor-id="examples">Examples</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Every build of a package, latest version last</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> ppm builds cli</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Just one version</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> ppm builds dplyr <span class="at">--version</span> 1.1.4</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># The builds for one R version and platform</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> ppm builds dplyr <span class="at">--json</span> <span class="kw">|</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="ex">jq</span> <span class="st">'.[] | select(.r_version == "4.5" and .platform == "jammy")'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+</section>
+<section id="rig-ppm-platforms" class="level2">
+<h2 class="anchored" data-anchor-id="rig-ppm-platforms"><code>rig ppm platforms</code></h2>
+<p>List the build targets Posit Package Manager currently offers.</p>
+<p>P3M also reports the targets it has retired — on the public instance those are more than half of the list — and none of them is something to build against today, so they are left out. Add <code>--all</code> to list them too, with a <code>hidden</code> column marking which is which. <code>--all</code> applies to <code>--json</code> as well.</p>
+<p>Apart from that the list is as P3M reports it: targets it serves but does not build binaries for are included, and the several entries that share one <code>platform</code> are not merged.</p>
+<section id="the-columns-1" class="level3">
+<h3 class="anchored" data-anchor-id="the-columns-1">The columns</h3>
+<ul>
+<li><p><code>name</code> — P3M’s name for the entry.</p></li>
+<li><p><code>os</code> — <code>linux</code>, <code>macos</code> or <code>windows</code>.</p></li>
+<li><p><code>platform</code> — the name this target goes by in a package’s build index, so this is the value to match against the <code>platform</code> column of <a href="../reference/ppm.html#rig-ppm-builds"><code>rig ppm builds</code></a>. Several entries can share one: CentOS 7 and RHEL 7 both use the <code>centos7</code> binaries.</p></li>
+<li><p><code>distribution</code> and <code>release</code> — the distribution P3M <em>builds</em> the target on, which is not always the one it serves. The <code>rhel9</code> target is built on Rocky Linux, so its <code>distribution</code> is <code>rockylinux</code>.</p></li>
+<li><p><code>arch</code> — the architectures this target is built for. Most Linux targets are x86_64 only.</p></li>
+<li><p><code>binaries</code> — whether P3M builds binary packages for the target at all. Where this is off, the target is still served, from source.</p></li>
+<li><p><code>hidden</code> — only shown with <code>--all</code>: set on the targets P3M no longer advertises, i.e.&nbsp;retired distribution releases. Their binaries stay downloadable, which is why they can be listed at all.</p></li>
+</ul>
+<p>The <code>manylinux_2_28</code> target is the generic glibc build P3M serves to any Linux it has no specific target for. It appears under the distribution it happens to be built on, not the ones it serves.</p>
+<p>rig reuses P3M’s status document for up to a day, so this command normally answers without contacting the server.</p>
+</section>
+<section id="usage-1" class="level3">
+<h3 class="anchored" data-anchor-id="usage-1">Usage</h3>
+<pre class="text"><code>rig ppm platforms [OPTIONS]</code></pre>
+</section>
+<section id="options-1" class="level3">
+<h3 class="anchored" data-anchor-id="options-1">Options</h3>
+<dl>
+<dt><code>--admin</code></dt>
 <dd>
-Use this platform, instead of auto-detecting it.
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--all</code></dt>
+<dd>
+Also list the platforms P3M has retired
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+<dt><code>--json</code></dt>
+<dd>
+JSON output
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+</dl>
+</section>
+</section>
+<section id="rig-ppm-r-versions" class="level2">
+<h2 class="anchored" data-anchor-id="rig-ppm-r-versions"><code>rig ppm r-versions</code></h2>
+<p>List the minor R versions Posit Package Manager builds binary packages for, newest first, one per line and without a header, so the output can be piped straight into other commands.</p>
+<p>These are minor versions, e.g.&nbsp;<code>4.5</code>, because that is the granularity R uses for binary compatibility: a package built for R 4.5 works with every R 4.5.x.</p>
+<p>rig reuses P3M’s status document for up to a day, so this command normally answers without contacting the server.</p>
+<section id="usage-2" class="level3">
+<h3 class="anchored" data-anchor-id="usage-2">Usage</h3>
+<pre class="text"><code>rig ppm r-versions [OPTIONS]</code></pre>
+</section>
+<section id="options-2" class="level3">
+<h3 class="anchored" data-anchor-id="options-2">Options</h3>
+<dl>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+<dt><code>--json</code></dt>
+<dd>
+JSON output
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+</dl>
+</section>
+</section>
+<section id="rig-ppm-status" class="level2">
+<h2 class="anchored" data-anchor-id="rig-ppm-status"><code>rig ppm status</code></h2>
+<p>Show the full status report of a Posit Package Manager instance: what it is and what it is configured for, then the R versions, build targets, Bioconductor releases and macOS build flavors it serves.</p>
+<section id="the-report" class="level3">
+<h3 class="anchored" data-anchor-id="the-report">The report</h3>
+<p>The first block is the instance itself: its <code>version</code> and <code>build_date</code>, the name of its CRAN repository, whether R and Python are configured, whether binary packages are enabled, whether it requires authentication, and how long its license still covers it.</p>
+<p>Then four tables:</p>
+<ul>
+<li><p><strong>R versions</strong> — the minor R versions binaries are built for. Same list as <a href="../reference/ppm.html#rig-ppm-r-versions"><code>rig ppm r-versions</code></a>.</p></li>
+<li><p><strong>Build targets</strong> — the platforms, as reported, retired ones included. Same table as <a href="../reference/ppm.html#rig-ppm-platforms"><code>rig ppm platforms --all</code></a>, which documents the columns.</p></li>
+<li><p><strong>Bioconductor versions</strong> — each Bioconductor release, the R version it goes with, and the CRAN snapshot it is pinned to.</p></li>
+<li><p><strong>macOS binaries</strong> — the macOS build flavor used for each R version, per architecture. <code>default</code> is what a newer R version gets. An empty cell means there are no macOS binaries for that R version and architecture.</p></li>
+</ul>
+<p>An instance may report fields rig does not show. Use <code>--json</code> to see the status document in full; nothing is dropped from it.</p>
+<p>Unlike the other <a href="../reference/ppm.html"><code>rig ppm</code></a> commands, this one always contacts the server, because part of what it reports is live state. It therefore needs network access even when the other commands do not.</p>
+</section>
+<section id="which-server-1" class="level3">
+<h3 class="anchored" data-anchor-id="which-server-1">Which server</h3>
+<p><code>https://packagemanager.posit.co</code> by default, or the instance <code>PACKAGEMANAGER_ADDRESS</code> names. <code>RIG_PPM_STATUS_URL</code> overrides the URL of the status document alone and wins over <code>PACKAGEMANAGER_ADDRESS</code>; the report’s first line shows the URL actually used.</p>
+</section>
+<section id="usage-3" class="level3">
+<h3 class="anchored" data-anchor-id="usage-3">Usage</h3>
+<pre class="text"><code>rig ppm status [OPTIONS]</code></pre>
+</section>
+<section id="options-3" class="level3">
+<h3 class="anchored" data-anchor-id="options-3">Options</h3>
+<dl>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+<dt><code>--json</code></dt>
+<dd>
+JSON output
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+</dl>
+</section>
+<section id="examples-1" class="level3">
+<h3 class="anchored" data-anchor-id="examples-1">Examples</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co"># The public instance</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> ppm status</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Your own instance</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="va">PACKAGEMANAGER_ADDRESS</span><span class="op">=</span>https://ppm.example.com <span class="ex">rig</span> ppm status</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># The complete status document, including fields rig does not display</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> ppm status <span class="at">--json</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+</section>
+<section id="rig-ppm-url" class="level2">
+<h2 class="anchored" data-anchor-id="rig-ppm-url"><code>rig ppm url</code></h2>
+<p>Print the base URL of the Posit Package Manager instance the other <a href="../reference/ppm.html"><code>rig ppm</code></a> commands report on, and nothing else, so it can be used directly in a script:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="st">"</span><span class="va">$(</span><span class="ex">rig</span> ppm url<span class="va">)</span><span class="st">/__api__/repos"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>This is <code>https://packagemanager.posit.co</code> unless the <code>PACKAGEMANAGER_ADDRESS</code> environment variable is set, in which case it is that, with any trailing slash removed.</p>
+<p>The <code>RIG_PPM_STATUS_URL</code> environment variable overrides the URL of the status document alone, and takes precedence over <code>PACKAGEMANAGER_ADDRESS</code> for that one document. If you set it, this command still prints the base URL, while <a href="../reference/ppm.html#rig-ppm-status"><code>rig ppm status</code></a> reports on the instance <code>RIG_PPM_STATUS_URL</code> names and shows which URL that was.</p>
+<section id="usage-4" class="level3">
+<h3 class="anchored" data-anchor-id="usage-4">Usage</h3>
+<pre class="text"><code>rig ppm url [OPTIONS]</code></pre>
+</section>
+<section id="options-4" class="level3">
+<h3 class="anchored" data-anchor-id="options-4">Options</h3>
+<dl>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+<dt><code>--json</code></dt>
+<dd>
+JSON output
 </dd>
 <dt><code>--user</code></dt>
 <dd>
@@ -587,6 +863,7 @@ Run in user mode (overrides RIG_MODE and config)
 </dl>
 
 
+</section>
 </section>
 
 </main> <!-- /main -->
