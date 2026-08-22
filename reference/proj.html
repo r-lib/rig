@@ -716,7 +716,7 @@ Run in user mode (overrides RIG_MODE and config)
 <p>By default rig solves for the machine it runs on. Use <code>--platform</code> to solve for a different one, e.g.&nbsp;to write a lockfile on macOS for a Linux deployment:</p>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> proj solve <span class="at">--platform</span> ubuntu-24.04</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p><code>--platform source</code> solves for source packages only, and does not download any binary package metadata. rig also falls back to source packages when there are no binaries for a platform at all. There is then nothing for <code>--prefer-binary</code> to prefer, and rig ignores it.</p>
-<p>The <code>pkg.lock</code> file records, for every package, whether it is a source or a binary package and the URL it is downloaded from.</p>
+<p>The <code>pkg.lock</code> file records, for every package, whether it is a source or a binary package and the URL it is downloaded from. It also records where the file is cached, which is per <em>build</em> rather than per version: a repository can offer several binaries of one version for one platform and R version, and they are cached side by side.</p>
 </section>
 <section id="usage-2" class="level3">
 <h3 class="anchored" data-anchor-id="usage-2">Usage</h3>
