@@ -50,4 +50,7 @@ there are no binaries for a platform at all. There is then nothing for
 `--prefer-binary` to prefer, and rig ignores it.
 
 The `pkg.lock` file records, for every package, whether it is a source or a
-binary package and the URL it is downloaded from.
+binary package and the URL it is downloaded from. It also records where the
+file is cached, which is per *build* rather than per version: a repository
+can offer several binaries of one version for one platform and R version,
+and they are cached side by side.
