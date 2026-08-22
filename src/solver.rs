@@ -175,16 +175,24 @@ pub fn rpackage_version_ranges_from_constraints(
 /// binary build: the version's own dependencies, with every `LinkingTo`
 /// dependency pinned to the version the binary was compiled against.
 ///
-/// Returns `None` when the build must not be offered at all:
+/// Returns `None` when the build must not be offered at all: a pin that
+/// contradicts the declared range can never hold, so the build is dead weight
+/// for the solver.
 ///
-/// * a `linkingto` entry naming something the version does not declare a
-///   dependency on would add a dependency that is not in the source metadata,
-///   and it would then also leak into the lockfile's dependency lists;
-/// * a pin that contradicts the declared range can never hold, so the build is
-///   dead weight for the solver.
+/// Entries are *skipped* rather than pinned in two cases:
 ///
-/// `R` and the base packages are skipped: the solver equates their version with
-/// the R version, which is not what a `linkingto` entry means.
+/// * `R` and the base packages, because the solver equates their version with
+///   the R version, which is not what a `linkingto` entry means;
+/// * a name the version does not declare a dependency on. The `linkingto`
+///   column is the transitive header closure of the build, not just the
+///   package's own `LinkingTo:` field — a macOS arm64 build of ragg 1.5.2, whose
+///   `LinkingTo:` is `systemfonts, textshaping`, also lists `cpp11`, which those
+///   two link to. Pinning such a name would add a dependency that is not in the
+///   source metadata, and it would then leak into the lockfile's dependency
+///   lists; rejecting the build over it would fall back to a source build of
+///   every package with an indirect header dependency. The direct entries are
+///   still pinned, and they pin their own `linkingto` in turn, so the chain is
+///   constrained where it is declared.
 fn binary_artifact_deps(
     source: &HashMap<RPackageName, RPackageVersionRanges, rustc_hash::FxBuildHasher>,
     binary: &BinaryArtifact,
@@ -194,7 +202,9 @@ fn binary_artifact_deps(
         if is_base_package(name) {
             continue;
         }
-        let declared = deps.get(name)?;
+        let Some(declared) = deps.get(name) else {
+            continue;
+        };
         let pinned = declared.intersection(&RegistryPackageVersion::artifacts_of(name, version));
         if pinned.is_empty() {
             return None;
@@ -1057,21 +1067,47 @@ mod tests {
     }
 
     #[test]
-    fn builds_we_cannot_describe_are_not_offered() {
-        // A build whose `linkingto` names something the package does not depend
-        // on, and one for a version the source metadata does not know: neither is
-        // a candidate, so the solve falls back to the source tarball.
+    fn a_build_of_an_unknown_version_is_not_offered() {
+        // A build for a version the source metadata does not know has no
+        // dependencies to install, so it is not a candidate.
         let (_reg, solution) = solve(
             StubSource {
                 packages: vec![("a", "1.0.0", "")],
             },
             Some(StubBinaries {
-                builds: vec![("a", "1.0.0", 1, "b=1.0.0"), ("a", "9.9.9", 2, "")],
+                builds: vec![("a", "9.9.9", 2, "")],
                 ..Default::default()
             }),
             "a",
         );
         assert_eq!(solution["a"], source("a", "1.0.0"));
+    }
+
+    #[test]
+    fn an_indirect_linkingto_entry_does_not_disqualify_a_build() {
+        // `linkingto` is the transitive header closure: ragg's macOS builds list
+        // `cpp11`, which ragg does not depend on, only `systemfonts` and
+        // `textshaping` do. An entry the package does not declare is ignored,
+        // not a reason to fall back to a source build.
+        let (reg, solution) = solve(
+            StubSource {
+                packages: vec![("a", "1.0.0", "b (>= 1.0.0)"), ("b", "1.0.0", "")],
+            },
+            Some(StubBinaries {
+                builds: vec![("a", "1.0.0", 1, "b=1.0.0,c=0.5.5")],
+                ..Default::default()
+            }),
+            "a",
+        );
+        assert_eq!(solution["a"], binary("a", "1.0.0", 1));
+        // The declared entry is still pinned, the undeclared one adds nothing:
+        // no `c` is installed and none leaks into the recorded dependencies.
+        assert_eq!(solution["b"], source("b", "1.0.0"));
+        assert!(!solution.contains_key("c"));
+        let deps = reg
+            .get_dependency_summary(&"a".to_string(), &solution["a"])
+            .unwrap();
+        assert_eq!(deps, vec!["b".to_string()]);
     }
 
     // ---------------------------------------------------------------------

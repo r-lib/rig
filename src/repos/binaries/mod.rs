@@ -28,7 +28,12 @@
 //!   exactly when the package has a `LinkingTo:` field. It lists the dependency
 //!   source versions the binary was compiled against, as comma-separated
 //!   `pkg@version=sha256` (those hashes being the same upstream-CRAN identity
-//!   hashes as the `sha256` column).
+//!   hashes as the `sha256` column). It is the *transitive* header closure, not
+//!   a copy of the package's own `LinkingTo:` field: ragg links to `systemfonts`
+//!   and `textshaping` only, but its rows also list `cpp11`, which those two
+//!   link to. So an entry need not be a declared dependency of the package at
+//!   all — see `crate::solver::binary_artifact_deps` for what the solver does
+//!   with that.
 //! * **Several rows can share `(version, platform, arch, r_version)`, and
 //!   `linkingto` is exactly what distinguishes them** — e.g. dplyr 0.7.4 on
 //!   xenial/R 3.4 has seven rows, one built against `plogr 0.1-1` and another
