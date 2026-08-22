@@ -21,12 +21,16 @@ use crate::textfmt::{reflow, wrap, write_field};
 
 mod deps;
 mod manifest;
+#[cfg(test)]
+mod stub;
+mod tree;
 
 pub fn sc_pkg(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
         Some(("available", s)) => sc_pkg_available(s, args, mainargs),
         Some(("deps", s)) => deps::sc_pkg_deps(s, args, mainargs),
         Some(("info", s)) => sc_pkg_info(s, args, mainargs),
+        Some(("tree", s)) => tree::sc_pkg_tree(s, args, mainargs),
         _ => Ok(()), // unreachable
     }
 }

@@ -6,7 +6,8 @@
 
 * New `rig pkg` subcommand to query and manage R packages. Two subcommands
   from `rig repos` moved to `rig pkg`: `rig pkg available` and
-  `rig pkg info`.
+  `rig pkg info`. `rig pkg deps` lists the packages a package needs, in a
+  table, and `rig pkg tree` shows the same dependencies as a tree.
 
 * `rig library add`, `rig library default`, `rig library list` and
   `rig library rm` have a new `--r-version` (`-r`) option, to operate on

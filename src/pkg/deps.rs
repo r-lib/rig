@@ -182,6 +182,20 @@ fn recursive_deps(
     Ok((root.version, rows, num_direct))
 }
 
+/// The packages `rig pkg deps --recursive` would list, by name. Lets
+/// [`super::tree`] check that it walks the same closure this module does,
+/// without exposing [`DepRow`] outside the module.
+#[cfg(test)]
+pub(super) fn recursive_dep_names(
+    loader: &dyn PackageVersionLoader,
+    package: &str,
+    ver: &str,
+    dev: bool,
+) -> Result<Vec<String>, Box<dyn Error>> {
+    let (_, rows, _) = recursive_deps(loader, package, ver, dev)?;
+    Ok(rows.into_iter().map(|row| row.name).collect())
+}
+
 /// Record `dep` as a dependency of `parent`, `depth` steps from the queried
 /// package, and return whether this is the first time we see it.
 ///
@@ -226,7 +240,7 @@ fn record_dep(
 }
 
 /// The package version whose dependencies were asked about.
-fn root_package(
+pub(super) fn root_package(
     loader: &dyn PackageVersionLoader,
     package: &str,
     ver: &str,
@@ -259,12 +273,12 @@ fn select_version<'a>(
 /// Whether a dependency belongs in the listing: the soft dependencies
 /// (`Suggests`, `Enhances`) only with `dev`. A package that is both a hard and
 /// a soft dependency is always listed.
-fn wanted_dep(dep: &DepVersionSpec, dev: bool) -> bool {
+pub(super) fn wanted_dep(dep: &DepVersionSpec, dev: bool) -> bool {
     dev || !dep.types.iter().all(|t| DEP_TYPES_SOFT.contains(t))
 }
 
 /// The version requirements of a dependency, e.g. `>= 1.0.2`.
-fn requirements(dep: &DepVersionSpec) -> Vec<String> {
+pub(super) fn requirements(dep: &DepVersionSpec) -> Vec<String> {
     dep.constraints
         .iter()
         .map(|c| format!("{} {}", c.constraint_type, c.version))
@@ -283,7 +297,7 @@ fn sort_key(row: &DepRow) -> usize {
 
 /// Where a dependency sorts among the dependency types, by the first type it
 /// has, in `Depends`, `Imports`, `LinkingTo`, `Suggests`, `Enhances` order.
-fn type_rank(types: &[RDepType]) -> usize {
+pub(super) fn type_rank(types: &[RDepType]) -> usize {
     types
         .iter()
         .filter_map(|t| RDepType::all().iter().position(|a| a == t))
@@ -293,7 +307,7 @@ fn type_rank(types: &[RDepType]) -> usize {
 
 /// The newest version of a package, or nothing for R and the base packages,
 /// which ship with R and so are not in the database.
-fn newest_version(newest: &mut Newest, package: &str) -> Option<RPackageVersion> {
+pub(super) fn newest_version(newest: &mut Newest, package: &str) -> Option<RPackageVersion> {
     if is_base_package(package) {
         return None;
     }
@@ -302,20 +316,20 @@ fn newest_version(newest: &mut Newest, package: &str) -> Option<RPackageVersion>
 
 /// The newest version of each package, from the database, remembered so that a
 /// package showing up many times in a closure is only queried once.
-struct Newest<'a> {
+pub(super) struct Newest<'a> {
     loader: &'a dyn PackageVersionLoader,
     newest: HashMap<String, Option<Package>>,
 }
 
 impl<'a> Newest<'a> {
-    fn new(loader: &'a dyn PackageVersionLoader) -> Self {
+    pub(super) fn new(loader: &'a dyn PackageVersionLoader) -> Self {
         Newest {
             loader,
             newest: HashMap::new(),
         }
     }
 
-    fn get(&mut self, package: &str) -> Option<&Package> {
+    pub(super) fn get(&mut self, package: &str) -> Option<&Package> {
         if !self.newest.contains_key(package) {
             let newest = match self.loader.load_versions(package) {
                 Ok(versions) => versions
@@ -433,9 +447,16 @@ fn print_deps_recursive(name: &str, version: &RPackageVersion, num_direct: usize
 /// have no version of their own (`-`); `?` marks a package that is not in the
 /// database at all.
 fn version_cell(row: &DepRow) -> String {
-    match &row.version {
+    version_cell_for(&row.name, row.version.as_ref())
+}
+
+/// How a package's version is shown when the database has no version for it:
+/// `-` for R and the base packages, which ship with R, `?` for a package that is
+/// not in the database at all.
+pub(super) fn version_cell_for(name: &str, version: Option<&RPackageVersion>) -> String {
+    match version {
         Some(version) => version.to_string(),
-        None if is_base_package(&row.name) => "-".to_string(),
+        None if is_base_package(name) => "-".to_string(),
         None => "?".to_string(),
     }
 }
@@ -499,45 +520,7 @@ fn print_deps_json(rows: &[DepRow], recursive: bool) -> Result<(), Box<dyn Error
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dcf::PackageDependencies;
-
-    /// A [`PackageVersionLoader`] over a fixed set of `(name, version, deps)`
-    /// triples, `deps` being DCF-ish fields, e.g.
-    /// `"Imports: b (>= 1.0.0), c; Suggests: d"`.
-    struct Stub {
-        packages: Vec<(&'static str, &'static str, &'static str)>,
-    }
-
-    impl PackageVersionLoader for Stub {
-        fn load_versions(&self, package: &str) -> Result<Vec<Package>, Box<dyn Error>> {
-            Ok(self
-                .packages
-                .iter()
-                .filter(|(name, _, _)| *name == package)
-                .map(|(name, version, deps)| {
-                    Package::from_crandb(
-                        name.to_string(),
-                        RPackageVersion::from_str(version).unwrap(),
-                        stub_deps(deps).dependencies,
-                    )
-                })
-                .collect())
-        }
-    }
-
-    fn stub_deps(spec: &str) -> PackageDependencies {
-        let mut deps = PackageDependencies::new();
-        for field in spec.split(';') {
-            let field = field.trim();
-            if field.is_empty() {
-                continue;
-            }
-            let (dep_type, list) = field.split_once(':').unwrap();
-            deps.append(&mut PackageDependencies::from_str(list, dep_type.trim()).unwrap());
-        }
-        deps.simplify();
-        deps
-    }
+    use crate::pkg::stub::Stub;
 
     /// The names of the rows, in the order they are printed in.
     fn names(rows: &[DepRow]) -> Vec<&str> {

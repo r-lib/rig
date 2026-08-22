@@ -8,7 +8,9 @@ installations, without starting R.
 [`rig pkg available`](#rig-pkg-available) lists every package the
 repositories offer, [`rig pkg info`](#rig-pkg-info) shows the
 `DESCRIPTION` of one package, or, with `--versions`, all of its versions,
-and [`rig pkg deps`](#rig-pkg-deps) lists the packages one package needs,
-directly or, with `--recursive`, transitively.
+[`rig pkg deps`](#rig-pkg-deps) lists the packages one package needs,
+directly or, with `--recursive`, transitively, and
+[`rig pkg tree`](#rig-pkg-tree) shows those transitive dependencies as a
+tree instead of a table.
 
 The repositories themselves are managed by [`rig repos`](repos.qmd).

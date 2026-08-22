@@ -25,11 +25,15 @@ a version of their own, as they are part of R.
 
 ## Recursive dependencies
 
-`--recursive` (`-r`) shows the whole dependency tree: not only the
+`--recursive` (`-r`) shows the whole dependency closure: not only the
 packages the package needs directly, but also the packages *those* need,
 and so on. Each package appears once, with the `Depth` column giving its
 distance from the queried package, and the `Needed by` column naming the
 packages that pull it in.
+
+[`rig pkg tree`](#rig-pkg-tree) shows the same closure as a tree, which
+makes it easier to see how a package is pulled in, at the price of a
+longer listing.
 
 A recursive listing only ever follows hard dependencies, also below a
 soft dependency added by `--dev`, so `--dev --recursive` means the
