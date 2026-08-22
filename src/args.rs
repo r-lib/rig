@@ -1379,6 +1379,15 @@ pub fn rig_app() -> Command {
                         .required(false),
                 )
                 .arg(
+                    Arg::new("why")
+                        .help("Invert the tree: show what pulls this package in")
+                        .long("why")
+                        .visible_alias("explain")
+                        .value_name("PACKAGE")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
                     Arg::new("json")
                         .help("JSON output")
                         .long("json")
@@ -1712,6 +1721,15 @@ pub fn rig_app() -> Command {
                         .help("Leave out R and the base packages")
                         .long("no-base")
                         .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("why")
+                        .help("Invert the tree: show what pulls this package in")
+                        .long("why")
+                        .visible_alias("explain")
+                        .value_name("PACKAGE")
+                        .num_args(1)
                         .required(false),
                 )
                 .arg(

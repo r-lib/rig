@@ -219,6 +219,9 @@ fn proj_deps_recursive(pkg: &Package, json: bool) -> Result<(), Box<dyn Error>> 
 /// The same closure [`proj_deps_recursive`] lists in a flat table, so the two
 /// read the manifest the same way and follow the same edges; only the layout
 /// differs.
+///
+/// `--why` prints that closure inverted, rooted at the named package, so it
+/// covers the same edges the other way around.
 fn sc_proj_tree(
     args: &ArgMatches,
     projargs: &ArgMatches,
@@ -226,6 +229,7 @@ fn sc_proj_tree(
 ) -> Result<(), Box<dyn Error>> {
     let dev = args.get_flag("dev");
     let no_base = args.get_flag("no-base");
+    let why = args.get_one::<String>("why").map(|s| s.as_str());
     let json = args.get_flag("json") || projargs.get_flag("json") || mainargs.get_flag("json");
     let default_input = "DESCRIPTION".to_string();
     let input: &String = args.get_one::<String>("input").unwrap_or(&default_input);
@@ -235,7 +239,9 @@ fn sc_proj_tree(
         &pkg.name,
         &pkg.version,
         &pkg.dependencies.dependencies,
+        dev,
         no_base,
+        why,
         json,
     )
 }
