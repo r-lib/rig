@@ -540,8 +540,8 @@ ul.task-list li input[type="checkbox"] {
   </ul></li>
   <li><a href="#rig-pkg-tree" id="toc-rig-pkg-tree" class="nav-link" data-scroll-target="#rig-pkg-tree"><code>rig pkg tree</code></a>
   <ul class="collapse">
-  <li><a href="#repeated-packages" id="toc-repeated-packages" class="nav-link" data-scroll-target="#repeated-packages">Repeated packages</a></li>
-  <li><a href="#dependency-types-1" id="toc-dependency-types-1" class="nav-link" data-scroll-target="#dependency-types-1">Dependency types</a></li>
+  <li><a href="#reading-the-tree" id="toc-reading-the-tree" class="nav-link" data-scroll-target="#reading-the-tree">Reading the tree</a></li>
+  <li><a href="#inverting-the-tree" id="toc-inverting-the-tree" class="nav-link" data-scroll-target="#inverting-the-tree">Inverting the tree</a></li>
   <li><a href="#usage-5" id="toc-usage-5" class="nav-link" data-scroll-target="#usage-5">Usage</a></li>
   <li><a href="#arguments-3" id="toc-arguments-3" class="nav-link" data-scroll-target="#arguments-3">Arguments</a></li>
   <li><a href="#options-5" id="toc-options-5" class="nav-link" data-scroll-target="#options-5">Options</a></li>
@@ -906,8 +906,7 @@ Run in user mode (overrides RIG_MODE and config)
 </section>
 <section id="rig-pkg-tree" class="level2">
 <h2 class="anchored" data-anchor-id="rig-pkg-tree"><code>rig pkg tree</code></h2>
-<p>Show everything a package needs, directly or indirectly, as a tree, so you can see <em>how</em> each package is pulled in and not only <em>that</em> it is.</p>
-<p>This is the same set of packages that <a href="#rig-pkg-deps"><code>rig pkg deps --recursive</code></a> lists in a flat table, laid out by the shape of the dependency graph instead. Use <code>--json</code> for machine readable output, as one nested object.</p>
+<p>Show everything a package needs, directly or indirectly, as a tree: the same closure <a href="#rig-pkg-deps"><code>rig pkg deps --recursive</code></a> lists in a flat table, laid out by the shape of the dependency graph.</p>
 <pre><code>dplyr 1.1.4 — 13 direct, 30 total
 ├── R (&gt;= 3.5.0) [D]
 ├── cli 3.6.4 (&gt;= 3.4.0)
@@ -920,29 +919,35 @@ Run in user mode (overrides RIG_MODE and config)
 └── vctrs 0.6.5 (&gt;= 0.6.4)
     └── cpp11 0.5.2 [L]
 [Suggests]
-├── testthat 3.2.3 (&gt;= 3.1.5)
 └── tidyr 1.3.1 (&gt;= 1.3.0)
     └── cpp11 0.5.2 (&gt;= 0.4.0) [L] (*)</code></pre>
-<p>The first line names the package version the tree is for, how many dependencies it has directly, and how many distinct packages there are in the whole tree. Each line below it names a package, the version currently on CRAN, and the version requirement it is needed with, if it has one.</p>
-<p>By default the tree of the latest version of the package is shown; use <code>--version</code> to ask about a specific one, including versions that CRAN has archived. <a href="../reference/proj.html#rig-proj-tree"><code>rig proj tree</code></a> shows the same tree for the dependencies a project declares, instead of a package’s.</p>
-<section id="repeated-packages" class="level3">
-<h3 class="anchored" data-anchor-id="repeated-packages">Repeated packages</h3>
-<p>A package that several others need is expanded only once, under the first place it appears. Later occurrences are shown as a single line marked <code>(*)</code>, meaning “its dependencies are above”. Without this a real dependency tree would be thousands of lines long, most of it repetition.</p>
-<p>The same rule makes dependency cycles — which do occur on CRAN, usually through <code>Suggests</code> — end on their own, and it is why the number of <em>lines</em> is larger than the <code>total</code> count on the first line: R and the base packages have no dependencies to elide, so they are printed wherever they are needed.</p>
-</section>
-<section id="dependency-types-1" class="level3">
-<h3 class="anchored" data-anchor-id="dependency-types-1">Dependency types</h3>
-<p>By default rig follows the hard dependencies only: <code>Depends</code>, <code>Imports</code> and <code>LinkingTo</code>, i.e.&nbsp;the packages that need to be installed to use the package. <code>--dev</code> adds the soft dependencies, <code>Suggests</code> and <code>Enhances</code>, which are typically only needed to run the tests, build the vignettes or use some optional feature. As in <code>rig pkg deps</code>, <code>--dev</code> applies to the queried package only: below a soft dependency rig still follows hard dependencies only, so <code>--dev</code> means the package’s own dev dependencies plus everything they need to be installed.</p>
-<p>The soft dependencies are set apart in their own <code>[Suggests]</code> and <code>[Enhances]</code> sections, each numbering its own lines, the way <code>cargo tree</code> sets <code>[dev-dependencies]</code> apart. Because <code>--dev</code> only applies to the queried package, these sections only ever appear at the top of the tree.</p>
-<p>Among the hard dependencies, <code>Imports</code> is the common case and is not marked. The other two are, at the end of the line:</p>
+<p>The first line names the package version, how many dependencies it has directly and how many distinct packages there are in the whole tree. Each line below names a package, the version currently on CRAN, and the version requirement it is needed with, if it has one.</p>
+<p><code>--version</code> asks about a specific version, including versions CRAN has archived. <code>--json</code> gives machine readable output, as one nested object. <a href="../reference/proj.html#rig-proj-tree"><code>rig proj tree</code></a> shows the same tree for the dependencies a project declares.</p>
+<section id="reading-the-tree" class="level3">
+<h3 class="anchored" data-anchor-id="reading-the-tree">Reading the tree</h3>
+<p>A package that several others need is expanded only once, under its first occurrence; later occurrences are a single line marked <code>(*)</code>, meaning “its dependencies are above”. This is also what makes dependency cycles end on their own.</p>
+<p>A mark at the end of a line says how the package is needed; <code>Imports</code> is the common case and is not marked.</p>
 <ul>
-<li><code>[D]</code> — a <code>Depends</code>, so the package is <em>attached</em> when this one is loaded, not merely loaded itself.</li>
-<li><code>[L]</code> — a <code>LinkingTo</code>, so this package is compiled against it; it is needed to build the package, not to run it.</li>
+<li><code>[D]</code> — a <code>Depends</code>, so the package is <em>attached</em>, not merely loaded.</li>
+<li><code>[L]</code> — a <code>LinkingTo</code>, so this package is compiled against it.</li>
 <li><code>[DL]</code> — both.</li>
 </ul>
-<p>Within a section the dependencies are listed with R first, then grouped by dependency type, in the order R lists the fields in, and by name within a type.</p>
-<p>R itself and the base packages, e.g.&nbsp;<code>utils</code> or <code>stats</code>, are shown if a package depends on them, with their version requirement, but without a version of their own, as they are part of R. <code>--no-base</code> leaves out R and the base packages altogether, which is much less to read if you only care about what would have to be installed. A package that is not in the repositories at all is shown with <code>?</code> for its version.</p>
+<p>Dependencies are listed with R first, then grouped by dependency type, in the order R lists the fields in, and by name within a type. R and the base packages, e.g.&nbsp;<code>utils</code>, are shown with their version requirement but without a version of their own, as they are part of R; <code>--no-base</code> leaves them out altogether. A package that is not in the repositories is shown with <code>?</code> for its version.</p>
+<p>By default rig follows the hard dependencies only. <code>--dev</code> adds <code>Suggests</code> and <code>Enhances</code>, in their own <code>[Suggests]</code> and <code>[Enhances]</code> sections. As in <code>rig pkg deps</code>, <code>--dev</code> applies to the queried package only, so these sections only ever appear at the top of the tree.</p>
 <p>rig follows the dependencies of the <em>latest</em> version of every package in the tree, so a version requirement that would force an older version, with different dependencies, is not taken into account. Use <a href="../reference/proj.html"><code>rig proj solve</code></a> for a resolution that is consistent across versions.</p>
+</section>
+<section id="inverting-the-tree" class="level3">
+<h3 class="anchored" data-anchor-id="inverting-the-tree">Inverting the tree</h3>
+<p><code>--why &lt;package&gt;</code> (alias <code>--explain</code>) inverts the tree: the named package is the root and the tree grows towards the packages that need it, down to the queried package, which becomes a leaf.</p>
+<pre><code>glue 1.8.1 — 4 direct dependents, 5 total
+├── dplyr 1.2.1 (needs &gt;= 1.3.2)
+├── pillar 1.11.1
+│   └── dplyr 1.2.1 (needs &gt;= 1.9.0)
+└── vctrs 0.7.3
+    ├── dplyr 1.2.1 (needs &gt;= 0.7.1)
+    └── pillar 1.11.1 (needs &gt;= 0.5.0) (*)</code></pre>
+<p>Each line says how <em>that</em> package needs the one <strong>above</strong> it, hence <code>needs</code>; the <code>[D]</code>, <code>[L]</code>, <code>[S]</code> and <code>[E]</code> marks describe the same edge. <code>[S]</code> and <code>[E]</code> take the place of the <code>[Suggests]</code> and <code>[Enhances]</code> sections, which in an inverted tree would be one line deep inside it.</p>
+<p><code>--why</code> searches the tree only, not the repositories, so <code>--version</code>, <code>--dev</code> and <code>--no-base</code> apply as above, and a package that is not in the tree is an error.</p>
 </section>
 <section id="usage-5" class="level3">
 <h3 class="anchored" data-anchor-id="usage-5">Usage</h3>
@@ -987,6 +992,11 @@ Run in user mode (overrides RIG_MODE and config)
 <dt><code>-v, --version &lt;version&gt;</code></dt>
 <dd>
 package version to use (default: latest)
+</dd>
+<dt><code>--why &lt;PACKAGE&gt;</code></dt>
+<dd>
+Invert the tree: show what pulls this package in
+<em>[aliases: explain]</em>
 </dd>
 </dl>
 

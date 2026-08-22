@@ -770,8 +770,7 @@ Run in user mode (overrides RIG_MODE and config)
 </section>
 <section id="rig-proj-tree" class="level2">
 <h2 class="anchored" data-anchor-id="rig-proj-tree"><code>rig proj tree</code></h2>
-<p>Show everything an R project needs, directly or indirectly, as a tree, so you can see <em>how</em> each package is pulled in and not only <em>that</em> it is.</p>
-<p>This is the same set of packages that <a href="#rig-proj-deps"><code>rig proj deps --recursive</code></a> lists in a flat table, laid out by the shape of the dependency graph instead. Use <code>--json</code> for machine readable output, as one nested object.</p>
+<p>Show everything an R project needs, directly or indirectly, as a tree: the same closure <a href="#rig-proj-deps"><code>rig proj deps --recursive</code></a> lists in a flat table, laid out by the shape of the dependency graph.</p>
 <pre><code>myproject 0.1.0 — 3 direct, 24 total
 ├── R (&gt;= 4.1) [D]
 ├── cli 3.6.4
@@ -783,13 +782,13 @@ Run in user mode (overrides RIG_MODE and config)
         └── cpp11 0.5.2 [L]
 [Suggests]
 └── testthat 3.2.3 (&gt;= 3.1.5)</code></pre>
-<p>The first line names the project and its version, how many dependencies it declares directly, and how many distinct packages there are in the whole tree. Each line below it names a package, the version currently in the repositories, and the version requirement it is needed with, if it has one.</p>
-<p>By default rig reads the project manifest (e.g.&nbsp;<code>DESCRIPTION</code>) in the current directory; use <code>--input</code> to point to a different file. Unlike the plain <a href="#rig-proj-deps"><code>rig proj deps</code></a> listing, the tree needs the package metadata of the repositories, which rig downloads if it does not have it yet. It does not need R.</p>
+<p>The first line names the project and its version, how many dependencies it declares directly and how many distinct packages there are in the whole tree. Each line below names a package, the version currently in the repositories, and the version requirement it is needed with, if it has one.</p>
+<p>By default rig reads the project manifest (e.g.&nbsp;<code>DESCRIPTION</code>) in the current directory; use <code>--input</code> to point to a different file. Unlike <a href="#rig-proj-deps"><code>rig proj deps</code></a>, the tree needs the package metadata of the repositories, which rig downloads if it does not have it yet. It does not need R. <code>--json</code> gives machine readable output, as one nested object.</p>
 <section id="reading-the-tree" class="level3">
 <h3 class="anchored" data-anchor-id="reading-the-tree">Reading the tree</h3>
-<p>A package that several others need is expanded only once, under the first place it appears; later occurrences are a single line marked <code>(*)</code>, meaning “its dependencies are above”. That is also what makes dependency cycles end on their own.</p>
-<p><code>--dev</code> adds the project’s development dependencies, <code>Suggests</code> and <code>Enhances</code>, in their own <code>[Suggests]</code> and <code>[Enhances]</code> sections. As in <code>rig proj deps</code>, <code>--dev</code> applies to the project only: below a development dependency rig still follows hard dependencies only. <code>--no-base</code> leaves out R and the base packages altogether, which is much less to read if you only care about what would have to be installed. A package that is not in the repositories at all is shown with <code>?</code> for its version.</p>
-<p>Among the hard dependencies, <code>Imports</code> is the common case and is not marked; <code>[D]</code> is a <code>Depends</code>, <code>[L]</code> a <code>LinkingTo</code>, <code>[DL]</code> both. <a href="../reference/pkg.html#rig-pkg-tree"><code>rig pkg tree</code></a>, which shows the same tree for a package in the repositories, describes all of this in full.</p>
+<p>A package that several others need is expanded only once, under its first occurrence; later occurrences are marked <code>(*)</code>, meaning “its dependencies are above”. <code>--dev</code> adds the project’s development dependencies, in their own <code>[Suggests]</code> and <code>[Enhances]</code> sections; <code>--no-base</code> leaves out R and the base packages. Among the hard dependencies, <code>Imports</code> is not marked, <code>[D]</code> is a <code>Depends</code>, <code>[L]</code> a <code>LinkingTo</code>, <code>[DL]</code> both.</p>
+<p><code>--why &lt;package&gt;</code> (alias <code>--explain</code>) inverts the tree, so that the named package is the root and the tree grows towards the packages that need it, down to the project itself. Each line then says how <em>that</em> package needs the one above it, hence <code>needs</code>.</p>
+<p><a href="../reference/pkg.html#rig-pkg-tree"><code>rig pkg tree</code></a>, which shows the same tree for a package in the repositories, describes all of this in full.</p>
 <p>rig follows the dependencies of the <em>latest</em> version of every package in the tree, so a version requirement that would force an older version, with different dependencies, is not taken into account. Use <a href="#rig-proj-solve"><code>rig proj solve</code></a> for a resolution that is consistent across versions.</p>
 </section>
 <section id="usage-3" class="level3">
@@ -826,6 +825,11 @@ Leave out R and the base packages
 <dt><code>--user</code></dt>
 <dd>
 Run in user mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--why &lt;PACKAGE&gt;</code></dt>
+<dd>
+Invert the tree: show what pulls this package in
+<em>[aliases: explain]</em>
 </dd>
 </dl>
 
