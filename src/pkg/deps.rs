@@ -61,7 +61,7 @@ pub fn sc_pkg_deps(
 /// version currently available, the dependency type(s) and the version
 /// requirement(s).
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct DepRow {
+pub(crate) struct DepRow {
     name: String,
     /// Newest version in the database. `None` for R and the base packages,
     /// which ship with R, and for a package the database does not know about.
@@ -134,6 +134,22 @@ fn recursive_deps(
     dev: bool,
 ) -> Result<(RPackageVersion, Vec<DepRow>, usize), Box<dyn Error>> {
     let root = root_package(loader, package, ver)?;
+    let (rows, num_direct) = walk_deps(loader, package, &root.dependencies.dependencies, dev);
+    Ok((root.version, rows, num_direct))
+}
+
+/// The transitive dependency closure of a list of direct dependencies, e.g. the
+/// dependencies of a package version or the ones a project's `DESCRIPTION`
+/// declares. `root_name` is what the direct dependencies are `Needed by`.
+///
+/// Returns the rows of the closure and the number of direct dependencies in it.
+/// See [`recursive_deps`] for what the walk does and does not follow.
+pub(crate) fn walk_deps(
+    loader: &dyn PackageVersionLoader,
+    root_name: &str,
+    root_deps: &[DepVersionSpec],
+    dev: bool,
+) -> (Vec<DepRow>, usize) {
     let mut newest = Newest::new(loader);
 
     let mut rows: Vec<DepRow> = vec![];
@@ -143,12 +159,12 @@ fn recursive_deps(
     let mut queue: VecDeque<(String, usize)> = VecDeque::new();
 
     let mut num_direct = 0;
-    for dep in root.dependencies.dependencies.iter() {
+    for dep in root_deps.iter() {
         if !wanted_dep(dep, dev) {
             continue;
         }
         num_direct += 1;
-        if record_dep(&mut rows, &mut seen, dep, package, 1) && !is_base_package(&dep.name) {
+        if record_dep(&mut rows, &mut seen, dep, root_name, 1) && !is_base_package(&dep.name) {
             queue.push_back((dep.name.clone(), 1));
         }
     }
@@ -179,7 +195,7 @@ fn recursive_deps(
     // R first, then by name.
     rows.sort_by_key(|r| (sort_key(r), r.name.to_lowercase()));
 
-    Ok((root.version, rows, num_direct))
+    (rows, num_direct)
 }
 
 /// The packages `rig pkg deps --recursive` would list, by name. Lets
@@ -349,34 +365,48 @@ impl<'a> Newest<'a> {
 // ------------------------------------------------------------------------
 // Output
 
+/// The header line above a dependency table: the package (or project) the
+/// dependencies belong to, and a `tag` summarizing the table, e.g.
+/// `12 dependencies` or `12 direct, 108 total`. A tag that is a count of the
+/// rows right below it is dimmed (`dim_tag`), one that is not is not.
+pub(crate) fn print_header(name: &str, version: &RPackageVersion, tag: &str, dim_tag: bool) {
+    use owo_colors::OwoColorize;
+
+    let color = std::io::stdout().is_terminal() && env::var_os("NO_COLOR").is_none();
+
+    if !color {
+        println!("{} {} — {}", name, version, tag);
+    } else if dim_tag {
+        println!(
+            "{} {} — {}",
+            name.cyan().bold(),
+            version.bold(),
+            tag.dimmed()
+        );
+    } else {
+        println!("{} {} — {}", name.cyan().bold(), version.bold(), tag);
+    }
+}
+
+/// The header tag of a plain (non-recursive) dependency table.
+pub(crate) fn dep_count(count: usize) -> String {
+    let dep_word = if count == 1 {
+        "dependency"
+    } else {
+        "dependencies"
+    };
+    format!("{} {}", count, dep_word)
+}
+
 /// Pretty-print the direct dependencies of a package.
 ///
 /// A colored header line names the package version and how many dependencies
 /// it has; the table then lists each dependency with the version currently
 /// available, the dependency type(s) and the version requirement(s).
 fn print_deps(name: &str, version: &RPackageVersion, rows: &[DepRow]) {
-    use owo_colors::OwoColorize;
-
-    let color = std::io::stdout().is_terminal() && env::var_os("NO_COLOR").is_none();
-
     // -- Header ------------------------------------------------------------
     let count = rows.len();
-    let dep_word = if count == 1 {
-        "dependency"
-    } else {
-        "dependencies"
-    };
-    if color {
-        println!(
-            "{} {} — {} {}",
-            name.cyan().bold(),
-            version.bold(),
-            count,
-            dep_word
-        );
-    } else {
-        println!("{} {} — {} {}", name, version, count, dep_word);
-    }
+    print_header(name, version, &dep_count(count), false);
     if count == 0 {
         return;
     }
@@ -405,23 +435,15 @@ fn print_deps(name: &str, version: &RPackageVersion, rows: &[DepRow]) {
 /// table then lists every package in the closure, with the version currently
 /// available, its distance from the queried package and the packages that pull
 /// it in.
-fn print_deps_recursive(name: &str, version: &RPackageVersion, num_direct: usize, rows: &[DepRow]) {
-    use owo_colors::OwoColorize;
-
-    let color = std::io::stdout().is_terminal() && env::var_os("NO_COLOR").is_none();
-
+pub(crate) fn print_deps_recursive(
+    name: &str,
+    version: &RPackageVersion,
+    num_direct: usize,
+    rows: &[DepRow],
+) {
     // -- Header ------------------------------------------------------------
     let tag = format!("{} direct, {} total", num_direct, rows.len());
-    if color {
-        println!(
-            "{} {} — {}",
-            name.cyan().bold(),
-            version.bold(),
-            tag.dimmed()
-        );
-    } else {
-        println!("{} {} — {}", name, version, tag);
-    }
+    print_header(name, version, &tag, true);
     if rows.is_empty() {
         return;
     }
@@ -462,7 +484,7 @@ pub(super) fn version_cell_for(name: &str, version: Option<&RPackageVersion>) ->
 }
 
 /// The `Type` cell of a row, e.g. `Imports, LinkingTo`.
-fn type_list(types: &[RDepType]) -> String {
+pub(crate) fn type_list(types: &[RDepType]) -> String {
     types
         .iter()
         .map(|t| t.to_string())
@@ -484,7 +506,7 @@ fn needed_by_cell(needed_by: &[String]) -> String {
 /// Print the dependencies as a JSON array, one object per package. `depth` and
 /// `needed_by` only make sense for a closure, so they are omitted unless
 /// `recursive`.
-fn print_deps_json(rows: &[DepRow], recursive: bool) -> Result<(), Box<dyn Error>> {
+pub(crate) fn print_deps_json(rows: &[DepRow], recursive: bool) -> Result<(), Box<dyn Error>> {
     #[derive(serde::Serialize)]
     struct DepEntry<'a> {
         package: &'a str,
@@ -520,7 +542,7 @@ fn print_deps_json(rows: &[DepRow], recursive: bool) -> Result<(), Box<dyn Error
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pkg::stub::Stub;
+    use crate::pkg::stub::{stub_deps, Stub};
 
     /// The names of the rows, in the order they are printed in.
     fn names(rows: &[DepRow]) -> Vec<&str> {
@@ -767,6 +789,39 @@ mod tests {
         let (_, rows, _) = recursive_deps(&stub, "a", "latest", false).unwrap();
         assert_eq!(names(&rows), vec!["b", "gone"]);
         assert_eq!(version_cell(row(&rows, "gone")), "?");
+    }
+
+    // ---------------------------------------------------------------------
+    // Walking a list of dependencies, e.g. a project's
+
+    #[test]
+    fn walk_deps_starts_from_a_dependency_list() {
+        // What `rig proj deps -r` does: the root is not a package in the
+        // database, only its dependencies are.
+        let stub = Stub {
+            packages: vec![
+                ("b", "1.0.0", "Depends: R (>= 4.1.0); Imports: c, utils"),
+                ("c", "2.0.0", "Imports: d"),
+                ("d", "3.0.0", ""),
+                ("t", "1.0.0", "Imports: d"),
+            ],
+        };
+        // A project that Imports b and Suggests t, with the soft dependency
+        // already kept by `--dev`, as `proj_read_deps` does.
+        let root = stub_deps("Imports: b (>= 0.9.0); Suggests: t");
+
+        let (rows, num_direct) = walk_deps(&stub, "myproj", &root.dependencies, true);
+
+        assert_eq!(num_direct, 2);
+        assert_eq!(names(&rows), vec!["R", "b", "c", "d", "t", "utils"]);
+        assert_eq!(row(&rows, "b").needed_by, vec!["myproj"]);
+        assert_eq!(row(&rows, "b").requires, vec![">= 0.9.0"]);
+        assert_eq!(row(&rows, "b").depth, 1);
+        assert_eq!(row(&rows, "d").needed_by, vec!["c", "t"]);
+        assert_eq!(row(&rows, "d").depth, 2);
+        // R and the base packages are listed, but not walked.
+        assert_eq!(version_cell(row(&rows, "utils")), "-");
+        assert_eq!(row(&rows, "R").requires, vec![">= 4.1.0"]);
     }
 
     // ---------------------------------------------------------------------

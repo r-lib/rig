@@ -21,6 +21,9 @@ use crate::download::download_multiple_first_available_with_progress;
 use crate::install::{install_package_tree_with_progress, PackageInfo};
 use crate::output::OUTPUT;
 use crate::pak::PakLockfile;
+use crate::pkg::deps::{
+    dep_count, print_deps_json, print_deps_recursive, print_header, type_list, walk_deps,
+};
 use crate::platform::{detect_platform, parse_platform_string};
 use crate::renv::*;
 use crate::repos::binaries::loader::{BinaryTarget, P3mBinaryLoader};
@@ -54,7 +57,9 @@ pub fn sc_proj(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn E
     }
 }
 
-fn proj_read_deps(input: &str, dev: bool) -> Result<PackageDependencies, Box<dyn Error>> {
+/// Read the project's manifest, e.g. its `DESCRIPTION` file, and return it as a
+/// package, with the soft dependencies dropped unless `dev`.
+fn proj_read_deps(input: &str, dev: bool) -> Result<Package, Box<dyn Error>> {
     OUTPUT.status(&format!("Reading dependencies from {}", input));
     info!("Reading dependencies from {}", input);
     let df: File = File::open(input)?;
@@ -86,20 +91,26 @@ fn proj_read_deps(input: &str, dev: bool) -> Result<PackageDependencies, Box<dyn
 
     package.dependencies.simplify();
 
-    Ok(package.dependencies)
+    Ok(package)
 }
 
 /// Parse dependencies from DESCRIPTION file and print them out
 fn sc_proj_deps(
     args: &ArgMatches,
-    _libargs: &ArgMatches,
+    projargs: &ArgMatches,
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
     let dev = args.get_flag("dev");
+    let json = args.get_flag("json") || projargs.get_flag("json") || mainargs.get_flag("json");
     let default_input = "DESCRIPTION".to_string();
     let input: &String = args.get_one::<String>("input").unwrap_or(&default_input);
-    let pkg_deps = proj_read_deps(input, dev)?;
-    let mut deps = pkg_deps.dependencies;
+    let pkg = proj_read_deps(input, dev)?;
+
+    if args.get_flag("recursive") {
+        return proj_deps_recursive(&pkg, json);
+    }
+
+    let mut deps = pkg.dependencies.dependencies.clone();
 
     // Sort by dependency type first, then by package name
     deps.sort_by(|a, b| {
@@ -126,7 +137,7 @@ fn sc_proj_deps(
         a_types.cmp(&b_types).then_with(|| a.name.cmp(&b.name))
     });
 
-    if args.get_flag("json") || mainargs.get_flag("json") {
+    if json {
         println!("[");
         let num = deps.len();
         for (i, pkg) in deps.iter().enumerate() {
@@ -155,27 +166,46 @@ fn sc_proj_deps(
         }
         println!("]");
     } else {
+        print_header(&pkg.name, &pkg.version, &dep_count(deps.len()), false);
+        if deps.is_empty() {
+            return Ok(());
+        }
+        println!();
+
         let mut tab: Table = Table::new("{:<}   {:<}   {:<}");
-        tab.add_row(row!["package", "constraints", "types"]);
-        tab.add_heading("------------------------------------------");
-        for pkg in deps {
+        tab.add_row(row!("Package", "Type", "Requires"));
+        tab.add_heading("-------------------------------------------------------");
+        for dep in deps {
             let mut cst: String = "".to_string();
-            for (i, cs) in pkg.constraints.iter().enumerate() {
+            for (i, cs) in dep.constraints.iter().enumerate() {
                 if i > 0 {
                     cst += ", ";
                 }
                 cst += &format!("{} {}", cs.constraint_type, cs.version);
             }
-            let types_str = pkg
-                .types
-                .iter()
-                .map(|t| t.to_string())
-                .collect::<Vec<_>>()
-                .join(", ");
-            tab.add_row(row!(pkg.name, cst, types_str));
+            tab.add_row(row!(dep.name, type_list(&dep.types), cst));
         }
 
         print!("{}", tab);
+    }
+
+    Ok(())
+}
+
+/// The transitive dependency closure of a project, in the same table
+/// `rig pkg deps --recursive` prints.
+///
+/// The soft dependencies were already dropped by [`proj_read_deps`] unless
+/// `--dev` was given, so the walk takes the manifest's dependencies as they
+/// are; below the project itself it only ever follows hard dependencies.
+fn proj_deps_recursive(pkg: &Package, json: bool) -> Result<(), Box<dyn Error>> {
+    let loader = DbSourcePackageLoader::new()?;
+    let (rows, num_direct) = walk_deps(&loader, &pkg.name, &pkg.dependencies.dependencies, true);
+
+    if json {
+        print_deps_json(&rows, true)?;
+    } else {
+        print_deps_recursive(&pkg.name, &pkg.version, num_direct, &rows);
     }
 
     Ok(())
@@ -338,7 +368,7 @@ fn sc_proj_solve(
     let dev = args.get_flag("dev");
     let default_input = "DESCRIPTION".to_string();
     let input: &String = args.get_one::<String>("input").unwrap_or(&default_input);
-    let mut pkg_deps = proj_read_deps(input, dev)?;
+    let mut pkg_deps = proj_read_deps(input, dev)?.dependencies;
 
     if args.get_flag("renv") {
         pkg_deps.dependencies.push(DepVersionSpec {

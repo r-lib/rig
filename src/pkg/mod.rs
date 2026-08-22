@@ -19,7 +19,7 @@ use crate::proj::BASE_PKGS;
 use crate::repos::cranlike_metadata::{self, repos_get_packages, ArchivedPackage};
 use crate::textfmt::{reflow, wrap, write_field};
 
-mod deps;
+pub(crate) mod deps;
 mod manifest;
 #[cfg(test)]
 mod stub;

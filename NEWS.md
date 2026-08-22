@@ -9,6 +9,10 @@
   `rig pkg info`. `rig pkg deps` lists the packages a package needs, in a
   table, and `rig pkg tree` shows the same dependencies as a tree.
 
+* `rig proj deps` has a new `--recursive` (`-r`) option, to show the whole
+  dependency closure of the project, like `rig pkg deps --recursive` does
+  for a package. Its table now has the same columns as `rig pkg deps`.
+
 * `rig library add`, `rig library default`, `rig library list` and
   `rig library rm` have a new `--r-version` (`-r`) option, to operate on
   the libraries of an R version other than the default one.

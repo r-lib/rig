@@ -1329,6 +1329,14 @@ pub fn rig_app() -> Command {
                         .required(false),
                 )
                 .arg(
+                    Arg::new("recursive")
+                        .help("Show recursive (transitive) dependencies")
+                        .long("recursive")
+                        .short('r')
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
                     Arg::new("json")
                         .help("JSON output")
                         .long("json")
