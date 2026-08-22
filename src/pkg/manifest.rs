@@ -26,6 +26,7 @@
 
 use std::collections::HashMap;
 use std::error::Error;
+use std::time::Duration;
 
 use deb822_fast::Deb822;
 use log::debug;
@@ -47,6 +48,10 @@ fn manifest_base_url() -> String {
     std::env::var("RIG_P3M_MANIFEST_URL")
         .unwrap_or_else(|_| "https://rspm-sync.rstudio.com/manifest/v4/1/data".to_string())
 }
+
+/// How long a downloaded manifest is used without asking the server. Manifests
+/// are per snapshot date and never change, so this is "forever".
+const MANIFEST_TTL: Duration = Duration::MAX;
 
 /// Everything `rig pkg info` shows about one package version: the
 /// DESCRIPTION fields plus the README, if P3M has one.
@@ -222,8 +227,8 @@ fn select_version<'a>(
     }
 }
 
-/// Download (with the usual etag / if-modified-since cache) and parse the
-/// manifest file of `package` for the `YYYY-MM-DD` snapshot `date`.
+/// Download and parse the manifest file of `package` for the `YYYY-MM-DD`
+/// snapshot `date`. A manifest is immutable.
 fn fetch_manifest(package: &str, date: &str) -> Result<Value, Box<dyn Error>> {
     let compact: String = date.chars().filter(|c| *c != '-').collect();
     let url = format!("{}/{}_{}.json", manifest_base_url(), package, compact);
@@ -234,10 +239,26 @@ fn fetch_manifest(package: &str, date: &str) -> Result<Value, Box<dyn Error>> {
     local.push(format!("manifest-{}-{}.json", package, compact));
 
     create_parent_dir_if_needed(&local)?;
-    let (_downloaded, _etag) = download_if_newer_(&url, &local, None, None)?;
+    let (downloaded, _etag) = download_if_newer_(&url, &local, Some(MANIFEST_TTL), None)?;
 
     let contents: String = read_file_string(&local)?;
-    Ok(serde_json::from_str(&contents)?)
+    match serde_json::from_str(&contents) {
+        Ok(json) => Ok(json),
+        // Only the cached copy is worth a second try; a fresh download that
+        // does not parse is the server's answer and will not change.
+        Err(err) if !downloaded => {
+            debug!(
+                "Cached manifest {} is corrupt ({}), downloading it again",
+                local.display(),
+                err
+            );
+            std::fs::remove_file(&local)?;
+            let _ = download_if_newer_(&url, &local, Some(MANIFEST_TTL), None)?;
+            let contents: String = read_file_string(&local)?;
+            Ok(serde_json::from_str(&contents)?)
+        }
+        Err(err) => Err(err.into()),
+    }
 }
 
 /// The parts of a manifest entry rig uses: the DESCRIPTION and the README.

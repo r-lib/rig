@@ -47,7 +47,7 @@
 //! disk. See [`blob`] for the format and [`load_binary_index`] for the flow.
 
 use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
 use std::fs;
@@ -57,7 +57,7 @@ use std::time::{Duration, SystemTime};
 
 use futures::stream::StreamExt;
 use log::*;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use simple_error::bail;
 use zstd::stream::read::Decoder as ZstdDecoder;
 
@@ -80,6 +80,7 @@ const PREFETCH_CONCURRENCY: usize = 16;
 pub mod blob;
 pub mod loader;
 use crate::rversion::OsVersion;
+use crate::utils::write_atomically;
 use blob::IndexBlob;
 pub use blob::LinkingTo;
 
@@ -870,46 +871,92 @@ impl BinaryIndex {
     }
 }
 
-/// Write a file so that a reader sees either the old contents or the new ones,
-/// never a partial write: two `rig` processes can be doing this at once.
-fn write_atomically(path: &Path, bytes: &[u8]) -> Result<(), Box<dyn Error>> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let mut tmp = path.as_os_str().to_os_string();
-    tmp.push(format!(".{}.tmp", std::process::id()));
-    let tmp = PathBuf::from(tmp);
-    if let Err(err) = fs::write(&tmp, bytes) {
-        let _ = fs::remove_file(&tmp);
-        return Err(err.into());
-    }
-    if let Err(err) = fs::rename(&tmp, path) {
-        let _ = fs::remove_file(&tmp);
-        return Err(err.into());
-    }
-    Ok(())
+/// The public P3M instance, and the base of the default status URL.
+const DEFAULT_PPM_URL: &str = "https://packagemanager.posit.co";
+
+/// Base URL of the Posit Package Manager instance rig reports on.
+///
+/// `PACKAGEMANAGER_ADDRESS` is Posit's own variable for pointing a machine at a
+/// private P3M, so rig honors that rather than inventing a name for the same
+/// thing.
+///
+/// Note that this does *not* affect [`binaries_base_url`]: the per-package
+/// indices are rig's own derived data, and no P3M instance serves them.
+pub fn ppm_url() -> String {
+    ppm_url_from(std::env::var("PACKAGEMANAGER_ADDRESS").ok().as_deref())
 }
 
-/// URL of P3M's status document, overridable with `RIG_PPM_STATUS_URL`.
+/// URL of P3M's status document.
+///
+/// `RIG_PPM_STATUS_URL` still wins over `PACKAGEMANAGER_ADDRESS`, so a setup
+/// that redirects only the status document keeps working.
 pub fn ppm_status_url() -> String {
-    std::env::var("RIG_PPM_STATUS_URL")
-        .unwrap_or_else(|_| "https://packagemanager.posit.co/__api__/status".to_string())
+    ppm_status_url_from(
+        std::env::var("RIG_PPM_STATUS_URL").ok().as_deref(),
+        &ppm_url(),
+    )
+}
+
+/// The pure part of [`ppm_url`], split out because `cargo test` runs the whole
+/// suite in one multi-threaded process, where setting an env var in one test
+/// races every other test that reads it.
+fn ppm_url_from(env: Option<&str>) -> String {
+    match env.map(str::trim).filter(|v| !v.is_empty()) {
+        Some(url) => url.trim_end_matches('/').to_string(),
+        None => DEFAULT_PPM_URL.to_string(),
+    }
+}
+
+/// The pure part of [`ppm_status_url`]. See [`ppm_url_from`].
+fn ppm_status_url_from(status_env: Option<&str>, base: &str) -> String {
+    match status_env.map(str::trim).filter(|v| !v.is_empty()) {
+        Some(url) => url.to_string(),
+        None => format!("{}/__api__/status", base.trim_end_matches('/')),
+    }
 }
 
 /// One entry of P3M's `distros` list: a target P3M builds binaries for.
-#[derive(Debug, Clone, Deserialize)]
+///
+/// The camelCase keys are `alias`es rather than `rename`s so that both
+/// spellings deserialize: rig's own `--json` output is snake_case like the rest
+/// of rig, and a status document cached by an older rig still parses.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct PpmDistro {
+    #[serde(default)]
     pub name: String,
+    #[serde(default)]
     pub os: String,
     /// P3M's own name for the target. Empty for macOS and Windows.
-    #[serde(rename = "binaryURL", default)]
+    #[serde(default, alias = "binaryURL")]
     pub binary_url: String,
+    /// Human-readable name of the *binary* target, e.g. `CentOS/RHEL 7` for
+    /// `centos7`, which serves two distros.
+    #[serde(default, alias = "binaryDisplay")]
+    pub binary_display: String,
+    /// Human-readable name of the distro itself, e.g. `CentOS 7`.
+    #[serde(default)]
+    pub display: String,
     /// The distribution P3M *builds on*, which is not always the one it serves:
     /// `rhel9` is built on `rockylinux` and also listed under `redhat`.
+    #[serde(default)]
     pub distribution: String,
+    #[serde(default)]
     pub release: String,
+    /// Set when the binaries served for this target were built somewhere else,
+    /// e.g. macOS binaries are built on `jammy`.
+    #[serde(default)]
+    pub build_distribution: String,
+    /// Whether P3M can report system requirements for this target.
+    #[serde(default, alias = "sysReqs")]
+    pub sys_reqs: bool,
     #[serde(default)]
     pub binaries: bool,
+    /// Set on targets P3M no longer advertises, i.e. retired distro releases.
+    /// The binaries stay downloadable.
+    #[serde(default)]
+    pub hidden: bool,
+    #[serde(default)]
+    pub official_rspm: bool,
     /// `x86_64` and/or `arm64`. Absent on some pseudo-entries.
     #[serde(default)]
     pub arch: Vec<String>,
@@ -929,12 +976,105 @@ impl PpmDistro {
     }
 }
 
+/// File name the status document is cached under.
+///
+/// It has to depend on the URL: two instances describe different build targets,
+/// and a shared cache entry would have `PACKAGEMANAGER_ADDRESS` reporting — and,
+/// worse, *resolving binaries against* — the wrong instance for up to a day.
+/// The public instance keeps the unsuffixed name, so the common case has a
+/// recognizable cache file and existing caches stay valid.
+fn status_cache_name(url: &str) -> String {
+    if url == format!("{}/__api__/status", DEFAULT_PPM_URL) {
+        return "p3m-status.json".to_string();
+    }
+    format!(
+        "p3m-status-{}.json",
+        &crate::utils::calculate_hash(url)[..12]
+    )
+}
+
+/// One entry of P3M's `bioc_versions` list: a Bioconductor release, the R
+/// version it goes with, and the CRAN snapshot it is pinned to.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct PpmBiocVersion {
+    #[serde(default)]
+    pub bioc_version: String,
+    #[serde(default)]
+    pub r_version: String,
+    /// A date, or `latest` for the current release.
+    #[serde(default)]
+    pub cran_snapshot: String,
+}
+
+/// The macOS build flavors P3M serves for one R version, e.g.
+/// `sonoma-arm64` / `big-sur-x86_64`. Either can be missing or empty, which
+/// means P3M has no macOS binaries for that R version and arch.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct PpmMacosUrls {
+    #[serde(default)]
+    pub arm64: String,
+    #[serde(default)]
+    pub x86_64: String,
+}
+
+/// How long the instance's license still covers it.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct PpmSupportWindow {
+    #[serde(default)]
+    pub disable_expiry_banner: bool,
+    #[serde(default)]
+    pub days_left: i64,
+    #[serde(default)]
+    pub days_reminder: i64,
+}
+
 /// P3M's status document: the authoritative list of what it builds binaries
 /// for. Used instead of hard-coding distro-to-codename mappings, which go stale
 /// every time P3M adds or retires a target.
-#[derive(Debug, Clone, Deserialize)]
+///
+/// Every field is optional, because a private instance is under no obligation
+/// to send any particular one, and a missing field should degrade the report
+/// rather than fail the parse.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct PpmStatus {
+    /// The instance's own version, e.g. `2026.08.0`.
+    #[serde(default)]
+    pub version: String,
+    #[serde(default)]
+    pub build_date: String,
+    /// Name of the CRAN repository on this instance, usually `cran`.
+    #[serde(default)]
+    pub cran_repo: String,
+    #[serde(default)]
+    pub r_configured: bool,
+    #[serde(default)]
+    pub python_configured: bool,
+    #[serde(default)]
+    pub binaries_enabled: bool,
+    #[serde(default)]
+    pub auth_enabled: bool,
+    #[serde(default)]
+    pub support_window: PpmSupportWindow,
+    #[serde(default)]
     pub distros: Vec<PpmDistro>,
+    /// Minor R versions the instance builds binaries for, newest first.
+    #[serde(default)]
+    pub r_versions: Vec<String>,
+    #[serde(default)]
+    pub bioc_versions: Vec<PpmBiocVersion>,
+    /// Keyed by minor R version, plus a `default` entry. A `BTreeMap` so
+    /// `--json` output has a deterministic key order; note that the resulting
+    /// order is lexicographic and so not the one to print a table in (see
+    /// `crate::ppm`).
+    #[serde(default)]
+    pub macos_urls: BTreeMap<String, PpmMacosUrls>,
+    /// Everything else the instance sent, kept verbatim so that `--json` never
+    /// silently drops a field rig does not model, and so that fields whose type
+    /// varies between instances cannot fail the parse. `custom_home` is the
+    /// motivating case: a bool on the public instance, but documented as a
+    /// home-page override, so plausibly a string elsewhere.
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
 /// P3M's `distribution` for an `/etc/os-release` ID.
@@ -995,7 +1135,7 @@ impl PpmStatus {
 
     /// Cache path of the status document.
     pub fn local_file() -> Result<PathBuf, Box<dyn Error>> {
-        Ok(get_cache_dir()?.join("p3m-status.json"))
+        Ok(get_cache_dir()?.join(status_cache_name(&ppm_status_url())))
     }
 
     /// Fetch (or reuse the cached) status document.
@@ -1477,6 +1617,131 @@ mod tests {
 
     fn expect(platform: &str, arch: &str) -> Option<(String, String)> {
         Some((platform.to_string(), arch.to_string()))
+    }
+
+    // These take their input as an argument rather than setting the env vars,
+    // because `cargo test` runs the whole suite in one process and a test that
+    // mutates the environment races every test that reads it.
+    #[test]
+    fn ppm_url_defaults_and_overrides() {
+        assert_eq!(ppm_url_from(None), DEFAULT_PPM_URL);
+        assert_eq!(ppm_url_from(Some("")), DEFAULT_PPM_URL);
+        assert_eq!(ppm_url_from(Some("   ")), DEFAULT_PPM_URL);
+        assert_eq!(
+            ppm_url_from(Some("https://ppm.example.com")),
+            "https://ppm.example.com"
+        );
+        // A trailing slash would otherwise double up in the composed URL.
+        assert_eq!(
+            ppm_url_from(Some("https://ppm.example.com/")),
+            "https://ppm.example.com"
+        );
+    }
+
+    #[test]
+    fn status_url_is_composed_unless_overridden() {
+        assert_eq!(
+            ppm_status_url_from(None, DEFAULT_PPM_URL),
+            format!("{}/__api__/status", DEFAULT_PPM_URL)
+        );
+        assert_eq!(
+            ppm_status_url_from(None, "https://ppm.example.com"),
+            "https://ppm.example.com/__api__/status"
+        );
+        // RIG_PPM_STATUS_URL wins over PACKAGEMANAGER_ADDRESS, and is used
+        // as given rather than having a path appended.
+        assert_eq!(
+            ppm_status_url_from(
+                Some("https://other.example.com/s.json"),
+                "https://ppm.example.com"
+            ),
+            "https://other.example.com/s.json"
+        );
+        assert_eq!(
+            ppm_status_url_from(Some(""), "https://ppm.example.com"),
+            "https://ppm.example.com/__api__/status"
+        );
+    }
+
+    #[test]
+    fn status_cache_name_is_per_instance() {
+        let public = format!("{}/__api__/status", DEFAULT_PPM_URL);
+        assert_eq!(status_cache_name(&public), "p3m-status.json");
+
+        // Two instances must not share a cache entry, or one would be resolved
+        // against the other's build targets.
+        let a = status_cache_name("https://a.example.com/__api__/status");
+        let b = status_cache_name("https://b.example.com/__api__/status");
+        assert_ne!(a, b);
+        assert_ne!(a, "p3m-status.json");
+        for name in [&a, &b] {
+            assert!(name.starts_with("p3m-status-"), "{}", name);
+            assert!(name.ends_with(".json"), "{}", name);
+        }
+    }
+
+    #[test]
+    fn parses_the_whole_status_document() {
+        let s = status();
+        assert_eq!(s.version, "2026.06.0");
+        assert_eq!(s.build_date, "2026-06-30T20:39:32Z");
+        assert_eq!(s.cran_repo, "cran");
+        assert!(s.r_configured);
+        assert!(s.python_configured);
+        assert!(s.binaries_enabled);
+        assert!(!s.auth_enabled);
+        assert_eq!(s.support_window.days_left, 513);
+        assert_eq!(s.support_window.days_reminder, 90);
+
+        assert_eq!(s.r_versions, ["4.6", "4.5", "4.4", "4.3", "4.2", "3.6"]);
+        assert_eq!(s.bioc_versions[0].bioc_version, "3.24");
+        assert_eq!(s.bioc_versions[0].r_version, "4.6");
+        assert_eq!(s.bioc_versions[0].cran_snapshot, "latest");
+
+        assert_eq!(s.macos_urls["default"].arm64, "sonoma-arm64");
+        assert_eq!(s.macos_urls["default"].x86_64, "big-sur-x86_64");
+        // R 4.0 has an x86_64 key with an empty value and no arm64 key at all.
+        assert_eq!(s.macos_urls["4.0"].x86_64, "");
+        assert_eq!(s.macos_urls["4.0"].arm64, "");
+
+        assert_eq!(s.distros.len(), 36);
+        let centos7 = s.distros.iter().find(|d| d.name == "centos7").unwrap();
+        assert_eq!(centos7.binary_display, "CentOS/RHEL 7");
+        assert_eq!(centos7.display, "CentOS 7");
+        assert!(centos7.sys_reqs);
+        assert!(centos7.official_rspm);
+        assert!(!centos7.hidden);
+        // Retired releases are reported, and marked.
+        assert!(s.distros.iter().find(|d| d.name == "focal").unwrap().hidden);
+        // macOS binaries are built somewhere else.
+        let macos = s.distros.iter().find(|d| d.os == "macos").unwrap();
+        assert_eq!(macos.build_distribution, "jammy");
+    }
+
+    /// `--json` must not silently drop what rig does not model, and a field
+    /// whose type differs between instances must not fail the parse.
+    #[test]
+    fn status_json_keeps_unmodeled_fields() {
+        let s = status();
+        assert!(s.extra.contains_key("custom_home_title"));
+        assert!(s.extra.contains_key("ga_id"));
+        assert!(s.extra.contains_key("custom_home"));
+        let json = serde_json::to_string(&s).unwrap();
+        assert!(json.contains("Posit Public Package Manager"), "{}", json);
+        assert!(json.contains("GTM-KHBDBW7"), "{}", json);
+    }
+
+    /// A status document cached by an older rig only has `distros`, with the
+    /// camelCase spelling.
+    #[test]
+    fn legacy_cached_status_still_parses() {
+        let s = PpmStatus::parse(br#"{"distros":[{"name":"jammy","os":"linux","binaryURL":"jammy","distribution":"ubuntu","release":"22.04","binaries":true,"arch":["x86_64"]}]}"#).unwrap();
+        assert_eq!(s.distros.len(), 1);
+        assert_eq!(s.distros[0].binary_url, "jammy");
+        assert_eq!(s.distros[0].platform(), "jammy");
+        assert!(s.version.is_empty());
+        assert!(s.r_versions.is_empty());
+        assert!(s.macos_urls.is_empty());
     }
 
     #[test]

@@ -124,6 +124,24 @@ pub fn append_to_file(path: &Path, extra: Vec<String>) -> Result<(), Box<dyn Err
     Ok(())
 }
 
+pub fn write_atomically(path: &Path, bytes: &[u8]) -> Result<(), Box<dyn Error>> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut tmp = path.as_os_str().to_os_string();
+    tmp.push(format!(".{}.tmp", std::process::id()));
+    let tmp = PathBuf::from(tmp);
+    if let Err(err) = std::fs::write(&tmp, bytes) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(err.into());
+    }
+    if let Err(err) = std::fs::rename(&tmp, path) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(err.into());
+    }
+    Ok(())
+}
+
 pub fn calculate_hash(s: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(s);
