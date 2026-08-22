@@ -264,13 +264,20 @@ impl PackageDependencies {
         Ok(pkg_deps)
     }
 
-    /// Merge constraints for the same package
+    /// Merge the types and constraints for the same package, e.g. a package
+    /// that is both in `Imports` and in `LinkingTo` becomes a single entry with
+    /// both types.
     pub fn simplify(&mut self) {
         let mut pkgmap: HashMap<&str, usize> = HashMap::new();
         let mut deps2 = Vec::new();
         for dep in self.dependencies.iter() {
             if let Some(idx) = pkgmap.get(dep.name.as_str()) {
                 let existing: &mut DepVersionSpec = &mut deps2[*idx];
+                for t in dep.types.iter() {
+                    if !existing.types.contains(t) {
+                        existing.types.push(t.clone());
+                    }
+                }
                 for c in dep.constraints.iter() {
                     if !existing.constraints.contains(c) {
                         existing.constraints.push(c.clone());
@@ -451,6 +458,20 @@ impl Package {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn simplify_merges_the_types_and_constraints_of_a_package() {
+        let mut deps = PackageDependencies::from_str("cpp11 (>= 0.4.0), zoo", "Imports").unwrap();
+        deps.append(&mut PackageDependencies::from_str("cpp11 (>= 0.2.0)", "LinkingTo").unwrap());
+        deps.simplify();
+
+        assert_eq!(deps.dependencies.len(), 2);
+        let cpp11 = &deps.dependencies[0];
+        assert_eq!(cpp11.name, "cpp11");
+        assert_eq!(cpp11.types, vec![RDepType::Imports, RDepType::LinkingTo]);
+        assert_eq!(cpp11.constraints.len(), 2);
+        assert_eq!(deps.dependencies[1].types, vec![RDepType::Imports]);
+    }
 
     #[test]
     fn test_dcf_built_from_str_with_platform() {

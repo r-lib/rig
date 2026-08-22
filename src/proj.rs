@@ -75,11 +75,13 @@ fn proj_read_deps(input: &str, dev: bool) -> Result<PackageDependencies, Box<dyn
     // only one paragraph
     let mut package = Package::from_dcf_paragraph(desc.iter().next().unwrap())?;
 
-    // Filter out Suggests and Enhances if dev is false
+    // Filter out Suggests and Enhances if dev is false. A package that is also
+    // a hard dependency stays: it needs to be installed either way.
     if !dev {
-        package.dependencies.dependencies.retain(|dep| {
-            !dep.types.contains(&RDepType::Suggests) && !dep.types.contains(&RDepType::Enhances)
-        });
+        package
+            .dependencies
+            .dependencies
+            .retain(|dep| !dep.types.iter().all(|t| DEP_TYPES_SOFT.contains(t)));
     }
 
     package.dependencies.simplify();

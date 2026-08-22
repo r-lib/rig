@@ -1491,6 +1491,46 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("deps")
+                .about(ABOUT_PKG_DEPS)
+                .long_about(HELP_PKG_DEPS)
+                .display_order(0)
+                .arg(
+                    Arg::new("package")
+                        .help("package to show the dependencies of")
+                        .required(true),
+                )
+                .arg(
+                    Arg::new("version")
+                        .long("version")
+                        .short('v')
+                        .help("package version to use (default: latest)")
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("recursive")
+                        .help("Show recursive (transitive) dependencies")
+                        .long("recursive")
+                        .short('r')
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("dev")
+                        .help("Include dev (development) dependencies")
+                        .long("dev")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
             Command::new("info")
                 .about(ABOUT_PKG_INFO)
                 .long_about(HELP_PKG_INFO)

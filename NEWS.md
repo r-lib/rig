@@ -4,8 +4,9 @@
 
 * New `rig repos status` checks the configured package repositories.
 
-* The package metadata commands moved from `rig repos` to a new `rig pkg`
-  command: `rig pkg available` and `rig pkg info`.
+* New `rig pkg` subcommand to query and manage R packages. Two subcommands
+  from `rig repos` moved to `rig pkg`: `rig pkg available` and
+  `rig pkg info`.
 
 * `rig library add`, `rig library default`, `rig library list` and
   `rig library rm` have a new `--r-version` (`-r`) option, to operate on

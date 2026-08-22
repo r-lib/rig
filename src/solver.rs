@@ -206,7 +206,7 @@ fn binary_artifact_deps(
 
 /// Whether a name is R itself or one of the base packages, which ship with R
 /// and so are never downloaded, resolved or looked up in a binary index.
-fn is_base_package(name: &str) -> bool {
+pub fn is_base_package(name: &str) -> bool {
     name == "R" || crate::proj::BASE_PKGS.contains(&name)
 }
 
