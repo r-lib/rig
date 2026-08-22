@@ -25,6 +25,7 @@ use crate::output::OUTPUT;
 use crate::resolve::get_resolve;
 #[cfg(target_os = "windows")]
 use crate::rversion::Rversion;
+use crate::utils::write_atomically;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use crate::utils::*;
 
@@ -226,7 +227,7 @@ async fn download_if_newer(
                 .map(|s| s.to_string());
 
             let bytes = resp.bytes().await?;
-            fs::write(local_path, &bytes)?;
+            write_atomically(local_path, &bytes)?;
             Ok((true, new_etag))
         }
 
@@ -596,7 +597,7 @@ async fn download_optional_if_newer(
                 .map(|s| s.to_string());
 
             let bytes = resp.bytes().await?;
-            fs::write(local_path, &bytes)?;
+            write_atomically(local_path, &bytes)?;
             Ok(Some((true, new_etag)))
         }
 

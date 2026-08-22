@@ -80,6 +80,7 @@ const PREFETCH_CONCURRENCY: usize = 16;
 pub mod blob;
 pub mod loader;
 use crate::rversion::OsVersion;
+use crate::utils::write_atomically;
 use blob::IndexBlob;
 pub use blob::LinkingTo;
 
@@ -868,26 +869,6 @@ impl BinaryIndex {
         }
         seen
     }
-}
-
-/// Write a file so that a reader sees either the old contents or the new ones,
-/// never a partial write: two `rig` processes can be doing this at once.
-fn write_atomically(path: &Path, bytes: &[u8]) -> Result<(), Box<dyn Error>> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let mut tmp = path.as_os_str().to_os_string();
-    tmp.push(format!(".{}.tmp", std::process::id()));
-    let tmp = PathBuf::from(tmp);
-    if let Err(err) = fs::write(&tmp, bytes) {
-        let _ = fs::remove_file(&tmp);
-        return Err(err.into());
-    }
-    if let Err(err) = fs::rename(&tmp, path) {
-        let _ = fs::remove_file(&tmp);
-        return Err(err.into());
-    }
-    Ok(())
 }
 
 /// The public P3M instance, and the base of the default status URL.

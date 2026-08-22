@@ -4,6 +4,7 @@ use std::error::Error;
 use std::fs::{self, File};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use clap::ArgMatches;
 use deb822_fast::Deb822;
@@ -514,6 +515,10 @@ fn sc_proj_deploy(
     Ok(())
 }
 
+/// Cache package files forever. They are immutable on PPM.
+/// This will be different for CRAN and CRAN-like repositories.
+const PACKAGE_FILE_TTL: Duration = Duration::MAX;
+
 pub fn proj_download() -> Result<(), Box<dyn Error>> {
     let lockfile_content = fs::read_to_string("pkg.lock")?;
     let lockfile: PakLockfile = serde_json::from_str(&lockfile_content)?;
@@ -550,8 +555,11 @@ pub fn proj_download() -> Result<(), Box<dyn Error>> {
     // Download all packages concurrently with progress updates
     OUTPUT.status(&format!("Downloading {} packages", total));
     info!("Downloading {} packages", total);
-    download_multiple_first_available_with_progress(downloads, None, None, |idx, result| {
-        match result {
+    download_multiple_first_available_with_progress(
+        downloads,
+        Some(PACKAGE_FILE_TTL),
+        None,
+        |idx, result| match result {
             Ok((downloaded, _etag)) => {
                 if *downloaded {
                     success_count.set(success_count.get() + 1);
@@ -566,8 +574,8 @@ pub fn proj_download() -> Result<(), Box<dyn Error>> {
                 error.set(Some((idx, e.to_string())));
                 overall_pb.finish_and_clear();
             }
-        }
-    });
+        },
+    );
 
     // Check if there was an error
     if let Some((idx, err)) = error.into_inner() {
