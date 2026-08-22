@@ -46,7 +46,7 @@ pub fn sc_library_ls(
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
     let rver = library_rver(args)?;
-    let libs: Vec<PkgLibrary> = sc_library_get_list(Some(rver), false)?;
+    let libs: Vec<PkgLibrary> = sc_library_get_list(Some(rver), true)?;
     if args.get_flag("json") || libargs.get_flag("json") || mainargs.get_flag("json") {
         println!("{}", serde_json::to_string_pretty(&libs)?);
     } else {
@@ -138,7 +138,7 @@ pub fn sc_library_get_list(
 pub fn sc_library_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let new: String = args.get_one::<String>("lib-name").unwrap().to_string();
     let rver = library_rver(args)?;
-    let libs = sc_library_get_list(Some(rver.to_string()), false)?;
+    let libs = sc_library_get_list(Some(rver.to_string()), true)?;
     let names: Vec<String> = libs.iter().map(|x| x.name.to_owned()).collect();
     if names.contains(&new) {
         OUTPUT.error(&format!("Library '{}' already exists for R {}.", new, rver));
@@ -176,7 +176,7 @@ pub fn sc_library_rm(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     }
 
     let rver = library_rver(args)?;
-    let libs = sc_library_get_list(Some(rver.to_string()), false)?;
+    let libs = sc_library_get_list(Some(rver.to_string()), true)?;
 
     let mut dir: Option<PathBuf> = None;
     for lib in libs {
@@ -227,7 +227,7 @@ pub fn sc_library_default(
 }
 
 pub(crate) fn sc_library_get_default(rver: &str) -> Result<PkgLibrary, Box<dyn Error>> {
-    let (_main, default) = get_library_path(rver, false)?;
+    let (_main, default) = get_library_path(rver, true)?;
     let mut name = "main".to_string();
 
     if let Some(last) = default.file_name() {
@@ -259,7 +259,7 @@ pub fn sc_library_set_default(name: &str, rver: Option<&str>) -> Result<(), Box<
             }
         },
     };
-    let libs = sc_library_get_list(Some(rver.to_string()), false)?;
+    let libs = sc_library_get_list(Some(rver.to_string()), true)?;
 
     let mut path: Option<PathBuf> = None;
     for lib in libs {
@@ -461,8 +461,16 @@ pub fn get_library_path_cache(rver: &str) -> Result<(PathBuf, PathBuf), Box<dyn 
     };
 
     let main_path = Path::new(&main);
+    if !main_path.exists() {
+        debug!(
+            "Cached library {} for R {} is gone, asking R again",
+            main_path.display(),
+            rver
+        );
+        return get_library_path_nocache(rver);
+    }
     let config_path = main_path.join("___default");
-    if !main_path.exists() || !config_path.exists() {
+    if !config_path.exists() {
         return Ok((main_path.to_path_buf(), main_path.to_path_buf()));
     }
 

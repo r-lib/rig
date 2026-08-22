@@ -104,7 +104,7 @@ pub(super) fn resolve_library(args: &ArgMatches) -> Result<ResolvedLibrary, Box<
     let lib = match lib {
         None => sc_library_get_default(&rver)?,
         Some(name) => {
-            let libs = sc_library_get_list(Some(rver.to_string()), false)?;
+            let libs = sc_library_get_list(Some(rver.to_string()), true)?;
             match libs.iter().find(|lib| &lib.name == name) {
                 Some(lib) => lib.clone(),
                 None => {
