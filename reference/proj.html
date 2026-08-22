@@ -546,6 +546,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   </ul></li>
   <li><a href="#rig-proj-deps" id="toc-rig-proj-deps" class="nav-link" data-scroll-target="#rig-proj-deps"><code>rig proj deps</code></a>
   <ul class="collapse">
+  <li><a href="#recursive-dependencies" id="toc-recursive-dependencies" class="nav-link" data-scroll-target="#recursive-dependencies">Recursive dependencies</a></li>
   <li><a href="#usage-1" id="toc-usage-1" class="nav-link" data-scroll-target="#usage-1">Usage</a></li>
   <li><a href="#options-1" id="toc-options-1" class="nav-link" data-scroll-target="#options-1">Options</a></li>
   </ul></li>
@@ -644,8 +645,15 @@ Run in user mode (overrides RIG_MODE and config)
 </section>
 <section id="rig-proj-deps" class="level2">
 <h2 class="anchored" data-anchor-id="rig-proj-deps"><code>rig proj deps</code></h2>
-<p>Show the dependencies of an R project.</p>
-<p>By default rig reads the project manifest (e.g.&nbsp;<code>DESCRIPTION</code>) in the current directory; use <code>--input</code> to point to a different file. Add <code>--dev</code> to include development dependencies.</p>
+<p>Show the dependencies of an R project, in a table: every package the project depends on, the dependency type (<code>Depends</code>, <code>Imports</code>, <code>LinkingTo</code>) and the version requirement, if it has one.</p>
+<p>By default rig reads the project manifest (e.g.&nbsp;<code>DESCRIPTION</code>) in the current directory; use <code>--input</code> to point to a different file. Add <code>--dev</code> to include development dependencies. Use <code>--json</code> for machine readable output.</p>
+<p>The plain listing only reads the manifest, so it needs neither R nor the package repositories.</p>
+<section id="recursive-dependencies" class="level3">
+<h3 class="anchored" data-anchor-id="recursive-dependencies">Recursive dependencies</h3>
+<p><code>--recursive</code> (<code>-r</code>) shows the whole dependency closure: not only the packages the project needs directly, but also the packages <em>those</em> need, and so on. Each package appears once, with the version currently on CRAN, the <code>Depth</code> column giving its distance from the project, and the <code>Needed by</code> column naming the packages that pull it in. This needs the package metadata of the repositories, which rig downloads if it does not have it yet.</p>
+<p>A recursive listing only ever follows hard dependencies, also below a development dependency added by <code>--dev</code>, so <code>--dev --recursive</code> means the project’s own dev dependencies plus everything they need to be installed.</p>
+<p>rig follows the dependencies of the <em>latest</em> version of every package in the closure, so a version requirement that would force an older version, with different dependencies, is not taken into account. Use <a href="#rig-proj-solve"><code>rig proj solve</code></a> for a resolution that is consistent across versions.</p>
+</section>
 <section id="usage-1" class="level3">
 <h3 class="anchored" data-anchor-id="usage-1">Usage</h3>
 <pre class="text"><code>rig proj deps [OPTIONS]</code></pre>
@@ -672,6 +680,10 @@ Project file to solve (e.g.&nbsp;DESCRIPTION)
 <dt><code>--json</code></dt>
 <dd>
 JSON output
+</dd>
+<dt><code>-r, --recursive</code></dt>
+<dd>
+Show recursive (transitive) dependencies
 </dd>
 <dt><code>--user</code></dt>
 <dd>
