@@ -529,6 +529,7 @@ ul.task-list li input[type="checkbox"] {
   <ul class="collapse">
   <li><a href="#dev-dependencies" id="toc-dev-dependencies" class="nav-link" data-scroll-target="#dev-dependencies">Dev dependencies</a></li>
   <li><a href="#binary-and-source-packages" id="toc-binary-and-source-packages" class="nav-link" data-scroll-target="#binary-and-source-packages">Binary and source packages</a></li>
+  <li><a href="#packages-rig-builds-itself" id="toc-packages-rig-builds-itself" class="nav-link" data-scroll-target="#packages-rig-builds-itself">Packages rig builds itself</a></li>
   <li><a href="#what-gets-skipped" id="toc-what-gets-skipped" class="nav-link" data-scroll-target="#what-gets-skipped">What gets skipped</a></li>
   <li><a href="#which-library" id="toc-which-library" class="nav-link" data-scroll-target="#which-library">Which library</a></li>
   <li><a href="#usage-3" id="toc-usage-3" class="nav-link" data-scroll-target="#usage-3">Usage</a></li>
@@ -813,6 +814,11 @@ glue     1.8.0    binary  install  not installed
 <p>A binary package is a package that has already been built for your platform and R version. Installing one is unpacking it into the library, so rig does that itself and never starts R.</p>
 <p>A package with no binary build is installed from its source tarball, with <code>R CMD INSTALL</code>, which does start R, and needs whatever that package needs to compile. The output of the compilation goes into a log file per package, in a <code>_logs</code> directory inside the library, and rig points at the log when an installation fails.</p>
 <p><code>--platform</code> installs for a platform other than this machine’s, and <code>--platform source</code> installs source packages only. <code>--prefer-binary</code> trades a newer version for an older one that has a binary build, which is useful when compiling is expensive; it takes the number of versions to look back through, e.g.&nbsp;<code>--prefer-binary=5</code>, and defaults to 3.</p>
+</section>
+<section id="packages-rig-builds-itself" class="level3">
+<h3 class="anchored" data-anchor-id="packages-rig-builds-itself">Packages rig builds itself</h3>
+<p>Compiling a package produces exactly what a repository would have served as a binary package, so rig keeps it: a source install is archived into the cache, with the same file name <code>R CMD INSTALL --build</code> would have given it, and installing that package again unpacks the archive instead of compiling it a second time. That covers another library, another project, and <code>--reinstall</code>, which reinstalls a package but does not recompile it.</p>
+<p>A cache entry belongs to one platform, one R minor version, one source tarball, one set of versions of the packages it is compiled against, and one set of <code>~/.R/Makevars</code> files. Change any of those and the package is compiled again. What it does <em>not</em> cover is your compiler, the system libraries the package found when it was configured, and the arguments it was configured with; a machine whose toolchain changed under it can hold an entry that no longer matches, and the way out is to delete it. <code>rig system dirs --cache</code> says where the cache is.</p>
 </section>
 <section id="what-gets-skipped" class="level3">
 <h3 class="anchored" data-anchor-id="what-gets-skipped">What gets skipped</h3>
