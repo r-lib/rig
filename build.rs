@@ -11,15 +11,27 @@ mod pager;
 include!("src/args.rs");
 
 fn main() -> Result<(), Error> {
-    let outdir = match env::var_os("OUT_DIR") {
-        None => return Ok(()),
-        Some(outdir) => outdir,
-    };
-
     #[cfg(target_os = "windows")]
     {
         static_vcruntime::metabuild();
     }
+
+    // `rig_app()` builds the whole clap command tree in a single function, so in
+    // an unoptimized build its stack frame is larger than the 1 MB main thread
+    // stack we get on Windows. Do the work on a thread with a bigger stack.
+    std::thread::Builder::new()
+        .stack_size(32 * 1024 * 1024)
+        .spawn(generate_completions)
+        .expect("failed to spawn completion generator thread")
+        .join()
+        .expect("completion generator thread panicked")
+}
+
+fn generate_completions() -> Result<(), Error> {
+    let outdir = match env::var_os("OUT_DIR") {
+        None => return Ok(()),
+        Some(outdir) => outdir,
+    };
 
     let mut app = rig_app();
     let name = "rig".to_string();
