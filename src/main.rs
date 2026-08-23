@@ -225,6 +225,13 @@ fn main_() -> i32 {
         }
     }
 
+    if args.get_flag("no-cache") {
+        if let Err(e) = cache::set_no_cache(true) {
+            error!("{}", e);
+            return 1;
+        }
+    }
+
     #[cfg(target_os = "linux")]
     set_cert_envvar();
 
@@ -245,6 +252,8 @@ fn main_() -> i32 {
             1
         }
     };
+
+    cache::cleanup_ephemeral_cache_dir();
 
     result
 }

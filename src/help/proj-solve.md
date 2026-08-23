@@ -49,6 +49,13 @@ any binary package metadata. rig also falls back to source packages when
 there are no binaries for a platform at all. There is then nothing for
 `--prefer-binary` to prefer, and rig ignores it.
 
+rig keeps the repository metadata and the binary package indices it solves
+from in its cache, and refreshes them once a day. `--no-cache` downloads
+them again instead, and writes nothing to the cache, which is the way to
+solve against a package that was published minutes ago. It is a good deal
+slower, because the metadata it re-downloads is large. See
+[`rig config`](config.qmd).
+
 The `pkg.lock` file records, for every package, whether it is a source or a
 binary package and the URL it is downloaded from. It also records where the
 file is cached, which is per *build* rather than per version: a repository

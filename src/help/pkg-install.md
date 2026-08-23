@@ -83,6 +83,11 @@ configured with; a machine whose toolchain changed under it can hold an entry
 that no longer matches, and the way out is to delete it. `rig system dirs
 --cache` says where the cache is.
 
+`--no-cache` turns all of this off for one run: rig then downloads the
+repository metadata and the package files again, compiles every source
+package rather than unpacking one it built earlier, and adds nothing to the
+cache. See [`rig config`](config.qmd).
+
 ## What gets skipped
 
 rig does not install a package that is already installed and up to date, so

@@ -2233,6 +2233,13 @@ pub fn rig_app() -> Command {
                 .long("admin")
                 .global(true)
                 .action(clap::ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("no-cache")
+                .help("Do not read or write rig's cache (overrides RIG_NO_CACHE and config)")
+                .long("no-cache")
+                .global(true)
+                .action(clap::ArgAction::SetTrue),
         );
 
     rig = rig

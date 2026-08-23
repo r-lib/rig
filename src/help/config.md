@@ -47,6 +47,18 @@ configuration file takes precedence over rig's built-in default.
   user, or if other users can write into it. A directory you configure here is
   created but not checked.
 
+- `no-cache` (`RIG_NO_CACHE`): set it to `true` to stop rig from using its
+  cache, the same as passing `--no-cache`. rig then neither reads nor writes
+  the cache directory: it downloads the repository metadata, the binary
+  package indices and the package files again, compiles a source package
+  instead of unpacking a build it made earlier, and downloads an R or Rtools
+  installer again instead of reusing the one in the download directory. What
+  it downloads and builds goes into a temporary directory that is removed when
+  rig exits, so the cache is left exactly as it was. Defaults to `false`. This
+  is meant for debugging and for the occasional run that must not trust
+  anything cached; it makes rig considerably slower, so it is a poor thing to
+  turn on permanently.
+
 - `positron-setup`: [user mode](../admin-vs-user-mode.qmd) only. Set it to `false` to stop rig from
   updating Positron's settings: adding its R installation root to
   `positron.r.customRootFolders`, and pointing

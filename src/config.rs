@@ -181,6 +181,29 @@ pub fn get_global_config_value(key: &str) -> Result<Option<String>, Box<dyn Erro
     }
 }
 
+/// A boolean configuration entry.
+pub fn get_global_config_bool(key: &str) -> Result<Option<bool>, Box<dyn Error>> {
+    let map = load_raw_config()?;
+    match map.get(key) {
+        None => Ok(None),
+        Some(serde_json::Value::Bool(b)) => Ok(Some(*b)),
+        Some(serde_json::Value::String(s)) => match s.as_str() {
+            "true" => Ok(Some(true)),
+            "false" => Ok(Some(false)),
+            _ => bail!(
+                "Invalid '{}' in rig config: '{}', expected 'true' or 'false'",
+                key,
+                s
+            ),
+        },
+        Some(other) => bail!(
+            "Invalid '{}' in rig config: {}, expected 'true' or 'false'",
+            key,
+            other
+        ),
+    }
+}
+
 pub fn set_global_config_value(key: &str, value: &str) -> Result<(), Box<dyn Error>> {
     let mut map = load_raw_config()?;
     map.insert(

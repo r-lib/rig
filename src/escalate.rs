@@ -45,6 +45,7 @@ pub fn escalate(task: &str) -> Result<(), Box<dyn Error>> {
             "RIG_FONTS_SHA256",
             "RIG_FONTS_URL",
             "RIG_MODE",
+            "RIG_NO_CACHE",
             "RIG_R_INSTALL_DIR",
             "RUST_BACKTRACE",
             "http_proxy",

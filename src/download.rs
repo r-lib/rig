@@ -91,7 +91,11 @@ pub fn download_file_sync(
 ) -> Result<OsString, Box<dyn Error>> {
     let tmp_dir = crate::cache::ensure_download_dir()?;
     let target = tmp_dir.join(filename);
-    if target.exists() && (infinite_cache || not_too_old(&target)) {
+    // `infinite_cache` goes around `not_too_old()`, so `--no-cache` has to be
+    // checked here as well and not only there.
+    let cached =
+        target.exists() && !crate::cache::no_cache() && (infinite_cache || not_too_old(&target));
+    if cached {
         OUTPUT.success(&format!("{} is cached at {}", filename, target.display()));
         info!("{} is cached at {}", filename, target.display());
     } else {

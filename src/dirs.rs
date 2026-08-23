@@ -27,7 +27,7 @@ use log::error;
 use simple_error::bail;
 use tabular::{row, Table};
 
-use crate::cache::{get_cache_dir, get_data_dir, get_download_dir, get_logs_dir};
+use crate::cache::{get_data_dir, get_download_dir, get_logs_dir, real_cache_dir};
 use crate::output::OUTPUT;
 use crate::utils::{get_binary_dir, get_mode};
 
@@ -143,7 +143,9 @@ pub fn rig_dirs(arch: &str) -> Result<RigDirs, Box<dyn Error>> {
         data_dir: path_string(get_data_dir()?),
         #[cfg(target_os = "linux")]
         fonts_dir: path_string(get_fontconfig_dir()?),
-        cache_dir: path_string(get_cache_dir()?),
+        // The real one, not the throwaway directory `--no-cache` swaps in: this
+        // reports where rig keeps things, not where this process happens to.
+        cache_dir: path_string(real_cache_dir()?),
         download_dir: path_string(get_download_dir()?),
         logs_dir: path_string(get_logs_dir()?),
     })
@@ -208,7 +210,7 @@ pub fn sc_system_dirs(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Bo
                 #[cfg(target_os = "linux")]
                 println!("{}", path_string(get_fontconfig_dir()?));
             }
-            "cache" => println!("{}", path_string(get_cache_dir()?)),
+            "cache" => println!("{}", path_string(real_cache_dir()?)),
             "download" => println!("{}", path_string(get_download_dir()?)),
             "log" => println!("{}", path_string(get_logs_dir()?)),
             _ => unreachable!(),

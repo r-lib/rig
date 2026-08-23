@@ -101,6 +101,32 @@ teardown() {
     [[ -z "$output" ]]
 }
 
+@test "--no-cache" {
+    # accepted before and after the subcommand, and from the environment
+    run rig -q --no-cache system dirs --cache
+    [[ "$status" -eq 0 ]]
+    cache="$output"
+    run rig -q system dirs --no-cache --cache
+    [[ "$status" -eq 0 ]]
+    [[ "$output" = "$cache" ]]
+    run env RIG_NO_CACHE=true rig -q system dirs --cache
+    [[ "$status" -eq 0 ]]
+    # the reported cache directory is the real one either way: --no-cache
+    # changes where this run keeps things, not where rig keeps them
+    [[ "$output" = "$cache" ]]
+    [[ "$output" = "$(rig -q system dirs --cache)" ]]
+
+    # a value that is not a boolean is a warning, not a failure
+    run env RIG_NO_CACHE=perhaps rig -q system dirs --cache
+    [[ "$status" -eq 0 ]]
+    [[ "$output" = "$cache" ]]
+
+    # a command that never looks at the cache does not create a throwaway
+    # directory for it either, and one that does cleans it up afterwards
+    run bash -c 'ls -d "${TMPDIR:-/tmp}"/rig-nocache-* 2>/dev/null | wc -l'
+    [[ "$output" -eq 0 ]]
+}
+
 @test "add" {
     if ! rig ls | grep -q '^[* ] 4.1'; then
         run sudo rig add 4.1 -a x86_64

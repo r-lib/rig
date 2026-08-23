@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use directories::ProjectDirs;
 use log::*;
@@ -7,16 +8,122 @@ use simple_error::bail;
 
 use crate::output::OUTPUT;
 
+static NO_CACHE: OnceLock<bool> = OnceLock::new();
+
+/// Record whether this run may use rig's cache, from the `--no-cache` flag.
+pub fn set_no_cache(value: bool) -> Result<(), Box<dyn Error>> {
+    match NO_CACHE.set(value) {
+        Ok(()) => Ok(()),
+        Err(existing) if existing == value => Ok(()),
+        Err(existing) => bail!(
+            "Cannot set no-cache to {}, already set to {}",
+            value,
+            existing
+        ),
+    }
+}
+
+/// Whether this run must neither read nor write rig's cache.
+pub fn no_cache() -> bool {
+    if let Some(cached) = NO_CACHE.get() {
+        return *cached;
+    }
+
+    let value = if let Ok(val) = std::env::var("RIG_NO_CACHE") {
+        match parse_bool(&val) {
+            Some(val) => val,
+            None => {
+                warn!(
+                    "Invalid RIG_NO_CACHE value: '{}', expected 'true' or 'false', ignoring it",
+                    val
+                );
+                false
+            }
+        }
+    } else {
+        match crate::config::get_global_config_bool("no-cache") {
+            Ok(val) => val.unwrap_or(false),
+            Err(err) => {
+                warn!("{}, ignoring it", err);
+                false
+            }
+        }
+    };
+
+    let _ = NO_CACHE.set(value);
+    value
+}
+
+fn parse_bool(value: &str) -> Option<bool> {
+    match value.trim().to_lowercase().as_str() {
+        "true" | "yes" | "on" | "1" => Some(true),
+        "false" | "no" | "off" | "0" | "" => Some(false),
+        _ => None,
+    }
+}
+
 /// Get the project cache directory
 ///
 /// Returns the cache directory for the rig application.
 /// This is used for storing temporary data like downloaded packages.
 pub fn get_cache_dir() -> Result<PathBuf, Box<dyn Error>> {
+    if no_cache() {
+        return ephemeral_cache_dir();
+    }
+    real_cache_dir()
+}
+
+/// The persistent cache directory, whatever `--no-cache` says.
+pub fn real_cache_dir() -> Result<PathBuf, Box<dyn Error>> {
     let cache_dir = ProjectDirs::from("com", "gaborcsardi", "rig")
         .ok_or("Cannot determine cache directory")?
         .cache_dir()
         .to_path_buf();
     Ok(cache_dir)
+}
+
+static EPHEMERAL_CACHE_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+fn ephemeral_cache_dir() -> Result<PathBuf, Box<dyn Error>> {
+    if let Some(dir) = EPHEMERAL_CACHE_DIR.get() {
+        return Ok(dir.clone());
+    }
+
+    let dir = std::env::temp_dir().join(ephemeral_cache_dir_name());
+    create_download_dir_checked(&dir)?;
+    debug!("Using the throwaway cache directory {}", dir.display());
+    let _ = EPHEMERAL_CACHE_DIR.set(dir.clone());
+    Ok(dir)
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn ephemeral_cache_dir_name() -> String {
+    format!(
+        "rig-nocache-{}-{}",
+        nix::unistd::geteuid().as_raw(),
+        std::process::id()
+    )
+}
+
+#[cfg(target_os = "windows")]
+fn ephemeral_cache_dir_name() -> String {
+    // `%TEMP%` is already per user on Windows, see `default_download_dir()`.
+    format!("rig-nocache-{}", std::process::id())
+}
+
+pub fn cleanup_ephemeral_cache_dir() {
+    let dir = match EPHEMERAL_CACHE_DIR.get() {
+        Some(dir) => dir,
+        None => return,
+    };
+    match std::fs::remove_dir_all(dir) {
+        Ok(()) => debug!("Removed the throwaway cache directory {}", dir.display()),
+        Err(err) => debug!(
+            "Cannot remove the throwaway cache directory {}: {}",
+            dir.display(),
+            err
+        ),
+    }
 }
 
 /// Get the project data directory

@@ -200,7 +200,11 @@ pub fn read_version_link(path: &str) -> Result<Option<String>, Box<dyn Error>> {
     Ok(Some(fname))
 }
 
+/// Whether an already downloaded file is recent enough
 pub fn not_too_old(path: &std::path::PathBuf) -> bool {
+    if crate::cache::no_cache() {
+        return false;
+    }
     let meta = std::fs::metadata(path);
     match meta {
         Err(_) => false,

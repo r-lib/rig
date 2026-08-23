@@ -115,6 +115,9 @@ fn cache_set_value(key: &str, value: Value) {
 
 #[cfg(target_os = "windows")]
 fn cache_get_value(key: &str) -> Option<Value> {
+    if crate::cache::no_cache() {
+        return None;
+    }
     let map = API_CACHE.read().unwrap();
     map.get(key).cloned()
 }

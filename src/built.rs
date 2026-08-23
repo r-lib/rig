@@ -73,6 +73,10 @@ impl BuiltCache {
     /// Never an error: not caching a build is a missed optimization, not a
     /// failure, so everything that can go wrong here is logged and dropped.
     pub fn new(r_version: &str, r_binary: &str) -> Option<BuiltCache> {
+        if crate::cache::no_cache() {
+            debug!("Not caching built packages, --no-cache");
+            return None;
+        }
         let cache = match get_cache_dir() {
             Ok(cache) => cache,
             Err(err) => {
