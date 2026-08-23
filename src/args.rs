@@ -1661,6 +1661,24 @@ pub fn rig_app() -> Command {
                         .required(false),
                 )
                 .arg(
+                    Arg::new("dev")
+                        .help("Include dev (development) dependencies")
+                        .long("dev")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("ignore-unavailable")
+                        .help(
+                            "Skip dev dependencies that are not available in the\n\
+                            repositories, instead of failing",
+                        )
+                        .long("ignore-unavailable")
+                        .num_args(0)
+                        .requires("dev")
+                        .required(false),
+                )
+                .arg(
                     Arg::new("platform")
                         .help(
                             "Platform to install binary packages for, e.g. macos, windows,\n\

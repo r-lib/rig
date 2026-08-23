@@ -27,6 +27,26 @@ would install, without installing anything.
 Package names are case sensitive, as they are in R. Naming the same package
 twice is not an error, it is installed once.
 
+## Dev dependencies
+
+By default rig installs the hard dependencies only: `Depends`, `Imports`
+and `LinkingTo`, i.e. the packages that need to be installed to use the
+package. `--dev` also installs the soft dependencies, `Suggests` and
+`Enhances`, which are typically only needed to run the tests, build the
+vignettes or use some optional feature.
+
+`--dev` applies to the packages named on the command line only. A dev
+dependency is installed with everything *it* needs to be installed, but not
+with its own dev dependencies, so `--dev` does not grow without bounds.
+
+A package often suggests packages that are not in the repositories rig
+installs from, e.g. Bioconductor packages. Those cannot be installed, and
+by default rig reports them and installs nothing.
+`--ignore-unavailable` installs the rest of the dev dependencies instead,
+and names the ones it skipped. It only applies to dev dependencies: a hard
+dependency that is not available is always an error, and so is a dev
+dependency that exists but has no version that fits.
+
 ## Binary and source packages
 
 A binary package is a package that has already been built for your platform

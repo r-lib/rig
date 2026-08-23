@@ -38,7 +38,7 @@ use crate::windows::get_r_binary;
 use crate::linux::get_r_binary;
 
 use crate::cache::get_cache_dir;
-use crate::dcf::{DepVersionSpec, PackageDependencies, RDepType};
+use crate::dcf::{DepVersionSpec, PackageDependencies, RDepType, DEP_TYPES_SOFT};
 use crate::install::{install_packages, PackageInfo, REMOTE_HASH_FIELD};
 use crate::library::library_rver;
 use crate::output::OUTPUT;
@@ -47,7 +47,10 @@ use crate::proj::{
     download_lockfile_packages, lockfile_package_info, proj_binary_target, sc_proj_solve_deps,
     BASE_PKGS,
 };
+use crate::repos::DbSourcePackageLoader;
+use crate::solver::{is_base_package, PackageVersionLoader};
 
+use super::deps::root_package;
 use super::list::{read_installed, resolve_library, InstalledPackage, ResolvedLibrary};
 
 /// How many packages are installed at once. The same default `rig proj deploy`
@@ -68,7 +71,16 @@ pub fn sc_pkg_install(
         .unwrap()
         .map(|x| x.to_string())
         .collect();
-    let deps = requested_deps(&names)?;
+    let mut deps = requested_deps(&names)?;
+    if args.get_flag("dev") {
+        let loader = DbSourcePackageLoader::new()?;
+        add_dev_deps(
+            &loader,
+            &names,
+            &mut deps,
+            args.get_flag("ignore-unavailable"),
+        )?;
+    }
 
     let lib = resolve_library(args)?;
     // Installing needs an R version even when `--library` is a plain path: it
@@ -225,6 +237,77 @@ fn requested_deps(names: &[String]) -> Result<PackageDependencies, Box<dyn Error
     }
 
     Ok(deps)
+}
+
+/// Add the dev dependencies of the named packages to the set that is solved.
+///
+/// Adding them at this level, rather than as dependencies of the package that
+/// suggests them, is also what keeps the install order sound.
+fn add_dev_deps(
+    loader: &dyn PackageVersionLoader,
+    names: &[String],
+    deps: &mut PackageDependencies,
+    ignore_unavailable: bool,
+) -> Result<(), Box<dyn Error>> {
+    // Soft dependencies that the repositories do not have at all. Suggesting a
+    // package that is not on CRAN — one from Bioconductor, or from GitHub — is
+    // common, and the solver cannot do anything with those.
+    let mut unavailable: Vec<String> = vec![];
+
+    for name in names {
+        let package = root_package(loader, name, "latest")?;
+        for dep in package.dependencies.dependencies.iter() {
+            // A dependency that is also a hard dependency is being installed
+            // anyway, and is already in `deps`.
+            if !dep.types.iter().all(|t| DEP_TYPES_SOFT.contains(t)) {
+                continue;
+            }
+            // Suggesting R or a base package, e.g. `Suggests: tools`, is
+            // routine, and there is nothing to install for those.
+            if dep.name == "R" || is_base_package(&dep.name) {
+                continue;
+            }
+            if deps.dependencies.iter().any(|d| d.name == dep.name) {
+                debug!(
+                    "{} is already being installed, not adding it again",
+                    dep.name
+                );
+                continue;
+            }
+            if loader.load_versions(&dep.name)?.is_empty() {
+                if !unavailable.contains(&dep.name) {
+                    unavailable.push(dep.name.clone());
+                }
+                continue;
+            }
+            debug!("Adding dev dependency {} of {}", dep.name, name);
+            deps.dependencies.push(dep.clone());
+        }
+    }
+
+    if !unavailable.is_empty() {
+        let msg = format!(
+            "{} {} not available in the repositories. \
+            Use `--ignore-unavailable` to install the rest of the dev dependencies.",
+            unavailable.join(", "),
+            if unavailable.len() == 1 { "is" } else { "are" }
+        );
+        if ignore_unavailable {
+            OUTPUT.warn(&format!(
+                "Skipping {}, not available in the repositories",
+                unavailable.join(", ")
+            ));
+            info!(
+                "Skipping unavailable dev dependencies: {}",
+                unavailable.join(", ")
+            );
+        } else {
+            OUTPUT.error(&msg);
+            bail!(msg);
+        }
+    }
+
+    Ok(())
 }
 
 // ------------------------------------------------------------------------
@@ -453,6 +536,8 @@ fn library_error(lib: &ResolvedLibrary, err: std::io::Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pkg::deps::requirements;
+    use crate::pkg::stub::Stub;
 
     /// One package of a resolution: name, version, hash, and the `LinkingTo`
     /// provenance the artifact would be installed with.
@@ -691,5 +776,161 @@ mod tests {
         assert_eq!(deps.dependencies.len(), 1);
         assert_eq!(deps.dependencies[0].name, "cli");
         assert!(deps.dependencies[0].constraints.is_empty());
+    }
+
+    // ------------------------------------------------------------------
+    // Dev dependencies
+
+    /// The dependency set `--dev` solves for, as the names the solve gets.
+    fn dev(
+        packages: Vec<(&'static str, &'static str, &'static str)>,
+        names: &[&str],
+        ignore_unavailable: bool,
+    ) -> Result<Vec<String>, Box<dyn Error>> {
+        let loader = Stub { packages };
+        let names: Vec<String> = names.iter().map(|n| n.to_string()).collect();
+        let mut deps = requested_deps(&names)?;
+        add_dev_deps(&loader, &names, &mut deps, ignore_unavailable)?;
+        Ok(deps.dependencies.iter().map(|d| d.name.clone()).collect())
+    }
+
+    #[test]
+    fn soft_dependencies_are_added_with_their_constraints() {
+        let loader = Stub {
+            packages: vec![
+                ("a", "1.0.0", "Imports: b; Suggests: t (>= 2.0.0)"),
+                ("b", "1.0.0", ""),
+                ("t", "3.0.0", ""),
+            ],
+        };
+        let names = vec!["a".to_string()];
+        let mut deps = requested_deps(&names).unwrap();
+        add_dev_deps(&loader, &names, &mut deps, false).unwrap();
+
+        let t = deps.dependencies.iter().find(|d| d.name == "t").unwrap();
+        assert_eq!(t.types, vec![RDepType::Suggests]);
+        assert_eq!(requirements(t), vec![">= 2.0.0".to_string()]);
+        // `b` is a hard dependency, the solve finds it on its own.
+        assert_eq!(
+            deps.dependencies
+                .iter()
+                .map(|d| d.name.clone())
+                .collect::<Vec<_>>(),
+            vec!["a".to_string(), "t".to_string()]
+        );
+    }
+
+    #[test]
+    fn enhances_is_a_dev_dependency_too() {
+        let out = dev(
+            vec![("a", "1.0.0", "Enhances: e"), ("e", "1.0.0", "")],
+            &["a"],
+            false,
+        )
+        .unwrap();
+        assert_eq!(out, vec!["a".to_string(), "e".to_string()]);
+    }
+
+    #[test]
+    fn dev_dependencies_of_dev_dependencies_are_not_added() {
+        let out = dev(
+            vec![
+                ("a", "1.0.0", "Suggests: t"),
+                ("t", "1.0.0", "Imports: h; Suggests: u"),
+                ("h", "1.0.0", ""),
+                ("u", "1.0.0", ""),
+            ],
+            &["a"],
+            false,
+        )
+        .unwrap();
+        // `t`'s own `Suggests` is not followed; `h` is `t`'s hard dependency and
+        // the solve pulls it in.
+        assert_eq!(out, vec!["a".to_string(), "t".to_string()]);
+    }
+
+    #[test]
+    fn a_hard_and_soft_dependency_is_added_once() {
+        let out = dev(
+            vec![
+                ("a", "1.0.0", "Imports: b; Suggests: b"),
+                ("b", "1.0.0", ""),
+            ],
+            &["a"],
+            false,
+        )
+        .unwrap();
+        assert_eq!(out, vec!["a".to_string()]);
+    }
+
+    #[test]
+    fn a_soft_dependency_of_two_packages_is_added_once() {
+        let out = dev(
+            vec![
+                ("a", "1.0.0", "Suggests: t"),
+                ("b", "1.0.0", "Suggests: t"),
+                ("t", "1.0.0", ""),
+            ],
+            &["a", "b"],
+            false,
+        )
+        .unwrap();
+        assert_eq!(out, vec!["a".to_string(), "b".to_string(), "t".to_string()]);
+    }
+
+    #[test]
+    fn a_soft_dependency_that_is_also_named_is_added_once() {
+        let out = dev(
+            vec![("a", "1.0.0", "Suggests: b"), ("b", "1.0.0", "")],
+            &["a", "b"],
+            false,
+        )
+        .unwrap();
+        assert_eq!(out, vec!["a".to_string(), "b".to_string()]);
+    }
+
+    #[test]
+    fn base_packages_in_suggests_are_skipped() {
+        let out = dev(
+            vec![("a", "1.0.0", "Suggests: tools, R, parallel")],
+            &["a"],
+            false,
+        )
+        .unwrap();
+        assert_eq!(out, vec!["a".to_string()]);
+    }
+
+    #[test]
+    fn an_unavailable_dev_dependency_is_an_error() {
+        let err = dev(vec![("a", "1.0.0", "Suggests: t, bioc")], &["a"], false).unwrap_err();
+        assert!(err.to_string().contains("bioc"), "{}", err);
+        assert!(err.to_string().contains("--ignore-unavailable"), "{}", err);
+    }
+
+    #[test]
+    fn ignore_unavailable_skips_an_unavailable_dev_dependency() {
+        let out = dev(
+            vec![("a", "1.0.0", "Suggests: t, bioc"), ("t", "1.0.0", "")],
+            &["a"],
+            true,
+        )
+        .unwrap();
+        assert_eq!(out, vec!["a".to_string(), "t".to_string()]);
+    }
+
+    #[test]
+    fn an_unavailable_hard_dependency_is_left_to_the_solver() {
+        // Not this function's business: the solve reports it, with `--dev` and
+        // `--ignore-unavailable` or without them.
+        let out = dev(
+            vec![
+                ("a", "1.0.0", "Imports: gone; Suggests: t"),
+                ("t", "1.0.0", ""),
+            ],
+            &["a"],
+            true,
+        )
+        .unwrap();
+        assert_eq!(out, vec!["a".to_string(), "t".to_string()]);
     }
 }
