@@ -645,6 +645,10 @@ Print help (see a summary with ‘-h’)
 <dd>
 JSON output
 </dd>
+<dt><code>--no-cache</code></dt>
+<dd>
+Do not read or write rig’s cache (overrides RIG_NO_CACHE and config)
+</dd>
 <dt><code>--pkg-type &lt;pkg-type&gt;</code></dt>
 <dd>
 Type of packages to list (e.g.&nbsp;source, binary)
@@ -712,6 +716,10 @@ Print help (see a summary with ‘-h’)
 <dd>
 JSON output
 </dd>
+<dt><code>--no-cache</code></dt>
+<dd>
+Do not read or write rig’s cache (overrides RIG_NO_CACHE and config)
+</dd>
 <dt><code>-r, --recursive</code></dt>
 <dd>
 Show recursive (transitive) dependencies
@@ -772,6 +780,10 @@ Print help (see a summary with ‘-h’)
 <dd>
 JSON output
 </dd>
+<dt><code>--no-cache</code></dt>
+<dd>
+Do not read or write rig’s cache (overrides RIG_NO_CACHE and config)
+</dd>
 <dt><code>--readme</code></dt>
 <dd>
 Show the README of the package, instead of its metadata
@@ -819,6 +831,7 @@ glue     1.8.0    binary  install  not installed
 <h3 class="anchored" data-anchor-id="packages-rig-builds-itself">Packages rig builds itself</h3>
 <p>Compiling a package produces exactly what a repository would have served as a binary package, so rig keeps it: a source install is archived into the cache, with the same file name <code>R CMD INSTALL --build</code> would have given it, and installing that package again unpacks the archive instead of compiling it a second time. That covers another library, another project, and <code>--reinstall</code>, which reinstalls a package but does not recompile it.</p>
 <p>A cache entry belongs to one platform, one R minor version, one source tarball, one set of versions of the packages it is compiled against, and one set of <code>~/.R/Makevars</code> files. Change any of those and the package is compiled again. What it does <em>not</em> cover is your compiler, the system libraries the package found when it was configured, and the arguments it was configured with; a machine whose toolchain changed under it can hold an entry that no longer matches, and the way out is to delete it. <code>rig system dirs --cache</code> says where the cache is.</p>
+<p><code>--no-cache</code> turns all of this off for one run: rig then downloads the repository metadata and the package files again, compiles every source package rather than unpacking one it built earlier, and adds nothing to the cache. See <a href="../reference/config.html"><code>rig config</code></a>.</p>
 </section>
 <section id="what-gets-skipped" class="level3">
 <h3 class="anchored" data-anchor-id="what-gets-skipped">What gets skipped</h3>
@@ -880,6 +893,10 @@ JSON output
 <dt><code>-l, --library &lt;library&gt;</code></dt>
 <dd>
 Library name or path, instead of the default library
+</dd>
+<dt><code>--no-cache</code></dt>
+<dd>
+Do not read or write rig’s cache (overrides RIG_NO_CACHE and config)
 </dd>
 <dt><code>--platform &lt;platform&gt;</code></dt>
 <dd>
@@ -952,6 +969,10 @@ JSON output
 <dd>
 Library name or path, instead of the default library
 </dd>
+<dt><code>--no-cache</code></dt>
+<dd>
+Do not read or write rig’s cache (overrides RIG_NO_CACHE and config)
+</dd>
 <dt><code>-r, --r-version &lt;r-version&gt;</code></dt>
 <dd>
 R version to operate on, instead of the default
@@ -1020,6 +1041,10 @@ JSON output
 <dt><code>-l, --library &lt;library&gt;</code></dt>
 <dd>
 Library name or path, instead of the default library
+</dd>
+<dt><code>--no-cache</code></dt>
+<dd>
+Do not read or write rig’s cache (overrides RIG_NO_CACHE and config)
 </dd>
 <dt><code>-r, --r-version &lt;r-version&gt;</code></dt>
 <dd>
@@ -1112,6 +1137,10 @@ JSON output
 <dt><code>--no-base</code></dt>
 <dd>
 Leave out R and the base packages
+</dd>
+<dt><code>--no-cache</code></dt>
+<dd>
+Do not read or write rig’s cache (overrides RIG_NO_CACHE and config)
 </dd>
 <dt><code>--user</code></dt>
 <dd>
