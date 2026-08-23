@@ -527,6 +527,7 @@ ul.task-list li input[type="checkbox"] {
   </ul></li>
   <li><a href="#rig-pkg-install" id="toc-rig-pkg-install" class="nav-link" data-scroll-target="#rig-pkg-install"><code>rig pkg install</code></a>
   <ul class="collapse">
+  <li><a href="#dev-dependencies" id="toc-dev-dependencies" class="nav-link" data-scroll-target="#dev-dependencies">Dev dependencies</a></li>
   <li><a href="#binary-and-source-packages" id="toc-binary-and-source-packages" class="nav-link" data-scroll-target="#binary-and-source-packages">Binary and source packages</a></li>
   <li><a href="#what-gets-skipped" id="toc-what-gets-skipped" class="nav-link" data-scroll-target="#what-gets-skipped">What gets skipped</a></li>
   <li><a href="#which-library" id="toc-which-library" class="nav-link" data-scroll-target="#which-library">Which library</a></li>
@@ -801,6 +802,12 @@ glue     1.8.0    binary  install  not installed
 ✓ Installed 2 packages (R 4.4.1, main: /Users/gaborcsardi/Library/R/arm64/4.4/library)</code></pre>
 <p>rig resolves the whole dependency tree first, the same way <a href="../reference/proj.html"><code>rig proj solve</code></a> does for a project, so a package is only installed if every package it needs can be installed with it, at versions that work together. <code>--dry-run</code> runs the resolution and reports what it would install, without installing anything.</p>
 <p>Package names are case sensitive, as they are in R. Naming the same package twice is not an error, it is installed once.</p>
+<section id="dev-dependencies" class="level3">
+<h3 class="anchored" data-anchor-id="dev-dependencies">Dev dependencies</h3>
+<p>By default rig installs the hard dependencies only: <code>Depends</code>, <code>Imports</code> and <code>LinkingTo</code>, i.e.&nbsp;the packages that need to be installed to use the package. <code>--dev</code> also installs the soft dependencies, <code>Suggests</code> and <code>Enhances</code>, which are typically only needed to run the tests, build the vignettes or use some optional feature.</p>
+<p><code>--dev</code> applies to the packages named on the command line only. A dev dependency is installed with everything <em>it</em> needs to be installed, but not with its own dev dependencies, so <code>--dev</code> does not grow without bounds.</p>
+<p>A package often suggests packages that are not in the repositories rig installs from, e.g.&nbsp;Bioconductor packages. Those cannot be installed, and by default rig reports them and installs nothing. <code>--ignore-unavailable</code> installs the rest of the dev dependencies instead, and names the ones it skipped. It only applies to dev dependencies: a hard dependency that is not available is always an error, and so is a dev dependency that exists but has no version that fits.</p>
+</section>
 <section id="binary-and-source-packages" class="level3">
 <h3 class="anchored" data-anchor-id="binary-and-source-packages">Binary and source packages</h3>
 <p>A binary package is a package that has already been built for your platform and R version. Installing one is unpacking it into the library, so rig does that itself and never starts R.</p>
@@ -844,6 +851,10 @@ packages to install
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
+<dt><code>--dev</code></dt>
+<dd>
+Include dev (development) dependencies
+</dd>
 <dt><code>--dry-run</code></dt>
 <dd>
 Show what would be installed, install nothing
@@ -851,6 +862,10 @@ Show what would be installed, install nothing
 <dt><code>-h, --help</code></dt>
 <dd>
 Print help (see a summary with ‘-h’)
+</dd>
+<dt><code>--ignore-unavailable</code></dt>
+<dd>
+Skip dev dependencies that are not available in the repositories, instead of failing
 </dd>
 <dt><code>--json</code></dt>
 <dd>
