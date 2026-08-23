@@ -59,7 +59,7 @@ const ARCHIVE_SUFFIXES: [&str; 4] = [".tar.gz", ".tgz", ".zip", ".tar.bz2"];
 /// `LinkingTo` provenance, but it describes what the tarball will be compiled
 /// against later, not what the file is, and keying on it would cache a
 /// separate copy of one tarball per solve.
-fn artifact_cache_key(sha256: Option<&str>, linkingto: Option<&str>) -> Option<String> {
+pub(crate) fn artifact_cache_key(sha256: Option<&str>, linkingto: Option<&str>) -> Option<String> {
     let sha256 = sha256?;
     let hash = crate::utils::calculate_hash(&format!("{}\n{}", sha256, linkingto.unwrap_or("")));
     Some(hash[..8].to_string())

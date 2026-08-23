@@ -65,6 +65,24 @@ a newer version for an older one that has a binary build, which is useful
 when compiling is expensive; it takes the number of versions to look back
 through, e.g. `--prefer-binary=5`, and defaults to 3.
 
+## Packages rig builds itself
+
+Compiling a package produces exactly what a repository would have served as
+a binary package, so rig keeps it: a source install is archived into the
+cache, with the same file name `R CMD INSTALL --build` would have given it,
+and installing that package again unpacks the archive instead of compiling
+it a second time. That covers another library, another project, and
+`--reinstall`, which reinstalls a package but does not recompile it.
+
+A cache entry belongs to one platform, one R minor version, one source
+tarball, one set of versions of the packages it is compiled against, and one
+set of `~/.R/Makevars` files. Change any of those and the package is
+compiled again. What it does *not* cover is your compiler, the system
+libraries the package found when it was configured, and the arguments it was
+configured with; a machine whose toolchain changed under it can hold an entry
+that no longer matches, and the way out is to delete it. `rig system dirs
+--cache` says where the cache is.
+
 ## What gets skipped
 
 rig does not install a package that is already installed and up to date, so

@@ -35,6 +35,7 @@ use linux::*;
 use resolve::*;
 
 mod alias;
+mod built;
 mod cache;
 mod common;
 mod config;

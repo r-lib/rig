@@ -37,6 +37,7 @@ use crate::windows::get_r_binary;
 #[cfg(target_os = "linux")]
 use crate::linux::get_r_binary;
 
+use crate::built::BuiltCache;
 use crate::cache::get_cache_dir;
 use crate::dcf::{DepVersionSpec, PackageDependencies, RDepType, DEP_TYPES_SOFT};
 use crate::install::{install_packages, PackageInfo, REMOTE_HASH_FIELD};
@@ -159,11 +160,16 @@ pub fn sc_pkg_install(
     download_lockfile_packages(&to_download)?;
 
     let cache_dir = get_cache_dir()?;
+    let r_binary = get_r_binary(&rver)?;
+    let r_binary = r_binary.to_string_lossy().to_string();
+    // Packages rig compiled before, so that a source package is only ever
+    // compiled once per build.
+    let built = BuiltCache::new(&rver, &r_binary);
     let installing: HashSet<&str> = todo.iter().map(|p| p.package.as_str()).collect();
     let packages: Vec<PackageInfo> = todo
         .iter()
         .map(|p| {
-            let mut info = lockfile_package_info(p, &cache_dir);
+            let mut info = lockfile_package_info(p, &cache_dir, built.as_ref());
             // A package whose dependency is already installed must not wait for
             // it: the installer only starts a package once every name in its
             // `dependencies` has been installed *by this run*, and a name that
@@ -174,13 +180,7 @@ pub fn sc_pkg_install(
         })
         .collect();
 
-    let r_binary = get_r_binary(&rver)?;
-    let n = install_packages(
-        packages,
-        &lib.path,
-        &r_binary.to_string_lossy(),
-        MAX_CONCURRENT,
-    )?;
+    let n = install_packages(packages, &lib.path, &r_binary, MAX_CONCURRENT)?;
 
     if !json {
         let word = if n == 1 { "package" } else { "packages" };

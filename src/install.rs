@@ -39,6 +39,11 @@ pub struct PackageInfo {
     /// Value for the [`REMOTE_LINKINGTO_FIELD`] field, as
     /// `(package, version, sha256)`. Empty for a package without `LinkingTo:`.
     pub linkingto: Vec<(String, String, String)>,
+    /// Where a source package's own build is cached, see [`crate::built`]. Read
+    /// before compiling and written after, so that a package is only ever
+    /// compiled once per build. `None` for a binary, and for a source package
+    /// whose build cannot be identified.
+    pub built: Option<PathBuf>,
 }
 
 /// Install one R package into a library.
@@ -47,6 +52,11 @@ pub struct PackageInfo {
 /// source tarball goes through `R CMD INSTALL`. A built package whose archive
 /// does not have the expected layout falls back to `R CMD INSTALL` too, rather
 /// than failing: the repository, not rig, decides what a "binary" is.
+///
+/// A source package that rig has already compiled once is unpacked from
+/// [`crate::built`] instead of compiled again, which is the same operation on
+/// the same kind of archive; a cache entry that does not unpack is ignored, and
+/// the package compiled.
 ///
 /// # Arguments
 /// * `pkg` - The package to install, and the provenance to record in it
@@ -62,8 +72,14 @@ pub async fn install_package<F>(
 where
     F: Fn(&str) + Send + Sync + 'static,
 {
-    if pkg.binary {
-        match install_binary_package(pkg, library_path) {
+    let archive = if pkg.binary {
+        Some(pkg.file_path.clone())
+    } else {
+        pkg.built.clone().filter(|path| path.exists())
+    };
+
+    if let Some(archive) = archive {
+        match install_binary_package(pkg, &archive, library_path) {
             Ok(()) => {
                 let msg = format!("Installed {} {}", pkg.name, pkg.version);
                 match print_fn {
@@ -71,9 +87,10 @@ where
                     None => OUTPUT.success(&msg),
                 }
                 info!(
-                    "Installed binary package {} {} into {}",
+                    "Installed built package {} {} from {} into {}",
                     pkg.name,
                     pkg.version,
+                    archive.display(),
                     library_path.display()
                 );
                 return Ok(());
@@ -101,10 +118,17 @@ where
 /// and only then swaps the result in, so that a failure part-way through leaves
 /// the previously installed version untouched.
 ///
+/// `archive` is passed separately from `pkg`, because it is either the artifact
+/// the solve picked or rig's own earlier build of the same package.
+///
 /// Errors if the archive is not a single directory named after the package,
 /// which is what a built package always is, and what a source tarball
 /// masquerading as one is not.
-fn install_binary_package(pkg: &PackageInfo, library_path: &Path) -> Result<(), Box<dyn Error>> {
+fn install_binary_package(
+    pkg: &PackageInfo,
+    archive: &Path,
+    library_path: &Path,
+) -> Result<(), Box<dyn Error>> {
     // A leading `.` keeps `rig pkg list` from reading the staging directory as
     // a half-installed package while another rig is working in the library.
     let staging = library_path.join(format!(".rig-staging-{}-{}", pkg.name, std::process::id()));
@@ -113,7 +137,7 @@ fn install_binary_package(pkg: &PackageInfo, library_path: &Path) -> Result<(), 
     }
     std::fs::create_dir_all(&staging)?;
 
-    let result = stage_binary_package(pkg, &staging, library_path);
+    let result = stage_binary_package(pkg, archive, &staging, library_path);
     if result.is_err() {
         let _ = std::fs::remove_dir_all(&staging);
     }
@@ -124,10 +148,11 @@ fn install_binary_package(pkg: &PackageInfo, library_path: &Path) -> Result<(), 
 /// staging directory up on every error path.
 fn stage_binary_package(
     pkg: &PackageInfo,
+    archive: &Path,
     staging: &Path,
     library_path: &Path,
 ) -> Result<(), Box<dyn Error>> {
-    unpack_package(&pkg.file_path, staging)?;
+    unpack_package(archive, staging)?;
 
     let unpacked = single_subdir(staging)?;
     let name = unpacked
@@ -137,7 +162,7 @@ fn stage_binary_package(
     if name != pkg.name {
         bail!(
             "{} does not contain a built {} package, but a top level '{}'",
-            pkg.file_path.display(),
+            archive.display(),
             pkg.name,
             name
         );
@@ -339,6 +364,12 @@ where
         .await?;
 
     if status.success() {
+        // Before `patch_description`, so that the cached archive is what the
+        // package built, and not what rig recorded in it. The provenance fields
+        // are added on every install anyway, including on the installs that come
+        // out of this cache.
+        cache_build(pkg, library_path).await;
+
         patch_description(&library_path.join(package_name), pkg)?;
 
         // User output: Use custom print function if provided, otherwise use OUTPUT
@@ -373,6 +404,36 @@ where
         );
 
         bail!("Installation failed for {}", package_name);
+    }
+}
+
+/// Put what `R CMD INSTALL` just built into the built-package cache.
+///
+/// Never fails the install: a package that is installed but not cached is a
+/// missed optimization, and the next run compiles it again. Archiving is real
+/// CPU work in a runtime that runs several installs at once, so it goes to a
+/// blocking thread.
+async fn cache_build(pkg: &PackageInfo, library_path: &Path) {
+    let dest = match &pkg.built {
+        Some(dest) => dest.clone(),
+        None => return,
+    };
+    let cached = pkg.clone();
+    let library_path = library_path.to_path_buf();
+    // `Box<dyn Error>` is not `Send`, and nothing here looks at the error beyond
+    // logging it, so it crosses the thread boundary as its message.
+    let result = tokio::task::spawn_blocking(move || {
+        crate::built::store(&cached, &library_path, &dest).map_err(|err| err.to_string())
+    })
+    .await;
+    match result {
+        Ok(Ok(())) => debug!(
+            "Cached the {} build at {}",
+            pkg.name,
+            pkg.built.as_ref().map(|p| p.display().to_string()).unwrap()
+        ),
+        Ok(Err(err)) => debug!("Cannot cache the {} build: {}", pkg.name, err),
+        Err(err) => debug!("Cannot cache the {} build: {}", pkg.name, err),
     }
 }
 
@@ -702,6 +763,7 @@ mod tests {
                 .iter()
                 .map(|(p, v, s)| (p.to_string(), v.to_string(), s.to_string()))
                 .collect(),
+            built: None,
         }
     }
 
@@ -749,7 +811,7 @@ mod tests {
         let archive = tmp.path().join("foo_1.0.0.tgz");
         tarball(&archive, "foo", DESC, &["libs/foo.so"]);
 
-        install_binary_package(&info("foo", &archive, Some("abc"), &[]), &lib).unwrap();
+        install_binary_package(&info("foo", &archive, Some("abc"), &[]), &archive, &lib).unwrap();
 
         assert!(lib.join("foo/libs/foo.so").exists());
         let desc = std::fs::read_to_string(lib.join("foo/DESCRIPTION")).unwrap();
@@ -765,7 +827,7 @@ mod tests {
         let archive = tmp.path().join("foo_1.0.0.zip");
         zipball(&archive, "foo", DESC);
 
-        install_binary_package(&info("foo", &archive, Some("abc"), &[]), &lib).unwrap();
+        install_binary_package(&info("foo", &archive, Some("abc"), &[]), &archive, &lib).unwrap();
 
         assert!(lib.join("foo/DESCRIPTION").exists());
     }
@@ -786,7 +848,7 @@ mod tests {
         let archive = tmp.path().join("foo_1.0.0.tgz");
         tarball(&archive, "foo", DESC, &[]);
 
-        install_binary_package(&info("foo", &archive, None, &[]), &lib).unwrap();
+        install_binary_package(&info("foo", &archive, None, &[]), &archive, &lib).unwrap();
 
         assert!(!lib.join("foo/stale.txt").exists());
         let desc = std::fs::read_to_string(lib.join("foo/DESCRIPTION")).unwrap();
@@ -805,7 +867,8 @@ mod tests {
         let archive = tmp.path().join("foo_1.0.0.tgz");
         tarball(&archive, "notfoo", DESC, &[]);
 
-        let err = install_binary_package(&info("foo", &archive, None, &[]), &lib).unwrap_err();
+        let err =
+            install_binary_package(&info("foo", &archive, None, &[]), &archive, &lib).unwrap_err();
         assert!(err.to_string().contains("top level 'notfoo'"), "{}", err);
         assert!(!lib.join("foo").exists());
         // No staging directory is left behind.
@@ -826,7 +889,7 @@ mod tests {
         let archive = tmp.path().join("foo_1.0.0.tgz");
         tarball(&archive, "notfoo", DESC, &[]);
 
-        install_binary_package(&info("foo", &archive, None, &[]), &lib).unwrap_err();
+        install_binary_package(&info("foo", &archive, None, &[]), &archive, &lib).unwrap_err();
 
         let desc = std::fs::read_to_string(lib.join("foo/DESCRIPTION")).unwrap();
         assert!(desc.contains("Version: 0.1.0"), "{}", desc);

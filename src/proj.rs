@@ -13,6 +13,7 @@ use pubgrub::{resolve, SelectedDependencies};
 use simple_error::*;
 use tabular::*;
 
+use crate::built::BuiltCache;
 use crate::cache::get_cache_dir;
 use crate::common::get_default_r_version;
 use crate::dcf::*;
@@ -492,12 +493,6 @@ fn sc_proj_deploy(
     // Get cache directory where packages were downloaded
     let cache_dir = get_cache_dir()?;
 
-    // Build Vec<PackageInfo> from lockfile
-    let mut packages: Vec<PackageInfo> = Vec::new();
-    for pkg in &lockfile.packages {
-        packages.push(lockfile_package_info(pkg, &cache_dir));
-    }
-
     // Get library path - required argument
     let library_path = PathBuf::from(
         args.get_one::<String>("library")
@@ -512,6 +507,13 @@ fn sc_proj_deploy(
         .get_one::<String>("r-binary")
         .map(|s| s.as_str())
         .unwrap_or("R");
+
+    // Build Vec<PackageInfo> from lockfile
+    let built = BuiltCache::new(&lockfile.r_version, r_binary);
+    let mut packages: Vec<PackageInfo> = Vec::new();
+    for pkg in &lockfile.packages {
+        packages.push(lockfile_package_info(pkg, &cache_dir, built.as_ref()));
+    }
 
     // Set max concurrent installations
     let max_concurrent = args
@@ -543,8 +545,16 @@ fn sc_proj_deploy(
 
 /// What to install for one lockfile entry, including the provenance
 /// `PakLockfile::from_solution` recorded in its `metadata`.
-pub(crate) fn lockfile_package_info(pkg: &PakLockfilePackage, cache_dir: &Path) -> PackageInfo {
-    PackageInfo {
+///
+/// `built` is the cache of packages rig compiled itself, and only a source
+/// package has anything to do with it: a binary is already built, and rig has
+/// nothing to add to it.
+pub(crate) fn lockfile_package_info(
+    pkg: &PakLockfilePackage,
+    cache_dir: &Path,
+    built: Option<&BuiltCache>,
+) -> PackageInfo {
+    let mut info = PackageInfo {
         name: pkg.package.clone(),
         version: pkg.version.clone(),
         binary: pkg.binary,
@@ -556,7 +566,12 @@ pub(crate) fn lockfile_package_info(pkg: &PakLockfilePackage, cache_dir: &Path) 
             .get(REMOTE_LINKINGTO_FIELD)
             .map(|s| parse_linkingto(s))
             .unwrap_or_default(),
+        built: None,
+    };
+    if !info.binary {
+        info.built = built.and_then(|cache| cache.path(&info));
     }
+    info
 }
 
 /// Cache package files forever. They are immutable on PPM.
