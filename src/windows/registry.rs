@@ -217,7 +217,7 @@ pub(super) fn clean_admin_registry() -> Result<(), Box<dyn Error>> {
 pub(super) fn maybe_update_registry_default() -> Result<(), Box<dyn Error>> {
     let links_dir = get_links_dir()?;
     let linkdir = Path::new(&links_dir);
-    let linkfile = linkdir.join("R.bat");
+    let linkfile = linkdir.join("R.exe");
     if linkfile.exists() {
         update_registry_default()?;
     }

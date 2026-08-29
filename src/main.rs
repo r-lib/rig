@@ -26,6 +26,8 @@ mod windows;
 mod windows_arch;
 #[cfg(target_os = "windows")]
 use windows::*;
+#[cfg(target_os = "windows")]
+mod shim_format;
 
 #[cfg(target_os = "linux")]
 mod linux;

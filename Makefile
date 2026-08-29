@@ -24,7 +24,7 @@ Rig.app/build-arm64/Build/Products/Release/Rig.app: Rig.app
 
 win: rig-$(VERSION).exe win-zip
 
-rig-$(VERSION).exe: target/release/rig.exe rig.iss gsudo.exe
+rig-$(VERSION).exe: target/release/rig.exe target/release/rig-shim.exe rig.iss gsudo.exe
 	find target/release -name _rig.ps1 -exec cp \{\} _rig.ps1 \;
 	"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" rig.iss
 	cp output\mysetup.exe $@
@@ -35,7 +35,7 @@ rig-$(VERSION).exe: target/release/rig.exe rig.iss gsudo.exe
 # elevation. Uses 7-Zip, which is preinstalled on GitHub Windows runners.
 win-zip: rig-windows-$(ARCH)-$(VERSION).zip
 
-rig-windows-$(ARCH)-$(VERSION).zip: target/release/rig.exe gsudo.exe
+rig-windows-$(ARCH)-$(VERSION).zip: target/release/rig.exe target/release/rig-shim.exe gsudo.exe
 	rm -rf zipdir
 	mkdir -p zipdir/bin \
 	    zipdir/share/bash-completion/completions \
@@ -44,6 +44,7 @@ rig-windows-$(ARCH)-$(VERSION).zip: target/release/rig.exe gsudo.exe
 	    zipdir/share/zsh/site-functions \
 	    zipdir/share/rig
 	cp target/release/rig.exe zipdir/bin/
+	cp target/release/rig-shim.exe zipdir/bin/
 	cp gsudo.exe zipdir/bin/
 	find target/release/build -name rig.bash -exec cp \{\} zipdir/share/bash-completion/completions \;
 	find target/release/build -name rig.elv -exec cp \{\} zipdir/share/elvish/lib \;
@@ -176,6 +177,10 @@ linux-test-all: $(TEST_IMAGES)
 macos: release
 
 target/release/rig.exe: $(SOURCES)
+	rm -rf target/release/build/rig-*
+	cargo build --release
+
+target/release/rig-shim.exe: $(SOURCES)
 	rm -rf target/release/build/rig-*
 	cargo build --release
 

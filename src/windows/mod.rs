@@ -11,7 +11,6 @@ use std::error::Error;
 use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::fs::File;
-use std::io::Write;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -45,6 +44,50 @@ use crate::windows_arch::*;
 
 pub fn get_links_dir() -> Result<String, Box<dyn Error>> {
     get_binary_dir()
+}
+
+// Quick links are real `.exe` shims: a copy of the `rig-shim.exe` template,
+// bundled next to `rig.exe` (same lookup as `gsudo.exe` in
+// src/escalate.rs), with a small footer appended that tells the shim which
+// real R.exe/Rscript.exe to forward to. See src/shim_format.rs for the
+// footer layout and src/shim/main.rs for the shim itself.
+
+fn find_shim_template() -> Result<PathBuf, Box<dyn Error>> {
+    let exe = std::env::current_exe()?;
+    let dir = exe.parent().unwrap_or_else(|| Path::new("."));
+    let bundled = dir.join("rig-shim.exe");
+    if bundled.is_file() {
+        return Ok(bundled);
+    }
+    bail!(
+        "Cannot find the shim template rig-shim.exe next to rig ({}).",
+        dir.display()
+    )
+}
+
+// Write (or overwrite) a quick-link `.exe` at `path`, forwarding to `target`
+// (the real R.exe/Rscript.exe). `marker` records the rig version/alias name
+// for the default-version links (R.exe, RS.exe, Rscript.exe); pass "" for
+// per-version and per-alias links, which recover their identity from
+// `target` itself.
+pub(crate) fn write_shim_link(
+    path: &Path,
+    target: &str,
+    marker: &str,
+) -> Result<(), Box<dyn Error>> {
+    let template = std::fs::read(find_shim_template()?)?;
+    let bytes = crate::shim_format::build_shim_bytes(&template, target, marker);
+    std::fs::write(path, bytes)?;
+    Ok(())
+}
+
+// Read the (target, marker) a quick-link `.exe` at `path` forwards to, or
+// `None` if `path` doesn't exist, isn't one of our shims, or can't be read.
+pub(crate) fn read_shim_link(path: &Path) -> Option<(String, String)> {
+    match crate::shim_format::read_shim_footer(path) {
+        Ok(Some(footer)) => Some((footer.target, footer.marker)),
+        _ => None,
+    }
 }
 
 macro_rules! osvec {
@@ -976,36 +1019,36 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     let links_dir = get_links_dir()?;
     let linkdir = Path::new(&links_dir);
     let mut new_links: Vec<String> = vec![
-        "RS.bat".to_string(),
-        "R.bat".to_string(),
-        "Rscript.bat".to_string(),
+        "RS.exe".to_string(),
+        "R.exe".to_string(),
+        "Rscript.exe".to_string(),
     ];
     std::fs::create_dir_all(linkdir)?;
 
     for ver in vers {
-        let filename = "R-".to_string() + &ver + ".bat";
+        let filename = "R-".to_string() + &ver + ".exe";
         let linkfile = linkdir.join(&filename);
         new_links.push(filename);
         let ver_rroot = get_r_root_for(&ver)?;
         let ver_base = version_dir_key(&ver);
         let ver_dir = r_dirname(&ver_base)?;
-        let target = Path::new(&ver_rroot).join(&ver_dir);
+        let target_dir = Path::new(&ver_rroot).join(&ver_dir);
+        let target = format!("{}\\{}\\bin\\R.exe", ver_rroot, ver_dir);
 
-        let cnt = format!("@\"{}\\{}\\bin\\R\" %*\n", ver_rroot, ver_dir);
         let op;
         if linkfile.exists() {
             op = "Updating";
-            let orig = std::fs::read_to_string(&linkfile)?;
-            if orig == cnt {
-                continue;
+            if let Some((orig_target, orig_marker)) = read_shim_link(&linkfile) {
+                if orig_target == target && orig_marker.is_empty() {
+                    continue;
+                }
             }
         } else {
             op = "Adding";
         };
-        OUTPUT.status(&format!("{} R-{} -> {}", op, ver, target.display()));
-        info!("{} R-{} -> {}", op, ver, target.display());
-        let mut file = File::create(&linkfile)?;
-        file.write_all(cnt.as_bytes())?;
+        OUTPUT.status(&format!("{} R-{} -> {}", op, ver, target_dir.display()));
+        info!("{} R-{} -> {}", op, ver, target_dir.display());
+        write_shim_link(&linkfile, &target, "")?;
     }
 
     // Delete the ones we don't need
@@ -1016,7 +1059,22 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
         match path.file_name().into_string() {
             Err(_) => continue,
             Ok(filename) => {
-                if !filename.ends_with(".bat") {
+                // Leftover `.bat` shims from before rig switched to `.exe`
+                // shims: always obsolete, delete unconditionally.
+                if filename == "R.bat"
+                    || filename == "RS.bat"
+                    || filename == "Rscript.bat"
+                    || (filename.starts_with("R-") && filename.ends_with(".bat"))
+                {
+                    OUTPUT.status(&format!("Deleting legacy {}", filename));
+                    info!("Deleting legacy {}", filename);
+                    if let Err(e) = std::fs::remove_file(path.path()) {
+                        OUTPUT.warn(&format!("Failed to remove {}: {}", filename, e));
+                        warn!("Failed to remove {}: {}", filename, e);
+                    }
+                    continue;
+                }
+                if !filename.ends_with(".exe") {
                     continue;
                 }
                 if !filename.starts_with("R-") {
@@ -1024,7 +1082,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
                 }
                 if re_als.is_match(&filename) {
                     let rver = find_r_version_in_link(&path.path())?;
-                    let realname = "R-".to_string() + &rver + ".bat";
+                    let realname = "R-".to_string() + &rver + ".exe";
                     if new_links.contains(&realname) {
                         continue;
                     }
@@ -1052,7 +1110,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
 }
 
 fn re_alias() -> Regex {
-    Regex::new("^R-(oldrel|release|next)(-x86_64)?[.]bat$").unwrap()
+    Regex::new("^R-(oldrel|release|next)(-x86_64)?[.]exe$").unwrap()
 }
 
 pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
@@ -1096,22 +1154,23 @@ pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
 }
 
 fn find_r_version_in_link(path: &Path) -> Result<String, Box<dyn Error>> {
-    let lines = read_lines(path)?;
-    if lines.is_empty() {
-        OUTPUT.error(&format!("Invalid R link file: {}", path.display()));
-        error!("Invalid R link file: {}", path.display());
-        bail!("Invalid R link file: {}", path.display());
-    }
-    let line = &lines[0];
+    let (target, _marker) = match read_shim_link(path) {
+        Some(t) => t,
+        None => {
+            OUTPUT.error(&format!("Invalid R link file: {}", path.display()));
+            error!("Invalid R link file: {}", path.display());
+            bail!("Invalid R link file: {}", path.display());
+        }
+    };
 
     if get_mode().unwrap_or(Mode::Admin) == Mode::User {
-        // User mode: @"<root>\<version>\bin\R" %* — extract the component after the root
+        // User mode: <root>\<version>\bin\R.exe — extract the component after the root
         let user_root = get_r_root()?;
-        let prefix = format!("@\"{}\\", user_root);
-        let line_lower = line.to_lowercase();
+        let prefix = format!("{}\\", user_root);
+        let target_lower = target.to_lowercase();
         let prefix_lower = prefix.to_lowercase();
-        if line_lower.starts_with(&prefix_lower) {
-            let rest = &line[prefix.len()..];
+        if target_lower.starts_with(&prefix_lower) {
+            let rest = &target[prefix.len()..];
             if let Some(slash_pos) = rest.find('\\') {
                 return Ok(rest[..slash_pos].to_string());
             }
@@ -1130,15 +1189,13 @@ fn find_r_version_in_link(path: &Path) -> Result<String, Box<dyn Error>> {
         );
     }
 
-    // Admin mode: @"<root>\R-<base>\bin\R" %*
+    // Admin mode: <root>\R-<base>\bin\R.exe
     // Determine which root this link points into, so we can re-attach the right suffix.
     let x86_root = get_r_root_arch("x86_64")?;
     let is_x86 = get_native_arch() == "aarch64"
-        && line
-            .to_lowercase()
-            .starts_with(&("@\"".to_string() + &x86_root.to_lowercase()));
+        && target.to_lowercase().starts_with(&x86_root.to_lowercase());
 
-    let split = line.split("\\").collect::<Vec<&str>>();
+    let split = target.split("\\").collect::<Vec<&str>>();
     for s in split {
         if s == "R-devel" {
             let base = "devel".to_string();
@@ -1417,23 +1474,34 @@ fn list_admin_versions() -> Result<Vec<String>, Box<dyn Error>> {
     Ok(vers)
 }
 
-// Read the admin-mode default R version from `C:\Program Files\R\bin\R.bat`,
-// whose first line is a `::<rig-name>` marker written by sc_set_default().
+// Read the admin-mode default R version from `C:\Program Files\R\bin\R.exe`'s
+// shim footer marker, written by sc_set_default(). Falls back to the legacy
+// `::<rig-name>` first line of `R.bat` for installs not yet migrated to the
+// `.exe` shims.
 fn find_admin_default() -> Result<Option<String>, Box<dyn Error>> {
-    let linkfile = Path::new(ADMIN_LINKS_DIR).join("R.bat");
-    if !linkfile.exists() {
+    let linkfile = Path::new(ADMIN_LINKS_DIR).join("R.exe");
+    if let Some((_target, marker)) = read_shim_link(&linkfile) {
+        if !marker.is_empty() {
+            return Ok(Some(marker));
+        }
+    }
+
+    let legacy = Path::new(ADMIN_LINKS_DIR).join("R.bat");
+    if !legacy.exists() {
         return Ok(None);
     }
-    let file = File::open(&linkfile)?;
+    let file = File::open(&legacy)?;
     match BufReader::new(file).lines().next() {
         Some(line) => Ok(line?.strip_prefix("::").map(|rest| rest.trim().to_string())),
         None => Ok(None),
     }
 }
 
-// Recover the admin rig name a quick-link `.bat` file points at, from its
-// `@"<root>\R-<base>\bin\R" %*` line. On aarch64 a link into the x86_64 root
-// (`C:\Program Files (x86)\R`) yields a `-x86_64`-suffixed name.
+// Recover the admin rig name a quick-link file points at, from its target
+// path (`<root>\R-<base>\bin\R.exe`, or the legacy `@"<root>\R-<base>\bin\R"
+// %*` batch line — the leading decoration doesn't matter, this just looks for
+// a `\`-separated component starting with `R-`). On aarch64 a link into the
+// x86_64 root (`C:\Program Files (x86)\R`) yields a `-x86_64`-suffixed name.
 fn admin_name_from_link_line(line: &str) -> Option<String> {
     let is_x86 = get_native_arch() == "aarch64"
         && line.to_lowercase().contains("\\program files (x86)\\r\\");
@@ -1471,12 +1539,12 @@ fn find_admin_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
         if !re.is_match(&fname) {
             continue;
         }
-        let lines = read_lines(&path)?;
-        if lines.is_empty() {
-            continue;
-        }
-        if let Some(version) = admin_name_from_link_line(&lines[0]) {
-            // Strip the leading `R-` and trailing `.bat` to get the alias name.
+        let target = match read_shim_link(&path) {
+            Some((target, _marker)) => target,
+            None => continue,
+        };
+        if let Some(version) = admin_name_from_link_line(&target) {
+            // Strip the leading `R-` and trailing `.exe` to get the alias name.
             result.push(Alias {
                 alias: fname[2..fname.len() - 4].to_string(),
                 version,
@@ -1673,7 +1741,10 @@ fn admin_cleanup_needed(keep_install: bool, keep_links: bool) -> Result<bool, Bo
             if name == "R.bat"
                 || name == "Rscript.bat"
                 || name == "RS.bat"
-                || (name.starts_with("R-") && name.ends_with(".bat"))
+                || name == "R.exe"
+                || name == "Rscript.exe"
+                || name == "RS.exe"
+                || (name.starts_with("R-") && (name.ends_with(".bat") || name.ends_with(".exe")))
                 || re.is_match(name)
             {
                 return Ok(true);
@@ -1772,8 +1843,11 @@ fn remove_admin_links() -> Result<(), Box<dyn Error>> {
         let is_link = name == "R.bat"
             || name == "Rscript.bat"
             || name == "RS.bat"
+            || name == "R.exe"
+            || name == "Rscript.exe"
+            || name == "RS.exe"
             || re.is_match(&name)
-            || (name.starts_with("R-") && name.ends_with(".bat"));
+            || (name.starts_with("R-") && (name.ends_with(".bat") || name.ends_with(".exe")));
         if !is_link {
             continue;
         }
@@ -1878,28 +1952,13 @@ pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
     let linkdir = Path::new(&links_dir);
     std::fs::create_dir_all(linkdir)?;
 
-    let linkfile = linkdir.join("R.bat");
     let base_dir = r_dirname(&base)?;
-    let cnt =
-        "::".to_string() + &ver + "\n" + "@\"" + &rroot + "\\" + &base_dir + "\\bin\\R\" %*\n";
-    let mut file = File::create(linkfile)?;
-    file.write_all(cnt.as_bytes())?;
+    let r_target = format!("{}\\{}\\bin\\R.exe", rroot, base_dir);
+    let rscript_target = format!("{}\\{}\\bin\\Rscript.exe", rroot, base_dir);
 
-    let linkfile2 = linkdir.join("RS.bat");
-    let mut file2 = File::create(linkfile2)?;
-    file2.write_all(cnt.as_bytes())?;
-
-    let linkfile3 = linkdir.join("Rscript.bat");
-    let mut file3 = File::create(linkfile3)?;
-    let cnt3 = "::".to_string()
-        + &ver
-        + "\n"
-        + "@\""
-        + &rroot
-        + "\\"
-        + &base_dir
-        + "\\bin\\Rscript\" %*\n";
-    file3.write_all(cnt3.as_bytes())?;
+    write_shim_link(&linkdir.join("R.exe"), &r_target, &ver)?;
+    write_shim_link(&linkdir.join("RS.exe"), &r_target, &ver)?;
+    write_shim_link(&linkdir.join("Rscript.exe"), &rscript_target, &ver)?;
 
     update_registry_default()?;
 
@@ -1932,6 +1991,11 @@ pub fn unset_default() -> Result<(), Box<dyn Error>> {
         }
     };
 
+    try_rm("R.exe");
+    try_rm("RS.exe");
+    try_rm("Rscript.exe");
+    // Legacy `.bat` shims, in case this runs before sc_system_make_links has
+    // had a chance to sweep them up.
     try_rm("R.bat");
     try_rm("RS.bat");
     try_rm("Rscript.bat");
@@ -1944,6 +2008,14 @@ pub fn unset_default() -> Result<(), Box<dyn Error>> {
 pub fn sc_get_default() -> Result<Option<String>, Box<dyn Error>> {
     let links_dir = get_links_dir()?;
     let linkdir = Path::new(&links_dir);
+
+    if let Some((_target, marker)) = read_shim_link(&linkdir.join("R.exe")) {
+        if !marker.is_empty() {
+            return Ok(Some(marker));
+        }
+    }
+
+    // Legacy `.bat` shim, for installs not yet migrated to `.exe` shims.
     let linkfile = linkdir.join("R.bat");
     if !linkfile.exists() {
         return Ok(None);
@@ -2343,19 +2415,19 @@ mod tests {
     fn re_alias_matches_plain_and_x86_64_suffixed_names() {
         let re = re_alias();
         // Plain alias names.
-        assert!(re.is_match("R-oldrel.bat"));
-        assert!(re.is_match("R-release.bat"));
-        assert!(re.is_match("R-next.bat"));
+        assert!(re.is_match("R-oldrel.exe"));
+        assert!(re.is_match("R-release.exe"));
+        assert!(re.is_match("R-next.exe"));
         // x86_64 build on aarch64 gets an `-x86_64` suffix; these must be
         // recognized too, otherwise sc_system_make_links deletes them and
         // find_aliases does not list them.
-        assert!(re.is_match("R-oldrel-x86_64.bat"));
-        assert!(re.is_match("R-release-x86_64.bat"));
-        assert!(re.is_match("R-next-x86_64.bat"));
+        assert!(re.is_match("R-oldrel-x86_64.exe"));
+        assert!(re.is_match("R-release-x86_64.exe"));
+        assert!(re.is_match("R-next-x86_64.exe"));
         // Version links and other arch suffixes are not aliases.
-        assert!(!re.is_match("R-4.6.0.bat"));
-        assert!(!re.is_match("R-4.6.0-x86_64.bat"));
-        assert!(!re.is_match("R-oldrel-aarch64.bat"));
+        assert!(!re.is_match("R-4.6.0.exe"));
+        assert!(!re.is_match("R-4.6.0-x86_64.exe"));
+        assert!(!re.is_match("R-oldrel-aarch64.exe"));
     }
 
     #[test]
