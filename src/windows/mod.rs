@@ -1025,6 +1025,33 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
     ];
     std::fs::create_dir_all(linkdir)?;
 
+    // Migrate the default version across from the legacy `.bat` shim.
+    if !linkdir.join("R.exe").exists() {
+        let legacy_default = linkdir.join("R.bat");
+        if legacy_default.exists() {
+            let file = File::open(&legacy_default)?;
+            let marker = BufReader::new(file)
+                .lines()
+                .next()
+                .transpose()?
+                .and_then(|line| line.strip_prefix("::").map(|rest| rest.trim().to_string()));
+            if let Some(marker_ver) = marker {
+                if !marker_ver.is_empty() && vers.contains(&marker_ver) {
+                    OUTPUT.status(&format!(
+                        "Migrating default R version ({}) from the legacy .bat shims",
+                        marker_ver
+                    ));
+                    info!(
+                        "Migrating default R version ({}) from the legacy .bat shims",
+                        marker_ver
+                    );
+                    write_default_shims(linkdir, &marker_ver)?;
+                    update_registry_default()?;
+                }
+            }
+        }
+    }
+
     for ver in vers {
         let filename = "R-".to_string() + &ver + ".exe";
         let linkfile = linkdir.join(&filename);
@@ -1943,22 +1970,28 @@ pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
     Ok(vers)
 }
 
-pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
-    let ver = check_installed(&ver.to_string())?;
-    escalate("setting the default R version")?;
-    let rroot = get_r_root_for(&ver)?;
-    let base = version_dir_key(&ver);
-    let links_dir = get_links_dir()?;
-    let linkdir = Path::new(&links_dir);
-    std::fs::create_dir_all(linkdir)?;
-
+// Write the default-version shims (R.exe, RS.exe, Rscript.exe) in `linkdir`.
+fn write_default_shims(linkdir: &Path, ver: &str) -> Result<(), Box<dyn Error>> {
+    let rroot = get_r_root_for(ver)?;
+    let base = version_dir_key(ver);
     let base_dir = r_dirname(&base)?;
     let r_target = format!("{}\\{}\\bin\\R.exe", rroot, base_dir);
     let rscript_target = format!("{}\\{}\\bin\\Rscript.exe", rroot, base_dir);
 
-    write_shim_link(&linkdir.join("R.exe"), &r_target, &ver)?;
-    write_shim_link(&linkdir.join("RS.exe"), &r_target, &ver)?;
-    write_shim_link(&linkdir.join("Rscript.exe"), &rscript_target, &ver)?;
+    write_shim_link(&linkdir.join("R.exe"), &r_target, ver)?;
+    write_shim_link(&linkdir.join("RS.exe"), &r_target, ver)?;
+    write_shim_link(&linkdir.join("Rscript.exe"), &rscript_target, ver)?;
+    Ok(())
+}
+
+pub fn sc_set_default(ver: &str) -> Result<(), Box<dyn Error>> {
+    let ver = check_installed(&ver.to_string())?;
+    escalate("setting the default R version")?;
+    let links_dir = get_links_dir()?;
+    let linkdir = Path::new(&links_dir);
+    std::fs::create_dir_all(linkdir)?;
+
+    write_default_shims(linkdir, &ver)?;
 
     update_registry_default()?;
 
