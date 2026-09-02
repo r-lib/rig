@@ -27,6 +27,7 @@ use crate::dcf::{
     DEP_TYPES_SOFT,
 };
 use crate::pak::PakLockfilePackage;
+use crate::repos::cranlike_metadata::minor_r_version;
 
 pub const RPROJ_LOCK_VERSION: usize = 1;
 
@@ -240,6 +241,22 @@ impl Rproj {
             dependencies,
             ..Default::default()
         }
+    }
+
+    /// Same as [`Rproj::minimal`], but with the R requirement taken from the
+    /// R version the project is being created for.
+    ///
+    /// The requirement is `>= <major>.<minor>`, not the patch level: a
+    /// project practically never means "at least this patch release", and
+    /// `rproj.lock` records the exact version anyway.
+    pub fn minimal_for_r(name: &str, r_version: &str) -> Result<Self, Box<dyn Error>> {
+        let minor = minor_r_version(r_version)?;
+        let mut manifest = Rproj::minimal(name);
+        manifest.dependencies.insert(
+            "R".to_string(),
+            Dependency::Version(format!(">= {}", minor)),
+        );
+        Ok(manifest)
     }
 
     /// Merge a DESCRIPTION-derived `Package`'s dependencies into this
@@ -483,6 +500,25 @@ mod tests {
         // and it parses back to the same value
         let parsed: Rproj = toml::from_str(&text).unwrap();
         assert_eq!(parsed, Rproj::minimal("mypkg"));
+    }
+
+    #[test]
+    fn minimal_manifest_records_the_projects_r_version() {
+        // The patch level is dropped: a project practically never means "at
+        // least this patch release".
+        let m = Rproj::minimal_for_r("mypkg", "4.6.1").unwrap();
+        assert_eq!(
+            m.dependencies.get("R"),
+            Some(&Dependency::Version(">= 4.6".to_string()))
+        );
+        // A two-part version is fine, too.
+        let m2 = Rproj::minimal_for_r("mypkg", "4.6").unwrap();
+        assert_eq!(m2, m);
+        // and it round-trips
+        let text = toml::to_string_pretty(&m).unwrap();
+        assert_eq!(toml::from_str::<Rproj>(&text).unwrap(), m);
+
+        assert!(Rproj::minimal_for_r("mypkg", "devel").is_err());
     }
 
     #[test]

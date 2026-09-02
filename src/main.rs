@@ -61,6 +61,7 @@ mod repositories;
 mod resolve;
 mod rproj;
 mod run;
+mod rvenv;
 mod rversion;
 mod solver;
 mod sysreqs;

@@ -14,3 +14,9 @@ publish = false
 # render the markdown help text (src/help/*.md) to the committed ANSI strings
 # in src/help-generated.in
 pulldown-cmark = { version = "0.12", default-features = false }
+# build the committed shim R packages in src/data/rvenv-shim (gen-rvenv-shim)
+flate2 = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+tar = "0.4"

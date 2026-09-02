@@ -273,3 +273,44 @@ teardown() {
     uid=`stat -c "%u" "$libdir"`
     [[ "$uid" -eq "`id -u`" ]]
 }
+
+@test "proj init" {
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf myproj && mkdir myproj && cd myproj
+
+    # No R needs to be installed for the requested version, `rig proj init`
+    # does not touch an R installation.
+    run rig proj init -r 4.5.1
+    [[ "$status" -eq 0 ]]
+    [[ -f rproj.toml ]]
+    [[ -f .Renviron ]]
+    [[ -f .gitignore ]]
+    [[ -f .rvenv/lib/.gitignore ]]
+    [[ -f .rvenv/lib/rig/DESCRIPTION ]]
+    grep -q '^name = "myproj"$' rproj.toml
+    grep -q '^R = ">= 4.5"$' rproj.toml
+    grep -q '^R_LIBS_USER=.rvenv/lib$' .Renviron
+    grep -q '^!/.rvenv/lib$' .gitignore
+    grep -q '^Package: rig$' .rvenv/lib/rig/DESCRIPTION
+
+    # The IDE leg: a plain R session in the project picks up the shim
+    # package, which resolves the library path and warns about the missing
+    # sync.
+    run env -u RVENV R-4.5.1 -q -s -e 'cat(.libPaths()[1])'
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "Project is not synced"
+    echo "$output" | grep -q "myproj/[.]rvenv/lib"
+
+    # Refuses to overwrite, and says what is in the way
+    run rig proj init -r 4.5.1
+    [[ "$status" -ne 0 ]]
+    echo "$output" | grep -q "rproj.toml"
+    echo "$output" | grep -q -- "--force"
+
+    # --force keeps the user's own ignore rules, rig only manages its block
+    echo "*.log" >> .gitignore
+    run rig proj init -r 4.5.1 --force
+    [[ "$status" -eq 0 ]]
+    grep -q '^[*].log$' .gitignore
+    [[ "$(grep -c '^# rig rvenv start$' .gitignore)" -eq 1 ]]
+}

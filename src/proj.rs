@@ -34,6 +34,9 @@ use crate::renv::*;
 use crate::repos::binaries::loader::{BinaryTarget, P3mBinaryLoader};
 use crate::repos::*;
 use crate::rproj::{Rproj, RprojLock, RprojLockTarget, RPROJ_LOCK_VERSION, RPROJ_MANIFEST_FILE};
+use crate::rvenv::{
+    existing_targets, find_project_root, project_library, rvenv_init, write_sync_stamp,
+};
 use crate::solver::*;
 use crate::utils::create_parent_dir_if_needed;
 
@@ -66,33 +69,82 @@ pub fn sc_proj(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn E
     }
 }
 
-/// Write a new minimal `rproj.toml` manifest in the current directory.
+/// Create a new project in the current directory: the `rproj.toml` manifest
+/// plus the tracked part of the `.rvenv` layout (see `src/rvenv.rs`).
 fn sc_proj_init(
     args: &ArgMatches,
     _projargs: &ArgMatches,
     _mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
-    let path = Path::new(RPROJ_MANIFEST_FILE);
-    if path.exists() && !args.get_flag("force") {
-        OUTPUT.error(&format!(
-            "{} already exists, use --force to overwrite",
-            RPROJ_MANIFEST_FILE
-        ));
-        error!("{} already exists", RPROJ_MANIFEST_FILE);
-        bail!("{} already exists", RPROJ_MANIFEST_FILE);
+    let root = std::env::current_dir()?;
+    let force = args.get_flag("force");
+
+    // Check every file we are about to write before writing any of them, so
+    // that a conflict does not leave a half-created project behind, and so
+    // that the error can name all of them at once.
+    if !force {
+        let existing = existing_targets(&root)?;
+        if !existing.is_empty() {
+            let names: Vec<String> = existing
+                .iter()
+                .map(|p| {
+                    p.strip_prefix(&root)
+                        .unwrap_or(p)
+                        .to_string_lossy()
+                        .into_owned()
+                })
+                .collect();
+            let msg = format!(
+                "{} already exist{}, use --force to overwrite",
+                names.join(", "),
+                if names.len() == 1 { "s" } else { "" }
+            );
+            OUTPUT.error(&msg);
+            error!("{}", msg);
+            bail!("{}", msg);
+        }
     }
 
+    // The R version decides both the manifest's R requirement and which
+    // pre-built shim package the project gets. It does not have to be
+    // installed, nothing we write here refers to an R installation.
+    let rver = match args.get_one::<String>("r-version") {
+        Some(rv) => rv.to_string(),
+        None => match get_default_r_version()? {
+            Some(rv) => rv,
+            None => {
+                OUTPUT.error("Cannot determine R version, please specify it with --r-version.");
+                error!("Cannot determine R version, please specify it with --r-version.");
+                bail!("Cannot determine R version, please specify it with --r-version.")
+            }
+        },
+    };
+
     // Project name defaults to the current directory's name.
-    let name = std::env::current_dir()
-        .ok()
-        .and_then(|d| d.file_name().map(|n| n.to_string_lossy().into_owned()))
+    let name = root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
         .filter(|n| !n.is_empty())
         .unwrap_or_else(|| "myproject".to_string());
 
-    let manifest = Rproj::minimal(&name);
-    fs::write(path, toml::to_string_pretty(&manifest)?)?;
-    OUTPUT.success(&format!("Created {}", RPROJ_MANIFEST_FILE));
-    info!("Created {}", RPROJ_MANIFEST_FILE);
+    let manifest = Rproj::minimal_for_r(&name, &rver)?;
+    let manifest_path = root.join(RPROJ_MANIFEST_FILE);
+    fs::write(&manifest_path, toml::to_string_pretty(&manifest)?)?;
+
+    let mut created = vec![manifest_path];
+    created.extend(rvenv_init(&root, &rver)?);
+
+    for path in &created {
+        let name = path.strip_prefix(&root).unwrap_or(path).to_string_lossy();
+        OUTPUT.success(&format!("Created {}", name));
+        info!("Created {}", name);
+    }
+    OUTPUT.info(&format!(
+        "Project set up for R {}. Next: add dependencies to {}, \
+         then run `rig proj lock` and `rig proj sync`.",
+        rver, RPROJ_MANIFEST_FILE
+    ));
+
     Ok(())
 }
 
@@ -600,20 +652,41 @@ fn sc_proj_sync(
     _libargs: &ArgMatches,
     _mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
+    // The project is the nearest one at or above the current directory, so
+    // that `rig proj sync` works from a subdirectory, like `git` does.
+    let cwd = std::env::current_dir()?;
+    let root = find_project_root(&cwd).unwrap_or(cwd);
+
     // Read the lockfile to get package information. Single-target for now:
     // always the first (and, today, only) entry `rig proj lock` wrote; the
     // "pick the entry matching this machine, hard error if none match" logic
     // for a real multi-target `rproj.lock` is follow-up work.
-    let lock_content = fs::read_to_string("rproj.lock")?;
+    let lock_path = root.join("rproj.lock");
+    let lock_content = fs::read_to_string(&lock_path)?;
     let lock: RprojLock = toml::from_str(&lock_content)?;
     let target = lock.targets.first().ok_or("rproj.lock has no targets")?;
 
-    // Library path: --library, or the project venv's library by default
-    let library_path = PathBuf::from(
-        args.get_one::<String>("library")
-            .map(|s| s.as_str())
-            .unwrap_or(".rvenv/lib"),
-    );
+    // Library path: --library, or the project library by default. The
+    // project library is created by `rig proj init`, together with the
+    // `.gitignore` files that keep it in version control, so do not create
+    // it here.
+    let library_path = match args.get_one::<String>("library") {
+        Some(lib) => PathBuf::from(lib),
+        None => {
+            let lib = project_library(&root);
+            if !lib.exists() {
+                let msg = format!(
+                    "No project library in {}, run `rig proj init` first \
+                     (or pass --library)",
+                    lib.display()
+                );
+                OUTPUT.error(&msg);
+                error!("{}", msg);
+                bail!("{}", msg);
+            }
+            lib
+        }
+    };
 
     // A package already in the library, at the version and provenance the
     // lockfile asks for, does not need to be downloaded or reinstalled.
@@ -630,7 +703,19 @@ fn sc_proj_sync(
         .map(|p| p.package)
         .collect();
 
+    // The shim package in the project library compares this stamp to
+    // `rproj.lock` and warns in every R session while they differ, so it has
+    // to be updated even when there was nothing to install.
+    let stamp_lib = if library_path == project_library(&root) {
+        Some(library_path.clone())
+    } else {
+        None
+    };
+
     if todo.is_empty() {
+        if let Some(lib) = &stamp_lib {
+            write_sync_stamp(lib, &lock_path)?;
+        }
         OUTPUT.success(&format!(
             "Everything is up to date in {}",
             library_path.display()
@@ -691,6 +776,10 @@ fn sc_proj_sync(
     );
 
     let installed = install_packages(packages, &library_path, r_binary, max_concurrent)?;
+
+    if let Some(lib) = &stamp_lib {
+        write_sync_stamp(lib, &lock_path)?;
+    }
 
     OUTPUT.success(&format!(
         "Deployment complete, installed {} packages",

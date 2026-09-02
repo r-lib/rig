@@ -307,6 +307,15 @@ fonts-asset:
 help:
 	cargo xtask gen-help
 
+# Rebuild the pre-built shim R packages in src/data/rvenv-shim (one per R
+# version bracket) from the package source in src/data/rvenv-pkg. `rig proj
+# init` seeds one of them into a project's .rvenv/lib/rig. Needs the R
+# versions listed in xtask/src/rvenv_shim.rs and installs them with `rig add`
+# if they are missing, so this is a maintainer-only task; CI only runs
+# `cargo xtask gen-rvenv-shim --check`, which needs no R.
+rvenv-shim:
+	cargo xtask gen-rvenv-shim
+
 readme: README.md
 
 # Regenerate the command-line reference (website/reference/_commands.md) from

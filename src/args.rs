@@ -1322,10 +1322,18 @@ pub fn rig_app() -> Command {
                 .display_order(0)
                 .arg(
                     Arg::new("force")
-                        .help("Overwrite an existing rproj.toml")
+                        .help("Overwrite existing project files")
                         .long("force")
                         .short('f')
                         .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version of the project (default: the default R version)")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
                         .required(false),
                 ),
         )
