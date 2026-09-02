@@ -1794,6 +1794,19 @@ pub fn sc_rstudio_(
     project: Option<&str>,
     arg: Option<&OsStr>,
 ) -> Result<(), Box<dyn Error>> {
+    // In user mode RStudio only finds the rig R versions via the
+    // RSTUDIO_WHICH_R LaunchAgent, so make sure that it is installed and
+    // active.
+    if get_mode()? == crate::utils::Mode::User {
+        if let Err(e) = ensure_rstudio_which_r_plist() {
+            OUTPUT.warn(&format!(
+                "Could not register default R version in RStudio: {}",
+                e
+            ));
+            warn!("Could not activate RSTUDIO_WHICH_R LaunchAgent: {}", e);
+        }
+    }
+
     let mut args = match project {
         // open -n -a RStudio
         None => osvec!["-n", "-a", "RStudio"],
@@ -1957,46 +1970,66 @@ fn ensure_rstudio_which_r_plist() -> Result<(), Box<dyn Error>> {
 "#
     );
 
+    // Write the plist if it is missing or out of date, e.g. because the
+    // default R version moved to another directory.
     let uptodate = match std::fs::read_to_string(&plist_path) {
-        Ok(old) => old == plist,
+        Ok(x) => x == plist,
         Err(_) => false,
     };
-
+    let mut installed = false;
     if !uptodate {
+        // If an old plist is loaded, unload it first, otherwise `launchctl
+        // load` below is a no-op.
+        if rstudio_which_r_plist_loaded() {
+            let out = Command::new("launchctl")
+                .args(["unload", &plist_path])
+                .output()?;
+            if !out.status.success() {
+                debug!(
+                    "launchctl unload {} failed: {}",
+                    plist_path,
+                    String::from_utf8_lossy(&out.stderr)
+                );
+            }
+        }
         let plist_dir = Path::new(&plist_path).parent().unwrap();
         std::fs::create_dir_all(plist_dir)?;
-        // The old agent, if any, points to a different R, so drop it first
-        Command::new("launchctl")
-            .args(["unload", &plist_path])
-            .output()
-            .ok();
-        std::fs::write(&plist_path, plist)?;
+        std::fs::write(&plist_path, &plist)?;
         info!("Installed LaunchAgent {}", plist_path);
-
-        let out = Command::new("launchctl")
-            .args(["load", &plist_path])
-            .output()?;
-        if !out.status.success() {
-            let msg = format!(
-                "Could not register default R version in RStudio: launchctl load {} failed: {}",
-                plist_path,
-                String::from_utf8_lossy(&out.stderr)
-            );
-            OUTPUT.error(&msg);
-            error!("{}", msg);
-            bail!(msg);
-        }
+        installed = true;
     }
 
-    // launchctl load only sets RSTUDIO_WHICH_R at login if the agent was
-    // already in place, so set it now as well
-    let out = Command::new("launchctl")
-        .args(["setenv", "RSTUDIO_WHICH_R"])
-        .arg(rbin.as_os_str())
-        .output()?;
+    // The LaunchAgent might be up to date but not loaded, or loaded but the
+    // environment variable might be missing or stale, e.g. if another tool
+    // called `launchctl setenv RSTUDIO_WHICH_R`. Both are fixed by
+    // (re)loading the LaunchAgent.
+    let loaded = !installed && rstudio_which_r_plist_loaded();
+    let active = loaded && rstudio_which_r_launchd_env().as_deref() == Some(&*rbin_str);
+
+    if active {
+        return Ok(());
+    }
+
+    let (verb, args) = if loaded {
+        // Loaded, but the environment variable is not set correctly, restart
+        // the job to set it again.
+        (
+            "kickstart",
+            vec![
+                "kickstart".to_string(),
+                "-k".to_string(),
+                rstudio_which_r_service_target()?,
+            ],
+        )
+    } else {
+        ("load", vec!["load".to_string(), plist_path.clone()])
+    };
+
+    let out = Command::new("launchctl").args(&args).output()?;
     if !out.status.success() {
         let msg = format!(
-            "Could not register default R version in RStudio: launchctl setenv failed: {}",
+            "Could not register default R version in RStudio: launchctl {} failed: {}",
+            verb,
             String::from_utf8_lossy(&out.stderr)
         );
         OUTPUT.error(&msg);
@@ -2007,6 +2040,37 @@ fn ensure_rstudio_which_r_plist() -> Result<(), Box<dyn Error>> {
     OUTPUT.success("Registered default R version in RStudio");
 
     Ok(())
+}
+
+fn rstudio_which_r_plist_loaded() -> bool {
+    match Command::new("launchctl")
+        .args(["list", "io.r-lib.rig.rstudio-which-r"])
+        .output()
+    {
+        Ok(out) => out.status.success(),
+        Err(_) => false,
+    }
+}
+
+fn rstudio_which_r_launchd_env() -> Option<String> {
+    let out = Command::new("launchctl")
+        .args(["getenv", "RSTUDIO_WHICH_R"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let val = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if val.is_empty() {
+        None
+    } else {
+        Some(val)
+    }
+}
+
+fn rstudio_which_r_service_target() -> Result<String, Box<dyn Error>> {
+    let uid = nix::unistd::getuid().as_raw();
+    Ok(format!("gui/{}/io.r-lib.rig.rstudio-which-r", uid))
 }
 
 fn is_rstudio_installed() -> bool {
