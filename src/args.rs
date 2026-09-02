@@ -1507,6 +1507,13 @@ pub fn rig_app() -> Command {
                         .num_args(1)
                         .value_parser(clap::value_parser!(usize))
                         .required(false),
+                )
+                .arg(
+                    Arg::new("no-dev")
+                        .help("Do not install dev (development) dependencies")
+                        .long("no-dev")
+                        .num_args(0)
+                        .required(false),
                 ),
         );
     rig = rig.subcommand(cmd_proj);

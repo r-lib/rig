@@ -13,6 +13,9 @@ options first, to create one. That library is created by
 keep it in version control, so `rig proj sync` fails if it is missing. Pass
 `--library` to install somewhere else instead.
 
+Development dependencies are installed by default. `--no-dev` leaves them
+out.
+
 Use `--r-binary` to select which R to build against (default: `R`) and
 `--max-concurrent` to limit the number of simultaneous installations
 (default: 8).

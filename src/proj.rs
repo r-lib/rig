@@ -722,6 +722,30 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions) -> Result<(), Box<dyn Error>> 
     Ok(())
 }
 
+/// The lockfile packages that are needed without the dev dependencies.
+fn nondev_packages(
+    root: &Path,
+    packages: &[PakLockfilePackage],
+) -> Result<HashSet<String>, Box<dyn Error>> {
+    let (_name, _version, deps) = proj_read_manifest_deps(root, false)?;
+    let by_name: HashMap<&str, &PakLockfilePackage> =
+        packages.iter().map(|p| (p.package.as_str(), p)).collect();
+
+    let mut keep: HashSet<String> = HashSet::new();
+    let mut todo: Vec<String> = deps.dependencies.iter().map(|d| d.name.clone()).collect();
+    while let Some(name) = todo.pop() {
+        if !keep.insert(name.clone()) {
+            continue;
+        }
+        // R and the base packages are dependencies in the manifest, but never
+        // lockfile entries, so they simply do not match anything here.
+        if let Some(pkg) = by_name.get(name.as_str()) {
+            todo.extend(pkg.dependencies.iter().cloned());
+        }
+    }
+    Ok(keep)
+}
+
 fn sc_proj_sync(
     args: &ArgMatches,
     _libargs: &ArgMatches,
@@ -753,6 +777,20 @@ fn sc_proj_sync(
     let lock: RprojLock = toml::from_str(&lock_content)?;
     let target = lock.targets.first().ok_or("rproj.lock has no targets")?;
 
+    let nondev;
+    let wanted: &[PakLockfilePackage] = if args.get_flag("no-dev") {
+        let keep = nondev_packages(&root, &target.packages)?;
+        nondev = target
+            .packages
+            .iter()
+            .filter(|p| keep.contains(&p.package))
+            .cloned()
+            .collect::<Vec<_>>();
+        &nondev
+    } else {
+        &target.packages
+    };
+
     // Library path: --library, or the project library by default. The
     // project library is created by `rig proj init`, together with the
     // `.gitignore` files that keep it in version control, so do not create
@@ -782,7 +820,7 @@ fn sc_proj_sync(
     } else {
         vec![]
     };
-    let plan = plan_installs(&target.packages, &already_installed, false);
+    let plan = plan_installs(wanted, &already_installed, false);
     print_plan(&format!("({})", library_path.display()), &plan);
     let todo: Vec<&PakLockfilePackage> = plan
         .iter()
@@ -852,13 +890,13 @@ fn sc_proj_sync(
     OUTPUT.status(&format!(
         "Installing {} of {} packages to {}",
         total_packages,
-        target.packages.len(),
+        wanted.len(),
         library_path.display()
     ));
     info!(
         "Installing {} of {} packages to {}",
         total_packages,
-        target.packages.len(),
+        wanted.len(),
         library_path.display()
     );
 
@@ -1001,4 +1039,73 @@ pub(crate) fn download_lockfile_packages(
     ));
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::rproj::{Dependency, Group};
+    use std::collections::BTreeMap;
+
+    /// One lockfile entry: its name and the packages it depends on.
+    fn locked(name: &str, deps: &[&str]) -> PakLockfilePackage {
+        PakLockfilePackage {
+            r#ref: name.to_string(),
+            package: name.to_string(),
+            version: "1.0.0".to_string(),
+            r#type: "standard".to_string(),
+            direct: false,
+            binary: true,
+            dependencies: deps.iter().map(|d| d.to_string()).collect(),
+            vignettes: false,
+            metadata: HashMap::new(),
+            sources: vec![],
+            target: format!("bin/{}_1.0.0.tgz", name),
+            platform: "testos".to_string(),
+            rversion: "4.5.1".to_string(),
+            directpkg: false,
+            license: "MIT".to_string(),
+            dep_types: vec![],
+            params: vec![],
+            install_args: String::new(),
+            sysreqs: String::new(),
+        }
+    }
+
+    fn dep(version: &str) -> Dependency {
+        Dependency::Version(version.to_string())
+    }
+
+    #[test]
+    fn nondev_packages_keeps_the_non_dev_closure_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut manifest = Rproj::minimal("mypkg");
+        manifest.dependencies.insert("cli".to_string(), dep("*"));
+        manifest.dependency_groups.insert(
+            "test".to_string(),
+            Group {
+                include_groups: vec![],
+                dependencies: BTreeMap::from([("testthat".to_string(), dep("*"))]),
+            },
+        );
+        fs::write(
+            dir.path().join(RPROJ_MANIFEST_FILE),
+            toml::to_string_pretty(&manifest).unwrap(),
+        )
+        .unwrap();
+
+        let packages = vec![
+            locked("cli", &["glue"]),
+            locked("glue", &[]),
+            locked("testthat", &["waldo", "glue"]),
+            locked("waldo", &[]),
+        ];
+
+        let keep = nondev_packages(dir.path(), &packages).unwrap();
+        // `glue` is a dev dependency too, but a non-dev one pulls it in
+        assert!(keep.contains("cli"));
+        assert!(keep.contains("glue"));
+        assert!(!keep.contains("testthat"));
+        assert!(!keep.contains("waldo"));
+    }
 }
