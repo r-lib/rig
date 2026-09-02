@@ -1,5 +1,9 @@
 # rig 0.10.0 (not released yet)
 
+* macOS user mode: `rig default` now sets the default R version correctly
+  for newer RStudio versions. Also, `rig system allow-debugger-rstudio`
+  now works for newer RStudio versions.
+
 * On Windows rig now creates `.exe` shims instead of `bat` shims.
   With `.exe` shims it is easier to pass command line arguments to
   `R` and `Rscript`. In particular, `Rscript -e <code>` now works if

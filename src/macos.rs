@@ -977,16 +977,38 @@ pub fn sc_system_allow_debugger_rstudio(_args: &ArgMatches) -> Result<(), Box<dy
         bail!("RStudio is not installed, at least not in /Applications/RStudio.app");
     }
 
-    let rsess = PathBuf::from("/Applications/RStudio.app/Contents/MacOS/rsession");
-    update_entitlements(rsess)?;
+    let sessions = rstudio_rsession_paths();
+    if sessions.is_empty() {
+        let msg = "Could not find the rsession binary in /Applications/RStudio.app";
+        OUTPUT.error(msg);
+        error!("{}", msg);
+        bail!(msg);
+    }
 
-    let rsessarm64 = PathBuf::from("/Applications/RStudio.app/Contents/MacOS/rsession-arm64");
-
-    if rsessarm64.exists() {
-        update_entitlements(rsessarm64)?;
+    for rsess in sessions {
+        update_entitlements(rsess)?;
     }
 
     Ok(())
+}
+
+// Both the old (pre-Electron) and the current RStudio app layout.
+fn rstudio_rsession_paths() -> Vec<PathBuf> {
+    let app = Path::new("/Applications/RStudio.app/Contents");
+    let dirs = [
+        app.join("MacOS"),
+        app.join("Resources").join("app").join("bin"),
+    ];
+    let mut paths = Vec::new();
+    for dir in dirs {
+        for name in ["rsession", "rsession-arm64"] {
+            let path = dir.join(name);
+            if path.exists() {
+                paths.push(path);
+            }
+        }
+    }
+    paths
 }
 
 pub fn update_entitlements(path: PathBuf) -> Result<(), Box<dyn Error>> {
@@ -1911,10 +1933,6 @@ fn ensure_rstudio_which_r_plist() -> Result<(), Box<dyn Error>> {
 
     let plist_path = rstudio_which_r_plist_path()?;
 
-    if Path::new(&plist_path).exists() {
-        return Ok(());
-    }
-
     let rbin = Path::new(&get_r_default_bindir()?).join("R");
     let rbin_str = rbin.to_string_lossy();
 
@@ -1939,18 +1957,46 @@ fn ensure_rstudio_which_r_plist() -> Result<(), Box<dyn Error>> {
 "#
     );
 
-    let plist_dir = Path::new(&plist_path).parent().unwrap();
-    std::fs::create_dir_all(plist_dir)?;
-    std::fs::write(&plist_path, plist)?;
-    info!("Installed LaunchAgent {}", plist_path);
+    let uptodate = match std::fs::read_to_string(&plist_path) {
+        Ok(old) => old == plist,
+        Err(_) => false,
+    };
 
+    if !uptodate {
+        let plist_dir = Path::new(&plist_path).parent().unwrap();
+        std::fs::create_dir_all(plist_dir)?;
+        // The old agent, if any, points to a different R, so drop it first
+        Command::new("launchctl")
+            .args(["unload", &plist_path])
+            .output()
+            .ok();
+        std::fs::write(&plist_path, plist)?;
+        info!("Installed LaunchAgent {}", plist_path);
+
+        let out = Command::new("launchctl")
+            .args(["load", &plist_path])
+            .output()?;
+        if !out.status.success() {
+            let msg = format!(
+                "Could not register default R version in RStudio: launchctl load {} failed: {}",
+                plist_path,
+                String::from_utf8_lossy(&out.stderr)
+            );
+            OUTPUT.error(&msg);
+            error!("{}", msg);
+            bail!(msg);
+        }
+    }
+
+    // launchctl load only sets RSTUDIO_WHICH_R at login if the agent was
+    // already in place, so set it now as well
     let out = Command::new("launchctl")
-        .args(["load", &plist_path])
+        .args(["setenv", "RSTUDIO_WHICH_R"])
+        .arg(rbin.as_os_str())
         .output()?;
     if !out.status.success() {
         let msg = format!(
-            "Could not register default R version in RStudio: launchctl load {} failed: {}",
-            plist_path,
+            "Could not register default R version in RStudio: launchctl setenv failed: {}",
             String::from_utf8_lossy(&out.stderr)
         );
         OUTPUT.error(&msg);
@@ -1964,7 +2010,7 @@ fn ensure_rstudio_which_r_plist() -> Result<(), Box<dyn Error>> {
 }
 
 fn is_rstudio_installed() -> bool {
-    Path::new("/Applications/RStudio.app/Contents/MacOS/rsession").exists()
+    Path::new("/Applications/RStudio.app").exists()
 }
 
 fn rstudio_which_r_plist_path() -> Result<String, Box<dyn Error>> {
@@ -1981,6 +2027,11 @@ fn remove_rstudio_which_r_plist() -> Result<(), Box<dyn Error>> {
     if !Path::new(&plist_path).exists() {
         return Ok(());
     }
+
+    Command::new("launchctl")
+        .args(["unsetenv", "RSTUDIO_WHICH_R"])
+        .output()
+        .ok();
 
     let out = Command::new("launchctl")
         .args(["unload", &plist_path])
