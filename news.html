@@ -573,6 +573,7 @@ ul.task-list li input[type="checkbox"] {
 <section id="rig-0.10.0-not-released-yet" class="level1">
 <h1>rig 0.10.0 (not released yet)</h1>
 <ul>
+<li><p>On Windows rig now creates <code>.exe</code> shims instead of <code>bat</code> shims. With <code>.exe</code> shims it is easier to pass command line arguments to <code>R</code> and <code>Rscript</code>. In particular, <code>Rscript -e &lt;code&gt;</code> now works if <code>&lt;code&gt;</code> has line breaks. Call <code>rig system make-links</code> to create all <code>.exe</code> shims and remove the <code>.bat</code> shims. If you hardcoded shims with a <code>.bat</code> extension, change them to <code>.exe</code> or remove the extension completely (#362).</p></li>
 <li><p>New <code>rig ppm</code> command queries Posit Package Manager.</p></li>
 <li><p>New <code>rig repos status</code> checks the configured package repositories.</p></li>
 <li><p>New <code>rig pkg</code> subcommand to query and manage R packages. Two subcommands from <code>rig repos</code> moved to <code>rig pkg</code>: <code>rig pkg available</code> and <code>rig pkg info</code>. <code>rig pkg deps</code> lists the packages a package needs, in a table, and <code>rig pkg tree</code> shows the same dependencies as a tree. <code>rig pkg list</code> lists the packages installed in a library, <code>rig pkg remove</code> deletes packages from a library, and <code>rig pkg install</code> installs packages, and their dependencies, into a library.</p></li>
