@@ -1,5 +1,13 @@
 # rig 0.10.0 (not released yet)
 
+* On Windows rig now creates `.exe` shims instead of `bat` shims.
+  With `.exe` shims it is easier to pass command line arguments to
+  `R` and `Rscript`. In particular, `Rscript -e <code>` now works if
+  `<code>` has line breaks. Call `rig system make-links` to create all
+  `.exe` shims and remove the `.bat` shims. If you hardcoded shims with
+  a `.bat` extension, change them to `.exe` or remove the extension
+  completely (#362).
+
 * New `rig ppm` command queries Posit Package Manager.
 
 * New `rig repos status` checks the configured package repositories.
