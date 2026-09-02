@@ -1330,6 +1330,20 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("import")
+                .about(ABOUT_PROJ_IMPORT)
+                .long_about(HELP_PROJ_IMPORT)
+                .display_order(0)
+                .arg(
+                    Arg::new("input")
+                        .help("DESCRIPTION file to import (e.g. DESCRIPTION)")
+                        .long("input")
+                        .short('i')
+                        .num_args(1)
+                        .required(false),
+                ),
+        )
+        .subcommand(
             Command::new("deps")
                 .about(ABOUT_PROJ_DEPS)
                 .long_about(HELP_PROJ_DEPS)

@@ -57,6 +57,7 @@ pub const BASE_PKGS: &[&str] = &[
 pub fn sc_proj(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
         Some(("init", s)) => sc_proj_init(s, args, mainargs),
+        Some(("import", s)) => sc_proj_import(s, args, mainargs),
         Some(("deps", s)) => sc_proj_deps(s, args, mainargs),
         Some(("tree", s)) => sc_proj_tree(s, args, mainargs),
         Some(("lock", s)) => sc_proj_lock(s, args, mainargs),
@@ -92,6 +93,44 @@ fn sc_proj_init(
     fs::write(path, toml::to_string_pretty(&manifest)?)?;
     OUTPUT.success(&format!("Created {}", RPROJ_MANIFEST_FILE));
     info!("Created {}", RPROJ_MANIFEST_FILE);
+    Ok(())
+}
+
+/// Import a `DESCRIPTION` file's dependencies into `rproj.toml`, creating a
+/// minimal manifest first if none exists yet.
+fn sc_proj_import(
+    args: &ArgMatches,
+    _projargs: &ArgMatches,
+    _mainargs: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+    let default_input = "DESCRIPTION".to_string();
+    let input: &String = args.get_one::<String>("input").unwrap_or(&default_input);
+    let pkg = proj_read_deps(input, true)?;
+
+    let path = Path::new(RPROJ_MANIFEST_FILE);
+    let mut manifest = if path.exists() {
+        toml::from_str::<Rproj>(&fs::read_to_string(path)?)?
+    } else {
+        OUTPUT.status(&format!(
+            "{} does not exist, creating a new one",
+            RPROJ_MANIFEST_FILE
+        ));
+        info!("{} does not exist, creating a new one", RPROJ_MANIFEST_FILE);
+        Rproj::minimal(&pkg.name)
+    };
+
+    let count = pkg.dependencies.dependencies.len();
+    manifest.merge_description(&pkg);
+    fs::write(path, toml::to_string_pretty(&manifest)?)?;
+
+    OUTPUT.success(&format!(
+        "Imported {} dependencies from {} into {}",
+        count, input, RPROJ_MANIFEST_FILE
+    ));
+    info!(
+        "Imported {} dependencies from {} into {}",
+        count, input, RPROJ_MANIFEST_FILE
+    );
     Ok(())
 }
 

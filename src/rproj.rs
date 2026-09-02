@@ -21,6 +21,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::dcf::{Package as DcfPackage, RDepType, VersionConstraint};
 use crate::pak::PakLockfilePackage;
 
 pub const RPROJ_LOCK_VERSION: usize = 1;
@@ -236,6 +237,71 @@ impl Rproj {
             ..Default::default()
         }
     }
+
+    /// Merge a DESCRIPTION-derived `Package`'s dependencies into this
+    /// manifest, upserting entries (an existing entry for the same package
+    /// name is overwritten). `Depends`/`Imports` land in `[dependencies]`
+    /// (`Depends` marked with `attach = true`, except for `R` itself, which
+    /// stays a plain version string); `LinkingTo` also lands in
+    /// `[linking-dependencies]` (a package can be in both tables at once,
+    /// e.g. `Rcpp` in both `Imports` and `LinkingTo`); `Suggests`/`Enhances`
+    /// land in `[dependency-groups.test]` / `[dependency-groups.enhances]`.
+    pub fn merge_description(&mut self, pkg: &DcfPackage) {
+        for dep in pkg.dependencies.dependencies.iter() {
+            let version_str = format_constraints(&dep.constraints);
+            let hard = dep.types.contains(&RDepType::Depends)
+                || dep.types.contains(&RDepType::Imports)
+                || dep.types.contains(&RDepType::LinkingTo);
+
+            if dep.types.contains(&RDepType::Depends) || dep.types.contains(&RDepType::Imports) {
+                let value = if dep.name != "R" && dep.types.contains(&RDepType::Depends) {
+                    Dependency::Detailed(DepTable {
+                        version: Some(version_str.clone()),
+                        attach: Some(true),
+                        ..Default::default()
+                    })
+                } else {
+                    Dependency::Version(version_str.clone())
+                };
+                self.dependencies.insert(dep.name.clone(), value);
+            }
+
+            if dep.types.contains(&RDepType::LinkingTo) {
+                self.linking_dependencies
+                    .insert(dep.name.clone(), Dependency::Version(version_str.clone()));
+            }
+
+            if !hard {
+                if dep.types.contains(&RDepType::Suggests) {
+                    self.dependency_groups
+                        .entry("test".to_string())
+                        .or_default()
+                        .dependencies
+                        .insert(dep.name.clone(), Dependency::Version(version_str.clone()));
+                }
+                if dep.types.contains(&RDepType::Enhances) {
+                    self.dependency_groups
+                        .entry("enhances".to_string())
+                        .or_default()
+                        .dependencies
+                        .insert(dep.name.clone(), Dependency::Version(version_str.clone()));
+                }
+            }
+        }
+    }
+}
+
+/// Format a dependency's version constraints as an `rproj.toml` version
+/// string, e.g. `">= 1.0, < 2.0"`, or `"*"` if there are none.
+fn format_constraints(constraints: &[VersionConstraint]) -> String {
+    if constraints.is_empty() {
+        return "*".to_string();
+    }
+    constraints
+        .iter()
+        .map(|c| format!("{} {}", c.constraint_type, c.version))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -254,7 +320,31 @@ pub struct RprojLockTarget {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dcf::{DepVersionSpec, RPackageVersion, VersionConstraintType};
     use std::collections::HashMap;
+
+    fn spec(name: &str, types: &[RDepType], constraints: Vec<VersionConstraint>) -> DepVersionSpec {
+        DepVersionSpec {
+            name: name.to_string(),
+            types: types.to_vec(),
+            constraints,
+        }
+    }
+
+    fn constraint(op: VersionConstraintType, version: &str) -> VersionConstraint {
+        VersionConstraint {
+            constraint_type: op,
+            version: RPackageVersion::from_str(version).unwrap(),
+        }
+    }
+
+    fn package(deps: Vec<DepVersionSpec>) -> DcfPackage {
+        DcfPackage::from_crandb(
+            "mypkg".to_string(),
+            RPackageVersion::from_str("1.0.0").unwrap(),
+            deps,
+        )
+    }
 
     fn sample_package() -> PakLockfilePackage {
         PakLockfilePackage {
@@ -407,5 +497,118 @@ mod tests {
             parsed.targets[0].packages[0].metadata.get("RemoteSha"),
             Some(&"abc123".to_string())
         );
+    }
+
+    #[test]
+    fn merge_description_imports_go_to_dependencies() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependencies.clear();
+        let pkg = package(vec![spec(
+            "cli",
+            &[RDepType::Imports],
+            vec![constraint(VersionConstraintType::GreaterOrEqual, "3.6.5")],
+        )]);
+        m.merge_description(&pkg);
+        assert_eq!(m.dependencies.get("cli"), Some(&dep(">= 3.6.5")));
+    }
+
+    #[test]
+    fn merge_description_depends_sets_attach() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependencies.clear();
+        let pkg = package(vec![spec("crayon", &[RDepType::Depends], vec![])]);
+        m.merge_description(&pkg);
+        assert_eq!(
+            m.dependencies.get("crayon"),
+            Some(&Dependency::Detailed(DepTable {
+                version: Some("*".to_string()),
+                attach: Some(true),
+                ..Default::default()
+            }))
+        );
+    }
+
+    #[test]
+    fn merge_description_r_depends_stays_plain() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependencies.clear();
+        let pkg = package(vec![spec(
+            "R",
+            &[RDepType::Depends],
+            vec![constraint(VersionConstraintType::GreaterOrEqual, "4.1")],
+        )]);
+        m.merge_description(&pkg);
+        assert_eq!(m.dependencies.get("R"), Some(&dep(">= 4.1")));
+    }
+
+    #[test]
+    fn merge_description_linkingto_lands_in_both_tables() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependencies.clear();
+        let pkg = package(vec![spec(
+            "Rcpp",
+            &[RDepType::Imports, RDepType::LinkingTo],
+            vec![constraint(VersionConstraintType::GreaterOrEqual, "1.0")],
+        )]);
+        m.merge_description(&pkg);
+        assert_eq!(m.dependencies.get("Rcpp"), Some(&dep(">= 1.0")));
+        assert_eq!(m.linking_dependencies.get("Rcpp"), Some(&dep(">= 1.0")));
+    }
+
+    #[test]
+    fn merge_description_suggests_and_enhances_go_to_groups() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependencies.clear();
+        let pkg = package(vec![
+            spec("testthat", &[RDepType::Suggests], vec![]),
+            spec("otherpkg", &[RDepType::Enhances], vec![]),
+        ]);
+        m.merge_description(&pkg);
+        assert_eq!(
+            m.dependency_groups
+                .get("test")
+                .unwrap()
+                .dependencies
+                .get("testthat"),
+            Some(&dep("*"))
+        );
+        assert_eq!(
+            m.dependency_groups
+                .get("enhances")
+                .unwrap()
+                .dependencies
+                .get("otherpkg"),
+            Some(&dep("*"))
+        );
+        assert!(m.dependencies.is_empty());
+    }
+
+    #[test]
+    fn merge_description_upserts_existing_entry() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependencies.insert("cli".to_string(), dep(">= 1.0"));
+        let pkg = package(vec![spec(
+            "cli",
+            &[RDepType::Imports],
+            vec![constraint(VersionConstraintType::GreaterOrEqual, "3.6.5")],
+        )]);
+        m.merge_description(&pkg);
+        assert_eq!(m.dependencies.get("cli"), Some(&dep(">= 3.6.5")));
+    }
+
+    #[test]
+    fn merge_description_multiple_constraints_join_with_comma() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependencies.clear();
+        let pkg = package(vec![spec(
+            "cli",
+            &[RDepType::Imports],
+            vec![
+                constraint(VersionConstraintType::GreaterOrEqual, "1.0"),
+                constraint(VersionConstraintType::Less, "2.0"),
+            ],
+        )]);
+        m.merge_description(&pkg);
+        assert_eq!(m.dependencies.get("cli"), Some(&dep(">= 1.0, << 2.0")));
     }
 }

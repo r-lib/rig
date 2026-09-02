@@ -9,6 +9,8 @@ A project is a directory with a package manifest, typically a
 `rig proj` resolves those dependencies against the configured package
 repositories and can install them into a project library.
 
+`rig proj import` reads a `DESCRIPTION` file and merges its dependencies
+into `rproj.toml`, creating it first if needed.
 `rig proj deps` shows the direct and recursive dependencies of the
 project.
 `rig proj tree` shows the recursive dependencies as a tree, so you can
