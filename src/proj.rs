@@ -15,7 +15,7 @@ use tabular::*;
 
 use crate::built::BuiltCache;
 use crate::cache::get_cache_dir;
-use crate::common::get_default_r_version;
+use crate::common::{get_arch, get_default_r_version, get_platform};
 use crate::dcf::*;
 use crate::download::download_multiple_first_available_with_progress;
 use crate::install::{
@@ -33,6 +33,7 @@ use crate::platform::{detect_platform, parse_platform_string};
 use crate::renv::*;
 use crate::repos::binaries::loader::{BinaryTarget, P3mBinaryLoader};
 use crate::repos::*;
+use crate::resolve::resolve_versions;
 use crate::rproj::{Rproj, RprojLock, RprojLockTarget, RPROJ_LOCK_VERSION, RPROJ_MANIFEST_FILE};
 use crate::rvenv::{
     existing_targets, find_project_root, project_library, rvenv_init, write_sync_stamp,
@@ -112,11 +113,25 @@ fn sc_proj_init(
         Some(rv) => rv.to_string(),
         None => match get_default_r_version()? {
             Some(rv) => rv,
-            None => {
-                OUTPUT.error("Cannot determine R version, please specify it with --r-version.");
-                error!("Cannot determine R version, please specify it with --r-version.");
-                bail!("Cannot determine R version, please specify it with --r-version.")
-            }
+            // No R installed (or no default set), so fall back to the current
+            // release, which needs the network.
+            None => match resolve_release_r_version(args) {
+                Some(rv) => {
+                    OUTPUT.info(&format!(
+                        "No default R version, using the current release (R {}).",
+                        rv
+                    ));
+                    info!("No default R version, using the current release (R {})", rv);
+                    rv
+                }
+                None => {
+                    let msg = "Cannot determine R version. Install R with `rig add`, \
+                               or set the version with --r-version.";
+                    OUTPUT.error(msg);
+                    error!("{}", msg);
+                    bail!("{}", msg)
+                }
+            },
         },
     };
 
@@ -146,6 +161,25 @@ fn sc_proj_init(
     ));
 
     Ok(())
+}
+
+/// Current release version or None on error.
+fn resolve_release_r_version(args: &ArgMatches) -> Option<String> {
+    let platform = match get_platform(args) {
+        Ok(p) => p,
+        Err(err) => {
+            info!("Cannot detect platform to resolve R release: {}", err);
+            return None;
+        }
+    };
+    let arch = get_arch(&platform, args);
+    match resolve_versions(vec!["release".to_string()], &platform, &arch) {
+        Ok(vers) => vers.first().and_then(|v| v.version.clone()),
+        Err(err) => {
+            info!("Cannot resolve the current R release: {}", err);
+            None
+        }
+    }
 }
 
 /// Import a `DESCRIPTION` file's dependencies into `rproj.toml`, creating a

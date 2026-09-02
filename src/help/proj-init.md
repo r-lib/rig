@@ -49,10 +49,9 @@ library.
 
 ## Options
 
-`--r-version` sets the R version the project is for. It defaults to the
-current default R version, and does not have to be installed. Both the
-manifest's R requirement and the flavor of the pre-built `rig` package depend
-on it.
+`--r-version` sets the R version the project is for. It does not have to be
+installed. Defaults to the current default R version, or the current R
+release if there is no default.
 
 rig refuses to overwrite any of the files above; pass `--force` to replace
 them. `--force` still does not rewrite the whole `.gitignore`, only rig's

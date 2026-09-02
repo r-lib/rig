@@ -1330,7 +1330,7 @@ pub fn rig_app() -> Command {
                 )
                 .arg(
                     Arg::new("r-version")
-                        .help("R version of the project (default: the default R version)")
+                        .help("R version of the project (default: the default R version, or the current R release)")
                         .long("r-version")
                         .short('r')
                         .num_args(1)
