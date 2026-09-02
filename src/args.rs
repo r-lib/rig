@@ -1396,9 +1396,9 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
-            Command::new("solve")
-                .about(ABOUT_PROJ_SOLVE)
-                .long_about(HELP_PROJ_SOLVE)
+            Command::new("lock")
+                .about(ABOUT_PROJ_LOCK)
+                .long_about(HELP_PROJ_LOCK)
                 .display_order(0)
                 .arg(
                     Arg::new("input")
@@ -1466,17 +1466,20 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
-            Command::new("deploy")
-                .about(ABOUT_PROJ_DEPLOY)
-                .long_about(HELP_PROJ_DEPLOY)
+            Command::new("sync")
+                .about(ABOUT_PROJ_SYNC)
+                .long_about(HELP_PROJ_SYNC)
                 .display_order(0)
                 .arg(
                     Arg::new("library")
-                        .help("Library path where packages should be installed")
+                        .help(
+                            "Library path where packages should be installed \
+                               (default: .rvenv/lib)",
+                        )
                         .long("library")
                         .short('l')
                         .num_args(1)
-                        .required(true),
+                        .required(false),
                 )
                 .arg(
                     Arg::new("r-binary")

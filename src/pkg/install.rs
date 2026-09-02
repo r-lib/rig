@@ -3,7 +3,7 @@
 //! The command is a solve followed by a download followed by an unpack. The
 //! solve is the same one [`crate::proj`] runs for a project, with the packages
 //! named on the command line standing in for a `DESCRIPTION`; the download and
-//! the install are the same code `rig proj deploy` uses. What is specific to
+//! the install are the same code `rig proj sync` uses. What is specific to
 //! this command is the third step in between: deciding which of the solved
 //! packages actually have to be installed, because the library already holds
 //! the rest.
@@ -54,7 +54,7 @@ use crate::solver::{is_base_package, PackageVersionLoader};
 use super::deps::root_package;
 use super::list::{read_installed, resolve_library, InstalledPackage, ResolvedLibrary};
 
-/// How many packages are installed at once. The same default `rig proj deploy`
+/// How many packages are installed at once. The same default `rig proj sync`
 /// uses.
 const MAX_CONCURRENT: usize = 8;
 
@@ -150,13 +150,7 @@ pub fn sc_pkg_install(
         bail!("{}", library_error(&lib, err));
     }
 
-    let to_download = PakLockfile {
-        lockfile_version: lockfile.lockfile_version,
-        os: lockfile.os.clone(),
-        r_version: lockfile.r_version.clone(),
-        platform: lockfile.platform.clone(),
-        packages: todo.iter().map(|p| (*p).clone()).collect(),
-    };
+    let to_download: Vec<PakLockfilePackage> = todo.iter().map(|p| (*p).clone()).collect();
     download_lockfile_packages(&to_download)?;
 
     let cache_dir = get_cache_dir()?;

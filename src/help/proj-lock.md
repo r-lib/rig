@@ -1,17 +1,21 @@
-Solve project dependencies
+Resolve project dependencies and write rproj.lock
 
 ## Description
 
 Resolve the dependencies of an R project to a concrete set of package
-versions.
+versions, and write the result to `rproj.lock`.
 
 rig reads the project manifest (e.g. `DESCRIPTION`; override with
 `--input`) and uses its built-in solver to find a compatible set of
 package versions from the configured repositories, without running R.
 
 Use `--r-version` to solve for a specific R version, `--dev` to include
-development dependencies, and `--renv` to write the result as an
+development dependencies, and `--renv` to also write the result as an
 `renv.lock` file.
+
+`rproj.lock` currently records a single `(R version, platform)` target;
+[`rig proj sync`](#rig-proj-sync) installs that target. Solving for several
+targets in one lockfile is planned but not implemented yet.
 
 ## Source and binary packages
 
@@ -41,7 +45,7 @@ for a different one, e.g. to write a lockfile on macOS for a Linux
 deployment:
 
 ```sh
-rig proj solve --platform ubuntu-24.04
+rig proj lock --platform ubuntu-24.04
 ```
 
 `--platform source` solves for source packages only, and does not download
@@ -56,7 +60,7 @@ solve against a package that was published minutes ago. It is a good deal
 slower, because the metadata it re-downloads is large. See
 [`rig config`](config.qmd).
 
-The `pkg.lock` file records, for every package, whether it is a source or a
+The `rproj.lock` file records, for every package, whether it is a source or a
 binary package and the URL it is downloaded from. It also records where the
 file is cached, which is per *build* rather than per version: a repository
 can offer several binaries of one version for one platform and R version,

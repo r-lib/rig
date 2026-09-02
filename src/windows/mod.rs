@@ -81,6 +81,24 @@ pub(crate) fn write_shim_link(
     Ok(())
 }
 
+// Same as `write_shim_link`, but also bakes in a list of environment
+// variables for the shim to set before forwarding to `target`. Used for
+// `.rvenv\bin\R.exe` / `Rscript.exe`, which need to force
+// `R_LIBS_USER`/`R_LIBS_SITE`/`R_REPOSITORIES`/`RVENV`, the Windows
+// equivalent of the `export`s in the Unix `.rvenv/bin/R` wrapper script.
+#[allow(dead_code)] // wired up once `rig proj sync` lands on Windows
+pub(crate) fn write_shim_link_env(
+    path: &Path,
+    target: &str,
+    marker: &str,
+    envs: &[(String, String)],
+) -> Result<(), Box<dyn Error>> {
+    let template = std::fs::read(find_shim_template()?)?;
+    let bytes = crate::shim_format::build_shim_bytes_env(&template, target, marker, envs);
+    std::fs::write(path, bytes)?;
+    Ok(())
+}
+
 // Read the (target, marker) a quick-link `.exe` at `path` forwards to, or
 // `None` if `path` doesn't exist, isn't one of our shims, or can't be read.
 pub(crate) fn read_shim_link(path: &Path) -> Option<(String, String)> {

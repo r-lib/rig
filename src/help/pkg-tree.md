@@ -62,7 +62,7 @@ only ever appear at the top of the tree.
 rig follows the dependencies of the *latest* version of every package in the
 tree, so a version requirement that would force an older version, with
 different dependencies, is not taken into account. Use
-[`rig proj solve`](proj.qmd) for a resolution that is consistent across
+[`rig proj lock`](proj.qmd) for a resolution that is consistent across
 versions.
 
 ## Inverting the tree

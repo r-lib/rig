@@ -37,6 +37,7 @@ mod renv;
 mod repos;
 mod repositories;
 mod resolve;
+mod rproj;
 mod run;
 mod rversion;
 mod solver;

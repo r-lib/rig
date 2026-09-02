@@ -35,5 +35,5 @@ project's own dev dependencies plus everything they need to be installed.
 rig follows the dependencies of the *latest* version of every package in
 the closure, so a version requirement that would force an older version,
 with different dependencies, is not taken into account. Use
-[`rig proj solve`](#rig-proj-solve) for a resolution that is consistent
+[`rig proj lock`](#rig-proj-lock) for a resolution that is consistent
 across versions.

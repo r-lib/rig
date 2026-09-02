@@ -689,7 +689,7 @@ where
 /// Install a set of packages into a library, with a progress bar, and return how
 /// many went in.
 ///
-/// The synchronous entry point both `rig pkg install` and `rig proj deploy` use:
+/// The synchronous entry point both `rig pkg install` and `rig proj sync` use:
 /// it owns the tokio runtime and the progress bar, so that the callers only have
 /// to decide *what* to install.
 pub fn install_packages(

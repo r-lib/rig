@@ -36,7 +36,11 @@ fn main() {
     };
 
     let args: Vec<_> = env::args_os().skip(1).collect();
-    match Command::new(&footer.target).args(&args).status() {
+    match Command::new(&footer.target)
+        .args(&args)
+        .envs(footer.env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+        .status()
+    {
         Ok(status) => exit(status.code().unwrap_or(1)),
         Err(e) => {
             eprintln!("rig shim: failed to run {}: {}", footer.target, e);

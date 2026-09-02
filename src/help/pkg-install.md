@@ -19,7 +19,7 @@ glue     1.8.0    binary  install  not installed
 ```
 
 rig resolves the whole dependency tree first, the same way
-[`rig proj solve`](proj.qmd) does for a project, so a package is only
+[`rig proj lock`](proj.qmd) does for a project, so a package is only
 installed if every package it needs can be installed with it, at versions
 that work together. `--dry-run` runs the resolution and reports what it
 would install, without installing anything.

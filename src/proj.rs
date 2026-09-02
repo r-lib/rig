@@ -31,6 +31,7 @@ use crate::platform::{detect_platform, parse_platform_string};
 use crate::renv::*;
 use crate::repos::binaries::loader::{BinaryTarget, P3mBinaryLoader};
 use crate::repos::*;
+use crate::rproj::{RprojLock, RprojLockTarget, RPROJ_LOCK_VERSION};
 use crate::solver::*;
 use crate::utils::create_parent_dir_if_needed;
 
@@ -55,8 +56,8 @@ pub fn sc_proj(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn E
     match args.subcommand() {
         Some(("deps", s)) => sc_proj_deps(s, args, mainargs),
         Some(("tree", s)) => sc_proj_tree(s, args, mainargs),
-        Some(("solve", s)) => sc_proj_solve(s, args, mainargs),
-        Some(("deploy", s)) => sc_proj_deploy(s, args, mainargs),
+        Some(("lock", s)) => sc_proj_lock(s, args, mainargs),
+        Some(("sync", s)) => sc_proj_sync(s, args, mainargs),
         _ => Ok(()), // unreachable
     }
 }
@@ -383,7 +384,7 @@ fn solution_to_sorted_vec(
     vec
 }
 
-fn sc_proj_solve(
+fn sc_proj_lock(
     args: &ArgMatches,
     _libargs: &ArgMatches,
     _mainargs: &ArgMatches,
@@ -439,10 +440,22 @@ fn sc_proj_solve(
         info!("Written renv lockfile to renv.lock");
     }
 
+    // Single-target for now: one `(r_version, platform)` entry. The matrix
+    // form (solving for several targets into one `rproj.lock`) is follow-up
+    // work; `sc_proj_sync` already reads `targets[0]` unconditionally to
+    // match.
     let lockfile = PakLockfile::from_solution(&registry, &solution);
-    fs::write("pkg.lock", serde_json::to_string_pretty(&lockfile)?)?;
-    OUTPUT.success("Written package lockfile to pkg.lock");
-    info!("Written package lockfile to pkg.lock");
+    let rproj_lock = RprojLock {
+        version: RPROJ_LOCK_VERSION,
+        targets: vec![RprojLockTarget {
+            r_version: lockfile.r_version.clone(),
+            platform: lockfile.platform.clone(),
+            packages: lockfile.packages.clone(),
+        }],
+    };
+    fs::write("rproj.lock", toml::to_string_pretty(&rproj_lock)?)?;
+    OUTPUT.success("Written project lockfile to rproj.lock");
+    info!("Written project lockfile to rproj.lock");
 
     let sorted_solution = solution_to_sorted_vec(&solution);
     let mut tab: Table = Table::new("{:<}   {:<}   {:<}   {:<}");
@@ -476,27 +489,32 @@ fn sc_proj_solve(
     Ok(())
 }
 
-fn sc_proj_deploy(
+fn sc_proj_sync(
     args: &ArgMatches,
     _libargs: &ArgMatches,
     _mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
-    // First, download all packages
+    // Read the lockfile to get package information. Single-target for now:
+    // always the first (and, today, only) entry `rig proj lock` wrote; the
+    // "pick the entry matching this machine, hard error if none match" logic
+    // for a real multi-target `rproj.lock` is follow-up work.
+    let lock_content = fs::read_to_string("rproj.lock")?;
+    let lock: RprojLock = toml::from_str(&lock_content)?;
+    let target = lock.targets.first().ok_or("rproj.lock has no targets")?;
+
+    // Download all packages
     OUTPUT.status("Downloading packages");
     info!("Downloading packages");
-    proj_download()?;
-
-    // Read the lockfile to get package information
-    let lockfile_content = fs::read_to_string("pkg.lock")?;
-    let lockfile: PakLockfile = serde_json::from_str(&lockfile_content)?;
+    download_lockfile_packages(&target.packages)?;
 
     // Get cache directory where packages were downloaded
     let cache_dir = get_cache_dir()?;
 
-    // Get library path - required argument
+    // Library path: --library, or the project venv's library by default
     let library_path = PathBuf::from(
         args.get_one::<String>("library")
-            .ok_or("--library argument is required")?,
+            .map(|s| s.as_str())
+            .unwrap_or(".rvenv/lib"),
     );
 
     // Ensure library directory exists
@@ -508,10 +526,10 @@ fn sc_proj_deploy(
         .map(|s| s.as_str())
         .unwrap_or("R");
 
-    // Build Vec<PackageInfo> from lockfile
-    let built = BuiltCache::new(&lockfile.r_version, r_binary);
+    // Build Vec<PackageInfo> from the target's package list
+    let built = BuiltCache::new(&target.r_version, r_binary);
     let mut packages: Vec<PackageInfo> = Vec::new();
-    for pkg in &lockfile.packages {
+    for pkg in &target.packages {
         packages.push(lockfile_package_info(pkg, &cache_dir, built.as_ref()));
     }
 
@@ -578,23 +596,31 @@ pub(crate) fn lockfile_package_info(
 /// This will be different for CRAN and CRAN-like repositories.
 pub(crate) const PACKAGE_FILE_TTL: Duration = Duration::MAX;
 
+/// Read `pkg.lock` (the pak-compatible JSON lockfile `rig pkg install`
+/// writes/reads) and download everything it names. Used by the hidden `rig
+/// test download-lockfile` diagnostic; unrelated to `rproj.lock` / `rig proj
+/// sync`, which call [`download_lockfile_packages`] directly instead.
 pub fn proj_download() -> Result<(), Box<dyn Error>> {
     let lockfile_content = fs::read_to_string("pkg.lock")?;
     let lockfile: PakLockfile = serde_json::from_str(&lockfile_content)?;
-    download_lockfile_packages(&lockfile)
+    download_lockfile_packages(&lockfile.packages)
 }
 
 /// Download every package a lockfile names into the package cache.
 ///
-/// Split out from [`proj_download`] so that `rig pkg install`, which solves in
-/// memory and never writes a lockfile, can use it too.
-pub(crate) fn download_lockfile_packages(lockfile: &PakLockfile) -> Result<(), Box<dyn Error>> {
+/// Takes a plain package slice, not a whole lockfile, so any caller with a
+/// `Vec<PakLockfilePackage>` can use it directly — `rig pkg install`, which
+/// solves in memory and never writes a lockfile, and `rig proj sync`, which
+/// reads one target's packages out of `rproj.lock`.
+pub(crate) fn download_lockfile_packages(
+    packages: &[PakLockfilePackage],
+) -> Result<(), Box<dyn Error>> {
     // Get cache directory
     let cache_dir = get_cache_dir()?;
 
     // Build download list: (sources, target_path) for each package
     let mut downloads: Vec<(Vec<String>, PathBuf)> = Vec::new();
-    for pkg in &lockfile.packages {
+    for pkg in packages {
         let target_path = cache_dir.join("packages").join(&pkg.target);
         create_parent_dir_if_needed(&target_path)?;
         downloads.push((pkg.sources.clone(), target_path));
@@ -629,10 +655,10 @@ pub(crate) fn download_lockfile_packages(lockfile: &PakLockfile) -> Result<(), B
             Ok((downloaded, _etag)) => {
                 if *downloaded {
                     success_count.set(success_count.get() + 1);
-                    overall_pb.println(format!("✓ Downloaded: {}", lockfile.packages[idx].package));
+                    overall_pb.println(format!("✓ Downloaded: {}", packages[idx].package));
                 } else {
                     cached_count.set(cached_count.get() + 1);
-                    overall_pb.println(format!("✓ Cached: {}", lockfile.packages[idx].package));
+                    overall_pb.println(format!("✓ Cached: {}", packages[idx].package));
                 }
                 overall_pb.inc(1);
             }
@@ -647,17 +673,10 @@ pub(crate) fn download_lockfile_packages(lockfile: &PakLockfile) -> Result<(), B
     if let Some((idx, err)) = error.into_inner() {
         OUTPUT.error(&format!(
             "Failed to download {}: {}",
-            lockfile.packages[idx].package, err
+            packages[idx].package, err
         ));
-        error!(
-            "Failed to download {}: {}",
-            lockfile.packages[idx].package, err
-        );
-        bail!(
-            "Failed to download {}: {}",
-            lockfile.packages[idx].package,
-            err
-        );
+        error!("Failed to download {}: {}", packages[idx].package, err);
+        bail!("Failed to download {}: {}", packages[idx].package, err);
     }
 
     overall_pb.finish_with_message(format!(
