@@ -1,8 +1,4 @@
 use std::error::Error;
-#[cfg(target_os = "windows")]
-use std::fs::File;
-#[cfg(target_os = "windows")]
-use std::io::Write;
 use std::path::Path;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -164,28 +160,28 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     // should exist at this point, but make sure
     std::fs::create_dir_all(linkdir)?;
 
-    let filename = "R-".to_string() + alias + ".bat";
+    let filename = "R-".to_string() + alias + ".exe";
     let linkfile = linkdir.join(&filename);
 
-    let cnt = format!(
-        "@\"{}\\{}\\bin\\R\" %*\n",
+    let target = format!(
+        "{}\\{}\\bin\\R.exe",
         rroot,
         get_r_versiondir()?.replace("{}", &base)
     );
     let op;
     if linkfile.exists() {
         op = "Updating";
-        let orig = std::fs::read_to_string(&linkfile)?;
-        if orig == cnt {
-            return Ok(());
+        if let Some((orig_target, orig_marker)) = read_shim_link(&linkfile) {
+            if orig_target == target && orig_marker.is_empty() {
+                return Ok(());
+            }
         }
     } else {
         op = "Adding";
     };
     OUTPUT.status(&format!("{} R-{} alias to R {}", op, alias, ver));
     info!("{} R-{} -> {} alias", op, alias, ver);
-    let mut file = File::create(&linkfile)?;
-    file.write_all(cnt.as_bytes())?;
+    write_shim_link(&linkfile, &target, "")?;
 
     Ok(())
 }

@@ -19,8 +19,8 @@ teardown() {
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
     # no default initially
-    if [[ ! -e "/mnt/c/Program Files/R/bin/RS.bat" &&
-	  ! -e "C:/Program Files/R/bin/RS.bat" ]]; then
+    if [[ ! -e "/mnt/c/Program Files/R/bin/RS.exe" &&
+	  ! -e "C:/Program Files/R/bin/RS.exe" ]]; then
 	run rig default
 	echo "status = ${status}"
 	echo "output = ${output}"
@@ -40,7 +40,7 @@ teardown() {
 	run rig ls
 	echo "$output" | grep -q "^[* ] 4.5.0"
     fi
-    run R-4.5.0.bat -q -s -e 'cat(as.character(getRversion()))'
+    run R-4.5.0.exe -q -s -e 'cat(as.character(getRversion()))'
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
@@ -54,7 +54,7 @@ teardown() {
 	run rig ls
 	echo "$output" | grep -q "^[* ] 4.4.3"
     fi
-    run R-4.4.3.bat -q -s -e 'cat(as.character(getRversion()))'
+    run R-4.4.3.exe -q -s -e 'cat(as.character(getRversion()))'
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
@@ -69,7 +69,7 @@ teardown() {
 	run rig ls
 	echo "$output" | grep -q "^[* ] devel"
     fi
-    run R-devel.bat -q -s -e 'cat(as.character(getRversion()))'
+    run R-devel.exe -q -s -e 'cat(as.character(getRversion()))'
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
@@ -78,8 +78,8 @@ teardown() {
 
 @test "default" {
     # no default initially
-    if [[ ! -e "/mnt/c/Program Files/R/bin/RS.bat" &&
-	  ! -e "C:/Program Files/R/bin/RS.bat" ]]; then
+    if [[ ! -e "/mnt/c/Program Files/R/bin/RS.exe" &&
+	  ! -e "C:/Program Files/R/bin/RS.exe" ]]; then
 	run rig default
 	echo "status = ${status}"
 	echo "output = ${output}"
@@ -257,17 +257,17 @@ teardown() {
 
 @test "system create-lib" {
     # Must already exist
-    run R-4.5.0.bat -q -s -e suppressWarnings\(file.exists\(Sys.getenv\(\'R_LIBS_USER\'\)\)\)
+    run R-4.5.0.exe -q -s -e suppressWarnings\(file.exists\(Sys.getenv\(\'R_LIBS_USER\'\)\)\)
     echo "status = ${status}"
     echo "output = ${output}"
     [[ $status -eq 0 ]]
     [[ "${lines[-1]}" = "[1] TRUE" ]]
-    run R-devel.bat -q -s -e file.exists\(Sys.getenv\(\'R_LIBS_USER\'\)\)
+    run R-devel.exe -q -s -e file.exists\(Sys.getenv\(\'R_LIBS_USER\'\)\)
     echo "status = ${status}"
     echo "output = ${output}"
     [[ $status -eq 0 ]]
     [[ "${lines[-1]}" = "[1] TRUE" ]]
-    run R-4.4.3.bat -q -s -e file.exists\(Sys.getenv\(\'R_LIBS_USER\'\)\)
+    run R-4.4.3.exe -q -s -e file.exists\(Sys.getenv\(\'R_LIBS_USER\'\)\)
     echo "status = ${status}"
     echo "output = ${output}"
     [[ $status -eq 0 ]]
@@ -285,7 +285,7 @@ teardown() {
     [[ "$status" -eq 0 ]]
     run rig system add-pak
     echo $output | grep -qE "(Installing|Updating) pak for R 4.5.0"
-    run R-4.5.0.bat -q -s -e 'pak::lib_status()'
+    run R-4.5.0.exe -q -s -e 'pak::lib_status()'
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]

@@ -28,6 +28,10 @@ path = "src/lib.rs"
 name = "rig"
 path = "src/main.rs"
 
+[[bin]]
+name = "rig-shim"
+path = "src/shim/main.rs"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
