@@ -12,8 +12,19 @@
 //!   .rvenv/
 //!     lib/.gitignore        # tracked -- keeps lib/ and lib/rig, ignores the rest
 //!     lib/rig/              # tracked -- pre-built shim package
-//!     lib/...               # untracked -- the real dependencies, from `rig proj sync`
-//!     lib/.synced           # untracked -- sync stamp, the lock file's md5 sum
+//! ```
+//!
+//! `rig proj sync` adds the machine-specific rest, none of which is
+//! committed:
+//!
+//! ```text
+//!   .rvenv/
+//!     lib/...               # the real dependencies
+//!     lib/.synced           # sync stamp, a copy of the lock file
+//!     rvenv.cfg             # what this environment was built against
+//!     etc/repositories      # what R_REPOSITORIES points at
+//!     bin/R, bin/Rscript    # wrapper scripts (.exe shims on Windows)
+//!     bin/activate*         # shell activation scripts
 //! ```
 //!
 //! Two things here are less obvious than they look.
@@ -47,15 +58,36 @@ use std::path::{Path, PathBuf};
 use simple_error::bail;
 
 use crate::hardcoded::{HC_RVENV_SHIM_35, HC_RVENV_SHIM_40, HC_RVENV_SHIM_LT_35};
-use crate::rproj::RPROJ_MANIFEST_FILE;
+use crate::repositories::{write_repositories_file, RepoFileEntry, RepositoriesContents};
+use crate::rproj::{Repository as ManifestRepository, RPROJ_MANIFEST_FILE};
 use crate::utils::write_atomically;
+#[cfg(not(windows))]
+use crate::utils::write_executable;
 
 pub const RVENV_DIR: &str = ".rvenv";
 pub const RVENV_LIB_SUBDIR: &str = "lib";
+pub const RVENV_BIN_SUBDIR: &str = "bin";
+pub const RVENV_ETC_SUBDIR: &str = "etc";
 pub const RVENV_SHIM_PKG: &str = "rig";
 pub const RVENV_RENVIRON_FILE: &str = ".Renviron";
 pub const RVENV_GITIGNORE_FILE: &str = ".gitignore";
+pub const RVENV_CFG_FILE: &str = "rvenv.cfg";
+pub const RVENV_REPOS_FILE: &str = "repositories";
 pub const RPROJ_LOCK_FILE: &str = "rproj.lock";
+
+/// What `R_LIBS_SITE` is set to in an active environment.
+///
+/// Setting it empty does not reliably disable the site library on every R
+/// version, so point it at a path that cannot exist instead.
+pub const RVENV_NO_SITE: &str = "/nonexistent/rvenv-no-site";
+
+/// The repository R uses when the project's manifest names none.
+const RVENV_DEFAULT_REPO_URL: &str = "https://cloud.r-project.org";
+
+/// The name the environment's main repository goes into the repositories
+/// file under. R starts with an unresolved `CRAN = "@CRAN@"` entry in
+/// `getOption("repos")`, and only a repository of that name replaces it.
+const RVENV_CRAN_NAME: &str = "CRAN";
 
 /// The stamp file `rig proj sync` writes into the project library: a copy of
 /// the lock file it installed from. The shim package compares it to
@@ -138,9 +170,24 @@ fn lib_gitignore_body() -> &'static str {
 
 // -------------------------------------------------------------------- paths --
 
+/// `<root>/.rvenv`, the project environment.
+pub fn project_venv(root: &Path) -> PathBuf {
+    root.join(RVENV_DIR)
+}
+
 /// `<root>/.rvenv/lib`, the project package library.
 pub fn project_library(root: &Path) -> PathBuf {
     root.join(RVENV_DIR).join(RVENV_LIB_SUBDIR)
+}
+
+/// `<root>/.rvenv/bin`, the wrapper scripts and the activation scripts.
+pub fn project_bin(root: &Path) -> PathBuf {
+    root.join(RVENV_DIR).join(RVENV_BIN_SUBDIR)
+}
+
+/// `<root>/.rvenv/etc`, the environment's own R configuration files.
+pub fn project_etc(root: &Path) -> PathBuf {
+    root.join(RVENV_DIR).join(RVENV_ETC_SUBDIR)
 }
 
 /// The project root at or above `start`: the nearest directory holding an
@@ -355,6 +402,348 @@ pub fn rvenv_init(root: &Path, r_version: &str) -> Result<Vec<PathBuf>, Box<dyn 
     ])
 }
 
+// --------------------------------------------------------------------- sync --
+
+/// What an environment was built against, written to `.rvenv/rvenv.cfg`.
+///
+/// The `pyvenv.cfg` analog, and load bearing in the same way: installed R
+/// packages are tied to the R *minor* version, the platform and the
+/// architecture, so an environment that is used with a different R than it
+/// was solved for is broken, not merely stale.
+///
+/// `rig proj sync` rewrites this file every time: the lock file decides what
+/// the environment is, so there is nothing here to preserve. It carries no
+/// timestamp for the same reason -- two syncs in a row write the same bytes.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RvenvCfg {
+    /// The name of the R installation, as `rig list` shows it, e.g. `4.6` or
+    /// `4.6-arm64`.
+    pub r_version: String,
+    /// `<major>.<minor>`, the version R packages are actually tied to.
+    pub r_minor: String,
+    /// The absolute path of the R binary the wrappers forward to.
+    pub r_binary: PathBuf,
+    /// The platform the lock file was solved for.
+    pub platform: String,
+    /// The architecture of the R installation.
+    pub r_arch: String,
+    /// The version of rig that wrote this file.
+    pub rig_version: String,
+}
+
+impl RvenvCfg {
+    /// The `rvenv.cfg` body: `key = value` lines, like `pyvenv.cfg`.
+    pub fn body(&self) -> String {
+        format!(
+            "\
+# Managed by rig (rig proj sync). Do not edit, `rig proj sync` rewrites it.
+#
+# R packages are tied to the R minor version, the platform and the
+# architecture, so this file records all three.
+r-version = {}
+r-minor = {}
+r-binary = {}
+platform = {}
+r-arch = {}
+rig = {}
+",
+            self.r_version,
+            self.r_minor,
+            self.r_binary.display(),
+            self.platform,
+            self.r_arch,
+            self.rig_version
+        )
+    }
+
+    /// Parse an `rvenv.cfg` body. Unknown keys are ignored, so that an older
+    /// rig can still read a file a newer one wrote.
+    pub fn parse(text: &str) -> Result<RvenvCfg, Box<dyn Error>> {
+        let mut fields: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
+        for line in text.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            match line.split_once('=') {
+                Some((key, value)) => {
+                    fields.insert(key.trim(), value.trim());
+                }
+                None => bail!("Malformed line in {}: {}", RVENV_CFG_FILE, line),
+            }
+        }
+        let get = |key: &str| -> Result<String, Box<dyn Error>> {
+            match fields.get(key) {
+                Some(value) => Ok((*value).to_string()),
+                None => bail!("Missing `{}` from {}", key, RVENV_CFG_FILE),
+            }
+        };
+        Ok(RvenvCfg {
+            r_version: get("r-version")?,
+            r_minor: get("r-minor")?,
+            r_binary: PathBuf::from(get("r-binary")?),
+            platform: get("platform")?,
+            r_arch: get("r-arch")?,
+            rig_version: get("rig")?,
+        })
+    }
+}
+
+/// Read `<root>/.rvenv/rvenv.cfg`, or `None` if the environment has never
+/// been synced.
+pub fn read_rvenv_cfg(root: &Path) -> Result<Option<RvenvCfg>, Box<dyn Error>> {
+    let path = project_venv(root).join(RVENV_CFG_FILE);
+    if !path.exists() {
+        return Ok(None);
+    }
+    Ok(Some(RvenvCfg::parse(&fs::read_to_string(&path)?)?))
+}
+
+/// The environment variables that make an R session use the project.
+///
+/// The one source of truth for the activation environment: the Windows
+/// `.exe` shims bake this list in verbatim, and the Unix wrapper and the
+/// activation scripts spell out the same variables, relative to `$RVENV`.
+///
+/// `R_LIBS` is deliberately empty, so that the project library stays
+/// `.libPaths()[1]`, which is where `install.packages()` writes.
+pub fn rvenv_env_vars(venv: &Path) -> Vec<(String, String)> {
+    let venv = venv.display().to_string();
+    vec![
+        ("RVENV".to_string(), venv.clone()),
+        (
+            "R_LIBS_USER".to_string(),
+            format!("{}{}{}", venv, std::path::MAIN_SEPARATOR, RVENV_LIB_SUBDIR),
+        ),
+        ("R_LIBS".to_string(), String::new()),
+        ("R_LIBS_SITE".to_string(), RVENV_NO_SITE.to_string()),
+        (
+            "R_REPOSITORIES".to_string(),
+            format!(
+                "{}{}{}{}{}",
+                venv,
+                std::path::MAIN_SEPARATOR,
+                RVENV_ETC_SUBDIR,
+                std::path::MAIN_SEPARATOR,
+                RVENV_REPOS_FILE
+            ),
+        ),
+    ]
+}
+
+/// The repositories the environment installs from, as `R_REPOSITORIES`
+/// entries.
+///
+/// `R_REPOSITORIES` is a plain environment variable R reads at startup, so it
+/// survives `--vanilla` and is inherited by child processes -- unlike
+/// `options(repos = )`, which neither does.
+fn repositories_contents(repos: &[ManifestRepository]) -> RepositoriesContents {
+    let entry = |name: &str, url: &str, menu: &str| RepoFileEntry {
+        name: name.to_string(),
+        description: menu.to_string(),
+        url: url.to_string(),
+        default: true,
+        source: true,
+        win_binary: true,
+        mac_binary: true,
+    };
+    let data = if repos.is_empty() {
+        vec![entry(RVENV_CRAN_NAME, RVENV_DEFAULT_REPO_URL, "CRAN")]
+    } else {
+        // Whatever the project's first (highest precedence) repository is
+        // called, it goes into the file as `CRAN`, keeping its own name as
+        // the menu name. R starts with an unresolved `CRAN = "@CRAN@"`
+        // placeholder in `getOption("repos")`, and only an entry of that
+        // name replaces it -- leave the placeholder in, and
+        // `install.packages()` fails with "trying to use CRAN without
+        // setting a mirror". Naming the main repository `CRAN` is the usual
+        // R idiom for this, the same thing `options(repos = c(CRAN = ...))`
+        // does.
+        repos
+            .iter()
+            .enumerate()
+            .map(|(i, r)| {
+                let name = if i == 0 { RVENV_CRAN_NAME } else { &r.name };
+                entry(name, &r.url, &r.name)
+            })
+            .collect()
+    };
+    RepositoriesContents {
+        data,
+        comments: vec![(
+            1,
+            "# Managed by rig (rig proj sync). Do not edit, `rig proj sync` rewrites it."
+                .to_string(),
+        )],
+    }
+}
+
+/// Substitute the placeholders of an `src/data/rvenv` template.
+fn render(template: &str, venv: &Path, name: &str, r_binary: &Path) -> String {
+    template
+        .replace("@RVENV@", &venv.display().to_string())
+        .replace("@RVENV_NAME@", name)
+        .replace("@R_BINARY@", &r_binary.display().to_string())
+        .replace("@RVENV_EXPORTS@", shell_exports().trim_end())
+}
+
+/// The `export` lines of the `.rvenv/bin/R` wrapper, from
+/// [`rvenv_env_vars`], so that the wrapper and the Windows shims cannot
+/// drift apart.
+///
+/// The paths are relative to `$RVENV`, which the wrapper works out from its
+/// own location -- that is what keeps the environment relocatable. `RVENV`
+/// itself is left out for the same reason: the wrapper sets it.
+#[cfg(not(windows))]
+fn shell_exports() -> String {
+    rvenv_env_vars(Path::new("$RVENV"))
+        .into_iter()
+        .filter(|(name, _)| name != "RVENV")
+        .map(|(name, value)| format!("export {}=\"{}\"\n", name, value))
+        .collect()
+}
+
+#[cfg(windows)]
+fn shell_exports() -> String {
+    // The Windows wrappers are `.exe` shims with the same variables baked
+    // into them, so there is no shell wrapper to fill in here.
+    String::new()
+}
+
+/// The `Rscript` next to an `R` binary.
+fn rscript_of(r_binary: &Path) -> PathBuf {
+    let name = if cfg!(windows) {
+        "Rscript.exe"
+    } else {
+        "Rscript"
+    };
+    match r_binary.parent() {
+        Some(dir) => dir.join(name),
+        None => PathBuf::from(name),
+    }
+}
+
+/// Write the machine-specific part of the `.rvenv` layout -- `rvenv.cfg`,
+/// `etc/repositories`, the `bin/` wrappers and the activation scripts -- and
+/// return what was written.
+///
+/// Everything here is derived from `cfg` and the manifest, so this is
+/// idempotent: running it twice writes the same bytes.
+pub fn rvenv_sync(
+    root: &Path,
+    cfg: &RvenvCfg,
+    repos: &[ManifestRepository],
+) -> Result<Vec<PathBuf>, Box<dyn Error>> {
+    let venv = project_venv(root);
+    let bin = project_bin(root);
+    let etc = project_etc(root);
+    fs::create_dir_all(&bin)?;
+    fs::create_dir_all(&etc)?;
+
+    // The name in the shell prompt of an activated environment. The project
+    // directory's name, like Python's, not the manifest's project name: a
+    // prompt is about where you are.
+    let name = root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| RVENV_DIR.to_string());
+
+    let mut written = vec![];
+
+    let cfg_path = venv.join(RVENV_CFG_FILE);
+    write_atomically(&cfg_path, cfg.body().as_bytes())?;
+    written.push(cfg_path);
+
+    let repos_path = etc.join(RVENV_REPOS_FILE);
+    write_repositories_file(
+        repositories_contents(repos),
+        repos_path
+            .to_str()
+            .ok_or("The project path is not valid Unicode")?,
+    )?;
+    written.push(repos_path);
+
+    written.extend(write_wrappers(&venv, &bin, &cfg.r_binary)?);
+
+    for (file, template) in ACTIVATE_TEMPLATES {
+        let path = bin.join(file);
+        write_atomically(
+            &path,
+            render(template, &venv, &name, &cfg.r_binary).as_bytes(),
+        )?;
+        written.push(path);
+    }
+
+    Ok(written)
+}
+
+/// The activation scripts, one per shell. These are sourced, not run, so
+/// they do not need the executable bit -- except `activate.bat`, which is
+/// run, and which needs no bit on Windows anyway.
+const ACTIVATE_TEMPLATES: &[(&str, &str)] = &[
+    ("activate", include_str!("data/rvenv/activate.sh")),
+    ("activate.csh", include_str!("data/rvenv/activate.csh")),
+    ("activate.fish", include_str!("data/rvenv/activate.fish")),
+    ("activate.bat", include_str!("data/rvenv/activate.bat")),
+    ("deactivate.bat", include_str!("data/rvenv/deactivate.bat")),
+    ("Activate.ps1", include_str!("data/rvenv/Activate.ps1")),
+];
+
+/// `.rvenv/bin/R` and `.rvenv/bin/Rscript`: wrapper scripts on Unix, `.exe`
+/// shims on Windows. Either way they set the environment of
+/// [`rvenv_env_vars`] and then hand over to the real R.
+///
+/// A symlink would not do: it resolves `R_HOME` correctly, but it carries no
+/// environment, so putting `.rvenv/bin` on `PATH` would install into the
+/// user's own library.
+#[cfg(not(windows))]
+fn write_wrappers(
+    venv: &Path,
+    bin: &Path,
+    r_binary: &Path,
+) -> Result<Vec<PathBuf>, Box<dyn Error>> {
+    let template = include_str!("data/rvenv/R.sh");
+    let mut written = vec![];
+    for (file, target) in [
+        ("R", r_binary.to_path_buf()),
+        ("Rscript", rscript_of(r_binary)),
+    ] {
+        let path = bin.join(file);
+        write_executable(&path, render(template, venv, "", &target).as_bytes())?;
+        written.push(path);
+    }
+    Ok(written)
+}
+
+#[cfg(windows)]
+fn write_wrappers(
+    venv: &Path,
+    bin: &Path,
+    r_binary: &Path,
+) -> Result<Vec<PathBuf>, Box<dyn Error>> {
+    let envs = rvenv_env_vars(venv);
+    let mut written = vec![];
+    for (file, target) in [
+        ("R.exe", r_binary.to_path_buf()),
+        ("Rscript.exe", rscript_of(r_binary)),
+    ] {
+        let path = bin.join(file);
+        // No marker: these shims are not rig's default-version quick links,
+        // they belong to one project and one R installation.
+        crate::windows::write_shim_link_env(
+            &path,
+            target
+                .to_str()
+                .ok_or("The R installation path is not valid Unicode")?,
+            "",
+            &envs,
+        )?;
+        written.push(path);
+    }
+    Ok(written)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -541,5 +930,249 @@ mod tests {
         written.sort();
         assert_eq!(written, expected);
         assert!(tmp.path().join(".rvenv/lib/rig/DESCRIPTION").exists());
+    }
+
+    // ------------------------------------------------------------- sync --
+
+    /// The scripts use `@` themselves (`"$@"`, `@echo off`), so look for the
+    /// template's placeholders by name rather than for a stray `@`.
+    fn assert_no_placeholders(body: &str, file: &str) {
+        for placeholder in ["@RVENV@", "@RVENV_NAME@", "@R_BINARY@", "@RVENV_EXPORTS@"] {
+            assert!(
+                !body.contains(placeholder),
+                "{} is still in {}",
+                placeholder,
+                file
+            );
+        }
+    }
+
+    fn test_cfg() -> RvenvCfg {
+        RvenvCfg {
+            r_version: "4.6-arm64".to_string(),
+            r_minor: "4.6".to_string(),
+            r_binary: PathBuf::from("/opt/R/4.6/bin/R"),
+            platform: "aarch64-apple-darwin20".to_string(),
+            r_arch: "arm64".to_string(),
+            rig_version: "0.10.0".to_string(),
+        }
+    }
+
+    #[test]
+    fn rvenv_cfg_roundtrips() {
+        let cfg = test_cfg();
+        assert_eq!(RvenvCfg::parse(&cfg.body()).unwrap(), cfg);
+    }
+
+    #[test]
+    fn rvenv_cfg_needs_every_field() {
+        assert!(RvenvCfg::parse("r-version = 4.6\n").is_err());
+        // An unknown key is not an error: an older rig has to be able to read
+        // what a newer one wrote.
+        let mut text = test_cfg().body();
+        text.push_str("something-new = 1\n");
+        assert_eq!(RvenvCfg::parse(&text).unwrap(), test_cfg());
+        // but a line that is not a comment and not a key = value is
+        assert!(RvenvCfg::parse("r-version\n").is_err());
+    }
+
+    #[test]
+    fn read_rvenv_cfg_is_none_before_the_first_sync() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(read_rvenv_cfg(tmp.path()).unwrap().is_none());
+    }
+
+    #[test]
+    fn rvenv_sync_writes_the_machine_specific_layout() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let written = rvenv_sync(root, &test_cfg(), &[]).unwrap();
+        for path in &written {
+            assert!(path.exists(), "{} was not written", path.display());
+        }
+
+        let wrappers: Vec<&str> = if cfg!(windows) {
+            vec!["R.exe", "Rscript.exe"]
+        } else {
+            vec!["R", "Rscript"]
+        };
+        let mut expected: Vec<PathBuf> = vec![
+            project_venv(root).join(RVENV_CFG_FILE),
+            project_etc(root).join(RVENV_REPOS_FILE),
+        ];
+        expected.extend(wrappers.iter().map(|f| project_bin(root).join(f)));
+        expected.extend(
+            ACTIVATE_TEMPLATES
+                .iter()
+                .map(|(f, _)| project_bin(root).join(f)),
+        );
+        let mut written = written;
+        written.sort();
+        expected.sort();
+        assert_eq!(written, expected);
+
+        assert_eq!(read_rvenv_cfg(root).unwrap(), Some(test_cfg()));
+    }
+
+    #[test]
+    fn rvenv_sync_is_idempotent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let written = rvenv_sync(root, &test_cfg(), &[]).unwrap();
+        let before: Vec<Vec<u8>> = written.iter().map(|p| fs::read(p).unwrap()).collect();
+        rvenv_sync(root, &test_cfg(), &[]).unwrap();
+        let after: Vec<Vec<u8>> = written.iter().map(|p| fs::read(p).unwrap()).collect();
+        assert_eq!(before, after);
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn the_wrapper_sets_the_environment_and_execs_the_real_r() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let cfg = test_cfg();
+        rvenv_sync(root, &cfg, &[]).unwrap();
+
+        for (file, binary) in [
+            ("R", "/opt/R/4.6/bin/R"),
+            ("Rscript", "/opt/R/4.6/bin/Rscript"),
+        ] {
+            let path = project_bin(root).join(file);
+            let body = fs::read_to_string(&path).unwrap();
+            // Absolute path, so that the wrapper pins the R version, and
+            // "$@" so that `R CMD INSTALL` and friends pass through.
+            assert!(
+                body.contains(&format!("exec \"{}\" \"$@\"", binary)),
+                "{}",
+                body
+            );
+            // The environment comes from `rvenv_env_vars`, relative to
+            // $RVENV, which the wrapper works out from its own location.
+            assert!(body.contains("RVENV=$(cd \"$(dirname \"$0\")/..\" && pwd)"));
+            for (name, value) in rvenv_env_vars(Path::new("$RVENV")) {
+                if name == "RVENV" {
+                    continue;
+                }
+                assert!(
+                    body.contains(&format!("export {}=\"{}\"", name, value)),
+                    "{} is not exported by {}",
+                    name,
+                    file
+                );
+            }
+            assert_no_placeholders(&body, file);
+
+            let mode = fs::metadata(&path).unwrap().permissions().mode();
+            assert!(mode & 0o111 != 0, "{} is not executable ({:o})", file, mode);
+        }
+    }
+
+    #[test]
+    fn every_activation_script_sets_the_same_variables() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        rvenv_sync(root, &test_cfg(), &[]).unwrap();
+        for (file, _) in ACTIVATE_TEMPLATES {
+            if *file == "deactivate.bat" {
+                continue;
+            }
+            let body = fs::read_to_string(project_bin(root).join(file)).unwrap();
+            for (name, _) in rvenv_env_vars(Path::new("/x")) {
+                assert!(
+                    body.contains(name.as_str()),
+                    "{} does not set {}",
+                    file,
+                    name
+                );
+            }
+            // The project path is baked in: a sourced script cannot find its
+            // own location portably.
+            assert!(body.contains(&project_venv(root).display().to_string()));
+            assert_no_placeholders(&body, file);
+        }
+    }
+
+    /// The data rows of a written repositories file, as
+    /// `(name, menu name, url)`. The first two lines are the comment and the
+    /// header.
+    fn written_repositories(root: &Path) -> Vec<(String, String, String)> {
+        fs::read_to_string(project_etc(root).join(RVENV_REPOS_FILE))
+            .unwrap()
+            .lines()
+            .skip(2)
+            .map(|line| {
+                let f: Vec<&str> = line.split('\t').collect();
+                (f[0].to_string(), f[1].to_string(), f[2].to_string())
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_default_repository_is_cran() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        rvenv_sync(root, &test_cfg(), &[]).unwrap();
+        assert_eq!(
+            written_repositories(root),
+            vec![(
+                "CRAN".to_string(),
+                "CRAN".to_string(),
+                RVENV_DEFAULT_REPO_URL.to_string()
+            )]
+        );
+    }
+
+    #[test]
+    fn the_first_repository_is_written_as_cran() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let repos = vec![
+            ManifestRepository {
+                name: "internal".to_string(),
+                url: "https://example.com/internal".to_string(),
+            },
+            ManifestRepository {
+                name: "extra".to_string(),
+                url: "https://example.com/extra".to_string(),
+            },
+        ];
+        rvenv_sync(root, &test_cfg(), &repos).unwrap();
+        // The first one is called CRAN in the file, whatever the manifest
+        // calls it: R replaces its own `@CRAN@` placeholder with an entry of
+        // that name only, and a leftover placeholder breaks
+        // `install.packages()`. Its own name survives as the menu name.
+        assert_eq!(
+            written_repositories(root),
+            vec![
+                (
+                    "CRAN".to_string(),
+                    "internal".to_string(),
+                    "https://example.com/internal".to_string()
+                ),
+                (
+                    "extra".to_string(),
+                    "extra".to_string(),
+                    "https://example.com/extra".to_string()
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_environment_is_not_the_users_library() {
+        // The three things that keep an active session out of the user's own
+        // library, all of which have to survive `--vanilla`.
+        let vars: std::collections::HashMap<String, String> =
+            rvenv_env_vars(Path::new("/p/.rvenv")).into_iter().collect();
+        assert_eq!(vars["RVENV"], "/p/.rvenv");
+        assert_eq!(vars["R_LIBS_USER"], "/p/.rvenv/lib");
+        // Empty, so that the project library stays .libPaths()[1].
+        assert_eq!(vars["R_LIBS"], "");
+        // Not empty: an empty R_LIBS_SITE does not disable the site library
+        // on every R version.
+        assert_eq!(vars["R_LIBS_SITE"], RVENV_NO_SITE);
+        assert_eq!(vars["R_REPOSITORIES"], "/p/.rvenv/etc/repositories");
     }
 }

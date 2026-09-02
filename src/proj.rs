@@ -13,9 +13,10 @@ use pubgrub::{resolve, SelectedDependencies};
 use simple_error::*;
 use tabular::*;
 
+use crate::args::rig_app;
 use crate::built::BuiltCache;
 use crate::cache::get_cache_dir;
-use crate::common::{get_arch, get_default_r_version, get_platform};
+use crate::common::{get_arch, get_default_r_version, get_platform, sc_get_list_details};
 use crate::dcf::*;
 use crate::download::download_multiple_first_available_with_progress;
 use crate::install::{
@@ -32,15 +33,26 @@ use crate::pkg::tree::proj_tree;
 use crate::platform::{detect_platform, parse_platform_string};
 use crate::renv::*;
 use crate::repos::binaries::loader::{BinaryTarget, P3mBinaryLoader};
+use crate::repos::cranlike_metadata::minor_r_version;
 use crate::repos::*;
 use crate::resolve::resolve_versions;
 use crate::rproj::{Rproj, RprojLock, RprojLockTarget, RPROJ_LOCK_VERSION, RPROJ_MANIFEST_FILE};
 use crate::rvenv::{
-    existing_targets, find_project_root, project_library, rvenv_init, write_sync_stamp,
-    RPROJ_LOCK_FILE,
+    existing_targets, find_project_root, project_library, read_rvenv_cfg, rvenv_init, rvenv_sync,
+    write_sync_stamp, RvenvCfg, RPROJ_LOCK_FILE,
 };
+use crate::rversion::InstalledVersion;
 use crate::solver::*;
 use crate::utils::create_parent_dir_if_needed;
+
+#[cfg(target_os = "macos")]
+use crate::macos::{get_r_binary, sc_add};
+
+#[cfg(target_os = "windows")]
+use crate::windows::{get_r_binary, sc_add};
+
+#[cfg(target_os = "linux")]
+use crate::linux::{get_r_binary, sc_add};
 
 pub const BASE_PKGS: &[&str] = &[
     "base",
@@ -262,13 +274,9 @@ fn proj_read_deps(input: &str, dev: bool) -> Result<Package, Box<dyn Error>> {
     Ok(package)
 }
 
-/// Read the project's `rproj.toml` manifest and return its name, version and
-/// dependencies, with the soft dependencies dropped unless `dev`. The manifest
-/// is read from `root`, the project directory.
-fn proj_read_manifest_deps(
-    root: &Path,
-    dev: bool,
-) -> Result<(String, RPackageVersion, PackageDependencies), Box<dyn Error>> {
+/// Read the project's `rproj.toml` manifest from `root`, the project
+/// directory.
+fn proj_read_manifest(root: &Path) -> Result<Rproj, Box<dyn Error>> {
     let path = root.join(RPROJ_MANIFEST_FILE);
     if !path.exists() {
         OUTPUT.error(&format!(
@@ -279,16 +287,27 @@ fn proj_read_manifest_deps(
         bail!("{} not found", RPROJ_MANIFEST_FILE);
     }
 
-    OUTPUT.status(&format!(
-        "Reading dependencies from {}",
-        RPROJ_MANIFEST_FILE
-    ));
-    info!("Reading dependencies from {}", RPROJ_MANIFEST_FILE);
     let manifest: Rproj = toml::from_str(&fs::read_to_string(path)?).map_err(|e| {
         OUTPUT.error(&format!("Cannot parse {}: {}", RPROJ_MANIFEST_FILE, e));
         error!("Cannot parse {}: {}", RPROJ_MANIFEST_FILE, e);
         e
     })?;
+    Ok(manifest)
+}
+
+/// Read the project's `rproj.toml` manifest and return its name, version and
+/// dependencies, with the soft dependencies dropped unless `dev`. The manifest
+/// is read from `root`, the project directory.
+fn proj_read_manifest_deps(
+    root: &Path,
+    dev: bool,
+) -> Result<(String, RPackageVersion, PackageDependencies), Box<dyn Error>> {
+    OUTPUT.status(&format!(
+        "Reading dependencies from {}",
+        RPROJ_MANIFEST_FILE
+    ));
+    info!("Reading dependencies from {}", RPROJ_MANIFEST_FILE);
+    let manifest = proj_read_manifest(root)?;
 
     let deps = manifest.to_dep_version_specs(dev)?;
     let version = RPackageVersion::from_str(&manifest.project.version)?;
@@ -746,6 +765,119 @@ fn nondev_packages(
     Ok(keep)
 }
 
+/// The R installation an environment for `r_version` uses: its name, as
+/// `rig list` shows it, and the absolute path of its R binary.
+///
+/// The lock file records the R version its solve is valid for, and an
+/// installed R package is tied to the R minor version, so this is not a
+/// preference, it is what the environment *is*. When that R is missing and
+/// `install` is set, install it first -- the thing renv cannot do.
+fn rvenv_r_installation(
+    r_version: &str,
+    install: bool,
+) -> Result<(String, PathBuf), Box<dyn Error>> {
+    if let Some(name) = find_r_installation(r_version)? {
+        let binary = get_r_binary(&name)?;
+        return Ok((name, binary));
+    }
+
+    if !install {
+        let msg = format!(
+            "R {} is not installed, install it with `rig add {}` \
+             (or drop --no-install-r)",
+            r_version, r_version
+        );
+        OUTPUT.error(&msg);
+        error!("{}", msg);
+        bail!("{}", msg);
+    }
+
+    OUTPUT.status(&format!(
+        "R {} is not installed, installing it now",
+        r_version
+    ));
+    info!("R {} is not installed, installing it now", r_version);
+    // `rig add` is a subcommand, not a function that takes a version, so go
+    // through clap. It escalates on its own in admin mode.
+    let matches = rig_app().try_get_matches_from(["rig", "add", r_version])?;
+    let (_name, addargs) = match matches.subcommand() {
+        Some(x) => x,
+        None => bail!("Internal error: `rig add` did not parse"),
+    };
+    sc_add(addargs)?;
+
+    match find_r_installation(r_version)? {
+        Some(name) => {
+            let binary = get_r_binary(&name)?;
+            Ok((name, binary))
+        }
+        None => {
+            let msg = format!("Installed R {}, but cannot find it now", r_version);
+            OUTPUT.error(&msg);
+            error!("{}", msg);
+            bail!("{}", msg)
+        }
+    }
+}
+
+/// The installed R that matches `r_version`: the installation of that name,
+/// or, failing that, one with the same minor version -- the lock file records
+/// a minor version like `4.6`, while an installation can be called `4.6.1` or
+/// `4.6-arm64`. A native-architecture installation wins over a foreign one.
+fn find_r_installation(r_version: &str) -> Result<Option<String>, Box<dyn Error>> {
+    let installed = sc_get_list_details()?;
+    if let Some(exact) = installed.iter().find(|v| v.name == r_version) {
+        return Ok(Some(exact.name.clone()));
+    }
+
+    let want = r_minor_of(r_version);
+    let native = std::env::consts::ARCH;
+    let mut best: Option<&InstalledVersion> = None;
+    for candidate in installed.iter() {
+        // An installation with no version, or a version that is not a number
+        // (`devel`, `next`), is never a match for a lock file's R version.
+        let version = match &candidate.version {
+            Some(v) => v,
+            None => continue,
+        };
+        if want.is_none() || r_minor_of(version) != want {
+            continue;
+        }
+        let arch = rvenv_r_arch(&candidate.name);
+        let is_native = arch == native || (native == "aarch64" && arch == "arm64");
+        if is_native || best.is_none() {
+            best = Some(candidate);
+        }
+        if is_native {
+            break;
+        }
+    }
+    Ok(best.map(|v| v.name.clone()))
+}
+
+/// `<major>.<minor>` of an R version, or `None` if it is not a version number
+/// at all (`devel`, `next`). Quiet, unlike `minor_r_version`, because this
+/// runs over every installed R version, most of which do not match anyway.
+fn r_minor_of(version: &str) -> Option<String> {
+    let mut parts = version.split('.');
+    let major: u32 = parts.next()?.parse().ok()?;
+    let minor: u32 = parts.next().unwrap_or("0").parse().ok()?;
+    Some(format!("{}.{}", major, minor))
+}
+
+/// The architecture of an R installation, from its name (`4.6-arm64`), or the
+/// machine's own if the name does not say.
+fn rvenv_r_arch(name: &str) -> String {
+    match name.rsplit_once('-') {
+        Some((_, arch)) if arch == "arm64" || arch == "x86_64" => arch.to_string(),
+        // rig calls it `arm64` on macOS and `aarch64` everywhere else.
+        _ => match std::env::consts::ARCH {
+            "aarch64" if cfg!(target_os = "macos") => "arm64".to_string(),
+            other => other.to_string(),
+        },
+    }
+}
+
 fn sc_proj_sync(
     args: &ArgMatches,
     _libargs: &ArgMatches,
@@ -813,6 +945,58 @@ fn sc_proj_sync(
         }
     };
 
+    // Everything below installs against the R version the lock file was
+    // solved for, so resolve (and, unless --no-install-r, install) it before
+    // touching the library: installed R packages are tied to the R minor
+    // version, so the R on `PATH` is not good enough.
+    let (r_name, r_binary) =
+        rvenv_r_installation(&target.r_version, !args.get_flag("no-install-r"))?;
+
+    // The project environment, as opposed to an arbitrary `--library`, also
+    // owns the wrappers, the activation scripts and the sync stamp.
+    let in_project_library = library_path == project_library(&root);
+    if in_project_library {
+        let cfg = RvenvCfg {
+            r_version: r_name.clone(),
+            r_minor: minor_r_version(&target.r_version)?,
+            r_binary: r_binary.clone(),
+            platform: target.platform.clone(),
+            r_arch: rvenv_r_arch(&r_name),
+            rig_version: env!("CARGO_PKG_VERSION").to_string(),
+        };
+        // An environment that was built against a different R is not stale,
+        // it is broken: R packages are tied to the R minor version. Say so,
+        // because the packages already in the library are about to be used
+        // with a different R than they were installed for.
+        if let Some(old) = read_rvenv_cfg(&root)? {
+            if old.r_minor != cfg.r_minor || old.r_arch != cfg.r_arch {
+                let msg = format!(
+                    "This environment was built for R {} ({}), rebuilding it for R {} ({}). \
+                     Remove {} and sync again if a package misbehaves.",
+                    old.r_minor,
+                    old.r_arch,
+                    cfg.r_minor,
+                    cfg.r_arch,
+                    project_library(&root).display()
+                );
+                OUTPUT.warn(&msg);
+                info!("{}", msg);
+            }
+        }
+
+        let manifest = proj_read_manifest(&root)?;
+        let written = rvenv_sync(&root, &cfg, &manifest.repository)?;
+        for path in &written {
+            let path = path.strip_prefix(&root).unwrap_or(path);
+            info!("Updated {}", path.display());
+        }
+        OUTPUT.success(&format!(
+            "Updated the project environment for R {} ({})",
+            r_name,
+            r_binary.display()
+        ));
+    }
+
     // A package already in the library, at the version and provenance the
     // lockfile asks for, does not need to be downloaded or reinstalled.
     let already_installed = if library_path.exists() {
@@ -831,15 +1015,9 @@ fn sc_proj_sync(
     // The shim package in the project library compares this stamp to
     // `rproj.lock` and warns in every R session while they differ, so it has
     // to be updated even when there was nothing to install.
-    let stamp_lib = if library_path == project_library(&root) {
-        Some(library_path.clone())
-    } else {
-        None
-    };
-
     if todo.is_empty() {
-        if let Some(lib) = &stamp_lib {
-            write_sync_stamp(lib, &lock_path)?;
+        if in_project_library {
+            write_sync_stamp(&library_path, &lock_path)?;
         }
         OUTPUT.success(&format!(
             "Everything is up to date in {}",
@@ -861,11 +1039,11 @@ fn sc_proj_sync(
     // Ensure library directory exists
     fs::create_dir_all(&library_path)?;
 
-    // Get R binary path - use argument or default to "R"
-    let r_binary = args
-        .get_one::<String>("r-binary")
-        .map(|s| s.as_str())
-        .unwrap_or("R");
+    // Install with the R version the lock file was solved for, not whatever
+    // is on `PATH`: an installed R package is tied to the R minor version.
+    let r_binary = r_binary
+        .to_str()
+        .ok_or("The R installation path is not valid Unicode")?;
 
     // Build Vec<PackageInfo> for the packages that need installing
     let built = BuiltCache::new(&target.r_version, r_binary);
@@ -902,8 +1080,8 @@ fn sc_proj_sync(
 
     let installed = install_packages(packages, &library_path, r_binary, max_concurrent)?;
 
-    if let Some(lib) = &stamp_lib {
-        write_sync_stamp(lib, &lock_path)?;
+    if in_project_library {
+        write_sync_stamp(&library_path, &lock_path)?;
     }
 
     OUTPUT.success(&format!(

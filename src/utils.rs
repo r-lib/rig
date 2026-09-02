@@ -142,6 +142,30 @@ pub fn write_atomically(path: &Path, bytes: &[u8]) -> Result<(), Box<dyn Error>>
     Ok(())
 }
 
+/// Write an executable file, e.g. one of the `.rvenv/bin` wrapper scripts.
+///
+/// Same as [`write_atomically`], plus the executable bit. Unix only: Windows
+/// has no such bit, the extension decides there, and the `.rvenv` wrappers
+/// are `.exe` shims on Windows anyway.
+#[cfg(unix)]
+pub fn write_executable(path: &Path, bytes: &[u8]) -> Result<(), Box<dyn Error>> {
+    use nix::sys::stat::{umask, Mode};
+    use std::os::unix::fs::PermissionsExt;
+
+    write_atomically(path, bytes)?;
+
+    // 0o777 masked by the umask, like a compiler writing an executable:
+    // whether the group may write is the user's decision, not ours.
+    // `umask()` has no read-only form, so read it by setting it and putting
+    // it back.
+    let current = umask(Mode::from_bits_truncate(0o022));
+    umask(current);
+    // `Mode::bits()` is `mode_t`, which is u16 on macOS and u32 on Linux.
+    let mode = u32::from(0o777 & !current.bits());
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))?;
+    Ok(())
+}
+
 pub fn calculate_hash(s: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(s);

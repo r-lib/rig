@@ -1494,15 +1494,18 @@ pub fn rig_app() -> Command {
                         .required(false),
                 )
                 .arg(
-                    Arg::new("r-binary")
-                        .help("Path to R binary (default: R)")
-                        .long("r-binary")
-                        .num_args(1)
+                    Arg::new("no-install-r")
+                        .help(
+                            "Fail if the R version the lockfile needs is not installed,\n\
+                            instead of installing it",
+                        )
+                        .long("no-install-r")
+                        .num_args(0)
                         .required(false),
                 )
                 .arg(
                     Arg::new("max-concurrent")
-                        .help("Maximum number of concurrent installations (default: 4)")
+                        .help("Maximum number of concurrent installations (default: 8)")
                         .long("max-concurrent")
                         .num_args(1)
                         .value_parser(clap::value_parser!(usize))
