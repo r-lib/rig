@@ -33,7 +33,7 @@ use crate::platform::{detect_platform, parse_platform_string};
 use crate::renv::*;
 use crate::repos::binaries::loader::{BinaryTarget, P3mBinaryLoader};
 use crate::repos::*;
-use crate::rproj::{RprojLock, RprojLockTarget, RPROJ_LOCK_VERSION};
+use crate::rproj::{Rproj, RprojLock, RprojLockTarget, RPROJ_LOCK_VERSION, RPROJ_MANIFEST_FILE};
 use crate::solver::*;
 use crate::utils::create_parent_dir_if_needed;
 
@@ -56,6 +56,7 @@ pub const BASE_PKGS: &[&str] = &[
 
 pub fn sc_proj(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
+        Some(("init", s)) => sc_proj_init(s, args, mainargs),
         Some(("deps", s)) => sc_proj_deps(s, args, mainargs),
         Some(("tree", s)) => sc_proj_tree(s, args, mainargs),
         Some(("lock", s)) => sc_proj_lock(s, args, mainargs),
@@ -64,12 +65,46 @@ pub fn sc_proj(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn E
     }
 }
 
+/// Write a new minimal `rproj.toml` manifest in the current directory.
+fn sc_proj_init(
+    args: &ArgMatches,
+    _projargs: &ArgMatches,
+    _mainargs: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+    let path = Path::new(RPROJ_MANIFEST_FILE);
+    if path.exists() && !args.get_flag("force") {
+        OUTPUT.error(&format!(
+            "{} already exists, use --force to overwrite",
+            RPROJ_MANIFEST_FILE
+        ));
+        error!("{} already exists", RPROJ_MANIFEST_FILE);
+        bail!("{} already exists", RPROJ_MANIFEST_FILE);
+    }
+
+    // Project name defaults to the current directory's name.
+    let name = std::env::current_dir()
+        .ok()
+        .and_then(|d| d.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| "myproject".to_string());
+
+    let manifest = Rproj::minimal(&name);
+    fs::write(path, toml::to_string_pretty(&manifest)?)?;
+    OUTPUT.success(&format!("Created {}", RPROJ_MANIFEST_FILE));
+    info!("Created {}", RPROJ_MANIFEST_FILE);
+    Ok(())
+}
+
 /// Read the project's manifest, e.g. its `DESCRIPTION` file, and return it as a
 /// package, with the soft dependencies dropped unless `dev`.
 fn proj_read_deps(input: &str, dev: bool) -> Result<Package, Box<dyn Error>> {
     OUTPUT.status(&format!("Reading dependencies from {}", input));
     info!("Reading dependencies from {}", input);
-    let df: File = File::open(input)?;
+    let df: File = File::open(input).map_err(|e| {
+        OUTPUT.error(&format!("Cannot read {}: {}", input, e));
+        error!("Cannot read {}: {}", input, e);
+        e
+    })?;
     let desc = Deb822::from_reader(df)?;
 
     if desc.is_empty() {

@@ -1316,6 +1316,20 @@ pub fn rig_app() -> Command {
                 .required(false),
         )
         .subcommand(
+            Command::new("init")
+                .about(ABOUT_PROJ_INIT)
+                .long_about(HELP_PROJ_INIT)
+                .display_order(0)
+                .arg(
+                    Arg::new("force")
+                        .help("Overwrite an existing rproj.toml")
+                        .long("force")
+                        .short('f')
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
             Command::new("deps")
                 .about(ABOUT_PROJ_DEPS)
                 .long_about(HELP_PROJ_DEPS)
