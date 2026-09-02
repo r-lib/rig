@@ -503,8 +503,7 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#rig-0.10.0-not-released-yet" id="toc-rig-0.10.0-not-released-yet" class="nav-link active" data-scroll-target="#rig-0.10.0-not-released-yet">rig 0.10.0 (not released yet)</a></li>
-  <li><a href="#rig-0.10.0-beta" id="toc-rig-0.10.0-beta" class="nav-link" data-scroll-target="#rig-0.10.0-beta">rig 0.10.0-beta</a></li>
+  <li><a href="#rig-0.10.0-beta2" id="toc-rig-0.10.0-beta2" class="nav-link active" data-scroll-target="#rig-0.10.0-beta2">rig 0.10.0-beta2</a></li>
   <li><a href="#rig-0.8.1" id="toc-rig-0.8.1" class="nav-link" data-scroll-target="#rig-0.8.1">rig 0.8.1</a></li>
   <li><a href="#rig-0.8.0" id="toc-rig-0.8.0" class="nav-link" data-scroll-target="#rig-0.8.0">rig 0.8.0</a></li>
   <li><a href="#rig-0.7.1" id="toc-rig-0.7.1" class="nav-link" data-scroll-target="#rig-0.7.1">rig 0.7.1</a></li>
@@ -570,8 +569,8 @@ ul.task-list li input[type="checkbox"] {
 </header>
 
 
-<section id="rig-0.10.0-not-released-yet" class="level1">
-<h1>rig 0.10.0 (not released yet)</h1>
+<section id="rig-0.10.0-beta2" class="level1">
+<h1>rig 0.10.0-beta2</h1>
 <ul>
 <li><p>macOS user mode: <code>rig default</code> now sets the default R version correctly for newer RStudio versions. Also, <code>rig system allow-debugger-rstudio</code> now works for newer RStudio versions.</p></li>
 <li><p>On Windows rig now creates <code>.exe</code> shims instead of <code>bat</code> shims. With <code>.exe</code> shims it is easier to pass command line arguments to <code>R</code> and <code>Rscript</code>. In particular, <code>Rscript -e &lt;code&gt;</code> now works if <code>&lt;code&gt;</code> has line breaks. Call <code>rig system make-links</code> to create all <code>.exe</code> shims and remove the <code>.bat</code> shims. If you hardcoded shims with a <code>.bat</code> extension, change them to <code>.exe</code> or remove the extension completely (#362).</p></li>
@@ -582,11 +581,6 @@ ul.task-list li input[type="checkbox"] {
 <li><p>New <code>rig proj tree</code> shows the dependency closure of a project as a tree.</p></li>
 <li><p><code>rig library add</code>, <code>rig library default</code>, <code>rig library list</code> and <code>rig library rm</code> have a new <code>--r-version</code> (<code>-r</code>) option, to operate on the libraries of an R version other than the default one.</p></li>
 <li><p>rig now uses a user-dependent download directory, to avoid interference between users.</p></li>
-</ul>
-</section>
-<section id="rig-0.10.0-beta" class="level1">
-<h1>rig 0.10.0-beta</h1>
-<ul>
 <li><p>rig now does not edit the shell startup files in admin mode, like rig 0.8.1 did on macOS. rig now only does this in user mode.</p></li>
 <li><p><code>rig repos available</code> now prints a compact table. New <code>rig repos available &lt;name&gt;</code> shows complete information about a single repository.</p></li>
 <li><p><code>rig system setup-user-lib</code> (and its <code>create-lib</code> alias) now works again.</p></li>
