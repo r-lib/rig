@@ -175,7 +175,38 @@ fn proj_read_deps(input: &str, dev: bool) -> Result<Package, Box<dyn Error>> {
     Ok(package)
 }
 
-/// Parse dependencies from DESCRIPTION file and print them out
+/// Read the project's `rproj.toml` manifest and return its name, version and
+/// dependencies, with the soft dependencies dropped unless `dev`.
+fn proj_read_manifest_deps(
+    dev: bool,
+) -> Result<(String, RPackageVersion, PackageDependencies), Box<dyn Error>> {
+    let path = Path::new(RPROJ_MANIFEST_FILE);
+    if !path.exists() {
+        OUTPUT.error(&format!(
+            "{} not found, run `rig proj init` first",
+            RPROJ_MANIFEST_FILE
+        ));
+        error!("{} not found", RPROJ_MANIFEST_FILE);
+        bail!("{} not found", RPROJ_MANIFEST_FILE);
+    }
+
+    OUTPUT.status(&format!(
+        "Reading dependencies from {}",
+        RPROJ_MANIFEST_FILE
+    ));
+    info!("Reading dependencies from {}", RPROJ_MANIFEST_FILE);
+    let manifest: Rproj = toml::from_str(&fs::read_to_string(path)?).map_err(|e| {
+        OUTPUT.error(&format!("Cannot parse {}: {}", RPROJ_MANIFEST_FILE, e));
+        error!("Cannot parse {}: {}", RPROJ_MANIFEST_FILE, e);
+        e
+    })?;
+
+    let deps = manifest.to_dep_version_specs(dev)?;
+    let version = RPackageVersion::from_str(&manifest.project.version)?;
+    Ok((manifest.project.name, version, deps))
+}
+
+/// Parse dependencies from the project manifest and print them out
 fn sc_proj_deps(
     args: &ArgMatches,
     projargs: &ArgMatches,
@@ -183,15 +214,13 @@ fn sc_proj_deps(
 ) -> Result<(), Box<dyn Error>> {
     let dev = args.get_flag("dev");
     let json = args.get_flag("json") || projargs.get_flag("json") || mainargs.get_flag("json");
-    let default_input = "DESCRIPTION".to_string();
-    let input: &String = args.get_one::<String>("input").unwrap_or(&default_input);
-    let pkg = proj_read_deps(input, dev)?;
+    let (name, version, pkg_deps) = proj_read_manifest_deps(dev)?;
 
     if args.get_flag("recursive") {
-        return proj_deps_recursive(&pkg, json);
+        return proj_deps_recursive(&name, &version, &pkg_deps, json);
     }
 
-    let mut deps = pkg.dependencies.dependencies.clone();
+    let mut deps = pkg_deps.dependencies.clone();
 
     // Sort by dependency type first, then by package name
     deps.sort_by(|a, b| {
@@ -247,7 +276,7 @@ fn sc_proj_deps(
         }
         println!("]");
     } else {
-        print_header(&pkg.name, &pkg.version, &dep_count(deps.len()), false);
+        print_header(&name, &version, &dep_count(deps.len()), false);
         if deps.is_empty() {
             return Ok(());
         }
@@ -276,17 +305,22 @@ fn sc_proj_deps(
 /// The transitive dependency closure of a project, in the same table
 /// `rig pkg deps --recursive` prints.
 ///
-/// The soft dependencies were already dropped by [`proj_read_deps`] unless
-/// `--dev` was given, so the walk takes the manifest's dependencies as they
-/// are; below the project itself it only ever follows hard dependencies.
-fn proj_deps_recursive(pkg: &Package, json: bool) -> Result<(), Box<dyn Error>> {
+/// The soft dependencies were already dropped by [`proj_read_manifest_deps`]
+/// unless `--dev` was given, so the walk takes the manifest's dependencies as
+/// they are; below the project itself it only ever follows hard dependencies.
+fn proj_deps_recursive(
+    name: &str,
+    version: &RPackageVersion,
+    deps: &PackageDependencies,
+    json: bool,
+) -> Result<(), Box<dyn Error>> {
     let loader = DbSourcePackageLoader::new()?;
-    let (rows, num_direct) = walk_deps(&loader, &pkg.name, &pkg.dependencies.dependencies, true);
+    let (rows, num_direct) = walk_deps(&loader, name, &deps.dependencies, true);
 
     if json {
         print_deps_json(&rows, true)?;
     } else {
-        print_deps_recursive(&pkg.name, &pkg.version, num_direct, &rows);
+        print_deps_recursive(name, version, num_direct, &rows);
     }
 
     Ok(())
@@ -310,14 +344,12 @@ fn sc_proj_tree(
     let no_base = args.get_flag("no-base");
     let why = args.get_one::<String>("why").map(|s| s.as_str());
     let json = args.get_flag("json") || projargs.get_flag("json") || mainargs.get_flag("json");
-    let default_input = "DESCRIPTION".to_string();
-    let input: &String = args.get_one::<String>("input").unwrap_or(&default_input);
-    let pkg = proj_read_deps(input, dev)?;
+    let (name, version, pkg_deps) = proj_read_manifest_deps(dev)?;
 
     proj_tree(
-        &pkg.name,
-        &pkg.version,
-        &pkg.dependencies.dependencies,
+        &name,
+        &version,
+        &pkg_deps.dependencies,
         dev,
         no_base,
         why,
@@ -480,9 +512,7 @@ fn sc_proj_lock(
 
     // Do this first, to report local errors early
     let dev = args.get_flag("dev");
-    let default_input = "DESCRIPTION".to_string();
-    let input: &String = args.get_one::<String>("input").unwrap_or(&default_input);
-    let mut pkg_deps = proj_read_deps(input, dev)?.dependencies;
+    let (_name, _version, mut pkg_deps) = proj_read_manifest_deps(dev)?;
 
     if args.get_flag("renv") {
         pkg_deps.dependencies.push(DepVersionSpec {

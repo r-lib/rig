@@ -25,8 +25,7 @@ declares directly and how many distinct packages there are in the whole tree.
 Each line below names a package, the version currently in the repositories,
 and the version requirement it is needed with, if it has one.
 
-By default rig reads the project manifest (e.g. `DESCRIPTION`) in the current
-directory; use `--input` to point to a different file. Unlike
+rig reads the project manifest, `rproj.toml`, in the current directory. Unlike
 [`rig proj deps`](#rig-proj-deps), the tree needs the package metadata of the
 repositories, which rig downloads if it does not have it yet. It does not need
 R. `--json` gives machine readable output, as one nested object.

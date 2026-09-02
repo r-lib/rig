@@ -1349,14 +1349,6 @@ pub fn rig_app() -> Command {
                 .long_about(HELP_PROJ_DEPS)
                 .display_order(0)
                 .arg(
-                    Arg::new("input")
-                        .help("Project file to solve (e.g. DESCRIPTION)")
-                        .long("input")
-                        .short('i')
-                        .num_args(1)
-                        .required(false),
-                )
-                .arg(
                     Arg::new("recursive")
                         .help("Show recursive (transitive) dependencies")
                         .long("recursive")
@@ -1384,14 +1376,6 @@ pub fn rig_app() -> Command {
                 .about(ABOUT_PROJ_TREE)
                 .long_about(HELP_PROJ_TREE)
                 .display_order(0)
-                .arg(
-                    Arg::new("input")
-                        .help("Project file to solve (e.g. DESCRIPTION)")
-                        .long("input")
-                        .short('i')
-                        .num_args(1)
-                        .required(false),
-                )
                 .arg(
                     Arg::new("dev")
                         .help("Include dev (development) dependencies")
@@ -1428,14 +1412,6 @@ pub fn rig_app() -> Command {
                 .about(ABOUT_PROJ_LOCK)
                 .long_about(HELP_PROJ_LOCK)
                 .display_order(0)
-                .arg(
-                    Arg::new("input")
-                        .help("Project file to solve (e.g. DESCRIPTION)")
-                        .long("input")
-                        .short('i')
-                        .num_args(1)
-                        .required(false),
-                )
                 .arg(
                     Arg::new("renv")
                         .help("Output and renv.lock file")

@@ -5,9 +5,9 @@ Resolve project dependencies and write rproj.lock
 Resolve the dependencies of an R project to a concrete set of package
 versions, and write the result to `rproj.lock`.
 
-rig reads the project manifest (e.g. `DESCRIPTION`; override with
-`--input`) and uses its built-in solver to find a compatible set of
-package versions from the configured repositories, without running R.
+rig reads the project manifest, `rproj.toml`, in the current directory, and
+uses its built-in solver to find a compatible set of package versions from
+the configured repositories, without running R.
 
 Use `--r-version` to solve for a specific R version, `--dev` to include
 development dependencies, and `--renv` to also write the result as an

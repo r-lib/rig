@@ -18,10 +18,14 @@
 // are follow-up work.
 
 use std::collections::BTreeMap;
+use std::error::Error;
 
 use serde::{Deserialize, Serialize};
 
-use crate::dcf::{Package as DcfPackage, RDepType, VersionConstraint};
+use crate::dcf::{
+    DepVersionSpec, Package as DcfPackage, PackageDependencies, RDepType, VersionConstraint,
+    DEP_TYPES_SOFT,
+};
 use crate::pak::PakLockfilePackage;
 
 pub const RPROJ_LOCK_VERSION: usize = 1;
@@ -289,6 +293,95 @@ impl Rproj {
             }
         }
     }
+
+    /// The manifest's dependencies as the solver's [`PackageDependencies`], the
+    /// inverse of [`Rproj::merge_description`]: `[dependencies]` becomes
+    /// `Depends` (entries marked `attach = true`, and `R` itself) or `Imports`,
+    /// `[linking-dependencies]` becomes `LinkingTo`, and the `test` / `enhances`
+    /// dependency groups become `Suggests` / `Enhances`. Other groups have no
+    /// DESCRIPTION dependency type to map to and are left out.
+    ///
+    /// Soft dependencies are dropped unless `dev`; a package that is also a hard
+    /// dependency stays, because it needs to be installed either way.
+    pub fn to_dep_version_specs(&self, dev: bool) -> Result<PackageDependencies, Box<dyn Error>> {
+        let mut deps: Vec<DepVersionSpec> = Vec::new();
+
+        for (name, dep) in self.dependencies.iter() {
+            let dep_type = if name == "R" || dep_attach(dep) {
+                RDepType::Depends
+            } else {
+                RDepType::Imports
+            };
+            deps.push(dep_spec(name, dep, dep_type)?);
+        }
+
+        for (name, dep) in self.linking_dependencies.iter() {
+            deps.push(dep_spec(name, dep, RDepType::LinkingTo)?);
+        }
+
+        for (group, dep_type) in [
+            ("test", RDepType::Suggests),
+            ("enhances", RDepType::Enhances),
+        ] {
+            if let Some(group) = self.dependency_groups.get(group) {
+                for (name, dep) in group.dependencies.iter() {
+                    deps.push(dep_spec(name, dep, dep_type.clone())?);
+                }
+            }
+        }
+
+        let mut pkg_deps = PackageDependencies { dependencies: deps };
+        pkg_deps.simplify();
+
+        if !dev {
+            pkg_deps
+                .dependencies
+                .retain(|dep| !dep.types.iter().all(|t| DEP_TYPES_SOFT.contains(t)));
+        }
+
+        Ok(pkg_deps)
+    }
+}
+
+/// Whether a dependency is attached (`Depends:` rather than `Imports:`).
+fn dep_attach(dep: &Dependency) -> bool {
+    match dep {
+        Dependency::Version(_) => false,
+        Dependency::Detailed(t) => t.attach == Some(true),
+    }
+}
+
+/// One manifest dependency entry as a solver [`DepVersionSpec`]. A dependency
+/// with no version (a bare `"*"`, or a table that only names a source, e.g.
+/// `git = ...`) has no constraints.
+fn dep_spec(
+    name: &str,
+    dep: &Dependency,
+    dep_type: RDepType,
+) -> Result<DepVersionSpec, Box<dyn Error>> {
+    let version = match dep {
+        Dependency::Version(v) => Some(v.as_str()),
+        Dependency::Detailed(t) => t.version.as_deref(),
+    };
+    Ok(DepVersionSpec {
+        name: name.to_string(),
+        types: vec![dep_type],
+        constraints: parse_constraints(version.unwrap_or("*"))?,
+    })
+}
+
+/// Parse an `rproj.toml` version string, e.g. `">= 1.0, < 2.0"`, into version
+/// constraints. The inverse of [`format_constraints`]; `"*"` means no
+/// constraint.
+fn parse_constraints(version: &str) -> Result<Vec<VersionConstraint>, Box<dyn Error>> {
+    let version = version.trim();
+    if version.is_empty() || version == "*" {
+        return Ok(vec![]);
+    }
+    version
+        .split(',')
+        .map(|c| VersionConstraint::from_str(c.trim()))
+        .collect()
 }
 
 /// Format a dependency's version constraints as an `rproj.toml` version
@@ -594,6 +687,203 @@ mod tests {
         )]);
         m.merge_description(&pkg);
         assert_eq!(m.dependencies.get("cli"), Some(&dep(">= 3.6.5")));
+    }
+
+    /// The `(types, constraint strings)` of a converted manifest's dependency,
+    /// or `None` if the package is not in the solver's dependency list.
+    fn converted<'a>(
+        deps: &'a PackageDependencies,
+        name: &str,
+    ) -> Option<(&'a [RDepType], Vec<String>)> {
+        deps.dependencies.iter().find(|d| d.name == name).map(|d| {
+            (
+                d.types.as_slice(),
+                d.constraints
+                    .iter()
+                    .map(|c| format!("{} {}", c.constraint_type, c.version))
+                    .collect(),
+            )
+        })
+    }
+
+    #[test]
+    fn to_dep_version_specs_plain_entry_is_an_import() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependencies.insert("cli".to_string(), dep(">= 3.6.5"));
+        let deps = m.to_dep_version_specs(false).unwrap();
+        assert_eq!(
+            converted(&deps, "cli"),
+            Some((&[RDepType::Imports][..], vec![">= 3.6.5".to_string()]))
+        );
+    }
+
+    #[test]
+    fn to_dep_version_specs_attach_is_a_depends() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependencies.insert(
+            "crayon".to_string(),
+            Dependency::Detailed(DepTable {
+                version: Some("*".to_string()),
+                attach: Some(true),
+                ..Default::default()
+            }),
+        );
+        let deps = m.to_dep_version_specs(false).unwrap();
+        assert_eq!(
+            converted(&deps, "crayon"),
+            Some((&[RDepType::Depends][..], vec![]))
+        );
+    }
+
+    #[test]
+    fn to_dep_version_specs_r_is_a_depends_with_its_constraint() {
+        let deps = Rproj::minimal("mypkg").to_dep_version_specs(false).unwrap();
+        assert_eq!(
+            converted(&deps, "R"),
+            Some((&[RDepType::Depends][..], vec![">= 4.1".to_string()]))
+        );
+    }
+
+    #[test]
+    fn to_dep_version_specs_versionless_source_has_no_constraints() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependencies.insert(
+            "ts".to_string(),
+            Dependency::Detailed(DepTable {
+                git: Some("https://github.com/gaborcsardi/ts".to_string()),
+                ..Default::default()
+            }),
+        );
+        let deps = m.to_dep_version_specs(false).unwrap();
+        assert_eq!(
+            converted(&deps, "ts"),
+            Some((&[RDepType::Imports][..], vec![]))
+        );
+    }
+
+    #[test]
+    fn to_dep_version_specs_merges_linkingto_into_one_entry() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependencies.insert("Rcpp".to_string(), dep(">= 1.0"));
+        m.linking_dependencies
+            .insert("Rcpp".to_string(), dep(">= 1.0"));
+        let deps = m.to_dep_version_specs(false).unwrap();
+        assert_eq!(
+            converted(&deps, "Rcpp"),
+            Some((
+                &[RDepType::Imports, RDepType::LinkingTo][..],
+                vec![">= 1.0".to_string()]
+            ))
+        );
+    }
+
+    #[test]
+    fn to_dep_version_specs_multiple_constraints_split_on_comma() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependencies
+            .insert("cli".to_string(), dep(">= 1.0, << 2.0"));
+        let deps = m.to_dep_version_specs(false).unwrap();
+        assert_eq!(
+            converted(&deps, "cli"),
+            Some((
+                &[RDepType::Imports][..],
+                vec![">= 1.0".to_string(), "<< 2.0".to_string()]
+            ))
+        );
+    }
+
+    #[test]
+    fn to_dep_version_specs_groups_are_soft_and_need_dev() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependency_groups.insert(
+            "test".to_string(),
+            Group {
+                include_groups: vec![],
+                dependencies: BTreeMap::from([("testthat".to_string(), dep(">= 3.0"))]),
+            },
+        );
+        m.dependency_groups.insert(
+            "enhances".to_string(),
+            Group {
+                include_groups: vec![],
+                dependencies: BTreeMap::from([("otherpkg".to_string(), dep("*"))]),
+            },
+        );
+        // an unknown group has no DESCRIPTION dependency type, and is left out
+        m.dependency_groups.insert(
+            "docs".to_string(),
+            Group {
+                include_groups: vec![],
+                dependencies: BTreeMap::from([("pkgdown".to_string(), dep("*"))]),
+            },
+        );
+
+        let deps = m.to_dep_version_specs(false).unwrap();
+        assert_eq!(converted(&deps, "testthat"), None);
+        assert_eq!(converted(&deps, "otherpkg"), None);
+        assert_eq!(converted(&deps, "pkgdown"), None);
+
+        let deps = m.to_dep_version_specs(true).unwrap();
+        assert_eq!(
+            converted(&deps, "testthat"),
+            Some((&[RDepType::Suggests][..], vec![">= 3.0".to_string()]))
+        );
+        assert_eq!(
+            converted(&deps, "otherpkg"),
+            Some((&[RDepType::Enhances][..], vec![]))
+        );
+        assert_eq!(converted(&deps, "pkgdown"), None);
+    }
+
+    #[test]
+    fn to_dep_version_specs_keeps_a_soft_dep_that_is_also_hard() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependencies.insert("cli".to_string(), dep(">= 3.6.5"));
+        m.dependency_groups.insert(
+            "test".to_string(),
+            Group {
+                include_groups: vec![],
+                dependencies: BTreeMap::from([("cli".to_string(), dep("*"))]),
+            },
+        );
+        let deps = m.to_dep_version_specs(false).unwrap();
+        assert_eq!(
+            converted(&deps, "cli"),
+            Some((
+                &[RDepType::Imports, RDepType::Suggests][..],
+                vec![">= 3.6.5".to_string()]
+            ))
+        );
+    }
+
+    #[test]
+    fn to_dep_version_specs_round_trips_a_description() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependencies.clear();
+        let pkg = package(vec![
+            spec(
+                "R",
+                &[RDepType::Depends],
+                vec![constraint(VersionConstraintType::GreaterOrEqual, "4.1")],
+            ),
+            spec("crayon", &[RDepType::Depends], vec![]),
+            spec(
+                "cli",
+                &[RDepType::Imports],
+                vec![constraint(VersionConstraintType::GreaterOrEqual, "3.6.5")],
+            ),
+            spec("Rcpp", &[RDepType::Imports, RDepType::LinkingTo], vec![]),
+            spec("testthat", &[RDepType::Suggests], vec![]),
+            spec("otherpkg", &[RDepType::Enhances], vec![]),
+        ]);
+        m.merge_description(&pkg);
+
+        let deps = m.to_dep_version_specs(true).unwrap();
+        let mut expected = pkg.dependencies.dependencies.clone();
+        expected.sort_by(|a, b| a.name.cmp(&b.name));
+        let mut got = deps.dependencies.clone();
+        got.sort_by(|a, b| a.name.cmp(&b.name));
+        assert_eq!(got, expected);
     }
 
     #[test]
