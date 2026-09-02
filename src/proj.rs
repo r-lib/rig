@@ -41,7 +41,6 @@ use crate::rvenv::{
     existing_targets, find_project_root, project_library, read_rvenv_cfg, rvenv_init, rvenv_sync,
     write_sync_stamp, RvenvCfg, RPROJ_LOCK_FILE,
 };
-use crate::rversion::InstalledVersion;
 use crate::solver::*;
 use crate::utils::create_parent_dir_if_needed;
 
@@ -635,27 +634,114 @@ fn sc_proj_lock(
         dev: !args.get_flag("no-dev"),
         renv: args.get_flag("renv"),
     };
-    proj_lock(Path::new("."), &opts)
+    proj_lock(Path::new("."), &opts, args)
+}
+
+/// The R version to solve the project for, when the caller did not name one:
+/// the default R version if the manifest's `R` requirement allows it, else the
+/// newest installed R that does, else the current R release.
+///
+/// The version does not have to be installed. `rig proj lock` never runs R,
+/// and `rig proj sync` installs the R version the lock file names.
+fn proj_lock_r_version(
+    deps: &PackageDependencies,
+    args: &ArgMatches,
+) -> Result<String, Box<dyn Error>> {
+    let req = deps.dependencies.iter().find(|d| d.name == "R");
+    let allowed = |version: &str| match req {
+        Some(req) => req.satisfies(version).unwrap_or(false),
+        None => true,
+    };
+
+    if let Some(rv) = get_default_r_version()? {
+        if allowed(&rv) {
+            return Ok(rv);
+        }
+        info!(
+            "The default R ({}) does not satisfy the project's R {}",
+            rv,
+            r_requirement(req)
+        );
+    }
+
+    // The newest installed R the manifest allows, so that a project needing
+    // an R other than the default one does not have to download one.
+    let mut installed: Vec<RPackageVersion> = sc_get_list_details()?
+        .iter()
+        .filter_map(|v| v.version.as_deref())
+        .filter(|v| allowed(v))
+        .filter_map(|v| RPackageVersion::from_str(v).ok())
+        .collect();
+    installed.sort();
+    if let Some(rv) = installed.pop() {
+        let msg = format!(
+            "Solving for R {}, the project needs R {}.",
+            rv,
+            r_requirement(req)
+        );
+        OUTPUT.info(&msg);
+        info!("{}", msg);
+        return Ok(rv.original);
+    }
+
+    // Nothing installed will do, so the project needs an R it does not have
+    // yet. The current release is the only version to pick without asking,
+    // and `rig proj sync` installs it.
+    match resolve_release_r_version(args) {
+        Some(rv) if allowed(&rv) => {
+            let msg = format!(
+                "Solving for the current R release ({}), the project needs R {}.",
+                rv,
+                r_requirement(req)
+            );
+            OUTPUT.info(&msg);
+            info!("{}", msg);
+            Ok(rv)
+        }
+        _ => {
+            let msg = format!(
+                "No R version satisfies the project's R {}, specify one with --r-version.",
+                r_requirement(req)
+            );
+            OUTPUT.error(&msg);
+            error!("{}", msg);
+            bail!("{}", msg)
+        }
+    }
+}
+
+/// A manifest's `R` requirement as it reads in `rproj.toml`, e.g. `>= 4.5`,
+/// for the messages of [`proj_lock_r_version`].
+fn r_requirement(req: Option<&DepVersionSpec>) -> String {
+    let constraints = match req {
+        Some(req) => &req.constraints,
+        None => return "*".to_string(),
+    };
+    if constraints.is_empty() {
+        return "*".to_string();
+    }
+    constraints
+        .iter()
+        .map(|c| format!("{} {}", c.constraint_type, c.version))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// Solve the dependencies of the project in `root` and write `rproj.lock`
 /// (and `renv.lock` with `--renv`) into it.
-fn proj_lock(root: &Path, opts: &ProjLockOptions) -> Result<(), Box<dyn Error>> {
-    let rver = match &opts.r_version {
-        Some(rv) => rv.to_string(),
-        None => match get_default_r_version()? {
-            Some(rv) => rv,
-            None => {
-                OUTPUT.error("Cannot determine R version, please specify it with --r-version.");
-                error!("Cannot determine R version, please specify it with --r-version.");
-                bail!("Cannot determine R version, please specify it with --r-version.")
-            }
-        },
-    };
-
+fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // Do this first, to report local errors early
     let dev = opts.dev;
     let (_name, _version, mut pkg_deps) = proj_read_manifest_deps(root, dev)?;
+
+    // The R version has to satisfy the manifest's own `R` requirement,
+    // otherwise the solve either fails or produces a lock file for an R the
+    // project rules out. `--r-version` is taken as given, the solver reports
+    // the conflict if there is one.
+    let rver = match &opts.r_version {
+        Some(rv) => rv.to_string(),
+        None => proj_lock_r_version(&pkg_deps, args)?,
+    };
 
     if opts.renv {
         pkg_deps.dependencies.push(DepVersionSpec {
@@ -765,27 +851,31 @@ fn nondev_packages(
     Ok(keep)
 }
 
-/// The R installation an environment for `r_version` uses: its name, as
-/// `rig list` shows it, and the absolute path of its R binary.
+/// The R installation an environment for `r_version` on `arch` uses: its
+/// name, as `rig list` shows it, and the absolute path of its R binary.
 ///
-/// The lock file records the R version its solve is valid for, and an
-/// installed R package is tied to the R minor version, so this is not a
-/// preference, it is what the environment *is*. When that R is missing and
-/// `install` is set, install it first -- the thing renv cannot do.
+/// The lock file records the R version and the platform its solve is valid
+/// for, so neither is a preference, they are what the environment *is*. When
+/// that R is missing and `install` is set, install it first -- the thing renv
+/// cannot do.
 fn rvenv_r_installation(
     r_version: &str,
+    arch: &str,
     install: bool,
 ) -> Result<(String, PathBuf), Box<dyn Error>> {
-    if let Some(name) = find_r_installation(r_version)? {
+    if let Some(name) = find_r_installation(r_version, arch)? {
         let binary = get_r_binary(&name)?;
         return Ok((name, binary));
     }
 
+    let add_args = r_add_args(r_version, arch);
     if !install {
         let msg = format!(
-            "R {} is not installed, install it with `rig add {}` \
+            "R {} ({}) is not installed, install it with `rig {}` \
              (or drop --no-install-r)",
-            r_version, r_version
+            r_version,
+            arch,
+            add_args[1..].join(" ")
         );
         OUTPUT.error(&msg);
         error!("{}", msg);
@@ -793,26 +883,32 @@ fn rvenv_r_installation(
     }
 
     OUTPUT.status(&format!(
-        "R {} is not installed, installing it now",
-        r_version
+        "R {} ({}) is not installed, installing it now",
+        r_version, arch
     ));
-    info!("R {} is not installed, installing it now", r_version);
+    info!(
+        "R {} ({}) is not installed, installing it now",
+        r_version, arch
+    );
     // `rig add` is a subcommand, not a function that takes a version, so go
     // through clap. It escalates on its own in admin mode.
-    let matches = rig_app().try_get_matches_from(["rig", "add", r_version])?;
+    let matches = rig_app().try_get_matches_from(add_args)?;
     let (_name, addargs) = match matches.subcommand() {
         Some(x) => x,
         None => bail!("Internal error: `rig add` did not parse"),
     };
     sc_add(addargs)?;
 
-    match find_r_installation(r_version)? {
+    match find_r_installation(r_version, arch)? {
         Some(name) => {
             let binary = get_r_binary(&name)?;
             Ok((name, binary))
         }
         None => {
-            let msg = format!("Installed R {}, but cannot find it now", r_version);
+            let msg = format!(
+                "Installed R {} ({}), but cannot find it now",
+                r_version, arch
+            );
             OUTPUT.error(&msg);
             error!("{}", msg);
             bail!("{}", msg)
@@ -820,49 +916,82 @@ fn rvenv_r_installation(
     }
 }
 
-/// The installed R that matches `r_version`: the installation of that name,
-/// or, failing that, one with the same minor version -- the lock file records
-/// a minor version like `4.6`, while an installation can be called `4.6.1` or
-/// `4.6-arm64`. A native-architecture installation wins over a foreign one.
-fn find_r_installation(r_version: &str) -> Result<Option<String>, Box<dyn Error>> {
-    let installed = sc_get_list_details()?;
-    if let Some(exact) = installed.iter().find(|v| v.name == r_version) {
-        return Ok(Some(exact.name.clone()));
+/// The `rig add` command line that installs `r_version` for `arch`. Only
+/// macOS has R builds for more than one architecture, and only there does
+/// `rig add` take `--arch`.
+fn r_add_args(r_version: &str, arch: &str) -> Vec<String> {
+    let mut args = vec!["rig".to_string(), "add".to_string()];
+    if cfg!(target_os = "macos") {
+        args.push("--arch".to_string());
+        args.push(arch.to_string());
     }
-
-    let want = r_minor_of(r_version);
-    let native = std::env::consts::ARCH;
-    let mut best: Option<&InstalledVersion> = None;
-    for candidate in installed.iter() {
-        // An installation with no version, or a version that is not a number
-        // (`devel`, `next`), is never a match for a lock file's R version.
-        let version = match &candidate.version {
-            Some(v) => v,
-            None => continue,
-        };
-        if want.is_none() || r_minor_of(version) != want {
-            continue;
-        }
-        let arch = rvenv_r_arch(&candidate.name);
-        let is_native = arch == native || (native == "aarch64" && arch == "arm64");
-        if is_native || best.is_none() {
-            best = Some(candidate);
-        }
-        if is_native {
-            break;
-        }
-    }
-    Ok(best.map(|v| v.name.clone()))
+    args.push(r_version.to_string());
+    args
 }
 
-/// `<major>.<minor>` of an R version, or `None` if it is not a version number
-/// at all (`devel`, `next`). Quiet, unlike `minor_r_version`, because this
-/// runs over every installed R version, most of which do not match anyway.
-fn r_minor_of(version: &str) -> Option<String> {
-    let mut parts = version.split('.');
-    let major: u32 = parts.next()?.parse().ok()?;
-    let minor: u32 = parts.next().unwrap_or("0").parse().ok()?;
-    Some(format!("{}.{}", major, minor))
+/// The installed R that matches `r_version` on `arch`: the installation of
+/// that name, or, failing that, one with the very same version -- the lock
+/// file records a version like `4.6.1`, while an installation of it can be
+/// called `4.6.1` or `4.6.1-arm64`.
+///
+/// The architecture has to match too: an R of another architecture cannot use
+/// the packages the lock file resolved, whatever its version.
+fn find_r_installation(r_version: &str, arch: &str) -> Result<Option<String>, Box<dyn Error>> {
+    let installed = sc_get_list_details()?;
+    let matching = installed.iter().find(|candidate| {
+        if rvenv_r_arch(&candidate.name) != arch {
+            return false;
+        }
+        if candidate.name == r_version {
+            return true;
+        }
+        // An installation with no version, or a version that is not a number
+        // (`devel`, `next`), is never a match for a lock file's R version.
+        match &candidate.version {
+            Some(version) => r_version_matches(r_version, version),
+            None => false,
+        }
+    });
+    Ok(matching.map(|v| v.name.clone()))
+}
+
+/// The architecture the lock file's target platform needs, in the form
+/// [`rvenv_r_arch`] reports it, or the machine's own if the platform does not
+/// name one.
+fn target_r_arch(platform: &str) -> String {
+    match platform.rsplit_once('-') {
+        Some((_, "arm64")) | Some((_, "aarch64")) => native_arch_name("aarch64"),
+        Some((_, "x86_64")) => "x86_64".to_string(),
+        _ => native_arch_name(std::env::consts::ARCH),
+    }
+}
+
+/// Whether an installed R version is the one the lock file asks for: the same
+/// version, or, if the lock file names a minor version only (`4.6`), any patch
+/// release of it (`4.6.1`).
+///
+/// Another patch release of the same minor version is not a match. R packages
+/// are compatible across patch releases, so using one would work, but the lock
+/// file says which R the project is for, and `rig proj sync` installs that one
+/// instead of silently building the environment for a different R.
+fn r_version_matches(want: &str, have: &str) -> bool {
+    if want == have {
+        return true;
+    }
+    let (want, have) = match (r_components(want), r_components(have)) {
+        (Some(w), Some(h)) => (w, h),
+        _ => return false,
+    };
+    !want.is_empty() && want.len() < 3 && have.len() >= want.len() && have[..want.len()] == want[..]
+}
+
+/// The numeric components of an R version, or `None` if it is not a version
+/// number at all (`devel`, `next`). Quiet, unlike `minor_r_version`, because
+/// this runs over every installed R version, most of which do not match anyway.
+fn r_components(version: &str) -> Option<Vec<u32>> {
+    RPackageVersion::from_str(version)
+        .ok()
+        .map(|v| v.components)
 }
 
 /// The architecture of an R installation, from its name (`4.6-arm64`), or the
@@ -870,11 +999,17 @@ fn r_minor_of(version: &str) -> Option<String> {
 fn rvenv_r_arch(name: &str) -> String {
     match name.rsplit_once('-') {
         Some((_, arch)) if arch == "arm64" || arch == "x86_64" => arch.to_string(),
-        // rig calls it `arm64` on macOS and `aarch64` everywhere else.
-        _ => match std::env::consts::ARCH {
-            "aarch64" if cfg!(target_os = "macos") => "arm64".to_string(),
-            other => other.to_string(),
-        },
+        _ => native_arch_name(std::env::consts::ARCH),
+    }
+}
+
+/// An architecture the way rig names it: `arm64` on macOS and `aarch64`
+/// everywhere else.
+fn native_arch_name(arch: &str) -> String {
+    match arch {
+        "aarch64" | "arm64" if cfg!(target_os = "macos") => "arm64".to_string(),
+        "arm64" => "aarch64".to_string(),
+        other => other.to_string(),
     }
 }
 
@@ -902,7 +1037,7 @@ fn sc_proj_sync(
             RPROJ_LOCK_FILE
         ));
         info!("No {}, running `rig proj lock` first", RPROJ_LOCK_FILE);
-        proj_lock(&root, &ProjLockOptions::default())?;
+        proj_lock(&root, &ProjLockOptions::default(), args)?;
     }
 
     let lock_content = fs::read_to_string(&lock_path)?;
@@ -949,8 +1084,12 @@ fn sc_proj_sync(
     // solved for, so resolve (and, unless --no-install-r, install) it before
     // touching the library: installed R packages are tied to the R minor
     // version, so the R on `PATH` is not good enough.
+    // The architecture comes from the lock file's platform, not from the
+    // machine: a lock file solved for macos-x86_64 needs an x86_64 R even on
+    // an arm64 Mac.
+    let r_arch = target_r_arch(&target.platform);
     let (r_name, r_binary) =
-        rvenv_r_installation(&target.r_version, !args.get_flag("no-install-r"))?;
+        rvenv_r_installation(&target.r_version, &r_arch, !args.get_flag("no-install-r"))?;
 
     // The project environment, as opposed to an arbitrary `--library`, also
     // owns the wrappers, the activation scripts and the sync stamp.
@@ -1252,6 +1391,58 @@ mod tests {
 
     fn dep(version: &str) -> Dependency {
         Dependency::Version(version.to_string())
+    }
+
+    #[test]
+    fn a_lock_files_r_version_matches_that_version_only() {
+        assert!(r_version_matches("4.6.1", "4.6.1"));
+        // A different patch release is a different R
+        assert!(!r_version_matches("4.6.1", "4.6.0"));
+        assert!(!r_version_matches("4.6.1", "4.6.2"));
+        assert!(!r_version_matches("4.6.1", "4.5.1"));
+        // A minor version matches all of its patch releases
+        assert!(r_version_matches("4.6", "4.6.1"));
+        assert!(r_version_matches("4.6", "4.6"));
+        assert!(!r_version_matches("4.6", "4.5.1"));
+        // `devel` and `next` are not version numbers
+        assert!(!r_version_matches("4.6.1", "devel"));
+        assert!(!r_version_matches("devel", "4.6.1"));
+        assert!(r_version_matches("devel", "devel"));
+    }
+
+    #[test]
+    fn the_target_platform_decides_the_architecture() {
+        let native = native_arch_name(std::env::consts::ARCH);
+        assert_eq!(target_r_arch("macos-x86_64"), "x86_64");
+        assert_eq!(target_r_arch("linux-ubuntu-24.04-x86_64"), "x86_64");
+        assert_eq!(target_r_arch("windows"), native);
+        assert_eq!(target_r_arch("source"), native);
+        if cfg!(target_os = "macos") {
+            assert_eq!(target_r_arch("macos-arm64"), "arm64");
+            assert_eq!(target_r_arch("macos-aarch64"), "arm64");
+        } else {
+            assert_eq!(target_r_arch("linux-ubuntu-24.04-aarch64"), "aarch64");
+        }
+    }
+
+    #[test]
+    fn r_is_installed_for_the_architecture_the_lock_file_needs() {
+        assert_eq!(
+            r_add_args("4.6.1", "x86_64"),
+            if cfg!(target_os = "macos") {
+                vec!["rig", "add", "--arch", "x86_64", "4.6.1"]
+            } else {
+                vec!["rig", "add", "4.6.1"]
+            }
+        );
+    }
+
+    #[test]
+    fn the_r_requirement_reads_as_it_does_in_the_manifest() {
+        let deps = Rproj::minimal("mypkg").to_dep_version_specs(false).unwrap();
+        let req = deps.dependencies.iter().find(|d| d.name == "R");
+        assert_eq!(r_requirement(req), ">= 4.1");
+        assert_eq!(r_requirement(None), "*");
     }
 
     #[test]

@@ -20,11 +20,17 @@ out. `--max-concurrent` limits the number of simultaneous installations
 
 ## The R version
 
-The lock file records the R version its solve is valid for, and an installed
-R package is tied to the R minor version, so that is the R rig installs the
-packages with -- not whatever `R` is on the `PATH`. If that R version is
-missing, rig installs it first, the way [`rig add`](add.qmd) would; pass
-`--no-install-r` to fail instead, e.g. in CI.
+The lock file records the R version its solve is valid for, and that is the R
+rig installs the packages with -- not whatever `R` is on the `PATH`. It has to
+be that very version: another patch release of the same minor version would
+run the packages, but it is not the R the project was solved for, so rig does
+not quietly use it.
+
+If that R version is not installed, rig installs it first, the way
+[`rig add`](add.qmd) would; pass `--no-install-r` to fail instead, e.g. in CI.
+rig never rewrites `rproj.lock` to an R version that is already installed --
+run [`rig proj lock`](#rig-proj-lock) to change the R version a project is
+locked for.
 
 ## What sync writes
 

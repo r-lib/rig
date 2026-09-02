@@ -17,6 +17,15 @@ and `--renv` to also write the result as an `renv.lock` file.
 [`rig proj sync`](#rig-proj-sync) installs that target. Solving for several
 targets in one lockfile is planned but not implemented yet.
 
+## The R version
+
+Without `--r-version` rig solves for the default R version, provided the
+manifest's own `R` requirement allows it. If it does not, rig takes the newest
+installed R version that does, and failing that the current R release. The
+version it picks does not have to be installed: `rig proj lock` never runs R,
+and [`rig proj sync`](#rig-proj-sync) installs the R version the lock file
+names.
+
 ## Source and binary packages
 
 The solver considers binary packages as well as source packages, and
