@@ -1217,6 +1217,13 @@ pub fn rig_app() -> Command {
                 .required(false),
         )
         .arg(
+            Arg::new("no-project")
+                .help("Ignore the project environment, use the default R version")
+                .long("no-project")
+                .action(clap::ArgAction::SetTrue)
+                .required(false),
+        )
+        .arg(
             Arg::new("app-type")
                 .help("Explicitly specify app type to run")
                 .short('t')

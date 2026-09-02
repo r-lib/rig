@@ -1013,6 +1013,34 @@ fn native_arch_name(arch: &str) -> String {
     }
 }
 
+/// What [`proj_sync`] does beyond the defaults, i.e. the options of
+/// `rig proj sync`. `rig run` syncs with the defaults.
+pub(crate) struct ProjSyncOptions {
+    /// Install the manifest's dev dependencies as well (`--no-dev` turns this
+    /// off).
+    pub dev: bool,
+    /// Install into this library instead of the project's own `.rvenv/lib`
+    /// (`--library`). Only the project library gets the wrappers, the
+    /// repositories file and the sync stamp.
+    pub library: Option<PathBuf>,
+    /// Install the R version the lock file names, if it is missing
+    /// (`--no-install-r` turns this off).
+    pub install_r: bool,
+    /// How many packages to install at the same time (`--max-concurrent`).
+    pub max_concurrent: usize,
+}
+
+impl Default for ProjSyncOptions {
+    fn default() -> Self {
+        ProjSyncOptions {
+            dev: true,
+            library: None,
+            install_r: true,
+            max_concurrent: 8,
+        }
+    }
+}
+
 fn sc_proj_sync(
     args: &ArgMatches,
     _libargs: &ArgMatches,
@@ -1023,6 +1051,30 @@ fn sc_proj_sync(
     let cwd = std::env::current_dir()?;
     let root = find_project_root(&cwd).unwrap_or(cwd);
 
+    let opts = ProjSyncOptions {
+        dev: !args.get_flag("no-dev"),
+        library: args.get_one::<String>("library").map(PathBuf::from),
+        install_r: !args.get_flag("no-install-r"),
+        max_concurrent: args
+            .get_one::<usize>("max-concurrent")
+            .copied()
+            .unwrap_or(8),
+    };
+
+    proj_sync(&root, &opts, args)
+}
+
+/// Install the project's locked dependencies into its environment, creating
+/// the machine-specific part of `.rvenv` on the way: `rig proj sync`, and the
+/// automatic sync of `rig run`.
+///
+/// `args` is only used for the platform and architecture of an R version that
+/// has to be resolved from scratch, so any subcommand's matches will do.
+pub(crate) fn proj_sync(
+    root: &Path,
+    opts: &ProjSyncOptions,
+    args: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
     // Read the lockfile to get package information. Single-target for now:
     // always the first (and, today, only) entry `rig proj lock` wrote; the
     // "pick the entry matching this machine, hard error if none match" logic
@@ -1037,7 +1089,11 @@ fn sc_proj_sync(
             RPROJ_LOCK_FILE
         ));
         info!("No {}, running `rig proj lock` first", RPROJ_LOCK_FILE);
-        proj_lock(&root, &ProjLockOptions::default(), args)?;
+        let lock_opts = ProjLockOptions {
+            dev: opts.dev,
+            ..ProjLockOptions::default()
+        };
+        proj_lock(root, &lock_opts, args)?;
     }
 
     let lock_content = fs::read_to_string(&lock_path)?;
@@ -1045,8 +1101,8 @@ fn sc_proj_sync(
     let target = lock.targets.first().ok_or("rproj.lock has no targets")?;
 
     let nondev;
-    let wanted: &[PakLockfilePackage] = if args.get_flag("no-dev") {
-        let keep = nondev_packages(&root, &target.packages)?;
+    let wanted: &[PakLockfilePackage] = if !opts.dev {
+        let keep = nondev_packages(root, &target.packages)?;
         nondev = target
             .packages
             .iter()
@@ -1062,10 +1118,10 @@ fn sc_proj_sync(
     // project library is created by `rig proj init`, together with the
     // `.gitignore` files that keep it in version control, so do not create
     // it here.
-    let library_path = match args.get_one::<String>("library") {
-        Some(lib) => PathBuf::from(lib),
+    let library_path = match &opts.library {
+        Some(lib) => lib.clone(),
         None => {
-            let lib = project_library(&root);
+            let lib = project_library(root);
             if !lib.exists() {
                 let msg = format!(
                     "No project library in {}, run `rig proj init` first \
@@ -1088,12 +1144,11 @@ fn sc_proj_sync(
     // machine: a lock file solved for macos-x86_64 needs an x86_64 R even on
     // an arm64 Mac.
     let r_arch = target_r_arch(&target.platform);
-    let (r_name, r_binary) =
-        rvenv_r_installation(&target.r_version, &r_arch, !args.get_flag("no-install-r"))?;
+    let (r_name, r_binary) = rvenv_r_installation(&target.r_version, &r_arch, opts.install_r)?;
 
     // The project environment, as opposed to an arbitrary `--library`, also
     // owns the wrappers, the activation scripts and the sync stamp.
-    let in_project_library = library_path == project_library(&root);
+    let in_project_library = library_path == project_library(root);
     if in_project_library {
         let cfg = RvenvCfg {
             r_version: r_name.clone(),
@@ -1107,7 +1162,7 @@ fn sc_proj_sync(
         // it is broken: R packages are tied to the R minor version. Say so,
         // because the packages already in the library are about to be used
         // with a different R than they were installed for.
-        if let Some(old) = read_rvenv_cfg(&root)? {
+        if let Some(old) = read_rvenv_cfg(root)? {
             if old.r_minor != cfg.r_minor || old.r_arch != cfg.r_arch {
                 let msg = format!(
                     "This environment was built for R {} ({}), rebuilding it for R {} ({}). \
@@ -1116,17 +1171,17 @@ fn sc_proj_sync(
                     old.r_arch,
                     cfg.r_minor,
                     cfg.r_arch,
-                    project_library(&root).display()
+                    project_library(root).display()
                 );
                 OUTPUT.warn(&msg);
                 info!("{}", msg);
             }
         }
 
-        let manifest = proj_read_manifest(&root)?;
-        let written = rvenv_sync(&root, &cfg, &manifest.repository)?;
+        let manifest = proj_read_manifest(root)?;
+        let written = rvenv_sync(root, &cfg, &manifest.repository)?;
         for path in &written {
-            let path = path.strip_prefix(&root).unwrap_or(path);
+            let path = path.strip_prefix(root).unwrap_or(path);
             info!("Updated {}", path.display());
         }
         OUTPUT.success(&format!(
@@ -1197,11 +1252,7 @@ fn sc_proj_sync(
         })
         .collect();
 
-    // Set max concurrent installations
-    let max_concurrent = args
-        .get_one::<usize>("max-concurrent")
-        .copied()
-        .unwrap_or(8);
+    let max_concurrent = opts.max_concurrent;
 
     let total_packages = packages.len();
     OUTPUT.status(&format!(

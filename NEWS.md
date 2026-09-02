@@ -26,6 +26,12 @@
 
 * New `rig proj tree` shows the dependency closure of a project as a tree.
 
+* `rig run` now uses the project environment, if you call it in a project
+  directory: it starts `.rvenv/bin/R`, with the project's package library
+  and the R version the project's lock file names, and it syncs the project
+  first if the environment is missing or out of date. Use `--no-project`
+  (or `--r-version`) to run the default R version instead.
+
 * `rig library add`, `rig library default`, `rig library list` and
   `rig library rm` have a new `--r-version` (`-r`) option, to operate on
   the libraries of an R version other than the default one.

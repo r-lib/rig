@@ -5,12 +5,14 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use clap::ArgMatches;
-use log::{error, trace, warn};
+use log::{error, info, trace, warn};
 use regex::Regex;
 use simple_error::*;
 
 use crate::common::*;
 use crate::output::OUTPUT;
+use crate::proj::{proj_sync, ProjSyncOptions};
+use crate::rvenv::{find_project_root, project_library, project_r_wrapper, rvenv_sync_needed};
 
 #[cfg(target_os = "macos")]
 use crate::macos::*;
@@ -22,13 +24,6 @@ use crate::windows::*;
 use crate::linux::*;
 
 pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn Error>> {
-    let rver = args.get_one::<String>("r-version");
-    let rver = match rver {
-        Some(x) => check_installed(x)?,
-        None => sc_get_default_or_fail()?,
-    };
-    let rbin = get_r_binary(&rver)?.to_string_lossy().into_owned();
-
     let cmdargs = args.get_many::<String>("command");
     let cmdargs: Vec<String> = match cmdargs {
         None => vec![],
@@ -36,6 +31,8 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
     };
 
     let dry_run = args.get_flag("dry-run");
+
+    let rbin = run_r_binary(args, dry_run)?;
 
     // R CMD must be before other arguments.
     if args.get_flag("cmd") {
@@ -81,6 +78,106 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
         }
         sc_run_rver(rbin, rargs, cmdargs, dry_run)
     }
+}
+
+/// The R binary `rig run` runs: the project environment's R wrapper if the
+/// current directory is inside a project, and the requested or default R
+/// version otherwise.
+fn run_r_binary(args: &ArgMatches, dry_run: bool) -> Result<String, Box<dyn Error>> {
+    if let Some(rbin) = project_r_binary(args, dry_run)? {
+        return Ok(rbin);
+    }
+
+    let rver = match args.get_one::<String>("r-version") {
+        Some(x) => check_installed(x)?,
+        None => sc_get_default_or_fail()?,
+    };
+    Ok(get_r_binary(&rver)?.to_string_lossy().into_owned())
+}
+
+/// `.rvenv/bin/R` of the project at or above the current directory, syncing
+/// the environment first if it is missing or out of date, or `None` if there
+/// is no project to use.
+///
+/// This is the `uv run` equivalent: no `PATH` entry, no activation script and
+/// no shell state, so it also works from a Makefile or in CI. The wrapper,
+/// rather than the real R binary, because the wrapper is what sets
+/// `R_LIBS_USER` and the rest of the activation environment.
+fn project_r_binary(args: &ArgMatches, dry_run: bool) -> Result<Option<String>, Box<dyn Error>> {
+    if args.get_flag("no-project") {
+        trace!("--no-project, not looking for a project environment");
+        return Ok(None);
+    }
+
+    // A project environment is tied to the R version its lock file names, so
+    // it cannot also honor an explicitly requested R version. An explicit
+    // `--r-version` is the more specific request, so it wins.
+    if let Some(rver) = args.get_one::<String>("r-version") {
+        trace!(
+            "--r-version {} given, not looking for a project environment",
+            rver
+        );
+        return Ok(None);
+    }
+
+    let cwd = std::env::current_dir()?;
+    let root = match find_project_root(&cwd) {
+        None => return Ok(None),
+        Some(root) => root,
+    };
+
+    // A project that has never been initialized has no environment to use.
+    // `rig proj init` writes the committed part of `.rvenv`, including the
+    // library directory itself, and neither `rig proj sync` nor `rig run`
+    // creates it: writing tracked project files is always an explicit
+    // request. Fail rather than fall back to the default R, the same way
+    // `rig proj sync` does -- inside a project, `rig run` running a
+    // non-project R would be the more surprising outcome.
+    if !project_library(&root).exists() {
+        let msg = format!(
+            "No project environment in {}, run `rig proj init` first \
+             (or `rig run --no-project`)",
+            root.display()
+        );
+        OUTPUT.error(&msg);
+        error!("{}", msg);
+        bail!("{}", msg);
+    }
+
+    match rvenv_sync_needed(&root)? {
+        None => {}
+        Some(why) if dry_run => {
+            // A dry run prints a command, it does not install anything.
+            let msg = format!("Would run `rig proj sync` first, because {}", why);
+            OUTPUT.info(&msg);
+            info!("{}", msg);
+        }
+        Some(why) => {
+            let msg = format!("Syncing the project in {}, because {}", root.display(), why);
+            OUTPUT.info(&msg);
+            info!("{}", msg);
+            proj_sync(&root, &ProjSyncOptions::default(), args)?;
+        }
+    }
+
+    let wrapper = project_r_wrapper(&root);
+    if !wrapper.exists() && !dry_run {
+        let msg = format!(
+            "No R wrapper at {} after syncing the project, run `rig proj sync`",
+            wrapper.display()
+        );
+        OUTPUT.error(&msg);
+        error!("{}", msg);
+        bail!("{}", msg);
+    }
+
+    trace!("Using the project environment at {}", wrapper.display());
+    Ok(Some(
+        wrapper
+            .to_str()
+            .ok_or("The project path is not valid Unicode")?
+            .to_string(),
+    ))
 }
 
 fn ignore_sigint() {

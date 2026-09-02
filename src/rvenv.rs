@@ -219,6 +219,61 @@ pub fn project_etc(root: &Path) -> PathBuf {
     root.join(RVENV_DIR).join(RVENV_ETC_SUBDIR)
 }
 
+/// `<root>/.rvenv/bin/R`, the wrapper that starts the environment's R.
+///
+/// This is what `rig run` executes instead of the default R: the wrapper
+/// carries the environment of [`rvenv_env_vars`], which a plain R binary or a
+/// symlink would not.
+pub fn project_r_wrapper(root: &Path) -> PathBuf {
+    project_bin(root).join(if cfg!(windows) { "R.exe" } else { "R" })
+}
+
+/// Why the project environment in `root` is not usable as it is, or `None` if
+/// it is up to date. Callers use this both to decide whether to run
+/// `rig proj sync` and to tell the user why they are waiting for one.
+pub fn rvenv_sync_needed(root: &Path) -> Result<Option<String>, Box<dyn Error>> {
+    let cfg = match read_rvenv_cfg(root)? {
+        None => return Ok(Some("the environment has not been created yet".to_string())),
+        Some(cfg) => cfg,
+    };
+
+    if !cfg.r_binary.exists() {
+        return Ok(Some(format!(
+            "R {} is not installed at {} any more",
+            cfg.r_version,
+            cfg.r_binary.display()
+        )));
+    }
+
+    let wrapper = project_r_wrapper(root);
+    if !wrapper.exists() {
+        return Ok(Some(format!("{} is missing", wrapper.display())));
+    }
+
+    let lock_path = root.join(RPROJ_LOCK_FILE);
+    if !lock_path.exists() {
+        return Ok(Some(format!("there is no {} yet", RPROJ_LOCK_FILE)));
+    }
+
+    let stamp_path = project_library(root).join(RVENV_SYNC_STAMP);
+    if !stamp_path.exists() {
+        return Ok(Some(
+            "the project library has not been synced yet".to_string(),
+        ));
+    }
+
+    // The stamp is a copy of the lock file `rig proj sync` installed from, so
+    // comparing the bytes is the whole staleness check.
+    if fs::read(&stamp_path)? != fs::read(&lock_path)? {
+        return Ok(Some(format!(
+            "{} has changed since the last sync",
+            RPROJ_LOCK_FILE
+        )));
+    }
+
+    Ok(None)
+}
+
 /// The project root at or above `start`: the nearest directory holding an
 /// `rproj.toml`, an `rproj.lock` or an `.rvenv` directory.
 pub fn find_project_root(start: &Path) -> Option<PathBuf> {
