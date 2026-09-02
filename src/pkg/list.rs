@@ -149,9 +149,9 @@ fn looks_like_path(lib: &str) -> bool {
 /// this is a report on what is installed, so a version rig cannot parse is
 /// still shown as it is.
 #[derive(Debug)]
-pub(super) struct InstalledPackage {
-    pub(super) package: String,
-    pub(super) version: String,
+pub(crate) struct InstalledPackage {
+    pub(crate) package: String,
+    pub(crate) version: String,
     /// The directory the package is installed in, i.e. the one holding its
     /// `DESCRIPTION`. Usually named after the package, but the `Package` field
     /// of the `DESCRIPTION` is what `package` reports, so the two can differ.
@@ -167,10 +167,10 @@ pub(super) struct InstalledPackage {
     /// The `RemoteHash` field, i.e. which upstream CRAN artifact this package
     /// was installed from. Only `rig pkg install` writes it, so it is unset for
     /// anything installed by R, pak or renv.
-    pub(super) hash: Option<String>,
+    pub(crate) hash: Option<String>,
     /// The `RemoteLinkingToHashes` field: what the package was compiled against,
     /// as `(package, version, sha256)`.
-    pub(super) linkingto: Vec<(String, String, String)>,
+    pub(crate) linkingto: Vec<(String, String, String)>,
 }
 
 #[cfg(test)]
@@ -204,7 +204,7 @@ impl InstalledPackage {
 /// (see [`crate::library::sc_library_get_list`]) live in the main library
 /// directory, and a package whose installation was interrupted has no
 /// `DESCRIPTION` yet.
-pub(super) fn read_installed(path: &Path) -> Result<Vec<InstalledPackage>, Box<dyn Error>> {
+pub(crate) fn read_installed(path: &Path) -> Result<Vec<InstalledPackage>, Box<dyn Error>> {
     debug!("Listing packages in {}", path.display());
 
     let entries = match std::fs::read_dir(path) {

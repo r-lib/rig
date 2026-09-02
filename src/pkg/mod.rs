@@ -20,8 +20,8 @@ use crate::repos::cranlike_metadata::{self, repos_get_packages, ArchivedPackage}
 use crate::textfmt::{reflow, wrap, write_field};
 
 pub(crate) mod deps;
-mod install;
-mod list;
+pub(crate) mod install;
+pub(crate) mod list;
 mod manifest;
 mod remove;
 #[cfg(test)]

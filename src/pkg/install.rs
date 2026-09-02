@@ -309,11 +309,11 @@ fn add_dev_deps(
 
 /// What rig decided to do about one package of the solution, and why.
 #[derive(Debug)]
-struct Planned<'a> {
-    package: &'a PakLockfilePackage,
-    install: bool,
+pub(crate) struct Planned<'a> {
+    pub(crate) package: &'a PakLockfilePackage,
+    pub(crate) install: bool,
     /// Why it is being installed, or why it is not. Reported, never acted on.
-    reason: String,
+    pub(crate) reason: String,
 }
 
 /// Which of the solved packages have to be installed into the library.
@@ -329,7 +329,7 @@ struct Planned<'a> {
 /// invalidates whatever was compiled against *those*. The coupling is
 /// `LinkingTo` only: an `Imports` dependency being replaced changes nothing
 /// about how its dependents were compiled.
-fn plan_installs<'a>(
+pub(crate) fn plan_installs<'a>(
     solved: &'a [PakLockfilePackage],
     installed: &[InstalledPackage],
     reinstall: bool,

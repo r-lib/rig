@@ -26,6 +26,8 @@ use crate::pak::{PakLockfile, PakLockfilePackage};
 use crate::pkg::deps::{
     dep_count, print_deps_json, print_deps_recursive, print_header, type_list, walk_deps,
 };
+use crate::pkg::install::plan_installs;
+use crate::pkg::list::read_installed;
 use crate::pkg::tree::proj_tree;
 use crate::platform::{detect_platform, parse_platform_string};
 use crate::renv::*;
@@ -502,20 +504,44 @@ fn sc_proj_sync(
     let lock: RprojLock = toml::from_str(&lock_content)?;
     let target = lock.targets.first().ok_or("rproj.lock has no targets")?;
 
-    // Download all packages
-    OUTPUT.status("Downloading packages");
-    info!("Downloading packages");
-    download_lockfile_packages(&target.packages)?;
-
-    // Get cache directory where packages were downloaded
-    let cache_dir = get_cache_dir()?;
-
     // Library path: --library, or the project venv's library by default
     let library_path = PathBuf::from(
         args.get_one::<String>("library")
             .map(|s| s.as_str())
             .unwrap_or(".rvenv/lib"),
     );
+
+    // A package already in the library, at the version and provenance the
+    // lockfile asks for, does not need to be downloaded or reinstalled.
+    let already_installed = if library_path.exists() {
+        read_installed(&library_path)?
+    } else {
+        vec![]
+    };
+    let plan = plan_installs(&target.packages, &already_installed, false);
+    let todo: Vec<&PakLockfilePackage> = plan
+        .iter()
+        .filter(|p| p.install)
+        .map(|p| p.package)
+        .collect();
+
+    if todo.is_empty() {
+        OUTPUT.success(&format!(
+            "Everything is up to date in {}",
+            library_path.display()
+        ));
+        info!("Nothing to install in {}", library_path.display());
+        return Ok(());
+    }
+
+    // Download only the packages that are actually going to be installed
+    OUTPUT.status("Downloading packages");
+    info!("Downloading packages");
+    let to_download: Vec<PakLockfilePackage> = todo.iter().map(|p| (*p).clone()).collect();
+    download_lockfile_packages(&to_download)?;
+
+    // Get cache directory where packages were downloaded
+    let cache_dir = get_cache_dir()?;
 
     // Ensure library directory exists
     fs::create_dir_all(&library_path)?;
@@ -526,12 +552,12 @@ fn sc_proj_sync(
         .map(|s| s.as_str())
         .unwrap_or("R");
 
-    // Build Vec<PackageInfo> from the target's package list
+    // Build Vec<PackageInfo> for the packages that need installing
     let built = BuiltCache::new(&target.r_version, r_binary);
-    let mut packages: Vec<PackageInfo> = Vec::new();
-    for pkg in &target.packages {
-        packages.push(lockfile_package_info(pkg, &cache_dir, built.as_ref()));
-    }
+    let packages: Vec<PackageInfo> = todo
+        .iter()
+        .map(|pkg| lockfile_package_info(pkg, &cache_dir, built.as_ref()))
+        .collect();
 
     // Set max concurrent installations
     let max_concurrent = args
@@ -541,13 +567,15 @@ fn sc_proj_sync(
 
     let total_packages = packages.len();
     OUTPUT.status(&format!(
-        "Installing {} packages to {}",
+        "Installing {} of {} packages to {}",
         total_packages,
+        target.packages.len(),
         library_path.display()
     ));
     info!(
-        "Installing {} packages to {}",
+        "Installing {} of {} packages to {}",
         total_packages,
+        target.packages.len(),
         library_path.display()
     );
 
