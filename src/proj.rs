@@ -37,6 +37,7 @@ use crate::resolve::resolve_versions;
 use crate::rproj::{Rproj, RprojLock, RprojLockTarget, RPROJ_LOCK_VERSION, RPROJ_MANIFEST_FILE};
 use crate::rvenv::{
     existing_targets, find_project_root, project_library, rvenv_init, write_sync_stamp,
+    RPROJ_LOCK_FILE,
 };
 use crate::solver::*;
 use crate::utils::create_parent_dir_if_needed;
@@ -262,11 +263,13 @@ fn proj_read_deps(input: &str, dev: bool) -> Result<Package, Box<dyn Error>> {
 }
 
 /// Read the project's `rproj.toml` manifest and return its name, version and
-/// dependencies, with the soft dependencies dropped unless `dev`.
+/// dependencies, with the soft dependencies dropped unless `dev`. The manifest
+/// is read from `root`, the project directory.
 fn proj_read_manifest_deps(
+    root: &Path,
     dev: bool,
 ) -> Result<(String, RPackageVersion, PackageDependencies), Box<dyn Error>> {
-    let path = Path::new(RPROJ_MANIFEST_FILE);
+    let path = root.join(RPROJ_MANIFEST_FILE);
     if !path.exists() {
         OUTPUT.error(&format!(
             "{} not found, run `rig proj init` first",
@@ -300,7 +303,7 @@ fn sc_proj_deps(
 ) -> Result<(), Box<dyn Error>> {
     let dev = args.get_flag("dev");
     let json = args.get_flag("json") || projargs.get_flag("json") || mainargs.get_flag("json");
-    let (name, version, pkg_deps) = proj_read_manifest_deps(dev)?;
+    let (name, version, pkg_deps) = proj_read_manifest_deps(Path::new("."), dev)?;
 
     if args.get_flag("recursive") {
         return proj_deps_recursive(&name, &version, &pkg_deps, json);
@@ -430,7 +433,7 @@ fn sc_proj_tree(
     let no_base = args.get_flag("no-base");
     let why = args.get_one::<String>("why").map(|s| s.as_str());
     let json = args.get_flag("json") || projargs.get_flag("json") || mainargs.get_flag("json");
-    let (name, version, pkg_deps) = proj_read_manifest_deps(dev)?;
+    let (name, version, pkg_deps) = proj_read_manifest_deps(Path::new("."), dev)?;
 
     proj_tree(
         &name,
@@ -578,29 +581,52 @@ fn solution_to_sorted_vec(
     vec
 }
 
+/// Everything `rig proj lock` takes from the command line. `rig proj sync`
+/// builds the default set of these when it has to create the lockfile itself.
+#[derive(Default)]
+struct ProjLockOptions {
+    r_version: Option<String>,
+    platform: Option<String>,
+    prefer_binary: Option<usize>,
+    dev: bool,
+    renv: bool,
+}
+
 fn sc_proj_lock(
     args: &ArgMatches,
     _libargs: &ArgMatches,
     _mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
-    let rver = if args.contains_id("r-version") {
-        args.get_one::<String>("r-version").unwrap().to_string()
-    } else {
-        match get_default_r_version()? {
+    let opts = ProjLockOptions {
+        r_version: args.get_one::<String>("r-version").cloned(),
+        platform: args.get_one::<String>("platform").cloned(),
+        prefer_binary: args.get_one::<usize>("prefer-binary").copied(),
+        dev: args.get_flag("dev"),
+        renv: args.get_flag("renv"),
+    };
+    proj_lock(Path::new("."), &opts)
+}
+
+/// Solve the dependencies of the project in `root` and write `rproj.lock`
+/// (and `renv.lock` with `--renv`) into it.
+fn proj_lock(root: &Path, opts: &ProjLockOptions) -> Result<(), Box<dyn Error>> {
+    let rver = match &opts.r_version {
+        Some(rv) => rv.to_string(),
+        None => match get_default_r_version()? {
             Some(rv) => rv,
             None => {
                 OUTPUT.error("Cannot determine R version, please specify it with --r-version.");
                 error!("Cannot determine R version, please specify it with --r-version.");
                 bail!("Cannot determine R version, please specify it with --r-version.")
             }
-        }
+        },
     };
 
     // Do this first, to report local errors early
-    let dev = args.get_flag("dev");
-    let (_name, _version, mut pkg_deps) = proj_read_manifest_deps(dev)?;
+    let dev = opts.dev;
+    let (_name, _version, mut pkg_deps) = proj_read_manifest_deps(root, dev)?;
 
-    if args.get_flag("renv") {
+    if opts.renv {
         pkg_deps.dependencies.push(DepVersionSpec {
             name: "renv".to_string(),
             constraints: vec![],
@@ -608,9 +634,9 @@ fn sc_proj_lock(
         });
     };
 
-    let target = proj_binary_target(args.get_one::<String>("platform"), &rver)?;
+    let target = proj_binary_target(opts.platform.as_ref(), &rver)?;
 
-    let prefer_binary = args.get_one::<usize>("prefer-binary").copied();
+    let prefer_binary = opts.prefer_binary;
     if prefer_binary.is_some() && target.is_none() {
         OUTPUT.warn("There are no binary packages to prefer, ignoring --prefer-binary");
         info!("Ignoring --prefer-binary: solving for source packages only");
@@ -625,9 +651,9 @@ fn sc_proj_lock(
     OUTPUT.success("Solved dependencies");
     info!("Solved dependencies");
 
-    if args.get_flag("renv") {
+    if opts.renv {
         let renv = REnvLockfile::from_solution(&registry, &solution);
-        fs::write("renv.lock", serde_json::to_string_pretty(&renv)?)?;
+        fs::write(root.join("renv.lock"), serde_json::to_string_pretty(&renv)?)?;
         OUTPUT.success("Written renv lockfile to renv.lock");
         info!("Written renv lockfile to renv.lock");
     }
@@ -645,7 +671,10 @@ fn sc_proj_lock(
             packages: lockfile.packages.clone(),
         }],
     };
-    fs::write("rproj.lock", toml::to_string_pretty(&rproj_lock)?)?;
+    fs::write(
+        root.join(RPROJ_LOCK_FILE),
+        toml::to_string_pretty(&rproj_lock)?,
+    )?;
     OUTPUT.success("Written project lockfile to rproj.lock");
     info!("Written project lockfile to rproj.lock");
 
@@ -695,7 +724,19 @@ fn sc_proj_sync(
     // always the first (and, today, only) entry `rig proj lock` wrote; the
     // "pick the entry matching this machine, hard error if none match" logic
     // for a real multi-target `rproj.lock` is follow-up work.
-    let lock_path = root.join("rproj.lock");
+    // No lockfile yet, so create one first, with the default options, instead
+    // of erroring out. `rig proj lock` reads the project's `rproj.toml`, and
+    // errors out itself if there is none.
+    let lock_path = root.join(RPROJ_LOCK_FILE);
+    if !lock_path.exists() {
+        OUTPUT.info(&format!(
+            "No {}, running `rig proj lock` first",
+            RPROJ_LOCK_FILE
+        ));
+        info!("No {}, running `rig proj lock` first", RPROJ_LOCK_FILE);
+        proj_lock(&root, &ProjLockOptions::default())?;
+    }
+
     let lock_content = fs::read_to_string(&lock_path)?;
     let lock: RprojLock = toml::from_str(&lock_content)?;
     let target = lock.targets.first().ok_or("rproj.lock has no targets")?;
