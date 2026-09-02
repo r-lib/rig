@@ -1422,7 +1422,7 @@ pub fn rig_app() -> Command {
                 .display_order(0)
                 .arg(
                     Arg::new("renv")
-                        .help("Output and renv.lock file")
+                        .help("Output an renv.lock file")
                         .long("renv")
                         .num_args(0)
                         .required(false),
