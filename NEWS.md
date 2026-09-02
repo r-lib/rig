@@ -1,4 +1,4 @@
-# rig 0.10.0 (not released yet)
+# rig 0.10.0-beta2
 
 * macOS user mode: `rig default` now sets the default R version correctly
   for newer RStudio versions. Also, `rig system allow-debugger-rstudio`
@@ -36,8 +36,6 @@
 
 * rig now uses a user-dependent download directory, to avoid interference
   between users.
-
-# rig 0.10.0-beta
 
 * rig now does not edit the shell startup files in admin mode,
   like rig 0.8.1 did on macOS. rig now only does this in user mode.
