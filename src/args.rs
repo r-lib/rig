@@ -1470,9 +1470,9 @@ pub fn rig_app() -> Command {
                         .required(false),
                 )
                 .arg(
-                    Arg::new("dev")
-                        .help("Include dev (development) dependencies")
-                        .long("dev")
+                    Arg::new("no-dev")
+                        .help("Leave out dev (development) dependencies")
+                        .long("no-dev")
                         .num_args(0)
                         .required(false),
                 ),

@@ -9,9 +9,9 @@ rig reads the project manifest, `rproj.toml`, in the current directory, and
 uses its built-in solver to find a compatible set of package versions from
 the configured repositories, without running R.
 
-Use `--r-version` to solve for a specific R version, `--dev` to include
-development dependencies, and `--renv` to also write the result as an
-`renv.lock` file.
+Development dependencies are included by default. Use `--r-version` to solve
+for a specific R version, `--no-dev` to leave out development dependencies,
+and `--renv` to also write the result as an `renv.lock` file.
 
 `rproj.lock` currently records a single `(R version, platform)` target;
 [`rig proj sync`](#rig-proj-sync) installs that target. Solving for several

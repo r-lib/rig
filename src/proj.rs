@@ -583,13 +583,25 @@ fn solution_to_sorted_vec(
 
 /// Everything `rig proj lock` takes from the command line. `rig proj sync`
 /// builds the default set of these when it has to create the lockfile itself.
-#[derive(Default)]
 struct ProjLockOptions {
     r_version: Option<String>,
     platform: Option<String>,
     prefer_binary: Option<usize>,
     dev: bool,
     renv: bool,
+}
+
+impl Default for ProjLockOptions {
+    fn default() -> Self {
+        ProjLockOptions {
+            r_version: None,
+            platform: None,
+            prefer_binary: None,
+            // dev dependencies are included unless --no-dev is given
+            dev: true,
+            renv: false,
+        }
+    }
 }
 
 fn sc_proj_lock(
@@ -601,7 +613,7 @@ fn sc_proj_lock(
         r_version: args.get_one::<String>("r-version").cloned(),
         platform: args.get_one::<String>("platform").cloned(),
         prefer_binary: args.get_one::<usize>("prefer-binary").copied(),
-        dev: args.get_flag("dev"),
+        dev: !args.get_flag("no-dev"),
         renv: args.get_flag("renv"),
     };
     proj_lock(Path::new("."), &opts)
