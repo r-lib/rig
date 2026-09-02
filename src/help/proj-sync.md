@@ -49,8 +49,13 @@ machine-specific, is not committed, and is rewritten on every sync:
 - `.rvenv/rvenv.cfg`, which records the R version, the platform and the
   architecture the environment was built for. rig warns when it syncs an
   environment that was built for a different R.
-- `.rvenv/etc/repositories`, the repositories from `rproj.toml` (CRAN, if it
-  names none), which the wrappers point `R_REPOSITORIES` at.
+- `.rvenv/etc/repositories`, which the wrappers point `R_REPOSITORIES` at. It
+  lists P3M first, at the binary URL of the platform the lock file was solved
+  for, so that an `install.packages()` in the environment installs the same
+  binary packages `rig proj sync` does. The repositories from `rproj.toml`
+  follow it, at lower precedence. A lock file solved for source packages only
+  has no P3M entry, and then the file holds the `rproj.toml` repositories
+  alone (CRAN, if it names none).
 
 `R --vanilla` ignores the project's `.Renviron`, so it only stays inside the
 project when started through the wrappers.

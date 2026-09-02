@@ -58,6 +58,7 @@ use std::path::{Path, PathBuf};
 use simple_error::bail;
 
 use crate::hardcoded::{HC_RVENV_SHIM_35, HC_RVENV_SHIM_40, HC_RVENV_SHIM_LT_35};
+use crate::repos::binaries::ppm_url;
 use crate::repositories::{write_repositories_file, RepoFileEntry, RepositoriesContents};
 use crate::rproj::{Repository as ManifestRepository, RPROJ_MANIFEST_FILE};
 use crate::utils::write_atomically;
@@ -88,6 +89,34 @@ const RVENV_DEFAULT_REPO_URL: &str = "https://cloud.r-project.org";
 /// file under. R starts with an unresolved `CRAN = "@CRAN@"` entry in
 /// `getOption("repos")`, and only a repository of that name replaces it.
 const RVENV_CRAN_NAME: &str = "CRAN";
+
+/// The menu name of the P3M entry in the repositories file.
+const PPM_MENU_NAME: &str = "Posit Public Package Manager";
+
+/// The P3M repository a lock file target installs from, or `None` for a
+/// source-only lock file, which has no P3M target.
+///
+/// The lock file's platform is a P3M target name, `<platform>-<arch>`, e.g.
+/// `macos-arm64` or `jammy-x86_64`, and the platform part is exactly what
+/// goes into a Linux binary URL. macOS and Windows have no such path
+/// component: their binaries are served from the top-level repository. A
+/// source-only solve records the machine's architecture instead, e.g.
+/// `x86_64`, with no P3M target in it.
+///
+/// The URL is the `latest` snapshot rather than the dated snapshot the lock
+/// file's package URLs point at: an `install.packages()` in the environment
+/// is by definition installing something the lock file does not have, so it
+/// should see current versions.
+fn ppm_repo_url(platform: &str) -> Option<String> {
+    let target = platform
+        .strip_suffix("-x86_64")
+        .or_else(|| platform.strip_suffix("-arm64"))?;
+    match target {
+        "" => None,
+        "macos" | "windows" => Some(format!("{}/cran/latest", ppm_url())),
+        linux => Some(format!("{}/cran/__linux__/{}/latest", ppm_url(), linux)),
+    }
+}
 
 /// The stamp file `rig proj sync` writes into the project library: a copy of
 /// the lock file it installed from. The shim package compares it to
@@ -537,7 +566,7 @@ pub fn rvenv_env_vars(venv: &Path) -> Vec<(String, String)> {
 /// `R_REPOSITORIES` is a plain environment variable R reads at startup, so it
 /// survives `--vanilla` and is inherited by child processes -- unlike
 /// `options(repos = )`, which neither does.
-fn repositories_contents(repos: &[ManifestRepository]) -> RepositoriesContents {
+fn repositories_contents(platform: &str, repos: &[ManifestRepository]) -> RepositoriesContents {
     let entry = |name: &str, url: &str, menu: &str| RepoFileEntry {
         name: name.to_string(),
         description: menu.to_string(),
@@ -547,27 +576,46 @@ fn repositories_contents(repos: &[ManifestRepository]) -> RepositoriesContents {
         win_binary: true,
         mac_binary: true,
     };
-    let data = if repos.is_empty() {
-        vec![entry(RVENV_CRAN_NAME, RVENV_DEFAULT_REPO_URL, "CRAN")]
-    } else {
-        // Whatever the project's first (highest precedence) repository is
-        // called, it goes into the file as `CRAN`, keeping its own name as
-        // the menu name. R starts with an unresolved `CRAN = "@CRAN@"`
-        // placeholder in `getOption("repos")`, and only an entry of that
-        // name replaces it -- leave the placeholder in, and
-        // `install.packages()` fails with "trying to use CRAN without
-        // setting a mirror". Naming the main repository `CRAN` is the usual
-        // R idiom for this, the same thing `options(repos = c(CRAN = ...))`
-        // does.
-        repos
-            .iter()
-            .enumerate()
-            .map(|(i, r)| {
-                let name = if i == 0 { RVENV_CRAN_NAME } else { &r.name };
-                entry(name, &r.url, &r.name)
-            })
-            .collect()
-    };
+
+    // The first entry goes into the file as `CRAN`, keeping its own name as
+    // the menu name. R starts with an unresolved `CRAN = "@CRAN@"`
+    // placeholder in `getOption("repos")`, and only an entry of that name
+    // replaces it -- leave the placeholder in, and `install.packages()`
+    // fails with "trying to use CRAN without setting a mirror". Naming the
+    // main repository `CRAN` is the usual R idiom for this, the same thing
+    // `options(repos = c(CRAN = ...))` does.
+    let mut data = vec![];
+    match ppm_repo_url(platform) {
+        // `rig proj sync` installs P3M binaries for the lock file's target,
+        // so an `install.packages()` in the environment should reach the
+        // same packages. That means P3M first, at the target's own binary
+        // URL -- the project's own repositories keep their names and follow
+        // it at lower precedence.
+        Some(url) => data.push(entry(RVENV_CRAN_NAME, &url, PPM_MENU_NAME)),
+        // A source-only lock file has no P3M target, so there is nothing to
+        // prefer over what the project asks for.
+        None if repos.is_empty() => {
+            data.push(entry(RVENV_CRAN_NAME, RVENV_DEFAULT_REPO_URL, "CRAN"))
+        }
+        None => {}
+    }
+    let first_is_ppm = !data.is_empty();
+    for (i, r) in repos.iter().enumerate() {
+        let name = if i == 0 && !first_is_ppm {
+            RVENV_CRAN_NAME
+        } else {
+            &r.name
+        };
+        // A repositories file with two entries of the same name is a
+        // `getOption("repos")` with a duplicated name, which R handles
+        // badly. The higher-precedence entry wins; a project repository
+        // called `CRAN` is dropped in favor of P3M, which serves the same
+        // packages.
+        if data.iter().any(|e: &RepoFileEntry| e.name == name) {
+            continue;
+        }
+        data.push(entry(name, &r.url, &r.name));
+    }
     RepositoriesContents {
         data,
         comments: vec![(
@@ -657,7 +705,7 @@ pub fn rvenv_sync(
 
     let repos_path = etc.join(RVENV_REPOS_FILE);
     write_repositories_file(
-        repositories_contents(repos),
+        repositories_contents(&cfg.platform, repos),
         repos_path
             .to_str()
             .ok_or("The project path is not valid Unicode")?,
@@ -952,7 +1000,7 @@ mod tests {
             r_version: "4.6-arm64".to_string(),
             r_minor: "4.6".to_string(),
             r_binary: PathBuf::from("/opt/R/4.6/bin/R"),
-            platform: "aarch64-apple-darwin20".to_string(),
+            platform: "macos-arm64".to_string(),
             r_arch: "arm64".to_string(),
             rig_version: "0.10.0".to_string(),
         }
@@ -1103,17 +1151,58 @@ mod tests {
             .lines()
             .skip(2)
             .map(|line| {
-                let f: Vec<&str> = line.split('\t').collect();
-                (f[0].to_string(), f[1].to_string(), f[2].to_string())
+                // Fields with a space in them are quoted in the file, as
+                // base R's own `repositories` is.
+                let f: Vec<String> = line
+                    .split('\t')
+                    .map(|v| v.trim_matches('"').to_string())
+                    .collect();
+                (f[0].clone(), f[1].clone(), f[2].clone())
             })
             .collect()
     }
 
+    /// A [`RvenvCfg`] for another P3M target.
+    fn test_cfg_for(platform: &str) -> RvenvCfg {
+        RvenvCfg {
+            platform: platform.to_string(),
+            ..test_cfg()
+        }
+    }
+
     #[test]
-    fn the_default_repository_is_cran() {
+    fn the_default_repository_is_the_targets_ppm() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         rvenv_sync(root, &test_cfg(), &[]).unwrap();
+        assert_eq!(
+            written_repositories(root),
+            vec![(
+                "CRAN".to_string(),
+                PPM_MENU_NAME.to_string(),
+                format!("{}/cran/latest", ppm_url())
+            )]
+        );
+    }
+
+    #[test]
+    fn a_linux_target_gets_its_own_binary_url() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        rvenv_sync(root, &test_cfg_for("jammy-x86_64"), &[]).unwrap();
+        assert_eq!(
+            written_repositories(root)[0].2,
+            format!("{}/cran/__linux__/jammy/latest", ppm_url())
+        );
+    }
+
+    #[test]
+    fn a_source_only_target_falls_back_to_cran() {
+        // A source-only lock file records the machine's architecture, not a
+        // P3M target, so there are no binaries to install from.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        rvenv_sync(root, &test_cfg_for("x86_64"), &[]).unwrap();
         assert_eq!(
             written_repositories(root),
             vec![(
@@ -1125,7 +1214,7 @@ mod tests {
     }
 
     #[test]
-    fn the_first_repository_is_written_as_cran() {
+    fn the_project_repositories_follow_ppm() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let repos = vec![
@@ -1139,10 +1228,51 @@ mod tests {
             },
         ];
         rvenv_sync(root, &test_cfg(), &repos).unwrap();
-        // The first one is called CRAN in the file, whatever the manifest
-        // calls it: R replaces its own `@CRAN@` placeholder with an entry of
-        // that name only, and a leftover placeholder breaks
-        // `install.packages()`. Its own name survives as the menu name.
+        // `rig proj sync` installs P3M binaries, so an `install.packages()`
+        // in the environment installs from P3M as well. The project's own
+        // repositories keep their names and follow it.
+        assert_eq!(
+            written_repositories(root),
+            vec![
+                (
+                    "CRAN".to_string(),
+                    PPM_MENU_NAME.to_string(),
+                    format!("{}/cran/latest", ppm_url())
+                ),
+                (
+                    "internal".to_string(),
+                    "internal".to_string(),
+                    "https://example.com/internal".to_string()
+                ),
+                (
+                    "extra".to_string(),
+                    "extra".to_string(),
+                    "https://example.com/extra".to_string()
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_first_repository_is_written_as_cran_without_ppm() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let repos = vec![
+            ManifestRepository {
+                name: "internal".to_string(),
+                url: "https://example.com/internal".to_string(),
+            },
+            ManifestRepository {
+                name: "extra".to_string(),
+                url: "https://example.com/extra".to_string(),
+            },
+        ];
+        rvenv_sync(root, &test_cfg_for("x86_64"), &repos).unwrap();
+        // Without a P3M entry the first project repository is called CRAN in
+        // the file, whatever the manifest calls it: R replaces its own
+        // `@CRAN@` placeholder with an entry of that name only, and a
+        // leftover placeholder breaks `install.packages()`. Its own name
+        // survives as the menu name.
         assert_eq!(
             written_repositories(root),
             vec![
@@ -1157,6 +1287,25 @@ mod tests {
                     "https://example.com/extra".to_string()
                 ),
             ]
+        );
+    }
+
+    #[test]
+    fn a_project_repository_called_cran_does_not_duplicate_the_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let repos = vec![ManifestRepository {
+            name: "CRAN".to_string(),
+            url: "https://cran.r-project.org".to_string(),
+        }];
+        rvenv_sync(root, &test_cfg(), &repos).unwrap();
+        assert_eq!(
+            written_repositories(root),
+            vec![(
+                "CRAN".to_string(),
+                PPM_MENU_NAME.to_string(),
+                format!("{}/cran/latest", ppm_url())
+            )]
         );
     }
 
