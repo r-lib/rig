@@ -48,9 +48,9 @@ ul.task-list li input[type="checkbox"] {
 <link href="site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="site_libs/bootstrap/bootstrap-b206b9f871adaf04482dbc5f635fb1e6.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="site_libs/bootstrap/bootstrap-dark-303e532fb61c418e3267ba9f761738ed.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
-<link href="site_libs/bootstrap/bootstrap-b206b9f871adaf04482dbc5f635fb1e6.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-95a91974fe9d248b29780adf9fd46533.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-dark-fd0a5ac14ffd32c081ed60d68265672b.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<link href="site_libs/bootstrap/bootstrap-95a91974fe9d248b29780adf9fd46533.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -573,6 +573,7 @@ ul.task-list li input[type="checkbox"] {
 <section id="rig-0.10.0-not-released-yet" class="level1">
 <h1>rig 0.10.0 (not released yet)</h1>
 <ul>
+<li><p>macOS user mode: <code>rig default</code> now sets the default R version correctly for newer RStudio versions. Also, <code>rig system allow-debugger-rstudio</code> now works for newer RStudio versions.</p></li>
 <li><p>On Windows rig now creates <code>.exe</code> shims instead of <code>bat</code> shims. With <code>.exe</code> shims it is easier to pass command line arguments to <code>R</code> and <code>Rscript</code>. In particular, <code>Rscript -e &lt;code&gt;</code> now works if <code>&lt;code&gt;</code> has line breaks. Call <code>rig system make-links</code> to create all <code>.exe</code> shims and remove the <code>.bat</code> shims. If you hardcoded shims with a <code>.bat</code> extension, change them to <code>.exe</code> or remove the extension completely (#362).</p></li>
 <li><p>New <code>rig ppm</code> command queries Posit Package Manager.</p></li>
 <li><p>New <code>rig repos status</code> checks the configured package repositories.</p></li>
