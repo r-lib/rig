@@ -85,8 +85,23 @@ mod escalate;
 
 // ------------------------------------------------------------------------
 
+// `rig_app()` builds the whole clap command tree in a single function, so in an
+// unoptimized build its stack frame is larger than the 1 MB main thread stack we
+// get on Windows, and `rig` overflows the stack before it parses its arguments.
+// Do the work on a thread with a bigger stack. (build.rs needs the same
+// workaround for the completion generator.)
+const STACK_SIZE: usize = 32 * 1024 * 1024;
+
 fn main() {
-    let exit_code = main_();
+    let exit_code = std::thread::Builder::new()
+        .name("main".to_string())
+        .stack_size(STACK_SIZE)
+        .spawn(main_)
+        .expect("failed to spawn the main thread")
+        .join()
+        // The panic itself was already reported by the default panic hook, so
+        // just use the exit code the runtime would have used for it.
+        .unwrap_or(101);
     std::process::exit(exit_code);
 }
 
