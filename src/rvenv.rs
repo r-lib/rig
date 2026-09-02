@@ -1315,13 +1315,18 @@ mod tests {
         // library, all of which have to survive `--vanilla`.
         let vars: std::collections::HashMap<String, String> =
             rvenv_env_vars(Path::new("/p/.rvenv")).into_iter().collect();
+        // `rvenv_env_vars()` joins with the native separator, `\` on Windows.
+        let sep = std::path::MAIN_SEPARATOR;
         assert_eq!(vars["RVENV"], "/p/.rvenv");
-        assert_eq!(vars["R_LIBS_USER"], "/p/.rvenv/lib");
+        assert_eq!(vars["R_LIBS_USER"], format!("/p/.rvenv{}lib", sep));
         // Empty, so that the project library stays .libPaths()[1].
         assert_eq!(vars["R_LIBS"], "");
         // Not empty: an empty R_LIBS_SITE does not disable the site library
         // on every R version.
         assert_eq!(vars["R_LIBS_SITE"], RVENV_NO_SITE);
-        assert_eq!(vars["R_REPOSITORIES"], "/p/.rvenv/etc/repositories");
+        assert_eq!(
+            vars["R_REPOSITORIES"],
+            format!("/p/.rvenv{}etc{}repositories", sep, sep)
+        );
     }
 }

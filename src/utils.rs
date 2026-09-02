@@ -160,7 +160,9 @@ pub fn write_executable(path: &Path, bytes: &[u8]) -> Result<(), Box<dyn Error>>
     // it back.
     let current = umask(Mode::from_bits_truncate(0o022));
     umask(current);
-    // `Mode::bits()` is `mode_t`, which is u16 on macOS and u32 on Linux.
+    // `Mode::bits()` is `mode_t`, which is u16 on macOS and u32 on Linux, so
+    // the conversion is a no-op on Linux.
+    #[allow(clippy::useless_conversion)]
     let mode = u32::from(0o777 & !current.bits());
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))?;
     Ok(())

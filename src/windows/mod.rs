@@ -59,6 +59,16 @@ fn find_shim_template() -> Result<PathBuf, Box<dyn Error>> {
     if bundled.is_file() {
         return Ok(bundled);
     }
+    // Test binaries live in `target/<profile>/deps`, one level below the
+    // `rig-shim.exe` cargo builds for the `rig-shim` bin target.
+    if dir.file_name() == Some(std::ffi::OsStr::new("deps")) {
+        if let Some(parent) = dir.parent() {
+            let sibling = parent.join("rig-shim.exe");
+            if sibling.is_file() {
+                return Ok(sibling);
+            }
+        }
+    }
     bail!(
         "Cannot find the shim template rig-shim.exe next to rig ({}).",
         dir.display()
