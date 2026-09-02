@@ -1,5 +1,5 @@
 use std::cell::Cell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
@@ -26,7 +26,7 @@ use crate::pak::{PakLockfile, PakLockfilePackage};
 use crate::pkg::deps::{
     dep_count, print_deps_json, print_deps_recursive, print_header, type_list, walk_deps,
 };
-use crate::pkg::install::plan_installs;
+use crate::pkg::install::{plan_installs, print_plan};
 use crate::pkg::list::read_installed;
 use crate::pkg::tree::proj_tree;
 use crate::platform::{detect_platform, parse_platform_string};
@@ -519,6 +519,7 @@ fn sc_proj_sync(
         vec![]
     };
     let plan = plan_installs(&target.packages, &already_installed, false);
+    print_plan(&format!("({})", library_path.display()), &plan);
     let todo: Vec<&PakLockfilePackage> = plan
         .iter()
         .filter(|p| p.install)
@@ -554,9 +555,15 @@ fn sc_proj_sync(
 
     // Build Vec<PackageInfo> for the packages that need installing
     let built = BuiltCache::new(&target.r_version, r_binary);
+    let installing: HashSet<&str> = todo.iter().map(|p| p.package.as_str()).collect();
     let packages: Vec<PackageInfo> = todo
         .iter()
-        .map(|pkg| lockfile_package_info(pkg, &cache_dir, built.as_ref()))
+        .map(|pkg| {
+            let mut info = lockfile_package_info(pkg, &cache_dir, built.as_ref());
+            info.dependencies
+                .retain(|d| installing.contains(d.as_str()));
+            info
+        })
         .collect();
 
     // Set max concurrent installations

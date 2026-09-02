@@ -123,7 +123,7 @@ pub fn sc_pkg_install(
     if json {
         print_plan_json(&plan)?;
     } else {
-        print_plan(&lib, &plan);
+        print_plan(&lib.tag(), &plan);
     }
 
     if dry_run {
@@ -462,13 +462,13 @@ fn needs_install(
 // Reporting
 
 /// Print the plan as a table: what is being installed, what is not, and why.
-fn print_plan(lib: &ResolvedLibrary, plan: &[Planned]) {
+pub(crate) fn print_plan(tag: &str, plan: &[Planned]) {
     let n = plan.iter().filter(|p| p.install).count();
     OUTPUT.println(&format!(
         "{} of {} packages to install {}",
         n,
         plan.len(),
-        lib.tag()
+        tag
     ));
 
     let mut tab = Table::new("{:<}  {:<}  {:<}  {:<}  {:<}");
@@ -490,7 +490,7 @@ fn print_plan(lib: &ResolvedLibrary, plan: &[Planned]) {
 }
 
 /// Print the plan as a JSON array, one object per package of the solution.
-fn print_plan_json(plan: &[Planned]) -> Result<(), Box<dyn Error>> {
+pub(crate) fn print_plan_json(plan: &[Planned]) -> Result<(), Box<dyn Error>> {
     #[derive(serde::Serialize)]
     struct PlanEntry<'a> {
         package: &'a str,
