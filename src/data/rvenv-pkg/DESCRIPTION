@@ -1,0 +1,13 @@
+Package: rig
+Title: Project Library Activation Shim
+Version: 0.1.0
+Author: Gabor Csardi
+Maintainer: Gabor Csardi <csardi.gabor@gmail.com>
+Description: Loaded automatically via R_DEFAULT_PACKAGES from a project's
+    .Renviron file. Resolves the project's relative library path to an
+    absolute one, so that child R processes inherit it, and warns if the
+    project has not been synced yet. This package is generated and installed
+    by rig, the R installation manager; do not edit it.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Depends: R (>= 3.0.0)

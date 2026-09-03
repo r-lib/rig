@@ -1217,6 +1217,13 @@ pub fn rig_app() -> Command {
                 .required(false),
         )
         .arg(
+            Arg::new("no-project")
+                .help("Ignore the project environment, use the default R version")
+                .long("no-project")
+                .action(clap::ArgAction::SetTrue)
+                .required(false),
+        )
+        .arg(
             Arg::new("app-type")
                 .help("Explicitly specify app type to run")
                 .short('t')
@@ -1316,18 +1323,46 @@ pub fn rig_app() -> Command {
                 .required(false),
         )
         .subcommand(
-            Command::new("deps")
-                .about(ABOUT_PROJ_DEPS)
-                .long_about(HELP_PROJ_DEPS)
+            Command::new("init")
+                .about(ABOUT_PROJ_INIT)
+                .long_about(HELP_PROJ_INIT)
+                .display_order(0)
+                .arg(
+                    Arg::new("force")
+                        .help("Overwrite existing project files")
+                        .long("force")
+                        .short('f')
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version of the project (default: the default R version, or the current R release)")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("import")
+                .about(ABOUT_PROJ_IMPORT)
+                .long_about(HELP_PROJ_IMPORT)
                 .display_order(0)
                 .arg(
                     Arg::new("input")
-                        .help("Project file to solve (e.g. DESCRIPTION)")
+                        .help("DESCRIPTION file to import (e.g. DESCRIPTION)")
                         .long("input")
                         .short('i')
                         .num_args(1)
                         .required(false),
-                )
+                ),
+        )
+        .subcommand(
+            Command::new("deps")
+                .about(ABOUT_PROJ_DEPS)
+                .long_about(HELP_PROJ_DEPS)
+                .display_order(0)
                 .arg(
                     Arg::new("recursive")
                         .help("Show recursive (transitive) dependencies")
@@ -1356,14 +1391,6 @@ pub fn rig_app() -> Command {
                 .about(ABOUT_PROJ_TREE)
                 .long_about(HELP_PROJ_TREE)
                 .display_order(0)
-                .arg(
-                    Arg::new("input")
-                        .help("Project file to solve (e.g. DESCRIPTION)")
-                        .long("input")
-                        .short('i')
-                        .num_args(1)
-                        .required(false),
-                )
                 .arg(
                     Arg::new("dev")
                         .help("Include dev (development) dependencies")
@@ -1396,21 +1423,13 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
-            Command::new("solve")
-                .about(ABOUT_PROJ_SOLVE)
-                .long_about(HELP_PROJ_SOLVE)
+            Command::new("lock")
+                .about(ABOUT_PROJ_LOCK)
+                .long_about(HELP_PROJ_LOCK)
                 .display_order(0)
                 .arg(
-                    Arg::new("input")
-                        .help("Project file to solve (e.g. DESCRIPTION)")
-                        .long("input")
-                        .short('i')
-                        .num_args(1)
-                        .required(false),
-                )
-                .arg(
                     Arg::new("renv")
-                        .help("Output and renv.lock file")
+                        .help("Output an renv.lock file")
                         .long("renv")
                         .num_args(0)
                         .required(false),
@@ -1458,39 +1477,52 @@ pub fn rig_app() -> Command {
                         .required(false),
                 )
                 .arg(
-                    Arg::new("dev")
-                        .help("Include dev (development) dependencies")
-                        .long("dev")
+                    Arg::new("no-dev")
+                        .help("Leave out dev (development) dependencies")
+                        .long("no-dev")
                         .num_args(0)
                         .required(false),
                 ),
         )
         .subcommand(
-            Command::new("deploy")
-                .about(ABOUT_PROJ_DEPLOY)
-                .long_about(HELP_PROJ_DEPLOY)
+            Command::new("sync")
+                .about(ABOUT_PROJ_SYNC)
+                .long_about(HELP_PROJ_SYNC)
                 .display_order(0)
                 .arg(
                     Arg::new("library")
-                        .help("Library path where packages should be installed")
+                        .help(
+                            "Library path where packages should be installed \
+                               (default: .rvenv/lib)",
+                        )
                         .long("library")
                         .short('l')
-                        .num_args(1)
-                        .required(true),
-                )
-                .arg(
-                    Arg::new("r-binary")
-                        .help("Path to R binary (default: R)")
-                        .long("r-binary")
                         .num_args(1)
                         .required(false),
                 )
                 .arg(
+                    Arg::new("no-install-r")
+                        .help(
+                            "Fail if the R version the lockfile needs is not installed,\n\
+                            instead of installing it",
+                        )
+                        .long("no-install-r")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
                     Arg::new("max-concurrent")
-                        .help("Maximum number of concurrent installations (default: 4)")
+                        .help("Maximum number of concurrent installations (default: 8)")
                         .long("max-concurrent")
                         .num_args(1)
                         .value_parser(clap::value_parser!(usize))
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("no-dev")
+                        .help("Do not install dev (development) dependencies")
+                        .long("no-dev")
+                        .num_args(0)
                         .required(false),
                 ),
         );

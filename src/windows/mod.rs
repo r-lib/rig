@@ -59,10 +59,44 @@ fn find_shim_template() -> Result<PathBuf, Box<dyn Error>> {
     if bundled.is_file() {
         return Ok(bundled);
     }
+    // Test binaries live in `target/<profile>/deps`, one level below the
+    // `rig-shim.exe` cargo builds for the `rig-shim` bin target.
+    if dir.file_name() == Some(std::ffi::OsStr::new("deps")) {
+        if let Some(parent) = dir.parent() {
+            let sibling = parent.join("rig-shim.exe");
+            if sibling.is_file() {
+                return Ok(sibling);
+            }
+        }
+    }
+    // `cargo test` compiles the unit tests of every bin target, but it does
+    // not build the `rig-shim` bin itself, so there is no real template to
+    // copy. Nothing in the test suite runs a shim, only checks the bytes rig
+    // appends to it, so a stub template does.
+    #[cfg(test)]
+    if let Ok(stub) = test_shim_template() {
+        return Ok(stub);
+    }
     bail!(
         "Cannot find the shim template rig-shim.exe next to rig ({}).",
         dir.display()
     )
+}
+
+#[cfg(test)]
+fn test_shim_template() -> Result<PathBuf, Box<dyn Error>> {
+    static STUB: std::sync::OnceLock<Result<(tempfile::TempDir, PathBuf), String>> =
+        std::sync::OnceLock::new();
+    let stub = STUB.get_or_init(|| {
+        let dir = tempfile::tempdir().map_err(|err| err.to_string())?;
+        let path = dir.path().join("rig-shim.exe");
+        std::fs::write(&path, b"stub shim template").map_err(|err| err.to_string())?;
+        Ok((dir, path))
+    });
+    match stub {
+        Ok((_, path)) => Ok(path.clone()),
+        Err(err) => bail!("Cannot create a stub shim template: {}", err),
+    }
 }
 
 // Write (or overwrite) a quick-link `.exe` at `path`, forwarding to `target`
@@ -77,6 +111,24 @@ pub(crate) fn write_shim_link(
 ) -> Result<(), Box<dyn Error>> {
     let template = std::fs::read(find_shim_template()?)?;
     let bytes = crate::shim_format::build_shim_bytes(&template, target, marker);
+    std::fs::write(path, bytes)?;
+    Ok(())
+}
+
+// Same as `write_shim_link`, but also bakes in a list of environment
+// variables for the shim to set before forwarding to `target`. Used for
+// `.rvenv\bin\R.exe` / `Rscript.exe`, which need to force
+// `R_LIBS_USER`/`R_LIBS_SITE`/`R_REPOSITORIES`/`RVENV`, the Windows
+// equivalent of the `export`s in the Unix `.rvenv/bin/R` wrapper script.
+#[allow(dead_code)] // wired up once `rig proj sync` lands on Windows
+pub(crate) fn write_shim_link_env(
+    path: &Path,
+    target: &str,
+    marker: &str,
+    envs: &[(String, String)],
+) -> Result<(), Box<dyn Error>> {
+    let template = std::fs::read(find_shim_template()?)?;
+    let bytes = crate::shim_format::build_shim_bytes_env(&template, target, marker, envs);
     std::fs::write(path, bytes)?;
     Ok(())
 }

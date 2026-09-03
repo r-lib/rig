@@ -3,7 +3,7 @@
 //! The command is a solve followed by a download followed by an unpack. The
 //! solve is the same one [`crate::proj`] runs for a project, with the packages
 //! named on the command line standing in for a `DESCRIPTION`; the download and
-//! the install are the same code `rig proj deploy` uses. What is specific to
+//! the install are the same code `rig proj sync` uses. What is specific to
 //! this command is the third step in between: deciding which of the solved
 //! packages actually have to be installed, because the library already holds
 //! the rest.
@@ -54,7 +54,7 @@ use crate::solver::{is_base_package, PackageVersionLoader};
 use super::deps::root_package;
 use super::list::{read_installed, resolve_library, InstalledPackage, ResolvedLibrary};
 
-/// How many packages are installed at once. The same default `rig proj deploy`
+/// How many packages are installed at once. The same default `rig proj sync`
 /// uses.
 const MAX_CONCURRENT: usize = 8;
 
@@ -123,7 +123,7 @@ pub fn sc_pkg_install(
     if json {
         print_plan_json(&plan)?;
     } else {
-        print_plan(&lib, &plan);
+        print_plan(&lib.tag(), &plan);
     }
 
     if dry_run {
@@ -150,13 +150,7 @@ pub fn sc_pkg_install(
         bail!("{}", library_error(&lib, err));
     }
 
-    let to_download = PakLockfile {
-        lockfile_version: lockfile.lockfile_version,
-        os: lockfile.os.clone(),
-        r_version: lockfile.r_version.clone(),
-        platform: lockfile.platform.clone(),
-        packages: todo.iter().map(|p| (*p).clone()).collect(),
-    };
+    let to_download: Vec<PakLockfilePackage> = todo.iter().map(|p| (*p).clone()).collect();
     download_lockfile_packages(&to_download)?;
 
     let cache_dir = get_cache_dir()?;
@@ -315,11 +309,11 @@ fn add_dev_deps(
 
 /// What rig decided to do about one package of the solution, and why.
 #[derive(Debug)]
-struct Planned<'a> {
-    package: &'a PakLockfilePackage,
-    install: bool,
+pub(crate) struct Planned<'a> {
+    pub(crate) package: &'a PakLockfilePackage,
+    pub(crate) install: bool,
     /// Why it is being installed, or why it is not. Reported, never acted on.
-    reason: String,
+    pub(crate) reason: String,
 }
 
 /// Which of the solved packages have to be installed into the library.
@@ -335,7 +329,7 @@ struct Planned<'a> {
 /// invalidates whatever was compiled against *those*. The coupling is
 /// `LinkingTo` only: an `Imports` dependency being replaced changes nothing
 /// about how its dependents were compiled.
-fn plan_installs<'a>(
+pub(crate) fn plan_installs<'a>(
     solved: &'a [PakLockfilePackage],
     installed: &[InstalledPackage],
     reinstall: bool,
@@ -468,13 +462,13 @@ fn needs_install(
 // Reporting
 
 /// Print the plan as a table: what is being installed, what is not, and why.
-fn print_plan(lib: &ResolvedLibrary, plan: &[Planned]) {
+pub(crate) fn print_plan(tag: &str, plan: &[Planned]) {
     let n = plan.iter().filter(|p| p.install).count();
     OUTPUT.println(&format!(
         "{} of {} packages to install {}",
         n,
         plan.len(),
-        lib.tag()
+        tag
     ));
 
     let mut tab = Table::new("{:<}  {:<}  {:<}  {:<}  {:<}");
@@ -496,7 +490,7 @@ fn print_plan(lib: &ResolvedLibrary, plan: &[Planned]) {
 }
 
 /// Print the plan as a JSON array, one object per package of the solution.
-fn print_plan_json(plan: &[Planned]) -> Result<(), Box<dyn Error>> {
+pub(crate) fn print_plan_json(plan: &[Planned]) -> Result<(), Box<dyn Error>> {
     #[derive(serde::Serialize)]
     struct PlanEntry<'a> {
         package: &'a str,

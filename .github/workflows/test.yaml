@@ -79,6 +79,7 @@ jobs:
         cargo test
         cargo test -p xtask
         cargo xtask gen-help --check
+        cargo xtask gen-rvenv-shim --check
 
     - name: Build rig
       run: |

@@ -146,7 +146,7 @@ struct DepTree {
 ///
 /// Like [`super::deps`], the tree is taken over the newest version of each
 /// package, so a version requirement that would force an older version — with
-/// different dependencies — is not honored. `rig proj solve` is what a full,
+/// different dependencies — is not honored. `rig proj lock` is what a full,
 /// version-consistent resolution is for.
 fn dep_tree(
     loader: &dyn PackageVersionLoader,

@@ -20,6 +20,14 @@ pub static HC_PROFILE_REPOS: Lazy<String> = Lazy::new(|| {
     data.replace("\r\n", "\n")
 });
 
+// The pre-built copies of the `rig` shim R package, one per R version
+// bracket, that `rig proj init` seeds into a project's `.rvenv/lib/rig`. See
+// `xtask/src/rvenv_shim.rs` for what the brackets are and how these are
+// built, and `src/rvenv.rs` for which one is picked when.
+pub static HC_RVENV_SHIM_LT_35: &[u8] = include_bytes!("data/rvenv-shim/shim-lt-3.5.tar.gz");
+pub static HC_RVENV_SHIM_35: &[u8] = include_bytes!("data/rvenv-shim/shim-3.5.tar.gz");
+pub static HC_RVENV_SHIM_40: &[u8] = include_bytes!("data/rvenv-shim/shim-4.0.tar.gz");
+
 pub struct ProfileReposMarkers {
     pub generic_start: String,
     pub current_start: String,

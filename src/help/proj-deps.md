@@ -6,10 +6,9 @@ Show the dependencies of an R project, in a table: every package the
 project depends on, the dependency type (`Depends`, `Imports`,
 `LinkingTo`) and the version requirement, if it has one.
 
-By default rig reads the project manifest (e.g. `DESCRIPTION`) in the
-current directory; use `--input` to point to a different file. Add `--dev`
-to include development dependencies. Use `--json` for machine readable
-output.
+rig reads the project manifest, `rproj.toml`, in the current directory. Add
+`--dev` to include development dependencies. Use `--json` for machine
+readable output.
 
 The plain listing only reads the manifest, so it needs neither R nor the
 package repositories.
@@ -35,5 +34,5 @@ project's own dev dependencies plus everything they need to be installed.
 rig follows the dependencies of the *latest* version of every package in
 the closure, so a version requirement that would force an older version,
 with different dependencies, is not taken into account. Use
-[`rig proj solve`](#rig-proj-solve) for a resolution that is consistent
+[`rig proj lock`](#rig-proj-lock) for a resolution that is consistent
 across versions.
