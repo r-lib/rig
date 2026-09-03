@@ -69,10 +69,34 @@ fn find_shim_template() -> Result<PathBuf, Box<dyn Error>> {
             }
         }
     }
+    // `cargo test` compiles the unit tests of every bin target, but it does
+    // not build the `rig-shim` bin itself, so there is no real template to
+    // copy. Nothing in the test suite runs a shim, only checks the bytes rig
+    // appends to it, so a stub template does.
+    #[cfg(test)]
+    if let Ok(stub) = test_shim_template() {
+        return Ok(stub);
+    }
     bail!(
         "Cannot find the shim template rig-shim.exe next to rig ({}).",
         dir.display()
     )
+}
+
+#[cfg(test)]
+fn test_shim_template() -> Result<PathBuf, Box<dyn Error>> {
+    static STUB: std::sync::OnceLock<Result<(tempfile::TempDir, PathBuf), String>> =
+        std::sync::OnceLock::new();
+    let stub = STUB.get_or_init(|| {
+        let dir = tempfile::tempdir().map_err(|err| err.to_string())?;
+        let path = dir.path().join("rig-shim.exe");
+        std::fs::write(&path, b"stub shim template").map_err(|err| err.to_string())?;
+        Ok((dir, path))
+    });
+    match stub {
+        Ok((_, path)) => Ok(path.clone()),
+        Err(err) => bail!("Cannot create a stub shim template: {}", err),
+    }
 }
 
 // Write (or overwrite) a quick-link `.exe` at `path`, forwarding to `target`
