@@ -1523,13 +1523,6 @@ pub fn rig_app() -> Command {
                 .long_about(HELP_PROJ_LOCK)
                 .display_order(0)
                 .arg(
-                    Arg::new("renv")
-                        .help("Output an renv.lock file")
-                        .long("renv")
-                        .num_args(0)
-                        .required(false),
-                )
-                .arg(
                     Arg::new("json")
                         .help("JSON output")
                         .long("json")
@@ -1656,7 +1649,60 @@ pub fn rig_app() -> Command {
                         .required(false),
                 ),
         );
-    rig = rig.subcommand(cmd_proj);
+    let cmd_renv = Command::new("renv")
+        .about(ABOUT_PROJ_RENV)
+        .display_order(0)
+        .long_about(HELP_PROJ_RENV)
+        .arg_required_else_help(true)
+        .subcommand(
+            Command::new("export")
+                .about(ABOUT_PROJ_RENV_EXPORT)
+                .long_about(HELP_PROJ_RENV_EXPORT)
+                .display_order(0)
+                .arg(
+                    Arg::new("r-version")
+                        .help(
+                            "R version to solve dependencies for \
+                             (default: same logic as `rig proj lock`)",
+                        )
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("platform")
+                        .help(
+                            "Platform to solve binary packages for, e.g. macos, windows,\n\
+                            ubuntu-24.04 (default: this machine). Use --platform source\n\
+                            to solve for source packages only.",
+                        )
+                        .long("platform")
+                        .num_args(1)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("import")
+                .about(ABOUT_PROJ_RENV_IMPORT)
+                .long_about(HELP_PROJ_RENV_IMPORT)
+                .display_order(0)
+                .arg(
+                    Arg::new("input")
+                        .help("renv.lock file to import (e.g. renv.lock)")
+                        .long("input")
+                        .short('i')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("dependencies")
+                        .help("Only merge dependencies, not metadata")
+                        .long("dependencies")
+                        .action(clap::ArgAction::SetTrue),
+                ),
+        );
+    rig = rig.subcommand(cmd_proj.subcommand(cmd_renv));
 
     let cmd_pkg = Command::new("pkg")
         .about(ABOUT_PKG)

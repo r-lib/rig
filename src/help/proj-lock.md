@@ -10,8 +10,9 @@ uses its built-in solver to find a compatible set of package versions from
 the configured repositories, without running R.
 
 Development dependencies are included by default. Use `--r-version` to solve
-for a specific R version, `--no-dev` to leave out development dependencies,
-and `--renv` to also write the result as an `renv.lock` file.
+for a specific R version and `--no-dev` to leave out development
+dependencies. See [`rig proj renv export`](proj.qmd#rig-proj-renv-export) to also
+write an `renv.lock` file.
 
 `--r-version` and `--platform` each take a comma-separated list, to solve for
 several R versions and/or platforms in one `rproj.lock` file — rig solves the
@@ -34,10 +35,7 @@ different set instead, e.g. a single platform.
 matches the OS it runs on (the highest R version among them if more than one
 matches), so this default already covers deploying to a Linux server or CI
 from a macOS or Windows laptop: `rig proj sync` on each machine picks its own
-entry from the same file. `--renv` only works with exactly one resulting
-target, since `renv.lock` has no multi-target concept, so it keeps the old
-single-target default (this machine only) unless `--platform` narrows it to
-one platform explicitly.
+entry from the same file.
 
 ## The R version
 

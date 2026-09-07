@@ -1,18 +1,153 @@
 use std::collections::HashMap;
 use std::error::Error;
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 
-use log::error;
+use clap::ArgMatches;
+use log::{error, info};
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
 use simple_error::*;
 
 use crate::common::*;
+use crate::dcf::{DepVersionSpec, RDepType};
 use crate::output::OUTPUT;
-use crate::proj::BASE_PKGS;
+use crate::proj::{
+    proj_binary_target, proj_lock_r_version, proj_read_manifest_deps, sc_proj_solve_deps,
+    BASE_PKGS,
+};
+use crate::repos::cranlike_metadata::minor_r_version;
+use crate::rproj::{Rproj, RPROJ_MANIFEST_FILE};
 use crate::rversion::*;
 use crate::solver::*;
 use crate::utils::*;
+
+pub fn sc_renv(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    match args.subcommand() {
+        Some(("export", s)) => sc_renv_export(s, args, mainargs),
+        Some(("import", s)) => sc_renv_import(s, args, mainargs),
+        _ => Ok(()), // unreachable
+    }
+}
+
+/// Solve the project's dependencies (`rproj.toml`) for one `(R version,
+/// platform)` target and write the result as `renv.lock`: `rig proj renv export`.
+///
+/// Always a single target -- `renv.lock` has no multi-target concept, unlike
+/// `rproj.lock`. `--r-version` defaults to the same logic `rig proj lock`
+/// uses (the default R version if it satisfies the manifest, else the
+/// newest installed one that does, else the current release); `--platform`
+/// defaults to this machine.
+fn sc_renv_export(
+    args: &ArgMatches,
+    _renvargs: &ArgMatches,
+    _mainargs: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+    let root = Path::new(".");
+    let (_name, _version, mut pkg_deps) = proj_read_manifest_deps(root, true)?;
+    pkg_deps.dependencies.push(DepVersionSpec {
+        name: "renv".to_string(),
+        constraints: vec![],
+        types: vec![RDepType::Depends],
+    });
+
+    let rver = match args.get_one::<String>("r-version") {
+        Some(rv) => rv.clone(),
+        None => proj_lock_r_version(&pkg_deps, args)?,
+    };
+    let platform = args.get_one::<String>("platform").cloned();
+    let target = proj_binary_target(platform.as_ref(), &rver)?;
+
+    let (registry, solution) = sc_proj_solve_deps(&rver, &pkg_deps, target, None)?;
+    OUTPUT.success("Solved dependencies");
+    info!("Solved dependencies");
+
+    let lockfile = REnvLockfile::from_solution(&registry, &solution);
+    fs::write(root.join("renv.lock"), serde_json::to_string_pretty(&lockfile)?)?;
+    OUTPUT.success("Written renv lockfile to renv.lock");
+    info!("Written renv lockfile to renv.lock");
+    Ok(())
+}
+
+/// Import an existing `renv.lock` into `rproj.toml`: `rig proj renv import`.
+///
+/// Mirrors `rig proj import`'s DESCRIPTION import: by default creates a new
+/// `rproj.toml` (refusing to run if one already exists), `--dependencies`
+/// merges into an existing one instead. Only package-level information
+/// makes it across -- `renv.lock` has no project metadata (name, title,
+/// authors, ...) to import, so a fresh manifest is named after the current
+/// directory.
+fn sc_renv_import(
+    args: &ArgMatches,
+    _renvargs: &ArgMatches,
+    _mainargs: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+    let default_input = "renv.lock".to_string();
+    let input: &String = args.get_one::<String>("input").unwrap_or(&default_input);
+    let dependencies_only = args.get_flag("dependencies");
+    let path = Path::new(RPROJ_MANIFEST_FILE);
+
+    if !dependencies_only && path.exists() {
+        let msg = format!(
+            "{} already exists; import would only overwrite dependencies, not \
+             merge full metadata. Use --dependencies to merge into it, or \
+             remove it first.",
+            RPROJ_MANIFEST_FILE
+        );
+        OUTPUT.error(&msg);
+        error!("{}", msg);
+        bail!("{}", msg);
+    }
+
+    OUTPUT.status(&format!("Reading dependencies from {}", input));
+    info!("Reading dependencies from {}", input);
+    let contents = fs::read_to_string(input).map_err(|e| {
+        OUTPUT.error(&format!("Cannot read {}: {}", input, e));
+        error!("Cannot read {}: {}", input, e);
+        e
+    })?;
+    let lockfile: REnvLockfile = serde_json::from_str(&contents)?;
+    let dep_count = lockfile.Packages.len();
+
+    let default_name = || -> String {
+        std::env::current_dir()
+            .ok()
+            .and_then(|cwd| cwd.file_name().map(|n| n.to_string_lossy().into_owned()))
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| "myproject".to_string())
+    };
+
+    let mut manifest = if dependencies_only {
+        if path.exists() {
+            toml::from_str::<Rproj>(&fs::read_to_string(path)?)?
+        } else {
+            OUTPUT.status(&format!(
+                "{} does not exist, creating a new one",
+                RPROJ_MANIFEST_FILE
+            ));
+            info!("{} does not exist, creating a new one", RPROJ_MANIFEST_FILE);
+            Rproj::minimal(&default_name())
+        }
+    } else {
+        Rproj::minimal(&default_name())
+    };
+
+    let minor = minor_r_version(&lockfile.R.Version)?;
+    manifest.add_dependency("R", &format!(">= {}", minor), false);
+    for (name, pkg) in lockfile.Packages.iter() {
+        manifest.add_dependency(name, &format!("^{}", pkg.Version), false);
+    }
+
+    fs::write(path, toml::to_string_pretty(&manifest)?)?;
+
+    let msg = format!(
+        "Imported R {} and {} dependencies from {} into {}",
+        minor, dep_count, input, RPROJ_MANIFEST_FILE
+    );
+    OUTPUT.success(&msg);
+    info!("{}", msg);
+    Ok(())
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 #[allow(non_snake_case)]

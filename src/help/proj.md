@@ -18,10 +18,12 @@ project.
 `rig proj tree` shows the recursive dependencies as a tree, so you can
 see how each package is pulled in.
 `rig proj lock` resolves the full dependency tree to a concrete set of
-package versions, writes the result to `rproj.lock`, and can also write
-an `renv.lock` file.
+package versions and writes the result to `rproj.lock`.
 `rig proj sync` installs the dependencies `rproj.lock` resolved into a
 package library.
+
+See [`rig proj renv`](proj.qmd#rig-proj-renv) to interoperate with renv's
+own `renv.lock` format.
 
 Dependencies are resolved with rig's built-in solver, so R does not need
 to be running for `rig proj deps`, `rig proj tree` and `rig proj lock`.

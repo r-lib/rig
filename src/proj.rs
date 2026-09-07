@@ -32,7 +32,6 @@ use crate::pkg::install::{plan_installs, print_plan};
 use crate::pkg::list::read_installed;
 use crate::pkg::tree::proj_tree;
 use crate::platform::{detect_platform, parse_platform_string};
-use crate::renv::*;
 use crate::repos::binaries::loader::{BinaryTarget, P3mBinaryLoader};
 use crate::repos::cranlike_metadata::{ensure_allpackages_fresh, minor_r_version};
 use crate::repos::*;
@@ -86,6 +85,7 @@ pub fn sc_proj(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn E
         Some(("tree", s)) => sc_proj_tree(s, args, mainargs),
         Some(("lock", s)) => sc_proj_lock(s, args, mainargs),
         Some(("sync", s)) => sc_proj_sync(s, args, mainargs),
+        Some(("renv", s)) => crate::renv::sc_renv(s, mainargs),
         _ => Ok(()), // unreachable
     }
 }
@@ -593,7 +593,7 @@ fn proj_read_manifest(root: &Path) -> Result<Rproj, Box<dyn Error>> {
 /// Read the project's `rproj.toml` manifest and return its name, version and
 /// dependencies, with the soft dependencies dropped unless `dev`. The manifest
 /// is read from `root`, the project directory.
-fn proj_read_manifest_deps(
+pub(crate) fn proj_read_manifest_deps(
     root: &Path,
     dev: bool,
 ) -> Result<(String, RPackageVersion, PackageDependencies), Box<dyn Error>> {
@@ -910,7 +910,6 @@ struct ProjLockOptions {
     platforms: Vec<String>,
     prefer_binary: Option<usize>,
     dev: bool,
-    renv: bool,
 }
 
 impl Default for ProjLockOptions {
@@ -921,7 +920,6 @@ impl Default for ProjLockOptions {
             prefer_binary: None,
             // dev dependencies are included unless --no-dev is given
             dev: true,
-            renv: false,
         }
     }
 }
@@ -942,7 +940,6 @@ fn sc_proj_lock(
             .unwrap_or_default(),
         prefer_binary: args.get_one::<usize>("prefer-binary").copied(),
         dev: !args.get_flag("no-dev"),
-        renv: args.get_flag("renv"),
     };
     proj_lock(Path::new("."), &opts, args)
 }
@@ -953,7 +950,7 @@ fn sc_proj_lock(
 ///
 /// The version does not have to be installed. `rig proj lock` never runs R,
 /// and `rig proj sync` installs the R version the lock file names.
-fn proj_lock_r_version(
+pub(crate) fn proj_lock_r_version(
     deps: &PackageDependencies,
     args: &ArgMatches,
 ) -> Result<String, Box<dyn Error>> {
@@ -1044,21 +1041,11 @@ fn r_requirement(req: Option<&DepVersionSpec>) -> String {
 /// way (`proj_lock_r_version`); an empty `opts.platforms` solves for this
 /// machine plus three other platforms a project typically has to run on
 /// (Windows, generic glibc Linux, macOS arm64) -- see the platform_specs
-/// comment below. `--renv` additionally writes `renv.lock`, and only works
-/// with exactly one resulting target, since `renv.lock` has no multi-target
-/// concept.
+/// comment below.
 fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // Do this first, to report local errors early
     let dev = opts.dev;
-    let (_name, _version, mut pkg_deps) = proj_read_manifest_deps(root, dev)?;
-
-    if opts.renv {
-        pkg_deps.dependencies.push(DepVersionSpec {
-            name: "renv".to_string(),
-            constraints: vec![],
-            types: vec![RDepType::Depends],
-        });
-    };
+    let (_name, _version, pkg_deps) = proj_read_manifest_deps(root, dev)?;
 
     // Each R version has to satisfy the manifest's own `R` requirement,
     // otherwise the solve either fails or produces a lock file for an R the
@@ -1080,15 +1067,8 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     // on the host. Duplicates (e.g. "this machine" already being macOS
     // arm64) are dropped before solving, by the resolved-target dedup below,
     // so a redundant solve is never dispatched in the first place.
-    //
-    // `--renv` only supports one target, so it keeps the old single-target
-    // default (this machine only) instead of the four platforms above; an
-    // explicit `--platform` still has to name exactly one for `--renv` to
-    // work, same as before.
     let platform_specs: Vec<Option<String>> = if !opts.platforms.is_empty() {
         opts.platforms.iter().cloned().map(Some).collect()
-    } else if opts.renv {
-        vec![None]
     } else {
         vec![
             None,
@@ -1097,14 +1077,6 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
             Some("aarch64-apple-darwin".to_string()),
         ]
     };
-
-    if opts.renv && rvers.len() * platform_specs.len() > 1 {
-        let msg = "--renv requires solving for exactly one (R version, platform) target; \
-                    drop the extra comma-separated --r-version/--platform values";
-        OUTPUT.error(msg);
-        error!("{}", msg);
-        bail!("{}", msg);
-    }
 
     let multi = rvers.len() * platform_specs.len() > 1;
 
@@ -1205,13 +1177,6 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         } else {
             OUTPUT.success("Solved dependencies");
             info!("Solved dependencies");
-        }
-
-        if opts.renv {
-            let renv = REnvLockfile::from_solution(&registry, &solution);
-            fs::write(root.join("renv.lock"), serde_json::to_string_pretty(&renv)?)?;
-            OUTPUT.success("Written renv lockfile to renv.lock");
-            info!("Written renv lockfile to renv.lock");
         }
 
         if multi {
