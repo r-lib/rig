@@ -13,9 +13,31 @@ Development dependencies are included by default. Use `--r-version` to solve
 for a specific R version, `--no-dev` to leave out development dependencies,
 and `--renv` to also write the result as an `renv.lock` file.
 
-`rproj.lock` currently records a single `(R version, platform)` target;
-[`rig proj sync`](#rig-proj-sync) installs that target. Solving for several
-targets in one lockfile is planned but not implemented yet.
+`--r-version` and `--platform` each take a comma-separated list, to solve for
+several R versions and/or platforms in one `rproj.lock` file — rig solves the
+cross product of every version given against every platform given, and
+writes one target per combination. For example:
+
+```sh
+rig proj lock --r-version 4.5,4.6
+rig proj lock --platform macos,ubuntu-24.04
+```
+
+Without `--platform`, rig locks for four platforms at once: this machine,
+Windows, a generic glibc Linux build (P3M's distro-independent "manylinux"
+build, which covers any glibc-based x86_64 distro P3M has no specific build
+for), and macOS on arm64 — the common set of platforms a project needs to
+run on beyond the machine it was locked on. Pass `--platform` to lock for a
+different set instead, e.g. a single platform.
+
+[`rig proj sync`](#rig-proj-sync) then picks the target whose platform
+matches the OS it runs on (the highest R version among them if more than one
+matches), so this default already covers deploying to a Linux server or CI
+from a macOS or Windows laptop: `rig proj sync` on each machine picks its own
+entry from the same file. `--renv` only works with exactly one resulting
+target, since `renv.lock` has no multi-target concept, so it keeps the old
+single-target default (this machine only) unless `--platform` narrows it to
+one platform explicitly.
 
 ## The R version
 
@@ -49,9 +71,9 @@ Trading a version away for a binary is not free: the binary pins its
 dependencies then prefer their own binaries in turn, so a whole project can
 end up on older versions.
 
-By default rig solves for the machine it runs on. Use `--platform` to solve
-for a different one, e.g. to write a lockfile on macOS for a Linux
-deployment:
+By default rig solves for this machine plus three other platforms (see
+above). Use `--platform` to solve for a different set instead, e.g. a single
+specific distro:
 
 ```sh
 rig proj lock --platform ubuntu-24.04

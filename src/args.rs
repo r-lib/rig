@@ -1487,22 +1487,33 @@ pub fn rig_app() -> Command {
                 )
                 .arg(
                     Arg::new("r-version")
-                        .help("R version to solve dependencies for")
+                        .help(
+                            "R version(s) to solve dependencies for, comma-separated to\n\
+                            solve for several (e.g. --r-version 4.5,4.6). Combined with\n\
+                            --platform as a cross product, one target per combination.",
+                        )
                         .long("r-version")
                         .short('r')
                         .num_args(1)
+                        .value_delimiter(',')
                         .required(false),
                 )
                 .arg(
                     Arg::new("platform")
                         .help(
-                            "Platform to solve binary packages for, e.g. macos, windows,\n\
+                            "Platform(s) to solve binary packages for, e.g. macos, windows,\n\
                             ubuntu-24.04, or a full platform string like\n\
-                            aarch64-unknown-linux-gnu-ubuntu-24.04 (default: this machine).\n\
-                            Use --platform source to solve for source packages only.",
+                            aarch64-unknown-linux-gnu-ubuntu-24.04. Comma-separated to\n\
+                            solve for several (e.g. --platform macos,windows). Combined\n\
+                            with --r-version as a cross product, one target per\n\
+                            combination. Use --platform source to solve for source\n\
+                            packages only.\n\
+                            Default: this machine, windows, generic glibc Linux (x86_64),\n\
+                            and macos-arm64.",
                         )
                         .long("platform")
                         .num_args(1)
+                        .value_delimiter(',')
                         .required(false),
                 )
                 .arg(
@@ -1567,6 +1578,30 @@ pub fn rig_app() -> Command {
                         .help("Do not install dev (development) dependencies")
                         .long("no-dev")
                         .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help(
+                            "Which of rproj.lock's targets to sync, when more than one\n\
+                            matches this machine (default: the highest R version).\n\
+                            Selects among the targets already in rproj.lock, does not\n\
+                            trigger a new solve.",
+                        )
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("platform")
+                        .help(
+                            "Which of rproj.lock's targets to sync, when more than one\n\
+                            matches this machine. Selects among the targets already in\n\
+                            rproj.lock, does not trigger a new solve.",
+                        )
+                        .long("platform")
+                        .num_args(1)
                         .required(false),
                 ),
         );
@@ -2435,6 +2470,52 @@ mod tests {
         assert_eq!(
             rcmd(&["rig", "run", "--cmd", "check", "pkg.tar.gz"]),
             ["rig", "run", "--cmd", "--", "check", "pkg.tar.gz"]
+        );
+    }
+
+    #[test]
+    fn proj_lock_r_version_and_platform_take_comma_separated_lists() {
+        let matches = rig_app()
+            .try_get_matches_from([
+                "rig",
+                "proj",
+                "lock",
+                "-r",
+                "4.5.0,4.6.1",
+                "--platform",
+                "macos,ubuntu-24.04",
+            ])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        let r_versions: Vec<&String> = sub.get_many::<String>("r-version").unwrap().collect();
+        let platforms: Vec<&String> = sub.get_many::<String>("platform").unwrap().collect();
+        assert_eq!(r_versions, vec!["4.5.0", "4.6.1"]);
+        assert_eq!(platforms, vec!["macos", "ubuntu-24.04"]);
+    }
+
+    #[test]
+    fn proj_sync_r_version_and_platform_are_single_valued() {
+        let matches = rig_app()
+            .try_get_matches_from([
+                "rig",
+                "proj",
+                "sync",
+                "-r",
+                "4.6.1",
+                "--platform",
+                "macos-arm64",
+            ])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        assert_eq!(
+            sub.get_one::<String>("r-version").unwrap(),
+            "4.6.1"
+        );
+        assert_eq!(
+            sub.get_one::<String>("platform").unwrap(),
+            "macos-arm64"
         );
     }
 

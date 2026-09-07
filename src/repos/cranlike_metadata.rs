@@ -24,6 +24,18 @@ use crate::rds::*;
 use crate::solver::PackageVersionLoader;
 use crate::utils::{calculate_hash, create_parent_dir_if_needed};
 
+// `rig proj lock` now solves several `(R version, platform)` targets in
+// parallel, each opening its own connection to the same on-disk cache
+// database. Without a busy timeout, a connection that finds the database
+// briefly locked by another thread's write (e.g. `ensure_db_schema`'s
+// `CREATE TABLE IF NOT EXISTS`) would fail immediately with `SQLITE_BUSY`
+// instead of waiting its turn.
+fn open_db<P: AsRef<Path>>(path: P) -> Result<Connection, Box<dyn Error>> {
+    let conn = Connection::open(path)?;
+    conn.busy_timeout(std::time::Duration::from_secs(30))?;
+    Ok(conn)
+}
+
 pub(crate) fn package_type_to_path(
     pkg_type: &str,
     r_version: &str,
@@ -120,7 +132,12 @@ pub fn repos_get_packages(
     )
 }
 
-fn ensure_allpackages_fresh() -> Result<(), Box<dyn Error>> {
+/// Downloads/refreshes the shared ALLPACKAGES cache if stale. `rig proj lock`
+/// calls this once, sequentially, before fanning solves for several targets
+/// out to threads, so those threads only ever read the cache (via
+/// `DbSourcePackageLoader::new`, which also calls this but then finds
+/// nothing to download).
+pub(crate) fn ensure_allpackages_fresh() -> Result<(), Box<dyn Error>> {
     let url = allpackages_url();
     ensure_packages_cached(
         &[url.as_str()],
@@ -172,7 +189,7 @@ impl DbSourcePackageLoader {
 
         let repo_local = repo_local_file(&allpackages_url())?;
         let repo_db = repo_db_file(&repo_local)?;
-        let conn = Connection::open(&repo_db)?;
+        let conn = open_db(&repo_db)?;
 
         let repo_ids = source_repo_ids(&conn, &allpackages_url(), "source")?;
 
@@ -265,7 +282,7 @@ pub fn allpackages_versions(package: &str) -> Result<Vec<AllPackagesVersion>, Bo
 
     let repo_local = repo_local_file(&allpackages_url())?;
     let repo_db = repo_db_file(&repo_local)?;
-    let conn = Connection::open(&repo_db)?;
+    let conn = open_db(&repo_db)?;
     let repo_ids = source_repo_ids(&conn, &allpackages_url(), "source")?;
 
     // Query by name only, for the same reason as `load_versions()` above: it
@@ -333,7 +350,7 @@ fn archived_package_in_db(
     feed_url: &str,
     package: &str,
 ) -> Result<Option<ArchivedPackage>, Box<dyn Error>> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_db(db_path)?;
     let repo_ids = source_repo_ids(&conn, feed_url, "source")?;
 
     let mut stmt =
@@ -531,7 +548,7 @@ fn repo_has_packages(
     pkg_type: &str,
     feed: Feed,
 ) -> Result<bool, Box<dyn Error>> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_db(db_path)?;
     let repo_url = repo_url.trim_end_matches('/');
     let query = match feed {
         Feed::Cranlike => {
@@ -877,7 +894,7 @@ pub fn parse_packages_from_rds(rds_path: &PathBuf) -> Result<Vec<Package>, Box<d
 }
 
 fn ensure_db_schema(db_path: &PathBuf) -> Result<(), Box<dyn Error>> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_db(db_path)?;
 
     // Create repos table
     conn.execute(
@@ -956,7 +973,7 @@ fn get_repo_etag(
     repo_url: &str,
     pkg_type: &str,
 ) -> Result<String, Box<dyn Error>> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_db(db_path)?;
 
     // Normalize repo_url by removing trailing slashes
     let repo_url = repo_url.trim_end_matches('/');
@@ -975,7 +992,7 @@ fn is_repo_cache_recent(
     repo_url: &str,
     pkg_type: &str,
 ) -> Result<bool, Box<dyn Error>> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_db(db_path)?;
 
     // Normalize repo_url by removing trailing slashes
     let repo_url = repo_url.trim_end_matches('/');
@@ -1001,7 +1018,7 @@ fn load_packages_from_db(
     repo_url: &str,
     pkg_type: &str,
 ) -> Result<Vec<Package>, Box<dyn Error>> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_db(db_path)?;
 
     // Normalize repo_url by removing trailing slashes
     let repo_url = repo_url.trim_end_matches('/');
@@ -1058,7 +1075,7 @@ fn save_packages_to_db(
     path: &str,
     etag: Option<&str>,
 ) -> Result<(), Box<dyn Error>> {
-    let mut conn = Connection::open(db_path)?;
+    let mut conn = open_db(db_path)?;
 
     // Normalize repo_url by removing trailing slashes
     let repo_url = repo_url.trim_end_matches('/');
@@ -1145,7 +1162,7 @@ fn save_archived_to_db(
     path: &str,
     etag: Option<&str>,
 ) -> Result<(), Box<dyn Error>> {
-    let mut conn = Connection::open(db_path)?;
+    let mut conn = open_db(db_path)?;
     let repo_url = repo_url.trim_end_matches('/');
 
     let tx = conn.transaction()?;

@@ -32,6 +32,23 @@ rig never rewrites `rproj.lock` to an R version that is already installed --
 run [`rig proj lock`](#rig-proj-lock) to change the R version a project is
 locked for.
 
+## Several targets in one lock file
+
+[`rig proj lock`](#rig-proj-lock) solves for several `(R version, platform)`
+targets in one `rproj.lock` by default (this machine, Windows, generic glibc
+Linux, and macOS arm64), and `--r-version`/`--platform` take a
+comma-separated list to solve for a different set. `rig proj sync` picks the
+target whose platform matches the OS it runs on -- a target for a different
+OS is simply inert, which is what makes locking for a Linux deployment target
+from a macOS laptop work: each machine's `rig proj sync` picks its own entry
+from the same file.
+
+If more than one target matches this machine's OS (typically because the
+project locks for several R versions), rig picks the highest R version among
+them, with no need for extra flags. Pass `--r-version` and/or `--platform` to
+pick a different one of the matching targets instead. `rig proj sync` fails
+if none of the lock file's targets match this machine at all.
+
 ## What sync writes
 
 Everything below `.rvenv`, except the library and the shim package in it, is

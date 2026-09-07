@@ -1857,6 +1857,7 @@ dependencies = [
  "predicates 2.1.5",
  "pubgrub",
  "rand",
+ "rayon",
  "rds2rust",
  "regex",
  "remove_dir_all",

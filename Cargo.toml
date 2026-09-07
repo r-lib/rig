@@ -80,6 +80,8 @@ path-clean = "1.0.1"
 pubgrub = "0.3.0"
 # random file names, e.g. when renaming the macos installer
 rand = "0.8.5"
+# thread pool to solve multiple `rig proj lock` targets in parallel
+rayon = "1.10"
 # deserialize R files
 rds2rust = "0.1.41"
 regex = "1.5.4"

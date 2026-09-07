@@ -12,10 +12,12 @@
 // would have recorded for that one target, just nested under it instead of
 // being the whole file.
 //
-// For now (first implementation slice) `rig proj lock` only ever writes one
-// target, and `rig proj sync` always installs `targets[0]`; the multi-target
-// solve loop and the "pick the entry matching this machine" logic in `sync`
-// are follow-up work.
+// `rig proj lock` solves one target per `(R version, platform)` given with
+// `--r-version`/`--platform` (repeatable, combined as a cross product), and
+// `rig proj sync` picks the one target whose OS matches this machine, using
+// the highest R version among the matches if there is more than one -- a
+// foreign-OS target is simply inert on this machine, which is what makes
+// locking for a Linux deployment target from a macOS laptop work.
 
 use std::collections::BTreeMap;
 use std::error::Error;
@@ -1074,6 +1076,36 @@ mod tests {
             parsed.targets[0].packages[0].metadata.get("RemoteSha"),
             Some(&"abc123".to_string())
         );
+    }
+
+    #[test]
+    fn roundtrips_several_targets_through_toml() {
+        let mut linux_package = sample_package();
+        linux_package.platform = "x86_64-pc-linux-gnu".to_string();
+        linux_package.rversion = "4.5".to_string();
+
+        let lock = RprojLock {
+            version: RPROJ_LOCK_VERSION,
+            targets: vec![
+                RprojLockTarget {
+                    r_version: "4.5".to_string(),
+                    platform: "x86_64-pc-linux-gnu".to_string(),
+                    packages: vec![linux_package],
+                },
+                RprojLockTarget {
+                    r_version: "4.6".to_string(),
+                    platform: "aarch64-apple-darwin".to_string(),
+                    packages: vec![sample_package()],
+                },
+            ],
+        };
+        let text = toml::to_string_pretty(&lock).unwrap();
+        let parsed: RprojLock = toml::from_str(&text).unwrap();
+        assert_eq!(parsed.targets.len(), 2);
+        assert_eq!(parsed.targets[0].r_version, "4.5");
+        assert_eq!(parsed.targets[0].platform, "x86_64-pc-linux-gnu");
+        assert_eq!(parsed.targets[1].r_version, "4.6");
+        assert_eq!(parsed.targets[1].platform, "aarch64-apple-darwin");
     }
 
     #[test]

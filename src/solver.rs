@@ -17,7 +17,7 @@ type RPackageName = String;
 /// at a time, instead of preloading every version up front. Returns all known
 /// versions of `package` (with their dependencies); an empty vector means the
 /// package is unknown.
-pub trait PackageVersionLoader {
+pub trait PackageVersionLoader: Send {
     fn load_versions(&self, package: &str) -> Result<Vec<crate::dcf::Package>, Box<dyn Error>>;
 }
 
@@ -253,7 +253,7 @@ pub struct PackageArtifacts {
 
 /// A source of binary artifacts for one build target, queried lazily per package
 /// just like [`PackageVersionLoader`].
-pub trait BinaryIndexLoader {
+pub trait BinaryIndexLoader: Send {
     /// The binary builds of `package` available for the target. An empty result
     /// means the package has no binaries, which is not an error.
     fn load_artifacts(&self, package: &str) -> Result<PackageArtifacts, Box<dyn Error>>;
@@ -767,7 +767,7 @@ impl DependencyProvider for RPackageRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::rc::Rc;
+    use std::sync::{Arc, Mutex};
 
     fn version(v: &str) -> RPackageVersion {
         RPackageVersion::from_str(v).unwrap()
@@ -896,7 +896,7 @@ mod tests {
         /// package, version, row, `LinkingTo` pins as `pkg=version` pairs.
         builds: Vec<(&'static str, &'static str, u32, &'static str)>,
         /// What `prefetch` was called with, for the tests that check it.
-        prefetched: Rc<RefCell<Vec<String>>>,
+        prefetched: Arc<Mutex<Vec<String>>>,
     }
 
     impl BinaryIndexLoader for StubBinaries {
@@ -936,7 +936,7 @@ mod tests {
         }
 
         fn prefetch(&self, packages: &[String]) {
-            self.prefetched.borrow_mut().extend_from_slice(packages);
+            self.prefetched.lock().unwrap().extend_from_slice(packages);
         }
     }
 
@@ -1263,7 +1263,7 @@ mod tests {
     fn registry(
         source: StubSource,
         binaries: StubBinaries,
-    ) -> (RPackageRegistry, Rc<RefCell<Vec<String>>>) {
+    ) -> (RPackageRegistry, Arc<Mutex<Vec<String>>>) {
         let prefetched = binaries.prefetched.clone();
         let reg = RPackageRegistry::with_loaders(
             Box::new(source),
@@ -1276,7 +1276,7 @@ mod tests {
         let (reg, prefetched) = registry(source, StubBinaries::default());
         let roots: Vec<String> = roots.iter().map(|r| r.to_string()).collect();
         reg.prefetch_binaries(&roots);
-        let mut names = prefetched.borrow().clone();
+        let mut names = prefetched.lock().unwrap().clone();
         names.sort();
         names
     }

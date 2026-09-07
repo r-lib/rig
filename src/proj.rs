@@ -10,6 +10,7 @@ use deb822_fast::Deb822;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use log::{error, info};
 use pubgrub::{resolve, SelectedDependencies};
+use rayon::prelude::*;
 use simple_error::*;
 use tabular::*;
 
@@ -33,7 +34,7 @@ use crate::pkg::tree::proj_tree;
 use crate::platform::{detect_platform, parse_platform_string};
 use crate::renv::*;
 use crate::repos::binaries::loader::{BinaryTarget, P3mBinaryLoader};
-use crate::repos::cranlike_metadata::minor_r_version;
+use crate::repos::cranlike_metadata::{ensure_allpackages_fresh, minor_r_version};
 use crate::repos::*;
 use crate::resolve::resolve_versions;
 use crate::rproj::{
@@ -765,8 +766,16 @@ fn solution_to_sorted_vec(
 /// Everything `rig proj lock` takes from the command line. `rig proj sync`
 /// builds the default set of these when it has to create the lockfile itself.
 struct ProjLockOptions {
-    r_version: Option<String>,
-    platform: Option<String>,
+    /// R versions to solve for, from `--r-version`'s comma-separated list.
+    /// Empty means "the default logic in `proj_lock_r_version` picks one".
+    /// More than one solves each in turn, combined with `platforms` as a
+    /// cross product.
+    r_versions: Vec<String>,
+    /// Platforms to solve binary packages for, from `--platform`'s
+    /// comma-separated list. Empty means the default platform set (see
+    /// `proj_lock`). More than one solves each in turn, combined with
+    /// `r_versions` as a cross product.
+    platforms: Vec<String>,
     prefer_binary: Option<usize>,
     dev: bool,
     renv: bool,
@@ -775,8 +784,8 @@ struct ProjLockOptions {
 impl Default for ProjLockOptions {
     fn default() -> Self {
         ProjLockOptions {
-            r_version: None,
-            platform: None,
+            r_versions: vec![],
+            platforms: vec![],
             prefer_binary: None,
             // dev dependencies are included unless --no-dev is given
             dev: true,
@@ -791,8 +800,14 @@ fn sc_proj_lock(
     _mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
     let opts = ProjLockOptions {
-        r_version: args.get_one::<String>("r-version").cloned(),
-        platform: args.get_one::<String>("platform").cloned(),
+        r_versions: args
+            .get_many::<String>("r-version")
+            .map(|vs| vs.cloned().collect())
+            .unwrap_or_default(),
+        platforms: args
+            .get_many::<String>("platform")
+            .map(|vs| vs.cloned().collect())
+            .unwrap_or_default(),
         prefer_binary: args.get_one::<usize>("prefer-binary").copied(),
         dev: !args.get_flag("no-dev"),
         renv: args.get_flag("renv"),
@@ -890,21 +905,20 @@ fn r_requirement(req: Option<&DepVersionSpec>) -> String {
         .join(", ")
 }
 
-/// Solve the dependencies of the project in `root` and write `rproj.lock`
-/// (and `renv.lock` with `--renv`) into it.
+/// Solve the dependencies of the project in `root` for every `(R version,
+/// platform)` combination `opts` asks for (a cross product of
+/// `opts.r_versions` and `opts.platforms`), and write them all into
+/// `rproj.lock`. An empty `opts.r_versions` picks one R version the usual
+/// way (`proj_lock_r_version`); an empty `opts.platforms` solves for this
+/// machine plus three other platforms a project typically has to run on
+/// (Windows, generic glibc Linux, macOS arm64) -- see the platform_specs
+/// comment below. `--renv` additionally writes `renv.lock`, and only works
+/// with exactly one resulting target, since `renv.lock` has no multi-target
+/// concept.
 fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // Do this first, to report local errors early
     let dev = opts.dev;
     let (_name, _version, mut pkg_deps) = proj_read_manifest_deps(root, dev)?;
-
-    // The R version has to satisfy the manifest's own `R` requirement,
-    // otherwise the solve either fails or produces a lock file for an R the
-    // project rules out. `--r-version` is taken as given, the solver reports
-    // the conflict if there is one.
-    let rver = match &opts.r_version {
-        Some(rv) => rv.to_string(),
-        None => proj_lock_r_version(&pkg_deps, args)?,
-    };
 
     if opts.renv {
         pkg_deps.dependencies.push(DepVersionSpec {
@@ -914,42 +928,183 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         });
     };
 
-    let target = proj_binary_target(opts.platform.as_ref(), &rver)?;
+    // Each R version has to satisfy the manifest's own `R` requirement,
+    // otherwise the solve either fails or produces a lock file for an R the
+    // project rules out. An `--r-version` is taken as given, the solver
+    // reports the conflict if there is one. With none given, the default
+    // logic in `proj_lock_r_version` picks the one version to solve for.
+    let rvers: Vec<String> = if opts.r_versions.is_empty() {
+        vec![proj_lock_r_version(&pkg_deps, args)?]
+    } else {
+        opts.r_versions.clone()
+    };
+    // With no --platform, solve for this machine plus the three other
+    // platforms a project typically needs to run on: Windows, a generic
+    // glibc Linux build (P3M's "manylinux" distro-independent build,
+    // covering any glibc-based x86_64 distro P3M has no specific build
+    // for), and macOS on arm64. Each platform string is fully explicit
+    // (arch-vendor-os), so it resolves the same regardless of which OS
+    // `rig proj lock` itself runs on; only "this machine" (`None`) depends
+    // on the host. Duplicates (e.g. "this machine" already being macOS
+    // arm64) are dropped before solving, by the resolved-target dedup below,
+    // so a redundant solve is never dispatched in the first place.
+    //
+    // `--renv` only supports one target, so it keeps the old single-target
+    // default (this machine only) instead of the four platforms above; an
+    // explicit `--platform` still has to name exactly one for `--renv` to
+    // work, same as before.
+    let platform_specs: Vec<Option<String>> = if !opts.platforms.is_empty() {
+        opts.platforms.iter().cloned().map(Some).collect()
+    } else if opts.renv {
+        vec![None]
+    } else {
+        vec![
+            None,
+            Some("x86_64-w64-mingw32".to_string()),
+            Some("x86_64-unknown-linux-gnu".to_string()),
+            Some("aarch64-apple-darwin".to_string()),
+        ]
+    };
 
+    if opts.renv && rvers.len() * platform_specs.len() > 1 {
+        let msg = "--renv requires solving for exactly one (R version, platform) target; \
+                    drop the extra comma-separated --r-version/--platform values";
+        OUTPUT.error(msg);
+        error!("{}", msg);
+        bail!("{}", msg);
+    }
+
+    let multi = rvers.len() * platform_specs.len() > 1;
+
+    // Resolve and dedup every `(rver, platform)` pair up front, sequentially,
+    // before any solving starts. This does two things: it decides the dedup
+    // winner the same way as before (first pair in CLI order wins a given
+    // resolved key), and it means the parallel solve below never wastes a
+    // thread solving a target that would just be thrown away afterwards
+    // (which the old post-solve dedup did routinely -- e.g. "this machine"
+    // resolving to the same target as one of the three fixed platforms).
+    // Dedup is keyed on the resolved `(r_version, platform)` pair, not the
+    // raw CLI strings: two `--platform` spellings (e.g. "macos" and a full
+    // platform triple for the same machine) can resolve to the same target.
+    struct SolveTarget {
+        rver: String,
+        target: Option<BinaryTarget>,
+        platform_key: String,
+    }
+    let mut solve_targets: Vec<SolveTarget> = vec![];
+    let mut seen: HashSet<(String, String)> = HashSet::new();
+
+    for rver in &rvers {
+        for platform in &platform_specs {
+            let target = proj_binary_target(platform.as_ref(), rver)?;
+
+            if opts.prefer_binary.is_some() && target.is_none() {
+                OUTPUT.warn("There are no binary packages to prefer, ignoring --prefer-binary");
+                info!("Ignoring --prefer-binary: solving for source packages only");
+            }
+
+            // Mirrors how `PakLockfile::from_solution` derives the top-level
+            // `platform` field (src/pak.rs), so this pre-solve key matches
+            // the key the old post-solve dedup used.
+            let platform_key = target
+                .as_ref()
+                .map(|t| t.name())
+                .unwrap_or_else(|| std::env::consts::ARCH.to_string());
+            let key = (rver.clone(), platform_key.clone());
+            if !seen.insert(key.clone()) {
+                // Not worth a warning: with the default platform set, "this
+                // machine" routinely resolves to the same target as one of
+                // the three fixed platforms.
+                info!("Skipping duplicate target R {} / {}", key.0, key.1);
+                continue;
+            }
+
+            solve_targets.push(SolveTarget {
+                rver: rver.clone(),
+                target,
+                platform_key,
+            });
+        }
+    }
+
+    // Refresh the shared package metadata cache once, sequentially, before
+    // fanning the solves out to threads below. Each solve's
+    // `DbSourcePackageLoader::new()` would otherwise do this too, but
+    // finding it already fresh, it becomes a cheap read instead of every
+    // thread racing to update the same on-disk cache at once.
+    ensure_allpackages_fresh()?;
+
+    // A single solver over the full CRAN version history: it picks the
+    // latest in-range version of each package first and only falls back to
+    // older versions when a constraint forces it, so the common case still
+    // resolves to the latest versions. With `--prefer-binary` it also falls
+    // back to an older version to get a binary package instead of a source
+    // one. Independent targets (different R versions and/or platforms) don't
+    // share any solver state, so they solve in parallel, one thread per
+    // target.
+    type SolveResult = (RPackageRegistry, SelectedDependencies<RPackageRegistry>);
     let prefer_binary = opts.prefer_binary;
-    if prefer_binary.is_some() && target.is_none() {
-        OUTPUT.warn("There are no binary packages to prefer, ignoring --prefer-binary");
-        info!("Ignoring --prefer-binary: solving for source packages only");
+    let solved: Vec<(String, String, Result<SolveResult, String>)> = solve_targets
+        .par_iter()
+        .map(|st| {
+            let result = sc_proj_solve_deps(&st.rver, &pkg_deps, st.target.clone(), prefer_binary)
+                .map_err(|e| e.to_string());
+            (st.rver.clone(), st.platform_key.clone(), result)
+        })
+        .collect();
+
+    let mut targets: Vec<RprojLockTarget> = vec![];
+    for (rver, platform_key, result) in solved {
+        let (registry, solution) = match result {
+            Ok(v) => v,
+            // The failing solve already reported itself via OUTPUT.error/
+            // error! inside `sc_proj_solve_deps`; this just propagates the
+            // failure to abort the whole `proj lock` command, same as
+            // the old sequential `?` did.
+            Err(msg) => bail!("{}", msg),
+        };
+
+        let lockfile = PakLockfile::from_solution(&registry, &solution);
+        let key = (rver, platform_key);
+
+        if multi {
+            OUTPUT.success(&format!("Solved dependencies for R {} / {}", key.0, key.1));
+            info!("Solved dependencies for R {} / {}", key.0, key.1);
+        } else {
+            OUTPUT.success("Solved dependencies");
+            info!("Solved dependencies");
+        }
+
+        if opts.renv {
+            let renv = REnvLockfile::from_solution(&registry, &solution);
+            fs::write(root.join("renv.lock"), serde_json::to_string_pretty(&renv)?)?;
+            OUTPUT.success("Written renv lockfile to renv.lock");
+            info!("Written renv lockfile to renv.lock");
+        }
+
+        if multi {
+            println!("R {} / {}", key.0, key.1);
+        }
+        let mut tab: Table = Table::new("{:<}   {:<}   {:<}   {:<}");
+        tab.add_row(row!["package", "version", "type", ""]);
+        tab.add_heading("-------------------------------------");
+        print_solution_table(&mut tab, &registry, &solution);
+        println!("{}", tab);
+
+        targets.push(RprojLockTarget {
+            r_version: lockfile.r_version,
+            platform: lockfile.platform,
+            packages: lockfile.packages,
+        });
     }
 
-    // A single solver over the full CRAN version history: it picks the latest
-    // in-range version of each package first and only falls back to older
-    // versions when a constraint forces it, so the common case still resolves
-    // to the latest versions. With `--prefer-binary` it also falls back to an
-    // older version to get a binary package instead of a source one.
-    let (registry, solution) = sc_proj_solve_deps(&rver, &pkg_deps, target, prefer_binary)?;
-    OUTPUT.success("Solved dependencies");
-    info!("Solved dependencies");
+    // Deterministic diffs: always the same order regardless of the order
+    // --r-version/--platform were given in.
+    targets.sort_by(|a, b| (&a.r_version, &a.platform).cmp(&(&b.r_version, &b.platform)));
 
-    if opts.renv {
-        let renv = REnvLockfile::from_solution(&registry, &solution);
-        fs::write(root.join("renv.lock"), serde_json::to_string_pretty(&renv)?)?;
-        OUTPUT.success("Written renv lockfile to renv.lock");
-        info!("Written renv lockfile to renv.lock");
-    }
-
-    // Single-target for now: one `(r_version, platform)` entry. The matrix
-    // form (solving for several targets into one `rproj.lock`) is follow-up
-    // work; `sc_proj_sync` already reads `targets[0]` unconditionally to
-    // match.
-    let lockfile = PakLockfile::from_solution(&registry, &solution);
     let rproj_lock = RprojLock {
         version: RPROJ_LOCK_VERSION,
-        targets: vec![RprojLockTarget {
-            r_version: lockfile.r_version.clone(),
-            platform: lockfile.platform.clone(),
-            packages: lockfile.packages.clone(),
-        }],
+        targets,
     };
     fs::write(
         root.join(RPROJ_LOCK_FILE),
@@ -958,10 +1113,16 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     OUTPUT.success("Written project lockfile to rproj.lock");
     info!("Written project lockfile to rproj.lock");
 
-    let sorted_solution = solution_to_sorted_vec(&solution);
-    let mut tab: Table = Table::new("{:<}   {:<}   {:<}   {:<}");
-    tab.add_row(row!["package", "version", "type", ""]);
-    tab.add_heading("-------------------------------------");
+    Ok(())
+}
+
+/// Fill `tab` with one row per solved package, for [`proj_lock`]'s summary.
+fn print_solution_table(
+    tab: &mut Table,
+    registry: &RPackageRegistry,
+    solution: &SelectedDependencies<RPackageRegistry>,
+) {
+    let sorted_solution = solution_to_sorted_vec(solution);
     for (pkg, ver) in sorted_solution.iter() {
         let kind = if pkg == "R" || BASE_PKGS.contains(&pkg.as_str()) {
             ""
@@ -985,9 +1146,6 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         };
         tab.add_row(row!(pkg, &ver.version, kind, note));
     }
-    println!("{}", tab);
-
-    Ok(())
 }
 
 /// The lockfile packages that are needed without the dev dependencies.
@@ -1129,6 +1287,75 @@ fn target_r_arch(platform: &str) -> String {
     }
 }
 
+/// The OS family a lock target's platform string implies, or `None` if it
+/// names none -- a `--platform source` solve's `platform` field is just the
+/// bare CPU arch (e.g. `"aarch64"`, see `PakLockfile::from_solution`), which
+/// carries no OS marker and so matches any machine with the right arch.
+fn target_os_family(platform: &str) -> Option<&'static str> {
+    match platform.rsplit_once('-') {
+        Some(("macos", _)) => Some("macos"),
+        Some(("windows", _)) => Some("windows"),
+        Some((prefix, _)) if !prefix.is_empty() => Some("linux"),
+        _ => None,
+    }
+}
+
+/// This machine's OS family, in [`target_os_family`]'s terms.
+fn this_os_family() -> &'static str {
+    match std::env::consts::OS {
+        "macos" => "macos",
+        "windows" => "windows",
+        _ => "linux",
+    }
+}
+
+/// The lock file target `rig proj sync` installs: the one whose platform's OS
+/// matches this machine (or names none), further narrowed by `--r-version`/
+/// `--platform` if the caller gave them. Several matches are not an error --
+/// the highest R version among them wins, so locking for several R versions
+/// just works without extra flags; only zero matches is a hard error.
+fn select_sync_target<'a>(
+    targets: &'a [RprojLockTarget],
+    r_version: Option<&str>,
+    platform: Option<&str>,
+) -> Result<&'a RprojLockTarget, Box<dyn Error>> {
+    let this_os = this_os_family();
+    let mut candidates: Vec<&RprojLockTarget> = targets
+        .iter()
+        .filter(|t| match target_os_family(&t.platform) {
+            Some(os) => os == this_os,
+            None => true,
+        })
+        .filter(|t| platform.is_none_or(|p| t.platform == p))
+        .filter(|t| r_version.is_none_or(|rv| r_version_matches(rv, &t.r_version)))
+        .collect();
+
+    if candidates.is_empty() {
+        let available: Vec<String> = targets
+            .iter()
+            .map(|t| format!("R {} / {}", t.r_version, t.platform))
+            .collect();
+        let msg = format!(
+            "No target in rproj.lock matches this machine ({}{}{}). Available: {}. \
+             Run `rig proj lock` for this machine, or check --r-version/--platform.",
+            this_os,
+            r_version.map(|v| format!(", R {}", v)).unwrap_or_default(),
+            platform.map(|p| format!(", platform {}", p)).unwrap_or_default(),
+            if available.is_empty() {
+                "none".to_string()
+            } else {
+                available.join(", ")
+            }
+        );
+        OUTPUT.error(&msg);
+        error!("{}", msg);
+        bail!("{}", msg);
+    }
+
+    candidates.sort_by_key(|t| r_components(&t.r_version).unwrap_or_default());
+    Ok(candidates.pop().unwrap())
+}
+
 /// Whether an installed R version is the one the lock file asks for: the same
 /// version, or, if the lock file names a minor version only (`4.6`), any patch
 /// release of it (`4.6.1`).
@@ -1191,6 +1418,14 @@ pub(crate) struct ProjSyncOptions {
     pub install_r: bool,
     /// How many packages to install at the same time (`--max-concurrent`).
     pub max_concurrent: usize,
+    /// Which target to sync when more than one matches this machine
+    /// (`--r-version`). Selects among `rproj.lock`'s existing targets, does
+    /// not trigger a new solve.
+    pub r_version: Option<String>,
+    /// Which target to sync when more than one matches this machine
+    /// (`--platform`). Selects among `rproj.lock`'s existing targets, does
+    /// not trigger a new solve.
+    pub platform: Option<String>,
 }
 
 impl Default for ProjSyncOptions {
@@ -1200,6 +1435,8 @@ impl Default for ProjSyncOptions {
             library: None,
             install_r: true,
             max_concurrent: 8,
+            r_version: None,
+            platform: None,
         }
     }
 }
@@ -1222,6 +1459,8 @@ fn sc_proj_sync(
             .get_one::<usize>("max-concurrent")
             .copied()
             .unwrap_or(8),
+        r_version: args.get_one::<String>("r-version").cloned(),
+        platform: args.get_one::<String>("platform").cloned(),
     };
 
     proj_sync(&root, &opts, args)
@@ -1238,10 +1477,9 @@ pub(crate) fn proj_sync(
     opts: &ProjSyncOptions,
     args: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
-    // Read the lockfile to get package information. Single-target for now:
-    // always the first (and, today, only) entry `rig proj lock` wrote; the
-    // "pick the entry matching this machine, hard error if none match" logic
-    // for a real multi-target `rproj.lock` is follow-up work.
+    // Read the lockfile to get package information, then pick the target
+    // this machine's OS matches (see `select_sync_target`), the highest R
+    // version among them if there is more than one.
     // No lockfile yet, so create one first, with the default options, instead
     // of erroring out. `rig proj lock` reads the project's `rproj.toml`, and
     // errors out itself if there is none.
@@ -1261,7 +1499,11 @@ pub(crate) fn proj_sync(
 
     let lock_content = fs::read_to_string(&lock_path)?;
     let lock: RprojLock = toml::from_str(&lock_content)?;
-    let target = lock.targets.first().ok_or("rproj.lock has no targets")?;
+    let target = select_sync_target(
+        &lock.targets,
+        opts.r_version.as_deref(),
+        opts.platform.as_deref(),
+    )?;
 
     let nondev;
     let wanted: &[PakLockfilePackage] = if !opts.dev {
@@ -1649,6 +1891,108 @@ mod tests {
                 vec!["rig", "add", "4.6.1"]
             }
         );
+    }
+
+    #[test]
+    fn default_lock_platforms_parse_to_the_expected_targets() {
+        // These literals are `proj_lock`'s default `--platform` set (used
+        // when the user gives none): host-independent so they resolve the
+        // same regardless of which OS `rig proj lock` runs on.
+        let windows = parse_platform_string("x86_64-w64-mingw32").unwrap();
+        assert_eq!(windows.arch, "x86_64");
+        assert_eq!(windows.os, "mingw32");
+
+        let manylinux = parse_platform_string("x86_64-unknown-linux-gnu").unwrap();
+        assert_eq!(manylinux.arch, "x86_64");
+        assert!(manylinux.os.starts_with("linux"));
+        assert_eq!(manylinux.distro, None);
+
+        let macos_arm64 = parse_platform_string("aarch64-apple-darwin").unwrap();
+        assert_eq!(macos_arm64.arch, "aarch64");
+        assert!(macos_arm64.os.starts_with("darwin"));
+    }
+
+    #[test]
+    fn target_os_family_reads_the_platform_string() {
+        assert_eq!(target_os_family("macos-arm64"), Some("macos"));
+        assert_eq!(target_os_family("macos-x86_64"), Some("macos"));
+        assert_eq!(target_os_family("windows-x86_64"), Some("windows"));
+        assert_eq!(target_os_family("jammy-x86_64"), Some("linux"));
+        assert_eq!(target_os_family("linux-ubuntu-24.04-x86_64"), Some("linux"));
+        // A `--platform source` solve's platform is a bare CPU arch: no OS.
+        assert_eq!(target_os_family("aarch64"), None);
+        assert_eq!(target_os_family("x86_64"), None);
+    }
+
+    fn target(r_version: &str, platform: &str) -> RprojLockTarget {
+        RprojLockTarget {
+            r_version: r_version.to_string(),
+            platform: platform.to_string(),
+            packages: vec![],
+        }
+    }
+
+    #[test]
+    fn select_sync_target_is_a_noop_with_a_single_target() {
+        let this_os = this_os_family();
+        let platform = format!("{}-x86_64", this_os);
+        let targets = vec![target("4.6.1", &platform)];
+        let picked = select_sync_target(&targets, None, None).unwrap();
+        assert_eq!(picked.r_version, "4.6.1");
+    }
+
+    #[test]
+    fn select_sync_target_ignores_foreign_os_targets() {
+        let this_os = this_os_family();
+        let other_os = if this_os == "linux" { "macos" } else { "linux" };
+        let targets = vec![
+            target("4.6.1", &format!("{}-x86_64", other_os)),
+            target("4.5.0", &format!("{}-x86_64", this_os)),
+        ];
+        let picked = select_sync_target(&targets, None, None).unwrap();
+        assert_eq!(picked.r_version, "4.5.0");
+    }
+
+    #[test]
+    fn select_sync_target_matches_a_source_only_target_on_any_os() {
+        // A `--platform source` solve's platform is a bare CPU arch, with no
+        // OS marker, so it matches this machine regardless of OS.
+        let targets = vec![target("4.6.1", std::env::consts::ARCH)];
+        let picked = select_sync_target(&targets, None, None).unwrap();
+        assert_eq!(picked.r_version, "4.6.1");
+    }
+
+    #[test]
+    fn select_sync_target_picks_the_highest_r_version_among_matches() {
+        let this_os = this_os_family();
+        let platform = format!("{}-x86_64", this_os);
+        let targets = vec![
+            target("4.5.0", &platform),
+            target("4.6.1", &platform),
+            target("4.4.2", &platform),
+        ];
+        let picked = select_sync_target(&targets, None, None).unwrap();
+        assert_eq!(picked.r_version, "4.6.1");
+    }
+
+    #[test]
+    fn select_sync_target_honors_an_explicit_r_version() {
+        let this_os = this_os_family();
+        let platform = format!("{}-x86_64", this_os);
+        let targets = vec![target("4.5.0", &platform), target("4.6.1", &platform)];
+        let picked = select_sync_target(&targets, Some("4.5.0"), None).unwrap();
+        assert_eq!(picked.r_version, "4.5.0");
+    }
+
+    #[test]
+    fn select_sync_target_errors_when_nothing_matches() {
+        let other_os = if this_os_family() == "linux" {
+            "macos"
+        } else {
+            "linux"
+        };
+        let targets = vec![target("4.6.1", &format!("{}-x86_64", other_os))];
+        assert!(select_sync_target(&targets, None, None).is_err());
     }
 
     #[test]
