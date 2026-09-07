@@ -26,6 +26,9 @@
 
 * New `rig proj tree` shows the dependency closure of a project as a tree.
 
+* New `rig proj add` adds a dependency to `rproj.toml`, then updates the
+  lockfile and installs it.
+
 * `rig run` now uses the project environment, if you call it in a project
   directory: it starts `.rvenv/bin/R`, with the project's package library
   and the R version the project's lock file names, and it syncs the project

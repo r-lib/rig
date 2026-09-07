@@ -314,3 +314,38 @@ teardown() {
     grep -q '^[*].log$' .gitignore
     [[ "$(grep -c '^# rig rvenv start$' .gitignore)" -eq 1 ]]
 }
+
+@test "proj add" {
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf addproj && mkdir addproj && cd addproj
+    run rig proj init -r 4.5.1
+    [[ "$status" -eq 0 ]]
+
+    # --no-lock only edits the manifest, so none of this needs the network
+    run rig proj add praise --no-lock
+    [[ "$status" -eq 0 ]]
+    grep -q '^praise = "\*"$' rproj.toml
+
+    # a bare version means "compatible with", written out as such
+    run rig proj add jsonlite@1.8.0 --no-lock
+    [[ "$status" -eq 0 ]]
+    grep -q '^jsonlite = "\^1.8.0"$' rproj.toml
+
+    # --dev adds to the test dependency group
+    run rig proj add 'testthat@>= 3.0' --dev --no-lock
+    [[ "$status" -eq 0 ]]
+    grep -q '^\[dependency-groups.test\]$' rproj.toml
+    grep -q '^testthat = ">= 3.0"$' rproj.toml
+
+    # adding a package again updates its version requirement
+    run rig proj add 'testthat@>= 3.2' --dev --no-lock
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "Updated testthat"
+    grep -q '^testthat = ">= 3.2"$' rproj.toml
+
+    # a version requirement that does not parse is refused, and the manifest
+    # is left alone
+    run rig proj add 'praise@nope' --no-lock
+    [[ "$status" -ne 0 ]]
+    grep -q '^praise = "\*"$' rproj.toml
+}

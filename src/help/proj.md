@@ -11,6 +11,8 @@ repositories and can install them into a project library.
 
 `rig proj import` reads a `DESCRIPTION` file and merges its dependencies
 into `rproj.toml`, creating it first if needed.
+`rig proj add` adds a dependency to `rproj.toml`, then updates the
+lockfile and installs it.
 `rig proj deps` shows the direct and recursive dependencies of the
 project.
 `rig proj tree` shows the recursive dependencies as a tree, so you can

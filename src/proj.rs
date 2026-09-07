@@ -36,7 +36,9 @@ use crate::repos::binaries::loader::{BinaryTarget, P3mBinaryLoader};
 use crate::repos::cranlike_metadata::minor_r_version;
 use crate::repos::*;
 use crate::resolve::resolve_versions;
-use crate::rproj::{Rproj, RprojLock, RprojLockTarget, RPROJ_LOCK_VERSION, RPROJ_MANIFEST_FILE};
+use crate::rproj::{
+    parse_add_spec, Rproj, RprojLock, RprojLockTarget, RPROJ_LOCK_VERSION, RPROJ_MANIFEST_FILE,
+};
 use crate::rvenv::{
     existing_targets, find_project_root, project_library, read_rvenv_cfg, rvenv_init, rvenv_sync,
     write_sync_stamp, RvenvCfg, RPROJ_LOCK_FILE,
@@ -74,6 +76,7 @@ pub fn sc_proj(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn E
     match args.subcommand() {
         Some(("init", s)) => sc_proj_init(s, args, mainargs),
         Some(("import", s)) => sc_proj_import(s, args, mainargs),
+        Some(("add", s)) => sc_proj_add(s, args, mainargs),
         Some(("deps", s)) => sc_proj_deps(s, args, mainargs),
         Some(("tree", s)) => sc_proj_tree(s, args, mainargs),
         Some(("lock", s)) => sc_proj_lock(s, args, mainargs),
@@ -230,6 +233,100 @@ fn sc_proj_import(
         count, input, RPROJ_MANIFEST_FILE
     );
     Ok(())
+}
+
+/// Add dependencies to `rproj.toml`, then update the lockfile and install
+/// them: `rig proj add`.
+fn sc_proj_add(
+    args: &ArgMatches,
+    _projargs: &ArgMatches,
+    _mainargs: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+    // The project is the nearest one at or above the current directory, like
+    // `rig proj sync`, so that `rig proj add` works from a subdirectory.
+    let cwd = std::env::current_dir()?;
+    let root = find_project_root(&cwd).unwrap_or(cwd);
+    let path = root.join(RPROJ_MANIFEST_FILE);
+    let dev = args.get_flag("dev");
+
+    // The manifest is restored from this if the added packages turn out not to
+    // be installable, so that a failed `rig proj add` leaves no trace.
+    let original = fs::read_to_string(&path).ok();
+    let mut manifest = proj_read_manifest(&root)?;
+
+    // Parse every specification before changing anything, so that a typo in
+    // the last one does not leave the earlier ones added.
+    let specs: Vec<(String, String)> = args
+        .get_many::<String>("package")
+        .unwrap_or_default()
+        .map(|spec| parse_add_spec(spec))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| {
+            OUTPUT.error(&err.to_string());
+            error!("{}", err);
+            err
+        })?;
+
+    let mut messages: Vec<String> = Vec::new();
+    for (name, version) in specs.iter() {
+        // A dev dependency of a package the project already depends on
+        // directly is installed either way, so `--dev` does not do what it
+        // looks like it does there.
+        if dev && manifest.dependencies.contains_key(name) {
+            OUTPUT.warn(&format!(
+                "{} is already a dependency in [dependencies], \
+                 it stays a hard dependency",
+                name
+            ));
+        }
+
+        let previous = manifest.add_dependency(name, version, dev);
+        messages.push(match previous {
+            Some(previous) if &previous == version => {
+                format!("Kept {} ({}) in {}", name, version, RPROJ_MANIFEST_FILE)
+            }
+            Some(previous) => format!(
+                "Updated {} in {}, {} -> {}",
+                name, RPROJ_MANIFEST_FILE, previous, version
+            ),
+            None => format!("Added {} ({}) to {}", name, version, RPROJ_MANIFEST_FILE),
+        });
+    }
+
+    fs::write(&path, toml::to_string_pretty(&manifest)?)?;
+    for msg in messages.iter() {
+        OUTPUT.success(msg);
+        info!("{}", msg);
+    }
+
+    if args.get_flag("no-lock") {
+        OUTPUT.info(&format!(
+            "Next: run `rig proj lock` to update {}.",
+            RPROJ_LOCK_FILE
+        ));
+        return Ok(());
+    }
+
+    // A package no repository has cannot be locked, and a manifest that
+    // cannot be locked is of no use to anyone, so undo the edit.
+    if let Err(err) = proj_lock(&root, &ProjLockOptions::default(), args) {
+        if let Some(original) = original {
+            fs::write(&path, original)?;
+            let msg = format!(
+                "Could not resolve the dependencies, {} unchanged",
+                RPROJ_MANIFEST_FILE
+            );
+            OUTPUT.error(&msg);
+            error!("{}", msg);
+        }
+        return Err(err);
+    }
+
+    if args.get_flag("no-sync") {
+        return Ok(());
+    }
+
+    proj_sync(&root, &ProjSyncOptions::default(), args)
 }
 
 /// Read the project's manifest, e.g. its `DESCRIPTION` file, and return it as a

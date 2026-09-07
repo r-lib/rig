@@ -21,10 +21,11 @@ use std::collections::BTreeMap;
 use std::error::Error;
 
 use serde::{Deserialize, Serialize};
+use simple_error::*;
 
 use crate::dcf::{
-    DepVersionSpec, Package as DcfPackage, PackageDependencies, RDepType, VersionConstraint,
-    DEP_TYPES_SOFT,
+    DepVersionSpec, Package as DcfPackage, PackageDependencies, RDepType, RPackageVersion,
+    VersionConstraint, VersionConstraintType, DEP_TYPES_SOFT,
 };
 use crate::pak::PakLockfilePackage;
 use crate::repos::cranlike_metadata::minor_r_version;
@@ -311,6 +312,45 @@ impl Rproj {
         }
     }
 
+    /// Add a dependency to the manifest, or update it if the manifest lists it
+    /// already. `dev` puts it in the `test` dependency group (the group
+    /// `rig proj import` imports `Suggests` into) instead of
+    /// `[dependencies]`.
+    ///
+    /// Returns the version requirement the entry had before, if any, so the
+    /// caller can tell "added" from "updated". An entry that names a source
+    /// (`{ git = ... }`) or sets a flag (`attach = true`) keeps those, only
+    /// its version requirement is replaced.
+    pub fn add_dependency(&mut self, name: &str, version: &str, dev: bool) -> Option<String> {
+        let table = if dev {
+            &mut self
+                .dependency_groups
+                .entry("test".to_string())
+                .or_default()
+                .dependencies
+        } else {
+            &mut self.dependencies
+        };
+
+        let (previous, value) = match table.get(name) {
+            Some(Dependency::Version(old)) => {
+                (Some(old.clone()), Dependency::Version(version.to_string()))
+            }
+            Some(Dependency::Detailed(old)) => {
+                let mut new = old.clone();
+                new.version = Some(version.to_string());
+                (
+                    Some(old.version.clone().unwrap_or_else(|| "*".to_string())),
+                    Dependency::Detailed(new),
+                )
+            }
+            None => (None, Dependency::Version(version.to_string())),
+        };
+
+        table.insert(name.to_string(), value);
+        previous
+    }
+
     /// The manifest's dependencies as the solver's [`PackageDependencies`], the
     /// inverse of [`Rproj::merge_description`]: `[dependencies]` becomes
     /// `Depends` (entries marked `attach = true`, and `R` itself) or `Imports`,
@@ -387,18 +427,142 @@ fn dep_spec(
     })
 }
 
+/// Parse a `rig proj add` package specification into a package name and the
+/// version requirement to write into the manifest.
+///
+/// The syntax is `<package>` or `<package>@<requirement>`: `dplyr`,
+/// `dplyr@1.1.0`, `cli@>= 3.6`, `rlang@>= 1.0, < 2.0`. A specification with no
+/// requirement means any version (`"*"`), and a bare version is normalized to
+/// its explicit caret spelling, so `dplyr@1.1.0` becomes `^1.1.0` in the
+/// manifest — the same requirement, but readable without knowing that a bare
+/// version means caret.
+///
+/// The requirement is parsed to validate it, so an unusable one is rejected
+/// here rather than written into the manifest.
+pub fn parse_add_spec(spec: &str) -> Result<(String, String), Box<dyn Error>> {
+    let spec = spec.trim();
+    let (name, version) = match spec.split_once('@') {
+        Some((name, version)) => (name.trim(), version.trim()),
+        None => (spec, "*"),
+    };
+
+    if name.is_empty() {
+        bail!("Invalid package `{}`: the package name is missing", spec);
+    }
+    if name.contains(|c: char| c.is_whitespace() || c == '(' || c == ')') {
+        bail!(
+            "Invalid package name `{}`, expected `<package>` or `<package>@<version>`, \
+             e.g. `dplyr@>= 1.1.0`",
+            name
+        );
+    }
+    if version.is_empty() {
+        bail!(
+            "Invalid package `{}`: the version requirement after `@` is missing",
+            spec
+        );
+    }
+
+    let version = match version.strip_prefix('^') {
+        Some(_) => version.to_string(),
+        None if version.starts_with(|c: char| c.is_ascii_digit()) => format!("^{}", version),
+        None => version.to_string(),
+    };
+
+    parse_constraints(&version).map_err(|err| {
+        SimpleError::new(format!(
+            "Invalid version requirement `{}` for package `{}`: {}",
+            version, name, err
+        ))
+    })?;
+
+    Ok((name.to_string(), version))
+}
+
 /// Parse an `rproj.toml` version string, e.g. `">= 1.0, < 2.0"`, into version
-/// constraints. The inverse of [`format_constraints`]; `"*"` means no
-/// constraint.
-fn parse_constraints(version: &str) -> Result<Vec<VersionConstraint>, Box<dyn Error>> {
+/// constraints. Comma means AND, `"*"` (or an empty string) means no
+/// constraint, and each piece goes through [`expand_version_req`], so the
+/// caret/tilde/bare forms are understood as well. The inverse of
+/// [`format_constraints`] for the plain-operator forms.
+pub fn parse_constraints(version: &str) -> Result<Vec<VersionConstraint>, Box<dyn Error>> {
     let version = version.trim();
     if version.is_empty() || version == "*" {
         return Ok(vec![]);
     }
-    version
-        .split(',')
-        .map(|c| VersionConstraint::from_str(c.trim()))
-        .collect()
+    let mut constraints = Vec::new();
+    for piece in version.split(',') {
+        constraints.extend(expand_version_req(piece.trim())?);
+    }
+    Ok(constraints)
+}
+
+/// One version requirement as version constraints. A plain operator form
+/// (`">= 1.0"`) is a single constraint; the caret, tilde and bare forms lower
+/// onto a pair of them:
+///
+/// - `^1.2.3` (and the bare `1.2.3`, which means the same) is *compatible
+///   with*: `>= 1.2.3, < 2.0.0`.
+/// - `~1.2.3` allows the last component to move only: `>= 1.2.3, < 1.3.0`.
+///
+/// R versions are not semver — they can have any number of components
+/// (`1.1`, `1.1.0.9000`) — so both forms are defined over the component
+/// vector rather than over major/minor/patch. The upper bound bumps one
+/// component and zeroes the ones after it: for a caret the leftmost non-zero
+/// component (cargo's zero nuance: `^0.2.3` is `< 0.3.0`, `^0.0.3` is
+/// `< 0.0.4`), or the last one if every component is zero; for a tilde the
+/// second component, or the first if that is all there is.
+fn expand_version_req(req: &str) -> Result<Vec<VersionConstraint>, Box<dyn Error>> {
+    let (version_str, tilde) = match req.strip_prefix('^') {
+        Some(rest) => (rest.trim(), false),
+        None => match req.strip_prefix('~') {
+            Some(rest) => (rest.trim(), true),
+            // A bare version, i.e. one that starts with a digit, means the
+            // same as the caret form. Anything else is an operator form.
+            None if req.starts_with(|c: char| c.is_ascii_digit()) => (req, false),
+            None => return Ok(vec![VersionConstraint::from_str(req)?]),
+        },
+    };
+
+    let version = RPackageVersion::from_str(version_str)?;
+    if version.components.is_empty() {
+        bail!("Invalid version constraint: {}", req);
+    }
+
+    let bump = if tilde {
+        // `~1.2.3` and `~1.2` bump the second component, `~1` the first.
+        std::cmp::min(1, version.components.len() - 1)
+    } else {
+        // The leftmost non-zero component, or the last one if all are zero.
+        version
+            .components
+            .iter()
+            .position(|c| *c > 0)
+            .unwrap_or(version.components.len() - 1)
+    };
+
+    let mut upper: Vec<u32> = version.components.clone();
+    upper[bump] += 1;
+    for c in upper.iter_mut().skip(bump + 1) {
+        *c = 0;
+    }
+
+    Ok(vec![
+        VersionConstraint {
+            constraint_type: VersionConstraintType::GreaterOrEqual,
+            version,
+        },
+        VersionConstraint {
+            constraint_type: VersionConstraintType::Less,
+            version: RPackageVersion {
+                original: upper
+                    .iter()
+                    .map(|c| c.to_string())
+                    .collect::<Vec<_>>()
+                    .join("."),
+                components: upper,
+            },
+        },
+    ])
 }
 
 /// Format a dependency's version constraints as an `rproj.toml` version
@@ -936,5 +1100,201 @@ mod tests {
         )]);
         m.merge_description(&pkg);
         assert_eq!(m.dependencies.get("cli"), Some(&dep(">= 1.0, << 2.0")));
+    }
+
+    /// The constraints of a version requirement as `("op", "version")` pairs,
+    /// which read more clearly in the expansion tests below than a
+    /// `VersionConstraint` literal does.
+    fn expanded(version: &str) -> Vec<(String, String)> {
+        parse_constraints(version)
+            .unwrap()
+            .iter()
+            .map(|c| (c.constraint_type.to_string(), c.version.to_string()))
+            .collect()
+    }
+
+    fn range(lower: &str, upper: &str) -> Vec<(String, String)> {
+        vec![
+            (">=".to_string(), lower.to_string()),
+            ("<<".to_string(), upper.to_string()),
+        ]
+    }
+
+    #[test]
+    fn a_caret_requirement_allows_the_leftmost_non_zero_component_to_stay() {
+        assert_eq!(expanded("^1.2.3"), range("1.2.3", "2.0.0"));
+        assert_eq!(expanded("^0.2.3"), range("0.2.3", "0.3.0"));
+        assert_eq!(expanded("^0.0.3"), range("0.0.3", "0.0.4"));
+        assert_eq!(expanded("^1.2"), range("1.2", "2.0"));
+        assert_eq!(expanded("^1"), range("1", "2"));
+        assert_eq!(expanded("^0"), range("0", "1"));
+        assert_eq!(expanded("^0.0"), range("0.0", "0.1"));
+        // R versions are not semver, they can have any number of components.
+        assert_eq!(expanded("^1.1.0.9000"), range("1.1.0.9000", "2.0.0.0"));
+    }
+
+    #[test]
+    fn a_bare_version_is_a_caret_requirement() {
+        assert_eq!(expanded("1.2.3"), expanded("^1.2.3"));
+        assert_eq!(expanded("0.0.3"), expanded("^0.0.3"));
+    }
+
+    #[test]
+    fn a_tilde_requirement_allows_the_last_component_to_move() {
+        assert_eq!(expanded("~1.2.3"), range("1.2.3", "1.3.0"));
+        assert_eq!(expanded("~1.2"), range("1.2", "1.3"));
+        assert_eq!(expanded("~1"), range("1", "2"));
+        assert_eq!(expanded("~0.0.3"), range("0.0.3", "0.1.0"));
+        assert_eq!(expanded("~1.1.0.9000"), range("1.1.0.9000", "1.2.0.0"));
+    }
+
+    #[test]
+    fn the_operator_requirements_are_unchanged() {
+        assert_eq!(
+            expanded(">= 1.2"),
+            vec![(">=".to_string(), "1.2".to_string())]
+        );
+        assert_eq!(
+            expanded("= 1.2.3"),
+            vec![("=".to_string(), "1.2.3".to_string())]
+        );
+        assert_eq!(expanded(">= 1.0, < 2.0"), range("1.0", "2.0"));
+        assert_eq!(expanded("*"), vec![]);
+        assert_eq!(expanded(""), vec![]);
+    }
+
+    #[test]
+    fn an_unparseable_requirement_is_an_error() {
+        assert!(parse_constraints("nope").is_err());
+        assert!(parse_constraints("^nope").is_err());
+        assert!(parse_constraints("^").is_err());
+        assert!(parse_constraints(">= 1.0, nope").is_err());
+    }
+
+    #[test]
+    fn an_add_spec_without_a_version_means_any_version() {
+        assert_eq!(
+            parse_add_spec("dplyr").unwrap(),
+            ("dplyr".to_string(), "*".to_string())
+        );
+    }
+
+    #[test]
+    fn an_add_specs_bare_version_becomes_an_explicit_caret() {
+        assert_eq!(
+            parse_add_spec("dplyr@1.1.0").unwrap(),
+            ("dplyr".to_string(), "^1.1.0".to_string())
+        );
+        assert_eq!(
+            parse_add_spec("dplyr@^1.1.0").unwrap(),
+            ("dplyr".to_string(), "^1.1.0".to_string())
+        );
+    }
+
+    #[test]
+    fn an_add_specs_other_versions_are_kept_as_they_are() {
+        assert_eq!(
+            parse_add_spec("cli@>= 3.6").unwrap(),
+            ("cli".to_string(), ">= 3.6".to_string())
+        );
+        assert_eq!(
+            parse_add_spec(" rlang@>= 1.0, < 2.0 ").unwrap(),
+            ("rlang".to_string(), ">= 1.0, < 2.0".to_string())
+        );
+        assert_eq!(
+            parse_add_spec("tidyr@~1.3.0").unwrap(),
+            ("tidyr".to_string(), "~1.3.0".to_string())
+        );
+    }
+
+    #[test]
+    fn an_invalid_add_spec_is_an_error() {
+        // No version after the `@`, no package name, and a version
+        // requirement that does not parse.
+        assert!(parse_add_spec("dplyr@").is_err());
+        assert!(parse_add_spec("@1.0").is_err());
+        assert!(parse_add_spec("").is_err());
+        assert!(parse_add_spec("dplyr@nope").is_err());
+        assert!(parse_add_spec("dplyr (>= 1.0)").is_err());
+    }
+
+    #[test]
+    fn add_dependency_adds_a_new_dependency() {
+        let mut m = Rproj::minimal("mypkg");
+        assert_eq!(m.add_dependency("dplyr", "^1.1.0", false), None);
+        assert_eq!(m.dependencies.get("dplyr"), Some(&dep("^1.1.0")));
+        assert!(m.dependency_groups.is_empty());
+    }
+
+    #[test]
+    fn add_dependency_dev_adds_to_the_test_group() {
+        let mut m = Rproj::minimal("mypkg");
+        assert_eq!(m.add_dependency("testthat", ">= 3.0", true), None);
+        assert!(!m.dependencies.contains_key("testthat"));
+        assert_eq!(
+            m.dependency_groups
+                .get("test")
+                .unwrap()
+                .dependencies
+                .get("testthat"),
+            Some(&dep(">= 3.0"))
+        );
+    }
+
+    #[test]
+    fn add_dependency_returns_the_previous_requirement() {
+        let mut m = Rproj::minimal("mypkg");
+        m.add_dependency("dplyr", "^1.0.0", false);
+        assert_eq!(
+            m.add_dependency("dplyr", "^1.1.0", false),
+            Some("^1.0.0".to_string())
+        );
+        assert_eq!(m.dependencies.get("dplyr"), Some(&dep("^1.1.0")));
+    }
+
+    #[test]
+    fn add_dependency_keeps_an_existing_entrys_other_fields() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependencies.insert(
+            "ts".to_string(),
+            Dependency::Detailed(DepTable {
+                git: Some("https://github.com/gaborcsardi/ts".to_string()),
+                attach: Some(true),
+                ..Default::default()
+            }),
+        );
+        // The entry had no version requirement, so the previous one reads as
+        // "any version".
+        assert_eq!(
+            m.add_dependency("ts", ">= 1.0", false),
+            Some("*".to_string())
+        );
+        assert_eq!(
+            m.dependencies.get("ts"),
+            Some(&Dependency::Detailed(DepTable {
+                version: Some(">= 1.0".to_string()),
+                git: Some("https://github.com/gaborcsardi/ts".to_string()),
+                attach: Some(true),
+                ..Default::default()
+            }))
+        );
+    }
+
+    #[test]
+    fn a_dev_dependency_is_soft_and_needs_dev_to_be_solved() {
+        let mut m = Rproj::minimal("mypkg");
+        m.add_dependency("testthat", ">= 3.0", true);
+
+        let dev = m.to_dep_version_specs(true).unwrap();
+        assert_eq!(
+            dev.dependencies
+                .iter()
+                .find(|d| d.name == "testthat")
+                .map(|d| d.types.clone()),
+            Some(vec![RDepType::Suggests])
+        );
+
+        let nodev = m.to_dep_version_specs(false).unwrap();
+        assert!(!nodev.dependencies.iter().any(|d| d.name == "testthat"));
     }
 }

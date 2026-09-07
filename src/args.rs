@@ -1359,6 +1359,44 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("add")
+                .about(ABOUT_PROJ_ADD)
+                .long_about(HELP_PROJ_ADD)
+                .display_order(0)
+                .arg(
+                    Arg::new("package")
+                        .help(
+                            "Packages to add, as <package> or <package>@<version>,\n\
+                            e.g. dplyr or 'dplyr@>= 1.1.0'",
+                        )
+                        .value_name("PACKAGE")
+                        .required(true)
+                        .num_args(1..),
+                )
+                .arg(
+                    Arg::new("dev")
+                        .help("Add as a dev (development) dependency")
+                        .long("dev")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("no-lock")
+                        .help("Only update rproj.toml, do not update rproj.lock")
+                        .long("no-lock")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("no-sync")
+                        .help("Do not install the added packages")
+                        .long("no-sync")
+                        .num_args(0)
+                        .required(false)
+                        .conflicts_with("no-lock"),
+                ),
+        )
+        .subcommand(
             Command::new("deps")
                 .about(ABOUT_PROJ_DEPS)
                 .long_about(HELP_PROJ_DEPS)
