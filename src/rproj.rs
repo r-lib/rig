@@ -671,6 +671,38 @@ impl Rproj {
         previous
     }
 
+    /// Whether the manifest lists a dependency by this name anywhere:
+    /// `[dependencies]`, `[linking-dependencies]`, or any
+    /// `[dependency-groups.*]` table.
+    pub fn has_dependency(&self, name: &str) -> bool {
+        self.dependencies.contains_key(name)
+            || self.linking_dependencies.contains_key(name)
+            || self
+                .dependency_groups
+                .values()
+                .any(|group| group.dependencies.contains_key(name))
+    }
+
+    /// Remove a dependency from the manifest, wherever it is listed:
+    /// `[dependencies]`, `[linking-dependencies]`, or any
+    /// `[dependency-groups.*]` table.
+    ///
+    /// Returns the removed entry, if the name was found anywhere.
+    pub fn remove_dependency(&mut self, name: &str) -> Option<Dependency> {
+        if let Some(dep) = self.dependencies.remove(name) {
+            return Some(dep);
+        }
+        if let Some(dep) = self.linking_dependencies.remove(name) {
+            return Some(dep);
+        }
+        for group in self.dependency_groups.values_mut() {
+            if let Some(dep) = group.dependencies.remove(name) {
+                return Some(dep);
+            }
+        }
+        None
+    }
+
     /// The manifest's dependencies as the solver's [`PackageDependencies`], the
     /// inverse of [`Rproj::merge_description`]: `[dependencies]` becomes
     /// `Depends` (entries marked `attach = true`, and `R` itself) or `Imports`,
@@ -1775,6 +1807,33 @@ mod tests {
                 ..Default::default()
             }))
         );
+    }
+
+    #[test]
+    fn remove_dependency_removes_a_hard_dependency() {
+        let mut m = Rproj::minimal("mypkg");
+        m.add_dependency("dplyr", "^1.1.0", false);
+        assert_eq!(m.remove_dependency("dplyr"), Some(dep("^1.1.0")));
+        assert!(!m.dependencies.contains_key("dplyr"));
+    }
+
+    #[test]
+    fn remove_dependency_removes_a_dependency_group_entry() {
+        let mut m = Rproj::minimal("mypkg");
+        m.add_dependency("testthat", ">= 3.0", true);
+        assert_eq!(m.remove_dependency("testthat"), Some(dep(">= 3.0")));
+        assert!(!m
+            .dependency_groups
+            .get("test")
+            .unwrap()
+            .dependencies
+            .contains_key("testthat"));
+    }
+
+    #[test]
+    fn remove_dependency_of_a_name_not_listed_anywhere_is_none() {
+        let mut m = Rproj::minimal("mypkg");
+        assert_eq!(m.remove_dependency("nosuchpkg"), None);
     }
 
     #[test]

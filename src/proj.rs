@@ -81,6 +81,7 @@ pub fn sc_proj(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn E
         Some(("import", s)) => sc_proj_import(s, args, mainargs),
         Some(("export", s)) => sc_proj_export(s, args, mainargs),
         Some(("add", s)) => sc_proj_add(s, args, mainargs),
+        Some(("remove", s)) => sc_proj_remove(s, args, mainargs),
         Some(("deps", s)) => sc_proj_deps(s, args, mainargs),
         Some(("tree", s)) => sc_proj_tree(s, args, mainargs),
         Some(("lock", s)) => sc_proj_lock(s, args, mainargs),
@@ -429,6 +430,97 @@ fn sc_proj_add(
 
     // A package no repository has cannot be locked, and a manifest that
     // cannot be locked is of no use to anyone, so undo the edit.
+    if let Err(err) = proj_lock(&root, &ProjLockOptions::default(), args) {
+        if let Some(original) = original {
+            fs::write(&path, original)?;
+            let msg = format!(
+                "Could not resolve the dependencies, {} unchanged",
+                RPROJ_MANIFEST_FILE
+            );
+            OUTPUT.error(&msg);
+            error!("{}", msg);
+        }
+        return Err(err);
+    }
+
+    if args.get_flag("no-sync") {
+        return Ok(());
+    }
+
+    proj_sync(&root, &ProjSyncOptions::default(), args)
+}
+
+/// Remove dependencies from `rproj.toml`, then update the lockfile and the
+/// project library: `rig proj remove`.
+fn sc_proj_remove(
+    args: &ArgMatches,
+    _projargs: &ArgMatches,
+    _mainargs: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+    let cwd = std::env::current_dir()?;
+    let root = find_project_root(&cwd).unwrap_or(cwd);
+    let path = root.join(RPROJ_MANIFEST_FILE);
+
+    // The manifest is restored from this if re-locking after the removal
+    // fails, so that a failed `rig proj remove` leaves no trace.
+    let original = fs::read_to_string(&path).ok();
+    let mut manifest = proj_read_manifest(&root)?;
+
+    // A name named more than once is removed once; a name that is not a
+    // dependency anywhere stops the whole command before anything is
+    // removed, the same all-or-none behavior as `rig pkg remove`.
+    let mut names: Vec<String> = Vec::new();
+    for name in args.get_many::<String>("package").unwrap_or_default() {
+        if !names.contains(name) {
+            names.push(name.clone());
+        }
+    }
+
+    let missing: Vec<&String> = names
+        .iter()
+        .filter(|name| !manifest.has_dependency(name))
+        .collect();
+    if !missing.is_empty() {
+        let word = if missing.len() == 1 {
+            "dependency"
+        } else {
+            "dependencies"
+        };
+        let msg = format!(
+            "Not a {} in {}: {}",
+            word,
+            RPROJ_MANIFEST_FILE,
+            missing
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        OUTPUT.error(&msg);
+        error!("{}", msg);
+        bail!("{}", msg);
+    }
+
+    let mut messages: Vec<String> = Vec::new();
+    for name in names.iter() {
+        manifest.remove_dependency(name);
+        messages.push(format!("Removed {} from {}", name, RPROJ_MANIFEST_FILE));
+    }
+
+    fs::write(&path, toml::to_string_pretty(&manifest)?)?;
+    for msg in messages.iter() {
+        OUTPUT.success(msg);
+        info!("{}", msg);
+    }
+
+    if args.get_flag("no-lock") {
+        OUTPUT.info(&format!(
+            "Next: run `rig proj lock` to update {}.",
+            RPROJ_LOCK_FILE
+        ));
+        return Ok(());
+    }
+
     if let Err(err) = proj_lock(&root, &ProjLockOptions::default(), args) {
         if let Some(original) = original {
             fs::write(&path, original)?;

@@ -1425,6 +1425,35 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("remove")
+                .aliases(["rm"])
+                .about(ABOUT_PROJ_REMOVE)
+                .long_about(HELP_PROJ_REMOVE)
+                .display_order(0)
+                .arg(
+                    Arg::new("package")
+                        .help("Packages to remove")
+                        .value_name("PACKAGE")
+                        .required(true)
+                        .num_args(1..),
+                )
+                .arg(
+                    Arg::new("no-lock")
+                        .help("Only update rproj.toml, do not update rproj.lock")
+                        .long("no-lock")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("no-sync")
+                        .help("Do not re-sync the project library")
+                        .long("no-sync")
+                        .num_args(0)
+                        .required(false)
+                        .conflicts_with("no-lock"),
+                ),
+        )
+        .subcommand(
             Command::new("deps")
                 .about(ABOUT_PROJ_DEPS)
                 .long_about(HELP_PROJ_DEPS)
