@@ -79,6 +79,7 @@ pub fn sc_proj(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn E
     match args.subcommand() {
         Some(("init", s)) => sc_proj_init(s, args, mainargs),
         Some(("import", s)) => sc_proj_import(s, args, mainargs),
+        Some(("export", s)) => sc_proj_export(s, args, mainargs),
         Some(("add", s)) => sc_proj_add(s, args, mainargs),
         Some(("deps", s)) => sc_proj_deps(s, args, mainargs),
         Some(("tree", s)) => sc_proj_tree(s, args, mainargs),
@@ -310,6 +311,45 @@ fn sc_proj_import(
             pkg.name, pkg.version, dep_count, input, RPROJ_MANIFEST_FILE
         )
     };
+    OUTPUT.success(&msg);
+    info!("{}", msg);
+    Ok(())
+}
+
+/// Create a `DESCRIPTION` file from `rproj.toml`: `rig proj export`.
+fn sc_proj_export(
+    args: &ArgMatches,
+    _projargs: &ArgMatches,
+    _mainargs: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+    let default_output = "DESCRIPTION".to_string();
+    let output: &String = args.get_one::<String>("output").unwrap_or(&default_output);
+    let force = args.get_flag("force");
+    let path = Path::new(output);
+
+    if path.exists() && !force {
+        let msg = format!("{} already exists, use --force to overwrite", output);
+        OUTPUT.error(&msg);
+        error!("{}", msg);
+        bail!("{}", msg);
+    }
+
+    let cwd = std::env::current_dir()?;
+    let root = find_project_root(&cwd).unwrap_or(cwd);
+    let manifest = proj_read_manifest(&root)?;
+
+    let (description, dropped) = manifest.to_description()?;
+    fs::write(path, description)?;
+
+    if !dropped.is_empty() {
+        OUTPUT.warn(&format!(
+            "Dropped the upper version bound for {}, DESCRIPTION only supports \
+             a single version comparison per dependency",
+            dropped.join(", ")
+        ));
+    }
+
+    let msg = format!("Exported {} to {}", RPROJ_MANIFEST_FILE, output);
     OUTPUT.success(&msg);
     info!("{}", msg);
     Ok(())

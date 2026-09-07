@@ -1365,6 +1365,28 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("export")
+                .about(ABOUT_PROJ_EXPORT)
+                .long_about(HELP_PROJ_EXPORT)
+                .display_order(0)
+                .arg(
+                    Arg::new("output")
+                        .help("Output file to write (e.g. DESCRIPTION)")
+                        .long("output")
+                        .short('o')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("force")
+                        .help("Overwrite the output file if it already exists")
+                        .long("force")
+                        .short('f')
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
             Command::new("add")
                 .about(ABOUT_PROJ_ADD)
                 .long_about(HELP_PROJ_ADD)

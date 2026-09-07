@@ -21,6 +21,7 @@
 
 use std::collections::BTreeMap;
 use std::error::Error;
+use std::fmt::Write as _;
 
 use log::warn;
 use serde::{Deserialize, Serialize};
@@ -141,6 +142,39 @@ impl Author {
                 }
             })
             .collect()
+    }
+
+    /// Build one `person(...)` call for `Authors@R`, the inverse of
+    /// [`Author::from_authors_r`]'s per-call parsing. `name` is written as
+    /// the sole positional argument (`given`, with no `family`), since
+    /// [`Author`] only stores one combined name; that round-trips through
+    /// [`parse_person_call`], which treats a lone positional string as
+    /// `given` alone.
+    pub fn to_person_r(&self) -> String {
+        let mut parts = vec![format!("\"{}\"", escape_r_string(&self.name))];
+        if let Some(email) = &self.email {
+            parts.push(format!("email = \"{}\"", escape_r_string(email)));
+        }
+        if !self.roles.is_empty() {
+            let roles = self
+                .roles
+                .iter()
+                .map(|r| format!("\"{}\"", escape_r_string(r)))
+                .collect::<Vec<_>>()
+                .join(", ");
+            parts.push(format!("role = c({})", roles));
+        }
+        let mut comment = vec![];
+        if let Some(orcid) = &self.orcid {
+            comment.push(format!("ORCID = \"{}\"", escape_r_string(orcid)));
+        }
+        if let Some(ror) = &self.ror {
+            comment.push(format!("ROR = \"{}\"", escape_r_string(ror)));
+        }
+        if !comment.is_empty() {
+            parts.push(format!("comment = c({})", comment.join(", ")));
+        }
+        format!("person({})", parts.join(", "))
     }
 
     /// Fallback when `Authors@R` is absent: parses DESCRIPTION's
@@ -684,6 +718,153 @@ impl Rproj {
 
         Ok(pkg_deps)
     }
+
+    /// Render this manifest as a `DESCRIPTION` file, the inverse of
+    /// [`Rproj::merge_description`] plus the `[project]` metadata mapping
+    /// `rig proj import` reads (`Package`/`Version`/`Title`/`Description`/
+    /// `License`/`Type`/`Authors@R`/`URL`/`BugReports`). Returns the text
+    /// plus the names of any dependencies that had an upper version bound
+    /// dropped (DESCRIPTION's `pkg (>= 1.2.3)` syntax has no room for a
+    /// two-sided range, so only the lower bound, if any, survives).
+    pub fn to_description(&self) -> Result<(String, Vec<String>), Box<dyn Error>> {
+        let mut out = String::new();
+        let mut dropped: Vec<String> = Vec::new();
+
+        writeln!(out, "Package: {}", self.project.name)?;
+        let type_ = self.project.type_.as_deref().unwrap_or("package");
+        writeln!(out, "Type: {}", title_case(type_))?;
+        if let Some(title) = &self.project.title {
+            writeln!(out, "Title: {}", fold_dcf_prose(title, 76))?;
+        }
+        writeln!(out, "Version: {}", self.project.version)?;
+        if !self.project.authors.is_empty() {
+            let people = self
+                .project
+                .authors
+                .iter()
+                .map(Author::to_person_r)
+                .collect::<Vec<_>>()
+                .join(", ");
+            let raw = if self.project.authors.len() == 1 {
+                people
+            } else {
+                format!("c({})", people)
+            };
+            writeln!(out, "Authors@R: {}", fold_dcf_prose(&raw, 76))?;
+        }
+        if let Some(description) = &self.project.description {
+            writeln!(out, "Description: {}", fold_dcf_prose(description, 76))?;
+        }
+        if let Some(license) = &self.project.license {
+            writeln!(out, "License: {}", license)?;
+        }
+        let mut urls: Vec<&str> = vec![];
+        if let Some(homepage) = self.project.urls.get("homepage") {
+            urls.push(homepage);
+        }
+        if let Some(source) = self.project.urls.get("source") {
+            urls.push(source);
+        }
+        if !urls.is_empty() {
+            writeln!(out, "URL: {}", urls.join(", "))?;
+        }
+        if let Some(bugreports) = self.project.urls.get("bugreports") {
+            writeln!(out, "BugReports: {}", bugreports)?;
+        }
+
+        let pkg_deps = self.to_dep_version_specs(true)?;
+        for dep_type in RDepType::all() {
+            let mut entries: Vec<&DepVersionSpec> = pkg_deps
+                .dependencies
+                .iter()
+                .filter(|d| d.types.contains(dep_type))
+                .collect();
+            entries.sort_by(|a, b| a.name.cmp(&b.name));
+            if entries.is_empty() {
+                continue;
+            }
+            let items: Vec<String> = entries
+                .iter()
+                .map(|dep| {
+                    let (item, was_dropped) = format_dep_entry(dep);
+                    if was_dropped {
+                        dropped.push(dep.name.clone());
+                    }
+                    item
+                })
+                .collect();
+            writeln!(out, "{}: {}", dep_type, fold_dcf_list(&items, 76))?;
+        }
+
+        Ok((out, dropped))
+    }
+}
+
+/// Title-case a single word, e.g. `"package"` -> `"Package"`, for the
+/// `Type:` field (`rproj.toml`'s `[project].type` is lowercase by
+/// convention, DESCRIPTION's `Type:` is not).
+fn title_case(word: &str) -> String {
+    let mut chars = word.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
+/// Escape a string for use inside an R string literal (`"..."`).
+fn escape_r_string(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// Format one dependency as a DCF entry, e.g. `"dplyr"` or
+/// `"dplyr (>= 1.1.0)"`. [`parse_constraints`]/[`expand_version_req`] always
+/// build the lower bound first, so `constraints[0]` is the lower bound
+/// whenever there is one; any further constraint (an upper bound) has no
+/// place in DESCRIPTION's single-comparison syntax and is dropped, which the
+/// second return value flags.
+fn format_dep_entry(dep: &DepVersionSpec) -> (String, bool) {
+    match dep.constraints.first() {
+        None => (dep.name.clone(), false),
+        Some(c) => (
+            format!("{} ({} {})", dep.name, c.constraint_type, c.version),
+            dep.constraints.len() > 1,
+        ),
+    }
+}
+
+/// Greedily wrap comma-joined `items` (each already formatted, e.g.
+/// `"dplyr (>= 1.1.0)"`) to at most `width` columns, folding only between
+/// items (never inside one, since an item can itself contain a space), with
+/// 4-space-indented continuation lines, DCF's folding convention.
+fn fold_dcf_list(items: &[String], width: usize) -> String {
+    let mut out = String::new();
+    let mut col = 0usize;
+    for (i, item) in items.iter().enumerate() {
+        let piece = if i + 1 < items.len() {
+            format!("{},", item)
+        } else {
+            item.clone()
+        };
+        if i == 0 {
+            out.push_str(&piece);
+            col = piece.len();
+        } else if col + 1 + piece.len() <= width {
+            out.push(' ');
+            out.push_str(&piece);
+            col += 1 + piece.len();
+        } else {
+            out.push_str("\n    ");
+            out.push_str(&piece);
+            col = 4 + piece.len();
+        }
+    }
+    out
+}
+
+/// Wrap prose (`Title`/`Description`) to at most `width` columns, joining
+/// continuation lines with DCF's 4-space indent.
+fn fold_dcf_prose(value: &str, width: usize) -> String {
+    crate::textfmt::wrap(value, width).join("\n    ")
 }
 
 /// Whether a dependency is attached (`Depends:` rather than `Imports:`).
@@ -1675,5 +1856,64 @@ mod tests {
         let author = Author::from_maintainer("Jane Doe").unwrap();
         assert_eq!(author.name, "Jane Doe");
         assert_eq!(author.email, None);
+    }
+
+    #[test]
+    fn to_description_renders_metadata_and_deps_and_reports_dropped_bounds() {
+        let mut m = Rproj::minimal("mypkg");
+        m.project.title = Some("My Package".to_string());
+        m.project.description = Some("Does things.".to_string());
+        m.project.license = Some("MIT".to_string());
+        m.project.authors.push(Author {
+            name: "Jane Doe".to_string(),
+            email: Some("jane@x.com".to_string()),
+            roles: vec!["aut".to_string(), "cre".to_string()],
+            orcid: None,
+            ror: None,
+        });
+        m.project
+            .urls
+            .insert("homepage".to_string(), "https://x.example/pkg".to_string());
+        m.project.urls.insert(
+            "bugreports".to_string(),
+            "https://x.example/pkg/issues".to_string(),
+        );
+        // Two-sided range: the upper bound should be dropped and reported.
+        m.dependencies
+            .insert("dplyr".to_string(), Dependency::Version(">= 1.1.0, < 2.0.0".to_string()));
+        // Single-sided: kept as-is.
+        m.dependencies
+            .insert("rlang".to_string(), Dependency::Version(">= 1.0".to_string()));
+        m.add_dependency("testthat", ">= 3.0", true);
+
+        let (desc, dropped) = m.to_description().unwrap();
+        assert_eq!(dropped, vec!["dplyr".to_string()]);
+        assert!(desc.contains("Package: mypkg\n"));
+        assert!(desc.contains("Type: Project\n"));
+        assert!(desc.contains("Title: My Package\n"));
+        assert!(desc.contains(
+            "Authors@R: person(\"Jane Doe\", email = \"jane@x.com\", role = c(\"aut\", \"cre\"))\n"
+        ));
+        assert!(desc.contains("Description: Does things.\n"));
+        assert!(desc.contains("License: MIT\n"));
+        assert!(desc.contains("URL: https://x.example/pkg\n"));
+        assert!(desc.contains("BugReports: https://x.example/pkg/issues\n"));
+        assert!(desc.contains("Depends: R (>= 4.1)\n"));
+        assert!(desc.contains("Imports: dplyr (>= 1.1.0), rlang (>= 1.0)\n"));
+        assert!(desc.contains("Suggests: testthat (>= 3.0)\n"));
+    }
+
+    #[test]
+    fn to_description_omits_absent_optional_fields() {
+        let m = Rproj::minimal("bare");
+        let (desc, dropped) = m.to_description().unwrap();
+        assert!(dropped.is_empty());
+        assert!(!desc.contains("Title:"));
+        assert!(!desc.contains("Authors@R:"));
+        assert!(!desc.contains("Description:"));
+        assert!(!desc.contains("License:"));
+        assert!(!desc.contains("URL:"));
+        assert!(!desc.contains("BugReports:"));
+        assert!(desc.contains("Depends: R (>= 4.1)\n"));
     }
 }
