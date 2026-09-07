@@ -690,6 +690,23 @@ impl Rproj {
         }
     }
 
+    /// Merge a DESCRIPTION's `Config/<group>/<key>` fields, other than
+    /// `Config/Needs/*` (handled by [`Rproj::merge_config_needs`] instead),
+    /// into `[config.<group>]` tables: `Config/testthat/edition: 3` becomes
+    /// `edition = 3` under `[config.testthat]`. `entries` holds one `(group,
+    /// key, raw field value)` triple per field.
+    ///
+    /// A value that parses as an integer or as `true`/`false` becomes a TOML
+    /// integer or boolean; anything else is kept as a string.
+    pub fn merge_config(&mut self, entries: &[(String, String, String)]) {
+        for (group, key, value) in entries.iter() {
+            self.config
+                .entry(group.clone())
+                .or_default()
+                .insert(key.clone(), parse_config_value(value));
+        }
+    }
+
     /// Add a dependency to the manifest, or update it if the manifest lists it
     /// already. `dev` puts it in the `test` dependency group (the group
     /// `rig proj import` imports `Suggests` into) instead of
@@ -824,26 +841,18 @@ impl Rproj {
         let type_ = self.project.type_.as_deref().unwrap_or("package");
         writeln!(out, "Type: {}", title_case(type_))?;
         if let Some(title) = &self.project.title {
-            writeln!(out, "Title: {}", fold_dcf_prose(title, 76))?;
+            writeln!(out, "Title: {}", fold_dcf_prose(title, 75))?;
         }
         writeln!(out, "Version: {}", self.project.version)?;
         if !self.project.authors.is_empty() {
-            let people = self
-                .project
-                .authors
-                .iter()
-                .map(Author::to_person_r)
-                .collect::<Vec<_>>()
-                .join(", ");
-            let raw = if self.project.authors.len() == 1 {
-                people
-            } else {
-                format!("c({})", people)
-            };
-            writeln!(out, "Authors@R: {}", fold_dcf_prose(&raw, 76))?;
+            writeln!(
+                out,
+                "Authors@R: {}",
+                format_authors_r(&self.project.authors)
+            )?;
         }
         if let Some(description) = &self.project.description {
-            writeln!(out, "Description: {}", fold_dcf_prose(description, 76))?;
+            writeln!(out, "Description: {}", fold_dcf_prose(description, 75))?;
         }
         if let Some(license) = &self.project.license {
             writeln!(out, "License: {}", license)?;
@@ -860,6 +869,9 @@ impl Rproj {
         }
         if let Some(bugreports) = self.project.urls.get("bugreports") {
             writeln!(out, "BugReports: {}", bugreports)?;
+        }
+        for (key, value) in self.description.iter() {
+            writeln!(out, "{}: {}", key, format_config_value(value))?;
         }
 
         let pkg_deps = self.to_dep_version_specs(true)?;
@@ -905,8 +917,95 @@ impl Rproj {
             }
         }
 
+        for (group, table) in self.config.iter() {
+            for (key, value) in table.iter() {
+                writeln!(
+                    out,
+                    "Config/{}/{}: {}",
+                    group,
+                    key,
+                    format_config_value(value)
+                )?;
+            }
+        }
+
         Ok((out, dropped))
     }
+}
+
+/// Format `Authors@R`'s value: one `person(...)` call per line when there is
+/// more than one author, indented 4 spaces under `c(` and closed with `)` on
+/// its own line, e.g.:
+///
+/// ```text
+/// Authors@R: c(
+///     person("Jane Doe", email = "jane@x.com", role = c("aut", "cre")),
+///     person("Rich Contributor", role = "ctb")
+///   )
+/// ```
+///
+/// A single author is written as a bare call with no `c(...)`. Either way,
+/// each call that would otherwise exceed 75 columns wraps its arguments
+/// across further lines (see [`wrap_person_call`]).
+fn format_authors_r(authors: &[Author]) -> String {
+    let calls: Vec<String> = authors.iter().map(Author::to_person_r).collect();
+    if calls.len() == 1 {
+        return wrap_person_call(&calls[0], "Authors@R: ".len(), 4);
+    }
+    let last = calls.len() - 1;
+    let mut out = "c(".to_string();
+    for (i, call) in calls.iter().enumerate() {
+        out.push_str("\n    ");
+        out.push_str(&wrap_person_call(call, 4, 11));
+        if i != last {
+            out.push(',');
+        }
+    }
+    out.push_str("\n  )");
+    out
+}
+
+/// Wrap one `person(...)` call (as built by [`Author::to_person_r`]) so no
+/// line exceeds 75 columns, breaking at top-level commas between its
+/// arguments. `first_line_indent` is the number of columns already used
+/// before the call starts (e.g. the length of `"Authors@R: "`, or of the
+/// 4-space indent before a call in a `c(...)` list); continuation lines are
+/// indented by `continuation_indent` spaces, which
+/// [`format_authors_r`] sets to align under the call's opening paren.
+fn wrap_person_call(call: &str, first_line_indent: usize, continuation_indent: usize) -> String {
+    let (Some(open), Some(close)) = (call.find('('), call.rfind(')')) else {
+        return call.to_string();
+    };
+    let prefix = &call[..=open];
+    let inner = &call[open + 1..close];
+    let args = split_top_level_commas(inner);
+
+    let mut lines: Vec<String> = Vec::new();
+    let mut cur = prefix.to_string();
+    let mut indent = first_line_indent;
+    let mut cur_has_arg = false;
+    for (i, arg) in args.iter().enumerate() {
+        let comma = if i + 1 < args.len() { "," } else { "" };
+        let piece = format!("{}{}", arg.trim(), comma);
+        if cur_has_arg {
+            let tentative_len = indent + cur.chars().count() + 1 + piece.chars().count();
+            if tentative_len > 75 {
+                lines.push(cur);
+                indent = continuation_indent;
+                cur = piece;
+                continue;
+            }
+            cur.push(' ');
+            cur.push_str(&piece);
+        } else {
+            cur.push_str(&piece);
+            cur_has_arg = true;
+        }
+    }
+    cur.push(')');
+    lines.push(cur);
+
+    lines.join(&format!("\n{}", " ".repeat(continuation_indent)))
 }
 
 /// Title-case a single word, e.g. `"package"` -> `"Package"`, for the
@@ -960,6 +1059,32 @@ fn format_group_entry(name: &str, dep: &Dependency) -> Result<(String, bool), Bo
 /// name, with an optional version constraint, becomes a version requirement;
 /// anything else is a package reference in one of `pak`'s syntaxes, kept
 /// verbatim under the package name the reference implies.
+/// Parse a `Config/<group>/<key>` DESCRIPTION field value for
+/// [`Rproj::merge_config`]: an integer or `true`/`false` string becomes the
+/// matching TOML type, anything else stays a string.
+fn parse_config_value(value: &str) -> toml::Value {
+    if let Ok(i) = value.parse::<i64>() {
+        toml::Value::Integer(i)
+    } else if value.eq_ignore_ascii_case("true") {
+        toml::Value::Boolean(true)
+    } else if value.eq_ignore_ascii_case("false") {
+        toml::Value::Boolean(false)
+    } else {
+        toml::Value::String(value.to_string())
+    }
+}
+
+/// Format a `[config.<group>]` value back as a DESCRIPTION field value, the
+/// inverse of [`parse_config_value`].
+fn format_config_value(value: &toml::Value) -> String {
+    match value {
+        toml::Value::Integer(i) => i.to_string(),
+        toml::Value::Boolean(b) => b.to_string(),
+        toml::Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
+
 fn config_needs_entry(entry: &str) -> (String, Dependency) {
     if let Ok(spec) = DepVersionSpec::parse(entry, "Suggests") {
         if is_r_package_name(&spec.name) {
@@ -2128,6 +2253,63 @@ mod tests {
         assert!(desc.contains("Depends:\n    R (>= 4.1)\n"));
     }
 
+    fn author(name: &str, roles: &[&str]) -> Author {
+        Author {
+            name: name.to_string(),
+            email: None,
+            roles: roles.iter().map(|r| r.to_string()).collect(),
+            orcid: None,
+            ror: None,
+        }
+    }
+
+    #[test]
+    fn to_description_writes_one_author_as_a_bare_call() {
+        let mut m = Rproj::minimal("mypkg");
+        m.project.authors.push(author("Jane Doe", &["aut", "cre"]));
+        let (desc, _) = m.to_description().unwrap();
+        assert!(desc.contains("Authors@R: person(\"Jane Doe\", role = c(\"aut\", \"cre\"))\n"));
+    }
+
+    #[test]
+    fn to_description_writes_multiple_authors_one_per_line() {
+        let mut m = Rproj::minimal("mypkg");
+        m.project.authors.push(author("Jane Doe", &["aut", "cre"]));
+        m.project.authors.push(author("Rich Contributor", &["ctb"]));
+        let (desc, _) = m.to_description().unwrap();
+        assert!(desc.contains(
+            "Authors@R: c(\n    \
+             person(\"Jane Doe\", role = c(\"aut\", \"cre\")),\n    \
+             person(\"Rich Contributor\", role = c(\"ctb\"))\n  \
+             )\n"
+        ));
+    }
+
+    #[test]
+    fn to_description_wraps_a_long_person_call_across_lines() {
+        let mut m = Rproj::minimal("mypkg");
+        m.project.authors.push(Author {
+            name: "Salim Brüggemann".to_string(),
+            email: Some("salim-b@pm.me".to_string()),
+            roles: vec!["ctb".to_string()],
+            orcid: Some("0000-0002-5329-5987".to_string()),
+            ror: None,
+        });
+        m.project.authors.push(author("Rich Contributor", &["ctb"]));
+        let (desc, _) = m.to_description().unwrap();
+
+        // The first author's call is too long for one line, so it wraps,
+        // aligned under its own opening paren; the second author still
+        // fits on a single line.
+        assert!(desc.contains(
+            "Authors@R: c(\n    \
+             person(\"Salim Brüggemann\", email = \"salim-b@pm.me\", role = c(\"ctb\"),\n           \
+             comment = c(ORCID = \"0000-0002-5329-5987\")),\n    \
+             person(\"Rich Contributor\", role = c(\"ctb\"))\n  \
+             )\n"
+        ));
+    }
+
     fn needs(fields: &[(&str, &str)]) -> Vec<(String, String)> {
         fields
             .iter()
@@ -2231,6 +2413,69 @@ mod tests {
              jsonlite=jeroen/jsonlite@v1.8.0,\n    pkgdown (>= 2.0),\n    \
              tidyverse/tidytemplate\n"
         ));
+    }
+
+    #[test]
+    fn merge_config_infers_integer_and_boolean_types() {
+        let mut m = Rproj::minimal("mypkg");
+        m.merge_config(&[
+            (
+                "testthat".to_string(),
+                "edition".to_string(),
+                "3".to_string(),
+            ),
+            (
+                "testthat".to_string(),
+                "parallel".to_string(),
+                "true".to_string(),
+            ),
+            (
+                "Roxygen".to_string(),
+                "roclets".to_string(),
+                "list".to_string(),
+            ),
+        ]);
+
+        let testthat = m.config.get("testthat").unwrap();
+        assert_eq!(testthat.get("edition"), Some(&toml::Value::Integer(3)));
+        assert_eq!(testthat.get("parallel"), Some(&toml::Value::Boolean(true)));
+        assert_eq!(
+            m.config.get("Roxygen").unwrap().get("roclets"),
+            Some(&toml::Value::String("list".to_string()))
+        );
+    }
+
+    #[test]
+    fn config_roundtrips_through_description() {
+        let mut m = Rproj::minimal("mypkg");
+        m.merge_config(&[(
+            "testthat".to_string(),
+            "edition".to_string(),
+            "3".to_string(),
+        )]);
+
+        let (desc, _) = m.to_description().unwrap();
+        assert!(desc.contains("Config/testthat/edition: 3\n"));
+
+        // The manifest survives a TOML round trip.
+        let text = toml::to_string_pretty(&m).unwrap();
+        assert_eq!(toml::from_str::<Rproj>(&text).unwrap(), m);
+    }
+
+    #[test]
+    fn description_escape_hatch_roundtrips_through_description() {
+        let mut m = Rproj::minimal("mypkg");
+        m.description.insert(
+            "Encoding".to_string(),
+            toml::Value::String("UTF-8".to_string()),
+        );
+
+        let (desc, _) = m.to_description().unwrap();
+        assert!(desc.contains("Encoding: UTF-8\n"));
+
+        // The manifest survives a TOML round trip.
+        let text = toml::to_string_pretty(&m).unwrap();
+        assert_eq!(toml::from_str::<Rproj>(&text).unwrap(), m);
     }
 
     #[test]

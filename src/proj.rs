@@ -202,6 +202,30 @@ fn resolve_release_r_version(args: &ArgMatches) -> Option<String> {
     }
 }
 
+/// DESCRIPTION fields that already have a structured home in the manifest
+/// (project metadata, `Maintainer` superseded by `Authors@R`, and each
+/// dependency type field), so `rig proj import` does not also copy them into
+/// the `[description]` escape hatch. `Config/*` fields are excluded
+/// separately, since they always go to `[config.*]` / dependency groups
+/// instead.
+const KNOWN_DESCRIPTION_FIELDS: [&str; 15] = [
+    "Package",
+    "Version",
+    "Type",
+    "Title",
+    "Description",
+    "License",
+    "Authors@R",
+    "Maintainer",
+    "URL",
+    "BugReports",
+    "Depends",
+    "Imports",
+    "LinkingTo",
+    "Suggests",
+    "Enhances",
+];
+
 /// Import a `DESCRIPTION` file into `rproj.toml`.
 ///
 /// By default this is a full import: name, version, title, description,
@@ -296,6 +320,17 @@ fn sc_proj_import(
                 .urls
                 .insert("bugreports".to_string(), reflow(bugreports));
         }
+        // Any other field, e.g. `Encoding`, has no structured home in the
+        // manifest, so it round-trips verbatim through the `[description]`
+        // escape hatch: `Encoding: UTF-8` becomes `Encoding = "UTF-8"`.
+        for (key, value) in paragraph.iter() {
+            if KNOWN_DESCRIPTION_FIELDS.contains(&key) || key.starts_with("Config/") {
+                continue;
+            }
+            manifest
+                .description
+                .insert(key.to_string(), toml::Value::String(reflow(value)));
+        }
     }
 
     manifest.merge_description(&pkg);
@@ -309,6 +344,21 @@ fn sc_proj_import(
         })
         .collect();
     manifest.merge_config_needs(&needs);
+    // `Config/<group>/<key>` fields, other than `Config/Needs/*` above, become
+    // `[config.<group>]` entries, e.g. `Config/testthat/edition: 3` becomes
+    // `edition = 3` under `[config.testthat]`.
+    let config: Vec<(String, String, String)> = paragraph
+        .iter()
+        .filter_map(|(key, value)| {
+            let rest = key.strip_prefix("Config/")?;
+            if rest.starts_with("Needs/") {
+                return None;
+            }
+            let (group, field) = rest.split_once('/')?;
+            Some((group.to_string(), field.to_string(), reflow(value)))
+        })
+        .collect();
+    manifest.merge_config(&config);
     fs::write(path, toml::to_string_pretty(&manifest)?)?;
 
     let groups = match needs.len() {
