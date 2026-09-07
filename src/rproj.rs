@@ -43,6 +43,13 @@ pub const RPROJ_LOCK_VERSION: usize = 1;
 // `rig proj init`.
 pub const RPROJ_MANIFEST_FILE: &str = "rproj.toml";
 
+/// The dependency groups that map onto a `DESCRIPTION` dependency field
+/// instead of onto a `Config/Needs/*` field: `test` is `Suggests` and
+/// `enhances` is `Enhances` (see [`Rproj::merge_description`]). Every other
+/// group is a `Config/Needs/<group>` field (see
+/// [`Rproj::merge_config_needs`]).
+const DESCRIPTION_DEP_GROUPS: [&str; 2] = ["test", "enhances"];
+
 /// A parsed `rproj.toml` manifest.
 ///
 /// Key ordering is not significant, so dependency tables use `BTreeMap` (they
@@ -211,9 +218,11 @@ fn extract_calls(src: &str, name: &str) -> Vec<String> {
     let mut calls = Vec::new();
     let mut i = 0;
     while i < chars.len() {
-        let is_match = chars[i..].starts_with(&needle[..]) && chars.get(i + needle.len()) == Some(&'(');
+        let is_match =
+            chars[i..].starts_with(&needle[..]) && chars.get(i + needle.len()) == Some(&'(');
         // Skip a suffix match, e.g. "myperson(" should not match "person(".
-        let prev_is_ident = i > 0 && matches!(chars[i - 1], c if c.is_alphanumeric() || c == '_' || c == '.');
+        let prev_is_ident =
+            i > 0 && matches!(chars[i - 1], c if c.is_alphanumeric() || c == '_' || c == '.');
         if is_match && !prev_is_ident {
             let open = i + needle.len();
             if let Some(close) = matching_paren(&chars, open) {
@@ -316,10 +325,7 @@ fn split_top_level_eq(s: &str) -> Option<(String, String)> {
             let next_is_eq = chars.get(i + 1) == Some(&'=');
             let prev_is_cmp = i > 0 && matches!(chars[i - 1], '!' | '<' | '>' | '=');
             if !next_is_eq && !prev_is_cmp {
-                return Some((
-                    chars[..i].iter().collect(),
-                    chars[i + 1..].iter().collect(),
-                ));
+                return Some((chars[..i].iter().collect(), chars[i + 1..].iter().collect()));
             }
         }
         i += 1;
@@ -338,7 +344,11 @@ fn unquote(s: &str) -> Option<String> {
     let q = bytes[0] as char;
     if (q == '"' || q == '\'') && bytes[bytes.len() - 1] as char == q {
         let inner = &s[1..s.len() - 1];
-        return Some(inner.replace(&format!("\\{}", q), &q.to_string()).replace("\\\\", "\\"));
+        return Some(
+            inner
+                .replace(&format!("\\{}", q), &q.to_string())
+                .replace("\\\\", "\\"),
+        );
     }
     None
 }
@@ -470,6 +480,13 @@ pub struct DepTable {
     pub hash: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
+    // The package reference, kept verbatim, in whatever syntax it was written
+    // in (`tidyverse/tidytemplate`, `bioc::S4Vectors`, `url::https://...`).
+    // Written by the `Config/Needs/*` import, which has no way to tell what
+    // kind of reference an entry is, and written back out unchanged by
+    // `rig proj export`.
+    #[serde(rename = "ref", default, skip_serializing_if = "Option::is_none")]
+    pub ref_: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -628,6 +645,47 @@ impl Rproj {
                         .dependencies
                         .insert(dep.name.clone(), Dependency::Version(version_str.clone()));
                 }
+            }
+        }
+    }
+
+    /// Merge a DESCRIPTION's `Config/Needs/*` fields into this manifest's
+    /// dependency groups: `Config/Needs/website` becomes
+    /// `[dependency-groups.website]`. `needs` holds one `(group name, raw
+    /// field value)` pair per field, the group name being what follows
+    /// `Config/Needs/`.
+    ///
+    /// A field's value is a comma-separated list of package references, and
+    /// unlike a `DESCRIPTION` dependency field it is not restricted to
+    /// package names: `tidyverse/tidytemplate` and other `pak` reference
+    /// syntaxes are common. An entry that is a plain package name (with an
+    /// optional version constraint) becomes an ordinary version requirement;
+    /// anything else is kept verbatim in [`DepTable::ref_`], so
+    /// [`Rproj::to_description`] can write it back unchanged.
+    ///
+    /// A field with an empty value creates an empty group, so that it, too,
+    /// round-trips.
+    pub fn merge_config_needs(&mut self, needs: &[(String, String)]) {
+        for (group_name, value) in needs.iter() {
+            if DESCRIPTION_DEP_GROUPS.contains(&group_name.as_str()) {
+                warn!(
+                    "Config/Needs/{} is merged into the `{}` dependency group, \
+                     which `rig proj export` writes as a DESCRIPTION dependency \
+                     field, not as Config/Needs/{}",
+                    group_name, group_name, group_name
+                );
+            }
+            let group = self
+                .dependency_groups
+                .entry(group_name.clone())
+                .or_default();
+            for entry in value.split(',') {
+                let entry = entry.trim();
+                if entry.is_empty() {
+                    continue;
+                }
+                let (name, dep) = config_needs_entry(entry);
+                group.dependencies.insert(name, dep);
             }
         }
     }
@@ -828,6 +886,30 @@ impl Rproj {
             writeln!(out, "{}: {}", dep_type, fold_dcf_list(&items, 76))?;
         }
 
+        for (group_name, group) in self.dependency_groups.iter() {
+            if DESCRIPTION_DEP_GROUPS.contains(&group_name.as_str()) {
+                continue;
+            }
+            let mut items: Vec<String> = Vec::new();
+            for (name, dep) in group.dependencies.iter() {
+                let (item, was_dropped) = format_group_entry(name, dep)?;
+                if was_dropped {
+                    dropped.push(name.clone());
+                }
+                items.push(item);
+            }
+            if items.is_empty() {
+                writeln!(out, "Config/Needs/{}:", group_name)?;
+            } else {
+                writeln!(
+                    out,
+                    "Config/Needs/{}: {}",
+                    group_name,
+                    fold_dcf_list(&items, 76)
+                )?;
+            }
+        }
+
         Ok((out, dropped))
     }
 }
@@ -862,6 +944,93 @@ fn format_dep_entry(dep: &DepVersionSpec) -> (String, bool) {
             dep.constraints.len() > 1,
         ),
     }
+}
+
+/// Format one dependency-group entry as a `Config/Needs/*` entry. An entry
+/// that kept its reference verbatim (see [`Rproj::merge_config_needs`]) is
+/// written back as it came in; anything else goes through
+/// [`format_dep_entry`], so it looks like a DESCRIPTION dependency entry.
+fn format_group_entry(name: &str, dep: &Dependency) -> Result<(String, bool), Box<dyn Error>> {
+    if let Dependency::Detailed(table) = dep {
+        if let Some(ref_) = &table.ref_ {
+            return Ok((ref_.clone(), false));
+        }
+    }
+    let spec = dep_spec(name, dep, RDepType::Suggests)?;
+    Ok(format_dep_entry(&spec))
+}
+
+/// One entry of a `Config/Needs/*` field as a dependency-group entry: the
+/// package name to key it under, and the dependency itself. A plain package
+/// name, with an optional version constraint, becomes a version requirement;
+/// anything else is a package reference in one of `pak`'s syntaxes, kept
+/// verbatim under the package name the reference implies.
+fn config_needs_entry(entry: &str) -> (String, Dependency) {
+    if let Ok(spec) = DepVersionSpec::parse(entry, "Suggests") {
+        if is_r_package_name(&spec.name) {
+            return (
+                spec.name,
+                Dependency::Version(format_constraints(&spec.constraints)),
+            );
+        }
+    }
+
+    let name = match pak_ref_name(entry) {
+        Some(name) => name,
+        None => {
+            warn!(
+                "Cannot tell which package `{}` refers to, keeping it as is",
+                entry
+            );
+            entry.to_string()
+        }
+    };
+    (
+        name,
+        Dependency::Detailed(DepTable {
+            ref_: Some(entry.to_string()),
+            ..Default::default()
+        }),
+    )
+}
+
+/// The package name a `pak` package reference implies, e.g. `tidytemplate`
+/// for `tidyverse/tidytemplate@main`. `pak` reference syntax is
+/// `[<name>=][<type>::]<ref>`, so an explicit name wins; otherwise the name
+/// is the last path component of the reference, without its `@<tag>` /
+/// `#<pull request>` suffix and without a file extension. `None` if that does
+/// not leave a valid package name behind.
+fn pak_ref_name(entry: &str) -> Option<String> {
+    if let Some((name, _)) = entry.split_once('=') {
+        let name = name.trim();
+        if is_r_package_name(name) {
+            return Some(name.to_string());
+        }
+    }
+
+    let ref_ = match entry.split_once("::") {
+        Some((_type, ref_)) => ref_,
+        None => entry,
+    };
+    let ref_ = ref_.split(['@', '#']).next().unwrap_or(ref_);
+    let last = ref_.trim_end_matches('/').rsplit('/').next()?;
+    let last = last.split('.').next().unwrap_or(last);
+    if is_r_package_name(last) {
+        Some(last.to_string())
+    } else {
+        None
+    }
+}
+
+/// Whether `name` is a valid R package name: a letter, then letters, digits
+/// and dots.
+fn is_r_package_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(first) if first.is_ascii_alphabetic() => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '.')
 }
 
 /// Greedily wrap comma-joined `items` (each already formatted, e.g.
@@ -1889,10 +2058,7 @@ mod tests {
             "person(\"Jane\", \"Doe\", role = \"aut\", \
              comment = c(ORCID = \"0000-0001-7098-9676\"))",
         );
-        assert_eq!(
-            authors[0].orcid,
-            Some("0000-0001-7098-9676".to_string())
-        );
+        assert_eq!(authors[0].orcid, Some("0000-0001-7098-9676".to_string()));
     }
 
     #[test]
@@ -1938,11 +2104,15 @@ mod tests {
             "https://x.example/pkg/issues".to_string(),
         );
         // Two-sided range: the upper bound should be dropped and reported.
-        m.dependencies
-            .insert("dplyr".to_string(), Dependency::Version(">= 1.1.0, < 2.0.0".to_string()));
+        m.dependencies.insert(
+            "dplyr".to_string(),
+            Dependency::Version(">= 1.1.0, < 2.0.0".to_string()),
+        );
         // Single-sided: kept as-is.
-        m.dependencies
-            .insert("rlang".to_string(), Dependency::Version(">= 1.0".to_string()));
+        m.dependencies.insert(
+            "rlang".to_string(),
+            Dependency::Version(">= 1.0".to_string()),
+        );
         m.add_dependency("testthat", ">= 3.0", true);
 
         let (desc, dropped) = m.to_description().unwrap();
@@ -1974,5 +2144,140 @@ mod tests {
         assert!(!desc.contains("URL:"));
         assert!(!desc.contains("BugReports:"));
         assert!(desc.contains("Depends: R (>= 4.1)\n"));
+    }
+
+    fn needs(fields: &[(&str, &str)]) -> Vec<(String, String)> {
+        fields
+            .iter()
+            .map(|(g, v)| (g.to_string(), v.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn merge_config_needs_creates_a_group_per_field() {
+        let mut m = Rproj::minimal("mypkg");
+        m.merge_config_needs(&needs(&[
+            ("website", "pkgdown, tidyverse/tidytemplate"),
+            ("coverage", "covr (>= 3.6)"),
+        ]));
+
+        let website = &m.dependency_groups.get("website").unwrap().dependencies;
+        assert_eq!(website.get("pkgdown"), Some(&dep("*")));
+        assert_eq!(
+            website.get("tidytemplate"),
+            Some(&Dependency::Detailed(DepTable {
+                ref_: Some("tidyverse/tidytemplate".to_string()),
+                ..Default::default()
+            }))
+        );
+        assert_eq!(
+            m.dependency_groups
+                .get("coverage")
+                .unwrap()
+                .dependencies
+                .get("covr"),
+            Some(&dep(">= 3.6"))
+        );
+    }
+
+    #[test]
+    fn merge_config_needs_keeps_an_empty_field_as_an_empty_group() {
+        let mut m = Rproj::minimal("mypkg");
+        m.merge_config_needs(&needs(&[("website", "")]));
+        assert!(m
+            .dependency_groups
+            .get("website")
+            .unwrap()
+            .dependencies
+            .is_empty());
+
+        let (desc, _) = m.to_description().unwrap();
+        assert!(desc.contains("Config/Needs/website:\n"));
+    }
+
+    #[test]
+    fn merge_config_needs_merges_into_the_description_backed_groups() {
+        // `Config/Needs/test` has nowhere else to go, so it lands in the
+        // group `Suggests` is imported into, and exports as `Suggests`.
+        let mut m = Rproj::minimal("mypkg");
+        m.add_dependency("testthat", ">= 3.0", true);
+        m.merge_config_needs(&needs(&[("test", "mockery")]));
+
+        let test = &m.dependency_groups.get("test").unwrap().dependencies;
+        assert_eq!(test.get("testthat"), Some(&dep(">= 3.0")));
+        assert_eq!(test.get("mockery"), Some(&dep("*")));
+
+        let (desc, _) = m.to_description().unwrap();
+        assert!(desc.contains("Suggests: mockery, testthat (>= 3.0)\n"));
+        assert!(!desc.contains("Config/Needs/"));
+    }
+
+    #[test]
+    fn to_description_writes_the_other_groups_as_config_needs() {
+        let mut m = Rproj::minimal("mypkg");
+        m.add_dependency("testthat", "*", true);
+        m.merge_config_needs(&needs(&[
+            ("website", "pkgdown, tidyverse/tidytemplate"),
+            ("coverage", "covr"),
+        ]));
+
+        let (desc, dropped) = m.to_description().unwrap();
+        assert!(dropped.is_empty());
+        assert!(desc.contains("Suggests: testthat\n"));
+        assert!(desc.contains("Config/Needs/coverage: covr\n"));
+        assert!(desc.contains("Config/Needs/website: pkgdown, tidyverse/tidytemplate\n"));
+        // Dependency fields come first, `Config/Needs/*` after them.
+        assert!(desc.find("Suggests:").unwrap() < desc.find("Config/Needs/").unwrap());
+    }
+
+    #[test]
+    fn config_needs_roundtrips_through_the_manifest() {
+        let mut m = Rproj::minimal("mypkg");
+        let field = "tidyverse/tidytemplate, pkgdown (>= 2.0), \
+                     bioc::S4Vectors, jsonlite=jeroen/jsonlite@v1.8.0";
+        m.merge_config_needs(&needs(&[("website", field)]));
+
+        // The manifest survives a TOML round trip, `ref` and all.
+        let text = toml::to_string_pretty(&m).unwrap();
+        assert_eq!(toml::from_str::<Rproj>(&text).unwrap(), m);
+
+        let (desc, _) = m.to_description().unwrap();
+        // Entries are sorted by package name, and every reference is written
+        // back exactly as it came in.
+        assert!(desc.contains(
+            "Config/Needs/website: bioc::S4Vectors, jsonlite=jeroen/jsonlite@v1.8.0, \
+             pkgdown (>= 2.0),\n    tidyverse/tidytemplate\n"
+        ));
+    }
+
+    #[test]
+    fn config_needs_entry_names_the_package_a_reference_implies() {
+        let cases = [
+            ("tidyverse/tidytemplate", "tidytemplate"),
+            ("tidyverse/tidytemplate@main", "tidytemplate"),
+            ("r-lib/pak#123", "pak"),
+            ("bioc::S4Vectors", "S4Vectors"),
+            ("git::https://github.com/r-lib/cli.git", "cli"),
+            ("jsonlite=jeroen/jsonlite", "jsonlite"),
+            ("r-lib/usethis/subdir", "subdir"),
+        ];
+        for (entry, name) in cases {
+            let (key, dep) = config_needs_entry(entry);
+            assert_eq!(key, name, "{}", entry);
+            assert_eq!(
+                dep,
+                Dependency::Detailed(DepTable {
+                    ref_: Some(entry.to_string()),
+                    ..Default::default()
+                }),
+                "{}",
+                entry
+            );
+        }
+
+        // A reference with no package name in it is kept under the reference
+        // itself, rather than being dropped.
+        let (key, _) = config_needs_entry("url::https://example.org/x?a=1");
+        assert_eq!(key, "url::https://example.org/x?a=1");
     }
 }

@@ -16,7 +16,9 @@ become `URL:`, and `bugreports` becomes `BugReports:`.
 `[dependencies]` becomes `Depends`/`Imports` (an entry with `attach = true`,
 and `R` itself, become `Depends`; the rest become `Imports`);
 `[linking-dependencies]` becomes `LinkingTo`; the `test` and `enhances`
-dependency groups become `Suggests` and `Enhances`.
+dependency groups become `Suggests` and `Enhances`. Every other dependency
+group becomes a `Config/Needs/<name>` field, an entry that names a package
+reference (`ref = "..."`) written out as that reference, verbatim.
 
 DESCRIPTION's dependency syntax only supports a single version comparison
 per package (`pkg (>= 1.2.3)`), unlike `rproj.toml`, which can express a

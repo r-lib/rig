@@ -28,6 +28,17 @@ packages are marked to attach on load); `LinkingTo` also lands in
 `[dependency-groups.test]` and `Enhances` into
 `[dependency-groups.enhances]`.
 
+Every `Config/Needs/<name>` field becomes a dependency group of the same
+name, e.g. `Config/Needs/website` becomes `[dependency-groups.website]`.
+Unlike a `DESCRIPTION` dependency field, these list package *references*, not
+just package names, so an entry that is not a plain package name (with an
+optional version requirement) is kept verbatim as `ref = "..."`, under the
+package name the reference implies: `tidyverse/tidytemplate` becomes
+`tidytemplate = { ref = "tidyverse/tidytemplate" }`. `rig proj export` writes
+these back unchanged. Note that only the `test` and `enhances` groups are
+installed, so a `Config/Needs/*` group is carried in the manifest, but not
+solved or installed by `rig proj lock` and `rig proj sync`.
+
 By default rig reads `DESCRIPTION` in the current directory; use `--input`
 to point to a different file.
 

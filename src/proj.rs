@@ -44,8 +44,8 @@ use crate::rvenv::{
     existing_targets, find_project_root, project_library, read_rvenv_cfg, rvenv_init, rvenv_sync,
     write_sync_stamp, RvenvCfg, RPROJ_LOCK_FILE,
 };
-use crate::textfmt::reflow;
 use crate::solver::*;
+use crate::textfmt::reflow;
 use crate::utils::create_parent_dir_if_needed;
 
 #[cfg(target_os = "macos")]
@@ -299,17 +299,32 @@ fn sc_proj_import(
     }
 
     manifest.merge_description(&pkg);
+    // `Config/Needs/*` fields are dependencies as well, so they are imported
+    // in `--dependencies` mode, too.
+    let needs: Vec<(String, String)> = paragraph
+        .iter()
+        .filter_map(|(key, value)| {
+            key.strip_prefix("Config/Needs/")
+                .map(|group| (group.to_string(), reflow(value)))
+        })
+        .collect();
+    manifest.merge_config_needs(&needs);
     fs::write(path, toml::to_string_pretty(&manifest)?)?;
 
+    let groups = match needs.len() {
+        0 => "".to_string(),
+        1 => " and 1 dependency group".to_string(),
+        n => format!(" and {} dependency groups", n),
+    };
     let msg = if dependencies_only {
         format!(
-            "Imported {} dependencies from {} into {}",
-            dep_count, input, RPROJ_MANIFEST_FILE
+            "Imported {} dependencies{} from {} into {}",
+            dep_count, groups, input, RPROJ_MANIFEST_FILE
         )
     } else {
         format!(
-            "Imported {} {} and {} dependencies from {} into {}",
-            pkg.name, pkg.version, dep_count, input, RPROJ_MANIFEST_FILE
+            "Imported {} {}, {} dependencies{} from {} into {}",
+            pkg.name, pkg.version, dep_count, groups, input, RPROJ_MANIFEST_FILE
         )
     };
     OUTPUT.success(&msg);
@@ -1437,7 +1452,9 @@ fn select_sync_target<'a>(
              Run `rig proj lock` for this machine, or check --r-version/--platform.",
             this_os,
             r_version.map(|v| format!(", R {}", v)).unwrap_or_default(),
-            platform.map(|p| format!(", platform {}", p)).unwrap_or_default(),
+            platform
+                .map(|p| format!(", platform {}", p))
+                .unwrap_or_default(),
             if available.is_empty() {
                 "none".to_string()
             } else {
