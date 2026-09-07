@@ -1336,8 +1336,23 @@ pub fn rig_app() -> Command {
                 ]),
         )
         .arg(
+            Arg::new("list")
+                .help("List the scripts the project declares")
+                .long("list")
+                .action(clap::ArgAction::SetTrue)
+                .required(false)
+                .conflicts_with_all(["eval", "script", "cmd", "app-type", "command"]),
+        )
+        .arg(
+            Arg::new("json")
+                .help("JSON output")
+                .long("json")
+                .action(clap::ArgAction::SetTrue)
+                .required(false),
+        )
+        .arg(
             Arg::new("command")
-                .help("R script, project or R CMD command to run, with parameters")
+                .help("R script, project script name, project or R CMD command to run, with parameters")
                 .required(false)
                 .action(clap::ArgAction::Append),
         );
@@ -2639,14 +2654,8 @@ mod tests {
             .unwrap();
         let (_name, sub) = matches.subcommand().unwrap();
         let (_name, sub) = sub.subcommand().unwrap();
-        assert_eq!(
-            sub.get_one::<String>("r-version").unwrap(),
-            "4.6.1"
-        );
-        assert_eq!(
-            sub.get_one::<String>("platform").unwrap(),
-            "macos-arm64"
-        );
+        assert_eq!(sub.get_one::<String>("r-version").unwrap(), "4.6.1");
+        assert_eq!(sub.get_one::<String>("platform").unwrap(), "macos-arm64");
     }
 
     #[test]

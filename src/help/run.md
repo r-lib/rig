@@ -12,6 +12,8 @@ rig run                    # start R
 rig run -f <script-file>   # run an R script
 rig run -e <expression>    # evaluate an R expression
 rig run <pkg>::<script>    # run a script from a package's exec directory
+rig run <name>             # run a script the project declares
+rig run --list             # list the scripts the project declares
 rig run <path-to-app>      # run an R app
 rig run --cmd <command>    # run `R CMD <command>`
 ```
@@ -38,6 +40,31 @@ Two things turn this off, and run the default R version instead:
 If the project has no `.rvenv` directory at all, then `rig run` fails and
 asks you to run `rig proj init`, instead of quietly running an R that is not
 the project's.
+
+## Project scripts
+
+A project can give its own scripts a name, in the `[[bin]]` tables of its
+`rproj.toml`:
+
+```toml
+[[bin]]
+name = "report"
+path = "scripts/report.R"
+description = "Build the report"
+```
+
+`rig run report --format pdf` then runs `scripts/report.R` in the project's
+environment, and passes `--format pdf` on to the script, where
+`commandArgs(TRUE)` picks it up. `path` is relative to the project
+directory, so a declared script works the same from anywhere within the
+project. `rig run --list` lists the declared scripts, and `--json` prints
+them as JSON.
+
+A declared name wins over a directory of the same name. Arguments that look
+like a path rather than a name are never script names: anything containing a
+slash or `::`, anything ending in `.R`, `.r`, `.Rmd` or `.qmd`, and `.` and
+`..`. Use `./name` to run an app in a directory whose name a script has
+taken.
 
 ## Supported apps
 

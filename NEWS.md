@@ -8,6 +8,10 @@
   a `.bat` extension, change them to `.exe` or remove the extension
   completely (#362).
 
+* `rig run <name>` now runs a script the project declares in a `[[bin]]`
+  table of its `rproj.toml`, passing the remaining arguments on to the
+  script. `rig run --list` lists the declared scripts.
+
 * New `rig ppm` command queries Posit Package Manager.
 
 * New `rig repos status` checks the configured package repositories.

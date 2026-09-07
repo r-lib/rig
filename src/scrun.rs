@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::ffi::OsString;
 use std::io::BufRead;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use clap::ArgMatches;
@@ -11,7 +11,8 @@ use simple_error::*;
 
 use crate::common::*;
 use crate::output::OUTPUT;
-use crate::proj::{proj_sync, ProjSyncOptions};
+use crate::proj::{proj_read_manifest_opt, proj_sync, ProjSyncOptions};
+use crate::rproj::Bin;
 use crate::rvenv::{find_project_root, project_library, project_r_wrapper, rvenv_sync_needed};
 
 #[cfg(target_os = "macos")]
@@ -31,6 +32,12 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
     };
 
     let dry_run = args.get_flag("dry-run");
+
+    // Listing the project's scripts needs neither an R version nor an
+    // up to date project environment, so it comes before both.
+    if args.get_flag("list") {
+        return sc_run_list(args);
+    }
 
     let rbin = run_r_binary(args, dry_run)?;
 
@@ -64,7 +71,23 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
                 warn!("'--app-type' argument ignored for package scripts");
             }
             sc_run_package_script(rbin, rargs, cmdargs, dry_run)
+        } else if let Some((root, bin)) = project_bin(args, &cmdargs[0])? {
+            if app_type.is_some() {
+                OUTPUT.warn("'--app-type' argument ignored for project scripts");
+                warn!("'--app-type' argument ignored for project scripts");
+            }
+            sc_run_project_script(rbin, rargs, &root, &bin, cmdargs[1..].to_vec(), dry_run)
         } else {
+            // Not a declared script and not an existing path. If the project
+            // declares scripts at all, then the user most likely meant one of
+            // them, so name them instead of complaining about a directory.
+            if is_bin_name(&cmdargs[0]) && !Path::new(&cmdargs[0]).exists() {
+                if let Some(msg) = unknown_bin_error(args, &cmdargs[0])? {
+                    OUTPUT.error(&msg);
+                    error!("{}", msg);
+                    bail!("{}", msg);
+                }
+            }
             sc_run_app(rbin, rargs, cmdargs, app_type, dry_run)
         }
     } else {
@@ -178,6 +201,184 @@ fn project_r_binary(args: &ArgMatches, dry_run: bool) -> Result<Option<String>, 
             .ok_or("The project path is not valid Unicode")?
             .to_string(),
     ))
+}
+
+// Extensions that make an argument a file rather than a name. A `[[bin]]`
+// name could technically end in one of these, but `rig run report.R` meaning
+// anything other than the file `report.R` would be a bad surprise.
+const NOT_BIN_NAME_EXTENSIONS: [&str; 4] = [".R", ".r", ".Rmd", ".qmd"];
+
+/// Whether `arg` can name a `[[bin]]` in `rproj.toml`. Anything that looks
+/// like a path or like a package script is not a name, so a declared script
+/// can never shadow the `rig run <path-to-app>` and `rig run <pkg>::<script>`
+/// forms. What is left -- a bare word -- would otherwise be a directory name,
+/// and there a declared script wins, because it is the more explicit request.
+fn is_bin_name(arg: &str) -> bool {
+    if arg.is_empty() || arg == "." || arg == ".." {
+        return false;
+    }
+    if arg.contains("::") || arg.contains('/') || arg.contains('\\') {
+        return false;
+    }
+    !NOT_BIN_NAME_EXTENSIONS
+        .iter()
+        .any(|ext| arg.ends_with(ext) || arg.ends_with(&ext.to_lowercase()))
+}
+
+/// The scripts declared in the `[[bin]]` tables of the project at `root`.
+fn project_bins(root: &Path) -> Result<Vec<Bin>, Box<dyn Error>> {
+    match proj_read_manifest_opt(root)? {
+        None => Ok(vec![]),
+        Some(manifest) => Ok(manifest.bin),
+    }
+}
+
+/// The project at or above the current directory, if any. Unlike
+/// `project_r_binary()` this ignores `--r-version`: which R runs a declared
+/// script and whether a name refers to one are separate questions, and
+/// `rig run -r 4.4.1 <name>` should still find the script.
+fn project_root(args: &ArgMatches) -> Result<Option<PathBuf>, Box<dyn Error>> {
+    if args.get_flag("no-project") {
+        return Ok(None);
+    }
+    Ok(find_project_root(&std::env::current_dir()?))
+}
+
+/// The project root and the `[[bin]]` called `name`, if `name` can be a
+/// script name at all and the project declares one with that name.
+fn project_bin(args: &ArgMatches, name: &str) -> Result<Option<(PathBuf, Bin)>, Box<dyn Error>> {
+    if !is_bin_name(name) {
+        return Ok(None);
+    }
+    let root = match project_root(args)? {
+        None => return Ok(None),
+        Some(root) => root,
+    };
+    for bin in project_bins(&root)? {
+        if bin.name == name {
+            trace!("'{}' is a script declared in {}", name, root.display());
+            return Ok(Some((root, bin)));
+        }
+    }
+    Ok(None)
+}
+
+/// The error message for a name that matches neither a declared script nor a
+/// path, or `None` if the project declares no scripts and so has nothing
+/// better to say than the usual "no such directory".
+fn unknown_bin_error(args: &ArgMatches, name: &str) -> Result<Option<String>, Box<dyn Error>> {
+    let root = match project_root(args)? {
+        None => return Ok(None),
+        Some(root) => root,
+    };
+    let bins = project_bins(&root)?;
+    if bins.is_empty() {
+        return Ok(None);
+    }
+    let names: Vec<String> = bins.iter().map(|b| b.name.to_string()).collect();
+    Ok(Some(format!(
+        "'{}' is not a script of the project in {}, and it is not a path \
+         either. Declared scripts are: {}.",
+        name,
+        root.display(),
+        names.join(", ")
+    )))
+}
+
+/// Runs the script of a `[[bin]]`, with the remaining arguments passed on to
+/// it, i.e. `rig run <name> [args...]`.
+fn sc_run_project_script(
+    rbin: String,
+    args: Vec<String>,
+    root: &Path,
+    bin: &Bin,
+    cmdargs: Vec<String>,
+    dry_run: bool,
+) -> Result<i32, Box<dyn Error>> {
+    // `path` is relative to the project, so that a declared script works the
+    // same from any directory within it.
+    let script = root.join(&bin.path);
+    if !script.exists() {
+        let msg = format!(
+            "The script of '{}' is missing: no file at {} (`path = \"{}\"` in {})",
+            bin.name,
+            script.display(),
+            bin.path,
+            root.join(crate::rproj::RPROJ_MANIFEST_FILE).display()
+        );
+        OUTPUT.error(&msg);
+        error!("{}", msg);
+        bail!("{}", msg);
+    }
+
+    let script = script
+        .to_str()
+        .ok_or("The script path is not valid Unicode")?
+        .to_string();
+    sc_run_script(rbin, args, script, cmdargs, dry_run)
+}
+
+/// `rig run --list`: the scripts the project declares.
+fn sc_run_list(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
+    let json = args.get_flag("json");
+
+    let root = match project_root(args)? {
+        None => {
+            let msg = "`rig run --list` lists the scripts of a project, but \
+                       the current directory is not inside one"
+                .to_string();
+            OUTPUT.error(&msg);
+            error!("{}", msg);
+            bail!("{}", msg);
+        }
+        Some(root) => root,
+    };
+
+    let bins = project_bins(&root)?;
+
+    if json {
+        let rows: Vec<serde_json::Value> = bins
+            .iter()
+            .map(|b| {
+                serde_json::json!({
+                    "name": b.name,
+                    "path": b.path,
+                    "description": b.description,
+                })
+            })
+            .collect();
+        OUTPUT.println(&serde_json::to_string_pretty(&rows)?);
+        return Ok(0);
+    }
+
+    if bins.is_empty() {
+        OUTPUT.info(&format!(
+            "The project in {} declares no scripts. Add a `[[bin]]` table to {} \
+             to declare one.",
+            root.display(),
+            crate::rproj::RPROJ_MANIFEST_FILE
+        ));
+        return Ok(0);
+    }
+
+    let mut table = tabular::Table::new("{:<}  {:<}  {:<}");
+    table.add_row(
+        tabular::Row::new()
+            .with_cell("NAME")
+            .with_cell("PATH")
+            .with_cell("DESCRIPTION"),
+    );
+    for bin in &bins {
+        table.add_row(
+            tabular::Row::new()
+                .with_cell(&bin.name)
+                .with_cell(&bin.path)
+                .with_cell(bin.description.as_deref().unwrap_or("")),
+        );
+    }
+    OUTPUT.println(&table.to_string());
+
+    Ok(0)
 }
 
 fn ignore_sigint() {
@@ -773,6 +974,28 @@ fn sc_run_package_script(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_is_bin_name() {
+        for name in ["report", "build-site", "check_all", "r2d2"] {
+            assert!(is_bin_name(name), "{} should be a script name", name);
+        }
+        for name in [
+            "",
+            ".",
+            "..",
+            "pkg::script",
+            "app/dir",
+            "./app",
+            "app\\dir",
+            "report.R",
+            "report.r",
+            "paper.Rmd",
+            "paper.qmd",
+        ] {
+            assert!(!is_bin_name(name), "{} should not be a script name", name);
+        }
+    }
 
     fn split(args: &[&str]) -> (Vec<String>, Vec<String>) {
         split_r_cmd_args(args.iter().map(|x| x.to_string()).collect())

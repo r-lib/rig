@@ -605,6 +605,18 @@ fn proj_read_manifest(root: &Path) -> Result<Rproj, Box<dyn Error>> {
     Ok(manifest)
 }
 
+/// Read the project's `rproj.toml` manifest from `root`, or return `None` if
+/// there is no manifest. A project can be detected from an `rproj.lock` or an
+/// `.rvenv` directory alone, so a missing manifest is not always an error, and
+/// this is the variant for the callers that can do without one. A manifest that
+/// exists but does not parse still fails.
+pub(crate) fn proj_read_manifest_opt(root: &Path) -> Result<Option<Rproj>, Box<dyn Error>> {
+    if !root.join(RPROJ_MANIFEST_FILE).exists() {
+        return Ok(None);
+    }
+    Ok(Some(proj_read_manifest(root)?))
+}
+
 /// Read the project's `rproj.toml` manifest and return its name, version and
 /// dependencies, with the soft dependencies dropped unless `dev`. The manifest
 /// is read from `root`, the project directory.
