@@ -883,7 +883,7 @@ impl Rproj {
                     item
                 })
                 .collect();
-            writeln!(out, "{}: {}", dep_type, fold_dcf_list(&items, 76))?;
+            writeln!(out, "{}:{}", dep_type, fold_dcf_list(&items))?;
         }
 
         for (group_name, group) in self.dependency_groups.iter() {
@@ -901,12 +901,7 @@ impl Rproj {
             if items.is_empty() {
                 writeln!(out, "Config/Needs/{}:", group_name)?;
             } else {
-                writeln!(
-                    out,
-                    "Config/Needs/{}: {}",
-                    group_name,
-                    fold_dcf_list(&items, 76)
-                )?;
+                writeln!(out, "Config/Needs/{}:{}", group_name, fold_dcf_list(&items))?;
             }
         }
 
@@ -1033,30 +1028,17 @@ fn is_r_package_name(name: &str) -> bool {
     chars.all(|c| c.is_ascii_alphanumeric() || c == '.')
 }
 
-/// Greedily wrap comma-joined `items` (each already formatted, e.g.
-/// `"dplyr (>= 1.1.0)"`) to at most `width` columns, folding only between
-/// items (never inside one, since an item can itself contain a space), with
-/// 4-space-indented continuation lines, DCF's folding convention.
-fn fold_dcf_list(items: &[String], width: usize) -> String {
+/// Write comma-joined `items` (each already formatted, e.g.
+/// `"dplyr (>= 1.1.0)"`) one per line, on DCF continuation lines indented by
+/// four spaces. The returned string starts with a newline, so the caller
+/// writes it right after the field name and colon.
+fn fold_dcf_list(items: &[String]) -> String {
     let mut out = String::new();
-    let mut col = 0usize;
     for (i, item) in items.iter().enumerate() {
-        let piece = if i + 1 < items.len() {
-            format!("{},", item)
-        } else {
-            item.clone()
-        };
-        if i == 0 {
-            out.push_str(&piece);
-            col = piece.len();
-        } else if col + 1 + piece.len() <= width {
-            out.push(' ');
-            out.push_str(&piece);
-            col += 1 + piece.len();
-        } else {
-            out.push_str("\n    ");
-            out.push_str(&piece);
-            col = 4 + piece.len();
+        out.push_str("\n    ");
+        out.push_str(item);
+        if i + 1 < items.len() {
+            out.push(',');
         }
     }
     out
@@ -2127,9 +2109,9 @@ mod tests {
         assert!(desc.contains("License: MIT\n"));
         assert!(desc.contains("URL: https://x.example/pkg\n"));
         assert!(desc.contains("BugReports: https://x.example/pkg/issues\n"));
-        assert!(desc.contains("Depends: R (>= 4.1)\n"));
-        assert!(desc.contains("Imports: dplyr (>= 1.1.0), rlang (>= 1.0)\n"));
-        assert!(desc.contains("Suggests: testthat (>= 3.0)\n"));
+        assert!(desc.contains("Depends:\n    R (>= 4.1)\n"));
+        assert!(desc.contains("Imports:\n    dplyr (>= 1.1.0),\n    rlang (>= 1.0)\n"));
+        assert!(desc.contains("Suggests:\n    testthat (>= 3.0)\n"));
     }
 
     #[test]
@@ -2143,7 +2125,7 @@ mod tests {
         assert!(!desc.contains("License:"));
         assert!(!desc.contains("URL:"));
         assert!(!desc.contains("BugReports:"));
-        assert!(desc.contains("Depends: R (>= 4.1)\n"));
+        assert!(desc.contains("Depends:\n    R (>= 4.1)\n"));
     }
 
     fn needs(fields: &[(&str, &str)]) -> Vec<(String, String)> {
@@ -2208,7 +2190,7 @@ mod tests {
         assert_eq!(test.get("mockery"), Some(&dep("*")));
 
         let (desc, _) = m.to_description().unwrap();
-        assert!(desc.contains("Suggests: mockery, testthat (>= 3.0)\n"));
+        assert!(desc.contains("Suggests:\n    mockery,\n    testthat (>= 3.0)\n"));
         assert!(!desc.contains("Config/Needs/"));
     }
 
@@ -2223,9 +2205,9 @@ mod tests {
 
         let (desc, dropped) = m.to_description().unwrap();
         assert!(dropped.is_empty());
-        assert!(desc.contains("Suggests: testthat\n"));
-        assert!(desc.contains("Config/Needs/coverage: covr\n"));
-        assert!(desc.contains("Config/Needs/website: pkgdown, tidyverse/tidytemplate\n"));
+        assert!(desc.contains("Suggests:\n    testthat\n"));
+        assert!(desc.contains("Config/Needs/coverage:\n    covr\n"));
+        assert!(desc.contains("Config/Needs/website:\n    pkgdown,\n    tidyverse/tidytemplate\n"));
         // Dependency fields come first, `Config/Needs/*` after them.
         assert!(desc.find("Suggests:").unwrap() < desc.find("Config/Needs/").unwrap());
     }
@@ -2245,8 +2227,9 @@ mod tests {
         // Entries are sorted by package name, and every reference is written
         // back exactly as it came in.
         assert!(desc.contains(
-            "Config/Needs/website: bioc::S4Vectors, jsonlite=jeroen/jsonlite@v1.8.0, \
-             pkgdown (>= 2.0),\n    tidyverse/tidytemplate\n"
+            "Config/Needs/website:\n    bioc::S4Vectors,\n    \
+             jsonlite=jeroen/jsonlite@v1.8.0,\n    pkgdown (>= 2.0),\n    \
+             tidyverse/tidytemplate\n"
         ));
     }
 
