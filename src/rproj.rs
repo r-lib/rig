@@ -267,8 +267,21 @@ fn matching_paren(chars: &[char], open: usize) -> Option<usize> {
     None
 }
 
-/// Split `args` on top-level commas (quote/paren/bracket-aware).
+/// Split `args` on top-level commas (quote/paren/bracket-aware), dropping
+/// empty arguments. Use [`split_top_level_commas_keep_empty`] when the
+/// position of each argument matters.
 fn split_top_level_commas(args: &str) -> Vec<String> {
+    split_top_level_commas_keep_empty(args)
+        .into_iter()
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// Split `args` on top-level commas (quote/paren/bracket-aware), keeping
+/// empty arguments. R allows an argument to be left out entirely, e.g. the
+/// `middle` in `person("Jane", "Doe", , "jane@x.com")`, and such a hole still
+/// counts when matching the remaining arguments to `person()`'s parameters.
+fn split_top_level_commas_keep_empty(args: &str) -> Vec<String> {
     let chars: Vec<char> = args.chars().collect();
     let mut parts = Vec::new();
     let mut depth = 0i32;
@@ -298,18 +311,17 @@ fn split_top_level_commas(args: &str) -> Vec<String> {
         i += 1;
     }
     parts.push(chars[start..].iter().collect::<String>());
-    parts
-        .into_iter()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect()
+    parts.into_iter().map(|s| s.trim().to_string()).collect()
 }
 
 /// Split `s` on the first top-level `key = value` assignment (not `==`, and
-/// not inside a string literal). Returns `None` if there isn't one.
+/// not inside a string literal, nor inside parens or brackets, so a nested
+/// call's own named arguments do not count). Returns `None` if there isn't
+/// one.
 fn split_top_level_eq(s: &str) -> Option<(String, String)> {
     let chars: Vec<char> = s.chars().collect();
     let mut in_string: Option<char> = None;
+    let mut depth = 0i32;
     let mut i = 0;
     while i < chars.len() {
         let c = chars[i];
@@ -321,7 +333,11 @@ fn split_top_level_eq(s: &str) -> Option<(String, String)> {
             }
         } else if c == '"' || c == '\'' {
             in_string = Some(c);
-        } else if c == '=' {
+        } else if c == '(' || c == '[' {
+            depth += 1;
+        } else if c == ')' || c == ']' {
+            depth -= 1;
+        } else if c == '=' && depth == 0 {
             let next_is_eq = chars.get(i + 1) == Some(&'=');
             let prev_is_cmp = i > 0 && matches!(chars[i - 1], '!' | '<' | '>' | '=');
             if !next_is_eq && !prev_is_cmp {
@@ -392,54 +408,79 @@ fn parse_comment(value: &str) -> (Option<String>, Option<String>) {
     (orcid, ror)
 }
 
+/// R's `person()` parameters, in signature order. Positional arguments are
+/// matched against the ones that were not supplied by name, so
+/// `person("Jane", "Doe", , "jane@x.com", role = "cre")` puts `"jane@x.com"`
+/// in `email`: `role` is named, and the empty third argument uses up
+/// `middle`.
+const PERSON_PARAMS: [&str; 8] = [
+    "given", "family", "middle", "email", "role", "comment", "first", "last",
+];
+
 /// Parse one `person(...)` call's argument text into an [`Author`].
-/// Positional args fill `given`, `family` in that order (R's `person()`
-/// signature also has `middle`/`email`/`role`/`comment` positions, but named
-/// arguments are the overwhelmingly common style for anything past the
-/// name, so only the first two positions are treated positionally here).
 fn parse_person_call(args: &str) -> Result<Author, String> {
     let mut given: Option<String> = None;
     let mut family: Option<String> = None;
+    let mut middle: Option<String> = None;
     let mut email: Option<String> = None;
     let mut roles: Vec<String> = vec![];
     let mut orcid: Option<String> = None;
     let mut ror: Option<String> = None;
-    let mut positional: Vec<String> = vec![];
+    let mut named: Vec<(String, String)> = vec![];
+    // `None` for an argument that was left out, e.g. the `middle` in
+    // `person("Jane", "Doe", , "jane@x.com")`. It still uses up a position.
+    let mut positional: Vec<Option<String>> = vec![];
 
-    for part in split_top_level_commas(args) {
-        if let Some(s) = unquote(&part) {
-            positional.push(s);
+    for part in split_top_level_commas_keep_empty(args) {
+        if part.is_empty() {
+            positional.push(None);
+        } else if let Some((key, value)) = split_top_level_eq(&part) {
+            named.push((key.trim().to_string(), value.trim().to_string()));
+        } else {
+            positional.push(Some(part));
+        }
+    }
+
+    // Match the positional arguments to the parameters that no named
+    // argument claimed, in signature order.
+    let mut matched = named.clone();
+    let mut positional = positional.into_iter();
+    for param in PERSON_PARAMS {
+        if named.iter().any(|(key, _)| key == param) {
             continue;
         }
-        if let Some((key, value)) = split_top_level_eq(&part) {
-            match key.trim() {
-                "given" | "first" => given = unquote(&value),
-                "family" | "last" => family = unquote(&value),
-                "email" => email = unquote(&value),
-                "role" => roles = parse_string_list(&value),
-                "comment" => {
-                    let (o, r) = parse_comment(&value);
-                    orcid = orcid.or(o);
-                    ror = ror.or(r);
-                }
-                _ => {}
-            }
+        match positional.next() {
+            Some(Some(value)) => matched.push((param.to_string(), value)),
+            Some(None) => {}
+            None => break,
         }
     }
 
-    if given.is_none() && !positional.is_empty() {
-        given = Some(positional[0].clone());
-    }
-    if family.is_none() && positional.len() >= 2 {
-        family = Some(positional[1].clone());
+    for (key, value) in matched {
+        match key.as_str() {
+            "given" | "first" => given = unquote(&value),
+            "family" | "last" => family = unquote(&value),
+            "middle" => middle = unquote(&value),
+            "email" => email = unquote(&value),
+            "role" => roles = parse_string_list(&value),
+            "comment" => {
+                let (o, r) = parse_comment(&value);
+                orcid = orcid.or(o);
+                ror = ror.or(r);
+            }
+            _ => {}
+        }
     }
 
-    let name = match (given, family) {
-        (Some(g), Some(f)) => format!("{} {}", g, f).trim().to_string(),
-        (Some(g), None) => g,
-        (None, Some(f)) => f,
-        (None, None) => return Err(format!("no name found in person({})", args)),
-    };
+    let name = [given, middle, family]
+        .into_iter()
+        .flatten()
+        .filter(|part| !part.trim().is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if name.is_empty() {
+        return Err(format!("no name found in person({})", args));
+    }
 
     Ok(Author {
         name,
@@ -841,7 +882,7 @@ impl Rproj {
         let type_ = self.project.type_.as_deref().unwrap_or("package");
         writeln!(out, "Type: {}", title_case(type_))?;
         if let Some(title) = &self.project.title {
-            writeln!(out, "Title: {}", fold_dcf_prose(title, 75))?;
+            writeln!(out, "{}", fold_dcf_prose("Title", title, 75))?;
         }
         writeln!(out, "Version: {}", self.project.version)?;
         if !self.project.authors.is_empty() {
@@ -852,7 +893,7 @@ impl Rproj {
             )?;
         }
         if let Some(description) = &self.project.description {
-            writeln!(out, "Description: {}", fold_dcf_prose(description, 75))?;
+            writeln!(out, "{}", fold_dcf_prose("Description", description, 75))?;
         }
         if let Some(license) = &self.project.license {
             writeln!(out, "License: {}", license)?;
@@ -870,10 +911,6 @@ impl Rproj {
         if let Some(bugreports) = self.project.urls.get("bugreports") {
             writeln!(out, "BugReports: {}", bugreports)?;
         }
-        for (key, value) in self.description.iter() {
-            writeln!(out, "{}: {}", key, format_config_value(value))?;
-        }
-
         let pkg_deps = self.to_dep_version_specs(true)?;
         for dep_type in RDepType::all() {
             let mut entries: Vec<&DepVersionSpec> = pkg_deps
@@ -927,6 +964,12 @@ impl Rproj {
                     format_config_value(value)
                 )?;
             }
+        }
+
+        // The `[description]` escape hatch has no structured place in
+        // DESCRIPTION's field order, so it goes last.
+        for (key, value) in self.description.iter() {
+            writeln!(out, "{}: {}", key, format_config_value(value))?;
         }
 
         Ok((out, dropped))
@@ -1169,10 +1212,45 @@ fn fold_dcf_list(items: &[String]) -> String {
     out
 }
 
-/// Wrap prose (`Title`/`Description`) to at most `width` columns, joining
-/// continuation lines with DCF's 4-space indent.
-fn fold_dcf_prose(value: &str, width: usize) -> String {
-    crate::textfmt::wrap(value, width).join("\n    ")
+/// Wrap a prose field (`Title`/`Description`) to at most `width` columns,
+/// counting the `Key: ` prefix on the first line and the DCF 4-space
+/// continuation indent on the rest, so no rendered line is longer than
+/// `width`. Returns the whole field, prefix included.
+fn fold_dcf_prose(key: &str, value: &str, width: usize) -> String {
+    const INDENT: &str = "    ";
+    let first_width = width.saturating_sub(key.len() + 2);
+    let rest_width = width.saturating_sub(INDENT.len());
+
+    let mut out = format!("{}:", key);
+    let mut line = String::new();
+    let mut first = true;
+    let flush = |out: &mut String, line: &mut String, first: &mut bool| {
+        if *first {
+            out.push(' ');
+            *first = false;
+        } else {
+            out.push('\n');
+            out.push_str(INDENT);
+        }
+        out.push_str(line);
+        line.clear();
+    };
+    for word in value.split_whitespace() {
+        let avail = if first { first_width } else { rest_width };
+        if line.is_empty() {
+            line.push_str(word);
+        } else if line.len() + 1 + word.len() <= avail {
+            line.push(' ');
+            line.push_str(word);
+        } else {
+            flush(&mut out, &mut line, &mut first);
+            line.push_str(word);
+        }
+    }
+    if !line.is_empty() || first {
+        flush(&mut out, &mut line, &mut first);
+    }
+    out
 }
 
 /// Whether a dependency is attached (`Depends:` rather than `Imports:`).
@@ -2169,6 +2247,61 @@ mod tests {
     }
 
     #[test]
+    fn authors_r_parses_a_positional_email() {
+        // `middle` is left out, so the fourth argument is `email`.
+        let authors = Author::from_authors_r(
+            "person(\"Gábor\", \"Csárdi\", , \"gabor@posit.co\", role = c(\"aut\", \"cre\"))",
+        );
+        assert_eq!(
+            authors,
+            vec![Author {
+                name: "Gábor Csárdi".to_string(),
+                email: Some("gabor@posit.co".to_string()),
+                roles: vec!["aut".to_string(), "cre".to_string()],
+                orcid: None,
+                ror: None,
+            }]
+        );
+    }
+
+    #[test]
+    fn authors_r_parses_all_arguments_positionally() {
+        let authors = Author::from_authors_r(
+            "person(\"Jane\", \"Doe\", \"Q\", \"jane@x.com\", \"cre\", \
+             c(ORCID = \"0000-0001-7098-9676\"))",
+        );
+        assert_eq!(
+            authors,
+            vec![Author {
+                name: "Jane Q Doe".to_string(),
+                email: Some("jane@x.com".to_string()),
+                roles: vec!["cre".to_string()],
+                orcid: Some("0000-0001-7098-9676".to_string()),
+                ror: None,
+            }]
+        );
+    }
+
+    #[test]
+    fn authors_r_matches_positional_args_around_named_ones() {
+        // `family` is named, so the second positional argument is `middle`,
+        // and the third is `email`.
+        let authors = Author::from_authors_r(
+            "person(\"Jane\", family = \"Doe\", \"Q\", \"jane@x.com\", role = \"aut\")",
+        );
+        assert_eq!(
+            authors,
+            vec![Author {
+                name: "Jane Q Doe".to_string(),
+                email: Some("jane@x.com".to_string()),
+                roles: vec!["aut".to_string()],
+                orcid: None,
+                ror: None,
+            }]
+        );
+    }
+
+    #[test]
     fn authors_r_skips_a_call_with_no_name() {
         // Only named args, none of which give a name: skipped, not an error.
         let authors = Author::from_authors_r("person(role = \"aut\")");
@@ -2251,6 +2384,34 @@ mod tests {
         assert!(!desc.contains("URL:"));
         assert!(!desc.contains("BugReports:"));
         assert!(desc.contains("Depends:\n    R (>= 4.1)\n"));
+    }
+
+    #[test]
+    fn to_description_wraps_prose_fields_at_75_columns() {
+        let mut m = Rproj::minimal("mypkg");
+        let words: Vec<String> = (0..40).map(|i| format!("word{}", i)).collect();
+        m.project.title = Some(words.join(" "));
+        m.project.description = Some(words.join(" "));
+        let (desc, _) = m.to_description().unwrap();
+
+        for line in desc.lines() {
+            assert!(line.len() <= 75, "line too long: {:?}", line);
+        }
+        // The prefix counts towards the first line's width, the 4-space DCF
+        // indent towards the continuation lines'.
+        let prose: Vec<&str> = desc
+            .lines()
+            .skip_while(|l| !l.starts_with("Description:"))
+            .take_while(|l| l.starts_with("Description:") || l.starts_with("    "))
+            .collect();
+        assert!(prose.len() > 1);
+        assert!(prose[0].starts_with("Description: word0 "));
+        // Reflowing the folded field gives the value back unchanged.
+        let joined = prose.join(" ");
+        assert_eq!(
+            crate::textfmt::reflow(joined.trim_start_matches("Description:")),
+            words.join(" ")
+        );
     }
 
     fn author(name: &str, roles: &[&str]) -> Author {
