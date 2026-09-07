@@ -1356,6 +1356,12 @@ pub fn rig_app() -> Command {
                         .short('i')
                         .num_args(1)
                         .required(false),
+                )
+                .arg(
+                    Arg::new("dependencies")
+                        .help("Only merge dependencies, not metadata (the old behavior)")
+                        .long("dependencies")
+                        .action(clap::ArgAction::SetTrue),
                 ),
         )
         .subcommand(

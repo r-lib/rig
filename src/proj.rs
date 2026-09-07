@@ -37,12 +37,14 @@ use crate::repos::cranlike_metadata::minor_r_version;
 use crate::repos::*;
 use crate::resolve::resolve_versions;
 use crate::rproj::{
-    parse_add_spec, Rproj, RprojLock, RprojLockTarget, RPROJ_LOCK_VERSION, RPROJ_MANIFEST_FILE,
+    parse_add_spec, Author, Rproj, RprojLock, RprojLockTarget, RPROJ_LOCK_VERSION,
+    RPROJ_MANIFEST_FILE,
 };
 use crate::rvenv::{
     existing_targets, find_project_root, project_library, read_rvenv_cfg, rvenv_init, rvenv_sync,
     write_sync_stamp, RvenvCfg, RPROJ_LOCK_FILE,
 };
+use crate::textfmt::reflow;
 use crate::solver::*;
 use crate::utils::create_parent_dir_if_needed;
 
@@ -197,8 +199,15 @@ fn resolve_release_r_version(args: &ArgMatches) -> Option<String> {
     }
 }
 
-/// Import a `DESCRIPTION` file's dependencies into `rproj.toml`, creating a
-/// minimal manifest first if none exists yet.
+/// Import a `DESCRIPTION` file into `rproj.toml`.
+///
+/// By default this is a full import: name, version, title, description,
+/// license, authors and urls, plus dependencies, into a *new* `rproj.toml`
+/// (it refuses to run if one already exists, since populating the full
+/// `[project]` metadata block is not a well-defined merge onto an existing,
+/// possibly hand-edited, manifest). `--dependencies` keeps the old
+/// behavior: only merge dependencies, creating a minimal manifest if
+/// missing or merging into an existing one.
 fn sc_proj_import(
     args: &ArgMatches,
     _projargs: &ArgMatches,
@@ -206,32 +215,102 @@ fn sc_proj_import(
 ) -> Result<(), Box<dyn Error>> {
     let default_input = "DESCRIPTION".to_string();
     let input: &String = args.get_one::<String>("input").unwrap_or(&default_input);
-    let pkg = proj_read_deps(input, true)?;
-
+    let dependencies_only = args.get_flag("dependencies");
     let path = Path::new(RPROJ_MANIFEST_FILE);
-    let mut manifest = if path.exists() {
-        toml::from_str::<Rproj>(&fs::read_to_string(path)?)?
-    } else {
-        OUTPUT.status(&format!(
-            "{} does not exist, creating a new one",
+
+    if !dependencies_only && path.exists() {
+        let msg = format!(
+            "{} already exists; import would only overwrite dependencies, not \
+             merge full metadata. Use --dependencies to merge into it, or \
+             remove it first.",
             RPROJ_MANIFEST_FILE
-        ));
-        info!("{} does not exist, creating a new one", RPROJ_MANIFEST_FILE);
+        );
+        OUTPUT.error(&msg);
+        error!("{}", msg);
+        bail!("{}", msg);
+    }
+
+    let paragraph = read_description_paragraph(input)?;
+    let pkg = Package::from_dcf_paragraph(&paragraph)?;
+    let dep_count = pkg.dependencies.dependencies.len();
+
+    let mut manifest = if dependencies_only {
+        if path.exists() {
+            toml::from_str::<Rproj>(&fs::read_to_string(path)?)?
+        } else {
+            OUTPUT.status(&format!(
+                "{} does not exist, creating a new one",
+                RPROJ_MANIFEST_FILE
+            ));
+            info!("{} does not exist, creating a new one", RPROJ_MANIFEST_FILE);
+            Rproj::minimal(&pkg.name)
+        }
+    } else {
         Rproj::minimal(&pkg.name)
     };
 
-    let count = pkg.dependencies.dependencies.len();
+    if !dependencies_only {
+        manifest.project.version = pkg.version.to_string();
+        manifest.project.type_ = Some(
+            paragraph
+                .get("Type")
+                .map(|t| t.to_lowercase())
+                .unwrap_or_else(|| "package".to_string()),
+        );
+        manifest.project.title = paragraph.get("Title").map(reflow);
+        manifest.project.description = paragraph.get("Description").map(reflow);
+        manifest.project.license = paragraph.get("License").map(|l| reflow(l));
+        manifest.project.authors = match paragraph.get("Authors@R") {
+            Some(raw) => Author::from_authors_r(raw),
+            None => paragraph
+                .get("Maintainer")
+                .and_then(Author::from_maintainer)
+                .into_iter()
+                .collect(),
+        };
+        if let Some(url) = paragraph.get("URL") {
+            let reflowed = reflow(url);
+            let mut urls = reflowed
+                .split([',', ' '])
+                .map(str::trim)
+                .filter(|u| !u.is_empty());
+            if let Some(homepage) = urls.next() {
+                manifest
+                    .project
+                    .urls
+                    .insert("homepage".to_string(), homepage.to_string());
+            }
+            if let Some(source) = urls.next() {
+                manifest
+                    .project
+                    .urls
+                    .insert("source".to_string(), source.to_string());
+            }
+        }
+        if let Some(bugreports) = paragraph.get("BugReports") {
+            manifest
+                .project
+                .urls
+                .insert("bugreports".to_string(), reflow(bugreports));
+        }
+    }
+
     manifest.merge_description(&pkg);
     fs::write(path, toml::to_string_pretty(&manifest)?)?;
 
-    OUTPUT.success(&format!(
-        "Imported {} dependencies from {} into {}",
-        count, input, RPROJ_MANIFEST_FILE
-    ));
-    info!(
-        "Imported {} dependencies from {} into {}",
-        count, input, RPROJ_MANIFEST_FILE
-    );
+    let msg = if dependencies_only {
+        format!(
+            "Imported {} dependencies from {} into {}",
+            dep_count, input, RPROJ_MANIFEST_FILE
+        )
+    } else {
+        format!(
+            "Imported {} {} and {} dependencies from {} into {}",
+            pkg.name, pkg.version, dep_count, input, RPROJ_MANIFEST_FILE
+        )
+    };
+    OUTPUT.success(&msg);
+    info!("{}", msg);
     Ok(())
 }
 
@@ -329,9 +408,9 @@ fn sc_proj_add(
     proj_sync(&root, &ProjSyncOptions::default(), args)
 }
 
-/// Read the project's manifest, e.g. its `DESCRIPTION` file, and return it as a
-/// package, with the soft dependencies dropped unless `dev`.
-fn proj_read_deps(input: &str, dev: bool) -> Result<Package, Box<dyn Error>> {
+/// Read a `DESCRIPTION` file (or any single-paragraph DCF file) and return
+/// its one paragraph.
+fn read_description_paragraph(input: &str) -> Result<deb822_fast::Paragraph, Box<dyn Error>> {
     OUTPUT.status(&format!("Reading dependencies from {}", input));
     info!("Reading dependencies from {}", input);
     let df: File = File::open(input).map_err(|e| {
@@ -353,21 +432,8 @@ fn proj_read_deps(input: &str, dev: bool) -> Result<Package, Box<dyn Error>> {
         bail!("Invalid DESCRIPTION file, empty lines are not allowed");
     }
 
-    // only one paragraph
-    let mut package = Package::from_dcf_paragraph(desc.iter().next().unwrap())?;
-
-    // Filter out Suggests and Enhances if dev is false. A package that is also
-    // a hard dependency stays: it needs to be installed either way.
-    if !dev {
-        package
-            .dependencies
-            .dependencies
-            .retain(|dep| !dep.types.iter().all(|t| DEP_TYPES_SOFT.contains(t)));
-    }
-
-    package.dependencies.simplify();
-
-    Ok(package)
+    let paragraph = desc.iter().next().unwrap().clone();
+    Ok(paragraph)
 }
 
 /// Read the project's `rproj.toml` manifest from `root`, the project

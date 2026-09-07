@@ -20,6 +20,7 @@
 use std::collections::BTreeMap;
 use std::error::Error;
 
+use log::warn;
 use serde::{Deserialize, Serialize};
 use simple_error::*;
 
@@ -118,6 +119,289 @@ pub struct Author {
     pub orcid: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ror: Option<String>,
+}
+
+impl Author {
+    /// Best-effort parser for an `Authors@R` field's R source, e.g.
+    /// `c(person("Jane", "Doe", email = "jane@x.com", role = c("aut", "cre")))`.
+    /// Returns authors in the order their `person(...)` calls appear in `raw`.
+    /// A `person(...)` call that cannot be parsed is skipped (logged), not a
+    /// hard error: this is not a real R parser, just a scanner for the
+    /// common cases.
+    pub fn from_authors_r(raw: &str) -> Vec<Author> {
+        extract_calls(raw, "person")
+            .iter()
+            .filter_map(|args| match parse_person_call(args) {
+                Ok(author) => Some(author),
+                Err(err) => {
+                    warn!("Skipping unparseable Authors@R person(): {}", err);
+                    None
+                }
+            })
+            .collect()
+    }
+
+    /// Fallback when `Authors@R` is absent: parses DESCRIPTION's
+    /// `Maintainer: Name <email>` into a single author with role `cre`.
+    pub fn from_maintainer(raw: &str) -> Option<Author> {
+        let raw = raw.trim();
+        let (name, email) = match (raw.find('<'), raw.find('>')) {
+            (Some(open), Some(close)) if open < close => (
+                raw[..open].trim().to_string(),
+                Some(raw[open + 1..close].trim().to_string()),
+            ),
+            _ => (raw.to_string(), None),
+        };
+        if name.is_empty() {
+            return None;
+        }
+        Some(Author {
+            name,
+            email,
+            roles: vec!["cre".to_string()],
+            orcid: None,
+            ror: None,
+        })
+    }
+}
+
+/// Find every top-level call `name(...)` in `src` and return each call's
+/// argument text (the content between the outer parens), in the order they
+/// appear. Quote-aware, so a `(` or `)` inside a string literal does not
+/// confuse the paren matching.
+fn extract_calls(src: &str, name: &str) -> Vec<String> {
+    let chars: Vec<char> = src.chars().collect();
+    let needle: Vec<char> = name.chars().collect();
+    let mut calls = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        let is_match = chars[i..].starts_with(&needle[..]) && chars.get(i + needle.len()) == Some(&'(');
+        // Skip a suffix match, e.g. "myperson(" should not match "person(".
+        let prev_is_ident = i > 0 && matches!(chars[i - 1], c if c.is_alphanumeric() || c == '_' || c == '.');
+        if is_match && !prev_is_ident {
+            let open = i + needle.len();
+            if let Some(close) = matching_paren(&chars, open) {
+                calls.push(chars[open + 1..close].iter().collect());
+                i = close + 1;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    calls
+}
+
+/// Index of the `)` matching the `(` at `open`, quote-aware.
+fn matching_paren(chars: &[char], open: usize) -> Option<usize> {
+    let mut depth = 0i32;
+    let mut in_string: Option<char> = None;
+    let mut i = open;
+    while i < chars.len() {
+        let c = chars[i];
+        if let Some(q) = in_string {
+            if c == '\\' {
+                i += 1;
+            } else if c == q {
+                in_string = None;
+            }
+        } else {
+            match c {
+                '"' | '\'' => in_string = Some(c),
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(i);
+                    }
+                }
+                _ => {}
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Split `args` on top-level commas (quote/paren/bracket-aware).
+fn split_top_level_commas(args: &str) -> Vec<String> {
+    let chars: Vec<char> = args.chars().collect();
+    let mut parts = Vec::new();
+    let mut depth = 0i32;
+    let mut in_string: Option<char> = None;
+    let mut start = 0;
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        if let Some(q) = in_string {
+            if c == '\\' {
+                i += 1;
+            } else if c == q {
+                in_string = None;
+            }
+        } else {
+            match c {
+                '"' | '\'' => in_string = Some(c),
+                '(' | '[' => depth += 1,
+                ')' | ']' => depth -= 1,
+                ',' if depth == 0 => {
+                    parts.push(chars[start..i].iter().collect::<String>());
+                    start = i + 1;
+                }
+                _ => {}
+            }
+        }
+        i += 1;
+    }
+    parts.push(chars[start..].iter().collect::<String>());
+    parts
+        .into_iter()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// Split `s` on the first top-level `key = value` assignment (not `==`, and
+/// not inside a string literal). Returns `None` if there isn't one.
+fn split_top_level_eq(s: &str) -> Option<(String, String)> {
+    let chars: Vec<char> = s.chars().collect();
+    let mut in_string: Option<char> = None;
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        if let Some(q) = in_string {
+            if c == '\\' {
+                i += 1;
+            } else if c == q {
+                in_string = None;
+            }
+        } else if c == '"' || c == '\'' {
+            in_string = Some(c);
+        } else if c == '=' {
+            let next_is_eq = chars.get(i + 1) == Some(&'=');
+            let prev_is_cmp = i > 0 && matches!(chars[i - 1], '!' | '<' | '>' | '=');
+            if !next_is_eq && !prev_is_cmp {
+                return Some((
+                    chars[..i].iter().collect(),
+                    chars[i + 1..].iter().collect(),
+                ));
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Unquote a simple R string literal (`"foo"` or `'foo'`), or `None` if `s`
+/// (after trimming) isn't one.
+fn unquote(s: &str) -> Option<String> {
+    let s = s.trim();
+    let bytes = s.as_bytes();
+    if bytes.len() < 2 {
+        return None;
+    }
+    let q = bytes[0] as char;
+    if (q == '"' || q == '\'') && bytes[bytes.len() - 1] as char == q {
+        let inner = &s[1..s.len() - 1];
+        return Some(inner.replace(&format!("\\{}", q), &q.to_string()).replace("\\\\", "\\"));
+    }
+    None
+}
+
+/// Parse a `role = ...` value: a single quoted string, or `c("aut", "cre")`.
+fn parse_string_list(value: &str) -> Vec<String> {
+    let value = value.trim();
+    if let Some(inner) = value.strip_prefix("c(").and_then(|v| v.strip_suffix(')')) {
+        split_top_level_commas(inner)
+            .iter()
+            .filter_map(|p| unquote(p))
+            .collect()
+    } else if let Some(s) = unquote(value) {
+        vec![s]
+    } else {
+        vec![]
+    }
+}
+
+/// Parse a `comment = ...` value for `ORCID`/`ROR`: `c(ORCID = "...")`, or a
+/// bare `ORCID = "..."`. Any other key or a plain string comment is ignored.
+fn parse_comment(value: &str) -> (Option<String>, Option<String>) {
+    let value = value.trim();
+    let inner = value
+        .strip_prefix("c(")
+        .and_then(|v| v.strip_suffix(')'))
+        .unwrap_or(value);
+    let mut orcid = None;
+    let mut ror = None;
+    for part in split_top_level_commas(inner) {
+        if let Some((key, val)) = split_top_level_eq(&part) {
+            if let Some(val) = unquote(&val) {
+                match key.trim().to_uppercase().as_str() {
+                    "ORCID" => orcid = Some(val),
+                    "ROR" => ror = Some(val),
+                    _ => {}
+                }
+            }
+        }
+    }
+    (orcid, ror)
+}
+
+/// Parse one `person(...)` call's argument text into an [`Author`].
+/// Positional args fill `given`, `family` in that order (R's `person()`
+/// signature also has `middle`/`email`/`role`/`comment` positions, but named
+/// arguments are the overwhelmingly common style for anything past the
+/// name, so only the first two positions are treated positionally here).
+fn parse_person_call(args: &str) -> Result<Author, String> {
+    let mut given: Option<String> = None;
+    let mut family: Option<String> = None;
+    let mut email: Option<String> = None;
+    let mut roles: Vec<String> = vec![];
+    let mut orcid: Option<String> = None;
+    let mut ror: Option<String> = None;
+    let mut positional: Vec<String> = vec![];
+
+    for part in split_top_level_commas(args) {
+        if let Some(s) = unquote(&part) {
+            positional.push(s);
+            continue;
+        }
+        if let Some((key, value)) = split_top_level_eq(&part) {
+            match key.trim() {
+                "given" | "first" => given = unquote(&value),
+                "family" | "last" => family = unquote(&value),
+                "email" => email = unquote(&value),
+                "role" => roles = parse_string_list(&value),
+                "comment" => {
+                    let (o, r) = parse_comment(&value);
+                    orcid = orcid.or(o);
+                    ror = ror.or(r);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    if given.is_none() && !positional.is_empty() {
+        given = Some(positional[0].clone());
+    }
+    if family.is_none() && positional.len() >= 2 {
+        family = Some(positional[1].clone());
+    }
+
+    let name = match (given, family) {
+        (Some(g), Some(f)) => format!("{} {}", g, f).trim().to_string(),
+        (Some(g), None) => g,
+        (None, Some(f)) => f,
+        (None, None) => return Err(format!("no name found in person({})", args)),
+    };
+
+    Ok(Author {
+        name,
+        email,
+        roles,
+        orcid,
+        ror,
+    })
 }
 
 /// A dependency value: either a bare version string (`"^1.2"`) or a table with
@@ -1296,5 +1580,68 @@ mod tests {
 
         let nodev = m.to_dep_version_specs(false).unwrap();
         assert!(!nodev.dependencies.iter().any(|d| d.name == "testthat"));
+    }
+
+    #[test]
+    fn authors_r_parses_a_single_person() {
+        let authors = Author::from_authors_r(
+            "person(\"Jane\", \"Doe\", email = \"jane@x.com\", role = c(\"aut\", \"cre\"))",
+        );
+        assert_eq!(
+            authors,
+            vec![Author {
+                name: "Jane Doe".to_string(),
+                email: Some("jane@x.com".to_string()),
+                roles: vec!["aut".to_string(), "cre".to_string()],
+                orcid: None,
+                ror: None,
+            }]
+        );
+    }
+
+    #[test]
+    fn authors_r_parses_multiple_people_in_order() {
+        let authors = Author::from_authors_r(
+            "c(\n  person(\"Jane\", \"Doe\", role = c(\"aut\", \"cre\")),\n  \
+             person(\"John\", \"Smith\", role = \"ctb\")\n)",
+        );
+        assert_eq!(authors.len(), 2);
+        assert_eq!(authors[0].name, "Jane Doe");
+        assert_eq!(authors[1].name, "John Smith");
+        assert_eq!(authors[1].roles, vec!["ctb".to_string()]);
+    }
+
+    #[test]
+    fn authors_r_parses_orcid_from_comment() {
+        let authors = Author::from_authors_r(
+            "person(\"Jane\", \"Doe\", role = \"aut\", \
+             comment = c(ORCID = \"0000-0001-7098-9676\"))",
+        );
+        assert_eq!(
+            authors[0].orcid,
+            Some("0000-0001-7098-9676".to_string())
+        );
+    }
+
+    #[test]
+    fn authors_r_skips_a_call_with_no_name() {
+        // Only named args, none of which give a name: skipped, not an error.
+        let authors = Author::from_authors_r("person(role = \"aut\")");
+        assert!(authors.is_empty());
+    }
+
+    #[test]
+    fn maintainer_parses_name_and_email() {
+        let author = Author::from_maintainer("Jane Doe <jane@x.com>").unwrap();
+        assert_eq!(author.name, "Jane Doe");
+        assert_eq!(author.email, Some("jane@x.com".to_string()));
+        assert_eq!(author.roles, vec!["cre".to_string()]);
+    }
+
+    #[test]
+    fn maintainer_without_email_still_parses() {
+        let author = Author::from_maintainer("Jane Doe").unwrap();
+        assert_eq!(author.name, "Jane Doe");
+        assert_eq!(author.email, None);
     }
 }
