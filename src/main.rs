@@ -39,6 +39,7 @@ use resolve::*;
 mod alias;
 mod built;
 mod cache;
+mod cache_cmd;
 mod common;
 mod config;
 mod dcf;
@@ -293,6 +294,7 @@ fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
         Some(("resolve", sub)) => sc_resolve(sub, args)?,
         Some(("rstudio", sub)) => sc_rstudio(sub)?,
         Some(("library", sub)) => sc_library(sub, args)?,
+        Some(("cache", sub)) => sc_cache(sub)?,
         Some(("config", sub)) => crate::config::sc_config(sub, args)?,
         Some(("sysreqs", sub)) => sc_sysreqs(sub, args)?,
         Some(("available", sub)) => sc_available(sub, args)?,
@@ -340,6 +342,15 @@ fn sc_library(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Er
         Some(("rm", s)) => sc_library_rm(s),
         Some(("default", s)) => sc_library_default(s, args, mainargs),
         Some((name, _)) => bail!("Internal error: unknown `rig library` subcommand: {}", name),
+        None => Ok(()),
+    }
+}
+
+fn sc_cache(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    match args.subcommand() {
+        Some(("info", s)) => cache_cmd::sc_cache_info(s),
+        Some(("clean", s)) => cache_cmd::sc_cache_clean(s),
+        Some((name, _)) => bail!("Internal error: unknown `rig cache` subcommand: {}", name),
         None => Ok(()),
     }
 }

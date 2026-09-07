@@ -1087,6 +1087,38 @@ pub fn rig_app() -> Command {
                 ),
         );
 
+    let cmd_cache = Command::new("cache")
+        .about(ABOUT_CACHE)
+        .display_order(0)
+        .long_about(HELP_CACHE)
+        .arg_required_else_help(true)
+        .subcommand(
+            Command::new("info")
+                .about(ABOUT_CACHE_INFO)
+                .long_about(HELP_CACHE_INFO)
+                .display_order(0)
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("clean")
+                .about(ABOUT_CACHE_CLEAN)
+                .long_about(HELP_CACHE_CLEAN)
+                .display_order(0)
+                .arg(
+                    Arg::new("category")
+                        .help("Only delete this category of cached files")
+                        .long("category")
+                        .required(false)
+                        .value_parser(["binaries", "built", "packages", "metadata"]),
+                ),
+        );
+
     {
         let cmd_config = Command::new("config")
             .about(ABOUT_CONFIG)
@@ -2460,6 +2492,7 @@ pub fn rig_app() -> Command {
         .subcommand(cmd_resolve)
         .subcommand(cmd_rstudio)
         .subcommand(cmd_library)
+        .subcommand(cmd_cache)
         .subcommand(cmd_available)
         .subcommand(cmd_run)
         .after_help(HELP_EXAMPLES);
