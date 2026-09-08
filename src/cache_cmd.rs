@@ -53,6 +53,18 @@ impl CacheCategory {
             CacheCategory::Metadata => "metadata",
         }
     }
+
+    // Subdirectory shown to the user in `rig cache info`. `Metadata` has no
+    // single subdirectory (it is everything else at the cache root), so it
+    // gets a descriptive placeholder instead of `key()`.
+    fn subdir(self) -> &'static str {
+        match self {
+            CacheCategory::Binaries => "binaries",
+            CacheCategory::Built => "built",
+            CacheCategory::Packages => "packages",
+            CacheCategory::Metadata => "(other)",
+        }
+    }
 }
 
 fn classify_entry(name: &str) -> CacheCategory {
@@ -189,21 +201,30 @@ pub fn sc_cache_info(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         };
         println!("{}", serde_json::to_string_pretty(&info)?);
     } else {
-        let mut tab = Table::new("{:<}  {:>}  {:>}");
-        tab.add_row(row!("Category", "Size", "Files"));
+        let mut tab = Table::new("{:<}  {:<}  {:>}  {:>}");
+        tab.add_row(row!("Category", "Directory", "Size", "Files"));
         for (cat, usage) in CacheCategory::ALL.iter().zip(totals.iter()) {
             tab.add_row(row!(
                 cat.label(),
+                cat.subdir(),
                 human_size(usage.size),
                 usage.count.to_string()
             ));
         }
         tab.add_row(row!(
             "Total",
+            "",
             human_size(total.size),
             total.count.to_string()
         ));
-        print!("{}", tab);
+        let rendered = tab.to_string();
+        let header_width = rendered.lines().next().unwrap_or("").len();
+        let mut lines = rendered.lines();
+        println!("{}", lines.next().unwrap_or(""));
+        println!("{}", "-".repeat(header_width));
+        for line in lines {
+            println!("{}", line);
+        }
         println!("Cache directory: {}", cache_dir.display());
     }
 
