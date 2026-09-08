@@ -1,5 +1,5 @@
 use std::cell::Cell;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::error::Error;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
@@ -847,10 +847,30 @@ pub(crate) fn proj_binary_target(
     platform: Option<&String>,
     r_version: &str,
 ) -> Result<Option<BinaryTarget>, Box<dyn Error>> {
+    let (target, no_binaries) = proj_binary_target_quiet(platform, r_version)?;
+    if let Some(name) = no_binaries {
+        OUTPUT.warn(&format!(
+            "No binary packages for {}, using source packages",
+            name
+        ));
+    }
+    Ok(target)
+}
+
+/// [`proj_binary_target`] without the "no binary packages" warning.
+///
+/// Instead of warning, it returns the platform name that has no binaries, for
+/// callers that resolve several targets at once ([`proj_lock`]): every R
+/// version they resolve the platform for would repeat the same warning, so
+/// they collect the names and warn once per platform.
+pub(crate) fn proj_binary_target_quiet(
+    platform: Option<&String>,
+    r_version: &str,
+) -> Result<(Option<BinaryTarget>, Option<String>), Box<dyn Error>> {
     let platform = match platform {
         Some(p) if p == "source" => {
             info!("Solving for source packages only");
-            return Ok(None);
+            return Ok((None, None));
         }
         Some(p) => parse_platform_string(p)?,
         None => detect_platform()?,
@@ -870,24 +890,35 @@ pub(crate) fn proj_binary_target(
         }
     };
 
-    match &target {
-        Some(target) => info!("Solving for binary target {}", target.name()),
-        None => {
-            let name = platform.rig_platform.as_deref().unwrap_or(&platform.os);
-            OUTPUT.warn(&format!(
-                "No binary packages for {}, using source packages",
-                name
-            ));
+    let no_binaries = match &target {
+        Some(target) => {
+            info!("Solving for binary target {}", target.name());
+            None
         }
-    }
-    Ok(target)
+        None => Some(
+            platform
+                .rig_platform
+                .as_deref()
+                .unwrap_or(&platform.os)
+                .to_string(),
+        ),
+    };
+    Ok((target, no_binaries))
 }
 
+/// Solve the dependencies of `deps` for one R version and one binary target.
+///
+/// `report_status` is for callers that solve several targets in parallel
+/// ([`proj_lock`]): they print the status lines once for the whole batch, so
+/// the per-solve lines here would only be N interleaved, unlabelled copies of
+/// them. Single-target callers pass `true` and get the progress reported as
+/// each phase starts. The log file gets the messages either way.
 pub(crate) fn sc_proj_solve_deps(
     r_version: &str,
     deps: &PackageDependencies,
     target: Option<BinaryTarget>,
     prefer_binary: Option<usize>,
+    report_status: bool,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
     info!("Solving dependencies");
 
@@ -929,11 +960,16 @@ pub(crate) fn sc_proj_solve_deps(
     // The binary indices are one HTTP request per package, and the solver would
     // otherwise make them one at a time, as it discovers each package. Fetch
     // them for the whole dependency closure up front instead, in parallel.
-    OUTPUT.status("Downloading binary package metadata");
+    if report_status {
+        OUTPUT.status("Downloading binary package metadata");
+    }
+    info!("Downloading binary package metadata");
     let roots: Vec<String> = deps.dependencies.iter().map(|d| d.name.clone()).collect();
     reg.prefetch_binaries(&roots);
 
-    OUTPUT.status("Solving dependencies");
+    if report_status {
+        OUTPUT.status("Solving dependencies");
+    }
     let solution = resolve(
         &reg,
         "_project".to_string(),
@@ -943,7 +979,12 @@ pub(crate) fn sc_proj_solve_deps(
     match solution {
         Ok(sol) => Ok((reg, sol)),
         Err(e) => {
-            OUTPUT.error(&format!("Solver failed: {}", e));
+            // Parallel callers report the one failure that aborts the command
+            // themselves, with the target it belongs to; N unlabelled copies
+            // of the same message would say less, not more.
+            if report_status {
+                OUTPUT.error(&format!("Solver failed: {}", e));
+            }
             error!("Solver failed: {}", e);
             bail!("Solver failed: {}", e)
         }
@@ -1155,8 +1196,6 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         ]
     };
 
-    let multi = rvers.len() * platform_specs.len() > 1;
-
     // Resolve and dedup every `(rver, platform)` pair up front, sequentially,
     // before any solving starts. This does two things: it decides the dedup
     // winner the same way as before (first pair in CLI order wins a given
@@ -1174,14 +1213,16 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     }
     let mut solve_targets: Vec<SolveTarget> = vec![];
     let mut seen: HashSet<(String, String)> = HashSet::new();
+    // Warned about once each below, not once per (R version, platform) pair.
+    let mut no_binaries: BTreeSet<String> = BTreeSet::new();
+    let mut source_only = false;
 
     for rver in &rvers {
         for platform in &platform_specs {
-            let target = proj_binary_target(platform.as_ref(), rver)?;
-
-            if opts.prefer_binary.is_some() && target.is_none() {
-                OUTPUT.warn("There are no binary packages to prefer, ignoring --prefer-binary");
-                info!("Ignoring --prefer-binary: solving for source packages only");
+            let (target, missing) = proj_binary_target_quiet(platform.as_ref(), rver)?;
+            source_only = source_only || target.is_none();
+            if let Some(name) = missing {
+                no_binaries.insert(name);
             }
 
             // Mirrors how `PakLockfile::from_solution` derives the top-level
@@ -1215,6 +1256,32 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     // thread racing to update the same on-disk cache at once.
     ensure_allpackages_fresh()?;
 
+    for name in &no_binaries {
+        OUTPUT.warn(&format!(
+            "No binary packages for {}, using source packages",
+            name
+        ));
+    }
+
+    if opts.prefer_binary.is_some() && source_only {
+        OUTPUT.warn("There are no binary packages to prefer, ignoring --prefer-binary");
+        info!("Ignoring --prefer-binary: solving for source packages only");
+    }
+
+    // The solves below run in parallel, so each one printing its own status
+    // lines would give N interleaved copies of them. Report the phases once,
+    // for the whole batch, instead (`report_status: false` below).
+    let multi = solve_targets.len() > 1;
+    OUTPUT.status("Downloading binary package metadata");
+    if multi {
+        OUTPUT.status(&format!(
+            "Solving dependencies for {} targets",
+            solve_targets.len()
+        ));
+    } else {
+        OUTPUT.status("Solving dependencies");
+    }
+
     // A single solver over the full CRAN version history: it picks the
     // latest in-range version of each package first and only falls back to
     // older versions when a constraint forces it, so the common case still
@@ -1228,42 +1295,41 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     let solved: Vec<(String, String, Result<SolveResult, String>)> = solve_targets
         .par_iter()
         .map(|st| {
-            let result = sc_proj_solve_deps(&st.rver, &pkg_deps, st.target.clone(), prefer_binary)
-                .map_err(|e| e.to_string());
+            let result =
+                sc_proj_solve_deps(&st.rver, &pkg_deps, st.target.clone(), prefer_binary, false)
+                    .map_err(|e| e.to_string());
             (st.rver.clone(), st.platform_key.clone(), result)
         })
         .collect();
 
     let mut targets: Vec<RprojLockTarget> = vec![];
+    let mut summaries: Vec<TargetSolution> = vec![];
     for (rver, platform_key, result) in solved {
         let (registry, solution) = match result {
             Ok(v) => v,
-            // The failing solve already reported itself via OUTPUT.error/
-            // error! inside `sc_proj_solve_deps`; this just propagates the
-            // failure to abort the whole `proj lock` command, same as
-            // the old sequential `?` did.
-            Err(msg) => bail!("{}", msg),
+            // The failing solve logged itself inside `sc_proj_solve_deps` but
+            // left the reporting to here, so that a batch of parallel solves
+            // reports one failure, with the target it belongs to, instead of
+            // one unlabelled message per failing thread. This aborts the whole
+            // `proj lock` command, same as the old sequential `?` did, and
+            // main prints the message.
+            Err(msg) => {
+                if multi {
+                    bail!("{} for R {} / {}", msg, rver, platform_key);
+                } else {
+                    bail!("{}", msg);
+                }
+            }
         };
 
         let lockfile = PakLockfile::from_solution(&registry, &solution);
-        let key = (rver, platform_key);
+        info!("Solved dependencies for R {} / {}", rver, platform_key);
 
-        if multi {
-            OUTPUT.success(&format!("Solved dependencies for R {} / {}", key.0, key.1));
-            info!("Solved dependencies for R {} / {}", key.0, key.1);
-        } else {
-            OUTPUT.success("Solved dependencies");
-            info!("Solved dependencies");
-        }
-
-        if multi {
-            println!("R {} / {}", key.0, key.1);
-        }
-        let mut tab: Table = Table::new("{:<}   {:<}   {:<}   {:<}");
-        tab.add_row(row!["package", "version", "type", ""]);
-        tab.add_heading("-------------------------------------");
-        print_solution_table(&mut tab, &registry, &solution);
-        println!("{}", tab);
+        summaries.push(TargetSolution {
+            r_version: rver.clone(),
+            platform: platform_key.clone(),
+            rows: solution_rows(&registry, &solution),
+        });
 
         targets.push(RprojLockTarget {
             r_version: lockfile.r_version,
@@ -1271,6 +1337,43 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
             packages: lockfile.packages,
         });
     }
+
+    if multi {
+        OUTPUT.success(&format!(
+            "Solved dependencies for {} targets",
+            summaries.len()
+        ));
+    } else {
+        OUTPUT.success("Solved dependencies");
+    }
+
+    // The targets mostly resolve to the same packages at the same versions, so
+    // one merged table with the differences called out is both shorter and
+    // easier to compare than one full table per target. The targets are the
+    // cross product of the R versions and the platforms, so listing the two
+    // separately says the same thing in fewer, shorter lines.
+    let header = if multi {
+        let rvers = dedup_in_order(solve_targets.iter().map(|st| st.rver.as_str()));
+        let platforms = dedup_in_order(solve_targets.iter().map(|st| st.platform_key.as_str()));
+        Some(format!(
+            "R {}: {}\n{}: {}",
+            if rvers.len() > 1 {
+                "versions"
+            } else {
+                "version"
+            },
+            rvers.join(", "),
+            if platforms.len() > 1 {
+                "Platforms"
+            } else {
+                "Platform"
+            },
+            platforms.join(", ")
+        ))
+    } else {
+        None
+    };
+    print_solution_table(&summaries, header.as_deref());
 
     // Deterministic diffs: always the same order regardless of the order
     // --r-version/--platform were given in.
@@ -1287,13 +1390,31 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     Ok(())
 }
 
-/// Fill `tab` with one row per solved package, for [`proj_lock`]'s summary.
-fn print_solution_table(
-    tab: &mut Table,
+/// What one solved target says about one package, for [`proj_lock`]'s summary.
+#[derive(PartialEq)]
+struct SolvedRow {
+    version: String,
+    /// `binary`, `source`, or empty for R and the base packages.
+    kind: &'static str,
+    /// With `--prefer-binary`, the newer version this one was traded for.
+    held_back_from: Option<String>,
+}
+
+/// One solved target's contribution to [`proj_lock`]'s summary table.
+struct TargetSolution {
+    r_version: String,
+    /// e.g. `macos-arm64`.
+    platform: String,
+    rows: BTreeMap<String, SolvedRow>,
+}
+
+/// One solved target's packages, keyed by package name.
+fn solution_rows(
     registry: &RPackageRegistry,
     solution: &SelectedDependencies<RPackageRegistry>,
-) {
+) -> BTreeMap<String, SolvedRow> {
     let sorted_solution = solution_to_sorted_vec(solution);
+    let mut rows: BTreeMap<String, SolvedRow> = BTreeMap::new();
     for (pkg, ver) in sorted_solution.iter() {
         let kind = if pkg == "R" || BASE_PKGS.contains(&pkg.as_str()) {
             ""
@@ -1305,18 +1426,258 @@ fn print_solution_table(
         // Only set when `--prefer-binary` traded this version for a binary, so
         // that a version an ordinary constraint pushed back is not reported as
         // if the flag had done it.
-        let note = match registry.held_back_from(pkg, ver) {
-            Some(latest) => {
-                info!(
-                    "Held {} back to {} for a binary package, latest is {}",
-                    pkg, ver.version, latest
-                );
-                format!("held back for a binary package, latest is {}", latest)
-            }
-            None => String::new(),
-        };
-        tab.add_row(row!(pkg, &ver.version, kind, note));
+        let held_back_from = registry.held_back_from(pkg, ver).map(|latest| {
+            info!(
+                "Held {} back to {} for a binary package, latest is {}",
+                pkg, ver.version, latest
+            );
+            latest.to_string()
+        });
+        rows.insert(
+            pkg.clone(),
+            SolvedRow {
+                version: ver.version.to_string(),
+                kind,
+                held_back_from,
+            },
+        );
     }
+    rows
+}
+
+/// The value most targets agree on, with the first target breaking a tie.
+fn majority<'a, T: Eq + std::hash::Hash>(values: impl Iterator<Item = &'a T> + Clone) -> &'a T {
+    let mut counts: HashMap<&T, usize> = HashMap::new();
+    for v in values.clone() {
+        *counts.entry(v).or_insert(0) += 1;
+    }
+    let mut best: Option<(&T, usize)> = None;
+    for v in values {
+        let count = counts.get(v).copied().unwrap_or(0);
+        // Strictly greater, so that a tie keeps the earlier target's value.
+        if best.is_none_or(|(_, b)| count > b) {
+            best = Some((v, count));
+        }
+    }
+    best.expect("at least one target").0
+}
+
+/// The distinct values, in the order they first appear.
+fn dedup_in_order<'a>(values: impl Iterator<Item = &'a str>) -> Vec<&'a str> {
+    let mut seen: HashSet<&str> = HashSet::new();
+    values.filter(|v| seen.insert(v)).collect()
+}
+
+/// `a, b and c`, for the target lists in the notes column.
+fn join_labels(labels: &[&str]) -> String {
+    match labels {
+        [] => String::new(),
+        [one] => one.to_string(),
+        [rest @ .., last] => format!("{} and {}", rest.join(", "), last),
+    }
+}
+
+/// Name the targets in `subset` (indices into `targets`) as briefly as the
+/// matrix allows, for the notes column of [`solution_table`].
+///
+/// The targets are an R version × platform matrix, so a subset that is itself
+/// a full block of that matrix is named by the axes that single it out: every
+/// platform of one R version is "R 4.1", every R version of one platform is
+/// "macos-arm64". Only a subset that does not line up with the matrix has to
+/// name its targets one by one. The empty string means "all of them", which
+/// the caller leaves unsaid.
+fn describe_targets(subset: &[usize], targets: &[TargetSolution]) -> String {
+    let all_rvers = dedup_in_order(targets.iter().map(|t| t.r_version.as_str()));
+    let all_platforms = dedup_in_order(targets.iter().map(|t| t.platform.as_str()));
+    let rvers = dedup_in_order(subset.iter().map(|&i| targets[i].r_version.as_str()));
+    let platforms = dedup_in_order(subset.iter().map(|&i| targets[i].platform.as_str()));
+
+    // Every target in the `rvers` × `platforms` block is in the subset, so the
+    // two axes describe it exactly.
+    let block = targets
+        .iter()
+        .filter(|t| {
+            rvers.contains(&t.r_version.as_str()) && platforms.contains(&t.platform.as_str())
+        })
+        .count();
+    if block == subset.len() {
+        return match (
+            rvers.len() == all_rvers.len(),
+            platforms.len() == all_platforms.len(),
+        ) {
+            (true, true) => String::new(),
+            (false, true) => format!("R {}", join_labels(&rvers)),
+            (true, false) => join_labels(&platforms),
+            (false, false) => format!("R {} / {}", join_labels(&rvers), join_labels(&platforms)),
+        };
+    }
+
+    let one_rver = all_rvers.len() == 1;
+    let labels: Vec<String> = subset
+        .iter()
+        .map(|&i| {
+            if one_rver {
+                targets[i].platform.clone()
+            } else {
+                format!("R {} / {}", targets[i].r_version, targets[i].platform)
+            }
+        })
+        .collect();
+    join_labels(&labels.iter().map(|l| l.as_str()).collect::<Vec<_>>())
+}
+
+/// Print [`proj_lock`]'s summary of everything it solved, as one table.
+///
+/// The targets nearly always resolve to the same packages at the same
+/// versions, differing only in whether a package is available as a binary, so
+/// this is one row per package, and a further row only for a package that some
+/// targets solved differently -- those rows leave the package column empty and
+/// name the targets they hold for in the platform column. With a single target
+/// nothing differs and the table is simply that target's packages.
+fn print_solution_table(targets: &[TargetSolution], header: Option<&str>) {
+    if let Some(header) = header {
+        println!("{}", header);
+    }
+    println!("{}", solution_table(targets));
+}
+
+/// The table [`print_solution_table`] prints, see there.
+///
+/// Built twice: the rule under the header is as wide as the table, and how
+/// wide that is only shows once the rows are laid out.
+fn solution_table(targets: &[TargetSolution]) -> Table {
+    let rows = solution_table_rows(targets);
+    let measured = table_of(&rows, 0);
+    let width = measured
+        .to_string()
+        .lines()
+        .map(|l| l.trim_end().chars().count())
+        .max()
+        .unwrap_or(0);
+    table_of(&rows, width)
+}
+
+/// One `(package, version, type, platform)` row of [`solution_table`].
+type SolutionTableRow = (String, String, &'static str, String);
+
+/// [`solution_table`]'s rows, under a header and a `rule` characters wide rule.
+fn table_of(rows: &[SolutionTableRow], rule: usize) -> Table {
+    let mut tab: Table = Table::new("{:<}   {:<}   {:<}   {:<}");
+    tab.add_row(row!["package", "version", "type", "platform"]);
+    tab.add_heading("-".repeat(rule));
+    for (pkg, version, kind, platform) in rows {
+        tab.add_row(row!(pkg, version, kind, platform));
+    }
+    tab
+}
+
+/// The rows of [`solution_table`], see there for what they say.
+fn solution_table_rows(targets: &[TargetSolution]) -> Vec<SolutionTableRow> {
+    let mut rows: Vec<SolutionTableRow> = vec![];
+
+    let sorted: BTreeSet<&str> = targets
+        .iter()
+        .flat_map(|t| t.rows.keys().map(|k| k.as_str()))
+        .collect();
+    // "R" first, then the packages by name, as before.
+    let mut packages: Vec<&str> = sorted.iter().copied().filter(|p| *p != "R").collect();
+    if sorted.contains("R") {
+        packages.insert(0, "R");
+    }
+
+    for pkg in packages {
+        // Targets that have the package at all, in target order.
+        let have: Vec<(usize, &SolvedRow)> = targets
+            .iter()
+            .enumerate()
+            .filter_map(|(i, t)| t.rows.get(pkg).map(|r| (i, r)))
+            .collect();
+
+        // The targets a package is missing from are said on its first row.
+        let missing: Vec<usize> = targets
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| !t.rows.contains_key(pkg))
+            .map(|(i, _)| i)
+            .collect();
+        let missing = if missing.is_empty() {
+            None
+        } else {
+            Some(format!("not on {}", describe_targets(&missing, targets)))
+        };
+
+        // R and the base packages are versioned with R itself, so with more
+        // than one R version locked they differ on every target by
+        // definition. One row per R version would say the least and take the
+        // most room, so they get a placeholder version instead.
+        if have.iter().all(|(_, r)| r.kind.is_empty()) {
+            let version = majority(have.iter().map(|(_, r)| &r.version));
+            let differs = have.iter().any(|(_, r)| &r.version != version);
+            let version = if differs { "*" } else { version.as_str() };
+            rows.push((
+                pkg.to_string(),
+                version.to_string(),
+                "",
+                missing.unwrap_or_default(),
+            ));
+            continue;
+        }
+
+        // Group the targets by everything the row says. Each group is a row of
+        // its own -- a package solved to two versions, or to a binary on some
+        // targets and a source build on others, is easier to read as two rows
+        // than as one row with the differences squeezed into a note.
+        let mut groups: Vec<(&SolvedRow, Vec<usize>)> = vec![];
+        for (i, row) in &have {
+            match groups.iter_mut().find(|(r, _)| *r == *row) {
+                Some((_, idx)) => idx.push(*i),
+                None => groups.push((row, vec![*i])),
+            }
+        }
+        // Most targets first, so that the package's name is on the row that
+        // holds for most of them, and the exceptions read as exceptions. A
+        // held-back version loses a tie: it is the exception by nature.
+        groups.sort_by_key(|(r, idx)| (std::cmp::Reverse(idx.len()), r.held_back_from.is_some()));
+        let versions: HashSet<&str> = groups.iter().map(|(r, _)| r.version.as_str()).collect();
+
+        for (n, (row, idx)) in groups.iter().enumerate() {
+            let mut what: Vec<String> = vec![];
+            // The first row is the one that holds for most targets, so it is
+            // the default and the rows below it are the exceptions to it.
+            // Naming its targets would be the longest and least useful cell in
+            // the table -- every target the exceptions do not claim.
+            if n > 0 {
+                what.push(describe_targets(idx, targets));
+            }
+            if let Some(latest) = &row.held_back_from {
+                // The version it was held back from is already in the table
+                // when some other target solved to it.
+                if versions.contains(latest.as_str()) {
+                    what.push("held back for a binary package".to_string());
+                } else {
+                    what.push(format!(
+                        "held back for a binary package, latest is {}",
+                        latest
+                    ));
+                }
+            }
+            if n == 0 {
+                if let Some(missing) = &missing {
+                    what.push(missing.clone());
+                }
+            }
+            // Only the first row names the package, the rest belong to it.
+            let name = if n == 0 { pkg } else { "" };
+            rows.push((
+                name.to_string(),
+                row.version.clone(),
+                row.kind,
+                what.join(", "),
+            ));
+        }
+    }
+
+    rows
 }
 
 /// The lockfile packages that are needed without the dev dependencies.
@@ -1992,6 +2353,235 @@ mod tests {
     use super::*;
     use crate::rproj::{Dependency, Group};
     use std::collections::BTreeMap;
+
+    /// One target's rows for [`solution_table`], from `(package, version,
+    /// kind, held back from)` tuples.
+    fn solved_target(
+        r_version: &str,
+        platform: &str,
+        rows: &[(&str, &str, &'static str, Option<&str>)],
+    ) -> TargetSolution {
+        TargetSolution {
+            r_version: r_version.to_string(),
+            platform: platform.to_string(),
+            rows: rows
+                .iter()
+                .map(|(pkg, version, kind, held_back_from)| {
+                    (
+                        pkg.to_string(),
+                        SolvedRow {
+                            version: version.to_string(),
+                            kind,
+                            held_back_from: held_back_from.map(|v| v.to_string()),
+                        },
+                    )
+                })
+                .collect(),
+        }
+    }
+
+    /// The table rows, without the header and with the column padding
+    /// squeezed to a single space, so that the tests read as rows and not as
+    /// whatever width the columns happen to have.
+    fn table_rows(targets: &[TargetSolution]) -> Vec<String> {
+        solution_table(targets)
+            .to_string()
+            .lines()
+            .skip(2)
+            .map(|l| l.split_whitespace().collect::<Vec<_>>().join(" "))
+            .collect()
+    }
+
+    #[test]
+    fn one_target_is_that_target() {
+        let rows = table_rows(&[solved_target(
+            "4.5.1",
+            "macos-arm64",
+            &[
+                ("R", "4.5.1", "", None),
+                ("cli", "3.6.5", "binary", None),
+                ("glue", "1.8.0", "source", Some("1.8.1")),
+            ],
+        )]);
+        assert_eq!(
+            rows,
+            vec![
+                "R 4.5.1",
+                "cli 3.6.5 binary",
+                "glue 1.8.0 source held back for a binary package, latest is 1.8.1",
+            ]
+        );
+    }
+
+    #[test]
+    fn agreeing_targets_collapse_to_one_row_each() {
+        let rows = table_rows(&[
+            solved_target("4.5.1", "macos-arm64", &[("cli", "3.6.5", "binary", None)]),
+            solved_target(
+                "4.5.1",
+                "windows-x86_64",
+                &[("cli", "3.6.5", "binary", None)],
+            ),
+        ]);
+        assert_eq!(rows, vec!["cli 3.6.5 binary"]);
+    }
+
+    #[test]
+    fn a_target_that_solved_differently_is_a_row_of_its_own() {
+        let rows = table_rows(&[
+            solved_target(
+                "4.5.1",
+                "macos-arm64",
+                &[
+                    ("cli", "3.6.5", "binary", None),
+                    ("glue", "1.8.0", "binary", None),
+                ],
+            ),
+            solved_target(
+                "4.5.1",
+                "windows-x86_64",
+                &[
+                    ("cli", "3.6.5", "source", None),
+                    ("glue", "1.7.0", "source", None),
+                ],
+            ),
+            solved_target(
+                "4.5.1",
+                "manylinux-x86_64",
+                &[
+                    ("cli", "3.6.5", "binary", None),
+                    ("glue", "1.8.0", "binary", None),
+                ],
+            ),
+        ]);
+        // The first row of a package is the one most targets got, and only
+        // the rows below it, the exceptions, name their targets.
+        assert_eq!(
+            rows,
+            vec![
+                "cli 3.6.5 binary",
+                "3.6.5 source windows-x86_64",
+                "glue 1.8.0 binary",
+                "1.7.0 source windows-x86_64",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_whole_row_or_column_of_the_matrix_is_named_by_its_axis() {
+        let held = |version: &'static str, from: Option<&'static str>| {
+            move |rver: &str, platform: &str| {
+                solved_target(rver, platform, &[("bslib", version, "binary", from)])
+            }
+        };
+        let old = held("0.10.0", Some("0.12.0"));
+        let new = held("0.12.0", None);
+        let rows = table_rows(&[
+            old("4.1", "macos-arm64"),
+            old("4.1", "windows-x86_64"),
+            new("4.4", "macos-arm64"),
+            new("4.4", "windows-x86_64"),
+            new("4.5", "macos-arm64"),
+            new("4.5", "windows-x86_64"),
+        ]);
+        // Every platform of R 4.1, so the platforms need no naming, and the
+        // version it was held back from is a row of the table already.
+        assert_eq!(
+            rows,
+            vec![
+                "bslib 0.12.0 binary",
+                "0.10.0 binary R 4.1, held back for a binary package",
+            ]
+        );
+
+        // The same the other way round: every R version of one platform.
+        let rows = table_rows(&[
+            solved_target("4.4", "macos-arm64", &[("cli", "3.6.5", "binary", None)]),
+            solved_target("4.4", "windows-x86_64", &[("cli", "3.6.5", "source", None)]),
+            solved_target("4.5", "macos-arm64", &[("cli", "3.6.5", "binary", None)]),
+            solved_target("4.5", "windows-x86_64", &[("cli", "3.6.5", "source", None)]),
+        ]);
+        assert_eq!(
+            rows,
+            vec!["cli 3.6.5 binary", "3.6.5 source windows-x86_64"]
+        );
+    }
+
+    #[test]
+    fn r_and_the_base_packages_do_not_list_every_r_version() {
+        let rows = table_rows(&[
+            solved_target(
+                "4.4",
+                "macos-arm64",
+                &[("R", "4.4", "", None), ("methods", "4.4", "", None)],
+            ),
+            solved_target(
+                "4.6",
+                "macos-arm64",
+                &[("R", "4.6", "", None), ("methods", "4.6", "", None)],
+            ),
+        ]);
+        assert_eq!(rows, vec!["R *", "methods *"]);
+    }
+
+    #[test]
+    fn a_package_only_some_targets_have_says_which() {
+        let rows = table_rows(&[
+            solved_target("4.5.1", "macos-arm64", &[("cli", "3.6.5", "binary", None)]),
+            solved_target(
+                "4.5.1",
+                "windows-x86_64",
+                &[
+                    ("cli", "3.6.5", "binary", None),
+                    ("curl", "6.0.1", "binary", None),
+                ],
+            ),
+        ]);
+        assert_eq!(
+            rows,
+            vec!["cli 3.6.5 binary", "curl 6.0.1 binary not on macos-arm64"]
+        );
+    }
+
+    #[test]
+    fn a_held_back_version_no_other_target_has_names_the_version_it_lost() {
+        let rows = table_rows(&[
+            solved_target(
+                "4.5.1",
+                "macos-arm64",
+                &[("glue", "1.8.0", "binary", Some("1.8.1"))],
+            ),
+            solved_target(
+                "4.5.1",
+                "windows-x86_64",
+                &[("glue", "1.8.0", "binary", Some("1.8.1"))],
+            ),
+        ]);
+        assert_eq!(
+            rows,
+            vec!["glue 1.8.0 binary held back for a binary package, latest is 1.8.1"]
+        );
+
+        let rows = table_rows(&[
+            solved_target(
+                "4.5.1",
+                "macos-arm64",
+                &[("glue", "1.8.0", "binary", Some("1.8.1"))],
+            ),
+            solved_target(
+                "4.5.1",
+                "windows-x86_64",
+                &[("glue", "1.8.0", "binary", None)],
+            ),
+        ]);
+        assert_eq!(
+            rows,
+            vec![
+                "glue 1.8.0 binary",
+                "1.8.0 binary macos-arm64, held back for a binary package, latest is 1.8.1",
+            ]
+        );
+    }
 
     /// One lockfile entry: its name and the packages it depends on.
     fn locked(name: &str, deps: &[&str]) -> PakLockfilePackage {

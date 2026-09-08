@@ -99,7 +99,7 @@ pub fn sc_pkg_install(
         info!("Ignoring --prefer-binary: solving for source packages only");
     }
 
-    let (registry, solution) = sc_proj_solve_deps(&rver, &deps, target, prefer_binary)?;
+    let (registry, solution) = sc_proj_solve_deps(&rver, &deps, target, prefer_binary, true)?;
     OUTPUT.success("Solved dependencies");
     info!("Solved dependencies");
 

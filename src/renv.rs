@@ -13,8 +13,7 @@ use crate::common::*;
 use crate::dcf::{DepVersionSpec, RDepType};
 use crate::output::OUTPUT;
 use crate::proj::{
-    proj_binary_target, proj_lock_r_version, proj_read_manifest_deps, sc_proj_solve_deps,
-    BASE_PKGS,
+    proj_binary_target, proj_lock_r_version, proj_read_manifest_deps, sc_proj_solve_deps, BASE_PKGS,
 };
 use crate::repos::cranlike_metadata::minor_r_version;
 use crate::rproj::{Rproj, RPROJ_MANIFEST_FILE};
@@ -58,12 +57,15 @@ fn sc_renv_export(
     let platform = args.get_one::<String>("platform").cloned();
     let target = proj_binary_target(platform.as_ref(), &rver)?;
 
-    let (registry, solution) = sc_proj_solve_deps(&rver, &pkg_deps, target, None)?;
+    let (registry, solution) = sc_proj_solve_deps(&rver, &pkg_deps, target, None, true)?;
     OUTPUT.success("Solved dependencies");
     info!("Solved dependencies");
 
     let lockfile = REnvLockfile::from_solution(&registry, &solution);
-    fs::write(root.join("renv.lock"), serde_json::to_string_pretty(&lockfile)?)?;
+    fs::write(
+        root.join("renv.lock"),
+        serde_json::to_string_pretty(&lockfile)?,
+    )?;
     OUTPUT.success("Written renv lockfile to renv.lock");
     info!("Written renv lockfile to renv.lock");
     Ok(())
