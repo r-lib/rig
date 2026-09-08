@@ -1280,10 +1280,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         version: RPROJ_LOCK_VERSION,
         targets,
     };
-    fs::write(
-        root.join(RPROJ_LOCK_FILE),
-        toml::to_string_pretty(&rproj_lock)?,
-    )?;
+    fs::write(root.join(RPROJ_LOCK_FILE), rproj_lock.to_toml()?)?;
     OUTPUT.success("Written project lockfile to rproj.lock");
     info!("Written project lockfile to rproj.lock");
 

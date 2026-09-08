@@ -1444,6 +1444,44 @@ pub struct RprojLockTarget {
     pub packages: Vec<PakLockfilePackage>,
 }
 
+impl RprojLock {
+    /// Render the lockfile as the TOML text of `rproj.lock`.
+    ///
+    /// A package's `metadata` map is a table, so the plain serializer writes it
+    /// as a `[targets.packages.metadata]` section of its own, which pushes a
+    /// handful of `Remote*` fields into a block as tall as the package entry
+    /// itself. Writing it as an inline table keeps one package to one block,
+    /// and its keys are sorted, because the map is a `HashMap` and would
+    /// otherwise land in a different order in every rewrite.
+    pub fn to_toml(&self) -> Result<String, Box<dyn Error>> {
+        let mut doc: toml_edit::DocumentMut = toml::to_string_pretty(self)?.parse()?;
+        let targets = doc
+            .get_mut("targets")
+            .and_then(|t| t.as_array_of_tables_mut());
+        for target in targets.into_iter().flat_map(|ts| ts.iter_mut()) {
+            let packages = target
+                .get_mut("packages")
+                .and_then(|p| p.as_array_of_tables_mut());
+            for package in packages.into_iter().flat_map(|ps| ps.iter_mut()) {
+                let Some(toml_edit::Item::Table(metadata)) = package.remove("metadata") else {
+                    continue;
+                };
+                let mut metadata = metadata.into_inline_table();
+                metadata.sort_values();
+                // `into_inline_table()` keeps the decorations of the section
+                // the table came from, i.e. the blank line before its header.
+                metadata.decor_mut().clear();
+                for (mut key, value) in metadata.iter_mut() {
+                    key.leaf_decor_mut().clear();
+                    value.decor_mut().clear();
+                }
+                package.insert("metadata", toml_edit::value(metadata));
+            }
+        }
+        Ok(doc.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1633,7 +1671,7 @@ mod tests {
                 packages: vec![sample_package()],
             }],
         };
-        let text = toml::to_string_pretty(&lock).unwrap();
+        let text = lock.to_toml().unwrap();
         let parsed: RprojLock = toml::from_str(&text).unwrap();
         assert_eq!(parsed.version, 1);
         assert_eq!(parsed.targets.len(), 1);
@@ -1666,13 +1704,42 @@ mod tests {
                 },
             ],
         };
-        let text = toml::to_string_pretty(&lock).unwrap();
+        let text = lock.to_toml().unwrap();
         let parsed: RprojLock = toml::from_str(&text).unwrap();
         assert_eq!(parsed.targets.len(), 2);
         assert_eq!(parsed.targets[0].r_version, "4.5");
         assert_eq!(parsed.targets[0].platform, "x86_64-pc-linux-gnu");
         assert_eq!(parsed.targets[1].r_version, "4.6");
         assert_eq!(parsed.targets[1].platform, "aarch64-apple-darwin");
+    }
+
+    #[test]
+    fn package_metadata_is_written_as_a_sorted_inline_table() {
+        let mut package = sample_package();
+        package.metadata = HashMap::from([
+            ("RemoteType".to_string(), "github".to_string()),
+            ("RemoteSha".to_string(), "abc123".to_string()),
+            ("RemoteRepo".to_string(), "cli".to_string()),
+        ]);
+        let lock = RprojLock {
+            version: RPROJ_LOCK_VERSION,
+            targets: vec![RprojLockTarget {
+                r_version: "4.6".to_string(),
+                platform: "aarch64-apple-darwin".to_string(),
+                packages: vec![package],
+            }],
+        };
+        let text = lock.to_toml().unwrap();
+        assert!(text.contains(
+            "metadata = { RemoteRepo = \"cli\", RemoteSha = \"abc123\", RemoteType = \"github\" }\n"
+        ));
+        assert!(!text.contains("[targets.packages.metadata]"));
+
+        let parsed: RprojLock = toml::from_str(&text).unwrap();
+        assert_eq!(
+            parsed.targets[0].packages[0].metadata.get("RemoteType"),
+            Some(&"github".to_string())
+        );
     }
 
     #[test]

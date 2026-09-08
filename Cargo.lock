@@ -1879,6 +1879,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "toml",
+ "toml_edit",
  "version-ranges",
  "whoami",
  "winreg 0.10.1",
