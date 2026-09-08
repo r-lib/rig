@@ -24,7 +24,6 @@ use crate::install::{
     install_packages, parse_linkingto, PackageInfo, REMOTE_HASH_FIELD, REMOTE_LINKINGTO_FIELD,
 };
 use crate::output::OUTPUT;
-use crate::pak::{PakLockfile, PakLockfilePackage};
 use crate::pkg::deps::{
     dep_count, print_deps_json, print_deps_recursive, print_header, type_list, walk_deps,
 };
@@ -37,8 +36,8 @@ use crate::repos::cranlike_metadata::{ensure_allpackages_fresh, minor_r_version}
 use crate::repos::*;
 use crate::resolve::resolve_versions;
 use crate::rproj::{
-    parse_add_spec, Author, Rproj, RprojLock, RprojLockTarget, RPROJ_LOCK_VERSION,
-    RPROJ_MANIFEST_FILE,
+    parse_add_spec, Author, Rproj, RprojLock, RprojLockPackage, RprojLockTarget,
+    RPROJ_LOCK_VERSION, RPROJ_MANIFEST_FILE,
 };
 use crate::rvenv::{
     existing_targets, find_project_root, project_library, read_rvenv_cfg, rvenv_init, rvenv_sync,
@@ -1225,9 +1224,9 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
                 no_binaries.insert(name);
             }
 
-            // Mirrors how `PakLockfile::from_solution` derives the top-level
-            // `platform` field (src/pak.rs), so this pre-solve key matches
-            // the key the old post-solve dedup used.
+            // Mirrors how `RprojLockTarget::from_solution` derives the
+            // target's `platform` field (src/rproj.rs), so this pre-solve key
+            // matches the key the old post-solve dedup used.
             let platform_key = target
                 .as_ref()
                 .map(|t| t.name())
@@ -1322,7 +1321,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
             }
         };
 
-        let lockfile = PakLockfile::from_solution(&registry, &solution);
+        let target = RprojLockTarget::from_solution(&registry, &solution);
         info!("Solved dependencies for R {} / {}", rver, platform_key);
 
         summaries.push(TargetSolution {
@@ -1331,11 +1330,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
             rows: solution_rows(&registry, &solution),
         });
 
-        targets.push(RprojLockTarget {
-            r_version: lockfile.r_version,
-            platform: lockfile.platform,
-            packages: lockfile.packages,
-        });
+        targets.push(target);
     }
 
     if multi {
@@ -1683,10 +1678,10 @@ fn solution_table_rows(targets: &[TargetSolution]) -> Vec<SolutionTableRow> {
 /// The lockfile packages that are needed without the dev dependencies.
 fn nondev_packages(
     root: &Path,
-    packages: &[PakLockfilePackage],
+    packages: &[RprojLockPackage],
 ) -> Result<HashSet<String>, Box<dyn Error>> {
     let (_name, _version, deps) = proj_read_manifest_deps(root, false)?;
-    let by_name: HashMap<&str, &PakLockfilePackage> =
+    let by_name: HashMap<&str, &RprojLockPackage> =
         packages.iter().map(|p| (p.package.as_str(), p)).collect();
 
     let mut keep: HashSet<String> = HashSet::new();
@@ -1821,7 +1816,7 @@ fn target_r_arch(platform: &str) -> String {
 
 /// The OS family a lock target's platform string implies, or `None` if it
 /// names none -- a `--platform source` solve's `platform` field is just the
-/// bare CPU arch (e.g. `"aarch64"`, see `PakLockfile::from_solution`), which
+/// bare CPU arch (e.g. `"aarch64"`, see `RprojLockTarget::from_solution`), which
 /// carries no OS marker and so matches any machine with the right arch.
 fn target_os_family(platform: &str) -> Option<&'static str> {
     match platform.rsplit_once('-') {
@@ -2032,6 +2027,7 @@ pub(crate) fn proj_sync(
     }
 
     let lock_content = fs::read_to_string(&lock_path)?;
+    RprojLock::check_version(&lock_content)?;
     let lock: RprojLock = toml::from_str(&lock_content)?;
     let target = select_sync_target(
         &lock.targets,
@@ -2040,7 +2036,7 @@ pub(crate) fn proj_sync(
     )?;
 
     let nondev;
-    let wanted: &[PakLockfilePackage] = if !opts.dev {
+    let wanted: &[RprojLockPackage] = if !opts.dev {
         let keep = nondev_packages(root, &target.packages)?;
         nondev = target
             .packages
@@ -2139,7 +2135,7 @@ pub(crate) fn proj_sync(
     };
     let plan = plan_installs(wanted, &already_installed, false);
     print_plan(&format!("({})", library_path.display()), &plan);
-    let todo: Vec<&PakLockfilePackage> = plan
+    let todo: Vec<&RprojLockPackage> = plan
         .iter()
         .filter(|p| p.install)
         .map(|p| p.package)
@@ -2163,7 +2159,7 @@ pub(crate) fn proj_sync(
     // Download only the packages that are actually going to be installed
     OUTPUT.status("Downloading packages");
     info!("Downloading packages");
-    let to_download: Vec<PakLockfilePackage> = todo.iter().map(|p| (*p).clone()).collect();
+    let to_download: Vec<RprojLockPackage> = todo.iter().map(|p| (*p).clone()).collect();
     download_lockfile_packages(&to_download)?;
 
     // Get cache directory where packages were downloaded
@@ -2222,13 +2218,13 @@ pub(crate) fn proj_sync(
 }
 
 /// What to install for one lockfile entry, including the provenance
-/// `PakLockfile::from_solution` recorded in its `metadata`.
+/// `RprojLockTarget::from_solution` recorded in its `metadata`.
 ///
 /// `built` is the cache of packages rig compiled itself, and only a source
 /// package has anything to do with it: a binary is already built, and rig has
 /// nothing to add to it.
 pub(crate) fn lockfile_package_info(
-    pkg: &PakLockfilePackage,
+    pkg: &RprojLockPackage,
     cache_dir: &Path,
     built: Option<&BuiltCache>,
 ) -> PackageInfo {
@@ -2256,24 +2252,14 @@ pub(crate) fn lockfile_package_info(
 /// This will be different for CRAN and CRAN-like repositories.
 pub(crate) const PACKAGE_FILE_TTL: Duration = Duration::MAX;
 
-/// Read `pkg.lock` (the pak-compatible JSON lockfile `rig pkg install`
-/// writes/reads) and download everything it names. Used by the hidden `rig
-/// test download-lockfile` diagnostic; unrelated to `rproj.lock` / `rig proj
-/// sync`, which call [`download_lockfile_packages`] directly instead.
-pub fn proj_download() -> Result<(), Box<dyn Error>> {
-    let lockfile_content = fs::read_to_string("pkg.lock")?;
-    let lockfile: PakLockfile = serde_json::from_str(&lockfile_content)?;
-    download_lockfile_packages(&lockfile.packages)
-}
-
 /// Download every package a lockfile names into the package cache.
 ///
 /// Takes a plain package slice, not a whole lockfile, so any caller with a
-/// `Vec<PakLockfilePackage>` can use it directly — `rig pkg install`, which
+/// `Vec<RprojLockPackage>` can use it directly — `rig pkg install`, which
 /// solves in memory and never writes a lockfile, and `rig proj sync`, which
 /// reads one target's packages out of `rproj.lock`.
 pub(crate) fn download_lockfile_packages(
-    packages: &[PakLockfilePackage],
+    packages: &[RprojLockPackage],
 ) -> Result<(), Box<dyn Error>> {
     // Get cache directory
     let cache_dir = get_cache_dir()?;
@@ -2584,27 +2570,16 @@ mod tests {
     }
 
     /// One lockfile entry: its name and the packages it depends on.
-    fn locked(name: &str, deps: &[&str]) -> PakLockfilePackage {
-        PakLockfilePackage {
-            r#ref: name.to_string(),
+    fn locked(name: &str, deps: &[&str]) -> RprojLockPackage {
+        RprojLockPackage {
             package: name.to_string(),
             version: "1.0.0".to_string(),
-            r#type: "standard".to_string(),
-            direct: false,
             binary: true,
+            platform: "testos".to_string(),
             dependencies: deps.iter().map(|d| d.to_string()).collect(),
-            vignettes: false,
             metadata: HashMap::new(),
             sources: vec![],
             target: format!("bin/{}_1.0.0.tgz", name),
-            platform: "testos".to_string(),
-            rversion: "4.5.1".to_string(),
-            directpkg: false,
-            license: "MIT".to_string(),
-            dep_types: vec![],
-            params: vec![],
-            install_args: String::new(),
-            sysreqs: String::new(),
         }
     }
 

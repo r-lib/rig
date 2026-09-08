@@ -50,7 +50,6 @@ mod install;
 mod library;
 mod output;
 mod pager;
-mod pak;
 mod pkg;
 mod platform;
 mod ppm;

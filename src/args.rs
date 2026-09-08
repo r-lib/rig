@@ -2395,11 +2395,6 @@ pub fn rig_app() -> Command {
             .hide(reference_mode())
             .arg_required_else_help(true)
             .subcommand(
-                Command::new("download-lockfile")
-                    .about("Download packages in the pkg.lock file")
-                    .display_order(0),
-            )
-            .subcommand(
                 Command::new("read-rds")
                     .about("Test reading RDS files")
                     .display_order(0)

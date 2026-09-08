@@ -28,7 +28,6 @@ mod library;
 mod macos;
 mod output;
 mod pager;
-mod pak;
 mod pkg;
 mod platform;
 mod proj;

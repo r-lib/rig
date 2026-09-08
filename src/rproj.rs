@@ -1,16 +1,13 @@
 // `rproj.lock`: the multi-target project lockfile written by `rig proj lock`
-// and read by `rig proj sync`. TOML, unlike the JSON `pkg.lock` written by
-// `rig pkg install` (`src/pak.rs`), which stays as-is because it mirrors the R
-// `pak` package's own lockfile schema for interop with `pak::lockfile_*()`.
+// and read by `rig proj sync`. TOML.
 //
 // `rproj.lock` is not interop with anything external; it is rig's own format,
 // designed to hold the solve for *several* `(R version, platform)` targets in
 // one file — e.g. solving once on a laptop for both macOS and a Linux
-// deployment target. Each target's package list reuses `PakLockfilePackage`
-// as-is (verified it round-trips cleanly through the `toml` crate, table
-// fields and all), so a target's dependency data is exactly what `pkg.lock`
-// would have recorded for that one target, just nested under it instead of
-// being the whole file.
+// deployment target. A target's package list is `RprojLockPackage` entries,
+// which record only what installing needs: what the package is, whether it is
+// a source or a binary build, where it is downloaded from, where it is cached,
+// and the provenance an installed package's `DESCRIPTION` gets.
 //
 // `rig proj lock` solves one target per `(R version, platform)` given with
 // `--r-version`/`--platform` (repeatable, combined as a cross product), and
@@ -19,7 +16,7 @@
 // foreign-OS target is simply inert on this machine, which is what makes
 // locking for a Linux deployment target from a macOS laptop work.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
 use std::fmt::Write as _;
 
@@ -27,14 +24,18 @@ use log::warn;
 use serde::{Deserialize, Serialize};
 use simple_error::*;
 
+use crate::cache::{artifact_cache_key, target_path};
 use crate::dcf::{
     DepVersionSpec, Package as DcfPackage, PackageDependencies, RDepType, RPackageVersion,
     VersionConstraint, VersionConstraintType, DEP_TYPES_SOFT,
 };
-use crate::pak::PakLockfilePackage;
+use crate::install::{format_linkingto, REMOTE_HASH_FIELD, REMOTE_LINKINGTO_FIELD};
+use crate::proj::BASE_PKGS;
 use crate::repos::cranlike_metadata::minor_r_version;
+use crate::rvenv::RPROJ_LOCK_FILE;
+use crate::solver::{RPackageRegistry, RegistryPackageVersion};
 
-pub const RPROJ_LOCK_VERSION: usize = 1;
+pub const RPROJ_LOCK_VERSION: usize = 2;
 
 // `rproj.toml`: the project/package manifest (see the design doc). This is the
 // *requirements* file a human edits, as opposed to `rproj.lock` (the solved
@@ -1441,10 +1442,167 @@ pub struct RprojLock {
 pub struct RprojLockTarget {
     pub r_version: String,
     pub platform: String,
-    pub packages: Vec<PakLockfilePackage>,
+    pub packages: Vec<RprojLockPackage>,
+}
+
+/// One solved package of one target, i.e. one file to install.
+///
+/// Every field here is read when installing; nothing is recorded for the
+/// record's sake. `platform` is the binary platform the file was built for, or
+/// `"source"`, which is not the same thing as the target's `platform`: a target
+/// can mix binary and source packages.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RprojLockPackage {
+    pub package: String,
+    pub version: String,
+    pub binary: bool,
+    pub platform: String,
+    pub dependencies: Vec<String>,
+    /// `RemoteHash` and `RemoteLinkingToHashes`, i.e. what a direct install
+    /// writes into the installed package's `DESCRIPTION`.
+    pub metadata: HashMap<String, String>,
+    /// Where the file is downloaded from, first one that works.
+    pub sources: Vec<String>,
+    /// Where the file is cached, relative to the package cache.
+    pub target: String,
+}
+
+impl RprojLockTarget {
+    /// Turn one solve into one lockfile target.
+    pub fn from_solution(
+        registry: &RPackageRegistry,
+        solution: &HashMap<String, RegistryPackageVersion, rustc_hash::FxBuildHasher>,
+    ) -> RprojLockTarget {
+        let r_version = solution
+            .get("R")
+            .map(|r| r.version.to_string())
+            .unwrap_or_default();
+        let platform = registry.binary_target();
+        let mut pkgs = vec![];
+        for (k, v) in solution.iter() {
+            if k == "R" || k == "_project" || BASE_PKGS.contains(&k.as_str()) {
+                continue;
+            }
+            let deps = registry
+                .get_dependency_summary(k, v)
+                .unwrap()
+                .into_iter()
+                .filter(|dep| dep != "R" && !BASE_PKGS.contains(&dep.as_str()))
+                .collect();
+            let binary = v.artifact.is_binary();
+            // Provenance of the artifact, so that a lockfile install records the
+            // same `RemoteHash` / `RemoteLinkingToHashes` a direct install does.
+            // A binary knows what it was compiled against; a source build is
+            // compiled against whatever the solve picked, so its provenance is
+            // read off the solution.
+            let mut metadata: HashMap<String, String> = HashMap::new();
+            if let Some(sha) = registry.artifact_sha256(k, v) {
+                metadata.insert(REMOTE_HASH_FIELD.to_string(), sha);
+            }
+            let linkingto = if binary {
+                registry.artifact_linkingto(k, v)
+            } else {
+                registry
+                    .linkingto_names(k, v)
+                    .into_iter()
+                    .filter_map(|dep| {
+                        let dv = solution.get(&dep)?;
+                        let sha = registry.artifact_sha256(&dep, dv)?;
+                        Some((dep, dv.version.to_string(), sha))
+                    })
+                    .collect()
+            };
+            if !linkingto.is_empty() {
+                metadata.insert(
+                    REMOTE_LINKINGTO_FIELD.to_string(),
+                    format_linkingto(&linkingto),
+                );
+            }
+            // The index's URL is snapshot-pinned; the CRAN ones are guesses, and
+            // there are two of them because a version that has been superseded
+            // has moved into the archive.
+            let filename = format!("{}_{}.tar.gz", k, v.version);
+            let sources = match registry.artifact_url(k, v) {
+                Some(url) => vec![url],
+                None => vec![
+                    format!("https://cloud.r-project.org/src/contrib/{}", filename),
+                    format!(
+                        "https://cloud.r-project.org/src/contrib/Archive/{}/{}",
+                        k, filename
+                    ),
+                ],
+            };
+            // The cache file name has to tell two builds of one version apart,
+            // and the repository path does not: several binaries share it.
+            let key = artifact_cache_key(
+                metadata.get(REMOTE_HASH_FIELD).map(|s| s.as_str()),
+                if binary {
+                    metadata.get(REMOTE_LINKINGTO_FIELD).map(|s| s.as_str())
+                } else {
+                    None
+                },
+            );
+            let target = target_path(&sources[0], &format!("src/{}", filename), key.as_deref());
+            pkgs.push(RprojLockPackage {
+                package: k.to_string(),
+                version: v.version.to_string(),
+                binary,
+                platform: if binary {
+                    platform.clone().unwrap_or_else(|| "source".to_string())
+                } else {
+                    "source".to_string()
+                },
+                dependencies: deps,
+                metadata,
+                sources,
+                target,
+            });
+        }
+
+        RprojLockTarget {
+            r_version,
+            platform: platform.unwrap_or_else(|| std::env::consts::ARCH.to_string()),
+            packages: pkgs,
+        }
+    }
+}
+
+/// Just the `version` of a lockfile, to read it without the rest.
+#[derive(Deserialize)]
+struct RprojLockVersion {
+    version: usize,
 }
 
 impl RprojLock {
+    /// Fail on lockfile text that is not the version rig reads.
+    ///
+    /// Every field of a package entry is required, so a lockfile of another
+    /// version usually fails to deserialize anyway, but with a serde message
+    /// about a missing field that says nothing about what to do. The version
+    /// is read on its own, and first, so that the message can.
+    pub fn check_version(text: &str) -> Result<(), Box<dyn Error>> {
+        let found: RprojLockVersion = toml::from_str(text)?;
+        if found.version > RPROJ_LOCK_VERSION {
+            bail!(
+                "This {} is version {}, and this rig reads version {}. \
+                 Update rig to use it.",
+                RPROJ_LOCK_FILE,
+                found.version,
+                RPROJ_LOCK_VERSION
+            );
+        }
+        if found.version < RPROJ_LOCK_VERSION {
+            bail!(
+                "This {} is version {}, written by an older rig, and this rig \
+                 reads version {}. Run `rig proj lock` to write it again.",
+                RPROJ_LOCK_FILE,
+                found.version,
+                RPROJ_LOCK_VERSION
+            );
+        }
+        Ok(())
+    }
+
     /// Render the lockfile as the TOML text of `rproj.lock`.
     ///
     /// A package's `metadata` map is a table, so the plain serializer writes it
@@ -1511,27 +1669,16 @@ mod tests {
         )
     }
 
-    fn sample_package() -> PakLockfilePackage {
-        PakLockfilePackage {
-            r#ref: "cli".to_string(),
+    fn sample_package() -> RprojLockPackage {
+        RprojLockPackage {
             package: "cli".to_string(),
             version: "3.6.0".to_string(),
-            r#type: "standard".to_string(),
-            direct: true,
             binary: true,
+            platform: "aarch64-apple-darwin".to_string(),
             dependencies: vec!["rlang".to_string()],
-            vignettes: false,
             metadata: HashMap::from([("RemoteSha".to_string(), "abc123".to_string())]),
             sources: vec!["https://example.com/cli.tgz".to_string()],
             target: "cli.tgz".to_string(),
-            platform: "aarch64-apple-darwin".to_string(),
-            rversion: "4.6".to_string(),
-            directpkg: true,
-            license: "MIT".to_string(),
-            dep_types: vec!["Imports".to_string()],
-            params: vec![],
-            install_args: "".to_string(),
-            sysreqs: "".to_string(),
         }
     }
 
@@ -1673,10 +1820,10 @@ mod tests {
         };
         let text = lock.to_toml().unwrap();
         let parsed: RprojLock = toml::from_str(&text).unwrap();
-        assert_eq!(parsed.version, 1);
+        assert_eq!(parsed.version, RPROJ_LOCK_VERSION);
         assert_eq!(parsed.targets.len(), 1);
         assert_eq!(parsed.targets[0].r_version, "4.6");
-        assert_eq!(parsed.targets[0].packages[0].r#ref, "cli");
+        assert_eq!(parsed.targets[0].packages[0].package, "cli");
         assert_eq!(
             parsed.targets[0].packages[0].metadata.get("RemoteSha"),
             Some(&"abc123".to_string())
@@ -1687,7 +1834,6 @@ mod tests {
     fn roundtrips_several_targets_through_toml() {
         let mut linux_package = sample_package();
         linux_package.platform = "x86_64-pc-linux-gnu".to_string();
-        linux_package.rversion = "4.5".to_string();
 
         let lock = RprojLock {
             version: RPROJ_LOCK_VERSION,
