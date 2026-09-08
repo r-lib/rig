@@ -46,6 +46,12 @@
 //! the source, [`write_shim_package`] for what is written, and
 //! `xtask/src/rvenv_shim.rs` for the two generated files it needs.
 //!
+//! Before the first `rig proj sync` there is no `.rvenv/lib` at all, and then
+//! the shim does the opposite: it puts `R_LIBS_USER` and `.libPaths()` back to
+//! what the session would have had outside the project, so that the user is
+//! not left with rig's own directory as their library. `.Renviron` records the
+//! original value in `RVENV_R_LIBS_USER` for it.
+//!
 //! Never write a file named `___default` into `.rvenv/lib`: that is the
 //! sentinel of rig's own per-version library switching, in the same
 //! `Rprofile.site` block.
@@ -161,10 +167,16 @@ fn renviron_body() -> &'static str {
 # processes started from a subdirectory still see it. The path here is
 # deliberately relative, because this file is committed to version control.
 #
+# RVENV_R_LIBS_USER keeps the R_LIBS_USER this R installation had set by the
+# time this file is read, so that the `rvenv` package can put it back if the
+# project has no library yet. It is still unexpanded at this point, e.g. `%U`;
+# R expands the %-specs later, and so does the package.
+#
 # R_DEFAULT_PACKAGES replaces R's default package list rather than adding to
 # it, so the whole list has to be spelled out.
 #
 # Note that `R --vanilla` ignores this file entirely.
+RVENV_R_LIBS_USER=${R_LIBS_USER}
 R_LIBS_USER=.rvenv/sys/lib
 R_DEFAULT_PACKAGES=rvenv,datasets,utils,grDevices,graphics,stats,methods
 "
@@ -835,6 +847,9 @@ mod tests {
         // Not the project library: this is the library the shim itself is
         // loaded from, the shim switches to the project library.
         assert!(body.contains("\nR_LIBS_USER=.rvenv/sys/lib\n"));
+        // Recorded before R_LIBS_USER is overwritten, so that the shim can
+        // restore it for a project that has no library yet.
+        assert!(body.contains("\nRVENV_R_LIBS_USER=${R_LIBS_USER}\nR_LIBS_USER="));
         // The shim package has to come first, and the rest of R's default
         // package list has to be spelled out.
         assert!(body.contains(

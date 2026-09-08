@@ -350,12 +350,19 @@ teardown() {
     [[ ! -d .rvenv/lib ]]
 
     # The IDE leg: a plain R session in the project picks up the shim
-    # package, which resolves the library path and warns about the missing
-    # sync.
-    run env -u RVENV R-4.1 -q -s -e 'cat(.libPaths()[1])'
+    # package. Without a project library it warns and leaves the library path
+    # as it was, instead of pointing the session at rig's own directory.
+    run env -u RVENV R-4.1 -q -s -e 'cat(.libPaths()[1], Sys.getenv("R_LIBS_USER"))'
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "Project is not synced"
+    [[ "$output" != *".rvenv"* ]]
+
+    # Once the library exists, the shim resolves it and puts it first
+    mkdir -p .rvenv/lib
+    run env -u RVENV R-4.1 -q -s -e 'cat(.libPaths()[1])'
+    [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "myproj/[.]rvenv/lib"
+    rmdir .rvenv/lib
 
     # Refuses to overwrite, and says what is in the way
     run rig proj init -r 4.1
