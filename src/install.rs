@@ -352,12 +352,22 @@ where
 
     let log_file_stderr = log_file.try_clone()?;
 
+    // Run from a fresh temporary directory, so R does not pick up a project
+    // `.Renviron` (or `.Rprofile`) that could redirect it to a project package
+    // library instead of `library_path`. Canonicalize the paths passed on the
+    // command line first, since they may otherwise be relative to rig's own
+    // working directory rather than `run_dir`.
+    let run_dir = tempfile::tempdir()?;
+    let library_path_abs = library_path.canonicalize()?;
+    let package_path_abs = package_path.canonicalize()?;
+
     let status = Command::new(r_binary)
         .arg("CMD")
         .arg("INSTALL")
         .arg("-l")
-        .arg(library_path)
-        .arg(package_path)
+        .arg(&library_path_abs)
+        .arg(&package_path_abs)
+        .current_dir(run_dir.path())
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(log_file_stderr))
         .status()

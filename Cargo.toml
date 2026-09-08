@@ -82,6 +82,8 @@ pubgrub = "0.3.0"
 rand = "0.8.5"
 # thread pool to solve multiple `rig proj lock` targets in parallel
 rayon = "1.10"
+# temporary directories, e.g. to run `R CMD INSTALL` away from a project dir
+tempfile = "3"
 # deserialize R files
 rds2rust = "0.1.41"
 regex = "1.5.4"
@@ -145,5 +147,4 @@ whoami = "1.4.1"
 assert_cmd = "2.0.8"
 insta = "1.35"
 predicates = "2.1.5"
-tempfile = "3"
 wiremock = "0.6"
