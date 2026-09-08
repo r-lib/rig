@@ -334,7 +334,7 @@ fn sc_proj_import(
         );
         manifest.project.title = paragraph.get("Title").map(reflow);
         manifest.project.description = paragraph.get("Description").map(reflow);
-        manifest.project.license = paragraph.get("License").map(|l| reflow(l));
+        manifest.project.license = paragraph.get("License").map(reflow);
         manifest.project.authors = match paragraph.get("Authors@R") {
             Some(raw) => Author::from_authors_r(raw),
             None => paragraph

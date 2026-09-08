@@ -498,7 +498,7 @@ fn parse_person_call(args: &str) -> Result<Author, String> {
 #[serde(untagged)]
 pub enum Dependency {
     Version(String),
-    Detailed(DepTable),
+    Detailed(Box<DepTable>),
 }
 
 /// The table form of a dependency (`{ version = ..., git = ..., attach = ... }`).
@@ -656,11 +656,11 @@ impl Rproj {
 
             if dep.types.contains(&RDepType::Depends) || dep.types.contains(&RDepType::Imports) {
                 let value = if dep.name != "R" && dep.types.contains(&RDepType::Depends) {
-                    Dependency::Detailed(DepTable {
+                    Dependency::Detailed(Box::new(DepTable {
                         version: Some(version_str.clone()),
                         attach: Some(true),
                         ..Default::default()
-                    })
+                    }))
                 } else {
                     Dependency::Version(version_str.clone())
                 };
@@ -1151,10 +1151,10 @@ fn config_needs_entry(entry: &str) -> (String, Dependency) {
     };
     (
         name,
-        Dependency::Detailed(DepTable {
+        Dependency::Detailed(Box::new(DepTable {
             ref_: Some(entry.to_string()),
             ..Default::default()
-        }),
+        })),
     )
 }
 
@@ -1744,11 +1744,11 @@ mod tests {
         m.dependencies.insert("cli".to_string(), dep(">= 3.6.5"));
         m.dependencies.insert(
             "ts".to_string(),
-            Dependency::Detailed(DepTable {
+            Dependency::Detailed(Box::new(DepTable {
                 git: Some("https://github.com/gaborcsardi/ts".to_string()),
                 branch: Some("main".to_string()),
                 ..Default::default()
-            }),
+            })),
         );
         m.linking_dependencies
             .insert("Rcpp".to_string(), dep(">= 1.0"));
@@ -1909,11 +1909,11 @@ mod tests {
         m.merge_description(&pkg);
         assert_eq!(
             m.dependencies.get("crayon"),
-            Some(&Dependency::Detailed(DepTable {
+            Some(&Dependency::Detailed(Box::new(DepTable {
                 version: Some("*".to_string()),
                 attach: Some(true),
                 ..Default::default()
-            }))
+            })))
         );
     }
 
@@ -2018,11 +2018,11 @@ mod tests {
         let mut m = Rproj::minimal("mypkg");
         m.dependencies.insert(
             "crayon".to_string(),
-            Dependency::Detailed(DepTable {
+            Dependency::Detailed(Box::new(DepTable {
                 version: Some("*".to_string()),
                 attach: Some(true),
                 ..Default::default()
-            }),
+            })),
         );
         let deps = m.to_dep_version_specs(false).unwrap();
         assert_eq!(
@@ -2045,10 +2045,10 @@ mod tests {
         let mut m = Rproj::minimal("mypkg");
         m.dependencies.insert(
             "ts".to_string(),
-            Dependency::Detailed(DepTable {
+            Dependency::Detailed(Box::new(DepTable {
                 git: Some("https://github.com/gaborcsardi/ts".to_string()),
                 ..Default::default()
-            }),
+            })),
         );
         let deps = m.to_dep_version_specs(false).unwrap();
         assert_eq!(
@@ -2353,11 +2353,11 @@ mod tests {
         let mut m = Rproj::minimal("mypkg");
         m.dependencies.insert(
             "ts".to_string(),
-            Dependency::Detailed(DepTable {
+            Dependency::Detailed(Box::new(DepTable {
                 git: Some("https://github.com/gaborcsardi/ts".to_string()),
                 attach: Some(true),
                 ..Default::default()
-            }),
+            })),
         );
         // The entry had no version requirement, so the previous one reads as
         // "any version".
@@ -2367,12 +2367,12 @@ mod tests {
         );
         assert_eq!(
             m.dependencies.get("ts"),
-            Some(&Dependency::Detailed(DepTable {
+            Some(&Dependency::Detailed(Box::new(DepTable {
                 version: Some(">= 1.0".to_string()),
                 git: Some("https://github.com/gaborcsardi/ts".to_string()),
                 attach: Some(true),
                 ..Default::default()
-            }))
+            })))
         );
     }
 
@@ -2703,10 +2703,10 @@ mod tests {
         assert_eq!(website.get("pkgdown"), Some(&dep("*")));
         assert_eq!(
             website.get("tidytemplate"),
-            Some(&Dependency::Detailed(DepTable {
+            Some(&Dependency::Detailed(Box::new(DepTable {
                 ref_: Some("tidyverse/tidytemplate".to_string()),
                 ..Default::default()
-            }))
+            })))
         );
         assert_eq!(
             m.dependency_groups
@@ -2868,10 +2868,10 @@ mod tests {
             assert_eq!(key, name, "{}", entry);
             assert_eq!(
                 dep,
-                Dependency::Detailed(DepTable {
+                Dependency::Detailed(Box::new(DepTable {
                     ref_: Some(entry.to_string()),
                     ..Default::default()
-                }),
+                })),
                 "{}",
                 entry
             );
