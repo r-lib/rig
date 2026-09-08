@@ -571,12 +571,10 @@ where
                         Err(e) => Err(e.to_string()),
                     };
 
-                    installing_clone.lock().await.remove(&name_clone);
-
-                    match result {
+                    let outcome = match result {
                         Ok(()) => {
                             installed_clone.lock().await.insert(name_clone.clone());
-                            Ok(name_clone)
+                            Ok(())
                         }
                         Err(err_msg) => {
                             debug!(
@@ -586,6 +584,13 @@ where
                             failed_clone.lock().await.insert(name_clone.clone());
                             Err(err_msg)
                         }
+                    };
+
+                    installing_clone.lock().await.remove(&name_clone);
+
+                    match outcome {
+                        Ok(()) => Ok(name_clone),
+                        Err(err_msg) => Err(err_msg),
                     }
                 });
 
