@@ -13,7 +13,8 @@ use crate::common::*;
 use crate::dcf::{DepVersionSpec, RDepType};
 use crate::output::OUTPUT;
 use crate::proj::{
-    proj_binary_target, proj_lock_r_version, proj_read_manifest_deps, sc_proj_solve_deps, BASE_PKGS,
+    check_project_conflicts, init_rvenv_for_manifest, proj_binary_target, proj_lock_r_version,
+    proj_read_manifest_deps, sc_proj_solve_deps, BASE_PKGS,
 };
 use crate::repos::cranlike_metadata::minor_r_version;
 use crate::rproj::{Rproj, RPROJ_MANIFEST_FILE};
@@ -87,7 +88,9 @@ fn sc_renv_import(
     let default_input = "renv.lock".to_string();
     let input: &String = args.get_one::<String>("input").unwrap_or(&default_input);
     let dependencies_only = args.get_flag("dependencies");
-    let path = Path::new(RPROJ_MANIFEST_FILE);
+    let root = std::env::current_dir()?;
+    let path = root.join(RPROJ_MANIFEST_FILE);
+    let path = path.as_path();
 
     if !dependencies_only && path.exists() {
         let msg = format!(
@@ -99,6 +102,12 @@ fn sc_renv_import(
         OUTPUT.error(&msg);
         error!("{}", msg);
         bail!("{}", msg);
+    }
+
+    // A full import also creates the `.rvenv` layout, so check for conflicts
+    // before writing anything. `--dependencies` only touches the manifest.
+    if !dependencies_only && !args.get_flag("force") {
+        check_project_conflicts(&root)?;
     }
 
     OUTPUT.status(&format!("Reading dependencies from {}", input));
@@ -148,6 +157,14 @@ fn sc_renv_import(
     );
     OUTPUT.success(&msg);
     info!("{}", msg);
+
+    // A full import sets up a whole project, not just its manifest, so it
+    // creates the same `.rvenv` layout as `rig proj init`. The lockfile
+    // records the exact R version it was created with, so use that.
+    if !dependencies_only {
+        init_rvenv_for_manifest(args, &root, path, Some(&lockfile.R.Version))?;
+    }
+
     Ok(())
 }
 

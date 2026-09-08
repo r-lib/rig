@@ -370,6 +370,58 @@ teardown() {
     [[ "$(grep -c '^# rig rvenv start$' .gitignore)" -eq 1 ]]
 }
 
+@test "proj import" {
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf impproj && mkdir impproj && cd impproj
+
+    cat > DESCRIPTION <<-EOF
+	Package: impproj
+	Version: 1.2.3
+	Title: A Test Package
+	Depends: R (>= 4.1)
+	Imports: jsonlite
+	EOF
+
+    # A full import sets up the whole project, not just the manifest.
+    run rig proj import
+    [[ "$status" -eq 0 ]]
+    [[ -f rproj.toml ]]
+    [[ -f .Renviron ]]
+    [[ -f .gitignore ]]
+    [[ -f .rvenv/lib/.gitignore ]]
+    [[ -f .rvenv/lib/rig/DESCRIPTION ]]
+    grep -q '^name = "impproj"$' rproj.toml
+    grep -q '^version = "1.2.3"$' rproj.toml
+    grep -q '^R = ">= 4.1"$' rproj.toml
+    grep -q '^jsonlite = ' rproj.toml
+
+    # Refuses to overwrite the manifest, and says what to do instead
+    run rig proj import
+    [[ "$status" -ne 0 ]]
+    echo "$output" | grep -q "rproj.toml"
+    echo "$output" | grep -q -- "--dependencies"
+
+    # Refuses to overwrite the .rvenv files, and says what is in the way
+    rm rproj.toml
+    run rig proj import
+    [[ "$status" -ne 0 ]]
+    echo "$output" | grep -q ".Renviron"
+    echo "$output" | grep -q -- "--force"
+
+    run rig proj import --force
+    [[ "$status" -eq 0 ]]
+
+    # --dependencies only writes the manifest
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf impdeps && mkdir impdeps && cd impdeps
+    cp ../impproj/DESCRIPTION .
+    run rig proj import --dependencies
+    [[ "$status" -eq 0 ]]
+    [[ -f rproj.toml ]]
+    [[ ! -e .rvenv ]]
+    [[ ! -e .Renviron ]]
+}
+
 @test "proj add" {
     cd "$BATS_TEST_TMPDIR"
     rm -rf addproj && mkdir addproj && cd addproj

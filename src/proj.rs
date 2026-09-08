@@ -103,56 +103,13 @@ fn sc_proj_init(
     // that a conflict does not leave a half-created project behind, and so
     // that the error can name all of them at once.
     if !force {
-        let existing = existing_targets(&root)?;
-        if !existing.is_empty() {
-            let names: Vec<String> = existing
-                .iter()
-                .map(|p| {
-                    p.strip_prefix(&root)
-                        .unwrap_or(p)
-                        .to_string_lossy()
-                        .into_owned()
-                })
-                .collect();
-            let msg = format!(
-                "{} already exist{}, use --force to overwrite",
-                names.join(", "),
-                if names.len() == 1 { "s" } else { "" }
-            );
-            OUTPUT.error(&msg);
-            error!("{}", msg);
-            bail!("{}", msg);
-        }
+        check_project_conflicts(&root)?;
     }
 
     // The R version decides both the manifest's R requirement and which
     // pre-built shim package the project gets. It does not have to be
     // installed, nothing we write here refers to an R installation.
-    let rver = match args.get_one::<String>("r-version") {
-        Some(rv) => rv.to_string(),
-        None => match get_default_r_version()? {
-            Some(rv) => rv,
-            // No R installed (or no default set), so fall back to the current
-            // release, which needs the network.
-            None => match resolve_release_r_version(args) {
-                Some(rv) => {
-                    OUTPUT.info(&format!(
-                        "No default R version, using the current release (R {}).",
-                        rv
-                    ));
-                    info!("No default R version, using the current release (R {})", rv);
-                    rv
-                }
-                None => {
-                    let msg = "Cannot determine R version. Install R with `rig add`, \
-                               or set the version with --r-version.";
-                    OUTPUT.error(msg);
-                    error!("{}", msg);
-                    bail!("{}", msg)
-                }
-            },
-        },
-    };
+    let rver = resolve_project_r_version(args, None)?;
 
     // Project name defaults to the current directory's name.
     let name = root
@@ -180,6 +137,113 @@ fn sc_proj_init(
     ));
 
     Ok(())
+}
+
+/// Fail if any of the project files we are about to write is already there,
+/// naming all of them at once, so that a conflict does not leave a
+/// half-created project behind.
+pub fn check_project_conflicts(root: &Path) -> Result<(), Box<dyn Error>> {
+    let existing = existing_targets(root)?;
+    if existing.is_empty() {
+        return Ok(());
+    }
+    let names: Vec<String> = existing
+        .iter()
+        .map(|p| {
+            p.strip_prefix(root)
+                .unwrap_or(p)
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    let msg = format!(
+        "{} already exist{}, use --force to overwrite",
+        names.join(", "),
+        if names.len() == 1 { "s" } else { "" }
+    );
+    OUTPUT.error(&msg);
+    error!("{}", msg);
+    bail!("{}", msg);
+}
+
+/// Write the tracked part of the `.rvenv` layout for a freshly written
+/// manifest, and report every file the project now has.
+///
+/// `declared` is the project's own R requirement, see
+/// [`resolve_project_r_version`].
+pub fn init_rvenv_for_manifest(
+    args: &ArgMatches,
+    root: &Path,
+    manifest_path: &Path,
+    declared: Option<&str>,
+) -> Result<(), Box<dyn Error>> {
+    let rver = resolve_project_r_version(args, declared)?;
+    let mut created = vec![manifest_path.to_path_buf()];
+    created.extend(rvenv_init(root, &rver)?);
+    for path in &created {
+        let name = path.strip_prefix(root).unwrap_or(path).to_string_lossy();
+        OUTPUT.success(&format!("Created {}", name));
+        info!("Created {}", name);
+    }
+    OUTPUT.info(&format!(
+        "Project set up for R {}. Next: run `rig proj lock` and `rig proj sync`.",
+        rver
+    ));
+    Ok(())
+}
+
+/// The R version to build the `.rvenv` layout for: an explicit
+/// `--r-version`, else the version the project itself declares, else the
+/// default R version, else the current R release.
+///
+/// `declared` is the project's own R requirement, e.g. `">= 4.1"` from a
+/// `DESCRIPTION`'s `Depends`. It wins over the installed default because the
+/// shim has to work with the oldest R the project claims to support.
+fn resolve_project_r_version(
+    args: &ArgMatches,
+    declared: Option<&str>,
+) -> Result<String, Box<dyn Error>> {
+    if let Some(rv) = args.get_one::<String>("r-version") {
+        return Ok(rv.to_string());
+    }
+    if let Some(rv) = declared.and_then(r_version_from_requirement) {
+        return Ok(rv);
+    }
+    if let Some(rv) = get_default_r_version()? {
+        return Ok(rv);
+    }
+    // No R installed (or no default set), so fall back to the current
+    // release, which needs the network.
+    match resolve_release_r_version(args) {
+        Some(rv) => {
+            OUTPUT.info(&format!(
+                "No default R version, using the current release (R {}).",
+                rv
+            ));
+            info!("No default R version, using the current release (R {})", rv);
+            Ok(rv)
+        }
+        None => {
+            let msg = "Cannot determine R version. Install R with `rig add`, \
+                       or set the version with --r-version.";
+            OUTPUT.error(msg);
+            error!("{}", msg);
+            bail!("{}", msg)
+        }
+    }
+}
+
+/// The bare version in an R requirement, e.g. `">= 4.1"` -> `"4.1"`.
+///
+/// Only used to pick a shim bracket, which tolerates a missing minor
+/// version, so the first run of digits and dots is enough.
+fn r_version_from_requirement(req: &str) -> Option<String> {
+    let start = req.find(|c: char| c.is_ascii_digit())?;
+    let rest = &req[start..];
+    let end = rest
+        .find(|c: char| !c.is_ascii_digit() && c != '.')
+        .unwrap_or(rest.len());
+    Some(rest[..end].trim_end_matches('.').to_string())
 }
 
 /// Current release version or None on error.
@@ -242,7 +306,9 @@ fn sc_proj_import(
     let default_input = "DESCRIPTION".to_string();
     let input: &String = args.get_one::<String>("input").unwrap_or(&default_input);
     let dependencies_only = args.get_flag("dependencies");
-    let path = Path::new(RPROJ_MANIFEST_FILE);
+    let root = std::env::current_dir()?;
+    let path = root.join(RPROJ_MANIFEST_FILE);
+    let path = path.as_path();
 
     if !dependencies_only && path.exists() {
         let msg = format!(
@@ -254,6 +320,12 @@ fn sc_proj_import(
         OUTPUT.error(&msg);
         error!("{}", msg);
         bail!("{}", msg);
+    }
+
+    // A full import also creates the `.rvenv` layout, so check for conflicts
+    // before writing anything. `--dependencies` only touches the manifest.
+    if !dependencies_only && !args.get_flag("force") {
+        check_project_conflicts(&root)?;
     }
 
     let paragraph = read_description_paragraph(input)?;
@@ -378,6 +450,14 @@ fn sc_proj_import(
     };
     OUTPUT.success(&msg);
     info!("{}", msg);
+
+    // A full import sets up a whole project, not just its manifest, so it
+    // creates the same `.rvenv` layout as `rig proj init`.
+    if !dependencies_only {
+        let declared = manifest.r_requirement();
+        init_rvenv_for_manifest(args, &root, path, declared.as_deref())?;
+    }
+
     Ok(())
 }
 

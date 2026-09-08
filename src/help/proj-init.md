@@ -12,8 +12,8 @@ a `DESCRIPTION` file can, plus dependency groups, optional dependencies,
 workspaces and declared scripts. `rig proj init` writes a minimal skeleton — a
 `[project]` table with the name (taken from the current directory) and
 version, and a `[dependencies]` table with a single R requirement — that you
-then fill in. Use [`rig proj import`](#rig-proj-import) instead to take the
-dependencies from an existing `DESCRIPTION`.
+then fill in. Use [`rig proj import`](#rig-proj-import) instead to set up the
+same project from an existing `DESCRIPTION` file.
 
 ## Files
 

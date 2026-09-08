@@ -9,8 +9,9 @@ A project is a directory with a package manifest, typically a
 `rig proj` resolves those dependencies against the configured package
 repositories and can install them into a project library.
 
-`rig proj import` reads a `DESCRIPTION` file and merges its dependencies
-into `rproj.toml`, creating it first if needed.
+`rig proj import` sets up a project from an existing `DESCRIPTION` file:
+it writes `rproj.toml` from it, and creates the same `.rvenv` layout as
+`rig proj init`.
 `rig proj add` adds a dependency to `rproj.toml`, then updates the
 lockfile and installs it.
 `rig proj deps` shows the direct and recursive dependencies of the

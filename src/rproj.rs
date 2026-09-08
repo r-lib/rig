@@ -788,6 +788,14 @@ impl Rproj {
         previous
     }
 
+    /// The manifest's own R requirement, e.g. `">= 4.1"`, if it has one.
+    pub fn r_requirement(&self) -> Option<String> {
+        match self.dependencies.get("R")? {
+            Dependency::Version(v) => Some(v.clone()),
+            Dependency::Detailed(t) => t.version.clone(),
+        }
+    }
+
     /// Whether the manifest lists a dependency by this name anywhere:
     /// `[dependencies]`, `[linking-dependencies]`, or any
     /// `[dependency-groups.*]` table.

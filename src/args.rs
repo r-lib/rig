@@ -1409,6 +1409,22 @@ pub fn rig_app() -> Command {
                         .help("Only merge dependencies, not metadata (the old behavior)")
                         .long("dependencies")
                         .action(clap::ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("force")
+                        .help("Overwrite existing project files")
+                        .long("force")
+                        .short('f')
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version of the project (default: the version the DESCRIPTION file requires, the default R version, or the current R release)")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false),
                 ),
         )
         .subcommand(
@@ -1747,6 +1763,24 @@ pub fn rig_app() -> Command {
                         .help("Only merge dependencies, not metadata")
                         .long("dependencies")
                         .action(clap::ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("force")
+                        .help("Overwrite existing project files")
+                        .long("force")
+                        .short('f')
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help(
+                            "R version of the project (default: the version in the renv.lock file)",
+                        )
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false),
                 ),
         );
     rig = rig.subcommand(cmd_proj.subcommand(cmd_renv));
