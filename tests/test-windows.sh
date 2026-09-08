@@ -315,13 +315,14 @@ teardown() {
     [[ -f rproj.toml ]]
     [[ -f .Renviron ]]
     [[ -f .gitignore ]]
-    [[ -f .rvenv/lib/.gitignore ]]
-    [[ -f .rvenv/lib/rig/DESCRIPTION ]]
+    [[ -f .rvenv/sys/lib/rvenv/DESCRIPTION ]]
     grep -q '^name = "myproj"$' rproj.toml
     grep -q '^R = ">= 4.5"$' rproj.toml
-    grep -q '^R_LIBS_USER=.rvenv/lib$' .Renviron
-    grep -q '^!/.rvenv/lib$' .gitignore
-    grep -q '^Package: rig$' .rvenv/lib/rig/DESCRIPTION
+    grep -q '^R_LIBS_USER=.rvenv/sys/lib$' .Renviron
+    grep -q '^!/.rvenv/sys$' .gitignore
+    grep -q '^Package: rvenv$' .rvenv/sys/lib/rvenv/DESCRIPTION
+    # The project library is `rig proj sync`'s to create
+    [[ ! -d .rvenv/lib ]]
 
     # The IDE leg: a plain R session in the project picks up the shim
     # package, which resolves the library path and warns about the missing

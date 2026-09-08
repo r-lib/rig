@@ -159,10 +159,9 @@ fn sc_renv_import(
     info!("{}", msg);
 
     // A full import sets up a whole project, not just its manifest, so it
-    // creates the same `.rvenv` layout as `rig proj init`. The lockfile
-    // records the exact R version it was created with, so use that.
+    // creates the same `.rvenv` layout as `rig proj init`.
     if !dependencies_only {
-        init_rvenv_for_manifest(args, &root, path, Some(&lockfile.R.Version))?;
+        init_rvenv_for_manifest(args, &root, path)?;
     }
 
     Ok(())

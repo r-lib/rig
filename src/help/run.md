@@ -37,9 +37,9 @@ Two things turn this off, and run the default R version instead:
   lock file names, and
 - `--no-project`.
 
-If the project has no `.rvenv` directory at all, then `rig run` fails and
-asks you to run `rig proj init`, instead of quietly running an R that is not
-the project's.
+If the project has not been initialized at all, i.e. it has no
+`.rvenv/sys` directory, then `rig run` fails and asks you to run
+`rig proj init`, instead of quietly running an R that is not the project's.
 
 ## Project scripts
 

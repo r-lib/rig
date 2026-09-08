@@ -22,27 +22,24 @@ committed, so that a fresh clone of the project works right away:
 
 - `rproj.toml` — the manifest. Its R requirement is `>= <major>.<minor>` of
   the project's R version.
-- `.Renviron` — points R at the project library, `.rvenv/lib`. This is what
-  makes the project work in an editor (RStudio, Positron, VS Code), which
-  starts R itself.
+- `.Renviron` — loads the `rvenv` package below in every R session started in
+  the project. This is what makes the project work in an editor (RStudio,
+  Positron, VS Code), which starts R itself.
 - `.gitignore` — a marked `# rig rvenv start` / `# rig rvenv end` block that
-  ignores everything in `.rvenv` except the library directory. An existing
+  ignores everything in `.rvenv` except rig's own `sys` directory. An existing
   `.gitignore` is *not* replaced: rig only adds or refreshes its own block,
   and leaves the rest of the file alone.
-- `.rvenv/lib/.gitignore` — keeps the library directory itself, and the `rig`
-  package in it, in version control, and ignores the installed dependencies.
-  The directory has to exist in every checkout, because plain R does not
-  create a missing library directory.
-- `.rvenv/lib/rig` — a small, pre-built R package that rig manages. It is not
-  a dependency of your project. `.Renviron` loads it in every R session
-  started in the project, where it turns the relative library path into an
-  absolute one — so that R processes started from a subdirectory still use the
-  project library — and warns while the project is out of sync with
-  `rproj.lock`.
+- `.rvenv/sys/lib/rvenv` — a small R package that rig writes and manages. It
+  is not a dependency of your project, and it lives in rig's own library
+  rather than in the project library, which holds only your project's
+  packages. `.Renviron` loads it in every R session started in the project,
+  where it points R at the project library, `.rvenv/lib`, as an absolute path
+  — so that R processes started from a subdirectory still use it — and warns
+  while the project is out of sync with `rproj.lock`.
 
-The rest of `.rvenv` is machine-specific and is created by
-[`rig proj sync`](#rig-proj-sync), which installs the project's dependencies
-into `.rvenv/lib`.
+The rest of `.rvenv`, including the project library `.rvenv/lib` itself, is
+machine-specific and is created by [`rig proj sync`](#rig-proj-sync), which
+installs the project's dependencies into it.
 
 Note that `R --vanilla` ignores `.Renviron`, and so does not use the project
 library.

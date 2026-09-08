@@ -1,35 +1,45 @@
 //! `cargo xtask gen-rvenv-shim [--check]`
 //!
-//! Builds the pre-built copies of the `rig` shim R package that `rig proj
-//! init` seeds into a project's `.rvenv/lib/rig/`. The package source is
-//! `src/data/rvenv-pkg/`; the built artifacts are committed to
-//! `src/data/rvenv-shim/` and embedded into the `rig` binary with
-//! `include_bytes!`.
+//! Generates the two committed data files that `rig proj init` needs to write
+//! the `rvenv` shim R package into a project's `.rvenv/sys/lib/rvenv/`:
+//! `src/data/rvenv-shim/DESCRIPTION` and `src/data/rvenv-shim/package.rds`.
+//! The package source is `src/data/rvenv-pkg/`; its `NAMESPACE`, `LICENSE` and
+//! `R/rvenv.R` are embedded into the `rig` binary verbatim, so only these two
+//! need generating. See `src/rvenv.rs` for the writing side.
 //!
-//! Why pre-built and not built on the user's machine: the whole point of the
-//! shim is to work on a *fresh clone*, before anything has been installed,
-//! and on an R installation rig does not manage. So it has to be committed to
-//! the project, which means rig has to be able to write it without running R.
+//! Why generated and committed: the whole point of the shim is to be there on
+//! a *fresh clone*, before anything has been installed, and on an R
+//! installation rig does not manage. So rig has to be able to write it
+//! without running R, and `Meta/package.rds` is a serialized R object.
 //!
-//! R's installed-package format has version boundaries, so there is one
-//! artifact per R version bracket (see `BRACKETS`):
+//! The shim is a *source-only* installed package: no lazy-load database, so
+//! nothing in it is tied to an R version except two strings. It has to load on
+//! every R the project may be opened with, since it is committed to version
+//! control, so:
 //!
-//! - serialization format 3 became the default in R 3.6.0 and is unreadable
-//!   by R < 3.5.0, hence `R_DEFAULT_SERIALIZE_VERSION=2` for the two older
-//!   brackets;
-//! - a package installed by R < 4.0.0 refuses to load under R >= 4.0.0
-//!   ("package 'rig' was installed before R 4.0.0: please re-install it").
+//! - `Built$R` in `package.rds` is stamped **4.0.0**, because
+//!   `loadNamespace()` rejects a package whose `Built$R` is below 4.0.0
+//!   ("package 'rvenv' was installed before R 4.0.0: please re-install it").
+//!   The only cost is that R < 4.0 warns once at startup, "package 'rvenv' was
+//!   built under R version 4.0.0"; there is no stamp that satisfies both sides
+//!   of that boundary.
+//! - `package.rds` is saved with **serialization format 2**, because format 3
+//!   (the default from R 3.6.0) cannot be read by R < 3.5.0.
+//! - `Built$Platform` is empty, which is what keeps `library()`'s "package was
+//!   built for <platform>" check quiet on Windows. It is empty for any package
+//!   without compiled code. (`Built$OStype` is read by nothing, so it is
+//!   pinned to `unix` on every platform.)
+//! - `Built$Date` is pinned too, so that a rebuild that changes nothing
+//!   produces no diff.
 //!
-//! Each bracket is built with the *oldest* R in it. This task needs those R
-//! versions installed, and installs them with `rig add` if they are missing,
-//! so it is a maintainer-only task; CI only ever runs `--check`, which needs
-//! no R.
+//! Verified to load on R 3.4.4, 3.5.3, 3.6.3, 4.0.5 and 4.6.1.
 //!
-//! `--check` cannot simply diff the tarballs, because `R CMD INSTALL` output
-//! is not reproducible (`DESCRIPTION`'s `Built:` field carries a timestamp).
-//! Instead the committed `src/data/rvenv-shim/SOURCE-HASH` manifest records a
-//! hash of the *package source*, plus the hash and build R version of each
-//! artifact, and `--check` verifies all of those.
+//! The generating R only has to be recent enough to install a package
+//! (>= 4.0.0 is required here); the artifacts do not depend on it. CI only
+//! ever runs `--check`, which needs no R at all: the committed
+//! `src/data/rvenv-shim/SOURCE-HASH` manifest records a hash of the package
+//! source plus a hash of each generated file, and `--check` verifies all of
+//! them.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -37,45 +47,32 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-use flate2::write::GzEncoder;
-use flate2::{Compression, GzBuilder};
 use sha2::{Digest, Sha256};
 
-/// The R version brackets, oldest first. `(artifact file name, R version to
-/// build with, serialization format)`.
-///
-/// Measured load matrix (macOS, `library(rig, lib.loc = ...)`):
-///
-/// | built with        | 3.4.4 | 3.5.3 | 3.6.3 | 4.0.5 | 4.1.3 | 4.6.1 |
-/// |-------------------|-------|-------|-------|-------|-------|-------|
-/// | 3.4.4, serialize 2| ok    | ok    | ok    | no    | no    | no    |
-/// | 3.5.3, serialize 2| ok    | ok    | ok    | no    | no    | no    |
-/// | 4.0.5, serialize 3| no    | ok    | ok    | ok    | ok    | ok    |
-///
-/// So the R 4.0.0 boundary is one-directional (a package built by an older R
-/// is rejected by R >= 4.0.0, not the other way round), and serialization
-/// format 3 is the only thing that keeps the 4.0 artifact off R < 3.5. That
-/// makes the middle bracket redundant in practice — its artifact covers
-/// exactly the same R versions as the oldest one. It is kept for now because
-/// it costs ~4 KB and guards against the two older R series diverging.
-const BRACKETS: [(&str, &str, u32); 3] = [
-    ("shim-lt-3.5.tar.gz", "3.4.4", 2),
-    ("shim-3.5.tar.gz", "3.5.3", 2),
-    ("shim-4.0.tar.gz", "4.0.5", 3),
-];
+/// The R version `Meta/package.rds` claims to have been built with, and the
+/// serialization format it is saved in. See the module docs for both.
+const BUILT_R: &str = "4.0.0";
+const SERIALIZE_VERSION: u32 = 2;
+
+/// The pinned `Built$Date`, R 4.0.0's release date, for a reproducible
+/// artifact. Nothing reads it.
+const BUILT_DATE: &str = "2020-04-24 00:00:00 UTC";
+
+/// The pinned `Built$OStype`. Read by nothing, see the module docs.
+const BUILT_OSTYPE: &str = "unix";
+
+/// The oldest R that can generate the artifacts. Not a property of the
+/// artifacts themselves, just a guard against a surprising `package.rds`
+/// layout from an ancient R.
+const MIN_GEN_R: (u32, u32) = (4, 0);
 
 const MANIFEST_FILE: &str = "SOURCE-HASH";
+const DESCRIPTION_FILE: &str = "DESCRIPTION";
+const META_FILE: &str = "package.rds";
 
-/// Files every artifact must contain. `R/rig` is the lazy-load loader stub,
-/// `R/rig.rdb`/`R/rig.rdx` the lazy-load database itself.
-const REQUIRED_ENTRIES: [&str; 6] = [
-    "rig/DESCRIPTION",
-    "rig/NAMESPACE",
-    "rig/Meta/package.rds",
-    "rig/R/rig",
-    "rig/R/rig.rdb",
-    "rig/R/rig.rdx",
-];
+/// The name of the package. Must match `Package:` in
+/// `src/data/rvenv-pkg/DESCRIPTION` and `RVENV_SHIM_PKG` in `src/rvenv.rs`.
+const PKG_NAME: &str = "rvenv";
 
 fn pkg_dir(root: &Path) -> PathBuf {
     root.join("src/data/rvenv-pkg")
@@ -83,6 +80,12 @@ fn pkg_dir(root: &Path) -> PathBuf {
 
 fn shim_dir(root: &Path) -> PathBuf {
     root.join("src/data/rvenv-shim")
+}
+
+/// The `Built:` field of the installed `DESCRIPTION`, matching what the fixup
+/// script writes into `package.rds`.
+fn built_field() -> String {
+    format!("R {}; ; {}; {}", BUILT_R, BUILT_DATE, BUILT_OSTYPE)
 }
 
 // ---------------------------------------------------------------- hashing --
@@ -135,7 +138,7 @@ fn read_tree_into(
 }
 
 /// A hash over the whole package source, so `--check` can tell that the
-/// source changed without the artifacts being rebuilt.
+/// source changed without the artifacts being regenerated.
 fn source_hash(tree: &BTreeMap<String, Vec<u8>>) -> String {
     let mut h = Sha256::new();
     for (path, bytes) in tree {
@@ -147,191 +150,136 @@ fn source_hash(tree: &BTreeMap<String, Vec<u8>>) -> String {
     h.finalize().iter().map(|b| format!("{:02x}", b)).collect()
 }
 
-// -------------------------------------------------------------------- tar --
+// ------------------------------------------------------------------- rds ---
 
-/// Tar + gzip `tree` deterministically: sorted entries, no timestamps, no
-/// ownership, fixed modes. Two runs over the same input give the same bytes,
-/// so a rebuild that changes nothing shows up as no diff.
-pub fn deterministic_targz(tree: &BTreeMap<String, Vec<u8>>) -> Result<Vec<u8>, String> {
-    let mut tar = tar::Builder::new(Vec::new());
-    tar.mode(tar::HeaderMode::Deterministic);
-    for (path, bytes) in tree {
-        let mut header = tar::Header::new_ustar();
-        header
-            .set_path(path)
-            .map_err(|e| format!("tar path {}: {}", path, e))?;
-        header.set_size(bytes.len() as u64);
-        header.set_mode(0o644);
-        header.set_mtime(0);
-        header.set_uid(0);
-        header.set_gid(0);
-        header
-            .set_username("")
-            .map_err(|e| format!("tar user: {}", e))?;
-        header
-            .set_groupname("")
-            .map_err(|e| format!("tar group: {}", e))?;
-        header.set_entry_type(tar::EntryType::Regular);
-        header.set_cksum();
-        tar.append(&header, &bytes[..])
-            .map_err(|e| format!("tar append {}: {}", path, e))?;
+/// Whether `bytes` is an R serialization format 2 stream, gzipped or not.
+///
+/// An uncompressed RDS starts with the two ASCII bytes `X\n` (XDR format),
+/// followed by the format version as a big-endian 32 bit integer. `saveRDS()`
+/// gzips by default, which every R can read, so unwrap that first.
+pub fn rds_serialize_version(bytes: &[u8]) -> Result<u32, String> {
+    let plain: Vec<u8> = if bytes.starts_with(&[0x1f, 0x8b]) {
+        let mut out = Vec::new();
+        flate2::read::GzDecoder::new(bytes)
+            .read_to_end(&mut out)
+            .map_err(|e| format!("cannot gunzip: {}", e))?;
+        out
+    } else {
+        bytes.to_vec()
+    };
+    if plain.len() < 6 {
+        return Err("too short to be an RDS stream".to_string());
     }
-    let tarred = tar.into_inner().map_err(|e| e.to_string())?;
-    let gz = GzBuilder::new()
-        .mtime(0)
-        .write(Vec::new(), Compression::default());
-    let mut gz: GzEncoder<Vec<u8>> = gz;
-    use std::io::Write;
-    gz.write_all(&tarred).map_err(|e| e.to_string())?;
-    gz.finish().map_err(|e| e.to_string())
-}
-
-fn untargz(bytes: &[u8]) -> Result<BTreeMap<String, Vec<u8>>, String> {
-    let mut ar = tar::Archive::new(flate2::read::GzDecoder::new(std::io::Cursor::new(bytes)));
-    let mut out = BTreeMap::new();
-    for entry in ar.entries().map_err(|e| e.to_string())? {
-        let mut entry = entry.map_err(|e| e.to_string())?;
-        let path = entry
-            .path()
-            .map_err(|e| e.to_string())?
-            .to_string_lossy()
-            .replace('\\', "/");
-        let mut buf = Vec::new();
-        entry.read_to_end(&mut buf).map_err(|e| e.to_string())?;
-        out.insert(path, buf);
+    if &plain[..2] != b"X\n" {
+        return Err(format!(
+            "not an XDR RDS stream (starts with {:?})",
+            &plain[..2]
+        ));
     }
-    Ok(out)
+    Ok(u32::from_be_bytes([plain[2], plain[3], plain[4], plain[5]]))
 }
 
 // ------------------------------------------------------------------ rig(1) --
 
-#[derive(serde::Deserialize)]
-struct RigListEntry {
-    version: Option<String>,
-    binary: Option<String>,
+fn r_binary() -> String {
+    std::env::var("R").unwrap_or_else(|_| "R".to_string())
 }
 
-fn rig_binary() -> String {
-    std::env::var("RIG").unwrap_or_else(|_| "rig".to_string())
-}
-
-fn rig_list() -> Result<Vec<RigListEntry>, String> {
-    let out = Command::new(rig_binary())
-        .args(["--json", "list"])
+/// `<major>.<minor>` of the R at `r_binary()`, and its full version string.
+fn r_version(r: &str) -> Result<((u32, u32), String), String> {
+    let out = Command::new(r)
+        .args(["--version"])
         .output()
-        .map_err(|e| format!("cannot run `{} --json list`: {}", rig_binary(), e))?;
-    if !out.status.success() {
-        return Err(format!(
-            "`{} --json list` failed: {}",
-            rig_binary(),
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
+        .map_err(|e| format!("cannot run `{} --version`: {}", r, e))?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let ver = text
+        .split_whitespace()
+        .find(|w| w.starts_with(|c: char| c.is_ascii_digit()) && w.contains('.'))
+        .ok_or_else(|| format!("cannot parse the output of `{} --version`", r))?
+        .to_string();
+    let mut parts = ver.split('.');
+    let major = parts.next().and_then(|p| p.parse().ok());
+    let minor = parts.next().and_then(|p| p.parse().ok());
+    match (major, minor) {
+        (Some(a), Some(b)) => Ok(((a, b), ver)),
+        _ => Err(format!("cannot parse R version: {}", ver)),
     }
-    serde_json::from_slice(&out.stdout)
-        .map_err(|e| format!("cannot parse `rig list` output: {}", e))
-}
-
-/// The R binary for `version`, installing it with `rig add` if it is missing.
-fn r_binary_for(version: &str) -> Result<PathBuf, String> {
-    if let Some(bin) = find_r_binary(version)? {
-        return Ok(bin);
-    }
-    eprintln!(
-        "R {} is not installed, running `rig add {}`",
-        version, version
-    );
-    // `--without-pak`: pak needs R >= 3.5.0, and the shim build does not use
-    // it. We do not check the exit status, only whether R ended up installed:
-    // some post-install steps can fail without that mattering here.
-    rig_add(version, &["--without-pak"])?;
-    // The R versions in the older brackets predate arm64 macOS, so on an
-    // Apple silicon machine they only exist as x86_64 builds (run under
-    // Rosetta). The installed package is pure R either way.
-    if cfg!(target_os = "macos") && find_r_binary(version)?.is_none() {
-        eprintln!("retrying with `rig add {} --arch x86_64`", version);
-        rig_add(version, &["--without-pak", "--arch", "x86_64"])?;
-    }
-    find_r_binary(version)?.ok_or_else(|| {
-        format!(
-            "`{} add {}` did not install R {}; install it manually and re-run",
-            rig_binary(),
-            version,
-            version
-        )
-    })
-}
-
-fn rig_add(version: &str, extra: &[&str]) -> Result<bool, String> {
-    let status = Command::new(rig_binary())
-        .args(["add", version])
-        .args(extra)
-        .status()
-        .map_err(|e| format!("cannot run `{} add {}`: {}", rig_binary(), version, e))?;
-    Ok(status.success())
-}
-
-fn find_r_binary(version: &str) -> Result<Option<PathBuf>, String> {
-    Ok(rig_list()?
-        .into_iter()
-        .find(|e| e.version.as_deref() == Some(version))
-        .and_then(|e| e.binary)
-        .map(PathBuf::from))
 }
 
 // ------------------------------------------------------------------ build --
 
+/// Rewrites the installed `Meta/package.rds` into the committed one: the
+/// pinned `Built` stamp, and serialization format 2.
+const FIXUP_R: &str = r#"
+args <- commandArgs(TRUE)
+info <- readRDS(args[1])
+info$Built$R <- R_system_version(args[3])
+info$Built$Platform <- ""
+info$Built$Date <- args[4]
+info$Built$OStype <- args[5]
+info$DESCRIPTION[["Built"]] <- args[6]
+saveRDS(info, args[2], version = as.integer(args[7]))
+"#;
+
 /// `R CMD INSTALL` the package source into a throwaway library and return the
-/// installed `rig/` tree, ready to be tarred.
-fn build_one(
-    root: &Path,
-    r_binary: &Path,
-    serialize_version: u32,
-) -> Result<BTreeMap<String, Vec<u8>>, String> {
+/// installed package's directory.
+fn install(root: &Path, r: &str) -> Result<PathBuf, String> {
     let lib = root.join("target/rvenv-shim/lib");
     if lib.exists() {
         fs::remove_dir_all(&lib).map_err(|e| format!("cannot clean {}: {}", lib.display(), e))?;
     }
     fs::create_dir_all(&lib).map_err(|e| format!("cannot create {}: {}", lib.display(), e))?;
 
-    let status = Command::new(r_binary)
+    let status = Command::new(r)
         .args([
             "CMD",
             "INSTALL",
-            // Bytecode carries the compiler's own version tag, which is one
-            // more cross-version hazard for an artifact we ship. The shim is
-            // a few lines of code run once per session; it does not need it.
+            // rig writes `R/rvenv` from the package source, so the lazy-load
+            // database this would build is thrown away; only `Meta/package.rds`
+            // is kept. Skipping the work also keeps the install quiet about
+            // byte-compiling for a version of R that is not the stamped one.
             "--no-byte-compile",
             "--no-help",
             "--no-multiarch",
-            // Loading the package during install would fire .onLoad() and
-            // its side effects.
+            // Loading the package during install would fire .onLoad() and its
+            // side effects.
             "--no-test-load",
             "-l",
         ])
         .arg(&lib)
         .arg(pkg_dir(root))
-        .env("R_DEFAULT_SERIALIZE_VERSION", serialize_version.to_string())
         .status()
-        .map_err(|e| format!("cannot run `{} CMD INSTALL`: {}", r_binary.display(), e))?;
+        .map_err(|e| format!("cannot run `{} CMD INSTALL`: {}", r, e))?;
     if !status.success() {
-        return Err(format!("`{} CMD INSTALL` failed", r_binary.display()));
+        return Err(format!("`{} CMD INSTALL` failed", r));
     }
-
-    let installed = read_tree(&lib.join("rig"))?;
-    let mut tree = BTreeMap::new();
-    for (path, bytes) in installed {
-        tree.insert(format!("rig/{}", path), bytes);
-    }
-    for required in REQUIRED_ENTRIES {
-        if !tree.contains_key(required) {
-            return Err(format!("the installed package has no {}", required));
-        }
-    }
-    Ok(tree)
+    Ok(lib.join(PKG_NAME))
 }
 
-/// The R version out of `DESCRIPTION`'s `Built:` field, e.g. `Built: R 4.0.5;
-/// ; 2026-09-02 10:11:12 UTC; unix` -> `4.0.5`.
+/// The installed `DESCRIPTION` with its `Built:` field replaced by the pinned
+/// one, so that it cannot disagree with `package.rds`.
+pub fn restamp_description(description: &str, built: &str) -> String {
+    let mut out = String::new();
+    let mut seen = false;
+    // `Built:` is the last field `R CMD INSTALL` appends and is a single line,
+    // so there is no continuation to worry about.
+    for line in description.replace("\r\n", "\n").lines() {
+        if line.starts_with("Built:") {
+            seen = true;
+            out.push_str(&format!("Built: {}\n", built));
+        } else {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    if !seen {
+        out.push_str(&format!("Built: {}\n", built));
+    }
+    out
+}
+
+/// The R version out of `DESCRIPTION`'s `Built:` field, e.g. `Built: R 4.0.0;
+/// ; 2020-04-24 00:00:00 UTC; unix` -> `4.0.0`.
 pub fn built_r_version(description: &str) -> Option<String> {
     let line = description
         .lines()
@@ -346,30 +294,33 @@ pub fn built_r_version(description: &str) -> Option<String> {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Manifest {
+    /// Hash of the package source, `src/data/rvenv-pkg`.
     pub source: String,
-    /// `(file name, R version, serialization format, sha256)`
-    pub artifacts: Vec<(String, String, u32, String)>,
+    /// The R version the artifacts were generated with. Informational: it is
+    /// not baked into them.
+    pub r_version: String,
+    /// `(file name, sha256)`
+    pub files: Vec<(String, String)>,
 }
 
 pub fn render_manifest(m: &Manifest) -> String {
     let mut out = String::from(
         "# Generated by `cargo xtask gen-rvenv-shim` (run `make rvenv-shim`).\n\
          # Do not edit by hand. `cargo xtask gen-rvenv-shim --check` verifies that\n\
-         # the committed shim packages still match src/data/rvenv-pkg.\n",
+         # the committed shim data still matches src/data/rvenv-pkg.\n",
     );
     out.push_str(&format!("source = {}\n", m.source));
-    for (file, rver, serialize, hash) in &m.artifacts {
-        out.push_str(&format!(
-            "{} = r {}, serialize {}, sha256 {}\n",
-            file, rver, serialize, hash
-        ));
+    out.push_str(&format!("generated-with = r {}\n", m.r_version));
+    for (file, hash) in &m.files {
+        out.push_str(&format!("{} = sha256 {}\n", file, hash));
     }
     out
 }
 
 pub fn parse_manifest(text: &str) -> Result<Manifest, String> {
     let mut source = None;
-    let mut artifacts = Vec::new();
+    let mut r_version = None;
+    let mut files = Vec::new();
     for line in text.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
@@ -379,78 +330,104 @@ pub fn parse_manifest(text: &str) -> Result<Manifest, String> {
             .split_once('=')
             .ok_or_else(|| format!("malformed manifest line: {}", line))?;
         let (key, value) = (key.trim(), value.trim());
-        if key == "source" {
-            source = Some(value.to_string());
-            continue;
-        }
-        let mut rver = None;
-        let mut serialize = None;
-        let mut hash = None;
-        for field in value.split(',') {
-            let field = field.trim();
-            if let Some(v) = field.strip_prefix("r ") {
-                rver = Some(v.trim().to_string());
-            } else if let Some(v) = field.strip_prefix("serialize ") {
-                serialize = v.trim().parse::<u32>().ok();
-            } else if let Some(v) = field.strip_prefix("sha256 ") {
-                hash = Some(v.trim().to_string());
+        match key {
+            "source" => source = Some(value.to_string()),
+            "generated-with" => {
+                r_version = Some(
+                    value
+                        .strip_prefix("r ")
+                        .ok_or_else(|| format!("malformed manifest line: {}", line))?
+                        .trim()
+                        .to_string(),
+                )
             }
-        }
-        match (rver, serialize, hash) {
-            (Some(r), Some(s), Some(h)) => artifacts.push((key.to_string(), r, s, h)),
-            _ => return Err(format!("malformed manifest entry for {}", key)),
+            _ => {
+                let hash = value
+                    .strip_prefix("sha256 ")
+                    .ok_or_else(|| format!("malformed manifest entry for {}", key))?;
+                files.push((key.to_string(), hash.trim().to_string()));
+            }
         }
     }
     Ok(Manifest {
         source: source.ok_or_else(|| "manifest has no `source` line".to_string())?,
-        artifacts,
+        r_version: r_version.ok_or_else(|| "manifest has no `generated-with` line".to_string())?,
+        files,
     })
 }
 
 // ------------------------------------------------------------------ tasks --
 
 fn gen(root: &Path) -> Result<(), String> {
-    let src = read_tree(&pkg_dir(root))?;
+    let r = r_binary();
+    let (ver, ver_str) = r_version(&r)?;
+    if ver < MIN_GEN_R {
+        return Err(format!(
+            "this task needs R >= {}.{} to generate the shim data, but `{}` is R {}; \
+             set $R to a newer one",
+            MIN_GEN_R.0, MIN_GEN_R.1, r, ver_str
+        ));
+    }
+    eprintln!("generating the rvenv shim data with R {}", ver_str);
+
+    let installed = install(root, &r)?;
     fs::create_dir_all(shim_dir(root)).map_err(|e| e.to_string())?;
 
-    let mut artifacts = Vec::new();
-    let mut payloads: Vec<(String, BTreeMap<String, Vec<u8>>)> = Vec::new();
-    for (file, rver, serialize) in BRACKETS {
-        let r_binary = r_binary_for(rver)?;
-        eprintln!("building {} with R {} ({})", file, rver, r_binary.display());
-        let tree = build_one(root, &r_binary, serialize)?;
-        let targz = deterministic_targz(&tree)?;
-        let path = shim_dir(root).join(file);
-        fs::write(&path, &targz).map_err(|e| format!("cannot write {}: {}", path.display(), e))?;
-        eprintln!("wrote {} ({} bytes)", path.display(), targz.len());
-        artifacts.push((
-            file.to_string(),
-            rver.to_string(),
-            serialize,
-            sha256_hex(&targz),
-        ));
-        payloads.push((file.to_string(), tree));
-    }
+    // DESCRIPTION: the installed one, restamped.
+    let description = fs::read_to_string(installed.join("DESCRIPTION"))
+        .map_err(|e| format!("cannot read the installed DESCRIPTION: {}", e))?;
+    let description = restamp_description(&description, &built_field());
+    let desc_path = shim_dir(root).join(DESCRIPTION_FILE);
+    fs::write(&desc_path, &description)
+        .map_err(|e| format!("cannot write {}: {}", desc_path.display(), e))?;
+    eprintln!("wrote {}", desc_path.display());
 
-    // The two pre-4.0 brackets are both serialization format 2, so they may
-    // well be interchangeable in practice. If the lazy-load databases come
-    // out identical, one of the two brackets is dead weight and can be
-    // dropped — but say so rather than guess.
-    if let (Some((a_name, a)), Some((b_name, b))) = (payloads.first(), payloads.get(1)) {
-        if a.get("rig/R/rig.rdb") == b.get("rig/R/rig.rdb")
-            && a.get("rig/R/rig.rdx") == b.get("rig/R/rig.rdx")
-        {
-            eprintln!(
-                "note: {} and {} have identical lazy-load databases; \
-                 these two brackets could be collapsed into one",
-                a_name, b_name
-            );
-        }
+    // Meta/package.rds: the installed one, restamped and re-serialized.
+    let script = root.join("target/rvenv-shim/fixup.R");
+    fs::write(&script, FIXUP_R).map_err(|e| format!("cannot write {}: {}", script.display(), e))?;
+    let meta_path = shim_dir(root).join(META_FILE);
+    let status = Command::new(&r)
+        .arg("--vanilla")
+        .args(["-q", "-s", "-f"])
+        .arg(&script)
+        .arg("--args")
+        .arg(installed.join("Meta").join("package.rds"))
+        .arg(&meta_path)
+        .args([
+            BUILT_R,
+            BUILT_DATE,
+            BUILT_OSTYPE,
+            &built_field(),
+            &SERIALIZE_VERSION.to_string(),
+        ])
+        .status()
+        .map_err(|e| format!("cannot run `{}`: {}", r, e))?;
+    if !status.success() {
+        return Err(format!("`{}` failed on {}", r, script.display()));
     }
+    let meta =
+        fs::read(&meta_path).map_err(|e| format!("cannot read {}: {}", meta_path.display(), e))?;
+    let got = rds_serialize_version(&meta)?;
+    if got != SERIALIZE_VERSION {
+        return Err(format!(
+            "{} came out as RDS format {}, expected {}",
+            meta_path.display(),
+            got,
+            SERIALIZE_VERSION
+        ));
+    }
+    eprintln!("wrote {} ({} bytes)", meta_path.display(), meta.len());
 
     let manifest = Manifest {
-        source: source_hash(&src),
-        artifacts,
+        source: source_hash(&read_tree(&pkg_dir(root))?),
+        r_version: ver_str,
+        files: vec![
+            (
+                DESCRIPTION_FILE.to_string(),
+                sha256_hex(description.as_bytes()),
+            ),
+            (META_FILE.to_string(), sha256_hex(&meta)),
+        ],
     };
     let path = shim_dir(root).join(MANIFEST_FILE);
     fs::write(&path, render_manifest(&manifest))
@@ -465,80 +442,67 @@ fn check(root: &Path) -> Result<(), String> {
         .map_err(|e| format!("cannot read {}: {}", manifest_path.display(), e))?;
     let manifest = parse_manifest(&text)?;
 
-    let src = read_tree(&pkg_dir(root))?;
-    if source_hash(&src) != manifest.source {
+    if source_hash(&read_tree(&pkg_dir(root))?) != manifest.source {
         return Err(
-            "src/data/rvenv-pkg changed but the pre-built shim packages were \
-                    not rebuilt; run `make rvenv-shim`"
+            "src/data/rvenv-pkg changed but the committed shim data was not \
+             regenerated; run `make rvenv-shim`"
                 .to_string(),
         );
     }
 
-    if manifest.artifacts.len() != BRACKETS.len() {
-        return Err(format!(
-            "{} lists {} artifacts, expected {}",
-            MANIFEST_FILE,
-            manifest.artifacts.len(),
-            BRACKETS.len()
-        ));
-    }
-
-    for (file, rver, serialize) in BRACKETS {
-        let entry = manifest
-            .artifacts
+    for file in [DESCRIPTION_FILE, META_FILE] {
+        let expected = manifest
+            .files
             .iter()
-            .find(|(f, _, _, _)| f == file)
+            .find(|(f, _)| f == file)
             .ok_or_else(|| format!("{} has no entry for {}", MANIFEST_FILE, file))?;
-        if entry.1 != rver || entry.2 != serialize {
-            return Err(format!(
-                "{} says {} was built with R {} (serialize {}), expected R {} \
-                 (serialize {}); run `make rvenv-shim`",
-                MANIFEST_FILE, file, entry.1, entry.2, rver, serialize
-            ));
-        }
         let path = shim_dir(root).join(file);
         let bytes =
             fs::read(&path).map_err(|e| format!("cannot read {}: {}", path.display(), e))?;
-        if sha256_hex(&bytes) != entry.3 {
+        if sha256_hex(&bytes) != expected.1 {
             return Err(format!(
                 "{} does not match its hash in {}; run `make rvenv-shim`",
                 path.display(),
                 MANIFEST_FILE
             ));
         }
-
-        let tree = untargz(&bytes)?;
-        for required in REQUIRED_ENTRIES {
-            if !tree.contains_key(required) {
-                return Err(format!("{} has no {}", file, required));
-            }
-        }
-        // This data is unpacked into the user's project, so make sure it
-        // cannot write anywhere else.
-        for path in tree.keys() {
-            if !path.starts_with("rig/") || path.contains("..") {
-                return Err(format!("{} contains an unexpected entry: {}", file, path));
-            }
-        }
-        // The source hash cannot catch an artifact rebuilt from unchanged
-        // source with the wrong R, but `Built:` records it.
-        let description = tree
-            .get("rig/DESCRIPTION")
-            .map(|b| String::from_utf8_lossy(b).into_owned())
-            .unwrap_or_default();
-        match built_r_version(&description) {
-            Some(built) if built == rver => {}
-            Some(built) => {
-                return Err(format!(
-                    "{} was built with R {}, but the {} bracket needs R {}",
-                    file, built, file, rver
-                ))
-            }
-            None => return Err(format!("{} has no `Built:` field in DESCRIPTION", file)),
-        }
+    }
+    if manifest.files.len() != 2 {
+        return Err(format!(
+            "{} lists {} files, expected 2",
+            MANIFEST_FILE,
+            manifest.files.len()
+        ));
     }
 
-    eprintln!("{} shim packages are up to date", BRACKETS.len());
+    // The hashes above only say that the files are the ones that were
+    // generated. These two properties are what makes them loadable on every R,
+    // so state them as such rather than trusting the generator.
+    let description = fs::read_to_string(shim_dir(root).join(DESCRIPTION_FILE))
+        .map_err(|e| format!("cannot read the committed DESCRIPTION: {}", e))?;
+    match built_r_version(&description).as_deref() {
+        Some(BUILT_R) => {}
+        Some(other) => {
+            return Err(format!(
+                "the committed DESCRIPTION says `Built: R {}`, expected R {}; \
+                 run `make rvenv-shim`",
+                other, BUILT_R
+            ))
+        }
+        None => return Err("the committed DESCRIPTION has no `Built:` field".to_string()),
+    }
+    let meta = fs::read(shim_dir(root).join(META_FILE))
+        .map_err(|e| format!("cannot read the committed {}: {}", META_FILE, e))?;
+    let got = rds_serialize_version(&meta)?;
+    if got != SERIALIZE_VERSION {
+        return Err(format!(
+            "the committed {} is RDS format {}, expected {} (R < 3.5.0 cannot \
+             read format 3); run `make rvenv-shim`",
+            META_FILE, got, SERIALIZE_VERSION
+        ));
+    }
+
+    eprintln!("the committed rvenv shim data is up to date");
     Ok(())
 }
 
@@ -565,21 +529,6 @@ mod tests {
     }
 
     #[test]
-    fn targz_is_deterministic() {
-        let t = tree(&[("rig/DESCRIPTION", b"Package: rig\n"), ("rig/R/rig", b"x")]);
-        assert_eq!(
-            deterministic_targz(&t).unwrap(),
-            deterministic_targz(&t).unwrap()
-        );
-    }
-
-    #[test]
-    fn targz_round_trips() {
-        let t = tree(&[("rig/DESCRIPTION", b"Package: rig\n"), ("rig/R/rig", b"x")]);
-        assert_eq!(untargz(&deterministic_targz(&t).unwrap()).unwrap(), t);
-    }
-
-    #[test]
     fn source_hash_tracks_content_and_paths() {
         let a = tree(&[("R/rvenv.R", b"one")]);
         let b = tree(&[("R/rvenv.R", b"two")]);
@@ -593,19 +542,10 @@ mod tests {
     fn manifest_round_trips() {
         let m = Manifest {
             source: "abc123".to_string(),
-            artifacts: vec![
-                (
-                    "shim-lt-3.5.tar.gz".to_string(),
-                    "3.4.4".to_string(),
-                    2,
-                    "deadbeef".to_string(),
-                ),
-                (
-                    "shim-4.0.tar.gz".to_string(),
-                    "4.0.5".to_string(),
-                    3,
-                    "cafe".to_string(),
-                ),
+            r_version: "4.6.1".to_string(),
+            files: vec![
+                ("DESCRIPTION".to_string(), "deadbeef".to_string()),
+                ("package.rds".to_string(), "cafe".to_string()),
             ],
         };
         assert_eq!(parse_manifest(&render_manifest(&m)).unwrap(), m);
@@ -613,17 +553,54 @@ mod tests {
 
     #[test]
     fn manifest_rejects_garbage() {
-        assert!(parse_manifest("no source line here = x").is_err());
-        assert!(parse_manifest("source = abc\nshim.tar.gz = r 4.0.5").is_err());
+        assert!(parse_manifest("no source line here").is_err());
+        assert!(parse_manifest("source = abc\npackage.rds = cafe").is_err());
+        assert!(parse_manifest("source = abc\ngenerated-with = 4.6.1").is_err());
     }
 
     #[test]
     fn built_r_version_parses_the_built_field() {
         assert_eq!(
-            built_r_version("Package: rig\nBuilt: R 4.0.5; ; 2026-09-02 10:00:00 UTC; unix\n")
+            built_r_version("Package: rvenv\nBuilt: R 4.0.0; ; 2020-04-24 00:00:00 UTC; unix\n")
                 .as_deref(),
-            Some("4.0.5")
+            Some("4.0.0")
         );
-        assert_eq!(built_r_version("Package: rig\n"), None);
+        assert_eq!(built_r_version("Package: rvenv\n"), None);
+    }
+
+    #[test]
+    fn restamp_description_replaces_or_appends_built() {
+        let built = "R 4.0.0; ; 2020-04-24 00:00:00 UTC; unix";
+        assert_eq!(
+            restamp_description("Package: rvenv\nBuilt: R 4.6.1; ; now; unix\n", built),
+            format!("Package: rvenv\nBuilt: {}\n", built)
+        );
+        assert_eq!(
+            restamp_description("Package: rvenv\n", built),
+            format!("Package: rvenv\nBuilt: {}\n", built)
+        );
+        // A CRLF checkout of the source does not leak into the artifact.
+        assert_eq!(
+            restamp_description("Package: rvenv\r\nBuilt: R 4.6.1; ; now; unix\r\n", built),
+            format!("Package: rvenv\nBuilt: {}\n", built)
+        );
+    }
+
+    #[test]
+    fn rds_serialize_version_reads_the_header() {
+        // "X\n" + big-endian 2
+        assert_eq!(rds_serialize_version(b"X\n\0\0\0\x02rest").unwrap(), 2);
+        assert_eq!(rds_serialize_version(b"X\n\0\0\0\x03rest").unwrap(), 3);
+        assert!(rds_serialize_version(b"A\n\0\0\0\x02").is_err());
+        assert!(rds_serialize_version(b"X\n").is_err());
+    }
+
+    #[test]
+    fn rds_serialize_version_unwraps_gzip() {
+        use std::io::Write;
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        gz.write_all(b"X\n\0\0\0\x02rest").unwrap();
+        let gzipped = gz.finish().unwrap();
+        assert_eq!(rds_serialize_version(&gzipped).unwrap(), 2);
     }
 }

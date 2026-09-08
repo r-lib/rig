@@ -8,10 +8,9 @@
 //! project-root/
 //!   rproj.toml              # tracked -- manifest
 //!   .Renviron               # tracked -- in-session activation
-//!   .gitignore              # tracked -- /.rvenv/* + !/.rvenv/lib
+//!   .gitignore              # tracked -- /.rvenv/* + !/.rvenv/sys
 //!   .rvenv/
-//!     lib/.gitignore        # tracked -- keeps lib/ and lib/rig, ignores the rest
-//!     lib/rig/              # tracked -- pre-built shim package
+//!     sys/lib/rvenv/        # tracked -- the shim package
 //! ```
 //!
 //! `rig proj sync` adds the machine-specific rest, none of which is
@@ -29,22 +28,23 @@
 //!
 //! Two things here are less obvious than they look.
 //!
-//! `.rvenv/lib` itself is committed (as a directory containing only a
-//! `.gitignore`) because vanilla R does not create a missing `R_LIBS_USER`
-//! directory -- `install.packages()` against a missing one just fails. Only
-//! rig's own R installations create it, from a block rig injects into
-//! `Rprofile.site` (see `library_update_rprofile`), and a project has to work
-//! on any R install. Note that git will not look inside an ignored directory
-//! for a nested exception, so `/.rvenv/*` has to be followed by
-//! `!/.rvenv/lib` -- and the same double negation is needed for `rig/` inside
-//! `lib/.gitignore`.
+//! `.rvenv/sys` is rig's own half of the environment, kept out of
+//! `.rvenv/lib` so that the project library holds nothing but the project's
+//! packages. It is the only committed part, and `/.rvenv/*` has to be
+//! followed by `!/.rvenv/sys` because git will not look inside an ignored
+//! directory for a nested exception.
 //!
-//! The shim package in `.rvenv/lib/rig` is committed pre-built, rather than
-//! installed by `rig proj sync`, because its whole job is to be there
-//! *before* the first sync: `.Renviron` names it in `R_DEFAULT_PACKAGES`, so
-//! without it R prints its own unhelpful "package 'rig' in
-//! options(\"defaultPackages\") was not found". See `src/data/rvenv-pkg` for
-//! the source and `xtask/src/rvenv_shim.rs` for the build.
+//! The shim package in `.rvenv/sys/lib/rvenv` is committed, and written by
+//! `rig proj init` rather than installed by `rig proj sync`, because its whole
+//! job is to be there *before* the first sync: `.Renviron` names it in
+//! `R_DEFAULT_PACKAGES`, so without it R prints its own unhelpful "package
+//! 'rvenv' in options(\"defaultPackages\") was not found". That is also why
+//! `.Renviron` points `R_LIBS_USER` at `.rvenv/sys/lib` rather than at the
+//! project library: it is the one library R has to be able to load a package
+//! from at startup. The shim then re-points `R_LIBS_USER` at the absolute
+//! `.rvenv/lib` and makes that `.libPaths()[1]`. See `src/data/rvenv-pkg` for
+//! the source, [`write_shim_package`] for what is written, and
+//! `xtask/src/rvenv_shim.rs` for the two generated files it needs.
 //!
 //! Never write a file named `___default` into `.rvenv/lib`: that is the
 //! sentinel of rig's own per-version library switching, in the same
@@ -52,12 +52,14 @@
 
 use std::error::Error;
 use std::fs;
-use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
 use simple_error::bail;
 
-use crate::hardcoded::{HC_RVENV_SHIM_35, HC_RVENV_SHIM_40, HC_RVENV_SHIM_LT_35};
+use crate::hardcoded::{
+    HC_RVENV_PKG_CODE, HC_RVENV_PKG_DESCRIPTION, HC_RVENV_PKG_LICENSE, HC_RVENV_PKG_META,
+    HC_RVENV_PKG_NAMESPACE,
+};
 use crate::repos::binaries::ppm_url;
 use crate::repositories::{write_repositories_file, RepoFileEntry, RepositoriesContents};
 use crate::rproj::{Repository as ManifestRepository, RPROJ_MANIFEST_FILE};
@@ -69,7 +71,8 @@ pub const RVENV_DIR: &str = ".rvenv";
 pub const RVENV_LIB_SUBDIR: &str = "lib";
 pub const RVENV_BIN_SUBDIR: &str = "bin";
 pub const RVENV_ETC_SUBDIR: &str = "etc";
-pub const RVENV_SHIM_PKG: &str = "rig";
+pub const RVENV_SYS_SUBDIR: &str = "sys";
+pub const RVENV_SHIM_PKG: &str = "rvenv";
 pub const RVENV_RENVIRON_FILE: &str = ".Renviron";
 pub const RVENV_GITIGNORE_FILE: &str = ".gitignore";
 pub const RVENV_CFG_FILE: &str = "rvenv.cfg";
@@ -152,49 +155,37 @@ fn renviron_body() -> &'static str {
     "\
 # Managed by rig (rig proj init).
 #
-# R_LIBS_USER is deliberately relative: the `rig` package in .rvenv/lib
-# re-exports it as an absolute path at load time, so child R processes
-# started from a subdirectory still see the project library.
+# R_LIBS_USER names rig's own library, not the project library: it only has to
+# get R far enough to load the `rvenv` package below. That package points
+# R_LIBS_USER at the project library, as an absolute path, so that child R
+# processes started from a subdirectory still see it. The path here is
+# deliberately relative, because this file is committed to version control.
 #
 # R_DEFAULT_PACKAGES replaces R's default package list rather than adding to
 # it, so the whole list has to be spelled out.
 #
 # Note that `R --vanilla` ignores this file entirely.
-R_LIBS_USER=.rvenv/lib
-R_DEFAULT_PACKAGES=rig,datasets,utils,grDevices,graphics,stats,methods
+R_LIBS_USER=.rvenv/sys/lib
+R_DEFAULT_PACKAGES=rvenv,datasets,utils,grDevices,graphics,stats,methods
 "
 }
 
 /// The block rig manages in the project's root `.gitignore`. Everything in
-/// `.rvenv` is machine-specific except the library directory itself.
+/// `.rvenv` is machine-specific except rig's own `sys` directory.
 fn root_gitignore_block() -> String {
     format!(
         "\
 {}
-# Everything in .rvenv is machine-specific, except the library directory
-# itself and the rig shim package in it. git does not look inside an ignored
-# directory for a nested exception, hence the second line.
+# Everything in .rvenv is machine-specific, except rig's own sys directory,
+# which holds the pre-built rvenv package a fresh clone needs before the
+# first `rig proj sync`. git does not look inside an ignored directory for a
+# nested exception, hence the second line.
 /.rvenv/*
-!/.rvenv/lib
+!/.rvenv/sys
 {}
 ",
         GITIGNORE_START, GITIGNORE_END
     )
-}
-
-/// `.rvenv/lib/.gitignore`: keep the directory and the shim package, ignore
-/// the installed dependencies.
-fn lib_gitignore_body() -> &'static str {
-    "\
-# Managed by rig (rig proj init). The library directory itself is committed,
-# because vanilla R does not create a missing R_LIBS_USER. The rig shim
-# package is committed so that a fresh clone works before the first
-# `rig proj sync`. Everything else here is installed and not tracked.
-*
-!.gitignore
-!rig
-!rig/**
-"
 }
 
 // -------------------------------------------------------------------- paths --
@@ -207,6 +198,25 @@ pub fn project_venv(root: &Path) -> PathBuf {
 /// `<root>/.rvenv/lib`, the project package library.
 pub fn project_library(root: &Path) -> PathBuf {
     root.join(RVENV_DIR).join(RVENV_LIB_SUBDIR)
+}
+
+/// `<root>/.rvenv/sys/lib`, rig's own library inside the project.
+///
+/// It holds nothing but the shim package, and is the only committed part of
+/// `.rvenv`. Keeping it out of [`project_library`] means the project library
+/// contains only the project's own packages.
+pub fn project_sys_library(root: &Path) -> PathBuf {
+    root.join(RVENV_DIR)
+        .join(RVENV_SYS_SUBDIR)
+        .join(RVENV_LIB_SUBDIR)
+}
+
+/// `<root>/.rvenv/sys/lib/rvenv`, the shim package.
+///
+/// Also the marker of an initialized project: `rig proj init` writes it, and
+/// nothing else creates it.
+pub fn project_shim_package(root: &Path) -> PathBuf {
+    project_sys_library(root).join(RVENV_SHIM_PKG)
 }
 
 /// `<root>/.rvenv/bin`, the wrapper scripts and the activation scripts.
@@ -295,8 +305,7 @@ pub fn init_targets(root: &Path) -> Vec<PathBuf> {
         root.join(RPROJ_MANIFEST_FILE),
         root.join(RVENV_RENVIRON_FILE),
         root.join(RVENV_GITIGNORE_FILE),
-        project_library(root).join(RVENV_GITIGNORE_FILE),
-        project_library(root).join(RVENV_SHIM_PKG),
+        project_shim_package(root),
     ]
 }
 
@@ -392,67 +401,40 @@ pub fn update_root_gitignore(root: &Path) -> Result<(), Box<dyn Error>> {
 
 // -------------------------------------------------------------- shim package --
 
-/// Which pre-built copy of the shim package an R version can load.
+/// Write the shim package into `<lib>/rvenv`, replacing whatever is there.
 ///
-/// R's installed-package format has two boundaries: serialization format 3
-/// (the default from R 3.6.0) cannot be read by R < 3.5.0, and a package
-/// installed by R < 4.0.0 is rejected by R >= 4.0.0. See
-/// `xtask/src/rvenv_shim.rs` for the measured matrix.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ShimBracket {
-    /// R < 3.5.0
-    Lt35,
-    /// R >= 3.5.0, < 4.0.0
-    R35,
-    /// R >= 4.0.0
-    R40,
-}
-
-pub fn shim_bracket(r_version: &str) -> Result<ShimBracket, Box<dyn Error>> {
-    let mut parts = r_version.split('.');
-    let major: u32 = match parts.next().map(|p| p.parse()) {
-        Some(Ok(v)) => v,
-        _ => bail!("Cannot parse R version: {}", r_version),
-    };
-    // A version like "4.6" is fine, the minor part defaults to 0.
-    let minor: u32 = match parts.next().map(|p| p.parse()) {
-        Some(Ok(v)) => v,
-        Some(Err(_)) => bail!("Cannot parse R version: {}", r_version),
-        None => 0,
-    };
-    Ok(if major >= 4 {
-        ShimBracket::R40
-    } else if major == 3 && minor >= 5 {
-        ShimBracket::R35
-    } else {
-        ShimBracket::Lt35
-    })
-}
-
-fn shim_bytes(bracket: ShimBracket) -> &'static [u8] {
-    match bracket {
-        ShimBracket::Lt35 => HC_RVENV_SHIM_LT_35,
-        ShimBracket::R35 => HC_RVENV_SHIM_35,
-        ShimBracket::R40 => HC_RVENV_SHIM_40,
-    }
-}
-
-/// Unpack the pre-built shim package into `<lib>/rig`.
-pub fn unpack_shim_package(lib: &Path, bracket: ShimBracket) -> Result<(), Box<dyn Error>> {
+/// This writes an *installed* R package without running R, which works
+/// because the shim needs no lazy-load database: `loadNamespace()` sources
+/// `<pkg>/R/<pkg>` if it finds it, so that file is the package's R source
+/// verbatim. What is left of an install is `Meta/package.rds`, which
+/// `library()` insists on, and the `Built:` field of `DESCRIPTION`. Both are
+/// generated and committed, see `xtask/src/rvenv_shim.rs` for how, and why
+/// they claim to have been built by R 4.0.0.
+///
+/// One copy has to work with every R the project may be opened with, because
+/// the result is committed to version control -- so this deliberately does not
+/// depend on the project's R version.
+pub fn write_shim_package(lib: &Path) -> Result<(), Box<dyn Error>> {
     let pkg = lib.join(RVENV_SHIM_PKG);
     if pkg.exists() {
         fs::remove_dir_all(&pkg)?;
     }
-    fs::create_dir_all(lib)?;
-    let mut ar = tar::Archive::new(flate2::read::GzDecoder::new(Cursor::new(shim_bytes(
-        bracket,
-    ))));
-    // The modes in these archives are synthesized by `cargo xtask
-    // gen-rvenv-shim`, not authored, so let the user's umask decide.
-    ar.set_preserve_permissions(false);
-    ar.set_preserve_mtime(false);
-    ar.set_overwrite(true);
-    ar.unpack(lib)?;
+    fs::create_dir_all(pkg.join("R"))?;
+    fs::create_dir_all(pkg.join("Meta"))?;
+    // The embedded text files may be checked out with CRLF, e.g. on Windows
+    // without a .gitattributes rule. R reads either, but the project keeps a
+    // copy of them under version control, so write the same bytes everywhere.
+    for (path, contents) in [
+        ("DESCRIPTION", HC_RVENV_PKG_DESCRIPTION),
+        ("NAMESPACE", HC_RVENV_PKG_NAMESPACE),
+        ("LICENSE", HC_RVENV_PKG_LICENSE),
+        // No extension: this is the file `loadNamespace()` sources, and it is
+        // named after the package.
+        ("R/rvenv", HC_RVENV_PKG_CODE),
+    ] {
+        write_atomically(&pkg.join(path), contents.replace("\r\n", "\n").as_bytes())?;
+    }
+    write_atomically(&pkg.join("Meta").join("package.rds"), HC_RVENV_PKG_META)?;
     Ok(())
 }
 
@@ -463,26 +445,22 @@ pub fn unpack_shim_package(lib: &Path, bracket: ShimBracket) -> Result<(), Box<d
 /// `rig proj init`.
 ///
 /// The caller is expected to have run the [`existing_targets`] check first.
-pub fn rvenv_init(root: &Path, r_version: &str) -> Result<Vec<PathBuf>, Box<dyn Error>> {
-    let bracket = shim_bracket(r_version)?;
-    let lib = project_library(root);
+pub fn rvenv_init(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
+    let sys_lib = project_sys_library(root);
 
     let renviron = root.join(RVENV_RENVIRON_FILE);
     write_atomically(&renviron, renviron_body().as_bytes())?;
 
     update_root_gitignore(root)?;
 
-    fs::create_dir_all(&lib)?;
-    let lib_gitignore = lib.join(RVENV_GITIGNORE_FILE);
-    write_atomically(&lib_gitignore, lib_gitignore_body().as_bytes())?;
-
-    unpack_shim_package(&lib, bracket)?;
+    // The project library itself is not created here: `rig proj sync` makes
+    // it, and until then there is nothing to put in it.
+    write_shim_package(&sys_lib)?;
 
     Ok(vec![
         renviron,
         root.join(RVENV_GITIGNORE_FILE),
-        lib_gitignore,
-        lib.join(RVENV_SHIM_PKG),
+        project_shim_package(root),
     ])
 }
 
@@ -852,41 +830,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn shim_brackets() {
-        assert_eq!(shim_bracket("3.0.0").unwrap(), ShimBracket::Lt35);
-        assert_eq!(shim_bracket("3.4.4").unwrap(), ShimBracket::Lt35);
-        assert_eq!(shim_bracket("3.5.0").unwrap(), ShimBracket::R35);
-        assert_eq!(shim_bracket("3.6.3").unwrap(), ShimBracket::R35);
-        assert_eq!(shim_bracket("3.9.9").unwrap(), ShimBracket::R35);
-        assert_eq!(shim_bracket("4.0.0").unwrap(), ShimBracket::R40);
-        assert_eq!(shim_bracket("4.6.1").unwrap(), ShimBracket::R40);
-        assert_eq!(shim_bracket("4.6").unwrap(), ShimBracket::R40);
-        assert_eq!(shim_bracket("5.0.0").unwrap(), ShimBracket::R40);
-        assert!(shim_bracket("devel").is_err());
-        assert!(shim_bracket("4.x.1").is_err());
-    }
-
-    #[test]
     fn renviron_body_is_what_the_shim_expects() {
         let body = renviron_body();
-        assert!(body.contains("\nR_LIBS_USER=.rvenv/lib\n"));
+        // Not the project library: this is the library the shim itself is
+        // loaded from, the shim switches to the project library.
+        assert!(body.contains("\nR_LIBS_USER=.rvenv/sys/lib\n"));
         // The shim package has to come first, and the rest of R's default
         // package list has to be spelled out.
         assert!(body.contains(
-            "\nR_DEFAULT_PACKAGES=rig,datasets,utils,grDevices,graphics,stats,methods\n"
+            "\nR_DEFAULT_PACKAGES=rvenv,datasets,utils,grDevices,graphics,stats,methods\n"
         ));
     }
 
     #[test]
-    fn gitignore_bodies_un_ignore_the_library() {
+    fn the_gitignore_block_un_ignores_the_sys_directory() {
         let root = root_gitignore_block();
         assert!(root.contains("\n/.rvenv/*\n"));
-        assert!(root.contains("\n!/.rvenv/lib\n"));
-        let lib = lib_gitignore_body();
-        assert!(lib.contains("\n*\n"));
-        assert!(lib.contains("\n!.gitignore\n"));
-        assert!(lib.contains("\n!rig\n"));
-        assert!(lib.contains("\n!rig/**\n"));
+        assert!(root.contains("\n!/.rvenv/sys\n"));
+        // The project library is machine-specific, all of it.
+        assert!(!root.contains("!/.rvenv/lib"));
     }
 
     #[test]
@@ -905,7 +867,7 @@ mod tests {
         update_root_gitignore(tmp.path()).unwrap();
         let text = fs::read_to_string(&path).unwrap();
         assert!(text.starts_with("*.Rproj\n.Rhistory\n"));
-        assert!(text.contains("!/.rvenv/lib"));
+        assert!(text.contains("!/.rvenv/sys"));
     }
 
     #[test]
@@ -992,35 +954,54 @@ mod tests {
     }
 
     #[test]
-    fn every_shim_bracket_unpacks() {
-        for bracket in [ShimBracket::Lt35, ShimBracket::R35, ShimBracket::R40] {
-            let tmp = tempfile::tempdir().unwrap();
-            let lib = tmp.path().join("lib");
-            unpack_shim_package(&lib, bracket).unwrap();
-            let desc = fs::read_to_string(lib.join("rig/DESCRIPTION")).unwrap();
-            assert!(desc.contains("Package: rig"), "{:?}", bracket);
-            assert!(lib.join("rig/R/rig.rdb").exists(), "{:?}", bracket);
-            assert!(lib.join("rig/R/rig.rdx").exists(), "{:?}", bracket);
-            assert!(lib.join("rig/Meta/package.rds").exists(), "{:?}", bracket);
-        }
+    fn the_shim_package_is_a_loadable_installed_package() {
+        let tmp = tempfile::tempdir().unwrap();
+        let lib = tmp.path().join("lib");
+        write_shim_package(&lib).unwrap();
+        let pkg = lib.join("rvenv");
+        let entries = |dir: &Path| {
+            let mut names: Vec<String> = fs::read_dir(dir)
+                .unwrap()
+                .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+                .collect();
+            names.sort();
+            names
+        };
+        assert_eq!(
+            entries(&pkg),
+            ["DESCRIPTION", "LICENSE", "Meta", "NAMESPACE", "R"]
+        );
+        assert_eq!(entries(&pkg.join("R")), ["rvenv"]);
+        assert_eq!(entries(&pkg.join("Meta")), ["package.rds"]);
+
+        let desc = fs::read_to_string(pkg.join("DESCRIPTION")).unwrap();
+        assert!(desc.contains("Package: rvenv\n"));
+        // What lets a single committed copy load on every R, see
+        // `write_shim_package()`. `library()` reads the same stamp out of
+        // Meta/package.rds, which `cargo xtask gen-rvenv-shim --check` checks.
+        assert!(desc.contains("\nBuilt: R 4.0.0;"));
+        // The R code is the package source verbatim, not a lazy-load stub.
+        assert!(fs::read_to_string(pkg.join("R/rvenv"))
+            .unwrap()
+            .contains(".onLoad <- function("));
     }
 
     #[test]
-    fn unpacking_the_shim_twice_replaces_it() {
+    fn writing_the_shim_twice_replaces_it() {
         let tmp = tempfile::tempdir().unwrap();
         let lib = tmp.path().join("lib");
-        unpack_shim_package(&lib, ShimBracket::R40).unwrap();
-        let stray = lib.join("rig/stray-file");
+        write_shim_package(&lib).unwrap();
+        let stray = lib.join("rvenv/stray-file");
         fs::write(&stray, "x").unwrap();
-        unpack_shim_package(&lib, ShimBracket::R40).unwrap();
+        write_shim_package(&lib).unwrap();
         assert!(!stray.exists());
-        assert!(lib.join("rig/DESCRIPTION").exists());
+        assert!(lib.join("rvenv/DESCRIPTION").exists());
     }
 
     #[test]
     fn rvenv_init_writes_the_tracked_layout() {
         let tmp = tempfile::tempdir().unwrap();
-        let written = rvenv_init(tmp.path(), "4.6.1").unwrap();
+        let written = rvenv_init(tmp.path()).unwrap();
         for path in &written {
             assert!(path.exists(), "{} was not written", path.display());
         }
@@ -1032,7 +1013,9 @@ mod tests {
         let mut written = written;
         written.sort();
         assert_eq!(written, expected);
-        assert!(tmp.path().join(".rvenv/lib/rig/DESCRIPTION").exists());
+        assert!(tmp.path().join(".rvenv/sys/lib/rvenv/DESCRIPTION").exists());
+        // The project library is `rig proj sync`'s to create.
+        assert!(!project_library(tmp.path()).exists());
     }
 
     // ------------------------------------------------------------- sync --

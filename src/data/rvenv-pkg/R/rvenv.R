@@ -1,6 +1,6 @@
 # This package is loaded from a project's .Renviron, via
 #
-#     R_DEFAULT_PACKAGES=rig,datasets,utils,grDevices,graphics,stats,methods
+#     R_DEFAULT_PACKAGES=rvenv,datasets,utils,grDevices,graphics,stats,methods
 #
 # It is the "in-session activation" leg of a rig project: it makes the
 # project's `.rvenv/lib` library work in R sessions that rig did not start,
@@ -8,17 +8,20 @@
 # `.Rprofile` for this, because that would shadow the user's own
 # `~/.Rprofile` entirely.
 #
-# `.Renviron` sets `R_LIBS_USER` to the *relative* path `.rvenv/lib`, because
-# the file is committed to version control and has to work from any clone
-# location. `.onLoad()` receives an already-resolved absolute `libname`, so
-# this is where the relative path becomes an absolute one. That matters for
-# child processes (callr, parallel, `R CMD`, `Rscript` from a subdirectory):
-# they inherit the environment variable, not our `.libPaths()` call, so a
-# child started in a subdirectory would otherwise look for
-# `<subdir>/.rvenv/lib`.
+# `.Renviron` sets `R_LIBS_USER` to `.rvenv/sys/lib`, this package's own
+# library, which is the one R has to be able to load a package from at
+# startup. Switching it to the project library is this file's job. The path in
+# `.Renviron` is *relative*, because the file is committed to version control
+# and has to work from any clone location, while `.onLoad()` receives an
+# already-resolved absolute `libname` -- so this is also where the relative
+# path becomes an absolute one. That matters for child processes (callr,
+# parallel, `R CMD`, `Rscript` from a subdirectory): they inherit the
+# environment variable, not our `.libPaths()` call, so a child started in a
+# subdirectory would otherwise look for `<subdir>/.rvenv/...`.
 
 .onLoad <- function(libname, pkgname) {
-  venv <- normalizePath(dirname(libname), mustWork = FALSE)
+  # libname is `<venv>/sys/lib`, this package's own library.
+  venv <- normalizePath(dirname(dirname(libname)), mustWork = FALSE)
   lib <- file.path(venv, "lib")
 
   # Whether a parent process activated this project already. Note that this
@@ -50,6 +53,12 @@
     RVENV = venv
   )
 
+  # Note that `lib` may not exist yet: `rig proj sync` creates it, and this
+  # package does not, because it must not write to the project. `.libPaths()`
+  # silently drops directories that are not there, so before the first sync
+  # the project library is simply not on the path -- which is also when the
+  # "not synced" warning below fires.
+  #
   # `include.site` was added in R 4.2.0.
   if (getRversion() >= "4.2.0") {
     .libPaths(lib, include.site = FALSE)

@@ -11,3 +11,4 @@ Description: Loaded automatically via R_DEFAULT_PACKAGES from a project's
 License: MIT + file LICENSE
 Encoding: UTF-8
 Depends: R (>= 3.0.0)
+Built: R 4.0.0; ; 2020-04-24 00:00:00 UTC; unix

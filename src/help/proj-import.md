@@ -47,20 +47,19 @@ to point to a different file.
 A full import sets up a whole project, not just its manifest, so it creates
 the same files as [`rig proj init`](#rig-proj-init): `rproj.toml`, plus the
 part of the project's virtual environment (`.rvenv`) that belongs in version
-control — `.Renviron`, a marked block in `.gitignore`, `.rvenv/lib/.gitignore`
-and the `.rvenv/lib/rig` shim package. See
+control — `.Renviron`, a marked block in `.gitignore` and the
+`.rvenv/sys/lib/rvenv` shim package. See
 [`rig proj init`](#rig-proj-init) for what each of them is for. The rest of
 `.rvenv` is machine-specific and is created by
 [`rig proj sync`](#rig-proj-sync).
 
 `--dependencies` only writes `rproj.toml` and never touches `.rvenv`.
 
-`--r-version` sets the R version the project is for. It does not have to be
-installed. It only decides which build of the `.rvenv/lib/rig` shim package
-the project gets, the manifest's R requirement always comes from the
-`DESCRIPTION` file. The default is the R version the `DESCRIPTION` file
-requires, or, if it does not require one, the current default R version, or
-the current R release.
+`--r-version` sets the R version the project is set up for. It does not have to
+be installed, and it does not change what is written: the manifest's R
+requirement always comes from the `DESCRIPTION` file, and the
+`.rvenv/sys/lib/rvenv` shim package works with every R. The default is the
+current default R version, or the current R release if there is no default.
 
 rig refuses to overwrite any of the `.rvenv` files above; pass `--force` to
 replace them. `--force` still does not rewrite the whole `.gitignore`, only

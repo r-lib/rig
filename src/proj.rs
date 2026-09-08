@@ -40,8 +40,8 @@ use crate::rproj::{
     RPROJ_LOCK_VERSION, RPROJ_MANIFEST_FILE,
 };
 use crate::rvenv::{
-    existing_targets, find_project_root, project_library, read_rvenv_cfg, rvenv_init, rvenv_sync,
-    write_sync_stamp, RvenvCfg, RPROJ_LOCK_FILE,
+    existing_targets, find_project_root, project_library, project_shim_package, read_rvenv_cfg,
+    rvenv_init, rvenv_sync, write_sync_stamp, RvenvCfg, RPROJ_LOCK_FILE,
 };
 use crate::solver::*;
 use crate::textfmt::reflow;
@@ -106,10 +106,9 @@ fn sc_proj_init(
         check_project_conflicts(&root)?;
     }
 
-    // The R version decides both the manifest's R requirement and which
-    // pre-built shim package the project gets. It does not have to be
-    // installed, nothing we write here refers to an R installation.
-    let rver = resolve_project_r_version(args, None)?;
+    // The R version the manifest's R requirement is derived from. It does not
+    // have to be installed, nothing we write here refers to an R installation.
+    let rver = resolve_project_r_version(args)?;
 
     // Project name defaults to the current directory's name.
     let name = root
@@ -123,7 +122,7 @@ fn sc_proj_init(
     fs::write(&manifest_path, toml::to_string_pretty(&manifest)?)?;
 
     let mut created = vec![manifest_path];
-    created.extend(rvenv_init(&root, &rver)?);
+    created.extend(rvenv_init(&root)?);
 
     for path in &created {
         let name = path.strip_prefix(&root).unwrap_or(path).to_string_lossy();
@@ -168,18 +167,14 @@ pub fn check_project_conflicts(root: &Path) -> Result<(), Box<dyn Error>> {
 
 /// Write the tracked part of the `.rvenv` layout for a freshly written
 /// manifest, and report every file the project now has.
-///
-/// `declared` is the project's own R requirement, see
-/// [`resolve_project_r_version`].
 pub fn init_rvenv_for_manifest(
     args: &ArgMatches,
     root: &Path,
     manifest_path: &Path,
-    declared: Option<&str>,
 ) -> Result<(), Box<dyn Error>> {
-    let rver = resolve_project_r_version(args, declared)?;
+    let rver = resolve_project_r_version(args)?;
     let mut created = vec![manifest_path.to_path_buf()];
-    created.extend(rvenv_init(root, &rver)?);
+    created.extend(rvenv_init(root)?);
     for path in &created {
         let name = path.strip_prefix(root).unwrap_or(path).to_string_lossy();
         OUTPUT.success(&format!("Created {}", name));
@@ -192,22 +187,16 @@ pub fn init_rvenv_for_manifest(
     Ok(())
 }
 
-/// The R version to build the `.rvenv` layout for: an explicit
-/// `--r-version`, else the version the project itself declares, else the
-/// default R version, else the current R release.
+/// The R version a new project is set up for: an explicit `--r-version`, else
+/// the default R version, else the current R release.
 ///
-/// `declared` is the project's own R requirement, e.g. `">= 4.1"` from a
-/// `DESCRIPTION`'s `Depends`. It wins over the installed default because the
-/// shim has to work with the oldest R the project claims to support.
-fn resolve_project_r_version(
-    args: &ArgMatches,
-    declared: Option<&str>,
-) -> Result<String, Box<dyn Error>> {
+/// Deliberately *not* the R version the project itself declares a minimum of:
+/// what the project is set up for should be the R it will be locked and synced
+/// against, see [`proj_lock_r_version`]. Nothing in the committed `.rvenv`
+/// layout is tied to an R version.
+fn resolve_project_r_version(args: &ArgMatches) -> Result<String, Box<dyn Error>> {
     if let Some(rv) = args.get_one::<String>("r-version") {
         return Ok(rv.to_string());
-    }
-    if let Some(rv) = declared.and_then(r_version_from_requirement) {
-        return Ok(rv);
     }
     if let Some(rv) = get_default_r_version()? {
         return Ok(rv);
@@ -231,19 +220,6 @@ fn resolve_project_r_version(
             bail!("{}", msg)
         }
     }
-}
-
-/// The bare version in an R requirement, e.g. `">= 4.1"` -> `"4.1"`.
-///
-/// Only used to pick a shim bracket, which tolerates a missing minor
-/// version, so the first run of digits and dots is enough.
-fn r_version_from_requirement(req: &str) -> Option<String> {
-    let start = req.find(|c: char| c.is_ascii_digit())?;
-    let rest = &req[start..];
-    let end = rest
-        .find(|c: char| !c.is_ascii_digit() && c != '.')
-        .unwrap_or(rest.len());
-    Some(rest[..end].trim_end_matches('.').to_string())
 }
 
 /// Current release version or None on error.
@@ -454,8 +430,7 @@ fn sc_proj_import(
     // A full import sets up a whole project, not just its manifest, so it
     // creates the same `.rvenv` layout as `rig proj init`.
     if !dependencies_only {
-        let declared = manifest.r_requirement();
-        init_rvenv_for_manifest(args, &root, path, declared.as_deref())?;
+        init_rvenv_for_manifest(args, &root, path)?;
     }
 
     Ok(())
@@ -2160,26 +2135,31 @@ pub(crate) fn proj_sync(
     };
 
     // Library path: --library, or the project library by default. The
-    // project library is created by `rig proj init`, together with the
-    // `.gitignore` files that keep it in version control, so do not create
-    // it here.
+    // project library itself is created below, but only for a project `rig
+    // proj init` has already set up: the shim package is what init writes,
+    // and writing tracked project files is always an explicit request.
     let library_path = match &opts.library {
         Some(lib) => lib.clone(),
         None => {
-            let lib = project_library(root);
-            if !lib.exists() {
+            if !project_shim_package(root).exists() {
                 let msg = format!(
-                    "No project library in {}, run `rig proj init` first \
+                    "No project environment in {}, run `rig proj init` first \
                      (or pass --library)",
-                    lib.display()
+                    root.display()
                 );
                 OUTPUT.error(&msg);
                 error!("{}", msg);
                 bail!("{}", msg);
             }
-            lib
+            project_library(root)
         }
     };
+
+    // `rig proj init` does not create the project library, this is where it
+    // comes from. Create it now rather than just before the installs: an
+    // up-to-date project with nothing to install still gets a sync stamp
+    // written into it.
+    fs::create_dir_all(&library_path)?;
 
     // Everything below installs against the R version the lock file was
     // solved for, so resolve (and, unless --no-install-r, install) it before
@@ -2238,11 +2218,7 @@ pub(crate) fn proj_sync(
 
     // A package already in the library, at the version and provenance the
     // lockfile asks for, does not need to be downloaded or reinstalled.
-    let already_installed = if library_path.exists() {
-        read_installed(&library_path)?
-    } else {
-        vec![]
-    };
+    let already_installed = read_installed(&library_path)?;
     let plan = plan_installs(wanted, &already_installed, false);
     print_plan(&format!("({})", library_path.display()), &plan);
     let todo: Vec<&RprojLockPackage> = plan
@@ -2251,7 +2227,7 @@ pub(crate) fn proj_sync(
         .map(|p| p.package)
         .collect();
 
-    // The shim package in the project library compares this stamp to
+    // The `rvenv` package in `.rvenv/sys/lib` compares this stamp to
     // `rproj.lock` and warns in every R session while they differ, so it has
     // to be updated even when there was nothing to install.
     if todo.is_empty() {
@@ -2274,9 +2250,6 @@ pub(crate) fn proj_sync(
 
     // Get cache directory where packages were downloaded
     let cache_dir = get_cache_dir()?;
-
-    // Ensure library directory exists
-    fs::create_dir_all(&library_path)?;
 
     // Install with the R version the lock file was solved for, not whatever
     // is on `PATH`: an installed R package is tied to the R minor version.

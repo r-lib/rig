@@ -13,7 +13,7 @@ use crate::common::*;
 use crate::output::OUTPUT;
 use crate::proj::{proj_read_manifest_opt, proj_sync, ProjSyncOptions};
 use crate::rproj::Bin;
-use crate::rvenv::{find_project_root, project_library, project_r_wrapper, rvenv_sync_needed};
+use crate::rvenv::{find_project_root, project_r_wrapper, project_shim_package, rvenv_sync_needed};
 
 #[cfg(target_os = "macos")]
 use crate::macos::*;
@@ -150,13 +150,13 @@ fn project_r_binary(args: &ArgMatches, dry_run: bool) -> Result<Option<String>, 
     };
 
     // A project that has never been initialized has no environment to use.
-    // `rig proj init` writes the committed part of `.rvenv`, including the
-    // library directory itself, and neither `rig proj sync` nor `rig run`
-    // creates it: writing tracked project files is always an explicit
-    // request. Fail rather than fall back to the default R, the same way
-    // `rig proj sync` does -- inside a project, `rig run` running a
-    // non-project R would be the more surprising outcome.
-    if !project_library(&root).exists() {
+    // `rig proj init` writes the committed part of `.rvenv`, the shim package
+    // in `.rvenv/sys/lib`, and neither `rig proj sync` nor `rig run` writes
+    // it: writing tracked project files is always an explicit request. Fail
+    // rather than fall back to the default R, the same way `rig proj sync`
+    // does -- inside a project, `rig run` running a non-project R would be
+    // the more surprising outcome.
+    if !project_shim_package(&root).exists() {
         let msg = format!(
             "No project environment in {}, run `rig proj init` first \
              (or `rig run --no-project`)",
