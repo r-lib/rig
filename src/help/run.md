@@ -21,7 +21,8 @@ rig run --cmd <command>    # run `R CMD <command>`
 ## Projects
 
 If the current directory is inside a [project](proj.qmd) (i.e. rig finds an
-`rproj.toml`, an `rproj.lock` or an `.rvenv` directory at or above it), then
+`rproj.toml`, an `rproj.lock`, an `.rvenv` directory or an `.rvenvlib`
+directory at or above it), then
 `rig run` uses the project's own environment instead of the default R
 version: it runs `.rvenv/bin/R`, which sets the project's package library
 and repositories, and it uses the R version the project's lock file names.
@@ -38,7 +39,7 @@ Two things turn this off, and run the default R version instead:
 - `--no-project`.
 
 If the project has not been initialized at all, i.e. it has no
-`.rvenv/sys` directory, then `rig run` fails and asks you to run
+`.rvenvlib` directory, then `rig run` fails and asks you to run
 `rig proj init`, instead of quietly running an R that is not the project's.
 
 ## Project scripts

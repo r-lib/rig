@@ -1,7 +1,7 @@
 //! `cargo xtask gen-rvenv-shim [--check]`
 //!
 //! Generates the two committed data files that `rig proj init` needs to write
-//! the `rvenv` shim R package into a project's `.rvenv/sys/lib/rvenv/`:
+//! the `rvenv` shim R package into a project's `.rvenvlib/rvenv/`:
 //! `src/data/rvenv-shim/DESCRIPTION` and `src/data/rvenv-shim/package.rds`.
 //! The package source is `src/data/rvenv-pkg/`; its `NAMESPACE`, `LICENSE` and
 //! `R/rvenv.R` are embedded into the `rig` binary verbatim, so only these two

@@ -8,20 +8,24 @@
 # `.Rprofile` for this, because that would shadow the user's own
 # `~/.Rprofile` entirely.
 #
-# `.Renviron` sets `R_LIBS_USER` to `.rvenv/sys/lib`, this package's own
-# library, which is the one R has to be able to load a package from at
-# startup. Switching it to the project library is this file's job. The path in
+# `.Renviron` sets `R_LIBS_USER` to `.rvenvlib`, this package's own library,
+# which is the one R has to be able to load a package from at startup.
+# Switching it to the project library is this file's job. The path in
 # `.Renviron` is *relative*, because the file is committed to version control
 # and has to work from any clone location, while `.onLoad()` receives an
 # already-resolved absolute `libname` -- so this is also where the relative
 # path becomes an absolute one. That matters for child processes (callr,
 # parallel, `R CMD`, `Rscript` from a subdirectory): they inherit the
 # environment variable, not our `.libPaths()` call, so a child started in a
-# subdirectory would otherwise look for `<subdir>/.rvenv/...`.
+# subdirectory would otherwise look for `<subdir>/.rvenvlib`.
 
 .onLoad <- function(libname, pkgname) {
-  # libname is `<venv>/sys/lib`, this package's own library.
-  venv <- normalizePath(dirname(dirname(libname)), mustWork = FALSE)
+  # libname is `<root>/.rvenvlib`, this package's own library. `venv`, used
+  # throughout this file, is `<root>/.rvenv`, the machine-specific
+  # environment `rig proj sync` builds -- the same path the RVENV
+  # environment variable holds when a wrapper script started R.
+  root <- normalizePath(dirname(libname), mustWork = FALSE)
+  venv <- file.path(root, ".rvenv")
   lib <- file.path(venv, "lib")
 
   # Whether a parent process activated this project already. Note that this
@@ -47,7 +51,7 @@
 
   # `lib` may not exist: `rig proj sync` creates it, and this package does
   # not, because it must not write to the project. There is nothing to
-  # activate then, and leaving R_LIBS_USER pointing at `<venv>/sys/lib` would
+  # activate then, and leaving R_LIBS_USER pointing at `<root>/.rvenvlib` would
   # leave the session with no user library at all: `install.packages()` would
   # want to write into rig's own directory. So put the library path back to
   # what a session outside the project would have had, and only warn.
@@ -173,7 +177,7 @@ warn_wrong_r_version <- function(want, running) {
 }
 
 # Undoes what the project `.Renviron` did to `R_LIBS_USER`, for a project
-# that has no library yet. `.Renviron` pointed it at `<venv>/sys/lib`, this
+# that has no library yet. `.Renviron` pointed it at `<root>/.rvenvlib`, this
 # package's own library, only to get R far enough to load this package, and
 # `libname` is that directory. If the user's own `~/.Renviron` (re-read
 # above) set `R_LIBS_USER`, that value is now in place and is what we keep;
@@ -203,7 +207,7 @@ restore_r_libs_user <- function(libname, lib) {
 
   # Same as R's own startup code, in `<R_HOME>/library/base/R/Rprofile`:
   # R_LIBS first, then R_LIBS_USER, with the site and system libraries added
-  # by `.libPaths()` itself. This also drops `<venv>/sys/lib`, which
+  # by `.libPaths()` itself. This also drops `<root>/.rvenvlib`, which
   # `.Renviron` put on the path at startup.
   .libPaths(c(keep(Sys.getenv("R_LIBS")), keep(user)))
 
@@ -229,7 +233,7 @@ restore_r_libs_user <- function(libname, lib) {
 # On a rig-managed R installation the user library may hold several named
 # libraries (`rig library`), in `__<name>` subdirectories, with the active one
 # named in a `___default` file. rig's `Rprofile` hook resolves that before the
-# default packages are loaded, but it did so for `<venv>/sys/lib` in this
+# default packages are loaded, but it did so for `<root>/.rvenvlib` in this
 # session, so we resolve it here too. Unlike that hook, we never create a
 # directory.
 default_r_libs_user <- function() {

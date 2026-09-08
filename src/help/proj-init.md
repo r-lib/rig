@@ -26,10 +26,10 @@ committed, so that a fresh clone of the project works right away:
   the project. This is what makes the project work in an editor (RStudio,
   Positron, VS Code), which starts R itself.
 - `.gitignore` — a marked `# rig rvenv start` / `# rig rvenv end` block that
-  ignores everything in `.rvenv` except rig's own `sys` directory. An existing
-  `.gitignore` is *not* replaced: rig only adds or refreshes its own block,
-  and leaves the rest of the file alone.
-- `.rvenv/sys/lib/rvenv` — a small R package that rig writes and manages. It
+  ignores all of `.rvenv`. An existing `.gitignore` is *not* replaced: rig
+  only adds or refreshes its own block, and leaves the rest of the file
+  alone.
+- `.rvenvlib/rvenv` — a small R package that rig writes and manages. It
   is not a dependency of your project, and it lives in rig's own library
   rather than in the project library, which holds only your project's
   packages. `.Renviron` loads it in every R session started in the project,
@@ -37,9 +37,10 @@ committed, so that a fresh clone of the project works right away:
   — so that R processes started from a subdirectory still use it — and warns
   while the project is out of sync with `rproj.lock`.
 
-The rest of `.rvenv`, including the project library `.rvenv/lib` itself, is
+`.rvenv` itself, including the project library `.rvenv/lib`, is
 machine-specific and is created by [`rig proj sync`](#rig-proj-sync), which
-installs the project's dependencies into it.
+installs the project's dependencies into it. It can be deleted and rebuilt at
+any time; `.rvenvlib` is the only part of the environment that is committed.
 
 Note that `R --vanilla` ignores `.Renviron`, and so does not use the project
 library.

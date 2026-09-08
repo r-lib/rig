@@ -2287,7 +2287,7 @@ pub(crate) fn proj_sync(
         .map(|p| p.package)
         .collect();
 
-    // The `rvenv` package in `.rvenv/sys/lib` compares this stamp to
+    // The `rvenv` package in `.rvenvlib` compares this stamp to
     // `rproj.lock` and warns in every R session while they differ, so it has
     // to be updated even when there was nothing to install.
     if todo.is_empty() {

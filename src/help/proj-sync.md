@@ -12,7 +12,7 @@ there yet. If the project has no `rproj.lock` yet, rig runs
 [`rig proj lock`](#rig-proj-lock) with its default options first, to create
 one. The project itself has to have been set up by
 [`rig proj init`](#rig-proj-init) or [`rig proj import`](#rig-proj-import), so
-`rig proj sync` fails if `.rvenv/sys` is missing. Pass `--library` to install
+`rig proj sync` fails if `.rvenvlib` is missing. Pass `--library` to install
 somewhere else instead.
 
 Development dependencies are installed by default. `--no-dev` leaves them
@@ -56,9 +56,9 @@ if none of the lock file's targets match this machine at all.
 
 ## What sync writes
 
-Everything below `.rvenv`, except rig's own `sys` directory, is
-machine-specific and is not committed. The project library is filled in from
-the lock file, and the rest is rewritten on every sync:
+Everything below `.rvenv` is machine-specific and is not committed. The
+project library is filled in from the lock file, and the rest is rewritten on
+every sync:
 
 - `.rvenv/bin/R` and `.rvenv/bin/Rscript`, wrapper scripts that set the
   project's environment and then hand over to the real R. Run them directly,
@@ -84,6 +84,6 @@ the lock file, and the rest is rewritten on every sync:
 project when started through the wrappers.
 
 After a successful sync rig records the lock file it installed from in
-`.rvenv/lib/.synced`. The `rvenv` package in `.rvenv/sys/lib` compares the
+`.rvenv/lib/.synced`. The `rvenv` package in `.rvenvlib` compares the
 two, and warns in every R session while the project library does not match
 `rproj.lock`.

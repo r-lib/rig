@@ -150,8 +150,8 @@ fn project_r_binary(args: &ArgMatches, dry_run: bool) -> Result<Option<String>, 
     };
 
     // A project that has never been initialized has no environment to use.
-    // `rig proj init` writes the committed part of `.rvenv`, the shim package
-    // in `.rvenv/sys/lib`, and neither `rig proj sync` nor `rig run` writes
+    // `rig proj init` writes the committed part of the environment, the shim
+    // package in `.rvenvlib`, and neither `rig proj sync` nor `rig run` writes
     // it: writing tracked project files is always an explicit request. Fail
     // rather than fall back to the default R, the same way `rig proj sync`
     // does -- inside a project, `rig run` running a non-project R would be

@@ -8,9 +8,9 @@
 //! project-root/
 //!   rproj.toml              # tracked -- manifest
 //!   .Renviron               # tracked -- in-session activation
-//!   .gitignore              # tracked -- /.rvenv/* + !/.rvenv/sys
-//!   .rvenv/
-//!     sys/lib/rvenv/        # tracked -- the shim package
+//!   .gitignore              # tracked -- ignores /.rvenv/
+//!   .rvenvlib/
+//!     rvenv/                # tracked -- the shim package
 //! ```
 //!
 //! `rig proj sync` adds the machine-specific rest, none of which is
@@ -28,18 +28,17 @@
 //!
 //! Two things here are less obvious than they look.
 //!
-//! `.rvenv/sys` is rig's own half of the environment, kept out of
-//! `.rvenv/lib` so that the project library holds nothing but the project's
-//! packages. It is the only committed part, and `/.rvenv/*` has to be
-//! followed by `!/.rvenv/sys` because git will not look inside an ignored
-//! directory for a nested exception.
+//! `.rvenvlib` is rig's own half of the environment, kept out of `.rvenv`
+//! entirely -- not just out of `.rvenv/lib` -- so that `.rvenv` holds nothing
+//! but machine-specific output of `rig proj sync` and can be deleted and
+//! rebuilt at any time without touching version control.
 //!
-//! The shim package in `.rvenv/sys/lib/rvenv` is committed, and written by
+//! The shim package in `.rvenvlib/rvenv` is committed, and written by
 //! `rig proj init` rather than installed by `rig proj sync`, because its whole
 //! job is to be there *before* the first sync: `.Renviron` names it in
 //! `R_DEFAULT_PACKAGES`, so without it R prints its own unhelpful "package
 //! 'rvenv' in options(\"defaultPackages\") was not found". That is also why
-//! `.Renviron` points `R_LIBS_USER` at `.rvenv/sys/lib` rather than at the
+//! `.Renviron` points `R_LIBS_USER` at `.rvenvlib` rather than at the
 //! project library: it is the one library R has to be able to load a package
 //! from at startup. The shim then re-points `R_LIBS_USER` at the absolute
 //! `.rvenv/lib` and makes that `.libPaths()[1]`. See `src/data/rvenv-pkg` for
@@ -77,7 +76,7 @@ pub const RVENV_DIR: &str = ".rvenv";
 pub const RVENV_LIB_SUBDIR: &str = "lib";
 pub const RVENV_BIN_SUBDIR: &str = "bin";
 pub const RVENV_ETC_SUBDIR: &str = "etc";
-pub const RVENV_SYS_SUBDIR: &str = "sys";
+pub const RVENV_SHIM_DIR: &str = ".rvenvlib";
 pub const RVENV_SHIM_PKG: &str = "rvenv";
 pub const RVENV_RENVIRON_FILE: &str = ".Renviron";
 pub const RVENV_GITIGNORE_FILE: &str = ".gitignore";
@@ -177,23 +176,23 @@ fn renviron_body() -> &'static str {
 #
 # Note that `R --vanilla` ignores this file entirely.
 RVENV_R_LIBS_USER=${R_LIBS_USER}
-R_LIBS_USER=.rvenv/sys/lib
+R_LIBS_USER=.rvenvlib
 R_DEFAULT_PACKAGES=rvenv,datasets,utils,grDevices,graphics,stats,methods
 "
 }
 
 /// The block rig manages in the project's root `.gitignore`. Everything in
-/// `.rvenv` is machine-specific except rig's own `sys` directory.
+/// `.rvenv` is machine-specific; the pre-built rvenv package a fresh clone
+/// needs before the first `rig proj sync` lives in `.rvenvlib` instead, which
+/// is tracked and needs no exception here.
 fn root_gitignore_block() -> String {
     format!(
         "\
 {}
-# Everything in .rvenv is machine-specific, except rig's own sys directory,
-# which holds the pre-built rvenv package a fresh clone needs before the
-# first `rig proj sync`. git does not look inside an ignored directory for a
-# nested exception, hence the second line.
-/.rvenv/*
-!/.rvenv/sys
+# Everything in .rvenv is machine-specific output of `rig proj sync`; it can
+# be deleted and rebuilt at any time. The committed rvenv shim package lives
+# in .rvenvlib instead.
+/.rvenv/
 {}
 ",
         GITIGNORE_START, GITIGNORE_END
@@ -212,23 +211,22 @@ pub fn project_library(root: &Path) -> PathBuf {
     root.join(RVENV_DIR).join(RVENV_LIB_SUBDIR)
 }
 
-/// `<root>/.rvenv/sys/lib`, rig's own library inside the project.
+/// `<root>/.rvenvlib`, rig's own library inside the project.
 ///
 /// It holds nothing but the shim package, and is the only committed part of
-/// `.rvenv`. Keeping it out of [`project_library`] means the project library
-/// contains only the project's own packages.
-pub fn project_sys_library(root: &Path) -> PathBuf {
-    root.join(RVENV_DIR)
-        .join(RVENV_SYS_SUBDIR)
-        .join(RVENV_LIB_SUBDIR)
+/// the environment. Keeping it out of `.rvenv` entirely means `.rvenv` holds
+/// only machine-specific output, and [`project_library`] contains only the
+/// project's own packages.
+pub fn project_shim_library(root: &Path) -> PathBuf {
+    root.join(RVENV_SHIM_DIR)
 }
 
-/// `<root>/.rvenv/sys/lib/rvenv`, the shim package.
+/// `<root>/.rvenvlib/rvenv`, the shim package.
 ///
 /// Also the marker of an initialized project: `rig proj init` writes it, and
 /// nothing else creates it.
 pub fn project_shim_package(root: &Path) -> PathBuf {
-    project_sys_library(root).join(RVENV_SHIM_PKG)
+    project_shim_library(root).join(RVENV_SHIM_PKG)
 }
 
 /// `<root>/.rvenv/bin`, the wrapper scripts and the activation scripts.
@@ -297,13 +295,15 @@ pub fn rvenv_sync_needed(root: &Path) -> Result<Option<String>, Box<dyn Error>> 
 }
 
 /// The project root at or above `start`: the nearest directory holding an
-/// `rproj.toml`, an `rproj.lock` or an `.rvenv` directory.
+/// `rproj.toml`, an `rproj.lock`, an `.rvenv` directory or an `.rvenvlib`
+/// directory.
 pub fn find_project_root(start: &Path) -> Option<PathBuf> {
     let mut dir = start;
     loop {
         if dir.join(RPROJ_MANIFEST_FILE).exists()
             || dir.join(RPROJ_LOCK_FILE).exists()
             || dir.join(RVENV_DIR).is_dir()
+            || dir.join(RVENV_SHIM_DIR).is_dir()
         {
             return Some(dir.to_path_buf());
         }
@@ -458,7 +458,7 @@ pub fn write_shim_package(lib: &Path) -> Result<(), Box<dyn Error>> {
 ///
 /// The caller is expected to have run the [`existing_targets`] check first.
 pub fn rvenv_init(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
-    let sys_lib = project_sys_library(root);
+    let shim_lib = project_shim_library(root);
 
     let renviron = root.join(RVENV_RENVIRON_FILE);
     write_atomically(&renviron, renviron_body().as_bytes())?;
@@ -467,7 +467,7 @@ pub fn rvenv_init(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
 
     // The project library itself is not created here: `rig proj sync` makes
     // it, and until then there is nothing to put in it.
-    write_shim_package(&sys_lib)?;
+    write_shim_package(&shim_lib)?;
 
     Ok(vec![
         renviron,
@@ -846,7 +846,7 @@ mod tests {
         let body = renviron_body();
         // Not the project library: this is the library the shim itself is
         // loaded from, the shim switches to the project library.
-        assert!(body.contains("\nR_LIBS_USER=.rvenv/sys/lib\n"));
+        assert!(body.contains("\nR_LIBS_USER=.rvenvlib\n"));
         // Recorded before R_LIBS_USER is overwritten, so that the shim can
         // restore it for a project that has no library yet.
         assert!(body.contains("\nRVENV_R_LIBS_USER=${R_LIBS_USER}\nR_LIBS_USER="));
@@ -858,12 +858,12 @@ mod tests {
     }
 
     #[test]
-    fn the_gitignore_block_un_ignores_the_sys_directory() {
+    fn the_gitignore_block_ignores_all_of_rvenv() {
         let root = root_gitignore_block();
-        assert!(root.contains("\n/.rvenv/*\n"));
-        assert!(root.contains("\n!/.rvenv/sys\n"));
-        // The project library is machine-specific, all of it.
-        assert!(!root.contains("!/.rvenv/lib"));
+        assert!(root.contains("\n/.rvenv/\n"));
+        // The shim package lives outside .rvenv entirely, so there is no
+        // exception to carve out.
+        assert!(!root.contains("!/.rvenv"));
     }
 
     #[test]
@@ -882,7 +882,7 @@ mod tests {
         update_root_gitignore(tmp.path()).unwrap();
         let text = fs::read_to_string(&path).unwrap();
         assert!(text.starts_with("*.Rproj\n.Rhistory\n"));
-        assert!(text.contains("!/.rvenv/sys"));
+        assert!(text.contains("/.rvenv/"));
     }
 
     #[test]
@@ -1028,7 +1028,7 @@ mod tests {
         let mut written = written;
         written.sort();
         assert_eq!(written, expected);
-        assert!(tmp.path().join(".rvenv/sys/lib/rvenv/DESCRIPTION").exists());
+        assert!(tmp.path().join(".rvenvlib/rvenv/DESCRIPTION").exists());
         // The project library is `rig proj sync`'s to create.
         assert!(!project_library(tmp.path()).exists());
     }
