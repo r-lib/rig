@@ -19,9 +19,8 @@ use std::path::{Path, PathBuf};
 use log::debug;
 use simple_error::bail;
 
-use crate::cache::get_cache_dir;
+use crate::cache::{artifact_cache_key, get_cache_dir};
 use crate::install::{format_linkingto, PackageInfo};
-use crate::pak::artifact_cache_key;
 use crate::platform::detect_platform;
 use crate::repos::cranlike_metadata::minor_r_version;
 use crate::rversion::OsVersion;

@@ -126,7 +126,7 @@ fn direct_deps(
 /// requirement that would force an older version — with different dependencies
 /// — is not honored. That is the same approximation
 /// [`crate::solver::RPackageRegistry::prefetch_binaries`] makes; a full,
-/// version-consistent resolution is what `rig proj solve` is for.
+/// version-consistent resolution is what `rig proj lock` is for.
 fn recursive_deps(
     loader: &dyn PackageVersionLoader,
     package: &str,

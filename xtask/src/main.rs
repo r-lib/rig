@@ -1,8 +1,11 @@
 //! Dev-only build tasks for rig. Run with `cargo xtask <task>`.
 //!
 //! Tasks:
-//!   gen-help            Regenerate src/help-generated.in from src/help/*.md
-//!   gen-help --check    Verify src/help-generated.in is up to date (CI guard)
+//!   gen-help                  Regenerate src/help-generated.in from src/help/*.md
+//!   gen-help --check          Verify src/help-generated.in is up to date (CI guard)
+//!   gen-rvenv-shim            Rebuild the committed shim R packages in
+//!                             src/data/rvenv-shim from src/data/rvenv-pkg
+//!   gen-rvenv-shim --check    Verify they match the source (CI guard)
 //!
 //! The help prose for each command lives in `src/help/*.md`: the lead paragraph
 //! (before the first heading) is the short `about`, and the rest is the long
@@ -16,6 +19,7 @@
 //! explicitly via `cargo xtask`.
 
 mod render;
+mod rvenv_shim;
 
 use std::fs;
 use std::path::PathBuf;
@@ -132,9 +136,14 @@ fn main() -> ExitCode {
             let check = args[1..].iter().any(|a| a == "--check");
             gen_help(check)
         }
+        Some("gen-rvenv-shim") => {
+            let check = args[1..].iter().any(|a| a == "--check");
+            rvenv_shim::gen_rvenv_shim(&workspace_root(), check)
+        }
         other => {
             eprintln!(
-                "unknown task: {}\n\nUsage:\n  cargo xtask gen-help [--check]",
+                "unknown task: {}\n\nUsage:\n  cargo xtask gen-help [--check]\n  \
+                 cargo xtask gen-rvenv-shim [--check]",
                 other.unwrap_or("(none)")
             );
             ExitCode::FAILURE

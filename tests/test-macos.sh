@@ -313,3 +313,138 @@ teardown() {
     fi
     echo $output | grep -q -- "com.apple.security.get-task-allow"
 }
+
+@test "proj init" {
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf myproj && mkdir myproj && cd myproj
+
+    # No R needs to be installed for the requested version, `rig proj init`
+    # does not touch an R installation.
+    run rig proj init -r 4.1
+    [[ "$status" -eq 0 ]]
+    [[ -f rproj.toml ]]
+    [[ -f .Renviron ]]
+    [[ -f .gitignore ]]
+    [[ -f .rvenvlib/rvenv/DESCRIPTION ]]
+    grep -q '^name = "myproj"$' rproj.toml
+    grep -q '^R = ">= 4.1"$' rproj.toml
+    grep -q '^R_LIBS_USER=.rvenvlib$' .Renviron
+    grep -q '^/.rvenv/$' .gitignore
+    grep -q '^Package: rvenv$' .rvenvlib/rvenv/DESCRIPTION
+    # The project library is `rig proj sync`'s to create
+    [[ ! -d .rvenv/lib ]]
+
+    # The IDE leg: a plain R session in the project picks up the shim
+    # package. Without a project library it warns and leaves the library path
+    # as it was, instead of pointing the session at rig's own directory.
+    run env -u RVENV R-4.1 -q -s -e 'cat(.libPaths()[1], Sys.getenv("R_LIBS_USER"))'
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "Project is not synced"
+    [[ "$output" != *".rvenv"* ]]
+
+    # Once the library exists, the shim resolves it and puts it first
+    mkdir -p .rvenv/lib
+    run env -u RVENV R-4.1 -q -s -e 'cat(.libPaths()[1])'
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "myproj/[.]rvenv/lib"
+    rmdir .rvenv/lib
+
+    # Refuses to overwrite, and says what is in the way
+    run rig proj init -r 4.1
+    [[ "$status" -ne 0 ]]
+    echo "$output" | grep -q "rproj.toml"
+    echo "$output" | grep -q -- "--force"
+
+    # --force keeps the user's own ignore rules, rig only manages its block
+    echo "*.log" >> .gitignore
+    run rig proj init -r 4.1 --force
+    [[ "$status" -eq 0 ]]
+    grep -q '^[*].log$' .gitignore
+    [[ "$(grep -c '^# rig rvenv start$' .gitignore)" -eq 1 ]]
+}
+
+@test "proj import" {
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf impproj && mkdir impproj && cd impproj
+
+    cat > DESCRIPTION <<-EOF
+	Package: impproj
+	Version: 1.2.3
+	Title: A Test Package
+	Depends: R (>= 4.1)
+	Imports: jsonlite
+	EOF
+
+    # A full import sets up the whole project, not just the manifest.
+    run rig proj import
+    [[ "$status" -eq 0 ]]
+    [[ -f rproj.toml ]]
+    [[ -f .Renviron ]]
+    [[ -f .gitignore ]]
+    [[ -f .rvenvlib/rvenv/DESCRIPTION ]]
+    grep -q '^name = "impproj"$' rproj.toml
+    grep -q '^version = "1.2.3"$' rproj.toml
+    grep -q '^R = ">= 4.1"$' rproj.toml
+    grep -q '^jsonlite = ' rproj.toml
+
+    # Refuses to overwrite the manifest, and says what to do instead
+    run rig proj import
+    [[ "$status" -ne 0 ]]
+    echo "$output" | grep -q "rproj.toml"
+    echo "$output" | grep -q -- "--dependencies"
+
+    # Refuses to overwrite the .rvenv files, and says what is in the way
+    rm rproj.toml
+    run rig proj import
+    [[ "$status" -ne 0 ]]
+    echo "$output" | grep -q ".Renviron"
+    echo "$output" | grep -q -- "--force"
+
+    run rig proj import --force
+    [[ "$status" -eq 0 ]]
+
+    # --dependencies only writes the manifest
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf impdeps && mkdir impdeps && cd impdeps
+    cp ../impproj/DESCRIPTION .
+    run rig proj import --dependencies
+    [[ "$status" -eq 0 ]]
+    [[ -f rproj.toml ]]
+    [[ ! -e .rvenv ]]
+    [[ ! -e .Renviron ]]
+}
+
+@test "proj add" {
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf addproj && mkdir addproj && cd addproj
+    run rig proj init -r 4.1
+    [[ "$status" -eq 0 ]]
+
+    # --no-lock only edits the manifest, so none of this needs the network
+    run rig proj add praise --no-lock
+    [[ "$status" -eq 0 ]]
+    grep -q '^praise = "\*"$' rproj.toml
+
+    # a bare version means "compatible with", written out as such
+    run rig proj add jsonlite@1.8.0 --no-lock
+    [[ "$status" -eq 0 ]]
+    grep -q '^jsonlite = "\^1.8.0"$' rproj.toml
+
+    # --dev adds to the test dependency group
+    run rig proj add 'testthat@>= 3.0' --dev --no-lock
+    [[ "$status" -eq 0 ]]
+    grep -q '^\[dependency-groups.test\]$' rproj.toml
+    grep -q '^testthat = ">= 3.0"$' rproj.toml
+
+    # adding a package again updates its version requirement
+    run rig proj add 'testthat@>= 3.2' --dev --no-lock
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "Updated testthat"
+    grep -q '^testthat = ">= 3.2"$' rproj.toml
+
+    # a version requirement that does not parse is refused, and the manifest
+    # is left alone
+    run rig proj add 'praise@nope' --no-lock
+    [[ "$status" -ne 0 ]]
+    grep -q '^praise = "\*"$' rproj.toml
+}

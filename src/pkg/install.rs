@@ -3,7 +3,7 @@
 //! The command is a solve followed by a download followed by an unpack. The
 //! solve is the same one [`crate::proj`] runs for a project, with the packages
 //! named on the command line standing in for a `DESCRIPTION`; the download and
-//! the install are the same code `rig proj deploy` uses. What is specific to
+//! the install are the same code `rig proj sync` uses. What is specific to
 //! this command is the third step in between: deciding which of the solved
 //! packages actually have to be installed, because the library already holds
 //! the rest.
@@ -43,18 +43,18 @@ use crate::dcf::{DepVersionSpec, PackageDependencies, RDepType, DEP_TYPES_SOFT};
 use crate::install::{install_packages, PackageInfo, REMOTE_HASH_FIELD};
 use crate::library::library_rver;
 use crate::output::OUTPUT;
-use crate::pak::{PakLockfile, PakLockfilePackage};
 use crate::proj::{
     download_lockfile_packages, lockfile_package_info, proj_binary_target, sc_proj_solve_deps,
     BASE_PKGS,
 };
 use crate::repos::DbSourcePackageLoader;
+use crate::rproj::{RprojLockPackage, RprojLockTarget};
 use crate::solver::{is_base_package, PackageVersionLoader};
 
 use super::deps::root_package;
 use super::list::{read_installed, resolve_library, InstalledPackage, ResolvedLibrary};
 
-/// How many packages are installed at once. The same default `rig proj deploy`
+/// How many packages are installed at once. The same default `rig proj sync`
 /// uses.
 const MAX_CONCURRENT: usize = 8;
 
@@ -99,15 +99,16 @@ pub fn sc_pkg_install(
         info!("Ignoring --prefer-binary: solving for source packages only");
     }
 
-    let (registry, solution) = sc_proj_solve_deps(&rver, &deps, target, prefer_binary)?;
+    let (registry, solution) = sc_proj_solve_deps(&rver, &deps, target, prefer_binary, true)?;
     OUTPUT.success("Solved dependencies");
     info!("Solved dependencies");
 
-    // The lockfile is the bridge from the solution to the installer: it already
-    // carries the download URLs, the cache-relative file names, the dependency
-    // lists with R and the base packages filtered out, and the provenance
-    // hashes. `rig pkg install` builds one in memory and never writes it.
-    let lockfile = PakLockfile::from_solution(&registry, &solution);
+    // A lockfile target is the bridge from the solution to the installer: it
+    // already carries the download URLs, the cache-relative file names, the
+    // dependency lists with R and the base packages filtered out, and the
+    // provenance hashes. `rig pkg install` builds one in memory and never
+    // writes it.
+    let lockfile = RprojLockTarget::from_solution(&registry, &solution);
 
     // A library that does not exist yet holds nothing; rig creates it below,
     // but only once it knows there is something to put in it, so that a
@@ -123,7 +124,7 @@ pub fn sc_pkg_install(
     if json {
         print_plan_json(&plan)?;
     } else {
-        print_plan(&lib, &plan);
+        print_plan(&lib.tag(), &plan);
     }
 
     if dry_run {
@@ -131,7 +132,7 @@ pub fn sc_pkg_install(
         return Ok(());
     }
 
-    let todo: Vec<&PakLockfilePackage> = plan
+    let todo: Vec<&RprojLockPackage> = plan
         .iter()
         .filter(|p| p.install)
         .map(|p| p.package)
@@ -150,13 +151,7 @@ pub fn sc_pkg_install(
         bail!("{}", library_error(&lib, err));
     }
 
-    let to_download = PakLockfile {
-        lockfile_version: lockfile.lockfile_version,
-        os: lockfile.os.clone(),
-        r_version: lockfile.r_version.clone(),
-        platform: lockfile.platform.clone(),
-        packages: todo.iter().map(|p| (*p).clone()).collect(),
-    };
+    let to_download: Vec<RprojLockPackage> = todo.iter().map(|p| (*p).clone()).collect();
     download_lockfile_packages(&to_download)?;
 
     let cache_dir = get_cache_dir()?;
@@ -315,11 +310,11 @@ fn add_dev_deps(
 
 /// What rig decided to do about one package of the solution, and why.
 #[derive(Debug)]
-struct Planned<'a> {
-    package: &'a PakLockfilePackage,
-    install: bool,
+pub(crate) struct Planned<'a> {
+    pub(crate) package: &'a RprojLockPackage,
+    pub(crate) install: bool,
     /// Why it is being installed, or why it is not. Reported, never acted on.
-    reason: String,
+    pub(crate) reason: String,
 }
 
 /// Which of the solved packages have to be installed into the library.
@@ -335,8 +330,8 @@ struct Planned<'a> {
 /// invalidates whatever was compiled against *those*. The coupling is
 /// `LinkingTo` only: an `Imports` dependency being replaced changes nothing
 /// about how its dependents were compiled.
-fn plan_installs<'a>(
-    solved: &'a [PakLockfilePackage],
+pub(crate) fn plan_installs<'a>(
+    solved: &'a [RprojLockPackage],
     installed: &[InstalledPackage],
     reinstall: bool,
 ) -> Vec<Planned<'a>> {
@@ -422,7 +417,7 @@ fn plan_installs<'a>(
 /// Why a solved package has to be installed, or `None` if the installed one
 /// already is that package.
 fn needs_install(
-    solved: &PakLockfilePackage,
+    solved: &RprojLockPackage,
     installed: Option<&InstalledPackage>,
     solved_hash: &HashMap<&str, Option<&str>>,
 ) -> Option<String> {
@@ -468,13 +463,13 @@ fn needs_install(
 // Reporting
 
 /// Print the plan as a table: what is being installed, what is not, and why.
-fn print_plan(lib: &ResolvedLibrary, plan: &[Planned]) {
+pub(crate) fn print_plan(tag: &str, plan: &[Planned]) {
     let n = plan.iter().filter(|p| p.install).count();
     OUTPUT.println(&format!(
         "{} of {} packages to install {}",
         n,
         plan.len(),
-        lib.tag()
+        tag
     ));
 
     let mut tab = Table::new("{:<}  {:<}  {:<}  {:<}  {:<}");
@@ -496,7 +491,7 @@ fn print_plan(lib: &ResolvedLibrary, plan: &[Planned]) {
 }
 
 /// Print the plan as a JSON array, one object per package of the solution.
-fn print_plan_json(plan: &[Planned]) -> Result<(), Box<dyn Error>> {
+pub(crate) fn print_plan_json(plan: &[Planned]) -> Result<(), Box<dyn Error>> {
     #[derive(serde::Serialize)]
     struct PlanEntry<'a> {
         package: &'a str,
@@ -541,31 +536,20 @@ mod tests {
 
     /// One package of a resolution: name, version, hash, and the `LinkingTo`
     /// provenance the artifact would be installed with.
-    fn solved(name: &str, version: &str, hash: Option<&str>) -> PakLockfilePackage {
+    fn solved(name: &str, version: &str, hash: Option<&str>) -> RprojLockPackage {
         let mut metadata = HashMap::new();
         if let Some(hash) = hash {
             metadata.insert(REMOTE_HASH_FIELD.to_string(), hash.to_string());
         }
-        PakLockfilePackage {
-            r#ref: name.to_string(),
+        RprojLockPackage {
             package: name.to_string(),
             version: version.to_string(),
-            r#type: "standard".to_string(),
-            direct: false,
             binary: true,
+            platform: "testos".to_string(),
             dependencies: vec![],
-            vignettes: false,
             metadata,
             sources: vec![],
             target: format!("bin/{}_{}.tgz", name, version),
-            platform: "testos".to_string(),
-            rversion: "4.5.1".to_string(),
-            directpkg: false,
-            license: "MIT".to_string(),
-            dep_types: vec![],
-            params: vec![],
-            install_args: String::new(),
-            sysreqs: String::new(),
         }
     }
 
@@ -590,7 +574,7 @@ mod tests {
 
     /// What the plan says about each package, as `name => (install, reason)`.
     fn plan(
-        solved: &[PakLockfilePackage],
+        solved: &[RprojLockPackage],
         installed: &[InstalledPackage],
         reinstall: bool,
     ) -> HashMap<String, (bool, String)> {

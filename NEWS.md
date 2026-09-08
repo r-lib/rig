@@ -12,6 +12,10 @@
   a `.bat` extension, change them to `.exe` or remove the extension
   completely (#362).
 
+* `rig run <name>` now runs a script the project declares in a `[[bin]]`
+  table of its `rproj.toml`, passing the remaining arguments on to the
+  script. `rig run --list` lists the declared scripts.
+
 * New `rig ppm` command queries Posit Package Manager.
 
 * New `rig repos status` checks the configured package repositories.
@@ -29,6 +33,15 @@
   dependency closure of the project.
 
 * New `rig proj tree` shows the dependency closure of a project as a tree.
+
+* New `rig proj add` adds a dependency to `rproj.toml`, then updates the
+  lockfile and installs it.
+
+* `rig run` now uses the project environment, if you call it in a project
+  directory: it starts `.rvenv/bin/R`, with the project's package library
+  and the R version the project's lock file names, and it syncs the project
+  first if the environment is missing or out of date. Use `--no-project`
+  (or `--r-version`) to run the default R version instead.
 
 * `rig library add`, `rig library default`, `rig library list` and
   `rig library rm` have a new `--r-version` (`-r`) option, to operate on

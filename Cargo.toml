@@ -80,6 +80,10 @@ path-clean = "1.0.1"
 pubgrub = "0.3.0"
 # random file names, e.g. when renaming the macos installer
 rand = "0.8.5"
+# thread pool to solve multiple `rig proj lock` targets in parallel
+rayon = "1.10"
+# temporary directories, e.g. to run `R CMD INSTALL` away from a project dir
+tempfile = "3"
 # deserialize R files
 rds2rust = "0.1.41"
 regex = "1.5.4"
@@ -97,6 +101,10 @@ serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0"
 serde_json = "1.0"
 serde_yaml = "0.9"
+# rproj.lock (multi-target project lockfile)
+toml = "0.8"
+# formatting rproj.lock: package metadata as an inline table
+toml_edit = "0.22"
 # hash url to get target path, for macOS installers
 sha2 = "0.9.8"
 # expand ~ in paths, e.g. in R_LIBS env vars, env vars for RStudio
@@ -139,5 +147,4 @@ whoami = "1.4.1"
 assert_cmd = "2.0.8"
 insta = "1.35"
 predicates = "2.1.5"
-tempfile = "3"
 wiremock = "0.6"

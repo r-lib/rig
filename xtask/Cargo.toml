@@ -14,3 +14,8 @@ publish = false
 # render the markdown help text (src/help/*.md) to the committed ANSI strings
 # in src/help-generated.in
 pulldown-cmark = { version = "0.12", default-features = false }
+# generate the committed shim package data in src/data/rvenv-shim
+# (gen-rvenv-shim): flate2 to look inside the gzipped Meta/package.rds, sha2
+# for the SOURCE-HASH manifest
+flate2 = "1.0"
+sha2 = "0.10"

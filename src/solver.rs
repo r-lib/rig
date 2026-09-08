@@ -17,7 +17,7 @@ type RPackageName = String;
 /// at a time, instead of preloading every version up front. Returns all known
 /// versions of `package` (with their dependencies); an empty vector means the
 /// package is unknown.
-pub trait PackageVersionLoader {
+pub trait PackageVersionLoader: Send {
     fn load_versions(&self, package: &str) -> Result<Vec<crate::dcf::Package>, Box<dyn Error>>;
 }
 
@@ -253,7 +253,7 @@ pub struct PackageArtifacts {
 
 /// A source of binary artifacts for one build target, queried lazily per package
 /// just like [`PackageVersionLoader`].
-pub trait BinaryIndexLoader {
+pub trait BinaryIndexLoader: Send {
     /// The binary builds of `package` available for the target. An empty result
     /// means the package has no binaries, which is not an error.
     fn load_artifacts(&self, package: &str) -> Result<PackageArtifacts, Box<dyn Error>>;
@@ -764,10 +764,44 @@ impl DependencyProvider for RPackageRegistry {
     }
 }
 
+/// The name of the synthetic root package the solve is rooted at.
+const ROOT_PACKAGE: &str = "_project";
+
+/// Turn a solver failure into the explanation we show the user.
+///
+/// `PubGrubError::NoSolution`'s own `Display` is the fixed string "There is no
+/// solution": the whole explanation is in the derivation tree it carries, and
+/// rendering that tree is what this does. The other variants carry a message
+/// already.
+pub fn format_solver_error(err: PubGrubError<RPackageRegistry>) -> String {
+    let mut tree = match err {
+        PubGrubError::NoSolution(tree) => tree,
+        other => return other.to_string(),
+    };
+
+    // The registry is not offline — it loads every known version of a package
+    // from the local package database — so a "no versions" node really means
+    // there is no such version, and merging those nodes into the constraint they
+    // conflict with makes the report much shorter.
+    tree.collapse_no_versions();
+    let report = DefaultStringReporter::report(&tree);
+
+    // The root package is ours, not the user's; it should not show up in output.
+    let report = report
+        .replace(&format!("{} 1.0.0", ROOT_PACKAGE), "this project")
+        .replace(ROOT_PACKAGE, "this project");
+
+    report
+        .lines()
+        .map(|line| format!("  {}", line))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::rc::Rc;
+    use std::sync::{Arc, Mutex};
 
     fn version(v: &str) -> RPackageVersion {
         RPackageVersion::from_str(v).unwrap()
@@ -896,7 +930,7 @@ mod tests {
         /// package, version, row, `LinkingTo` pins as `pkg=version` pairs.
         builds: Vec<(&'static str, &'static str, u32, &'static str)>,
         /// What `prefetch` was called with, for the tests that check it.
-        prefetched: Rc<RefCell<Vec<String>>>,
+        prefetched: Arc<Mutex<Vec<String>>>,
     }
 
     impl BinaryIndexLoader for StubBinaries {
@@ -936,7 +970,7 @@ mod tests {
         }
 
         fn prefetch(&self, packages: &[String]) {
-            self.prefetched.borrow_mut().extend_from_slice(packages);
+            self.prefetched.lock().unwrap().extend_from_slice(packages);
         }
     }
 
@@ -977,6 +1011,32 @@ mod tests {
         )
         .unwrap();
         (reg, solution)
+    }
+
+    #[test]
+    fn a_failed_solve_is_explained() {
+        let source = StubSource {
+            packages: vec![("a", "1.0.0", "b (>= 2.0.0)"), ("b", "1.0.0", "")],
+        };
+        let reg = RPackageRegistry::with_loaders(Box::new(source), None);
+        reg.add_package_version(
+            "_project".to_string(),
+            RegistryPackageVersion::new("_project", "1.0.0").unwrap(),
+            ranges("a"),
+        );
+        let err = resolve(
+            &reg,
+            "_project".to_string(),
+            RegistryPackageVersion::new("_project", "1.0.0").unwrap(),
+        )
+        .unwrap_err();
+
+        let msg = format_solver_error(err);
+        // Not pubgrub's own `Display`, which is only "There is no solution".
+        assert!(msg.contains("b >=2.0.0"), "{}", msg);
+        assert!(msg.contains("this project"), "{}", msg);
+        assert!(!msg.contains("_project"), "{}", msg);
+        assert!(msg.lines().all(|l| l.starts_with("  ")), "{}", msg);
     }
 
     #[test]
@@ -1263,7 +1323,7 @@ mod tests {
     fn registry(
         source: StubSource,
         binaries: StubBinaries,
-    ) -> (RPackageRegistry, Rc<RefCell<Vec<String>>>) {
+    ) -> (RPackageRegistry, Arc<Mutex<Vec<String>>>) {
         let prefetched = binaries.prefetched.clone();
         let reg = RPackageRegistry::with_loaders(
             Box::new(source),
@@ -1276,7 +1336,7 @@ mod tests {
         let (reg, prefetched) = registry(source, StubBinaries::default());
         let roots: Vec<String> = roots.iter().map(|r| r.to_string()).collect();
         reg.prefetch_binaries(&roots);
-        let mut names = prefetched.borrow().clone();
+        let mut names = prefetched.lock().unwrap().clone();
         names.sort();
         names
     }

@@ -3,3 +3,9 @@
 # checked out on. A CRLF checkout of repositories.R broke profile marker
 # matching on Windows (see src/hardcoded.rs).
 src/data/repositories.R text eol=lf
+
+# Same for the shim R package source: it is byte-hashed by
+# `cargo xtask gen-rvenv-shim`, so a CRLF checkout would look like a source
+# change and fail the CI drift check. The built packages are binary.
+src/data/rvenv-pkg/** text eol=lf
+src/data/rvenv-shim/*.tar.gz binary

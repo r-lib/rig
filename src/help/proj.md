@@ -9,17 +9,25 @@ A project is a directory with a package manifest, typically a
 `rig proj` resolves those dependencies against the configured package
 repositories and can install them into a project library.
 
+`rig proj import` sets up a project from an existing `DESCRIPTION` file:
+it writes `rproj.toml` from it, and creates the same `.rvenv` layout as
+`rig proj init`.
+`rig proj add` adds a dependency to `rproj.toml`, then updates the
+lockfile and installs it.
 `rig proj deps` shows the direct and recursive dependencies of the
 project.
 `rig proj tree` shows the recursive dependencies as a tree, so you can
 see how each package is pulled in.
-`rig proj solve` resolves the full dependency tree to a concrete set of
-package versions, and can write the result to an `renv.lock` file.
-`rig proj deploy` installs the resolved dependencies into a package
-library.
+`rig proj lock` resolves the full dependency tree to a concrete set of
+package versions and writes the result to `rproj.lock`.
+`rig proj sync` installs the dependencies `rproj.lock` resolved into a
+package library.
+
+See [`rig proj renv`](proj.qmd#rig-proj-renv) to interoperate with renv's
+own `renv.lock` format.
 
 Dependencies are resolved with rig's built-in solver, so R does not need
-to be running for `rig proj deps`, `rig proj tree` and `rig proj solve`.
+to be running for `rig proj deps`, `rig proj tree` and `rig proj lock`.
 
 `rig proj` is currently experimental, and might change in future
 versions. Feedback is appreciated.

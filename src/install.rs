@@ -352,12 +352,22 @@ where
 
     let log_file_stderr = log_file.try_clone()?;
 
+    // Run from a fresh temporary directory, so R does not pick up a project
+    // `.Renviron` (or `.Rprofile`) that could redirect it to a project package
+    // library instead of `library_path`. Canonicalize the paths passed on the
+    // command line first, since they may otherwise be relative to rig's own
+    // working directory rather than `run_dir`.
+    let run_dir = tempfile::tempdir()?;
+    let library_path_abs = library_path.canonicalize()?;
+    let package_path_abs = package_path.canonicalize()?;
+
     let status = Command::new(r_binary)
         .arg("CMD")
         .arg("INSTALL")
         .arg("-l")
-        .arg(library_path)
-        .arg(package_path)
+        .arg(&library_path_abs)
+        .arg(&package_path_abs)
+        .current_dir(run_dir.path())
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(log_file_stderr))
         .status()
@@ -561,12 +571,10 @@ where
                         Err(e) => Err(e.to_string()),
                     };
 
-                    installing_clone.lock().await.remove(&name_clone);
-
-                    match result {
+                    let outcome = match result {
                         Ok(()) => {
                             installed_clone.lock().await.insert(name_clone.clone());
-                            Ok(name_clone)
+                            Ok(())
                         }
                         Err(err_msg) => {
                             debug!(
@@ -576,6 +584,13 @@ where
                             failed_clone.lock().await.insert(name_clone.clone());
                             Err(err_msg)
                         }
+                    };
+
+                    installing_clone.lock().await.remove(&name_clone);
+
+                    match outcome {
+                        Ok(()) => Ok(name_clone),
+                        Err(err_msg) => Err(err_msg),
                     }
                 });
 
@@ -689,7 +704,7 @@ where
 /// Install a set of packages into a library, with a progress bar, and return how
 /// many went in.
 ///
-/// The synchronous entry point both `rig pkg install` and `rig proj deploy` use:
+/// The synchronous entry point both `rig pkg install` and `rig proj sync` use:
 /// it owns the tokio runtime and the progress bar, so that the callers only have
 /// to decide *what* to install.
 pub fn install_packages(

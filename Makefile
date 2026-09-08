@@ -307,6 +307,15 @@ fonts-asset:
 help:
 	cargo xtask gen-help
 
+# Regenerate the committed DESCRIPTION and Meta/package.rds in
+# src/data/rvenv-shim from the package source in src/data/rvenv-pkg. `rig proj
+# init` writes them, plus the source files themselves, into a project's
+# .rvenv/sys/lib/rvenv. Needs an R >= 4.0 ($R, else `R` on the path), so this
+# is a maintainer-only task; CI only runs `cargo xtask gen-rvenv-shim
+# --check`, which needs no R.
+rvenv-shim:
+	cargo xtask gen-rvenv-shim
+
 readme: README.md
 
 # Regenerate the command-line reference (website/reference/_commands.md) from

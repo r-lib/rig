@@ -1087,6 +1087,38 @@ pub fn rig_app() -> Command {
                 ),
         );
 
+    let cmd_cache = Command::new("cache")
+        .about(ABOUT_CACHE)
+        .display_order(0)
+        .long_about(HELP_CACHE)
+        .arg_required_else_help(true)
+        .subcommand(
+            Command::new("info")
+                .about(ABOUT_CACHE_INFO)
+                .long_about(HELP_CACHE_INFO)
+                .display_order(0)
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("clean")
+                .about(ABOUT_CACHE_CLEAN)
+                .long_about(HELP_CACHE_CLEAN)
+                .display_order(0)
+                .arg(
+                    Arg::new("category")
+                        .help("Only delete this category of cached files")
+                        .long("category")
+                        .required(false)
+                        .value_parser(["binaries", "built", "packages", "metadata"]),
+                ),
+        );
+
     {
         let cmd_config = Command::new("config")
             .about(ABOUT_CONFIG)
@@ -1217,6 +1249,13 @@ pub fn rig_app() -> Command {
                 .required(false),
         )
         .arg(
+            Arg::new("no-project")
+                .help("Ignore the project environment, use the default R version")
+                .long("no-project")
+                .action(clap::ArgAction::SetTrue)
+                .required(false),
+        )
+        .arg(
             Arg::new("app-type")
                 .help("Explicitly specify app type to run")
                 .short('t')
@@ -1297,8 +1336,23 @@ pub fn rig_app() -> Command {
                 ]),
         )
         .arg(
+            Arg::new("list")
+                .help("List the scripts the project declares")
+                .long("list")
+                .action(clap::ArgAction::SetTrue)
+                .required(false)
+                .conflicts_with_all(["eval", "script", "cmd", "app-type", "command"]),
+        )
+        .arg(
+            Arg::new("json")
+                .help("JSON output")
+                .long("json")
+                .action(clap::ArgAction::SetTrue)
+                .required(false),
+        )
+        .arg(
             Arg::new("command")
-                .help("R script, project or R CMD command to run, with parameters")
+                .help("R script, project script name, project or R CMD command to run, with parameters")
                 .required(false)
                 .action(clap::ArgAction::Append),
         );
@@ -1316,18 +1370,157 @@ pub fn rig_app() -> Command {
                 .required(false),
         )
         .subcommand(
-            Command::new("deps")
-                .about(ABOUT_PROJ_DEPS)
-                .long_about(HELP_PROJ_DEPS)
+            Command::new("init")
+                .about(ABOUT_PROJ_INIT)
+                .long_about(HELP_PROJ_INIT)
+                .display_order(0)
+                .arg(
+                    Arg::new("force")
+                        .help("Overwrite existing project files")
+                        .long("force")
+                        .short('f')
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version of the project (default: the default R version, or the current R release)")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("import")
+                .about(ABOUT_PROJ_IMPORT)
+                .long_about(HELP_PROJ_IMPORT)
                 .display_order(0)
                 .arg(
                     Arg::new("input")
-                        .help("Project file to solve (e.g. DESCRIPTION)")
+                        .help("DESCRIPTION file to import (e.g. DESCRIPTION)")
                         .long("input")
                         .short('i')
                         .num_args(1)
                         .required(false),
                 )
+                .arg(
+                    Arg::new("dependencies")
+                        .help("Only merge dependencies, not metadata (the old behavior)")
+                        .long("dependencies")
+                        .action(clap::ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("force")
+                        .help("Overwrite existing project files")
+                        .long("force")
+                        .short('f')
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version of the project (default: the version the DESCRIPTION file requires, the default R version, or the current R release)")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("export")
+                .about(ABOUT_PROJ_EXPORT)
+                .long_about(HELP_PROJ_EXPORT)
+                .display_order(0)
+                .arg(
+                    Arg::new("output")
+                        .help("Output file to write (e.g. DESCRIPTION)")
+                        .long("output")
+                        .short('o')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("force")
+                        .help("Overwrite the output file if it already exists")
+                        .long("force")
+                        .short('f')
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("add")
+                .about(ABOUT_PROJ_ADD)
+                .long_about(HELP_PROJ_ADD)
+                .display_order(0)
+                .arg(
+                    Arg::new("package")
+                        .help(
+                            "Packages to add, as <package> or <package>@<version>,\n\
+                            e.g. dplyr or 'dplyr@>= 1.1.0'",
+                        )
+                        .value_name("PACKAGE")
+                        .required(true)
+                        .num_args(1..),
+                )
+                .arg(
+                    Arg::new("dev")
+                        .help("Add as a dev (development) dependency")
+                        .long("dev")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("no-lock")
+                        .help("Only update rproj.toml, do not update rproj.lock")
+                        .long("no-lock")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("no-sync")
+                        .help("Do not install the added packages")
+                        .long("no-sync")
+                        .num_args(0)
+                        .required(false)
+                        .conflicts_with("no-lock"),
+                ),
+        )
+        .subcommand(
+            Command::new("remove")
+                .aliases(["rm"])
+                .about(ABOUT_PROJ_REMOVE)
+                .long_about(HELP_PROJ_REMOVE)
+                .display_order(0)
+                .arg(
+                    Arg::new("package")
+                        .help("Packages to remove")
+                        .value_name("PACKAGE")
+                        .required(true)
+                        .num_args(1..),
+                )
+                .arg(
+                    Arg::new("no-lock")
+                        .help("Only update rproj.toml, do not update rproj.lock")
+                        .long("no-lock")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("no-sync")
+                        .help("Do not re-sync the project library")
+                        .long("no-sync")
+                        .num_args(0)
+                        .required(false)
+                        .conflicts_with("no-lock"),
+                ),
+        )
+        .subcommand(
+            Command::new("deps")
+                .about(ABOUT_PROJ_DEPS)
+                .long_about(HELP_PROJ_DEPS)
+                .display_order(0)
                 .arg(
                     Arg::new("recursive")
                         .help("Show recursive (transitive) dependencies")
@@ -1356,14 +1549,6 @@ pub fn rig_app() -> Command {
                 .about(ABOUT_PROJ_TREE)
                 .long_about(HELP_PROJ_TREE)
                 .display_order(0)
-                .arg(
-                    Arg::new("input")
-                        .help("Project file to solve (e.g. DESCRIPTION)")
-                        .long("input")
-                        .short('i')
-                        .num_args(1)
-                        .required(false),
-                )
                 .arg(
                     Arg::new("dev")
                         .help("Include dev (development) dependencies")
@@ -1396,25 +1581,10 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
-            Command::new("solve")
-                .about(ABOUT_PROJ_SOLVE)
-                .long_about(HELP_PROJ_SOLVE)
+            Command::new("lock")
+                .about(ABOUT_PROJ_LOCK)
+                .long_about(HELP_PROJ_LOCK)
                 .display_order(0)
-                .arg(
-                    Arg::new("input")
-                        .help("Project file to solve (e.g. DESCRIPTION)")
-                        .long("input")
-                        .short('i')
-                        .num_args(1)
-                        .required(false),
-                )
-                .arg(
-                    Arg::new("renv")
-                        .help("Output and renv.lock file")
-                        .long("renv")
-                        .num_args(0)
-                        .required(false),
-                )
                 .arg(
                     Arg::new("json")
                         .help("JSON output")
@@ -1424,22 +1594,33 @@ pub fn rig_app() -> Command {
                 )
                 .arg(
                     Arg::new("r-version")
-                        .help("R version to solve dependencies for")
+                        .help(
+                            "R version(s) to solve dependencies for, comma-separated to\n\
+                            solve for several (e.g. --r-version 4.5,4.6). Combined with\n\
+                            --platform as a cross product, one target per combination.",
+                        )
                         .long("r-version")
                         .short('r')
                         .num_args(1)
+                        .value_delimiter(',')
                         .required(false),
                 )
                 .arg(
                     Arg::new("platform")
                         .help(
-                            "Platform to solve binary packages for, e.g. macos, windows,\n\
+                            "Platform(s) to solve binary packages for, e.g. macos, windows,\n\
                             ubuntu-24.04, or a full platform string like\n\
-                            aarch64-unknown-linux-gnu-ubuntu-24.04 (default: this machine).\n\
-                            Use --platform source to solve for source packages only.",
+                            aarch64-unknown-linux-gnu-ubuntu-24.04. Comma-separated to\n\
+                            solve for several (e.g. --platform macos,windows). Combined\n\
+                            with --r-version as a cross product, one target per\n\
+                            combination. Use --platform source to solve for source\n\
+                            packages only.\n\
+                            Default: this machine, windows, generic glibc Linux (x86_64),\n\
+                            and macos-arm64.",
                         )
                         .long("platform")
                         .num_args(1)
+                        .value_delimiter(',')
                         .required(false),
                 )
                 .arg(
@@ -1458,43 +1639,161 @@ pub fn rig_app() -> Command {
                         .required(false),
                 )
                 .arg(
-                    Arg::new("dev")
-                        .help("Include dev (development) dependencies")
-                        .long("dev")
+                    Arg::new("no-dev")
+                        .help("Leave out dev (development) dependencies")
+                        .long("no-dev")
                         .num_args(0)
                         .required(false),
                 ),
         )
         .subcommand(
-            Command::new("deploy")
-                .about(ABOUT_PROJ_DEPLOY)
-                .long_about(HELP_PROJ_DEPLOY)
+            Command::new("sync")
+                .about(ABOUT_PROJ_SYNC)
+                .long_about(HELP_PROJ_SYNC)
                 .display_order(0)
                 .arg(
                     Arg::new("library")
-                        .help("Library path where packages should be installed")
+                        .help(
+                            "Library path where packages should be installed \
+                               (default: .rvenv/lib)",
+                        )
                         .long("library")
                         .short('l')
                         .num_args(1)
-                        .required(true),
+                        .required(false),
                 )
                 .arg(
-                    Arg::new("r-binary")
-                        .help("Path to R binary (default: R)")
-                        .long("r-binary")
-                        .num_args(1)
+                    Arg::new("no-install-r")
+                        .help(
+                            "Fail if the R version the lockfile needs is not installed,\n\
+                            instead of installing it",
+                        )
+                        .long("no-install-r")
+                        .num_args(0)
                         .required(false),
                 )
                 .arg(
                     Arg::new("max-concurrent")
-                        .help("Maximum number of concurrent installations (default: 4)")
+                        .help("Maximum number of concurrent installations (default: 8)")
                         .long("max-concurrent")
                         .num_args(1)
                         .value_parser(clap::value_parser!(usize))
                         .required(false),
+                )
+                .arg(
+                    Arg::new("no-dev")
+                        .help("Do not install dev (development) dependencies")
+                        .long("no-dev")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help(
+                            "Which of rproj.lock's targets to sync, when more than one\n\
+                            matches this machine (default: the highest R version).\n\
+                            Selects among the targets already in rproj.lock, does not\n\
+                            trigger a new solve.",
+                        )
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("platform")
+                        .help(
+                            "Which of rproj.lock's targets to sync, when more than one\n\
+                            matches this machine. Selects among the targets already in\n\
+                            rproj.lock, does not trigger a new solve.",
+                        )
+                        .long("platform")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("inexact")
+                        .help(
+                            "Do not remove packages from the library that are not in\n\
+                            rproj.lock (default: remove them)",
+                        )
+                        .long("inexact")
+                        .num_args(0)
+                        .required(false),
                 ),
         );
-    rig = rig.subcommand(cmd_proj);
+    let cmd_renv = Command::new("renv")
+        .about(ABOUT_PROJ_RENV)
+        .display_order(0)
+        .long_about(HELP_PROJ_RENV)
+        .arg_required_else_help(true)
+        .subcommand(
+            Command::new("export")
+                .about(ABOUT_PROJ_RENV_EXPORT)
+                .long_about(HELP_PROJ_RENV_EXPORT)
+                .display_order(0)
+                .arg(
+                    Arg::new("r-version")
+                        .help(
+                            "R version to solve dependencies for \
+                             (default: same logic as `rig proj lock`)",
+                        )
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("platform")
+                        .help(
+                            "Platform to solve binary packages for, e.g. macos, windows,\n\
+                            ubuntu-24.04 (default: this machine). Use --platform source\n\
+                            to solve for source packages only.",
+                        )
+                        .long("platform")
+                        .num_args(1)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("import")
+                .about(ABOUT_PROJ_RENV_IMPORT)
+                .long_about(HELP_PROJ_RENV_IMPORT)
+                .display_order(0)
+                .arg(
+                    Arg::new("input")
+                        .help("renv.lock file to import (e.g. renv.lock)")
+                        .long("input")
+                        .short('i')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("dependencies")
+                        .help("Only merge dependencies, not metadata")
+                        .long("dependencies")
+                        .action(clap::ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("force")
+                        .help("Overwrite existing project files")
+                        .long("force")
+                        .short('f')
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help(
+                            "R version of the project (default: the version in the renv.lock file)",
+                        )
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false),
+                ),
+        );
+    rig = rig.subcommand(cmd_proj.subcommand(cmd_renv));
 
     let cmd_pkg = Command::new("pkg")
         .about(ABOUT_PKG)
@@ -2140,11 +2439,6 @@ pub fn rig_app() -> Command {
             .hide(reference_mode())
             .arg_required_else_help(true)
             .subcommand(
-                Command::new("download-lockfile")
-                    .about("Download packages in the pkg.lock file")
-                    .display_order(0),
-            )
-            .subcommand(
                 Command::new("read-rds")
                     .about("Test reading RDS files")
                     .display_order(0)
@@ -2252,6 +2546,7 @@ pub fn rig_app() -> Command {
         .subcommand(cmd_resolve)
         .subcommand(cmd_rstudio)
         .subcommand(cmd_library)
+        .subcommand(cmd_cache)
         .subcommand(cmd_available)
         .subcommand(cmd_run)
         .after_help(HELP_EXAMPLES);
@@ -2360,6 +2655,46 @@ mod tests {
             rcmd(&["rig", "run", "--cmd", "check", "pkg.tar.gz"]),
             ["rig", "run", "--cmd", "--", "check", "pkg.tar.gz"]
         );
+    }
+
+    #[test]
+    fn proj_lock_r_version_and_platform_take_comma_separated_lists() {
+        let matches = rig_app()
+            .try_get_matches_from([
+                "rig",
+                "proj",
+                "lock",
+                "-r",
+                "4.5.0,4.6.1",
+                "--platform",
+                "macos,ubuntu-24.04",
+            ])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        let r_versions: Vec<&String> = sub.get_many::<String>("r-version").unwrap().collect();
+        let platforms: Vec<&String> = sub.get_many::<String>("platform").unwrap().collect();
+        assert_eq!(r_versions, vec!["4.5.0", "4.6.1"]);
+        assert_eq!(platforms, vec!["macos", "ubuntu-24.04"]);
+    }
+
+    #[test]
+    fn proj_sync_r_version_and_platform_are_single_valued() {
+        let matches = rig_app()
+            .try_get_matches_from([
+                "rig",
+                "proj",
+                "sync",
+                "-r",
+                "4.6.1",
+                "--platform",
+                "macos-arm64",
+            ])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        assert_eq!(sub.get_one::<String>("r-version").unwrap(), "4.6.1");
+        assert_eq!(sub.get_one::<String>("platform").unwrap(), "macos-arm64");
     }
 
     #[test]

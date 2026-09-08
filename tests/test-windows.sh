@@ -303,3 +303,87 @@ teardown() {
 @test "system make-links" {
     true
 }
+
+@test "proj init" {
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf myproj && mkdir myproj && cd myproj
+
+    # No R needs to be installed for the requested version, `rig proj init`
+    # does not touch an R installation.
+    run rig proj init -r 4.5.0
+    [[ "$status" -eq 0 ]]
+    [[ -f rproj.toml ]]
+    [[ -f .Renviron ]]
+    [[ -f .gitignore ]]
+    [[ -f .rvenvlib/rvenv/DESCRIPTION ]]
+    grep -q '^name = "myproj"$' rproj.toml
+    grep -q '^R = ">= 4.5"$' rproj.toml
+    grep -q '^R_LIBS_USER=.rvenvlib$' .Renviron
+    grep -q '^/.rvenv/$' .gitignore
+    grep -q '^Package: rvenv$' .rvenvlib/rvenv/DESCRIPTION
+    # The project library is `rig proj sync`'s to create
+    [[ ! -d .rvenv/lib ]]
+
+    # The IDE leg: a plain R session in the project picks up the shim
+    # package. Without a project library it warns and leaves the library path
+    # as it was, instead of pointing the session at rig's own directory.
+    run R-4.5.0.exe -q -s -e 'cat(.libPaths()[1], Sys.getenv("R_LIBS_USER"))'
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "Project is not synced"
+    [[ "$output" != *".rvenv"* ]]
+
+    # Once the library exists, the shim resolves it and puts it first
+    mkdir -p .rvenv/lib
+    run R-4.5.0.exe -q -s -e 'cat(.libPaths()[1])'
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "myproj.[.]rvenv.lib"
+    rmdir .rvenv/lib
+
+    # Refuses to overwrite, and says what is in the way
+    run rig proj init -r 4.5.0
+    [[ "$status" -ne 0 ]]
+    echo "$output" | grep -q "rproj.toml"
+    echo "$output" | grep -q -- "--force"
+
+    # --force keeps the user's own ignore rules, rig only manages its block
+    echo "*.log" >> .gitignore
+    run rig proj init -r 4.5.0 --force
+    [[ "$status" -eq 0 ]]
+    grep -q '^[*].log$' .gitignore
+    [[ "$(grep -c '^# rig rvenv start$' .gitignore)" -eq 1 ]]
+}
+
+@test "proj add" {
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf addproj && mkdir addproj && cd addproj
+    run rig proj init -r 4.5.0
+    [[ "$status" -eq 0 ]]
+
+    # --no-lock only edits the manifest, so none of this needs the network
+    run rig proj add praise --no-lock
+    [[ "$status" -eq 0 ]]
+    grep -q '^praise = "\*"$' rproj.toml
+
+    # a bare version means "compatible with", written out as such
+    run rig proj add jsonlite@1.8.0 --no-lock
+    [[ "$status" -eq 0 ]]
+    grep -q '^jsonlite = "\^1.8.0"$' rproj.toml
+
+    # --dev adds to the test dependency group
+    run rig proj add 'testthat@>= 3.0' --dev --no-lock
+    [[ "$status" -eq 0 ]]
+    grep -q '^\[dependency-groups.test\]$' rproj.toml
+    grep -q '^testthat = ">= 3.0"$' rproj.toml
+
+    # adding a package again updates its version requirement
+    run rig proj add 'testthat@>= 3.2' --dev --no-lock
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "Updated testthat"
+    grep -q '^testthat = ">= 3.2"$' rproj.toml
+
+    # a version requirement that does not parse is refused, and the manifest
+    # is left alone
+    run rig proj add 'praise@nope' --no-lock
+    [[ "$status" -ne 0 ]]
+    grep -q '^praise = "\*"$' rproj.toml
+}
