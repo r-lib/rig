@@ -23,7 +23,7 @@ pub(crate) mod deps;
 pub(crate) mod install;
 pub(crate) mod list;
 mod manifest;
-mod remove;
+pub(crate) mod remove;
 #[cfg(test)]
 mod stub;
 pub(crate) mod tree;

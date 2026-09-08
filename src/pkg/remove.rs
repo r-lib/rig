@@ -202,7 +202,7 @@ fn missing_package_message(
 /// the error message must name the package directory itself. A library the user
 /// cannot write is the likely reason in admin mode, where the libraries of an R
 /// installation belong to root, so that case says so.
-fn remove_package(path: &Path) -> Result<(), String> {
+pub(crate) fn remove_package(path: &Path) -> Result<(), String> {
     match std::fs::remove_dir_all(path) {
         Ok(()) => Ok(()),
         Err(err) => {

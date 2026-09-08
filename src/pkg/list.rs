@@ -155,7 +155,7 @@ pub(crate) struct InstalledPackage {
     /// The directory the package is installed in, i.e. the one holding its
     /// `DESCRIPTION`. Usually named after the package, but the `Package` field
     /// of the `DESCRIPTION` is what `package` reports, so the two can differ.
-    pub(super) path: PathBuf,
+    pub(crate) path: PathBuf,
     built_r: Option<String>,
     platform: Option<String>,
     /// Where the package came from: the repository name (`CRAN`) for a

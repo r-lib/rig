@@ -28,7 +28,8 @@ use crate::pkg::deps::{
     dep_count, print_deps_json, print_deps_recursive, print_header, type_list, walk_deps,
 };
 use crate::pkg::install::{plan_installs, print_plan};
-use crate::pkg::list::read_installed;
+use crate::pkg::list::{read_installed, InstalledPackage};
+use crate::pkg::remove::remove_package;
 use crate::pkg::tree::proj_tree;
 use crate::platform::{detect_platform, parse_platform_string};
 use crate::repos::binaries::loader::{BinaryTarget, P3mBinaryLoader};
@@ -2040,6 +2041,9 @@ pub(crate) struct ProjSyncOptions {
     /// (`--platform`). Selects among `rproj.lock`'s existing targets, does
     /// not trigger a new solve.
     pub platform: Option<String>,
+    /// Leave packages that are installed but not in `rproj.lock` alone,
+    /// instead of removing them (`--inexact`).
+    pub inexact: bool,
 }
 
 impl Default for ProjSyncOptions {
@@ -2051,6 +2055,7 @@ impl Default for ProjSyncOptions {
             max_concurrent: 8,
             r_version: None,
             platform: None,
+            inexact: false,
         }
     }
 }
@@ -2075,6 +2080,7 @@ fn sc_proj_sync(
             .unwrap_or(8),
         r_version: args.get_one::<String>("r-version").cloned(),
         platform: args.get_one::<String>("platform").cloned(),
+        inexact: args.get_flag("inexact"),
     };
 
     proj_sync(&root, &opts, args)
@@ -2219,6 +2225,59 @@ pub(crate) fn proj_sync(
     // A package already in the library, at the version and provenance the
     // lockfile asks for, does not need to be downloaded or reinstalled.
     let already_installed = read_installed(&library_path)?;
+
+    // A package in the library that is not wanted any more (dropped from
+    // `rproj.toml`, or left over from before `--no-dev`) is removed by
+    // default, the same as `uv sync`; `--inexact` leaves it alone. The base
+    // packages are never touched, even under prune, since they are not
+    // something a lockfile ever lists in the first place.
+    if !opts.inexact {
+        let wanted_names: HashSet<&str> = wanted.iter().map(|p| p.package.as_str()).collect();
+        let extras: Vec<&InstalledPackage> = already_installed
+            .iter()
+            .filter(|p| {
+                !wanted_names.contains(p.package.as_str()) && !BASE_PKGS.contains(&p.package.as_str())
+            })
+            .collect();
+        if !extras.is_empty() {
+            let mut removed: Vec<&InstalledPackage> = vec![];
+            let mut failed: Vec<String> = vec![];
+            for extra in &extras {
+                match remove_package(&extra.path) {
+                    Ok(()) => removed.push(extra),
+                    Err(err) => {
+                        OUTPUT.error(&err);
+                        failed.push(extra.package.clone());
+                    }
+                }
+            }
+            if !removed.is_empty() {
+                let names = removed
+                    .iter()
+                    .map(|p| format!("{} ({})", p.package, p.version))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let word = if removed.len() == 1 {
+                    "package"
+                } else {
+                    "packages"
+                };
+                OUTPUT.success(&format!(
+                    "Removed {} {} no longer in {}: {}",
+                    removed.len(),
+                    word,
+                    RPROJ_LOCK_FILE,
+                    names
+                ));
+                info!("Removed {} from {}", names, library_path.display());
+            }
+            if !failed.is_empty() {
+                bail!("Failed to remove {}", failed.join(", "));
+            }
+        }
+    }
+
+    let already_installed: Vec<InstalledPackage> = read_installed(&library_path)?;
     let plan = plan_installs(wanted, &already_installed, false);
     print_plan(&format!("({})", library_path.display()), &plan);
     let todo: Vec<&RprojLockPackage> = plan

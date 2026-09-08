@@ -1710,6 +1710,16 @@ pub fn rig_app() -> Command {
                         .long("platform")
                         .num_args(1)
                         .required(false),
+                )
+                .arg(
+                    Arg::new("inexact")
+                        .help(
+                            "Do not remove packages from the library that are not in\n\
+                            rproj.lock (default: remove them)",
+                        )
+                        .long("inexact")
+                        .num_args(0)
+                        .required(false),
                 ),
         );
     let cmd_renv = Command::new("renv")

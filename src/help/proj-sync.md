@@ -19,6 +19,10 @@ Development dependencies are installed by default. `--no-dev` leaves them
 out. `--max-concurrent` limits the number of simultaneous installations
 (default: 8).
 
+By default, sync also removes any package that is in the project library but
+not in `rproj.lock` -- e.g. one dropped from `rproj.toml`, or a leftover from
+before `--no-dev`. Pass `--inexact` to leave those packages alone instead.
+
 ## The R version
 
 The lock file records the R version its solve is valid for, and that is the R
