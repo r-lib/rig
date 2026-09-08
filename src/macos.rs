@@ -977,16 +977,38 @@ pub fn sc_system_allow_debugger_rstudio(_args: &ArgMatches) -> Result<(), Box<dy
         bail!("RStudio is not installed, at least not in /Applications/RStudio.app");
     }
 
-    let rsess = PathBuf::from("/Applications/RStudio.app/Contents/MacOS/rsession");
-    update_entitlements(rsess)?;
+    let sessions = rstudio_rsession_paths();
+    if sessions.is_empty() {
+        let msg = "Could not find the rsession binary in /Applications/RStudio.app";
+        OUTPUT.error(msg);
+        error!("{}", msg);
+        bail!(msg);
+    }
 
-    let rsessarm64 = PathBuf::from("/Applications/RStudio.app/Contents/MacOS/rsession-arm64");
-
-    if rsessarm64.exists() {
-        update_entitlements(rsessarm64)?;
+    for rsess in sessions {
+        update_entitlements(rsess)?;
     }
 
     Ok(())
+}
+
+// Both the old (pre-Electron) and the current RStudio app layout.
+fn rstudio_rsession_paths() -> Vec<PathBuf> {
+    let app = Path::new("/Applications/RStudio.app/Contents");
+    let dirs = [
+        app.join("MacOS"),
+        app.join("Resources").join("app").join("bin"),
+    ];
+    let mut paths = Vec::new();
+    for dir in dirs {
+        for name in ["rsession", "rsession-arm64"] {
+            let path = dir.join(name);
+            if path.exists() {
+                paths.push(path);
+            }
+        }
+    }
+    paths
 }
 
 pub fn update_entitlements(path: PathBuf) -> Result<(), Box<dyn Error>> {
@@ -2052,7 +2074,7 @@ fn rstudio_which_r_service_target() -> Result<String, Box<dyn Error>> {
 }
 
 fn is_rstudio_installed() -> bool {
-    Path::new("/Applications/RStudio.app/Contents/MacOS/rsession").exists()
+    Path::new("/Applications/RStudio.app").exists()
 }
 
 fn rstudio_which_r_plist_path() -> Result<String, Box<dyn Error>> {
@@ -2069,6 +2091,11 @@ fn remove_rstudio_which_r_plist() -> Result<(), Box<dyn Error>> {
     if !Path::new(&plist_path).exists() {
         return Ok(());
     }
+
+    Command::new("launchctl")
+        .args(["unsetenv", "RSTUDIO_WHICH_R"])
+        .output()
+        .ok();
 
     let out = Command::new("launchctl")
         .args(["unload", &plist_path])
