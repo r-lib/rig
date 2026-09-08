@@ -48,9 +48,9 @@ ul.task-list li input[type="checkbox"] {
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-b206b9f871adaf04482dbc5f635fb1e6.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="../site_libs/bootstrap/bootstrap-dark-303e532fb61c418e3267ba9f761738ed.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
-<link href="../site_libs/bootstrap/bootstrap-b206b9f871adaf04482dbc5f635fb1e6.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-95a91974fe9d248b29780adf9fd46533.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-dark-fd0a5ac14ffd32c081ed60d68265672b.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<link href="../site_libs/bootstrap/bootstrap-95a91974fe9d248b29780adf9fd46533.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -397,6 +397,12 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/cache.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig cache</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/config.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig config</span></a>
   </div>
@@ -682,7 +688,7 @@ Run in user mode (overrides RIG_MODE and config)
 <p><code>--recursive</code> (<code>-r</code>) shows the whole dependency closure: not only the packages the package needs directly, but also the packages <em>those</em> need, and so on. Each package appears once, with the <code>Depth</code> column giving its distance from the queried package, and the <code>Needed by</code> column naming the packages that pull it in.</p>
 <p><a href="#rig-pkg-tree"><code>rig pkg tree</code></a> shows the same closure as a tree, which makes it easier to see how a package is pulled in, at the price of a longer listing.</p>
 <p>A recursive listing only ever follows hard dependencies, also below a soft dependency added by <code>--dev</code>, so <code>--dev --recursive</code> means the package’s own dev dependencies plus everything they need to be installed.</p>
-<p>rig follows the dependencies of the <em>latest</em> version of every package in the tree, so a version requirement that would force an older version, with different dependencies, is not taken into account. Use <a href="../reference/proj.html"><code>rig proj solve</code></a> for a resolution that is consistent across versions.</p>
+<p>rig follows the dependencies of the <em>latest</em> version of every package in the tree, so a version requirement that would force an older version, with different dependencies, is not taken into account. Use <a href="../reference/proj.html"><code>rig proj lock</code></a> for a resolution that is consistent across versions.</p>
 </section>
 <section id="usage-1" class="level3">
 <h3 class="anchored" data-anchor-id="usage-1">Usage</h3>
@@ -813,7 +819,7 @@ Package  Version  Type    Action   Reason
 cli      3.6.3    binary  install  not installed
 glue     1.8.0    binary  install  not installed
 ✓ Installed 2 packages (R 4.4.1, main: /Users/gaborcsardi/Library/R/arm64/4.4/library)</code></pre>
-<p>rig resolves the whole dependency tree first, the same way <a href="../reference/proj.html"><code>rig proj solve</code></a> does for a project, so a package is only installed if every package it needs can be installed with it, at versions that work together. <code>--dry-run</code> runs the resolution and reports what it would install, without installing anything.</p>
+<p>rig resolves the whole dependency tree first, the same way <a href="../reference/proj.html"><code>rig proj lock</code></a> does for a project, so a package is only installed if every package it needs can be installed with it, at versions that work together. <code>--dry-run</code> runs the resolution and reports what it would install, without installing anything.</p>
 <p>Package names are case sensitive, as they are in R. Naming the same package twice is not an error, it is installed once.</p>
 <section id="dev-dependencies" class="level3">
 <h3 class="anchored" data-anchor-id="dev-dependencies">Dev dependencies</h3>
@@ -1087,7 +1093,7 @@ Run in user mode (overrides RIG_MODE and config)
 </ul>
 <p>Dependencies are listed with R first, then grouped by dependency type, in the order R lists the fields in, and by name within a type. R and the base packages, e.g.&nbsp;<code>utils</code>, are shown with their version requirement but without a version of their own, as they are part of R; <code>--no-base</code> leaves them out altogether. A package that is not in the repositories is shown with <code>?</code> for its version.</p>
 <p>By default rig follows the hard dependencies only. <code>--dev</code> adds <code>Suggests</code> and <code>Enhances</code>, in their own <code>[Suggests]</code> and <code>[Enhances]</code> sections. As in <code>rig pkg deps</code>, <code>--dev</code> applies to the queried package only, so these sections only ever appear at the top of the tree.</p>
-<p>rig follows the dependencies of the <em>latest</em> version of every package in the tree, so a version requirement that would force an older version, with different dependencies, is not taken into account. Use <a href="../reference/proj.html"><code>rig proj solve</code></a> for a resolution that is consistent across versions.</p>
+<p>rig follows the dependencies of the <em>latest</em> version of every package in the tree, so a version requirement that would force an older version, with different dependencies, is not taken into account. Use <a href="../reference/proj.html"><code>rig proj lock</code></a> for a resolution that is consistent across versions.</p>
 </section>
 <section id="inverting-the-tree" class="level3">
 <h3 class="anchored" data-anchor-id="inverting-the-tree">Inverting the tree</h3>

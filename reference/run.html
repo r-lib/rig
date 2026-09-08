@@ -83,9 +83,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-b206b9f871adaf04482dbc5f635fb1e6.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="../site_libs/bootstrap/bootstrap-dark-303e532fb61c418e3267ba9f761738ed.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
-<link href="../site_libs/bootstrap/bootstrap-b206b9f871adaf04482dbc5f635fb1e6.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-95a91974fe9d248b29780adf9fd46533.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-dark-fd0a5ac14ffd32c081ed60d68265672b.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<link href="../site_libs/bootstrap/bootstrap-95a91974fe9d248b29780adf9fd46533.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -432,6 +432,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/cache.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">rig cache</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/config.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig config</span></a>
   </div>
@@ -538,7 +544,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#usage" id="toc-usage" class="nav-link active" data-scroll-target="#usage">Usage</a></li>
+  <li><a href="#projects" id="toc-projects" class="nav-link active" data-scroll-target="#projects">Projects</a></li>
+  <li><a href="#project-scripts" id="toc-project-scripts" class="nav-link" data-scroll-target="#project-scripts">Project scripts</a></li>
+  <li><a href="#supported-apps" id="toc-supported-apps" class="nav-link" data-scroll-target="#supported-apps">Supported apps</a></li>
+  <li><a href="#usage" id="toc-usage" class="nav-link" data-scroll-target="#usage">Usage</a></li>
   <li><a href="#arguments" id="toc-arguments" class="nav-link" data-scroll-target="#arguments">Arguments</a></li>
   <li><a href="#options" id="toc-options" class="nav-link" data-scroll-target="#options">Options</a></li>
   </ul>
@@ -574,8 +583,33 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">-f</span> <span class="op">&lt;</span>script-file<span class="op">&gt;</span>   <span class="co"># run an R script</span></span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">-e</span> <span class="op">&lt;</span>expression<span class="op">&gt;</span>    <span class="co"># evaluate an R expression</span></span>
 <span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="op">&lt;</span>pkg<span class="op">&gt;</span>::<span class="op">&lt;</span>script<span class="op">&gt;</span>    <span class="co"># run a script from a package's exec directory</span></span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="op">&lt;</span>path-to-app<span class="op">&gt;</span>      <span class="co"># run an R app</span></span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">--cmd</span> <span class="op">&lt;</span>command<span class="op">&gt;</span>    <span class="co"># run `R CMD &lt;command&gt;`</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="op">&lt;</span>name<span class="op">&gt;</span>             <span class="co"># run a script the project declares</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">--list</span>             <span class="co"># list the scripts the project declares</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="op">&lt;</span>path-to-app<span class="op">&gt;</span>      <span class="co"># run an R app</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">--cmd</span> <span class="op">&lt;</span>command<span class="op">&gt;</span>    <span class="co"># run `R CMD &lt;command&gt;`</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<section id="projects" class="level2">
+<h2 class="anchored" data-anchor-id="projects">Projects</h2>
+<p>If the current directory is inside a <a href="../reference/proj.html">project</a> (i.e.&nbsp;rig finds an <code>rproj.toml</code>, an <code>rproj.lock</code>, an <code>.rvenv</code> directory or an <code>.rvenvlib</code> directory at or above it), then <code>rig run</code> uses the project’s own environment instead of the default R version: it runs <code>.rvenv/bin/R</code>, which sets the project’s package library and repositories, and it uses the R version the project’s lock file names.</p>
+<p>Before running R, rig syncs the environment if it is out of date, i.e.&nbsp;it runs the equivalent of <code>rig proj lock</code> and <code>rig proj sync</code> for you, which may also install the R version the project needs. There is nothing to source and no shell state to keep, so this also works in a <code>Makefile</code> or in CI.</p>
+<p>Two things turn this off, and run the default R version instead:</p>
+<ul>
+<li><code>--r-version</code>, because a project environment is tied to the R version its lock file names, and</li>
+<li><code>--no-project</code>.</li>
+</ul>
+<p>If the project has not been initialized at all, i.e.&nbsp;it has no <code>.rvenvlib</code> directory, then <code>rig run</code> fails and asks you to run <code>rig proj init</code>, instead of quietly running an R that is not the project’s.</p>
+</section>
+<section id="project-scripts" class="level2">
+<h2 class="anchored" data-anchor-id="project-scripts">Project scripts</h2>
+<p>A project can give its own scripts a name, in the <code>[[bin]]</code> tables of its <code>rproj.toml</code>:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">[[bin]]</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="dt">name</span> <span class="op">=</span> <span class="st">"report"</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="dt">path</span> <span class="op">=</span> <span class="st">"scripts/report.R"</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="dt">description</span> <span class="op">=</span> <span class="st">"Build the report"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><code>rig run report --format pdf</code> then runs <code>scripts/report.R</code> in the project’s environment, and passes <code>--format pdf</code> on to the script, where <code>commandArgs(TRUE)</code> picks it up. <code>path</code> is relative to the project directory, so a declared script works the same from anywhere within the project. <code>rig run --list</code> lists the declared scripts, and <code>--json</code> prints them as JSON.</p>
+<p>A declared name wins over a directory of the same name. Arguments that look like a path rather than a name are never script names: anything containing a slash or <code>::</code>, anything ending in <code>.R</code>, <code>.r</code>, <code>.Rmd</code> or <code>.qmd</code>, and <code>.</code> and <code>..</code>. Use <code>./name</code> to run an app in a directory whose name a script has taken.</p>
+</section>
+<section id="supported-apps" class="level2">
+<h2 class="anchored" data-anchor-id="supported-apps">Supported apps</h2>
 <p>Currently supported apps are:</p>
 <ul>
 <li>Plumber APIs,</li>
@@ -586,6 +620,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <li>Rmd documents embedding Shiny apps,</li>
 <li>Static web sites.</li>
 </ul>
+</section>
 <section id="usage" class="level2">
 <h2 class="anchored" data-anchor-id="usage">Usage</h2>
 <pre class="text"><code>rig run [OPTIONS] [command]...</code></pre>
@@ -595,7 +630,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <dl>
 <dt><code>[command]...</code></dt>
 <dd>
-R script, project or R CMD command to run, with parameters
+R script, project script name, project or R CMD command to run, with parameters
 </dd>
 </dl>
 </section>
@@ -631,6 +666,14 @@ R expression to evaluate
 <dd>
 Print help (see a summary with ‘-h’)
 </dd>
+<dt><code>--json</code></dt>
+<dd>
+JSON output
+</dd>
+<dt><code>--list</code></dt>
+<dd>
+List the scripts the project declares
+</dd>
 <dt><code>--no-cache</code></dt>
 <dd>
 Do not read or write rig’s cache (overrides RIG_NO_CACHE and config)
@@ -638,6 +681,10 @@ Do not read or write rig’s cache (overrides RIG_NO_CACHE and config)
 <dt><code>--no-echo</code></dt>
 <dd>
 Do not print input to R
+</dd>
+<dt><code>--no-project</code></dt>
+<dd>
+Ignore the project environment, use the default R version
 </dd>
 <dt><code>--no-startup</code></dt>
 <dd>

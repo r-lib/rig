@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>Installing rig – rig</title>
+<title>rig cache – rig</title>
 <style>
 /* Default styles provided by pandoc.
 ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
@@ -26,66 +26,31 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
-/* CSS for syntax highlighting */
-html { -webkit-text-size-adjust: 100%; }
-pre > code.sourceCode { white-space: pre; position: relative; }
-pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
-pre > code.sourceCode > span:empty { height: 1.2em; }
-.sourceCode { overflow: visible; }
-code.sourceCode > span { color: inherit; text-decoration: inherit; }
-div.sourceCode { margin: 1em 0; }
-pre.sourceCode { margin: 0; }
-@media screen {
-div.sourceCode { overflow: auto; }
-}
-@media print {
-pre > code.sourceCode { white-space: pre-wrap; }
-pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
-}
-pre.numberSource code
-  { counter-reset: source-line 0; }
-pre.numberSource code > span
-  { position: relative; left: -4em; counter-increment: source-line; }
-pre.numberSource code > span > a:first-child::before
-  { content: counter(source-line);
-    position: relative; left: -1em; text-align: right; vertical-align: baseline;
-    border: none; display: inline-block;
-    -webkit-touch-callout: none; -webkit-user-select: none;
-    -khtml-user-select: none; -moz-user-select: none;
-    -ms-user-select: none; user-select: none;
-    padding: 0 4px; width: 4em;
-  }
-pre.numberSource { margin-left: 3em;  padding-left: 4px; }
-div.sourceCode
-  {   }
-@media screen {
-pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
-}
 </style>
 
 
-<script src="site_libs/quarto-nav/quarto-nav.js"></script>
-<script src="site_libs/quarto-nav/headroom.min.js"></script>
-<script src="site_libs/clipboard/clipboard.min.js"></script>
-<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
-<script src="site_libs/quarto-search/fuse.min.js"></script>
-<script src="site_libs/quarto-search/quarto-search.js"></script>
-<meta name="quarto:offset" content="./">
-<link href="./assets/rig-app.png" rel="icon" type="image/png">
-<script src="site_libs/quarto-html/quarto.js" type="module"></script>
-<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
-<script src="site_libs/quarto-html/popper.min.js"></script>
-<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
-<script src="site_libs/quarto-html/anchor.min.js"></script>
-<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-dark-b85bc7c33db8c58e0ec93c3465666fed.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
-<script src="site_libs/bootstrap/bootstrap.min.js"></script>
-<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="site_libs/bootstrap/bootstrap-95a91974fe9d248b29780adf9fd46533.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="site_libs/bootstrap/bootstrap-dark-fd0a5ac14ffd32c081ed60d68265672b.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
-<link href="site_libs/bootstrap/bootstrap-95a91974fe9d248b29780adf9fd46533.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<link href="../assets/rig-app.png" rel="icon" type="image/png">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-b85bc7c33db8c58e0ec93c3465666fed.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-95a91974fe9d248b29780adf9fd46533.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-dark-fd0a5ac14ffd32c081ed60d68265672b.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<link href="../site_libs/bootstrap/bootstrap-95a91974fe9d248b29780adf9fd46533.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -303,7 +268,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
       <div class="navbar-container container-fluid">
       <div class="navbar-brand-container mx-auto">
-    <a class="navbar-brand" href="./index.html">
+    <a class="navbar-brand" href="../index.html">
     <span class="navbar-title">rig</span>
     </a>
   </div>
@@ -319,7 +284,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./install.html">Guide</a></li><li class="breadcrumb-item"><a href="./install.html">Installing rig</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../reference/cache.html">rig cache</a></li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
       <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
@@ -341,7 +306,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <ul class="list-unstyled mt-1">
         <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
-            <a href="./tutorial.html" class="sidebar-item-text sidebar-link">
+            <a href="../tutorial.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Tutorials</span></a>
           <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
             <i class="bi bi-chevron-right ms-2"></i>
@@ -350,19 +315,19 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./tutorial-user.html" class="sidebar-item-text sidebar-link">
+  <a href="../tutorial-user.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">User mode</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./tutorial-admin.html" class="sidebar-item-text sidebar-link">
+  <a href="../tutorial-admin.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Admin mode</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./tutorial-migrate.html" class="sidebar-item-text sidebar-link">
+  <a href="../tutorial-migrate.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Migrate to user mode</span></a>
   </div>
 </li>
@@ -379,31 +344,31 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./install.html" class="sidebar-item-text sidebar-link active">
+  <a href="../install.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Installing rig</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./admin-vs-user-mode.html" class="sidebar-item-text sidebar-link">
+  <a href="../admin-vs-user-mode.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Admin mode vs user mode</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./macos-app.html" class="sidebar-item-text sidebar-link">
+  <a href="../macos-app.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">macOS menu bar app</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./docker.html" class="sidebar-item-text sidebar-link">
+  <a href="../docker.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Docker containers</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./faq.html" class="sidebar-item-text sidebar-link">
+  <a href="../faq.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">FAQ</span></a>
   </div>
 </li>
@@ -411,7 +376,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   </li>
         <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
-            <a href="./reference/index.html" class="sidebar-item-text sidebar-link">
+            <a href="../reference/index.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Reference</span></a>
           <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true" aria-label="Toggle section">
             <i class="bi bi-chevron-right ms-2"></i>
@@ -420,109 +385,109 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./reference/add.html" class="sidebar-item-text sidebar-link">
+  <a href="../reference/add.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig add</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./reference/available.html" class="sidebar-item-text sidebar-link">
+  <a href="../reference/available.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig available</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./reference/cache.html" class="sidebar-item-text sidebar-link">
+  <a href="../reference/cache.html" class="sidebar-item-text sidebar-link active">
  <span class="menu-text">rig cache</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./reference/config.html" class="sidebar-item-text sidebar-link">
+  <a href="../reference/config.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig config</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./reference/default.html" class="sidebar-item-text sidebar-link">
+  <a href="../reference/default.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig default</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./reference/library.html" class="sidebar-item-text sidebar-link">
+  <a href="../reference/library.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig library</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./reference/list.html" class="sidebar-item-text sidebar-link">
+  <a href="../reference/list.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig list</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./reference/pkg.html" class="sidebar-item-text sidebar-link">
+  <a href="../reference/pkg.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig pkg</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./reference/ppm.html" class="sidebar-item-text sidebar-link">
+  <a href="../reference/ppm.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig ppm</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./reference/proj.html" class="sidebar-item-text sidebar-link">
+  <a href="../reference/proj.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig proj</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./reference/repos.html" class="sidebar-item-text sidebar-link">
+  <a href="../reference/repos.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig repos</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./reference/resolve.html" class="sidebar-item-text sidebar-link">
+  <a href="../reference/resolve.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig resolve</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./reference/rm.html" class="sidebar-item-text sidebar-link">
+  <a href="../reference/rm.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig rm</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./reference/rstudio.html" class="sidebar-item-text sidebar-link">
+  <a href="../reference/rstudio.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig rstudio</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./reference/rtools.html" class="sidebar-item-text sidebar-link">
+  <a href="../reference/rtools.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig rtools</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./reference/run.html" class="sidebar-item-text sidebar-link">
+  <a href="../reference/run.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig run</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./reference/sysreqs.html" class="sidebar-item-text sidebar-link">
+  <a href="../reference/sysreqs.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig sysreqs</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./reference/system.html" class="sidebar-item-text sidebar-link">
+  <a href="../reference/system.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig system</span></a>
   </div>
 </li>
@@ -530,7 +495,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   </li>
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./news.html" class="sidebar-item-text sidebar-link">
+  <a href="../news.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Changelog</span></a>
   </div>
 </li>
@@ -544,11 +509,16 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#id-supported-linux-distributions" id="toc-id-supported-linux-distributions" class="nav-link active" data-scroll-target="#id-supported-linux-distributions">Supported Linux distributions</a></li>
-  <li><a href="#installing-auto-complete" id="toc-installing-auto-complete" class="nav-link" data-scroll-target="#installing-auto-complete">Installing auto-complete</a>
+  <li><a href="#subcommands" id="toc-subcommands" class="nav-link active" data-scroll-target="#subcommands">Subcommands</a></li>
+  <li><a href="#rig-cache-clean" id="toc-rig-cache-clean" class="nav-link" data-scroll-target="#rig-cache-clean"><code>rig cache clean</code></a>
   <ul class="collapse">
-  <li><a href="#macos-and-linux" id="toc-macos-and-linux" class="nav-link" data-scroll-target="#macos-and-linux">macOS and Linux</a></li>
-  <li><a href="#windows-1" id="toc-windows-1" class="nav-link" data-scroll-target="#windows-1">Windows</a></li>
+  <li><a href="#usage" id="toc-usage" class="nav-link" data-scroll-target="#usage">Usage</a></li>
+  <li><a href="#options" id="toc-options" class="nav-link" data-scroll-target="#options">Options</a></li>
+  </ul></li>
+  <li><a href="#rig-cache-info" id="toc-rig-cache-info" class="nav-link" data-scroll-target="#rig-cache-info"><code>rig cache info</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-1" id="toc-usage-1" class="nav-link" data-scroll-target="#usage-1">Usage</a></li>
+  <li><a href="#options-1" id="toc-options-1" class="nav-link" data-scroll-target="#options-1">Options</a></li>
   </ul></li>
   </ul>
 </nav>
@@ -557,9 +527,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <main class="content" id="quarto-document-content">
 
 
-<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./install.html">Guide</a></li><li class="breadcrumb-item"><a href="./install.html">Installing rig</a></li></ol></nav>
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../reference/cache.html">rig cache</a></li></ol></nav>
 <div class="quarto-title">
-<h1 class="title">Installing rig</h1>
+<h1 class="title">rig cache</h1>
 </div>
 
 
@@ -576,228 +546,92 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </header>
 
 
-<p>Some of the methods below install rig itself into your home directory, others system-wide. That choice is independent of the <a href="./admin-vs-user-mode.html">mode</a> rig installs <em>R</em> in: rig defaults to admin mode either way, and you switch to user mode explicitly with <code>rig system user-mode</code>. Admin mode is the older and better tested mode, so if you have an administrator account and no reason to keep R in your home directory, you can skip that step.</p>
-<div class="tabset-margin-container"></div><div class="panel-tabset">
-<ul class="nav nav-tabs" role="tablist"><li class="nav-item" role="presentation"><a class="nav-link active" id="tabset-1-1-tab" data-bs-toggle="tab" data-bs-target="#tabset-1-1" role="tab" aria-controls="tabset-1-1" aria-selected="true" href="">macOS</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-1-2-tab" data-bs-toggle="tab" data-bs-target="#tabset-1-2" role="tab" aria-controls="tabset-1-2" aria-selected="false" href="">Windows</a></li><li class="nav-item" role="presentation"><a class="nav-link" id="tabset-1-3-tab" data-bs-toggle="tab" data-bs-target="#tabset-1-3" role="tab" aria-controls="tabset-1-3" aria-selected="false" href="">Linux</a></li></ul>
-<div class="tab-content">
-<div id="tabset-1-1" class="tab-pane active" role="tabpanel" aria-labelledby="tabset-1-1-tab">
-<section id="method-1-user-install-command-line-rig-only" class="level3">
-<h3 class="anchored" data-anchor-id="method-1-user-install-command-line-rig-only">Method 1: user install (command line rig only)</h3>
-<p>Use our install script, which downloads the right build for your Mac, unpacks it into <code>~/.local</code>, and adds <code>~/.local/bin</code> to your <code>PATH</code>:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-LsSf</span> https://r-lib.github.io/rig/install.sh <span class="kw">|</span> <span class="fu">sh</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Then install R. rig still defaults to admin mode, which installs R system-wide; add the first command below to keep R in your home directory too (<a href="./admin-vs-user-mode.html">user mode</a>):</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> system user-mode</span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> add release</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Alternatively, download the <code>rig-macos-&lt;arch&gt;-&lt;version&gt;.tar.gz</code> archive for your architecture (<code>arm64</code> or <code>x86_64</code>) from <a href="https://github.com/r-lib/rig/releases" class="uri">https://github.com/r-lib/rig/releases</a> and unpack it into <code>~/.local</code> yourself:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mkdir</span> <span class="at">-p</span> ~/.local</span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-Ls</span> https://github.com/r-lib/rig/releases/download/latest/rig-macos-arm64-latest.tar.gz <span class="kw">|</span></span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">tar</span> xz <span class="at">-C</span> ~/.local</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Make sure <code>~/.local/bin</code> is on your <code>PATH</code>. The binary in these archives is signed and notarized, so it runs without Gatekeeper warnings.</p>
-<hr>
-</section>
-<section id="method-2-system-install-with-menu-bar-app" class="level3">
-<h3 class="anchored" data-anchor-id="method-2-system-install-with-menu-bar-app">Method 2: system install (with menu bar app)</h3>
-<p>Download the latest release from <a href="https://github.com/r-lib/rig/releases" class="uri">https://github.com/r-lib/rig/releases</a> and install it the usual way.</p>
-<hr>
-</section>
-<section id="method-3-system-install-with-homebrew" class="level3">
-<h3 class="anchored" data-anchor-id="method-3-system-install-with-homebrew">Method 3: system install with Homebrew</h3>
-<section id="menu-bar-app-command-line-app" class="level4">
-<h4 class="anchored" data-anchor-id="menu-bar-app-command-line-app">Menu bar app + command line app:</h4>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">brew</span> install r-rig-app</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>This is a homebrew cask and needs your password to install.</p>
-</section>
-<section id="command-line-app-only" class="level4">
-<h4 class="anchored" data-anchor-id="command-line-app-only">Command line app only:</h4>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">brew</span> install r-rig</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>You can use x86_64 rig on Arm macs, and it will be able to install Arm builds of R. But you cannot use Arm rig on Intel macs. If you use both brew versions, only install rig with one of them.</p>
-<p>To update rig you can run</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ex">brew</span> upgrade r-rig-app</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</section>
-</section>
-</div>
-<div id="tabset-1-2" class="tab-pane" role="tabpanel" aria-labelledby="tabset-1-2-tab">
-<section id="method-1-user-install-no-admin-rights-needed" class="level3">
-<h3 class="anchored" data-anchor-id="method-1-user-install-no-admin-rights-needed">Method 1: user install (no admin rights needed)</h3>
-<p>If you don’t have administrator rights, you can install rig into your user profile with the install script. It downloads the right build, unpacks it into <code>%USERPROFILE%\.local</code>, and adds <code>%USERPROFILE%\.local\bin</code> to your user <code>PATH</code>:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode powershell code-with-copy"><code class="sourceCode powershell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">irm</span> https<span class="op">://</span>r-lib<span class="op">.</span><span class="fu">github</span><span class="op">.</span><span class="fu">io</span><span class="op">/</span>rig<span class="op">/</span>install<span class="op">.</span><span class="fu">ps1</span> <span class="op">|</span> <span class="fu">iex</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Open a new terminal, then install R. rig still defaults to admin mode, which installs R system-wide; add the first command below to keep R in your user profile too (<a href="./admin-vs-user-mode.html">user mode</a>):</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode powershell code-with-copy"><code class="sourceCode powershell"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>rig system user-mode</span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>rig add release</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Alternatively, download the <code>rig-windows-&lt;arch&gt;-&lt;version&gt;.zip</code> archive (<code>x86_64</code> or <code>arm64</code>) from <a href="https://github.com/r-lib/rig/releases" class="uri">https://github.com/r-lib/rig/releases</a> and extract it into <code>%USERPROFILE%\.local</code>, then add <code>%USERPROFILE%\.local\bin</code> to your <code>PATH</code>.</p>
-<hr>
-</section>
-<section id="method-2-system-install" class="level3">
-<h3 class="anchored" data-anchor-id="method-2-system-install">Method 2: system install</h3>
-<p>Download the latest release from <a href="https://github.com/r-lib/rig/releases" class="uri">https://github.com/r-lib/rig/releases</a> and install it the usual way.</p>
-<p><code>rig</code> adds itself to the user’s path, but you might need to restart your terminal after the installation on Windows.</p>
-<hr>
-</section>
-<section id="method-3-scoop" class="level3">
-<h3 class="anchored" data-anchor-id="method-3-scoop">Method 3: Scoop</h3>
-<p>If you use <a href="https://scoop.sh/">Scoop</a>, you can install rig from the scoop bucket at <a href="https://github.com/cderv/r-bucket#r-installation-manager-rig"><code>cderv/r-bucket</code></a>:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode powershell code-with-copy"><code class="sourceCode powershell"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>scoop bucket add r-bucket https<span class="op">://</span>github<span class="op">.</span><span class="fu">com</span><span class="op">/</span>cderv<span class="op">/</span>r-bucket<span class="op">.</span><span class="fu">git</span></span>
-<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>scoop install rig</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>To update run</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode powershell code-with-copy"><code class="sourceCode powershell"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>scoop update rig</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<hr>
-</section>
-<section id="method-4-chocolatey" class="level3">
-<h3 class="anchored" data-anchor-id="method-4-chocolatey">Method 4: Chocolatey</h3>
-<p>If you use <a href="https://chocolatey.org/">Chocolatey</a> (e.g.&nbsp;on GitHub Actions) you can install <code>rig</code> with</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode powershell code-with-copy"><code class="sourceCode powershell"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>choco install rig</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>and upgrade to the latest version with</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode powershell code-with-copy"><code class="sourceCode powershell"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>choco upgrade rig</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<hr>
-</section>
-<section id="method-5-winget" class="level3">
-<h3 class="anchored" data-anchor-id="method-5-winget">Method 5: WinGet</h3>
-<p>An easy way to install rig on Windows 10 and above is to use the built-in WinGet package manager. The name of the package is <code>posit.rig</code>.</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode powershell code-with-copy"><code class="sourceCode powershell"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>winget install posit<span class="op">.</span><span class="fu">rig</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</section>
-</div>
-<div id="tabset-1-3" class="tab-pane" role="tabpanel" aria-labelledby="tabset-1-3-tab">
-<p>On Linux you can install rig into your home directory without administrator rights, or system-wide from a DEB or RPM package, or from a tarball. See the <a href="./install.html#id-supported-linux-distributions">supported distributions</a> below for admin mode rig. In user mode rig runs on any glibc (&gt;=2.28) or musl (&gt;=1.2) based Linux.</p>
-<section id="method-1-user-install-no-admin-rights-needed-1" class="level3">
-<h3 class="anchored" data-anchor-id="method-1-user-install-no-admin-rights-needed-1">Method 1: User install (no admin rights needed)</h3>
-<p>Use our install script, which downloads the right build for your machine, unpacks it into <code>~/.local</code>, and adds <code>~/.local/bin</code> to your <code>PATH</code>:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-LsSf</span> https://r-lib.github.io/rig/install.sh <span class="kw">|</span> <span class="fu">sh</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Then install R. rig still defaults to admin mode, which installs R system-wide; add the first command below to keep R in your home directory too (<a href="./admin-vs-user-mode.html">user mode</a>):</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb15"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> system user-mode</span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> add release</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Alternatively, download the <code>rig-linux-&lt;arch&gt;-&lt;version&gt;.tar.gz</code> archive for your architecture (<code>x86_64</code> or <code>aarch64</code>) from <a href="https://github.com/r-lib/rig/releases" class="uri">https://github.com/r-lib/rig/releases</a> and unpack it into <code>~/.local</code> yourself:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb16"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mkdir</span> <span class="at">-p</span> ~/.local</span>
-<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-Ls</span> https://github.com/r-lib/rig/releases/download/latest/rig-linux-<span class="va">$(</span><span class="fu">arch</span><span class="va">)</span>-latest.tar.gz <span class="kw">|</span></span>
-<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">tar</span> xz <span class="at">-C</span> ~/.local</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Make sure <code>~/.local/bin</code> is on your <code>PATH</code>.</p>
-<hr>
-</section>
-<section id="method-2-ubuntu-and-debian-deb-package" class="level3">
-<h3 class="anchored" data-anchor-id="method-2-ubuntu-and-debian-deb-package">Method 2: Ubuntu and Debian (DEB package)</h3>
-<p>On any Ubuntu or Debian distro, you can use our package repository to install rig. First you add our key to your config:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb17"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="kw">`</span><span class="fu">which</span> sudo<span class="kw">`</span> curl <span class="at">-L</span> https://rig.r-pkg.org/deb/rig.gpg <span class="at">-o</span> /etc/apt/trusted.gpg.d/rig.gpg</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Then add the rig repository:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb18"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="kw">`</span><span class="fu">which</span> sudo<span class="kw">`</span> sh <span class="at">-c</span> <span class="st">'echo "deb http://rig.r-pkg.org/deb rig main" &gt; /etc/apt/sources.list.d/rig.list'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>If you already added both the key and the repository, then install the <code>r-rig</code> package (<code>rig</code> is a different package in Debian and Ubuntu):</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb19"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="kw">`</span><span class="fu">which</span> sudo<span class="kw">`</span> apt update</span>
-<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="kw">`</span><span class="fu">which</span> sudo<span class="kw">`</span> apt install r-rig</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<hr>
-</section>
-<section id="method-3-rhel-fedora-rocky-linux-almalinux-etc.-rpm-package" class="level3">
-<h3 class="anchored" data-anchor-id="method-3-rhel-fedora-rocky-linux-almalinux-etc.-rpm-package">Method 3: RHEL, Fedora, Rocky Linux, Almalinux, etc. (RPM package)</h3>
-<p>On most RPM based distros (except for OpenSUSE and SLES) you can install our RPM package directly:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb20"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="kw">`</span><span class="fu">which</span> sudo<span class="kw">`</span> yum install <span class="at">-y</span> <span class="dt">\</span></span>
-<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>  https://github.com/r-lib/rig/releases/download/latest/r-rig-latest-1.<span class="va">$(</span><span class="fu">arch</span><span class="va">)</span>.rpm</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<hr>
-</section>
-<section id="method-4-opensuse-and-sles-rpm-package" class="level3">
-<h3 class="anchored" data-anchor-id="method-4-opensuse-and-sles-rpm-package">Method 4: OpenSUSE and SLES (RPM package)</h3>
-<p>On OpenSUSE and SLES use <code>zypper</code> instead of <code>yum</code>:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb21"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="kw">`</span><span class="fu">which</span> sudo<span class="kw">`</span> zypper install <span class="at">-y</span> <span class="at">--allow-unsigned-rpm</span> <span class="dt">\</span></span>
-<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>  https://github.com/r-lib/rig/releases/download/latest/r-rig-latest-1.<span class="va">$(</span><span class="fu">arch</span><span class="va">)</span>.rpm</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<hr>
-</section>
-<section id="method-5-any-linux-distribution-tarball" class="level3">
-<h3 class="anchored" data-anchor-id="method-5-any-linux-distribution-tarball">Method 5: Any Linux distribution (tarball)</h3>
-<p>Download the latest release from <a href="https://github.com/r-lib/rig/releases" class="uri">https://github.com/r-lib/rig/releases</a> and uncompress it to <code>/usr/local</code></p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb22"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-Ls</span> https://github.com/r-lib/rig/releases/download/latest/rig-linux-<span class="va">$(</span><span class="fu">arch</span><span class="va">)</span>-latest.tar.gz <span class="kw">|</span></span>
-<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">`</span><span class="fu">which</span> sudo<span class="kw">`</span> tar xz <span class="at">-C</span> /usr/local</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</section>
-</div>
-</div>
-</div>
-<p>Once rig is installed, the <a href="./tutorial.html">tutorials</a> walk you through installing R, switching between versions and installing packages.</p>
-<section id="id-supported-linux-distributions" class="level2">
-<h2 class="anchored" data-anchor-id="id-supported-linux-distributions">Supported Linux distributions</h2>
+<!-- Generated by website/gen-cli-reference.sh. Do not edit by hand. -->
+<p>rig caches files it downloads (R binary indexes, CRAN-like package databases, package DESCRIPTION manifests, downloaded package files, and packages rig built from source) in an OS-specific cache directory, so it does not have to re-download them on every run. See <a href="../reference/system.html#rig-system-dirs"><code>rig system dirs --cache</code></a> for the cache directory path.</p>
 <ul>
-<li>Debian 12, 13</li>
-<li>Ubuntu 20.04, 22.04, 24.04, 26.04</li>
-<li>Fedora Linux 43, 44</li>
-<li>OpenSUSE 15.6, 16.0</li>
-<li>SUSE Linux Enterprise 15 SP6</li>
-<li>Red Hat Enterprise Linux 7, 8, 9, 10</li>
-<li>AlmaLinux 8, 9, 10</li>
-<li>Rocky Linux 8, 9 10</li>
+<li><code>rig cache info</code> shows how much space the cache is using, broken down by category.</li>
+<li><code>rig cache clean</code> deletes cached files, optionally restricted to one category with <code>--category</code>.</li>
 </ul>
-<details>
-<summary>
-Retired Linux distributions
-</summary>
-<p>These are not updated any more, no new R builds are added for them, but existing R builds still work.</p>
-<ul>
-<li>CentOS 6 (only x86_64, last R version: 4.0.4),</li>
-<li>CentOS 7 (last R version: 4.4.3),</li>
-<li>CentOS 8 (last R version: 4.4.3),</li>
-<li>Debian 9 (last R version: 4.2.1),</li>
-<li>Debian 10 (last R version: 4.4.3),</li>
-<li>Fedora 37 (last R version: 4.3.2),</li>
-<li>Fedora 38 (last R version: 4.4.2),</li>
-<li>Fedora 39 (last R version: 4.4.3),</li>
-<li>Fedora 40 (last R version: 4.5.1),</li>
-<li>Fedora 41 (last R version: 4.5.3),</li>
-<li>Fedora 42 (last R version: 4.6.1),</li>
-<li>OpenSUSE 42 (only x86_64, last R version: 4.2.1),</li>
-<li>OpenSUSE 15.1 (only x86_64, last R version: 4.1.2),</li>
-<li>OpenSUSE 15.2 (only x86_64, last R version: 4.1.3),</li>
-<li>OpenSUSE 15.3 (last R version: x86_64: 4.4.3, aarch64: 4.3.1),</li>
-<li>OpenSUSE 15.4 (last R version: 4.4.0),</li>
-<li>OpenSUSE 15.5 (last R version: 4.4.3),</li>
-<li>SUSE Linux Enterprise 15 (only x86_64, last R version: 4.1.2),</li>
-<li>SUSE Linux Enterprise 15.1 (only x86_64, last R version: 4.1.2),</li>
-<li>SUSE Linux Enterprise 15.2 (only x86_64, last R version: 4.1.3),</li>
-<li>SUSE Linux Enterprise 15.3 (last R version: x86_64: 4.4.3, aarch64: 4.3.1),</li>
-<li>SUSE Linux Enterprise 15.4 (last R version: 4.4.0),</li>
-<li>SUSE Linux Enterprise 15.5 (last R version: 4.4.3),</li>
-<li>Ubuntu 16.04 (only x86_64, last R version: 4.1.2),</li>
-<li>Ubuntu 18.04 (last R version: 4.3.1).</li>
-</ul>
-</details>
-<p>We use Linux builds or R from the Posit <a href="https://github.com/rstudio/r-builds#r-builds">R-builds project</a>.</p>
+<p>The global <code>--no-cache</code> flag makes rig skip this cache entirely for the current run; it does not affect what <code>rig cache</code> reports or deletes.</p>
+<section id="subcommands" class="level2">
+<h2 class="anchored" data-anchor-id="subcommands">Subcommands</h2>
+<dl>
+<dt><a href="#rig-cache-clean"><code>clean</code></a></dt>
+<dd>
+Delete cached files
+</dd>
+<dt><a href="#rig-cache-info"><code>info</code></a></dt>
+<dd>
+Show cache size and contents
+</dd>
+</dl>
 </section>
-<section id="installing-auto-complete" class="level2">
-<h2 class="anchored" data-anchor-id="installing-auto-complete">Installing auto-complete</h2>
-<p>All rig installers and archives ship shell completion files.</p>
-<section id="macos-and-linux" class="level3">
-<h3 class="anchored" data-anchor-id="macos-and-linux">macOS and Linux</h3>
-<p>The macOS and Linux installers install completion files for <code>zsh</code> and <code>bash</code> into system locations.</p>
-<p><code>zsh</code> completions work out of the box.</p>
-<p>For <code>bash</code> completions install the <code>bash-completion</code> package from Homebrew or your Linux distribution and make sure it is loaded from your <code>.bashrc</code>. (You don’t need to install <code>bash</code> from Homebrew, but you can if you like.)</p>
-<p>For <strong>user-mode</strong> installs the completion files are placed under the install prefix instead (e.g.&nbsp;<code>~/.local/share</code>):</p>
-<ul>
-<li><code>zsh</code>: add <code>~/.local/share/zsh/site-functions</code> to your <code>fpath</code> (before <code>compinit</code>).</li>
-<li><code>bash</code>: <code>bash-completion</code> picks up <code>~/.local/share/bash-completion/completions</code> automatically once it is loaded from your <code>.bashrc</code>.</li>
-</ul>
+<section id="rig-cache-clean" class="level2">
+<h2 class="anchored" data-anchor-id="rig-cache-clean"><code>rig cache clean</code></h2>
+<p>Deletes files from rig’s cache directory. With no options, deletes the whole cache. Use <code>--category</code> to delete only one category of cached files (<code>binaries</code>, <code>built</code>, <code>packages</code> or <code>metadata</code>), leaving the rest in place. See <a href="../reference/cache.html#rig-cache-info"><code>rig cache info</code></a> for what each category contains.</p>
+<section id="usage" class="level3">
+<h3 class="anchored" data-anchor-id="usage">Usage</h3>
+<pre class="text"><code>rig cache clean [OPTIONS]</code></pre>
 </section>
-<section id="windows-1" class="level3">
-<h3 class="anchored" data-anchor-id="windows-1">Windows</h3>
-<p>The Windows installer and archive ship a PowerShell completion script. To enable tab-completion, dot-source it from your PowerShell profile (<code>$PROFILE</code>). For a user-mode archive install that is:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb23"><pre class="sourceCode powershell code-with-copy"><code class="sourceCode powershell"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="op">.</span> <span class="st">"</span><span class="va">$env</span><span class="op">:</span><span class="va">USERPROFILE</span><span class="st">\.local\share\rig\_rig.ps1"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<script>
-// Open the tab matching the URL hash (#macos / #windows / #linux), e.g. when
-// arriving from the "Install rig for <OS>" button on the Get started page.
-(function () {
-  function activateFromHash() {
-    var os = (location.hash || "").replace(/^#/, "").toLowerCase();
-    if (!os) return;
-    var links = document.querySelectorAll("ul.nav-tabs .nav-link");
-    for (var i = 0; i < links.length; i++) {
-      if (links[i].textContent.trim().toLowerCase() === os) {
-        links[i].click();
-        // Open the tab but keep the reader at the top of the page rather than
-        // scrolling down to the tabset.
-        window.scrollTo(0, 0);
-        break;
-      }
-    }
-  }
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", activateFromHash);
-  } else {
-    activateFromHash();
-  }
-  window.addEventListener("hashchange", activateFromHash);
-})();
-</script>
+<section id="options" class="level3">
+<h3 class="anchored" data-anchor-id="options">Options</h3>
+<dl>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--category &lt;category&gt;</code></dt>
+<dd>
+Only delete this category of cached files
+<em>[possible values: binaries, built, packages, metadata]</em>
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+<dt><code>--no-cache</code></dt>
+<dd>
+Do not read or write rig’s cache (overrides RIG_NO_CACHE and config)
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+</dl>
+</section>
+</section>
+<section id="rig-cache-info" class="level2">
+<h2 class="anchored" data-anchor-id="rig-cache-info"><code>rig cache info</code></h2>
+<p>Prints the total size of rig’s cache directory, broken down into categories: binary package indexes, packages rig built from source, downloaded package files, and other metadata (CRAN-like package databases and package manifests).</p>
+<p>Use <code>--json</code> for machine-readable output.</p>
+<section id="usage-1" class="level3">
+<h3 class="anchored" data-anchor-id="usage-1">Usage</h3>
+<pre class="text"><code>rig cache info [OPTIONS]</code></pre>
+</section>
+<section id="options-1" class="level3">
+<h3 class="anchored" data-anchor-id="options-1">Options</h3>
+<dl>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+<dt><code>--json</code></dt>
+<dd>
+JSON output
+</dd>
+<dt><code>--no-cache</code></dt>
+<dd>
+Do not read or write rig’s cache (overrides RIG_NO_CACHE and config)
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+</dl>
 
 
 </section>
