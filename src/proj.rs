@@ -2236,7 +2236,8 @@ pub(crate) fn proj_sync(
         let extras: Vec<&InstalledPackage> = already_installed
             .iter()
             .filter(|p| {
-                !wanted_names.contains(p.package.as_str()) && !BASE_PKGS.contains(&p.package.as_str())
+                !wanted_names.contains(p.package.as_str())
+                    && !BASE_PKGS.contains(&p.package.as_str())
             })
             .collect();
         if !extras.is_empty() {
