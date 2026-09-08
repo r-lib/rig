@@ -978,16 +978,48 @@ pub(crate) fn sc_proj_solve_deps(
     match solution {
         Ok(sol) => Ok((reg, sol)),
         Err(e) => {
-            // Parallel callers report the one failure that aborts the command
-            // themselves, with the target it belongs to; N unlabelled copies
-            // of the same message would say less, not more.
+            // The target goes into the message here, where the platform is
+            // known, so that a batch of parallel solves can report the failure
+            // that aborts the command without having to append the target to
+            // the end of a multi-line report.
+            let msg = format!(
+                "Cannot resolve dependencies for R {} / {}:\n{}",
+                r_version,
+                solve_platform_key(reg.binary_target()),
+                format_solver_error(e)
+            );
+            // Parallel callers print the one failure that aborts the command
+            // themselves; N copies of the same report would say less, not more.
             if report_status {
-                OUTPUT.error(&format!("Solver failed: {}", e));
+                report_solve_failure(&msg);
             }
-            error!("Solver failed: {}", e);
-            bail!("Solver failed: {}", e)
+            error!("{}", msg);
+            bail!("{}", msg)
         }
     }
+}
+
+/// Show a solve failure: the headline as an error, the pubgrub report under it.
+///
+/// The report body is deliberately not colored — [`OUTPUT.error`] bolds and
+/// reddens everything it is given, and a dozen lines of that is harder to read,
+/// not easier.
+fn report_solve_failure(msg: &str) {
+    match msg.split_once('\n') {
+        Some((headline, report)) => {
+            OUTPUT.error(headline);
+            OUTPUT.println(report);
+        }
+        None => OUTPUT.error(msg),
+    }
+}
+
+/// How a solve target's platform is named in messages and in the lock file.
+///
+/// Mirrors how `RprojLockTarget::from_solution` derives the target's `platform`
+/// field (src/rproj.rs), so the two never disagree.
+fn solve_platform_key(target_name: Option<String>) -> String {
+    target_name.unwrap_or_else(|| std::env::consts::ARCH.to_string())
 }
 
 fn solution_to_sorted_vec(
@@ -1307,17 +1339,15 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         let (registry, solution) = match result {
             Ok(v) => v,
             // The failing solve logged itself inside `sc_proj_solve_deps` but
-            // left the reporting to here, so that a batch of parallel solves
-            // reports one failure, with the target it belongs to, instead of
-            // one unlabelled message per failing thread. This aborts the whole
-            // `proj lock` command, same as the old sequential `?` did, and
-            // main prints the message.
+            // left the printing to here, so that a batch of parallel solves
+            // shows one failure instead of one message per failing thread. The
+            // message already names the target it belongs to. This aborts the
+            // whole `proj lock` command, same as the old sequential `?` did;
+            // printing it here is what makes it visible, since `error!` only
+            // reaches the log file in interactive mode.
             Err(msg) => {
-                if multi {
-                    bail!("{} for R {} / {}", msg, rver, platform_key);
-                } else {
-                    bail!("{}", msg);
-                }
+                report_solve_failure(&msg);
+                bail!("{}", msg);
             }
         };
 

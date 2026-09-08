@@ -764,6 +764,40 @@ impl DependencyProvider for RPackageRegistry {
     }
 }
 
+/// The name of the synthetic root package the solve is rooted at.
+const ROOT_PACKAGE: &str = "_project";
+
+/// Turn a solver failure into the explanation we show the user.
+///
+/// `PubGrubError::NoSolution`'s own `Display` is the fixed string "There is no
+/// solution": the whole explanation is in the derivation tree it carries, and
+/// rendering that tree is what this does. The other variants carry a message
+/// already.
+pub fn format_solver_error(err: PubGrubError<RPackageRegistry>) -> String {
+    let mut tree = match err {
+        PubGrubError::NoSolution(tree) => tree,
+        other => return other.to_string(),
+    };
+
+    // The registry is not offline — it loads every known version of a package
+    // from the local package database — so a "no versions" node really means
+    // there is no such version, and merging those nodes into the constraint they
+    // conflict with makes the report much shorter.
+    tree.collapse_no_versions();
+    let report = DefaultStringReporter::report(&tree);
+
+    // The root package is ours, not the user's; it should not show up in output.
+    let report = report
+        .replace(&format!("{} 1.0.0", ROOT_PACKAGE), "this project")
+        .replace(ROOT_PACKAGE, "this project");
+
+    report
+        .lines()
+        .map(|line| format!("  {}", line))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -977,6 +1011,32 @@ mod tests {
         )
         .unwrap();
         (reg, solution)
+    }
+
+    #[test]
+    fn a_failed_solve_is_explained() {
+        let source = StubSource {
+            packages: vec![("a", "1.0.0", "b (>= 2.0.0)"), ("b", "1.0.0", "")],
+        };
+        let reg = RPackageRegistry::with_loaders(Box::new(source), None);
+        reg.add_package_version(
+            "_project".to_string(),
+            RegistryPackageVersion::new("_project", "1.0.0").unwrap(),
+            ranges("a"),
+        );
+        let err = resolve(
+            &reg,
+            "_project".to_string(),
+            RegistryPackageVersion::new("_project", "1.0.0").unwrap(),
+        )
+        .unwrap_err();
+
+        let msg = format_solver_error(err);
+        // Not pubgrub's own `Display`, which is only "There is no solution".
+        assert!(msg.contains("b >=2.0.0"), "{}", msg);
+        assert!(msg.contains("this project"), "{}", msg);
+        assert!(!msg.contains("_project"), "{}", msg);
+        assert!(msg.lines().all(|l| l.starts_with("  ")), "{}", msg);
     }
 
     #[test]
