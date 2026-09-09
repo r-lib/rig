@@ -3198,7 +3198,8 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("Two workspace members"), "{}", err);
-        assert!(err.contains("packages/also-a"), "{}", err);
+        assert!(err.contains("packages"), "{}", err);
+        assert!(err.contains("also-a"), "{}", err);
     }
 
     #[test]

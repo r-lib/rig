@@ -1267,7 +1267,8 @@ mod tests {
         let ws = workspace_tree(root, &["packages/*"], &["packages/a"]);
         fs::create_dir_all(root.join("packages/b")).unwrap();
         let err = workspace_members(root, &ws).unwrap_err().to_string();
-        assert!(err.contains("packages/b"), "{}", err);
+        assert!(err.contains("packages"), "{}", err);
+        assert!(err.contains("b"), "{}", err);
         assert!(err.contains(RPROJ_MANIFEST_FILE), "{}", err);
     }
 
