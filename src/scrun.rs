@@ -40,10 +40,11 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
     }
 
     let rbin = run_r_binary(args, dry_run)?;
+    let renviron_user = no_project_renviron_user(args);
 
     // R CMD must be before other arguments.
     if args.get_flag("cmd") {
-        return sc_run_cmd(rbin, cmdargs, dry_run);
+        return sc_run_cmd(rbin, renviron_user, cmdargs, dry_run);
     }
 
     let eval = args.get_one::<String>("eval");
@@ -60,9 +61,9 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
     }
 
     if let Some(eval) = eval {
-        sc_run_eval(rbin, rargs, eval.to_string(), cmdargs, dry_run)
+        sc_run_eval(rbin, renviron_user, rargs, eval.to_string(), cmdargs, dry_run)
     } else if let Some(script) = script {
-        sc_run_script(rbin, rargs, script.to_string(), cmdargs, dry_run)
+        sc_run_script(rbin, renviron_user, rargs, script.to_string(), cmdargs, dry_run)
     } else if !cmdargs.is_empty() {
         let app_type: Option<&String> = args.get_one("app-type");
         if cmdargs[0].contains("::") {
@@ -70,13 +71,21 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
                 OUTPUT.warn("'--app-type' argument ignored for package scripts");
                 warn!("'--app-type' argument ignored for package scripts");
             }
-            sc_run_package_script(rbin, rargs, cmdargs, dry_run)
+            sc_run_package_script(rbin, renviron_user, rargs, cmdargs, dry_run)
         } else if let Some((root, bin)) = project_bin(args, &cmdargs[0])? {
             if app_type.is_some() {
                 OUTPUT.warn("'--app-type' argument ignored for project scripts");
                 warn!("'--app-type' argument ignored for project scripts");
             }
-            sc_run_project_script(rbin, rargs, &root, &bin, cmdargs[1..].to_vec(), dry_run)
+            sc_run_project_script(
+                rbin,
+                renviron_user,
+                rargs,
+                &root,
+                &bin,
+                cmdargs[1..].to_vec(),
+                dry_run,
+            )
         } else {
             // Not a declared script and not an existing path. If the project
             // declares scripts at all, then the user most likely meant one of
@@ -88,7 +97,7 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
                     bail!("{}", msg);
                 }
             }
-            sc_run_app(rbin, rargs, cmdargs, app_type, dry_run)
+            sc_run_app(rbin, renviron_user, rargs, cmdargs, app_type, dry_run)
         }
     } else {
         // just run R, default args are different in this case
@@ -99,8 +108,34 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
         if args.get_flag("no-echo") {
             rargs.push("--slave".to_string())
         }
-        sc_run_rver(rbin, rargs, cmdargs, dry_run)
+        sc_run_rver(rbin, renviron_user, rargs, cmdargs, dry_run)
     }
+}
+
+/// The `R_ENVIRON_USER` value to force under `--no-project`, so R uses the
+/// user's own `~/.Renviron` instead of one it would otherwise find in the
+/// current (project) directory. `None` if `--no-project` was not given, or if
+/// `R_ENVIRON_USER` is already set (never override an explicit choice), or if
+/// the home directory cannot be determined.
+fn no_project_renviron_user(args: &ArgMatches) -> Option<PathBuf> {
+    if !args.get_flag("no-project") {
+        return None;
+    }
+    if std::env::var_os("R_ENVIRON_USER").is_some() {
+        return None;
+    }
+    let home = directories::BaseDirs::new()?.home_dir().to_path_buf();
+    Some(home.join(".Renviron"))
+}
+
+/// A `Command` for `rbin`, with `R_ENVIRON_USER` set if `renviron_user` is
+/// given (see `no_project_renviron_user`).
+fn r_command(rbin: &str, renviron_user: &Option<PathBuf>) -> Command {
+    let mut cmd = Command::new(rbin);
+    if let Some(renviron) = renviron_user {
+        cmd.env("R_ENVIRON_USER", renviron);
+    }
+    cmd
 }
 
 /// The R binary `rig run` runs: the project environment's R wrapper if the
@@ -289,6 +324,7 @@ fn unknown_bin_error(args: &ArgMatches, name: &str) -> Result<Option<String>, Bo
 /// it, i.e. `rig run <name> [args...]`.
 fn sc_run_project_script(
     rbin: String,
+    renviron_user: Option<PathBuf>,
     args: Vec<String>,
     root: &Path,
     bin: &Bin,
@@ -315,7 +351,7 @@ fn sc_run_project_script(
         .to_str()
         .ok_or("The script path is not valid Unicode")?
         .to_string();
-    sc_run_script(rbin, args, script, cmdargs, dry_run)
+    sc_run_script(rbin, renviron_user, args, script, cmdargs, dry_run)
 }
 
 /// `rig run --list`: the scripts the project declares.
@@ -395,6 +431,7 @@ fn ignore_sigint() {
 
 fn sc_run_rver(
     rbin: String,
+    renviron_user: Option<PathBuf>,
     args: Vec<String>,
     cmdargs: Vec<String>,
     dry_run: bool,
@@ -413,7 +450,7 @@ fn sc_run_rver(
     trace!("Running {} with arguments {:?}", rbin, args2);
 
     ignore_sigint();
-    let _status = Command::new(rbin).args(args2).status()?;
+    let _status = r_command(&rbin, &renviron_user).args(args2).status()?;
     match _status.code() {
         Some(code) => Ok(code),
         None => Ok(-1),
@@ -422,6 +459,7 @@ fn sc_run_rver(
 
 fn sc_run_eval(
     rbin: String,
+    renviron_user: Option<PathBuf>,
     args: Vec<String>,
     expr: String,
     cmdargs: Vec<String>,
@@ -442,7 +480,7 @@ fn sc_run_eval(
 
     ignore_sigint();
     trace!("Running {} with arguments {:?}", rbin, args2);
-    let _status = Command::new(rbin).args(args2).status()?;
+    let _status = r_command(&rbin, &renviron_user).args(args2).status()?;
     match _status.code() {
         Some(code) => Ok(code),
         None => Ok(-1),
@@ -451,6 +489,7 @@ fn sc_run_eval(
 
 fn sc_run_script(
     rbin: String,
+    renviron_user: Option<PathBuf>,
     args: Vec<String>,
     script: String,
     cmdargs: Vec<String>,
@@ -471,7 +510,7 @@ fn sc_run_script(
 
     ignore_sigint();
     trace!("Running {} with arguments {:?}", rbin, args2);
-    let _status = Command::new(rbin).args(args2).status()?;
+    let _status = r_command(&rbin, &renviron_user).args(args2).status()?;
     match _status.code() {
         Some(code) => Ok(code),
         None => Ok(-1),
@@ -522,7 +561,12 @@ fn split_r_cmd_args(cmdargs: Vec<String>) -> (Vec<String>, Vec<String>) {
 // Runs `<R binary> [R options] CMD <command> [args...]`, i.e. `rig run --cmd <command>
 // [args...]`. `cmdargs[0]` is the `R CMD` command (e.g. `check`), the rest are
 // its arguments, and they are passed on verbatim.
-fn sc_run_cmd(rbin: String, cmdargs: Vec<String>, dry_run: bool) -> Result<i32, Box<dyn Error>> {
+fn sc_run_cmd(
+    rbin: String,
+    renviron_user: Option<PathBuf>,
+    cmdargs: Vec<String>,
+    dry_run: bool,
+) -> Result<i32, Box<dyn Error>> {
     let (ropts, cmdargs) = split_r_cmd_args(cmdargs);
 
     if cmdargs.is_empty() {
@@ -542,7 +586,7 @@ fn sc_run_cmd(rbin: String, cmdargs: Vec<String>, dry_run: bool) -> Result<i32, 
 
     ignore_sigint();
     trace!("Running {} with arguments {:?}", rbin, args2);
-    let status = Command::new(rbin).args(args2).status()?;
+    let status = r_command(&rbin, &renviron_user).args(args2).status()?;
     match status.code() {
         Some(code) => Ok(code),
         None => Ok(-1),
@@ -562,6 +606,7 @@ fn utf8_file_name(x: std::io::Result<std::fs::DirEntry>) -> String {
 
 fn sc_run_app(
     rbin: String,
+    renviron_user: Option<PathBuf>,
     args: Vec<String>,
     app: Vec<String>,
     app_type: Option<&String>,
@@ -626,7 +671,10 @@ fn sc_run_app(
     }
 
     ignore_sigint();
-    let _status = Command::new(rbin).args(args2).current_dir(proj).status()?;
+    let _status = r_command(&rbin, &renviron_user)
+        .args(args2)
+        .current_dir(proj)
+        .status()?;
     match _status.code() {
         Some(code) => Ok(code),
         None => Ok(-1),
@@ -902,6 +950,7 @@ fn read_yaml_header_string(file: &PathBuf) -> Result<Option<String>, Box<dyn Err
 
 fn sc_run_package_script(
     rbin: String,
+    renviron_user: Option<PathBuf>,
     rargs: Vec<String>,
     cmdargs: Vec<String>,
     dry_run: bool,
@@ -962,7 +1011,7 @@ fn sc_run_package_script(
     }
 
     ignore_sigint();
-    let status = Command::new(&rbin).args(allargs).status()?;
+    let status = r_command(&rbin, &renviron_user).args(allargs).status()?;
 
     let code = status.code();
     match code {
