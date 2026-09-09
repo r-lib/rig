@@ -61,9 +61,23 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
     }
 
     if let Some(eval) = eval {
-        sc_run_eval(rbin, renviron_user, rargs, eval.to_string(), cmdargs, dry_run)
+        sc_run_eval(
+            rbin,
+            renviron_user,
+            rargs,
+            eval.to_string(),
+            cmdargs,
+            dry_run,
+        )
     } else if let Some(script) = script {
-        sc_run_script(rbin, renviron_user, rargs, script.to_string(), cmdargs, dry_run)
+        sc_run_script(
+            rbin,
+            renviron_user,
+            rargs,
+            script.to_string(),
+            cmdargs,
+            dry_run,
+        )
     } else if !cmdargs.is_empty() {
         let app_type: Option<&String> = args.get_one("app-type");
         if cmdargs[0].contains("::") {
