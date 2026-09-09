@@ -2598,8 +2598,7 @@ pub fn rig_app() -> Command {
         .subcommand(cmd_library)
         .subcommand(cmd_cache)
         .subcommand(cmd_available)
-        .subcommand(cmd_run)
-        .after_help(HELP_EXAMPLES);
+        .subcommand(cmd_run);
 
     add_name_headers(&mut rig, "rig");
 
