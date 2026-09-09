@@ -1872,21 +1872,37 @@ fn r_add_args(r_version: &str, arch: &str) -> Vec<String> {
 /// the packages the lock file resolved, whatever its version.
 fn find_r_installation(r_version: &str, arch: &str) -> Result<Option<String>, Box<dyn Error>> {
     let installed = sc_get_list_details()?;
-    let matching = installed.iter().find(|candidate| {
-        if rvenv_r_arch(&candidate.name) != arch {
-            return false;
-        }
-        if candidate.name == r_version {
-            return true;
-        }
-        // An installation with no version, or a version that is not a number
-        // (`devel`, `next`), is never a match for a lock file's R version.
-        match &candidate.version {
-            Some(version) => r_version_matches(r_version, version),
-            None => false,
-        }
+    if let Some(exact) = installed
+        .iter()
+        .find(|candidate| rvenv_r_arch(&candidate.name) == arch && candidate.name == r_version)
+    {
+        return Ok(Some(exact.name.clone()));
+    }
+    // Several installs can match a minor version like `4.6` (`4.6.1`,
+    // `4.6.2`, ...); the newest one wins, same as `select_sync_target` and
+    // `proj_lock_r_version` pick the newest among several candidates.
+    let mut matching: Vec<_> = installed
+        .iter()
+        .filter(|candidate| {
+            if rvenv_r_arch(&candidate.name) != arch {
+                return false;
+            }
+            // An installation with no version, or a version that is not a
+            // number (`devel`, `next`), is never a match for a lock file's R
+            // version.
+            match &candidate.version {
+                Some(version) => r_version_matches(r_version, version),
+                None => false,
+            }
+        })
+        .collect();
+    matching.sort_by_key(|c| {
+        c.version
+            .as_deref()
+            .and_then(r_components)
+            .unwrap_or_default()
     });
-    Ok(matching.map(|v| v.name.clone()))
+    Ok(matching.pop().map(|v| v.name.clone()))
 }
 
 /// The architecture the lock file's target platform needs, in the form
