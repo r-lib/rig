@@ -2175,6 +2175,56 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("build-log")
+                .about(ABOUT_PPM_BUILD_LOG)
+                .long_about(HELP_PPM_BUILD_LOG)
+                .display_order(0)
+                .arg(
+                    Arg::new("package")
+                        .help("package whose build log to show")
+                        .required(true),
+                )
+                .arg(
+                    Arg::new("platform")
+                        .help("P3M build target, e.g. macos, windows, jammy (see `rig ppm builds`); default: the current platform")
+                        .long("platform")
+                        .short('p')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version the build is for (default: the default R version)")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("arch")
+                        .help("CPU architecture (default: the current architecture)")
+                        .long("arch")
+                        .short('a')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("version")
+                        .help("package version (default: latest)")
+                        .long("version")
+                        .short('v')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
             Command::new("platforms")
                 .about(ABOUT_PPM_PLATFORMS)
                 .long_about(HELP_PPM_PLATFORMS)
@@ -2893,8 +2943,15 @@ mod tests {
     fn test_ppm_args() {
         // Every subcommand `sc_ppm` dispatches on has to exist here, or the
         // dispatch bails out.
-        for name in ["builds", "platforms", "r-versions", "status", "url"] {
-            let argv: Vec<&str> = if name == "builds" {
+        for name in [
+            "builds",
+            "build-log",
+            "platforms",
+            "r-versions",
+            "status",
+            "url",
+        ] {
+            let argv: Vec<&str> = if name == "builds" || name == "build-log" {
                 vec!["rig", "ppm", name, "dplyr"]
             } else {
                 vec!["rig", "ppm", name]
@@ -2947,6 +3004,62 @@ mod tests {
             .try_get_matches_from(["rig", "ppm", "builds"])
             .is_err());
         assert!(rig_app().try_get_matches_from(["rig", "ppm"]).is_err());
+
+        // `build-log`: only the package is required; --platform, --arch,
+        // --r-version and --version all default at the command level, not
+        // in clap, since the defaults are detected at runtime.
+        let m = rig_app()
+            .try_get_matches_from(["rig", "ppm", "build-log", "dplyr"])
+            .unwrap();
+        let build_log = m
+            .subcommand_matches("ppm")
+            .unwrap()
+            .subcommand_matches("build-log")
+            .unwrap();
+        assert_eq!(
+            build_log.get_one::<String>("package"),
+            Some(&"dplyr".to_string())
+        );
+        assert_eq!(build_log.get_one::<String>("platform"), None);
+        assert_eq!(build_log.get_one::<String>("r-version"), None);
+        assert_eq!(build_log.get_one::<String>("arch"), None);
+        assert_eq!(build_log.get_one::<String>("version"), None);
+
+        let m = rig_app()
+            .try_get_matches_from([
+                "rig",
+                "ppm",
+                "build-log",
+                "dplyr",
+                "--platform",
+                "jammy",
+                "--r-version",
+                "4.5",
+                "--arch",
+                "arm64",
+            ])
+            .unwrap();
+        let build_log = m
+            .subcommand_matches("ppm")
+            .unwrap()
+            .subcommand_matches("build-log")
+            .unwrap();
+        assert_eq!(
+            build_log.get_one::<String>("platform"),
+            Some(&"jammy".to_string())
+        );
+        assert_eq!(
+            build_log.get_one::<String>("r-version"),
+            Some(&"4.5".to_string())
+        );
+        assert_eq!(
+            build_log.get_one::<String>("arch"),
+            Some(&"arm64".to_string())
+        );
+
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "ppm", "build-log"])
+            .is_err());
 
         // `platforms` hides the retired targets unless asked.
         let platforms = |argv: &[&str]| {

@@ -7,8 +7,8 @@
 //!
 //! Two different hosts are involved, which is the one thing to keep straight:
 //!
-//! * [`ppm_platforms`], [`ppm_status`] and `r-versions` read P3M's status
-//!   document at `<ppm>/__api__/status`, where `<ppm>` honors
+//! * [`ppm_platforms`], [`ppm_status`], [`ppm_build_log`] and `r-versions`
+//!   read from `<ppm>/__api__/...`, where `<ppm>` honors
 //!   `PACKAGEMANAGER_ADDRESS`.
 //! * [`ppm_builds`] reads the per-package binary index, which is rig's own
 //!   derived data on its own host and does *not* follow
@@ -24,10 +24,12 @@ use tabular::{Row, Table};
 
 use crate::repos::binaries::{ppm_url, PpmDistro, PpmStatus};
 
+mod ppm_build_log;
 mod ppm_builds;
 mod ppm_platforms;
 mod ppm_status;
 
+use ppm_build_log::sc_ppm_build_log;
 use ppm_builds::sc_ppm_builds;
 use ppm_platforms::sc_ppm_platforms;
 use ppm_status::sc_ppm_status;
@@ -35,6 +37,7 @@ use ppm_status::sc_ppm_status;
 pub fn sc_ppm(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
         Some(("builds", s)) => sc_ppm_builds(s, args, mainargs),
+        Some(("build-log", s)) => sc_ppm_build_log(s, args, mainargs),
         Some(("platforms", s)) => sc_ppm_platforms(s, args, mainargs),
         Some(("r-versions", s)) => sc_ppm_r_versions(s, args, mainargs),
         Some(("status", s)) => sc_ppm_status(s, args, mainargs),
