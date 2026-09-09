@@ -59,6 +59,7 @@ use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 use simple_error::bail;
 
 use crate::hardcoded::{
@@ -67,7 +68,7 @@ use crate::hardcoded::{
 };
 use crate::repos::binaries::ppm_url;
 use crate::repositories::{write_repositories_file, RepoFileEntry, RepositoriesContents};
-use crate::rproj::{Repository as ManifestRepository, RPROJ_MANIFEST_FILE};
+use crate::rproj::{Repository as ManifestRepository, Rproj, Workspace, RPROJ_MANIFEST_FILE};
 use crate::utils::write_atomically;
 #[cfg(not(windows))]
 use crate::utils::write_executable;
@@ -311,6 +312,210 @@ pub fn find_project_root(start: &Path) -> Option<PathBuf> {
     }
 }
 
+/// The workspace root at or above `start`, if `start` belongs to one.
+///
+/// Two ways to belong: the project at or above `start` declares
+/// `[workspace]` itself, or one of its ancestors declares a `[workspace]`
+/// whose `members` cover it. The nearest such ancestor wins, so a workspace
+/// nested inside another workspace claims its own members.
+///
+/// A manifest that does not parse is not an error here: this runs before the
+/// command has decided which manifest it cares about, and an ancestor
+/// directory that happens to hold a broken `rproj.toml` should not stop a
+/// perfectly good project below it from being used. The manifest of the root
+/// that is actually picked is read again, and reported, by the caller.
+pub fn find_workspace_root(start: &Path) -> Result<Option<PathBuf>, Box<dyn Error>> {
+    let Some(project) = find_project_root(start) else {
+        return Ok(None);
+    };
+
+    if let Some(ws) = read_workspace(&project) {
+        if !ws.members.is_empty() {
+            return Ok(Some(project));
+        }
+    }
+
+    let mut dir = project.parent();
+    while let Some(candidate) = dir {
+        if let Some(ws) = read_workspace(candidate) {
+            if expand_workspace_members(candidate, &ws)?.contains(&project) {
+                return Ok(Some(candidate.to_path_buf()));
+            }
+        }
+        dir = candidate.parent();
+    }
+
+    Ok(None)
+}
+
+/// The `[workspace]` table of the manifest in `dir`, if there is a manifest
+/// with one and it parses. See [`find_workspace_root`] on why an unparsable
+/// manifest is `None` rather than an error.
+fn read_workspace(dir: &Path) -> Option<Workspace> {
+    let text = fs::read_to_string(dir.join(RPROJ_MANIFEST_FILE)).ok()?;
+    toml::from_str::<Rproj>(&text).ok()?.workspace
+}
+
+/// The directories of a workspace's members: the `members` patterns expanded,
+/// minus the `exclude` ones, plus `root` itself, which is always a member of
+/// its own workspace.
+///
+/// Only path work, no manifest reading, so that [`find_workspace_root`] can
+/// use it to probe an ancestor without failing on a member that is missing a
+/// manifest. Use [`workspace_members`] to get members that are usable.
+pub fn expand_workspace_members(
+    root: &Path,
+    ws: &Workspace,
+) -> Result<Vec<PathBuf>, Box<dyn Error>> {
+    let mut members: Vec<PathBuf> = vec![root.to_path_buf()];
+    for pattern in &ws.members {
+        members.extend(expand_member_pattern(root, pattern)?);
+    }
+
+    let exclude = pattern_matcher(&ws.exclude)?;
+    let mut kept: Vec<PathBuf> = vec![];
+    for member in members {
+        // A pattern is written relative to the root, so that is what it is
+        // matched against. The root itself is "", which no pattern matches,
+        // so `exclude` cannot remove it -- and should not: the root manifest
+        // is the one that declares the workspace.
+        let relative = member
+            .strip_prefix(root)
+            .map(slash_path)
+            .unwrap_or_default();
+        if !relative.is_empty() && exclude.is_match(&relative) {
+            continue;
+        }
+        if !kept.contains(&member) {
+            kept.push(member);
+        }
+    }
+
+    // Deterministic order regardless of readdir order, with the root first:
+    // this is the order members are solved and reported in.
+    kept[1..].sort();
+    Ok(kept)
+}
+
+/// The directories of a workspace's members, each verified to hold a
+/// manifest. `root` is the workspace root, `ws` its `[workspace]` table.
+pub fn workspace_members(root: &Path, ws: &Workspace) -> Result<Vec<PathBuf>, Box<dyn Error>> {
+    let members = expand_workspace_members(root, ws)?;
+    for member in &members {
+        if !member.join(RPROJ_MANIFEST_FILE).exists() {
+            bail!(
+                "Workspace member {} has no {}",
+                member.display(),
+                RPROJ_MANIFEST_FILE
+            );
+        }
+    }
+    Ok(members)
+}
+
+/// One `members` pattern expanded to the directories it matches.
+///
+/// The pattern is matched one path component at a time, so a `*` never
+/// reaches across a directory separator, and only the directories a pattern
+/// can actually match are read -- as opposed to walking the whole tree and
+/// matching paths against it, which in a monorepo means walking every
+/// member's `.rvenv` too.
+///
+/// A pattern with no wildcards names one directory and has to match it: a
+/// misspelled member is a mistake worth reporting. A wildcard pattern that
+/// matches nothing is not an error, the same way `packages/*` in an empty
+/// monorepo is not.
+fn expand_member_pattern(root: &Path, pattern: &str) -> Result<Vec<PathBuf>, Box<dyn Error>> {
+    let mut dirs: Vec<PathBuf> = vec![root.to_path_buf()];
+    // Of the whole pattern, not of the component being matched: the
+    // `packages` of `packages/*` is a literal, but a monorepo that has not
+    // grown a `packages` directory yet is not misconfigured.
+    let wildcard = pattern.contains(['*', '?', '[']);
+
+    for component in pattern.split(['/', '\\']) {
+        if component.is_empty() || component == "." {
+            continue;
+        }
+        if component == ".." {
+            bail!(
+                "Invalid workspace member `{}`: a member cannot be outside the \
+                 workspace root, they all share one project library",
+                pattern
+            );
+        }
+
+        let mut next: Vec<PathBuf> = vec![];
+        if component.contains(['*', '?', '[']) {
+            let glob = GlobBuilder::new(component)
+                .literal_separator(true)
+                .build()?
+                .compile_matcher();
+            for dir in &dirs {
+                let Ok(entries) = fs::read_dir(dir) else {
+                    continue;
+                };
+                for entry in entries {
+                    let entry = entry?;
+                    if !entry.file_type()?.is_dir() {
+                        continue;
+                    }
+                    let name = entry.file_name().to_string_lossy().into_owned();
+                    // `.rvenv`, `.rvenvlib`, `.git`: a wildcard member pattern
+                    // is about the monorepo's own directories, never about the
+                    // tooling's.
+                    if name.starts_with('.') {
+                        continue;
+                    }
+                    if glob.is_match(&name) {
+                        next.push(entry.path());
+                    }
+                }
+            }
+        } else {
+            for dir in &dirs {
+                let path = dir.join(component);
+                if path.is_dir() {
+                    next.push(path);
+                }
+            }
+            if next.is_empty() && !wildcard {
+                bail!(
+                    "Workspace member `{}` is not a directory in {}",
+                    pattern,
+                    root.display()
+                );
+            }
+        }
+        dirs = next;
+    }
+
+    Ok(dirs)
+}
+
+/// One matcher for a list of member patterns, matched against root-relative
+/// slash-separated paths. `*` matches within one path component only, so
+/// `packages/*` does not match `packages/a/b`.
+fn pattern_matcher(patterns: &[String]) -> Result<GlobSet, Box<dyn Error>> {
+    let mut builder = GlobSetBuilder::new();
+    for pattern in patterns {
+        builder.add(
+            GlobBuilder::new(&pattern.replace('\\', "/"))
+                .literal_separator(true)
+                .build()?,
+        );
+    }
+    Ok(builder.build()?)
+}
+
+/// A relative path with `/` separators, which is how member patterns are
+/// written on every platform.
+fn slash_path(path: &Path) -> String {
+    path.components()
+        .map(|c| c.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 /// Everything `rig proj init` writes, in write order.
 pub fn init_targets(root: &Path) -> Vec<PathBuf> {
     vec![
@@ -324,16 +529,16 @@ pub fn init_targets(root: &Path) -> Vec<PathBuf> {
 /// The paths from [`init_targets`] that are already there, so that the
 /// caller can name all of them at once instead of failing on the first.
 ///
-/// The root `.gitignore` is special: rig only manages a marked block in it,
-/// so an existing one that already has that block is not a conflict, it is
-/// just a re-init.
+/// The root `.gitignore` is special: rig only ever merges a marked block into
+/// it (see [`update_root_gitignore`]), never overwrites the rest of the
+/// file, so an existing `.gitignore` -- with or without rig's block -- is
+/// never a conflict.
 pub fn existing_targets(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
     let gitignore = root.join(RVENV_GITIGNORE_FILE);
-    let gitignore_is_ours = gitignore.exists() && gitignore_block(&gitignore)?.is_some();
     Ok(init_targets(root)
         .into_iter()
         .filter(|p| p.exists())
-        .filter(|p| !(*p == gitignore && gitignore_is_ours))
+        .filter(|p| *p != gitignore)
         .collect())
 }
 
@@ -925,14 +1130,14 @@ mod tests {
     }
 
     #[test]
-    fn a_managed_gitignore_is_not_a_conflict() {
+    fn a_gitignore_is_never_a_conflict() {
         let tmp = tempfile::tempdir().unwrap();
         update_root_gitignore(tmp.path()).unwrap();
         assert!(existing_targets(tmp.path()).unwrap().is_empty());
 
         let path = tmp.path().join(".gitignore");
         fs::write(&path, "*.log\n").unwrap();
-        assert_eq!(existing_targets(tmp.path()).unwrap(), vec![path]);
+        assert!(existing_targets(tmp.path()).unwrap().is_empty());
     }
 
     #[test]
@@ -966,6 +1171,175 @@ mod tests {
         let deep = tmp.path().join("a/b/c");
         fs::create_dir_all(&deep).unwrap();
         assert_eq!(find_project_root(&deep), None);
+    }
+
+    /// A workspace root at `root` with the given `members` patterns, plus a
+    /// manifest in each of `dirs`.
+    fn workspace_tree(root: &Path, members: &[&str], dirs: &[&str]) -> Workspace {
+        fs::create_dir_all(root).unwrap();
+        fs::write(root.join(RPROJ_MANIFEST_FILE), "").unwrap();
+        for dir in dirs {
+            let dir = root.join(dir);
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join(RPROJ_MANIFEST_FILE), "").unwrap();
+        }
+        Workspace {
+            members: members.iter().map(|m| m.to_string()).collect(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn member_globs_match_one_path_component() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let ws = workspace_tree(root, &["packages/*"], &["packages/a", "packages/b/deep"]);
+        assert_eq!(
+            expand_workspace_members(root, &ws).unwrap(),
+            vec![
+                root.to_path_buf(),
+                root.join("packages/a"),
+                root.join("packages/b"),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_literal_member_pattern_needs_its_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let ws = workspace_tree(root, &["packages/a", "packages/nope"], &["packages/a"]);
+        let err = expand_workspace_members(root, &ws).unwrap_err().to_string();
+        assert!(err.contains("packages/nope"), "{}", err);
+    }
+
+    #[test]
+    fn a_wildcard_member_pattern_may_match_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let ws = workspace_tree(root, &["packages/*"], &[]);
+        assert_eq!(
+            expand_workspace_members(root, &ws).unwrap(),
+            vec![root.to_path_buf()]
+        );
+    }
+
+    #[test]
+    fn exclude_removes_a_matched_member() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let mut ws = workspace_tree(root, &["packages/*"], &["packages/a", "packages/old"]);
+        ws.exclude = vec!["packages/old".to_string()];
+        assert_eq!(
+            expand_workspace_members(root, &ws).unwrap(),
+            vec![root.to_path_buf(), root.join("packages/a")]
+        );
+    }
+
+    #[test]
+    fn a_member_pattern_reaching_outside_the_root_is_an_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("ws");
+        let ws = workspace_tree(&root, &["../outside"], &[]);
+        let err = expand_workspace_members(&root, &ws)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("outside the workspace root"), "{}", err);
+    }
+
+    #[test]
+    fn the_tooling_directories_are_never_members() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let ws = workspace_tree(root, &["*"], &["a"]);
+        fs::create_dir_all(root.join(RVENV_DIR).join("lib")).unwrap();
+        fs::create_dir_all(root.join(RVENV_SHIM_DIR)).unwrap();
+        assert_eq!(
+            expand_workspace_members(root, &ws).unwrap(),
+            vec![root.to_path_buf(), root.join("a")]
+        );
+    }
+
+    #[test]
+    fn a_member_without_a_manifest_is_an_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let ws = workspace_tree(root, &["packages/*"], &["packages/a"]);
+        fs::create_dir_all(root.join("packages/b")).unwrap();
+        let err = workspace_members(root, &ws).unwrap_err().to_string();
+        assert!(err.contains("packages/b"), "{}", err);
+        assert!(err.contains(RPROJ_MANIFEST_FILE), "{}", err);
+    }
+
+    /// Write a workspace root manifest that declares `members`.
+    fn write_workspace_manifest(root: &Path, members: &[&str]) {
+        let patterns = members
+            .iter()
+            .map(|m| format!("\"{}\"", m))
+            .collect::<Vec<_>>()
+            .join(", ");
+        fs::create_dir_all(root).unwrap();
+        fs::write(
+            root.join(RPROJ_MANIFEST_FILE),
+            format!(
+                "[project]\nname = \"ws\"\nversion = \"1.0.0\"\n\n\
+                 [workspace]\nmembers = [{}]\n",
+                patterns
+            ),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn find_workspace_root_walks_up_past_the_member_manifest() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write_workspace_manifest(root, &["packages/*"]);
+        let member = root.join("packages/a");
+        let deep = member.join("R");
+        fs::create_dir_all(&deep).unwrap();
+        fs::write(member.join(RPROJ_MANIFEST_FILE), "").unwrap();
+
+        // From the member, from below it, and from the root itself.
+        assert_eq!(find_workspace_root(&member).unwrap().as_deref(), Some(root));
+        assert_eq!(find_workspace_root(&deep).unwrap().as_deref(), Some(root));
+        assert_eq!(find_workspace_root(root).unwrap().as_deref(), Some(root));
+    }
+
+    #[test]
+    fn a_project_outside_every_member_pattern_is_not_in_the_workspace() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write_workspace_manifest(root, &["packages/*"]);
+        let other = root.join("elsewhere/proj");
+        fs::create_dir_all(&other).unwrap();
+        fs::write(other.join(RPROJ_MANIFEST_FILE), "").unwrap();
+        assert_eq!(find_workspace_root(&other).unwrap(), None);
+    }
+
+    #[test]
+    fn a_plain_project_has_no_workspace_root() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("proj");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join(RPROJ_MANIFEST_FILE), "").unwrap();
+        assert_eq!(find_workspace_root(&root).unwrap(), None);
+    }
+
+    #[test]
+    fn the_nearest_workspace_wins() {
+        let tmp = tempfile::tempdir().unwrap();
+        let outer = tmp.path();
+        write_workspace_manifest(outer, &["inner", "inner/packages/*"]);
+        let inner = outer.join("inner");
+        write_workspace_manifest(&inner, &["packages/*"]);
+        let member = inner.join("packages/a");
+        fs::create_dir_all(&member).unwrap();
+        fs::write(member.join(RPROJ_MANIFEST_FILE), "").unwrap();
+        assert_eq!(
+            find_workspace_root(&member).unwrap().as_deref(),
+            Some(inner.as_path())
+        );
     }
 
     #[test]

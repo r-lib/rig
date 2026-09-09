@@ -127,6 +127,104 @@ impl fmt::Display for RegistryPackageVersion {
 
 pub type RPackageVersionRanges = version_ranges::Ranges<RegistryPackageVersion>;
 
+/// The synthetic package a single project's solve is rooted at. Its
+/// dependencies are the project's. Never shown to the user: the reports
+/// [`format_solver_error`] renders call it "this project".
+pub const PROJECT_ROOT_PKG: &str = "_project";
+
+/// The synthetic package a workspace's solve is rooted at. It depends on
+/// every member at the member's own version, which is what makes one solve
+/// satisfy all of them at once.
+pub const WORKSPACE_ROOT_PKG: &str = "_workspace";
+
+/// One root of a solve: a project, or one member of a workspace. Its
+/// dependencies are requirements the solution has to satisfy, and its name and
+/// version are what other members see when they depend on it.
+#[derive(Debug)]
+pub struct SolveRoot {
+    pub name: RPackageName,
+    pub version: RPackageVersion,
+    pub deps: PackageDependencies,
+}
+
+impl SolveRoot {
+    /// The single root of a plain project's solve, named [`PROJECT_ROOT_PKG`].
+    pub fn project(deps: PackageDependencies) -> Result<Self, Box<dyn Error>> {
+        Ok(SolveRoot {
+            name: PROJECT_ROOT_PKG.to_string(),
+            version: RPackageVersion::from_str("1.0.0")?,
+            deps,
+        })
+    }
+}
+
+/// Register the roots of a solve in `reg` and return the package version to
+/// call [`resolve`] with.
+///
+/// A single root *is* the solve's root, so a plain project resolves exactly as
+/// it did before workspaces existed, with the same conflict reports. Several
+/// roots are the members of a workspace: each becomes a package of its own, at
+/// its declared version, so that a member depending on a sibling gets the
+/// sibling's real dependencies, and the synthetic [`WORKSPACE_ROOT_PKG`] pins
+/// them all, which is what forces one solution to satisfy every member.
+///
+/// Every root is marked local ([`RPackageRegistry::mark_local`]): a member is a
+/// directory in the monorepo, and a synthetic root is not a package at all, so
+/// neither is anything to download.
+pub fn register_roots(
+    reg: &RPackageRegistry,
+    roots: &[SolveRoot],
+) -> Result<(RPackageName, RegistryPackageVersion), Box<dyn Error>> {
+    if roots.is_empty() {
+        bail!("Nothing to solve, no project or workspace member was given");
+    }
+
+    for root in roots {
+        reg.add_package_version(
+            root.name.clone(),
+            RegistryPackageVersion {
+                name: root.name.clone(),
+                version: root.version.clone(),
+                artifact: Artifact::Source,
+            },
+            rpackage_version_ranges_from_constraints(&root.deps, true),
+        );
+        reg.mark_local(&root.name);
+    }
+
+    if let [only] = roots {
+        return Ok((
+            only.name.clone(),
+            RegistryPackageVersion {
+                name: only.name.clone(),
+                version: only.version.clone(),
+                artifact: Artifact::Source,
+            },
+        ));
+    }
+
+    // A member has exactly one version in the registry, the one just added, so
+    // the pin is a singleton on that artifact rather than a version range:
+    // there is nothing to choose between, and a range would read as the
+    // nonsense `>=1.0.0, <1.0.0` in a conflict report.
+    let mut pins = HashMap::with_hasher(rustc_hash::FxBuildHasher);
+    for root in roots {
+        pins.insert(
+            root.name.clone(),
+            RPackageVersionRanges::singleton(RegistryPackageVersion {
+                name: root.name.clone(),
+                version: root.version.clone(),
+                artifact: Artifact::Source,
+            }),
+        );
+    }
+    let version = RegistryPackageVersion::new(WORKSPACE_ROOT_PKG, "1.0.0")?;
+    reg.add_package_version(WORKSPACE_ROOT_PKG.to_string(), version.clone(), pins);
+    reg.mark_local(WORKSPACE_ROOT_PKG);
+
+    Ok((WORKSPACE_ROOT_PKG.to_string(), version))
+}
+
 pub fn rpackage_version_ranges_from_constraints(
     constraints: &PackageDependencies,
     dev: bool,
@@ -312,6 +410,12 @@ pub struct RPackageRegistry {
     // where the provenance has to be assembled from the solution instead: a
     // source build compiles against whatever version the solve picked.
     linkingto_names: RefCell<HashMap<(RPackageName, RegistryPackageVersion), Vec<RPackageName>>>,
+    // Packages that are not installed from a repository: the synthetic solve
+    // roots, and the members of a workspace, which are directories in the
+    // monorepo. They take part in the solve, so that everything else is
+    // resolved against their dependencies, but there is no artifact to
+    // download and so nothing for a lockfile to record.
+    locals: RefCell<HashSet<RPackageName>>,
     // How many newest binaries win. Can be None.
     prefer_binary: Option<usize>,
     // Passed over newer version that does not have a binary.
@@ -337,6 +441,18 @@ impl RPackageRegistry {
     pub fn prefer_binary(mut self, lookback: Option<usize>) -> Self {
         self.prefer_binary = lookback;
         self
+    }
+
+    /// Record that `pkg` is solved from a local directory, or is a synthetic
+    /// solve root, and so is not something to install. See `locals`.
+    pub fn mark_local(&self, pkg: &str) {
+        self.locals.borrow_mut().insert(pkg.to_string());
+    }
+
+    /// Whether `pkg` was marked by [`RPackageRegistry::mark_local`], i.e.
+    /// whether the lockfile writers should skip it.
+    pub fn is_local(&self, pkg: &str) -> bool {
+        self.locals.borrow().contains(pkg)
     }
 
     /// The version `choose_version` passed over when it picked `version` for
@@ -764,9 +880,6 @@ impl DependencyProvider for RPackageRegistry {
     }
 }
 
-/// The name of the synthetic root package the solve is rooted at.
-const ROOT_PACKAGE: &str = "_project";
-
 /// Turn a solver failure into the explanation we show the user.
 ///
 /// `PubGrubError::NoSolution`'s own `Display` is the fixed string "There is no
@@ -786,10 +899,14 @@ pub fn format_solver_error(err: PubGrubError<RPackageRegistry>) -> String {
     tree.collapse_no_versions();
     let report = DefaultStringReporter::report(&tree);
 
-    // The root package is ours, not the user's; it should not show up in output.
+    // The root packages are ours, not the user's; they should not show up in
+    // output. Workspace members do: they are the user's own packages, and
+    // which member wants what is the point of the report.
     let report = report
-        .replace(&format!("{} 1.0.0", ROOT_PACKAGE), "this project")
-        .replace(ROOT_PACKAGE, "this project");
+        .replace(&format!("{} 1.0.0", PROJECT_ROOT_PKG), "this project")
+        .replace(PROJECT_ROOT_PKG, "this project")
+        .replace(&format!("{} 1.0.0", WORKSPACE_ROOT_PKG), "this workspace")
+        .replace(WORKSPACE_ROOT_PKG, "this workspace");
 
     report
         .lines()
@@ -1408,5 +1525,157 @@ mod tests {
         assert_eq!(solution["a"], source("a", "1.0.0"));
         assert!(reg.binary_target().is_none());
         assert!(reg.artifact_url(&"a".to_string(), &solution["a"]).is_none());
+    }
+
+    // ---------------------------------------------------------------------
+    // Solving a workspace
+
+    /// One workspace member: name, version, dependencies in `imports` syntax.
+    fn member(spec: (&str, &str, &str)) -> SolveRoot {
+        let (name, v, deps) = spec;
+        SolveRoot {
+            name: name.to_string(),
+            version: version(v),
+            deps: stub_deps(deps),
+        }
+    }
+
+    /// Solve every member together against the stubs, as `rig proj lock` does
+    /// in a workspace.
+    #[allow(clippy::type_complexity)]
+    fn solve_members(
+        source: StubSource,
+        members: &[(&str, &str, &str)],
+    ) -> (
+        RPackageRegistry,
+        Result<HashMap<String, RegistryPackageVersion, rustc_hash::FxBuildHasher>, String>,
+    ) {
+        let reg = RPackageRegistry::with_loaders(Box::new(source), None);
+        let roots: Vec<SolveRoot> = members.iter().map(|m| member(*m)).collect();
+        let (root_pkg, root_version) = register_roots(&reg, &roots).unwrap();
+        // The failure is the rendered report, which is what a caller shows,
+        // rather than `NoSolution`'s own fixed "There is no solution".
+        let solution = resolve(&reg, root_pkg, root_version).map_err(format_solver_error);
+        (reg, solution)
+    }
+
+    #[test]
+    fn two_members_share_one_version_of_a_common_dependency() {
+        let (_reg, solution) = solve_members(
+            StubSource {
+                packages: vec![
+                    ("cli", "3.0.0", ""),
+                    ("cli", "3.4.0", ""),
+                    ("cli", "3.6.0", ""),
+                ],
+            },
+            &[
+                ("a", "1.0.0", "cli (>= 3.4.0)"),
+                ("b", "0.2.0", "cli (< 3.6.0)"),
+            ],
+        );
+        // The newest version in the intersection of what the two members
+        // allow, which is neither member's own first choice.
+        assert_eq!(solution.unwrap()["cli"], source("cli", "3.4.0"));
+    }
+
+    #[test]
+    fn conflicting_member_ranges_fail_naming_both_members() {
+        let (_reg, solution) = solve_members(
+            StubSource {
+                packages: vec![("cli", "3.0.0", ""), ("cli", "3.6.0", "")],
+            },
+            &[
+                ("a", "1.0.0", "cli (>= 3.6.0)"),
+                ("b", "0.2.0", "cli (< 3.6.0)"),
+            ],
+        );
+        let err = solution.unwrap_err();
+        assert!(err.contains("a 1.0.0"), "{}", err);
+        assert!(err.contains("b 0.2.0"), "{}", err);
+        assert!(err.contains("cli"), "{}", err);
+    }
+
+    #[test]
+    fn a_member_shadows_a_repository_package_of_the_same_name() {
+        let (_reg, solution) = solve_members(
+            StubSource {
+                // A CRAN package called `cli` the workspace never sees: the
+                // member of that name is registered first, which marks the
+                // name resolved, so the loader is not consulted for it.
+                packages: vec![("cli", "3.6.0", "")],
+            },
+            &[("cli", "0.1.0", ""), ("a", "1.0.0", "cli")],
+        );
+        assert_eq!(solution.unwrap()["cli"], source("cli", "0.1.0"));
+    }
+
+    #[test]
+    fn a_member_depending_on_a_sibling_gets_the_siblings_dependencies() {
+        let (_reg, solution) = solve_members(
+            StubSource {
+                packages: vec![("cli", "3.0.0", ""), ("cli", "3.6.0", "")],
+            },
+            // `a` only asks for `b`, and it is `b`'s own requirement that
+            // decides which `cli` the workspace gets.
+            &[("a", "1.0.0", "b"), ("b", "0.2.0", "cli (>= 3.6.0)")],
+        );
+        let solution = solution.unwrap();
+        assert_eq!(solution["cli"], source("cli", "3.6.0"));
+        assert_eq!(solution["b"], source("b", "0.2.0"));
+    }
+
+    #[test]
+    fn a_members_own_version_is_what_siblings_see() {
+        let (_reg, solution) = solve_members(
+            StubSource { packages: vec![] },
+            &[("a", "1.0.0", "b (>= 0.2.0)"), ("b", "0.2.0", "")],
+        );
+        assert_eq!(solution.unwrap()["b"], source("b", "0.2.0"));
+
+        let (_reg, solution) = solve_members(
+            StubSource { packages: vec![] },
+            &[("a", "1.0.0", "b (>= 0.3.0)"), ("b", "0.2.0", "")],
+        );
+        // The member is the only `b` there is, so a requirement it does not
+        // meet is a conflict, not a reason to look for another `b`.
+        assert!(solution.is_err());
+    }
+
+    #[test]
+    fn every_root_is_local_and_nothing_else_is() {
+        let (reg, solution) = solve_members(
+            StubSource {
+                packages: vec![("cli", "3.6.0", "")],
+            },
+            &[("a", "1.0.0", "cli"), ("b", "0.2.0", "")],
+        );
+        solution.unwrap();
+        assert!(reg.is_local("a"));
+        assert!(reg.is_local("b"));
+        assert!(reg.is_local(WORKSPACE_ROOT_PKG));
+        assert!(!reg.is_local("cli"));
+    }
+
+    #[test]
+    fn a_single_root_solve_is_rooted_at_the_project_itself() {
+        let reg = RPackageRegistry::with_loaders(
+            Box::new(StubSource {
+                packages: vec![("cli", "3.6.0", "")],
+            }),
+            None,
+        );
+        let roots = [SolveRoot::project(imports("cli")).unwrap()];
+        let (root_pkg, _version) = register_roots(&reg, &roots).unwrap();
+        assert_eq!(root_pkg, PROJECT_ROOT_PKG);
+        // No synthetic workspace node in a single-project solve, so its
+        // conflict reports read exactly as they did before workspaces.
+        assert!(!reg.is_local(WORKSPACE_ROOT_PKG));
+    }
+
+    #[test]
+    fn solving_nothing_is_an_error() {
+        let reg = RPackageRegistry::with_loaders(Box::new(StubSource { packages: vec![] }), None);
+        assert!(register_roots(&reg, &[]).is_err());
     }
 }

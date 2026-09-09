@@ -14,7 +14,7 @@ use crate::dcf::{DepVersionSpec, RDepType};
 use crate::output::OUTPUT;
 use crate::proj::{
     check_project_conflicts, init_rvenv_for_manifest, proj_binary_target, proj_lock_r_version,
-    proj_read_manifest_deps, sc_proj_solve_deps, BASE_PKGS,
+    proj_read_manifest_deps, sc_proj_solve_project_deps, BASE_PKGS,
 };
 use crate::repos::cranlike_metadata::minor_r_version;
 use crate::rproj::{Rproj, RPROJ_MANIFEST_FILE};
@@ -58,7 +58,7 @@ fn sc_renv_export(
     let platform = args.get_one::<String>("platform").cloned();
     let target = proj_binary_target(platform.as_ref(), &rver)?;
 
-    let (registry, solution) = sc_proj_solve_deps(&rver, &pkg_deps, target, None, true)?;
+    let (registry, solution) = sc_proj_solve_project_deps(&rver, &pkg_deps, target, None, true)?;
     OUTPUT.success("Solved dependencies");
     info!("Solved dependencies");
 
@@ -314,7 +314,7 @@ impl REnvLockfile {
     ) -> REnvLockfile {
         let mut pkgs = REnvLockfilePackages::new();
         for (k, v) in solution.iter() {
-            if k == "R" || k == "_project" || BASE_PKGS.contains(&k.as_str()) {
+            if k == "R" || registry.is_local(k) || BASE_PKGS.contains(&k.as_str()) {
                 continue;
             }
             let deps = registry.get_dependency_summary(k, v).unwrap();

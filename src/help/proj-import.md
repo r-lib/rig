@@ -61,9 +61,10 @@ requirement always comes from the `DESCRIPTION` file, and the
 current default R version, or the current R release if there is no default.
 
 rig refuses to overwrite any of the `.rvenv` files above; pass `--force` to
-replace them. `--force` still does not rewrite the whole `.gitignore`, only
-rig's block in it, and it does not lift the refusal to overwrite an existing
-`rproj.toml`.
+replace them, and it does not lift the refusal to overwrite an existing
+`rproj.toml`. The `.gitignore` block is the exception: rig never refuses on
+an existing `.gitignore`, it just merges its block into it (or adds one),
+leaving the rest of the file alone, and `--force` does not change that.
 
 ## The `--dependencies` option
 

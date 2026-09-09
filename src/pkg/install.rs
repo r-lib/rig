@@ -44,8 +44,8 @@ use crate::install::{install_packages, PackageInfo, REMOTE_HASH_FIELD};
 use crate::library::library_rver;
 use crate::output::OUTPUT;
 use crate::proj::{
-    download_lockfile_packages, lockfile_package_info, proj_binary_target, sc_proj_solve_deps,
-    BASE_PKGS,
+    download_lockfile_packages, lockfile_package_info, proj_binary_target,
+    sc_proj_solve_project_deps, BASE_PKGS,
 };
 use crate::repos::DbSourcePackageLoader;
 use crate::rproj::{RprojLockPackage, RprojLockTarget};
@@ -99,7 +99,8 @@ pub fn sc_pkg_install(
         info!("Ignoring --prefer-binary: solving for source packages only");
     }
 
-    let (registry, solution) = sc_proj_solve_deps(&rver, &deps, target, prefer_binary, true)?;
+    let (registry, solution) =
+        sc_proj_solve_project_deps(&rver, &deps, target, prefer_binary, true)?;
     OUTPUT.success("Solved dependencies");
     info!("Solved dependencies");
 

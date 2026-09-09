@@ -41,8 +41,9 @@ use crate::rproj::{
     RPROJ_LOCK_VERSION, RPROJ_MANIFEST_FILE,
 };
 use crate::rvenv::{
-    existing_targets, find_project_root, project_library, project_shim_package, read_rvenv_cfg,
-    rvenv_init, rvenv_sync, write_sync_stamp, RvenvCfg, RPROJ_LOCK_FILE,
+    existing_targets, find_project_root, find_workspace_root, project_library,
+    project_shim_package, read_rvenv_cfg, rvenv_init, rvenv_sync, workspace_members,
+    write_sync_stamp, RvenvCfg, RPROJ_LOCK_FILE,
 };
 use crate::solver::*;
 use crate::textfmt::reflow;
@@ -741,6 +742,111 @@ pub(crate) fn proj_read_manifest_deps(
     Ok((manifest.project.name, version, deps))
 }
 
+/// What one solve is rooted at: a plain project, or every member of a
+/// workspace.
+#[derive(Debug)]
+pub(crate) struct ProjectSolve {
+    /// The member directories, the workspace root first. A plain project has
+    /// exactly one entry, its own directory.
+    pub members: Vec<PathBuf>,
+    /// The solver roots, in the same order as `members`.
+    pub roots: Vec<SolveRoot>,
+    /// Every root's dependencies in one set, for the decisions taken once for
+    /// the whole solve: which R version to solve for, and which packages the
+    /// non-dev subset of the lockfile needs.
+    pub merged: PackageDependencies,
+}
+
+/// Read the project or workspace rooted at `root` and turn it into the roots
+/// of one solve.
+///
+/// `root` is a workspace root if its manifest has a `[workspace]` with
+/// members, in which case every member is read, its `{ workspace = true }`
+/// dependencies are resolved against the root's `[workspace.dependencies]`
+/// (see [`Rproj::inherit_workspace_deps`]), and each becomes a root of the
+/// solve under its own name and version. Otherwise this is one plain project,
+/// and the single root is the synthetic one the solver has always used.
+pub(crate) fn proj_read_solve_roots(
+    root: &Path,
+    dev: bool,
+) -> Result<ProjectSolve, Box<dyn Error>> {
+    let manifest = proj_read_manifest(root)?;
+    let ws = match &manifest.workspace {
+        Some(ws) if !ws.members.is_empty() => ws,
+        _ => {
+            OUTPUT.status(&format!(
+                "Reading dependencies from {}",
+                RPROJ_MANIFEST_FILE
+            ));
+            info!("Reading dependencies from {}", RPROJ_MANIFEST_FILE);
+            let deps = manifest.to_dep_version_specs(dev)?;
+            return Ok(ProjectSolve {
+                members: vec![root.to_path_buf()],
+                roots: vec![SolveRoot::project(deps.clone())?],
+                merged: deps,
+            });
+        }
+    };
+
+    let dirs = workspace_members(root, ws)?;
+    OUTPUT.status(&format!(
+        "Reading dependencies from {} workspace {}",
+        dirs.len(),
+        if dirs.len() == 1 { "member" } else { "members" }
+    ));
+    info!("Reading dependencies from {} workspace members", dirs.len());
+
+    let mut roots: Vec<SolveRoot> = vec![];
+    let mut merged = PackageDependencies {
+        dependencies: vec![],
+    };
+    let mut seen: HashMap<String, PathBuf> = HashMap::new();
+
+    for dir in &dirs {
+        let mut member = proj_read_manifest(dir)?;
+        member.inherit_workspace_deps(ws, &dir.join(RPROJ_MANIFEST_FILE))?;
+        let name = member.project.name.clone();
+
+        // The solver equates R and the base packages with the R version
+        // itself, so a member of one of those names would be resolved against
+        // R's version rather than its own.
+        if name == "R" || BASE_PKGS.contains(&name.as_str()) {
+            bail!(
+                "Workspace member {} is called `{}`, which is R itself or one \
+                 of the packages that come with it",
+                dir.display(),
+                name
+            );
+        }
+        if let Some(previous) = seen.insert(name.clone(), dir.to_path_buf()) {
+            bail!(
+                "Two workspace members are called `{}`: {} and {}",
+                name,
+                previous.display(),
+                dir.display()
+            );
+        }
+
+        let deps = member.to_dep_version_specs(dev)?;
+        merged.append(&mut deps.clone());
+        roots.push(SolveRoot {
+            name,
+            version: RPackageVersion::from_str(&member.project.version)?,
+            deps,
+        });
+    }
+
+    // Every member's requirement on the same package, in one entry: this is
+    // what makes the merged `R` requirement the intersection of the members'.
+    merged.simplify();
+
+    Ok(ProjectSolve {
+        members: dirs,
+        roots,
+        merged,
+    })
+}
+
 /// Parse dependencies from the project manifest and print them out
 fn sc_proj_deps(
     args: &ArgMatches,
@@ -961,7 +1067,24 @@ pub(crate) fn proj_binary_target_quiet(
     Ok((target, no_binaries))
 }
 
-/// Solve the dependencies of `deps` for one R version and one binary target.
+/// Solve the dependencies of one project for one R version and one binary
+/// target, i.e. [`sc_proj_solve_deps`] for the callers that have a single
+/// manifest and no workspace.
+pub(crate) fn sc_proj_solve_project_deps(
+    r_version: &str,
+    deps: &PackageDependencies,
+    target: Option<BinaryTarget>,
+    prefer_binary: Option<usize>,
+    report_status: bool,
+) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
+    let roots = [SolveRoot::project(deps.clone())?];
+    sc_proj_solve_deps(r_version, &roots, target, prefer_binary, report_status)
+}
+
+/// Solve the dependencies of every root in `roots` for one R version and one
+/// binary target, in one solve, so that all of them end up satisfied by one
+/// version of each package. A plain project has a single root; a workspace has
+/// one per member (see [`register_roots`]).
 ///
 /// `report_status` is for callers that solve several targets in parallel
 /// ([`proj_lock`]): they print the status lines once for the whole batch, so
@@ -970,7 +1093,7 @@ pub(crate) fn proj_binary_target_quiet(
 /// each phase starts. The log file gets the messages either way.
 pub(crate) fn sc_proj_solve_deps(
     r_version: &str,
-    deps: &PackageDependencies,
+    roots: &[SolveRoot],
     target: Option<BinaryTarget>,
     prefer_binary: Option<usize>,
     report_status: bool,
@@ -990,11 +1113,7 @@ pub(crate) fn sc_proj_solve_deps(
     let reg: RPackageRegistry =
         RPackageRegistry::with_loaders(Box::new(loader), binaries).prefer_binary(prefer_binary);
 
-    reg.add_package_version(
-        "_project".to_string(),
-        RegistryPackageVersion::new("_project", "1.0.0")?,
-        rpackage_version_ranges_from_constraints(deps, true),
-    );
+    let (root_pkg, root_version) = register_roots(&reg, roots)?;
 
     // add R itself, for now a hardcoded version
     reg.add_package_version(
@@ -1019,17 +1138,21 @@ pub(crate) fn sc_proj_solve_deps(
         OUTPUT.status("Downloading binary package metadata");
     }
     info!("Downloading binary package metadata");
-    let roots: Vec<String> = deps.dependencies.iter().map(|d| d.name.clone()).collect();
-    reg.prefetch_binaries(&roots);
+    // A root is a local directory, or synthetic, so there is no binary index
+    // to fetch for it, however many members depend on it.
+    let mut direct: Vec<String> = roots
+        .iter()
+        .flat_map(|root| root.deps.dependencies.iter().map(|d| d.name.clone()))
+        .filter(|name| !reg.is_local(name))
+        .collect();
+    direct.sort();
+    direct.dedup();
+    reg.prefetch_binaries(&direct);
 
     if report_status {
         OUTPUT.status("Solving dependencies");
     }
-    let solution = resolve(
-        &reg,
-        "_project".to_string(),
-        RegistryPackageVersion::new("_project", "1.0.0")?,
-    );
+    let solution = resolve(&reg, root_pkg, root_version);
 
     match solution {
         Ok(sol) => Ok((reg, sol)),
@@ -1079,11 +1202,12 @@ fn solve_platform_key(target_name: Option<String>) -> String {
 }
 
 fn solution_to_sorted_vec(
+    registry: &RPackageRegistry,
     solution: &SelectedDependencies<RPackageRegistry>,
 ) -> Vec<(String, RegistryPackageVersion)> {
     let mut vec: Vec<(String, RegistryPackageVersion)> = solution
         .iter()
-        .filter(|(pkg, _ver)| *pkg != "_project")
+        .filter(|(pkg, _ver)| !registry.is_local(pkg))
         .map(|(pkg, ver)| (pkg.clone(), ver.clone()))
         .collect();
     vec.sort_by(|a, b| {
@@ -1146,7 +1270,26 @@ fn sc_proj_lock(
         prefer_binary: args.get_one::<usize>("prefer-binary").copied(),
         dev: !args.get_flag("no-dev"),
     };
-    proj_lock(Path::new("."), &opts, args)
+    proj_lock(&proj_lock_root()?, &opts, args)
+}
+
+/// The directory `rig proj lock` and `rig proj sync` work on: the workspace a
+/// project belongs to, else the project itself, else the current directory --
+/// which is where `proj_read_solve_roots` reports the missing manifest.
+///
+/// A workspace has one lock file and one library, both at its root, so a
+/// command run in a member directory has to act on the whole workspace.
+fn proj_lock_root() -> Result<PathBuf, Box<dyn Error>> {
+    let cwd = std::env::current_dir()?;
+    if let Some(workspace) = find_workspace_root(&cwd)? {
+        if workspace != cwd {
+            let msg = format!("Using the workspace at {}", workspace.display());
+            OUTPUT.info(&msg);
+            info!("{}", msg);
+        }
+        return Ok(workspace);
+    }
+    Ok(find_project_root(&cwd).unwrap_or(cwd))
 }
 
 /// The R version to solve the project for, when the caller did not name one:
@@ -1250,7 +1393,24 @@ fn r_requirement(req: Option<&DepVersionSpec>) -> String {
 fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // Do this first, to report local errors early
     let dev = opts.dev;
-    let (_name, _version, pkg_deps) = proj_read_manifest_deps(root, dev)?;
+    let solve = proj_read_solve_roots(root, dev)?;
+    let pkg_deps = &solve.merged;
+
+    if solve.members.len() > 1 {
+        let names = solve
+            .roots
+            .iter()
+            .map(|r| r.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let msg = format!(
+            "Locking {} workspace members together: {}",
+            solve.members.len(),
+            names
+        );
+        OUTPUT.info(&msg);
+        info!("{}", msg);
+    }
 
     // Each R version has to satisfy the manifest's own `R` requirement,
     // otherwise the solve either fails or produces a lock file for an R the
@@ -1258,7 +1418,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     // reports the conflict if there is one. With none given, the default
     // logic in `proj_lock_r_version` picks the one version to solve for.
     let rvers: Vec<String> = if opts.r_versions.is_empty() {
-        vec![proj_lock_r_version(&pkg_deps, args)?]
+        vec![proj_lock_r_version(pkg_deps, args)?]
     } else {
         opts.r_versions.clone()
     };
@@ -1382,9 +1542,14 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     let solved: Vec<(String, String, Result<SolveResult, String>)> = solve_targets
         .par_iter()
         .map(|st| {
-            let result =
-                sc_proj_solve_deps(&st.rver, &pkg_deps, st.target.clone(), prefer_binary, false)
-                    .map_err(|e| e.to_string());
+            let result = sc_proj_solve_deps(
+                &st.rver,
+                &solve.roots,
+                st.target.clone(),
+                prefer_binary,
+                false,
+            )
+            .map_err(|e| e.to_string());
             (st.rver.clone(), st.platform_key.clone(), result)
         })
         .collect();
@@ -1494,7 +1659,7 @@ fn solution_rows(
     registry: &RPackageRegistry,
     solution: &SelectedDependencies<RPackageRegistry>,
 ) -> BTreeMap<String, SolvedRow> {
-    let sorted_solution = solution_to_sorted_vec(solution);
+    let sorted_solution = solution_to_sorted_vec(registry, solution);
     let mut rows: BTreeMap<String, SolvedRow> = BTreeMap::new();
     for (pkg, ver) in sorted_solution.iter() {
         let kind = if pkg == "R" || BASE_PKGS.contains(&pkg.as_str()) {
@@ -1766,7 +1931,11 @@ fn nondev_packages(
     root: &Path,
     packages: &[RprojLockPackage],
 ) -> Result<HashSet<String>, Box<dyn Error>> {
-    let (_name, _version, deps) = proj_read_manifest_deps(root, false)?;
+    // In a workspace this is every member's non-dev dependencies, not the
+    // root's: a member is not a lockfile entry, so a walk that started at the
+    // root manifest alone would stop at the first member it reached and drop
+    // that member's whole subtree from the library.
+    let deps = proj_read_solve_roots(root, false)?.merged;
     let by_name: HashMap<&str, &RprojLockPackage> =
         packages.iter().map(|p| (p.package.as_str(), p)).collect();
 
@@ -2082,9 +2251,10 @@ fn sc_proj_sync(
     _mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
     // The project is the nearest one at or above the current directory, so
-    // that `rig proj sync` works from a subdirectory, like `git` does.
-    let cwd = std::env::current_dir()?;
-    let root = find_project_root(&cwd).unwrap_or(cwd);
+    // that `rig proj sync` works from a subdirectory, like `git` does. In a
+    // workspace it is the workspace root, which owns the one library every
+    // member shares.
+    let root = proj_lock_root()?;
 
     let opts = ProjSyncOptions {
         dev: !args.get_flag("no-dev"),
@@ -2226,6 +2396,31 @@ pub(crate) fn proj_sync(
         }
 
         let manifest = proj_read_manifest(root)?;
+        // One library, one set of repositories to fill it from, so the
+        // workspace root's `[[repository]]` is the workspace's. A member that
+        // declares its own -- `rig proj import` writes them from a
+        // DESCRIPTION -- is warned about rather than rejected, so that
+        // importing a package into a workspace still works.
+        if let Some(ws) = &manifest.workspace {
+            for member in workspace_members(root, ws)? {
+                if member == root {
+                    continue;
+                }
+                let has_own = proj_read_manifest_opt(&member)?
+                    .map(|m| !m.repository.is_empty())
+                    .unwrap_or(false);
+                if has_own {
+                    let msg = format!(
+                        "Ignoring the repositories of workspace member {}, a \
+                         workspace uses the ones in its root {}",
+                        member.display(),
+                        RPROJ_MANIFEST_FILE
+                    );
+                    OUTPUT.warn(&msg);
+                    info!("{}", msg);
+                }
+            }
+        }
         let written = rvenv_sync(root, &cfg, &manifest.repository)?;
         for path in &written {
             let path = path.strip_prefix(root).unwrap_or(path);
@@ -2496,7 +2691,7 @@ pub(crate) fn download_lockfile_packages(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rproj::{Dependency, Group};
+    use crate::rproj::{Dependency, Group, Workspace};
     use std::collections::BTreeMap;
 
     /// One target's rows for [`solution_table`], from `(package, version,
@@ -2931,5 +3126,124 @@ mod tests {
         assert!(keep.contains("glue"));
         assert!(!keep.contains("testthat"));
         assert!(!keep.contains("waldo"));
+    }
+
+    /// Write `manifest` into `dir`, creating it, as one project or one
+    /// workspace member.
+    fn write_manifest(dir: &Path, manifest: &Rproj) {
+        fs::create_dir_all(dir).unwrap();
+        fs::write(
+            dir.join(RPROJ_MANIFEST_FILE),
+            toml::to_string_pretty(manifest).unwrap(),
+        )
+        .unwrap();
+    }
+
+    /// A workspace of two members, `a` and `b`, under `root`: `a` depends on
+    /// the sibling `b` and on `cli`, `b` on `glue`. The root manifest is a
+    /// member too, and depends on nothing of its own.
+    fn two_member_workspace(root: &Path) {
+        let mut ws_root = Rproj::minimal("ws");
+        ws_root.workspace = Some(Workspace {
+            members: vec!["packages/*".to_string()],
+            ..Default::default()
+        });
+        write_manifest(root, &ws_root);
+
+        let mut a = Rproj::minimal("a");
+        a.dependencies.insert("b".to_string(), dep("*"));
+        a.dependencies.insert("cli".to_string(), dep("*"));
+        write_manifest(&root.join("packages/a"), &a);
+
+        let mut b = Rproj::minimal("b");
+        b.dependencies.insert("glue".to_string(), dep("*"));
+        write_manifest(&root.join("packages/b"), &b);
+    }
+
+    #[test]
+    fn a_workspace_has_one_solve_root_per_member() {
+        let dir = tempfile::tempdir().unwrap();
+        two_member_workspace(dir.path());
+        let solve = proj_read_solve_roots(dir.path(), true).unwrap();
+        let names: Vec<&str> = solve.roots.iter().map(|r| r.name.as_str()).collect();
+        // The workspace root is a member of its own workspace.
+        assert_eq!(names, vec!["ws", "a", "b"]);
+        assert_eq!(
+            solve.members,
+            vec![
+                dir.path().to_path_buf(),
+                dir.path().join("packages/a"),
+                dir.path().join("packages/b"),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_plain_project_has_one_synthetic_solve_root() {
+        let dir = tempfile::tempdir().unwrap();
+        write_manifest(dir.path(), &Rproj::minimal("mypkg"));
+        let solve = proj_read_solve_roots(dir.path(), true).unwrap();
+        assert_eq!(solve.roots.len(), 1);
+        assert_eq!(solve.roots[0].name, PROJECT_ROOT_PKG);
+    }
+
+    #[test]
+    fn two_members_of_one_name_are_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        two_member_workspace(dir.path());
+        let mut clash = Rproj::minimal("a");
+        clash.project.version = "9.9.9".to_string();
+        write_manifest(&dir.path().join("packages/also-a"), &clash);
+        let err = proj_read_solve_roots(dir.path(), true)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("Two workspace members"), "{}", err);
+        assert!(err.contains("packages/also-a"), "{}", err);
+    }
+
+    #[test]
+    fn a_member_cannot_be_called_r_or_a_base_package() {
+        let dir = tempfile::tempdir().unwrap();
+        two_member_workspace(dir.path());
+        write_manifest(&dir.path().join("packages/stats"), &Rproj::minimal("stats"));
+        let err = proj_read_solve_roots(dir.path(), true)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("stats"), "{}", err);
+    }
+
+    #[test]
+    fn the_merged_r_requirement_intersects_the_members() {
+        let dir = tempfile::tempdir().unwrap();
+        two_member_workspace(dir.path());
+        let mut b = Rproj::minimal("b");
+        b.dependencies.insert("R".to_string(), dep(">= 4.4, < 4.6"));
+        write_manifest(&dir.path().join("packages/b"), &b);
+
+        let solve = proj_read_solve_roots(dir.path(), true).unwrap();
+        let r = solve
+            .merged
+            .dependencies
+            .iter()
+            .find(|d| d.name == "R")
+            .unwrap();
+        // `>= 4.1` from the other members and `>= 4.4, < 4.6` from `b`: the
+        // solve has to satisfy all of them at once.
+        assert!(r.satisfies("4.5.0").unwrap());
+        assert!(!r.satisfies("4.6.1").unwrap());
+        assert!(!r.satisfies("4.3.0").unwrap());
+    }
+
+    #[test]
+    fn nondev_packages_unions_every_members_direct_deps() {
+        let dir = tempfile::tempdir().unwrap();
+        two_member_workspace(dir.path());
+
+        // `b` is a member, so it is not a lockfile entry: the walk has to get
+        // to `glue` from `b`'s own manifest, not by following `a` -> `b`.
+        let packages = vec![locked("cli", &[]), locked("glue", &[])];
+        let keep = nondev_packages(dir.path(), &packages).unwrap();
+        assert!(keep.contains("cli"));
+        assert!(keep.contains("glue"));
     }
 }
