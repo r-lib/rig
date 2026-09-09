@@ -37,6 +37,47 @@ matches), so this default already covers deploying to a Linux server or CI
 from a macOS or Windows laptop: `rig proj sync` on each machine picks its own
 entry from the same file.
 
+## Workspaces
+
+A manifest with a `[workspace]` table is the root of a workspace: a monorepo
+of several projects or packages, listed as path patterns in `members`, that
+share one `rproj.lock` and one package library. `exclude` drops directories a
+`members` pattern would otherwise match, and the root manifest is always a
+member of its own workspace.
+
+`rig proj lock` in a workspace — from the root or from any member directory —
+reads every member and resolves them all in one solve, so that every member
+ends up with the same version of every shared dependency, and writes one
+`rproj.lock` at the workspace root. A member that depends on a sibling
+member is resolved against that sibling's own dependencies. The members
+themselves are directories rather than packages to download, so they are not
+recorded in the lock file.
+
+The R version rig solves for has to satisfy every member's `R` requirement,
+not just the root's.
+
+`[workspace.dependencies]` declares shared version requirements. A member
+inherits one by name, instead of spelling out its own requirement:
+
+```toml
+# rproj.toml, the workspace root
+[workspace]
+members = ["packages/*"]
+
+[workspace.dependencies]
+cli = ">= 3.6.0"
+```
+
+```toml
+# packages/mypkg/rproj.toml, a member
+[dependencies]
+cli = { workspace = true }
+```
+
+An entry no member inherits has no effect on the solve; it is a declaration,
+not a request. Whether a member attaches a package (`attach`) is still the
+member's own business, and is kept when the rest of the entry is inherited.
+
 ## The R version
 
 Without `--r-version` rig solves for the default R version, provided the

@@ -52,5 +52,6 @@ installed. Defaults to the current default R version, or the current R
 release if there is no default.
 
 rig refuses to overwrite any of the files above; pass `--force` to replace
-them. `--force` still does not rewrite the whole `.gitignore`, only rig's
-block in it.
+them. The `.gitignore` block is the exception: rig never refuses on an
+existing `.gitignore`, it just merges its block into it (or adds one),
+leaving the rest of the file alone, and `--force` does not change that.

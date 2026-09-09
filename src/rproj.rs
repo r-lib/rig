@@ -19,6 +19,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
 use std::fmt::Write as _;
+use std::path::Path;
 
 use log::warn;
 use serde::{Deserialize, Serialize};
@@ -868,6 +869,54 @@ impl Rproj {
         Ok(pkg_deps)
     }
 
+    /// Replace every `{ workspace = true }` dependency with the workspace
+    /// root's `[workspace.dependencies]` entry of the same name, so that the
+    /// rest of the code never has to know the constraint was inherited.
+    ///
+    /// This is a pass over a member manifest, not part of
+    /// [`Rproj::to_dep_version_specs`], because that one is also called for a
+    /// single project (`rig proj deps`, `rig proj tree`, `rig proj export`,
+    /// `rig proj renv import`), which has no workspace to inherit from.
+    ///
+    /// `origin` is the member's manifest path, for the error message when the
+    /// name is not in `[workspace.dependencies]`.
+    pub fn inherit_workspace_deps(
+        &mut self,
+        ws: &Workspace,
+        origin: &Path,
+    ) -> Result<(), Box<dyn Error>> {
+        let mut tables: Vec<&mut BTreeMap<String, Dependency>> =
+            vec![&mut self.dependencies, &mut self.linking_dependencies];
+        tables.extend(self.optional_dependencies.values_mut());
+        tables.extend(
+            self.dependency_groups
+                .values_mut()
+                .map(|group| &mut group.dependencies),
+        );
+
+        for table in tables {
+            for (name, dep) in table.iter_mut() {
+                let local = match dep {
+                    Dependency::Detailed(t) if t.workspace == Some(true) => (**t).clone(),
+                    _ => continue,
+                };
+                let shared = match ws.dependencies.get(name) {
+                    Some(shared) => shared,
+                    None => bail!(
+                        "{} = {{ workspace = true }} in {}, but there is no \
+                         [workspace.dependencies] entry for {}",
+                        name,
+                        origin.display(),
+                        name
+                    ),
+                };
+                *dep = inherit_dep(shared, &local);
+            }
+        }
+
+        Ok(())
+    }
+
     /// Render this manifest as a `DESCRIPTION` file, the inverse of
     /// [`Rproj::merge_description`] plus the `[project]` metadata mapping
     /// `rig proj import` reads (`Package`/`Version`/`Title`/`Description`/
@@ -1262,6 +1311,30 @@ fn dep_attach(dep: &Dependency) -> bool {
     }
 }
 
+/// One `{ workspace = true }` entry resolved against the workspace root's
+/// `[workspace.dependencies]` entry of the same name, for
+/// [`Rproj::inherit_workspace_deps`].
+///
+/// The version and the source come from the shared entry, which is the point
+/// of inheriting it. The `attach` / `enhances` / `vignette-builder` flags stay
+/// the member's own: how a member uses a package says nothing about how the
+/// workspace pins it, and the shared entry has no business attaching a package
+/// in a member that only imports it.
+fn inherit_dep(shared: &Dependency, local: &DepTable) -> Dependency {
+    let mut table = match shared {
+        Dependency::Version(v) => DepTable {
+            version: Some(v.clone()),
+            ..Default::default()
+        },
+        Dependency::Detailed(t) => (**t).clone(),
+    };
+    table.workspace = None;
+    table.attach = local.attach.or(table.attach);
+    table.enhances = local.enhances.or(table.enhances);
+    table.vignette_builder = local.vignette_builder.or(table.vignette_builder);
+    Dependency::Detailed(Box::new(table))
+}
+
 /// One manifest dependency entry as a solver [`DepVersionSpec`]. A dependency
 /// with no version (a bare `"*"`, or a table that only names a source, e.g.
 /// `git = ...`) has no constraints.
@@ -1480,7 +1553,10 @@ impl RprojLockTarget {
         let platform = registry.binary_target();
         let mut pkgs = vec![];
         for (k, v) in solution.iter() {
-            if k == "R" || k == "_project" || BASE_PKGS.contains(&k.as_str()) {
+            // A local package -- a workspace member, or the synthetic solve
+            // root -- has no artifact to install, and R and the base packages
+            // come with R itself.
+            if k == "R" || registry.is_local(k) || BASE_PKGS.contains(&k.as_str()) {
                 continue;
             }
             let deps = registry
@@ -2374,6 +2450,147 @@ mod tests {
                 ..Default::default()
             })))
         );
+    }
+
+    /// A `{ workspace = true }` entry, as a member manifest spells it.
+    fn inherited() -> Dependency {
+        Dependency::Detailed(Box::new(DepTable {
+            workspace: Some(true),
+            ..Default::default()
+        }))
+    }
+
+    /// A workspace root's `[workspace.dependencies]` with one entry.
+    fn workspace_with(name: &str, dep: Dependency) -> Workspace {
+        let mut dependencies = BTreeMap::new();
+        dependencies.insert(name.to_string(), dep);
+        Workspace {
+            dependencies,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn inherit_workspace_deps_takes_the_roots_constraint() {
+        let ws = workspace_with("cli", dep(">= 3.6.5"));
+        let mut m = Rproj::minimal("member");
+        m.dependencies.insert("cli".to_string(), inherited());
+        m.inherit_workspace_deps(&ws, Path::new("a/rproj.toml"))
+            .unwrap();
+        let deps = m.to_dep_version_specs(false).unwrap();
+        assert_eq!(
+            converted(&deps, "cli"),
+            Some((&[RDepType::Imports][..], vec![">= 3.6.5".to_string()]))
+        );
+    }
+
+    #[test]
+    fn inherit_workspace_deps_takes_the_roots_source() {
+        let ws = workspace_with(
+            "ts",
+            Dependency::Detailed(Box::new(DepTable {
+                git: Some("https://github.com/gaborcsardi/ts".to_string()),
+                ..Default::default()
+            })),
+        );
+        let mut m = Rproj::minimal("member");
+        m.dependencies.insert("ts".to_string(), inherited());
+        m.inherit_workspace_deps(&ws, Path::new("a/rproj.toml"))
+            .unwrap();
+        let Some(Dependency::Detailed(t)) = m.dependencies.get("ts") else {
+            panic!("not a table: {:?}", m.dependencies.get("ts"));
+        };
+        assert_eq!(t.git.as_deref(), Some("https://github.com/gaborcsardi/ts"));
+        assert_eq!(t.workspace, None);
+    }
+
+    #[test]
+    fn inherit_workspace_deps_keeps_the_members_own_attach_flag() {
+        let ws = workspace_with("crayon", dep(">= 1.5"));
+        let mut m = Rproj::minimal("member");
+        m.dependencies.insert(
+            "crayon".to_string(),
+            Dependency::Detailed(Box::new(DepTable {
+                workspace: Some(true),
+                attach: Some(true),
+                ..Default::default()
+            })),
+        );
+        m.inherit_workspace_deps(&ws, Path::new("a/rproj.toml"))
+            .unwrap();
+        let deps = m.to_dep_version_specs(false).unwrap();
+        assert_eq!(
+            converted(&deps, "crayon"),
+            Some((&[RDepType::Depends][..], vec![">= 1.5".to_string()]))
+        );
+    }
+
+    #[test]
+    fn inherit_workspace_deps_reaches_every_dependency_table() {
+        let mut ws = workspace_with("cli", dep(">= 3.6.5"));
+        ws.dependencies.insert("cpp11".to_string(), dep(">= 0.4"));
+        ws.dependencies
+            .insert("testthat".to_string(), dep(">= 3.0"));
+        ws.dependencies.insert("curl".to_string(), dep(">= 5.0"));
+
+        let mut m = Rproj::minimal("member");
+        m.linking_dependencies
+            .insert("cpp11".to_string(), inherited());
+        m.dependency_groups.insert(
+            "test".to_string(),
+            Group {
+                dependencies: BTreeMap::from([("testthat".to_string(), inherited())]),
+                ..Default::default()
+            },
+        );
+        m.optional_dependencies.insert(
+            "web".to_string(),
+            BTreeMap::from([("curl".to_string(), inherited())]),
+        );
+
+        m.inherit_workspace_deps(&ws, Path::new("a/rproj.toml"))
+            .unwrap();
+
+        let deps = m.to_dep_version_specs(true).unwrap();
+        assert_eq!(
+            converted(&deps, "cpp11"),
+            Some((&[RDepType::LinkingTo][..], vec![">= 0.4".to_string()]))
+        );
+        assert_eq!(
+            converted(&deps, "testthat"),
+            Some((&[RDepType::Suggests][..], vec![">= 3.0".to_string()]))
+        );
+        // Optional dependencies have no DESCRIPTION type and so are not
+        // solved, but the entry still has to be resolved, not left inherited.
+        let Some(Dependency::Detailed(t)) = m.optional_dependencies.get("web").unwrap().get("curl")
+        else {
+            panic!("not a table");
+        };
+        assert_eq!(t.version.as_deref(), Some(">= 5.0"));
+    }
+
+    #[test]
+    fn inherit_workspace_deps_without_a_root_entry_is_an_error() {
+        let ws = workspace_with("cli", dep(">= 3.6.5"));
+        let mut m = Rproj::minimal("member");
+        m.dependencies.insert("dplyr".to_string(), inherited());
+        let err = m
+            .inherit_workspace_deps(&ws, Path::new("packages/a/rproj.toml"))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("packages/a/rproj.toml"), "{}", err);
+        assert!(err.contains("[workspace.dependencies]"), "{}", err);
+        assert!(err.contains("dplyr"), "{}", err);
+    }
+
+    #[test]
+    fn workspace_dependencies_nobody_inherits_are_dormant() {
+        let ws = workspace_with("cli", dep(">= 3.6.5"));
+        let mut m = Rproj::minimal("member");
+        m.inherit_workspace_deps(&ws, Path::new("a/rproj.toml"))
+            .unwrap();
+        let deps = m.to_dep_version_specs(true).unwrap();
+        assert_eq!(converted(&deps, "cli"), None);
     }
 
     #[test]

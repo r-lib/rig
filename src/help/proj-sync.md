@@ -23,6 +23,23 @@ By default, sync also removes any package that is in the project library but
 not in `rproj.lock` -- e.g. one dropped from `rproj.toml`, or a leftover from
 before `--no-dev`. Pass `--inexact` to leave those packages alone instead.
 
+## Workspaces
+
+In a workspace (see [`rig proj lock`](#rig-proj-lock)) every member shares one
+`rproj.lock` and one package library, both at the workspace root. `rig proj
+sync` from a member directory therefore syncs the whole workspace, and
+installs the union of every member's dependencies into the root's
+`.rvenv/lib`. With `--no-dev` it is every member's non-development
+dependencies that are kept.
+
+The repositories to install from are the workspace root's `[[repository]]`
+tables; a member that declares its own is warned about and ignored, since
+there is only one library to fill.
+
+The members themselves are directories, not packages rig installs. Building a
+member and installing it into the shared library is not something
+`rig proj sync` does yet.
+
 ## The R version
 
 The lock file records the R version its solve is valid for, and that is the R
