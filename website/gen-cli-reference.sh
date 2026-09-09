@@ -449,10 +449,9 @@ rm -f "$refdir/_overview.md" "$refdir/_toc.md"
 
 # Top-level overview, rendered as rich Markdown like the per-command pages:
 # the description prose (src/help/about.md), then the synopsis (Usage and the
-# global Options), then the examples (src/help/examples.md). The Commands
-# block is dropped from the synopsis, since the linked table of contents below
-# (_toc.md) already lists the commands. Section headings sit one level below
-# the `## rig` heading.
+# global Options). The Commands block is dropped from the synopsis, since the
+# linked table of contents below (_toc.md) already lists the commands.
+# Section headings sit one level below the `## rig` heading.
 {
   printf '%s\n\n' "$MARKER"
   printf '## `rig`\n\n'
@@ -460,10 +459,10 @@ rm -f "$refdir/_overview.md" "$refdir/_toc.md"
   # prose, whose heading shift_headings removes.
   shift_headings <(awk '/^## Description/ { p = 1 } p' "$helpdir/about.md") "#" |
     split_code_blocks
-  # Synopsis: from `Usage:` up to (but not including) `Examples:`, then with
-  # the `Commands:` block stripped out, rendered as rich Markdown.
+  # Synopsis: from `Usage:` on, with the `Commands:` block stripped out,
+  # rendered as rich Markdown.
   synopsis="$("$RIG" --help 2>&1 |
-    awk 'f && /^Examples:/ { exit } /^Usage:/ { f = 1 } f { print }' |
+    awk '/^Usage:/ { f = 1 } f { print }' |
     awk '
       /^Commands:/ { inc = 1; next }
       inc && /^[[:space:]]*$/ { inc = 0; next }
@@ -471,9 +470,6 @@ rm -f "$refdir/_overview.md" "$refdir/_toc.md"
       { print }
     ')"
   printf '%s\n' "$synopsis" | render_synopsis '###' '' ''
-  printf '\n'
-  # Examples, heading shifted to sit under the `## rig` heading.
-  shift_headings "$helpdir/examples.md" "#" | split_code_blocks
 } >"$refdir/_overview.md"
 
 # One page per top-level command, plus the linked table of contents.
