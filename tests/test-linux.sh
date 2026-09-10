@@ -302,11 +302,15 @@ teardown() {
     echo "$output" | grep -q "Project is not synced"
     [[ "$output" != *".rvenv"* ]]
 
-    # Once the library exists, the shim resolves it and puts it first
+    # Once the library exists, the shim resolves it and puts it first. The
+    # rest of activation lives in `onload.R`, normally written by `rig proj
+    # sync`; copy it in here to simulate a synced project without a full sync.
     mkdir -p .rvenv/lib
+    cp "$DIR/../src/data/rvenv/onload.R" .rvenv/onload.R
     run env -u RVENV R-4.5.1 -q -s -e 'cat(.libPaths()[1])'
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "myproj/[.]rvenv/lib"
+    rm .rvenv/onload.R
     rmdir .rvenv/lib
 
     # Refuses to overwrite, and says what is in the way
