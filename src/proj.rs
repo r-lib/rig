@@ -23,6 +23,7 @@ use crate::download::download_multiple_first_available_with_progress;
 use crate::install::{
     install_packages, parse_linkingto, PackageInfo, REMOTE_HASH_FIELD, REMOTE_LINKINGTO_FIELD,
 };
+use crate::library::get_library_path;
 use crate::output::OUTPUT;
 use crate::pkg::deps::{
     dep_count, print_deps_json, print_deps_recursive, print_header, type_list, walk_deps,
@@ -2367,6 +2368,12 @@ pub(crate) fn proj_sync(
     // owns the wrappers, the activation scripts and the sync stamp.
     let in_project_library = library_path == project_library(root);
     if in_project_library {
+        // The base of the shared tools library, `__tools` alongside it (see
+        // `RvenvCfg::tools_lib`). Resolved here, once, rather than by the
+        // shim at R startup: `rig run`'s wrapper sets `R_LIBS_USER` to the
+        // project library before R starts, so by the time R gets to read
+        // its own default user library it is already gone.
+        let (tools_main, _) = get_library_path(&r_name, true)?;
         let cfg = RvenvCfg {
             r_version: r_name.clone(),
             r_minor: minor_r_version(&target.r_version)?,
@@ -2374,6 +2381,7 @@ pub(crate) fn proj_sync(
             platform: target.platform.clone(),
             r_arch: rvenv_r_arch(&r_name),
             rig_version: env!("CARGO_PKG_VERSION").to_string(),
+            tools_lib: tools_main.join("__tools"),
         };
         // An environment that was built against a different R is not stale,
         // it is broken: R packages are tied to the R minor version. Say so,

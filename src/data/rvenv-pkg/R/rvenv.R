@@ -102,11 +102,25 @@
     RVENV = venv
   )
 
+  # Shared dev-tool library (devtools, usethis, roxygen2, ...), same for
+  # every project on this R version. `rig proj sync` resolves it once, into
+  # `rvenv.cfg`'s `tools-lib` -- not derived here from `RVENV_R_LIBS_USER`,
+  # because `rig run`'s wrapper sets `R_LIBS_USER` to the project library
+  # before R starts, and by the time R gets to snapshot its own default user
+  # library into `RVENV_R_LIBS_USER`, it is already gone. Appended after the
+  # project library, so project deps always resolve first; before `.Library`,
+  # which `.libPaths()` adds itself. Fine if it does not exist yet, or if an
+  # older `rig proj sync` never wrote it (empty string): `.libPaths()`
+  # silently drops missing entries.
+  paths <- lib
+  tools <- cfg[["tools-lib"]]
+  if (!is.null(tools) && nzchar(tools)) paths <- c(paths, tools)
+
   # `include.site` was added in R 4.2.0.
   if (getRversion() >= "4.2.0") {
-    .libPaths(lib, include.site = FALSE)
+    .libPaths(paths, include.site = FALSE)
   } else {
-    .libPaths(lib)
+    .libPaths(paths)
   }
 
   Sys.unsetenv("R_DEFAULT_PACKAGES")

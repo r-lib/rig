@@ -708,6 +708,14 @@ pub struct RvenvCfg {
     pub r_arch: String,
     /// The version of rig that wrote this file.
     pub rig_version: String,
+    /// The shared dev-tools library for `r_version`, `<user library>/__tools`
+    /// (see [`crate::library::get_library_path`]). Computed once here,
+    /// rather than derived by the shim from `RVENV_R_LIBS_USER` at R
+    /// startup, because `rig run`'s wrapper sets `R_LIBS_USER` to the
+    /// project library before R starts, and R's own `.Renviron` handling
+    /// then captures that already-overridden value into
+    /// `RVENV_R_LIBS_USER`, not the genuine per-R-version default.
+    pub tools_lib: PathBuf,
 }
 
 impl RvenvCfg {
@@ -725,13 +733,15 @@ r-binary = {}
 platform = {}
 r-arch = {}
 rig = {}
+tools-lib = {}
 ",
             self.r_version,
             self.r_minor,
             self.r_binary.display(),
             self.platform,
             self.r_arch,
-            self.rig_version
+            self.rig_version,
+            self.tools_lib.display()
         )
     }
 
@@ -764,6 +774,9 @@ rig = {}
             platform: get("platform")?,
             r_arch: get("r-arch")?,
             rig_version: get("rig")?,
+            // Missing, not an error: a file written before this key existed.
+            // `rig proj sync` rewrites the file every time anyway.
+            tools_lib: PathBuf::from(fields.get("tools-lib").copied().unwrap_or("")),
         })
     }
 }
@@ -1431,6 +1444,7 @@ mod tests {
             platform: "macos-arm64".to_string(),
             r_arch: "arm64".to_string(),
             rig_version: "0.10.0".to_string(),
+            tools_lib: PathBuf::from("/Users/x/Library/R/arm64/4.6/library/__tools"),
         }
     }
 
