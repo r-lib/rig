@@ -2,7 +2,7 @@ Dependencies of a package in the repositories
 
 ## Note
 
-This command currently only uses P3M (Posit Public Package Manager)
+This command currently only uses PPM (Posit Public Package Manager)
 and ignores the configured repositories.
 
 ## Description

@@ -8,12 +8,7 @@ Bioconductor releases and macOS build flavors it serves.
 
 ## The report
 
-The first block is the instance itself: its `version` and `build_date`, the
-name of its CRAN repository, whether R and Python are configured, whether
-binary packages are enabled, whether it requires authentication, and how
-long its license still covers it.
-
-Then four tables:
+The report shows an initial block and then four tables:
 
 * **R versions** — the minor R versions binaries are built for. Same list
   as [`rig ppm r-versions`](ppm.qmd#rig-ppm-r-versions).
@@ -32,9 +27,8 @@ Then four tables:
 An instance may report fields rig does not show. Use `--json` to see the
 status document in full; nothing is dropped from it.
 
-Unlike the other [`rig ppm`](ppm.qmd) commands, this one always contacts
-the server, because part of what it reports is live state. It therefore
-needs network access even when the other commands do not.
+This command does not cache information from PPM, it always performs an
+HTTP query.
 
 ## Which server
 

@@ -1,16 +1,18 @@
 Information about a package in the repositories
 
+## Note
+
+This command currently only uses PPM (Posit Public Package Manager)
+and ignores the configured repositories.
+
 ## Description
 
-Show information about a package on CRAN, from its `DESCRIPTION` file.
+Show information about a package on PPM's CRAN repository, from its
+`DESCRIPTION` file.
 
 By default the latest available version is shown; use `--version` to
 select a specific one, including versions that CRAN has archived. Use
 `--json` to print all `DESCRIPTION` fields.
-
-If CRAN has archived the package, i.e. removed it from the current
-repository, rig shows the date it was archived, next to the publication
-date of the version. `--json` reports it as an extra `Archived` field.
 
 ## README of a package
 
@@ -31,15 +33,7 @@ nothing, and `--readme --json` prints `null` for both `readme` and
 ## All versions of a package
 
 `--versions` lists all versions of the package ever published on CRAN,
-oldest first, instead of the details of a single version. For each version
-rig shows its publication date, its R version requirement and its number
-of hard dependencies (`Depends`, `Imports` and `LinkingTo`, excluding R
-and the base packages); the latest version is marked. It cannot be
-combined with `--version`.
-
-For a package CRAN has archived, i.e. removed from the current
-repository, the header also shows the date it was archived. This applies
-to the package as a whole, so all of its versions are archived.
+oldest first. For each version It cannot be combined with `--version`.
 
 `--versions --json` prints the full `DESCRIPTION` of every version, each
 with an extra `Archived` field for an archived package.

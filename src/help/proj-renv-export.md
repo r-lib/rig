@@ -11,9 +11,10 @@ single target, since `renv.lock` has no multi-target concept.
 
 Without `--r-version`, rig solves for the default R version, provided the
 manifest's own `R` requirement allows it; otherwise the newest installed R
-version that does, and failing that the current R release -- the same logic
-[`rig proj lock`](proj.qmd#rig-proj-lock) uses. Without `--platform`, rig
-solves for this machine.
+version that does, and failing that the current R release. Without
+`--platform`, rig solves for this machine.
+
+## Examples
 
 ```sh
 rig proj renv export

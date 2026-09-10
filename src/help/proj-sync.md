@@ -1,75 +1,50 @@
-Install the dependencies rproj.lock resolved
+Install the dependencies `rproj.lock` resolved
 
 ## Description
 
 Bring an R project's environment in line with its `rproj.lock`: install the
 resolved dependencies, and write the rest of the `.rvenv` layout.
 
-rig looks for the project in the current directory and its parents, reads its
-`rproj.lock` (written by [`rig proj lock`](#rig-proj-lock)) and installs the
-packages into the project library, `.rvenv/lib`, creating it if it is not
-there yet. If the project has no `rproj.lock` yet, rig runs
-[`rig proj lock`](#rig-proj-lock) with its default options first, to create
-one. The project itself has to have been set up by
-[`rig proj init`](#rig-proj-init) or [`rig proj import`](#rig-proj-import), so
-`rig proj sync` fails if `.rvenvlib` is missing. Pass `--library` to install
-somewhere else instead.
+rig looks for the project in the current directory and its parents, reads
+its `rproj.lock` and installs the packages into the project library.
+If the project has no `rproj.lock` yet, rig runs [`rig proj lock`](#rig-proj-lock) with
+its default options first.
 
 Development dependencies are installed by default. `--no-dev` leaves them
-out. `--max-concurrent` limits the number of simultaneous installations
-(default: 8).
+out. `--max-concurrent` limits the number of simultaneous installations.
 
-By default, sync also removes any package that is in the project library but
-not in `rproj.lock` -- e.g. one dropped from `rproj.toml`, or a leftover from
-before `--no-dev`. Pass `--inexact` to leave those packages alone instead.
-
-## Workspaces
-
-In a workspace (see [`rig proj lock`](#rig-proj-lock)) every member shares one
-`rproj.lock` and one package library, both at the workspace root. `rig proj
-sync` from a member directory therefore syncs the whole workspace, and
-installs the union of every member's dependencies into the root's
-`.rvenv/lib`. With `--no-dev` it is every member's non-development
-dependencies that are kept.
-
-The repositories to install from are the workspace root's `[[repository]]`
-tables; a member that declares its own is warned about and ignored, since
-there is only one library to fill.
-
-The members themselves are directories, not packages rig installs. Building a
-member and installing it into the shared library is not something
-`rig proj sync` does yet.
+By default, sync also removes any package that is in the project library
+but not in `rproj.lock`, e.g. one dropped from `rproj.toml`, or a leftover
+from before `--no-dev`. Pass `--inexact` to leave those packages alone
+instead.
 
 ## The R version
 
-The lock file records the R version its solve is valid for, and that is the R
-rig installs the packages with -- not whatever `R` is on the `PATH`. It has to
-be that very version: another patch release of the same minor version would
-run the packages, but it is not the R the project was solved for, so rig does
-not quietly use it.
+The lock file records the R version its solve is valid for, and that is the
+R rig installs the packages with. It has to be that very version: another
+patch release of the same minor version would run the packages, but it is
+not the R the project was solved for, so rig does not quietly use it.
 
 If that R version is not installed, rig installs it first, the way
-[`rig add`](add.qmd) would; pass `--no-install-r` to fail instead, e.g. in CI.
-rig never rewrites `rproj.lock` to an R version that is already installed --
-run [`rig proj lock`](#rig-proj-lock) to change the R version a project is
-locked for.
+[`rig add`](add.qmd) would. Pass `--no-install-r` to fail instead, e.g. in CI.
+rig never rewrites `rproj.lock` to an R version that is already
+installed. Run [`rig proj lock`](#rig-proj-lock) to change the R version a
+project is locked for.
 
 ## Several targets in one lock file
 
-[`rig proj lock`](#rig-proj-lock) solves for several `(R version, platform)`
-targets in one `rproj.lock` by default (this machine, Windows, generic glibc
-Linux, and macOS arm64), and `--r-version`/`--platform` take a
-comma-separated list to solve for a different set. `rig proj sync` picks the
-target whose platform matches the OS it runs on -- a target for a different
-OS is simply inert, which is what makes locking for a Linux deployment target
-from a macOS laptop work: each machine's `rig proj sync` picks its own entry
-from the same file.
+If `rproj.lock` has multiple platforms, then `rig proj sync` picks the
+target whose platform matches the OS it runs on. A target for a different
+OS is simply inert, which is what makes locking for a Linux deployment
+target from a macOS laptop work: each machine's `rig proj sync` picks its
+own entry from the same file.
 
 If more than one target matches this machine's OS (typically because the
-project locks for several R versions), rig picks the highest R version among
-them, with no need for extra flags. Pass `--r-version` and/or `--platform` to
-pick a different one of the matching targets instead. `rig proj sync` fails
-if none of the lock file's targets match this machine at all.
+project locks for several R versions), rig picks the highest R version
+among them, with no need for extra flags. Pass `--r-version` and/or
+`--platform` to pick a different one of the matching targets instead.
+`rig proj sync` fails if none of the lock file's targets match this machine
+at all.
 
 ## What sync writes
 
@@ -79,28 +54,28 @@ every sync:
 
 - `.rvenv/bin/R` and `.rvenv/bin/Rscript`, wrapper scripts that set the
   project's environment and then hand over to the real R. Run them directly,
-  or put `.rvenv/bin` on your `PATH`. They also pass `R CMD ...` through.
+  or put `.rvenv/bin` on your `PATH`.
 - `.rvenv/bin/activate` and its `activate.csh` / `activate.fish` /
   `activate.bat` / `Activate.ps1` siblings, for the shells that prefer to be
-  activated. Source the one for your shell, and `deactivate` when you are
-  done. Activation is a convenience, not a requirement: the wrappers work
-  without it, and an R session started by an IDE picks the project up through
-  the project's `.Renviron`.
+  activated. Source the one for your shell, and call `deactivate` when you
+  are done. Activation is a convenience, not a requirement: the wrappers
+  work without it, and an R session started by an IDE picks the project up
+  through the project's `.Renviron`.
 - `.rvenv/rvenv.cfg`, which records the R version, the platform and the
   architecture the environment was built for. rig warns when it syncs an
   environment that was built for a different R.
-- `.rvenv/etc/repositories`, which the wrappers point `R_REPOSITORIES` at. It
-  lists P3M first, at the binary URL of the platform the lock file was solved
-  for, so that an `install.packages()` in the environment installs the same
-  binary packages `rig proj sync` does. The repositories from `rproj.toml`
-  follow it, at lower precedence. A lock file solved for source packages only
-  has no P3M entry, and then the file holds the `rproj.toml` repositories
-  alone (CRAN, if it names none).
-
-`R --vanilla` ignores the project's `.Renviron`, so it only stays inside the
-project when started through the wrappers.
+- `.rvenv/etc/repositories`, which the wrappers point `R_REPOSITORIES` at.
+  Reposirories to set up for the project.
 
 After a successful sync rig records the lock file it installed from in
 `.rvenv/lib/.synced`. The `rvenv` package in `.rvenvlib` compares the
 two, and warns in every R session while the project library does not match
 `rproj.lock`.
+
+## Workspaces
+
+In a workspace (see [`rig proj lock`](#rig-proj-lock)) every member shares one
+`rproj.lock` and one package library, both at the workspace root. `rig proj
+sync` from a member directory therefore syncs the whole workspace, and
+installs the union of every member's dependencies into the root's
+`.rvenv/lib`.

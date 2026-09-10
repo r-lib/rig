@@ -1,4 +1,4 @@
-Add dependencies to rproj.toml
+Add dependencies to `rproj.toml`
 
 ## Description
 
@@ -30,7 +30,7 @@ examples above.
 * `1.2.3`, a bare version, means the same as `^1.2.3`.
 * `~1.2.3` is `>= 1.2.3, < 1.3.0`.
 * `>= 1.2`, `> 1.2`, `<= 2.0`, `< 2.0` and `= 1.2.3` are a single bound.
-* `>= 1.0, < 2.0` — a comma means *and*, so both bounds hold.
+* `>= 1.0, < 2.0`: a comma means *and*, so both bounds hold.
 * `*` is any version.
 
 A bare version is written into the manifest in its explicit `^` spelling,
@@ -53,15 +53,14 @@ installed by default, and left out by `rig proj lock --no-dev` and
 anything.
 
 `--no-lock` only updates `rproj.toml`. Nothing is resolved or installed, so
-this also works offline; the manifest and the lockfile are out of step until
-you run [`rig proj lock`](#rig-proj-lock).
+this also works offline.
 
 ## Files
 
 Only `rproj.toml` is edited, and it is rewritten in full, so any comments or
 custom formatting in it are not preserved.
 
-If resolving the dependencies fails — most often because a package name is
-misspelled, and no repository has such a package — `rproj.toml` is restored
+If resolving the dependencies fails (most often because a package name is
+misspelled, and no repository has such a package) `rproj.toml` is restored
 to what it was, so a failed `rig proj add` does not leave the project with a
 dependency that cannot be installed.

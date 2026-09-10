@@ -2,12 +2,12 @@ List packages available in the R package repositories
 
 ## Note
 
-This command currently only uses P3M (Posit Public Package Manager)
+This command currently only uses PPM (Posit Public Package Manager)
 and ignores the configured repositories.
 
 ## Description
 
-List the packages available from P3M's full package history ordered by
+List the packages available from PPM's full package history ordered by
 name, using the latest version of each package. For each package rig shows
 its version and its number of hard dependencies (`Depends`, `Imports` and
 `LinkingTo`, excluding R and the base packages).

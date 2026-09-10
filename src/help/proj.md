@@ -4,30 +4,25 @@ Manage R projects (experimental)
 
 Manage R projects (experimental).
 
-A project is a directory with a package manifest, typically a
-`DESCRIPTION` file, that declares the R packages the project depends on.
-`rig proj` resolves those dependencies against the configured package
-repositories and can install them into a project library.
+A project is a directory with an `rproj.toml` manifest file, that declares
+the R packages the project depends on.
 
-`rig proj import` sets up a project from an existing `DESCRIPTION` file:
-it writes `rproj.toml` from it, and creates the same `.rvenv` layout as
-`rig proj init`.
-`rig proj add` adds a dependency to `rproj.toml`, then updates the
-lockfile and installs it.
-`rig proj deps` shows the direct and recursive dependencies of the
-project.
-`rig proj tree` shows the recursive dependencies as a tree, so you can
-see how each package is pulled in.
-`rig proj lock` resolves the full dependency tree to a concrete set of
-package versions and writes the result to `rproj.lock`.
-`rig proj sync` installs the dependencies `rproj.lock` resolved into a
-package library.
+## Workflow
 
-See [`rig proj renv`](proj.qmd#rig-proj-renv) to interoperate with renv's
-own `renv.lock` format.
+- `rig proj init` creates a new project. `rig proj import` creates a new
+  project from an existing `DESCRIPTION` file. Alternatively,
+  `rig proj renv import` creates a new project from an existing `renv.lock`
+  file.
 
-Dependencies are resolved with rig's built-in solver, so R does not need
-to be running for `rig proj deps`, `rig proj tree` and `rig proj lock`.
+- `rig proj lock` resolves the dependencies of the project.
+
+- `rig proj sync` installs the dependencies of the project.
+
+- `rig run` starts R, configured for the project. It calls `rig proj lock`
+  and `rig proj sync` as needed.
+
+- `rig proj add` and `rig proj remove` adds and removes dependencies
+  to/from the project.
 
 `rig proj` is currently experimental, and might change in future
 versions. Feedback is appreciated.

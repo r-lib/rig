@@ -5,20 +5,23 @@ Create a DESCRIPTION file from rproj.toml
 Read `rproj.toml`, rig's project and package manifest, and write a
 `DESCRIPTION` file from it, the reverse of `rig proj import`.
 
-`[project]` maps back to `Package:`, `Version:`, `Title:`, `Description:`,
-`License:` and `Type:` (defaulting to `Package` if `[project].type` is
-unset; written as-is otherwise, even for `type = "project"`, since a
-`DESCRIPTION` is written regardless of whether the manifest describes an
-installable package). `[project.authors]` becomes `Authors@R`, one
-`person()` call per entry. `[project.urls]`'s `homepage`/`source` keys
-become `URL:`, and `bugreports` becomes `BugReports:`.
-
-`[dependencies]` becomes `Depends`/`Imports` (an entry with `attach = true`,
-and `R` itself, become `Depends`; the rest become `Imports`);
-`[linking-dependencies]` becomes `LinkingTo`; the `test` and `enhances`
-dependency groups become `Suggests` and `Enhances`. Every other dependency
-group becomes a `Config/Needs/<name>` field, an entry that names a package
-reference (`ref = "..."`) written out as that reference, verbatim.
+| `rproj.toml` field             | `DESCRIPTION` field   |
+|------------------------------|---------------------|
+| `[project].name`               | `Package:`            |
+| `[project].version`            | `Version:`            |
+| `[project].title`              | `Title:`              |
+| `[project].description`        | `Description:`        |
+| `[project].license`            | `License:`            |
+| `[project].type`               | `Type:`               |
+| `[project].authors`            | `Authors@R`           |
+| `[project.urls].homepage`      | `URL:`                |
+| `[project.urls].source`        | `URL:`                |
+| `[project.urls].bugreports`    | `BugReports:`         |
+| `[dependencies]`               | `Depends` / `Imports`   |
+| `[linking-dependencies]`       | `LinkingTo`           |
+| `[dependency-groups.test]`     | `Suggests`            |
+| `[dependency-groups.enhances]` | `Enhances`            |
+| `[dependency-groups.<name>]`   | `Config/Needs/<name>` |
 
 DESCRIPTION's dependency syntax only supports a single version comparison
 per package (`pkg (>= 1.2.3)`), unlike `rproj.toml`, which can express a
