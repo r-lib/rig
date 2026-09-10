@@ -13,17 +13,17 @@ typo cannot silently remove the wrong set of packages.
 
 ## Options
 
-`--no-sync` updates `rproj.toml` and `rproj.lock`, but does not touch the
-project library.
+`--no-sync` updates `rproj.toml` and `rproj.lock`, but does not touch the project
+library.
 
 `--no-lock` only updates `rproj.toml`. Nothing is resolved or installed, so
 this also works offline.
 
 ## Files
 
-Only `rproj.toml` is edited, and it is rewritten in full, so any comments
-or custom formatting in it are not preserved.
+Only `rproj.toml` is edited, and it is rewritten in full, so any comments or
+custom formatting in it are not preserved.
 
 If resolving the remaining dependencies fails, `rproj.toml` is restored to
-what it was, so a failed `rig proj remove` does not leave the project with
-a manifest that cannot be locked.
+what it was, so a failed `rig proj remove` does not leave the project with a
+manifest that cannot be locked.

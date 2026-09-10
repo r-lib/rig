@@ -2,8 +2,8 @@ List packages available in the R package repositories
 
 ## Note
 
-This command currently only uses PPM (Posit Public Package Manager)
-and ignores the configured repositories.
+This command currently only uses PPM (Posit Public Package Manager) and
+ignores the configured repositories.
 
 ## Description
 
@@ -12,10 +12,10 @@ name, using the latest version of each package. For each package rig shows
 its version and its number of hard dependencies (`Depends`, `Imports` and
 `LinkingTo`, excluding R and the base packages).
 
-Packages CRAN has archived are omitted by default; pass
-`--include-archived` to list them as well.
+Packages CRAN has archived are omitted by default; pass `--include-archived`
+to list them as well.
 
 Use `--json` to print the full listing as JSON, including the complete
-dependency lists for every package. See
-[`rig pkg info`](#rig-pkg-info) for a detailed view of a single package,
-and `rig pkg info --versions` to list all versions of a package.
+dependency lists for every package. See [`rig pkg info`](#rig-pkg-info) for a detailed view of
+a single package, and `rig pkg info --versions` to list all versions of a
+package.

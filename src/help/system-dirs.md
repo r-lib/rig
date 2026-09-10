@@ -12,8 +12,8 @@ The directories themselves may not exist.
 
 Use `--json` for machine-readable output.
 
-The output contains the directories in effect. They may be the defaults,
-or configured via the rig config file or environment variables.
+The output contains the directories in effect. They may be the defaults, or
+configured via the rig config file or environment variables.
 
 Some directories may depend on the mode and on the architecture, e.g. on
 aarch64 Windows the R installation directory is different for aarch64 and
@@ -34,18 +34,17 @@ The flags are mutually exclusive, and cannot be combined with `--json`.
 
 `--r` is the directory that *contains* the directories of the individual R
 versions; it is not an R installation itself. Similarly `--rtools` is the
-directory that contains the Rtools directories. Use `rig list --json` and
-`rig rtools list` for the paths of the installed versions.
+directory that contains the Rtools directories. Use `rig list --json` and `rig
+rtools list` for the paths of the installed versions.
 
-The Rtools installation root is only reported on Windows.
-On non-Windows platforms `--rtools` prints nothing and is hidden.
+The Rtools installation root is only reported on Windows. On non-Windows
+platforms `--rtools` prints nothing and is hidden.
 
 The fontconfig directory is only reported on Linux, where it holds the
 `fonts.conf` and the fallback fonts that rig installs for the portable R
 builds. On non-Linux platforms `--fonts` prints nothing and is hidden.
 
-`--download` is the directory rig downloads the installers into. It is in
-the system temporary directory and its name contains your user id, so that
-[admin and user mode](../admin-vs-user-mode.qmd) installs, and different
-users of the same machine, never share it. See the `download-dir`
-[configuration entry](config.qmd) to change it.
+`--download` is the directory rig downloads the installers into. It is in the
+system temporary directory and its name contains your user id, so that
+[admin and user mode](../admin-vs-user-mode.qmd) installs, and different users of the same machine,
+never share it. See the `download-dir` [configuration entry](config.qmd) to change it.

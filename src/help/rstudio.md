@@ -4,27 +4,27 @@ Start RStudio with specified R version
 
 Start RStudio with the specified R version.
 
-If `project-file` is an RStudio `.Rproj` file, or a directory containing
-an RStudio project file, RStudio will open the project.
+If `project-file` is an RStudio `.Rproj` file, or a directory containing an
+RStudio project file, RStudio will open the project.
 
-If `project-file` is a directory that does not contain an RStudio
-project file, then RStudio will start up without an active project,
-but will set the working directory to the specified directory.
+If `project-file` is a directory that does not contain an RStudio project
+file, then RStudio will start up without an active project, but will set
+the working directory to the specified directory.
 
-If `project-file` is a regular file that is not inside a directory
-containing an RStudio project, then RStudio will start up without an
-active project, but it will open the specified file, and will set the
-working directory to the directory of the file.
+If `project-file` is a regular file that is not inside a directory containing
+an RStudio project, then RStudio will start up without an active project,
+but it will open the specified file, and will set the working directory to
+the directory of the file.
 
 If the RStudio project or the specified directory contains an `renv.lock`
-file (created by the renv package), and `version` is not specified, then
-rig will read the preferred R version from the `renv.lock` file.
-If the same exact version is not installed, then rig chooses
-the latest version with the same major and minor components. If no such
-version is available, rig throws an error.
+file (created by the renv package), and `version` is not specified, then rig
+will read the preferred R version from the `renv.lock` file. If the same
+exact version is not installed, then rig chooses the latest version with
+the same major and minor components. If no such version is available, rig
+throws an error.
 
-On macOS arm64 computers rig prefers arm64 R, unless an exact version
-match is only available with x86_64 R.
+On macOS arm64 computers rig prefers arm64 R, unless an exact version match
+is only available with x86_64 R.
 
 On Windows, `rig rstudio` needs RStudio Desktop 2021.09.0+351 or later.
 

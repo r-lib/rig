@@ -2,9 +2,9 @@ Install a new R version [alias: install]
 
 ## Description
 
-Download and install an R version, from the official sources. It keeps
-the already installed R versions, except on macOS in [admin mode](../admin-vs-user-mode.qmd), where
-patch versions of the same minor overwrite each other.
+Download and install an R version, from the official sources. It keeps the
+already installed R versions, except on macOS in [admin mode](../admin-vs-user-mode.qmd) , where patch
+versions of the same minor overwrite each other.
 
 On macOS and Windows rig uses the R builds at <https://cran.r-project.org>.
 On Linux rig uses the Posit R builds from
@@ -14,8 +14,8 @@ On Linux, in user mode rig always installs a portable build, selected for
 your C library (glibc or musl). In admin mode rig installs a
 distro-specific build by default, but you can install a portable build
 instead with `--platform linux-portable` (or a specific portable platform,
-e.g. `--platform linux-manylinux-2.34`). If there is no distro-specific
-build for your platform, rig falls back to a portable build automatically.
+e.g. `--platform linux-manylinux-2.34`). If there is no distro-specific build
+for your platform, rig falls back to a portable build automatically.
 Admin-mode portable builds are installed into `/opt/R/<version>`, just like
 distro-specific builds. The portable builds are newer and less tested than
 the distro-specific ones, so please report problems at
@@ -25,12 +25,12 @@ The portable builds bundle the fontconfig library, but no fontconfig
 configuration and no fonts, so on a minimal system R cannot render text at
 all. After installing a portable build rig therefore writes a `fonts.conf`
 and downloads a small set of fallback fonts, next to the R installations
-(see `rig system dirs --fonts`), and points R at them. The configuration
-also lists the standard system font directories, so your own fonts keep
-working. Use `--without-fonts` to skip the font download and use only the
-fonts that are already installed on the system. Setting `FONTCONFIG_FILE`
-yourself overrides all of this. Set `RIG_FONTS_URL` (and optionally
-`RIG_FONTS_SHA256`) to download the fonts from a mirror instead.
+(see `rig system dirs --fonts`), and points R at them. The configuration also
+lists the standard system font directories, so your own fonts keep working.
+Use `--without-fonts` to skip the font download and use only the fonts that
+are already installed on the system. Setting `FONTCONFIG_FILE` yourself
+overrides all of this. Set `RIG_FONTS_URL` (and optionally `RIG_FONTS_SHA256`)
+to download the fonts from a mirror instead.
 
 The desired R version can be specified in various ways:
 
@@ -39,18 +39,18 @@ The desired R version can be specified in various ways:
 - `rig add release` adds the latest release.
 - `rig add x.y.z` adds a specific version.
 - `rig add x.y` adds the latest release within the `x.y` minor branch.
-- `rig add oldrel/n` adds the latest release within the `n`th previous
-  minor branch (`oldrel` is the same as `oldrel/1`).
+- `rig add oldrel/n` adds the latest release within the `n`th previous minor
+  branch (`oldrel` is the same as `oldrel/1`).
 - `rig add <url>` uses a build from `<url>`.
 
-In user mode rig installs R into your home directory and never needs
-`sudo`. In admin mode you usually need to run this command with `sudo`:
-`sudo rig add ...`, otherwise rig will need to ask for your password.
+In user mode rig installs R into your home directory and never needs `sudo`.
+In admin mode you usually need to run this command with `sudo`: `sudo rig add
+...`, otherwise rig will need to ask for your password.
 
 In admin mode on macOS rig cannot add multiple R versions from the same
-minor branch. E.g. it is not possible to have R 4.6.0 and R 4.6.1
-installed at the same time. Adding one of them will automatically remove
-the other. In user mode there is no such restriction.
+minor branch. E.g. it is not possible to have R 4.6.0 and R 4.6.1 installed
+at the same time. Adding one of them will automatically remove the other.
+In user mode there is no such restriction.
 
 You can use `rig add` to install Rtools:
 
@@ -59,8 +59,8 @@ rig add rtools
 ```
 
 will install all Rtools versions that are needed for the currently
-installed R versions. You can also request a specific Rtools version,
-e.g. `rig add rtools45`.
+installed R versions. You can also request a specific Rtools version, e.g.
+`rig add rtools45`.
 
 In user mode rig installs R and Rtools into your user profile, without
 administrator rights. In admin mode you need an administrator account to

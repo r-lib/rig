@@ -29,6 +29,6 @@ two-sided range (e.g. `^1.2.3` means `>= 1.2.3, < 2.0.0`). When a dependency
 has both a lower and an upper bound, only the lower bound is written; rig
 prints a warning listing which packages were affected.
 
-By default rig writes `DESCRIPTION` in the current directory; use
-`--output` to write to a different file. rig refuses to overwrite an
-existing file unless `--force` is given.
+By default rig writes `DESCRIPTION` in the current directory; use `--output` to
+write to a different file. rig refuses to overwrite an existing file unless
+`--force` is given.

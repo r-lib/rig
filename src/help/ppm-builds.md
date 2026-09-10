@@ -17,8 +17,8 @@ affected by the `PACKAGEMANAGER_ADDRESS` environment variable.
   target: `macos`, `windows`, or a Linux target name such as `jammy`.
   [`rig ppm platforms`](ppm.qmd#rig-ppm-platforms) lists the target names.
 
-* `arch`, `r_version` — the architecture and minor R version the binary is
-  for. Both are `*` on a source row, which is architecture- and
+* `arch`, `r_version` — the architecture and minor R version the binary is for.
+  Both are `*` on a source row, which is architecture- and
   version-independent.
 
 * `linkingto` — the package versions the binary was compiled against, for
@@ -31,9 +31,9 @@ affected by the `PACKAGEMANAGER_ADDRESS` environment variable.
 * `url` — where to download that artifact. The date in the URL is the CRAN
   snapshot the build was published against.
 
-`--json` output adds a `sha256` for each row, and for each `linkingto`
-entry: it is the hash of the original CRAN source tarball, and not the hash
-what the URL serves.
+`--json` output adds a `sha256` for each row, and for each `linkingto` entry: it
+is the hash of the original CRAN source tarball, and not the hash what the
+URL serves.
 
 ## Examples
 

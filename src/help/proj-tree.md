@@ -30,10 +30,10 @@ packages. Among the hard dependencies, `Imports` is not marked, `[D]` is a
 `Depends`, `[L]` a `LinkingTo`, `[DL]` both.
 
 `--why <package>` (alias `--explain`) inverts the tree, so that the named
-package is the root and the tree grows towards the packages that need it, down
-to the project itself. Each line then says how *that* package needs the one
-above it, hence `needs`.
+package is the root and the tree grows towards the packages that need it,
+down to the project itself. Each line then says how *that* package needs
+the one above it, hence `needs`.
 
-rig follows the dependencies of the *latest* version of every package in the
-tree, so a version requirement that would force an older version, with
+rig follows the dependencies of the *latest* version of every package in
+the tree, so a version requirement that would force an older version, with
 different dependencies, is not taken into account.

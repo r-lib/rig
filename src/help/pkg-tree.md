@@ -2,8 +2,8 @@ Dependency tree of a package in the repositories
 
 ## Note
 
-This command currently only uses PPM (Posit Public Package Manager)
-and ignores the configured repositories.
+This command currently only uses PPM (Posit Public Package Manager) and
+ignores the configured repositories.
 
 ## Description
 
@@ -43,8 +43,8 @@ Key for markers:
 
 (`Imports` is the most common and it is not marked.)
 
-By default rig follows the hard dependencies only. `--dev` adds `Suggests`
-and `Enhances`, in their own `[Suggests]` and `[Enhances]` sections.
+By default rig follows the hard dependencies only. `--dev` adds `Suggests` and
+`Enhances`, in their own `[Suggests]` and `[Enhances]` sections.
 
 rig follows the dependencies of the *latest* version of every package in
 the tree, so a version requirement that would force an older version, with
@@ -66,9 +66,8 @@ glue 1.8.1 — 4 direct dependents, 5 total
     └── pillar 1.11.1 (needs >= 0.5.0) (*)
 ```
 
-Each line says how *that* package needs the one above it.
-The `[D]`, `[L]`, `[S]` and `[E]` marks describe the same edge.
+Each line says how *that* package needs the one above it. The `[D]`, `[L]`, `[S]`
+and `[E]` marks describe the same edge.
 
-`--why` searches the tree only, not the repositories, so `--version`,
-`--dev` and `--no-base` apply, and a package that is not in the tree is an
-error.
+`--why` searches the tree only, not the repositories, so `--version`, `--dev` and
+`--no-base` apply, and a package that is not in the tree is an error.

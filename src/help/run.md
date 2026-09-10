@@ -4,8 +4,8 @@ Run R, an R script or an R project
 
 Run R, an R script or an R project, using the selected R version.
 
-All of these examples allow an `--r-version` argument, to use a specific
-R version.
+All of these examples allow an `--r-version` argument, to use a specific R
+version.
 
 ```sh
 rig run                    # start R
@@ -20,17 +20,16 @@ rig run --cmd <command>    # run `R CMD <command>`
 
 ## Projects
 
-If the current directory is inside a [project](proj.qmd) (i.e. rig finds an
-`rproj.toml`, an `rproj.lock`, an `.rvenv` directory or an `.rvenvlib`
-directory at or above it), then
-`rig run` uses the project's own environment instead of the default R
-version: it runs `.rvenv/bin/R`, which sets the project's package library
+If the current directory is inside a [project](proj.qmd) (i.e. rig finds an `rproj.toml`,
+an `rproj.lock`, an `.rvenv` directory or an `.rvenvlib` directory at or above
+it), then `rig run` uses the project's own environment instead of the default
+R version: it runs `.rvenv/bin/R`, which sets the project's package library
 and repositories, and it uses the R version the project's lock file names.
 
 Before running R, rig syncs the environment if it is out of date, i.e. it
 runs the equivalent of `rig proj lock` and `rig proj sync` for you, which may
-also install the R version the project needs. There is nothing to source and
-no shell state to keep, so this also works in a `Makefile` or in CI.
+also install the R version the project needs. There is nothing to source
+and no shell state to keep, so this also works in a `Makefile` or in CI.
 
 Two things turn this off, and run the default R version instead:
 
@@ -38,9 +37,9 @@ Two things turn this off, and run the default R version instead:
   lock file names, and
 - `--no-project`.
 
-If the project has not been initialized at all, i.e. it has no
-`.rvenvlib` directory, then `rig run` fails and asks you to run
-`rig proj init`, instead of quietly running an R that is not the project's.
+If the project has not been initialized at all, i.e. it has no `.rvenvlib`
+directory, then `rig run` fails and asks you to run `rig proj init`, instead of
+quietly running an R that is not the project's.
 
 ## Project scripts
 
@@ -56,16 +55,14 @@ description = "Build the report"
 
 `rig run report --format pdf` then runs `scripts/report.R` in the project's
 environment, and passes `--format pdf` on to the script, where
-`commandArgs(TRUE)` picks it up. `path` is relative to the project
-directory, so a declared script works the same from anywhere within the
-project. `rig run --list` lists the declared scripts, and `--json` prints
-them as JSON.
+`commandArgs(TRUE)` picks it up. `path` is relative to the project directory,
+so a declared script works the same from anywhere within the project. `rig
+run --list` lists the declared scripts, and `--json` prints them as JSON.
 
 A declared name wins over a directory of the same name. Arguments that look
-like a path rather than a name are never script names: anything containing a
-slash or `::`, anything ending in `.R`, `.r`, `.Rmd` or `.qmd`, and `.` and
-`..`. Use `./name` to run an app in a directory whose name a script has
-taken.
+like a path rather than a name are never script names: anything containing
+a slash or `::`, anything ending in `.R`, `.r`, `.Rmd` or `.qmd`, and `.` and `..`. Use
+`./name` to run an app in a directory whose name a script has taken.
 
 ## Supported apps
 
