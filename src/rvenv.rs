@@ -21,6 +21,7 @@
 //!     lib/...               # the real dependencies
 //!     lib/.synced           # sync stamp, a copy of the lock file
 //!     rvenv.cfg             # what this environment was built against
+//!     onload.R              # rest of the shim package's `.onLoad()`
 //!     etc/repositories      # what R_REPOSITORIES points at
 //!     bin/R, bin/Rscript    # wrapper scripts (.exe shims on Windows)
 //!     bin/activate*         # shell activation scripts
@@ -82,6 +83,7 @@ pub const RVENV_SHIM_PKG: &str = "rvenv";
 pub const RVENV_RENVIRON_FILE: &str = ".Renviron";
 pub const RVENV_GITIGNORE_FILE: &str = ".gitignore";
 pub const RVENV_CFG_FILE: &str = "rvenv.cfg";
+pub const RVENV_ONLOAD_FILE: &str = "onload.R";
 pub const RVENV_REPOS_FILE: &str = "repositories";
 pub const RPROJ_LOCK_FILE: &str = "rproj.lock";
 
@@ -966,6 +968,10 @@ pub fn rvenv_sync(
     write_atomically(&cfg_path, cfg.body().as_bytes())?;
     written.push(cfg_path);
 
+    let onload_path = venv.join(RVENV_ONLOAD_FILE);
+    write_atomically(&onload_path, RVENV_ONLOAD_TEMPLATE.as_bytes())?;
+    written.push(onload_path);
+
     let repos_path = etc.join(RVENV_REPOS_FILE);
     write_repositories_file(
         repositories_contents(&cfg.platform, repos),
@@ -992,6 +998,8 @@ pub fn rvenv_sync(
 /// The activation scripts, one per shell. These are sourced, not run, so
 /// they do not need the executable bit -- except `activate.bat`, which is
 /// run, and which needs no bit on Windows anyway.
+const RVENV_ONLOAD_TEMPLATE: &str = include_str!("data/rvenv/onload.R");
+
 const ACTIVATE_TEMPLATES: &[(&str, &str)] = &[
     ("activate", include_str!("data/rvenv/activate.sh")),
     ("activate.csh", include_str!("data/rvenv/activate.csh")),
@@ -1488,6 +1496,7 @@ mod tests {
         };
         let mut expected: Vec<PathBuf> = vec![
             project_venv(root).join(RVENV_CFG_FILE),
+            project_venv(root).join(RVENV_ONLOAD_FILE),
             project_etc(root).join(RVENV_REPOS_FILE),
         ];
         expected.extend(wrappers.iter().map(|f| project_bin(root).join(f)));
