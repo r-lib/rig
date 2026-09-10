@@ -254,17 +254,6 @@ pub fn sc_system_detect_platform(
     Ok(())
 }
 
-pub fn resolve_package_type_synonyms(
-    platform: &OsVersion,
-    r_version: &str,
-    pkg_type: &str,
-) -> Option<String> {
-    match pkg_type {
-        "binary" => crate::platform::platform_to_pkg_type(platform, r_version),
-        _ => Some(pkg_type.to_string()),
-    }
-}
-
 pub fn platform_to_pkg_type(platform: &OsVersion, r_version: &str) -> Option<String> {
     let r_version = semver::Version::parse(r_version).ok()?;
     if platform.os == "mingw32" && platform.arch == "x86_64" {

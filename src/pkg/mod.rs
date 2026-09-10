@@ -13,10 +13,9 @@ use lazy_static::lazy_static;
 use simple_error::*;
 use tabular::*;
 
-use crate::common::get_default_r_version;
 use crate::dcf::{Package, RDepType, RPackageVersion};
 use crate::proj::BASE_PKGS;
-use crate::repos::cranlike_metadata::{self, repos_get_packages, ArchivedPackage};
+use crate::repos::cranlike_metadata::{self, ArchivedPackage};
 use crate::textfmt::{reflow, wrap, write_field};
 
 pub(crate) mod deps;
@@ -46,31 +45,8 @@ fn sc_pkg_available(
     _pkgargs: &ArgMatches,
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
-    let platform = if args.contains_id("platform") {
-        crate::platform::parse_platform_string(
-            &args.get_one::<String>("platform").unwrap().to_string(),
-        )?
-    } else {
-        crate::platform::detect_platform()?
-    };
-    let r_version = if args.contains_id("r-version") {
-        args.get_one::<String>("r-version").unwrap().to_string()
-    } else {
-        get_default_r_version()?.ok_or("Cannot determine default R version")?
-    };
-    let pkg_type = if args.contains_id("pkg-type") {
-        match crate::platform::resolve_package_type_synonyms(
-            &platform,
-            &r_version,
-            &args.get_one::<String>("pkg-type").unwrap().to_string(),
-        ) {
-            Some(pt) => pt,
-            None => "source".to_string(),
-        }
-    } else {
-        "source".to_string()
-    };
-    let mut packages = repos_get_packages("https://cloud.r-project.org", &pkg_type, &r_version)?;
+    let include_archived = args.get_flag("include-archived");
+    let mut packages = cranlike_metadata::all_available_packages(include_archived)?;
     // Order the listing case-insensitively by package name, breaking ties by
     // version, so the output is stable regardless of how the metadata was
     // stored or downloaded.
@@ -81,23 +57,10 @@ fn sc_pkg_available(
             .then_with(|| a.version.cmp(&b.version))
     });
 
-    // Echo the platform in the header only when the user asked for a specific
-    // one; otherwise the package type already conveys the relevant flavor.
-    let platform_label = if args.contains_id("platform") {
-        Some(
-            platform
-                .rig_platform
-                .clone()
-                .unwrap_or_else(|| platform.arch.clone()),
-        )
-    } else {
-        None
-    };
-
     if args.get_flag("json") || mainargs.get_flag("json") {
         print_package_list_json(&packages)?;
     } else {
-        print_package_list(&packages, &r_version, &pkg_type, platform_label.as_deref());
+        print_package_list(&packages);
     }
 
     Ok(())
@@ -125,16 +88,10 @@ fn num_hard_deps(pkg: &Package) -> usize {
 
 /// Pretty-print the package listing for `rig pkg available`.
 ///
-/// A colored header line names the number of packages and the context they
-/// were resolved for (R version, package type, platform); the table then lists
+/// A colored header line names the number of packages; the table then lists
 /// each package with its version and hard-dependency count. The full
 /// dependency lists are available via `--json`.
-fn print_package_list(
-    packages: &[Package],
-    r_version: &str,
-    pkg_type: &str,
-    platform: Option<&str>,
-) {
+fn print_package_list(packages: &[Package]) {
     use owo_colors::OwoColorize;
 
     let color = std::io::stdout().is_terminal() && env::var_os("NO_COLOR").is_none();
@@ -142,20 +99,11 @@ fn print_package_list(
     // -- Header ------------------------------------------------------------
     let count = packages.len();
     let pkg_word = if count == 1 { "package" } else { "packages" };
-    let head = if color {
-        format!("{} {}", count.cyan().bold(), pkg_word)
+    if color {
+        println!("{} {}", count.cyan().bold(), pkg_word);
     } else {
-        format!("{} {}", count, pkg_word)
-    };
-    let tag = match platform {
-        Some(platform) => format!("(R {}, {}, {})", r_version, pkg_type, platform),
-        None => format!("(R {}, {})", r_version, pkg_type),
-    };
-    println!(
-        "{} {}",
-        head,
-        if color { tag.dimmed().to_string() } else { tag }
-    );
+        println!("{} {}", count, pkg_word);
+    }
     if count == 0 {
         return;
     }
@@ -164,7 +112,9 @@ fn print_package_list(
     // -- Table -------------------------------------------------------------
     let mut tab: Table = Table::new("{:<}   {:<}   {:>}");
     tab.add_row(row!("Package", "Version", "Deps"));
-    tab.add_heading("------------------------------------------------------------");
+    tab.add_heading(
+        "--------------------------------------------------------------------------------",
+    );
     for pkg in packages {
         tab.add_row(row!(&pkg.name, &pkg.version, num_hard_deps(pkg)));
     }

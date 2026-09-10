@@ -110,28 +110,6 @@ pub(crate) fn cranlike_urls(repo_url: &str, path: &str) -> [String; 3] {
     ]
 }
 
-pub fn repos_get_packages(
-    repo_url: &str,
-    pkg_type: &str,
-    r_version: &str,
-) -> Result<Vec<Package>, Box<dyn Error>> {
-    let r_version = minor_r_version(r_version)?;
-    let path = package_type_to_path(pkg_type, &r_version)?;
-    let urls = cranlike_urls(repo_url, &path);
-    let repo_urls: Vec<&str> = urls.iter().map(|s| s.as_str()).collect();
-
-    // The cache file name is derived from the plain PACKAGES URL, preserving
-    // the existing on-disk cache layout.
-    get_packages_cached(
-        &repo_urls,
-        &urls[2],
-        repo_url,
-        pkg_type,
-        Some(&r_version),
-        &path,
-    )
-}
-
 /// Downloads/refreshes the shared ALLPACKAGES cache if stale. `rig proj lock`
 /// calls this once, sequentially, before fanning solves for several targets
 /// out to threads, so those threads only ever read the cache (via
@@ -316,6 +294,82 @@ pub fn allpackages_versions(package: &str) -> Result<Vec<AllPackagesVersion>, Bo
     Ok(out)
 }
 
+/// Every package on CRAN, at its latest version, from the shared ALLPACKAGES
+/// history, refreshing the metadata first if the cache is stale.
+///
+/// ALLPACKAGES keeps the full history of every version ever published,
+/// archived or not, so packages CRAN has archived are omitted by cross
+/// referencing ARCHIVEDPACKAGES, unless `include_archived` is set.
+pub fn all_available_packages(include_archived: bool) -> Result<Vec<Package>, Box<dyn Error>> {
+    ensure_allpackages_fresh()?;
+
+    let repo_local = repo_local_file(&allpackages_url())?;
+    let repo_db = repo_db_file(&repo_local)?;
+    let conn = open_db(&repo_db)?;
+    let repo_ids = source_repo_ids(&conn, &allpackages_url(), "source")?;
+
+    let mut best: HashMap<String, (RPackageVersion, String)> = HashMap::new();
+    let placeholders = repo_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT name, version, dependencies FROM packages WHERE repo_id IN ({})",
+        placeholders
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let sql_params: Vec<&dyn rusqlite::ToSql> = repo_ids
+        .iter()
+        .map(|id| id as &dyn rusqlite::ToSql)
+        .collect();
+    let rows = stmt.query_map(sql_params.as_slice(), |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+        ))
+    })?;
+    for row in rows {
+        let (name, ver, deps_json) = row?;
+        let version = RPackageVersion::from_str(&ver)?;
+        match best.get(&name) {
+            Some((best_version, _)) if *best_version >= version => {}
+            _ => {
+                best.insert(name, (version, deps_json));
+            }
+        }
+    }
+
+    let archived: std::collections::HashSet<String> = if include_archived {
+        std::collections::HashSet::new()
+    } else {
+        let archived_repo_ids = source_repo_ids(&conn, &archivedpackages_url(), "source")?;
+        let placeholders = archived_repo_ids
+            .iter()
+            .map(|_| "?")
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "SELECT DISTINCT name FROM archived_packages WHERE repo_id IN ({})",
+            placeholders
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let sql_params: Vec<&dyn rusqlite::ToSql> = archived_repo_ids
+            .iter()
+            .map(|id| id as &dyn rusqlite::ToSql)
+            .collect();
+        let rows = stmt.query_map(sql_params.as_slice(), |row| row.get::<_, String>(0))?;
+        rows.collect::<Result<_, _>>()?
+    };
+
+    let mut out = Vec::with_capacity(best.len());
+    for (name, (version, deps_json)) in best {
+        if archived.contains(&name) {
+            continue;
+        }
+        let deps: PackageDependencies = serde_json::from_str(&deps_json)?;
+        out.push(Package::from_crandb(name, version, deps.dependencies));
+    }
+    Ok(out)
+}
+
 /// URL of the CRAN-wide ALLPACKAGES metadata (every version of every package
 /// ever published on CRAN), overridable via the `RIG_ALLPACKAGES_URL` env var.
 fn allpackages_url() -> String {
@@ -383,46 +437,10 @@ enum Feed {
 
 /// Outcome of ensuring a cranlike metadata file is present and fresh in the DB.
 enum CacheState {
-    /// The metadata was (re)downloaded and parsed; the packages are in hand.
-    /// [`Feed::Archived`] returns no packages here: its rows go straight to the
-    /// database and no caller wants them in memory.
-    FreshlyParsed(Vec<Package>),
+    /// The metadata was (re)downloaded, parsed and stored.
+    FreshlyParsed,
     /// The database already holds a fresh copy; nothing was parsed.
     Cached,
-}
-
-/// Download-with-etag / 24h-cache / parse / store / load a cranlike metadata
-/// file into the shared SQLite database.
-///
-/// `candidate_urls` are tried in order (first success wins). `cache_key` names
-/// the temporary download file (hashed), while `repo_url_key` + `pkg_type` +
-/// `path` identify the repo row in the database.
-fn get_packages_cached(
-    candidate_urls: &[&str],
-    cache_key: &str,
-    repo_url_key: &str,
-    pkg_type: &str,
-    r_version: Option<&str>,
-    path: &str,
-) -> Result<Vec<Package>, Box<dyn Error>> {
-    match ensure_packages_cached(
-        candidate_urls,
-        cache_key,
-        repo_url_key,
-        pkg_type,
-        r_version,
-        path,
-        Feed::Cranlike,
-    )? {
-        CacheState::FreshlyParsed(packages) => Ok(packages),
-        CacheState::Cached => {
-            let repo_local = repo_local_file(cache_key)?;
-            let repo_db = repo_db_file(&repo_local)?;
-            let packages = load_packages_from_db(&repo_db, repo_url_key, pkg_type)?;
-            info!("Loaded {} packages from database cache", packages.len());
-            Ok(packages)
-        }
-    }
 }
 
 /// Ensure a cranlike metadata file is present and fresh in the SQLite database,
@@ -486,7 +504,7 @@ fn ensure_packages_cached(
     };
 
     if dl_status {
-        let packages = parse_store_and_cleanup(
+        parse_store_and_cleanup(
             &repo_local,
             &repo_db,
             repo_url_key,
@@ -496,7 +514,7 @@ fn ensure_packages_cached(
             new_etag.as_deref(),
             feed,
         )?;
-        return Ok(CacheState::FreshlyParsed(packages));
+        return Ok(CacheState::FreshlyParsed);
     }
 
     info!("Repo metadata is up to date (cached)");
@@ -527,7 +545,7 @@ fn ensure_packages_cached(
             candidate_urls[0]
         );
     }
-    let packages = parse_store_and_cleanup(
+    parse_store_and_cleanup(
         &repo_local,
         &repo_db,
         repo_url_key,
@@ -537,7 +555,7 @@ fn ensure_packages_cached(
         new_etag.as_deref(),
         feed,
     )?;
-    Ok(CacheState::FreshlyParsed(packages))
+    Ok(CacheState::FreshlyParsed)
 }
 
 /// Whether the database holds at least one row for the given repo, in the table
@@ -1011,59 +1029,6 @@ fn is_repo_cache_recent(
     )?;
 
     Ok(is_recent)
-}
-
-fn load_packages_from_db(
-    db_path: &PathBuf,
-    repo_url: &str,
-    pkg_type: &str,
-) -> Result<Vec<Package>, Box<dyn Error>> {
-    let conn = open_db(db_path)?;
-
-    // Normalize repo_url by removing trailing slashes
-    let repo_url = repo_url.trim_end_matches('/');
-
-    // Get the repo_id for this URL
-    let repo_id: i64 = conn.query_row(
-        "SELECT id FROM repos WHERE url = ?1 AND pkg_type = ?2",
-        params![repo_url, pkg_type],
-        |row| row.get(0),
-    )?;
-
-    let mut stmt = conn.prepare(
-        "SELECT name, version, dependencies, download_url, file, path, built,
-                license, platform, arch, graphics_api_version, internals_id, filesize,
-                sha256sum
-         FROM packages WHERE repo_id = ?1",
-    )?;
-
-    let packages = stmt
-        .query_map(params![repo_id], |row| {
-            Ok(Package {
-                name: row.get(0)?,
-                version: RPackageVersion::from_str(&row.get::<_, String>(1)?).unwrap(),
-                dependencies: serde_json::from_str(&row.get::<_, String>(2)?).unwrap(),
-                download_url: row.get(3)?,
-                file: row.get(4)?,
-                path: row.get(5)?,
-                built: row
-                    .get::<_, Option<String>>(6)?
-                    .and_then(|s| serde_json::from_str(&s).ok()),
-                license: row.get(7)?,
-                platform: row.get(8)?,
-                arch: row.get(9)?,
-                graphics_api_version: row.get(10)?,
-                internals_id: row.get(11)?,
-                filesize: row.get(12)?,
-                sha256sum: row.get(13)?,
-                // The `packages` table does not store this: archived packages
-                // live in their own table, see `archived_package()`.
-                archived: None,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
-
-    Ok(packages)
 }
 
 fn save_packages_to_db(

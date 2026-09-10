@@ -1820,24 +1820,10 @@ pub fn rig_app() -> Command {
                         .required(false),
                 )
                 .arg(
-                    Arg::new("platform")
-                        .help("Platform to use, instead of the current")
-                        .long("platform")
-                        .num_args(1)
-                        .required(false),
-                )
-                .arg(
-                    Arg::new("r-version")
-                        .help("R version to use, instead of the default")
-                        .long("r-version")
-                        .num_args(1)
-                        .required(false),
-                )
-                .arg(
-                    Arg::new("pkg-type")
-                        .help("Type of packages to list (e.g. source, binary)")
-                        .long("pkg-type")
-                        .num_args(1)
+                    Arg::new("include-archived")
+                        .help("Also list packages CRAN has archived")
+                        .long("include-archived")
+                        .num_args(0)
                         .required(false),
                 ),
         )
