@@ -235,7 +235,8 @@ fn fetch_manifest(package: &str, date: &str) -> Result<Value, Box<dyn Error>> {
     debug!("Fetching package DESCRIPTION from {}", url);
 
     let mut local = get_cache_dir()?;
-    local.push("package-metadata");
+    local.push("metadata");
+    local.push("manifests");
     local.push(format!("manifest-{}-{}.json", package, compact));
 
     create_parent_dir_if_needed(&local)?;

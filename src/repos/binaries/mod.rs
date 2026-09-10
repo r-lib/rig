@@ -180,7 +180,7 @@ pub fn validate_package_name(package: &str) -> Result<(), Box<dyn Error>> {
 }
 
 /// Cache path of a package's columnar blob,
-/// `<cache>/binaries/<package>.v<n>.rbi`.
+/// `<cache>/metadata/binaries/<package>.v<n>.rbi`.
 ///
 /// This is the only copy of the index we keep: the TSV the server sends is
 /// parsed straight from memory and never lands on disk.
@@ -191,12 +191,13 @@ pub fn validate_package_name(package: &str) -> Result<(), Box<dyn Error>> {
 pub fn binary_index_blob_file(package: &str) -> Result<PathBuf, Box<dyn Error>> {
     validate_package_name(package)?;
     Ok(get_cache_dir()?
+        .join("metadata")
         .join("binaries")
         .join(format!("{}.v{}.rbi", package, blob::FORMAT_VERSION)))
 }
 
 /// Cache path of a blob's marker file,
-/// `<cache>/binaries/<package>.v<n>.etag`.
+/// `<cache>/metadata/binaries/<package>.v<n>.etag`.
 ///
 /// It holds the `ETag` of the response the blob was built from, and it does
 /// double duty as the blob's commit marker and its freshness clock:
@@ -215,11 +216,10 @@ pub fn binary_index_blob_file(package: &str) -> Result<PathBuf, Box<dyn Error>> 
 /// just nothing to revalidate with.
 pub fn binary_index_etag_file(package: &str) -> Result<PathBuf, Box<dyn Error>> {
     validate_package_name(package)?;
-    Ok(get_cache_dir()?.join("binaries").join(format!(
-        "{}.v{}.etag",
-        package,
-        blob::FORMAT_VERSION
-    )))
+    Ok(get_cache_dir()?
+        .join("metadata")
+        .join("binaries")
+        .join(format!("{}.v{}.etag", package, blob::FORMAT_VERSION)))
 }
 
 /// Sidecar holding the ETag of a cached file.
@@ -1140,7 +1140,9 @@ impl PpmStatus {
 
     /// Cache path of the status document.
     pub fn local_file() -> Result<PathBuf, Box<dyn Error>> {
-        Ok(get_cache_dir()?.join(status_cache_name(&ppm_status_url())))
+        Ok(get_cache_dir()?
+            .join("p3m")
+            .join(status_cache_name(&ppm_status_url())))
     }
 
     /// Fetch (or reuse the cached) status document.

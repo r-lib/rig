@@ -31,6 +31,9 @@ use crate::utils::{calculate_hash, create_parent_dir_if_needed};
 // `CREATE TABLE IF NOT EXISTS`) would fail immediately with `SQLITE_BUSY`
 // instead of waiting its turn.
 fn open_db<P: AsRef<Path>>(path: P) -> Result<Connection, Box<dyn Error>> {
+    if let Some(parent) = path.as_ref().parent() {
+        std::fs::create_dir_all(parent)?;
+    }
     let conn = Connection::open(path)?;
     conn.busy_timeout(std::time::Duration::from_secs(30))?;
     Ok(conn)
@@ -1192,6 +1195,7 @@ fn repo_local_file(url: &str) -> Result<PathBuf, Box<dyn Error>> {
     let mut cache = get_cache_dir()?;
     let urlhash = "repo-".to_string() + &calculate_hash(url) + ".data";
 
+    cache.push("metadata");
     cache.push(urlhash);
 
     Ok(cache)

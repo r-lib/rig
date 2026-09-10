@@ -1,5 +1,10 @@
 Dependencies of a package in the repositories
 
+## Note
+
+This command currently only uses P3M (Posit Public Package Manager)
+and ignores the configured repositories.
+
 ## Description
 
 Show what a package needs, in a table: every package it depends on, the
@@ -19,26 +24,15 @@ package. `--dev` adds the soft dependencies, `Suggests` and `Enhances`,
 which are typically only needed to run the tests, build the vignettes or
 use some optional feature.
 
-R itself and the base packages, e.g. `utils` or `stats`, are listed if
-the package depends on them, with their version requirement, but without
-a version of their own, as they are part of R.
+R itself and the base packages are listed if the package depends on them,
+with their version requirement, but without a version of their own, as
+they are part of R.
 
-## Recursive dependencies
+`--recursive` (`-r`) shows the whole dependency closure. Each package
+appears once, with the `Depth` column giving its distance from the queried
+package, and the `Needed by` column naming the packages that pull it in.
 
-`--recursive` (`-r`) shows the whole dependency closure: not only the
-packages the package needs directly, but also the packages *those* need,
-and so on. Each package appears once, with the `Depth` column giving its
-distance from the queried package, and the `Needed by` column naming the
-packages that pull it in.
-
-[`rig pkg tree`](#rig-pkg-tree) shows the same closure as a tree, which
-makes it easier to see how a package is pulled in, at the price of a
-longer listing.
-
-A recursive listing only ever follows hard dependencies, also below a
-soft dependency added by `--dev`, so `--dev --recursive` means the
-package's own dev dependencies plus everything they need to be
-installed.
+See [`rig pkg tree`](#rig-pkg-tree) for a visual dependency tree.
 
 rig follows the dependencies of the *latest* version of every package in
 the tree, so a version requirement that would force an older version,
