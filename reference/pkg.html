@@ -512,13 +512,14 @@ ul.task-list li input[type="checkbox"] {
   <li><a href="#subcommands" id="toc-subcommands" class="nav-link active" data-scroll-target="#subcommands">Subcommands</a></li>
   <li><a href="#rig-pkg-available" id="toc-rig-pkg-available" class="nav-link" data-scroll-target="#rig-pkg-available"><code>rig pkg available</code></a>
   <ul class="collapse">
+  <li><a href="#note" id="toc-note" class="nav-link" data-scroll-target="#note">Note</a></li>
   <li><a href="#usage" id="toc-usage" class="nav-link" data-scroll-target="#usage">Usage</a></li>
   <li><a href="#options" id="toc-options" class="nav-link" data-scroll-target="#options">Options</a></li>
   </ul></li>
   <li><a href="#rig-pkg-deps" id="toc-rig-pkg-deps" class="nav-link" data-scroll-target="#rig-pkg-deps"><code>rig pkg deps</code></a>
   <ul class="collapse">
+  <li><a href="#note-1" id="toc-note-1" class="nav-link" data-scroll-target="#note-1">Note</a></li>
   <li><a href="#dependency-types" id="toc-dependency-types" class="nav-link" data-scroll-target="#dependency-types">Dependency types</a></li>
-  <li><a href="#recursive-dependencies" id="toc-recursive-dependencies" class="nav-link" data-scroll-target="#recursive-dependencies">Recursive dependencies</a></li>
   <li><a href="#usage-1" id="toc-usage-1" class="nav-link" data-scroll-target="#usage-1">Usage</a></li>
   <li><a href="#arguments" id="toc-arguments" class="nav-link" data-scroll-target="#arguments">Arguments</a></li>
   <li><a href="#options-1" id="toc-options-1" class="nav-link" data-scroll-target="#options-1">Options</a></li>
@@ -629,9 +630,13 @@ Dependency tree of a package in the repositories
 </section>
 <section id="rig-pkg-available" class="level2">
 <h2 class="anchored" data-anchor-id="rig-pkg-available"><code>rig pkg available</code></h2>
-<p>List the packages available from the configured package repositories, ordered by name. For each package rig shows its version and its number of hard dependencies (<code>Depends</code>, <code>Imports</code> and <code>LinkingTo</code>, excluding R and the base packages). A header line reports the total number of packages and the R version and package type they were resolved for.</p>
-<p>By default rig uses the default R version and the current platform; override these with <code>--r-version</code>, <code>--platform</code> and <code>--pkg-type</code> (e.g. <code>source</code> or <code>binary</code>).</p>
+<section id="note" class="level3">
+<h3 class="anchored" data-anchor-id="note">Note</h3>
+<p>This command currently only uses P3M (Posit Public Package Manager) and ignores the configured repositories.</p>
+<p>List the packages available from P3M’s full package history ordered by name, using the latest version of each package. For each package rig shows its version and its number of hard dependencies (<code>Depends</code>, <code>Imports</code> and <code>LinkingTo</code>, excluding R and the base packages).</p>
+<p>Packages CRAN has archived are omitted by default; pass <code>--include-archived</code> to list them as well.</p>
 <p>Use <code>--json</code> to print the full listing as JSON, including the complete dependency lists for every package. See <a href="#rig-pkg-info"><code>rig pkg info</code></a> for a detailed view of a single package, and <code>rig pkg info --versions</code> to list all versions of a package.</p>
+</section>
 <section id="usage" class="level3">
 <h3 class="anchored" data-anchor-id="usage">Usage</h3>
 <pre class="text"><code>rig pkg available [OPTIONS]</code></pre>
@@ -647,6 +652,10 @@ Run in admin mode (overrides RIG_MODE and config)
 <dd>
 Print help (see a summary with ‘-h’)
 </dd>
+<dt><code>--include-archived</code></dt>
+<dd>
+Also list packages CRAN has archived
+</dd>
 <dt><code>--json</code></dt>
 <dd>
 JSON output
@@ -654,18 +663,6 @@ JSON output
 <dt><code>--no-cache</code></dt>
 <dd>
 Do not read or write rig’s cache (overrides RIG_NO_CACHE and config)
-</dd>
-<dt><code>--pkg-type &lt;pkg-type&gt;</code></dt>
-<dd>
-Type of packages to list (e.g.&nbsp;source, binary)
-</dd>
-<dt><code>--platform &lt;platform&gt;</code></dt>
-<dd>
-Platform to use, instead of the current
-</dd>
-<dt><code>--r-version &lt;r-version&gt;</code></dt>
-<dd>
-R version to use, instead of the default
 </dd>
 <dt><code>--user</code></dt>
 <dd>
@@ -676,18 +673,18 @@ Run in user mode (overrides RIG_MODE and config)
 </section>
 <section id="rig-pkg-deps" class="level2">
 <h2 class="anchored" data-anchor-id="rig-pkg-deps"><code>rig pkg deps</code></h2>
+<section id="note-1" class="level3">
+<h3 class="anchored" data-anchor-id="note-1">Note</h3>
+<p>This command currently only uses P3M (Posit Public Package Manager) and ignores the configured repositories.</p>
 <p>Show what a package needs, in a table: every package it depends on, the version of that package currently on CRAN, the dependency type (<code>Depends</code>, <code>Imports</code>, <code>LinkingTo</code>) and the version requirement, if it has one.</p>
 <p>By default the dependencies of the latest version of the package are shown; use <code>--version</code> to ask about a specific one, including versions that CRAN has archived. Use <code>--json</code> for machine readable output.</p>
+</section>
 <section id="dependency-types" class="level3">
 <h3 class="anchored" data-anchor-id="dependency-types">Dependency types</h3>
 <p>By default rig lists the hard dependencies only: <code>Depends</code>, <code>Imports</code> and <code>LinkingTo</code>, i.e.&nbsp;the packages that need to be installed to use the package. <code>--dev</code> adds the soft dependencies, <code>Suggests</code> and <code>Enhances</code>, which are typically only needed to run the tests, build the vignettes or use some optional feature.</p>
-<p>R itself and the base packages, e.g.&nbsp;<code>utils</code> or <code>stats</code>, are listed if the package depends on them, with their version requirement, but without a version of their own, as they are part of R.</p>
-</section>
-<section id="recursive-dependencies" class="level3">
-<h3 class="anchored" data-anchor-id="recursive-dependencies">Recursive dependencies</h3>
-<p><code>--recursive</code> (<code>-r</code>) shows the whole dependency closure: not only the packages the package needs directly, but also the packages <em>those</em> need, and so on. Each package appears once, with the <code>Depth</code> column giving its distance from the queried package, and the <code>Needed by</code> column naming the packages that pull it in.</p>
-<p><a href="#rig-pkg-tree"><code>rig pkg tree</code></a> shows the same closure as a tree, which makes it easier to see how a package is pulled in, at the price of a longer listing.</p>
-<p>A recursive listing only ever follows hard dependencies, also below a soft dependency added by <code>--dev</code>, so <code>--dev --recursive</code> means the package’s own dev dependencies plus everything they need to be installed.</p>
+<p>R itself and the base packages are listed if the package depends on them, with their version requirement, but without a version of their own, as they are part of R.</p>
+<p><code>--recursive</code> (<code>-r</code>) shows the whole dependency closure. Each package appears once, with the <code>Depth</code> column giving its distance from the queried package, and the <code>Needed by</code> column naming the packages that pull it in.</p>
+<p>See <a href="#rig-pkg-tree"><code>rig pkg tree</code></a> for a visual dependency tree.</p>
 <p>rig follows the dependencies of the <em>latest</em> version of every package in the tree, so a version requirement that would force an older version, with different dependencies, is not taken into account. Use <a href="../reference/proj.html"><code>rig proj lock</code></a> for a resolution that is consistent across versions.</p>
 </section>
 <section id="usage-1" class="level3">
