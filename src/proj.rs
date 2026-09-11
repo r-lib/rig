@@ -1158,7 +1158,15 @@ pub(crate) fn sc_proj_solve_project_deps(
     report_status: bool,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
     let roots = [SolveRoot::project(deps.clone())?];
-    sc_proj_solve_deps(r_version, &roots, &[], target, prefer_binary, report_status)
+    sc_proj_solve_deps(
+        r_version,
+        &roots,
+        &[],
+        target,
+        prefer_binary,
+        report_status,
+        false,
+    )
 }
 
 /// Solve the dependencies of every root in `roots` for one R version and one
@@ -1178,6 +1186,7 @@ pub(crate) fn sc_proj_solve_deps(
     target: Option<BinaryTarget>,
     prefer_binary: Option<usize>,
     report_status: bool,
+    dev: bool,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
     info!("Solving dependencies");
 
@@ -1201,7 +1210,7 @@ pub(crate) fn sc_proj_solve_deps(
             OUTPUT.status("Fetching git/GitHub package sources");
         }
         info!("Fetching git/GitHub package sources");
-        register_git_sources(&reg, git_deps)?;
+        register_git_sources(&reg, git_deps, dev)?;
     }
 
     // add R itself, for now a hardcoded version
@@ -1281,7 +1290,14 @@ pub(crate) fn sc_proj_solve_deps(
 fn register_git_sources(
     reg: &RPackageRegistry,
     git_deps: &[(String, DepTable)],
+    dev: bool,
 ) -> Result<(), Box<dyn Error>> {
+    // Only the packages named directly (on the command line, or in
+    // `rproj.toml`) are roots of the solve; a package reached through another
+    // package's `Remotes:` is a transitive dependency, and like any other
+    // transitive dependency only its hard dependencies matter -- see
+    // `proj_deps_recursive`.
+    let requested: HashSet<String> = git_deps.iter().map(|(name, _)| name.clone()).collect();
     let mut worklist: Vec<(String, DepTable)> = git_deps.to_vec();
     let mut seen: HashSet<String> = HashSet::new();
 
@@ -1312,7 +1328,8 @@ fn register_git_sources(
             version: pkg.version.clone(),
             artifact: Artifact::Source,
         };
-        let ranges = rpackage_version_ranges_from_constraints(&pkg.dependencies, true);
+        let pkg_dev = dev && requested.contains(&name);
+        let ranges = rpackage_version_ranges_from_constraints(&pkg.dependencies, pkg_dev);
         reg.add_package_version(name.clone(), version.clone(), ranges);
         reg.set_git_source(name.clone(), version, git_source);
 
@@ -2083,6 +2100,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
                 st.target.clone(),
                 prefer_binary,
                 false,
+                dev,
             )
             .map_err(|e| e.to_string());
             (st.rver.clone(), st.platform_key.clone(), result)

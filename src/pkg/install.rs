@@ -75,8 +75,9 @@ pub fn sc_pkg_install(
         .unwrap()
         .map(|x| x.to_string())
         .collect();
+    let dev = args.get_flag("dev");
     let (mut deps, git_deps, cran_names) = requested_deps(&names)?;
-    if args.get_flag("dev") {
+    if dev {
         let loader = DbSourcePackageLoader::new()?;
         add_dev_deps(
             &loader,
@@ -104,7 +105,7 @@ pub fn sc_pkg_install(
 
     let roots = [SolveRoot::project(deps.clone())?];
     let (registry, solution) =
-        sc_proj_solve_deps(&rver, &roots, &git_deps, target, prefer_binary, true)?;
+        sc_proj_solve_deps(&rver, &roots, &git_deps, target, prefer_binary, true, dev)?;
     OUTPUT.success("Solved dependencies");
     info!("Solved dependencies");
 
