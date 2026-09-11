@@ -132,7 +132,10 @@ pub fn resolve_github_ref(
         // the API answers 422. `HEAD` is the default branch's tip on any repo, so
         // it works as that ref without a separate lookup.
         GithubDetail::Default => {
-            let url = format!("https://api.github.com/repos/{}/{}/commits/HEAD", owner, repo);
+            let url = format!(
+                "https://api.github.com/repos/{}/{}/commits/HEAD",
+                owner, repo
+            );
             let json = api_get(&url)?;
             let sha = field(&json, &["sha"], &url)?.to_string();
             Ok(ResolvedGithub {
