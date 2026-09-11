@@ -79,11 +79,20 @@ where
     };
 
     if let Some(archive) = archive {
-        let result = if pkg.binary {
-            install_binary_package(pkg, &archive, library_path)
+        // A binary's archives all sit together in one `packages` directory
+        // (see `lockfile_package_info`), so the shared unpack cache is keyed
+        // on the archive's own file name; a rig-built package already lives
+        // in its own hash-keyed directory, so its name alone is unique there.
+        let key = if pkg.binary {
+            archive
+                .file_name()
+                .and_then(|x| x.to_str())
+                .map(String::from)
+                .unwrap_or_else(|| pkg.name.clone())
         } else {
-            install_cached_build(pkg, &archive, library_path)
+            pkg.name.clone()
         };
+        let result = install_from_cache(pkg, &archive, &key, library_path);
         match result {
             Ok(()) => {
                 let msg = format!("Installed {} {}", pkg.name, pkg.version);
@@ -114,24 +123,29 @@ where
     r_cmd_install(pkg, library_path, r_binary, print_fn).await
 }
 
-/// Unpack a built package into the library, without starting R.
+/// Install a built package into the library, without starting R.
 ///
-/// Installing a built package is copying its directory into the library: the
-/// `Built:` field, `Meta/*.rds` and the shared objects are all in the archive
-/// already, and no R code runs. So this unpacks into a staging directory next to
-/// the library's packages, records the provenance in the staged `DESCRIPTION`,
-/// and only then swaps the result in, so that a failure part-way through leaves
-/// the previously installed version untouched.
+/// The archive is only ever decompressed once: [`crate::built::ensure_unpacked`]
+/// extracts it into a shared cache directory next to it the first time this
+/// exact archive is installed anywhere, and every install after that —
+/// including into other projects' libraries — [`link_package_tree`]s the
+/// package's files out of that shared copy instead of extracting the archive
+/// again. The same binary or build is commonly installed into many projects'
+/// libraries unchanged, so most of the work of an install — decompressing and
+/// writing out every byte — is repeated for nothing without this.
 ///
-/// `archive` is passed separately from `pkg`, because it is either the artifact
-/// the solve picked or rig's own earlier build of the same package.
+/// `archive` is passed separately from `pkg`, because it is either the
+/// binary artifact the solve picked or rig's own earlier build of the same
+/// package. `key` identifies the shared unpack cache entry, see
+/// [`crate::built::ensure_unpacked`].
 ///
 /// Errors if the archive is not a single directory named after the package,
 /// which is what a built package always is, and what a source tarball
 /// masquerading as one is not.
-fn install_binary_package(
+fn install_from_cache(
     pkg: &PackageInfo,
     archive: &Path,
+    key: &str,
     library_path: &Path,
 ) -> Result<(), Box<dyn Error>> {
     // A leading `.` keeps `rig pkg list` from reading the staging directory as
@@ -140,99 +154,30 @@ fn install_binary_package(
     if staging.exists() {
         std::fs::remove_dir_all(&staging)?;
     }
-    std::fs::create_dir_all(&staging)?;
 
-    let result = stage_binary_package(pkg, archive, &staging, library_path);
+    let result = stage_cached_package(pkg, archive, key, &staging, library_path);
     if result.is_err() {
         let _ = std::fs::remove_dir_all(&staging);
     }
     result
 }
 
-/// The body of [`install_binary_package`], so that its caller can clean the
-/// staging directory up on every error path.
-fn stage_binary_package(
-    pkg: &PackageInfo,
-    archive: &Path,
-    staging: &Path,
-    library_path: &Path,
-) -> Result<(), Box<dyn Error>> {
-    unpack_package(archive, staging)?;
-
-    let unpacked = single_subdir(staging)?;
-    let name = unpacked
-        .file_name()
-        .and_then(|x| x.to_str())
-        .unwrap_or_default();
-    if name != pkg.name {
-        bail!(
-            "{} does not contain a built {} package, but a top level '{}'",
-            archive.display(),
-            pkg.name,
-            name
-        );
-    }
-
-    patch_description(&unpacked, pkg)?;
-
-    // Replacing the old directory and moving the new one in is not atomic, so
-    // this is the one window where an interrupted install leaves the library
-    // without the package. It is as small as we can make it, and `rig pkg
-    // install` recovers on the next run: a package without a DESCRIPTION is not
-    // installed as far as `rig pkg list` is concerned.
-    let target = library_path.join(&pkg.name);
-    if target.exists() {
-        std::fs::remove_dir_all(&target)?;
-    }
-    std::fs::rename(&unpacked, &target)?;
-    std::fs::remove_dir_all(staging)?;
-    Ok(())
-}
-
-/// Install `pkg` from rig's own build cache.
-///
-/// Unlike [`install_binary_package`], the archive is only ever decompressed
-/// once: [`crate::built::ensure_unpacked`] extracts it into a shared cache
-/// directory the first time this build is installed anywhere, and every
-/// install after that [`link_package_tree`]s the package's files out of that
-/// shared copy instead of extracting the archive again. The same build is
-/// installed into many projects' libraries unchanged, so most of the work
-/// `install_binary_package` does — decompressing and writing out every byte —
-/// is repeated for nothing.
-fn install_cached_build(
-    pkg: &PackageInfo,
-    archive: &Path,
-    library_path: &Path,
-) -> Result<(), Box<dyn Error>> {
-    let unpacked = crate::built::ensure_unpacked(archive, &pkg.name)?;
-
-    // A leading `.` keeps `rig pkg list` from reading the staging directory as
-    // a half-installed package while another rig is working in the library.
-    let staging = library_path.join(format!(".rig-staging-{}-{}", pkg.name, std::process::id()));
-    if staging.exists() {
-        std::fs::remove_dir_all(&staging)?;
-    }
-
-    let result = stage_linked_package(pkg, &unpacked, &staging, library_path);
-    if result.is_err() {
-        let _ = std::fs::remove_dir_all(&staging);
-    }
-    result
-}
-
-/// The body of [`install_cached_build`], so that its caller can clean the
+/// The body of [`install_from_cache`], so that its caller can clean the
 /// staging directory up on every error path.
 ///
 /// `staging` must not exist yet: [`link_package_tree`] creates it, since the
 /// fastest way to populate it (a whole-directory reflink on macOS) requires
 /// the destination to not already exist.
-fn stage_linked_package(
+fn stage_cached_package(
     pkg: &PackageInfo,
-    unpacked: &Path,
+    archive: &Path,
+    key: &str,
     staging: &Path,
     library_path: &Path,
 ) -> Result<(), Box<dyn Error>> {
-    link_package_tree(unpacked, staging)?;
+    let unpacked = crate::built::ensure_unpacked(archive, key, &pkg.name)?;
+
+    link_package_tree(&unpacked, staging)?;
 
     // `DESCRIPTION` always gets a private, patched copy: `patch_description`
     // records per-install provenance, and the destination copy may share
@@ -242,6 +187,11 @@ fn stage_linked_package(
     std::fs::copy(unpacked.join("DESCRIPTION"), staging.join("DESCRIPTION"))?;
     patch_description(staging, pkg)?;
 
+    // Replacing the old directory and moving the new one in is not atomic, so
+    // this is the one window where an interrupted install leaves the library
+    // without the package. It is as small as we can make it, and `rig pkg
+    // install` recovers on the next run: a package without a DESCRIPTION is not
+    // installed as far as `rig pkg list` is concerned.
     let target = library_path.join(&pkg.name);
     if target.exists() {
         std::fs::remove_dir_all(&target)?;
@@ -344,7 +294,7 @@ pub(crate) fn unpack_package(archive: &Path, dest: &Path) -> Result<(), Box<dyn 
 }
 
 /// The single directory `dir` contains, erroring if it holds anything else.
-fn single_subdir(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
+pub(crate) fn single_subdir(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
     let entries: Vec<std::fs::DirEntry> = std::fs::read_dir(dir)?.collect::<Result<Vec<_>, _>>()?;
     if entries.len() != 1 || !entries[0].path().is_dir() {
         bail!(
@@ -953,6 +903,12 @@ mod tests {
 
     const DESC: &str = "Package: foo\nVersion: 1.0.0\nBuilt: R 4.5.1\n";
 
+    /// The unpack-cache key `install_package` derives for a binary archive:
+    /// its own file name, since a binary's archives share one directory.
+    fn key(archive: &Path) -> &str {
+        archive.file_name().and_then(|x| x.to_str()).unwrap()
+    }
+
     #[test]
     fn a_binary_tarball_is_unpacked_into_the_library() {
         let tmp = tempfile::tempdir().unwrap();
@@ -961,7 +917,13 @@ mod tests {
         let archive = tmp.path().join("foo_1.0.0.tgz");
         tarball(&archive, "foo", DESC, &["libs/foo.so"]);
 
-        install_binary_package(&info("foo", &archive, Some("abc"), &[]), &archive, &lib).unwrap();
+        install_from_cache(
+            &info("foo", &archive, Some("abc"), &[]),
+            &archive,
+            key(&archive),
+            &lib,
+        )
+        .unwrap();
 
         assert!(lib.join("foo/libs/foo.so").exists());
         let desc = std::fs::read_to_string(lib.join("foo/DESCRIPTION")).unwrap();
@@ -977,9 +939,61 @@ mod tests {
         let archive = tmp.path().join("foo_1.0.0.zip");
         zipball(&archive, "foo", DESC);
 
-        install_binary_package(&info("foo", &archive, Some("abc"), &[]), &archive, &lib).unwrap();
+        install_from_cache(
+            &info("foo", &archive, Some("abc"), &[]),
+            &archive,
+            key(&archive),
+            &lib,
+        )
+        .unwrap();
 
         assert!(lib.join("foo/DESCRIPTION").exists());
+    }
+
+    /// A binary archive is decompressed once into the shared unpack cache; a
+    /// second install of the same archive into a different library reuses
+    /// that cache instead of decompressing again, the same as a rig-built
+    /// package (see `a_second_install_of_the_same_build_reuses_the_unpacked_cache_without_the_archive`).
+    #[test]
+    fn a_second_install_of_the_same_binary_reuses_the_unpacked_cache_without_the_archive() {
+        let tmp = tempfile::tempdir().unwrap();
+        let lib1 = tmp.path().join("lib1");
+        let lib2 = tmp.path().join("lib2");
+        std::fs::create_dir_all(&lib1).unwrap();
+        std::fs::create_dir_all(&lib2).unwrap();
+        let archive = tmp.path().join("foo_1.0.0.tgz");
+        tarball(&archive, "foo", DESC, &["libs/foo.so"]);
+
+        install_from_cache(
+            &info("foo", &archive, Some("abc"), &[]),
+            &archive,
+            key(&archive),
+            &lib1,
+        )
+        .unwrap();
+
+        // The archive is gone: only the unpacked cache directory next to it is
+        // left, so a second install can only succeed by reusing that.
+        std::fs::remove_file(&archive).unwrap();
+
+        install_from_cache(
+            &info("foo", &archive, Some("def"), &[]),
+            &archive,
+            key(&archive),
+            &lib2,
+        )
+        .unwrap();
+
+        assert!(lib2.join("foo/libs/foo.so").exists());
+        assert_eq!(
+            std::fs::read_to_string(lib1.join("foo/libs/foo.so")).unwrap(),
+            std::fs::read_to_string(lib2.join("foo/libs/foo.so")).unwrap(),
+        );
+
+        let desc1 = std::fs::read_to_string(lib1.join("foo/DESCRIPTION")).unwrap();
+        let desc2 = std::fs::read_to_string(lib2.join("foo/DESCRIPTION")).unwrap();
+        assert!(desc1.contains("RemoteHash: abc"), "{}", desc1);
+        assert!(desc2.contains("RemoteHash: def"), "{}", desc2);
     }
 
     /// Installing replaces the whole directory, so a file only the previous
@@ -998,7 +1012,13 @@ mod tests {
         let archive = tmp.path().join("foo_1.0.0.tgz");
         tarball(&archive, "foo", DESC, &[]);
 
-        install_binary_package(&info("foo", &archive, None, &[]), &archive, &lib).unwrap();
+        install_from_cache(
+            &info("foo", &archive, None, &[]),
+            &archive,
+            key(&archive),
+            &lib,
+        )
+        .unwrap();
 
         assert!(!lib.join("foo/stale.txt").exists());
         let desc = std::fs::read_to_string(lib.join("foo/DESCRIPTION")).unwrap();
@@ -1017,8 +1037,13 @@ mod tests {
         let archive = tmp.path().join("foo_1.0.0.tgz");
         tarball(&archive, "notfoo", DESC, &[]);
 
-        let err =
-            install_binary_package(&info("foo", &archive, None, &[]), &archive, &lib).unwrap_err();
+        let err = install_from_cache(
+            &info("foo", &archive, None, &[]),
+            &archive,
+            key(&archive),
+            &lib,
+        )
+        .unwrap_err();
         assert!(err.to_string().contains("top level 'notfoo'"), "{}", err);
         assert!(!lib.join("foo").exists());
         // No staging directory is left behind.
@@ -1039,7 +1064,13 @@ mod tests {
         let archive = tmp.path().join("foo_1.0.0.tgz");
         tarball(&archive, "notfoo", DESC, &[]);
 
-        install_binary_package(&info("foo", &archive, None, &[]), &archive, &lib).unwrap_err();
+        install_from_cache(
+            &info("foo", &archive, None, &[]),
+            &archive,
+            key(&archive),
+            &lib,
+        )
+        .unwrap_err();
 
         let desc = std::fs::read_to_string(lib.join("foo/DESCRIPTION")).unwrap();
         assert!(desc.contains("Version: 0.1.0"), "{}", desc);
@@ -1048,7 +1079,7 @@ mod tests {
     // ----------------------------------------------------------------
     // Installing from rig's own build cache, linking rather than extracting
 
-    /// A `PackageInfo` for a package rig built itself, as `install_cached_build`
+    /// A `PackageInfo` for a package rig built itself, as `install_from_cache`
     /// expects: `binary: false`, with `built` set to the cache archive.
     fn cached_info(name: &str, archive: &Path, hash: Option<&str>) -> PackageInfo {
         PackageInfo {
@@ -1071,7 +1102,13 @@ mod tests {
         let archive = tmp.path().join("foo_1.0.0.tgz");
         tarball(&archive, "foo", DESC, &["libs/foo.so"]);
 
-        install_cached_build(&cached_info("foo", &archive, Some("abc")), &archive, &lib).unwrap();
+        install_from_cache(
+            &cached_info("foo", &archive, Some("abc")),
+            &archive,
+            "foo",
+            &lib,
+        )
+        .unwrap();
 
         assert!(lib.join("foo/libs/foo.so").exists());
         let desc = std::fs::read_to_string(lib.join("foo/DESCRIPTION")).unwrap();
@@ -1091,13 +1128,25 @@ mod tests {
         let archive = tmp.path().join("foo_1.0.0.tgz");
         tarball(&archive, "foo", DESC, &["libs/foo.so"]);
 
-        install_cached_build(&cached_info("foo", &archive, Some("abc")), &archive, &lib1).unwrap();
+        install_from_cache(
+            &cached_info("foo", &archive, Some("abc")),
+            &archive,
+            "foo",
+            &lib1,
+        )
+        .unwrap();
 
         // The archive is gone: only the unpacked cache directory next to it is
         // left, so a second install can only succeed by reusing that.
         std::fs::remove_file(&archive).unwrap();
 
-        install_cached_build(&cached_info("foo", &archive, Some("def")), &archive, &lib2).unwrap();
+        install_from_cache(
+            &cached_info("foo", &archive, Some("def")),
+            &archive,
+            "foo",
+            &lib2,
+        )
+        .unwrap();
 
         assert!(lib2.join("foo/libs/foo.so").exists());
         assert_eq!(
@@ -1125,10 +1174,16 @@ mod tests {
         // `tar` does not have a convenient symlink-adding helper here, so the
         // unpacked cache is populated directly instead of round tripping a
         // symlink through an archive.
-        let unpacked = crate::built::ensure_unpacked(&archive, "foo").unwrap();
+        let unpacked = crate::built::ensure_unpacked(&archive, "foo", "foo").unwrap();
         std::os::unix::fs::symlink("real.so", unpacked.join("libs/link.so")).unwrap();
 
-        install_cached_build(&cached_info("foo", &archive, Some("abc")), &archive, &lib).unwrap();
+        install_from_cache(
+            &cached_info("foo", &archive, Some("abc")),
+            &archive,
+            "foo",
+            &lib,
+        )
+        .unwrap();
 
         let link = lib.join("foo/libs/link.so");
         assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
