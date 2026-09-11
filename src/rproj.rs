@@ -36,7 +36,7 @@ use crate::repos::cranlike_metadata::minor_r_version;
 use crate::rvenv::RPROJ_LOCK_FILE;
 use crate::solver::{RPackageRegistry, RegistryPackageVersion};
 
-pub const RPROJ_LOCK_VERSION: usize = 2;
+pub const RPROJ_LOCK_VERSION: usize = 3;
 
 // `rproj.toml`: the project/package manifest (see the design doc). This is the
 // *requirements* file a human edits, as opposed to `rproj.lock` (the solved
@@ -826,7 +826,9 @@ impl Rproj {
     /// `Depends` (entries marked `attach = true`, and `R` itself) or `Imports`,
     /// `[linking-dependencies]` becomes `LinkingTo`, and the `test` / `enhances`
     /// dependency groups become `Suggests` / `Enhances`. Other groups have no
-    /// DESCRIPTION dependency type to map to and are left out.
+    /// DESCRIPTION dependency type to map to and are left out -- they are
+    /// arbitrary `Config/Needs/*` lists (see [`Rproj::merge_config_needs`]),
+    /// not necessarily CRAN-installable packages.
     ///
     /// Soft dependencies are dropped unless `dev`; a package that is also a hard
     /// dependency stays, because it needs to be installed either way.
@@ -867,6 +869,37 @@ impl Rproj {
         }
 
         Ok(pkg_deps)
+    }
+
+    /// The manifest's solvable dependency groups, as direct dependency names,
+    /// for classifying a solved package graph by which group(s) need it:
+    /// `"main"` for the hard `[dependencies]`/`[linking-dependencies]`, plus
+    /// `"test"` / `"enhances"` for the two dependency groups
+    /// [`Rproj::to_dep_version_specs`] solves for -- the same set, so a
+    /// package this returns can always be found among that method's output.
+    /// Other `[dependency-groups.*]` tables are `Config/Needs/*` lists, not
+    /// solved or installed, so they have no roots here either.
+    pub fn dependency_group_roots(&self) -> HashMap<String, Vec<String>> {
+        let mut roots: HashMap<String, Vec<String>> = HashMap::new();
+
+        let main: Vec<String> = self
+            .dependencies
+            .keys()
+            .chain(self.linking_dependencies.keys())
+            .cloned()
+            .collect();
+        roots.insert("main".to_string(), main);
+
+        for group_name in DESCRIPTION_DEP_GROUPS {
+            if let Some(group) = self.dependency_groups.get(group_name) {
+                roots
+                    .entry(group_name.to_string())
+                    .or_default()
+                    .extend(group.dependencies.keys().cloned());
+            }
+        }
+
+        roots
     }
 
     /// Replace every `{ workspace = true }` dependency with the workspace
@@ -1538,6 +1571,12 @@ pub struct RprojLockPackage {
     pub sources: Vec<String>,
     /// Where the file is cached, relative to the package cache.
     pub target: String,
+    /// Which dependency group(s) require this package: `"main"` for a hard
+    /// `[dependencies]`/`[linking-dependencies]` requirement, plus the name
+    /// of every `[dependency-groups.*]` table that (transitively) needs it.
+    /// Filled in by `proj_lock` after the solve, not by [`Self::from_solution`]
+    /// itself, since it needs the whole package graph, not just one entry.
+    pub groups: Vec<String>,
 }
 
 impl RprojLockTarget {
@@ -1632,6 +1671,7 @@ impl RprojLockTarget {
                 metadata,
                 sources,
                 target,
+                groups: vec![],
             });
         }
 
@@ -1755,6 +1795,7 @@ mod tests {
             metadata: HashMap::from([("RemoteSha".to_string(), "abc123".to_string())]),
             sources: vec!["https://example.com/cli.tgz".to_string()],
             target: "cli.tgz".to_string(),
+            groups: vec!["main".to_string()],
         }
     }
 

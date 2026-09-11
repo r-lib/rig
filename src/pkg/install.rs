@@ -551,6 +551,7 @@ mod tests {
             metadata,
             sources: vec![],
             target: format!("bin/{}_{}.tgz", name, version),
+            groups: vec![],
         }
     }
 

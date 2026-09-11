@@ -756,6 +756,11 @@ pub(crate) struct ProjectSolve {
     /// the whole solve: which R version to solve for, and which packages the
     /// non-dev subset of the lockfile needs.
     pub merged: PackageDependencies,
+    /// Every member's dependency groups, merged by name: `"main"` for the
+    /// hard dependencies, plus every `[dependency-groups.*]` name, each
+    /// mapped to its direct dependency names. Used after the solve to tag
+    /// each locked package with the group(s) that need it.
+    pub group_roots: HashMap<String, Vec<String>>,
 }
 
 /// Read the project or workspace rooted at `root` and turn it into the roots
@@ -781,10 +786,12 @@ pub(crate) fn proj_read_solve_roots(
             ));
             info!("Reading dependencies from {}", RPROJ_MANIFEST_FILE);
             let deps = manifest.to_dep_version_specs(dev)?;
+            let group_roots = manifest.dependency_group_roots();
             return Ok(ProjectSolve {
                 members: vec![root.to_path_buf()],
                 roots: vec![SolveRoot::project(deps.clone())?],
                 merged: deps,
+                group_roots,
             });
         }
     };
@@ -801,6 +808,7 @@ pub(crate) fn proj_read_solve_roots(
     let mut merged = PackageDependencies {
         dependencies: vec![],
     };
+    let mut group_roots: HashMap<String, Vec<String>> = HashMap::new();
     let mut seen: HashMap<String, PathBuf> = HashMap::new();
 
     for dir in &dirs {
@@ -830,6 +838,9 @@ pub(crate) fn proj_read_solve_roots(
 
         let deps = member.to_dep_version_specs(dev)?;
         merged.append(&mut deps.clone());
+        for (group_name, names) in member.dependency_group_roots() {
+            group_roots.entry(group_name).or_default().extend(names);
+        }
         roots.push(SolveRoot {
             name,
             version: RPackageVersion::from_str(&member.project.version)?,
@@ -845,6 +856,7 @@ pub(crate) fn proj_read_solve_roots(
         members: dirs,
         roots,
         merged,
+        group_roots,
     })
 }
 
@@ -1573,7 +1585,13 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
             }
         };
 
-        let target = RprojLockTarget::from_solution(&registry, &solution);
+        let mut target = RprojLockTarget::from_solution(&registry, &solution);
+        let groups = compute_package_groups(&solve.group_roots, &target.packages);
+        for pkg in target.packages.iter_mut() {
+            if let Some(names) = groups.get(&pkg.package) {
+                pkg.groups = names.clone();
+            }
+        }
         info!("Solved dependencies for R {} / {}", rver, platform_key);
 
         summaries.push(TargetSolution {
@@ -1927,32 +1945,44 @@ fn solution_table_rows(targets: &[TargetSolution]) -> Vec<SolutionTableRow> {
     rows
 }
 
-/// The lockfile packages that are needed without the dev dependencies.
-fn nondev_packages(
-    root: &Path,
+/// Which dependency group(s) (see [`Rproj::dependency_group_roots`]) need
+/// each of `packages`, by walking each group's direct dependencies out
+/// through the lockfile's own dependency graph. In a workspace, `group_roots`
+/// is every member's roots already merged by group name (see
+/// `proj_read_solve_roots`), so a walk from one group's roots covers every
+/// member's subtree for that group, not just the first member reached.
+fn compute_package_groups(
+    group_roots: &HashMap<String, Vec<String>>,
     packages: &[RprojLockPackage],
-) -> Result<HashSet<String>, Box<dyn Error>> {
-    // In a workspace this is every member's non-dev dependencies, not the
-    // root's: a member is not a lockfile entry, so a walk that started at the
-    // root manifest alone would stop at the first member it reached and drop
-    // that member's whole subtree from the library.
-    let deps = proj_read_solve_roots(root, false)?.merged;
+) -> HashMap<String, Vec<String>> {
     let by_name: HashMap<&str, &RprojLockPackage> =
         packages.iter().map(|p| (p.package.as_str(), p)).collect();
 
-    let mut keep: HashSet<String> = HashSet::new();
-    let mut todo: Vec<String> = deps.dependencies.iter().map(|d| d.name.clone()).collect();
-    while let Some(name) = todo.pop() {
-        if !keep.insert(name.clone()) {
-            continue;
-        }
-        // R and the base packages are dependencies in the manifest, but never
-        // lockfile entries, so they simply do not match anything here.
-        if let Some(pkg) = by_name.get(name.as_str()) {
-            todo.extend(pkg.dependencies.iter().cloned());
+    let mut package_groups: HashMap<String, Vec<String>> = HashMap::new();
+    for (group_name, roots) in group_roots {
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut todo: Vec<String> = roots.clone();
+        while let Some(name) = todo.pop() {
+            if !seen.insert(name.clone()) {
+                continue;
+            }
+            // R and the base packages are dependencies in the manifest, but
+            // never lockfile entries, so they simply do not match anything
+            // here.
+            if let Some(pkg) = by_name.get(name.as_str()) {
+                package_groups
+                    .entry(pkg.package.clone())
+                    .or_default()
+                    .push(group_name.clone());
+                todo.extend(pkg.dependencies.iter().cloned());
+            }
         }
     }
-    Ok(keep)
+    for names in package_groups.values_mut() {
+        names.sort();
+        names.dedup();
+    }
+    package_groups
 }
 
 /// The R installation an environment for `r_version` on `arch` uses: its
@@ -2315,11 +2345,10 @@ pub(crate) fn proj_sync(
 
     let nondev;
     let wanted: &[RprojLockPackage] = if !opts.dev {
-        let keep = nondev_packages(root, &target.packages)?;
         nondev = target
             .packages
             .iter()
-            .filter(|p| keep.contains(&p.package))
+            .filter(|p| p.groups.iter().any(|g| g == "main"))
             .cloned()
             .collect::<Vec<_>>();
         &nondev
@@ -2942,6 +2971,7 @@ mod tests {
             metadata: HashMap::new(),
             sources: vec![],
             target: format!("bin/{}_1.0.0.tgz", name),
+            groups: vec![],
         }
     }
 
@@ -3104,8 +3134,7 @@ mod tests {
     }
 
     #[test]
-    fn nondev_packages_keeps_the_non_dev_closure_only() {
-        let dir = tempfile::tempdir().unwrap();
+    fn compute_package_groups_keeps_the_non_dev_closure_only() {
         let mut manifest = Rproj::minimal("mypkg");
         manifest.dependencies.insert("cli".to_string(), dep("*"));
         manifest.dependency_groups.insert(
@@ -3115,11 +3144,6 @@ mod tests {
                 dependencies: BTreeMap::from([("testthat".to_string(), dep("*"))]),
             },
         );
-        fs::write(
-            dir.path().join(RPROJ_MANIFEST_FILE),
-            toml::to_string_pretty(&manifest).unwrap(),
-        )
-        .unwrap();
 
         let packages = vec![
             locked("cli", &["glue"]),
@@ -3128,12 +3152,15 @@ mod tests {
             locked("waldo", &[]),
         ];
 
-        let keep = nondev_packages(dir.path(), &packages).unwrap();
+        let groups = compute_package_groups(&manifest.dependency_group_roots(), &packages);
         // `glue` is a dev dependency too, but a non-dev one pulls it in
-        assert!(keep.contains("cli"));
-        assert!(keep.contains("glue"));
-        assert!(!keep.contains("testthat"));
-        assert!(!keep.contains("waldo"));
+        assert_eq!(groups.get("cli").unwrap(), &vec!["main".to_string()]);
+        assert_eq!(
+            groups.get("glue").unwrap(),
+            &vec!["main".to_string(), "test".to_string()]
+        );
+        assert_eq!(groups.get("testthat").unwrap(), &vec!["test".to_string()]);
+        assert_eq!(groups.get("waldo").unwrap(), &vec!["test".to_string()]);
     }
 
     /// Write `manifest` into `dir`, creating it, as one project or one
@@ -3244,15 +3271,16 @@ mod tests {
     }
 
     #[test]
-    fn nondev_packages_unions_every_members_direct_deps() {
+    fn compute_package_groups_unions_every_members_direct_deps() {
         let dir = tempfile::tempdir().unwrap();
         two_member_workspace(dir.path());
 
         // `b` is a member, so it is not a lockfile entry: the walk has to get
         // to `glue` from `b`'s own manifest, not by following `a` -> `b`.
         let packages = vec![locked("cli", &[]), locked("glue", &[])];
-        let keep = nondev_packages(dir.path(), &packages).unwrap();
-        assert!(keep.contains("cli"));
-        assert!(keep.contains("glue"));
+        let solve = proj_read_solve_roots(dir.path(), true).unwrap();
+        let groups = compute_package_groups(&solve.group_roots, &packages);
+        assert_eq!(groups.get("cli").unwrap(), &vec!["main".to_string()]);
+        assert_eq!(groups.get("glue").unwrap(), &vec!["main".to_string()]);
     }
 }
