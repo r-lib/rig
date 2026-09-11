@@ -20,7 +20,7 @@ use log::debug;
 use simple_error::bail;
 
 use crate::cache::{artifact_cache_key, get_cache_dir};
-use crate::install::{format_linkingto, PackageInfo};
+use crate::install::{format_linkingto, PackageInfo, REMOTE_SHA_FIELD};
 use crate::platform::detect_platform;
 use crate::repos::cranlike_metadata::minor_r_version;
 use crate::rversion::OsVersion;
@@ -111,17 +111,24 @@ impl BuiltCache {
     /// Where `pkg`'s built binary is cached, or `None` when the build cannot be
     /// identified.
     ///
-    /// The key is the source tarball's sha256, what the package is compiled
-    /// against (its `LinkingTo` provenance, which the solve records for source
-    /// packages too), and the user's `Makevars`. It is a *directory* component
-    /// rather than part of the file name, so that the file name stays exactly
-    /// the one `R CMD INSTALL --build` would have given the archive.
+    /// The key is what the package was built *from* -- the source tarball's
+    /// sha256 for a CRAN/PPM package, or the commit (`RemoteSha`) for a
+    /// git/GitHub-sourced one, which pins its content exactly as well -- plus
+    /// what it is compiled against (its `LinkingTo` provenance, which the
+    /// solve records for source packages too) and the user's `Makevars`. It is
+    /// a *directory* component rather than part of the file name, so that the
+    /// file name stays exactly the one `R CMD INSTALL --build` would have
+    /// given the archive.
     ///
-    /// A package with no recorded hash has no entry: without it there is nothing
-    /// to tell one build of a version from another.
+    /// A package with neither has no entry: without one there is nothing to
+    /// tell one build of a version from another.
     pub fn path(&self, pkg: &PackageInfo) -> Option<PathBuf> {
         let ingredients = format!("{}\n{}", format_linkingto(&pkg.linkingto), self.makevars);
-        let key = artifact_cache_key(pkg.hash.as_deref(), Some(&ingredients))?;
+        let identity = pkg
+            .hash
+            .as_deref()
+            .or_else(|| pkg.remote.get(REMOTE_SHA_FIELD).map(|s| s.as_str()));
+        let key = artifact_cache_key(identity, Some(&ingredients))?;
         Some(self.dir.join(key).join(built_file_name(
             self.kind,
             &pkg.name,

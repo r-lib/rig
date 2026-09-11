@@ -225,7 +225,11 @@ fn requested_deps(
             continue;
         }
 
-        let resolved_name = match parse_pkg_source(name)? {
+        let source = parse_pkg_source(name).map_err(|err| {
+            OUTPUT.error(&err.to_string());
+            err
+        })?;
+        let resolved_name = match source {
             PkgSource::Cran => {
                 cran_names.push(name.clone());
                 name.clone()
@@ -234,7 +238,11 @@ fn requested_deps(
                 let table = dep_table_from_remote(&r);
                 let git_url = table.git.clone().unwrap_or_default();
                 OUTPUT.status(&format!("Fetching {}", git_url));
-                let (pkg, _source, _remotes) = fetch_and_read_git_package(&git_url, &table)?;
+                let (pkg, _source, _remotes) = fetch_and_read_git_package(&git_url, &table)
+                    .map_err(|err| {
+                        OUTPUT.error(&err.to_string());
+                        err
+                    })?;
                 let resolved_name = r.name_override.unwrap_or(pkg.name);
                 git_deps.push((resolved_name.clone(), table));
                 resolved_name
@@ -242,10 +250,7 @@ fn requested_deps(
         };
 
         if deps.dependencies.iter().any(|d| d.name == resolved_name) {
-            debug!(
-                "{} named more than once, installing it once",
-                resolved_name
-            );
+            debug!("{} named more than once, installing it once", resolved_name);
             continue;
         }
         deps.dependencies.push(DepVersionSpec {

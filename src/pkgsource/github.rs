@@ -115,24 +115,36 @@ pub fn resolve_github_ref(
                 resolved_ref: tag,
             })
         }
-        GithubDetail::Default | GithubDetail::Ref(_) => {
-            let ref_part = match detail {
-                GithubDetail::Ref(r) => *r,
-                _ => "",
-            };
+        GithubDetail::Ref(r) => {
             let url = format!(
                 "https://api.github.com/repos/{}/{}/commits/{}",
-                owner, repo, ref_part
+                owner, repo, r
             );
             let json = api_get(&url)?;
             let sha = field(&json, &["sha"], &url)?.to_string();
             Ok(ResolvedGithub {
                 sha,
-                resolved_ref: if ref_part.is_empty() {
-                    "HEAD".to_string()
-                } else {
-                    ref_part.to_string()
-                },
+                resolved_ref: r.to_string(),
+            })
+        }
+        // GitHub's single-commit endpoint (`/commits/<ref>`) needs an actual ref
+        // -- an empty one is not "the default branch", it is an invalid path and
+        // the API answers 422. So the default branch's name is looked up first
+        // (one extra request, only for this case) and used as the ref.
+        GithubDetail::Default => {
+            let repo_url = format!("https://api.github.com/repos/{}/{}", owner, repo);
+            let repo_json = api_get(&repo_url)?;
+            let branch = field(&repo_json, &["default_branch"], &repo_url)?.to_string();
+
+            let url = format!(
+                "https://api.github.com/repos/{}/{}/commits/{}",
+                owner, repo, branch
+            );
+            let json = api_get(&url)?;
+            let sha = field(&json, &["sha"], &url)?.to_string();
+            Ok(ResolvedGithub {
+                sha,
+                resolved_ref: branch,
             })
         }
     }
