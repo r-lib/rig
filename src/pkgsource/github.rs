@@ -37,17 +37,26 @@ fn api_get(url: &str) -> Result<serde_json::Value, Box<dyn Error>> {
 
 #[tokio::main]
 async fn api_get_(url: &str) -> Result<serde_json::Value, Box<dyn Error>> {
-    let client = reqwest::Client::builder().user_agent("rig").build()?;
+    let mut builder = reqwest::Client::builder().user_agent("rig");
+    if let Some(token) = crate::credentials::github_token() {
+        builder = builder.default_headers(auth_header(&token)?);
+    }
+    let client = builder.build()?;
     let resp = client.get(url).send().await?;
     let status = resp.status();
     if status == reqwest::StatusCode::NOT_FOUND {
-        bail!("GitHub repository or ref not found: {}", url);
+        bail!(
+            "GitHub repository or ref not found: {}. If this is a private repository, set \
+             GITHUB_PAT/GITHUB_TOKEN or store a token in the git credential store for \
+             github.com.",
+            url
+        );
     }
     if status == reqwest::StatusCode::FORBIDDEN {
         bail!(
-            "GitHub API request to {} was refused ({}). rig only supports unauthenticated \
-             access to public repositories in this version, so this may be GitHub's \
-             anonymous rate limit or a private repository.",
+            "GitHub API request to {} was refused ({}). This may be GitHub's anonymous rate \
+             limit; set GITHUB_PAT/GITHUB_TOKEN or store a token in the git credential store \
+             for github.com.",
             url,
             status
         );
@@ -56,6 +65,16 @@ async fn api_get_(url: &str) -> Result<serde_json::Value, Box<dyn Error>> {
         bail!("GitHub API request to {} failed: {}", url, status);
     }
     Ok(resp.json().await?)
+}
+
+/// Build a single-header `Authorization: Bearer <token>` header map, for use
+/// as `reqwest::ClientBuilder::default_headers`.
+fn auth_header(token: &str) -> Result<reqwest::header::HeaderMap, Box<dyn Error>> {
+    let mut headers = reqwest::header::HeaderMap::new();
+    let mut value = reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token))?;
+    value.set_sensitive(true);
+    headers.insert(reqwest::header::AUTHORIZATION, value);
+    Ok(headers)
 }
 
 fn field<'a>(
@@ -158,11 +177,19 @@ pub fn download_tarball(
         "https://codeload.github.com/{}/{}/tar.gz/{}",
         owner, repo, sha
     );
+    let client = match crate::credentials::github_token() {
+        Some(token) => Some(
+            reqwest::Client::builder()
+                .default_headers(auth_header(&token)?)
+                .build()?,
+        ),
+        None => None,
+    };
     download_first_available_(
         &[&url],
         &dest.to_path_buf(),
         Some(Duration::MAX),
-        None,
+        client.as_ref(),
         None,
     )?;
     Ok(())

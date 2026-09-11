@@ -49,8 +49,10 @@ The package name is read from the fetched repository's own `DESCRIPTION`
 commit, not by version range: `rig proj add` resolves the reference to an
 exact commit right away, and `rproj.lock` records it.
 
-This version only supports public repositories; there is no support yet for
-authenticating to a private repository or host.
+A private repository needs a credential: for GitHub, set `GITHUB_PAT` or
+`GITHUB_TOKEN`, or store a token with `git credential approve`; for any other
+git host, rig reads whatever the system git credential store (Keychain,
+Windows Credential Manager, `git credential-store`, etc.) has for that host.
 
 ## Version requirements
 

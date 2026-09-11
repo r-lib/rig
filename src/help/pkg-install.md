@@ -39,8 +39,12 @@ reference works with any git host, not only GitHub.
 
 The package name is read from the fetched repository's own `DESCRIPTION`
 (which may differ from the repository name); the dependency is pinned to an
-exact commit, resolved right away, not to a version range. This version only
-supports public repositories.
+exact commit, resolved right away, not to a version range.
+
+A private repository needs a credential: for GitHub, set `GITHUB_PAT` or
+`GITHUB_TOKEN`, or store a token with `git credential approve`; for any other
+git host, rig reads whatever the system git credential store (Keychain,
+Windows Credential Manager, `git credential-store`, etc.) has for that host.
 
 `--dev` does not look up a git/GitHub package's own dev dependencies, only a
 CRAN/PPM one's.

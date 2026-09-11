@@ -1131,6 +1131,7 @@ mod tests {
             hash: hash.map(|x| x.to_string()),
             linkingto: vec![],
             built: Some(archive.to_path_buf()),
+            remote: std::collections::HashMap::new(),
         }
     }
 

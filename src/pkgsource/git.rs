@@ -35,6 +35,7 @@ pub fn fetch_git_checkout(
 
     let mut prepare = gix::prepare_clone(url, dest)
         .map_err(|err| simple_error::SimpleError::new(format!("Cannot clone {}: {}", url, err)))?;
+    prepare = crate::credentials::configure_gix_clone(prepare);
     if let Some(rev) = commitish {
         prepare = prepare.with_ref_name(Some(rev)).map_err(|err| {
             simple_error::SimpleError::new(format!(
