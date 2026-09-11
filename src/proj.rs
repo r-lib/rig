@@ -1335,7 +1335,7 @@ fn register_git_sources(
 /// The manifest `DepTable` a parsed `git`/`github::` reference implies, the
 /// same shape `rig proj add` writes -- used to feed a fetched package's own
 /// `Remotes:` entries back into [`register_git_sources`]'s worklist.
-fn dep_table_from_remote(r: &crate::pkgsource::RemoteSource) -> DepTable {
+pub(crate) fn dep_table_from_remote(r: &crate::pkgsource::RemoteSource) -> DepTable {
     DepTable {
         git: Some(r.git.clone()),
         branch: r.branch.clone(),
@@ -1356,7 +1356,7 @@ fn dep_table_from_remote(r: &crate::pkgsource::RemoteSource) -> DepTable {
 /// A `github.com` URL is fetched as a `codeload.github.com` tarball (see
 /// [`crate::pkgsource::github`]); any other host is cloned with `gix` (see
 /// [`crate::pkgsource::git`]).
-fn fetch_and_read_git_package(
+pub(crate) fn fetch_and_read_git_package(
     git_url: &str,
     table: &DepTable,
 ) -> Result<(Package, GitSourceInfo, String), Box<dyn Error>> {

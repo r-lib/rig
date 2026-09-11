@@ -45,13 +45,14 @@ use crate::install::{
 };
 use crate::library::library_rver;
 use crate::output::OUTPUT;
+use crate::pkgsource::{parse_pkg_source, PkgSource};
 use crate::proj::{
-    download_lockfile_packages, lockfile_package_info, proj_binary_target,
-    sc_proj_solve_project_deps, BASE_PKGS,
+    dep_table_from_remote, download_lockfile_packages, fetch_and_read_git_package,
+    lockfile_package_info, proj_binary_target, sc_proj_solve_deps, BASE_PKGS,
 };
 use crate::repos::DbSourcePackageLoader;
-use crate::rproj::{RprojLockPackage, RprojLockTarget};
-use crate::solver::{is_base_package, PackageVersionLoader};
+use crate::rproj::{DepTable, RprojLockPackage, RprojLockTarget};
+use crate::solver::{is_base_package, PackageVersionLoader, SolveRoot};
 
 use super::deps::root_package;
 use super::list::{read_installed, resolve_library, InstalledPackage, ResolvedLibrary};
@@ -74,12 +75,12 @@ pub fn sc_pkg_install(
         .unwrap()
         .map(|x| x.to_string())
         .collect();
-    let mut deps = requested_deps(&names)?;
+    let (mut deps, git_deps, cran_names) = requested_deps(&names)?;
     if args.get_flag("dev") {
         let loader = DbSourcePackageLoader::new()?;
         add_dev_deps(
             &loader,
-            &names,
+            &cran_names,
             &mut deps,
             args.get_flag("ignore-unavailable"),
         )?;
@@ -101,8 +102,9 @@ pub fn sc_pkg_install(
         info!("Ignoring --prefer-binary: solving for source packages only");
     }
 
+    let roots = [SolveRoot::project(deps.clone())?];
     let (registry, solution) =
-        sc_proj_solve_project_deps(&rver, &deps, target, prefer_binary, true)?;
+        sc_proj_solve_deps(&rver, &roots, &git_deps, target, prefer_binary, true)?;
     OUTPUT.success("Solved dependencies");
     info!("Solved dependencies");
 
@@ -194,17 +196,27 @@ pub fn sc_pkg_install(
 
 /// The packages named on the command line, as a dependency set the solver takes.
 ///
-/// They are `Depends` with no version constraint: the command asks for the
-/// packages, and leaves it to the solve to say which versions that means.
-fn requested_deps(names: &[String]) -> Result<PackageDependencies, Box<dyn Error>> {
+/// A CRAN-style name is `Depends` with no version constraint: the command asks
+/// for the package, and leaves it to the solve to say which version that
+/// means. A `git`/`github::`/bare `<owner>/<repo>` reference is fetched right
+/// away, the same way `rig proj add` fetches one, to learn its real package
+/// name (from `DESCRIPTION`'s `Package:` field) and pinned commit before the
+/// solve runs; the returned `git_deps` feed `sc_proj_solve_deps` and register
+/// it as a pre-resolved source, exactly like a workspace member with a
+/// `git`/`branch`/`tag`/`rev` entry in `rproj.toml`.
+///
+/// The third element is the subset of `names` that are plain CRAN names --
+/// what `--dev` looks up on CRAN/PPM for its own `Suggests`/`Enhances`, since a
+/// git/GitHub reference is not a name the repositories know.
+fn requested_deps(
+    names: &[String],
+) -> Result<(PackageDependencies, Vec<(String, DepTable)>, Vec<String>), Box<dyn Error>> {
     let mut deps = PackageDependencies::new();
+    let mut git_deps: Vec<(String, DepTable)> = vec![];
+    let mut cran_names: Vec<String> = vec![];
     let mut base: Vec<&str> = vec![];
 
     for name in names {
-        if deps.dependencies.iter().any(|d| &d.name == name) {
-            debug!("{} named more than once, installing it once", name);
-            continue;
-        }
         // The base packages are part of R itself and are not published
         // separately, so there is nothing to install and nothing the solve could
         // find.
@@ -212,8 +224,32 @@ fn requested_deps(names: &[String]) -> Result<PackageDependencies, Box<dyn Error
             base.push(name);
             continue;
         }
+
+        let resolved_name = match parse_pkg_source(name)? {
+            PkgSource::Cran => {
+                cran_names.push(name.clone());
+                name.clone()
+            }
+            PkgSource::Remote(r) => {
+                let table = dep_table_from_remote(&r);
+                let git_url = table.git.clone().unwrap_or_default();
+                OUTPUT.status(&format!("Fetching {}", git_url));
+                let (pkg, _source, _remotes) = fetch_and_read_git_package(&git_url, &table)?;
+                let resolved_name = r.name_override.unwrap_or(pkg.name);
+                git_deps.push((resolved_name.clone(), table));
+                resolved_name
+            }
+        };
+
+        if deps.dependencies.iter().any(|d| d.name == resolved_name) {
+            debug!(
+                "{} named more than once, installing it once",
+                resolved_name
+            );
+            continue;
+        }
         deps.dependencies.push(DepVersionSpec {
-            name: name.clone(),
+            name: resolved_name,
             constraints: vec![],
             types: vec![RDepType::Depends],
         });
@@ -234,7 +270,7 @@ fn requested_deps(names: &[String]) -> Result<PackageDependencies, Box<dyn Error
         bail!("No packages to install");
     }
 
-    Ok(deps)
+    Ok((deps, git_deps, cran_names))
 }
 
 /// Add the dev dependencies of the named packages to the set that is solved.
@@ -771,7 +807,8 @@ mod tests {
 
     #[test]
     fn a_package_named_twice_is_installed_once() {
-        let deps = requested_deps(&["cli".to_string(), "cli".to_string()]).unwrap();
+        let (deps, _git_deps, _cran_names) =
+            requested_deps(&["cli".to_string(), "cli".to_string()]).unwrap();
         assert_eq!(deps.dependencies.len(), 1);
         assert_eq!(deps.dependencies[0].name, "cli");
         assert!(deps.dependencies[0].constraints.is_empty());
@@ -788,8 +825,8 @@ mod tests {
     ) -> Result<Vec<String>, Box<dyn Error>> {
         let loader = Stub { packages };
         let names: Vec<String> = names.iter().map(|n| n.to_string()).collect();
-        let mut deps = requested_deps(&names)?;
-        add_dev_deps(&loader, &names, &mut deps, ignore_unavailable)?;
+        let (mut deps, _git_deps, cran_names) = requested_deps(&names)?;
+        add_dev_deps(&loader, &cran_names, &mut deps, ignore_unavailable)?;
         Ok(deps.dependencies.iter().map(|d| d.name.clone()).collect())
     }
 
@@ -803,8 +840,8 @@ mod tests {
             ],
         };
         let names = vec!["a".to_string()];
-        let mut deps = requested_deps(&names).unwrap();
-        add_dev_deps(&loader, &names, &mut deps, false).unwrap();
+        let (mut deps, _git_deps, cran_names) = requested_deps(&names).unwrap();
+        add_dev_deps(&loader, &cran_names, &mut deps, false).unwrap();
 
         let t = deps.dependencies.iter().find(|d| d.name == "t").unwrap();
         assert_eq!(t.types, vec![RDepType::Suggests]);
