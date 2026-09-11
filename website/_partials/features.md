@@ -35,14 +35,26 @@
 * Creates and configures per-user package libraries.
 * [`rig repos`](reference/repos.qmd) manages package repositories across
   all your R versions.
+* [`rig pkg`](reference/pkg.qmd) (experimental) installs, removes and lists
+  packages in a library, and looks up package info, dependencies and
+  dependency trees from the repositories, all without running R.
+
+**Project dependency management (experimental)**
+
+* [`rig proj`](reference/proj.qmd) manages an R project through an
+  `rproj.toml` manifest: add or remove dependencies, resolve them with
+  rig's built-in solver into an `rproj.lock` lockfile, and sync a project
+  library to match, all without running R.
+* Import a project from, or export it to, a `DESCRIPTION` file or an
+  [renv](https://rstudio.github.io/renv/) `renv.lock` file, to interoperate
+  with existing R package and project tooling.
+* Inspect a project's dependencies and dependency tree before installing.
 
 **Run R, scripts and apps**
 
 * `rig run` starts R, runs a script or expression, or launches an app:
   Shiny apps, Plumber APIs, Quarto and R Markdown documents, and static
   sites, with the R version you choose.
-* `rig proj` (experimental) resolves and installs R project dependencies
-  with a built-in solver, and can write an `renv.lock`, without running R.
 
 **Platform niceties**
 
