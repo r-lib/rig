@@ -601,20 +601,25 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#rig-proj-renv-export" id="toc-rig-proj-renv-export" class="nav-link" data-scroll-target="#rig-proj-renv-export"><code>rig proj renv export</code></a></li>
   <li><a href="#rig-proj-renv-import" id="toc-rig-proj-renv-import" class="nav-link" data-scroll-target="#rig-proj-renv-import"><code>rig proj renv import</code></a></li>
   </ul></li>
+  <li><a href="#rig-proj-status" id="toc-rig-proj-status" class="nav-link" data-scroll-target="#rig-proj-status"><code>rig proj status</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-9" id="toc-usage-9" class="nav-link" data-scroll-target="#usage-9">Usage</a></li>
+  <li><a href="#options-12" id="toc-options-12" class="nav-link" data-scroll-target="#options-12">Options</a></li>
+  </ul></li>
   <li><a href="#rig-proj-sync" id="toc-rig-proj-sync" class="nav-link" data-scroll-target="#rig-proj-sync"><code>rig proj sync</code></a>
   <ul class="collapse">
   <li><a href="#the-r-version-1" id="toc-the-r-version-1" class="nav-link" data-scroll-target="#the-r-version-1">The R version</a></li>
   <li><a href="#several-targets-in-one-lock-file" id="toc-several-targets-in-one-lock-file" class="nav-link" data-scroll-target="#several-targets-in-one-lock-file">Several targets in one lock file</a></li>
   <li><a href="#what-sync-writes" id="toc-what-sync-writes" class="nav-link" data-scroll-target="#what-sync-writes">What sync writes</a></li>
   <li><a href="#workspaces-1" id="toc-workspaces-1" class="nav-link" data-scroll-target="#workspaces-1">Workspaces</a></li>
-  <li><a href="#usage-9" id="toc-usage-9" class="nav-link" data-scroll-target="#usage-9">Usage</a></li>
-  <li><a href="#options-12" id="toc-options-12" class="nav-link" data-scroll-target="#options-12">Options</a></li>
+  <li><a href="#usage-10" id="toc-usage-10" class="nav-link" data-scroll-target="#usage-10">Usage</a></li>
+  <li><a href="#options-13" id="toc-options-13" class="nav-link" data-scroll-target="#options-13">Options</a></li>
   </ul></li>
   <li><a href="#rig-proj-tree" id="toc-rig-proj-tree" class="nav-link" data-scroll-target="#rig-proj-tree"><code>rig proj tree</code></a>
   <ul class="collapse">
   <li><a href="#reading-the-tree" id="toc-reading-the-tree" class="nav-link" data-scroll-target="#reading-the-tree">Reading the tree</a></li>
-  <li><a href="#usage-10" id="toc-usage-10" class="nav-link" data-scroll-target="#usage-10">Usage</a></li>
-  <li><a href="#options-13" id="toc-options-13" class="nav-link" data-scroll-target="#options-13">Options</a></li>
+  <li><a href="#usage-11" id="toc-usage-11" class="nav-link" data-scroll-target="#usage-11">Usage</a></li>
+  <li><a href="#options-14" id="toc-options-14" class="nav-link" data-scroll-target="#options-14">Options</a></li>
   </ul></li>
   </ul>
 </nav>
@@ -690,6 +695,10 @@ Remove dependencies from rproj.toml (alias: <code>rm</code>)
 <dt><a href="#rig-proj-renv"><code>renv</code></a></dt>
 <dd>
 Interoperate with renv, R’s package management tool
+</dd>
+<dt><a href="#rig-proj-status"><code>status</code></a></dt>
+<dd>
+Show the project’s status
 </dd>
 <dt><a href="#rig-proj-sync"><code>sync</code></a></dt>
 <dd>
@@ -1384,6 +1393,47 @@ Run in user mode (overrides RIG_MODE and config)
 </section>
 </section>
 </section>
+<section id="rig-proj-status" class="level2">
+<h2 class="anchored" data-anchor-id="rig-proj-status"><code>rig proj status</code></h2>
+<p>Show what rig knows about the project in the current directory, or the workspace it belongs to: the manifest, the lock file, and whether the local <a href="../admin-vs-user-mode.html">project environment</a> is in sync with it.</p>
+<p>This is read-only. It never solves dependencies, downloads anything, or changes the project – see <a href="#rig-proj-lock"><code>rig proj lock</code></a> and <a href="#rig-proj-sync"><code>rig proj sync</code></a> for that.</p>
+<p>The report has three parts, each shown only if it applies:</p>
+<ul>
+<li><strong>Manifest</strong> – the project’s name and version from <code>rproj.toml</code>, its workspace members if it is a workspace, and its dependency counts by group (<code>main</code> plus any <code>[dependency-groups.*]</code>).</li>
+<li><strong>Lock file</strong> – <code>rproj.lock</code>’s version, and one row per locked target: the R version, the platform, and how many packages it locks.</li>
+<li><strong>Environment</strong> – the R version and platform the local <code>.rvenv</code> was last synced against, and whether it is still up to date with the lock file, or why not.</li>
+</ul>
+<p>Use <code>--json</code> for machine readable output.</p>
+<section id="usage-9" class="level3">
+<h3 class="anchored" data-anchor-id="usage-9">Usage</h3>
+<pre class="text"><code>rig proj status [OPTIONS]</code></pre>
+</section>
+<section id="options-12" class="level3">
+<h3 class="anchored" data-anchor-id="options-12">Options</h3>
+<dl>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+<dt><code>--json</code></dt>
+<dd>
+JSON output
+</dd>
+<dt><code>--no-cache</code></dt>
+<dd>
+Do not read or write rig’s cache (overrides RIG_NO_CACHE and config)
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+</dl>
+</section>
+</section>
 <section id="rig-proj-sync" class="level2">
 <h2 class="anchored" data-anchor-id="rig-proj-sync"><code>rig proj sync</code></h2>
 <p>Bring an R project’s environment in line with its <code>rproj.lock</code>: install the resolved dependencies, and write the rest of the <code>.rvenv</code> layout.</p>
@@ -1415,12 +1465,12 @@ Run in user mode (overrides RIG_MODE and config)
 <h3 class="anchored" data-anchor-id="workspaces-1">Workspaces</h3>
 <p>In a workspace (see <a href="#rig-proj-lock"><code>rig proj lock</code></a> ) every member shares one <code>rproj.lock</code> and one package library, both at the workspace root. <code>rig proj sync</code> from a member directory therefore syncs the whole workspace, and installs the union of every member’s dependencies into the root’s <code>.rvenv/lib</code>.</p>
 </section>
-<section id="usage-9" class="level3">
-<h3 class="anchored" data-anchor-id="usage-9">Usage</h3>
+<section id="usage-10" class="level3">
+<h3 class="anchored" data-anchor-id="usage-10">Usage</h3>
 <pre class="text"><code>rig proj sync [OPTIONS]</code></pre>
 </section>
-<section id="options-12" class="level3">
-<h3 class="anchored" data-anchor-id="options-12">Options</h3>
+<section id="options-13" class="level3">
+<h3 class="anchored" data-anchor-id="options-13">Options</h3>
 <dl>
 <dt><code>--admin</code></dt>
 <dd>
@@ -1494,12 +1544,12 @@ Run in user mode (overrides RIG_MODE and config)
 <p><code>--why &lt;package&gt;</code> (alias <code>--explain</code>) inverts the tree, so that the named package is the root and the tree grows towards the packages that need it, down to the project itself. Each line then says how <em>that</em> package needs the one above it, hence <code>needs</code>.</p>
 <p>rig follows the dependencies of the <em>latest</em> version of every package in the tree, so a version requirement that would force an older version, with different dependencies, is not taken into account.</p>
 </section>
-<section id="usage-10" class="level3">
-<h3 class="anchored" data-anchor-id="usage-10">Usage</h3>
+<section id="usage-11" class="level3">
+<h3 class="anchored" data-anchor-id="usage-11">Usage</h3>
 <pre class="text"><code>rig proj tree [OPTIONS]</code></pre>
 </section>
-<section id="options-13" class="level3">
-<h3 class="anchored" data-anchor-id="options-13">Options</h3>
+<section id="options-14" class="level3">
+<h3 class="anchored" data-anchor-id="options-14">Options</h3>
 <dl>
 <dt><code>--admin</code></dt>
 <dd>
