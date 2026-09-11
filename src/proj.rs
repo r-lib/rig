@@ -1431,14 +1431,7 @@ pub(crate) fn fetch_and_read_git_package(
     };
 
     let description_path = pkg_dir.join("DESCRIPTION");
-    let text = fs::read_to_string(&description_path).map_err(|err| {
-        SimpleError::new(format!(
-            "Cannot read {}: {}",
-            description_path.display(),
-            err
-        ))
-    })?;
-    let paragraph = read_description_paragraph(&text)?;
+    let paragraph = read_description_paragraph(&description_path.to_string_lossy())?;
     let pkg = Package::from_dcf_paragraph(&paragraph)?;
     let remotes = paragraph
         .get("Remotes")
@@ -3271,7 +3264,17 @@ fn fetch_git_lockfile_packages(
                 let tmp = tempfile::tempdir()?;
                 let archive = tmp.path().join("archive.tar.gz");
                 crate::download::download_file(&reqwest::Client::new(), url, archive.as_os_str())?;
+                // The tarball has one top-level directory (`<repo>-<sha>`), not the
+                // package itself, the same as an ordinary `codeload.github.com`
+                // download always does -- flatten it into `target_dir`, so its
+                // `DESCRIPTION` ends up at the path `lockfile_package_info` expects.
                 unpack_package(&archive, &target_dir)?;
+                let repo_dir = crate::install::single_subdir(&target_dir)?;
+                for entry in fs::read_dir(&repo_dir)? {
+                    let entry = entry?;
+                    fs::rename(entry.path(), target_dir.join(entry.file_name()))?;
+                }
+                fs::remove_dir(&repo_dir)?;
             }
             Some("git") => {
                 let url = pkg

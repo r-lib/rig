@@ -129,22 +129,15 @@ pub fn resolve_github_ref(
         }
         // GitHub's single-commit endpoint (`/commits/<ref>`) needs an actual ref
         // -- an empty one is not "the default branch", it is an invalid path and
-        // the API answers 422. So the default branch's name is looked up first
-        // (one extra request, only for this case) and used as the ref.
+        // the API answers 422. `HEAD` is the default branch's tip on any repo, so
+        // it works as that ref without a separate lookup.
         GithubDetail::Default => {
-            let repo_url = format!("https://api.github.com/repos/{}/{}", owner, repo);
-            let repo_json = api_get(&repo_url)?;
-            let branch = field(&repo_json, &["default_branch"], &repo_url)?.to_string();
-
-            let url = format!(
-                "https://api.github.com/repos/{}/{}/commits/{}",
-                owner, repo, branch
-            );
+            let url = format!("https://api.github.com/repos/{}/{}/commits/HEAD", owner, repo);
             let json = api_get(&url)?;
             let sha = field(&json, &["sha"], &url)?.to_string();
             Ok(ResolvedGithub {
                 sha,
-                resolved_ref: branch,
+                resolved_ref: "HEAD".to_string(),
             })
         }
     }
