@@ -208,9 +208,9 @@ pub fn sc_pkg_install(
 /// The third element is the subset of `names` that are plain CRAN names --
 /// what `--dev` looks up on CRAN/PPM for its own `Suggests`/`Enhances`, since a
 /// git/GitHub reference is not a name the repositories know.
-fn requested_deps(
-    names: &[String],
-) -> Result<(PackageDependencies, Vec<(String, DepTable)>, Vec<String>), Box<dyn Error>> {
+type RequestedDeps = (PackageDependencies, Vec<(String, DepTable)>, Vec<String>);
+
+fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
     let mut deps = PackageDependencies::new();
     let mut git_deps: Vec<(String, DepTable)> = vec![];
     let mut cran_names: Vec<String> = vec![];
@@ -225,9 +225,8 @@ fn requested_deps(
             continue;
         }
 
-        let source = parse_pkg_source(name).map_err(|err| {
+        let source = parse_pkg_source(name).inspect_err(|err| {
             OUTPUT.error(&err.to_string());
-            err
         })?;
         let resolved_name = match source {
             PkgSource::Cran => {
@@ -239,9 +238,8 @@ fn requested_deps(
                 let git_url = table.git.clone().unwrap_or_default();
                 OUTPUT.status(&format!("Fetching {}", git_url));
                 let (pkg, _source, _remotes) = fetch_and_read_git_package(&git_url, &table)
-                    .map_err(|err| {
+                    .inspect_err(|err| {
                         OUTPUT.error(&err.to_string());
-                        err
                     })?;
                 let resolved_name = r.name_override.unwrap_or(pkg.name);
                 git_deps.push((resolved_name.clone(), table));

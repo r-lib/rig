@@ -24,6 +24,7 @@ pub fn github_token() -> Option<String> {
 /// authenticates the same way `git clone` would: a host-specific env var
 /// (checked first, per URL actually being connected to), then the system git
 /// credential store.
+#[allow(clippy::result_large_err)]
 pub fn configure_gix_clone(prepare: gix::clone::PrepareFetch) -> gix::clone::PrepareFetch {
     prepare.configure_connection(|conn| {
         conn.set_credentials(|action| {
