@@ -380,6 +380,7 @@ mod tests {
                 .map(|(p, v, s)| (p.to_string(), v.to_string(), s.to_string()))
                 .collect(),
             built: None,
+            remote: std::collections::HashMap::new(),
         }
     }
 

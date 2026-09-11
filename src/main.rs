@@ -51,6 +51,7 @@ mod library;
 mod output;
 mod pager;
 mod pkg;
+mod pkgsource;
 mod platform;
 mod ppm;
 mod proj;

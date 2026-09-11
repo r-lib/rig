@@ -40,7 +40,9 @@ use crate::linux::get_r_binary;
 use crate::built::BuiltCache;
 use crate::cache::get_cache_dir;
 use crate::dcf::{DepVersionSpec, PackageDependencies, RDepType, DEP_TYPES_SOFT};
-use crate::install::{install_packages, PackageInfo, REMOTE_HASH_FIELD};
+use crate::install::{
+    install_packages, PackageInfo, REMOTE_HASH_FIELD, REMOTE_SHA_FIELD, REMOTE_TYPE_FIELD,
+};
 use crate::library::library_rver;
 use crate::output::OUTPUT;
 use crate::proj::{
@@ -429,6 +431,17 @@ fn needs_install(
 
     if installed.version != solved.version {
         return Some(format!("{} is installed", installed.version));
+    }
+
+    // A git/GitHub package has no `RemoteHash` (that is CRAN-tarball-specific)
+    // -- its identity is the commit it was fetched at, so that is what decides
+    // whether it needs replacing, and the ordinary hash/`LinkingTo` checks
+    // below do not apply to it.
+    if solved.metadata.contains_key(REMOTE_TYPE_FIELD) {
+        return match (&installed.remote_sha, solved.metadata.get(REMOTE_SHA_FIELD)) {
+            (Some(have), Some(want)) if have == want => None,
+            _ => Some("a different commit is installed".to_string()),
+        };
     }
 
     let want = solved.metadata.get(REMOTE_HASH_FIELD);

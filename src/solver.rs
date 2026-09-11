@@ -349,6 +349,29 @@ pub struct PackageArtifacts {
     pub source_sha256: HashMap<RPackageVersion, String>,
 }
 
+/// Provenance of a package version fetched from a git/GitHub source rather
+/// than a repository index, recorded alongside `add_package_version` so the
+/// lockfile writer can emit the standard R-ecosystem `Remote*` fields (see
+/// `RPackageRegistry::set_git_source`) instead of a CRAN download URL.
+#[derive(Debug, Clone)]
+pub struct GitSourceInfo {
+    /// `"github"` or `"git"`.
+    pub remote_type: &'static str,
+    /// The clone URL, e.g. `https://github.com/r-lib/crayon.git`.
+    pub url: String,
+    /// GitHub host part, e.g. `github.com`. `None` for a generic `git::` host
+    /// URL that is not GitHub (`RemoteType` is `"git"`, which has no
+    /// `RemoteHost`/`RemoteRepo`/`RemoteUsername` fields in the R convention).
+    pub host: Option<String>,
+    pub repo: Option<String>,
+    pub username: Option<String>,
+    pub subdir: Option<String>,
+    /// The ref the user asked for (branch/tag/PR/release), human-readable.
+    pub ref_: Option<String>,
+    /// The commit this ref resolved to.
+    pub sha: String,
+}
+
 /// A source of binary artifacts for one build target, queried lazily per package
 /// just like [`PackageVersionLoader`].
 pub trait BinaryIndexLoader: Send {
@@ -416,6 +439,10 @@ pub struct RPackageRegistry {
     // resolved against their dependencies, but there is no artifact to
     // download and so nothing for a lockfile to record.
     locals: RefCell<HashSet<RPackageName>>,
+    // Provenance of a package version fetched from a git/GitHub source, see
+    // `GitSourceInfo`. Populated by `set_git_source`, read by the lockfile
+    // writer (`RprojLockTarget::from_solution`) in place of `urls`/`sha256`.
+    git_sources: RefCell<HashMap<(RPackageName, RegistryPackageVersion), GitSourceInfo>>,
     // How many newest binaries win. Can be None.
     prefer_binary: Option<usize>,
     // Passed over newer version that does not have a binary.
@@ -531,6 +558,31 @@ impl RPackageRegistry {
     /// solve.
     pub fn binary_target(&self) -> Option<String> {
         self.binaries.as_ref().map(|b| b.target_name())
+    }
+
+    /// Record that `pkg`/`ver` was fetched from a git/GitHub source, not a
+    /// repository index. Used together with `add_package_version` (which
+    /// registers the version and its dependencies) — this only attaches the
+    /// provenance the lockfile writer needs.
+    pub fn set_git_source(
+        &self,
+        pkg: RPackageName,
+        ver: RegistryPackageVersion,
+        info: GitSourceInfo,
+    ) {
+        self.git_sources.borrow_mut().insert((pkg, ver), info);
+    }
+
+    /// The git/GitHub provenance of a resolved artifact, when it has one.
+    pub fn git_source(
+        &self,
+        package: &RPackageName,
+        version: &RegistryPackageVersion,
+    ) -> Option<GitSourceInfo> {
+        self.git_sources
+            .borrow()
+            .get(&(package.clone(), version.clone()))
+            .cloned()
     }
 
     pub fn add_package_version(

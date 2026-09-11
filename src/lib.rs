@@ -29,6 +29,7 @@ mod macos;
 mod output;
 mod pager;
 mod pkg;
+mod pkgsource;
 mod platform;
 mod proj;
 mod rds;
