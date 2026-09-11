@@ -38,7 +38,7 @@ use crate::repos::cranlike_metadata::{ensure_allpackages_fresh, minor_r_version}
 use crate::repos::*;
 use crate::resolve::resolve_versions;
 use crate::rproj::{
-    parse_add_spec, Author, Rproj, RprojLock, RprojLockPackage, RprojLockTarget,
+    parse_add_spec, Author, Repository, Rproj, RprojLock, RprojLockPackage, RprojLockTarget,
     RPROJ_LOCK_VERSION, RPROJ_MANIFEST_FILE,
 };
 use crate::rvenv::{
@@ -2260,6 +2260,10 @@ pub(crate) struct ProjSyncOptions {
     /// Leave packages that are installed but not in `rproj.lock` alone,
     /// instead of removing them (`--inexact`).
     pub inexact: bool,
+    /// Install only from `rproj.lock`, failing instead of running
+    /// `rig proj lock` when it is missing (`--frozen`). Also skips the
+    /// repositories file when there is no `rproj.toml` to build it from.
+    pub frozen: bool,
 }
 
 impl Default for ProjSyncOptions {
@@ -2272,6 +2276,7 @@ impl Default for ProjSyncOptions {
             r_version: None,
             platform: None,
             inexact: false,
+            frozen: false,
         }
     }
 }
@@ -2298,6 +2303,7 @@ fn sc_proj_sync(
         r_version: args.get_one::<String>("r-version").cloned(),
         platform: args.get_one::<String>("platform").cloned(),
         inexact: args.get_flag("inexact"),
+        frozen: args.get_flag("frozen"),
     };
 
     proj_sync(&root, &opts, args)
@@ -2322,6 +2328,15 @@ pub(crate) fn proj_sync(
     // errors out itself if there is none.
     let lock_path = root.join(RPROJ_LOCK_FILE);
     if !lock_path.exists() {
+        if opts.frozen {
+            let msg = format!(
+                "No {} found, run `rig proj lock` first (without --frozen)",
+                RPROJ_LOCK_FILE
+            );
+            OUTPUT.error(&msg);
+            error!("{}", msg);
+            bail!("{}", msg);
+        }
         OUTPUT.info(&format!(
             "No {}, running `rig proj lock` first",
             RPROJ_LOCK_FILE
@@ -2432,33 +2447,53 @@ pub(crate) fn proj_sync(
             }
         }
 
-        let manifest = proj_read_manifest(root)?;
+        // `--frozen` installs from the lockfile alone, whose packages already
+        // carry full download URLs, so a missing manifest here is not fatal:
+        // just skip the repositories file instead of failing.
+        let manifest = if opts.frozen {
+            proj_read_manifest_opt(root)?
+        } else {
+            Some(proj_read_manifest(root)?)
+        };
         // One library, one set of repositories to fill it from, so the
         // workspace root's `[[repository]]` is the workspace's. A member that
         // declares its own -- `rig proj import` writes them from a
         // DESCRIPTION -- is warned about rather than rejected, so that
         // importing a package into a workspace still works.
-        if let Some(ws) = &manifest.workspace {
-            for member in workspace_members(root, ws)? {
-                if member == root {
-                    continue;
-                }
-                let has_own = proj_read_manifest_opt(&member)?
-                    .map(|m| !m.repository.is_empty())
-                    .unwrap_or(false);
-                if has_own {
-                    let msg = format!(
-                        "Ignoring the repositories of workspace member {}, a \
-                         workspace uses the ones in its root {}",
-                        member.display(),
-                        RPROJ_MANIFEST_FILE
-                    );
-                    OUTPUT.warn(&msg);
-                    info!("{}", msg);
+        if let Some(manifest) = &manifest {
+            if let Some(ws) = &manifest.workspace {
+                for member in workspace_members(root, ws)? {
+                    if member == root {
+                        continue;
+                    }
+                    let has_own = proj_read_manifest_opt(&member)?
+                        .map(|m| !m.repository.is_empty())
+                        .unwrap_or(false);
+                    if has_own {
+                        let msg = format!(
+                            "Ignoring the repositories of workspace member {}, a \
+                             workspace uses the ones in its root {}",
+                            member.display(),
+                            RPROJ_MANIFEST_FILE
+                        );
+                        OUTPUT.warn(&msg);
+                        info!("{}", msg);
+                    }
                 }
             }
+        } else {
+            let msg = format!(
+                "No {} found, skipping repository setup",
+                RPROJ_MANIFEST_FILE
+            );
+            OUTPUT.warn(&msg);
+            info!("{}", msg);
         }
-        let written = rvenv_sync(root, &cfg, &manifest.repository)?;
+        let repos: &[Repository] = manifest
+            .as_ref()
+            .map(|m| m.repository.as_slice())
+            .unwrap_or(&[]);
+        let written = rvenv_sync(root, &cfg, repos)?;
         for path in &written {
             let path = path.strip_prefix(root).unwrap_or(path);
             info!("Updated {}", path.display());

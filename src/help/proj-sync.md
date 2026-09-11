@@ -8,10 +8,16 @@ resolved dependencies, and write the rest of the `.rvenv` layout.
 rig looks for the project in the current directory and its parents, reads
 its `rproj.lock` and installs the packages into the project library. If the
 project has no `rproj.lock` yet, rig runs [`rig proj lock`](#rig-proj-lock) with its default
-options first.
+options first. Pass `--frozen` to fail instead, without touching `rproj.toml`
+at all: every package `rproj.lock` lists already carries its own download
+URL, so nothing but the lock file is needed to install from it. The one
+exception is `.rvenv/etc/repositories` (see below), which still comes from
+`rproj.toml` when one is present, and is skipped otherwise.
 
 Development dependencies are installed by default. `--no-dev` leaves them
-out. `--max-concurrent` limits the number of simultaneous installations.
+out; the lock file records which packages are dev-only, so this works the
+same with or without `--frozen`. `--max-concurrent` limits the number of
+simultaneous installations.
 
 By default, sync also removes any package that is in the project library
 but not in `rproj.lock`, e.g. one dropped from `rproj.toml`, or a leftover from

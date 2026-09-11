@@ -1720,6 +1720,16 @@ pub fn rig_app() -> Command {
                         .long("inexact")
                         .num_args(0)
                         .required(false),
+                )
+                .arg(
+                    Arg::new("frozen")
+                        .help(
+                            "Install only from rproj.lock, without touching rproj.toml.\n\
+                            Fails if rproj.lock does not exist, instead of creating it.",
+                        )
+                        .long("frozen")
+                        .num_args(0)
+                        .required(false),
                 ),
         );
     let cmd_renv = Command::new("renv")
@@ -2730,6 +2740,16 @@ mod tests {
         let (_name, sub) = sub.subcommand().unwrap();
         assert_eq!(sub.get_one::<String>("r-version").unwrap(), "4.6.1");
         assert_eq!(sub.get_one::<String>("platform").unwrap(), "macos-arm64");
+    }
+
+    #[test]
+    fn proj_sync_frozen_flag() {
+        let matches = rig_app()
+            .try_get_matches_from(["rig", "proj", "sync", "--frozen"])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        assert!(sub.get_flag("frozen"));
     }
 
     #[test]
