@@ -309,7 +309,7 @@ fn sc_proj_import(
         check_project_conflicts(&root)?;
     }
 
-    let paragraph = read_description_paragraph(input)?;
+    let paragraph = read_description_paragraph(input, false)?;
     let pkg = Package::from_dcf_paragraph(&paragraph)?;
     let dep_count = pkg.dependencies.dependencies.len();
 
@@ -718,8 +718,13 @@ fn sc_proj_remove(
 
 /// Read a `DESCRIPTION` file (or any single-paragraph DCF file) and return
 /// its one paragraph.
-fn read_description_paragraph(input: &str) -> Result<deb822_fast::Paragraph, Box<dyn Error>> {
-    OUTPUT.status(&format!("Reading dependencies from {}", input));
+fn read_description_paragraph(
+    input: &str,
+    quiet: bool,
+) -> Result<deb822_fast::Paragraph, Box<dyn Error>> {
+    if !quiet {
+        OUTPUT.status(&format!("Reading dependencies from {}", input));
+    }
     info!("Reading dependencies from {}", input);
     let df: File = File::open(input).map_err(|e| {
         OUTPUT.error(&format!("Cannot read {}: {}", input, e));
@@ -1431,7 +1436,7 @@ pub(crate) fn fetch_and_read_git_package(
     };
 
     let description_path = pkg_dir.join("DESCRIPTION");
-    let paragraph = read_description_paragraph(&description_path.to_string_lossy())?;
+    let paragraph = read_description_paragraph(&description_path.to_string_lossy(), true)?;
     let pkg = Package::from_dcf_paragraph(&paragraph)?;
     let remotes = paragraph
         .get("Remotes")
