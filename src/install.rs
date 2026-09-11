@@ -79,7 +79,12 @@ where
     };
 
     if let Some(archive) = archive {
-        match install_binary_package(pkg, &archive, library_path) {
+        let result = if pkg.binary {
+            install_binary_package(pkg, &archive, library_path)
+        } else {
+            install_cached_build(pkg, &archive, library_path)
+        };
+        match result {
             Ok(()) => {
                 let msg = format!("Installed {} {}", pkg.name, pkg.version);
                 match print_fn {
@@ -184,10 +189,140 @@ fn stage_binary_package(
     Ok(())
 }
 
+/// Install `pkg` from rig's own build cache.
+///
+/// Unlike [`install_binary_package`], the archive is only ever decompressed
+/// once: [`crate::built::ensure_unpacked`] extracts it into a shared cache
+/// directory the first time this build is installed anywhere, and every
+/// install after that [`link_package_tree`]s the package's files out of that
+/// shared copy instead of extracting the archive again. The same build is
+/// installed into many projects' libraries unchanged, so most of the work
+/// `install_binary_package` does — decompressing and writing out every byte —
+/// is repeated for nothing.
+fn install_cached_build(
+    pkg: &PackageInfo,
+    archive: &Path,
+    library_path: &Path,
+) -> Result<(), Box<dyn Error>> {
+    let unpacked = crate::built::ensure_unpacked(archive, &pkg.name)?;
+
+    // A leading `.` keeps `rig pkg list` from reading the staging directory as
+    // a half-installed package while another rig is working in the library.
+    let staging = library_path.join(format!(".rig-staging-{}-{}", pkg.name, std::process::id()));
+    if staging.exists() {
+        std::fs::remove_dir_all(&staging)?;
+    }
+
+    let result = stage_linked_package(pkg, &unpacked, &staging, library_path);
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(&staging);
+    }
+    result
+}
+
+/// The body of [`install_cached_build`], so that its caller can clean the
+/// staging directory up on every error path.
+///
+/// `staging` must not exist yet: [`link_package_tree`] creates it, since the
+/// fastest way to populate it (a whole-directory reflink on macOS) requires
+/// the destination to not already exist.
+fn stage_linked_package(
+    pkg: &PackageInfo,
+    unpacked: &Path,
+    staging: &Path,
+    library_path: &Path,
+) -> Result<(), Box<dyn Error>> {
+    link_package_tree(unpacked, staging)?;
+
+    // `DESCRIPTION` always gets a private, patched copy: `patch_description`
+    // records per-install provenance, and the destination copy may share
+    // bytes (a hard link) or an inode's worth of on-disk blocks (a reflink)
+    // with the cache, so it is replaced outright rather than edited in place.
+    std::fs::remove_file(staging.join("DESCRIPTION"))?;
+    std::fs::copy(unpacked.join("DESCRIPTION"), staging.join("DESCRIPTION"))?;
+    patch_description(staging, pkg)?;
+
+    let target = library_path.join(&pkg.name);
+    if target.exists() {
+        std::fs::remove_dir_all(&target)?;
+    }
+    std::fs::rename(staging, &target)?;
+    Ok(())
+}
+
+/// Populate `dst`, which must not exist yet, with everything under `src`,
+/// using the cheapest mechanism the filesystem allows.
+///
+/// macOS's `clonefile` reflinks a whole directory tree in one call
+/// (`reflink_copy::reflink`'s own docs), so `src` is reflinked directly there.
+/// Every other platform's reflink only works file by file, so elsewhere `dst`
+/// is built up directory by directory, reflinking (falling back to a hard
+/// link, falling back to a plain copy) one file at a time; see [`link_file`].
+fn link_package_tree(src: &Path, dst: &Path) -> Result<(), Box<dyn Error>> {
+    if cfg!(target_os = "macos") && reflink_copy::reflink(src, dst).is_ok() {
+        return Ok(());
+    }
+    link_tree_entries(src, dst)
+}
+
+fn link_tree_entries(src: &Path, dst: &Path) -> Result<(), Box<dyn Error>> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        // `file_type()` does not follow symlinks, so a symlink is recreated as
+        // itself rather than walked into or linked as a regular file.
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            link_tree_entries(&from, &to)?;
+        } else if file_type.is_symlink() {
+            recreate_symlink(&from, &to)?;
+        } else {
+            link_file(&from, &to)?;
+        }
+    }
+    Ok(())
+}
+
+/// Link (or copy) one regular file: a reflink first (copy-on-write, so a
+/// later write to either side never touches the other), falling back to a
+/// hard link (no bytes copied, but a shared inode — a write to either side is
+/// visible on both, which is why callers never write to a linked file in
+/// place), falling back to a plain copy, which always works.
+fn link_file(from: &Path, to: &Path) -> Result<(), Box<dyn Error>> {
+    if reflink_copy::reflink(from, to).is_ok() {
+        return Ok(());
+    }
+    if std::fs::hard_link(from, to).is_ok() {
+        return Ok(());
+    }
+    std::fs::copy(from, to)?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn recreate_symlink(from: &Path, to: &Path) -> Result<(), Box<dyn Error>> {
+    let target = std::fs::read_link(from)?;
+    std::os::unix::fs::symlink(target, to)?;
+    Ok(())
+}
+
+#[cfg(windows)]
+fn recreate_symlink(from: &Path, to: &Path) -> Result<(), Box<dyn Error>> {
+    let target = std::fs::read_link(from)?;
+    if from.is_dir() {
+        std::os::windows::fs::symlink_dir(target, to)?;
+    } else {
+        std::os::windows::fs::symlink_file(target, to)?;
+    }
+    Ok(())
+}
+
 /// Extract a package archive into `dest`: a `.zip` on Windows, a gzipped
 /// tarball everywhere else. The extension decides, not the platform, so that a
 /// `--platform` other than this machine's still does the right thing.
-fn unpack_package(archive: &Path, dest: &Path) -> Result<(), Box<dyn Error>> {
+pub(crate) fn unpack_package(archive: &Path, dest: &Path) -> Result<(), Box<dyn Error>> {
     let is_zip = archive
         .extension()
         .and_then(|x| x.to_str())
@@ -908,6 +1043,96 @@ mod tests {
 
         let desc = std::fs::read_to_string(lib.join("foo/DESCRIPTION")).unwrap();
         assert!(desc.contains("Version: 0.1.0"), "{}", desc);
+    }
+
+    // ----------------------------------------------------------------
+    // Installing from rig's own build cache, linking rather than extracting
+
+    /// A `PackageInfo` for a package rig built itself, as `install_cached_build`
+    /// expects: `binary: false`, with `built` set to the cache archive.
+    fn cached_info(name: &str, archive: &Path, hash: Option<&str>) -> PackageInfo {
+        PackageInfo {
+            name: name.to_string(),
+            version: "1.0.0".to_string(),
+            binary: false,
+            file_path: PathBuf::from("unused"),
+            dependencies: vec![],
+            hash: hash.map(|x| x.to_string()),
+            linkingto: vec![],
+            built: Some(archive.to_path_buf()),
+        }
+    }
+
+    #[test]
+    fn a_cached_build_is_installed_like_a_binary_package() {
+        let tmp = tempfile::tempdir().unwrap();
+        let lib = tmp.path().join("lib");
+        std::fs::create_dir_all(&lib).unwrap();
+        let archive = tmp.path().join("foo_1.0.0.tgz");
+        tarball(&archive, "foo", DESC, &["libs/foo.so"]);
+
+        install_cached_build(&cached_info("foo", &archive, Some("abc")), &archive, &lib).unwrap();
+
+        assert!(lib.join("foo/libs/foo.so").exists());
+        let desc = std::fs::read_to_string(lib.join("foo/DESCRIPTION")).unwrap();
+        assert!(desc.contains("RemoteHash: abc"), "{}", desc);
+    }
+
+    /// The whole point of the cache: a second install of the same build, into
+    /// a different library, does not need the archive at all, because it was
+    /// unpacked once into a shared cache directory on the first install.
+    #[test]
+    fn a_second_install_of_the_same_build_reuses_the_unpacked_cache_without_the_archive() {
+        let tmp = tempfile::tempdir().unwrap();
+        let lib1 = tmp.path().join("lib1");
+        let lib2 = tmp.path().join("lib2");
+        std::fs::create_dir_all(&lib1).unwrap();
+        std::fs::create_dir_all(&lib2).unwrap();
+        let archive = tmp.path().join("foo_1.0.0.tgz");
+        tarball(&archive, "foo", DESC, &["libs/foo.so"]);
+
+        install_cached_build(&cached_info("foo", &archive, Some("abc")), &archive, &lib1).unwrap();
+
+        // The archive is gone: only the unpacked cache directory next to it is
+        // left, so a second install can only succeed by reusing that.
+        std::fs::remove_file(&archive).unwrap();
+
+        install_cached_build(&cached_info("foo", &archive, Some("def")), &archive, &lib2).unwrap();
+
+        assert!(lib2.join("foo/libs/foo.so").exists());
+        assert_eq!(
+            std::fs::read_to_string(lib1.join("foo/libs/foo.so")).unwrap(),
+            std::fs::read_to_string(lib2.join("foo/libs/foo.so")).unwrap(),
+        );
+
+        // DESCRIPTION is never linked: each library's copy is its own file,
+        // independently patched with that install's own provenance.
+        let desc1 = std::fs::read_to_string(lib1.join("foo/DESCRIPTION")).unwrap();
+        let desc2 = std::fs::read_to_string(lib2.join("foo/DESCRIPTION")).unwrap();
+        assert!(desc1.contains("RemoteHash: abc"), "{}", desc1);
+        assert!(desc2.contains("RemoteHash: def"), "{}", desc2);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_in_a_cached_build_is_recreated_as_a_symlink() {
+        let tmp = tempfile::tempdir().unwrap();
+        let lib = tmp.path().join("lib");
+        std::fs::create_dir_all(&lib).unwrap();
+        let archive = tmp.path().join("foo_1.0.0.tgz");
+        tarball(&archive, "foo", DESC, &["libs/real.so"]);
+
+        // `tar` does not have a convenient symlink-adding helper here, so the
+        // unpacked cache is populated directly instead of round tripping a
+        // symlink through an archive.
+        let unpacked = crate::built::ensure_unpacked(&archive, "foo").unwrap();
+        std::os::unix::fs::symlink("real.so", unpacked.join("libs/link.so")).unwrap();
+
+        install_cached_build(&cached_info("foo", &archive, Some("abc")), &archive, &lib).unwrap();
+
+        let link = lib.join("foo/libs/link.so");
+        assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
+        assert_eq!(std::fs::read_link(&link).unwrap(), Path::new("real.so"));
     }
 
     // ----------------------------------------------------------------

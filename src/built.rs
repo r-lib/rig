@@ -131,6 +131,52 @@ impl BuiltCache {
     }
 }
 
+/// Unpack `archive` (a cache entry [`BuiltCache::path`] returned for some
+/// package) into a shared cache directory next to it, the first time this
+/// exact build is installed anywhere, and return the directory holding the
+/// package's files directly (no further top-level component).
+///
+/// Every install of the same build after the first can then link its files
+/// out of this directory (see `crate::install::install_cached_build`) instead
+/// of decompressing the archive again. Extraction happens into a temporary
+/// directory and is renamed into place, so that a concurrent `rig` extracting
+/// the same entry either finds it missing (and extracts too, wasted work but
+/// still correct) or finds it complete; there is never a partially extracted
+/// directory to read from.
+pub fn ensure_unpacked(archive: &Path, pkg_name: &str) -> Result<PathBuf, Box<dyn Error>> {
+    let unpacked_root = archive
+        .parent()
+        .expect("a cache archive path always has a parent")
+        .join("unpacked");
+    let target = unpacked_root.join(pkg_name);
+    if target.is_dir() {
+        return Ok(target);
+    }
+    std::fs::create_dir_all(&unpacked_root)?;
+
+    let tmp = unpacked_root.join(format!(".{}.{}.tmp", pkg_name, std::process::id()));
+    if tmp.exists() {
+        std::fs::remove_dir_all(&tmp)?;
+    }
+    std::fs::create_dir_all(&tmp)?;
+    if let Err(err) = crate::install::unpack_package(archive, &tmp) {
+        let _ = std::fs::remove_dir_all(&tmp);
+        return Err(err);
+    }
+
+    // Another rig may have finished unpacking the same entry first.
+    if !target.is_dir() {
+        if let Err(err) = std::fs::rename(tmp.join(pkg_name), &target) {
+            let _ = std::fs::remove_dir_all(&tmp);
+            if !target.is_dir() {
+                return Err(err.into());
+            }
+        }
+    }
+    let _ = std::fs::remove_dir_all(&tmp);
+    Ok(target)
+}
+
 /// A directory name for the platform a build belongs to.
 ///
 /// Not [`crate::repos::binaries::loader::BinaryTarget`], which is P3M's
