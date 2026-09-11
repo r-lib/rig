@@ -30,7 +30,11 @@ use crate::dcf::{
     DepVersionSpec, Package as DcfPackage, PackageDependencies, RDepType, RPackageVersion,
     VersionConstraint, VersionConstraintType, DEP_TYPES_SOFT,
 };
-use crate::install::{format_linkingto, REMOTE_HASH_FIELD, REMOTE_LINKINGTO_FIELD};
+use crate::install::{
+    format_linkingto, REMOTE_HASH_FIELD, REMOTE_HOST_FIELD, REMOTE_LINKINGTO_FIELD,
+    REMOTE_REF_FIELD, REMOTE_REPO_FIELD, REMOTE_SHA_FIELD, REMOTE_SUBDIR_FIELD, REMOTE_TYPE_FIELD,
+    REMOTE_URL_FIELD, REMOTE_USERNAME_FIELD,
+};
 use crate::proj::BASE_PKGS;
 use crate::repos::cranlike_metadata::minor_r_version;
 use crate::rvenv::RPROJ_LOCK_FILE;
@@ -530,6 +534,19 @@ pub struct DepTable {
     // `rig proj export`.
     #[serde(rename = "ref", default, skip_serializing_if = "Option::is_none")]
     pub ref_: Option<String>,
+    // A subdirectory of `git`/`url` the package lives in, e.g. a monorepo
+    // package at `<repo>/subdir`. Only meaningful together with `git`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subdir: Option<String>,
+    // A GitHub pull request number (`owner/repo#41`). GitHub sources only,
+    // resolved to a commit at fetch time; kept here so a later re-lock can
+    // re-resolve the PR's current head instead of the sha it last resolved to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pr: Option<u32>,
+    // `owner/repo@*release`: track the repository's latest release instead of
+    // a fixed ref. GitHub sources only, same re-resolution reasoning as `pr`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub release: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -789,6 +806,22 @@ impl Rproj {
         previous
     }
 
+    /// Add (or replace) a git/GitHub-sourced dependency: a [`DepTable`] with
+    /// `git` set and no `version`, pinned by commit rather than by version
+    /// range. Mirrors [`Rproj::add_dependency`]'s dev/group placement.
+    pub fn add_remote_dependency(&mut self, name: &str, table: DepTable, dev: bool) {
+        let group = if dev {
+            &mut self
+                .dependency_groups
+                .entry("test".to_string())
+                .or_default()
+                .dependencies
+        } else {
+            &mut self.dependencies
+        };
+        group.insert(name.to_string(), Dependency::Detailed(Box::new(table)));
+    }
+
     /// Whether the manifest lists a dependency by this name anywhere:
     /// `[dependencies]`, `[linking-dependencies]`, or any
     /// `[dependency-groups.*]` table.
@@ -819,6 +852,28 @@ impl Rproj {
             }
         }
         None
+    }
+
+    /// Every dependency, anywhere in the manifest (`[dependencies]`,
+    /// `[linking-dependencies]`, any `[dependency-groups.*]`), that has `git`
+    /// set: the git/GitHub-sourced packages, for the pre-solve fetch that
+    /// registers their real name/version/deps with the solver (see
+    /// `crate::proj::register_git_sources`).
+    pub fn git_dependencies(&self) -> Vec<(String, DepTable)> {
+        let mut out = vec![];
+        let tables = std::iter::once(&self.dependencies)
+            .chain(std::iter::once(&self.linking_dependencies))
+            .chain(self.dependency_groups.values().map(|g| &g.dependencies));
+        for table in tables {
+            for (name, dep) in table.iter() {
+                if let Dependency::Detailed(t) = dep {
+                    if t.git.is_some() {
+                        out.push((name.clone(), (**t).clone()));
+                    }
+                }
+            }
+        }
+        out
     }
 
     /// The manifest's dependencies as the solver's [`PackageDependencies`], the
@@ -1246,7 +1301,7 @@ fn config_needs_entry(entry: &str) -> (String, Dependency) {
 /// is the last path component of the reference, without its `@<tag>` /
 /// `#<pull request>` suffix and without a file extension. `None` if that does
 /// not leave a valid package name behind.
-fn pak_ref_name(entry: &str) -> Option<String> {
+pub(crate) fn pak_ref_name(entry: &str) -> Option<String> {
     if let Some((name, _)) = entry.split_once('=') {
         let name = name.trim();
         if is_r_package_name(name) {
@@ -1598,12 +1653,73 @@ impl RprojLockTarget {
             if k == "R" || registry.is_local(k) || BASE_PKGS.contains(&k.as_str()) {
                 continue;
             }
-            let deps = registry
+            let deps: Vec<String> = registry
                 .get_dependency_summary(k, v)
                 .unwrap()
                 .into_iter()
                 .filter(|dep| dep != "R" && !BASE_PKGS.contains(&dep.as_str()))
                 .collect();
+
+            // A git/GitHub-sourced package has no repository artifact at all:
+            // record its `Remote*` provenance instead of a CRAN download URL,
+            // and skip the source/binary-artifact bookkeeping below entirely.
+            if let Some(git) = registry.git_source(k, v) {
+                let mut metadata: HashMap<String, String> = HashMap::new();
+                metadata.insert(REMOTE_TYPE_FIELD.to_string(), git.remote_type.to_string());
+                metadata.insert(REMOTE_URL_FIELD.to_string(), git.url.clone());
+                if let Some(host) = &git.host {
+                    metadata.insert(REMOTE_HOST_FIELD.to_string(), host.clone());
+                }
+                if let Some(repo) = &git.repo {
+                    metadata.insert(REMOTE_REPO_FIELD.to_string(), repo.clone());
+                }
+                if let Some(username) = &git.username {
+                    metadata.insert(REMOTE_USERNAME_FIELD.to_string(), username.clone());
+                }
+                if let Some(subdir) = &git.subdir {
+                    metadata.insert(REMOTE_SUBDIR_FIELD.to_string(), subdir.clone());
+                }
+                if let Some(ref_) = &git.ref_ {
+                    metadata.insert(REMOTE_REF_FIELD.to_string(), ref_.clone());
+                }
+                metadata.insert(REMOTE_SHA_FIELD.to_string(), git.sha.clone());
+
+                // Both are directories: a github tarball is unpacked, and a
+                // git:: clone is a worktree checkout. `sources` still carries
+                // the real download URL for the github case, so the existing
+                // HTTP downloader can fetch it unchanged; `RemoteType` is what
+                // tells `download_lockfile_packages` these need extra
+                // handling instead of "download this URL to this file path".
+                let (sources, target) = if git.remote_type == "github" {
+                    let repo = git.repo.clone().unwrap_or_default();
+                    (
+                        vec![format!(
+                            "https://codeload.github.com/{}/tar.gz/{}",
+                            repo, git.sha
+                        )],
+                        format!("git/github/{}/{}", repo, git.sha),
+                    )
+                } else {
+                    (
+                        vec![format!("git+{}#{}", git.url, git.sha)],
+                        format!("git/git/{}", git.sha),
+                    )
+                };
+
+                pkgs.push(RprojLockPackage {
+                    package: k.to_string(),
+                    version: v.version.to_string(),
+                    binary: false,
+                    platform: "source".to_string(),
+                    dependencies: deps,
+                    metadata,
+                    sources,
+                    target,
+                    groups: vec![],
+                });
+                continue;
+            }
+
             let binary = v.artifact.is_binary();
             // Provenance of the artifact, so that a lockfile install records the
             // same `RemoteHash` / `RemoteLinkingToHashes` a direct install does.

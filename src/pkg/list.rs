@@ -23,7 +23,9 @@ use simple_error::*;
 use tabular::*;
 
 use crate::dcf::DCFBuilt;
-use crate::install::{parse_linkingto, REMOTE_HASH_FIELD, REMOTE_LINKINGTO_FIELD};
+use crate::install::{
+    parse_linkingto, REMOTE_HASH_FIELD, REMOTE_LINKINGTO_FIELD, REMOTE_SHA_FIELD,
+};
 use crate::library::{library_rver, sc_library_get_default, sc_library_get_list};
 use crate::textfmt::reflow;
 
@@ -171,6 +173,11 @@ pub(crate) struct InstalledPackage {
     /// The `RemoteLinkingToHashes` field: what the package was compiled against,
     /// as `(package, version, sha256)`.
     pub(crate) linkingto: Vec<(String, String, String)>,
+    /// The `RemoteSha` field: the commit a git/GitHub-sourced package was
+    /// installed from. A git/GitHub package has no `RemoteHash` (that is
+    /// CRAN-tarball-specific), so this is what `needs_install` compares
+    /// against the solve's `RemoteSha` instead.
+    pub(crate) remote_sha: Option<String>,
 }
 
 #[cfg(test)]
@@ -193,6 +200,7 @@ impl InstalledPackage {
             remote: None,
             hash: hash.map(|x| x.to_string()),
             linkingto,
+            remote_sha: None,
         }
     }
 }
@@ -290,6 +298,7 @@ fn read_package(dir: &Path, dir_name: &str) -> Result<Option<InstalledPackage>, 
         .get(REMOTE_LINKINGTO_FIELD)
         .map(|x| parse_linkingto(&reflow(x)))
         .unwrap_or_default();
+    let remote_sha = para.get(REMOTE_SHA_FIELD).map(reflow);
 
     Ok(Some(InstalledPackage {
         package,
@@ -301,6 +310,7 @@ fn read_package(dir: &Path, dir_name: &str) -> Result<Option<InstalledPackage>, 
         remote,
         hash,
         linkingto,
+        remote_sha,
     }))
 }
 

@@ -16,6 +16,42 @@ needs can be installed with it, at versions that work together. `--dry-run`
 runs the resolution and reports what it would install, without installing
 anything.
 
+## Git and GitHub sources
+
+A package can also be given straight from a git repository, [pak's package
+reference](https://pak.r-lib.org/reference/pak_package_sources.html) syntax,
+the same one [`rig proj add`](proj.qmd) accepts:
+
+```
+rig pkg install r-lib/crayon
+rig pkg install r-lib/crayon@84be6207
+rig pkg install r-lib/crayon@some-branch
+rig pkg install r-lib/crayon#41
+rig pkg install r-lib/crayon@*release
+rig pkg install 'git::https://gitlab.com/example/pkg.git@main'
+```
+
+A bare `<owner>/<repo>` (optionally `github::<owner>/<repo>`) is a GitHub
+reference; `<owner>/<repo>/<subdir>` points at a package in a subdirectory of
+the repository. After the path, `@<ref>` pins a branch, tag or commit,
+`#<pr>` a pull request, and `@*release` the latest release. A `git::<url>`
+reference works with any git host, not only GitHub.
+
+The package name is read from the fetched repository's own `DESCRIPTION`
+(which may differ from the repository name); the dependency is pinned to an
+exact commit, resolved right away, not to a version range.
+
+A private repository needs a credential: for GitHub, set `GITHUB_PAT` or
+`GITHUB_TOKEN`, or store a token with `git credential approve`; for any other
+git host, rig reads whatever the system git credential store (Keychain,
+Windows Credential Manager, `git credential-store`, etc.) has for that host.
+A host-specific env var, e.g. `GITHUB_PAT_GITHUB_COM` or
+`GITHUB_PAT_GITLAB_COM` (the same naming the R `gitcreds`/`usethis` packages
+use), takes priority over both.
+
+`--dev` does not look up a git/GitHub package's own dev dependencies, only a
+CRAN/PPM one's.
+
 ## Dev dependencies
 
 By default rig installs the hard dependencies only: `Depends`, `Imports` and

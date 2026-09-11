@@ -24,6 +24,39 @@ Because `@` and the comparison operators are meaningful to most shells, quote
 a specification that contains a space or a `>` character, as in the examples
 above.
 
+## Git and GitHub sources
+
+A package can also be added straight from a git repository, [pak's package
+reference](https://pak.r-lib.org/reference/pak_package_sources.html) syntax:
+
+```
+rig proj add r-lib/crayon
+rig proj add r-lib/crayon@84be6207
+rig proj add r-lib/crayon@some-branch
+rig proj add r-lib/crayon#41
+rig proj add r-lib/crayon@*release
+rig proj add 'git::https://gitlab.com/example/pkg.git@main'
+```
+
+A bare `<owner>/<repo>` (optionally `github::<owner>/<repo>`) is a GitHub
+reference; `<owner>/<repo>/<subdir>` points at a package in a subdirectory of
+the repository. After the path, `@<ref>` pins a branch, tag or commit,
+`#<pr>` a pull request, and `@*release` the latest release. A `git::<url>`
+reference works with any git host, not only GitHub.
+
+The package name is read from the fetched repository's own `DESCRIPTION`
+(which may differ from the repository name), and the dependency is pinned by
+commit, not by version range: `rig proj add` resolves the reference to an
+exact commit right away, and `rproj.lock` records it.
+
+A private repository needs a credential: for GitHub, set `GITHUB_PAT` or
+`GITHUB_TOKEN`, or store a token with `git credential approve`; for any other
+git host, rig reads whatever the system git credential store (Keychain,
+Windows Credential Manager, `git credential-store`, etc.) has for that host.
+A host-specific env var, e.g. `GITHUB_PAT_GITHUB_COM` or
+`GITHUB_PAT_GITLAB_COM` (the same naming the R `gitcreds`/`usethis` packages
+use), takes priority over both.
+
 ## Version requirements
 
 * `^1.2.3` is *compatible with* 1.2.3, i.e. `>= 1.2.3, < 2.0.0`.

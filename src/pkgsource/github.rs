@@ -1,0 +1,196 @@
+//! Fetching a `github::`/bare `owner/repo` package source: resolve a
+//! branch/tag/commit/PR/release to a commit sha via the GitHub REST API, then
+//! download the repository tarball at that sha from `codeload.github.com`.
+//! No `git` clone is involved, so this needs neither a system `git` binary
+//! nor `gix`.
+
+use std::error::Error;
+use std::path::Path;
+use std::time::Duration;
+
+use simple_error::bail;
+
+use crate::download::download_first_available_;
+
+/// What to resolve a GitHub reference to a commit from -- mirrors
+/// [`crate::pkgsource::RemoteSource`]'s `rev`/`pr`/`release` fields.
+pub enum GithubDetail<'a> {
+    /// The repository's default branch.
+    Default,
+    /// A branch, tag, or commit prefix.
+    Ref(&'a str),
+    /// A pull request number.
+    PullRequest(u32),
+    /// The latest release.
+    Release,
+}
+
+pub struct ResolvedGithub {
+    pub sha: String,
+    /// The ref actually used, for the manifest/lockfile's `RemoteRef`.
+    pub resolved_ref: String,
+}
+
+fn api_get(url: &str) -> Result<serde_json::Value, Box<dyn Error>> {
+    api_get_(url)
+}
+
+#[tokio::main]
+async fn api_get_(url: &str) -> Result<serde_json::Value, Box<dyn Error>> {
+    let mut builder = reqwest::Client::builder().user_agent("rig");
+    if let Some(token) = crate::credentials::github_token() {
+        builder = builder.default_headers(auth_header(&token)?);
+    }
+    let client = builder.build()?;
+    let resp = client.get(url).send().await?;
+    let status = resp.status();
+    if status == reqwest::StatusCode::NOT_FOUND {
+        bail!(
+            "GitHub repository or ref not found: {}. If this is a private repository, set \
+             GITHUB_PAT/GITHUB_TOKEN or store a token in the git credential store for \
+             github.com.",
+            url
+        );
+    }
+    if status == reqwest::StatusCode::FORBIDDEN {
+        bail!(
+            "GitHub API request to {} was refused ({}). This may be GitHub's anonymous rate \
+             limit; set GITHUB_PAT/GITHUB_TOKEN or store a token in the git credential store \
+             for github.com.",
+            url,
+            status
+        );
+    }
+    if !status.is_success() {
+        bail!("GitHub API request to {} failed: {}", url, status);
+    }
+    Ok(resp.json().await?)
+}
+
+/// Build a single-header `Authorization: Bearer <token>` header map, for use
+/// as `reqwest::ClientBuilder::default_headers`.
+fn auth_header(token: &str) -> Result<reqwest::header::HeaderMap, Box<dyn Error>> {
+    let mut headers = reqwest::header::HeaderMap::new();
+    let mut value = reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token))?;
+    value.set_sensitive(true);
+    headers.insert(reqwest::header::AUTHORIZATION, value);
+    Ok(headers)
+}
+
+fn field<'a>(
+    json: &'a serde_json::Value,
+    path: &[&str],
+    url: &str,
+) -> Result<&'a str, Box<dyn Error>> {
+    let mut v = json;
+    for key in path {
+        v = v.get(key).ok_or_else(|| {
+            simple_error::SimpleError::new(format!(
+                "Unexpected GitHub API response for {} (missing `{}`)",
+                url, key
+            ))
+        })?;
+    }
+    v.as_str().ok_or_else(|| {
+        simple_error::SimpleError::new(format!("Unexpected GitHub API response for {}", url)).into()
+    })
+}
+
+/// Resolve `detail` on `owner/repo` to a commit sha.
+pub fn resolve_github_ref(
+    owner: &str,
+    repo: &str,
+    detail: &GithubDetail,
+) -> Result<ResolvedGithub, Box<dyn Error>> {
+    match detail {
+        GithubDetail::PullRequest(n) => {
+            let url = format!(
+                "https://api.github.com/repos/{}/{}/pulls/{}",
+                owner, repo, n
+            );
+            let json = api_get(&url)?;
+            let sha = field(&json, &["head", "sha"], &url)?.to_string();
+            Ok(ResolvedGithub {
+                sha,
+                resolved_ref: format!("#{}", n),
+            })
+        }
+        GithubDetail::Release => {
+            let url = format!(
+                "https://api.github.com/repos/{}/{}/releases/latest",
+                owner, repo
+            );
+            let json = api_get(&url)?;
+            let tag = field(&json, &["tag_name"], &url)?.to_string();
+
+            let commit_url = format!(
+                "https://api.github.com/repos/{}/{}/commits/{}",
+                owner, repo, tag
+            );
+            let commit = api_get(&commit_url)?;
+            let sha = field(&commit, &["sha"], &commit_url)?.to_string();
+            Ok(ResolvedGithub {
+                sha,
+                resolved_ref: tag,
+            })
+        }
+        GithubDetail::Ref(r) => {
+            let url = format!(
+                "https://api.github.com/repos/{}/{}/commits/{}",
+                owner, repo, r
+            );
+            let json = api_get(&url)?;
+            let sha = field(&json, &["sha"], &url)?.to_string();
+            Ok(ResolvedGithub {
+                sha,
+                resolved_ref: r.to_string(),
+            })
+        }
+        // GitHub's single-commit endpoint (`/commits/<ref>`) needs an actual ref
+        // -- an empty one is not "the default branch", it is an invalid path and
+        // the API answers 422. `HEAD` is the default branch's tip on any repo, so
+        // it works as that ref without a separate lookup.
+        GithubDetail::Default => {
+            let url = format!(
+                "https://api.github.com/repos/{}/{}/commits/HEAD",
+                owner, repo
+            );
+            let json = api_get(&url)?;
+            let sha = field(&json, &["sha"], &url)?.to_string();
+            Ok(ResolvedGithub {
+                sha,
+                resolved_ref: "HEAD".to_string(),
+            })
+        }
+    }
+}
+
+/// Download the repository tarball at `sha` to `dest`, content-addressed so
+/// callers can treat an existing file at `dest` as an unconditional cache hit.
+pub fn download_tarball(
+    owner: &str,
+    repo: &str,
+    sha: &str,
+    dest: &Path,
+) -> Result<(), Box<dyn Error>> {
+    let url = format!(
+        "https://codeload.github.com/{}/{}/tar.gz/{}",
+        owner, repo, sha
+    );
+    let client = match crate::credentials::github_token() {
+        Some(token) => Some(
+            reqwest::Client::builder()
+                .default_headers(auth_header(&token)?)
+                .build()?,
+        ),
+        None => None,
+    };
+    download_first_available_(
+        &[&url],
+        &dest.to_path_buf(),
+        Some(Duration::MAX),
+        client.as_ref(),
+        None,
+    )?;
+    Ok(())
+}

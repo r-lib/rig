@@ -121,6 +121,11 @@ tokio = { version = "1", features = ["full"] }
 version-ranges = "0.1.2"
 # progress bars
 indicatif = "0.17"
+# clone/fetch git:: package sources (pure Rust, no system git/libgit2)
+gix = { version = "0.68", default-features = false, features = [
+    "blocking-http-transport-reqwest-rust-tls",
+    "worktree-mutation",
+] }
 reflink-copy = "0.1"
 
 [target.'cfg(not(windows))'.dependencies]
