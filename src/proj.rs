@@ -43,8 +43,8 @@ use crate::rproj::{
 };
 use crate::rvenv::{
     existing_targets, find_project_root, find_workspace_root, project_library,
-    project_shim_package, read_rvenv_cfg, rvenv_init, rvenv_sync, workspace_members,
-    write_sync_stamp, RvenvCfg, RPROJ_LOCK_FILE,
+    project_shim_package, read_rvenv_cfg, rvenv_init, rvenv_sync, rvenv_sync_needed,
+    workspace_members, write_sync_stamp, RvenvCfg, RPROJ_LOCK_FILE, RVENV_CFG_FILE,
 };
 use crate::solver::*;
 use crate::textfmt::reflow;
@@ -87,6 +87,7 @@ pub fn sc_proj(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn E
         Some(("tree", s)) => sc_proj_tree(s, args, mainargs),
         Some(("lock", s)) => sc_proj_lock(s, args, mainargs),
         Some(("sync", s)) => sc_proj_sync(s, args, mainargs),
+        Some(("status", s)) => sc_proj_status(s, args, mainargs),
         Some(("renv", s)) => crate::renv::sc_renv(s, mainargs),
         _ => Ok(()), // unreachable
     }
@@ -1303,6 +1304,272 @@ fn proj_lock_root() -> Result<PathBuf, Box<dyn Error>> {
         return Ok(workspace);
     }
     Ok(find_project_root(&cwd).unwrap_or(cwd))
+}
+
+/// Report what `rig proj` knows about the project at or above the current
+/// directory: the manifest, the lock file, and whether the local `.rvenv`
+/// environment is in sync with it. Read-only -- never solves or syncs.
+fn sc_proj_status(
+    args: &ArgMatches,
+    projargs: &ArgMatches,
+    mainargs: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+    let json = args.get_flag("json") || projargs.get_flag("json") || mainargs.get_flag("json");
+    let root = proj_lock_root()?;
+
+    let mut warnings: Vec<String> = vec![];
+
+    // Read every piece by hand rather than through the usual helpers: those
+    // bail (and some log their own error) on a problem that here should only
+    // drop that one section and warn, not take down the rest of the report.
+    let manifest_path = root.join(RPROJ_MANIFEST_FILE);
+    let manifest: Option<Rproj> = if manifest_path.exists() {
+        match fs::read_to_string(&manifest_path)
+            .map_err(|e| e.to_string())
+            .and_then(|text| toml::from_str::<Rproj>(&text).map_err(|e| e.to_string()))
+        {
+            Ok(m) => Some(m),
+            Err(e) => {
+                warnings.push(format!("Could not read {}: {}", RPROJ_MANIFEST_FILE, e));
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let lock_path = root.join(RPROJ_LOCK_FILE);
+    let lock: Option<RprojLock> = if lock_path.exists() {
+        match fs::read_to_string(&lock_path)
+            .map_err(|e| e.to_string())
+            .and_then(|text| {
+                RprojLock::check_version(&text).map_err(|e| e.to_string())?;
+                toml::from_str::<RprojLock>(&text).map_err(|e| e.to_string())
+            }) {
+            Ok(lock) => Some(lock),
+            Err(e) => {
+                warnings.push(format!("Could not read {}: {}", RPROJ_LOCK_FILE, e));
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let cfg = match read_rvenv_cfg(&root) {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            warnings.push(format!("Could not read {}: {}", RVENV_CFG_FILE, e));
+            None
+        }
+    };
+    let sync_reason = if cfg.is_some() {
+        match rvenv_sync_needed(&root) {
+            Ok(reason) => reason,
+            Err(e) => {
+                warnings.push(format!(
+                    "Could not check whether the environment is in sync: {}",
+                    e
+                ));
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    if json {
+        print_proj_status_json(&root, &manifest, &lock, &cfg, &sync_reason, &warnings)
+    } else {
+        print_proj_status(&root, &manifest, &lock, &cfg, &sync_reason, &warnings)
+    }
+}
+
+/// The plain-text report of [`sc_proj_status`].
+fn print_proj_status(
+    root: &Path,
+    manifest: &Option<Rproj>,
+    lock: &Option<RprojLock>,
+    cfg: &Option<RvenvCfg>,
+    sync_reason: &Option<String>,
+    warnings: &[String],
+) -> Result<(), Box<dyn Error>> {
+    println!("Project: {}", root.display());
+    println!();
+
+    match manifest {
+        Some(m) => {
+            println!("Manifest: {} {}", m.project.name, m.project.version);
+            if let Some(ws) = &m.workspace {
+                if !ws.members.is_empty() {
+                    match workspace_members(root, ws) {
+                        Ok(dirs) => {
+                            println!("Workspace members ({}):", dirs.len());
+                            for dir in &dirs {
+                                match proj_read_manifest(dir) {
+                                    Ok(member) => println!(
+                                        "  {} {}",
+                                        member.project.name, member.project.version
+                                    ),
+                                    Err(e) => {
+                                        println!("  {}: could not read: {}", dir.display(), e)
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => println!("Workspace members: could not list: {}", e),
+                    }
+                }
+            }
+            let groups = m.dependency_group_roots();
+            if !groups.is_empty() {
+                let mut names: Vec<&String> = groups.keys().collect();
+                names.sort();
+                println!("Dependencies:");
+                for name in names {
+                    println!("  {}: {}", name, groups[name].len());
+                }
+            }
+        }
+        None => println!("Manifest: none, run `rig proj init` first"),
+    }
+    println!();
+
+    match lock {
+        Some(lock) => {
+            println!("Lock file: {} (version {})", RPROJ_LOCK_FILE, lock.version);
+            let mut tab: Table = Table::new("{:<}   {:<}   {:<}");
+            tab.add_row(row!("R version", "Platform", "Packages"));
+            tab.add_heading("-------------------------------------");
+            for target in &lock.targets {
+                tab.add_row(row!(
+                    &target.r_version,
+                    &target.platform,
+                    target.packages.len().to_string()
+                ));
+            }
+            print!("{}", tab);
+        }
+        None => println!("Lock file: none, run `rig proj lock` first"),
+    }
+    println!();
+
+    match cfg {
+        Some(cfg) => {
+            println!(
+                "Environment: R {} ({}, {})",
+                cfg.r_version, cfg.platform, cfg.r_arch
+            );
+            match sync_reason {
+                None => println!("  up to date"),
+                Some(reason) => println!("  needs sync: {}", reason),
+            }
+        }
+        None => println!("Environment: none, run `rig proj sync` first"),
+    }
+
+    if !warnings.is_empty() {
+        println!();
+        for warning in warnings {
+            OUTPUT.warn(warning);
+        }
+    }
+
+    Ok(())
+}
+
+/// The `--json` report of [`sc_proj_status`].
+fn print_proj_status_json(
+    root: &Path,
+    manifest: &Option<Rproj>,
+    lock: &Option<RprojLock>,
+    cfg: &Option<RvenvCfg>,
+    sync_reason: &Option<String>,
+    warnings: &[String],
+) -> Result<(), Box<dyn Error>> {
+    let mut warnings = warnings.to_vec();
+
+    let manifest_json = match manifest {
+        Some(m) => {
+            let workspace_members_json: Vec<serde_json::Value> = match &m.workspace {
+                Some(ws) if !ws.members.is_empty() => match workspace_members(root, ws) {
+                    Ok(dirs) => dirs
+                        .iter()
+                        .filter_map(|dir| match proj_read_manifest(dir) {
+                            Ok(member) => Some(serde_json::json!({
+                                "name": member.project.name,
+                                "version": member.project.version,
+                            })),
+                            Err(e) => {
+                                warnings.push(format!("Could not read {}: {}", dir.display(), e));
+                                None
+                            }
+                        })
+                        .collect(),
+                    Err(e) => {
+                        warnings.push(format!("Could not list workspace members: {}", e));
+                        vec![]
+                    }
+                },
+                _ => vec![],
+            };
+            let mut groups: Vec<(String, usize)> = m
+                .dependency_group_roots()
+                .into_iter()
+                .map(|(name, deps)| (name, deps.len()))
+                .collect();
+            groups.sort();
+            serde_json::json!({
+                "name": m.project.name,
+                "version": m.project.version,
+                "workspace_members": workspace_members_json,
+                "dependency_groups": groups.into_iter().collect::<BTreeMap<_, _>>(),
+            })
+        }
+        None => serde_json::Value::Null,
+    };
+
+    let lock_json = match lock {
+        Some(lock) => {
+            let targets: Vec<serde_json::Value> = lock
+                .targets
+                .iter()
+                .map(|t| {
+                    serde_json::json!({
+                        "r_version": t.r_version,
+                        "platform": t.platform,
+                        "package_count": t.packages.len(),
+                    })
+                })
+                .collect();
+            serde_json::json!({
+                "version": lock.version,
+                "targets": targets,
+            })
+        }
+        None => serde_json::Value::Null,
+    };
+
+    let sync_json = match cfg {
+        Some(cfg) => serde_json::json!({
+            "r_version": cfg.r_version,
+            "r_arch": cfg.r_arch,
+            "platform": cfg.platform,
+            "up_to_date": sync_reason.is_none(),
+            "reason": sync_reason,
+        }),
+        None => serde_json::Value::Null,
+    };
+
+    let out = serde_json::json!({
+        "root": root.display().to_string(),
+        "manifest": manifest_json,
+        "lock": lock_json,
+        "sync": sync_json,
+        "warnings": warnings,
+    });
+    println!("{}", serde_json::to_string_pretty(&out)?);
+    Ok(())
 }
 
 /// The R version to solve the project for, when the caller did not name one:

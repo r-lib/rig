@@ -1647,6 +1647,19 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("status")
+                .about(ABOUT_PROJ_STATUS)
+                .long_about(HELP_PROJ_STATUS)
+                .display_order(0)
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
             Command::new("sync")
                 .about(ABOUT_PROJ_SYNC)
                 .long_about(HELP_PROJ_SYNC)
