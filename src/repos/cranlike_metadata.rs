@@ -1492,6 +1492,13 @@ Imports: pkgGood
     }
 
     #[test]
+    fn test_package_type_to_path_macos_binary_arm64() {
+        // R >= 4.7.0 arm64 dropped the "macosx"/codename layout
+        let result = package_type_to_path("macos.binary.arm64", "4.7").unwrap();
+        assert_eq!(result, "bin/macos/arm64/contrib/4.7");
+    }
+
+    #[test]
     fn test_package_type_to_path_win_binary() {
         let result = package_type_to_path("win.binary", "4.3").unwrap();
         assert_eq!(result, "bin/windows/contrib/4.3");

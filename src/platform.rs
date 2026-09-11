@@ -279,8 +279,14 @@ pub fn platform_to_pkg_type(platform: &OsVersion, r_version: &str) -> Option<Str
             } else {
                 Some("mac.binary.big-sur-x86_64".to_string())
             }
+        } else if r_version < semver::Version::parse("4.7.0").unwrap() {
+            if platform.arch == "aarch64" {
+                Some("mac.binary.sonoma-arm64".to_string())
+            } else {
+                Some("mac.binary.big-sur-x86_64".to_string())
+            }
         } else if platform.arch == "aarch64" {
-            Some("mac.binary.sonoma-arm64".to_string())
+            Some("macos.binary.arm64".to_string())
         } else {
             Some("mac.binary.big-sur-x86_64".to_string())
         }
@@ -578,7 +584,7 @@ mod tests {
             distro: None,
             version: None,
         };
-        // R 4.6.0+ on x86_64
+        // R 4.6.0 - 4.6.x on x86_64
         let result = platform_to_pkg_type(&platform, "4.6.0");
         assert_eq!(result, Some("mac.binary.big-sur-x86_64".to_string()));
     }
@@ -593,9 +599,39 @@ mod tests {
             distro: None,
             version: None,
         };
-        // R 4.6.0+ on aarch64
+        // R 4.6.0 - 4.6.x on aarch64
         let result = platform_to_pkg_type(&platform, "4.6.0");
         assert_eq!(result, Some("mac.binary.sonoma-arm64".to_string()));
+    }
+
+    #[test]
+    fn test_platform_to_pkg_type_macos_4_7_x86_64() {
+        let platform = OsVersion {
+            rig_platform: None,
+            arch: "x86_64".to_string(),
+            vendor: "apple".to_string(),
+            os: "darwin".to_string(),
+            distro: None,
+            version: None,
+        };
+        // R 4.7.0+ on x86_64 stays on the old path
+        let result = platform_to_pkg_type(&platform, "4.7.0");
+        assert_eq!(result, Some("mac.binary.big-sur-x86_64".to_string()));
+    }
+
+    #[test]
+    fn test_platform_to_pkg_type_macos_4_7_aarch64() {
+        let platform = OsVersion {
+            rig_platform: None,
+            arch: "aarch64".to_string(),
+            vendor: "apple".to_string(),
+            os: "darwin".to_string(),
+            distro: None,
+            version: None,
+        };
+        // R 4.7.0+ on aarch64 uses the new "macos" (no codename) layout
+        let result = platform_to_pkg_type(&platform, "4.7.0");
+        assert_eq!(result, Some("macos.binary.arm64".to_string()));
     }
 
     #[test]
