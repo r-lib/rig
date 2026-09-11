@@ -131,6 +131,86 @@ impl BuiltCache {
     }
 }
 
+/// Unpack `archive` into a shared cache directory next to it, the first time
+/// this exact archive is installed anywhere, and return the directory holding
+/// the package's files directly (no further top-level component).
+///
+/// Every install of the same archive after the first can then link its files
+/// out of this directory (see `crate::install::install_from_cache`) instead
+/// of decompressing the archive again. Extraction happens into a temporary
+/// directory and is
+/// renamed into place, so that a concurrent `rig` extracting the same entry
+/// either finds it missing (and extracts too, wasted work but still correct)
+/// or finds it complete; there is never a partially extracted directory to
+/// read from.
+///
+/// `key` names the shared cache entry, and must be unique among archives
+/// sharing `archive`'s parent directory: a rig-built package already lives in
+/// its own hash-keyed directory (see [`BuiltCache::path`]), so `pkg_name`
+/// alone is unique there, but a downloaded binary's archives all sit together
+/// in one `packages` directory, so callers there key on the archive's own
+/// file name instead. `pkg_name` is only used to check the archive's layout:
+/// installing errors, rather than silently caching something wrong, if the
+/// single top-level directory the archive unpacks to is not named `pkg_name`.
+pub fn ensure_unpacked(
+    archive: &Path,
+    key: &str,
+    pkg_name: &str,
+) -> Result<PathBuf, Box<dyn Error>> {
+    let unpacked_root = archive
+        .parent()
+        .expect("a cache archive path always has a parent")
+        .join("unpacked");
+    let target = unpacked_root.join(key);
+    if target.is_dir() {
+        return Ok(target);
+    }
+    std::fs::create_dir_all(&unpacked_root)?;
+
+    let tmp = unpacked_root.join(format!(".{}.{}.tmp", key, std::process::id()));
+    if tmp.exists() {
+        std::fs::remove_dir_all(&tmp)?;
+    }
+    std::fs::create_dir_all(&tmp)?;
+    if let Err(err) = crate::install::unpack_package(archive, &tmp) {
+        let _ = std::fs::remove_dir_all(&tmp);
+        return Err(err);
+    }
+
+    let unpacked = match crate::install::single_subdir(&tmp) {
+        Ok(dir) => dir,
+        Err(err) => {
+            let _ = std::fs::remove_dir_all(&tmp);
+            return Err(err);
+        }
+    };
+    let name = unpacked
+        .file_name()
+        .and_then(|x| x.to_str())
+        .unwrap_or_default();
+    if name != pkg_name {
+        let _ = std::fs::remove_dir_all(&tmp);
+        bail!(
+            "{} does not contain a built {} package, but a top level '{}'",
+            archive.display(),
+            pkg_name,
+            name
+        );
+    }
+
+    // Another rig may have finished unpacking the same entry first.
+    if !target.is_dir() {
+        if let Err(err) = std::fs::rename(&unpacked, &target) {
+            let _ = std::fs::remove_dir_all(&tmp);
+            if !target.is_dir() {
+                return Err(err.into());
+            }
+        }
+    }
+    let _ = std::fs::remove_dir_all(&tmp);
+    Ok(target)
+}
+
 /// A directory name for the platform a build belongs to.
 ///
 /// Not [`crate::repos::binaries::loader::BinaryTarget`], which is P3M's
@@ -516,7 +596,7 @@ mod tests {
         let mut ar = tar::Archive::new(flate2::read::GzDecoder::new(file));
         ar.unpack(&out).unwrap();
         // A single top level directory named after the package, which is what
-        // `install_binary_package` requires.
+        // `install_from_cache` requires.
         assert_eq!(std::fs::read_dir(&out).unwrap().count(), 1);
         assert!(out.join("foo/DESCRIPTION").exists());
         assert_eq!(
