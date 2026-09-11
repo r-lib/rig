@@ -633,11 +633,17 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <li>Installs <a href="https://pak.r-lib.org">pak</a> and enables automatic <a href="https://pak.r-lib.org/dev/reference/sysreqs.html">system requirements installation</a>.</li>
 <li>Creates and configures per-user package libraries.</li>
 <li><a href="./reference/repos.html"><code>rig repos</code></a> manages package repositories across all your R versions.</li>
+<li><a href="./reference/pkg.html"><code>rig pkg</code></a> (experimental) installs, removes and lists packages in a library, and looks up package info, dependencies and dependency trees from the repositories, all without running R.</li>
+</ul>
+<p><strong>Project dependency management (experimental)</strong></p>
+<ul>
+<li><a href="./reference/proj.html"><code>rig proj</code></a> manages an R project through an <code>rproj.toml</code> manifest: add or remove dependencies, resolve them with rig’s built-in solver into an <code>rproj.lock</code> lockfile, and sync a project library to match, all without running R.</li>
+<li>Import a project from, or export it to, a <code>DESCRIPTION</code> file or an <a href="https://rstudio.github.io/renv/">renv</a> <code>renv.lock</code> file, to interoperate with existing R package and project tooling.</li>
+<li>Inspect a project’s dependencies and dependency tree before installing.</li>
 </ul>
 <p><strong>Run R, scripts and apps</strong></p>
 <ul>
 <li><code>rig run</code> starts R, runs a script or expression, or launches an app: Shiny apps, Plumber APIs, Quarto and R Markdown documents, and static sites, with the R version you choose.</li>
-<li><code>rig proj</code> (experimental) resolves and installs R project dependencies with a built-in solver, and can write an <code>renv.lock</code>, without running R.</li>
 </ul>
 <p><strong>Platform niceties</strong></p>
 <ul>
