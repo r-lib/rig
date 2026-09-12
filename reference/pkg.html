@@ -842,7 +842,7 @@ List all versions of the package, instead of the details of one
 <section id="which-library" class="level3">
 <h3 class="anchored" data-anchor-id="which-library">Which library</h3>
 <p>By default rig installs into the default library of the default R version, i.e.&nbsp;the library that <a href="../reference/library.html"><code>rig library default</code></a> reports, and the one R installs packages into.</p>
-<p><code>--library</code> (<code>-l</code>) selects another library. It takes either the name of a library of the R version, as <a href="../reference/library.html"><code>rig library list</code></a> prints them, or the path of a library directory:</p>
+<p><code>--library</code> (<code>-l</code>) selects another library. It takes either the name of a library of the R version, as <a href="../reference/library.html"><code>rig library list</code></a> prints them, or the path of a library directory. A library name is tried first, so prefix a relative path with <code>./</code> (or use an absolute path) if it happens to share a name with a library:</p>
 <pre><code>rig pkg install --library myproject cli
 rig pkg install --library /usr/lib/R/site-library cli</code></pre>
 <p><code>--r-version</code> (<code>-r</code>) selects the library of another R version, instead of the default one, as it does for the <a href="../reference/library.html"><code>rig library</code></a> commands.</p>
@@ -932,7 +932,7 @@ glue        1.8.0        4.4.1   aarch64-apple-darwin20   CRAN
 asciicast   2.3.1.9000   4.4.1   aarch64-apple-darwin20   github::r-lib/asciicast
 mypkg       0.0.1        4.4.1   -                        -</code></pre>
 <p><code>Platform</code> is <code>-</code> for a package without compiled code. Use <code>--json</code> for machine readable output, which reports the repository or remote type as <code>source</code> and the remote itself as <code>remote</code>, separately, instead of <code>Source</code>.</p>
-<p><code>--library</code> (<code>-l</code>) selects a non-default library. It takes either the name of a library of the R version, see <a href="../reference/library.html"><code>rig library list</code></a> , or the path of a library directory.</p>
+<p><code>--library</code> (<code>-l</code>) selects a non-default library. It takes either the name of a library of the R version, see <a href="../reference/library.html"><code>rig library list</code></a> , or the path of a library directory. A library name is tried first, so prefix a relative path with <code>./</code> (or use an absolute path) if it happens to share a name with a library.</p>
 <p><code>--r-version</code> (<code>-r</code>) lists the library of another R version, instead of the default one.</p>
 <section id="usage-4" class="level3">
 <h3 class="anchored" data-anchor-id="usage-4">Usage</h3>
@@ -980,7 +980,7 @@ Run in user mode (overrides RIG_MODE and config)
 <p>The base packages that ship with R (<code>base</code>, <code>stats</code>, <code>utils</code>, …) are part of the R installation, and R does not work without them, so rig refuses to remove them unless <code>--force</code> is also given.</p>
 <section id="which-library-1" class="level3">
 <h3 class="anchored" data-anchor-id="which-library-1">Which library</h3>
-<p><code>--library</code> (<code>-l</code>) selects a non-default library. It takes either the name of a library of the R version, see <a href="../reference/library.html"><code>rig library list</code></a> , or the path of a library directory.</p>
+<p><code>--library</code> (<code>-l</code>) selects a non-default library. It takes either the name of a library of the R version, see <a href="../reference/library.html"><code>rig library list</code></a> , or the path of a library directory. A library name is tried first, so prefix a relative path with <code>./</code> (or use an absolute path) if it happens to share a name with a library.</p>
 <p><code>--r-version</code> (<code>-r</code>) lists the library of another R version, instead of the default one.</p>
 <p>In <a href="../admin-vs-user-mode.html">admin mode</a> the site and system libraries of an R installation belong to the administrator, so removing a package from them needs <code>sudo</code> (an administrator account on Windows). Your own user library never does. To remove a whole library, with all the packages in it, use <a href="../reference/library.html"><code>rig library rm</code></a> instead.</p>
 </section>
