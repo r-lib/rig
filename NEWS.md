@@ -1,5 +1,7 @@
 # rig 0.10.0-beta2
 
+* `rig add --without-p3m` works correctly again (#369).
+
 * macOS user mode: `rig default` now sets the default R version correctly
   for newer RStudio versions. Also, `rig system allow-debugger-rstudio`
   now works for newer RStudio versions.
