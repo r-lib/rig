@@ -83,7 +83,9 @@ packages into.
 
 `--library` (`-l`) selects another library. It takes either the name of a
 library of the R version, as [`rig library list`](library.qmd) prints them, or the path of a
-library directory:
+library directory. A library name is tried first, so prefix a relative path
+with `./` (or use an absolute path) if it happens to share a name with a
+library:
 
 ```
 rig pkg install --library myproject cli

@@ -79,17 +79,24 @@ impl ResolvedLibrary {
 
 /// Resolve `--library`, in three cases:
 ///
-/// * a directory path is used as it is, without consulting R at all, so this
-///   also works with no R version installed;
-/// * any other `--library` value is a library name of the R version, as
-///   `rig library list` prints them;
+/// * a value that looks like a path (see [`looks_like_path`]) is used as it
+///   is, without consulting R at all, so this also works with no R version
+///   installed;
+/// * any other `--library` value is looked up as a library name of the R
+///   version first, as `rig library list` prints them, and only used as a
+///   relative directory if no library has that name;
 /// * without `--library` it is the default library of the R version, i.e. the
 ///   path `rig library default --json` reports.
+///
+/// A bare word is tried as a library name before it is tried as a directory,
+/// so a library name is never shadowed by an unrelated directory of the same
+/// name in the current directory. Prefix a relative path with `./` (or use an
+/// absolute path) to bypass the library name lookup.
 pub(super) fn resolve_library(args: &ArgMatches) -> Result<ResolvedLibrary, Box<dyn Error>> {
     let lib = args.get_one::<String>("library");
 
     if let Some(lib) = lib {
-        if Path::new(lib).is_dir() || looks_like_path(lib) {
+        if looks_like_path(lib) {
             debug!("Using library directory {}", lib);
             return Ok(ResolvedLibrary {
                 name: None,
@@ -107,11 +114,20 @@ pub(super) fn resolve_library(args: &ArgMatches) -> Result<ResolvedLibrary, Box<
             let libs = sc_library_get_list(Some(rver.to_string()), true)?;
             match libs.iter().find(|lib| &lib.name == name) {
                 Some(lib) => lib.clone(),
+                None if Path::new(name).is_dir() => {
+                    debug!("Using library directory {}", name);
+                    return Ok(ResolvedLibrary {
+                        name: None,
+                        path: PathBuf::from(name),
+                        rversion: None,
+                    });
+                }
                 None => {
                     let known: Vec<&str> = libs.iter().map(|lib| lib.name.as_str()).collect();
                     bail!(
                         "No such library: {}, for R {}. Known libraries: {}. \
-                        (`--library` also takes the path of a library directory.)",
+                        (`--library` also takes the path of a library directory; \
+                        prefix it with `./` to always use it as a path.)",
                         name,
                         rver,
                         known.join(", ")
@@ -130,11 +146,10 @@ pub(super) fn resolve_library(args: &ArgMatches) -> Result<ResolvedLibrary, Box<
 
 /// Whether a `--library` value is meant as a path rather than a library name.
 ///
-/// An existing directory is unambiguous, but a directory rig is about to create
-/// is not there to be looked at yet, and a mistyped path should not be reported
-/// as an unknown library name. A library name is a single path component — that
-/// is how `rig library add` creates them — so anything with a separator in it,
-/// or anchored to a root, is a path.
+/// An anchored or multi-component path is unambiguous. A library name is a
+/// single path component — that is how `rig library add` creates them — so a
+/// bare word is tried as a library name first (see [`resolve_library`]) and
+/// only falls back to being a relative directory if no library has that name.
 fn looks_like_path(lib: &str) -> bool {
     let path = Path::new(lib);
     path.is_absolute() || path.components().count() > 1 || lib.starts_with('~')
