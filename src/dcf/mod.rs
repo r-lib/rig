@@ -1,10 +1,38 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
+use std::io::Read;
 
-use deb822_fast::Paragraph;
+use deb822_fast::{Deb822, Paragraph};
 use serde::{Deserialize, Serialize};
 use simple_error::*;
+
+// ------------------------------------------------------------------------
+// Parsing DCF documents
+
+/// Parse a DCF (deb822) document.
+///
+/// `deb822-fast` splits lines on `\n` only, so with CRLF line endings every
+/// field value keeps a trailing `\r`, e.g. a `Version` field becomes
+/// `"1.0.0\r"`, which then fails to parse as a version. CRLF `DESCRIPTION`
+/// files are common on Windows, where git checks text files out with CRLF by
+/// default (`core.autocrlf`), so normalize the line endings before parsing.
+pub fn parse_dcf(text: &str) -> Result<Deb822, Box<dyn Error>> {
+    let text: Cow<str> = if text.contains('\r') {
+        Cow::Owned(text.replace("\r\n", "\n"))
+    } else {
+        Cow::Borrowed(text)
+    };
+    Ok(text.parse::<Deb822>()?)
+}
+
+/// Parse a DCF (deb822) document read from `reader`. See [`parse_dcf`].
+pub fn parse_dcf_reader<R: Read>(mut reader: R) -> Result<Deb822, Box<dyn Error>> {
+    let mut text = String::new();
+    reader.read_to_string(&mut text)?;
+    parse_dcf(&text)
+}
 
 // ------------------------------------------------------------------------
 // Dependency types
@@ -458,6 +486,41 @@ impl Package {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A `DESCRIPTION` with CRLF line endings, as git checks it out on Windows
+    /// by default, parses like the same file with LF line endings.
+    #[test]
+    fn parse_dcf_tolerates_crlf_line_endings() {
+        let lf = "Package: otel\n\
+                  Version: 0.2.0.9000\n\
+                  Depends: R (>= 3.6.0)\n\
+                  Suggests:\n    callr,\n    testthat (>= 3.0.0)\n";
+        let crlf = lf.replace('\n', "\r\n");
+
+        let para = parse_dcf(&crlf).unwrap().into_iter().next().unwrap();
+        let pkg = Package::from_dcf_paragraph(&para).unwrap();
+        assert_eq!(
+            pkg.version,
+            RPackageVersion::from_str("0.2.0.9000").unwrap()
+        );
+
+        let names: Vec<&str> = pkg
+            .dependencies
+            .dependencies
+            .iter()
+            .map(|d| d.name.as_str())
+            .collect();
+        assert_eq!(names, vec!["R", "callr", "testthat"]);
+
+        // No `\r` is left behind in any field value.
+        let lf_para = parse_dcf(lf).unwrap().into_iter().next().unwrap();
+        let fields = |p: &Paragraph| -> Vec<(String, String)> {
+            p.iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect()
+        };
+        assert_eq!(fields(&para), fields(&lf_para));
+    }
 
     #[test]
     fn simplify_merges_the_types_and_constraints_of_a_package() {

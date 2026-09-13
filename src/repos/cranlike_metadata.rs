@@ -5,7 +5,6 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use deb822_fast::Deb822;
 use flate2::read::GzDecoder;
 use log::{debug, error, info};
 use rds2rust::RObject;
@@ -695,7 +694,7 @@ fn parse_packages(dcf_path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
 
     // Parse as DCF format
     info!("Parsing as DCF format");
-    let desc = Deb822::from_reader(&data[..])?;
+    let desc = parse_dcf_reader(&data[..])?;
     info!("Parsed {} packages from repo metadata", desc.len());
 
     let mut packages: Vec<Package> = vec![];

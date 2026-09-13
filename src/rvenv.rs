@@ -936,12 +936,31 @@ fn rscript_of(r_binary: &Path) -> PathBuf {
     }
 }
 
+/// Runs `write`, a closure that (over)writes `path`, and reports `path` back
+/// only if its bytes actually changed (or it did not exist before).
+///
+/// Every file `rvenv_sync` touches is derived from `cfg` and the manifest, so
+/// an already up-to-date project would otherwise rewrite the same bytes on
+/// every `rig proj sync` and still be reported as "written" -- which is what
+/// drove `rig proj sync`'s "Updated the project environment" message to fire
+/// on every run, even a pure no-op one.
+fn write_if_changed(
+    path: PathBuf,
+    write: impl FnOnce() -> Result<(), Box<dyn Error>>,
+) -> Result<Option<PathBuf>, Box<dyn Error>> {
+    let before = fs::read(&path).ok();
+    write()?;
+    let after = fs::read(&path)?;
+    Ok((before.as_deref() != Some(after.as_slice())).then_some(path))
+}
+
 /// Write the machine-specific part of the `.rvenv` layout -- `rvenv.cfg`,
 /// `etc/repositories`, the `bin/` wrappers and the activation scripts -- and
-/// return what was written.
+/// return what actually changed.
 ///
 /// Everything here is derived from `cfg` and the manifest, so this is
-/// idempotent: running it twice writes the same bytes.
+/// idempotent: running it twice writes the same bytes, and the second run
+/// reports nothing changed.
 pub fn rvenv_sync(
     root: &Path,
     cfg: &RvenvCfg,
@@ -965,31 +984,40 @@ pub fn rvenv_sync(
     let mut written = vec![];
 
     let cfg_path = venv.join(RVENV_CFG_FILE);
-    write_atomically(&cfg_path, cfg.body().as_bytes())?;
-    written.push(cfg_path);
+    if let Some(p) = write_if_changed(cfg_path.clone(), || {
+        write_atomically(&cfg_path, cfg.body().as_bytes())
+    })? {
+        written.push(p);
+    }
 
     let onload_path = venv.join(RVENV_ONLOAD_FILE);
-    write_atomically(&onload_path, RVENV_ONLOAD_TEMPLATE.as_bytes())?;
-    written.push(onload_path);
+    if let Some(p) = write_if_changed(onload_path.clone(), || {
+        write_atomically(&onload_path, RVENV_ONLOAD_TEMPLATE.as_bytes())
+    })? {
+        written.push(p);
+    }
 
     let repos_path = etc.join(RVENV_REPOS_FILE);
-    write_repositories_file(
-        repositories_contents(&cfg.platform, repos),
-        repos_path
-            .to_str()
-            .ok_or("The project path is not valid Unicode")?,
-    )?;
-    written.push(repos_path);
+    let repos_path_str = repos_path
+        .to_str()
+        .ok_or("The project path is not valid Unicode")?
+        .to_string();
+    if let Some(p) = write_if_changed(repos_path.clone(), || {
+        write_repositories_file(repositories_contents(&cfg.platform, repos), &repos_path_str)
+    })? {
+        written.push(p);
+    }
 
     written.extend(write_wrappers(&venv, &bin, &cfg.r_binary)?);
 
     for (file, template) in ACTIVATE_TEMPLATES {
         let path = bin.join(file);
-        write_atomically(
-            &path,
-            render(template, &venv, &name, &cfg.r_binary).as_bytes(),
-        )?;
-        written.push(path);
+        let bytes = render(template, &venv, &name, &cfg.r_binary);
+        if let Some(p) =
+            write_if_changed(path.clone(), || write_atomically(&path, bytes.as_bytes()))?
+        {
+            written.push(p);
+        }
     }
 
     Ok(written)
@@ -1029,8 +1057,12 @@ fn write_wrappers(
         ("Rscript", rscript_of(r_binary)),
     ] {
         let path = bin.join(file);
-        write_executable(&path, render(template, venv, "", &target).as_bytes())?;
-        written.push(path);
+        let bytes = render(template, venv, "", &target);
+        if let Some(p) =
+            write_if_changed(path.clone(), || write_executable(&path, bytes.as_bytes()))?
+        {
+            written.push(p);
+        }
     }
     Ok(written)
 }
@@ -1048,17 +1080,17 @@ fn write_wrappers(
         ("Rscript.exe", rscript_of(r_binary)),
     ] {
         let path = bin.join(file);
+        let target_str = target
+            .to_str()
+            .ok_or("The R installation path is not valid Unicode")?
+            .to_string();
         // No marker: these shims are not rig's default-version quick links,
         // they belong to one project and one R installation.
-        crate::windows::write_shim_link_env(
-            &path,
-            target
-                .to_str()
-                .ok_or("The R installation path is not valid Unicode")?,
-            "",
-            &envs,
-        )?;
-        written.push(path);
+        if let Some(p) = write_if_changed(path.clone(), || {
+            crate::windows::write_shim_link_env(&path, &target_str, "", &envs)
+        })? {
+            written.push(p);
+        }
     }
     Ok(written)
 }
@@ -1522,6 +1554,19 @@ mod tests {
         rvenv_sync(root, &test_cfg(), &[]).unwrap();
         let after: Vec<Vec<u8>> = written.iter().map(|p| fs::read(p).unwrap()).collect();
         assert_eq!(before, after);
+    }
+
+    #[test]
+    fn rvenv_sync_reports_nothing_written_when_nothing_changed() {
+        // `rig proj sync` prints "Updated the project environment" for every
+        // path `rvenv_sync` reports back, so a second, no-op sync must come
+        // back empty -- otherwise the message fires on every run.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let first = rvenv_sync(root, &test_cfg(), &[]).unwrap();
+        assert!(!first.is_empty());
+        let second = rvenv_sync(root, &test_cfg(), &[]).unwrap();
+        assert!(second.is_empty());
     }
 
     #[cfg(not(windows))]

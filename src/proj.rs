@@ -6,7 +6,6 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use clap::ArgMatches;
-use deb822_fast::Deb822;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use log::{error, info};
 use pubgrub::{resolve, SelectedDependencies};
@@ -674,7 +673,7 @@ fn read_description_paragraph(input: &str) -> Result<deb822_fast::Paragraph, Box
         error!("Cannot read {}: {}", input, e);
         e
     })?;
-    let desc = Deb822::from_reader(df)?;
+    let desc = parse_dcf_reader(df)?;
 
     if desc.is_empty() {
         OUTPUT.error("Empty DESCRIPTION file");
@@ -2761,15 +2760,23 @@ pub(crate) fn proj_sync(
             .map(|m| m.repository.as_slice())
             .unwrap_or(&[]);
         let written = rvenv_sync(root, &cfg, repos)?;
-        for path in &written {
-            let path = path.strip_prefix(root).unwrap_or(path);
-            info!("Updated {}", path.display());
+        if written.is_empty() {
+            info!(
+                "Project environment for R {} ({}) is already up to date",
+                r_name,
+                r_binary.display()
+            );
+        } else {
+            for path in &written {
+                let path = path.strip_prefix(root).unwrap_or(path);
+                info!("Updated {}", path.display());
+            }
+            OUTPUT.success(&format!(
+                "Updated the project environment for R {} ({})",
+                r_name,
+                r_binary.display()
+            ));
         }
-        OUTPUT.success(&format!(
-            "Updated the project environment for R {} ({})",
-            r_name,
-            r_binary.display()
-        ));
     }
 
     // A package already in the library, at the version and provenance the

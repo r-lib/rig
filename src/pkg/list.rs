@@ -17,12 +17,11 @@ use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
 use clap::ArgMatches;
-use deb822_fast::Deb822;
 use log::debug;
 use simple_error::*;
 use tabular::*;
 
-use crate::dcf::DCFBuilt;
+use crate::dcf::{parse_dcf_reader, DCFBuilt};
 use crate::install::{parse_linkingto, REMOTE_HASH_FIELD, REMOTE_LINKINGTO_FIELD};
 use crate::library::{library_rver, sc_library_get_default, sc_library_get_list};
 use crate::textfmt::reflow;
@@ -265,7 +264,7 @@ fn read_package(dir: &Path, dir_name: &str) -> Result<Option<InstalledPackage>, 
         return Ok(None);
     }
 
-    let desc = Deb822::from_reader(File::open(&desc_path)?)?;
+    let desc = parse_dcf_reader(File::open(&desc_path)?)?;
     let para = match desc.iter().next() {
         Some(x) => x,
         None => bail!("empty DESCRIPTION file"),
