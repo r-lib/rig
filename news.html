@@ -578,6 +578,7 @@ ul.task-list li input[type="checkbox"] {
 <section id="rig-0.10.0-beta2" class="level1">
 <h1>rig 0.10.0-beta2</h1>
 <ul>
+<li><p><code>rig add --without-p3m</code> works correctly again (#369).</p></li>
 <li><p>macOS user mode: <code>rig default</code> now sets the default R version correctly for newer RStudio versions. Also, <code>rig system allow-debugger-rstudio</code> now works for newer RStudio versions.</p></li>
 <li><p>On Windows rig now creates <code>.exe</code> shims instead of <code>bat</code> shims. With <code>.exe</code> shims it is easier to pass command line arguments to <code>R</code> and <code>Rscript</code>. In particular, <code>Rscript -e &lt;code&gt;</code> now works if <code>&lt;code&gt;</code> has line breaks. Call <code>rig system make-links</code> to create all <code>.exe</code> shims and remove the <code>.bat</code> shims. If you hardcoded shims with a <code>.bat</code> extension, change them to <code>.exe</code> or remove the extension completely (#362).</p></li>
 <li><p><code>rig run &lt;name&gt;</code> now runs a script the project declares in a <code>[[bin]]</code> table of its <code>rproj.toml</code>, passing the remaining arguments on to the script. <code>rig run --list</code> lists the declared scripts.</p></li>
