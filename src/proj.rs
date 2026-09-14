@@ -386,10 +386,10 @@ fn sc_proj_import(
     }
 
     manifest.merge_description(&pkg);
-    // `Remotes:` names the git/GitHub source for packages that are also
-    // listed in `Depends`/`Imports`/`Suggests` above; only `git`/`github`
-    // remotes are understood, other remote types (`bioc::`, `bitbucket::`,
-    // `gitlab::`, `local::`, `svn::`, `url::`, ...) are warned about and
+    // `Remotes:` names the git/GitHub/GitLab source for packages that are
+    // also listed in `Depends`/`Imports`/`Suggests` above; only `git`/
+    // `github`/`gitlab` remotes are understood, other remote types (`bioc::`,
+    // `bitbucket::`, `local::`, `svn::`, `url::`, ...) are warned about and
     // skipped rather than failing the whole import.
     if let Some(remotes) = paragraph.get("Remotes") {
         for entry in reflow(remotes).split(',') {

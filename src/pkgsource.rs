@@ -1,10 +1,11 @@
-//! Parsing for `git`/`github` package sources, the `pak`-compatible syntax
-//! accepted by `rig proj add` (and, recursively, a fetched package's own
-//! `Remotes:` DESCRIPTION field):
+//! Parsing for `git`/`github`/`gitlab` package sources, the `pak`-compatible
+//! syntax accepted by `rig proj add` (and, recursively, a fetched package's
+//! own `Remotes:` DESCRIPTION field):
 //!
 //!   - `[<name>=][github::]<owner>/<repo>[/<subdir>][@<ref>|#<pr>|@*release]`
 //!   - bare `<owner>/<repo>...` (same suffixes) auto-detects as GitHub
 //!   - `[<name>=]git::<https-url>[.git][@<ref>]`
+//!   - `[<name>=]gitlab::[<scheme>://<host>/]<group>[/<subgroup>...]/<project>[/-/<subdir>][@<ref>]`
 //!
 //! A CRAN-style spec (`dplyr`, `dplyr@1.1.0`, `dplyr@>= 1.1`) never contains
 //! `/` or `::`, which is what tells the two apart: anything with a `/` or a
@@ -72,6 +73,10 @@ pub fn parse_pkg_source(spec: &str) -> Result<PkgSource, Box<dyn Error>> {
 
     if let Some(rest) = body.strip_prefix("github::") {
         return Ok(PkgSource::Remote(parse_github_ref(name_override, rest)?));
+    }
+
+    if let Some(rest) = body.strip_prefix("gitlab::") {
+        return Ok(PkgSource::Remote(parse_gitlab_ref(name_override, rest)?));
     }
 
     if looks_like_owner_repo(body) {
@@ -183,6 +188,89 @@ fn parse_github_ref(
         rev,
         pr,
         release,
+        subdir,
+    })
+}
+
+/// Parse `[<scheme>://<host>/]<group>[/<subgroup>...]/<project>[/-/<subdir>][@<ref>]`
+/// (the body after a `gitlab::` prefix has already been stripped).
+///
+/// Unlike GitHub, a bare `<owner>/<repo>` never auto-detects as GitLab -- the
+/// `gitlab::` prefix is always required. GitLab project paths can be
+/// arbitrarily deep (subgroups), so a subdirectory is only recognized after
+/// an explicit `/-/` separator, not a bare third path segment; and GitLab
+/// merge requests (`#<mr>`) and `@*release` are not supported, mirroring
+/// `pak`'s own `gitlab::` source type.
+fn parse_gitlab_ref(
+    name_override: Option<String>,
+    body: &str,
+) -> Result<RemoteSource, Box<dyn Error>> {
+    if body.contains('#') {
+        bail!(
+            "Invalid GitLab reference `{}`: merge request numbers (`#`) are \
+             not supported for `gitlab::` sources",
+            body
+        );
+    }
+
+    let (scheme, host, path) = match body.split_once("://") {
+        Some((scheme, rest)) => {
+            if scheme != "http" && scheme != "https" {
+                bail!(
+                    "Invalid GitLab reference `{}`: expected an http(s) URL",
+                    body
+                );
+            }
+            let (host, path) = rest.split_once('/').ok_or_else(|| {
+                simple_error::SimpleError::new(format!(
+                    "Invalid GitLab reference `{}`: expected a path after the host",
+                    body
+                ))
+            })?;
+            (scheme, host, path)
+        }
+        None => ("https", "gitlab.com", body),
+    };
+
+    let (path, detail) = match path.split_once('@') {
+        Some((path, detail)) => (path, Some(detail)),
+        None => (path, None),
+    };
+    if detail == Some("*release") {
+        bail!(
+            "Invalid GitLab reference `{}`: `@*release` is not supported for \
+             `gitlab::` sources",
+            body
+        );
+    }
+
+    let (path, subdir) = match path.split_once("/-/") {
+        Some((path, subdir)) => (path, Some(subdir.trim_matches('/').to_string())),
+        None => (path, None),
+    };
+
+    let path = path.trim_matches('/');
+    let (project_path, project) = path.rsplit_once('/').ok_or_else(|| {
+        simple_error::SimpleError::new(format!(
+            "Invalid GitLab reference `{}`, expected `<group>/<project>`",
+            path
+        ))
+    })?;
+    if project_path.is_empty() || project.is_empty() {
+        bail!(
+            "Invalid GitLab reference `{}`, expected `<group>/<project>`",
+            path
+        );
+    }
+
+    Ok(RemoteSource {
+        name_override,
+        git: format!("{}://{}/{}/{}.git", scheme, host, project_path, project),
+        branch: None,
+        tag: None,
+        rev: detail.map(|s| s.to_string()),
+        pr: None,
+        release: false,
         subdir,
     })
 }
@@ -333,5 +421,69 @@ mod tests {
     #[test]
     fn rejects_bad_pull_request_number() {
         assert!(parse_pkg_source("r-lib/crayon#not-a-number").is_err());
+    }
+
+    #[test]
+    fn gitlab_plain() {
+        let r = remote("gitlab::group/project");
+        assert_eq!(r.git, "https://gitlab.com/group/project.git");
+        assert_eq!(r.rev, None);
+        assert_eq!(r.pr, None);
+        assert!(!r.release);
+        assert_eq!(r.subdir, None);
+    }
+
+    #[test]
+    fn gitlab_subgroup() {
+        let r = remote("gitlab::group/subgroup/project");
+        assert_eq!(r.git, "https://gitlab.com/group/subgroup/project.git");
+    }
+
+    #[test]
+    fn gitlab_with_ref() {
+        let r = remote("gitlab::group/project@main");
+        assert_eq!(r.rev.as_deref(), Some("main"));
+    }
+
+    #[test]
+    fn gitlab_with_subdir() {
+        let r = remote("gitlab::group/project/-/subdir");
+        assert_eq!(r.git, "https://gitlab.com/group/project.git");
+        assert_eq!(r.subdir.as_deref(), Some("subdir"));
+    }
+
+    #[test]
+    fn gitlab_with_subdir_and_ref() {
+        let r = remote("gitlab::group/project/-/subdir@main");
+        assert_eq!(r.subdir.as_deref(), Some("subdir"));
+        assert_eq!(r.rev.as_deref(), Some("main"));
+    }
+
+    #[test]
+    fn gitlab_custom_host() {
+        let r = remote("gitlab::https://gitlab.example.com/group/project");
+        assert_eq!(r.git, "https://gitlab.example.com/group/project.git");
+    }
+
+    #[test]
+    fn bare_owner_repo_is_never_gitlab() {
+        // Unlike GitHub, GitLab has no bare-path auto-detection.
+        let r = remote("group/project");
+        assert_eq!(r.git, "https://github.com/group/project.git");
+    }
+
+    #[test]
+    fn gitlab_rejects_merge_request() {
+        assert!(parse_pkg_source("gitlab::group/project#41").is_err());
+    }
+
+    #[test]
+    fn gitlab_rejects_release() {
+        assert!(parse_pkg_source("gitlab::group/project@*release").is_err());
+    }
+
+    #[test]
+    fn gitlab_rejects_malformed_path() {
+        assert!(parse_pkg_source("gitlab::project").is_err());
     }
 }
