@@ -30,8 +30,6 @@ The project library defaults to `.rvenv/lib`, inside the project. Set the
 [configuration entry](config.qmd), to a directory to centralize every
 project's library under it instead, one subdirectory per project. `rig
 system dirs --library-root` reports the effective root, or that none is set.
-`--library` still wins outright when passed, for either a one-off location or
-a shared library across several projects.
 
 When the library is centralized, sync still leaves a symlink at `.rvenv/lib`
 pointing at the real location, so anything that expects a library there

@@ -1677,17 +1677,6 @@ pub fn rig_app() -> Command {
                 .long_about(HELP_PROJ_SYNC)
                 .display_order(0)
                 .arg(
-                    Arg::new("library")
-                        .help(
-                            "Library path where packages should be installed \
-                               (default: .rvenv/lib)",
-                        )
-                        .long("library")
-                        .short('l')
-                        .num_args(1)
-                        .required(false),
-                )
-                .arg(
                     Arg::new("no-install-r")
                         .help(
                             "Fail if the R version the lockfile needs is not installed,\n\
