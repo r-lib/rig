@@ -49,13 +49,12 @@ The package name is read from the fetched repository's own `DESCRIPTION`
 commit, not by version range: `rig proj add` resolves the reference to an
 exact commit right away, and `rproj.lock` records it.
 
-A private repository needs a credential: for GitHub, set `GITHUB_PAT` or
-`GITHUB_TOKEN`, or store a token with `git credential approve`; for any other
-git host, rig reads whatever the system git credential store (Keychain,
-Windows Credential Manager, `git credential-store`, etc.) has for that host.
-A host-specific env var, e.g. `GITHUB_PAT_GITHUB_COM` or
-`GITHUB_PAT_GITLAB_COM` (the same naming the R `gitcreds`/`usethis` packages
-use), takes priority over both.
+rig fetches a git/GitHub source with the system `git`, which must be
+installed and on `PATH`. A private repository authenticates exactly the way
+a plain `git clone` would on your machine: a configured credential helper
+(Keychain, Windows Credential Manager, `git credential-store`, etc.),
+`.netrc`, an SSH agent, or credentials already embedded in the URL. There is
+no separate rig-specific token setting.
 
 ## Version requirements
 
