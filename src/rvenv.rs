@@ -276,10 +276,33 @@ pub fn project_shim_package(root: &Path) -> PathBuf {
 /// `centralized-project-envs` feature leaves a `.venv` junction behind.
 pub fn link_library_compat_symlink(link_path: &Path, target: &Path) -> Result<(), Box<dyn Error>> {
     if link_path.exists() || link_path.is_symlink() {
-        if link_path.is_symlink() || link_path.is_file() {
-            fs::remove_file(link_path)?;
-        } else {
-            fs::remove_dir_all(link_path)?;
+        #[cfg(unix)]
+        {
+            // Unix symlinks -- to a file or a directory -- are always
+            // removed with `remove_file`; `remove_dir` on one fails with
+            // `ENOTDIR`.
+            if link_path.is_symlink() || link_path.is_file() {
+                fs::remove_file(link_path)?;
+            } else {
+                fs::remove_dir_all(link_path)?;
+            }
+        }
+        #[cfg(windows)]
+        {
+            // A Windows symlink to a directory has to go through
+            // `remove_dir` -- `remove_file` on it fails with "Access is
+            // denied" even though `is_symlink()` is true.
+            if link_path.is_symlink() {
+                if link_path.is_dir() {
+                    fs::remove_dir(link_path)?;
+                } else {
+                    fs::remove_file(link_path)?;
+                }
+            } else if link_path.is_file() {
+                fs::remove_file(link_path)?;
+            } else {
+                fs::remove_dir_all(link_path)?;
+            }
         }
     }
     if let Some(parent) = link_path.parent() {
