@@ -1,0 +1,119 @@
+---
+title: "Managing R packages"
+---
+
+`rig pkg` installs, removes and lists R packages in a library, and looks up
+package information, dependencies and dependency trees from the
+repositories, all without starting R.
+
+::: {.callout-note}
+## Experimental
+
+`rig pkg` is experimental. Its commands and output may still change.
+:::
+
+::: {.callout-note}
+## P3M only
+
+`rig pkg` commands currently only use P3M (Posit Public Package Manager)
+and ignore your configured repositories.
+:::
+
+`rig pkg` operates on packages, inside a library. It is a companion to two
+other command families:
+
+- [`rig library`](reference/library.qmd) manages the libraries themselves
+  (creating, listing and removing library directories, and choosing the
+  default one), not the packages inside them.
+- [`rig proj`](reference/proj.qmd) manages a project's dependencies through
+  a manifest and lockfile, resolving a consistent set of versions across
+  the whole project. Use it instead of `rig pkg install` when you want
+  reproducible, project-level dependencies.
+
+## Looking up packages
+
+`rig pkg available`, `rig pkg info`, `rig pkg deps` and `rig pkg tree`
+query the package repositories, not any installed library:
+
+```sh
+rig pkg available                 # every package, latest version, dep count
+rig pkg info cli                  # DESCRIPTION of the latest cli
+rig pkg info cli --versions       # every version ever published
+rig pkg info cli --readme         # the package's README
+rig pkg deps dplyr                # direct dependencies, with versions
+rig pkg deps dplyr --recursive    # the whole dependency closure
+rig pkg tree dplyr                # the same, as a visual tree
+rig pkg tree dplyr --why glue     # how does dplyr depend on glue
+```
+
+By default they only consider hard dependencies (`Depends`, `Imports`,
+`LinkingTo`); add `--dev` to include `Suggests` and `Enhances` as well.
+Every command also takes `--json` for machine-readable output.
+
+## Installing packages
+
+```sh
+rig pkg install cli glue
+```
+
+rig resolves the whole dependency tree before installing anything, so a
+package is only installed if everything it needs can be installed alongside
+it, at versions that work together. `--dry-run` runs the resolution and
+reports what rig would do, without installing anything.
+
+A few flags worth knowing:
+
+- `--reinstall` installs every package in the resolution, even ones already
+  up to date. Without it, rig does nothing if the requested packages and
+  their dependencies are already installed and up to date.
+- `--dev` also installs `Suggests` and `Enhances`. `--ignore-unavailable`
+  skips dev dependencies that are not available in the repositories,
+  instead of failing.
+- `--prefer-binary[=N]` trades a newer version for an older one that
+  already has a binary build, useful when compiling from source is
+  expensive.
+- Packages can also be installed from git, GitHub or GitLab, not just the
+  repositories; see [`rig pkg install`](reference/pkg.qmd#rig-pkg-install)
+  for the full syntax.
+
+## Listing and removing packages
+
+```sh
+rig pkg list                 # list packages in a library
+rig pkg remove cli glue      # remove package(s) from a library
+```
+
+Neither command starts R. `rig pkg remove` refuses to remove a base package
+(`base`, `stats`, `utils`, ...) unless `--force` is given, since R does not
+work without them. On the other hand it does not check whether another
+installed package still needs the one being removed.
+
+## Choosing a library
+
+By default `rig pkg install`, `rig pkg list` and `rig pkg remove` all
+operate on the default library of the default R version. Use `--library`
+(`-l`) to target another library by name or path, and `--r-version` (`-r`)
+to target a library of another R version:
+
+```sh
+rig pkg install --library myproject cli
+rig pkg install --library /usr/lib/R/site-library cli
+rig pkg list --r-version 4.4.1
+```
+
+See [`rig library`](reference/library.qmd) for how libraries are named and
+how the default one is chosen. In [admin mode](admin-vs-user-mode.qmd), the
+site and system libraries belong to the administrator, so installing into or
+removing from them needs `sudo` (an administrator account on Windows); your
+own user libraries never do.
+
+## See also
+
+- The [`rig pkg` reference](reference/pkg.qmd) for the full list of flags
+  and options of every subcommand.
+- The [`rig library` reference](reference/library.qmd) for managing library
+  directories.
+- The [`rig proj` reference](reference/proj.qmd) for project-level,
+  reproducible dependency management.
+- [Admin mode vs user mode](admin-vs-user-mode.qmd) for when installing or
+  removing a package needs elevated privileges.
