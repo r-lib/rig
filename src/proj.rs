@@ -42,9 +42,10 @@ use crate::rproj::{
     RprojLockTarget, RPROJ_LOCK_VERSION, RPROJ_MANIFEST_FILE,
 };
 use crate::rvenv::{
-    existing_targets, find_project_root, find_workspace_root, project_library,
-    project_shim_package, read_rvenv_cfg, rvenv_init, rvenv_sync, rvenv_sync_needed,
-    workspace_members, write_sync_stamp, RvenvCfg, RPROJ_LOCK_FILE, RVENV_CFG_FILE,
+    existing_targets, find_project_root, find_workspace_root, link_library_compat_symlink,
+    project_library, project_library_in_tree, project_shim_package, read_rvenv_cfg, rvenv_init,
+    rvenv_sync, rvenv_sync_needed, workspace_members, write_sync_stamp, RvenvCfg, RPROJ_LOCK_FILE,
+    RVENV_CFG_FILE,
 };
 use crate::solver::*;
 use crate::textfmt::{dcf_field_to_text, reflow};
@@ -3077,7 +3078,7 @@ pub(crate) fn proj_sync(
                 error!("{}", msg);
                 bail!("{}", msg);
             }
-            project_library(root)
+            project_library(root)?
         }
     };
 
@@ -3099,8 +3100,17 @@ pub(crate) fn proj_sync(
 
     // The project environment, as opposed to an arbitrary `--library`, also
     // owns the wrappers, the activation scripts and the sync stamp.
-    let in_project_library = library_path == project_library(root);
+    let in_project_library = library_path == project_library(root)?;
     if in_project_library {
+        // When the library is centralized, leave a compatibility symlink at
+        // its default in-project location, `.rvenv/lib`, pointing at the real
+        // (centralized) library -- mirroring uv's `.venv` junction for its
+        // own `centralized-project-envs` feature. Anything that still
+        // expects a real `.rvenv/lib` (manual inspection, other tools) keeps
+        // working; recreated on every sync like the rest of `.rvenv`.
+        if crate::utils::get_proj_library_root()?.is_some() {
+            link_library_compat_symlink(&project_library_in_tree(root), &library_path)?;
+        }
         // The base of the shared tools library, `__tools` alongside it (see
         // `RvenvCfg::tools_lib`). Resolved here, once, rather than by the
         // shim at R startup: `rig run`'s wrapper sets `R_LIBS_USER` to the
@@ -3129,7 +3139,7 @@ pub(crate) fn proj_sync(
                     old.r_arch,
                     cfg.r_minor,
                     cfg.r_arch,
-                    project_library(root).display()
+                    library_path.display()
                 );
                 OUTPUT.warn(&msg);
                 info!("{}", msg);

@@ -1,5 +1,12 @@
 # rig 0.10.0-beta2
 
+* `rig proj sync` can now centralize project package libraries outside the
+  project directory: set the `RIG_PROJ_LIBRARY_ROOT` environment variable or
+  the `proj-library-root` config key to a root directory, and each project
+  gets its own library under it, keyed by project name and location. A
+  compatibility symlink is left at the project's usual `.rvenv/lib`. `rig
+  system dirs --library-root` reports the effective root (#372).
+
 * `rig add --without-p3m` works correctly again (#369).
 
 * macOS user mode: `rig default` now sets the default R version correctly
