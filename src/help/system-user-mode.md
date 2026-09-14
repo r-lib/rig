@@ -32,3 +32,8 @@ Use `--keep-install` to leave the admin-mode R installations in place
 (skipping step 3), and `--keep-links` to leave the system-wide links in place
 (skipping step 4). With both, nothing outside your home directory is
 touched and no administrator account or `sudo` is needed.
+
+If you use Positron, it caches the list of R interpreters, so it may keep
+showing the old admin-mode installations and miss the new user-mode ones.
+Clear its interpreter cache, re-discover interpreters, and restart Positron
+to pick up the change.

@@ -173,6 +173,11 @@ and `--keep-links` to leave the admin-mode installations and/or links in place.
 With both `--keep-*` flags nothing outside your home directory is touched, so no
 elevated privileges are needed at all.
 
+If you use Positron, it caches the list of R interpreters, so it may keep
+showing the old admin-mode installations and miss the new user-mode ones.
+Clear its interpreter cache, re-discover interpreters, and restart Positron
+to pick up the change.
+
 To go back, set the mode to admin again (`rig config set mode=admin`) and
 reinstall the R versions you want.
 
