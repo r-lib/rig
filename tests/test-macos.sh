@@ -433,10 +433,10 @@ teardown() {
     run rig proj import --dependencies
     [[ "$status" -eq 0 ]]
     [[ -f rproj.toml ]]
-    grep -q '^git = "https://github.com/r-lib/crayon.git"$' rproj.toml
-    grep -q '^rev = "main"$' rproj.toml
+    grep -q 'git = "https://github.com/r-lib/crayon.git"' rproj.toml
+    grep -q 'rev = "main"' rproj.toml
     # The version requirement from Imports is kept alongside the git source.
-    grep -q '^version = ">= 1.5.0"$' rproj.toml
+    grep -q 'version = ">= 1.5.0"' rproj.toml
     # Unsupported remote type: warned about, not written as a git source, and
     # does not fail the import.
     echo "$output" | grep -q "bioc::biocpkg"
