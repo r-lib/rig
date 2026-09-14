@@ -20,8 +20,8 @@ use crate::common::{get_arch, get_default_r_version, get_platform, sc_get_list_d
 use crate::dcf::*;
 use crate::download::download_multiple_first_available_with_progress;
 use crate::install::{
-    install_packages, parse_linkingto, PackageInfo, REMOTE_GIT_FIELDS,
-    REMOTE_HASH_FIELD, REMOTE_LINKINGTO_FIELD, REMOTE_SUBDIR_FIELD, REMOTE_TYPE_FIELD,
+    install_packages, parse_linkingto, PackageInfo, REMOTE_GIT_FIELDS, REMOTE_HASH_FIELD,
+    REMOTE_LINKINGTO_FIELD, REMOTE_SUBDIR_FIELD, REMOTE_TYPE_FIELD,
 };
 use crate::library::get_library_path;
 use crate::output::OUTPUT;
@@ -3341,7 +3341,10 @@ fn fetch_git_lockfile_packages(
                     .get(crate::install::REMOTE_URL_FIELD)
                     .ok_or_else(|| SimpleError::new(format!("{} has no RemoteUrl", pkg.package)))?;
                 let refspec = pkg.metadata.get(crate::install::REMOTE_REF_FIELD).cloned();
-                let subdir = pkg.metadata.get(crate::install::REMOTE_SUBDIR_FIELD).cloned();
+                let subdir = pkg
+                    .metadata
+                    .get(crate::install::REMOTE_SUBDIR_FIELD)
+                    .cloned();
                 OUTPUT.status(&format!("Fetching {} from {}", pkg.package, url));
                 crate::pkgsource::git::fetch_git_checkout(
                     url,

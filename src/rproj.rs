@@ -3429,9 +3429,8 @@ mod tests {
         assert!(desc.contains("Imports:\n    tidytemplate\n"));
         assert!(desc.contains("Suggests:\n    jsonlite\n"));
         // Entries are sorted by package name, rebuilt as pak references.
-        assert!(desc.contains(
-            "Remotes:\n    jeroen/jsonlite@v1.8.0,\n    tidyverse/tidytemplate@main\n"
-        ));
+        assert!(desc
+            .contains("Remotes:\n    jeroen/jsonlite@v1.8.0,\n    tidyverse/tidytemplate@main\n"));
         // `Remotes:` comes after the dependency fields.
         assert!(desc.find("Suggests:").unwrap() < desc.find("Remotes:").unwrap());
     }
