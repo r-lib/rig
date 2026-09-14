@@ -16,7 +16,8 @@ remove them unless `--force` is also given.
 
 `--library` (`-l`) selects a non-default library. It takes either the name of a
 library of the R version, see [`rig library list`](library.qmd) , or the path of a library
-directory.
+directory. A library name is tried first, so prefix a relative path with `./`
+(or use an absolute path) if it happens to share a name with a library.
 
 `--r-version` (`-r`) lists the library of another R version, instead of the
 default one.

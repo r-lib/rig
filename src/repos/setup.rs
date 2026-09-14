@@ -135,33 +135,13 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
 
         add_repositories_comment(&mut repos, "start added by rig");
         for repo in config.iter() {
-            // In `Empty` mode nothing is enabled by default; only the explicitly
-            // whitelisted repos are activated.
-            let empty_mode = matches!(setup, ReposSetupArgs::Empty { .. });
-            let in_whitelist = match &setup {
-                ReposSetupArgs::Default {
-                    whitelist,
-                    blacklist,
-                } => {
-                    whitelist.contains(&repo.name.to_lowercase())
-                        && !blacklist.contains(&repo.name.to_lowercase())
-                }
-                ReposSetupArgs::Empty { whitelist } => {
-                    whitelist.contains(&repo.name.to_lowercase())
-                }
-            };
-
             for entry in repo.repos.iter() {
                 // An entry's `enabled` (if present) overrides the repo's. Whether
                 // a repo is enabled by default can depend on the installation's
                 // platform (e.g. P3M-manylinux is a default only on manylinux).
-                let enabled_default = if empty_mode {
-                    false
-                } else {
-                    let enabled = entry.enabled.as_ref().unwrap_or(&repo.enabled);
-                    enabled_by_default(enabled, &rdata_platform, &repo.name)
-                };
-                if !enabled_default && !in_whitelist {
+                let enabled = entry.enabled.as_ref().unwrap_or(&repo.enabled);
+                let enabled_default = enabled_by_default(enabled, &rdata_platform, &repo.name);
+                if !should_include_repo(&setup, &repo.name, enabled_default) {
                     continue;
                 }
                 if !should_activate_repo(repo, entry, &rdata)? {
@@ -267,6 +247,25 @@ fn enabled_by_default(enabled: &Enabled, rdata_platform: &str, ctx: &str) -> boo
     match enabled {
         Enabled::Always(b) => *b,
         Enabled::OnPlatforms { platforms } => platform_matches_any(platforms, rdata_platform, ctx),
+    }
+}
+
+// Whether `repo_name` should be added at all, given the whitelist/blacklist
+// setup and whether it's enabled by default. A blacklisted repo is always
+// excluded, even if it would otherwise be enabled by default.
+fn should_include_repo(setup: &ReposSetupArgs, repo_name: &str, enabled_default: bool) -> bool {
+    let repo_name = repo_name.to_lowercase();
+    match setup {
+        ReposSetupArgs::Default {
+            whitelist,
+            blacklist,
+        } => {
+            if blacklist.contains(&repo_name) {
+                return false;
+            }
+            enabled_default || whitelist.contains(&repo_name)
+        }
+        ReposSetupArgs::Empty { whitelist } => whitelist.contains(&repo_name),
     }
 }
 
@@ -461,8 +460,8 @@ fn get_r_data(ver: &str) -> Result<RData, Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        enabled_by_default, rdata_platform_string, should_activate_repo, validate_repos_in_setup,
-        RData,
+        enabled_by_default, rdata_platform_string, should_activate_repo, should_include_repo,
+        validate_repos_in_setup, RData,
     };
     use crate::repos::config::{Enabled, RepoEntry, Repository};
     use crate::repos::interpret_repos_args::ReposSetupArgs;
@@ -729,5 +728,65 @@ mod tests {
             &ubuntu_platform(),
             "P3M-manylinux"
         ));
+    }
+
+    // --- should_include_repo ---
+    // Regression tests for https://github.com/r-lib/rig/issues/369:
+    // a blacklisted repo (e.g. `--without-p3m`) must be excluded even when
+    // it is enabled by default.
+
+    #[test]
+    fn blacklisted_repo_excluded_even_if_enabled_by_default() {
+        let setup = ReposSetupArgs::Default {
+            whitelist: vec![],
+            blacklist: vec!["p3m".to_string()],
+        };
+        assert!(!should_include_repo(&setup, "P3M", true));
+    }
+
+    #[test]
+    fn blacklisted_repo_excluded_even_if_whitelisted() {
+        // whitelist + blacklist for the same repo: blacklist wins.
+        let setup = ReposSetupArgs::Default {
+            whitelist: vec!["p3m".to_string()],
+            blacklist: vec!["p3m".to_string()],
+        };
+        assert!(!should_include_repo(&setup, "P3M", false));
+    }
+
+    #[test]
+    fn non_blacklisted_repo_included_if_enabled_by_default() {
+        let setup = ReposSetupArgs::Default {
+            whitelist: vec![],
+            blacklist: vec!["p3m".to_string()],
+        };
+        assert!(should_include_repo(&setup, "CRAN", true));
+    }
+
+    #[test]
+    fn non_default_repo_included_if_whitelisted() {
+        let setup = ReposSetupArgs::Default {
+            whitelist: vec!["bioc".to_string()],
+            blacklist: vec![],
+        };
+        assert!(should_include_repo(&setup, "BioC", false));
+    }
+
+    #[test]
+    fn non_default_repo_excluded_if_not_whitelisted() {
+        let setup = ReposSetupArgs::Default {
+            whitelist: vec![],
+            blacklist: vec![],
+        };
+        assert!(!should_include_repo(&setup, "BioC", false));
+    }
+
+    #[test]
+    fn empty_mode_only_includes_whitelisted() {
+        let setup = ReposSetupArgs::Empty {
+            whitelist: vec!["cran".to_string()],
+        };
+        assert!(should_include_repo(&setup, "CRAN", true));
+        assert!(!should_include_repo(&setup, "P3M", true));
     }
 }

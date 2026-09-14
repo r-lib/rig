@@ -28,13 +28,12 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::time::Duration;
 
-use deb822_fast::Deb822;
 use log::debug;
 use serde_json::{Map, Value};
 use simple_error::bail;
 
 use crate::cache::get_cache_dir;
-use crate::dcf::{Package, PackageDependencies, RPackageVersion};
+use crate::dcf::{parse_dcf, Package, PackageDependencies, RPackageVersion};
 use crate::download::download_if_newer_;
 use crate::repos::cranlike_metadata::{
     allpackages_versions, archived_package, AllPackagesVersion, ArchivedPackage,
@@ -201,7 +200,7 @@ fn package_version(
 
 /// The dependencies declared by a DESCRIPTION, in one simplified list.
 fn parse_dependencies(raw_desc: &str) -> Result<PackageDependencies, Box<dyn Error>> {
-    let desc = Deb822::from_reader(raw_desc.as_bytes())?;
+    let desc = parse_dcf(raw_desc)?;
     match desc.into_iter().next() {
         Some(para) => Ok(Package::from_dcf_paragraph(&para)?.dependencies),
         None => bail!("Failed to parse the DESCRIPTION of the package."),
@@ -332,7 +331,7 @@ fn desc_version(raw_desc: &str) -> Option<String> {
 /// Parse a DESCRIPTION into a JSON object of field name to value. Field values
 /// keep their DCF line wrapping; the printer reflows the ones it shows.
 fn parse_description(raw_desc: &str) -> Result<Value, Box<dyn Error>> {
-    let desc = Deb822::from_reader(raw_desc.as_bytes())?;
+    let desc = parse_dcf(raw_desc)?;
     let para = match desc.into_iter().next() {
         Some(p) => p,
         None => bail!("Failed to parse the DESCRIPTION of the package."),
