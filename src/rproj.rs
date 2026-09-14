@@ -563,7 +563,7 @@ pub struct DepTable {
 
 /// A `[dependency-groups.<name>]` entry: package specs plus an optional
 /// `include-groups` list that pulls in other groups.
-#[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
 pub struct Group {
     #[serde(
         rename = "include-groups",
@@ -876,6 +876,131 @@ impl Rproj {
             }
         }
         None
+    }
+
+    /// Returns the table at `path` inside `doc` (e.g. `&["dependencies"]`,
+    /// `&["dependency-groups", "test"]`, `&["config", "testthat"]`),
+    /// creating any missing table along the way. A newly created table that
+    /// isn't the last path segment -- a grouping table like
+    /// `dependency-groups` or `config`, which only ever holds named
+    /// sub-tables -- is marked `set_implicit(true)` so it doesn't print its
+    /// own redundant header, matching how `toml::to_string_pretty` already
+    /// renders those tables.
+    fn doc_get_or_create_table<'a>(
+        doc: &'a mut toml_edit::DocumentMut,
+        path: &[&str],
+    ) -> &'a mut toml_edit::Table {
+        let mut table: &mut toml_edit::Table = doc.as_table_mut();
+        for (i, segment) in path.iter().enumerate() {
+            let is_new = !table.contains_key(segment);
+            let item = table
+                .entry(segment)
+                .or_insert(toml_edit::Item::Table(toml_edit::Table::new()));
+            table = item
+                .as_table_mut()
+                .expect("dependency/config table path segments are always tables");
+            if is_new && i + 1 < path.len() {
+                table.set_implicit(true);
+            }
+        }
+        table
+    }
+
+    /// Render a resolved [`Dependency`] the way [`Rproj::inline_dependencies`]
+    /// renders one when regenerating the whole file: a bare value for
+    /// `Version`, a one-line inline table for `Detailed`.
+    fn dependency_to_item(dep: &Dependency) -> Result<toml_edit::Item, Box<dyn Error>> {
+        match dep {
+            Dependency::Version(v) => Ok(toml_edit::value(v.clone())),
+            Dependency::Detailed(table) => {
+                let mut tmp: toml_edit::DocumentMut = toml::to_string(table)?.parse()?;
+                let mut inline = tmp.as_table_mut().clone().into_inline_table();
+                inline.decor_mut().clear();
+                for (mut k, v) in inline.iter_mut() {
+                    k.leaf_decor_mut().clear();
+                    v.decor_mut().clear();
+                }
+                Ok(toml_edit::value(inline))
+            }
+        }
+    }
+
+    /// Convert a scalar `[config.*]` value (string/int/bool; see
+    /// [`parse_config_value`]) into a `toml_edit::Item`.
+    fn config_value_to_item(value: &toml::Value) -> toml_edit::Item {
+        match value {
+            toml::Value::Integer(i) => toml_edit::value(*i),
+            toml::Value::Boolean(b) => toml_edit::value(*b),
+            toml::Value::String(s) => toml_edit::value(s.clone()),
+            other => toml_edit::value(other.to_string()),
+        }
+    }
+
+    /// Insert or update `name` in the document-level table at `path`
+    /// (`&["dependencies"]`, `&["dependency-groups", "test"]`, ...),
+    /// mirroring [`Rproj::add_dependency`]/[`Rproj::add_remote_dependency`]
+    /// on the ORIGINAL on-disk document, so any comment, blank-line
+    /// grouping, or unmodeled table elsewhere in the file survives. A
+    /// brand-new key is appended at the end of its table rather than
+    /// inserted alphabetically (matching `BTreeMap` order would require
+    /// moving existing keys, risking a misattached comment).
+    pub fn doc_set_dependency(
+        doc: &mut toml_edit::DocumentMut,
+        path: &[&str],
+        name: &str,
+        value: &Dependency,
+    ) -> Result<(), Box<dyn Error>> {
+        let item = Self::dependency_to_item(value)?;
+        Self::doc_get_or_create_table(doc, path).insert(name, item);
+        Ok(())
+    }
+
+    /// Insert or update `key` in `[config.<group>]` of the ORIGINAL on-disk
+    /// document, mirroring [`Rproj::merge_config`].
+    pub fn doc_set_config(
+        doc: &mut toml_edit::DocumentMut,
+        group: &str,
+        key: &str,
+        value: &toml::Value,
+    ) {
+        let item = Self::config_value_to_item(value);
+        Self::doc_get_or_create_table(doc, &["config", group]).insert(key, item);
+    }
+
+    /// Remove `name` from whichever of `[dependencies]`,
+    /// `[linking-dependencies]`, or any `[dependency-groups.*]` table has it
+    /// in the ORIGINAL on-disk document, mirroring
+    /// [`Rproj::remove_dependency`]. Returns whether it was found and
+    /// removed. A comment directly above the removed key is that key's
+    /// leading decor in `toml_edit` and is removed along with it.
+    pub fn doc_remove_dependency(doc: &mut toml_edit::DocumentMut, name: &str) -> bool {
+        let root = doc.as_table_mut();
+        if let Some(deps) = root.get_mut("dependencies").and_then(|t| t.as_table_mut()) {
+            if deps.remove(name).is_some() {
+                return true;
+            }
+        }
+        if let Some(deps) = root
+            .get_mut("linking-dependencies")
+            .and_then(|t| t.as_table_mut())
+        {
+            if deps.remove(name).is_some() {
+                return true;
+            }
+        }
+        if let Some(groups) = root
+            .get_mut("dependency-groups")
+            .and_then(|t| t.as_table_mut())
+        {
+            for (_, group) in groups.iter_mut() {
+                if let Some(group) = group.as_table_mut() {
+                    if group.remove(name).is_some() {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
     }
 
     /// Every dependency, anywhere in the manifest (`[dependencies]`,
@@ -3015,6 +3140,143 @@ mod tests {
     fn remove_dependency_of_a_name_not_listed_anywhere_is_none() {
         let mut m = Rproj::minimal("mypkg");
         assert_eq!(m.remove_dependency("nosuchpkg"), None);
+    }
+
+    #[test]
+    fn doc_set_dependency_preserves_comments_and_unmodeled_table() {
+        let text = r#"[project]
+name = "mypkg"
+version = "0.1.0"
+
+[dependencies]
+# a comment about R
+R = ">= 4.1"
+
+[tool.foo]
+bar = 1
+"#;
+        let mut doc: toml_edit::DocumentMut = text.parse().unwrap();
+        Rproj::doc_set_dependency(&mut doc, &["dependencies"], "dplyr", &dep("^1.1.0")).unwrap();
+        let out = doc.to_string();
+        assert!(out.contains("# a comment about R"), "{}", out);
+        assert!(out.contains("[tool.foo]"), "{}", out);
+        assert!(out.contains("bar = 1"), "{}", out);
+        assert!(out.contains("dplyr = \"^1.1.0\""), "{}", out);
+    }
+
+    #[test]
+    fn doc_set_dependency_creates_missing_dependencies_table() {
+        let text = "[project]\nname = \"mypkg\"\nversion = \"0.1.0\"\n";
+        let mut doc: toml_edit::DocumentMut = text.parse().unwrap();
+        Rproj::doc_set_dependency(&mut doc, &["dependencies"], "R", &dep(">= 4.1")).unwrap();
+        let out = doc.to_string();
+        assert!(out.contains("[dependencies]"), "{}", out);
+        assert!(out.contains("R = \">= 4.1\""), "{}", out);
+    }
+
+    #[test]
+    fn doc_set_dependency_remote_renders_inline_table() {
+        let text = "[project]\nname = \"mypkg\"\nversion = \"0.1.0\"\n\n[dependencies]\n";
+        let mut doc: toml_edit::DocumentMut = text.parse().unwrap();
+        let value = Dependency::Detailed(Box::new(DepTable {
+            git: Some("https://github.com/gaborcsardi/ts".to_string()),
+            ..Default::default()
+        }));
+        Rproj::doc_set_dependency(&mut doc, &["dependencies"], "ts", &value).unwrap();
+        let out = doc.to_string();
+        assert!(
+            out.contains("ts = { git = \"https://github.com/gaborcsardi/ts\" }"),
+            "{}",
+            out
+        );
+        assert!(!out.contains("[dependencies.ts]"), "{}", out);
+    }
+
+    #[test]
+    fn doc_set_dependency_creates_missing_dependency_group() {
+        let text = "[project]\nname = \"mypkg\"\nversion = \"0.1.0\"\n";
+        let mut doc: toml_edit::DocumentMut = text.parse().unwrap();
+        Rproj::doc_set_dependency(
+            &mut doc,
+            &["dependency-groups", "test"],
+            "testthat",
+            &dep(">= 3.0"),
+        )
+        .unwrap();
+        let out = doc.to_string();
+        assert!(out.contains("[dependency-groups.test]"), "{}", out);
+        assert!(!out.contains("[dependency-groups]\n"), "{}", out);
+        assert!(out.contains("testthat = \">= 3.0\""), "{}", out);
+    }
+
+    #[test]
+    fn doc_remove_dependency_preserves_comments_and_unmodeled_table() {
+        let text = r#"[project]
+name = "mypkg"
+version = "0.1.0"
+
+[dependencies]
+# about dplyr
+dplyr = "^1.1.0"
+# about R
+R = ">= 4.1"
+
+[tool.foo]
+bar = 1
+"#;
+        let mut doc: toml_edit::DocumentMut = text.parse().unwrap();
+        assert!(Rproj::doc_remove_dependency(&mut doc, "dplyr"));
+        let out = doc.to_string();
+        assert!(!out.contains("dplyr"), "{}", out);
+        assert!(!out.contains("# about dplyr"), "{}", out);
+        assert!(out.contains("# about R"), "{}", out);
+        assert!(out.contains("R = \">= 4.1\""), "{}", out);
+        assert!(out.contains("[tool.foo]"), "{}", out);
+        assert!(out.contains("bar = 1"), "{}", out);
+    }
+
+    #[test]
+    fn doc_remove_dependency_finds_dependency_in_linking_and_group_tables() {
+        let text = r#"[project]
+name = "mypkg"
+version = "0.1.0"
+
+[linking-dependencies]
+Rcpp = ">= 1.0"
+
+[dependency-groups.website]
+pkgdown = "*"
+"#;
+        let mut doc: toml_edit::DocumentMut = text.parse().unwrap();
+        assert!(Rproj::doc_remove_dependency(&mut doc, "Rcpp"));
+        assert!(Rproj::doc_remove_dependency(&mut doc, "pkgdown"));
+        let out = doc.to_string();
+        assert!(!out.contains("Rcpp"), "{}", out);
+        assert!(!out.contains("pkgdown"), "{}", out);
+        assert!(out.contains("[project]"), "{}", out);
+    }
+
+    #[test]
+    fn doc_set_config_preserves_comments_and_unmodeled_table() {
+        let text = r#"[project]
+name = "mypkg"
+version = "0.1.0"
+
+[config.testthat]
+# existing setting
+parallel = true
+
+[config.other]
+foo = "bar"
+"#;
+        let mut doc: toml_edit::DocumentMut = text.parse().unwrap();
+        Rproj::doc_set_config(&mut doc, "testthat", "edition", &toml::Value::Integer(3));
+        let out = doc.to_string();
+        assert!(out.contains("# existing setting"), "{}", out);
+        assert!(out.contains("parallel = true"), "{}", out);
+        assert!(out.contains("edition = 3"), "{}", out);
+        assert!(out.contains("[config.other]"), "{}", out);
+        assert!(out.contains("foo = \"bar\""), "{}", out);
     }
 
     #[test]

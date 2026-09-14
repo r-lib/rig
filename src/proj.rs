@@ -49,6 +49,7 @@ use crate::rvenv::{
 use crate::solver::*;
 use crate::textfmt::{dcf_field_to_text, reflow};
 use crate::utils::create_parent_dir_if_needed;
+use toml_edit::DocumentMut;
 
 #[cfg(target_os = "macos")]
 use crate::macos::{get_r_binary, sc_add};
@@ -313,10 +314,15 @@ fn sc_proj_import(
     let pkg = Package::from_dcf_paragraph(&paragraph)?;
     let dep_count = pkg.dependencies.dependencies.len();
 
-    let mut manifest = if dependencies_only {
-        if path.exists() {
-            toml::from_str::<Rproj>(&fs::read_to_string(path)?)?
-        } else {
+    let existing_text = if dependencies_only && path.exists() {
+        Some(fs::read_to_string(path)?)
+    } else {
+        None
+    };
+
+    let mut manifest = match &existing_text {
+        Some(text) => toml::from_str::<Rproj>(text)?,
+        None if dependencies_only => {
             OUTPUT.status(&format!(
                 "{} does not exist, creating a new one",
                 RPROJ_MANIFEST_FILE
@@ -324,9 +330,29 @@ fn sc_proj_import(
             info!("{} does not exist, creating a new one", RPROJ_MANIFEST_FILE);
             Rproj::minimal(&pkg.name)
         }
-    } else {
-        Rproj::minimal(&pkg.name)
+        None => Rproj::minimal(&pkg.name),
     };
+
+    // `--dependencies` merges into an EXISTING manifest, so every
+    // dependency/config edit below is also mirrored onto the ORIGINAL
+    // document (parsed from `existing_text`, not regenerated from
+    // `manifest`), so that comments, blank-line grouping, and unmodeled
+    // tables/keys survive the merge. A full import has no prior file to
+    // preserve. The "before" snapshots let the diff after merging apply only
+    // what actually changed, without having to intercept every individual
+    // `merge_description`/`merge_config_needs`/`merge_config`/`Remotes` call.
+    let mut original_doc: Option<toml_edit::DocumentMut> = None;
+    let mut before_dependencies = BTreeMap::new();
+    let mut before_linking = BTreeMap::new();
+    let mut before_groups = BTreeMap::new();
+    let mut before_config = BTreeMap::new();
+    if let Some(text) = existing_text.as_deref() {
+        original_doc = Some(text.parse()?);
+        before_dependencies = manifest.dependencies.clone();
+        before_linking = manifest.linking_dependencies.clone();
+        before_groups = manifest.dependency_groups.clone();
+        before_config = manifest.config.clone();
+    }
 
     if !dependencies_only {
         manifest.project.version = pkg.version.to_string();
@@ -457,7 +483,40 @@ fn sc_proj_import(
         })
         .collect();
     manifest.merge_config(&config);
-    fs::write(path, manifest.to_toml()?)?;
+
+    if let Some(doc) = original_doc.as_mut() {
+        for (name, dep) in manifest.dependencies.iter() {
+            if before_dependencies.get(name) != Some(dep) {
+                Rproj::doc_set_dependency(doc, &["dependencies"], name, dep)?;
+            }
+        }
+        for (name, dep) in manifest.linking_dependencies.iter() {
+            if before_linking.get(name) != Some(dep) {
+                Rproj::doc_set_dependency(doc, &["linking-dependencies"], name, dep)?;
+            }
+        }
+        for (group_name, group) in manifest.dependency_groups.iter() {
+            let before_group = before_groups.get(group_name);
+            for (name, dep) in group.dependencies.iter() {
+                if before_group.and_then(|g| g.dependencies.get(name)) != Some(dep) {
+                    Rproj::doc_set_dependency(doc, &["dependency-groups", group_name], name, dep)?;
+                }
+            }
+        }
+        for (group_name, table) in manifest.config.iter() {
+            let before_table = before_config.get(group_name);
+            for (key, value) in table.iter() {
+                if before_table.and_then(|t| t.get(key)) != Some(value) {
+                    Rproj::doc_set_config(doc, group_name, key, value);
+                }
+            }
+        }
+    }
+
+    match original_doc {
+        Some(doc) => fs::write(path, doc.to_string())?,
+        None => fs::write(path, manifest.to_toml()?)?,
+    }
 
     let groups = match needs.len() {
         0 => "".to_string(),
@@ -583,6 +642,15 @@ fn sc_proj_add(
     let original = fs::read_to_string(&path).ok();
     let mut manifest = proj_read_manifest(&root)?;
 
+    // Every edit below is also mirrored onto the ORIGINAL document (parsed
+    // from `original`, not regenerated from `manifest`), so that a write
+    // through this path preserves comments, blank-line grouping, and any
+    // table/key the `Rproj` schema doesn't model. There is no original text
+    // to preserve when the manifest file doesn't exist yet, but
+    // `proj_read_manifest` above already requires it to, so this is
+    // defensive, not expected to be `None` in practice.
+    let mut original_doc: Option<DocumentMut> = original.as_deref().map(str::parse).transpose()?;
+
     // Parse (and, for a git/GitHub reference, fetch) every specification
     // before changing anything, so that a typo -- or an unreachable repo --
     // in the last one does not leave the earlier ones added.
@@ -633,9 +701,30 @@ fn sc_proj_add(
                 )
             }
         });
+
+        if let Some(doc) = original_doc.as_mut() {
+            let path: &[&str] = if dev {
+                &["dependency-groups", "test"]
+            } else {
+                &["dependencies"]
+            };
+            let value = if dev {
+                manifest
+                    .dependency_groups
+                    .get("test")
+                    .and_then(|group| group.dependencies.get(name))
+            } else {
+                manifest.dependencies.get(name)
+            }
+            .expect("just inserted by add_dependency/add_remote_dependency above");
+            Rproj::doc_set_dependency(doc, path, name, value)?;
+        }
     }
 
-    fs::write(&path, manifest.to_toml()?)?;
+    match original_doc {
+        Some(doc) => fs::write(&path, doc.to_string())?,
+        None => fs::write(&path, manifest.to_toml()?)?,
+    }
     for msg in messages.iter() {
         OUTPUT.success(msg);
         info!("{}", msg);
@@ -687,6 +776,10 @@ fn sc_proj_remove(
     let original = fs::read_to_string(&path).ok();
     let mut manifest = proj_read_manifest(&root)?;
 
+    // Mirrored onto the ORIGINAL document below, same reasoning as
+    // `sc_proj_add`.
+    let mut original_doc: Option<DocumentMut> = original.as_deref().map(str::parse).transpose()?;
+
     // A name named more than once is removed once; a name that is not a
     // dependency anywhere stops the whole command before anything is
     // removed, the same all-or-none behavior as `rig pkg remove`.
@@ -725,10 +818,16 @@ fn sc_proj_remove(
     let mut messages: Vec<String> = Vec::new();
     for name in names.iter() {
         manifest.remove_dependency(name);
+        if let Some(doc) = original_doc.as_mut() {
+            Rproj::doc_remove_dependency(doc, name);
+        }
         messages.push(format!("Removed {} from {}", name, RPROJ_MANIFEST_FILE));
     }
 
-    fs::write(&path, manifest.to_toml()?)?;
+    match original_doc {
+        Some(doc) => fs::write(&path, doc.to_string())?,
+        None => fs::write(&path, manifest.to_toml()?)?,
+    }
     for msg in messages.iter() {
         OUTPUT.success(msg);
         info!("{}", msg);
