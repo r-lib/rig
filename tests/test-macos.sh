@@ -426,7 +426,7 @@ teardown() {
 	Package: impremotes
 	Version: 1.0.0
 	Title: A Test Package
-	Imports: crayon
+	Imports: crayon (>= 1.5.0)
 	Remotes: r-lib/crayon@main, bioc::biocpkg
 	EOF
 
@@ -435,6 +435,8 @@ teardown() {
     [[ -f rproj.toml ]]
     grep -q '^git = "https://github.com/r-lib/crayon.git"$' rproj.toml
     grep -q '^rev = "main"$' rproj.toml
+    # The version requirement from Imports is kept alongside the git source.
+    grep -q '^version = ">= 1.5.0"$' rproj.toml
     # Unsupported remote type: warned about, not written as a git source, and
     # does not fail the import.
     echo "$output" | grep -q "bioc::biocpkg"

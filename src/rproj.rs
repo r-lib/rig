@@ -812,13 +812,15 @@ impl Rproj {
     }
 
     /// Add (or replace) a git/GitHub-sourced dependency: a [`DepTable`] with
-    /// `git` set and no `version`, pinned by commit rather than by version
-    /// range. Mirrors [`Rproj::add_dependency`]'s dev/group placement.
+    /// `git` set, pinned by commit rather than by version range. Mirrors
+    /// [`Rproj::add_dependency`]'s dev/group placement.
     ///
-    /// If the manifest already lists this package as `Dependency::Detailed`
-    /// (e.g. `merge_description` set `attach = true` for a `Depends` entry),
-    /// its `attach`/`enhances`/`vignette-builder` flags are kept -- switching
-    /// a dependency's source shouldn't reset those.
+    /// If the manifest already lists this package, its version requirement
+    /// (e.g. `Imports: pkgcache (>= 2.2.0)`) and, for a `Dependency::Detailed`
+    /// entry (e.g. `merge_description` set `attach = true` for a `Depends`
+    /// entry), its `attach`/`enhances`/`vignette-builder` flags are kept --
+    /// switching a dependency's source shouldn't drop its version constraint
+    /// or reset those flags.
     pub fn add_remote_dependency(&mut self, name: &str, mut table: DepTable, dev: bool) {
         let group = if dev {
             &mut self
@@ -829,10 +831,17 @@ impl Rproj {
         } else {
             &mut self.dependencies
         };
-        if let Some(Dependency::Detailed(old)) = group.get(name) {
-            table.attach = old.attach;
-            table.enhances = old.enhances;
-            table.vignette_builder = old.vignette_builder;
+        match group.get(name) {
+            Some(Dependency::Detailed(old)) => {
+                table.version = old.version.clone();
+                table.attach = old.attach;
+                table.enhances = old.enhances;
+                table.vignette_builder = old.vignette_builder;
+            }
+            Some(Dependency::Version(old)) => {
+                table.version = Some(old.clone());
+            }
+            None => {}
         }
         group.insert(name.to_string(), Dependency::Detailed(Box::new(table)));
     }
@@ -1046,7 +1055,11 @@ impl Rproj {
             )?;
         }
         if let Some(description) = &self.project.description {
-            writeln!(out, "{}", fold_dcf_prose("Description", description, 75))?;
+            writeln!(
+                out,
+                "{}",
+                crate::textfmt::text_to_dcf_field("Description", description)
+            )?;
         }
         if let Some(license) = &self.project.license {
             writeln!(out, "License: {}", license)?;
@@ -1174,6 +1187,27 @@ impl Rproj {
             .and_then(|t| t.as_table_mut())
         {
             Self::inline_dependencies(deps);
+        }
+        if let (Some(description), Some(project)) = (
+            self.project.description.as_deref(),
+            doc.get_mut("project").and_then(|t| t.as_table_mut()),
+        ) {
+            // A multi-paragraph description needs real line breaks in the
+            // file, not `toml`'s default `"line1\nline2"` escaping; a TOML
+            // literal string (`'''...'''`) renders those verbatim. Skip the
+            // (very unlikely) case where the text itself contains `'''`,
+            // which can't be represented that way, and fall back to the
+            // default escaped single-line string.
+            if description.contains('\n') && !description.contains("'''") {
+                // A newline right after the opening delimiter is trimmed by
+                // the TOML parser, but nothing trims one before the closing
+                // delimiter, so the closing `'''` goes straight after the
+                // text to avoid adding a trailing blank line.
+                let literal = format!("'''\n{}'''", description);
+                if let Ok(value) = literal.parse::<toml_edit::Value>() {
+                    project.insert("description", toml_edit::Item::Value(value));
+                }
+            }
         }
 
         Ok(doc.to_string())
@@ -3121,11 +3155,10 @@ mod tests {
     }
 
     #[test]
-    fn to_description_wraps_prose_fields_at_75_columns() {
+    fn to_description_wraps_title_at_75_columns() {
         let mut m = Rproj::minimal("mypkg");
         let words: Vec<String> = (0..40).map(|i| format!("word{}", i)).collect();
         m.project.title = Some(words.join(" "));
-        m.project.description = Some(words.join(" "));
         let (desc, _) = m.to_description().unwrap();
 
         for line in desc.lines() {
@@ -3135,17 +3168,48 @@ mod tests {
         // indent towards the continuation lines'.
         let prose: Vec<&str> = desc
             .lines()
-            .skip_while(|l| !l.starts_with("Description:"))
-            .take_while(|l| l.starts_with("Description:") || l.starts_with("    "))
+            .skip_while(|l| !l.starts_with("Title:"))
+            .take_while(|l| l.starts_with("Title:") || l.starts_with("    "))
             .collect();
         assert!(prose.len() > 1);
-        assert!(prose[0].starts_with("Description: word0 "));
+        assert!(prose[0].starts_with("Title: word0 "));
         // Reflowing the folded field gives the value back unchanged.
         let joined = prose.join(" ");
         assert_eq!(
-            crate::textfmt::reflow(joined.trim_start_matches("Description:")),
+            crate::textfmt::reflow(joined.trim_start_matches("Title:")),
             words.join(" ")
         );
+    }
+
+    #[test]
+    fn to_description_keeps_description_line_breaks_literal() {
+        let mut m = Rproj::minimal("mypkg");
+        m.project.description = Some("First paragraph.\n\nSecond paragraph.".to_string());
+        let (desc, _) = m.to_description().unwrap();
+        assert!(desc.contains("Description: First paragraph.\n    .\n    Second paragraph.\n"));
+    }
+
+    #[test]
+    fn to_toml_writes_multiline_description_as_literal_string() {
+        let mut m = Rproj::minimal("mypkg");
+        m.project.description = Some("First paragraph.\n\nSecond paragraph.".to_string());
+        let toml_text = m.to_toml().unwrap();
+        assert!(
+            toml_text.contains("'''\nFirst paragraph.\n\nSecond paragraph.'''"),
+            "{}",
+            toml_text
+        );
+
+        let round_tripped: Rproj = toml::from_str(&toml_text).unwrap();
+        assert_eq!(round_tripped.project.description, m.project.description);
+    }
+
+    #[test]
+    fn to_toml_leaves_single_line_description_as_a_plain_string() {
+        let mut m = Rproj::minimal("mypkg");
+        m.project.description = Some("Does things.".to_string());
+        let toml_text = m.to_toml().unwrap();
+        assert!(toml_text.contains("description = \"Does things.\""));
     }
 
     fn author(name: &str, roles: &[&str]) -> Author {

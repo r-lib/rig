@@ -47,7 +47,7 @@ use crate::rvenv::{
     workspace_members, write_sync_stamp, RvenvCfg, RPROJ_LOCK_FILE, RVENV_CFG_FILE,
 };
 use crate::solver::*;
-use crate::textfmt::reflow;
+use crate::textfmt::{dcf_field_to_text, reflow};
 use crate::utils::create_parent_dir_if_needed;
 
 #[cfg(target_os = "macos")]
@@ -337,7 +337,7 @@ fn sc_proj_import(
                 .unwrap_or_else(|| "package".to_string()),
         );
         manifest.project.title = paragraph.get("Title").map(reflow);
-        manifest.project.description = paragraph.get("Description").map(reflow);
+        manifest.project.description = paragraph.get("Description").map(dcf_field_to_text);
         manifest.project.license = paragraph.get("License").map(reflow);
         manifest.project.authors = match paragraph.get("Authors@R") {
             Some(raw) => Author::from_authors_r(raw),
