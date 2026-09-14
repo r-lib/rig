@@ -47,7 +47,7 @@ rig pkg tree dplyr --why glue     # how does dplyr depend on glue
 ```
 
 By default they only consider hard dependencies (`Depends`, `Imports`,
-`LinkingTo`); add `--dev` to include `Suggests` and `Enhances` as well.
+`LinkingTo`). Add `--dev` to include `Suggests` and `Enhances` as well.
 Every command also takes `--json` for machine-readable output.
 
 ## Installing packages
@@ -73,7 +73,7 @@ A few flags worth knowing:
   already has a binary build, useful when compiling from source is
   expensive.
 - Packages can also be installed from git, GitHub or GitLab, not just the
-  repositories; see [`rig pkg install`](reference/pkg.qmd#rig-pkg-install)
+  repositories. See [`rig pkg install`](reference/pkg.qmd#rig-pkg-install)
   for the full syntax.
 
 ## Listing and removing packages
@@ -104,7 +104,7 @@ rig pkg list --r-version 4.4.1
 See [`rig library`](reference/library.qmd) for how libraries are named and
 how the default one is chosen. In [admin mode](admin-vs-user-mode.qmd), the
 site and system libraries belong to the administrator, so installing into or
-removing from them needs `sudo` (an administrator account on Windows); your
+removing from them needs `sudo` (an administrator account on Windows), your
 own user libraries never do.
 
 ## See also

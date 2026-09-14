@@ -1,0 +1,165 @@
+---
+title: "R projects"
+---
+
+`rig proj` manages an R project: a directory with an `rproj.toml` manifest
+that declares the R and package dependencies the project needs, resolved to
+an exact, reproducible set of versions in `rproj.lock`.
+
+::: {.callout-note}
+## Experimental
+
+`rig proj` is experimental. Its commands, manifest format and lock file
+format may still change.
+:::
+
+::: {.callout-note}
+## P3M only
+
+`rig proj` commands currently only use P3M (Posit Public Package Manager)
+and ignore the repositories configured in the manifest and also the ones configured via [`rig repos`](reference/repos.qmd).
+:::
+
+`rig proj` is a companion to [`rig pkg`](pkg-guide.qmd): use `rig pkg
+install` for one-off packages in a library, and `rig proj` when you want a
+project's dependencies to be declared, locked and reproducible on every
+machine that syncs it.
+
+## Quick start
+
+```sh
+rig proj init           # write rproj.toml (and project boilerplate)
+rig proj lock           # resolve dependencies and write rproj.lock
+rig proj sync           # synchronize the project library (runs lock as needed)
+rig proj add dplyr cli  # add dependencies to rproj.toml (runs lock and sync)
+rig run                 # start R, configured for the project (runs lock and sync)
+```
+
+`rig proj init` sets up a new project in the current directory. If you
+already have a `DESCRIPTION` file or an `renv.lock` file, use [`rig proj
+import`](reference/proj.qmd#rig-proj-import) or [`rig proj renv
+import`](reference/proj.qmd#rig-proj-renv-import) instead, to start from
+that.
+
+`rig proj lock` resolves the dependencies declared in `rproj.toml` and
+writes them to `rproj.lock`.
+
+`rig proj sync` synchronizes the project library with `rproj.lock`
+(runs lock as needed unless you specify `--frozen`).
+
+`rig proj add` and `rig proj remove` edit `rproj.toml` and keep `rproj.lock`
+and the project library in sync with it.
+
+`rig run`, which starts R configured for a project, calls `rig proj lock`
+and `rig proj sync` itself as needed, so day to day you mostly need
+`add`/`remove` and `run`.
+
+## The manifest and the lock file
+
+`rproj.toml` is the manifest you and `rig proj add`/`remove` edit: project
+metadata plus dependency tables (`[dependencies]`,
+`[linking-dependencies]`, `[dependency-groups.*]`). A dependency can carry a
+version requirement (`^1.2.3`, `~1.2.3`, `>= 1.0, < 2.0`, or `*` for any
+version) or come straight from git, GitHub or GitLab. See [`rig proj
+add`](reference/proj.qmd#rig-proj-add) for the full syntax.
+
+`rproj.lock` is written by `rig proj lock`, which reads `rproj.toml` and
+resolves it with rig's built-in solver into an exact, reproducible set of
+package versions, each with the URL it downloads from. It never runs R.
+Both files are meant to be committed, `rig proj add`/`remove` update both
+for you.
+
+## Syncing the project environment
+
+`rig proj sync` installs the versions `rproj.lock` resolved into the
+project library, and writes the rest of the project's virtual environment
+under `.rvenv`: `.rvenv/bin/R` and `.rvenv/bin/Rscript` wrapper scripts,
+shell activation scripts, and `.rvenv/rvenv.cfg`. It installs the R version
+the lock file names first, if it is not already installed.
+
+`.rvenv` is entirely machine-specific and generated. `rig proj init` adds
+it to `.gitignore` for you, and it can be deleted and rebuilt at any time.
+`rproj.toml` and `rproj.lock` need to be committed for a fresh clone of
+the project to work, together with the boilerplate files `.Renviron` and
+`.rvenvlib`.
+
+Projects also get a `tools` package library automatically added to every R
+session in the project. Install development tools you use but the project
+itself does not depend on, e.g. `devtools`, `usethis`, `roxygen2`, there
+with `rig pkg install -l tools <pkgs>`, so they don't end up in
+`rproj.toml`.
+
+## Inspecting a project
+
+```sh
+rig proj status   # is the project library in sync with rproj.lock?
+rig proj deps     # flat list of dependencies from rproj.toml
+rig proj tree     # dependency tree, with --why <pkg> to invert it
+```
+
+`rig proj status`, `rig proj deps` and `rig proj tree` are all read-only:
+they never resolve, download or change anything. `rig proj status` is the
+one to reach for after pulling changes to `rproj.toml`/`rproj.lock`, to see
+whether `rig proj sync` needs to run again.
+
+## Interoperating with DESCRIPTION and renv
+
+A project's dependencies can move back and forth between `rproj.toml` and
+the two formats most R packages and projects already use:
+
+- [`rig proj import`](reference/proj.qmd#rig-proj-import) creates
+  `rproj.toml` from a `DESCRIPTION` file. [`rig proj
+  export`](reference/proj.qmd#rig-proj-export) writes one back.
+- [`rig proj renv import`](reference/proj.qmd#rig-proj-renv-import) creates
+  `rproj.toml` from an [renv](https://rstudio.github.io/renv/) `renv.lock`
+  file. [`rig proj renv export`](reference/proj.qmd#rig-proj-renv-export)
+  writes one back, resolved for a single R version and platform.
+
+::: {.callout-note}
+## Conversions are not 100%
+
+Converting between `rproj.toml`, `DESCRIPTION` and `renv.lock` may not
+preserve all information, especially if you edited `rproj.toml` manually.
+:::
+
+## Named scripts
+
+A project can give its own scripts a name, in `[[bin]]` tables of
+`rproj.toml`:
+
+```toml
+[[bin]]
+name = "report"
+path = "scripts/report.R"
+description = "Build the report"
+```
+
+`rig run report` then runs `scripts/report.R` in the project's environment
+(the R version and package library `rproj.lock` resolved), from anywhere
+inside the project. Extra arguments, e.g. `rig run report --format pdf`,
+are passed on to the script for `commandArgs(TRUE)` to pick up.
+
+`rig run --list` lists a project's declared scripts.
+
+A declared name wins over a directory of the same name. Use `./name` to run
+an app in a directory whose name a script has taken instead. See
+[`rig run`](reference/run.qmd) for the full rules on telling a script name
+apart from a path.
+
+## Workspaces
+
+A manifest with a `[workspace]` table is the root of a workspace: several
+projects or packages, listed by path pattern in `members`, that share one
+`rproj.lock` and one package library. `rig proj lock` from the root or from
+any member resolves every member together, so shared dependencies land on
+the same version everywhere. `[workspace.dependencies]` lets members
+inherit a shared version requirement by name instead of repeating it. See
+[`rig proj lock`](reference/proj.qmd#rig-proj-lock) for the details.
+
+## See also
+
+- The [`rig proj` reference](reference/proj.qmd) for the full list of flags
+  and options of every subcommand.
+- [`rig run`](reference/run.qmd), which starts R configured for a project.
+- [Managing R packages](pkg-guide.qmd) for installing packages outside of a
+  project.
