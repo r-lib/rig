@@ -391,6 +391,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../pkg-guide.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Managing R packages</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../proj-guide.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">R projects</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../macos-app.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">macOS menu bar app</span></a>
   </div>
@@ -762,7 +774,7 @@ rig proj add 'git::https://gitlab.com/example/pkg.git@main'</code></pre>
 </section>
 <section id="files" class="level3">
 <h3 class="anchored" data-anchor-id="files">Files</h3>
-<p>Only <code>rproj.toml</code> is edited, and it is rewritten in full, so any comments or custom formatting in it are not preserved.</p>
+<p>Only <code>rproj.toml</code> is edited. Changes are merged into the existing file, so comments and custom formatting are preserved where possible.</p>
 <p>If resolving the dependencies fails (most often because a package name is misspelled, and no repository has such a package) <code>rproj.toml</code> is restored to what it was, so a failed <code>rig proj add</code> does not leave the project with a dependency that cannot be installed.</p>
 </section>
 <section id="usage" class="level3">
@@ -1251,7 +1263,7 @@ Run in user mode (overrides RIG_MODE and config)
 </section>
 <section id="files-3" class="level3">
 <h3 class="anchored" data-anchor-id="files-3">Files</h3>
-<p>Only <code>rproj.toml</code> is edited, and it is rewritten in full, so any comments or custom formatting in it are not preserved.</p>
+<p>Only <code>rproj.toml</code> is edited. Changes are merged into the existing file, so comments and custom formatting are preserved where possible.</p>
 <p>If resolving the remaining dependencies fails, <code>rproj.toml</code> is restored to what it was, so a failed <code>rig proj remove</code> does not leave the project with a manifest that cannot be locked.</p>
 </section>
 <section id="usage-6" class="level3">
@@ -1370,7 +1382,7 @@ Run in user mode (overrides RIG_MODE and config)
 </section>
 <section id="the---dependencies-option" class="level4">
 <h4 class="anchored" data-anchor-id="the---dependencies-option">The <code>--dependencies</code> option</h4>
-<p><code>--dependencies</code> does not require <code>rproj.toml</code> to be missing: if it exists, its dependencies are merged into it (importing a package already listed overwrites its entry with the version requirement from <code>renv.lock</code>); if it does not exist, a minimal manifest is created first. Because <code>rproj.toml</code> is rewritten in full, any comments or custom formatting in an existing file are not preserved.</p>
+<p><code>--dependencies</code> does not require <code>rproj.toml</code> to be missing: if it exists, its dependencies are merged into it (importing a package already listed overwrites its entry with the version requirement from <code>renv.lock</code>), preserving comments and custom formatting where possible; if it does not exist, a minimal manifest is created first.</p>
 </section>
 <section id="usage-8" class="level4">
 <h4 class="anchored" data-anchor-id="usage-8">Usage</h4>
