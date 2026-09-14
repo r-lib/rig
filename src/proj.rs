@@ -123,7 +123,7 @@ fn sc_proj_init(
 
     let manifest = Rproj::minimal_for_r(&name, &rver)?;
     let manifest_path = root.join(RPROJ_MANIFEST_FILE);
-    fs::write(&manifest_path, toml::to_string_pretty(&manifest)?)?;
+    fs::write(&manifest_path, manifest.to_toml()?)?;
 
     let mut created = vec![manifest_path];
     created.extend(rvenv_init(&root)?);
@@ -457,7 +457,7 @@ fn sc_proj_import(
         })
         .collect();
     manifest.merge_config(&config);
-    fs::write(path, toml::to_string_pretty(&manifest)?)?;
+    fs::write(path, manifest.to_toml()?)?;
 
     let groups = match needs.len() {
         0 => "".to_string(),
@@ -635,7 +635,7 @@ fn sc_proj_add(
         });
     }
 
-    fs::write(&path, toml::to_string_pretty(&manifest)?)?;
+    fs::write(&path, manifest.to_toml()?)?;
     for msg in messages.iter() {
         OUTPUT.success(msg);
         info!("{}", msg);
@@ -728,7 +728,7 @@ fn sc_proj_remove(
         messages.push(format!("Removed {} from {}", name, RPROJ_MANIFEST_FILE));
     }
 
-    fs::write(&path, toml::to_string_pretty(&manifest)?)?;
+    fs::write(&path, manifest.to_toml()?)?;
     for msg in messages.iter() {
         OUTPUT.success(msg);
         info!("{}", msg);
@@ -3880,11 +3880,7 @@ mod tests {
     /// workspace member.
     fn write_manifest(dir: &Path, manifest: &Rproj) {
         fs::create_dir_all(dir).unwrap();
-        fs::write(
-            dir.join(RPROJ_MANIFEST_FILE),
-            toml::to_string_pretty(manifest).unwrap(),
-        )
-        .unwrap();
+        fs::write(dir.join(RPROJ_MANIFEST_FILE), manifest.to_toml().unwrap()).unwrap();
     }
 
     /// A workspace of two members, `a` and `b`, under `root`: `a` depends on

@@ -1122,6 +1122,81 @@ impl Rproj {
 
         Ok((out, dropped))
     }
+
+    /// Render the manifest as the TOML text of `Rproj.toml`.
+    ///
+    /// A dependency with extra fields (`git`, `path`, ...) is a `DepTable`,
+    /// which the plain serializer writes as its own `[dependencies.pkg]`
+    /// section. Writing it as an inline table instead keeps one dependency to
+    /// one line, the same trick already used for `metadata` in
+    /// [`RprojLock::to_toml`].
+    pub fn to_toml(&self) -> Result<String, Box<dyn Error>> {
+        let mut doc: toml_edit::DocumentMut = toml::to_string_pretty(self)?.parse()?;
+
+        if let Some(deps) = doc.get_mut("dependencies").and_then(|t| t.as_table_mut()) {
+            Self::inline_dependencies(deps);
+        }
+        if let Some(deps) = doc
+            .get_mut("linking-dependencies")
+            .and_then(|t| t.as_table_mut())
+        {
+            Self::inline_dependencies(deps);
+        }
+        if let Some(groups) = doc
+            .get_mut("optional-dependencies")
+            .and_then(|t| t.as_table_mut())
+        {
+            for (_, group) in groups.iter_mut() {
+                if let Some(group) = group.as_table_mut() {
+                    Self::inline_dependencies(group);
+                }
+            }
+        }
+        if let Some(groups) = doc
+            .get_mut("dependency-groups")
+            .and_then(|t| t.as_table_mut())
+        {
+            for (_, group) in groups.iter_mut() {
+                if let Some(group) = group.as_table_mut() {
+                    Self::inline_dependencies(group);
+                }
+            }
+        }
+        if let Some(deps) = doc
+            .get_mut("workspace")
+            .and_then(|t| t.as_table_mut())
+            .and_then(|t| t.get_mut("dependencies"))
+            .and_then(|t| t.as_table_mut())
+        {
+            Self::inline_dependencies(deps);
+        }
+
+        Ok(doc.to_string())
+    }
+
+    /// Turn every package entry of `table` that serialized as a full
+    /// `[table.pkg]` section into an inline table.
+    fn inline_dependencies(table: &mut toml_edit::Table) {
+        let keys: Vec<String> = table
+            .iter()
+            .filter(|(_, item)| item.is_table())
+            .map(|(key, _)| key.to_string())
+            .collect();
+        for key in keys {
+            let Some(toml_edit::Item::Table(dep)) = table.remove(&key) else {
+                continue;
+            };
+            let mut dep = dep.into_inline_table();
+            // `into_inline_table()` keeps the decorations of the section the
+            // table came from, i.e. the blank line before its header.
+            dep.decor_mut().clear();
+            for (mut k, v) in dep.iter_mut() {
+                k.leaf_decor_mut().clear();
+                v.decor_mut().clear();
+            }
+            table.insert(&key, toml_edit::value(dep));
+        }
+    }
 }
 
 /// Format `Authors@R`'s value: one `person(...)` call per line when there is
