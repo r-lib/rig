@@ -1,4 +1,5 @@
 use futures::future;
+use regex::Regex;
 use std::error::Error;
 
 use clap::ArgMatches;
@@ -41,9 +42,22 @@ pub fn get_resolve_for(args: &ArgMatches, platform: &str) -> Result<Rversion, Bo
             ppm: false,
             ppmurl: None,
         })
+    } else if !is_valid_version_string(str) {
+        let msg = format!(
+            "Unknown value \"{}\". Accepted values: version numbers, \"devel\", \"next\", \"release\", \"oldrel/n\", or a URL.",
+            str
+        );
+        OUTPUT.error(&msg);
+        error!("{}", msg);
+        bail!(msg)
     } else {
         Ok(resolve_versions(eps, platform, &arch)?[0].to_owned())
     }
+}
+
+fn is_valid_version_string(str: &str) -> bool {
+    let re = Regex::new(r"^(devel|next|release|oldrel(/\d+)?|\d+(\.\d+){0,2})$").unwrap();
+    re.is_match(str)
 }
 
 #[tokio::main]
