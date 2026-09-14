@@ -69,20 +69,12 @@ fn init_sparse_repo(
 
 /// Fetch `refspec` (or `HEAD`, the default branch tip, if `None`) into a repo
 /// already `init_sparse_repo`-ed at `dest`, check it out, and return the
-/// resolved commit sha. `partial`, when set, adds `--filter=blob:none` to the
-/// fetch, so only blobs the sparse-checkout actually selects are downloaded.
-fn fetch_and_checkout(
-    dest: &Path,
-    refspec: Option<&str>,
-    partial: bool,
-) -> Result<String, Box<dyn Error>> {
+/// resolved commit sha. No `--filter=blob:none`: the sparse-checkout already
+/// narrows the fetch to a handful of blobs, so a filtered fetch just defers
+/// them to a second network round trip at `checkout` instead of saving one.
+fn fetch_and_checkout(dest: &Path, refspec: Option<&str>) -> Result<String, Box<dyn Error>> {
     let want = refspec.unwrap_or("HEAD");
-    let mut fetch_args = vec!["fetch", "--depth", "1"];
-    if partial {
-        fetch_args.push("--filter=blob:none");
-    }
-    fetch_args.extend(["origin", want]);
-    run_git(dest, &fetch_args)?;
+    run_git(dest, &["fetch", "--depth", "1", "origin", want])?;
     run_git(dest, &["checkout", "--quiet", "FETCH_HEAD"])?;
     run_git(dest, &["rev-parse", "FETCH_HEAD"])
 }
@@ -106,7 +98,7 @@ pub fn fetch_git_description(
         None => "DESCRIPTION".to_string(),
     };
     init_sparse_repo(url, dest, Some((false, &[&description_path])))?;
-    let sha = fetch_and_checkout(dest, refspec, true).map_err(|err| {
+    let sha = fetch_and_checkout(dest, refspec).map_err(|err| {
         simple_error::SimpleError::new(format!(
             "Cannot fetch {}{}: {}",
             url,
@@ -143,7 +135,7 @@ pub fn fetch_git_checkout(
     let sparse: Option<(bool, &[&str])> = subdir.map(|_| (true, paths.as_slice()));
 
     init_sparse_repo(url, dest, sparse)?;
-    fetch_and_checkout(dest, refspec, false).map_err(|err| {
+    fetch_and_checkout(dest, refspec).map_err(|err| {
         simple_error::SimpleError::new(format!(
             "Cannot fetch {}{}: {}",
             url,
