@@ -19,7 +19,6 @@ mod built;
 mod cache;
 mod common;
 mod config;
-mod credentials;
 mod dcf;
 mod download;
 mod escalate;

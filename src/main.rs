@@ -42,7 +42,6 @@ mod cache;
 mod cache_cmd;
 mod common;
 mod config;
-mod credentials;
 mod dcf;
 mod dirs;
 mod download;

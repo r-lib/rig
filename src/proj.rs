@@ -21,7 +21,7 @@ use crate::common::{get_arch, get_default_r_version, get_platform, sc_get_list_d
 use crate::dcf::*;
 use crate::download::download_multiple_first_available_with_progress;
 use crate::install::{
-    install_packages, parse_linkingto, unpack_package, PackageInfo, REMOTE_GIT_FIELDS,
+    install_packages, parse_linkingto, PackageInfo, REMOTE_GIT_FIELDS,
     REMOTE_HASH_FIELD, REMOTE_LINKINGTO_FIELD, REMOTE_SUBDIR_FIELD, REMOTE_TYPE_FIELD,
 };
 use crate::library::get_library_path;
@@ -731,7 +731,17 @@ fn read_description_paragraph(
         error!("Cannot read {}: {}", input, e);
         e
     })?;
-    let desc = Deb822::from_reader(df)?;
+    parse_description_paragraph(df)
+}
+
+/// Parse a single-paragraph DCF document (e.g. a `DESCRIPTION` file's
+/// content) from any [`std::io::Read`], the shared body behind
+/// [`read_description_paragraph`] (path-based) and a git/GitHub dependency's
+/// fetched content (in-memory, via [`fetch_and_read_git_package`]).
+fn parse_description_paragraph<R: std::io::Read>(
+    reader: R,
+) -> Result<deb822_fast::Paragraph, Box<dyn Error>> {
+    let desc = Deb822::from_reader(reader)?;
 
     if desc.is_empty() {
         OUTPUT.error("Empty DESCRIPTION file");
@@ -1370,90 +1380,79 @@ pub(crate) fn dep_table_from_remote(r: &crate::pkgsource::RemoteSource) -> DepTa
     }
 }
 
-/// Fetch a git/GitHub dependency's content into a scratch directory, read its
-/// `DESCRIPTION`, and return the parsed package, its provenance (for the
-/// solver's git-source side table), and its raw `Remotes:` field (empty if it
-/// has none).
+/// A github.com URL's `owner`/`repo`, if `git_url` is one.
+fn github_owner_repo(git_url: &str) -> Option<(&str, &str)> {
+    let path_part = git_url.strip_prefix("https://github.com/")?;
+    let path_part = path_part.trim_end_matches(".git");
+    path_part.split_once('/')
+}
+
+/// Fetch a git/GitHub dependency's `DESCRIPTION`, and return the parsed
+/// package, its provenance (for the solver's git-source side table), and its
+/// raw `Remotes:` field (empty if it has none).
 ///
-/// A `github.com` URL is fetched as a `codeload.github.com` tarball (see
-/// [`crate::pkgsource::github`]); any other host is cloned with `gix` (see
-/// [`crate::pkgsource::git`]).
+/// Only `DESCRIPTION` is ever downloaded (a sparse, partial-clone fetch, see
+/// [`crate::pkgsource::git::fetch_git_description`]) -- resolving a
+/// dependency needs nothing else from the repository. `table`'s `pr`/
+/// `release`/`rev`/`branch`/`tag` fields (in that priority order) are
+/// resolved to a single refspec to fetch; `pr`/`release` only make sense for
+/// a `github.com` URL (mirroring `RemoteSource`'s doc comments).
 pub(crate) fn fetch_and_read_git_package(
     git_url: &str,
     table: &DepTable,
 ) -> Result<(Package, GitSourceInfo, String), Box<dyn Error>> {
-    let tmp = tempfile::tempdir()?;
+    let owner_repo = github_owner_repo(git_url);
 
-    let (pkg_dir, git_source) = if let Some(path_part) = git_url.strip_prefix("https://github.com/")
-    {
-        let path_part = path_part.trim_end_matches(".git");
-        let (owner, repo) = path_part
-            .split_once('/')
-            .ok_or_else(|| SimpleError::new(format!("Invalid GitHub URL `{}`", git_url)))?;
+    if (table.pr.is_some() || table.release == Some(true)) && owner_repo.is_none() {
+        bail!(
+            "`{}` is not a github.com URL, `pr`/`release` are only supported for GitHub sources",
+            git_url
+        );
+    }
 
-        use crate::pkgsource::github::GithubDetail;
-        let detail = if let Some(pr) = table.pr {
-            GithubDetail::PullRequest(pr)
-        } else if table.release == Some(true) {
-            GithubDetail::Release
-        } else if let Some(rev) = &table.rev {
-            GithubDetail::Ref(rev)
-        } else if let Some(branch) = &table.branch {
-            GithubDetail::Ref(branch)
-        } else if let Some(tag) = &table.tag {
-            GithubDetail::Ref(tag)
-        } else {
-            GithubDetail::Default
-        };
-        let resolved = crate::pkgsource::github::resolve_github_ref(owner, repo, &detail)?;
+    let refspec = if let Some(pr) = table.pr {
+        Some(format!("refs/pull/{}/head", pr))
+    } else if table.release == Some(true) {
+        let (owner, repo) = owner_repo.expect("checked above");
+        Some(crate::pkgsource::git::resolve_release_tag(owner, repo)?)
+    } else {
+        table
+            .rev
+            .clone()
+            .or_else(|| table.branch.clone())
+            .or_else(|| table.tag.clone())
+    };
 
-        let archive = tmp.path().join("archive.tar.gz");
-        crate::pkgsource::github::download_tarball(owner, repo, &resolved.sha, &archive)?;
-        let extract_dir = tmp.path().join("extracted");
-        crate::install::unpack_package(&archive, &extract_dir)?;
-        let repo_dir = crate::install::single_subdir(&extract_dir)?;
-        let pkg_dir = match &table.subdir {
-            Some(s) => repo_dir.join(s),
-            None => repo_dir,
-        };
-        let source = GitSourceInfo {
+    let (description, sha) = crate::pkgsource::git::fetch_git_description(
+        git_url,
+        refspec.as_deref(),
+        table.subdir.as_deref(),
+    )?;
+
+    let git_source = match owner_repo {
+        Some((owner, repo)) => GitSourceInfo {
             remote_type: "github",
             url: git_url.to_string(),
             host: Some("github.com".to_string()),
             repo: Some(format!("{}/{}", owner, repo)),
             username: Some(owner.to_string()),
             subdir: table.subdir.clone(),
-            ref_: Some(resolved.resolved_ref),
-            sha: resolved.sha,
-        };
-        (pkg_dir, source)
-    } else {
-        let commitish = table
-            .rev
-            .as_deref()
-            .or(table.branch.as_deref())
-            .or(table.tag.as_deref());
-        let checkout_dir = tmp.path().join("checkout");
-        let sha = crate::pkgsource::git::fetch_git_checkout(git_url, commitish, &checkout_dir)?;
-        let pkg_dir = match &table.subdir {
-            Some(s) => checkout_dir.join(s),
-            None => checkout_dir,
-        };
-        let source = GitSourceInfo {
+            ref_: refspec.clone(),
+            sha,
+        },
+        None => GitSourceInfo {
             remote_type: "git",
             url: git_url.to_string(),
             host: None,
             repo: None,
             username: None,
             subdir: table.subdir.clone(),
-            ref_: commitish.map(|s| s.to_string()),
+            ref_: refspec.clone(),
             sha,
-        };
-        (pkg_dir, source)
+        },
     };
 
-    let description_path = pkg_dir.join("DESCRIPTION");
-    let paragraph = read_description_paragraph(&description_path.to_string_lossy(), true)?;
+    let paragraph = parse_description_paragraph(description.as_bytes())?;
     let pkg = Package::from_dcf_paragraph(&paragraph)?;
     let remotes = paragraph
         .get("Remotes")
@@ -3258,10 +3257,13 @@ pub(crate) fn download_lockfile_packages(
 }
 
 /// Fetch every git/GitHub package in `packages` into its cache directory: a
-/// GitHub source is a tarball, downloaded then unpacked; any other `git::`
-/// source is cloned with `gix`. Both are skipped entirely when the target
-/// directory already exists -- the target is keyed by the resolved commit
-/// sha, so an existing one is always the right content.
+/// shallow (`--depth 1`), sparse-checkout-scoped `git` fetch (see
+/// [`crate::pkgsource::git::fetch_git_checkout`]), reusing the `RemoteUrl`/
+/// `RemoteRef`/`RemoteSubdir` recorded at lock time -- a GitHub and a
+/// non-GitHub `git::` source are fetched the exact same way. Skipped
+/// entirely when the target directory already exists -- the target is keyed
+/// by the resolved commit sha, so an existing one is always the right
+/// content.
 fn fetch_git_lockfile_packages(
     packages: &[&RprojLockPackage],
     cache_dir: &Path,
@@ -3279,34 +3281,20 @@ fn fetch_git_lockfile_packages(
         create_parent_dir_if_needed(&target_dir)?;
 
         match pkg.metadata.get(REMOTE_TYPE_FIELD).map(|s| s.as_str()) {
-            Some("github") => {
-                let url = pkg.sources.first().ok_or_else(|| {
-                    SimpleError::new(format!("{} has no download URL", pkg.package))
-                })?;
-                OUTPUT.status(&format!("Fetching {} from {}", pkg.package, url));
-                let tmp = tempfile::tempdir()?;
-                let archive = tmp.path().join("archive.tar.gz");
-                crate::download::download_file(&reqwest::Client::new(), url, archive.as_os_str())?;
-                // The tarball has one top-level directory (`<repo>-<sha>`), not the
-                // package itself, the same as an ordinary `codeload.github.com`
-                // download always does -- flatten it into `target_dir`, so its
-                // `DESCRIPTION` ends up at the path `lockfile_package_info` expects.
-                unpack_package(&archive, &target_dir)?;
-                let repo_dir = crate::install::single_subdir(&target_dir)?;
-                for entry in fs::read_dir(&repo_dir)? {
-                    let entry = entry?;
-                    fs::rename(entry.path(), target_dir.join(entry.file_name()))?;
-                }
-                fs::remove_dir(&repo_dir)?;
-            }
-            Some("git") => {
+            Some("github") | Some("git") => {
                 let url = pkg
                     .metadata
                     .get(crate::install::REMOTE_URL_FIELD)
                     .ok_or_else(|| SimpleError::new(format!("{} has no RemoteUrl", pkg.package)))?;
-                let commitish = pkg.metadata.get(crate::install::REMOTE_REF_FIELD).cloned();
-                OUTPUT.status(&format!("Cloning {} from {}", pkg.package, url));
-                crate::pkgsource::git::fetch_git_checkout(url, commitish.as_deref(), &target_dir)?;
+                let refspec = pkg.metadata.get(crate::install::REMOTE_REF_FIELD).cloned();
+                let subdir = pkg.metadata.get(crate::install::REMOTE_SUBDIR_FIELD).cloned();
+                OUTPUT.status(&format!("Fetching {} from {}", pkg.package, url));
+                crate::pkgsource::git::fetch_git_checkout(
+                    url,
+                    refspec.as_deref(),
+                    subdir.as_deref(),
+                    &target_dir,
+                )?;
             }
             other => bail!(
                 "{} has an unknown RemoteType `{}`",

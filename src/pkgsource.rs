@@ -16,7 +16,6 @@ use std::error::Error;
 use simple_error::bail;
 
 pub mod git;
-pub mod github;
 
 /// A parsed, not yet fetched, package source. `Cran` means "not a
 /// git/github reference at all", so the caller can fall back to the existing
