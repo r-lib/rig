@@ -29,7 +29,6 @@ replace them.
 
 `--dependencies` does not require `rproj.toml` to be missing: if it exists, its
 dependencies are merged into it (importing a package already listed
-overwrites its entry with the version requirement from `renv.lock`); if it
-does not exist, a minimal manifest is created first. Because `rproj.toml` is
-rewritten in full, any comments or custom formatting in an existing file
-are not preserved.
+overwrites its entry with the version requirement from `renv.lock`), preserving
+comments and custom formatting where possible; if it does not exist, a minimal
+manifest is created first.
