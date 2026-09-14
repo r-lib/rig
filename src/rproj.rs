@@ -900,6 +900,35 @@ impl Rproj {
         out
     }
 
+    /// The git/GitHub-sourced dependencies that end up in a DESCRIPTION
+    /// dependency field (`Depends`/`Imports`/`LinkingTo`/`Suggests`/
+    /// `Enhances`), for [`Rproj::to_description`]'s `Remotes:` field. Scoped
+    /// the same way as [`Rproj::to_dep_version_specs`] -- `[dependencies]`,
+    /// `[linking-dependencies]`, and the `test`/`enhances` dependency
+    /// groups -- unlike [`Rproj::git_dependencies`], which also sweeps
+    /// arbitrary `Config/Needs/*` groups that already carry their own pak-ref
+    /// entries and must not duplicate into `Remotes:`.
+    fn description_git_dependencies(&self) -> Vec<(String, DepTable)> {
+        let mut out = vec![];
+        let tables = std::iter::once(&self.dependencies)
+            .chain(std::iter::once(&self.linking_dependencies))
+            .chain(DESCRIPTION_DEP_GROUPS.iter().filter_map(|group_name| {
+                self.dependency_groups
+                    .get(*group_name)
+                    .map(|g| &g.dependencies)
+            }));
+        for table in tables {
+            for (name, dep) in table.iter() {
+                if let Dependency::Detailed(t) = dep {
+                    if t.git.is_some() {
+                        out.push((name.clone(), (**t).clone()));
+                    }
+                }
+            }
+        }
+        out
+    }
+
     /// The manifest's dependencies as the solver's [`PackageDependencies`], the
     /// inverse of [`Rproj::merge_description`]: `[dependencies]` becomes
     /// `Depends` (entries marked `attach = true`, and `R` itself) or `Imports`,
@@ -1099,6 +1128,16 @@ impl Rproj {
                 })
                 .collect();
             writeln!(out, "{}:{}", dep_type, fold_dcf_list(&items))?;
+        }
+
+        let mut git_deps = self.description_git_dependencies();
+        if !git_deps.is_empty() {
+            git_deps.sort_by(|a, b| a.0.cmp(&b.0));
+            let items: Vec<String> = git_deps
+                .iter()
+                .map(|(name, table)| dep_table_to_pak_ref(name, table))
+                .collect();
+            writeln!(out, "Remotes:{}", fold_dcf_list(&items))?;
         }
 
         for (group_name, group) in self.dependency_groups.iter() {
@@ -3351,6 +3390,52 @@ mod tests {
         assert!(desc.contains("Config/Needs/website:\n    pkgdown,\n    tidyverse/tidytemplate\n"));
         // Dependency fields come first, `Config/Needs/*` after them.
         assert!(desc.find("Suggests:").unwrap() < desc.find("Config/Needs/").unwrap());
+    }
+
+    #[test]
+    fn to_description_writes_remotes_for_git_sourced_dependencies() {
+        let mut m = Rproj::minimal("mypkg");
+        m.add_remote_dependency(
+            "tidytemplate",
+            DepTable {
+                git: Some("https://github.com/tidyverse/tidytemplate".to_string()),
+                branch: Some("main".to_string()),
+                ..Default::default()
+            },
+            false,
+        );
+        m.add_remote_dependency(
+            "jsonlite",
+            DepTable {
+                git: Some("https://github.com/jeroen/jsonlite".to_string()),
+                rev: Some("v1.8.0".to_string()),
+                ..Default::default()
+            },
+            true,
+        );
+
+        let (desc, dropped) = m.to_description().unwrap();
+        assert!(dropped.is_empty());
+        assert!(desc.contains("Imports:\n    tidytemplate\n"));
+        assert!(desc.contains("Suggests:\n    jsonlite\n"));
+        // Entries are sorted by package name, rebuilt as pak references.
+        assert!(desc.contains(
+            "Remotes:\n    jeroen/jsonlite@v1.8.0,\n    tidyverse/tidytemplate@main\n"
+        ));
+        // `Remotes:` comes after the dependency fields.
+        assert!(desc.find("Suggests:").unwrap() < desc.find("Remotes:").unwrap());
+    }
+
+    #[test]
+    fn to_description_omits_remotes_for_config_needs_git_dependencies() {
+        let mut m = Rproj::minimal("mypkg");
+        m.merge_config_needs(&needs(&[("website", "tidyverse/tidytemplate")]));
+
+        let (desc, _) = m.to_description().unwrap();
+        // The `Config/Needs/website` entry already carries the pak
+        // reference itself; it must not also produce a `Remotes:` field.
+        assert!(!desc.contains("Remotes:"));
+        assert!(desc.contains("Config/Needs/website:\n    tidyverse/tidytemplate\n"));
     }
 
     #[test]
