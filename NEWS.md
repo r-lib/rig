@@ -1,4 +1,4 @@
-# rig 0.10.0-beta2
+# rig 0.10.0-beta3
 
 ## Web site
 
@@ -36,7 +36,7 @@
 
 * New and redesigned `rig proj` commands to manage isolated R projects and
   virtual environments: `rig proj init`, `rig proj import`, `rig proj add`,
-  `rig proj remove`, `rig proj lock`, `rig proj sync`.
+  `rig proj remove`, `rig proj lock`, `rig proj sync`, `rig proj status`.
 
 * New `rig proj tree` shows the dependency closure of a project as a tree.
 
@@ -70,7 +70,12 @@
 
 ## Other new features
 
-* New `rig ppm` command queries Posit Package Manager.
+* New `rig cache` command to inspect and manage rig's download and build
+  caches. rig now reflinks or hardlinks packages from the cache when
+  possible, instead of copying them, to save disk space and time.
+
+* New `rig ppm` command queries Posit Package Manager. New `rig ppm
+  build-log` shows the build log of a package on Posit Package Manager.
 
 * New `rig repos status` checks the configured package repositories.
 
