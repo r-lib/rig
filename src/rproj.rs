@@ -1071,7 +1071,9 @@ impl Rproj {
 
         writeln!(out, "Package: {}", self.project.name)?;
         let type_ = self.project.type_.as_deref().unwrap_or("package");
-        writeln!(out, "Type: {}", title_case(type_))?;
+        if !type_.eq_ignore_ascii_case("package") {
+            writeln!(out, "Type: {}", title_case(type_))?;
+        }
         if let Some(title) = &self.project.title {
             writeln!(out, "{}", fold_dcf_prose("Title", title, 75))?;
         }
@@ -3191,6 +3193,14 @@ mod tests {
         assert!(!desc.contains("URL:"));
         assert!(!desc.contains("BugReports:"));
         assert!(desc.contains("Depends:\n    R (>= 4.1)\n"));
+    }
+
+    #[test]
+    fn to_description_omits_type_for_package_projects() {
+        let mut m = Rproj::minimal("mypkg");
+        m.project.type_ = Some("package".to_string());
+        let (desc, _) = m.to_description().unwrap();
+        assert!(!desc.contains("Type:"));
     }
 
     #[test]
