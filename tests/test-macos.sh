@@ -418,6 +418,29 @@ teardown() {
     [[ ! -e .Renviron ]]
 }
 
+@test "proj import remotes" {
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf impremotes && mkdir impremotes && cd impremotes
+
+    cat > DESCRIPTION <<-EOF
+	Package: impremotes
+	Version: 1.0.0
+	Title: A Test Package
+	Imports: crayon
+	Remotes: r-lib/crayon@main, bioc::biocpkg
+	EOF
+
+    run rig proj import --dependencies
+    [[ "$status" -eq 0 ]]
+    [[ -f rproj.toml ]]
+    grep -q '^git = "https://github.com/r-lib/crayon.git"$' rproj.toml
+    grep -q '^rev = "main"$' rproj.toml
+    # Unsupported remote type: warned about, not written as a git source, and
+    # does not fail the import.
+    echo "$output" | grep -q "bioc::biocpkg"
+    ! grep -q 'biocpkg' rproj.toml
+}
+
 @test "proj add" {
     cd "$BATS_TEST_TMPDIR"
     rm -rf addproj && mkdir addproj && cd addproj

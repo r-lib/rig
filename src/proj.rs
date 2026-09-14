@@ -251,7 +251,7 @@ fn resolve_release_r_version(args: &ArgMatches) -> Option<String> {
 /// the `[description]` escape hatch. `Config/*` fields are excluded
 /// separately, since they always go to `[config.*]` / dependency groups
 /// instead.
-const KNOWN_DESCRIPTION_FIELDS: [&str; 15] = [
+const KNOWN_DESCRIPTION_FIELDS: [&str; 16] = [
     "Package",
     "Version",
     "Type",
@@ -267,6 +267,7 @@ const KNOWN_DESCRIPTION_FIELDS: [&str; 15] = [
     "LinkingTo",
     "Suggests",
     "Enhances",
+    "Remotes",
 ];
 
 /// Import a `DESCRIPTION` file into `rproj.toml`.
@@ -385,6 +386,52 @@ fn sc_proj_import(
     }
 
     manifest.merge_description(&pkg);
+    // `Remotes:` names the git/GitHub source for packages that are also
+    // listed in `Depends`/`Imports`/`Suggests` above; only `git`/`github`
+    // remotes are understood, other remote types (`bioc::`, `bitbucket::`,
+    // `gitlab::`, `local::`, `svn::`, `url::`, ...) are warned about and
+    // skipped rather than failing the whole import.
+    if let Some(remotes) = paragraph.get("Remotes") {
+        for entry in reflow(remotes).split(',') {
+            let entry = entry.trim();
+            if entry.is_empty() {
+                continue;
+            }
+            match crate::pkgsource::parse_pkg_source(entry) {
+                Ok(crate::pkgsource::PkgSource::Remote(r)) => {
+                    match crate::rproj::pak_ref_name(entry) {
+                        Some(name) => {
+                            let dev = manifest
+                                .dependency_groups
+                                .get("test")
+                                .is_some_and(|g| g.dependencies.contains_key(&name))
+                                && !manifest.dependencies.contains_key(&name);
+                            let table = dep_table_from_remote(&r);
+                            manifest.add_remote_dependency(&name, table, dev);
+                        }
+                        None => {
+                            let msg = format!(
+                                "Cannot determine the package name for Remotes entry \
+                                 `{}`, skipping it",
+                                entry
+                            );
+                            OUTPUT.warn(&msg);
+                            info!("{}", msg);
+                        }
+                    }
+                }
+                Ok(crate::pkgsource::PkgSource::Cran) | Err(_) => {
+                    let msg = format!(
+                        "Remotes entry `{}` is not a supported git/GitHub reference, \
+                         skipping it",
+                        entry
+                    );
+                    OUTPUT.warn(&msg);
+                    info!("{}", msg);
+                }
+            }
+        }
+    }
     // `Config/Needs/*` fields are dependencies as well, so they are imported
     // in `--dependencies` mode, too.
     let needs: Vec<(String, String)> = paragraph

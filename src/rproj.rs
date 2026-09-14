@@ -809,7 +809,12 @@ impl Rproj {
     /// Add (or replace) a git/GitHub-sourced dependency: a [`DepTable`] with
     /// `git` set and no `version`, pinned by commit rather than by version
     /// range. Mirrors [`Rproj::add_dependency`]'s dev/group placement.
-    pub fn add_remote_dependency(&mut self, name: &str, table: DepTable, dev: bool) {
+    ///
+    /// If the manifest already lists this package as `Dependency::Detailed`
+    /// (e.g. `merge_description` set `attach = true` for a `Depends` entry),
+    /// its `attach`/`enhances`/`vignette-builder` flags are kept -- switching
+    /// a dependency's source shouldn't reset those.
+    pub fn add_remote_dependency(&mut self, name: &str, mut table: DepTable, dev: bool) {
         let group = if dev {
             &mut self
                 .dependency_groups
@@ -819,6 +824,11 @@ impl Rproj {
         } else {
             &mut self.dependencies
         };
+        if let Some(Dependency::Detailed(old)) = group.get(name) {
+            table.attach = old.attach;
+            table.enhances = old.enhances;
+            table.vignette_builder = old.vignette_builder;
+        }
         group.insert(name.to_string(), Dependency::Detailed(Box::new(table)));
     }
 
