@@ -23,6 +23,18 @@ By default, sync also removes any package that is in the project library
 but not in `rproj.lock`, e.g. one dropped from `rproj.toml`, or a leftover from
 before `--no-dev`. Pass `--inexact` to leave those packages alone instead.
 
+## Centralizing the project library
+
+The project library defaults to `.rvenv/lib`, inside the project. Set the
+`RIG_PROJ_LIBRARY_ROOT` environment variable, or the `proj-library-root`
+[configuration entry](config.qmd), to a directory to centralize every
+project's library under it instead, one subdirectory per project. `rig
+system dirs --library-root` reports the effective root, or that none is set.
+
+When the library is centralized, sync still leaves a symlink at `.rvenv/lib`
+pointing at the real location, so anything that expects a library there
+keeps working.
+
 ## The R version
 
 The lock file records the R version its solve is valid for, and that is the
@@ -53,8 +65,8 @@ all.
 ## What sync writes
 
 Everything below `.rvenv` is machine-specific and is not committed. The
-project library is filled in from the lock file, and the rest is rewritten
-on every sync:
+project library is filled in from the lock file (see above for where it
+lives, by default or centralized), and the rest is rewritten on every sync:
 
 - `.rvenv/bin/R` and `.rvenv/bin/Rscript`, wrapper scripts that set the
   project's environment and then hand over to the real R. Run them
@@ -72,8 +84,9 @@ on every sync:
   Reposirories to set up for the project.
 
 After a successful sync rig records the lock file it installed from in
-`.rvenv/lib/.synced`. The `rvenv` package in `.rvenvlib` compares the two, and
-warns in every R session while the project library does not match
+`.synced`, inside the project library (`.rvenv/lib` by default, or the
+centralized location). The `rvenv` package in `.rvenvlib` compares the two,
+and warns in every R session while the project library does not match
 `rproj.lock`.
 
 ## Workspaces

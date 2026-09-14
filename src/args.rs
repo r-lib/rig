@@ -872,8 +872,20 @@ pub fn rig_app() -> Command {
             "Print rig's installer download directory only.",
         ))
         .arg(dir_arg("log", "Print rig's log directory only.").alias("logs"))
+        .arg(dir_arg(
+            "library-root",
+            "Print the centralized `rig proj` library root only.",
+        ))
         .group(ArgGroup::new("dir").args([
-            "r", "rtools", "binary", "data", "fonts", "cache", "download", "log",
+            "r",
+            "rtools",
+            "binary",
+            "data",
+            "fonts",
+            "cache",
+            "download",
+            "log",
+            "library-root",
         ]))
         // `--arch` only changes the answer on Windows, where the admin mode R
         // installation root is architecture dependent, so it is hidden
@@ -1664,17 +1676,6 @@ pub fn rig_app() -> Command {
                 .about(ABOUT_PROJ_SYNC)
                 .long_about(HELP_PROJ_SYNC)
                 .display_order(0)
-                .arg(
-                    Arg::new("library")
-                        .help(
-                            "Library path where packages should be installed \
-                               (default: .rvenv/lib)",
-                        )
-                        .long("library")
-                        .short('l')
-                        .num_args(1)
-                        .required(false),
-                )
                 .arg(
                     Arg::new("no-install-r")
                         .help(
@@ -2864,7 +2865,17 @@ mod tests {
 
     #[test]
     fn test_system_dirs_selectors() {
-        for sel in ["r", "rtools", "binary", "data", "fonts", "cache", "log"] {
+        let selectors = [
+            "r",
+            "rtools",
+            "binary",
+            "data",
+            "fonts",
+            "cache",
+            "log",
+            "library-root",
+        ];
+        for sel in selectors {
             // `--rtools` is hidden off Windows and `--fonts` off Linux, but
             // they must still parse, so that scripts can call them
             // unconditionally.
@@ -2872,7 +2883,7 @@ mod tests {
             let dirs = m.subcommand_matches("dirs").unwrap();
             assert!(dirs.get_flag(sel), "--{} is not set", sel);
             // Setting one must not set any of the others.
-            for other in ["r", "rtools", "binary", "data", "fonts", "cache", "log"] {
+            for other in selectors {
                 assert_eq!(dirs.get_flag(other), other == sel);
             }
         }
