@@ -235,7 +235,7 @@ fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
                 name.clone()
             }
             PkgSource::Remote(r) => {
-                let table = dep_table_from_remote(&r);
+                let table = dep_table_from_remote(&r, name);
                 let git_url = table.git.clone().unwrap_or_default();
                 OUTPUT.status(&format!("Fetching {}", git_url));
                 let (pkg, _source, _remotes) = fetch_and_read_git_package(&git_url, &table)

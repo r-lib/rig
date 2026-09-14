@@ -1406,12 +1406,30 @@ fn format_group_entry(name: &str, dep: &Dependency) -> Result<(String, bool), Bo
 }
 
 /// The inverse of [`crate::proj::dep_table_from_remote`]: rebuild a `pak`
-/// package reference (`<owner>/<repo>[/<subdir>][@<ref>|#<pr>|@*release]`, or
-/// `git::<url>[@<rev>]` for a non-GitHub remote) from a `git`-sourced
-/// [`DepTable`], for writing a `Config/Needs/*` entry back to `DESCRIPTION`.
-/// `name` is prefixed on with `<name>=` only when it does not match the name
-/// the reconstructed reference itself implies (see [`pak_ref_name`]).
+/// package reference from a `git`-sourced [`DepTable`], for writing a
+/// `Remotes:`/`Config/Needs/*` entry back to `DESCRIPTION`.
+///
+/// If `table.ref_` is set (the normal case: it is filled in by
+/// [`crate::proj::dep_table_from_remote`] with the original reference text),
+/// that text is written back verbatim -- this is what makes a `gitlab::`
+/// reference (any host, with a subdir) and a GitHub reference's original
+/// spelling round-trip losslessly, since a git URL alone cannot always be
+/// reconstructed back into its source syntax. Otherwise (a `DepTable` built
+/// by hand, e.g. a `git = "..."` entry written directly into `rproj.toml`,
+/// which never went through `dep_table_from_remote`), fall back to
+/// rebuilding a reference from the structured fields: `<owner>/<repo>
+/// [/<subdir>][@<ref>|#<pr>|@*release]` for a GitHub URL, or
+/// `git::<url>[@<rev>]` otherwise. Either way, `name` is prefixed on with
+/// `<name>=` only when it does not match the name the reference itself
+/// implies (see [`pak_ref_name`]).
 fn dep_table_to_pak_ref(name: &str, table: &DepTable) -> String {
+    if let Some(entry) = &table.ref_ {
+        return match pak_ref_name(entry) {
+            Some(implied) if implied == name => entry.clone(),
+            _ => format!("{}={}", name, entry),
+        };
+    }
+
     let git_url = table.git.as_deref().unwrap_or_default();
 
     let detail = if let Some(pr) = table.pr {
@@ -1493,7 +1511,7 @@ fn config_needs_entry(entry: &str) -> (String, Dependency) {
         if let Some(name) = pak_ref_name(entry) {
             return (
                 name,
-                Dependency::Detailed(Box::new(crate::proj::dep_table_from_remote(&r))),
+                Dependency::Detailed(Box::new(crate::proj::dep_table_from_remote(&r, entry))),
             );
         }
     }
@@ -3339,6 +3357,7 @@ mod tests {
             website.get("tidytemplate"),
             Some(&Dependency::Detailed(Box::new(DepTable {
                 git: Some("https://github.com/tidyverse/tidytemplate.git".to_string()),
+                ref_: Some("tidyverse/tidytemplate".to_string()),
                 ..Default::default()
             })))
         );
@@ -3436,6 +3455,48 @@ mod tests {
     }
 
     #[test]
+    fn to_description_writes_remotes_verbatim_for_gitlab_sourced_dependencies() {
+        // `dep_table_from_remote` (the only real producer of these tables)
+        // always fills in `ref_` with the original reference text; a plain
+        // git URL alone cannot always be reconstructed back into gitlab::
+        // syntax (or preserve a subdir, which pak's bare `git::` syntax has
+        // no field for), so `dep_table_to_pak_ref` must prefer `ref_`.
+        let mut m = Rproj::minimal("mypkg");
+        m.add_remote_dependency(
+            "pkg",
+            DepTable {
+                git: Some("https://gitlab.com/group/subgroup/pkg.git".to_string()),
+                rev: Some("main".to_string()),
+                subdir: Some("pkg".to_string()),
+                ref_: Some("gitlab::group/subgroup/pkg/-/pkg@main".to_string()),
+                ..Default::default()
+            },
+            false,
+        );
+
+        let (desc, dropped) = m.to_description().unwrap();
+        assert!(dropped.is_empty());
+        assert!(desc.contains("Remotes:\n    gitlab::group/subgroup/pkg/-/pkg@main\n"));
+    }
+
+    #[test]
+    fn to_description_writes_remotes_verbatim_for_self_hosted_gitlab_dependencies() {
+        let mut m = Rproj::minimal("mypkg");
+        m.add_remote_dependency(
+            "pkg",
+            DepTable {
+                git: Some("https://gitlab.example.com/group/pkg.git".to_string()),
+                ref_: Some("gitlab::https://gitlab.example.com/group/pkg".to_string()),
+                ..Default::default()
+            },
+            false,
+        );
+
+        let (desc, _) = m.to_description().unwrap();
+        assert!(desc.contains("Remotes:\n    gitlab::https://gitlab.example.com/group/pkg\n"));
+    }
+
+    #[test]
     fn to_description_omits_remotes_for_config_needs_git_dependencies() {
         let mut m = Rproj::minimal("mypkg");
         m.merge_config_needs(&needs(&[("website", "tidyverse/tidytemplate")]));
@@ -3459,14 +3520,12 @@ mod tests {
         assert_eq!(toml::from_str::<Rproj>(&text).unwrap(), m);
 
         let (desc, _) = m.to_description().unwrap();
-        // Entries are sorted by package name. `bioc::S4Vectors` is not a
-        // `git`/GitHub reference, so it is written back exactly as it came
-        // in; the `git`/GitHub references are rebuilt from their `DepTable`,
-        // dropping the redundant `jsonlite=` name override since the
-        // reference already implies that name.
+        // Entries are sorted by package name, each written back verbatim as
+        // it came in (`ref_`), `bioc::S4Vectors` and `jsonlite=...`'s
+        // redundant name override alike.
         assert!(desc.contains(
             "Config/Needs/website:\n    bioc::S4Vectors,\n    \
-             jeroen/jsonlite@v1.8.0,\n    pkgdown (>= 2.0),\n    \
+             jsonlite=jeroen/jsonlite@v1.8.0,\n    pkgdown (>= 2.0),\n    \
              tidyverse/tidytemplate\n"
         ));
     }
@@ -3545,6 +3604,7 @@ mod tests {
                 "tidytemplate",
                 DepTable {
                     git: Some("https://github.com/tidyverse/tidytemplate.git".to_string()),
+                    ref_: Some("tidyverse/tidytemplate".to_string()),
                     ..Default::default()
                 },
             ),
@@ -3554,6 +3614,7 @@ mod tests {
                 DepTable {
                     git: Some("https://github.com/tidyverse/tidytemplate.git".to_string()),
                     rev: Some("main".to_string()),
+                    ref_: Some("tidyverse/tidytemplate@main".to_string()),
                     ..Default::default()
                 },
             ),
@@ -3563,6 +3624,7 @@ mod tests {
                 DepTable {
                     git: Some("https://github.com/r-lib/pak.git".to_string()),
                     pr: Some(123),
+                    ref_: Some("r-lib/pak#123".to_string()),
                     ..Default::default()
                 },
             ),
@@ -3571,6 +3633,7 @@ mod tests {
                 "cli",
                 DepTable {
                     git: Some("https://github.com/r-lib/cli.git".to_string()),
+                    ref_: Some("git::https://github.com/r-lib/cli.git".to_string()),
                     ..Default::default()
                 },
             ),
@@ -3579,6 +3642,7 @@ mod tests {
                 "jsonlite",
                 DepTable {
                     git: Some("https://github.com/jeroen/jsonlite.git".to_string()),
+                    ref_: Some("jsonlite=jeroen/jsonlite".to_string()),
                     ..Default::default()
                 },
             ),
@@ -3588,6 +3652,7 @@ mod tests {
                 DepTable {
                     git: Some("https://github.com/r-lib/usethis.git".to_string()),
                     subdir: Some("subdir".to_string()),
+                    ref_: Some("r-lib/usethis/subdir".to_string()),
                     ..Default::default()
                 },
             ),

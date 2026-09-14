@@ -406,7 +406,7 @@ fn sc_proj_import(
                                 .get("test")
                                 .is_some_and(|g| g.dependencies.contains_key(&name))
                                 && !manifest.dependencies.contains_key(&name);
-                            let table = dep_table_from_remote(&r);
+                            let table = dep_table_from_remote(&r, entry);
                             manifest.add_remote_dependency(&name, table, dev);
                         }
                         None => {
@@ -554,7 +554,7 @@ fn parse_add_arg(spec: &str) -> Result<AddSpec, Box<dyn Error>> {
             Ok(AddSpec::Cran(name, version))
         }
         crate::pkgsource::PkgSource::Remote(r) => {
-            let table = dep_table_from_remote(&r);
+            let table = dep_table_from_remote(&r, spec);
             let git_url = table.git.clone().unwrap_or_default();
             OUTPUT.status(&format!("Fetching {}", git_url));
             let (pkg, _source, _remotes) = fetch_and_read_git_package(&git_url, &table)?;
@@ -1403,17 +1403,21 @@ fn register_git_sources(
             if let Ok(crate::pkgsource::PkgSource::Remote(r)) =
                 crate::pkgsource::parse_pkg_source(entry)
             {
-                worklist.push((dep_name, dep_table_from_remote(&r)));
+                worklist.push((dep_name, dep_table_from_remote(&r, entry)));
             }
         }
     }
     Ok(())
 }
 
-/// The manifest `DepTable` a parsed `git`/`github::` reference implies, the
-/// same shape `rig proj add` writes -- used to feed a fetched package's own
-/// `Remotes:` entries back into [`register_git_sources`]'s worklist.
-pub(crate) fn dep_table_from_remote(r: &crate::pkgsource::RemoteSource) -> DepTable {
+/// The manifest `DepTable` a parsed `git`/`github::`/`gitlab::` reference
+/// implies, the same shape `rig proj add` writes -- used to feed a fetched
+/// package's own `Remotes:` entries back into [`register_git_sources`]'s
+/// worklist. `entry` is the original reference text (e.g. `gitlab::group/
+/// project/-/pkg@main`), kept verbatim in `ref_` so `rig proj export` can
+/// write it back unchanged instead of reconstructing it -- see
+/// [`crate::rproj::dep_table_to_pak_ref`].
+pub(crate) fn dep_table_from_remote(r: &crate::pkgsource::RemoteSource, entry: &str) -> DepTable {
     DepTable {
         git: Some(r.git.clone()),
         branch: r.branch.clone(),
@@ -1422,6 +1426,7 @@ pub(crate) fn dep_table_from_remote(r: &crate::pkgsource::RemoteSource) -> DepTa
         pr: r.pr,
         release: if r.release { Some(true) } else { None },
         subdir: r.subdir.clone(),
+        ref_: Some(entry.trim().to_string()),
         ..Default::default()
     }
 }
