@@ -1,26 +1,27 @@
 # rig 0.10.0-beta2
 
-* `rig add --without-p3m` works correctly again (#369).
+## Web site
 
-* macOS user mode: `rig default` now sets the default R version correctly
-  for newer RStudio versions. Also, `rig system allow-debugger-rstudio`
-  now works for newer RStudio versions.
+* rig has a new documentation website at <https://rig.r-lib.org/>,
+  including a full CLI reference and a guide to admin vs. user mode.
 
-* On Windows rig now creates `.exe` shims instead of `bat` shims.
-  With `.exe` shims it is easier to pass command line arguments to
-  `R` and `Rscript`. In particular, `Rscript -e <code>` now works if
-  `<code>` has line breaks. Call `rig system make-links` to create all
-  `.exe` shims and remove the `.bat` shims. If you hardcoded shims with
-  a `.bat` extension, change them to `.exe` or remove the extension
-  completely (#362).
+## User mode
 
-* `rig run <name>` now runs a script the project declares in a `[[bin]]`
-  table of its `rproj.toml`, passing the remaining arguments on to the
-  script. `rig run --list` lists the declared scripts.
+* rig now supports a **user mode** on all platforms, in addition to the
+  default admin mode. In user mode rig installs everything into the user's
+  home directory and never needs `sudo` or administrator privileges. R goes
+  into `~/.local/share/rig/r` (`%APPDATA%\rig\data\r` on Windows) and quick
+  links into `~/.local/bin` (`%USERPROFILE%\.local\bin` on Windows). Select
+  the mode with the `--user` / `--admin` global flags, the `RIG_MODE`
+  environment variable, or the `mode` key in the rig config file. The new
+  `rig system user-mode` command switches an existing admin-mode setup to
+  user mode.
 
-* New `rig ppm` command queries Posit Package Manager.
+* On Linux, rig can now install portable R builds, for glibc- and
+  musl-based Linux distros. If there is no distro-specific build for your
+  platform, rig falls back to a portable build automatically.
 
-* New `rig repos status` checks the configured package repositories.
+## R package management
 
 * New `rig pkg` subcommand to query and manage R packages. Two subcommands
   from `rig repos` moved to `rig pkg`: `rig pkg available` and
@@ -31,13 +32,13 @@
   `rig pkg install` installs packages, and their dependencies, into a
   library.
 
-* `rig proj deps` has a new `--recursive` (`-r`) option, to show the whole
-  dependency closure of the project.
+## Projects
+
+* New and redesigned `rig proj` commands to manage isolated R projects and
+  virtual environments: `rig proj init`, `rig proj import`, `rig proj add`,
+  `rig proj remove`, `rig proj lock`, `rig proj sync`.
 
 * New `rig proj tree` shows the dependency closure of a project as a tree.
-
-* New `rig proj add` adds a dependency to `rproj.toml`, then updates the
-  lockfile and installs it.
 
 * `rig run` now uses the project environment, if you call it in a project
   directory: it starts `.rvenv/bin/R`, with the project's package library
@@ -45,9 +46,55 @@
   first if the environment is missing or out of date. Use `--no-project`
   (or `--r-version`) to run the default R version instead.
 
+* `rig run <name>` now runs a script the project declares in a `[[bin]]`
+  table of its `rproj.toml`, passing the remaining arguments on to the
+  script. `rig run --list` lists the declared scripts.
+
+## Windows specific
+
+* On Windows rig now creates `.exe` shims instead of `bat` shims.
+  With `.exe` shims it is easier to pass command line arguments to
+  `R` and `Rscript`. In particular, `Rscript -e <code>` now works if
+  `<code>` has line breaks. Call `rig system make-links` to create all
+  `.exe` shims and remove the `.bat` shims. If you hardcoded shims with
+  a `.bat` extension, change them to `.exe` or remove the extension
+  completely (#362).
+
+* New `rig system fix-r-alias` subcommand.
+
+* `rig rtools` is now a top-level command (it used to be `rig system
+  rtools`).
+
+* On Windows, `R CMD config` now works without manually putting Rtools on
+  the `PATH`. So do `R CMD sh`, `R CMD make` and `rig run --cmd config`.
+
+## Other new features
+
+* New `rig ppm` command queries Posit Package Manager.
+
+* New `rig repos status` checks the configured package repositories.
+
 * `rig library add`, `rig library default`, `rig library list` and
   `rig library rm` have a new `--r-version` (`-r`) option, to operate on
   the libraries of an R version other than the default one.
+
+* New `rig system dirs` command to show the directories rig uses. With
+  `--r`, `--binary`, `--data`, `--cache`, `--download`, `--log`, `--rtools`
+  (Windows only) or `--fonts` (Linux only) it prints a single path, for use
+  in scripts.
+
+* New `rig config` command to manage the rig configuration file.
+
+* `rig run --cmd <command> [args...]` now runs `R CMD <command> [args...]`
+  with the selected R version.
+
+## Other changes
+
+* `rig add --without-p3m` works correctly again (#369).
+
+* macOS user mode: `rig default` now sets the default R version correctly
+  for newer RStudio versions. Also, `rig system allow-debugger-rstudio`
+  now works for newer RStudio versions.
 
 * rig now uses a user-dependent download directory, to avoid interference
   between users.
@@ -60,43 +107,6 @@
   repository.
 
 * `rig system setup-user-lib` (and its `create-lib` alias) now works again.
-
-* rig now supports a **user mode** on all platforms, in addition to the
-  default admin mode. In user mode rig installs everything into the user's
-  home directory and never needs `sudo` or administrator privileges. R goes
-  into `~/.local/share/rig/r` (`%APPDATA%\rig\data\r` on Windows) and quick
-  links into `~/.local/bin` (`%USERPROFILE%\.local\bin` on Windows). Select
-  the mode with the `--user` / `--admin` global flags, the `RIG_MODE`
-  environment variable, or the `mode` key in the rig config file. The new
-  `rig system user-mode` command switches an existing admin-mode setup to
-  user mode.
-
-* rig has a new documentation website at <https://rig.r-lib.org/>,
-  including a full CLI reference and a guide to admin vs. user mode.
-
-* New `rig config` command to manage the rig configuration file.
-
-* New `rig system dirs` command to show the directories rig uses. With
-  `--r`, `--binary`, `--data`, `--cache`, `--download`, `--log`, `--rtools`
-  (Windows only) or `--fonts` (Linux only) it prints a single path, for use
-  in scripts.
-
-* New experimental `rig proj` command to manage R project dependencies.
-
-* `rig run --cmd <command> [args...]` now runs `R CMD <command> [args...]`
-  with the selected R version.
-
-* `rig rtools` is now a top-level command (it used to be `rig system
-  rtools`).
-
-* On Windows, `R CMD config` now works without manually putting Rtools on
-  the `PATH`. So do `R CMD sh`, `R CMD make` and `rig run --cmd config`.
-
-* On Linux, rig can now install portable R builds, for glibc- and
-  musl-based Linux distros. If there is no distro-specific build for your
-  platform, rig falls back to a portable build automatically.
-
-* New `rig system fix-r-alias` subcommand.
 
 * `rig rstudio --config-path` is now implemented on Linux and macOS.
 
