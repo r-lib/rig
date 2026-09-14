@@ -30,7 +30,11 @@ use crate::dcf::{
     DepVersionSpec, Package as DcfPackage, PackageDependencies, RDepType, RPackageVersion,
     VersionConstraint, VersionConstraintType, DEP_TYPES_SOFT,
 };
-use crate::install::{format_linkingto, REMOTE_HASH_FIELD, REMOTE_LINKINGTO_FIELD};
+use crate::install::{
+    format_linkingto, REMOTE_HASH_FIELD, REMOTE_HOST_FIELD, REMOTE_LINKINGTO_FIELD,
+    REMOTE_REF_FIELD, REMOTE_REPO_FIELD, REMOTE_SHA_FIELD, REMOTE_SUBDIR_FIELD, REMOTE_TYPE_FIELD,
+    REMOTE_URL_FIELD, REMOTE_USERNAME_FIELD,
+};
 use crate::proj::BASE_PKGS;
 use crate::repos::cranlike_metadata::minor_r_version;
 use crate::rvenv::RPROJ_LOCK_FILE;
@@ -530,6 +534,19 @@ pub struct DepTable {
     // `rig proj export`.
     #[serde(rename = "ref", default, skip_serializing_if = "Option::is_none")]
     pub ref_: Option<String>,
+    // A subdirectory of `git`/`url` the package lives in, e.g. a monorepo
+    // package at `<repo>/subdir`. Only meaningful together with `git`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subdir: Option<String>,
+    // A GitHub pull request number (`owner/repo#41`). GitHub sources only,
+    // resolved to a commit at fetch time; kept here so a later re-lock can
+    // re-resolve the PR's current head instead of the sha it last resolved to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pr: Option<u32>,
+    // `owner/repo@*release`: track the repository's latest release instead of
+    // a fixed ref. GitHub sources only, same re-resolution reasoning as `pr`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub release: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -702,9 +719,14 @@ impl Rproj {
     /// unlike a `DESCRIPTION` dependency field it is not restricted to
     /// package names: `tidyverse/tidytemplate` and other `pak` reference
     /// syntaxes are common. An entry that is a plain package name (with an
-    /// optional version constraint) becomes an ordinary version requirement;
-    /// anything else is kept verbatim in [`DepTable::ref_`], so
-    /// [`Rproj::to_description`] can write it back unchanged.
+    /// optional version constraint) becomes an ordinary version requirement.
+    /// A `git`/GitHub reference (the same syntax `Remotes:` uses, see
+    /// [`crate::pkgsource::parse_pkg_source`]) becomes a [`DepTable`] with a
+    /// `git` field, exactly like [`crate::proj::dep_table_from_remote`] builds
+    /// for a `Remotes:` entry. Anything else (`bioc::`, `bitbucket::`,
+    /// `gitlab::`, ...) is not a reference this crate resolves, so it is kept
+    /// verbatim in [`DepTable::ref_`], and [`Rproj::to_description`] writes it
+    /// back unchanged.
     ///
     /// A field with an empty value creates an empty group, so that it, too,
     /// round-trips.
@@ -789,6 +811,41 @@ impl Rproj {
         previous
     }
 
+    /// Add (or replace) a git/GitHub-sourced dependency: a [`DepTable`] with
+    /// `git` set, pinned by commit rather than by version range. Mirrors
+    /// [`Rproj::add_dependency`]'s dev/group placement.
+    ///
+    /// If the manifest already lists this package, its version requirement
+    /// (e.g. `Imports: pkgcache (>= 2.2.0)`) and, for a `Dependency::Detailed`
+    /// entry (e.g. `merge_description` set `attach = true` for a `Depends`
+    /// entry), its `attach`/`enhances`/`vignette-builder` flags are kept --
+    /// switching a dependency's source shouldn't drop its version constraint
+    /// or reset those flags.
+    pub fn add_remote_dependency(&mut self, name: &str, mut table: DepTable, dev: bool) {
+        let group = if dev {
+            &mut self
+                .dependency_groups
+                .entry("test".to_string())
+                .or_default()
+                .dependencies
+        } else {
+            &mut self.dependencies
+        };
+        match group.get(name) {
+            Some(Dependency::Detailed(old)) => {
+                table.version = old.version.clone();
+                table.attach = old.attach;
+                table.enhances = old.enhances;
+                table.vignette_builder = old.vignette_builder;
+            }
+            Some(Dependency::Version(old)) => {
+                table.version = Some(old.clone());
+            }
+            None => {}
+        }
+        group.insert(name.to_string(), Dependency::Detailed(Box::new(table)));
+    }
+
     /// Whether the manifest lists a dependency by this name anywhere:
     /// `[dependencies]`, `[linking-dependencies]`, or any
     /// `[dependency-groups.*]` table.
@@ -819,6 +876,57 @@ impl Rproj {
             }
         }
         None
+    }
+
+    /// Every dependency, anywhere in the manifest (`[dependencies]`,
+    /// `[linking-dependencies]`, any `[dependency-groups.*]`), that has `git`
+    /// set: the git/GitHub-sourced packages, for the pre-solve fetch that
+    /// registers their real name/version/deps with the solver (see
+    /// `crate::proj::register_git_sources`).
+    pub fn git_dependencies(&self) -> Vec<(String, DepTable)> {
+        let mut out = vec![];
+        let tables = std::iter::once(&self.dependencies)
+            .chain(std::iter::once(&self.linking_dependencies))
+            .chain(self.dependency_groups.values().map(|g| &g.dependencies));
+        for table in tables {
+            for (name, dep) in table.iter() {
+                if let Dependency::Detailed(t) = dep {
+                    if t.git.is_some() {
+                        out.push((name.clone(), (**t).clone()));
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// The git/GitHub-sourced dependencies that end up in a DESCRIPTION
+    /// dependency field (`Depends`/`Imports`/`LinkingTo`/`Suggests`/
+    /// `Enhances`), for [`Rproj::to_description`]'s `Remotes:` field. Scoped
+    /// the same way as [`Rproj::to_dep_version_specs`] -- `[dependencies]`,
+    /// `[linking-dependencies]`, and the `test`/`enhances` dependency
+    /// groups -- unlike [`Rproj::git_dependencies`], which also sweeps
+    /// arbitrary `Config/Needs/*` groups that already carry their own pak-ref
+    /// entries and must not duplicate into `Remotes:`.
+    fn description_git_dependencies(&self) -> Vec<(String, DepTable)> {
+        let mut out = vec![];
+        let tables = std::iter::once(&self.dependencies)
+            .chain(std::iter::once(&self.linking_dependencies))
+            .chain(DESCRIPTION_DEP_GROUPS.iter().filter_map(|group_name| {
+                self.dependency_groups
+                    .get(*group_name)
+                    .map(|g| &g.dependencies)
+            }));
+        for table in tables {
+            for (name, dep) in table.iter() {
+                if let Dependency::Detailed(t) = dep {
+                    if t.git.is_some() {
+                        out.push((name.clone(), (**t).clone()));
+                    }
+                }
+            }
+        }
+        out
     }
 
     /// The manifest's dependencies as the solver's [`PackageDependencies`], the
@@ -963,7 +1071,9 @@ impl Rproj {
 
         writeln!(out, "Package: {}", self.project.name)?;
         let type_ = self.project.type_.as_deref().unwrap_or("package");
-        writeln!(out, "Type: {}", title_case(type_))?;
+        if !type_.eq_ignore_ascii_case("package") {
+            writeln!(out, "Type: {}", title_case(type_))?;
+        }
         if let Some(title) = &self.project.title {
             writeln!(out, "{}", fold_dcf_prose("Title", title, 75))?;
         }
@@ -976,7 +1086,11 @@ impl Rproj {
             )?;
         }
         if let Some(description) = &self.project.description {
-            writeln!(out, "{}", fold_dcf_prose("Description", description, 75))?;
+            writeln!(
+                out,
+                "{}",
+                crate::textfmt::text_to_dcf_field("Description", description)
+            )?;
         }
         if let Some(license) = &self.project.license {
             writeln!(out, "License: {}", license)?;
@@ -1018,6 +1132,16 @@ impl Rproj {
             writeln!(out, "{}:{}", dep_type, fold_dcf_list(&items))?;
         }
 
+        let mut git_deps = self.description_git_dependencies();
+        if !git_deps.is_empty() {
+            git_deps.sort_by(|a, b| a.0.cmp(&b.0));
+            let items: Vec<String> = git_deps
+                .iter()
+                .map(|(name, table)| dep_table_to_pak_ref(name, table))
+                .collect();
+            writeln!(out, "Remotes:{}", fold_dcf_list(&items))?;
+        }
+
         for (group_name, group) in self.dependency_groups.iter() {
             if DESCRIPTION_DEP_GROUPS.contains(&group_name.as_str()) {
                 continue;
@@ -1056,6 +1180,102 @@ impl Rproj {
         }
 
         Ok((out, dropped))
+    }
+
+    /// Render the manifest as the TOML text of `Rproj.toml`.
+    ///
+    /// A dependency with extra fields (`git`, `path`, ...) is a `DepTable`,
+    /// which the plain serializer writes as its own `[dependencies.pkg]`
+    /// section. Writing it as an inline table instead keeps one dependency to
+    /// one line, the same trick already used for `metadata` in
+    /// [`RprojLock::to_toml`].
+    pub fn to_toml(&self) -> Result<String, Box<dyn Error>> {
+        let mut doc: toml_edit::DocumentMut = toml::to_string_pretty(self)?.parse()?;
+
+        if let Some(deps) = doc.get_mut("dependencies").and_then(|t| t.as_table_mut()) {
+            Self::inline_dependencies(deps);
+        }
+        if let Some(deps) = doc
+            .get_mut("linking-dependencies")
+            .and_then(|t| t.as_table_mut())
+        {
+            Self::inline_dependencies(deps);
+        }
+        if let Some(groups) = doc
+            .get_mut("optional-dependencies")
+            .and_then(|t| t.as_table_mut())
+        {
+            for (_, group) in groups.iter_mut() {
+                if let Some(group) = group.as_table_mut() {
+                    Self::inline_dependencies(group);
+                }
+            }
+        }
+        if let Some(groups) = doc
+            .get_mut("dependency-groups")
+            .and_then(|t| t.as_table_mut())
+        {
+            for (_, group) in groups.iter_mut() {
+                if let Some(group) = group.as_table_mut() {
+                    Self::inline_dependencies(group);
+                }
+            }
+        }
+        if let Some(deps) = doc
+            .get_mut("workspace")
+            .and_then(|t| t.as_table_mut())
+            .and_then(|t| t.get_mut("dependencies"))
+            .and_then(|t| t.as_table_mut())
+        {
+            Self::inline_dependencies(deps);
+        }
+        if let (Some(description), Some(project)) = (
+            self.project.description.as_deref(),
+            doc.get_mut("project").and_then(|t| t.as_table_mut()),
+        ) {
+            // A multi-paragraph description needs real line breaks in the
+            // file, not `toml`'s default `"line1\nline2"` escaping; a TOML
+            // literal string (`'''...'''`) renders those verbatim. Skip the
+            // (very unlikely) case where the text itself contains `'''`,
+            // which can't be represented that way, and fall back to the
+            // default escaped single-line string.
+            if description.contains('\n') && !description.contains("'''") {
+                // A newline right after the opening delimiter is trimmed by
+                // the TOML parser, but nothing trims one before the closing
+                // delimiter, so the closing `'''` goes straight after the
+                // text to avoid adding a trailing blank line.
+                let literal = format!("'''\n{}'''", description);
+                if let Ok(value) = literal.parse::<toml_edit::Value>() {
+                    project.insert("description", toml_edit::Item::Value(value));
+                }
+            }
+        }
+
+        Ok(doc.to_string())
+    }
+
+    /// Turn every package entry of `table` that serialized as a full
+    /// `[table.pkg]` section into an inline table.
+    fn inline_dependencies(table: &mut toml_edit::Table) {
+        let keys: Vec<String> = table
+            .iter()
+            .filter(|(_, item)| item.is_table())
+            .map(|(key, _)| key.to_string())
+            .collect();
+        for key in keys {
+            let Some(toml_edit::Item::Table(dep)) = table.remove(&key) else {
+                continue;
+            };
+            let mut dep = dep.into_inline_table();
+            // `into_inline_table()` keeps the decorations of the section the
+            // table came from, i.e. the blank line before its header.
+            dep.decor_mut().clear();
+            for (mut k, v) in dep.iter_mut() {
+                k.leaf_decor_mut().clear();
+                v.decor_mut().clear();
+            }
+            table.insert(&key, toml_edit::value(dep));
+        }
     }
 }
 
@@ -1168,16 +1388,82 @@ fn format_dep_entry(dep: &DepVersionSpec) -> (String, bool) {
 
 /// Format one dependency-group entry as a `Config/Needs/*` entry. An entry
 /// that kept its reference verbatim (see [`Rproj::merge_config_needs`]) is
-/// written back as it came in; anything else goes through
-/// [`format_dep_entry`], so it looks like a DESCRIPTION dependency entry.
+/// written back as it came in; a `git`-sourced entry goes through
+/// [`dep_table_to_pak_ref`], which rebuilds a `pak` reference from its
+/// `DepTable` fields; anything else goes through [`format_dep_entry`], so it
+/// looks like a DESCRIPTION dependency entry.
 fn format_group_entry(name: &str, dep: &Dependency) -> Result<(String, bool), Box<dyn Error>> {
     if let Dependency::Detailed(table) = dep {
         if let Some(ref_) = &table.ref_ {
             return Ok((ref_.clone(), false));
         }
+        if table.git.is_some() {
+            return Ok((dep_table_to_pak_ref(name, table), false));
+        }
     }
     let spec = dep_spec(name, dep, RDepType::Suggests)?;
     Ok(format_dep_entry(&spec))
+}
+
+/// The inverse of [`crate::proj::dep_table_from_remote`]: rebuild a `pak`
+/// package reference from a `git`-sourced [`DepTable`], for writing a
+/// `Remotes:`/`Config/Needs/*` entry back to `DESCRIPTION`.
+///
+/// If `table.ref_` is set (the normal case: it is filled in by
+/// [`crate::proj::dep_table_from_remote`] with the original reference text),
+/// that text is written back verbatim -- this is what makes a `gitlab::`
+/// reference (any host, with a subdir) and a GitHub reference's original
+/// spelling round-trip losslessly, since a git URL alone cannot always be
+/// reconstructed back into its source syntax. Otherwise (a `DepTable` built
+/// by hand, e.g. a `git = "..."` entry written directly into `rproj.toml`,
+/// which never went through `dep_table_from_remote`), fall back to
+/// rebuilding a reference from the structured fields: `<owner>/<repo>
+/// [/<subdir>][@<ref>|#<pr>|@*release]` for a GitHub URL, or
+/// `git::<url>[@<rev>]` otherwise. Either way, `name` is prefixed on with
+/// `<name>=` only when it does not match the name the reference itself
+/// implies (see [`pak_ref_name`]).
+fn dep_table_to_pak_ref(name: &str, table: &DepTable) -> String {
+    if let Some(entry) = &table.ref_ {
+        return match pak_ref_name(entry) {
+            Some(implied) if implied == name => entry.clone(),
+            _ => format!("{}={}", name, entry),
+        };
+    }
+
+    let git_url = table.git.as_deref().unwrap_or_default();
+
+    let detail = if let Some(pr) = table.pr {
+        format!("#{}", pr)
+    } else if table.release == Some(true) {
+        "@*release".to_string()
+    } else if let Some(r) = table
+        .rev
+        .as_deref()
+        .or(table.branch.as_deref())
+        .or(table.tag.as_deref())
+    {
+        format!("@{}", r)
+    } else {
+        String::new()
+    };
+
+    let path = match crate::proj::github_owner_repo(git_url) {
+        Some((owner, repo)) => {
+            let mut path = format!("{}/{}", owner, repo);
+            if let Some(subdir) = &table.subdir {
+                path.push('/');
+                path.push_str(subdir);
+            }
+            path
+        }
+        None => format!("git::{}", git_url),
+    };
+
+    let entry = format!("{}{}", path, detail);
+    match pak_ref_name(&entry) {
+        Some(implied) if implied == name => entry,
+        _ => format!("{}={}", name, entry),
+    }
 }
 
 /// One entry of a `Config/Needs/*` field as a dependency-group entry: the
@@ -1221,6 +1507,15 @@ fn config_needs_entry(entry: &str) -> (String, Dependency) {
         }
     }
 
+    if let Ok(crate::pkgsource::PkgSource::Remote(r)) = crate::pkgsource::parse_pkg_source(entry) {
+        if let Some(name) = pak_ref_name(entry) {
+            return (
+                name,
+                Dependency::Detailed(Box::new(crate::proj::dep_table_from_remote(&r, entry))),
+            );
+        }
+    }
+
     let name = match pak_ref_name(entry) {
         Some(name) => name,
         None => {
@@ -1246,7 +1541,7 @@ fn config_needs_entry(entry: &str) -> (String, Dependency) {
 /// is the last path component of the reference, without its `@<tag>` /
 /// `#<pull request>` suffix and without a file extension. `None` if that does
 /// not leave a valid package name behind.
-fn pak_ref_name(entry: &str) -> Option<String> {
+pub(crate) fn pak_ref_name(entry: &str) -> Option<String> {
     if let Some((name, _)) = entry.split_once('=') {
         let name = name.trim();
         if is_r_package_name(name) {
@@ -1598,12 +1893,73 @@ impl RprojLockTarget {
             if k == "R" || registry.is_local(k) || BASE_PKGS.contains(&k.as_str()) {
                 continue;
             }
-            let deps = registry
+            let deps: Vec<String> = registry
                 .get_dependency_summary(k, v)
                 .unwrap()
                 .into_iter()
                 .filter(|dep| dep != "R" && !BASE_PKGS.contains(&dep.as_str()))
                 .collect();
+
+            // A git/GitHub-sourced package has no repository artifact at all:
+            // record its `Remote*` provenance instead of a CRAN download URL,
+            // and skip the source/binary-artifact bookkeeping below entirely.
+            if let Some(git) = registry.git_source(k, v) {
+                let mut metadata: HashMap<String, String> = HashMap::new();
+                metadata.insert(REMOTE_TYPE_FIELD.to_string(), git.remote_type.to_string());
+                metadata.insert(REMOTE_URL_FIELD.to_string(), git.url.clone());
+                if let Some(host) = &git.host {
+                    metadata.insert(REMOTE_HOST_FIELD.to_string(), host.clone());
+                }
+                if let Some(repo) = &git.repo {
+                    metadata.insert(REMOTE_REPO_FIELD.to_string(), repo.clone());
+                }
+                if let Some(username) = &git.username {
+                    metadata.insert(REMOTE_USERNAME_FIELD.to_string(), username.clone());
+                }
+                if let Some(subdir) = &git.subdir {
+                    metadata.insert(REMOTE_SUBDIR_FIELD.to_string(), subdir.clone());
+                }
+                if let Some(ref_) = &git.ref_ {
+                    metadata.insert(REMOTE_REF_FIELD.to_string(), ref_.clone());
+                }
+                metadata.insert(REMOTE_SHA_FIELD.to_string(), git.sha.clone());
+
+                // Both are directories: a github tarball is unpacked, and a
+                // git:: clone is a worktree checkout. `sources` still carries
+                // the real download URL for the github case, so the existing
+                // HTTP downloader can fetch it unchanged; `RemoteType` is what
+                // tells `download_lockfile_packages` these need extra
+                // handling instead of "download this URL to this file path".
+                let (sources, target) = if git.remote_type == "github" {
+                    let repo = git.repo.clone().unwrap_or_default();
+                    (
+                        vec![format!(
+                            "https://codeload.github.com/{}/tar.gz/{}",
+                            repo, git.sha
+                        )],
+                        format!("git/github/{}/{}", repo, git.sha),
+                    )
+                } else {
+                    (
+                        vec![format!("git+{}#{}", git.url, git.sha)],
+                        format!("git/git/{}", git.sha),
+                    )
+                };
+
+                pkgs.push(RprojLockPackage {
+                    package: k.to_string(),
+                    version: v.version.to_string(),
+                    binary: false,
+                    platform: "source".to_string(),
+                    dependencies: deps,
+                    metadata,
+                    sources,
+                    target,
+                    groups: vec![],
+                });
+                continue;
+            }
+
             let binary = v.artifact.is_binary();
             // Provenance of the artifact, so that a lockfile install records the
             // same `RemoteHash` / `RemoteLinkingToHashes` a direct install does.
@@ -2858,11 +3214,18 @@ mod tests {
     }
 
     #[test]
-    fn to_description_wraps_prose_fields_at_75_columns() {
+    fn to_description_omits_type_for_package_projects() {
+        let mut m = Rproj::minimal("mypkg");
+        m.project.type_ = Some("package".to_string());
+        let (desc, _) = m.to_description().unwrap();
+        assert!(!desc.contains("Type:"));
+    }
+
+    #[test]
+    fn to_description_wraps_title_at_75_columns() {
         let mut m = Rproj::minimal("mypkg");
         let words: Vec<String> = (0..40).map(|i| format!("word{}", i)).collect();
         m.project.title = Some(words.join(" "));
-        m.project.description = Some(words.join(" "));
         let (desc, _) = m.to_description().unwrap();
 
         for line in desc.lines() {
@@ -2872,17 +3235,48 @@ mod tests {
         // indent towards the continuation lines'.
         let prose: Vec<&str> = desc
             .lines()
-            .skip_while(|l| !l.starts_with("Description:"))
-            .take_while(|l| l.starts_with("Description:") || l.starts_with("    "))
+            .skip_while(|l| !l.starts_with("Title:"))
+            .take_while(|l| l.starts_with("Title:") || l.starts_with("    "))
             .collect();
         assert!(prose.len() > 1);
-        assert!(prose[0].starts_with("Description: word0 "));
+        assert!(prose[0].starts_with("Title: word0 "));
         // Reflowing the folded field gives the value back unchanged.
         let joined = prose.join(" ");
         assert_eq!(
-            crate::textfmt::reflow(joined.trim_start_matches("Description:")),
+            crate::textfmt::reflow(joined.trim_start_matches("Title:")),
             words.join(" ")
         );
+    }
+
+    #[test]
+    fn to_description_keeps_description_line_breaks_literal() {
+        let mut m = Rproj::minimal("mypkg");
+        m.project.description = Some("First paragraph.\n\nSecond paragraph.".to_string());
+        let (desc, _) = m.to_description().unwrap();
+        assert!(desc.contains("Description: First paragraph.\n    .\n    Second paragraph.\n"));
+    }
+
+    #[test]
+    fn to_toml_writes_multiline_description_as_literal_string() {
+        let mut m = Rproj::minimal("mypkg");
+        m.project.description = Some("First paragraph.\n\nSecond paragraph.".to_string());
+        let toml_text = m.to_toml().unwrap();
+        assert!(
+            toml_text.contains("'''\nFirst paragraph.\n\nSecond paragraph.'''"),
+            "{}",
+            toml_text
+        );
+
+        let round_tripped: Rproj = toml::from_str(&toml_text).unwrap();
+        assert_eq!(round_tripped.project.description, m.project.description);
+    }
+
+    #[test]
+    fn to_toml_leaves_single_line_description_as_a_plain_string() {
+        let mut m = Rproj::minimal("mypkg");
+        m.project.description = Some("Does things.".to_string());
+        let toml_text = m.to_toml().unwrap();
+        assert!(toml_text.contains("description = \"Does things.\""));
     }
 
     fn author(name: &str, roles: &[&str]) -> Author {
@@ -2962,6 +3356,7 @@ mod tests {
         assert_eq!(
             website.get("tidytemplate"),
             Some(&Dependency::Detailed(Box::new(DepTable {
+                git: Some("https://github.com/tidyverse/tidytemplate.git".to_string()),
                 ref_: Some("tidyverse/tidytemplate".to_string()),
                 ..Default::default()
             })))
@@ -3027,19 +3422,107 @@ mod tests {
     }
 
     #[test]
+    fn to_description_writes_remotes_for_git_sourced_dependencies() {
+        let mut m = Rproj::minimal("mypkg");
+        m.add_remote_dependency(
+            "tidytemplate",
+            DepTable {
+                git: Some("https://github.com/tidyverse/tidytemplate".to_string()),
+                branch: Some("main".to_string()),
+                ..Default::default()
+            },
+            false,
+        );
+        m.add_remote_dependency(
+            "jsonlite",
+            DepTable {
+                git: Some("https://github.com/jeroen/jsonlite".to_string()),
+                rev: Some("v1.8.0".to_string()),
+                ..Default::default()
+            },
+            true,
+        );
+
+        let (desc, dropped) = m.to_description().unwrap();
+        assert!(dropped.is_empty());
+        assert!(desc.contains("Imports:\n    tidytemplate\n"));
+        assert!(desc.contains("Suggests:\n    jsonlite\n"));
+        // Entries are sorted by package name, rebuilt as pak references.
+        assert!(desc
+            .contains("Remotes:\n    jeroen/jsonlite@v1.8.0,\n    tidyverse/tidytemplate@main\n"));
+        // `Remotes:` comes after the dependency fields.
+        assert!(desc.find("Suggests:").unwrap() < desc.find("Remotes:").unwrap());
+    }
+
+    #[test]
+    fn to_description_writes_remotes_verbatim_for_gitlab_sourced_dependencies() {
+        // `dep_table_from_remote` (the only real producer of these tables)
+        // always fills in `ref_` with the original reference text; a plain
+        // git URL alone cannot always be reconstructed back into gitlab::
+        // syntax (or preserve a subdir, which pak's bare `git::` syntax has
+        // no field for), so `dep_table_to_pak_ref` must prefer `ref_`.
+        let mut m = Rproj::minimal("mypkg");
+        m.add_remote_dependency(
+            "pkg",
+            DepTable {
+                git: Some("https://gitlab.com/group/subgroup/pkg.git".to_string()),
+                rev: Some("main".to_string()),
+                subdir: Some("pkg".to_string()),
+                ref_: Some("gitlab::group/subgroup/pkg/-/pkg@main".to_string()),
+                ..Default::default()
+            },
+            false,
+        );
+
+        let (desc, dropped) = m.to_description().unwrap();
+        assert!(dropped.is_empty());
+        assert!(desc.contains("Remotes:\n    gitlab::group/subgroup/pkg/-/pkg@main\n"));
+    }
+
+    #[test]
+    fn to_description_writes_remotes_verbatim_for_self_hosted_gitlab_dependencies() {
+        let mut m = Rproj::minimal("mypkg");
+        m.add_remote_dependency(
+            "pkg",
+            DepTable {
+                git: Some("https://gitlab.example.com/group/pkg.git".to_string()),
+                ref_: Some("gitlab::https://gitlab.example.com/group/pkg".to_string()),
+                ..Default::default()
+            },
+            false,
+        );
+
+        let (desc, _) = m.to_description().unwrap();
+        assert!(desc.contains("Remotes:\n    gitlab::https://gitlab.example.com/group/pkg\n"));
+    }
+
+    #[test]
+    fn to_description_omits_remotes_for_config_needs_git_dependencies() {
+        let mut m = Rproj::minimal("mypkg");
+        m.merge_config_needs(&needs(&[("website", "tidyverse/tidytemplate")]));
+
+        let (desc, _) = m.to_description().unwrap();
+        // The `Config/Needs/website` entry already carries the pak
+        // reference itself; it must not also produce a `Remotes:` field.
+        assert!(!desc.contains("Remotes:"));
+        assert!(desc.contains("Config/Needs/website:\n    tidyverse/tidytemplate\n"));
+    }
+
+    #[test]
     fn config_needs_roundtrips_through_the_manifest() {
         let mut m = Rproj::minimal("mypkg");
         let field = "tidyverse/tidytemplate, pkgdown (>= 2.0), \
                      bioc::S4Vectors, jsonlite=jeroen/jsonlite@v1.8.0";
         m.merge_config_needs(&needs(&[("website", field)]));
 
-        // The manifest survives a TOML round trip, `ref` and all.
+        // The manifest survives a TOML round trip, `git`/`ref` and all.
         let text = toml::to_string_pretty(&m).unwrap();
         assert_eq!(toml::from_str::<Rproj>(&text).unwrap(), m);
 
         let (desc, _) = m.to_description().unwrap();
-        // Entries are sorted by package name, and every reference is written
-        // back exactly as it came in.
+        // Entries are sorted by package name, each written back verbatim as
+        // it came in (`ref_`), `bioc::S4Vectors` and `jsonlite=...`'s
+        // redundant name override alike.
         assert!(desc.contains(
             "Config/Needs/website:\n    bioc::S4Vectors,\n    \
              jsonlite=jeroen/jsonlite@v1.8.0,\n    pkgdown (>= 2.0),\n    \
@@ -3112,28 +3595,85 @@ mod tests {
 
     #[test]
     fn config_needs_entry_names_the_package_a_reference_implies() {
-        let cases = [
-            ("tidyverse/tidytemplate", "tidytemplate"),
-            ("tidyverse/tidytemplate@main", "tidytemplate"),
-            ("r-lib/pak#123", "pak"),
-            ("bioc::S4Vectors", "S4Vectors"),
-            ("git::https://github.com/r-lib/cli.git", "cli"),
-            ("jsonlite=jeroen/jsonlite", "jsonlite"),
-            ("r-lib/usethis/subdir", "subdir"),
+        // A `git`/GitHub reference, the same syntax `Remotes:` understands,
+        // is parsed into a `git`-sourced `DepTable`, exactly like a `Remotes:`
+        // entry.
+        let git_cases = [
+            (
+                "tidyverse/tidytemplate",
+                "tidytemplate",
+                DepTable {
+                    git: Some("https://github.com/tidyverse/tidytemplate.git".to_string()),
+                    ref_: Some("tidyverse/tidytemplate".to_string()),
+                    ..Default::default()
+                },
+            ),
+            (
+                "tidyverse/tidytemplate@main",
+                "tidytemplate",
+                DepTable {
+                    git: Some("https://github.com/tidyverse/tidytemplate.git".to_string()),
+                    rev: Some("main".to_string()),
+                    ref_: Some("tidyverse/tidytemplate@main".to_string()),
+                    ..Default::default()
+                },
+            ),
+            (
+                "r-lib/pak#123",
+                "pak",
+                DepTable {
+                    git: Some("https://github.com/r-lib/pak.git".to_string()),
+                    pr: Some(123),
+                    ref_: Some("r-lib/pak#123".to_string()),
+                    ..Default::default()
+                },
+            ),
+            (
+                "git::https://github.com/r-lib/cli.git",
+                "cli",
+                DepTable {
+                    git: Some("https://github.com/r-lib/cli.git".to_string()),
+                    ref_: Some("git::https://github.com/r-lib/cli.git".to_string()),
+                    ..Default::default()
+                },
+            ),
+            (
+                "jsonlite=jeroen/jsonlite",
+                "jsonlite",
+                DepTable {
+                    git: Some("https://github.com/jeroen/jsonlite.git".to_string()),
+                    ref_: Some("jsonlite=jeroen/jsonlite".to_string()),
+                    ..Default::default()
+                },
+            ),
+            (
+                "r-lib/usethis/subdir",
+                "subdir",
+                DepTable {
+                    git: Some("https://github.com/r-lib/usethis.git".to_string()),
+                    subdir: Some("subdir".to_string()),
+                    ref_: Some("r-lib/usethis/subdir".to_string()),
+                    ..Default::default()
+                },
+            ),
         ];
-        for (entry, name) in cases {
+        for (entry, name, table) in git_cases {
             let (key, dep) = config_needs_entry(entry);
             assert_eq!(key, name, "{}", entry);
-            assert_eq!(
-                dep,
-                Dependency::Detailed(Box::new(DepTable {
-                    ref_: Some(entry.to_string()),
-                    ..Default::default()
-                })),
-                "{}",
-                entry
-            );
+            assert_eq!(dep, Dependency::Detailed(Box::new(table)), "{}", entry);
         }
+
+        // `bioc::S4Vectors` is not a `git`/GitHub reference, so it is kept
+        // verbatim in `ref`.
+        let (key, dep) = config_needs_entry("bioc::S4Vectors");
+        assert_eq!(key, "S4Vectors");
+        assert_eq!(
+            dep,
+            Dependency::Detailed(Box::new(DepTable {
+                ref_: Some("bioc::S4Vectors".to_string()),
+                ..Default::default()
+            }))
+        );
 
         // A reference with no package name in it is kept under the reference
         // itself, rather than being dropped.

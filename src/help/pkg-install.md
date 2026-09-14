@@ -16,6 +16,47 @@ needs can be installed with it, at versions that work together. `--dry-run`
 runs the resolution and reports what it would install, without installing
 anything.
 
+## Git, GitHub and GitLab sources
+
+A package can also be given straight from a git repository, [pak's package
+reference](https://pak.r-lib.org/reference/pak_package_sources.html) syntax,
+the same one [`rig proj add`](proj.qmd) accepts:
+
+```
+rig pkg install r-lib/crayon
+rig pkg install r-lib/crayon@84be6207
+rig pkg install r-lib/crayon@some-branch
+rig pkg install r-lib/crayon#41
+rig pkg install r-lib/crayon@*release
+rig pkg install gitlab::group/project@main
+rig pkg install 'git::https://gitlab.com/example/pkg.git@main'
+```
+
+A bare `<owner>/<repo>` (optionally `github::<owner>/<repo>`) is a GitHub
+reference; `<owner>/<repo>/<subdir>` points at a package in a subdirectory of
+the repository. After the path, `@<ref>` pins a branch, tag or commit,
+`#<pr>` a pull request, and `@*release` the latest release.
+
+`gitlab::<group>/<project>` is the same idea for GitLab, including nested
+subgroups (`gitlab::<group>/<subgroup>/<project>`); `@<ref>` pins a branch,
+tag or commit, and `/-/<subdir>` points at a subdirectory. Merge requests and
+`@*release` are not supported for GitLab. A self-hosted instance is
+`gitlab::<https-url-of-group-and-project>`, e.g.
+`gitlab::https://gitlab.example.com/group/project`.
+
+A `git::<url>` reference works with any git host, not only GitHub or GitLab.
+
+The package name is read from the fetched repository's own `DESCRIPTION`
+(which may differ from the repository name); the dependency is pinned to an
+exact commit, resolved right away, not to a version range.
+
+rig fetches a git/GitHub/GitLab source with the system `git`, which must be
+installed and on `PATH`. A private repository authenticates exactly the way
+a plain `git clone` would on your machine: a configured credential helper
+(Keychain, Windows Credential Manager, `git credential-store`, etc.),
+`.netrc`, an SSH agent, or credentials already embedded in the URL. There is
+no separate rig-specific token setting.
+
 ## Dev dependencies
 
 By default rig installs the hard dependencies only: `Depends`, `Imports` and

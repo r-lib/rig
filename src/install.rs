@@ -25,6 +25,34 @@ pub const REMOTE_HASH_FIELD: &str = "RemoteHash";
 /// binary index uses.
 pub const REMOTE_LINKINGTO_FIELD: &str = "RemoteLinkingToHashes";
 
+/// `DESCRIPTION` fields recording the provenance of a git/GitHub-sourced
+/// package, the same field names the R `remotes`/`pak`/`renv` packages use, so
+/// that a package rig installed this way is recognizable by other R tooling
+/// too. `REMOTE_TYPE_FIELD` is `"github"` or `"git"`; `REMOTE_HOST_FIELD`,
+/// `REMOTE_REPO_FIELD` and `REMOTE_USERNAME_FIELD` are only set for a GitHub
+/// source (a plain `git::` source has no owner/repo structure, only a URL).
+pub const REMOTE_TYPE_FIELD: &str = "RemoteType";
+pub const REMOTE_URL_FIELD: &str = "RemoteUrl";
+pub const REMOTE_HOST_FIELD: &str = "RemoteHost";
+pub const REMOTE_REPO_FIELD: &str = "RemoteRepo";
+pub const REMOTE_USERNAME_FIELD: &str = "RemoteUsername";
+pub const REMOTE_SUBDIR_FIELD: &str = "RemoteSubdir";
+pub const REMOTE_REF_FIELD: &str = "RemoteRef";
+pub const REMOTE_SHA_FIELD: &str = "RemoteSha";
+
+/// Every `DESCRIPTION` field a git/GitHub-sourced install can write, for
+/// [`drop_fields`]'s idempotency pass -- see [`patch_description`].
+pub const REMOTE_GIT_FIELDS: &[&str] = &[
+    REMOTE_TYPE_FIELD,
+    REMOTE_URL_FIELD,
+    REMOTE_HOST_FIELD,
+    REMOTE_REPO_FIELD,
+    REMOTE_USERNAME_FIELD,
+    REMOTE_SUBDIR_FIELD,
+    REMOTE_REF_FIELD,
+    REMOTE_SHA_FIELD,
+];
+
 #[derive(Debug, Clone)]
 pub struct PackageInfo {
     pub name: String,
@@ -44,6 +72,10 @@ pub struct PackageInfo {
     /// compiled once per build. `None` for a binary, and for a source package
     /// whose build cannot be identified.
     pub built: Option<PathBuf>,
+    /// Git/GitHub provenance, i.e. the [`REMOTE_GIT_FIELDS`] the lockfile's
+    /// `metadata` carried, if this package came from a git/GitHub source.
+    /// Empty for an ordinary CRAN/PPM package.
+    pub remote: HashMap<String, String>,
 }
 
 /// Install one R package into a library.
@@ -321,7 +353,9 @@ pub(crate) fn single_subdir(dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
 fn patch_description(pkg_dir: &Path, pkg: &PackageInfo) -> Result<(), Box<dyn Error>> {
     let path = pkg_dir.join("DESCRIPTION");
     let text = std::fs::read_to_string(&path)?;
-    let mut out = drop_fields(&text, &[REMOTE_HASH_FIELD, REMOTE_LINKINGTO_FIELD]);
+    let mut drop = vec![REMOTE_HASH_FIELD, REMOTE_LINKINGTO_FIELD];
+    drop.extend_from_slice(REMOTE_GIT_FIELDS);
+    let mut out = drop_fields(&text, &drop);
 
     if !out.is_empty() && !out.ends_with('\n') {
         out.push('\n');
@@ -335,6 +369,11 @@ fn patch_description(pkg_dir: &Path, pkg: &PackageInfo) -> Result<(), Box<dyn Er
             REMOTE_LINKINGTO_FIELD,
             format_linkingto(&pkg.linkingto)
         ));
+    }
+    for field in REMOTE_GIT_FIELDS {
+        if let Some(value) = pkg.remote.get(*field) {
+            out.push_str(&format!("{}: {}\n", field, value));
+        }
     }
 
     std::fs::write(&path, out)?;
@@ -864,6 +903,7 @@ mod tests {
                 .map(|(p, v, s)| (p.to_string(), v.to_string(), s.to_string()))
                 .collect(),
             built: None,
+            remote: HashMap::new(),
         }
     }
 
@@ -1091,6 +1131,7 @@ mod tests {
             hash: hash.map(|x| x.to_string()),
             linkingto: vec![],
             built: Some(archive.to_path_buf()),
+            remote: std::collections::HashMap::new(),
         }
     }
 

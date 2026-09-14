@@ -20,7 +20,8 @@ use crate::common::{get_arch, get_default_r_version, get_platform, sc_get_list_d
 use crate::dcf::*;
 use crate::download::download_multiple_first_available_with_progress;
 use crate::install::{
-    install_packages, parse_linkingto, PackageInfo, REMOTE_HASH_FIELD, REMOTE_LINKINGTO_FIELD,
+    install_packages, parse_linkingto, PackageInfo, REMOTE_GIT_FIELDS, REMOTE_HASH_FIELD,
+    REMOTE_LINKINGTO_FIELD, REMOTE_SUBDIR_FIELD, REMOTE_TYPE_FIELD,
 };
 use crate::library::get_library_path;
 use crate::output::OUTPUT;
@@ -37,8 +38,8 @@ use crate::repos::cranlike_metadata::{ensure_allpackages_fresh, minor_r_version}
 use crate::repos::*;
 use crate::resolve::resolve_versions;
 use crate::rproj::{
-    parse_add_spec, Author, Repository, Rproj, RprojLock, RprojLockPackage, RprojLockTarget,
-    RPROJ_LOCK_VERSION, RPROJ_MANIFEST_FILE,
+    parse_add_spec, Author, DepTable, Repository, Rproj, RprojLock, RprojLockPackage,
+    RprojLockTarget, RPROJ_LOCK_VERSION, RPROJ_MANIFEST_FILE,
 };
 use crate::rvenv::{
     existing_targets, find_project_root, find_workspace_root, project_library,
@@ -46,7 +47,7 @@ use crate::rvenv::{
     workspace_members, write_sync_stamp, RvenvCfg, RPROJ_LOCK_FILE, RVENV_CFG_FILE,
 };
 use crate::solver::*;
-use crate::textfmt::reflow;
+use crate::textfmt::{dcf_field_to_text, reflow};
 use crate::utils::create_parent_dir_if_needed;
 
 #[cfg(target_os = "macos")]
@@ -122,7 +123,7 @@ fn sc_proj_init(
 
     let manifest = Rproj::minimal_for_r(&name, &rver)?;
     let manifest_path = root.join(RPROJ_MANIFEST_FILE);
-    fs::write(&manifest_path, toml::to_string_pretty(&manifest)?)?;
+    fs::write(&manifest_path, manifest.to_toml()?)?;
 
     let mut created = vec![manifest_path];
     created.extend(rvenv_init(&root)?);
@@ -250,7 +251,7 @@ fn resolve_release_r_version(args: &ArgMatches) -> Option<String> {
 /// the `[description]` escape hatch. `Config/*` fields are excluded
 /// separately, since they always go to `[config.*]` / dependency groups
 /// instead.
-const KNOWN_DESCRIPTION_FIELDS: [&str; 15] = [
+const KNOWN_DESCRIPTION_FIELDS: [&str; 16] = [
     "Package",
     "Version",
     "Type",
@@ -266,6 +267,7 @@ const KNOWN_DESCRIPTION_FIELDS: [&str; 15] = [
     "LinkingTo",
     "Suggests",
     "Enhances",
+    "Remotes",
 ];
 
 /// Import a `DESCRIPTION` file into `rproj.toml`.
@@ -307,7 +309,7 @@ fn sc_proj_import(
         check_project_conflicts(&root)?;
     }
 
-    let paragraph = read_description_paragraph(input)?;
+    let paragraph = read_description_paragraph(input, false)?;
     let pkg = Package::from_dcf_paragraph(&paragraph)?;
     let dep_count = pkg.dependencies.dependencies.len();
 
@@ -335,7 +337,7 @@ fn sc_proj_import(
                 .unwrap_or_else(|| "package".to_string()),
         );
         manifest.project.title = paragraph.get("Title").map(reflow);
-        manifest.project.description = paragraph.get("Description").map(reflow);
+        manifest.project.description = paragraph.get("Description").map(dcf_field_to_text);
         manifest.project.license = paragraph.get("License").map(reflow);
         manifest.project.authors = match paragraph.get("Authors@R") {
             Some(raw) => Author::from_authors_r(raw),
@@ -384,6 +386,52 @@ fn sc_proj_import(
     }
 
     manifest.merge_description(&pkg);
+    // `Remotes:` names the git/GitHub/GitLab source for packages that are
+    // also listed in `Depends`/`Imports`/`Suggests` above; only `git`/
+    // `github`/`gitlab` remotes are understood, other remote types (`bioc::`,
+    // `bitbucket::`, `local::`, `svn::`, `url::`, ...) are warned about and
+    // skipped rather than failing the whole import.
+    if let Some(remotes) = paragraph.get("Remotes") {
+        for entry in reflow(remotes).split(',') {
+            let entry = entry.trim();
+            if entry.is_empty() {
+                continue;
+            }
+            match crate::pkgsource::parse_pkg_source(entry) {
+                Ok(crate::pkgsource::PkgSource::Remote(r)) => {
+                    match crate::rproj::pak_ref_name(entry) {
+                        Some(name) => {
+                            let dev = manifest
+                                .dependency_groups
+                                .get("test")
+                                .is_some_and(|g| g.dependencies.contains_key(&name))
+                                && !manifest.dependencies.contains_key(&name);
+                            let table = dep_table_from_remote(&r, entry);
+                            manifest.add_remote_dependency(&name, table, dev);
+                        }
+                        None => {
+                            let msg = format!(
+                                "Cannot determine the package name for Remotes entry \
+                                 `{}`, skipping it",
+                                entry
+                            );
+                            OUTPUT.warn(&msg);
+                            info!("{}", msg);
+                        }
+                    }
+                }
+                Ok(crate::pkgsource::PkgSource::Cran) | Err(_) => {
+                    let msg = format!(
+                        "Remotes entry `{}` is not a supported git/GitHub reference, \
+                         skipping it",
+                        entry
+                    );
+                    OUTPUT.warn(&msg);
+                    info!("{}", msg);
+                }
+            }
+        }
+    }
     // `Config/Needs/*` fields are dependencies as well, so they are imported
     // in `--dependencies` mode, too.
     let needs: Vec<(String, String)> = paragraph
@@ -409,7 +457,7 @@ fn sc_proj_import(
         })
         .collect();
     manifest.merge_config(&config);
-    fs::write(path, toml::to_string_pretty(&manifest)?)?;
+    fs::write(path, manifest.to_toml()?)?;
 
     let groups = match needs.len() {
         0 => "".to_string(),
@@ -478,6 +526,44 @@ fn sc_proj_export(
     Ok(())
 }
 
+/// One parsed `rig proj add` argument: an ordinary CRAN-style `<package>`/
+/// `<package>@<version>`, or a git/GitHub reference, already fetched to learn
+/// its real package name (from `DESCRIPTION`'s `Package:` field, which may
+/// differ from the repository name) and pinned commit.
+enum AddSpec {
+    Cran(String, String),
+    Remote(String, Box<DepTable>),
+}
+
+impl AddSpec {
+    fn name(&self) -> &str {
+        match self {
+            AddSpec::Cran(name, _) => name,
+            AddSpec::Remote(name, _) => name,
+        }
+    }
+}
+
+/// Parse one `rig proj add` argument. A git/GitHub reference is fetched here,
+/// so that its real package name and pinned commit are known before anything
+/// is written to `rproj.toml` -- see [`fetch_and_read_git_package`].
+fn parse_add_arg(spec: &str) -> Result<AddSpec, Box<dyn Error>> {
+    match crate::pkgsource::parse_pkg_source(spec)? {
+        crate::pkgsource::PkgSource::Cran => {
+            let (name, version) = parse_add_spec(spec)?;
+            Ok(AddSpec::Cran(name, version))
+        }
+        crate::pkgsource::PkgSource::Remote(r) => {
+            let table = dep_table_from_remote(&r, spec);
+            let git_url = table.git.clone().unwrap_or_default();
+            OUTPUT.status(&format!("Fetching {}", git_url));
+            let (pkg, _source, _remotes) = fetch_and_read_git_package(&git_url, &table)?;
+            let name = r.name_override.unwrap_or(pkg.name);
+            Ok(AddSpec::Remote(name, Box::new(table)))
+        }
+    }
+}
+
 /// Add dependencies to `rproj.toml`, then update the lockfile and install
 /// them: `rig proj add`.
 fn sc_proj_add(
@@ -497,24 +583,24 @@ fn sc_proj_add(
     let original = fs::read_to_string(&path).ok();
     let mut manifest = proj_read_manifest(&root)?;
 
-    // Parse every specification before changing anything, so that a typo in
-    // the last one does not leave the earlier ones added.
-    let specs: Vec<(String, String)> = args
-        .get_many::<String>("package")
-        .unwrap_or_default()
-        .map(|spec| parse_add_spec(spec))
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|err| {
+    // Parse (and, for a git/GitHub reference, fetch) every specification
+    // before changing anything, so that a typo -- or an unreachable repo --
+    // in the last one does not leave the earlier ones added.
+    let mut specs: Vec<AddSpec> = Vec::new();
+    for spec in args.get_many::<String>("package").unwrap_or_default() {
+        specs.push(parse_add_arg(spec).map_err(|err| {
             OUTPUT.error(&err.to_string());
             error!("{}", err);
             err
-        })?;
+        })?);
+    }
 
     let mut messages: Vec<String> = Vec::new();
-    for (name, version) in specs.iter() {
+    for spec in specs.iter() {
         // A dev dependency of a package the project already depends on
         // directly is installed either way, so `--dev` does not do what it
         // looks like it does there.
+        let name = spec.name();
         if dev && manifest.dependencies.contains_key(name) {
             OUTPUT.warn(&format!(
                 "{} is already a dependency in [dependencies], \
@@ -523,20 +609,33 @@ fn sc_proj_add(
             ));
         }
 
-        let previous = manifest.add_dependency(name, version, dev);
-        messages.push(match previous {
-            Some(previous) if &previous == version => {
-                format!("Kept {} ({}) in {}", name, version, RPROJ_MANIFEST_FILE)
+        messages.push(match spec {
+            AddSpec::Cran(name, version) => {
+                let previous = manifest.add_dependency(name, version, dev);
+                match previous {
+                    Some(previous) if previous == *version => {
+                        format!("Kept {} ({}) in {}", name, version, RPROJ_MANIFEST_FILE)
+                    }
+                    Some(previous) => format!(
+                        "Updated {} in {}, {} -> {}",
+                        name, RPROJ_MANIFEST_FILE, previous, version
+                    ),
+                    None => format!("Added {} ({}) to {}", name, version, RPROJ_MANIFEST_FILE),
+                }
             }
-            Some(previous) => format!(
-                "Updated {} in {}, {} -> {}",
-                name, RPROJ_MANIFEST_FILE, previous, version
-            ),
-            None => format!("Added {} ({}) to {}", name, version, RPROJ_MANIFEST_FILE),
+            AddSpec::Remote(name, table) => {
+                manifest.add_remote_dependency(name, (**table).clone(), dev);
+                format!(
+                    "Added {} ({}) to {}",
+                    name,
+                    table.git.as_deref().unwrap_or_default(),
+                    RPROJ_MANIFEST_FILE
+                )
+            }
         });
     }
 
-    fs::write(&path, toml::to_string_pretty(&manifest)?)?;
+    fs::write(&path, manifest.to_toml()?)?;
     for msg in messages.iter() {
         OUTPUT.success(msg);
         info!("{}", msg);
@@ -629,7 +728,7 @@ fn sc_proj_remove(
         messages.push(format!("Removed {} from {}", name, RPROJ_MANIFEST_FILE));
     }
 
-    fs::write(&path, toml::to_string_pretty(&manifest)?)?;
+    fs::write(&path, manifest.to_toml()?)?;
     for msg in messages.iter() {
         OUTPUT.success(msg);
         info!("{}", msg);
@@ -665,15 +764,30 @@ fn sc_proj_remove(
 
 /// Read a `DESCRIPTION` file (or any single-paragraph DCF file) and return
 /// its one paragraph.
-fn read_description_paragraph(input: &str) -> Result<deb822_fast::Paragraph, Box<dyn Error>> {
-    OUTPUT.status(&format!("Reading dependencies from {}", input));
+fn read_description_paragraph(
+    input: &str,
+    quiet: bool,
+) -> Result<deb822_fast::Paragraph, Box<dyn Error>> {
+    if !quiet {
+        OUTPUT.status(&format!("Reading dependencies from {}", input));
+    }
     info!("Reading dependencies from {}", input);
     let df: File = File::open(input).map_err(|e| {
         OUTPUT.error(&format!("Cannot read {}: {}", input, e));
         error!("Cannot read {}: {}", input, e);
         e
     })?;
-    let desc = parse_dcf_reader(df)?;
+    parse_description_paragraph(df)
+}
+
+/// Parse a single-paragraph DCF document (e.g. a `DESCRIPTION` file's
+/// content) from any [`std::io::Read`], the shared body behind
+/// [`read_description_paragraph`] (path-based) and a git/GitHub dependency's
+/// fetched content (in-memory, via [`fetch_and_read_git_package`]).
+fn parse_description_paragraph<R: std::io::Read>(
+    reader: R,
+) -> Result<deb822_fast::Paragraph, Box<dyn Error>> {
+    let desc = parse_dcf_reader(reader)?;
 
     if desc.is_empty() {
         OUTPUT.error("Empty DESCRIPTION file");
@@ -761,6 +875,10 @@ pub(crate) struct ProjectSolve {
     /// mapped to its direct dependency names. Used after the solve to tag
     /// each locked package with the group(s) that need it.
     pub group_roots: HashMap<String, Vec<String>>,
+    /// Every member's git/GitHub-sourced dependencies, merged, see
+    /// [`Rproj::git_dependencies`]. Fetched and registered with the solver by
+    /// [`register_git_sources`] before it runs.
+    pub git_deps: Vec<(String, crate::rproj::DepTable)>,
 }
 
 /// Read the project or workspace rooted at `root` and turn it into the roots
@@ -787,11 +905,13 @@ pub(crate) fn proj_read_solve_roots(
             info!("Reading dependencies from {}", RPROJ_MANIFEST_FILE);
             let deps = manifest.to_dep_version_specs(dev)?;
             let group_roots = manifest.dependency_group_roots();
+            let git_deps = manifest.git_dependencies();
             return Ok(ProjectSolve {
                 members: vec![root.to_path_buf()],
                 roots: vec![SolveRoot::project(deps.clone())?],
                 merged: deps,
                 group_roots,
+                git_deps,
             });
         }
     };
@@ -810,11 +930,13 @@ pub(crate) fn proj_read_solve_roots(
     };
     let mut group_roots: HashMap<String, Vec<String>> = HashMap::new();
     let mut seen: HashMap<String, PathBuf> = HashMap::new();
+    let mut git_deps: Vec<(String, crate::rproj::DepTable)> = vec![];
 
     for dir in &dirs {
         let mut member = proj_read_manifest(dir)?;
         member.inherit_workspace_deps(ws, &dir.join(RPROJ_MANIFEST_FILE))?;
         let name = member.project.name.clone();
+        git_deps.extend(member.git_dependencies());
 
         // The solver equates R and the base packages with the R version
         // itself, so a member of one of those names would be resolved against
@@ -857,6 +979,7 @@ pub(crate) fn proj_read_solve_roots(
         roots,
         merged,
         group_roots,
+        git_deps,
     })
 }
 
@@ -1091,7 +1214,15 @@ pub(crate) fn sc_proj_solve_project_deps(
     report_status: bool,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
     let roots = [SolveRoot::project(deps.clone())?];
-    sc_proj_solve_deps(r_version, &roots, target, prefer_binary, report_status)
+    sc_proj_solve_deps(
+        r_version,
+        &roots,
+        &[],
+        target,
+        prefer_binary,
+        report_status,
+        false,
+    )
 }
 
 /// Solve the dependencies of every root in `roots` for one R version and one
@@ -1107,9 +1238,11 @@ pub(crate) fn sc_proj_solve_project_deps(
 pub(crate) fn sc_proj_solve_deps(
     r_version: &str,
     roots: &[SolveRoot],
+    git_deps: &[(String, DepTable)],
     target: Option<BinaryTarget>,
     prefer_binary: Option<usize>,
     report_status: bool,
+    dev: bool,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
     info!("Solving dependencies");
 
@@ -1127,6 +1260,14 @@ pub(crate) fn sc_proj_solve_deps(
         RPackageRegistry::with_loaders(Box::new(loader), binaries).prefer_binary(prefer_binary);
 
     let (root_pkg, root_version) = register_roots(&reg, roots)?;
+
+    if !git_deps.is_empty() {
+        if report_status {
+            OUTPUT.status("Fetching git/GitHub package sources");
+        }
+        info!("Fetching git/GitHub package sources");
+        register_git_sources(&reg, git_deps, dev)?;
+    }
 
     // add R itself, for now a hardcoded version
     reg.add_package_version(
@@ -1189,6 +1330,187 @@ pub(crate) fn sc_proj_solve_deps(
             bail!("{}", msg)
         }
     }
+}
+
+/// Fetch every git/GitHub-sourced dependency in `git_deps` and register it
+/// with `reg` as a pre-resolved package version, the same mechanism
+/// `register_roots` uses for workspace members: the version and its
+/// dependencies are already known from the fetched `DESCRIPTION`, so the
+/// solver never looks it up in a repository index (`RPackageRegistry::
+/// add_package_version` marks it loaded).
+///
+/// A fetched package's own `Remotes:` field, if it has one, is resolved the
+/// same way, recursively -- this is the only way a git/GitHub source can
+/// appear below the project's own direct dependencies: an ordinary CRAN/PPM
+/// package's index metadata has no `Remotes:` field to check.
+fn register_git_sources(
+    reg: &RPackageRegistry,
+    git_deps: &[(String, DepTable)],
+    dev: bool,
+) -> Result<(), Box<dyn Error>> {
+    // Only the packages named directly (on the command line, or in
+    // `rproj.toml`) are roots of the solve; a package reached through another
+    // package's `Remotes:` is a transitive dependency, and like any other
+    // transitive dependency only its hard dependencies matter -- see
+    // `proj_deps_recursive`.
+    let requested: HashSet<String> = git_deps.iter().map(|(name, _)| name.clone()).collect();
+    let mut worklist: Vec<(String, DepTable)> = git_deps.to_vec();
+    let mut seen: HashSet<String> = HashSet::new();
+
+    while let Some((name, table)) = worklist.pop() {
+        if !seen.insert(name.clone()) {
+            continue;
+        }
+        let git_url = table.git.clone().ok_or_else(|| {
+            SimpleError::new(format!(
+                "{} has a dependency source with no `git` URL",
+                name
+            ))
+        })?;
+
+        let (pkg, git_source, remotes) = fetch_and_read_git_package(&git_url, &table)?;
+
+        if pkg.name != name {
+            bail!(
+                "`{}` in rproj.toml points at {}, but its DESCRIPTION says `Package: {}`",
+                name,
+                git_url,
+                pkg.name
+            );
+        }
+
+        let version = RegistryPackageVersion {
+            name: name.clone(),
+            version: pkg.version.clone(),
+            artifact: Artifact::Source,
+        };
+        let pkg_dev = dev && requested.contains(&name);
+        let ranges = rpackage_version_ranges_from_constraints(&pkg.dependencies, pkg_dev);
+        reg.add_package_version(name.clone(), version.clone(), ranges);
+        reg.set_git_source(name.clone(), version, git_source);
+
+        for entry in remotes.split(',') {
+            let entry = entry.trim();
+            if entry.is_empty() {
+                continue;
+            }
+            let Some(dep_name) = crate::rproj::pak_ref_name(entry) else {
+                continue;
+            };
+            if seen.contains(&dep_name) {
+                continue;
+            }
+            if let Ok(crate::pkgsource::PkgSource::Remote(r)) =
+                crate::pkgsource::parse_pkg_source(entry)
+            {
+                worklist.push((dep_name, dep_table_from_remote(&r, entry)));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The manifest `DepTable` a parsed `git`/`github::`/`gitlab::` reference
+/// implies, the same shape `rig proj add` writes -- used to feed a fetched
+/// package's own `Remotes:` entries back into [`register_git_sources`]'s
+/// worklist. `entry` is the original reference text (e.g. `gitlab::group/
+/// project/-/pkg@main`), kept verbatim in `ref_` so `rig proj export` can
+/// write it back unchanged instead of reconstructing it -- see
+/// [`crate::rproj::dep_table_to_pak_ref`].
+pub(crate) fn dep_table_from_remote(r: &crate::pkgsource::RemoteSource, entry: &str) -> DepTable {
+    DepTable {
+        git: Some(r.git.clone()),
+        branch: r.branch.clone(),
+        tag: r.tag.clone(),
+        rev: r.rev.clone(),
+        pr: r.pr,
+        release: if r.release { Some(true) } else { None },
+        subdir: r.subdir.clone(),
+        ref_: Some(entry.trim().to_string()),
+        ..Default::default()
+    }
+}
+
+/// A github.com URL's `owner`/`repo`, if `git_url` is one.
+pub(crate) fn github_owner_repo(git_url: &str) -> Option<(&str, &str)> {
+    let path_part = git_url.strip_prefix("https://github.com/")?;
+    let path_part = path_part.trim_end_matches(".git");
+    path_part.split_once('/')
+}
+
+/// Fetch a git/GitHub dependency's `DESCRIPTION`, and return the parsed
+/// package, its provenance (for the solver's git-source side table), and its
+/// raw `Remotes:` field (empty if it has none).
+///
+/// Only `DESCRIPTION` is ever downloaded (a sparse, partial-clone fetch, see
+/// [`crate::pkgsource::git::fetch_git_description`]) -- resolving a
+/// dependency needs nothing else from the repository. `table`'s `pr`/
+/// `release`/`rev`/`branch`/`tag` fields (in that priority order) are
+/// resolved to a single refspec to fetch; `pr`/`release` only make sense for
+/// a `github.com` URL (mirroring `RemoteSource`'s doc comments).
+pub(crate) fn fetch_and_read_git_package(
+    git_url: &str,
+    table: &DepTable,
+) -> Result<(Package, GitSourceInfo, String), Box<dyn Error>> {
+    let owner_repo = github_owner_repo(git_url);
+
+    if (table.pr.is_some() || table.release == Some(true)) && owner_repo.is_none() {
+        bail!(
+            "`{}` is not a github.com URL, `pr`/`release` are only supported for GitHub sources",
+            git_url
+        );
+    }
+
+    let refspec = if let Some(pr) = table.pr {
+        Some(format!("refs/pull/{}/head", pr))
+    } else if table.release == Some(true) {
+        let (owner, repo) = owner_repo.expect("checked above");
+        Some(crate::pkgsource::git::resolve_release_tag(owner, repo)?)
+    } else {
+        table
+            .rev
+            .clone()
+            .or_else(|| table.branch.clone())
+            .or_else(|| table.tag.clone())
+    };
+
+    let (description, sha) = crate::pkgsource::git::fetch_git_description(
+        git_url,
+        refspec.as_deref(),
+        table.subdir.as_deref(),
+    )?;
+
+    let git_source = match owner_repo {
+        Some((owner, repo)) => GitSourceInfo {
+            remote_type: "github",
+            url: git_url.to_string(),
+            host: Some("github.com".to_string()),
+            repo: Some(format!("{}/{}", owner, repo)),
+            username: Some(owner.to_string()),
+            subdir: table.subdir.clone(),
+            ref_: refspec.clone(),
+            sha,
+        },
+        None => GitSourceInfo {
+            remote_type: "git",
+            url: git_url.to_string(),
+            host: None,
+            repo: None,
+            username: None,
+            subdir: table.subdir.clone(),
+            ref_: refspec.clone(),
+            sha,
+        },
+    };
+
+    let paragraph = parse_description_paragraph(description.as_bytes())?;
+    let pkg = Package::from_dcf_paragraph(&paragraph)?;
+    let remotes = paragraph
+        .get("Remotes")
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+
+    Ok((pkg, git_source, remotes))
 }
 
 /// Show a solve failure: the headline as an error, the pubgrub report under it.
@@ -1824,9 +2146,11 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
             let result = sc_proj_solve_deps(
                 &st.rver,
                 &solve.roots,
+                &solve.git_deps,
                 st.target.clone(),
                 prefer_binary,
                 false,
+                dev,
             )
             .map_err(|e| e.to_string());
             (st.rver.clone(), st.platform_key.clone(), result)
@@ -2928,11 +3252,26 @@ pub(crate) fn lockfile_package_info(
     cache_dir: &Path,
     built: Option<&BuiltCache>,
 ) -> PackageInfo {
+    let mut remote: HashMap<String, String> = HashMap::new();
+    for field in REMOTE_GIT_FIELDS {
+        if let Some(value) = pkg.metadata.get(*field) {
+            remote.insert(field.to_string(), value.clone());
+        }
+    }
+    // A git/GitHub package's `target` is the fetched directory (a tarball
+    // unpacked, or a git checkout); a subdirectory source lives at
+    // `<target>/<subdir>` within it. An ordinary CRAN/PPM package's `target`
+    // is the downloaded file itself.
+    let base = cache_dir.join("packages").join(&pkg.target);
+    let file_path = match pkg.metadata.get(REMOTE_SUBDIR_FIELD) {
+        Some(subdir) => base.join(subdir),
+        None => base,
+    };
     let mut info = PackageInfo {
         name: pkg.package.clone(),
         version: pkg.version.clone(),
         binary: pkg.binary,
-        file_path: cache_dir.join("packages").join(&pkg.target),
+        file_path,
         dependencies: pkg.dependencies.clone(),
         hash: pkg.metadata.get(REMOTE_HASH_FIELD).cloned(),
         linkingto: pkg
@@ -2941,6 +3280,7 @@ pub(crate) fn lockfile_package_info(
             .map(|s| parse_linkingto(s))
             .unwrap_or_default(),
         built: None,
+        remote,
     };
     if !info.binary {
         info.built = built.and_then(|cache| cache.path(&info));
@@ -2964,6 +3304,75 @@ pub(crate) fn download_lockfile_packages(
     // Get cache directory
     let cache_dir = get_cache_dir()?;
 
+    // A git/GitHub package's `target` is a directory, fetched by unpacking a
+    // tarball or checking out a git worktree, not a plain HTTP download to a
+    // file -- handled separately, see `fetch_git_lockfile_packages`.
+    let (git_packages, http_packages): (Vec<&RprojLockPackage>, Vec<&RprojLockPackage>) = packages
+        .iter()
+        .partition(|pkg| pkg.metadata.contains_key(REMOTE_TYPE_FIELD));
+
+    fetch_git_lockfile_packages(&git_packages, &cache_dir)?;
+    download_http_lockfile_packages(&http_packages, &cache_dir)
+}
+
+/// Fetch every git/GitHub package in `packages` into its cache directory: a
+/// shallow (`--depth 1`), sparse-checkout-scoped `git` fetch (see
+/// [`crate::pkgsource::git::fetch_git_checkout`]), reusing the `RemoteUrl`/
+/// `RemoteRef`/`RemoteSubdir` recorded at lock time -- a GitHub and a
+/// non-GitHub `git::` source are fetched the exact same way. Skipped
+/// entirely when the target directory already exists -- the target is keyed
+/// by the resolved commit sha, so an existing one is always the right
+/// content.
+fn fetch_git_lockfile_packages(
+    packages: &[&RprojLockPackage],
+    cache_dir: &Path,
+) -> Result<(), Box<dyn Error>> {
+    for pkg in packages {
+        let target_dir = cache_dir.join("packages").join(&pkg.target);
+        if target_dir.exists() {
+            OUTPUT.success(&format!(
+                "{} is cached at {}",
+                pkg.package,
+                target_dir.display()
+            ));
+            continue;
+        }
+        create_parent_dir_if_needed(&target_dir)?;
+
+        match pkg.metadata.get(REMOTE_TYPE_FIELD).map(|s| s.as_str()) {
+            Some("github") | Some("git") => {
+                let url = pkg
+                    .metadata
+                    .get(crate::install::REMOTE_URL_FIELD)
+                    .ok_or_else(|| SimpleError::new(format!("{} has no RemoteUrl", pkg.package)))?;
+                let refspec = pkg.metadata.get(crate::install::REMOTE_REF_FIELD).cloned();
+                let subdir = pkg
+                    .metadata
+                    .get(crate::install::REMOTE_SUBDIR_FIELD)
+                    .cloned();
+                OUTPUT.status(&format!("Fetching {} from {}", pkg.package, url));
+                crate::pkgsource::git::fetch_git_checkout(
+                    url,
+                    refspec.as_deref(),
+                    subdir.as_deref(),
+                    &target_dir,
+                )?;
+            }
+            other => bail!(
+                "{} has an unknown RemoteType `{}`",
+                pkg.package,
+                other.unwrap_or("<none>")
+            ),
+        }
+        OUTPUT.success(&format!("Fetched {}", pkg.package));
+    }
+    Ok(())
+}
+
+fn download_http_lockfile_packages(
+    packages: &[&RprojLockPackage],
+    cache_dir: &Path,
+) -> Result<(), Box<dyn Error>> {
     // Build download list: (sources, target_path) for each package
     let mut downloads: Vec<(Vec<String>, PathBuf)> = Vec::new();
     for pkg in packages {
@@ -2973,6 +3382,9 @@ pub(crate) fn download_lockfile_packages(
     }
 
     let total = downloads.len();
+    if total == 0 {
+        return Ok(());
+    }
 
     // Create progress bars
     let multi_progress = MultiProgress::new();
@@ -3476,11 +3888,7 @@ mod tests {
     /// workspace member.
     fn write_manifest(dir: &Path, manifest: &Rproj) {
         fs::create_dir_all(dir).unwrap();
-        fs::write(
-            dir.join(RPROJ_MANIFEST_FILE),
-            toml::to_string_pretty(manifest).unwrap(),
-        )
-        .unwrap();
+        fs::write(dir.join(RPROJ_MANIFEST_FILE), manifest.to_toml().unwrap()).unwrap();
     }
 
     /// A workspace of two members, `a` and `b`, under `root`: `a` depends on
