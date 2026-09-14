@@ -719,9 +719,14 @@ impl Rproj {
     /// unlike a `DESCRIPTION` dependency field it is not restricted to
     /// package names: `tidyverse/tidytemplate` and other `pak` reference
     /// syntaxes are common. An entry that is a plain package name (with an
-    /// optional version constraint) becomes an ordinary version requirement;
-    /// anything else is kept verbatim in [`DepTable::ref_`], so
-    /// [`Rproj::to_description`] can write it back unchanged.
+    /// optional version constraint) becomes an ordinary version requirement.
+    /// A `git`/GitHub reference (the same syntax `Remotes:` uses, see
+    /// [`crate::pkgsource::parse_pkg_source`]) becomes a [`DepTable`] with a
+    /// `git` field, exactly like [`crate::proj::dep_table_from_remote`] builds
+    /// for a `Remotes:` entry. Anything else (`bioc::`, `bitbucket::`,
+    /// `gitlab::`, ...) is not a reference this crate resolves, so it is kept
+    /// verbatim in [`DepTable::ref_`], and [`Rproj::to_description`] writes it
+    /// back unchanged.
     ///
     /// A field with an empty value creates an empty group, so that it, too,
     /// round-trips.
@@ -1308,16 +1313,64 @@ fn format_dep_entry(dep: &DepVersionSpec) -> (String, bool) {
 
 /// Format one dependency-group entry as a `Config/Needs/*` entry. An entry
 /// that kept its reference verbatim (see [`Rproj::merge_config_needs`]) is
-/// written back as it came in; anything else goes through
-/// [`format_dep_entry`], so it looks like a DESCRIPTION dependency entry.
+/// written back as it came in; a `git`-sourced entry goes through
+/// [`dep_table_to_pak_ref`], which rebuilds a `pak` reference from its
+/// `DepTable` fields; anything else goes through [`format_dep_entry`], so it
+/// looks like a DESCRIPTION dependency entry.
 fn format_group_entry(name: &str, dep: &Dependency) -> Result<(String, bool), Box<dyn Error>> {
     if let Dependency::Detailed(table) = dep {
         if let Some(ref_) = &table.ref_ {
             return Ok((ref_.clone(), false));
         }
+        if table.git.is_some() {
+            return Ok((dep_table_to_pak_ref(name, table), false));
+        }
     }
     let spec = dep_spec(name, dep, RDepType::Suggests)?;
     Ok(format_dep_entry(&spec))
+}
+
+/// The inverse of [`crate::proj::dep_table_from_remote`]: rebuild a `pak`
+/// package reference (`<owner>/<repo>[/<subdir>][@<ref>|#<pr>|@*release]`, or
+/// `git::<url>[@<rev>]` for a non-GitHub remote) from a `git`-sourced
+/// [`DepTable`], for writing a `Config/Needs/*` entry back to `DESCRIPTION`.
+/// `name` is prefixed on with `<name>=` only when it does not match the name
+/// the reconstructed reference itself implies (see [`pak_ref_name`]).
+fn dep_table_to_pak_ref(name: &str, table: &DepTable) -> String {
+    let git_url = table.git.as_deref().unwrap_or_default();
+
+    let detail = if let Some(pr) = table.pr {
+        format!("#{}", pr)
+    } else if table.release == Some(true) {
+        "@*release".to_string()
+    } else if let Some(r) = table
+        .rev
+        .as_deref()
+        .or(table.branch.as_deref())
+        .or(table.tag.as_deref())
+    {
+        format!("@{}", r)
+    } else {
+        String::new()
+    };
+
+    let path = match crate::proj::github_owner_repo(git_url) {
+        Some((owner, repo)) => {
+            let mut path = format!("{}/{}", owner, repo);
+            if let Some(subdir) = &table.subdir {
+                path.push('/');
+                path.push_str(subdir);
+            }
+            path
+        }
+        None => format!("git::{}", git_url),
+    };
+
+    let entry = format!("{}{}", path, detail);
+    match pak_ref_name(&entry) {
+        Some(implied) if implied == name => entry,
+        _ => format!("{}={}", name, entry),
+    }
 }
 
 /// One entry of a `Config/Needs/*` field as a dependency-group entry: the
@@ -1357,6 +1410,15 @@ fn config_needs_entry(entry: &str) -> (String, Dependency) {
             return (
                 spec.name,
                 Dependency::Version(format_constraints(&spec.constraints)),
+            );
+        }
+    }
+
+    if let Ok(crate::pkgsource::PkgSource::Remote(r)) = crate::pkgsource::parse_pkg_source(entry) {
+        if let Some(name) = pak_ref_name(entry) {
+            return (
+                name,
+                Dependency::Detailed(Box::new(crate::proj::dep_table_from_remote(&r))),
             );
         }
     }
@@ -3163,7 +3225,7 @@ mod tests {
         assert_eq!(
             website.get("tidytemplate"),
             Some(&Dependency::Detailed(Box::new(DepTable {
-                ref_: Some("tidyverse/tidytemplate".to_string()),
+                git: Some("https://github.com/tidyverse/tidytemplate.git".to_string()),
                 ..Default::default()
             })))
         );
@@ -3234,16 +3296,19 @@ mod tests {
                      bioc::S4Vectors, jsonlite=jeroen/jsonlite@v1.8.0";
         m.merge_config_needs(&needs(&[("website", field)]));
 
-        // The manifest survives a TOML round trip, `ref` and all.
+        // The manifest survives a TOML round trip, `git`/`ref` and all.
         let text = toml::to_string_pretty(&m).unwrap();
         assert_eq!(toml::from_str::<Rproj>(&text).unwrap(), m);
 
         let (desc, _) = m.to_description().unwrap();
-        // Entries are sorted by package name, and every reference is written
-        // back exactly as it came in.
+        // Entries are sorted by package name. `bioc::S4Vectors` is not a
+        // `git`/GitHub reference, so it is written back exactly as it came
+        // in; the `git`/GitHub references are rebuilt from their `DepTable`,
+        // dropping the redundant `jsonlite=` name override since the
+        // reference already implies that name.
         assert!(desc.contains(
             "Config/Needs/website:\n    bioc::S4Vectors,\n    \
-             jsonlite=jeroen/jsonlite@v1.8.0,\n    pkgdown (>= 2.0),\n    \
+             jeroen/jsonlite@v1.8.0,\n    pkgdown (>= 2.0),\n    \
              tidyverse/tidytemplate\n"
         ));
     }
@@ -3313,28 +3378,79 @@ mod tests {
 
     #[test]
     fn config_needs_entry_names_the_package_a_reference_implies() {
-        let cases = [
-            ("tidyverse/tidytemplate", "tidytemplate"),
-            ("tidyverse/tidytemplate@main", "tidytemplate"),
-            ("r-lib/pak#123", "pak"),
-            ("bioc::S4Vectors", "S4Vectors"),
-            ("git::https://github.com/r-lib/cli.git", "cli"),
-            ("jsonlite=jeroen/jsonlite", "jsonlite"),
-            ("r-lib/usethis/subdir", "subdir"),
+        // A `git`/GitHub reference, the same syntax `Remotes:` understands,
+        // is parsed into a `git`-sourced `DepTable`, exactly like a `Remotes:`
+        // entry.
+        let git_cases = [
+            (
+                "tidyverse/tidytemplate",
+                "tidytemplate",
+                DepTable {
+                    git: Some("https://github.com/tidyverse/tidytemplate.git".to_string()),
+                    ..Default::default()
+                },
+            ),
+            (
+                "tidyverse/tidytemplate@main",
+                "tidytemplate",
+                DepTable {
+                    git: Some("https://github.com/tidyverse/tidytemplate.git".to_string()),
+                    rev: Some("main".to_string()),
+                    ..Default::default()
+                },
+            ),
+            (
+                "r-lib/pak#123",
+                "pak",
+                DepTable {
+                    git: Some("https://github.com/r-lib/pak.git".to_string()),
+                    pr: Some(123),
+                    ..Default::default()
+                },
+            ),
+            (
+                "git::https://github.com/r-lib/cli.git",
+                "cli",
+                DepTable {
+                    git: Some("https://github.com/r-lib/cli.git".to_string()),
+                    ..Default::default()
+                },
+            ),
+            (
+                "jsonlite=jeroen/jsonlite",
+                "jsonlite",
+                DepTable {
+                    git: Some("https://github.com/jeroen/jsonlite.git".to_string()),
+                    ..Default::default()
+                },
+            ),
+            (
+                "r-lib/usethis/subdir",
+                "subdir",
+                DepTable {
+                    git: Some("https://github.com/r-lib/usethis.git".to_string()),
+                    subdir: Some("subdir".to_string()),
+                    ..Default::default()
+                },
+            ),
         ];
-        for (entry, name) in cases {
+        for (entry, name, table) in git_cases {
             let (key, dep) = config_needs_entry(entry);
             assert_eq!(key, name, "{}", entry);
-            assert_eq!(
-                dep,
-                Dependency::Detailed(Box::new(DepTable {
-                    ref_: Some(entry.to_string()),
-                    ..Default::default()
-                })),
-                "{}",
-                entry
-            );
+            assert_eq!(dep, Dependency::Detailed(Box::new(table)), "{}", entry);
         }
+
+        // `bioc::S4Vectors` is not a `git`/GitHub reference, so it is kept
+        // verbatim in `ref`.
+        let (key, dep) = config_needs_entry("bioc::S4Vectors");
+        assert_eq!(key, "S4Vectors");
+        assert_eq!(
+            dep,
+            Dependency::Detailed(Box::new(DepTable {
+                ref_: Some("bioc::S4Vectors".to_string()),
+                ..Default::default()
+            }))
+        );
 
         // A reference with no package name in it is kept under the reference
         // itself, rather than being dropped.

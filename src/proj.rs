@@ -1427,7 +1427,7 @@ pub(crate) fn dep_table_from_remote(r: &crate::pkgsource::RemoteSource) -> DepTa
 }
 
 /// A github.com URL's `owner`/`repo`, if `git_url` is one.
-fn github_owner_repo(git_url: &str) -> Option<(&str, &str)> {
+pub(crate) fn github_owner_repo(git_url: &str) -> Option<(&str, &str)> {
     let path_part = git_url.strip_prefix("https://github.com/")?;
     let path_part = path_part.trim_end_matches(".git");
     path_part.split_once('/')
