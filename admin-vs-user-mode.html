@@ -761,6 +761,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <li>Removes the system-wide startup and quick links.</li>
 </ol>
 <p>Steps 3 and 4 delete files outside your home directory, so they need <code>sudo</code> or an administrator account, rig asks for your password for just that part. Use <code>--no-reinstall</code> to skip the reinstall and only clean up, or <code>--keep-install</code> and <code>--keep-links</code> to leave the admin-mode installations and/or links in place. With both <code>--keep-*</code> flags nothing outside your home directory is touched, so no elevated privileges are needed at all.</p>
+<p>If you use Positron, it caches the list of R interpreters, so it may keep showing the old admin-mode installations and miss the new user-mode ones. Clear its interpreter cache, re-discover interpreters, and restart Positron to pick up the change.</p>
 <p>To go back, set the mode to admin again (<code>rig config set mode=admin</code>) and reinstall the R versions you want.</p>
 </section>
 <section id="mixing-admin-and-user-mode" class="level2">
