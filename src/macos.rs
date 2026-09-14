@@ -26,7 +26,7 @@ use crate::escalate::*;
 use crate::library::*;
 use crate::output::OUTPUT;
 use crate::repos::*;
-use crate::resolve::get_resolve;
+use crate::resolve::{get_resolve, validate_version_arg};
 use crate::run::*;
 use crate::rversion::*;
 use crate::utils::*;
@@ -114,6 +114,9 @@ pub fn get_r_current() -> Result<String, Box<dyn Error>> {
 }
 
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    let str: &String = args.get_one("str").unwrap();
+    validate_version_arg(str)?;
+
     if get_mode()? == crate::utils::Mode::Admin {
         escalate("adding new R versions")?;
     }

@@ -346,10 +346,14 @@ fn user_install_name(install_dir: &Path, arch: &str) -> Result<String, Box<dyn E
 
 #[warn(unused_variables)]
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    let str = args.get_one::<String>("str").unwrap();
+    if !(str.len() >= 6 && &str[0..6] == "rtools") {
+        validate_version_arg(str)?;
+    }
+
     escalate("adding new R version")?;
     let alias = get_alias(args);
     sc_clean_registry()?;
-    let str = args.get_one::<String>("str").unwrap();
     if str.len() >= 6 && &str[0..6] == "rtools" {
         // For bare "rtools" (install all needed), only honour --arch when the user
         // explicitly passed it; the flag's native-arch default should not filter out

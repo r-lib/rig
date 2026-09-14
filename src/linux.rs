@@ -24,7 +24,7 @@ use crate::library::*;
 use crate::output::OUTPUT;
 use crate::platform::*;
 use crate::repos::*;
-use crate::resolve::get_resolve_for;
+use crate::resolve::{get_resolve_for, validate_version_arg};
 use crate::run::*;
 use crate::utils::*;
 
@@ -253,6 +253,9 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         error!("`--arch` is not supported on Linux");
         bail!("`--arch` is not supported on Linux");
     }
+
+    let str: &String = args.get_one("str").unwrap();
+    validate_version_arg(str)?;
 
     let mode = get_mode()?;
     if mode == Mode::Admin {

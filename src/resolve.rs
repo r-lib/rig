@@ -34,7 +34,9 @@ pub fn get_resolve_for(args: &ArgMatches, platform: &str) -> Result<Rversion, Bo
     let str: &String = args.get_one("str").unwrap();
     let eps = vec![str.to_string()];
 
-    if str.len() > 8 && (&str[..7] == "http://" || &str[..8] == "https://") {
+    validate_version_arg(str)?;
+
+    if is_url(str) {
         Ok(Rversion {
             version: None,
             url: Some(str.to_string()),
@@ -42,17 +44,28 @@ pub fn get_resolve_for(args: &ArgMatches, platform: &str) -> Result<Rversion, Bo
             ppm: false,
             ppmurl: None,
         })
-    } else if !is_valid_version_string(str) {
-        let msg = format!(
-            "Unknown value \"{}\". Accepted values: version numbers, \"devel\", \"next\", \"release\", \"oldrel/n\", or a URL.",
-            str
-        );
-        OUTPUT.error(&msg);
-        error!("{}", msg);
-        bail!(msg)
     } else {
         Ok(resolve_versions(eps, platform, &arch)?[0].to_owned())
     }
+}
+
+// Checked before escalating to admin, so a bad value fails once, without
+// prompting for a password first. See https://github.com/r-lib/rig/issues/371.
+pub fn validate_version_arg(str: &str) -> Result<(), Box<dyn Error>> {
+    if is_url(str) || is_valid_version_string(str) {
+        return Ok(());
+    }
+    let msg = format!(
+        "Unknown value \"{}\". Accepted values: version numbers, \"devel\", \"next\", \"release\", \"oldrel/n\", or a URL.",
+        str
+    );
+    OUTPUT.error(&msg);
+    error!("{}", msg);
+    bail!(msg)
+}
+
+fn is_url(str: &str) -> bool {
+    str.len() > 8 && (&str[..7] == "http://" || &str[..8] == "https://")
 }
 
 fn is_valid_version_string(str: &str) -> bool {
