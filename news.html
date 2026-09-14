@@ -521,7 +521,16 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#rig-0.10.0-beta2" id="toc-rig-0.10.0-beta2" class="nav-link active" data-scroll-target="#rig-0.10.0-beta2">rig 0.10.0-beta2</a></li>
+  <li><a href="#rig-0.10.0-beta3" id="toc-rig-0.10.0-beta3" class="nav-link active" data-scroll-target="#rig-0.10.0-beta3">rig 0.10.0-beta3</a>
+  <ul class="collapse">
+  <li><a href="#web-site" id="toc-web-site" class="nav-link" data-scroll-target="#web-site">Web site</a></li>
+  <li><a href="#user-mode" id="toc-user-mode" class="nav-link" data-scroll-target="#user-mode">User mode</a></li>
+  <li><a href="#r-package-management" id="toc-r-package-management" class="nav-link" data-scroll-target="#r-package-management">R package management</a></li>
+  <li><a href="#projects" id="toc-projects" class="nav-link" data-scroll-target="#projects">Projects</a></li>
+  <li><a href="#windows-specific" id="toc-windows-specific" class="nav-link" data-scroll-target="#windows-specific">Windows specific</a></li>
+  <li><a href="#other-new-features" id="toc-other-new-features" class="nav-link" data-scroll-target="#other-new-features">Other new features</a></li>
+  <li><a href="#other-changes" id="toc-other-changes" class="nav-link" data-scroll-target="#other-changes">Other changes</a></li>
+  </ul></li>
   <li><a href="#rig-0.8.1" id="toc-rig-0.8.1" class="nav-link" data-scroll-target="#rig-0.8.1">rig 0.8.1</a></li>
   <li><a href="#rig-0.8.0" id="toc-rig-0.8.0" class="nav-link" data-scroll-target="#rig-0.8.0">rig 0.8.0</a></li>
   <li><a href="#rig-0.7.1" id="toc-rig-0.7.1" class="nav-link" data-scroll-target="#rig-0.7.1">rig 0.7.1</a></li>
@@ -587,38 +596,70 @@ ul.task-list li input[type="checkbox"] {
 </header>
 
 
-<section id="rig-0.10.0-beta2" class="level1">
-<h1>rig 0.10.0-beta2</h1>
+<section id="rig-0.10.0-beta3" class="level1">
+<h1>rig 0.10.0-beta3</h1>
+<section id="web-site" class="level2">
+<h2 class="anchored" data-anchor-id="web-site">Web site</h2>
+<ul>
+<li>rig has a new documentation website at <a href="https://rig.r-lib.org/" class="uri">https://rig.r-lib.org/</a>, including a full CLI reference and a guide to admin vs.&nbsp;user mode.</li>
+</ul>
+</section>
+<section id="user-mode" class="level2">
+<h2 class="anchored" data-anchor-id="user-mode">User mode</h2>
+<ul>
+<li><p>rig now supports a <strong>user mode</strong> on all platforms, in addition to the default admin mode. In user mode rig installs everything into the user’s home directory and never needs <code>sudo</code> or administrator privileges. R goes into <code>~/.local/share/rig/r</code> (<code>%APPDATA%\rig\data\r</code> on Windows) and quick links into <code>~/.local/bin</code> (<code>%USERPROFILE%\.local\bin</code> on Windows). Select the mode with the <code>--user</code> / <code>--admin</code> global flags, the <code>RIG_MODE</code> environment variable, or the <code>mode</code> key in the rig config file. The new <code>rig system user-mode</code> command switches an existing admin-mode setup to user mode.</p></li>
+<li><p>On Linux, rig can now install portable R builds, for glibc- and musl-based Linux distros. If there is no distro-specific build for your platform, rig falls back to a portable build automatically.</p></li>
+</ul>
+</section>
+<section id="r-package-management" class="level2">
+<h2 class="anchored" data-anchor-id="r-package-management">R package management</h2>
+<ul>
+<li>New <code>rig pkg</code> subcommand to query and manage R packages. Two subcommands from <code>rig repos</code> moved to <code>rig pkg</code>: <code>rig pkg available</code> and <code>rig pkg info</code>. <code>rig pkg deps</code> lists the packages a package needs, in a table, and <code>rig pkg tree</code> shows the same dependencies as a tree. <code>rig pkg list</code> lists the packages installed in a library, <code>rig pkg remove</code> deletes packages from a library, and <code>rig pkg install</code> installs packages, and their dependencies, into a library.</li>
+</ul>
+</section>
+<section id="projects" class="level2">
+<h2 class="anchored" data-anchor-id="projects">Projects</h2>
+<ul>
+<li><p>New and redesigned <code>rig proj</code> commands to manage isolated R projects and virtual environments: <code>rig proj init</code>, <code>rig proj import</code>, <code>rig proj add</code>, <code>rig proj remove</code>, <code>rig proj lock</code>, <code>rig proj sync</code>, <code>rig proj status</code>.</p></li>
+<li><p>New <code>rig proj tree</code> shows the dependency closure of a project as a tree.</p></li>
+<li><p><code>rig run</code> now uses the project environment, if you call it in a project directory: it starts <code>.rvenv/bin/R</code>, with the project’s package library and the R version the project’s lock file names, and it syncs the project first if the environment is missing or out of date. Use <code>--no-project</code> (or <code>--r-version</code>) to run the default R version instead.</p></li>
+<li><p><code>rig run &lt;name&gt;</code> now runs a script the project declares in a <code>[[bin]]</code> table of its <code>rproj.toml</code>, passing the remaining arguments on to the script. <code>rig run --list</code> lists the declared scripts.</p></li>
+</ul>
+</section>
+<section id="windows-specific" class="level2">
+<h2 class="anchored" data-anchor-id="windows-specific">Windows specific</h2>
+<ul>
+<li><p>On Windows rig now creates <code>.exe</code> shims instead of <code>bat</code> shims. With <code>.exe</code> shims it is easier to pass command line arguments to <code>R</code> and <code>Rscript</code>. In particular, <code>Rscript -e &lt;code&gt;</code> now works if <code>&lt;code&gt;</code> has line breaks. Call <code>rig system make-links</code> to create all <code>.exe</code> shims and remove the <code>.bat</code> shims. If you hardcoded shims with a <code>.bat</code> extension, change them to <code>.exe</code> or remove the extension completely (#362).</p></li>
+<li><p>New <code>rig system fix-r-alias</code> subcommand.</p></li>
+<li><p><code>rig rtools</code> is now a top-level command (it used to be <code>rig system rtools</code>).</p></li>
+<li><p>On Windows, <code>R CMD config</code> now works without manually putting Rtools on the <code>PATH</code>. So do <code>R CMD sh</code>, <code>R CMD make</code> and <code>rig run --cmd config</code>.</p></li>
+</ul>
+</section>
+<section id="other-new-features" class="level2">
+<h2 class="anchored" data-anchor-id="other-new-features">Other new features</h2>
+<ul>
+<li><p>New <code>rig cache</code> command to inspect and manage rig’s download and build caches. rig now reflinks or hardlinks packages from the cache when possible, instead of copying them, to save disk space and time.</p></li>
+<li><p>New <code>rig ppm</code> command queries Posit Package Manager. New <code>rig ppm build-log</code> shows the build log of a package on Posit Package Manager.</p></li>
+<li><p>New <code>rig repos status</code> checks the configured package repositories.</p></li>
+<li><p><code>rig library add</code>, <code>rig library default</code>, <code>rig library list</code> and <code>rig library rm</code> have a new <code>--r-version</code> (<code>-r</code>) option, to operate on the libraries of an R version other than the default one.</p></li>
+<li><p>New <code>rig system dirs</code> command to show the directories rig uses. With <code>--r</code>, <code>--binary</code>, <code>--data</code>, <code>--cache</code>, <code>--download</code>, <code>--log</code>, <code>--rtools</code> (Windows only) or <code>--fonts</code> (Linux only) it prints a single path, for use in scripts.</p></li>
+<li><p>New <code>rig config</code> command to manage the rig configuration file.</p></li>
+<li><p><code>rig run --cmd &lt;command&gt; [args...]</code> now runs <code>R CMD &lt;command&gt; [args...]</code> with the selected R version.</p></li>
+</ul>
+</section>
+<section id="other-changes" class="level2">
+<h2 class="anchored" data-anchor-id="other-changes">Other changes</h2>
 <ul>
 <li><p><code>rig add --without-p3m</code> works correctly again (#369).</p></li>
 <li><p>macOS user mode: <code>rig default</code> now sets the default R version correctly for newer RStudio versions. Also, <code>rig system allow-debugger-rstudio</code> now works for newer RStudio versions.</p></li>
-<li><p>On Windows rig now creates <code>.exe</code> shims instead of <code>bat</code> shims. With <code>.exe</code> shims it is easier to pass command line arguments to <code>R</code> and <code>Rscript</code>. In particular, <code>Rscript -e &lt;code&gt;</code> now works if <code>&lt;code&gt;</code> has line breaks. Call <code>rig system make-links</code> to create all <code>.exe</code> shims and remove the <code>.bat</code> shims. If you hardcoded shims with a <code>.bat</code> extension, change them to <code>.exe</code> or remove the extension completely (#362).</p></li>
-<li><p><code>rig run &lt;name&gt;</code> now runs a script the project declares in a <code>[[bin]]</code> table of its <code>rproj.toml</code>, passing the remaining arguments on to the script. <code>rig run --list</code> lists the declared scripts.</p></li>
-<li><p>New <code>rig ppm</code> command queries Posit Package Manager.</p></li>
-<li><p>New <code>rig repos status</code> checks the configured package repositories.</p></li>
-<li><p>New <code>rig pkg</code> subcommand to query and manage R packages. Two subcommands from <code>rig repos</code> moved to <code>rig pkg</code>: <code>rig pkg available</code> and <code>rig pkg info</code>. <code>rig pkg deps</code> lists the packages a package needs, in a table, and <code>rig pkg tree</code> shows the same dependencies as a tree. <code>rig pkg list</code> lists the packages installed in a library, <code>rig pkg remove</code> deletes packages from a library, and <code>rig pkg install</code> installs packages, and their dependencies, into a library.</p></li>
-<li><p><code>rig proj deps</code> has a new <code>--recursive</code> (<code>-r</code>) option, to show the whole dependency closure of the project.</p></li>
-<li><p>New <code>rig proj tree</code> shows the dependency closure of a project as a tree.</p></li>
-<li><p>New <code>rig proj add</code> adds a dependency to <code>rproj.toml</code>, then updates the lockfile and installs it.</p></li>
-<li><p><code>rig run</code> now uses the project environment, if you call it in a project directory: it starts <code>.rvenv/bin/R</code>, with the project’s package library and the R version the project’s lock file names, and it syncs the project first if the environment is missing or out of date. Use <code>--no-project</code> (or <code>--r-version</code>) to run the default R version instead.</p></li>
-<li><p><code>rig library add</code>, <code>rig library default</code>, <code>rig library list</code> and <code>rig library rm</code> have a new <code>--r-version</code> (<code>-r</code>) option, to operate on the libraries of an R version other than the default one.</p></li>
 <li><p>rig now uses a user-dependent download directory, to avoid interference between users.</p></li>
 <li><p>rig now does not edit the shell startup files in admin mode, like rig 0.8.1 did on macOS. rig now only does this in user mode.</p></li>
 <li><p><code>rig repos available</code> now prints a compact table. New <code>rig repos available &lt;name&gt;</code> shows complete information about a single repository.</p></li>
 <li><p><code>rig system setup-user-lib</code> (and its <code>create-lib</code> alias) now works again.</p></li>
-<li><p>rig now supports a <strong>user mode</strong> on all platforms, in addition to the default admin mode. In user mode rig installs everything into the user’s home directory and never needs <code>sudo</code> or administrator privileges. R goes into <code>~/.local/share/rig/r</code> (<code>%APPDATA%\rig\data\r</code> on Windows) and quick links into <code>~/.local/bin</code> (<code>%USERPROFILE%\.local\bin</code> on Windows). Select the mode with the <code>--user</code> / <code>--admin</code> global flags, the <code>RIG_MODE</code> environment variable, or the <code>mode</code> key in the rig config file. The new <code>rig system user-mode</code> command switches an existing admin-mode setup to user mode.</p></li>
-<li><p>rig has a new documentation website at <a href="https://rig.r-lib.org/" class="uri">https://rig.r-lib.org/</a>, including a full CLI reference and a guide to admin vs.&nbsp;user mode.</p></li>
-<li><p>New <code>rig config</code> command to manage the rig configuration file.</p></li>
-<li><p>New <code>rig system dirs</code> command to show the directories rig uses. With <code>--r</code>, <code>--binary</code>, <code>--data</code>, <code>--cache</code>, <code>--download</code>, <code>--log</code>, <code>--rtools</code> (Windows only) or <code>--fonts</code> (Linux only) it prints a single path, for use in scripts.</p></li>
-<li><p>New experimental <code>rig proj</code> command to manage R project dependencies.</p></li>
-<li><p><code>rig run --cmd &lt;command&gt; [args...]</code> now runs <code>R CMD &lt;command&gt; [args...]</code> with the selected R version.</p></li>
-<li><p><code>rig rtools</code> is now a top-level command (it used to be <code>rig system rtools</code>).</p></li>
-<li><p>On Windows, <code>R CMD config</code> now works without manually putting Rtools on the <code>PATH</code>. So do <code>R CMD sh</code>, <code>R CMD make</code> and <code>rig run --cmd config</code>.</p></li>
-<li><p>On Linux, rig can now install portable R builds, for glibc- and musl-based Linux distros. If there is no distro-specific build for your platform, rig falls back to a portable build automatically.</p></li>
-<li><p>New <code>rig system fix-r-alias</code> subcommand.</p></li>
 <li><p><code>rig rstudio --config-path</code> is now implemented on Linux and macOS.</p></li>
 <li><p>rig now warns instead of failing when it encounters a broken R installation (#346).</p></li>
 </ul>
+</section>
 </section>
 <section id="rig-0.8.1" class="level1">
 <h1>rig 0.8.1</h1>
