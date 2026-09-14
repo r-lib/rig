@@ -549,6 +549,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#subcommands" id="toc-subcommands" class="nav-link" data-scroll-target="#subcommands">Subcommands</a></li>
   <li><a href="#rig-proj-add" id="toc-rig-proj-add" class="nav-link" data-scroll-target="#rig-proj-add"><code>rig proj add</code></a>
   <ul class="collapse">
+  <li><a href="#git-github-and-gitlab-sources" id="toc-git-github-and-gitlab-sources" class="nav-link" data-scroll-target="#git-github-and-gitlab-sources">Git, GitHub and GitLab sources</a></li>
   <li><a href="#version-requirements" id="toc-version-requirements" class="nav-link" data-scroll-target="#version-requirements">Version requirements</a></li>
   <li><a href="#options" id="toc-options" class="nav-link" data-scroll-target="#options">Options</a></li>
   <li><a href="#files" id="toc-files" class="nav-link" data-scroll-target="#files">Files</a></li>
@@ -724,6 +725,22 @@ rig proj add dplyr@1.1.0
 rig proj add 'cli@&gt;= 3.6' 'rlang@&gt;= 1.0, &lt; 2.0'</code></pre>
 <p>Without a version, the package is added as <code>"*"</code>, i.e.&nbsp;any version. The concrete version rig picks is recorded in <code>rproj.lock</code>, so a project does not need a version requirement for every dependency; use one when the project really needs a particular version.</p>
 <p>Because <code>@</code> and the comparison operators are meaningful to most shells, quote a specification that contains a space or a <code>&gt;</code> character, as in the examples above.</p>
+<section id="git-github-and-gitlab-sources" class="level3">
+<h3 class="anchored" data-anchor-id="git-github-and-gitlab-sources">Git, GitHub and GitLab sources</h3>
+<p>A package can also be added straight from a git repository, <a href="https://pak.r-lib.org/reference/pak_package_sources.html">pak’s package reference</a> syntax:</p>
+<pre><code>rig proj add r-lib/crayon
+rig proj add r-lib/crayon@84be6207
+rig proj add r-lib/crayon@some-branch
+rig proj add r-lib/crayon#41
+rig proj add r-lib/crayon@*release
+rig proj add gitlab::group/project@main
+rig proj add 'git::https://gitlab.com/example/pkg.git@main'</code></pre>
+<p>A bare <code>&lt;owner&gt;/&lt;repo&gt;</code> (optionally <code>github::&lt;owner&gt;/&lt;repo&gt;</code>) is a GitHub reference; <code>&lt;owner&gt;/&lt;repo&gt;/&lt;subdir&gt;</code> points at a package in a subdirectory of the repository. After the path, <code>@&lt;ref&gt;</code> pins a branch, tag or commit, <code>#&lt;pr&gt;</code> a pull request, and <code>@*release</code> the latest release.</p>
+<p><code>gitlab::&lt;group&gt;/&lt;project&gt;</code> is the same idea for GitLab, including nested subgroups (<code>gitlab::&lt;group&gt;/&lt;subgroup&gt;/&lt;project&gt;</code>); <code>@&lt;ref&gt;</code> pins a branch, tag or commit, and <code>/-/&lt;subdir&gt;</code> points at a subdirectory. Merge requests and <code>@*release</code> are not supported for GitLab. A self-hosted instance is <code>gitlab::&lt;https-url-of-group-and-project&gt;</code>, e.g. <code>gitlab::https://gitlab.example.com/group/project</code>.</p>
+<p>A <code>git::&lt;url&gt;</code> reference works with any git host, not only GitHub or GitLab.</p>
+<p>The package name is read from the fetched repository’s own <code>DESCRIPTION</code> (which may differ from the repository name), and the dependency is pinned by commit, not by version range: <code>rig proj add</code> resolves the reference to an exact commit right away, and <code>rproj.lock</code> records it.</p>
+<p>rig fetches a git/GitHub/GitLab source with the system <code>git</code>, which must be installed and on <code>PATH</code>. A private repository authenticates exactly the way a plain <code>git clone</code> would on your machine: a configured credential helper (Keychain, Windows Credential Manager, <code>git credential-store</code>, etc.), <code>.netrc</code>, an SSH agent, or credentials already embedded in the URL. There is no separate rig-specific token setting.</p>
+</section>
 <section id="version-requirements" class="level3">
 <h3 class="anchored" data-anchor-id="version-requirements">Version requirements</h3>
 <ul>
@@ -1155,7 +1172,7 @@ Run in user mode (overrides RIG_MODE and config)
 <h3 class="anchored" data-anchor-id="source-and-binary-packages">Source and binary packages</h3>
 <p>The solver considers binary packages as well as source packages, and prefers a binary build when one is available for the same version. By default a binary build never changes <em>which version</em> rig picks: the newest suitable version wins, and a binary of it is used if there is one. Use <code>--prefer-binary</code> to let an older version win instead, when the newest one has no binary but an older one does, typically because a version was released so recently that it has not been built yet. Only the three newest versions of a package are considered; <code>--prefer-binary=5</code> considers five. Versions held back this way are marked in the output.</p>
 <p>By default rig solves for this machine plus the three other common platforms (macOS arm64, Windows x86_64 and GNU Linux x86_64). Use <code>--platform</code> to solve for a different set instead, e.g.&nbsp;a single specific distro:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> proj lock <span class="at">--platform</span> ubuntu-24.04</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> proj lock <span class="at">--platform</span> ubuntu-24.04</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p><code>--platform source</code> solves for source packages only. rig also falls back to source packages when there are no binaries for a platform at all.</p>
 <p>rig keeps the repository metadata and the binary package indices it solves from in its cache, and refreshes them once a day. Use <code>--no-cache</code> to ignore the cache, or clean the cache with <code>rig cached clean</code>.</p>
 <p>The <code>rproj.lock</code> file records, for every package, whether it is a source or a binary package and the URL it is downloaded from. It also records where the file is cached, which is per <em>build</em> rather than per version: a repository can offer several binaries of one version for one platform and R version, and they are cached side by side.</p>
@@ -1166,14 +1183,14 @@ Run in user mode (overrides RIG_MODE and config)
 <p><code>rig proj lock</code> in a workspace (from the root or from any member directory) reads every member and resolves them all in one solve, so that every member ends up with the same version of every shared dependency, and writes one <code>rproj.lock</code> at the workspace root. A member that depends on a sibling member is resolved against that sibling’s own dependencies. The members themselves are directories rather than packages to download, so they are not recorded in the lock file.</p>
 <p>The R version rig solves for has to satisfy every member’s <code>R</code> requirement, not just the root’s.</p>
 <p><code>[workspace.dependencies]</code> declares shared version requirements. A member inherits one by name, instead of spelling out its own requirement:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co"># rproj.toml, the workspace root</span></span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="kw">[workspace]</span></span>
-<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="dt">members</span> <span class="op">=</span> <span class="op">[</span><span class="st">"packages/*"</span><span class="op">]</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">[workspace.dependencies]</span></span>
-<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="dt">cli</span> <span class="op">=</span> <span class="st">"&gt;= 3.6.0"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># packages/mypkg/rproj.toml, a member</span></span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="kw">[dependencies]</span></span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="dt">cli</span> <span class="op">=</span> <span class="op">{ </span><span class="dt">workspace</span><span class="op"> =</span> <span class="cn">true</span><span class="op"> }</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># rproj.toml, the workspace root</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="kw">[workspace]</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="dt">members</span> <span class="op">=</span> <span class="op">[</span><span class="st">"packages/*"</span><span class="op">]</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">[workspace.dependencies]</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="dt">cli</span> <span class="op">=</span> <span class="st">"&gt;= 3.6.0"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="co"># packages/mypkg/rproj.toml, a member</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="kw">[dependencies]</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="dt">cli</span> <span class="op">=</span> <span class="op">{ </span><span class="dt">workspace</span><span class="op"> =</span> <span class="cn">true</span><span class="op"> }</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>An entry no member inherits has no effect on the solve; it is a declaration, not a request. Whether a member attaches a package (<code>attach</code>) is still the member’s own business, and is kept when the rest of the entry is inherited.</p>
 </section>
 <section id="usage-5" class="level3">
@@ -1336,8 +1353,8 @@ Run in user mode (overrides RIG_MODE and config)
 </section>
 <section id="examples" class="level4">
 <h4 class="anchored" data-anchor-id="examples">Examples</h4>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> proj renv export</span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> proj renv export <span class="at">--r-version</span> 4.5 <span class="at">--platform</span> ubuntu-24.04</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb15"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> proj renv export</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> proj renv export <span class="at">--r-version</span> 4.5 <span class="at">--platform</span> ubuntu-24.04</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 </section>
 <section id="rig-proj-renv-import" class="level3">
