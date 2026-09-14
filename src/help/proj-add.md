@@ -97,8 +97,8 @@ this also works offline.
 
 ## Files
 
-Only `rproj.toml` is edited, and it is rewritten in full, so any comments or
-custom formatting in it are not preserved.
+Only `rproj.toml` is edited. Changes are merged into the existing file, so
+comments and custom formatting are preserved where possible.
 
 If resolving the dependencies fails (most often because a package name is
 misspelled, and no repository has such a package) `rproj.toml` is restored to

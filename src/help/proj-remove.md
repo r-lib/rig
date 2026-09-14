@@ -21,8 +21,8 @@ this also works offline.
 
 ## Files
 
-Only `rproj.toml` is edited, and it is rewritten in full, so any comments or
-custom formatting in it are not preserved.
+Only `rproj.toml` is edited. Changes are merged into the existing file, so
+comments and custom formatting are preserved where possible.
 
 If resolving the remaining dependencies fails, `rproj.toml` is restored to
 what it was, so a failed `rig proj remove` does not leave the project with a
