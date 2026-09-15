@@ -79,6 +79,26 @@ if (-not (Test-Path (Join-Path $bindir "rig.exe"))) {
     throw "Installation failed: rig.exe not found in $bindir"
 }
 
+# --- Write an install receipt --------------------------------------------
+#
+# `rig self update` only replaces the binary for installs it can prove it
+# fully owns, i.e. ones made by this script. It looks for this receipt, and
+# refuses to touch a rig installed via the .exe installer, Chocolatey,
+# WinGet, or Scoop instead.
+$receiptDir = Join-Path $env:APPDATA "gaborcsardi\rig\data"
+New-Item -ItemType Directory -Force -Path $receiptDir | Out-Null
+$receipt = [ordered]@{
+    receipt_version = 1
+    install_method  = "script"
+    rig_version     = $vtoken
+    platform        = "windows"
+    arch            = $arch
+    bin_path        = (Join-Path $bindir "rig.exe")
+    prefix          = $Prefix
+    installed_at    = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+}
+$receipt | ConvertTo-Json | Set-Content -Path (Join-Path $receiptDir "install-receipt.json") -Encoding UTF8
+
 # --- Optionally add the bin directory to the user PATH ------------------
 
 if (-not $NoModifyPath) {

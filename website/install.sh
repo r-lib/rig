@@ -100,6 +100,30 @@ tar xzf "$tmp/rig.tar.gz" -C "$PREFIX"
 bindir="$PREFIX/bin"
 [ -x "$bindir/rig" ] || err "installation failed: $bindir/rig not found"
 
+# --- Write an install receipt --------------------------------------------
+#
+# `rig self update` only replaces the binary for installs it can prove it
+# fully owns, i.e. ones made by this script. It looks for this receipt, and
+# refuses to touch a rig installed via a .pkg/.deb/.rpm/Chocolatey/WinGet/
+# Homebrew instead.
+case "$(uname -s)" in
+  Darwin) receipt_dir="$HOME/Library/Application Support/com.gaborcsardi.rig" ;;
+  *)      receipt_dir="${XDG_DATA_HOME:-$HOME/.local/share}/rig" ;;
+esac
+mkdir -p "$receipt_dir"
+cat > "$receipt_dir/install-receipt.json" <<EOF
+{
+  "receipt_version": 1,
+  "install_method": "script",
+  "rig_version": "${vtoken}",
+  "platform": "${plat}",
+  "arch": "${arch}",
+  "bin_path": "${bindir}/rig",
+  "prefix": "${PREFIX}",
+  "installed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
+
 # --- Optionally add the bin directory to PATH ---------------------------
 
 on_path=0

@@ -97,6 +97,8 @@ reqwest = { version = "0.11", features = [
 rusqlite = { version = "0.32", features = ["bundled"] }
 # pubgrub needs a hash map with predictable iteration order
 rustc-hash = "2.1.1"
+# atomically replace the running rig binary itself, for `rig self update`
+self-replace = "1"
 semver = "1.0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0"
