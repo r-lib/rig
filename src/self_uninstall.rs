@@ -20,8 +20,10 @@ use crate::install_receipt::{
     gate, read_receipt, receipt_path, refusal_message, GateResult, Receipt,
 };
 use crate::output::OUTPUT;
+#[cfg_attr(windows, allow(unused_imports))]
 use crate::utils::write_atomically;
 
+#[cfg_attr(windows, allow(dead_code))]
 const PATH_MARKER: &str = "# Added by the rig installer";
 
 struct UninstallPlan {
@@ -94,6 +96,7 @@ fn compute_plan(receipt: &Receipt) -> Result<UninstallPlan, Box<dyn Error>> {
 // that `install.sh` appends to a shell rc file. Returns `None` if the block
 // isn't present verbatim -- a hand-edited rc file is left untouched rather
 // than guessed at.
+#[cfg_attr(windows, allow(dead_code))]
 fn remove_installer_path_block(contents: &str, bindir: &str) -> Option<String> {
     let export_line = format!("export PATH=\"{}:$PATH\"", bindir);
     let lines: Vec<&str> = contents.lines().collect();
