@@ -1474,6 +1474,7 @@ Run in user mode (overrides RIG_MODE and config)
 <p>rig looks for the project in the current directory and its parents, reads its <code>rproj.lock</code> and installs the packages into the project library. If the project has no <code>rproj.lock</code> yet, rig runs <a href="#rig-proj-lock"><code>rig proj lock</code></a> with its default options first. Pass <code>--frozen</code> to fail instead, without touching <code>rproj.toml</code> at all: every package <code>rproj.lock</code> lists already carries its own download URL, so nothing but the lock file is needed to install from it. The one exception is <code>.rvenv/etc/repositories</code> (see below), which still comes from <code>rproj.toml</code> when one is present, and is skipped otherwise.</p>
 <p>Development dependencies are installed by default. <code>--no-dev</code> leaves them out; the lock file records which packages are dev-only, so this works the same with or without <code>--frozen</code>. <code>--max-concurrent</code> limits the number of simultaneous installations.</p>
 <p>By default, sync also removes any package that is in the project library but not in <code>rproj.lock</code>, e.g.&nbsp;one dropped from <code>rproj.toml</code>, or a leftover from before <code>--no-dev</code>. Pass <code>--inexact</code> to leave those packages alone instead.</p>
+<p>Pass <code>--dry-run</code> to print what sync would install, remove or write, without touching the R installation, the project library or <code>.rvenv</code>.</p>
 <section id="the-r-version-1" class="level3">
 <h3 class="anchored" data-anchor-id="the-r-version-1">The R version</h3>
 <p>The lock file records the R version its solve is valid for, and that is the R rig installs the packages with. It has to be that very version: another patch release of the same minor version would run the packages, but it is not the R the project was solved for, so rig does not quietly use it.</p>
@@ -1509,6 +1510,10 @@ Run in user mode (overrides RIG_MODE and config)
 <dt><code>--admin</code></dt>
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--dry-run</code></dt>
+<dd>
+Show what sync would do, without installing, removing or writing anything
 </dd>
 <dt><code>--frozen</code></dt>
 <dd>
