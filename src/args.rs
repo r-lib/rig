@@ -1743,6 +1743,16 @@ pub fn rig_app() -> Command {
                         .long("frozen")
                         .num_args(0)
                         .required(false),
+                )
+                .arg(
+                    Arg::new("dry-run")
+                        .help(
+                            "Show what sync would do, without installing, removing or\n\
+                            writing anything",
+                        )
+                        .long("dry-run")
+                        .num_args(0)
+                        .required(false),
                 ),
         );
     let cmd_renv = Command::new("renv")
