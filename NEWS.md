@@ -73,6 +73,9 @@
 
 ## Other new features
 
+* New `rig self update` to update rig, if it was installed via the install
+  script.
+
 * New `rig cache` command to inspect and manage rig's download and build
   caches. rig now reflinks or hardlinks packages from the cache when
   possible, instead of copying them, to save disk space and time.

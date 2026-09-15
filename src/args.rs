@@ -548,6 +548,32 @@ pub fn rig_app() -> Command {
         );
     }
 
+    let cmd_self_update = Command::new("update")
+        .about(ABOUT_SELF_UPDATE)
+        .long_about(HELP_SELF_UPDATE)
+        .display_order(0)
+        .arg(
+            Arg::new("dry-run")
+                .help("Check for a new version without downloading or installing it")
+                .long("dry-run")
+                .num_args(0)
+                .required(false),
+        )
+        .arg(
+            Arg::new("pre-release")
+                .help("Include pre-releases when looking for the latest version")
+                .long("pre-release")
+                .num_args(0)
+                .required(false),
+        );
+
+    let cmd_self = Command::new("self")
+        .about(ABOUT_SELF)
+        .long_about(HELP_SELF)
+        .display_order(0)
+        .arg_required_else_help(true)
+        .subcommand(cmd_self_update);
+
     let mut cmd_system = Command::new("system")
         .about(ABOUT_SYSTEM)
         .long_about(HELP_SYSTEM)
@@ -2614,6 +2640,7 @@ pub fn rig_app() -> Command {
         .subcommand(cmd_list)
         .subcommand(cmd_add)
         .subcommand(cmd_rm)
+        .subcommand(cmd_self)
         .subcommand(cmd_system)
         .subcommand(cmd_rtools())
         .subcommand(cmd_resolve)
