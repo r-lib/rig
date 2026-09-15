@@ -24,6 +24,7 @@ use super::deps::{
     newest_version, requirements, root_package, type_rank, version_cell_for, wanted_dep, Newest,
 };
 use crate::dcf::{DepVersionSpec, RDepType, RPackageVersion, DEP_TYPES_SOFT};
+use crate::output::OUTPUT;
 use crate::repos::DbSourcePackageLoader;
 use crate::solver::{is_base_package, PackageVersionLoader};
 
@@ -44,9 +45,15 @@ pub fn sc_pkg_tree(
     let json = args.get_flag("json") || pkgargs.get_flag("json") || mainargs.get_flag("json");
 
     let loader = DbSourcePackageLoader::new()?;
-    let tree = dep_tree(&loader, &package, &ver, dev, no_base)?;
+    let tree = dep_tree(&loader, &package, &ver, dev, no_base).map_err(|err| {
+        OUTPUT.error(&err.to_string());
+        err
+    })?;
     let tree = match why {
-        Some(target) => invert_tree(&tree, target, dev, no_base)?,
+        Some(target) => invert_tree(&tree, target, dev, no_base).map_err(|err| {
+            OUTPUT.error(&err.to_string());
+            err
+        })?,
         None => tree,
     };
 
@@ -82,7 +89,10 @@ pub(crate) fn proj_tree(
         no_base,
     );
     let tree = match why {
-        Some(target) => invert_tree(&tree, target, dev, no_base)?,
+        Some(target) => invert_tree(&tree, target, dev, no_base).map_err(|err| {
+            OUTPUT.error(&err.to_string());
+            err
+        })?,
         None => tree,
     };
 
