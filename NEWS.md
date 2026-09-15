@@ -52,6 +52,9 @@
 
 ## Windows specific
 
+* Windows builds of rig are now signed, thanks to the SignPath Foundation,
+  https://signpath.org/.
+
 * On Windows rig now creates `.exe` shims instead of `bat` shims.
   With `.exe` shims it is easier to pass command line arguments to
   `R` and `Rscript`. In particular, `Rscript -e <code>` now works if
