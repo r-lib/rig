@@ -18,6 +18,7 @@ rig run <path-to-app>      # run an R app
 rig run --cmd <command>    # run `R CMD <command>`
 rig run --activate         # start R with the selected version on PATH
 rig run --shell            # start a shell with the selected version on PATH
+rig run --rscript -f <script-file>   # run a script without echoing input, like `Rscript`
 ```
 
 ## Supported apps
@@ -89,3 +90,13 @@ Inside a [project](proj.qmd), both flags put the project's `.rvenv/bin` on
 `PATH` rather than the raw R installation, so a nested `R` (started from
 the shell `--shell` opens, or from R itself) picks up the project's package
 library and repositories too, not just its version.
+
+## Rscript
+
+`rig run --rscript` runs the selected R version's `Rscript` instead of `R`.
+Unlike `R -e`/`R -f`, `Rscript` never echoes back the code it runs, which
+fits scripts and pipelines better than `R`'s interactive-style echo.
+
+`--rscript` works with `-e`/`-f`, project scripts, apps and `--activate`,
+but not with `--cmd` (`R CMD` only exists as part of the `R` front-end) or
+`--shell` (which never runs the R binary at all).

@@ -13,7 +13,9 @@ use crate::common::*;
 use crate::output::OUTPUT;
 use crate::proj::{proj_read_manifest_opt, proj_sync, ProjSyncOptions};
 use crate::rproj::Bin;
-use crate::rvenv::{find_project_root, project_r_wrapper, project_shim_package, rvenv_sync_needed};
+use crate::rvenv::{
+    find_project_root, project_r_wrapper, project_shim_package, rscript_of, rvenv_sync_needed,
+};
 
 #[cfg(target_os = "macos")]
 use crate::macos::*;
@@ -59,20 +61,26 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
     let eval = args.get_one::<String>("eval");
     let script = args.get_one::<String>("script");
 
+    // `Rscript` rejects `-q`/`--slave`: it already behaves as if they were
+    // given (and always suppresses startup messages/echo), so passing them
+    // is not just redundant, it is a hard error ("cannot open file '-q'").
+    let rscript = args.get_flag("rscript");
     let startup = args.get_flag("startup");
     let echo = args.get_flag("echo");
     let mut rargs: Vec<String> = vec![];
-    if !startup {
-        rargs.push("-q".to_string());
-    }
-    if !echo {
-        rargs.push("--slave".to_string())
+    if !rscript {
+        if !startup {
+            rargs.push("-q".to_string());
+        }
+        if !echo {
+            rargs.push("--slave".to_string())
+        }
     }
 
     if let Some(eval) = eval {
         sc_run_eval(env, rargs, eval.to_string(), cmdargs, dry_run)
     } else if let Some(script) = script {
-        sc_run_script(env, rargs, script.to_string(), cmdargs, dry_run)
+        sc_run_script(env, rargs, script.to_string(), cmdargs, rscript, dry_run)
     } else if !cmdargs.is_empty() {
         let app_type: Option<&String> = args.get_one("app-type");
         if cmdargs[0].contains("::") {
@@ -80,13 +88,21 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
                 OUTPUT.warn("'--app-type' argument ignored for package scripts");
                 warn!("'--app-type' argument ignored for package scripts");
             }
-            sc_run_package_script(env, rargs, cmdargs, dry_run)
+            sc_run_package_script(env, rargs, cmdargs, rscript, dry_run)
         } else if let Some((root, bin)) = project_bin(args, &cmdargs[0])? {
             if app_type.is_some() {
                 OUTPUT.warn("'--app-type' argument ignored for project scripts");
                 warn!("'--app-type' argument ignored for project scripts");
             }
-            sc_run_project_script(env, rargs, &root, &bin, cmdargs[1..].to_vec(), dry_run)
+            sc_run_project_script(
+                env,
+                rargs,
+                &root,
+                &bin,
+                cmdargs[1..].to_vec(),
+                rscript,
+                dry_run,
+            )
         } else {
             // Not a declared script and not an existing path. If the project
             // declares scripts at all, then the user most likely meant one of
@@ -103,11 +119,13 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
     } else {
         // just run R, default args are different in this case
         let mut rargs: Vec<String> = vec![];
-        if args.get_flag("no-startup") {
-            rargs.push("-q".to_string());
-        }
-        if args.get_flag("no-echo") {
-            rargs.push("--slave".to_string())
+        if !rscript {
+            if args.get_flag("no-startup") {
+                rargs.push("-q".to_string());
+            }
+            if args.get_flag("no-echo") {
+                rargs.push("--slave".to_string())
+            }
         }
         sc_run_rver(env, rargs, cmdargs, dry_run)
     }
@@ -189,15 +207,25 @@ fn activate_path_prepend(args: &ArgMatches, rbin: &str) -> Option<PathBuf> {
 /// current directory is inside a project, and the requested or default R
 /// version otherwise.
 fn run_r_binary(args: &ArgMatches, dry_run: bool) -> Result<String, Box<dyn Error>> {
-    if let Some(rbin) = project_r_binary(args, dry_run)? {
-        return Ok(rbin);
-    }
-
-    let rver = match args.get_one::<String>("r-version") {
-        Some(x) => check_installed(x)?,
-        None => sc_get_default_or_fail()?,
+    let rbin = match project_r_binary(args, dry_run)? {
+        Some(rbin) => rbin,
+        None => {
+            let rver = match args.get_one::<String>("r-version") {
+                Some(x) => check_installed(x)?,
+                None => sc_get_default_or_fail()?,
+            };
+            get_r_binary(&rver)?.to_string_lossy().into_owned()
+        }
     };
-    Ok(get_r_binary(&rver)?.to_string_lossy().into_owned())
+
+    if args.get_flag("rscript") {
+        Ok(rscript_of(Path::new(&rbin))
+            .to_str()
+            .ok_or("The Rscript path is not valid Unicode")?
+            .to_string())
+    } else {
+        Ok(rbin)
+    }
 }
 
 /// `.rvenv/bin/R` of the project at or above the current directory, syncing
@@ -375,6 +403,7 @@ fn sc_run_project_script(
     root: &Path,
     bin: &Bin,
     cmdargs: Vec<String>,
+    rscript: bool,
     dry_run: bool,
 ) -> Result<i32, Box<dyn Error>> {
     // `path` is relative to the project, so that a declared script works the
@@ -397,7 +426,7 @@ fn sc_run_project_script(
         .to_str()
         .ok_or("The script path is not valid Unicode")?
         .to_string();
-    sc_run_script(env, args, script, cmdargs, dry_run)
+    sc_run_script(env, args, script, cmdargs, rscript, dry_run)
 }
 
 /// `rig run --list`: the scripts the project declares.
@@ -574,10 +603,15 @@ fn sc_run_script(
     args: Vec<String>,
     script: String,
     cmdargs: Vec<String>,
+    rscript: bool,
     dry_run: bool,
 ) -> Result<i32, Box<dyn Error>> {
     let mut args2: Vec<String> = args;
-    args2.push("-f".to_string());
+    // `Rscript` takes the script as a plain positional argument, it has no
+    // `-f` option (unlike `R`, where `-f` is required to run a file).
+    if !rscript {
+        args2.push("-f".to_string());
+    }
     args2.push(script);
     args2.push("--args".to_string());
     for a in cmdargs {
@@ -1024,6 +1058,7 @@ fn sc_run_package_script(
     env: RunEnv,
     rargs: Vec<String>,
     cmdargs: Vec<String>,
+    rscript: bool,
     dry_run: bool,
 ) -> Result<i32, Box<dyn Error>> {
     let pkgfun = cmdargs[0].to_string();
@@ -1033,9 +1068,16 @@ fn sc_run_package_script(
     let fun = re_fun.replace(&pkgfun, "").to_string();
     let fun2 = fun.clone() + ".R";
 
+    // `-s`/`--silent` is an `R`-only option, `Rscript` rejects it the same
+    // way it rejects `-q`/`--slave` (see the `rscript` guard in `sc_run`).
+    let mut probe_args = vec!["--vanilla"];
+    if !rscript {
+        probe_args.push("-s");
+    }
+    probe_args.extend(["-e", "writeLines(.libPaths())"]);
     let stat = Command::new(&env.rbin)
         .env("R_DEFAULT_PACKAGES", "NULL")
-        .args(["--vanilla", "-s", "-e", "writeLines(.libPaths())"])
+        .args(probe_args)
         .output()?;
     let out = String::from_utf8(stat.stdout)?;
     let libs = out.split("\n").collect::<Vec<&str>>();
@@ -1069,7 +1111,11 @@ fn sc_run_package_script(
     for a in rargs {
         allargs.push(a.into());
     }
-    allargs.push("-f".into());
+    // `Rscript` takes the script as a plain positional argument, it has no
+    // `-f` option (unlike `R`, where `-f` is required to run a file).
+    if !rscript {
+        allargs.push("-f".into());
+    }
     allargs.push(script.into_os_string());
     allargs.push("--args".into());
     for a in &cmdargs[1..] {

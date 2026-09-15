@@ -1366,6 +1366,14 @@ pub fn rig_app() -> Command {
                 .conflicts_with_all(["eval", "script", "cmd", "list", "app-type", "command"]),
         )
         .arg(
+            Arg::new("rscript")
+                .help("Run with Rscript instead of R, e.g. for scripts (no echoing of input)")
+                .long("rscript")
+                .action(clap::ArgAction::SetTrue)
+                .required(false)
+                .conflicts_with_all(["cmd", "shell"]),
+        )
+        .arg(
             Arg::new("command")
                 .help("R script, project script name, project or R CMD command to run, with parameters")
                 .required(false)
