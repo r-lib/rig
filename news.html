@@ -629,6 +629,7 @@ ul.task-list li input[type="checkbox"] {
 <section id="windows-specific" class="level2">
 <h2 class="anchored" data-anchor-id="windows-specific">Windows specific</h2>
 <ul>
+<li><p>Windows builds of rig are now signed, thanks to the SignPath Foundation, https://signpath.org/.</p></li>
 <li><p>On Windows rig now creates <code>.exe</code> shims instead of <code>bat</code> shims. With <code>.exe</code> shims it is easier to pass command line arguments to <code>R</code> and <code>Rscript</code>. In particular, <code>Rscript -e &lt;code&gt;</code> now works if <code>&lt;code&gt;</code> has line breaks. Call <code>rig system make-links</code> to create all <code>.exe</code> shims and remove the <code>.bat</code> shims. If you hardcoded shims with a <code>.bat</code> extension, change them to <code>.exe</code> or remove the extension completely (#362).</p></li>
 <li><p>New <code>rig system fix-r-alias</code> subcommand.</p></li>
 <li><p><code>rig rtools</code> is now a top-level command (it used to be <code>rig system rtools</code>).</p></li>
