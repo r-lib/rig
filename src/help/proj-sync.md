@@ -17,7 +17,9 @@ exception is `.rvenv/etc/repositories` (see below), which still comes from
 Development dependencies are installed by default. `--no-dev` leaves them
 out; the lock file records which packages are dev-only, so this works the
 same with or without `--frozen`. `--max-concurrent` limits the number of
-simultaneous installations.
+simultaneous installations; it defaults to the `concurrent-installs`
+[config](config.qmd) entry (`RIG_CONCURRENT_INSTALLS`), which itself defaults
+to the number of CPU cores.
 
 By default, sync also removes any package that is in the project library
 but not in `rproj.lock`, e.g. one dropped from `rproj.toml`, or a leftover from

@@ -2950,7 +2950,10 @@ pub(crate) struct ProjSyncOptions {
     /// (`--no-install-r` turns this off).
     pub install_r: bool,
     /// How many packages to install at the same time (`--max-concurrent`).
-    pub max_concurrent: usize,
+    /// `None` means fall back to `get_concurrent_installs()` (the
+    /// `concurrent-installs` config entry / `RIG_CONCURRENT_INSTALLS`, or the
+    /// number of CPU cores).
+    pub max_concurrent: Option<usize>,
     /// Which target to sync when more than one matches this machine
     /// (`--r-version`). Selects among `rproj.lock`'s existing targets, does
     /// not trigger a new solve.
@@ -2977,7 +2980,7 @@ impl Default for ProjSyncOptions {
             dev: true,
             library: None,
             install_r: true,
-            max_concurrent: 8,
+            max_concurrent: None,
             r_version: None,
             platform: None,
             inexact: false,
@@ -3002,10 +3005,7 @@ fn sc_proj_sync(
         dev: !args.get_flag("no-dev"),
         library: args.get_one::<String>("library").map(PathBuf::from),
         install_r: !args.get_flag("no-install-r"),
-        max_concurrent: args
-            .get_one::<usize>("max-concurrent")
-            .copied()
-            .unwrap_or(8),
+        max_concurrent: args.get_one::<usize>("max-concurrent").copied(),
         r_version: args.get_one::<String>("r-version").cloned(),
         platform: args.get_one::<String>("platform").cloned(),
         inexact: args.get_flag("inexact"),
@@ -3385,7 +3385,10 @@ pub(crate) fn proj_sync(
         })
         .collect();
 
-    let max_concurrent = opts.max_concurrent;
+    let max_concurrent = match opts.max_concurrent {
+        Some(n) => n,
+        None => crate::utils::get_concurrent_installs()?,
+    };
 
     let total_packages = packages.len();
     OUTPUT.status(&format!(

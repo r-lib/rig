@@ -487,6 +487,30 @@ pub fn get_concurrent_downloads() -> Result<usize, Box<dyn Error>> {
     Ok(50)
 }
 
+pub fn get_concurrent_installs() -> Result<usize, Box<dyn Error>> {
+    if let Ok(val) = std::env::var("RIG_CONCURRENT_INSTALLS") {
+        return val.trim().parse::<usize>().map_err(|_| {
+            format!(
+                "Invalid RIG_CONCURRENT_INSTALLS value: '{}', expected a positive integer",
+                val
+            )
+            .into()
+        });
+    }
+
+    if let Some(val) = crate::config::get_global_config_value("concurrent-installs")? {
+        return val.trim().parse::<usize>().map_err(|_| {
+            format!(
+                "Invalid 'concurrent-installs' in rig config: '{}', expected a positive integer",
+                val
+            )
+            .into()
+        });
+    }
+
+    Ok(std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1))
+}
+
 pub fn unset_r_envvars() {
     let evs = vec![
         "R_ARCH",

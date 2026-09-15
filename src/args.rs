@@ -1687,7 +1687,11 @@ pub fn rig_app() -> Command {
                 )
                 .arg(
                     Arg::new("max-concurrent")
-                        .help("Maximum number of concurrent installations (default: 8)")
+                        .help(
+                            "Maximum number of concurrent installations\n\
+                            (default: number of CPU cores, see 'concurrent-installs'\n\
+                            in 'rig config')",
+                        )
                         .long("max-concurrent")
                         .num_args(1)
                         .value_parser(clap::value_parser!(usize))
