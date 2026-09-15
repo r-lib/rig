@@ -3599,7 +3599,7 @@ fn download_http_lockfile_packages(
                 overall_pb.finish_and_clear();
             }
         },
-    );
+    )?;
 
     // Check if there was an error
     if let Some((idx, err)) = error.into_inner() {

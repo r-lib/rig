@@ -59,6 +59,10 @@ configuration file takes precedence over rig's built-in default.
   trust anything cached; it makes rig considerably slower, so it is a poor
   thing to turn on permanently.
 
+- `concurrent-downloads` (`RIG_CONCURRENT_DOWNLOADS`): the maximum number of
+  downloads rig performs at the same time, e.g. when downloading package
+  files for a project. Defaults to `50`.
+
 - `positron-setup`: [user mode](../admin-vs-user-mode.qmd) only. Set it to `false` to stop rig from updating
   Positron's settings: adding its R installation root to
   `positron.r.customRootFolders`, and pointing

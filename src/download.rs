@@ -1,5 +1,5 @@
 use futures::future;
-use futures::stream::{FuturesUnordered, StreamExt};
+use futures::stream::StreamExt;
 use std::error::Error;
 use std::ffi::OsStr;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -737,7 +737,8 @@ pub fn download_multiple_first_available_with_progress<F>(
     update_older: Option<Duration>,
     client: Option<&reqwest::Client>,
     progress_callback: F,
-) where
+) -> Result<(), Box<dyn Error>>
+where
     F: FnMut(usize, &Result<(bool, Option<String>), Box<dyn Error>>),
 {
     let update_older = match update_older {
@@ -750,7 +751,16 @@ pub fn download_multiple_first_available_with_progress<F>(
         None => &reqwest::Client::new(),
     };
 
-    download_multiple_with_progress_async(client_, downloads, update_older, progress_callback);
+    let limit = get_concurrent_downloads()?;
+
+    download_multiple_with_progress_async(
+        client_,
+        downloads,
+        update_older,
+        limit,
+        progress_callback,
+    );
+    Ok(())
 }
 
 #[tokio::main]
@@ -758,37 +768,39 @@ async fn download_multiple_with_progress_async<F>(
     client: &reqwest::Client,
     downloads: Vec<(Vec<String>, PathBuf)>,
     update_older: Duration,
+    limit: usize,
     mut progress_callback: F,
 ) where
     F: FnMut(usize, &Result<(bool, Option<String>), Box<dyn Error>>),
 {
-    let mut futures = FuturesUnordered::new();
+    let mut futures = futures::stream::iter(downloads.into_iter().enumerate().map(
+        |(idx, (urls, local_path))| {
+            let client = client.clone();
+            async move {
+                let result: Result<(bool, Option<String>), Box<dyn Error>> = async {
+                    // Check if file is up to date before attempting download
+                    if local_path.exists() {
+                        let metadata = fs::metadata(&local_path)?;
+                        let modified = metadata.modified()?;
+                        let elapsed = SystemTime::now().duration_since(modified)?;
 
-    for (idx, (urls, local_path)) in downloads.into_iter().enumerate() {
-        let client = client.clone();
-        futures.push(async move {
-            let result: Result<(bool, Option<String>), Box<dyn Error>> = async {
-                // Check if file is up to date before attempting download
-                if local_path.exists() {
-                    let metadata = fs::metadata(&local_path)?;
-                    let modified = metadata.modified()?;
-                    let elapsed = SystemTime::now().duration_since(modified)?;
-
-                    if elapsed < update_older {
-                        info!("{} is up to date, skipping download", local_path.display());
-                        return Ok((false, None));
+                        if elapsed < update_older {
+                            info!("{} is up to date, skipping download", local_path.display());
+                            return Ok((false, None));
+                        }
                     }
+
+                    // Convert Vec<String> to Vec<&str> for download_first_available
+                    let url_refs: Vec<&str> = urls.iter().map(|s| s.as_str()).collect();
+                    download_first_available(&client, &url_refs, &local_path, None).await
                 }
+                .await;
 
-                // Convert Vec<String> to Vec<&str> for download_first_available
-                let url_refs: Vec<&str> = urls.iter().map(|s| s.as_str()).collect();
-                download_first_available(&client, &url_refs, &local_path, None).await
+                (idx, result)
             }
-            .await;
-
-            (idx, result)
-        });
-    }
+        },
+    ))
+    .buffer_unordered(limit);
 
     // Process results as they complete
     while let Some((idx, result)) = futures.next().await {
