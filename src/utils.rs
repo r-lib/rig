@@ -508,7 +508,9 @@ pub fn get_concurrent_installs() -> Result<usize, Box<dyn Error>> {
         });
     }
 
-    Ok(std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1))
+    Ok(std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1))
 }
 
 pub fn unset_r_envvars() {
