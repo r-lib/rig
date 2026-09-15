@@ -1,13 +1,7 @@
 // `rig self update` -- update the rig binary itself in place.
 //
 // This only works if rig was installed by the `install.sh` / `install.ps1`
-// scripts, which are the only install methods where rig fully owns the
-// binary's location. Those scripts write an install receipt
-// (`install-receipt.json`, in the app data directory, see `get_data_dir()`)
-// after a successful install; every other distribution channel (`.pkg`,
-// `.deb`/`.rpm`, Chocolatey, WinGet, Homebrew, or a manually extracted
-// tarball) leaves no such receipt, so `rig self update` refuses to touch the
-// binary and points the user at the right tool instead.
+// scripts; see `crate::install_receipt` for how that's determined.
 //
 // Version discovery deliberately avoids the GitHub API (which would need a
 // token to get a decent rate limit for anonymous use): the stable path reads
@@ -16,73 +10,20 @@
 // `--pre-release` path scrapes release tags out of the plain releases page.
 
 use std::error::Error;
-use std::path::{Path, PathBuf};
 
 use clap::ArgMatches;
-use log::{debug, info};
+use log::info;
 use regex::Regex;
-use serde::{Deserialize, Serialize};
 use simple_error::bail;
 
 use crate::install::unpack_package;
+use crate::install_receipt::{
+    gate, read_receipt, receipt_path, refusal_message, GateResult, Receipt,
+};
 use crate::output::OUTPUT;
 use crate::utils::write_atomically;
 
 const REPO: &str = "r-lib/rig";
-
-#[derive(Debug, Serialize, Deserialize)]
-struct Receipt {
-    receipt_version: u32,
-    install_method: String,
-    rig_version: String,
-    platform: String,
-    arch: String,
-    bin_path: String,
-    prefix: String,
-    installed_at: String,
-}
-
-enum GateResult {
-    Ok(Receipt),
-    NoReceipt,
-    WrongMethod(String),
-}
-
-fn gate(receipt: Option<Receipt>) -> GateResult {
-    match receipt {
-        None => GateResult::NoReceipt,
-        Some(r) if r.install_method == "script" => GateResult::Ok(r),
-        Some(r) => GateResult::WrongMethod(r.install_method),
-    }
-}
-
-fn receipt_path() -> Result<PathBuf, Box<dyn Error>> {
-    Ok(crate::cache::get_data_dir()?.join("install-receipt.json"))
-}
-
-// Missing or malformed receipts both come back as `Ok(None)`: a corrupt
-// receipt should make `rig self update` decline safely, not crash.
-fn read_receipt_at(path: &Path) -> Result<Option<Receipt>, Box<dyn Error>> {
-    if !path.exists() {
-        return Ok(None);
-    }
-    let bytes = std::fs::read(path)?;
-    match serde_json::from_slice::<Receipt>(&bytes) {
-        Ok(r) => Ok(Some(r)),
-        Err(err) => {
-            debug!(
-                "Cannot parse install receipt at {}: {}",
-                path.display(),
-                err
-            );
-            Ok(None)
-        }
-    }
-}
-
-fn read_receipt() -> Result<Option<Receipt>, Box<dyn Error>> {
-    read_receipt_at(&receipt_path()?)
-}
 
 // Mirrors the platform/arch tokens `install.sh` / `install.ps1` compute, so
 // the asset name built here matches what those scripts (and
@@ -179,37 +120,11 @@ fn resolve_target_tag(pre_release: bool) -> Result<(String, semver::Version), Bo
     }
 }
 
-fn refusal_message(reason: &GateResult) -> String {
-    let how = if cfg!(target_os = "macos") {
-        "If you installed the .pkg, download a newer one from \
-         https://github.com/r-lib/rig/releases and run it again. If you \
-         installed with Homebrew, run 'brew upgrade r-rig' / 'brew upgrade \
-         r-rig-app' instead."
-    } else if cfg!(target_os = "windows") {
-        "If you installed the .exe installer, Chocolatey, WinGet, or Scoop, \
-         use that tool to update instead ('choco upgrade rig', 'winget \
-         upgrade posit.rig', or 'scoop update rig')."
-    } else {
-        "If you installed the .deb/.rpm package, use your package manager \
-         (apt/dnf/zypper) to update instead."
-    };
-
-    let cause = match reason {
-        GateResult::NoReceipt => "rig was not installed with the install script".to_string(),
-        GateResult::WrongMethod(method) => {
-            format!("rig was installed via '{}', not the install script", method)
-        }
-        GateResult::Ok(_) => unreachable!(),
-    };
-
-    format!("{}, so 'rig self update' cannot update it. {}", cause, how)
-}
-
 pub fn sc_self_update(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let receipt = read_receipt()?;
     let receipt = match gate(receipt) {
         GateResult::Ok(r) => r,
-        other => bail!("{}", refusal_message(&other)),
+        other => bail!("{}", refusal_message("rig self update", &other)),
     };
 
     let current = semver::Version::parse(env!("CARGO_PKG_VERSION"))?;
@@ -314,37 +229,6 @@ fn rfc3339_now() -> String {
 mod tests {
     use super::*;
 
-    fn receipt(method: &str) -> Receipt {
-        Receipt {
-            receipt_version: 1,
-            install_method: method.to_string(),
-            rig_version: "0.10.0".to_string(),
-            platform: "macos".to_string(),
-            arch: "arm64".to_string(),
-            bin_path: "/home/me/.local/bin/rig".to_string(),
-            prefix: "/home/me/.local".to_string(),
-            installed_at: "2026-01-01T00:00:00Z".to_string(),
-        }
-    }
-
-    #[test]
-    fn gate_no_receipt() {
-        assert!(matches!(gate(None), GateResult::NoReceipt));
-    }
-
-    #[test]
-    fn gate_wrong_method() {
-        match gate(Some(receipt("pkg"))) {
-            GateResult::WrongMethod(m) => assert_eq!(m, "pkg"),
-            _ => panic!("expected WrongMethod"),
-        }
-    }
-
-    #[test]
-    fn gate_script_ok() {
-        assert!(matches!(gate(Some(receipt("script"))), GateResult::Ok(_)));
-    }
-
     #[test]
     fn pick_highest_tag_prefers_release_over_prerelease() {
         let tags = vec![
@@ -405,30 +289,6 @@ mod tests {
                 "v0.9.0".to_string(),
             ]
         );
-    }
-
-    #[test]
-    fn read_receipt_at_missing_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("install-receipt.json");
-        assert!(read_receipt_at(&path).unwrap().is_none());
-    }
-
-    #[test]
-    fn read_receipt_at_malformed_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("install-receipt.json");
-        std::fs::write(&path, b"not json").unwrap();
-        assert!(read_receipt_at(&path).unwrap().is_none());
-    }
-
-    #[test]
-    fn read_receipt_at_valid_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("install-receipt.json");
-        std::fs::write(&path, serde_json::to_vec(&receipt("script")).unwrap()).unwrap();
-        let r = read_receipt_at(&path).unwrap().unwrap();
-        assert_eq!(r.install_method, "script");
     }
 
     // Hits the real network; run explicitly with `cargo test -- --ignored`.

@@ -567,12 +567,32 @@ pub fn rig_app() -> Command {
                 .required(false),
         );
 
+    let cmd_self_uninstall = Command::new("uninstall")
+        .about(ABOUT_SELF_UNINSTALL)
+        .long_about(HELP_SELF_UNINSTALL)
+        .display_order(0)
+        .arg(
+            Arg::new("dry-run")
+                .help("Show what would be removed, without removing anything")
+                .long("dry-run")
+                .num_args(0)
+                .required(false),
+        )
+        .arg(
+            Arg::new("force")
+                .help("Actually remove rig, instead of just showing what would be removed")
+                .long("force")
+                .num_args(0)
+                .required(false),
+        );
+
     let cmd_self = Command::new("self")
         .about(ABOUT_SELF)
         .long_about(HELP_SELF)
         .display_order(0)
         .arg_required_else_help(true)
-        .subcommand(cmd_self_update);
+        .subcommand(cmd_self_update)
+        .subcommand(cmd_self_uninstall);
 
     let mut cmd_system = Command::new("system")
         .about(ABOUT_SYSTEM)

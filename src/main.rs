@@ -47,6 +47,7 @@ mod dirs;
 mod download;
 mod hardcoded;
 mod install;
+mod install_receipt;
 mod library;
 mod output;
 mod pager;
@@ -64,6 +65,7 @@ mod rproj;
 mod run;
 mod rvenv;
 mod rversion;
+mod self_uninstall;
 mod self_update;
 mod solver;
 mod sysreqs;
@@ -310,6 +312,7 @@ fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
 fn sc_self(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
         Some(("update", s)) => self_update::sc_self_update(s, mainargs),
+        Some(("uninstall", s)) => self_uninstall::sc_self_uninstall(s, mainargs),
         // Every subcommand defined in `args.rs` has an arm above, so this is
         // only reached if one is renamed there without updating this list.
         _ => Ok(()),
