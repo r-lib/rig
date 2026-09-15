@@ -560,6 +560,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#projects" id="toc-projects" class="nav-link" data-scroll-target="#projects">Projects</a></li>
   <li><a href="#project-scripts" id="toc-project-scripts" class="nav-link" data-scroll-target="#project-scripts">Project scripts</a></li>
   <li><a href="#activation" id="toc-activation" class="nav-link" data-scroll-target="#activation">Activation</a></li>
+  <li><a href="#rscript" id="toc-rscript" class="nav-link" data-scroll-target="#rscript">Rscript</a></li>
   <li><a href="#usage" id="toc-usage" class="nav-link" data-scroll-target="#usage">Usage</a></li>
   <li><a href="#arguments" id="toc-arguments" class="nav-link" data-scroll-target="#arguments">Arguments</a></li>
   <li><a href="#options" id="toc-options" class="nav-link" data-scroll-target="#options">Options</a></li>
@@ -601,7 +602,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="op">&lt;</span>path-to-app<span class="op">&gt;</span>      <span class="co"># run an R app</span></span>
 <span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">--cmd</span> <span class="op">&lt;</span>command<span class="op">&gt;</span>    <span class="co"># run `R CMD &lt;command&gt;`</span></span>
 <span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">--activate</span>         <span class="co"># start R with the selected version on PATH</span></span>
-<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">--shell</span>            <span class="co"># start a shell with the selected version on PATH</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">--shell</span>            <span class="co"># start a shell with the selected version on PATH</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">--rscript</span> <span class="at">-f</span> <span class="op">&lt;</span>script-file<span class="op">&gt;</span>   <span class="co"># run a script without echoing input, like `Rscript`</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <section id="supported-apps" class="level2">
 <h2 class="anchored" data-anchor-id="supported-apps">Supported apps</h2>
 <p>Currently supported apps are:</p>
@@ -640,6 +642,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="anchored" data-anchor-id="activation">Activation</h2>
 <p><code>rig run --activate</code> puts the selected R version’s <code>bin</code> directory on <code>PATH</code> for the R process it starts. <code>--shell</code> starts a shell instead of R, with the same <code>PATH</code> change, so <code>R</code> and its subprocesses start the activated R version.</p>
 <p>Inside a <a href="../reference/proj.html">project</a>, both flags put the project’s <code>.rvenv/bin</code> on <code>PATH</code> rather than the raw R installation, so a nested <code>R</code> (started from the shell <code>--shell</code> opens, or from R itself) picks up the project’s package library and repositories too, not just its version.</p>
+</section>
+<section id="rscript" class="level2">
+<h2 class="anchored" data-anchor-id="rscript">Rscript</h2>
+<p><code>rig run --rscript</code> runs the selected R version’s <code>Rscript</code> instead of <code>R</code>. Unlike <code>R -e</code>/<code>R -f</code>, <code>Rscript</code> never echoes back the code it runs, which fits scripts and pipelines better than <code>R</code>’s interactive-style echo.</p>
+<p><code>--rscript</code> works with <code>-e</code>/<code>-f</code>, project scripts, apps and <code>--activate</code>, but not with <code>--cmd</code> (<code>R CMD</code> only exists as part of the <code>R</code> front-end) or <code>--shell</code> (which never runs the R binary at all).</p>
 </section>
 <section id="usage" class="level2">
 <h2 class="anchored" data-anchor-id="usage">Usage</h2>
@@ -717,6 +724,10 @@ Do not print R startup message
 <dt><code>-r, --r-version &lt;r-version&gt;</code></dt>
 <dd>
 R version to use
+</dd>
+<dt><code>--rscript</code></dt>
+<dd>
+Run with Rscript instead of R, e.g.&nbsp;for scripts (no echoing of input)
 </dd>
 <dt><code>-f, --script &lt;script&gt;</code></dt>
 <dd>
