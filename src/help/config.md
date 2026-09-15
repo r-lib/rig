@@ -64,7 +64,7 @@ configuration file takes precedence over rig's built-in default.
   files for a project. Defaults to `50`.
 
 - `concurrent-installs` (`RIG_CONCURRENT_INSTALLS`): the maximum number of
-  packages [`rig proj sync`](proj-sync.qmd) installs at the same time,
+  packages [`rig proj sync`](proj.qmd#rig-proj-sync) installs at the same time,
   unless overridden with its own `--max-concurrent` flag. Defaults to the
   number of CPU cores.
 
