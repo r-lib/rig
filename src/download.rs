@@ -25,6 +25,7 @@ use crate::output::OUTPUT;
 use crate::resolve::get_resolve;
 #[cfg(target_os = "windows")]
 use crate::rversion::Rversion;
+use crate::utils::get_concurrent_downloads;
 use crate::utils::write_atomically;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use crate::utils::*;
