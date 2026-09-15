@@ -30,11 +30,31 @@ pub fn get_resolve(args: &ArgMatches) -> Result<Rversion, Box<dyn Error>> {
 }
 
 pub fn get_resolve_for(args: &ArgMatches, platform: &str) -> Result<Rversion, Box<dyn Error>> {
-    let arch = get_arch(platform, args);
+    let mut arch = get_arch(platform, args);
     let str: &String = args.get_one("str").unwrap();
     let eps = vec![str.to_string()];
 
     validate_version_arg(str)?;
+
+    // R only has native arm64 macOS builds from 4.1.0 onward. If the user
+    // did not explicitly ask for arm64, and requested a plain version number
+    // older than that, use the x86_64 build instead (it runs fine via
+    // Rosetta). See https://github.com/r-lib/rig/issues/133.
+    if platform == "macos" && arch == "aarch64" {
+        let arch_explicit = args.try_contains_id("arch").is_ok()
+            && args.value_source("arch") == Some(clap::parser::ValueSource::CommandLine);
+        if !arch_explicit {
+            if let Some(ver) = parse_plain_version(str) {
+                if ver < semver::Version::new(4, 1, 0) {
+                    OUTPUT.status(&format!(
+                        "R {} has no native arm64 build, using the x86_64 build instead (runs via Rosetta).",
+                        str
+                    ));
+                    arch = "x86_64".to_string();
+                }
+            }
+        }
+    }
 
     if is_url(str) {
         Ok(Rversion {
@@ -71,6 +91,18 @@ fn is_url(str: &str) -> bool {
 fn is_valid_version_string(str: &str) -> bool {
     let re = Regex::new(r"^(devel|next|release|oldrel(/\d+)?|\d+(\.\d+){0,2})$").unwrap();
     re.is_match(str)
+}
+
+// Parses a plain version string ("4", "4.0", "4.0.5"), padding missing
+// components with 0. Returns None for symbolic versions (release, devel,
+// oldrel/N) and URLs.
+fn parse_plain_version(str: &str) -> Option<semver::Version> {
+    let re = Regex::new(r"^(\d+)(?:\.(\d+))?(?:\.(\d+))?$").unwrap();
+    let caps = re.captures(str)?;
+    let major = caps.get(1)?.as_str().parse().ok()?;
+    let minor = caps.get(2).map_or("0", |m| m.as_str()).parse().ok()?;
+    let patch = caps.get(3).map_or("0", |m| m.as_str()).parse().ok()?;
+    Some(semver::Version::new(major, minor, patch))
 }
 
 #[tokio::main]
