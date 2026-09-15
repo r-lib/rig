@@ -1472,7 +1472,7 @@ Run in user mode (overrides RIG_MODE and config)
 <h2 class="anchored" data-anchor-id="rig-proj-sync"><code>rig proj sync</code></h2>
 <p>Bring an R project’s environment in line with its <code>rproj.lock</code>: install the resolved dependencies, and write the rest of the <code>.rvenv</code> layout.</p>
 <p>rig looks for the project in the current directory and its parents, reads its <code>rproj.lock</code> and installs the packages into the project library. If the project has no <code>rproj.lock</code> yet, rig runs <a href="#rig-proj-lock"><code>rig proj lock</code></a> with its default options first. Pass <code>--frozen</code> to fail instead, without touching <code>rproj.toml</code> at all: every package <code>rproj.lock</code> lists already carries its own download URL, so nothing but the lock file is needed to install from it. The one exception is <code>.rvenv/etc/repositories</code> (see below), which still comes from <code>rproj.toml</code> when one is present, and is skipped otherwise.</p>
-<p>Development dependencies are installed by default. <code>--no-dev</code> leaves them out; the lock file records which packages are dev-only, so this works the same with or without <code>--frozen</code>. <code>--max-concurrent</code> limits the number of simultaneous installations.</p>
+<p>Development dependencies are installed by default. <code>--no-dev</code> leaves them out; the lock file records which packages are dev-only, so this works the same with or without <code>--frozen</code>. <code>--max-concurrent</code> limits the number of simultaneous installations; it defaults to the <code>concurrent-installs</code> <a href="../reference/config.html">config</a> entry (<code>RIG_CONCURRENT_INSTALLS</code>), which itself defaults to the number of CPU cores.</p>
 <p>By default, sync also removes any package that is in the project library but not in <code>rproj.lock</code>, e.g.&nbsp;one dropped from <code>rproj.toml</code>, or a leftover from before <code>--no-dev</code>. Pass <code>--inexact</code> to leave those packages alone instead.</p>
 <p>Pass <code>--dry-run</code> to print what sync would install, remove or write, without touching the R installation, the project library or <code>.rvenv</code>.</p>
 <section id="the-r-version-1" class="level3">
@@ -1533,7 +1533,7 @@ Library path where packages should be installed (default: .rvenv/lib)
 </dd>
 <dt><code>--max-concurrent &lt;max-concurrent&gt;</code></dt>
 <dd>
-Maximum number of concurrent installations (default: 8)
+Maximum number of concurrent installations (default: number of CPU cores, see ‘concurrent-installs’ in ‘rig config’)
 </dd>
 <dt><code>--no-cache</code></dt>
 <dd>
