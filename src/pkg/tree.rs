@@ -18,14 +18,19 @@ use std::fmt::Write;
 use std::io::IsTerminal;
 
 use clap::ArgMatches;
+use log::debug;
 use simple_error::*;
 
 use super::deps::{
     newest_version, requirements, root_package, type_rank, version_cell_for, wanted_dep, Newest,
 };
 use crate::dcf::{DepVersionSpec, RDepType, RPackageVersion, DEP_TYPES_SOFT};
+use crate::output::OUTPUT;
+use crate::pkgsource::{parse_pkg_source, PkgSource, RemoteSource};
+use crate::proj::{dep_table_from_remote, fetch_and_read_git_package, github_owner_repo};
 use crate::repos::DbSourcePackageLoader;
-use crate::solver::{is_base_package, PackageVersionLoader};
+use crate::rproj::{pak_ref_name, DepTable};
+use crate::solver::{is_base_package, GitSourceInfo, PackageVersionLoader};
 
 pub fn sc_pkg_tree(
     args: &ArgMatches,
@@ -43,10 +48,22 @@ pub fn sc_pkg_tree(
     let why = args.get_one::<String>("why").map(|s| s.as_str());
     let json = args.get_flag("json") || pkgargs.get_flag("json") || mainargs.get_flag("json");
 
-    let loader = DbSourcePackageLoader::new()?;
-    let tree = dep_tree(&loader, &package, &ver, dev, no_base)?;
+    let source = parse_pkg_source(&package).inspect_err(|err| {
+        OUTPUT.error(&err.to_string());
+    })?;
+    let tree = match source {
+        PkgSource::Remote(r) => remote_root_tree(&package, &r, dev, no_base)?,
+        PkgSource::Cran => {
+            let loader = DbSourcePackageLoader::new()?;
+            dep_tree(&loader, &package, &ver, dev, no_base).inspect_err(|err| {
+                OUTPUT.error(&err.to_string());
+            })?
+        }
+    };
     let tree = match why {
-        Some(target) => invert_tree(&tree, target, dev, no_base)?,
+        Some(target) => invert_tree(&tree, target, dev, no_base).inspect_err(|err| {
+            OUTPUT.error(&err.to_string());
+        })?,
         None => tree,
     };
 
@@ -63,10 +80,12 @@ pub fn sc_pkg_tree(
 ///
 /// `dev` is only what the caller passed on the command line, for the hint of the
 /// `why` error message; the walk itself is driven by `root_deps`.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn proj_tree(
     root_name: &str,
     root_version: &RPackageVersion,
     root_deps: &[DepVersionSpec],
+    root_remotes: HashMap<String, DepTable>,
     dev: bool,
     no_base: bool,
     why: Option<&str>,
@@ -78,11 +97,14 @@ pub(crate) fn proj_tree(
         root_name,
         Some(root_version.clone()),
         root_deps,
+        root_remotes,
         true,
         no_base,
     );
     let tree = match why {
-        Some(target) => invert_tree(&tree, target, dev, no_base)?,
+        Some(target) => invert_tree(&tree, target, dev, no_base).inspect_err(|err| {
+            OUTPUT.error(&err.to_string());
+        })?,
         None => tree,
     };
 
@@ -119,6 +141,10 @@ struct TreeNode {
     /// Version requirement(s) of the parent, e.g. `>= 1.0.2`. Empty for the
     /// root.
     requires: Vec<String>,
+    /// Provenance label for a package fetched from git/GitHub/GitLab instead
+    /// of a repository index, e.g. `"github: r-lib/crayon@main"`. `None` for
+    /// an ordinary CRAN/PPM package.
+    source: Option<String>,
     children: Vec<TreeNode>,
     /// Whether this package's dependencies are shown under an earlier
     /// occurrence instead of here.
@@ -161,6 +187,7 @@ fn dep_tree(
         package,
         Some(root.version),
         &root.dependencies.dependencies,
+        HashMap::new(),
         dev,
         no_base,
     ))
@@ -178,10 +205,12 @@ fn tree_from_deps(
     root_name: &str,
     root_version: Option<RPackageVersion>,
     root_deps: &[DepVersionSpec],
+    root_remotes: HashMap<String, DepTable>,
     dev: bool,
     no_base: bool,
 ) -> DepTree {
     let mut newest = Newest::new(loader);
+    let mut remotes = RemoteResolver::new(root_remotes);
 
     // The root's subtree *is* the tree, so it counts as expanded from the
     // start: a cycle that comes back to it collapses into a `(*)` leaf.
@@ -192,6 +221,7 @@ fn tree_from_deps(
     let children = children_of(
         root_deps,
         &mut newest,
+        &mut remotes,
         &mut expanded,
         &mut seen,
         dev,
@@ -204,6 +234,7 @@ fn tree_from_deps(
             version: root_version,
             types: vec![],
             requires: vec![],
+            source: None,
             children,
             repeat: false,
         },
@@ -224,6 +255,7 @@ fn tree_from_deps(
 fn children_of(
     deps: &[DepVersionSpec],
     newest: &mut Newest,
+    remotes: &mut RemoteResolver,
     expanded: &mut HashSet<String>,
     seen: &mut HashSet<String>,
     dev: bool,
@@ -253,6 +285,7 @@ fn children_of(
             version: newest_version(newest, &dep.name),
             types: dep.types.clone(),
             requires: requirements(dep),
+            source: None,
             children: vec![],
             repeat: false,
         };
@@ -268,19 +301,188 @@ fn children_of(
             continue;
         }
 
-        // `Newest::get` borrows the memo table that the recursive call needs
-        // mutably, so copy the dependency list out before descending. A package
-        // that is not in the database, or that we cannot read, is not fatal: we
-        // just cannot say what it needs.
-        let deps = match newest.get(&dep.name) {
-            Some(pkg) => pkg.dependencies.dependencies.clone(),
-            None => vec![],
+        // `RemoteResolver::resolve` borrows the memo table that the recursive
+        // call needs mutably, so copy what it returns out before descending. A
+        // package that is not in the database, or that we cannot read, is not
+        // fatal: we just cannot say what it needs.
+        let deps = if let Some(fetch) = remotes.resolve(&dep.name) {
+            node.version = fetch.version.clone();
+            node.source = Some(fetch.label.clone());
+            fetch.deps.clone()
+        } else {
+            match newest.get(&dep.name) {
+                Some(pkg) => pkg.dependencies.dependencies.clone(),
+                None => vec![],
+            }
         };
-        node.children = children_of(&deps, newest, expanded, seen, false, no_base);
+        node.children = children_of(&deps, newest, remotes, expanded, seen, false, no_base);
         nodes.push(node);
     }
 
     nodes
+}
+
+// ------------------------------------------------------------------------
+// git/GitHub/GitLab package sources
+
+/// Fetches and caches the packages the tree meets that are not in a
+/// repository index at all, but a git/GitHub/GitLab source (a project's
+/// `rproj.toml` git-dependencies, or a fetched package's own `Remotes:`
+/// field): [`children_of`] consults this before falling back to
+/// [`Newest`], the same way [`register_git_sources`](crate::proj) is a
+/// worklist that runs alongside the solver rather than a repository index
+/// the solver queries.
+struct RemoteResolver {
+    /// Known but not yet fetched remote specs, by package name.
+    pending: HashMap<String, DepTable>,
+    /// Already-fetched (or fetch-failed) packages, by name, so a name that
+    /// recurs in the tree (a diamond dependency) is fetched over the network
+    /// at most once.
+    cache: HashMap<String, RemoteFetch>,
+}
+
+/// One resolved remote package: what its `DESCRIPTION` says, if the fetch
+/// succeeded, and a label for where it came from.
+struct RemoteFetch {
+    version: Option<RPackageVersion>,
+    deps: Vec<DepVersionSpec>,
+    label: String,
+}
+
+impl RemoteResolver {
+    fn new(root_remotes: HashMap<String, DepTable>) -> Self {
+        RemoteResolver {
+            pending: root_remotes,
+            cache: HashMap::new(),
+        }
+    }
+
+    /// `None` if `name` is not a remote package; otherwise its fetched (or
+    /// cached) `DESCRIPTION`, fetching it over git the first time.
+    fn resolve(&mut self, name: &str) -> Option<&RemoteFetch> {
+        if !self.cache.contains_key(name) {
+            let table = self.pending.remove(name)?;
+            let fetch = self.fetch(name, &table);
+            self.cache.insert(name.to_string(), fetch);
+        }
+        self.cache.get(name)
+    }
+
+    fn fetch(&mut self, name: &str, table: &DepTable) -> RemoteFetch {
+        let git_url = table
+            .git
+            .clone()
+            .expect("a package only ends up in `pending` with a `git` URL set");
+        OUTPUT.status(&format!("Fetching {} from {}", name, git_url));
+
+        match fetch_and_read_git_package(&git_url, table) {
+            Ok((pkg, git_source, remotes_field)) => {
+                for (dep_name, dep_table) in parse_remotes_field(&remotes_field) {
+                    if !self.cache.contains_key(&dep_name) {
+                        self.pending.entry(dep_name).or_insert(dep_table);
+                    }
+                }
+                RemoteFetch {
+                    version: Some(pkg.version),
+                    deps: pkg.dependencies.dependencies,
+                    label: remote_label(&git_source),
+                }
+            }
+            Err(err) => {
+                debug!(
+                    "Failed to fetch remote package '{}' from {}: {}",
+                    name, git_url, err
+                );
+                RemoteFetch {
+                    version: None,
+                    deps: vec![],
+                    label: remote_label_unresolved(&git_url),
+                }
+            }
+        }
+    }
+}
+
+/// Parse a `DESCRIPTION`'s raw `Remotes:` field into the package name -> git
+/// spec map [`RemoteResolver`] tracks, the same tolerant parsing
+/// `crate::proj`'s DESCRIPTION import and `register_git_sources` use: an
+/// entry pak recognizes but rig cannot name, or that is not a supported
+/// git/GitHub/GitLab reference, is silently skipped rather than failing the
+/// whole tree.
+fn parse_remotes_field(remotes_field: &str) -> HashMap<String, DepTable> {
+    let mut out = HashMap::new();
+    for entry in remotes_field.split(',') {
+        let entry = entry.trim();
+        if entry.is_empty() {
+            continue;
+        }
+        let Some(dep_name) = pak_ref_name(entry) else {
+            continue;
+        };
+        if let Ok(PkgSource::Remote(r)) = parse_pkg_source(entry) {
+            out.insert(dep_name, dep_table_from_remote(&r, entry));
+        }
+    }
+    out
+}
+
+/// The provenance label shown next to a remote package's version, e.g.
+/// `"github: r-lib/crayon@main"` or `"git: <url>@<ref>"`. GitLab sources are
+/// plain git URLs as far as [`GitSourceInfo`] is concerned (see
+/// `fetch_and_read_git_package`), so they get the same generic `git:` label
+/// as any other non-GitHub remote.
+fn remote_label(info: &GitSourceInfo) -> String {
+    let at = info
+        .ref_
+        .clone()
+        .unwrap_or_else(|| info.sha.chars().take(8).collect());
+    match (info.remote_type, &info.repo) {
+        ("github", Some(repo)) => format!("github: {}@{}", repo, at),
+        _ => format!("git: {}@{}", info.url, at),
+    }
+}
+
+/// The label for a remote dependency whose fetch failed (bad ref, network
+/// error, unparseable `DESCRIPTION`), so the user sees which package and
+/// source is broken instead of a plain unresolved leaf.
+fn remote_label_unresolved(git_url: &str) -> String {
+    match github_owner_repo(git_url) {
+        Some((owner, repo)) => format!("github: {}/{} (fetch failed)", owner, repo),
+        None => format!("git: {} (fetch failed)", git_url),
+    }
+}
+
+/// The tree of an ad-hoc remote package root, e.g.
+/// `rig pkg tree github::r-lib/crayon`: fetches the `DESCRIPTION` directly,
+/// the same way a project's git-sourced dependency is fetched inside the
+/// tree, but for the root itself, which has no repository index entry to
+/// consult in the first place.
+fn remote_root_tree(
+    spec: &str,
+    r: &RemoteSource,
+    dev: bool,
+    no_base: bool,
+) -> Result<DepTree, Box<dyn Error>> {
+    let table = dep_table_from_remote(r, spec);
+    let git_url = table
+        .git
+        .clone()
+        .expect("dep_table_from_remote always sets `git`");
+    let (pkg, git_source, remotes_field) = fetch_and_read_git_package(&git_url, &table)?;
+    let root_remotes = parse_remotes_field(&remotes_field);
+
+    let loader = DbSourcePackageLoader::new()?;
+    let mut tree = tree_from_deps(
+        &loader,
+        &pkg.name,
+        Some(pkg.version.clone()),
+        &pkg.dependencies.dependencies,
+        root_remotes,
+        dev,
+        no_base,
+    );
+    tree.root.source = Some(remote_label(&git_source));
+    Ok(tree)
 }
 
 /// R is the dependency everything else is relative to, so it goes first.
@@ -352,11 +554,13 @@ fn invert_tree(
 ) -> Result<DepTree, Box<dyn Error>> {
     let mut parents: HashMap<String, Vec<Dependent>> = HashMap::new();
     let mut versions: HashMap<String, Option<RPackageVersion>> = HashMap::new();
-    collect_edges(&tree.root, &mut parents, &mut versions);
+    let mut sources: HashMap<String, Option<String>> = HashMap::new();
+    collect_edges(&tree.root, &mut parents, &mut versions, &mut sources);
     // A project is not a package in the repositories, but the database may well
     // know a *different* package by the same name. The manifest wins, so the
     // project's leaf line shows the version the manifest declares.
     versions.insert(tree.root.name.clone(), tree.root.version.clone());
+    sources.insert(tree.root.name.clone(), tree.root.source.clone());
 
     // Every package of the closure is a node of the forward tree, and so is the
     // root, which has no parents but is still a legal — if degenerate — target.
@@ -364,11 +568,19 @@ fn invert_tree(
         Some(version) => version.clone(),
         None => bail!("{}", not_in_tree(tree, target, &versions, dev, no_base)),
     };
+    let source = sources.get(target).cloned().flatten();
 
     let mut expanded: HashSet<String> = HashSet::new();
     expanded.insert(target.to_string());
     let mut seen: HashSet<String> = HashSet::new();
-    let children = dependents_of(target, &parents, &versions, &mut expanded, &mut seen);
+    let children = dependents_of(
+        target,
+        &parents,
+        &versions,
+        &sources,
+        &mut expanded,
+        &mut seen,
+    );
 
     let mut inverted = DepTree {
         root: TreeNode {
@@ -376,6 +588,7 @@ fn invert_tree(
             version,
             types: vec![],
             requires: vec![],
+            source,
             children,
             repeat: false,
         },
@@ -399,10 +612,14 @@ fn collect_edges(
     node: &TreeNode,
     parents: &mut HashMap<String, Vec<Dependent>>,
     versions: &mut HashMap<String, Option<RPackageVersion>>,
+    sources: &mut HashMap<String, Option<String>>,
 ) {
     versions
         .entry(node.name.clone())
         .or_insert_with(|| node.version.clone());
+    sources
+        .entry(node.name.clone())
+        .or_insert_with(|| node.source.clone());
 
     for child in node.children.iter() {
         let dependents = parents.entry(child.name.clone()).or_default();
@@ -428,7 +645,7 @@ fn collect_edges(
                 requires: child.requires.clone(),
             }),
         }
-        collect_edges(child, parents, versions);
+        collect_edges(child, parents, versions, sources);
     }
 }
 
@@ -442,6 +659,7 @@ fn dependents_of(
     package: &str,
     parents: &HashMap<String, Vec<Dependent>>,
     versions: &HashMap<String, Option<RPackageVersion>>,
+    sources: &HashMap<String, Option<String>>,
     expanded: &mut HashSet<String>,
     seen: &mut HashSet<String>,
 ) -> Vec<TreeNode> {
@@ -466,6 +684,7 @@ fn dependents_of(
             version: versions.get(&dependent.name).cloned().flatten(),
             types: dependent.types.clone(),
             requires: dependent.requires.clone(),
+            source: sources.get(&dependent.name).cloned().flatten(),
             children: vec![],
             repeat: false,
         };
@@ -476,7 +695,7 @@ fn dependents_of(
             continue;
         }
 
-        node.children = dependents_of(&dependent.name, parents, versions, expanded, seen);
+        node.children = dependents_of(&dependent.name, parents, versions, sources, expanded, seen);
         nodes.push(node);
     }
 
@@ -541,12 +760,20 @@ fn render_tree(tree: &DepTree, color: bool) -> String {
     // R and the base packages have no version of their own, so the header is
     // just the name; everything else has a version, or `?` if the repositories
     // do not know it.
-    let name = match version_cell(root) {
+    let mut name = match version_cell(root) {
         Some(version) if color => format!("{} {}", root.name.cyan().bold(), version.bold()),
         Some(version) => format!("{} {}", root.name, version),
         None if color => root.name.cyan().bold().to_string(),
         None => root.name.clone(),
     };
+    if let Some(source) = &root.source {
+        let src = format!("({})", source);
+        if color {
+            let _ = write!(name, " {}", src.dimmed());
+        } else {
+            let _ = write!(name, " {}", src);
+        }
+    }
 
     let mut out = String::new();
     if color {
@@ -703,6 +930,9 @@ fn node_label(node: &TreeNode, inverted: bool, color: bool) -> String {
     if let Some(version) = version_cell(node) {
         dim(version);
     }
+    if let Some(source) = &node.source {
+        dim(format!("({})", source));
+    }
     if !node.requires.is_empty() {
         let requires = node.requires.join(", ");
         dim(if inverted {
@@ -769,6 +999,7 @@ fn tree_json(tree: &DepTree) -> Result<String, Box<dyn Error>> {
     struct Node<'a> {
         package: &'a str,
         version: Option<String>,
+        source: Option<&'a str>,
         types: Vec<String>,
         requires: &'a [String],
         repeat: bool,
@@ -779,6 +1010,7 @@ fn tree_json(tree: &DepTree) -> Result<String, Box<dyn Error>> {
     struct Root<'a> {
         package: &'a str,
         version: Option<String>,
+        source: Option<&'a str>,
         direct: usize,
         total: usize,
         dependencies: Vec<Node<'a>>,
@@ -788,6 +1020,7 @@ fn tree_json(tree: &DepTree) -> Result<String, Box<dyn Error>> {
     struct InvertedNode<'a> {
         package: &'a str,
         version: Option<String>,
+        source: Option<&'a str>,
         types: Vec<String>,
         requires: &'a [String],
         repeat: bool,
@@ -798,6 +1031,7 @@ fn tree_json(tree: &DepTree) -> Result<String, Box<dyn Error>> {
     struct InvertedRoot<'a> {
         package: &'a str,
         version: Option<String>,
+        source: Option<&'a str>,
         inverted: bool,
         why: &'a str,
         direct_dependents: usize,
@@ -811,6 +1045,7 @@ fn tree_json(tree: &DepTree) -> Result<String, Box<dyn Error>> {
             .map(|child| Node {
                 package: &child.name,
                 version: child.version.as_ref().map(|v| v.to_string()),
+                source: child.source.as_deref(),
                 types: child.types.iter().map(|t| t.to_string()).collect(),
                 requires: &child.requires,
                 repeat: child.repeat,
@@ -825,6 +1060,7 @@ fn tree_json(tree: &DepTree) -> Result<String, Box<dyn Error>> {
             .map(|child| InvertedNode {
                 package: &child.name,
                 version: child.version.as_ref().map(|v| v.to_string()),
+                source: child.source.as_deref(),
                 types: child.types.iter().map(|t| t.to_string()).collect(),
                 requires: &child.requires,
                 repeat: child.repeat,
@@ -838,6 +1074,7 @@ fn tree_json(tree: &DepTree) -> Result<String, Box<dyn Error>> {
         Some(why) => serde_json::to_string_pretty(&InvertedRoot {
             package: &root.name,
             version: root.version.as_ref().map(|v| v.to_string()),
+            source: root.source.as_deref(),
             inverted: true,
             why,
             direct_dependents: root.children.len(),
@@ -847,6 +1084,7 @@ fn tree_json(tree: &DepTree) -> Result<String, Box<dyn Error>> {
         None => serde_json::to_string_pretty(&Root {
             package: &root.name,
             version: root.version.as_ref().map(|v| v.to_string()),
+            source: root.source.as_deref(),
             direct: root.children.len(),
             total: tree.total,
             dependencies: nodes(&root.children),
@@ -1194,6 +1432,7 @@ mod tests {
             "myproj",
             Some(RPackageVersion::from_str("0.1.0").unwrap()),
             &root.dependencies,
+            HashMap::new(),
             true,
             no_base,
         )
@@ -1601,6 +1840,7 @@ mod tests {
             "b",
             Some(RPackageVersion::from_str("1.1.0").unwrap()),
             &deps.dependencies,
+            HashMap::new(),
             false,
             false,
         );

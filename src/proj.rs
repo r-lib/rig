@@ -956,6 +956,36 @@ pub(crate) fn proj_read_manifest_deps(
     Ok((manifest.project.name, version, deps))
 }
 
+/// [`proj_read_manifest_deps`], plus the manifest's git/GitHub/GitLab-sourced
+/// dependencies (see [`crate::rproj::Rproj::git_dependencies`]), for
+/// `rig proj tree`, which needs them to resolve a remote package met while
+/// walking the tree the same way [`register_git_sources`] does for a solve.
+#[allow(clippy::type_complexity)]
+fn proj_read_manifest_deps_with_remotes(
+    root: &Path,
+    dev: bool,
+) -> Result<
+    (
+        String,
+        RPackageVersion,
+        PackageDependencies,
+        Vec<(String, DepTable)>,
+    ),
+    Box<dyn Error>,
+> {
+    OUTPUT.status(&format!(
+        "Reading dependencies from {}",
+        RPROJ_MANIFEST_FILE
+    ));
+    info!("Reading dependencies from {}", RPROJ_MANIFEST_FILE);
+    let manifest = proj_read_manifest(root)?;
+
+    let deps = manifest.to_dep_version_specs(dev)?;
+    let version = RPackageVersion::from_str(&manifest.project.version)?;
+    let git_deps = manifest.git_dependencies();
+    Ok((manifest.project.name, version, deps, git_deps))
+}
+
 /// What one solve is rooted at: a plain project, or every member of a
 /// workspace.
 #[derive(Debug)]
@@ -1220,12 +1250,14 @@ fn sc_proj_tree(
     let no_base = args.get_flag("no-base");
     let why = args.get_one::<String>("why").map(|s| s.as_str());
     let json = args.get_flag("json") || projargs.get_flag("json") || mainargs.get_flag("json");
-    let (name, version, pkg_deps) = proj_read_manifest_deps(Path::new("."), dev)?;
+    let (name, version, pkg_deps, git_deps) =
+        proj_read_manifest_deps_with_remotes(Path::new("."), dev)?;
 
     proj_tree(
         &name,
         &version,
         &pkg_deps.dependencies,
+        git_deps.into_iter().collect(),
         dev,
         no_base,
         why,
