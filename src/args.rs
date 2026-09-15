@@ -1743,6 +1743,16 @@ pub fn rig_app() -> Command {
                         .long("frozen")
                         .num_args(0)
                         .required(false),
+                )
+                .arg(
+                    Arg::new("dry-run")
+                        .help(
+                            "Show what sync would do, without installing, removing or\n\
+                            writing anything",
+                        )
+                        .long("dry-run")
+                        .num_args(0)
+                        .required(false),
                 ),
         );
     let cmd_renv = Command::new("renv")
@@ -2022,6 +2032,40 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("link")
+                .about(ABOUT_PKG_LINK)
+                .long_about(HELP_PKG_LINK)
+                .display_order(0)
+                .arg(
+                    Arg::new("path")
+                        .help("path to the R package source directory to link")
+                        .required(true),
+                )
+                .arg(
+                    Arg::new("library")
+                        .help("Library name or path, instead of the default library")
+                        .long("library")
+                        .short('l')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version to operate on, instead of the default")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
             Command::new("list")
                 .aliases(["ls"])
                 .about(ABOUT_PKG_LIST)
@@ -2084,6 +2128,41 @@ pub fn rig_app() -> Command {
                         .help("Remove base packages as well, which R itself needs")
                         .long("force")
                         .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("unlink")
+                .about(ABOUT_PKG_UNLINK)
+                .long_about(HELP_PKG_UNLINK)
+                .display_order(0)
+                .arg(
+                    Arg::new("package")
+                        .help("linked packages to unlink")
+                        .required(true)
+                        .num_args(1..),
+                )
+                .arg(
+                    Arg::new("library")
+                        .help("Library name or path, instead of the default library")
+                        .long("library")
+                        .short('l')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version to operate on, instead of the default")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
                         .required(false),
                 )
                 .arg(

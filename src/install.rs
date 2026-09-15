@@ -421,7 +421,7 @@ pub fn parse_linkingto(value: &str) -> Vec<(String, String, String)> {
 /// A DCF field runs until the next line that starts in column one, so dropping
 /// a field means dropping its indented continuation lines too — otherwise they
 /// would be reparsed as part of whichever field happens to precede them.
-fn drop_fields(text: &str, fields: &[&str]) -> String {
+pub(crate) fn drop_fields(text: &str, fields: &[&str]) -> String {
     let mut out = String::with_capacity(text.len());
     let mut skipping = false;
     for line in text.split_inclusive('\n') {

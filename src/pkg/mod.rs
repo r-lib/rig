@@ -20,12 +20,14 @@ use crate::textfmt::{reflow, wrap, write_field};
 
 pub(crate) mod deps;
 pub(crate) mod install;
+pub(crate) mod link;
 pub(crate) mod list;
 mod manifest;
 pub(crate) mod remove;
 #[cfg(test)]
 mod stub;
 pub(crate) mod tree;
+pub(crate) mod unlink;
 
 pub fn sc_pkg(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
@@ -33,9 +35,11 @@ pub fn sc_pkg(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Er
         Some(("deps", s)) => deps::sc_pkg_deps(s, args, mainargs),
         Some(("info", s)) => sc_pkg_info(s, args, mainargs),
         Some(("install", s)) => install::sc_pkg_install(s, args, mainargs),
+        Some(("link", s)) => link::sc_pkg_link(s, args, mainargs),
         Some(("list", s)) => list::sc_pkg_list(s, args, mainargs),
         Some(("remove", s)) => remove::sc_pkg_remove(s, args, mainargs),
         Some(("tree", s)) => tree::sc_pkg_tree(s, args, mainargs),
+        Some(("unlink", s)) => unlink::sc_pkg_unlink(s, args, mainargs),
         _ => Ok(()), // unreachable
     }
 }

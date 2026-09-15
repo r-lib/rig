@@ -23,6 +23,9 @@ By default, sync also removes any package that is in the project library
 but not in `rproj.lock`, e.g. one dropped from `rproj.toml`, or a leftover from
 before `--no-dev`. Pass `--inexact` to leave those packages alone instead.
 
+Pass `--dry-run` to print what sync would install, remove or write, without
+touching the R installation, the project library or `.rvenv`.
+
 ## The R version
 
 The lock file records the R version its solve is valid for, and that is the

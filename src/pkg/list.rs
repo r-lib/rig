@@ -26,6 +26,7 @@ use crate::install::{
     parse_linkingto, REMOTE_HASH_FIELD, REMOTE_LINKINGTO_FIELD, REMOTE_SHA_FIELD,
 };
 use crate::library::{library_rver, sc_library_get_default, sc_library_get_list};
+use crate::pkg::link::RIG_LINK_FIELD;
 use crate::textfmt::reflow;
 
 pub fn sc_pkg_list(
@@ -192,6 +193,9 @@ pub(crate) struct InstalledPackage {
     /// CRAN-tarball-specific), so this is what `needs_install` compares
     /// against the solve's `RemoteSha` instead.
     pub(crate) remote_sha: Option<String>,
+    /// The `RigLink` field: the source directory this package loads from live,
+    /// for a `rig pkg link` editable install. `None` for a normal install.
+    pub(crate) link_source: Option<String>,
 }
 
 #[cfg(test)]
@@ -215,7 +219,14 @@ impl InstalledPackage {
             hash: hash.map(|x| x.to_string()),
             linkingto,
             remote_sha: None,
+            link_source: None,
         }
+    }
+
+    /// Mark a test fixture as a `rig pkg link` editable install.
+    pub(super) fn linked_from(mut self, source: &str) -> InstalledPackage {
+        self.link_source = Some(source.to_string());
+        self
     }
 }
 
@@ -313,6 +324,7 @@ fn read_package(dir: &Path, dir_name: &str) -> Result<Option<InstalledPackage>, 
         .map(|x| parse_linkingto(&reflow(x)))
         .unwrap_or_default();
     let remote_sha = para.get(REMOTE_SHA_FIELD).map(reflow);
+    let link_source = para.get(RIG_LINK_FIELD).map(reflow);
 
     Ok(Some(InstalledPackage {
         package,
@@ -325,6 +337,7 @@ fn read_package(dir: &Path, dir_name: &str) -> Result<Option<InstalledPackage>, 
         hash,
         linkingto,
         remote_sha,
+        link_source,
     }))
 }
 
@@ -424,6 +437,15 @@ fn source_cell(pkg: &InstalledPackage) -> String {
     }
 }
 
+/// The last column of a listing row: `(linked -> /path/to/source)` for a
+/// `rig pkg link`ed package, empty otherwise.
+fn link_cell(pkg: &InstalledPackage) -> String {
+    match &pkg.link_source {
+        Some(source) => format!("(linked -> {})", source),
+        None => "".to_string(),
+    }
+}
+
 /// Pretty-print the packages installed in a library.
 ///
 /// A colored header line names the number of packages and the library they were
@@ -454,15 +476,18 @@ fn print_installed(lib: &ResolvedLibrary, pkgs: &[InstalledPackage]) {
     println!();
 
     // -- Table -------------------------------------------------------------
-    let mut tab: Table = Table::new("{:<}   {:<}   {:<}   {:<}   {:<}");
-    tab.add_row(row!("Package", "Version", "Built", "Platform", "Source"));
+    let mut tab: Table = Table::new("{:<}   {:<}   {:<}   {:<}   {:<}   {:<}");
+    tab.add_row(row!(
+        "Package", "Version", "Built", "Platform", "Source", ""
+    ));
     for pkg in pkgs {
         tab.add_row(row!(
             &pkg.package,
             &pkg.version,
             cell(pkg.built_r.as_ref()),
             cell(pkg.platform.as_ref()),
-            source_cell(pkg)
+            source_cell(pkg),
+            link_cell(pkg)
         ));
     }
 
@@ -502,6 +527,7 @@ fn print_installed_json(pkgs: &[InstalledPackage]) -> Result<(), Box<dyn Error>>
         platform: Option<&'a str>,
         source: Option<&'a str>,
         remote: Option<&'a str>,
+        linked_from: Option<&'a str>,
     }
 
     let entries: Vec<InstalledEntry> = pkgs
@@ -513,6 +539,7 @@ fn print_installed_json(pkgs: &[InstalledPackage]) -> Result<(), Box<dyn Error>>
             platform: pkg.platform.as_deref(),
             source: pkg.source.as_deref(),
             remote: pkg.remote.as_deref(),
+            linked_from: pkg.link_source.as_deref(),
         })
         .collect();
 

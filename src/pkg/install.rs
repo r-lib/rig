@@ -127,6 +127,16 @@ pub fn sc_pkg_install(
     };
     let plan = plan_installs(&lockfile.packages, &installed, reinstall);
 
+    if let Some(target) = linked_conflict(&plan, &installed) {
+        bail!(
+            "{} is linked (via `rig pkg link`) to {}. Run `rig pkg unlink {}` \
+            first.",
+            target.package,
+            target.link_source.as_deref().unwrap_or("?"),
+            target.package
+        );
+    }
+
     if json {
         print_plan_json(&plan)?;
     } else {
@@ -358,6 +368,22 @@ pub(crate) struct Planned<'a> {
     pub(crate) install: bool,
     /// Why it is being installed, or why it is not. Reported, never acted on.
     pub(crate) reason: String,
+}
+
+/// The first package the plan would install that is currently a `rig pkg
+/// link` editable install, if any. `rig pkg install` and `rig proj sync` both
+/// call this right after planning and refuse outright rather than silently
+/// replacing a link: the whole point of a link is that its directory does
+/// not hold what the solve thinks it does.
+pub(crate) fn linked_conflict<'a>(
+    plan: &[Planned],
+    installed: &'a [InstalledPackage],
+) -> Option<&'a InstalledPackage> {
+    plan.iter().find(|p| p.install).and_then(|p| {
+        installed
+            .iter()
+            .find(|inst| inst.package == p.package.package && inst.link_source.is_some())
+    })
 }
 
 /// Which of the solved packages have to be installed into the library.
@@ -972,5 +998,27 @@ mod tests {
         )
         .unwrap();
         assert_eq!(out, vec!["a".to_string(), "t".to_string()]);
+    }
+
+    #[test]
+    fn linked_conflict_flags_a_linked_package_the_plan_would_install() {
+        let solved = vec![solved("cli", "3.6.3", None)];
+        let installed = vec![inst("cli", "3.6.0", None, &[]).linked_from("/src/cli")];
+        let plan = plan_installs(&solved, &installed, false);
+
+        let conflict = linked_conflict(&plan, &installed).expect("expected a conflict");
+        assert_eq!(conflict.package, "cli");
+        assert_eq!(conflict.link_source.as_deref(), Some("/src/cli"));
+    }
+
+    #[test]
+    fn linked_conflict_is_none_when_the_link_is_already_up_to_date() {
+        // Nothing to install, so a link sitting there is not a conflict: the
+        // plan never touches it.
+        let solved = vec![solved("cli", "3.6.3", None)];
+        let installed = vec![inst("cli", "3.6.3", None, &[]).linked_from("/src/cli")];
+        let plan = plan_installs(&solved, &installed, false);
+
+        assert!(linked_conflict(&plan, &installed).is_none());
     }
 }
