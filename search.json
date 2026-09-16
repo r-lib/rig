@@ -1265,124 +1265,237 @@
     ]
   },
   {
-    "objectID": "reference/resolve.html",
-    "href": "reference/resolve.html",
-    "title": "rig resolve",
+    "objectID": "reference/self.html",
+    "href": "reference/self.html",
+    "title": "rig self",
     "section": "",
-    "text": "Resolve R versions. Checks the version number of an R version (e.g. release, devel, etc.), and looks up the URL of the installer for it, if an installer is available.\nIt prints the R version number, and after a space the URL of the installer. If no installer is available for this R version and the current platform, the URL is NA.\nAn R version can be specified in various ways:",
+    "text": "Commands for updating or removing rig itself, as opposed to the R versions it manages. See rig self update --help and rig self uninstall --help for details.",
     "crumbs": [
       "Reference",
-      "rig resolve"
+      "rig self"
     ]
   },
   {
-    "objectID": "reference/resolve.html#usage",
-    "href": "reference/resolve.html#usage",
-    "title": "rig resolve",
-    "section": "Usage",
-    "text": "Usage\nrig resolve [OPTIONS] &lt;str&gt;",
-    "crumbs": [
-      "Reference",
-      "rig resolve"
-    ]
-  },
-  {
-    "objectID": "reference/resolve.html#arguments",
-    "href": "reference/resolve.html#arguments",
-    "title": "rig resolve",
-    "section": "Arguments",
-    "text": "Arguments\n\n&lt;str&gt;\n\nsymbolic version string to resolve",
-    "crumbs": [
-      "Reference",
-      "rig resolve"
-    ]
-  },
-  {
-    "objectID": "reference/resolve.html#options",
-    "href": "reference/resolve.html#options",
-    "title": "rig resolve",
-    "section": "Options",
-    "text": "Options\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-a, --arch &lt;arch&gt;\n\nUse this architecture, instead of auto-detecting it.\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--no-cache\n\nDo not read or write rig’s cache (overrides RIG_NO_CACHE and config)\n\n--platform &lt;platform&gt;\n\nUse this platform, instead of auto-detecting it.\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
-    "crumbs": [
-      "Reference",
-      "rig resolve"
-    ]
-  },
-  {
-    "objectID": "reference/resolve.html#examples",
-    "href": "reference/resolve.html#examples",
-    "title": "rig resolve",
-    "section": "Examples",
-    "text": "Examples\n# Latest development snapshot\nrig resolve devel\n# Latest release (that has an installer available)\nrig resolve release\n# URL for a specific version\nrig resolve 4.1.2\n# Latest version within a minor branch\nrig resolve 4.1",
-    "crumbs": [
-      "Reference",
-      "rig resolve"
-    ]
-  },
-  {
-    "objectID": "reference/rtools.html",
-    "href": "reference/rtools.html",
-    "title": "rig rtools",
-    "section": "",
-    "text": "Windows only\nManage Rtools installations (Windows only).\nRtools is the collection of build tools (compilers, make, etc.) needed to build R packages from source on Windows. Each R version needs a matching Rtools version.\nrig rtools list lists the installed Rtools versions. rig rtools add installs Rtools, by default every version needed by the currently installed R versions. rig rtools rm removes Rtools versions.\nOn non-Windows platforms this command does nothing and is hidden.",
-    "crumbs": [
-      "Reference",
-      "rig rtools"
-    ]
-  },
-  {
-    "objectID": "reference/rtools.html#subcommands",
-    "href": "reference/rtools.html#subcommands",
-    "title": "rig rtools",
+    "objectID": "reference/self.html#subcommands",
+    "href": "reference/self.html#subcommands",
+    "title": "rig self",
     "section": "Subcommands",
-    "text": "Subcommands\n\nadd\n\nInstall new Rtools version (alias: install)\n\nlist\n\nList installed Rtools versions (alias: ls)\n\nrm\n\nRemove rtools versions (aliases: del, remove, delete)",
+    "text": "Subcommands\n\nuninstall\n\nRemove the rig installation\n\nupdate\n\nUpdate rig to the latest release",
     "crumbs": [
       "Reference",
-      "rig rtools"
+      "rig self"
     ]
   },
   {
-    "objectID": "reference/rtools.html#rig-rtools-add",
-    "href": "reference/rtools.html#rig-rtools-add",
-    "title": "rig rtools",
-    "section": "rig rtools add",
-    "text": "rig rtools add\nAlias: rig rtools install\nInstall new Rtools versions on Windows.\nYou can specify the new version(s) by their name, optionally with an ‘rtools’ prefix, e.g. ‘43’ or ‘rtools43’.\nIf version is ‘all’ (the default), then all Rtools versions that are required for the currently installed R versions will be installed.\nIn user mode (RIG_MODE=user) Rtools is installed per-user, without administrator rights, into %APPDATA%\\rig\\data\\rtools (override with the RIG_RTOOLS_INSTALL_DIR environment variable or the rtools-install-dir config setting). rig points each R version at it by setting RTOOLS&lt;ver&gt;_HOME in that R version’s etc\\Renviron.site and etc\\Rcmd_environ.\nIn admin mode this command needs an administrator account.\n\nUsage\nrig rtools add [OPTIONS] [version]\n\n\nArguments\n\n[version]\n\nRtools version to add, e.g. ‘43’\n[default: all]\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-a, --arch &lt;arch&gt;\n\nArchitecture to install Rtools for (default: native arch).\n[possible values: x86_64, aarch64, arm64]\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--no-cache\n\nDo not read or write rig’s cache (overrides RIG_NO_CACHE and config)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n\n\n\nExamples\nrig rtools add 43\nrig rtools add all",
+    "objectID": "reference/self.html#rig-self-uninstall",
+    "href": "reference/self.html#rig-self-uninstall",
+    "title": "rig self",
+    "section": "rig self uninstall",
+    "text": "rig self uninstall\nRemoves the rig binary, its shell completions, and the PATH entry the install script added, then deletes itself.\nThis only works if rig was installed with the install script (install.sh on macOS/Linux, install.ps1 on Windows).\nrig self uninstall only removes rig itself. It does not remove rig’s configuration, its download/build cache, or any R version it installed. Use rig rm to remove R version and rig cache clean to clean the cache.\nWithout --force, it only prints what it would remove. Use --dry-run for the same preview, or --force to actually remove rig.\n\nUsage\nrig self uninstall [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n--dry-run\n\nShow what would be removed, without removing anything\n\n--force\n\nActually remove rig, instead of just showing what would be removed\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--no-cache\n\nDo not read or write rig’s cache (overrides RIG_NO_CACHE and config)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
-      "rig rtools"
+      "rig self"
     ]
   },
   {
-    "objectID": "reference/rtools.html#rig-rtools-list",
-    "href": "reference/rtools.html#rig-rtools-list",
-    "title": "rig rtools",
-    "section": "rig rtools list",
-    "text": "rig rtools list\nAlias: rig rtools ls\nList installed Rtools versions on Windows.\nIt only lists versions that are added to the Windows Registry.\nUse the --json flag for JSON output.\n\nUsage\nrig rtools list [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--no-cache\n\nDo not read or write rig’s cache (overrides RIG_NO_CACHE and config)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "objectID": "reference/self.html#rig-self-update",
+    "href": "reference/self.html#rig-self-update",
+    "title": "rig self",
+    "section": "rig self update",
+    "text": "rig self update\nDownloads the latest rig release and replaces the currently running rig binary with it.\nThis only works if rig was installed with the install script (install.sh on macOS/Linux, install.ps1 on Windows), because that is the only install method where rig fully controls the binary’s location. If rig was installed via the .pkg/.deb/.rpm package, Chocolatey, WinGet, Scoop, or Homebrew, rig self update refuses and tells you which tool to use instead.\nThis works the same way in admin mode and user mode: rig self update only ever replaces the rig binary itself, not any installed R version.\nUse --dry-run to check whether a new version is available without installing it, and --pre-release to also consider pre-release versions when looking for the latest one.\n\nUsage\nrig self update [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n--dry-run\n\nCheck for a new version without downloading or installing it\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--no-cache\n\nDo not read or write rig’s cache (overrides RIG_NO_CACHE and config)\n\n--pre-release\n\nInclude pre-releases when looking for the latest version\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
-      "rig rtools"
+      "rig self"
     ]
   },
   {
-    "objectID": "reference/rtools.html#rig-rtools-rm",
-    "href": "reference/rtools.html#rig-rtools-rm",
-    "title": "rig rtools",
-    "section": "rig rtools rm",
-    "text": "rig rtools rm\nAliases: rig rtools del, rig rtools remove, rig rtools delete\nRemove Rtools versions on Windows.\nYou can specify the version(s) to remove by their name, optionally with an ‘rtools’ prefix, e.g. ‘43’ or ‘rtools43’.\nIf no version is specified, then it does nothing.\nIn admin mode this command needs an administrator account.\n\nUsage\nrig rtools rm [OPTIONS] [version]...\n\n\nArguments\n\n[version]...\n\nversions to remove\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-a, --arch &lt;arch&gt;\n\nArchitecture of Rtools to remove (default: native arch).\n[possible values: x86_64, aarch64, arm64]\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--no-cache\n\nDo not read or write rig’s cache (overrides RIG_NO_CACHE and config)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n\n\n\nExamples\nrig rtools rm 43",
-    "crumbs": [
-      "Reference",
-      "rig rtools"
-    ]
-  },
-  {
-    "objectID": "reference/index.html",
-    "href": "reference/index.html",
-    "title": "Reference",
+    "objectID": "reference/config.html",
+    "href": "reference/config.html",
+    "title": "rig config",
     "section": "",
-    "text": "Commands\n\n\nrig add\n\nInstall a new R version (alias: install)\n\nrig available\n\nList R versions available to install.\n\nrig cache\n\nManage rig’s download cache\n\nrig config\n\nManage rig configuration\n\nrig default\n\nPrint or set default R version (alias: switch)\n\nrig library\n\nManage package libraries (alias: lib)\n\nrig list\n\nList installed R versions (alias: ls)\n\nrig pkg\n\nManage R packages (experimental)\n\nrig ppm\n\nQuery Posit Package Manager (experimental)\n\nrig proj\n\nManage R projects (experimental)\n\nrig repos\n\nManage package repositories\n\nrig resolve\n\nResolve a symbolic R version\n\nrig rm\n\nRemove R versions (aliases: del, remove, delete)\n\nrig rstudio\n\nStart RStudio with specified R version\n\nrig rtools Windows only\n\nManage Rtools installations\n\nrig run\n\nRun R, an R script or an R project\n\nrig sysreqs macOS only\n\nManage R-related system libraries and tools (experimental)\n\nrig system\n\nManage current installations",
+    "text": "Manage the rig configuration file.\nrig reads a number of settings from a configuration file. The configuration file is a JSON file, rig config config-file-path prints its path, and rig system dirs shows it together with the other directories rig uses.\nMost settings can also be overridden with an environment variable. The environment variable takes precedence over the configuration file, and the configuration file takes precedence over rig’s built-in default.",
     "crumbs": [
-      "Reference"
+      "Reference",
+      "rig config"
     ]
+  },
+  {
+    "objectID": "reference/config.html#configuration-entries",
+    "href": "reference/config.html#configuration-entries",
+    "title": "rig config",
+    "section": "Configuration entries",
+    "text": "Configuration entries\n\nmode (RIG_MODE): the installation mode, either user or admin, see user and admin mode . Defaults to admin.\nbinary-dir (RIG_BINARY_DIR): the directory rig puts the quick links (R-4.5.1, R-release, etc.) into. Defaults to /usr/local/bin in admin mode and ~/.local/bin in user mode. On Windows the defaults are C:\\Program Files\\R\\bin and %USERPROFILE%\\.local\\bin.\nr-install-dir (RIG_R_INSTALL_DIR): the root directory of the R installations, i.e. the directory that holds the directories of the individual R versions. Defaults to the platform’s system-wide location in admin mode (/opt/R on Linux, /Library/Frameworks/R.framework on macOS, C:\\Program Files\\R on Windows), and to ~/.local/share/rig/r (%APPDATA%\\rig\\data\\r on Windows) in user mode. On Windows this entry only applies in user mode; the admin-mode root is fixed, because it also depends on the architecture.\nrtools-install-dir (RIG_RTOOLS_INSTALL_DIR): Windows only, the directory that holds the Rtools installations. Defaults to C:\\ in admin mode (so Rtools 4.5 goes into C:\\rtools45) and to %APPDATA%\\rig\\data\\rtools in user mode.\ndownload-dir (RIG_DOWNLOAD_DIR): the directory rig downloads the R (and on Windows the Rtools) installers into, before installing them. Defaults to rig-&lt;uid&gt; in the system temporary directory, e.g. /tmp/rig-1000, and to rig under %TEMP% on Windows. The user id is part of the default name on purpose: in admin mode rig downloads as root, in user mode as you, and a directory shared between them would only be writable by whoever created it first. For the same reason rig refuses to use the default directory if it is a symbolic link, or if it is owned by another user, or if other users can write into it. A directory you configure here is created but not checked.\nno-cache (RIG_NO_CACHE): set it to true to stop rig from using its cache, the same as passing --no-cache. rig then neither reads nor writes the cache directory: it downloads the repository metadata, the binary package indices and the package files again, compiles a source package instead of unpacking a build it made earlier, and downloads an R or Rtools installer again instead of reusing the one in the download directory. What it downloads and builds goes into a temporary directory that is removed when rig exits, so the cache is left exactly as it was. Defaults to false. This is meant for debugging and for the occasional run that must not trust anything cached; it makes rig considerably slower, so it is a poor thing to turn on permanently.\nconcurrent-downloads (RIG_CONCURRENT_DOWNLOADS): the maximum number of downloads rig performs at the same time, e.g. when downloading package files for a project. Defaults to 50.\nconcurrent-installs (RIG_CONCURRENT_INSTALLS): the maximum number of packages rig proj sync installs at the same time, unless overridden with its own --max-concurrent flag. Defaults to the number of CPU cores.\npositron-setup: user mode only. Set it to false to stop rig from updating Positron’s settings: adding its R installation root to positron.r.customRootFolders, and pointing positron.r.interpreters.default at the default R version. Any other value, and the default, keep the Positron setup on.\nuserlibrary: a JSON object that maps R versions to user library paths. rig maintains this entry itself, as a cache for the rig library commands; you don’t normally need to edit or set it.\n\nrig config list lists the entries that are currently in the configuration file, which is typically fewer than the entries above, because rig only writes an entry once you set it.",
+    "crumbs": [
+      "Reference",
+      "rig config"
+    ]
+  },
+  {
+    "objectID": "reference/config.html#subcommands",
+    "href": "reference/config.html#subcommands",
+    "title": "rig config",
+    "section": "Subcommands",
+    "text": "Subcommands\n\nconfig-file-path\n\nPrint the path to the rig config file\n\nget\n\nGet a config entry\n\nlist\n\nList the names of all config entries\n\nset\n\nSet a config entry",
+    "crumbs": [
+      "Reference",
+      "rig config"
+    ]
+  },
+  {
+    "objectID": "reference/config.html#rig-config-config-file-path",
+    "href": "reference/config.html#rig-config-config-file-path",
+    "title": "rig config",
+    "section": "rig config config-file-path",
+    "text": "rig config config-file-path\nPrint the full path to the rig configuration file.\nThe file might not exist yet; rig creates it when you first set an entry with rig config set.\n\nUsage\nrig config config-file-path [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--no-cache\n\nDo not read or write rig’s cache (overrides RIG_NO_CACHE and config)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig config"
+    ]
+  },
+  {
+    "objectID": "reference/config.html#rig-config-get",
+    "href": "reference/config.html#rig-config-get",
+    "title": "rig config",
+    "section": "rig config get",
+    "text": "rig config get\nPrint the value of a rig configuration entry.\nConfiguration keys are listed by rig config list.\n\nUsage\nrig config get [OPTIONS] &lt;key&gt;\n\n\nArguments\n\n&lt;key&gt;\n\nconfig key to get\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--no-cache\n\nDo not read or write rig’s cache (overrides RIG_NO_CACHE and config)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig config"
+    ]
+  },
+  {
+    "objectID": "reference/config.html#rig-config-list",
+    "href": "reference/config.html#rig-config-list",
+    "title": "rig config",
+    "section": "rig config list",
+    "text": "rig config list\nList the names of all rig configuration entries.\nUse rig config get &lt;key&gt; to see the value of an entry, and rig config set &lt;key&gt;=&lt;value&gt; to change it.\n\nUsage\nrig config list [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--no-cache\n\nDo not read or write rig’s cache (overrides RIG_NO_CACHE and config)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig config"
+    ]
+  },
+  {
+    "objectID": "reference/config.html#rig-config-set",
+    "href": "reference/config.html#rig-config-set",
+    "title": "rig config",
+    "section": "rig config set",
+    "text": "rig config set\nSet a rig configuration entry.\nThe argument is a key=value pair, e.g. rig config set mode=user. The configuration file is created if it does not exist yet. See rig config --help for the known keys, and rig config list for the entries that are already in the configuration file.\n\nUsage\nrig config set [OPTIONS] &lt;keyvalue&gt;\n\n\nArguments\n\n&lt;keyvalue&gt;\n\nkey=value pair to set\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--no-cache\n\nDo not read or write rig’s cache (overrides RIG_NO_CACHE and config)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig config"
+    ]
+  },
+  {
+    "objectID": "reference/cache.html",
+    "href": "reference/cache.html",
+    "title": "rig cache",
+    "section": "",
+    "text": "rig caches files it downloads (R binary indexes, CRAN-like package databases, package DESCRIPTION manifests, downloaded package files, and packages rig built from source) in an OS-specific cache directory, so it does not have to re-download them on every run. See rig system dirs --cache for the cache directory path.\nThe global --no-cache flag makes rig skip this cache entirely for the current run; it does not affect what rig cache reports or deletes. You can also set the RIG_NO_CACHE environment variable to true or the no-cache config option to true.",
+    "crumbs": [
+      "Reference",
+      "rig cache"
+    ]
+  },
+  {
+    "objectID": "reference/cache.html#subcommands",
+    "href": "reference/cache.html#subcommands",
+    "title": "rig cache",
+    "section": "Subcommands",
+    "text": "Subcommands\n\nclean\n\nDelete cached files\n\ninfo\n\nShow cache size and contents",
+    "crumbs": [
+      "Reference",
+      "rig cache"
+    ]
+  },
+  {
+    "objectID": "reference/cache.html#rig-cache-clean",
+    "href": "reference/cache.html#rig-cache-clean",
+    "title": "rig cache",
+    "section": "rig cache clean",
+    "text": "rig cache clean\nDeletes files from rig’s cache directory. With no options, deletes the whole cache. Use --category to delete only one category of cached files (built, packages, metadata or p3m), leaving the rest in place. See rig cache info for what each category contains.\n\nUsage\nrig cache clean [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n--category &lt;category&gt;\n\nOnly delete this category of cached files\n[possible values: built, packages, metadata, p3m]\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--no-cache\n\nDo not read or write rig’s cache (overrides RIG_NO_CACHE and config)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig cache"
+    ]
+  },
+  {
+    "objectID": "reference/cache.html#rig-cache-info",
+    "href": "reference/cache.html#rig-cache-info",
+    "title": "rig cache",
+    "section": "rig cache info",
+    "text": "rig cache info\nPrints the total size of rig’s cache directory, broken down into categories: packages rig built from source, downloaded package files, package metadata (binary package indexes, CRAN-like package databases, package manifests, and repository data), and the cached PPM status document.\nUse --json for machine-readable output.\n\nUsage\nrig cache info [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--no-cache\n\nDo not read or write rig’s cache (overrides RIG_NO_CACHE and config)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "crumbs": [
+      "Reference",
+      "rig cache"
+    ]
+  },
+  {
+    "objectID": "install.html",
+    "href": "install.html",
+    "title": "Installing rig",
+    "section": "",
+    "text": "Some of the methods below install rig itself into your home directory, others system-wide. That choice is independent of the mode rig installs R in: rig defaults to admin mode either way, and you switch to user mode explicitly with rig system user-mode. Admin mode is the older and better tested mode, so if you have an administrator account and no reason to keep R in your home directory, you can skip that step.\nOnce rig is installed, the tutorials walk you through installing R, switching between versions and installing packages.",
+    "crumbs": [
+      "Guide",
+      "Installing rig"
+    ]
+  },
+  {
+    "objectID": "install.html#id-supported-linux-distributions",
+    "href": "install.html#id-supported-linux-distributions",
+    "title": "Installing rig",
+    "section": "Supported Linux distributions",
+    "text": "Supported Linux distributions\n\nDebian 12, 13\nUbuntu 20.04, 22.04, 24.04, 26.04\nFedora Linux 43, 44\nOpenSUSE 15.6, 16.0\nSUSE Linux Enterprise 15 SP6\nRed Hat Enterprise Linux 7, 8, 9, 10\nAlmaLinux 8, 9, 10\nRocky Linux 8, 9 10\n\n\n\nRetired Linux distributions\n\nThese are not updated any more, no new R builds are added for them, but existing R builds still work.\n\nCentOS 6 (only x86_64, last R version: 4.0.4),\nCentOS 7 (last R version: 4.4.3),\nCentOS 8 (last R version: 4.4.3),\nDebian 9 (last R version: 4.2.1),\nDebian 10 (last R version: 4.4.3),\nFedora 37 (last R version: 4.3.2),\nFedora 38 (last R version: 4.4.2),\nFedora 39 (last R version: 4.4.3),\nFedora 40 (last R version: 4.5.1),\nFedora 41 (last R version: 4.5.3),\nFedora 42 (last R version: 4.6.1),\nOpenSUSE 42 (only x86_64, last R version: 4.2.1),\nOpenSUSE 15.1 (only x86_64, last R version: 4.1.2),\nOpenSUSE 15.2 (only x86_64, last R version: 4.1.3),\nOpenSUSE 15.3 (last R version: x86_64: 4.4.3, aarch64: 4.3.1),\nOpenSUSE 15.4 (last R version: 4.4.0),\nOpenSUSE 15.5 (last R version: 4.4.3),\nSUSE Linux Enterprise 15 (only x86_64, last R version: 4.1.2),\nSUSE Linux Enterprise 15.1 (only x86_64, last R version: 4.1.2),\nSUSE Linux Enterprise 15.2 (only x86_64, last R version: 4.1.3),\nSUSE Linux Enterprise 15.3 (last R version: x86_64: 4.4.3, aarch64: 4.3.1),\nSUSE Linux Enterprise 15.4 (last R version: 4.4.0),\nSUSE Linux Enterprise 15.5 (last R version: 4.4.3),\nUbuntu 16.04 (only x86_64, last R version: 4.1.2),\nUbuntu 18.04 (last R version: 4.3.1).\n\n\nWe use Linux builds or R from the Posit R-builds project.",
+    "crumbs": [
+      "Guide",
+      "Installing rig"
+    ]
+  },
+  {
+    "objectID": "install.html#installing-auto-complete",
+    "href": "install.html#installing-auto-complete",
+    "title": "Installing rig",
+    "section": "Installing auto-complete",
+    "text": "Installing auto-complete\nAll rig installers and archives ship shell completion files.\n\nmacOS and Linux\nThe macOS and Linux installers install completion files for zsh and bash into system locations.\nzsh completions work out of the box.\nFor bash completions install the bash-completion package from Homebrew or your Linux distribution and make sure it is loaded from your .bashrc. (You don’t need to install bash from Homebrew, but you can if you like.)\nFor user-mode installs the completion files are placed under the install prefix instead (e.g. ~/.local/share):\n\nzsh: add ~/.local/share/zsh/site-functions to your fpath (before compinit).\nbash: bash-completion picks up ~/.local/share/bash-completion/completions automatically once it is loaded from your .bashrc.\n\n\n\nWindows\nThe Windows installer and archive ship a PowerShell completion script. To enable tab-completion, dot-source it from your PowerShell profile ($PROFILE). For a user-mode archive install that is:\n. \"$env:USERPROFILE\\.local\\share\\rig\\_rig.ps1\"",
+    "crumbs": [
+      "Guide",
+      "Installing rig"
+    ]
+  },
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "rig – the R Installation Manager",
+    "section": "",
+    "text": "Run and manage multiple versions of R side by side on macOS, Windows and Linux.\nRig is a standalone tool, with no system requirements, for system admins and users.\n\n\n\n\nLatest version 0.10.0-beta3\nInstall rig\n\n  or view install instructions for\n  macOS,\n  Windows or\n  Linux."
+  },
+  {
+    "objectID": "index.html#quick-start",
+    "href": "index.html#quick-start",
+    "title": "rig – the R Installation Manager",
+    "section": "Quick start",
+    "text": "Quick start\nOnce rig is installed:\nrig add release      # install the latest R release\nrig list             # list installed R versions\nrig default 4.5.1    # set the default R version\nFor a step-by-step walkthrough on macOS, Windows or Linux, see the tutorials."
+  },
+  {
+    "objectID": "index.html#features",
+    "href": "index.html#features",
+    "title": "rig – the R Installation Manager",
+    "section": "Features",
+    "text": "Features\nMultiple R versions, side by side\n\nInstall as many R versions as you like, and switch the default for the terminal, RStudio and Positron.\nSelect versions by symbolic name: release, devel, next, oldrel, or by exact version.\nRun several versions at the same time via quick links: R-4.5 or R-4.5.1 starts the matching R. Quick links are added to your path automatically.\nList the versions you have installed, and the versions available to install.\nOn arm64 macs and Windows, choose between x86_64 and arm64 builds of R, or install both.\n\nCross-platform and self-contained\n\nWorks on macOS, Windows and Linux. Has native builds for many Linux distributions, and portable builds that run on any glibc- or musl-based Linux.\nA single standalone tool with no system requirements. Easy to install and update on every platform.\nTwo installation modes: the default admin mode installs R system-wide (elevating to root/administrator only when needed), while the newer user mode installs everything into your home directory with no sudo or administrator rights.\nOn Linux, installs distro-specific builds where available, and otherwise falls back to portable glibc/musl builds automatically.\n\nPackage management, set up for you\n\nConfigures the default CRAN mirror and PPM binary repositories.\nInstalls pak and enables automatic system requirements installation.\nCreates and configures per-user package libraries.\nrig repos manages package repositories across all your R versions.\nrig pkg (experimental) installs, removes and lists packages in a library, and looks up package info, dependencies and dependency trees from the repositories, all without running R.\n\nProject dependency management (experimental)\n\nrig proj manages an R project through an rproj.toml manifest: add or remove dependencies, resolve them with rig’s built-in solver into an rproj.lock lockfile, and sync a project library to match, all without running R.\nImport a project from, or export it to, a DESCRIPTION file or an renv renv.lock file, to interoperate with existing R package and project tooling.\nInspect a project’s dependencies and dependency tree before installing.\n\nRun R, scripts and apps\n\nrig run starts R, runs a script or expression, or launches an app: Shiny apps, Plumber APIs, Quarto and R Markdown documents, and static sites, with the R version you choose.\n\nPlatform niceties\n\nA macOS menu bar app shows the default R version and lets you switch it interactively.\nInstalls and configures the right Rtools versions on Windows, and cleans up stale R entries from the Windows registry.\nShell auto-completion for zsh and bash on macOS and Linux, and for PowerShell on Windows.\nOn macOS, sets up R for debugging with lldb and enables core dumps.\nJSON output for scripting, and a rig config command to manage rig’s own configuration."
+  },
+  {
+    "objectID": "index.html#sponsors",
+    "href": "index.html#sponsors",
+    "title": "rig – the R Installation Manager",
+    "section": "Sponsors",
+    "text": "Sponsors\n\n\nFree code signing on Windows provided by SignPath.io, certificate by SignPath Foundation"
+  },
+  {
+    "objectID": "index.html#license",
+    "href": "index.html#license",
+    "title": "rig – the R Installation Manager",
+    "section": "📘 License",
+    "text": "📘 License\nMIT 2021-2026 © Posit Software, PBC."
   },
   {
     "objectID": "admin-vs-user-mode.html",
@@ -1484,192 +1597,123 @@
     ]
   },
   {
-    "objectID": "index.html",
-    "href": "index.html",
-    "title": "rig – the R Installation Manager",
+    "objectID": "reference/index.html",
+    "href": "reference/index.html",
+    "title": "Reference",
     "section": "",
-    "text": "Run and manage multiple versions of R side by side on macOS, Windows and Linux.\nRig is a standalone tool, with no system requirements, for system admins and users.\n\n\n\n\nLatest version 0.10.0-beta3\nInstall rig\n\n  or view install instructions for\n  macOS,\n  Windows or\n  Linux."
-  },
-  {
-    "objectID": "index.html#quick-start",
-    "href": "index.html#quick-start",
-    "title": "rig – the R Installation Manager",
-    "section": "Quick start",
-    "text": "Quick start\nOnce rig is installed:\nrig add release      # install the latest R release\nrig list             # list installed R versions\nrig default 4.5.1    # set the default R version\nFor a step-by-step walkthrough on macOS, Windows or Linux, see the tutorials."
-  },
-  {
-    "objectID": "index.html#features",
-    "href": "index.html#features",
-    "title": "rig – the R Installation Manager",
-    "section": "Features",
-    "text": "Features\nMultiple R versions, side by side\n\nInstall as many R versions as you like, and switch the default for the terminal, RStudio and Positron.\nSelect versions by symbolic name: release, devel, next, oldrel, or by exact version.\nRun several versions at the same time via quick links: R-4.5 or R-4.5.1 starts the matching R. Quick links are added to your path automatically.\nList the versions you have installed, and the versions available to install.\nOn arm64 macs and Windows, choose between x86_64 and arm64 builds of R, or install both.\n\nCross-platform and self-contained\n\nWorks on macOS, Windows and Linux. Has native builds for many Linux distributions, and portable builds that run on any glibc- or musl-based Linux.\nA single standalone tool with no system requirements. Easy to install and update on every platform.\nTwo installation modes: the default admin mode installs R system-wide (elevating to root/administrator only when needed), while the newer user mode installs everything into your home directory with no sudo or administrator rights.\nOn Linux, installs distro-specific builds where available, and otherwise falls back to portable glibc/musl builds automatically.\n\nPackage management, set up for you\n\nConfigures the default CRAN mirror and PPM binary repositories.\nInstalls pak and enables automatic system requirements installation.\nCreates and configures per-user package libraries.\nrig repos manages package repositories across all your R versions.\nrig pkg (experimental) installs, removes and lists packages in a library, and looks up package info, dependencies and dependency trees from the repositories, all without running R.\n\nProject dependency management (experimental)\n\nrig proj manages an R project through an rproj.toml manifest: add or remove dependencies, resolve them with rig’s built-in solver into an rproj.lock lockfile, and sync a project library to match, all without running R.\nImport a project from, or export it to, a DESCRIPTION file or an renv renv.lock file, to interoperate with existing R package and project tooling.\nInspect a project’s dependencies and dependency tree before installing.\n\nRun R, scripts and apps\n\nrig run starts R, runs a script or expression, or launches an app: Shiny apps, Plumber APIs, Quarto and R Markdown documents, and static sites, with the R version you choose.\n\nPlatform niceties\n\nA macOS menu bar app shows the default R version and lets you switch it interactively.\nInstalls and configures the right Rtools versions on Windows, and cleans up stale R entries from the Windows registry.\nShell auto-completion for zsh and bash on macOS and Linux, and for PowerShell on Windows.\nOn macOS, sets up R for debugging with lldb and enables core dumps.\nJSON output for scripting, and a rig config command to manage rig’s own configuration."
-  },
-  {
-    "objectID": "index.html#sponsors",
-    "href": "index.html#sponsors",
-    "title": "rig – the R Installation Manager",
-    "section": "Sponsors",
-    "text": "Sponsors\n\n\nFree code signing on Windows provided by SignPath.io, certificate by SignPath Foundation"
-  },
-  {
-    "objectID": "index.html#license",
-    "href": "index.html#license",
-    "title": "rig – the R Installation Manager",
-    "section": "📘 License",
-    "text": "📘 License\nMIT 2021-2026 © Posit Software, PBC."
-  },
-  {
-    "objectID": "install.html",
-    "href": "install.html",
-    "title": "Installing rig",
-    "section": "",
-    "text": "Some of the methods below install rig itself into your home directory, others system-wide. That choice is independent of the mode rig installs R in: rig defaults to admin mode either way, and you switch to user mode explicitly with rig system user-mode. Admin mode is the older and better tested mode, so if you have an administrator account and no reason to keep R in your home directory, you can skip that step.\nOnce rig is installed, the tutorials walk you through installing R, switching between versions and installing packages.",
+    "text": "Commands\n\n\nrig add\n\nInstall a new R version (alias: install)\n\nrig available\n\nList R versions available to install.\n\nrig cache\n\nManage rig’s download cache\n\nrig config\n\nManage rig configuration\n\nrig default\n\nPrint or set default R version (alias: switch)\n\nrig library\n\nManage package libraries (alias: lib)\n\nrig list\n\nList installed R versions (alias: ls)\n\nrig pkg\n\nManage R packages (experimental)\n\nrig ppm\n\nQuery Posit Package Manager (experimental)\n\nrig proj\n\nManage R projects (experimental)\n\nrig repos\n\nManage package repositories\n\nrig resolve\n\nResolve a symbolic R version\n\nrig rm\n\nRemove R versions (aliases: del, remove, delete)\n\nrig rstudio\n\nStart RStudio with specified R version\n\nrig rtools Windows only\n\nManage Rtools installations\n\nrig run\n\nRun R, an R script or an R project\n\nrig self\n\nManage the rig installation itself\n\nrig sysreqs macOS only\n\nManage R-related system libraries and tools (experimental)\n\nrig system\n\nManage current installations",
     "crumbs": [
-      "Guide",
-      "Installing rig"
+      "Reference"
     ]
   },
   {
-    "objectID": "install.html#id-supported-linux-distributions",
-    "href": "install.html#id-supported-linux-distributions",
-    "title": "Installing rig",
-    "section": "Supported Linux distributions",
-    "text": "Supported Linux distributions\n\nDebian 12, 13\nUbuntu 20.04, 22.04, 24.04, 26.04\nFedora Linux 43, 44\nOpenSUSE 15.6, 16.0\nSUSE Linux Enterprise 15 SP6\nRed Hat Enterprise Linux 7, 8, 9, 10\nAlmaLinux 8, 9, 10\nRocky Linux 8, 9 10\n\n\n\nRetired Linux distributions\n\nThese are not updated any more, no new R builds are added for them, but existing R builds still work.\n\nCentOS 6 (only x86_64, last R version: 4.0.4),\nCentOS 7 (last R version: 4.4.3),\nCentOS 8 (last R version: 4.4.3),\nDebian 9 (last R version: 4.2.1),\nDebian 10 (last R version: 4.4.3),\nFedora 37 (last R version: 4.3.2),\nFedora 38 (last R version: 4.4.2),\nFedora 39 (last R version: 4.4.3),\nFedora 40 (last R version: 4.5.1),\nFedora 41 (last R version: 4.5.3),\nFedora 42 (last R version: 4.6.1),\nOpenSUSE 42 (only x86_64, last R version: 4.2.1),\nOpenSUSE 15.1 (only x86_64, last R version: 4.1.2),\nOpenSUSE 15.2 (only x86_64, last R version: 4.1.3),\nOpenSUSE 15.3 (last R version: x86_64: 4.4.3, aarch64: 4.3.1),\nOpenSUSE 15.4 (last R version: 4.4.0),\nOpenSUSE 15.5 (last R version: 4.4.3),\nSUSE Linux Enterprise 15 (only x86_64, last R version: 4.1.2),\nSUSE Linux Enterprise 15.1 (only x86_64, last R version: 4.1.2),\nSUSE Linux Enterprise 15.2 (only x86_64, last R version: 4.1.3),\nSUSE Linux Enterprise 15.3 (last R version: x86_64: 4.4.3, aarch64: 4.3.1),\nSUSE Linux Enterprise 15.4 (last R version: 4.4.0),\nSUSE Linux Enterprise 15.5 (last R version: 4.4.3),\nUbuntu 16.04 (only x86_64, last R version: 4.1.2),\nUbuntu 18.04 (last R version: 4.3.1).\n\n\nWe use Linux builds or R from the Posit R-builds project.",
-    "crumbs": [
-      "Guide",
-      "Installing rig"
-    ]
-  },
-  {
-    "objectID": "install.html#installing-auto-complete",
-    "href": "install.html#installing-auto-complete",
-    "title": "Installing rig",
-    "section": "Installing auto-complete",
-    "text": "Installing auto-complete\nAll rig installers and archives ship shell completion files.\n\nmacOS and Linux\nThe macOS and Linux installers install completion files for zsh and bash into system locations.\nzsh completions work out of the box.\nFor bash completions install the bash-completion package from Homebrew or your Linux distribution and make sure it is loaded from your .bashrc. (You don’t need to install bash from Homebrew, but you can if you like.)\nFor user-mode installs the completion files are placed under the install prefix instead (e.g. ~/.local/share):\n\nzsh: add ~/.local/share/zsh/site-functions to your fpath (before compinit).\nbash: bash-completion picks up ~/.local/share/bash-completion/completions automatically once it is loaded from your .bashrc.\n\n\n\nWindows\nThe Windows installer and archive ship a PowerShell completion script. To enable tab-completion, dot-source it from your PowerShell profile ($PROFILE). For a user-mode archive install that is:\n. \"$env:USERPROFILE\\.local\\share\\rig\\_rig.ps1\"",
-    "crumbs": [
-      "Guide",
-      "Installing rig"
-    ]
-  },
-  {
-    "objectID": "reference/cache.html",
-    "href": "reference/cache.html",
-    "title": "rig cache",
+    "objectID": "reference/rtools.html",
+    "href": "reference/rtools.html",
+    "title": "rig rtools",
     "section": "",
-    "text": "rig caches files it downloads (R binary indexes, CRAN-like package databases, package DESCRIPTION manifests, downloaded package files, and packages rig built from source) in an OS-specific cache directory, so it does not have to re-download them on every run. See rig system dirs --cache for the cache directory path.\nThe global --no-cache flag makes rig skip this cache entirely for the current run; it does not affect what rig cache reports or deletes. You can also set the RIG_NO_CACHE environment variable to true or the no-cache config option to true.",
+    "text": "Windows only\nManage Rtools installations (Windows only).\nRtools is the collection of build tools (compilers, make, etc.) needed to build R packages from source on Windows. Each R version needs a matching Rtools version.\nrig rtools list lists the installed Rtools versions. rig rtools add installs Rtools, by default every version needed by the currently installed R versions. rig rtools rm removes Rtools versions.\nOn non-Windows platforms this command does nothing and is hidden.",
     "crumbs": [
       "Reference",
-      "rig cache"
+      "rig rtools"
     ]
   },
   {
-    "objectID": "reference/cache.html#subcommands",
-    "href": "reference/cache.html#subcommands",
-    "title": "rig cache",
+    "objectID": "reference/rtools.html#subcommands",
+    "href": "reference/rtools.html#subcommands",
+    "title": "rig rtools",
     "section": "Subcommands",
-    "text": "Subcommands\n\nclean\n\nDelete cached files\n\ninfo\n\nShow cache size and contents",
+    "text": "Subcommands\n\nadd\n\nInstall new Rtools version (alias: install)\n\nlist\n\nList installed Rtools versions (alias: ls)\n\nrm\n\nRemove rtools versions (aliases: del, remove, delete)",
     "crumbs": [
       "Reference",
-      "rig cache"
+      "rig rtools"
     ]
   },
   {
-    "objectID": "reference/cache.html#rig-cache-clean",
-    "href": "reference/cache.html#rig-cache-clean",
-    "title": "rig cache",
-    "section": "rig cache clean",
-    "text": "rig cache clean\nDeletes files from rig’s cache directory. With no options, deletes the whole cache. Use --category to delete only one category of cached files (built, packages, metadata or p3m), leaving the rest in place. See rig cache info for what each category contains.\n\nUsage\nrig cache clean [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n--category &lt;category&gt;\n\nOnly delete this category of cached files\n[possible values: built, packages, metadata, p3m]\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--no-cache\n\nDo not read or write rig’s cache (overrides RIG_NO_CACHE and config)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "objectID": "reference/rtools.html#rig-rtools-add",
+    "href": "reference/rtools.html#rig-rtools-add",
+    "title": "rig rtools",
+    "section": "rig rtools add",
+    "text": "rig rtools add\nAlias: rig rtools install\nInstall new Rtools versions on Windows.\nYou can specify the new version(s) by their name, optionally with an ‘rtools’ prefix, e.g. ‘43’ or ‘rtools43’.\nIf version is ‘all’ (the default), then all Rtools versions that are required for the currently installed R versions will be installed.\nIn user mode (RIG_MODE=user) Rtools is installed per-user, without administrator rights, into %APPDATA%\\rig\\data\\rtools (override with the RIG_RTOOLS_INSTALL_DIR environment variable or the rtools-install-dir config setting). rig points each R version at it by setting RTOOLS&lt;ver&gt;_HOME in that R version’s etc\\Renviron.site and etc\\Rcmd_environ.\nIn admin mode this command needs an administrator account.\n\nUsage\nrig rtools add [OPTIONS] [version]\n\n\nArguments\n\n[version]\n\nRtools version to add, e.g. ‘43’\n[default: all]\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-a, --arch &lt;arch&gt;\n\nArchitecture to install Rtools for (default: native arch).\n[possible values: x86_64, aarch64, arm64]\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--no-cache\n\nDo not read or write rig’s cache (overrides RIG_NO_CACHE and config)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n\n\n\nExamples\nrig rtools add 43\nrig rtools add all",
     "crumbs": [
       "Reference",
-      "rig cache"
+      "rig rtools"
     ]
   },
   {
-    "objectID": "reference/cache.html#rig-cache-info",
-    "href": "reference/cache.html#rig-cache-info",
-    "title": "rig cache",
-    "section": "rig cache info",
-    "text": "rig cache info\nPrints the total size of rig’s cache directory, broken down into categories: packages rig built from source, downloaded package files, package metadata (binary package indexes, CRAN-like package databases, package manifests, and repository data), and the cached PPM status document.\nUse --json for machine-readable output.\n\nUsage\nrig cache info [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--no-cache\n\nDo not read or write rig’s cache (overrides RIG_NO_CACHE and config)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "objectID": "reference/rtools.html#rig-rtools-list",
+    "href": "reference/rtools.html#rig-rtools-list",
+    "title": "rig rtools",
+    "section": "rig rtools list",
+    "text": "rig rtools list\nAlias: rig rtools ls\nList installed Rtools versions on Windows.\nIt only lists versions that are added to the Windows Registry.\nUse the --json flag for JSON output.\n\nUsage\nrig rtools list [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--no-cache\n\nDo not read or write rig’s cache (overrides RIG_NO_CACHE and config)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
-      "rig cache"
+      "rig rtools"
     ]
   },
   {
-    "objectID": "reference/config.html",
-    "href": "reference/config.html",
-    "title": "rig config",
+    "objectID": "reference/rtools.html#rig-rtools-rm",
+    "href": "reference/rtools.html#rig-rtools-rm",
+    "title": "rig rtools",
+    "section": "rig rtools rm",
+    "text": "rig rtools rm\nAliases: rig rtools del, rig rtools remove, rig rtools delete\nRemove Rtools versions on Windows.\nYou can specify the version(s) to remove by their name, optionally with an ‘rtools’ prefix, e.g. ‘43’ or ‘rtools43’.\nIf no version is specified, then it does nothing.\nIn admin mode this command needs an administrator account.\n\nUsage\nrig rtools rm [OPTIONS] [version]...\n\n\nArguments\n\n[version]...\n\nversions to remove\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-a, --arch &lt;arch&gt;\n\nArchitecture of Rtools to remove (default: native arch).\n[possible values: x86_64, aarch64, arm64]\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--no-cache\n\nDo not read or write rig’s cache (overrides RIG_NO_CACHE and config)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)\n\n\n\n\nExamples\nrig rtools rm 43",
+    "crumbs": [
+      "Reference",
+      "rig rtools"
+    ]
+  },
+  {
+    "objectID": "reference/resolve.html",
+    "href": "reference/resolve.html",
+    "title": "rig resolve",
     "section": "",
-    "text": "Manage the rig configuration file.\nrig reads a number of settings from a configuration file. The configuration file is a JSON file, rig config config-file-path prints its path, and rig system dirs shows it together with the other directories rig uses.\nMost settings can also be overridden with an environment variable. The environment variable takes precedence over the configuration file, and the configuration file takes precedence over rig’s built-in default.",
+    "text": "Resolve R versions. Checks the version number of an R version (e.g. release, devel, etc.), and looks up the URL of the installer for it, if an installer is available.\nIt prints the R version number, and after a space the URL of the installer. If no installer is available for this R version and the current platform, the URL is NA.\nAn R version can be specified in various ways:",
     "crumbs": [
       "Reference",
-      "rig config"
+      "rig resolve"
     ]
   },
   {
-    "objectID": "reference/config.html#configuration-entries",
-    "href": "reference/config.html#configuration-entries",
-    "title": "rig config",
-    "section": "Configuration entries",
-    "text": "Configuration entries\n\nmode (RIG_MODE): the installation mode, either user or admin, see user and admin mode . Defaults to admin.\nbinary-dir (RIG_BINARY_DIR): the directory rig puts the quick links (R-4.5.1, R-release, etc.) into. Defaults to /usr/local/bin in admin mode and ~/.local/bin in user mode. On Windows the defaults are C:\\Program Files\\R\\bin and %USERPROFILE%\\.local\\bin.\nr-install-dir (RIG_R_INSTALL_DIR): the root directory of the R installations, i.e. the directory that holds the directories of the individual R versions. Defaults to the platform’s system-wide location in admin mode (/opt/R on Linux, /Library/Frameworks/R.framework on macOS, C:\\Program Files\\R on Windows), and to ~/.local/share/rig/r (%APPDATA%\\rig\\data\\r on Windows) in user mode. On Windows this entry only applies in user mode; the admin-mode root is fixed, because it also depends on the architecture.\nrtools-install-dir (RIG_RTOOLS_INSTALL_DIR): Windows only, the directory that holds the Rtools installations. Defaults to C:\\ in admin mode (so Rtools 4.5 goes into C:\\rtools45) and to %APPDATA%\\rig\\data\\rtools in user mode.\ndownload-dir (RIG_DOWNLOAD_DIR): the directory rig downloads the R (and on Windows the Rtools) installers into, before installing them. Defaults to rig-&lt;uid&gt; in the system temporary directory, e.g. /tmp/rig-1000, and to rig under %TEMP% on Windows. The user id is part of the default name on purpose: in admin mode rig downloads as root, in user mode as you, and a directory shared between them would only be writable by whoever created it first. For the same reason rig refuses to use the default directory if it is a symbolic link, or if it is owned by another user, or if other users can write into it. A directory you configure here is created but not checked.\nno-cache (RIG_NO_CACHE): set it to true to stop rig from using its cache, the same as passing --no-cache. rig then neither reads nor writes the cache directory: it downloads the repository metadata, the binary package indices and the package files again, compiles a source package instead of unpacking a build it made earlier, and downloads an R or Rtools installer again instead of reusing the one in the download directory. What it downloads and builds goes into a temporary directory that is removed when rig exits, so the cache is left exactly as it was. Defaults to false. This is meant for debugging and for the occasional run that must not trust anything cached; it makes rig considerably slower, so it is a poor thing to turn on permanently.\nconcurrent-downloads (RIG_CONCURRENT_DOWNLOADS): the maximum number of downloads rig performs at the same time, e.g. when downloading package files for a project. Defaults to 50.\nconcurrent-installs (RIG_CONCURRENT_INSTALLS): the maximum number of packages rig proj sync installs at the same time, unless overridden with its own --max-concurrent flag. Defaults to the number of CPU cores.\npositron-setup: user mode only. Set it to false to stop rig from updating Positron’s settings: adding its R installation root to positron.r.customRootFolders, and pointing positron.r.interpreters.default at the default R version. Any other value, and the default, keep the Positron setup on.\nuserlibrary: a JSON object that maps R versions to user library paths. rig maintains this entry itself, as a cache for the rig library commands; you don’t normally need to edit or set it.\n\nrig config list lists the entries that are currently in the configuration file, which is typically fewer than the entries above, because rig only writes an entry once you set it.",
+    "objectID": "reference/resolve.html#usage",
+    "href": "reference/resolve.html#usage",
+    "title": "rig resolve",
+    "section": "Usage",
+    "text": "Usage\nrig resolve [OPTIONS] &lt;str&gt;",
     "crumbs": [
       "Reference",
-      "rig config"
+      "rig resolve"
     ]
   },
   {
-    "objectID": "reference/config.html#subcommands",
-    "href": "reference/config.html#subcommands",
-    "title": "rig config",
-    "section": "Subcommands",
-    "text": "Subcommands\n\nconfig-file-path\n\nPrint the path to the rig config file\n\nget\n\nGet a config entry\n\nlist\n\nList the names of all config entries\n\nset\n\nSet a config entry",
+    "objectID": "reference/resolve.html#arguments",
+    "href": "reference/resolve.html#arguments",
+    "title": "rig resolve",
+    "section": "Arguments",
+    "text": "Arguments\n\n&lt;str&gt;\n\nsymbolic version string to resolve",
     "crumbs": [
       "Reference",
-      "rig config"
+      "rig resolve"
     ]
   },
   {
-    "objectID": "reference/config.html#rig-config-config-file-path",
-    "href": "reference/config.html#rig-config-config-file-path",
-    "title": "rig config",
-    "section": "rig config config-file-path",
-    "text": "rig config config-file-path\nPrint the full path to the rig configuration file.\nThe file might not exist yet; rig creates it when you first set an entry with rig config set.\n\nUsage\nrig config config-file-path [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--no-cache\n\nDo not read or write rig’s cache (overrides RIG_NO_CACHE and config)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "objectID": "reference/resolve.html#options",
+    "href": "reference/resolve.html#options",
+    "title": "rig resolve",
+    "section": "Options",
+    "text": "Options\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-a, --arch &lt;arch&gt;\n\nUse this architecture, instead of auto-detecting it.\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--no-cache\n\nDo not read or write rig’s cache (overrides RIG_NO_CACHE and config)\n\n--platform &lt;platform&gt;\n\nUse this platform, instead of auto-detecting it.\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
     "crumbs": [
       "Reference",
-      "rig config"
+      "rig resolve"
     ]
   },
   {
-    "objectID": "reference/config.html#rig-config-get",
-    "href": "reference/config.html#rig-config-get",
-    "title": "rig config",
-    "section": "rig config get",
-    "text": "rig config get\nPrint the value of a rig configuration entry.\nConfiguration keys are listed by rig config list.\n\nUsage\nrig config get [OPTIONS] &lt;key&gt;\n\n\nArguments\n\n&lt;key&gt;\n\nconfig key to get\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--no-cache\n\nDo not read or write rig’s cache (overrides RIG_NO_CACHE and config)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
+    "objectID": "reference/resolve.html#examples",
+    "href": "reference/resolve.html#examples",
+    "title": "rig resolve",
+    "section": "Examples",
+    "text": "Examples\n# Latest development snapshot\nrig resolve devel\n# Latest release (that has an installer available)\nrig resolve release\n# URL for a specific version\nrig resolve 4.1.2\n# Latest version within a minor branch\nrig resolve 4.1",
     "crumbs": [
       "Reference",
-      "rig config"
-    ]
-  },
-  {
-    "objectID": "reference/config.html#rig-config-list",
-    "href": "reference/config.html#rig-config-list",
-    "title": "rig config",
-    "section": "rig config list",
-    "text": "rig config list\nList the names of all rig configuration entries.\nUse rig config get &lt;key&gt; to see the value of an entry, and rig config set &lt;key&gt;=&lt;value&gt; to change it.\n\nUsage\nrig config list [OPTIONS]\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--json\n\nJSON output\n\n--no-cache\n\nDo not read or write rig’s cache (overrides RIG_NO_CACHE and config)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
-    "crumbs": [
-      "Reference",
-      "rig config"
-    ]
-  },
-  {
-    "objectID": "reference/config.html#rig-config-set",
-    "href": "reference/config.html#rig-config-set",
-    "title": "rig config",
-    "section": "rig config set",
-    "text": "rig config set\nSet a rig configuration entry.\nThe argument is a key=value pair, e.g. rig config set mode=user. The configuration file is created if it does not exist yet. See rig config --help for the known keys, and rig config list for the entries that are already in the configuration file.\n\nUsage\nrig config set [OPTIONS] &lt;keyvalue&gt;\n\n\nArguments\n\n&lt;keyvalue&gt;\n\nkey=value pair to set\n\n\n\n\nOptions\n\n--admin\n\nRun in admin mode (overrides RIG_MODE and config)\n\n-h, --help\n\nPrint help (see a summary with ‘-h’)\n\n--no-cache\n\nDo not read or write rig’s cache (overrides RIG_NO_CACHE and config)\n\n--user\n\nRun in user mode (overrides RIG_MODE and config)",
-    "crumbs": [
-      "Reference",
-      "rig config"
+      "rig resolve"
     ]
   },
   {
@@ -2171,7 +2215,7 @@
     "href": "news.html",
     "title": "Changelog",
     "section": "",
-    "text": "rig has a new documentation website at https://rig.r-lib.org/, including a full CLI reference and a guide to admin vs. user mode.\n\n\n\n\n\nrig now supports a user mode on all platforms, in addition to the default admin mode. In user mode rig installs everything into the user’s home directory and never needs sudo or administrator privileges. R goes into ~/.local/share/rig/r (%APPDATA%\\rig\\data\\r on Windows) and quick links into ~/.local/bin (%USERPROFILE%\\.local\\bin on Windows). Select the mode with the --user / --admin global flags, the RIG_MODE environment variable, or the mode key in the rig config file. The new rig system user-mode command switches an existing admin-mode setup to user mode.\nOn Linux, rig can now install portable R builds, for glibc- and musl-based Linux distros. If there is no distro-specific build for your platform, rig falls back to a portable build automatically.\n\n\n\n\n\nNew rig pkg subcommand to query and manage R packages. Two subcommands from rig repos moved to rig pkg: rig pkg available and rig pkg info. rig pkg deps lists the packages a package needs, in a table, and rig pkg tree shows the same dependencies as a tree. rig pkg list lists the packages installed in a library, rig pkg remove deletes packages from a library, and rig pkg install installs packages, and their dependencies, into a library.\n\n\n\n\n\nNew and redesigned rig proj commands to manage isolated R projects and virtual environments: rig proj init, rig proj import, rig proj add, rig proj remove, rig proj lock, rig proj sync, rig proj status.\nNew rig proj tree shows the dependency closure of a project as a tree.\nrig run now uses the project environment, if you call it in a project directory: it starts .rvenv/bin/R, with the project’s package library and the R version the project’s lock file names, and it syncs the project first if the environment is missing or out of date. Use --no-project (or --r-version) to run the default R version instead.\nrig run &lt;name&gt; now runs a script the project declares in a [[bin]] table of its rproj.toml, passing the remaining arguments on to the script. rig run --list lists the declared scripts.\n\n\n\n\n\nWindows builds of rig are now signed, thanks to the SignPath Foundation, https://signpath.org/.\nOn Windows rig now creates .exe shims instead of bat shims. With .exe shims it is easier to pass command line arguments to R and Rscript. In particular, Rscript -e &lt;code&gt; now works if &lt;code&gt; has line breaks. Call rig system make-links to create all .exe shims and remove the .bat shims. If you hardcoded shims with a .bat extension, change them to .exe or remove the extension completely (#362).\nNew rig system fix-r-alias subcommand.\nrig rtools is now a top-level command (it used to be rig system rtools).\nOn Windows, R CMD config now works without manually putting Rtools on the PATH. So do R CMD sh, R CMD make and rig run --cmd config.\n\n\n\n\n\nNew rig cache command to inspect and manage rig’s download and build caches. rig now reflinks or hardlinks packages from the cache when possible, instead of copying them, to save disk space and time.\nNew rig ppm command queries Posit Package Manager. New rig ppm build-log shows the build log of a package on Posit Package Manager.\nNew rig repos status checks the configured package repositories.\nrig library add, rig library default, rig library list and rig library rm have a new --r-version (-r) option, to operate on the libraries of an R version other than the default one.\nNew rig system dirs command to show the directories rig uses. With --r, --binary, --data, --cache, --download, --log, --rtools (Windows only) or --fonts (Linux only) it prints a single path, for use in scripts.\nNew rig config command to manage the rig configuration file.\nrig run --cmd &lt;command&gt; [args...] now runs R CMD &lt;command&gt; [args...] with the selected R version.\n\n\n\n\n\nrig add --without-p3m works correctly again (#369).\nmacOS user mode: rig default now sets the default R version correctly for newer RStudio versions. Also, rig system allow-debugger-rstudio now works for newer RStudio versions.\nrig now uses a user-dependent download directory, to avoid interference between users.\nrig now does not edit the shell startup files in admin mode, like rig 0.8.1 did on macOS. rig now only does this in user mode.\nrig repos available now prints a compact table. New rig repos available &lt;name&gt; shows complete information about a single repository.\nrig system setup-user-lib (and its create-lib alias) now works again.\nrig rstudio --config-path is now implemented on Linux and macOS.\nrig now warns instead of failing when it encounters a broken R installation (#346).",
+    "text": "rig has a new documentation website at https://rig.r-lib.org/, including a full CLI reference and a guide to admin vs. user mode.\n\n\n\n\n\nrig now supports a user mode on all platforms, in addition to the default admin mode. In user mode rig installs everything into the user’s home directory and never needs sudo or administrator privileges. R goes into ~/.local/share/rig/r (%APPDATA%\\rig\\data\\r on Windows) and quick links into ~/.local/bin (%USERPROFILE%\\.local\\bin on Windows). Select the mode with the --user / --admin global flags, the RIG_MODE environment variable, or the mode key in the rig config file. The new rig system user-mode command switches an existing admin-mode setup to user mode.\nOn Linux, rig can now install portable R builds, for glibc- and musl-based Linux distros. If there is no distro-specific build for your platform, rig falls back to a portable build automatically.\n\n\n\n\n\nNew rig pkg subcommand to query and manage R packages. Two subcommands from rig repos moved to rig pkg: rig pkg available and rig pkg info. rig pkg deps lists the packages a package needs, in a table, and rig pkg tree shows the same dependencies as a tree. rig pkg list lists the packages installed in a library, rig pkg remove deletes packages from a library, and rig pkg install installs packages, and their dependencies, into a library.\n\n\n\n\n\nNew and redesigned rig proj commands to manage isolated R projects and virtual environments: rig proj init, rig proj import, rig proj add, rig proj remove, rig proj lock, rig proj sync, rig proj status.\nNew rig proj tree shows the dependency closure of a project as a tree.\nrig run now uses the project environment, if you call it in a project directory: it starts .rvenv/bin/R, with the project’s package library and the R version the project’s lock file names, and it syncs the project first if the environment is missing or out of date. Use --no-project (or --r-version) to run the default R version instead.\nrig run &lt;name&gt; now runs a script the project declares in a [[bin]] table of its rproj.toml, passing the remaining arguments on to the script. rig run --list lists the declared scripts.\n\n\n\n\n\nWindows builds of rig are now signed, thanks to the SignPath Foundation, https://signpath.org/.\nOn Windows rig now creates .exe shims instead of bat shims. With .exe shims it is easier to pass command line arguments to R and Rscript. In particular, Rscript -e &lt;code&gt; now works if &lt;code&gt; has line breaks. Call rig system make-links to create all .exe shims and remove the .bat shims. If you hardcoded shims with a .bat extension, change them to .exe or remove the extension completely (#362).\nNew rig system fix-r-alias subcommand.\nrig rtools is now a top-level command (it used to be rig system rtools).\nOn Windows, R CMD config now works without manually putting Rtools on the PATH. So do R CMD sh, R CMD make and rig run --cmd config.\n\n\n\n\n\nNew rig self update to update rig, new rig self uninstall to remove rig, if it was installed via the install script.\nNew rig cache command to inspect and manage rig’s download and build caches. rig now reflinks or hardlinks packages from the cache when possible, instead of copying them, to save disk space and time.\nNew rig ppm command queries Posit Package Manager. New rig ppm build-log shows the build log of a package on Posit Package Manager.\nNew rig repos status checks the configured package repositories.\nrig library add, rig library default, rig library list and rig library rm have a new --r-version (-r) option, to operate on the libraries of an R version other than the default one.\nNew rig system dirs command to show the directories rig uses. With --r, --binary, --data, --cache, --download, --log, --rtools (Windows only) or --fonts (Linux only) it prints a single path, for use in scripts.\nNew rig config command to manage the rig configuration file.\nrig run --cmd &lt;command&gt; [args...] now runs R CMD &lt;command&gt; [args...] with the selected R version.\n\n\n\n\n\nrig add --without-p3m works correctly again (#369).\nmacOS user mode: rig default now sets the default R version correctly for newer RStudio versions. Also, rig system allow-debugger-rstudio now works for newer RStudio versions.\nrig now uses a user-dependent download directory, to avoid interference between users.\nrig now does not edit the shell startup files in admin mode, like rig 0.8.1 did on macOS. rig now only does this in user mode.\nrig repos available now prints a compact table. New rig repos available &lt;name&gt; shows complete information about a single repository.\nrig system setup-user-lib (and its create-lib alias) now works again.\nrig rstudio --config-path is now implemented on Linux and macOS.\nrig now warns instead of failing when it encounters a broken R installation (#346).",
     "crumbs": [
       "Changelog"
     ]
@@ -2231,7 +2275,7 @@
     "href": "news.html#other-new-features",
     "title": "Changelog",
     "section": "",
-    "text": "New rig cache command to inspect and manage rig’s download and build caches. rig now reflinks or hardlinks packages from the cache when possible, instead of copying them, to save disk space and time.\nNew rig ppm command queries Posit Package Manager. New rig ppm build-log shows the build log of a package on Posit Package Manager.\nNew rig repos status checks the configured package repositories.\nrig library add, rig library default, rig library list and rig library rm have a new --r-version (-r) option, to operate on the libraries of an R version other than the default one.\nNew rig system dirs command to show the directories rig uses. With --r, --binary, --data, --cache, --download, --log, --rtools (Windows only) or --fonts (Linux only) it prints a single path, for use in scripts.\nNew rig config command to manage the rig configuration file.\nrig run --cmd &lt;command&gt; [args...] now runs R CMD &lt;command&gt; [args...] with the selected R version.",
+    "text": "New rig self update to update rig, new rig self uninstall to remove rig, if it was installed via the install script.\nNew rig cache command to inspect and manage rig’s download and build caches. rig now reflinks or hardlinks packages from the cache when possible, instead of copying them, to save disk space and time.\nNew rig ppm command queries Posit Package Manager. New rig ppm build-log shows the build log of a package on Posit Package Manager.\nNew rig repos status checks the configured package repositories.\nrig library add, rig library default, rig library list and rig library rm have a new --r-version (-r) option, to operate on the libraries of an R version other than the default one.\nNew rig system dirs command to show the directories rig uses. With --r, --binary, --data, --cache, --download, --log, --rtools (Windows only) or --fonts (Linux only) it prints a single path, for use in scripts.\nNew rig config command to manage the rig configuration file.\nrig run --cmd &lt;command&gt; [args...] now runs R CMD &lt;command&gt; [args...] with the selected R version.",
     "crumbs": [
       "Changelog"
     ]
