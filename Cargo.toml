@@ -89,9 +89,10 @@ tempfile = "3"
 rds2rust = "0.1.41"
 regex = "1.5.4"
 # HTTP (non-Windows: rustls to avoid OpenSSL dep; Windows: native-tls (SChannel) to avoid ring build issues on aarch64)
-reqwest = { version = "0.11", features = [
+reqwest = { version = "0.13", features = [
     "json",
     "stream",
+    "http2",
 ], default-features = false }
 # SQLite database for caching
 rusqlite = { version = "0.32", features = ["bundled"] }
@@ -126,14 +127,10 @@ indicatif = "0.17"
 reflink-copy = "0.1"
 
 [target.'cfg(not(windows))'.dependencies]
-reqwest = { version = "0.11", features = [
-    "rustls-tls",
-    "hyper-rustls",
-    "rustls-tls-native-roots",
-], default-features = false }
+reqwest = { version = "0.13", features = ["rustls"], default-features = false }
 
 [target.'cfg(windows)'.dependencies]
-reqwest = { version = "0.11", features = ["native-tls"], default-features = false }
+reqwest = { version = "0.13", features = ["native-tls"], default-features = false }
 is_elevated = "0.1.2"
 remove_dir_all = "0.7.0"
 whoami = "1.4.1"
