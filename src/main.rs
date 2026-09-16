@@ -47,6 +47,7 @@ mod dirs;
 mod download;
 mod hardcoded;
 mod install;
+mod install_receipt;
 mod library;
 mod output;
 mod pager;
@@ -64,6 +65,8 @@ mod rproj;
 mod run;
 mod rvenv;
 mod rversion;
+mod self_uninstall;
+mod self_update;
 mod solver;
 mod sysreqs;
 mod test;
@@ -286,6 +289,7 @@ fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
         Some(("list", sub)) => sc_list(sub, args)?,
         Some(("proj", sub)) => sc_proj(sub, args)?,
         Some(("rm", sub)) => sc_rm(sub)?,
+        Some(("self", sub)) => sc_self(sub, args)?,
         Some(("system", sub)) => sc_system(sub, args)?,
         Some(("rtools", sub)) => sc_system_rtools(sub, args)?,
         Some(("pkg", sub)) => sc_pkg(sub, args)?,
@@ -303,6 +307,16 @@ fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
         _ => (), // unreachable
     }
     Ok(retval)
+}
+
+fn sc_self(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    match args.subcommand() {
+        Some(("update", s)) => self_update::sc_self_update(s, mainargs),
+        Some(("uninstall", s)) => self_uninstall::sc_self_uninstall(s, mainargs),
+        // Every subcommand defined in `args.rs` has an arm above, so this is
+        // only reached if one is renamed there without updating this list.
+        _ => Ok(()),
+    }
 }
 
 fn sc_system(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
