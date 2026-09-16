@@ -92,6 +92,7 @@ regex = "1.5.4"
 reqwest = { version = "0.13", features = [
     "json",
     "stream",
+    "http2",
 ], default-features = false }
 # SQLite database for caching
 rusqlite = { version = "0.32", features = ["bundled"] }
