@@ -88,7 +88,7 @@ tempfile = "3"
 # deserialize R files
 rds2rust = "0.1.41"
 regex = "1.5.4"
-# HTTP (non-Windows: rustls to avoid OpenSSL dep; Windows: native-tls (SChannel) to avoid ring build issues on aarch64)
+# HTTP (non-Windows: rustls (native-roots: reads OS trust store + SSL_CERT_FILE/DIR) to avoid OpenSSL dep; Windows: native-tls (SChannel) to avoid ring build issues on aarch64)
 reqwest = { version = "0.13", features = [
     "json",
     "stream",
@@ -127,7 +127,10 @@ indicatif = "0.17"
 reflink-copy = "0.1"
 
 [target.'cfg(not(windows))'.dependencies]
-reqwest = { version = "0.13", features = ["rustls"], default-features = false }
+reqwest = { version = "0.13", features = [
+    "rustls",
+    "rustls-native-certs",
+], default-features = false }
 
 [target.'cfg(windows)'.dependencies]
 reqwest = { version = "0.13", features = ["native-tls"], default-features = false }
