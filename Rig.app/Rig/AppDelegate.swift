@@ -125,7 +125,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let projectMenu = NSMenu()
             for p in projects! {
                 if p == "" { continue }
-                let fileName = String((p as NSString).lastPathComponent.split(separator: ".").first!)
+                let fileName = (p as NSString).lastPathComponent
+                let displayName = (fileName as NSString).deletingPathExtension
                 let submenu = NSMenu()
                 let defitem = NSMenuItem(title: "Default", action: #selector(startRStudio2), keyEquivalent: "")
                 defitem.representedObject = [p, "default"]
@@ -137,7 +138,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     subitem.representedObject = [p, v.name]
                     submenu.addItem(subitem)
                 }
-                let item = NSMenuItem(title: fileName, action: #selector(startRStudio2), keyEquivalent: "")
+                let item = NSMenuItem(title: displayName, action: #selector(startRStudio2), keyEquivalent: "")
                 item.submenu = submenu
                 item.representedObject = [p, "default"]
                 projectMenu.addItem(item)
