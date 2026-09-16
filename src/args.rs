@@ -2733,8 +2733,56 @@ where
     out
 }
 
+// Splits `rig`'s raw arguments before clap sees them.
+//
+// `rig run --cmd <command> [args...]`: unchanged, delegates to
+// `rcmd_argv()` -- a literal `--` is auto-inserted right after `--cmd` so
+// clap doesn't reinterpret the R CMD command's own flags as rig's.
+//
+// `rig run [...] -- <r-args...>` (without `--cmd`): a literal `--`
+// separates rig's own arguments (an eval/script/app name and its own
+// arguments) from raw R/`Rscript` engine flags, e.g. `rig run -- --vanilla`
+// or `rig run report --format pdf -- --vanilla`. Everything from that `--`
+// onward is pulled out *here*, before clap ever sees it, so it can never
+// collide with rig's own flags (not even the built-in `--help`/`--version`),
+// and returned separately for `sc_run()` to forward straight to the R
+// process. `--` is not otherwise meaningful to any rig command.
+fn split_run_args<I>(argv: I) -> (Vec<std::ffi::OsString>, Vec<String>)
+where
+    I: IntoIterator<Item = std::ffi::OsString>,
+{
+    use std::ffi::OsStr;
+    let argv: Vec<std::ffi::OsString> = argv.into_iter().collect();
+    if argv.iter().any(|a| a.as_os_str() == OsStr::new("--cmd")) {
+        return (rcmd_argv(argv), vec![]);
+    }
+    let mut out = Vec::new();
+    let mut iter = argv.into_iter();
+    while let Some(arg) = iter.next() {
+        if arg.as_os_str() == OsStr::new("--") {
+            return (
+                out,
+                iter.map(|a| a.to_string_lossy().into_owned()).collect(),
+            );
+        }
+        out.push(arg);
+    }
+    (out, vec![])
+}
+
+static RUN_R_ARGS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+
+/// Raw R engine flags typed after a literal `--` in `rig run ... -- <flags>`
+/// (empty unless the matched subcommand is `run` and `--cmd` was not given;
+/// see `split_run_args()`).
+pub fn run_r_args() -> &'static [String] {
+    RUN_R_ARGS.get().map(|v| v.as_slice()).unwrap_or(&[])
+}
+
 pub fn parse_args() -> ArgMatches {
-    match rig_app().try_get_matches_from(rcmd_argv(std::env::args_os())) {
+    let (argv, r_args) = split_run_args(std::env::args_os());
+    let _ = RUN_R_ARGS.set(r_args);
+    match rig_app().try_get_matches_from(argv) {
         Ok(matches) => matches,
         Err(e) => {
             use clap::error::ErrorKind::*;
@@ -2919,6 +2967,71 @@ mod tests {
         assert!(run.get_flag("dry-run"));
         let cmdargs: Vec<&String> = run.get_many::<String>("command").unwrap().collect();
         assert_eq!(cmdargs, ["check", "--no-manual", "."]);
+    }
+
+    fn split(argv: &[&str]) -> (Vec<String>, Vec<String>) {
+        let (out, r_args) = split_run_args(argv.iter().map(OsString::from));
+        let out = out
+            .iter()
+            .map(|x| x.to_string_lossy().into_owned())
+            .collect();
+        (out, r_args)
+    }
+
+    #[test]
+    fn test_split_run_args_no_separator() {
+        let (out, r_args) = split(&["rig", "run", "-e", "1+1"]);
+        assert_eq!(out, ["rig", "run", "-e", "1+1"]);
+        assert!(r_args.is_empty());
+    }
+
+    #[test]
+    fn test_split_run_args_bare() {
+        let (out, r_args) = split(&["rig", "run", "--", "--vanilla", "--no-save"]);
+        assert_eq!(out, ["rig", "run"]);
+        assert_eq!(r_args, ["--vanilla", "--no-save"]);
+    }
+
+    #[test]
+    fn test_split_run_args_with_app_and_own_args() {
+        let (out, r_args) = split(&["rig", "run", "report", "--format", "pdf", "--", "--vanilla"]);
+        assert_eq!(out, ["rig", "run", "report", "--format", "pdf"]);
+        assert_eq!(r_args, ["--vanilla"]);
+    }
+
+    #[test]
+    fn test_split_run_args_with_eval() {
+        let (out, r_args) = split(&["rig", "run", "-e", "1+1", "--", "--vanilla"]);
+        assert_eq!(out, ["rig", "run", "-e", "1+1"]);
+        assert_eq!(r_args, ["--vanilla"]);
+    }
+
+    #[test]
+    fn test_split_run_args_cmd_untouched() {
+        // Any `--cmd` in the argv delegates entirely to `rcmd_argv()`, and no
+        // raw R args are extracted, even if the user also typed a `--`.
+        let (out, r_args) = split(&["rig", "run", "--cmd", "check", "--no-manual", "."]);
+        assert_eq!(
+            out,
+            ["rig", "run", "--cmd", "--", "check", "--no-manual", "."]
+        );
+        assert!(r_args.is_empty());
+
+        let (out, r_args) = split(&["rig", "run", "--cmd", "check", "--", "--no-manual", "."]);
+        assert_eq!(
+            out,
+            [
+                "rig",
+                "run",
+                "--cmd",
+                "--",
+                "check",
+                "--",
+                "--no-manual",
+                "."
+            ]
+        );
+        assert!(r_args.is_empty());
     }
 
     // The `rig system dirs` family. These tests run on every platform, so they

@@ -76,6 +76,7 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
             rargs.push("--slave".to_string())
         }
     }
+    rargs.extend(crate::args::run_r_args().iter().cloned());
 
     if let Some(eval) = eval {
         sc_run_eval(env, rargs, eval.to_string(), cmdargs, dry_run)
@@ -127,6 +128,14 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
                 rargs.push("--slave".to_string())
             }
         }
+        // Default to not saving/restoring the workspace, so plain `rig run`
+        // never shows the "Save workspace image?" prompt on exit. `run_r_args()`
+        // is appended after, so an explicit `rig run -- --save --restore`
+        // still overrides this, R uses whichever of a conflicting pair comes
+        // last on the command line.
+        rargs.push("--no-save".to_string());
+        rargs.push("--no-restore".to_string());
+        rargs.extend(crate::args::run_r_args().iter().cloned());
         sc_run_rver(env, rargs, cmdargs, dry_run)
     }
 }

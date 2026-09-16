@@ -99,6 +99,14 @@
 * `rig run --cmd <command> [args...]` now runs `R CMD <command> [args...]`
   with the selected R version.
 
+* `rig run -- <flags>` now passes raw arguments straight to the R process,
+  e.g. `rig run -- --vanilla` or `rig run -e '1+1' -- --vanilla` (#249).
+
+* Plain `rig run` (i.e. without `-e`/`-f`/an app/`--cmd`) now defaults to
+  `--no-save --no-restore`, so it no longer shows the "Save workspace
+  image?" prompt on exit. Use `rig run -- --save --restore` to get the old
+  behavior back (#249).
+
 ## Other changes
 
 * `rig add --without-p3m` works correctly again (#369).
