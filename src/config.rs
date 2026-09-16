@@ -12,6 +12,13 @@ use serde_derive::Serialize;
 use crate::cache::get_data_dir;
 use crate::utils::*;
 
+#[cfg(target_os = "macos")]
+use crate::macos::sc_system_update_language;
+#[cfg(target_os = "windows")]
+use crate::windows::sc_system_update_language;
+#[cfg(target_os = "linux")]
+use crate::linux::sc_system_update_language;
+
 #[derive(Serialize, Deserialize, Debug)]
 struct Config {
     #[serde(default = "empty_stringmap")]
@@ -223,7 +230,17 @@ fn sc_config_set(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         key.to_string(),
         serde_json::Value::String(value.to_string()),
     );
-    save_raw_config(&map)
+    save_raw_config(&map)?;
+
+    // Also apply the new language to every installed R version's
+    // `Renviron.site`, so plain `R`/`Rscript` (which never go through the
+    // `rig` process, unlike `rig run`) pick it up as well.
+    if key == "language" {
+        let lang = if value.is_empty() { None } else { Some(value) };
+        sc_system_update_language(lang)?;
+    }
+
+    Ok(())
 }
 
 fn sc_config_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {

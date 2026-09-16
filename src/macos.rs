@@ -208,6 +208,10 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     system_no_openmp(Some(vec![dirname.to_string()]))?;
     system_fix_permissions(Some(vec![dirname.to_string()]))?;
     library_update_rprofile(&dirname.to_string())?;
+    if let Err(e) = configure_language(&dirname.to_string(), get_language()?.as_deref()) {
+        OUTPUT.warn(&format!("Could not set up R language: {}", e));
+        warn!("Could not set up R language: {}", e);
+    }
     sc_system_make_links()?;
     // The `release`/`oldrel` aliases point at the native build. An
     // x86_64 build on an arm64 machine gets an `-x86_64` suffix instead,
@@ -2313,6 +2317,96 @@ pub fn get_system_renviron(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
 pub fn get_system_profile(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
     let profile = get_r_base_profile()?.replace("{}", rver);
     Ok(PathBuf::from(&get_r_root()?).join(profile))
+}
+
+fn get_renviron_site(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
+    Ok(Path::new(&get_r_root()?)
+        .join(get_r_etc_path()?.replace("{}", rver))
+        .join("Renviron.site"))
+}
+
+const LANGUAGE_BLOCK_START: &str = "## rig LANGUAGE start";
+const LANGUAGE_BLOCK_END: &str = "## rig LANGUAGE end";
+
+// Replace (or append) a rig-owned block delimited by `start` and `end` in
+// `existing`, keeping everything outside it. Re-running with a new body
+// updates the block in place instead of duplicating it.
+fn render_fenced_block(existing: &str, start: &str, end: &str, body: &str) -> String {
+    let mut kept: Vec<String> = Vec::new();
+    let mut in_block = false;
+    for line in existing.lines() {
+        match line.trim() {
+            l if l == start => in_block = true,
+            l if l == end => in_block = false,
+            _ if !in_block => kept.push(line.to_string()),
+            _ => {}
+        }
+    }
+    while matches!(kept.last(), Some(l) if l.trim().is_empty()) {
+        kept.pop();
+    }
+
+    let mut out = kept.join("\n");
+    if !out.is_empty() {
+        out.push('\n');
+    }
+    out.push_str(&format!("{}\n{}\n{}\n", start, body, end));
+    out
+}
+
+// Like `render_fenced_block`, but drops the block entirely instead of
+// replacing it, leaving the rest of the file untouched.
+fn remove_fenced_block(existing: &str, start: &str, end: &str) -> String {
+    let mut kept: Vec<String> = Vec::new();
+    let mut in_block = false;
+    for line in existing.lines() {
+        match line.trim() {
+            l if l == start => in_block = true,
+            l if l == end => in_block = false,
+            _ if !in_block => kept.push(line.to_string()),
+            _ => {}
+        }
+    }
+    let mut out = kept.join("\n");
+    if !out.is_empty() {
+        out.push('\n');
+    }
+    out
+}
+
+// Set (or clear, when `lang` is `None`) the `LANGUAGE` environment variable
+// for an installed R version, in a fenced rig block in its `Renviron.site`,
+// so plain `R`/`Rscript` invocations (which never go through the `rig`
+// process) also pick up `rig config set language=...`.
+pub fn configure_language(rver: &str, lang: Option<&str>) -> Result<(), Box<dyn Error>> {
+    let renviron = get_renviron_site(rver)?;
+    let existing = std::fs::read_to_string(&renviron).unwrap_or_default();
+    let out = match lang {
+        Some(lang) => render_fenced_block(
+            &existing,
+            LANGUAGE_BLOCK_START,
+            LANGUAGE_BLOCK_END,
+            &format!("LANGUAGE={}", lang),
+        ),
+        None => remove_fenced_block(&existing, LANGUAGE_BLOCK_START, LANGUAGE_BLOCK_END),
+    };
+
+    if let Some(parent) = renviron.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    debug!("Configuring R language in {}", renviron.display());
+    std::fs::write(&renviron, out)?;
+    Ok(())
+}
+
+// `rig config set language=...` (or `language=`, to clear it): re-apply the
+// configured language to every installed R version's `Renviron.site`.
+pub fn sc_system_update_language(lang: Option<&str>) -> Result<(), Box<dyn Error>> {
+    let vers = sc_get_list()?;
+    for ver in vers {
+        configure_language(&ver, lang)?;
+    }
+    Ok(())
 }
 
 pub fn is_arm64_machine() -> bool {

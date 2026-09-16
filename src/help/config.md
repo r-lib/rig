@@ -68,6 +68,13 @@ configuration file takes precedence over rig's built-in default.
   unless overridden with its own `--max-concurrent` flag. Defaults to the
   number of CPU cores.
 
+- `language` (`RIG_LANGUAGE`): the language R uses for its own translated
+  messages, e.g. `hu` for Hungarian, via the `LANGUAGE` environment variable.
+  Applied both to [`rig run`](run.qmd) and, persistently, to every installed R
+  version's `Renviron.site`, so plain `R`/`Rscript` (started outside of rig)
+  also pick it up. Unset by default, letting R and the system locale decide.
+  Set it to an empty value (`rig config set language=`) to remove it again.
+
 - `positron-setup`: [user mode](../admin-vs-user-mode.qmd) only. Set it to `false` to stop rig from updating
   Positron's settings: adding its R installation root to
   `positron.r.customRootFolders`, and pointing

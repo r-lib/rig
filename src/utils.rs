@@ -373,6 +373,23 @@ pub fn get_mode() -> Result<Mode, Box<dyn Error>> {
     Ok(mode)
 }
 
+// The language R itself uses for its own translated messages, via the
+// `LANGUAGE` environment variable. An empty config value is treated as
+// unset, since rig has no generic `config unset` command.
+pub fn get_language() -> Result<Option<String>, Box<dyn Error>> {
+    if let Ok(val) = std::env::var("RIG_LANGUAGE") {
+        return Ok(Some(val));
+    }
+
+    if let Some(val) = crate::config::get_global_config_value("language")? {
+        if !val.is_empty() {
+            return Ok(Some(val));
+        }
+    }
+
+    Ok(None)
+}
+
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub fn get_binary_dir() -> Result<String, Box<dyn Error>> {
     if let Ok(val) = std::env::var("RIG_BINARY_DIR") {

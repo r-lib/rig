@@ -47,6 +47,7 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
         rbin,
         renviron_user: no_project_renviron_user(args),
         path_prepend,
+        language: crate::utils::get_language()?,
     };
 
     if args.get_flag("shell") {
@@ -167,14 +168,17 @@ struct RunEnv {
     /// `PATH` prepend for `--activate`/`--shell` (see
     /// `activate_path_prepend`).
     path_prepend: Option<PathBuf>,
+    /// `LANGUAGE` override, from `RIG_LANGUAGE`/`rig config set language=...`
+    /// (see `crate::utils::get_language`).
+    language: Option<String>,
 }
 
 impl RunEnv {
-    /// A `Command` for `rbin`, with `R_ENVIRON_USER` and `PATH` set as
-    /// configured. The `PATH` change is set on this one `Command` only: it
-    /// never touches the parent shell's environment, but it is inherited by
-    /// this process and anything it spawns (a nested shell, or R's own
-    /// `system("R ...")`).
+    /// A `Command` for `rbin`, with `R_ENVIRON_USER`, `PATH` and `LANGUAGE`
+    /// set as configured. The `PATH` change is set on this one `Command`
+    /// only: it never touches the parent shell's environment, but it is
+    /// inherited by this process and anything it spawns (a nested shell, or
+    /// R's own `system("R ...")`).
     fn command(&self) -> Command {
         let mut cmd = Command::new(&self.rbin);
         if let Some(renviron) = &self.renviron_user {
@@ -185,6 +189,9 @@ impl RunEnv {
                 "PATH",
                 prepend_path(dir, &std::env::var_os("PATH").unwrap_or_default()),
             );
+        }
+        if let Some(lang) = &self.language {
+            cmd.env("LANGUAGE", lang);
         }
         cmd
     }
