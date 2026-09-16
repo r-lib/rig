@@ -102,7 +102,7 @@ pub(crate) fn md_to_ansi_impl(md: &str, color: bool) -> String {
         emit(out, text, &prefix, &cont);
     };
 
-    for ev in parser {
+    for (ev, range) in parser.into_offset_iter() {
         match ev {
             // -- block starts ---------------------------------------------
             Event::Start(Tag::Heading { .. }) | Event::Start(Tag::Paragraph) => {
@@ -175,14 +175,30 @@ pub(crate) fn md_to_ansi_impl(md: &str, color: bool) -> String {
             Event::Code(t) => {
                 if in_code_block {
                     inline.push_str(&t);
-                } else if color {
-                    inline.push_str("\x1b[32m");
-                    inline.push_str(&t);
-                    inline.push_str("\x1b[39m");
                 } else {
-                    inline.push('`');
-                    inline.push_str(&t);
-                    inline.push('`');
+                    // pulldown-cmark collapses a line ending inside a code
+                    // span into a single space per CommonMark, losing the
+                    // wrap point the author put there. Recover it from the
+                    // raw source so it survives as a real line break, like a
+                    // SoftBreak between two Text events, wherever the span
+                    // was actually wrapped across source lines.
+                    let raw = &md[range.clone()];
+                    let backticks = raw.chars().take_while(|&c| c == '`').count();
+                    let content = &raw[backticks..raw.len() - backticks];
+                    let text = if content.contains(['\n', '\r']) {
+                        content.replace("\r\n", "\n").replace('\r', "\n")
+                    } else {
+                        t.to_string()
+                    };
+                    if color {
+                        inline.push_str("\x1b[32m");
+                        inline.push_str(&text);
+                        inline.push_str("\x1b[39m");
+                    } else {
+                        inline.push('`');
+                        inline.push_str(&text);
+                        inline.push('`');
+                    }
                 }
             }
             Event::Start(Tag::Strong) | Event::End(TagEnd::Strong) if color => {
@@ -325,6 +341,19 @@ mod tests {
         assert_eq!(
             md_to_ansi_inline("Run in [user mode](x.qmd)", false),
             "Run in user mode"
+        );
+    }
+
+    #[test]
+    fn wrapped_code_span_keeps_line_break() {
+        let md = "Run `rig\nsystem dirs` now.";
+        assert_eq!(
+            md_to_ansi_impl(md, false),
+            "  Run `rig\n  system dirs` now."
+        );
+        assert_eq!(
+            md_to_ansi_impl(md, true),
+            "  Run \x1b[32mrig\n  system dirs\x1b[39m now."
         );
     }
 
