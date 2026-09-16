@@ -18,7 +18,7 @@ rig run <path-to-app>      # run an R app
 rig run --cmd <command>    # run `R CMD <command>`
 rig run --activate         # start R with the selected version on PATH
 rig run --shell            # start a shell with the selected version on PATH
-rig run --rscript -f <script-file>   # run a script without echoing input, like `Rscript`
+rig run --rscript ...      # run `Rscript` instead of `R`
 rig run -- --vanilla       # pass flags to R/Rscript
 ```
 
