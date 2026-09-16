@@ -233,6 +233,7 @@ On any Ubuntu or Debian distro, you can use our package repository to
 install rig. First you add our key to your config:
 
     `which sudo` curl -L https://rig.r-pkg.org/deb/rig.gpg -o /etc/apt/trusted.gpg.d/rig.gpg
+    `which sudo` chmod 644 /etc/apt/trusted.gpg.d/rig.gpg
 
 Then add the rig repository:
 
