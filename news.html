@@ -653,6 +653,8 @@ ul.task-list li input[type="checkbox"] {
 <li><p>New <code>rig system dirs</code> command to show the directories rig uses. With <code>--r</code>, <code>--binary</code>, <code>--data</code>, <code>--cache</code>, <code>--download</code>, <code>--log</code>, <code>--rtools</code> (Windows only) or <code>--fonts</code> (Linux only) it prints a single path, for use in scripts.</p></li>
 <li><p>New <code>rig config</code> command to manage the rig configuration file.</p></li>
 <li><p><code>rig run --cmd &lt;command&gt; [args...]</code> now runs <code>R CMD &lt;command&gt; [args...]</code> with the selected R version.</p></li>
+<li><p><code>rig run -- &lt;flags&gt;</code> now passes raw arguments straight to the R process, e.g.&nbsp;<code>rig run -- --vanilla</code> or <code>rig run -e '1+1' -- --vanilla</code> (#249).</p></li>
+<li><p>Plain <code>rig run</code> (i.e.&nbsp;without <code>-e</code>/<code>-f</code>/an app/<code>--cmd</code>) now defaults to <code>--no-save --no-restore</code>, so it no longer shows the “Save workspace image?” prompt on exit. Use <code>rig run -- --save --restore</code> to get the old behavior back (#249).</p></li>
 </ul>
 </section>
 <section id="other-changes" class="level2">
