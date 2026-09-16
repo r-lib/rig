@@ -924,7 +924,7 @@ fn shell_exports() -> String {
 }
 
 /// The `Rscript` next to an `R` binary.
-fn rscript_of(r_binary: &Path) -> PathBuf {
+pub(crate) fn rscript_of(r_binary: &Path) -> PathBuf {
     let name = if cfg!(windows) {
         "Rscript.exe"
     } else {

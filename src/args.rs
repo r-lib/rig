@@ -1397,6 +1397,29 @@ pub fn rig_app() -> Command {
                 .required(false),
         )
         .arg(
+            Arg::new("activate")
+                .help("Put the selected R version on PATH for the subprocess")
+                .long("activate")
+                .action(clap::ArgAction::SetTrue)
+                .required(false),
+        )
+        .arg(
+            Arg::new("shell")
+                .help("Run a shell instead of R, with the selected R version on PATH")
+                .long("shell")
+                .action(clap::ArgAction::SetTrue)
+                .required(false)
+                .conflicts_with_all(["eval", "script", "cmd", "list", "app-type", "command"]),
+        )
+        .arg(
+            Arg::new("rscript")
+                .help("Run with Rscript instead of R, e.g. for scripts (no echoing of input)")
+                .long("rscript")
+                .action(clap::ArgAction::SetTrue)
+                .required(false)
+                .conflicts_with_all(["cmd", "shell"]),
+        )
+        .arg(
             Arg::new("command")
                 .help("R script, project script name, project or R CMD command to run, with parameters")
                 .required(false)
