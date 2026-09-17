@@ -23,9 +23,18 @@ final class GeneralPreferenceViewController: NSViewController, PreferencePane {
     override func loadView() {
         let launchAtLoginButton = NSButton(checkboxWithTitle: "", target: nil, action: #selector(setLaunchAtLogin))
         launchAtLoginButton.state = LaunchAtLogin.isEnabled ? NSControl.StateValue.on : NSControl.StateValue.off
+
+        let showRStudioButton = NSButton(checkboxWithTitle: "", target: nil, action: #selector(setShowRStudio))
+        showRStudioButton.state = UserDefaults.standard.bool(forKey: "showRStudioMenu") ? NSControl.StateValue.on : NSControl.StateValue.off
+
+        let showVersionNumberButton = NSButton(checkboxWithTitle: "", target: nil, action: #selector(setShowVersionNumber))
+        showVersionNumberButton.state = UserDefaults.standard.bool(forKey: "versionShowNumber") ? NSControl.StateValue.on : NSControl.StateValue.off
+
         let grid = NSGridView(views: [
             [NSTextField(labelWithString: ""), NSTextField(labelWithString: ""), NSTextField(labelWithString: "    ")],
             [NSTextField(labelWithString: "    Launch at login"), launchAtLoginButton],
+            [NSTextField(labelWithString: "    Show RStudio menu"), showRStudioButton],
+            [NSTextField(labelWithString: "    Show version number"), showVersionNumberButton],
             [NSTextField(labelWithString: ""), NSTextField(labelWithString: ""), NSTextField(labelWithString: "    ")],
         ])
         grid.column(at: 0).xPlacement = NSGridCell.Placement.trailing
@@ -35,10 +44,19 @@ final class GeneralPreferenceViewController: NSViewController, PreferencePane {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        self.preferredContentSize = NSSize(width: 200, height: 70)
+        self.preferredContentSize = NSSize(width: 200, height: 110)
     }
 
     @objc func setLaunchAtLogin(_ sender: NSButton?) {
         LaunchAtLogin.isEnabled = sender!.state == NSControl.StateValue.on
+    }
+
+    @objc func setShowRStudio(_ sender: NSButton?) {
+        UserDefaults.standard.set(sender!.state == NSControl.StateValue.on, forKey: "showRStudioMenu")
+    }
+
+    @objc func setShowVersionNumber(_ sender: NSButton?) {
+        UserDefaults.standard.set(sender!.state == NSControl.StateValue.on, forKey: "versionShowNumber")
+        (NSApp.delegate as? AppDelegate)?.setStatusBarTitle()
     }
 }
