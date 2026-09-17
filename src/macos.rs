@@ -17,6 +17,7 @@ use owo_colors::OwoColorize;
 use path_clean::PathClean;
 use regex::Regex;
 use simple_error::*;
+use tabular::*;
 
 use crate::alias::*;
 use crate::cache::ensure_download_dir;
@@ -1800,6 +1801,9 @@ fn system_blas_status(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
         None => sc_get_list()?,
     };
 
+    let mut tab = Table::new("{:<}  {:<}");
+    tab.add_row(row!["version", "blas"]);
+    tab.add_heading("------------------------------------------");
     for ver in vers {
         let ver = check_installed(&ver)?;
         let link = blas_lib_dir(&ver)?.join("libRblas.dylib");
@@ -1811,8 +1815,9 @@ fn system_blas_status(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
             },
             Err(_) => "unknown (not a symlink)".to_string(),
         };
-        OUTPUT.status(&format!("{}: {}", ver, status));
+        tab.add_row(row!(ver, status));
     }
+    print!("{}", tab);
 
     Ok(())
 }
