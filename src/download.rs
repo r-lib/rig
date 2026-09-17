@@ -2,7 +2,7 @@ use futures::future;
 use futures::stream::StreamExt;
 use std::error::Error;
 use std::ffi::OsStr;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(target_os = "windows")]
 use std::ffi::OsString;
 use std::fs;
 use std::fs::File;
@@ -27,7 +27,7 @@ use crate::resolve::get_resolve;
 use crate::rversion::Rversion;
 use crate::utils::get_concurrent_downloads;
 use crate::utils::write_atomically;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[cfg(target_os = "windows")]
 use crate::utils::*;
 
 // ------------------------------------------------------------------------
@@ -82,31 +82,6 @@ pub fn download_r(args: &ArgMatches) -> Result<(Rversion, OsString), Box<dyn Err
     }
 
     Ok((version, target.into_os_string()))
-}
-
-#[cfg(target_os = "macos")]
-pub fn download_file_sync(
-    url: &str,
-    filename: &str,
-    infinite_cache: bool,
-) -> Result<OsString, Box<dyn Error>> {
-    let tmp_dir = crate::cache::ensure_download_dir()?;
-    let target = tmp_dir.join(filename);
-    // `infinite_cache` goes around `not_too_old()`, so `--no-cache` has to be
-    // checked here as well and not only there.
-    let cached =
-        target.exists() && !crate::cache::no_cache() && (infinite_cache || not_too_old(&target));
-    if cached {
-        OUTPUT.success(&format!("{} is cached at {}", filename, target.display()));
-        info!("{} is cached at {}", filename, target.display());
-    } else {
-        OUTPUT.status(&format!("Downloading {} -> {}", url, target.display()));
-        info!("Downloading {} -> {}", url, target.display());
-        let client = &reqwest::Client::new();
-        download_file(client, url, target.as_os_str())?;
-    }
-
-    Ok(target.into_os_string())
 }
 
 #[tokio::main]
