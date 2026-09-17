@@ -499,12 +499,6 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="./reference/sysreqs.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">rig sysreqs</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
   <a href="./reference/system.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig system</span></a>
   </div>
@@ -534,6 +528,7 @@ ul.task-list li input[type="checkbox"] {
   <li><a href="#r-package-management" id="toc-r-package-management" class="nav-link" data-scroll-target="#r-package-management">R package management</a></li>
   <li><a href="#projects" id="toc-projects" class="nav-link" data-scroll-target="#projects">Projects</a></li>
   <li><a href="#windows-specific" id="toc-windows-specific" class="nav-link" data-scroll-target="#windows-specific">Windows specific</a></li>
+  <li><a href="#macos-specific" id="toc-macos-specific" class="nav-link" data-scroll-target="#macos-specific">macOS specific</a></li>
   <li><a href="#other-new-features" id="toc-other-new-features" class="nav-link" data-scroll-target="#other-new-features">Other new features</a></li>
   <li><a href="#other-changes" id="toc-other-changes" class="nav-link" data-scroll-target="#other-changes">Other changes</a></li>
   </ul></li>
@@ -640,6 +635,12 @@ ul.task-list li input[type="checkbox"] {
 <li><p>New <code>rig system fix-r-alias</code> subcommand.</p></li>
 <li><p><code>rig rtools</code> is now a top-level command (it used to be <code>rig system rtools</code>).</p></li>
 <li><p>On Windows, <code>R CMD config</code> now works without manually putting Rtools on the <code>PATH</code>. So do <code>R CMD sh</code>, <code>R CMD make</code> and <code>rig run --cmd config</code>.</p></li>
+</ul>
+</section>
+<section id="macos-specific" class="level2">
+<h2 class="anchored" data-anchor-id="macos-specific">macOS specific</h2>
+<ul>
+<li><code>rig sysreqs</code> has been removed. It did not reliably set up a working Fortran toolchain (#262). Install gfortran from <a href="https://mac.r-project.org/tools" class="uri">https://mac.r-project.org/tools</a> instead.</li>
 </ul>
 </section>
 <section id="other-new-features" class="level2">
