@@ -26,7 +26,7 @@ use crate::escalate::*;
 use crate::library::*;
 use crate::output::OUTPUT;
 use crate::repos::*;
-use crate::resolve::{get_resolve, validate_version_arg};
+use crate::resolve::{get_resolve, is_pinned_version_string, validate_version_arg};
 use crate::run::*;
 use crate::rversion::*;
 use crate::utils::*;
@@ -117,12 +117,45 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let str: &String = args.get_one("str").unwrap();
     validate_version_arg(str)?;
 
-    if get_mode()? == crate::utils::Mode::Admin {
+    let mode = get_mode()?;
+    let alias = get_alias(args);
+    let reinstall = args.get_flag("reinstall");
+    // `devel`/`next` are rebuilt daily under the same directory name, so
+    // "already installed" never means "up to date" for them.
+    let rolling = str == "devel" || str == "next";
+
+    // Fast path: a fully pinned version's install directory name is
+    // deterministic from the version and arch alone, so we can check
+    // whether it's already installed before resolving anything over the
+    // network (and, since pinned versions never get an alias, without
+    // escalating privileges either).
+    if !reinstall && !rolling && is_pinned_version_string(str) {
+        let platform = get_platform(args)?;
+        let arch = get_arch(&platform, args);
+        let candidates = dirname_candidates_for(mode, str, &arch);
+        if let Some(name) = find_installed_matching(&candidates, str)? {
+            return report_already_installed(&name, alias_with_arch_suffix(alias, &arch));
+        }
+    }
+
+    if mode == crate::utils::Mode::Admin {
         escalate("adding new R versions")?;
     }
     let mut version = get_resolve(args)?;
-    let alias = get_alias(args);
     let ver = version.version.to_owned();
+
+    // General check: for requests that don't pin a full version (`release`,
+    // `oldrel(/n)`, bare/partial version numbers), the concrete version is
+    // only known once resolved. Skip here if it's already installed.
+    if !reinstall && !rolling {
+        if let Some(ref v) = ver {
+            let arch = version.arch.clone().unwrap_or_default();
+            let candidates = dirname_candidates_for(mode, v, &arch);
+            if let Some(name) = find_installed_matching(&candidates, v)? {
+                return report_already_installed(&name, alias_with_arch_suffix(alias, &arch));
+            }
+        }
+    }
     let verstr = match ver {
         Some(ref x) => x,
         None => "???",
@@ -172,8 +205,6 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // If installed from URL, then we'll use the version in the file
     let fver = extract_pkg_version(&target_str)?;
 
-    let mode = get_mode()?;
-
     match ver {
         Some(_) => {}
         None => {
@@ -209,15 +240,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     system_fix_permissions(Some(vec![dirname.to_string()]))?;
     library_update_rprofile(&dirname.to_string())?;
     sc_system_make_links()?;
-    // The `release`/`oldrel` aliases point at the native build. An
-    // x86_64 build on an arm64 machine gets an `-x86_64` suffix instead,
-    // to avoid colliding with the native alias.
-    if let Some(alias) = alias {
-        let alias = if fver.arch == "x86_64" && is_arm64_machine() {
-            format!("{}-x86_64", alias)
-        } else {
-            alias
-        };
+    if let Some(alias) = alias_with_arch_suffix(alias, &fver.arch) {
         add_alias(&dirname, &alias)?
     };
 
@@ -2172,6 +2195,63 @@ fn get_minor_version(ver: &str) -> Result<String, Box<dyn Error>> {
     Ok(re.replace(ver, "").to_string())
 }
 
+// Admin-mode installs are named after their major.minor version (only one
+// patch release per minor can be installed at a time), plus an arch suffix
+// when the build isn't the native-arch release build.
+fn admin_minor_dirname(ver: &str, arch: &str) -> Result<String, Box<dyn Error>> {
+    let minor = get_minor_version(ver)?;
+    let ver_semver = semver::Version::parse(ver).ok();
+    let cutoff = semver::Version::new(4, 6, 0);
+    let arm64_no_suffix = ver_semver.is_some_and(|v| v >= cutoff);
+    Ok(if arch == "arm64" && !arm64_no_suffix {
+        minor + "-arm64"
+    } else if arch == "x86_64" {
+        minor + "-x86_64"
+    } else {
+        minor
+    })
+}
+
+// Candidate admin-mode directory name(s) `version`/`arch` would install as,
+// used to check whether it's already installed without downloading
+// anything. Normally just `admin_minor_dirname`, but two different .pkg
+// installers exist for R 4.6.0's arm64 build ("4.6" and "4.6-arm64", see
+// `extract_pkg_version`), so that one version/arch combination returns both.
+fn admin_dirname_candidates(ver: &str, arch: &str) -> Vec<String> {
+    if ver == "4.6.0" && arch == "arm64" {
+        return vec!["4.6".to_string(), "4.6-arm64".to_string()];
+    }
+    match admin_minor_dirname(ver, arch) {
+        Ok(name) => vec![name],
+        Err(_) => vec![],
+    }
+}
+
+// Directory name(s) an install of `version`/`arch` would use, to check
+// whether it's already installed. Mode-aware: user-mode installs are named
+// after the full version, admin-mode installs after the major.minor version
+// (see `admin_dirname_candidates`).
+fn dirname_candidates_for(mode: crate::utils::Mode, ver: &str, arch: &str) -> Vec<String> {
+    if mode == crate::utils::Mode::User {
+        vec![user_dirname_for(ver, arch, "")]
+    } else {
+        admin_dirname_candidates(ver, arch)
+    }
+}
+
+// The `release`/`oldrel` aliases point at the native build. An x86_64 build
+// installed on an arm64 machine gets an `-x86_64` suffix instead, to avoid
+// colliding with the native alias.
+fn alias_with_arch_suffix(alias: Option<String>, arch: &str) -> Option<String> {
+    alias.map(|a| {
+        if arch == "x86_64" && is_arm64_machine() {
+            format!("{}-x86_64", a)
+        } else {
+            a
+        }
+    })
+}
+
 fn extract_pkg_version(filename: &OsStr) -> Result<RversionDir, Box<dyn Error>> {
     let out = Command::new("installer")
         .args(["-pkginfo", "-pkg"])
@@ -2269,18 +2349,7 @@ fn extract_pkg_version(filename: &OsStr) -> Result<RversionDir, Box<dyn Error>> 
             ),
         }
     } else {
-        let minor = get_minor_version(&ver)?;
-        let x86_64 = Regex::new("X86_64")?;
-        let ver_semver = semver::Version::parse(&ver).ok();
-        let cutoff = semver::Version::new(4, 6, 0);
-        let arm64_no_suffix = ver_semver.is_some_and(|v| v >= cutoff);
-        if arch == "arm64" && !arm64_no_suffix {
-            minor + "-arm64"
-        } else if x86_64.is_match(lines[0]) {
-            minor + "-x86_64"
-        } else {
-            minor
-        }
+        admin_minor_dirname(&ver, arch)?
     };
 
     OUTPUT.success(&format!("This is R {} for {}.", ver, arch));

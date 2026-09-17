@@ -25,6 +25,7 @@ use crate::linux::*;
 #[cfg(target_os = "linux")]
 use crate::platform::*;
 
+use crate::alias::*;
 use crate::download::download_json_sync;
 use crate::output::OUTPUT;
 use crate::renv;
@@ -32,22 +33,68 @@ use crate::run::*;
 use crate::rversion::*;
 use crate::utils::*;
 
-pub fn check_installed(x: &String) -> Result<String, Box<dyn Error>> {
+// Returns the installed dirname matching `x`, either directly or via an
+// alias, or `None` if nothing matches. Does not error or print anything, so
+// callers can use it to check for existence without treating a miss as a
+// failure (unlike `check_installed`).
+pub fn find_installed(x: &str) -> Result<Option<String>, Box<dyn Error>> {
     let inst = sc_get_list_details()?;
 
     for ver in inst {
-        if &ver.name == x {
-            return Ok(ver.name);
+        if ver.name == x {
+            return Ok(Some(ver.name));
         }
-        if ver.aliases.contains(x) {
+        if ver.aliases.iter().any(|a| a == x) {
             debug!("Alias {} is resolved to version {}", x, ver.name);
-            return Ok(ver.name);
+            return Ok(Some(ver.name));
         }
+    }
+
+    Ok(None)
+}
+
+pub fn check_installed(x: &String) -> Result<String, Box<dyn Error>> {
+    if let Some(name) = find_installed(x)? {
+        return Ok(name);
     }
 
     OUTPUT.error(&format!("R version {} is not installed", x));
     error!("R version {} is not installed", x);
     bail!("R version {} is not installed", &x);
+}
+
+// Used by `rig add` to check whether the version it is about to install is
+// already installed, without erroring. `names` are the candidate directory
+// name(s) that install would use (platform/arch-specific, and sometimes more
+// than one when the mapping from version to directory name is ambiguous);
+// a candidate only counts as a match if the actual installed R version there
+// is exactly `version` (this is what makes it safe for macOS admin-mode
+// installs, whose directory names only encode the major.minor version).
+pub fn find_installed_matching(
+    names: &[String],
+    version: &str,
+) -> Result<Option<String>, Box<dyn Error>> {
+    let inst = sc_get_list_details()?;
+
+    for ver in inst {
+        if names.iter().any(|n| n == &ver.name) && ver.version.as_deref() == Some(version) {
+            return Ok(Some(ver.name));
+        }
+    }
+
+    Ok(None)
+}
+
+// Used by `rig add` when it decides to skip installing an already-installed
+// version: makes sure any alias the request implies (e.g. `rig add release`)
+// still ends up on that version, then reports the skip.
+pub fn report_already_installed(name: &str, alias: Option<String>) -> Result<(), Box<dyn Error>> {
+    if let Some(alias) = alias {
+        add_alias(name, &alias)?;
+    }
+    OUTPUT.success(&format!("R version {} is already installed", name));
+    info!("R version {} is already installed", name);
+    Ok(())
 }
 
 // -- rig default ---------------------------------------------------------

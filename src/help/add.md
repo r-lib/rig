@@ -55,6 +55,12 @@ minor branch. E.g. it is not possible to have R 4.6.0 and R 4.6.1 installed
 at the same time. Adding one of them will automatically remove the other.
 In user mode there is no such restriction.
 
+If the requested version is already installed, `rig add` does nothing
+(other than making sure any implied alias, e.g. `release`, still points at
+it) instead of reinstalling it. Use `--reinstall` to reinstall anyway.
+`rig add devel` and `rig add next` are always reinstalled, since these are
+rebuilt daily under the same name.
+
 You can use `rig add` to install Rtools:
 
 ```sh
