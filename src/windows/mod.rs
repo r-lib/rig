@@ -2154,9 +2154,9 @@ fn sc_rtools_add(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<(), Box<dy
     let arch = args.get_one::<String>("arch").map(|s| normalize_arch(s));
     if ver == "all" {
         add_rtools("rtools".to_string(), arch)
-    } else if ver.starts_with("rtools") {
+    } else if let Some(stripped) = ver.strip_prefix("rtools") {
         add_rtools(
-            "rtools".to_string() + &normalize_rtools_version(&ver["rtools".len()..]),
+            "rtools".to_string() + &normalize_rtools_version(stripped),
             arch,
         )
     } else {
@@ -2176,9 +2176,9 @@ fn sc_rtools_rm(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<(), Box<dyn
     for ver in vers {
         if ver == "all" {
             rm_rtools("rtools".to_string(), arch.clone())?;
-        } else if ver.starts_with("rtools") {
+        } else if let Some(stripped) = ver.strip_prefix("rtools") {
             rm_rtools(
-                "rtools".to_string() + &normalize_rtools_version(&ver["rtools".len()..]),
+                "rtools".to_string() + &normalize_rtools_version(stripped),
                 arch.clone(),
             )?;
         } else {

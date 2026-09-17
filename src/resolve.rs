@@ -96,7 +96,7 @@ fn is_valid_version_string(str: &str) -> bool {
 // Parses a plain version string ("4", "4.0", "4.0.5"), padding missing
 // components with 0. Returns None for symbolic versions (release, devel,
 // oldrel/N) and URLs.
-fn parse_plain_version(str: &str) -> Option<semver::Version> {
+pub(crate) fn parse_plain_version(str: &str) -> Option<semver::Version> {
     let re = Regex::new(r"^(\d+)(?:\.(\d+))?(?:\.(\d+))?$").unwrap();
     let caps = re.captures(str)?;
     let major = caps.get(1)?.as_str().parse().ok()?;
