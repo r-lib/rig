@@ -957,6 +957,36 @@ pub(crate) fn proj_read_manifest_deps(
     Ok((manifest.project.name, version, deps))
 }
 
+/// [`proj_read_manifest_deps`], plus the manifest's git/GitHub/GitLab-sourced
+/// dependencies (see [`crate::rproj::Rproj::git_dependencies`]), for
+/// `rig proj tree`, which needs them to resolve a remote package met while
+/// walking the tree the same way [`register_git_sources`] does for a solve.
+#[allow(clippy::type_complexity)]
+fn proj_read_manifest_deps_with_remotes(
+    root: &Path,
+    dev: bool,
+) -> Result<
+    (
+        String,
+        RPackageVersion,
+        PackageDependencies,
+        Vec<(String, DepTable)>,
+    ),
+    Box<dyn Error>,
+> {
+    OUTPUT.status(&format!(
+        "Reading dependencies from {}",
+        RPROJ_MANIFEST_FILE
+    ));
+    info!("Reading dependencies from {}", RPROJ_MANIFEST_FILE);
+    let manifest = proj_read_manifest(root)?;
+
+    let deps = manifest.to_dep_version_specs(dev)?;
+    let version = RPackageVersion::from_str(&manifest.project.version)?;
+    let git_deps = manifest.git_dependencies();
+    Ok((manifest.project.name, version, deps, git_deps))
+}
+
 /// What one solve is rooted at: a plain project, or every member of a
 /// workspace.
 #[derive(Debug)]
@@ -1221,12 +1251,14 @@ fn sc_proj_tree(
     let no_base = args.get_flag("no-base");
     let why = args.get_one::<String>("why").map(|s| s.as_str());
     let json = args.get_flag("json") || projargs.get_flag("json") || mainargs.get_flag("json");
-    let (name, version, pkg_deps) = proj_read_manifest_deps(Path::new("."), dev)?;
+    let (name, version, pkg_deps, git_deps) =
+        proj_read_manifest_deps_with_remotes(Path::new("."), dev)?;
 
     proj_tree(
         &name,
         &version,
         &pkg_deps.dependencies,
+        git_deps.into_iter().collect(),
         dev,
         no_base,
         why,
@@ -2686,6 +2718,7 @@ fn rvenv_r_installation(
     r_version: &str,
     arch: &str,
     install: bool,
+    dry_run: bool,
 ) -> Result<(String, PathBuf), Box<dyn Error>> {
     if let Some(name) = find_r_installation(r_version, arch)? {
         let binary = get_r_binary(&name)?;
@@ -2693,6 +2726,18 @@ fn rvenv_r_installation(
     }
 
     let add_args = r_add_args(r_version, arch);
+    if dry_run {
+        let msg = format!(
+            "R {} ({}) is not installed, `rig proj sync` would install it with \
+             `rig {}`",
+            r_version,
+            arch,
+            add_args[1..].join(" ")
+        );
+        OUTPUT.info(&msg);
+        info!("{}", msg);
+        bail!("{}", msg);
+    }
     if !install {
         let msg = format!(
             "R {} ({}) is not installed, install it with `rig {}` \
@@ -2934,7 +2979,10 @@ pub(crate) struct ProjSyncOptions {
     /// (`--no-install-r` turns this off).
     pub install_r: bool,
     /// How many packages to install at the same time (`--max-concurrent`).
-    pub max_concurrent: usize,
+    /// `None` means fall back to `get_concurrent_installs()` (the
+    /// `concurrent-installs` config entry / `RIG_CONCURRENT_INSTALLS`, or the
+    /// number of CPU cores).
+    pub max_concurrent: Option<usize>,
     /// Which target to sync when more than one matches this machine
     /// (`--r-version`). Selects among `rproj.lock`'s existing targets, does
     /// not trigger a new solve.
@@ -2950,6 +2998,9 @@ pub(crate) struct ProjSyncOptions {
     /// `rig proj lock` when it is missing (`--frozen`). Also skips the
     /// repositories file when there is no `rproj.toml` to build it from.
     pub frozen: bool,
+    /// Report what sync would install, remove or write, without actually
+    /// doing any of it (`--dry-run`).
+    pub dry_run: bool,
 }
 
 impl Default for ProjSyncOptions {
@@ -2957,11 +3008,12 @@ impl Default for ProjSyncOptions {
         ProjSyncOptions {
             dev: true,
             install_r: true,
-            max_concurrent: 8,
+            max_concurrent: None,
             r_version: None,
             platform: None,
             inexact: false,
             frozen: false,
+            dry_run: false,
         }
     }
 }
@@ -2980,14 +3032,12 @@ fn sc_proj_sync(
     let opts = ProjSyncOptions {
         dev: !args.get_flag("no-dev"),
         install_r: !args.get_flag("no-install-r"),
-        max_concurrent: args
-            .get_one::<usize>("max-concurrent")
-            .copied()
-            .unwrap_or(8),
+        max_concurrent: args.get_one::<usize>("max-concurrent").copied(),
         r_version: args.get_one::<String>("r-version").cloned(),
         platform: args.get_one::<String>("platform").cloned(),
         inexact: args.get_flag("inexact"),
         frozen: args.get_flag("frozen"),
+        dry_run: args.get_flag("dry-run"),
     };
 
     proj_sync(&root, &opts, args)
@@ -3020,6 +3070,13 @@ pub(crate) fn proj_sync(
             OUTPUT.error(&msg);
             error!("{}", msg);
             bail!("{}", msg);
+        }
+        if opts.dry_run {
+            OUTPUT.info(&format!(
+                "No {}, `rig proj sync` would run `rig proj lock` first",
+                RPROJ_LOCK_FILE
+            ));
+            return Ok(());
         }
         OUTPUT.info(&format!(
             "No {}, running `rig proj lock` first",
@@ -3073,18 +3130,25 @@ pub(crate) fn proj_sync(
     // `rig proj init` does not create the project library, this is where it
     // comes from. Create it now rather than just before the installs: an
     // up-to-date project with nothing to install still gets a sync stamp
-    // written into it.
-    fs::create_dir_all(&library_path)?;
+    // written into it. Skipped under `--dry-run`, which touches nothing.
+    if !opts.dry_run {
+        fs::create_dir_all(&library_path)?;
+    }
 
     // Everything below installs against the R version the lock file was
-    // solved for, so resolve (and, unless --no-install-r, install) it before
-    // touching the library: installed R packages are tied to the R minor
-    // version, so the R on `PATH` is not good enough.
+    // solved for, so resolve (and, unless --no-install-r or --dry-run,
+    // install) it before touching the library: installed R packages are tied
+    // to the R minor version, so the R on `PATH` is not good enough.
     // The architecture comes from the lock file's platform, not from the
     // machine: a lock file solved for macos-x86_64 needs an x86_64 R even on
     // an arm64 Mac.
     let r_arch = target_r_arch(&target.platform);
-    let (r_name, r_binary) = rvenv_r_installation(&target.r_version, &r_arch, opts.install_r)?;
+    let (r_name, r_binary) = rvenv_r_installation(
+        &target.r_version,
+        &r_arch,
+        opts.install_r && !opts.dry_run,
+        opts.dry_run,
+    )?;
 
     {
         // When the library is centralized, leave a compatibility symlink at
@@ -3093,7 +3157,7 @@ pub(crate) fn proj_sync(
         // own `centralized-project-envs` feature. Anything that still
         // expects a real `.rvenv/lib` (manual inspection, other tools) keeps
         // working; recreated on every sync like the rest of `.rvenv`.
-        if crate::utils::get_proj_library_root()?.is_some() {
+        if !opts.dry_run && crate::utils::get_proj_library_root()?.is_some() {
             link_library_compat_symlink(&project_library_in_tree(root), &library_path)?;
         }
         // The base of the shared tools library, `__tools` alongside it (see
@@ -3177,29 +3241,43 @@ pub(crate) fn proj_sync(
             .as_ref()
             .map(|m| m.repository.as_slice())
             .unwrap_or(&[]);
-        let written = rvenv_sync(root, &cfg, repos)?;
-        if written.is_empty() {
-            info!(
-                "Project environment for R {} ({}) is already up to date",
-                r_name,
-                r_binary.display()
-            );
-        } else {
-            for path in &written {
-                let path = path.strip_prefix(root).unwrap_or(path);
-                info!("Updated {}", path.display());
-            }
-            OUTPUT.success(&format!(
-                "Updated the project environment for R {} ({})",
+        if opts.dry_run {
+            OUTPUT.info(&format!(
+                "Would refresh the project environment for R {} ({})",
                 r_name,
                 r_binary.display()
             ));
+        } else {
+            let written = rvenv_sync(root, &cfg, repos)?;
+            if written.is_empty() {
+                info!(
+                    "Project environment for R {} ({}) is already up to date",
+                    r_name,
+                    r_binary.display()
+                );
+            } else {
+                for path in &written {
+                    let path = path.strip_prefix(root).unwrap_or(path);
+                    info!("Updated {}", path.display());
+                }
+                OUTPUT.success(&format!(
+                    "Updated the project environment for R {} ({})",
+                    r_name,
+                    r_binary.display()
+                ));
+            }
         }
     }
 
     // A package already in the library, at the version and provenance the
     // lockfile asks for, does not need to be downloaded or reinstalled.
-    let already_installed = read_installed(&library_path)?;
+    // Under `--dry-run` the library may not exist yet (its creation above was
+    // skipped too), which just means nothing is installed.
+    let already_installed = if library_path.exists() {
+        read_installed(&library_path)?
+    } else {
+        vec![]
+    };
 
     // A package in the library that is not wanted any more (dropped from
     // `rproj.toml`, or left over from before `--no-dev`) is removed by
@@ -3216,44 +3294,63 @@ pub(crate) fn proj_sync(
             })
             .collect();
         if !extras.is_empty() {
-            let mut removed: Vec<&InstalledPackage> = vec![];
-            let mut failed: Vec<String> = vec![];
-            for extra in &extras {
-                match remove_package(&extra.path) {
-                    Ok(()) => removed.push(extra),
-                    Err(err) => {
-                        OUTPUT.error(&err);
-                        failed.push(extra.package.clone());
-                    }
-                }
-            }
-            if !removed.is_empty() {
-                let names = removed
-                    .iter()
-                    .map(|p| format!("{} ({})", p.package, p.version))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                let word = if removed.len() == 1 {
-                    "package"
-                } else {
-                    "packages"
-                };
-                OUTPUT.success(&format!(
-                    "Removed {} {} no longer in {}: {}",
-                    removed.len(),
+            let names = extras
+                .iter()
+                .map(|p| format!("{} ({})", p.package, p.version))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let word = if extras.len() == 1 {
+                "package"
+            } else {
+                "packages"
+            };
+            if opts.dry_run {
+                OUTPUT.info(&format!(
+                    "Would remove {} {} no longer in {}: {}",
+                    extras.len(),
                     word,
                     RPROJ_LOCK_FILE,
                     names
                 ));
-                info!("Removed {} from {}", names, library_path.display());
-            }
-            if !failed.is_empty() {
-                bail!("Failed to remove {}", failed.join(", "));
+            } else {
+                let mut removed: Vec<&InstalledPackage> = vec![];
+                let mut failed: Vec<String> = vec![];
+                for extra in &extras {
+                    match remove_package(&extra.path) {
+                        Ok(()) => removed.push(extra),
+                        Err(err) => {
+                            OUTPUT.error(&err);
+                            failed.push(extra.package.clone());
+                        }
+                    }
+                }
+                if !removed.is_empty() {
+                    let names = removed
+                        .iter()
+                        .map(|p| format!("{} ({})", p.package, p.version))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    OUTPUT.success(&format!(
+                        "Removed {} {} no longer in {}: {}",
+                        removed.len(),
+                        word,
+                        RPROJ_LOCK_FILE,
+                        names
+                    ));
+                    info!("Removed {} from {}", names, library_path.display());
+                }
+                if !failed.is_empty() {
+                    bail!("Failed to remove {}", failed.join(", "));
+                }
             }
         }
     }
 
-    let already_installed: Vec<InstalledPackage> = read_installed(&library_path)?;
+    let already_installed: Vec<InstalledPackage> = if library_path.exists() {
+        read_installed(&library_path)?
+    } else {
+        vec![]
+    };
     let plan = plan_installs(wanted, &already_installed, false);
     print_plan(&format!("({})", library_path.display()), &plan);
     let todo: Vec<&RprojLockPackage> = plan
@@ -3266,12 +3363,24 @@ pub(crate) fn proj_sync(
     // `rproj.lock` and warns in every R session while they differ, so it has
     // to be updated even when there was nothing to install.
     if todo.is_empty() {
-        write_sync_stamp(&library_path, &lock_path)?;
+        if !opts.dry_run {
+            write_sync_stamp(&library_path, &lock_path)?;
+        }
         OUTPUT.success(&format!(
             "Everything is up to date in {}",
             library_path.display()
         ));
         info!("Nothing to install in {}", library_path.display());
+        return Ok(());
+    }
+
+    if opts.dry_run {
+        OUTPUT.info(&format!(
+            "Would install {} of {} packages to {}",
+            todo.len(),
+            wanted.len(),
+            library_path.display()
+        ));
         return Ok(());
     }
 
@@ -3303,7 +3412,10 @@ pub(crate) fn proj_sync(
         })
         .collect();
 
-    let max_concurrent = opts.max_concurrent;
+    let max_concurrent = match opts.max_concurrent {
+        Some(n) => n,
+        None => crate::utils::get_concurrent_installs()?,
+    };
 
     let total_packages = packages.len();
     OUTPUT.status(&format!(
@@ -3515,7 +3627,7 @@ fn download_http_lockfile_packages(
                 overall_pb.finish_and_clear();
             }
         },
-    );
+    )?;
 
     // Check if there was an error
     if let Some((idx, err)) = error.into_inner() {

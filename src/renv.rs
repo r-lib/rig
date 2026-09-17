@@ -216,9 +216,9 @@ pub fn match_r_version(ver: &str) -> Result<OKInstalledVersion, Box<dyn Error>> 
     let mut okvers = filter_ok_versions(allvers);
     okvers.sort();
 
-    let ver = match semver::Version::parse(ver) {
-        Ok(v) => v,
-        Err(_) => {
+    let ver = match crate::resolve::parse_plain_version(ver) {
+        Some(v) => v,
+        None => {
             OUTPUT.error(&format!("Invalid R version in renv.lock file: {:?}", ver));
             error!("Invalid R version in renv.lock file: {:?}", ver);
             bail!("Invalid R version in renv.lock file: {:?}", ver);

@@ -357,6 +357,13 @@ pub fn rig_app() -> Command {
                 .required(false)
                 .value_parser(pak_version_values())
                 .default_value("stable"),
+        )
+        .arg(
+            Arg::new("reinstall")
+                .help("Reinstall, even if this R version is already installed.")
+                .long("reinstall")
+                .num_args(0)
+                .required(false),
         );
 
     {
@@ -548,6 +555,52 @@ pub fn rig_app() -> Command {
         );
     }
 
+    let cmd_self_update = Command::new("update")
+        .about(ABOUT_SELF_UPDATE)
+        .long_about(HELP_SELF_UPDATE)
+        .display_order(0)
+        .arg(
+            Arg::new("dry-run")
+                .help("Check for a new version without downloading or installing it")
+                .long("dry-run")
+                .num_args(0)
+                .required(false),
+        )
+        .arg(
+            Arg::new("pre-release")
+                .help("Include pre-releases when looking for the latest version")
+                .long("pre-release")
+                .num_args(0)
+                .required(false),
+        );
+
+    let cmd_self_uninstall = Command::new("uninstall")
+        .about(ABOUT_SELF_UNINSTALL)
+        .long_about(HELP_SELF_UNINSTALL)
+        .display_order(0)
+        .arg(
+            Arg::new("dry-run")
+                .help("Show what would be removed, without removing anything")
+                .long("dry-run")
+                .num_args(0)
+                .required(false),
+        )
+        .arg(
+            Arg::new("force")
+                .help("Actually remove rig, instead of just showing what would be removed")
+                .long("force")
+                .num_args(0)
+                .required(false),
+        );
+
+    let cmd_self = Command::new("self")
+        .about(ABOUT_SELF)
+        .long_about(HELP_SELF)
+        .display_order(0)
+        .arg_required_else_help(true)
+        .subcommand(cmd_self_update)
+        .subcommand(cmd_self_uninstall);
+
     let mut cmd_system = Command::new("system")
         .about(ABOUT_SYSTEM)
         .long_about(HELP_SYSTEM)
@@ -733,11 +786,49 @@ pub fn rig_app() -> Command {
                     .action(clap::ArgAction::Append),
             );
 
+        let cmd_system_blas_status = Command::new("status")
+            .about(ABOUT_SYSTEM_BLAS_STATUS)
+            .long_about(HELP_SYSTEM_BLAS_STATUS)
+            .display_order(0)
+            .arg(
+                Arg::new("version")
+                    .help("R versions to check (default: all)")
+                    .required(false)
+                    .action(clap::ArgAction::Append),
+            );
+
+        let cmd_system_blas_set = Command::new("set")
+            .about(ABOUT_SYSTEM_BLAS_SET)
+            .long_about(HELP_SYSTEM_BLAS_SET)
+            .display_order(0)
+            .arg(
+                Arg::new("blas")
+                    .help("BLAS library to use")
+                    .required(true)
+                    .value_parser(["reference", "accelerate"]),
+            )
+            .arg(
+                Arg::new("version")
+                    .help("R versions to update (default: all)")
+                    .required(false)
+                    .action(clap::ArgAction::Append),
+            );
+
+        let cmd_system_blas = Command::new("blas")
+            .about(ABOUT_SYSTEM_BLAS)
+            .long_about(HELP_SYSTEM_BLAS)
+            .display_order(0)
+            .platform("macos")
+            .arg_required_else_help(true)
+            .subcommand(cmd_system_blas_status)
+            .subcommand(cmd_system_blas_set);
+
         cmd_system = cmd_system
             .subcommand(cmd_system_noopenmp)
             .subcommand(cmd_system_allow_debugger)
             .subcommand(cmd_system_allow_debugger_rstudio)
-            .subcommand(cmd_system_allow_core_dumps);
+            .subcommand(cmd_system_allow_core_dumps)
+            .subcommand(cmd_system_blas);
     }
 
     {
@@ -1184,71 +1275,6 @@ pub fn rig_app() -> Command {
         rig = rig.subcommand(cmd_config);
     }
 
-    {
-        let cmd_sysreqs = Command::new("sysreqs")
-            .about(ABOUT_SYSREQS)
-            .display_order(0)
-            .platform("macos")
-            .long_about(HELP_SYSREQS)
-            .arg_required_else_help(true)
-            .arg(
-                Arg::new("json")
-                    .help("JSON output")
-                    .long("json")
-                    .num_args(0)
-                    .required(false),
-            )
-            .subcommand(
-                Command::new("add")
-                    .about(ABOUT_SYSREQS_ADD)
-                    .long_about(HELP_SYSREQS_ADD)
-                    .display_order(0)
-                    .arg(
-                        Arg::new("name")
-                            .help("system tool to install")
-                            .required(true)
-                            .action(clap::ArgAction::Append),
-                    )
-                    .arg(
-                        Arg::new("arch")
-                            .help("Architecture to install for")
-                            .short('a')
-                            .long("arch")
-                            .required(false)
-                            .default_value(_default_arch)
-                            .value_parser(["arm64", "x86_64"]),
-                    ),
-            )
-            .subcommand(
-                Command::new("list")
-                    .about(ABOUT_SYSREQS_LIST)
-                    .long_about(HELP_SYSREQS_LIST)
-                    .display_order(0)
-                    .arg(
-                        Arg::new("json")
-                            .help("JSON output")
-                            .long("json")
-                            .num_args(0)
-                            .required(false),
-                    ),
-            )
-            .subcommand(
-                Command::new("info")
-                    .about(ABOUT_SYSREQS_INFO)
-                    .long_about(HELP_SYSREQS_INFO)
-                    .display_order(0)
-                    .arg(Arg::new("name").help("system tool to show").required(true))
-                    .arg(
-                        Arg::new("json")
-                            .help("JSON output")
-                            .long("json")
-                            .num_args(0)
-                            .required(false),
-                    ),
-            );
-        rig = rig.subcommand(cmd_sysreqs);
-    }
-
     let cmd_run = Command::new("run")
         .about(ABOUT_RUN)
         .display_order(0)
@@ -1361,6 +1387,29 @@ pub fn rig_app() -> Command {
                 .long("json")
                 .action(clap::ArgAction::SetTrue)
                 .required(false),
+        )
+        .arg(
+            Arg::new("activate")
+                .help("Put the selected R version on PATH for the subprocess")
+                .long("activate")
+                .action(clap::ArgAction::SetTrue)
+                .required(false),
+        )
+        .arg(
+            Arg::new("shell")
+                .help("Run a shell instead of R, with the selected R version on PATH")
+                .long("shell")
+                .action(clap::ArgAction::SetTrue)
+                .required(false)
+                .conflicts_with_all(["eval", "script", "cmd", "list", "app-type", "command"]),
+        )
+        .arg(
+            Arg::new("rscript")
+                .help("Run with Rscript instead of R, e.g. for scripts (no echoing of input)")
+                .long("rscript")
+                .action(clap::ArgAction::SetTrue)
+                .required(false)
+                .conflicts_with_all(["cmd", "shell"]),
         )
         .arg(
             Arg::new("command")
@@ -1688,7 +1737,11 @@ pub fn rig_app() -> Command {
                 )
                 .arg(
                     Arg::new("max-concurrent")
-                        .help("Maximum number of concurrent installations (default: 8)")
+                        .help(
+                            "Maximum number of concurrent installations\n\
+                            (default: number of CPU cores, see 'concurrent-installs'\n\
+                            in 'rig config')",
+                        )
                         .long("max-concurrent")
                         .num_args(1)
                         .value_parser(clap::value_parser!(usize))
@@ -1742,6 +1795,16 @@ pub fn rig_app() -> Command {
                             Fails if rproj.lock does not exist, instead of creating it.",
                         )
                         .long("frozen")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("dry-run")
+                        .help(
+                            "Show what sync would do, without installing, removing or\n\
+                            writing anything",
+                        )
+                        .long("dry-run")
                         .num_args(0)
                         .required(false),
                 ),
@@ -2601,6 +2664,7 @@ pub fn rig_app() -> Command {
         .subcommand(cmd_list)
         .subcommand(cmd_add)
         .subcommand(cmd_rm)
+        .subcommand(cmd_self)
         .subcommand(cmd_system)
         .subcommand(cmd_rtools())
         .subcommand(cmd_resolve)
@@ -2650,8 +2714,56 @@ where
     out
 }
 
+// Splits `rig`'s raw arguments before clap sees them.
+//
+// `rig run --cmd <command> [args...]`: unchanged, delegates to
+// `rcmd_argv()` -- a literal `--` is auto-inserted right after `--cmd` so
+// clap doesn't reinterpret the R CMD command's own flags as rig's.
+//
+// `rig run [...] -- <r-args...>` (without `--cmd`): a literal `--`
+// separates rig's own arguments (an eval/script/app name and its own
+// arguments) from raw R/`Rscript` engine flags, e.g. `rig run -- --vanilla`
+// or `rig run report --format pdf -- --vanilla`. Everything from that `--`
+// onward is pulled out *here*, before clap ever sees it, so it can never
+// collide with rig's own flags (not even the built-in `--help`/`--version`),
+// and returned separately for `sc_run()` to forward straight to the R
+// process. `--` is not otherwise meaningful to any rig command.
+fn split_run_args<I>(argv: I) -> (Vec<std::ffi::OsString>, Vec<String>)
+where
+    I: IntoIterator<Item = std::ffi::OsString>,
+{
+    use std::ffi::OsStr;
+    let argv: Vec<std::ffi::OsString> = argv.into_iter().collect();
+    if argv.iter().any(|a| a.as_os_str() == OsStr::new("--cmd")) {
+        return (rcmd_argv(argv), vec![]);
+    }
+    let mut out = Vec::new();
+    let mut iter = argv.into_iter();
+    while let Some(arg) = iter.next() {
+        if arg.as_os_str() == OsStr::new("--") {
+            return (
+                out,
+                iter.map(|a| a.to_string_lossy().into_owned()).collect(),
+            );
+        }
+        out.push(arg);
+    }
+    (out, vec![])
+}
+
+static RUN_R_ARGS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+
+/// Raw R engine flags typed after a literal `--` in `rig run ... -- <flags>`
+/// (empty unless the matched subcommand is `run` and `--cmd` was not given;
+/// see `split_run_args()`).
+pub fn run_r_args() -> &'static [String] {
+    RUN_R_ARGS.get().map(|v| v.as_slice()).unwrap_or(&[])
+}
+
 pub fn parse_args() -> ArgMatches {
-    match rig_app().try_get_matches_from(rcmd_argv(std::env::args_os())) {
+    let (argv, r_args) = split_run_args(std::env::args_os());
+    let _ = RUN_R_ARGS.set(r_args);
+    match rig_app().try_get_matches_from(argv) {
         Ok(matches) => matches,
         Err(e) => {
             use clap::error::ErrorKind::*;
@@ -2836,6 +2948,71 @@ mod tests {
         assert!(run.get_flag("dry-run"));
         let cmdargs: Vec<&String> = run.get_many::<String>("command").unwrap().collect();
         assert_eq!(cmdargs, ["check", "--no-manual", "."]);
+    }
+
+    fn split(argv: &[&str]) -> (Vec<String>, Vec<String>) {
+        let (out, r_args) = split_run_args(argv.iter().map(OsString::from));
+        let out = out
+            .iter()
+            .map(|x| x.to_string_lossy().into_owned())
+            .collect();
+        (out, r_args)
+    }
+
+    #[test]
+    fn test_split_run_args_no_separator() {
+        let (out, r_args) = split(&["rig", "run", "-e", "1+1"]);
+        assert_eq!(out, ["rig", "run", "-e", "1+1"]);
+        assert!(r_args.is_empty());
+    }
+
+    #[test]
+    fn test_split_run_args_bare() {
+        let (out, r_args) = split(&["rig", "run", "--", "--vanilla", "--no-save"]);
+        assert_eq!(out, ["rig", "run"]);
+        assert_eq!(r_args, ["--vanilla", "--no-save"]);
+    }
+
+    #[test]
+    fn test_split_run_args_with_app_and_own_args() {
+        let (out, r_args) = split(&["rig", "run", "report", "--format", "pdf", "--", "--vanilla"]);
+        assert_eq!(out, ["rig", "run", "report", "--format", "pdf"]);
+        assert_eq!(r_args, ["--vanilla"]);
+    }
+
+    #[test]
+    fn test_split_run_args_with_eval() {
+        let (out, r_args) = split(&["rig", "run", "-e", "1+1", "--", "--vanilla"]);
+        assert_eq!(out, ["rig", "run", "-e", "1+1"]);
+        assert_eq!(r_args, ["--vanilla"]);
+    }
+
+    #[test]
+    fn test_split_run_args_cmd_untouched() {
+        // Any `--cmd` in the argv delegates entirely to `rcmd_argv()`, and no
+        // raw R args are extracted, even if the user also typed a `--`.
+        let (out, r_args) = split(&["rig", "run", "--cmd", "check", "--no-manual", "."]);
+        assert_eq!(
+            out,
+            ["rig", "run", "--cmd", "--", "check", "--no-manual", "."]
+        );
+        assert!(r_args.is_empty());
+
+        let (out, r_args) = split(&["rig", "run", "--cmd", "check", "--", "--no-manual", "."]);
+        assert_eq!(
+            out,
+            [
+                "rig",
+                "run",
+                "--cmd",
+                "--",
+                "check",
+                "--",
+                "--no-manual",
+                "."
+            ]
+        );
+        assert!(r_args.is_empty());
     }
 
     // The `rig system dirs` family. These tests run on every platform, so they

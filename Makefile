@@ -130,7 +130,7 @@ linux-arm64-in-docker:
 linux-in-docker:
 	docker compose build
 	docker run -v .:/work \
-		-e LOCAL_UID=`id -u` -e LOCAL_GID=`id -g` \
+		-e LOCAL_UID=`id -u` -e LOCAL_GID=`id -g` $(DOCKER_ARCH) \
 		rlib/rig-alpine:latest make linux
 
 VARIANTS = ubuntu-20.04 ubuntu-22.04 ubuntu-24.04 ubuntu-26.04 debian-12 debian-13 rockylinux/rockylinux-8 rockylinux/rockylinux-9 rockylinux/rockylinux-10 opensuse/leap-15.6 fedora-43 fedora-44 almalinux-8 almalinux-9 almalinux-10 redhat/ubi8 redhat/ubi9 redhat/ubi10

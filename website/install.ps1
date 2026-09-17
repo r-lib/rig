@@ -20,7 +20,7 @@
     (or $env:RIG_PREFIX if set).
 
 .PARAMETER Version
-    Version to install, e.g. 0.10.0. Default: 0.10.0-beta2
+    Version to install, e.g. 0.10.0. Default: 0.10.0-beta3
     (or $env:RIG_VERSION if set).
 
 .PARAMETER NoModifyPath
@@ -29,7 +29,7 @@
 [CmdletBinding()]
 param(
     [string] $Prefix       = $(if ($env:RIG_PREFIX) { $env:RIG_PREFIX } else { "$env:USERPROFILE\.local" }),
-    [string] $Version      = $(if ($env:RIG_VERSION) { $env:RIG_VERSION } else { "0.10.0-beta2" }),
+    [string] $Version      = $(if ($env:RIG_VERSION) { $env:RIG_VERSION } else { "0.10.0-beta3" }),
     [switch] $NoModifyPath
 )
 
@@ -78,6 +78,26 @@ $bindir = Join-Path $Prefix "bin"
 if (-not (Test-Path (Join-Path $bindir "rig.exe"))) {
     throw "Installation failed: rig.exe not found in $bindir"
 }
+
+# --- Write an install receipt --------------------------------------------
+#
+# `rig self update` only replaces the binary for installs it can prove it
+# fully owns, i.e. ones made by this script. It looks for this receipt, and
+# refuses to touch a rig installed via the .exe installer, Chocolatey,
+# WinGet, or Scoop instead.
+$receiptDir = Join-Path $env:APPDATA "gaborcsardi\rig\data"
+New-Item -ItemType Directory -Force -Path $receiptDir | Out-Null
+$receipt = [ordered]@{
+    receipt_version = 1
+    install_method  = "script"
+    rig_version     = $vtoken
+    platform        = "windows"
+    arch            = $arch
+    bin_path        = (Join-Path $bindir "rig.exe")
+    prefix          = $Prefix
+    installed_at    = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+}
+$receipt | ConvertTo-Json | Set-Content -Path (Join-Path $receiptDir "install-receipt.json") -Encoding UTF8
 
 # --- Optionally add the bin directory to the user PATH ------------------
 

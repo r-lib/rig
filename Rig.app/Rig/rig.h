@@ -9,6 +9,8 @@
  */
 #define FORMAT_VERSION 1
 
+#define RPROJ_LOCK_VERSION 3
+
 int rig_last_error(char *ptr, size_t size);
 
 int rig_mode(char *ptr, size_t size);

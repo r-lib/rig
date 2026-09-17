@@ -24,7 +24,7 @@ use crate::library::*;
 use crate::output::OUTPUT;
 use crate::platform::*;
 use crate::repos::*;
-use crate::resolve::{get_resolve_for, validate_version_arg};
+use crate::resolve::{get_resolve_for, is_pinned_version_string, validate_version_arg};
 use crate::run::*;
 use crate::utils::*;
 
@@ -258,6 +258,21 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     validate_version_arg(str)?;
 
     let mode = get_mode()?;
+    let alias = get_alias(args);
+    let reinstall = args.get_flag("reinstall");
+    // `devel`/`next` are rebuilt daily under the same directory name, so
+    // "already installed" never means "up to date" for them.
+    let rolling = str == "devel" || str == "next";
+
+    // Fast path: a fully pinned version's exact version number is already
+    // known without resolving anything over the network (and, since pinned
+    // versions never get an alias, without escalating privileges either).
+    if !reinstall && !rolling && is_pinned_version_string(str) {
+        if let Some(name) = find_installed_by_version(str)? {
+            return report_already_installed(&name, alias);
+        }
+    }
+
     if mode == Mode::Admin {
         escalate("adding new R versions")?;
     }
@@ -295,8 +310,19 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             }
         }
     };
-    let alias = get_alias(args);
     let ver = version.version.to_owned();
+
+    // General check: for requests that don't pin a full version (`release`,
+    // `oldrel(/n)`, bare/partial version numbers), the concrete version is
+    // only known once resolved. Skip here if it's already installed.
+    if !reinstall && !rolling {
+        if let Some(ref v) = ver {
+            if let Some(name) = find_installed_by_version(v)? {
+                return report_already_installed(&name, alias);
+            }
+        }
+    }
+
     let verstr = match ver {
         Some(ref x) => x,
         None => "???",
@@ -331,7 +357,10 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let dirname = if portable {
         safe_user_install(&target, &version, &install_platform)?
     } else {
-        let platform = detect_platform()?;
+        // Re-parse the already-resolved platform (honors `--platform`, then
+        // `RIG_PLATFORM`, then auto-detection) rather than re-detecting from
+        // scratch, so `--platform` overrides also pick the right package tool.
+        let platform = parse_platform_string(&install_platform)?;
         add_package(target.as_os_str(), &platform)?
     };
 
@@ -350,6 +379,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     }
 
     if portable {
+        check_usr_bin_which();
         if let Err(e) = setup_user_cert(&dirname.to_string(), false) {
             OUTPUT.warn(&format!("Could not set up CA certificate bundle: {}", e));
             warn!("Could not set up CA certificate bundle: {}", e);
@@ -392,7 +422,9 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 }
 
 fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>> {
-    if platform.distro.as_deref() == Some("debian") || platform.distro.as_deref() == Some("ubuntu")
+    if platform.distro.as_deref() == Some("debian")
+        || platform.distro.as_deref() == Some("ubuntu")
+        || platform.distro.as_deref() == Some("pop")
     {
         Ok(LinuxTools {
             package_name: "r-{}".to_string(),
@@ -1465,6 +1497,16 @@ pub fn sc_system_no_openmp(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+pub fn sc_system_blas_status(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    // Nothing to do on Linux
+    Ok(())
+}
+
+pub fn sc_system_blas_set(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    // Nothing to do on Linux
+    Ok(())
+}
+
 pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
     // Nothing to do on Linux
     Ok(())
@@ -1926,6 +1968,20 @@ pub fn get_system_profile(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
         .join(rver)
         .join("lib/R/library/base/R/Rprofile");
     Ok(profile)
+}
+
+// R shells out to `which`, so portable (manylinux/musllinux) builds need
+// /usr/bin/which on the host; unlike check_usr_bin_sed there is no fixup,
+// just a warning.
+
+fn check_usr_bin_which() {
+    debug!("Checking if /usr/bin/which exists");
+    if !Path::new("/usr/bin/which").exists() {
+        let msg = "/usr/bin/which does not exist, R may not work properly. \
+                   Install it via your OS package manager, e.g. `dnf install which`.";
+        OUTPUT.warn(msg);
+        warn!("{}", msg);
+    }
 }
 
 // /usr/bin/sed might not be available, and R will need it (issue 119#)

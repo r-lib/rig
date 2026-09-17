@@ -17,11 +17,16 @@ exception is `.rvenv/etc/repositories` (see below), which still comes from
 Development dependencies are installed by default. `--no-dev` leaves them
 out; the lock file records which packages are dev-only, so this works the
 same with or without `--frozen`. `--max-concurrent` limits the number of
-simultaneous installations.
+simultaneous installations; it defaults to the `concurrent-installs`
+[config](config.qmd) entry (`RIG_CONCURRENT_INSTALLS`), which itself defaults
+to the number of CPU cores.
 
 By default, sync also removes any package that is in the project library
 but not in `rproj.lock`, e.g. one dropped from `rproj.toml`, or a leftover from
 before `--no-dev`. Pass `--inexact` to leave those packages alone instead.
+
+Pass `--dry-run` to print what sync would install, remove or write, without
+touching the R installation, the project library or `.rvenv`.
 
 ## Centralizing the project library
 
@@ -30,6 +35,8 @@ The project library defaults to `.rvenv/lib`, inside the project. Set the
 [configuration entry](config.qmd), to a directory to centralize every
 project's library under it instead, one subdirectory per project. `rig
 system dirs --library-root` reports the effective root, or that none is set.
+`--library` still wins outright when passed, for either a one-off location or
+a shared library across several projects.
 
 When the library is centralized, sync still leaves a symlink at `.rvenv/lib`
 pointing at the real location, so anything that expects a library there

@@ -81,7 +81,7 @@ tracker](https://github.com/r-lib/rig/issues).
 
 ### Installing rig on macOS <a id="id-macos">
 
-You can one of our installers or our Homebrew tap.
+You can use one of our installers or Homebrew.
 
 #### Installing rig on macOS (installer) <a id="id-macos-installer">
 
@@ -90,13 +90,19 @@ and install it the usual way.
 
 #### Installing rig on macOS (Homebrew) <a id="id-macos-homebrew">
 
-If you use Homebrew (Intel or Arm version), you can install rig from our
-tap:
+If you use Homebrew (Intel or Arm version), you can install rig with the
+menu bar app:
 
 ``` sh
-brew tap r-lib/rig
-brew trust r-lib/rig
-brew install --cask rig
+brew install r-rig-app
+```
+
+This is a Homebrew cask and needs your password to install.
+
+Or without the menu bar app, command line only:
+
+``` sh
+brew install r-rig
 ```
 
 You can use x86_64 rig on Arm macs, and it will be able to install Arm
@@ -106,7 +112,7 @@ brew versions, only install rig with one of them.
 To update rig you can run
 
 ``` sh
-brew upgrade --cask rig
+brew upgrade r-rig-app
 ```
 
 ### Installing rig on Windows <a id="id-windows">
@@ -227,6 +233,7 @@ On any Ubuntu or Debian distro, you can use our package repository to
 install rig. First you add our key to your config:
 
     `which sudo` curl -L https://rig.r-pkg.org/deb/rig.gpg -o /etc/apt/trusted.gpg.d/rig.gpg
+    `which sudo` chmod 644 /etc/apt/trusted.gpg.d/rig.gpg
 
 Then add the rig repository:
 
