@@ -24,7 +24,7 @@ use crate::library::*;
 use crate::output::OUTPUT;
 use crate::platform::*;
 use crate::repos::*;
-use crate::resolve::{get_resolve_for, validate_version_arg};
+use crate::resolve::{get_resolve_for, is_pinned_version_string, validate_version_arg};
 use crate::run::*;
 use crate::utils::*;
 
@@ -258,6 +258,21 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     validate_version_arg(str)?;
 
     let mode = get_mode()?;
+    let alias = get_alias(args);
+    let reinstall = args.get_flag("reinstall");
+    // `devel`/`next` are rebuilt daily under the same directory name, so
+    // "already installed" never means "up to date" for them.
+    let rolling = str == "devel" || str == "next";
+
+    // Fast path: a fully pinned version's exact version number is already
+    // known without resolving anything over the network (and, since pinned
+    // versions never get an alias, without escalating privileges either).
+    if !reinstall && !rolling && is_pinned_version_string(str) {
+        if let Some(name) = find_installed_by_version(str)? {
+            return report_already_installed(&name, alias);
+        }
+    }
+
     if mode == Mode::Admin {
         escalate("adding new R versions")?;
     }
@@ -295,8 +310,19 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             }
         }
     };
-    let alias = get_alias(args);
     let ver = version.version.to_owned();
+
+    // General check: for requests that don't pin a full version (`release`,
+    // `oldrel(/n)`, bare/partial version numbers), the concrete version is
+    // only known once resolved. Skip here if it's already installed.
+    if !reinstall && !rolling {
+        if let Some(ref v) = ver {
+            if let Some(name) = find_installed_by_version(v)? {
+                return report_already_installed(&name, alias);
+            }
+        }
+    }
+
     let verstr = match ver {
         Some(ref x) => x,
         None => "???",

@@ -1,11 +1,5 @@
 # rig 0.10.0-beta3
 
-## `rig add`
-
-* `rig add` can now install the R version an `renv.lock` file requires,
-  e.g. `rig add renv.lock` or `rig add path/to/renv.lock`
-  (#294).
-
 ## Web site
 
 * rig has a new documentation website at <https://rig.r-lib.org/>,
@@ -84,6 +78,13 @@
   <https://mac.r-project.org/tools> instead.
 
 ## Other new features
+
+* `rig add` no longer reinstalls a version that is already installed,
+  except for R-devel and R-next. Use `--reinstall` for force a re-install
+  (#293).
+
+* `rig add` can now install the R version an `renv.lock` file requires,
+  e.g. `rig add renv.lock` or `rig add path/to/renv.lock` (#294).
 
 * New `rig system blas` commands, to check and switch which BLAS/LAPACK
   library an installed R version uses on macOS, e.g. to switch to Apple's

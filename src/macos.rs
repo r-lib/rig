@@ -27,7 +27,7 @@ use crate::escalate::*;
 use crate::library::*;
 use crate::output::OUTPUT;
 use crate::repos::*;
-use crate::resolve::{get_resolve, validate_version_arg};
+use crate::resolve::{get_resolve, is_pinned_version_string, validate_version_arg};
 use crate::run::*;
 use crate::rversion::*;
 use crate::utils::*;
@@ -125,12 +125,41 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let str: &String = args.get_one("str").unwrap();
     validate_version_arg(str)?;
 
-    if get_mode()? == crate::utils::Mode::Admin {
+    let mode = get_mode()?;
+    let alias = get_alias(args);
+    let reinstall = args.get_flag("reinstall");
+    // `devel`/`next` are rebuilt daily under the same directory name, so
+    // "already installed" never means "up to date" for them.
+    let rolling = str == "devel" || str == "next";
+
+    // Fast path: a fully pinned version's exact version number is already
+    // known without resolving anything over the network (and, since pinned
+    // versions never get an alias, without escalating privileges either).
+    if !reinstall && !rolling && is_pinned_version_string(str) {
+        let platform = get_platform(args)?;
+        let arch = get_arch(&platform, args);
+        if let Some(name) = find_installed_version_arch(str, &arch)? {
+            return report_already_installed(&name, alias_with_arch_suffix(alias, &arch));
+        }
+    }
+
+    if mode == crate::utils::Mode::Admin {
         escalate("adding new R versions")?;
     }
     let mut version = get_resolve(args)?;
-    let alias = get_alias(args);
     let ver = version.version.to_owned();
+
+    // General check: for requests that don't pin a full version (`release`,
+    // `oldrel(/n)`, bare/partial version numbers), the concrete version is
+    // only known once resolved. Skip here if it's already installed.
+    if !reinstall && !rolling {
+        if let Some(ref v) = ver {
+            let arch = version.arch.clone().unwrap_or_default();
+            if let Some(name) = find_installed_version_arch(v, &arch)? {
+                return report_already_installed(&name, alias_with_arch_suffix(alias, &arch));
+            }
+        }
+    }
     let verstr = match ver {
         Some(ref x) => x,
         None => "???",
@@ -180,8 +209,6 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // If installed from URL, then we'll use the version in the file
     let fver = extract_pkg_version(&target_str)?;
 
-    let mode = get_mode()?;
-
     match ver {
         Some(_) => {}
         None => {
@@ -217,15 +244,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     system_fix_permissions(Some(vec![dirname.to_string()]))?;
     library_update_rprofile(&dirname.to_string())?;
     sc_system_make_links()?;
-    // The `release`/`oldrel` aliases point at the native build. An
-    // x86_64 build on an arm64 machine gets an `-x86_64` suffix instead,
-    // to avoid colliding with the native alias.
-    if let Some(alias) = alias {
-        let alias = if fver.arch == "x86_64" && is_arm64_machine() {
-            format!("{}-x86_64", alias)
-        } else {
-            alias
-        };
+    if let Some(alias) = alias_with_arch_suffix(alias, &fver.arch) {
         add_alias(&dirname, &alias)?
     };
 
@@ -2264,6 +2283,42 @@ pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
 fn get_minor_version(ver: &str) -> Result<String, Box<dyn Error>> {
     let re = Regex::new("[.][^.]*$")?;
     Ok(re.replace(ver, "").to_string())
+}
+
+// Used by `rig add` to check whether `version`/`arch` is already installed.
+// The directory name is not a reliable signal for this on macOS (in admin
+// mode it only encodes the major.minor version, e.g. `4.3`, and can't tell
+// `4.3.2` from `4.3.3`; see `read_built_version_arch`), so this reads the
+// exact version and architecture every installed R actually reports,
+// regardless of what its directory happens to be named.
+fn find_installed_version_arch(
+    version: &str,
+    arch: &str,
+) -> Result<Option<String>, Box<dyn Error>> {
+    for ver in sc_get_list_details()? {
+        let Some(path) = ver.path.as_deref() else {
+            continue;
+        };
+        if let Ok((installed_version, installed_arch)) = read_built_version_arch(Path::new(path)) {
+            if installed_version == version && installed_arch == arch {
+                return Ok(Some(ver.name));
+            }
+        }
+    }
+    Ok(None)
+}
+
+// The `release`/`oldrel` aliases point at the native build. An x86_64 build
+// installed on an arm64 machine gets an `-x86_64` suffix instead, to avoid
+// colliding with the native alias.
+fn alias_with_arch_suffix(alias: Option<String>, arch: &str) -> Option<String> {
+    alias.map(|a| {
+        if arch == "x86_64" && is_arm64_machine() {
+            format!("{}-x86_64", a)
+        } else {
+            a
+        }
+    })
 }
 
 fn extract_pkg_version(filename: &OsStr) -> Result<RversionDir, Box<dyn Error>> {

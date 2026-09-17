@@ -107,6 +107,13 @@ fn is_valid_version_string(str: &str) -> bool {
     re.is_match(str)
 }
 
+// A fully pinned version, e.g. "4.3.3": all three components given, so the
+// exact version is already known without resolving anything.
+pub fn is_pinned_version_string(str: &str) -> bool {
+    let re = Regex::new(r"^\d+\.\d+\.\d+$").unwrap();
+    re.is_match(str)
+}
+
 // Lets `rig add renv.lock` / `rig add path/to/renv.lock` install the R
 // version an renv.lock file requires. See
 // https://github.com/r-lib/rig/issues/294.

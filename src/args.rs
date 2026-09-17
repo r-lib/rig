@@ -357,6 +357,13 @@ pub fn rig_app() -> Command {
                 .required(false)
                 .value_parser(pak_version_values())
                 .default_value("stable"),
+        )
+        .arg(
+            Arg::new("reinstall")
+                .help("Reinstall, even if this R version is already installed.")
+                .long("reinstall")
+                .num_args(0)
+                .required(false),
         );
 
     {
