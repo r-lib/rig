@@ -71,6 +71,12 @@
 * On Windows, `R CMD config` now works without manually putting Rtools on
   the `PATH`. So do `R CMD sh`, `R CMD make` and `rig run --cmd config`.
 
+## macOS specific
+
+* `rig sysreqs` has been removed. It did not reliably set up a working
+  Fortran toolchain (#262). Install gfortran from
+  <https://mac.r-project.org/tools> instead.
+
 ## Other new features
 
 * New `rig self update` to update rig, new `rig self uninstall` to remove

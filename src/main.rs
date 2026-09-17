@@ -68,7 +68,6 @@ mod rversion;
 mod self_uninstall;
 mod self_update;
 mod solver;
-mod sysreqs;
 mod test;
 mod textfmt;
 mod utils;
@@ -80,7 +79,6 @@ use platform::*;
 use ppm::*;
 use proj::*;
 use repos::*;
-use sysreqs::*;
 use utils::unset_r_envvars;
 
 use crate::common::*;
@@ -300,7 +298,6 @@ fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
         Some(("library", sub)) => sc_library(sub, args)?,
         Some(("cache", sub)) => sc_cache(sub)?,
         Some(("config", sub)) => crate::config::sc_config(sub, args)?,
-        Some(("sysreqs", sub)) => sc_sysreqs(sub, args)?,
         Some(("available", sub)) => sc_available(sub, args)?,
         Some(("run", sub)) => retval = sc_run(sub, args)?,
         Some(("test", sub)) => sc_test(sub, args)?,
