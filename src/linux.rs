@@ -350,6 +350,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     }
 
     if portable {
+        check_usr_bin_which();
         if let Err(e) = setup_user_cert(&dirname.to_string(), false) {
             OUTPUT.warn(&format!("Could not set up CA certificate bundle: {}", e));
             warn!("Could not set up CA certificate bundle: {}", e);
@@ -1926,6 +1927,20 @@ pub fn get_system_profile(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
         .join(rver)
         .join("lib/R/library/base/R/Rprofile");
     Ok(profile)
+}
+
+// R shells out to `which`, so portable (manylinux/musllinux) builds need
+// /usr/bin/which on the host; unlike check_usr_bin_sed there is no fixup,
+// just a warning.
+
+fn check_usr_bin_which() {
+    debug!("Checking if /usr/bin/which exists");
+    if !Path::new("/usr/bin/which").exists() {
+        let msg = "/usr/bin/which does not exist, R may not work properly. \
+                   Install it via your OS package manager, e.g. `dnf install which`.";
+        OUTPUT.warn(msg);
+        warn!("{}", msg);
+    }
 }
 
 // /usr/bin/sed might not be available, and R will need it (issue 119#)
