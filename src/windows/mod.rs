@@ -2141,6 +2141,13 @@ pub fn sc_system_rtools(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), 
     }
 }
 
+// Rtools versions are named without a dot ("45", "44", "40"), unlike R versions.
+// Users naturally type the R-version-style "4.5" though (see #313), so accept
+// and normalize that too by dropping any dots.
+fn normalize_rtools_version(ver: &str) -> String {
+    ver.replace('.', "")
+}
+
 fn sc_rtools_add(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("adding Rtools")?;
     let ver = args.get_one::<String>("version").unwrap();
@@ -2148,9 +2155,9 @@ fn sc_rtools_add(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<(), Box<dy
     if ver == "all" {
         add_rtools("rtools".to_string(), arch)
     } else if ver.starts_with("rtools") {
-        add_rtools(ver.to_string(), arch)
+        add_rtools("rtools".to_string() + &normalize_rtools_version(&ver["rtools".len()..]), arch)
     } else {
-        add_rtools("rtools".to_string() + ver, arch)
+        add_rtools("rtools".to_string() + &normalize_rtools_version(ver), arch)
     }
 }
 
@@ -2167,9 +2174,15 @@ fn sc_rtools_rm(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<(), Box<dyn
         if ver == "all" {
             rm_rtools("rtools".to_string(), arch.clone())?;
         } else if ver.starts_with("rtools") {
-            rm_rtools(ver.to_string(), arch.clone())?;
+            rm_rtools(
+                "rtools".to_string() + &normalize_rtools_version(&ver["rtools".len()..]),
+                arch.clone(),
+            )?;
         } else {
-            rm_rtools("rtools".to_string() + ver, arch.clone())?;
+            rm_rtools(
+                "rtools".to_string() + &normalize_rtools_version(ver),
+                arch.clone(),
+            )?;
         }
     }
 
