@@ -2015,6 +2015,16 @@ pub fn sc_system_no_openmp(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+pub fn sc_system_blas_status(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    // Nothing to do on Windows
+    Ok(())
+}
+
+pub fn sc_system_blas_set(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    // Nothing to do on Windows
+    Ok(())
+}
+
 // ------------------------------------------------------------------------
 
 fn list_r_in_root(root: &str, suffix: &str, vers: &mut Vec<String>) -> Result<(), Box<dyn Error>> {
