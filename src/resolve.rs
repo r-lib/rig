@@ -31,7 +31,15 @@ pub fn get_resolve(args: &ArgMatches) -> Result<Rversion, Box<dyn Error>> {
 
 pub fn get_resolve_for(args: &ArgMatches, platform: &str) -> Result<Rversion, Box<dyn Error>> {
     let mut arch = get_arch(platform, args);
-    let str: &String = args.get_one("str").unwrap();
+    let arg_str: &String = args.get_one("str").unwrap();
+    let resolved_ver = if is_renv_lockfile_path(arg_str) {
+        Some(crate::renv::parse_r_version(std::path::PathBuf::from(
+            arg_str,
+        ))?)
+    } else {
+        None
+    };
+    let str: &str = resolved_ver.as_deref().unwrap_or(arg_str);
     let eps = vec![str.to_string()];
 
     validate_version_arg(str)?;
@@ -75,8 +83,14 @@ pub fn validate_version_arg(str: &str) -> Result<(), Box<dyn Error>> {
     if is_url(str) || is_valid_version_string(str) {
         return Ok(());
     }
+    // Actually read the file here (not just check the basename), so a
+    // missing/malformed renv.lock fails now, before escalating to admin.
+    if is_renv_lockfile_path(str) {
+        crate::renv::parse_r_version(std::path::PathBuf::from(str))?;
+        return Ok(());
+    }
     let msg = format!(
-        "Unknown value \"{}\". Accepted values: version numbers, \"devel\", \"next\", \"release\", \"oldrel/n\", or a URL.",
+        "Unknown value \"{}\". Accepted values: version numbers, \"devel\", \"next\", \"release\", \"oldrel/n\", a URL, or a path to an renv.lock file.",
         str
     );
     OUTPUT.error(&msg);
@@ -91,6 +105,15 @@ fn is_url(str: &str) -> bool {
 fn is_valid_version_string(str: &str) -> bool {
     let re = Regex::new(r"^(devel|next|release|oldrel(/\d+)?|\d+(\.\d+){0,2})$").unwrap();
     re.is_match(str)
+}
+
+// Lets `rig add renv.lock` / `rig add path/to/renv.lock` install the R
+// version an renv.lock file requires. See
+// https://github.com/r-lib/rig/issues/294.
+fn is_renv_lockfile_path(str: &str) -> bool {
+    std::path::Path::new(str)
+        .file_name()
+        .is_some_and(|n| n == "renv.lock")
 }
 
 // Parses a plain version string ("4", "4.0", "4.0.5"), padding missing
