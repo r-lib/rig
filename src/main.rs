@@ -330,6 +330,15 @@ fn sc_system(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Err
         Some(("fix-permissions", s)) => sc_system_fix_permissions(s),
         Some(("forget", _)) => sc_system_forget(),
         Some(("no-openmp", s)) => sc_system_no_openmp(s),
+        Some(("blas", s)) => match s.subcommand() {
+            Some(("status", s2)) => sc_system_blas_status(s2),
+            Some(("set", s2)) => sc_system_blas_set(s2),
+            Some((name, _)) => bail!(
+                "Internal error: unknown `rig system blas` subcommand: {}",
+                name
+            ),
+            None => Ok(()),
+        },
         Some(("user-mode", s)) => sc_system_user_mode(s),
         Some(("clean-admin-r", s)) => sc_system_clean_admin_r(s),
         Some(("fix-r-alias", s)) => sc_system_fix_r_alias(s),

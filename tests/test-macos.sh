@@ -302,6 +302,24 @@ teardown() {
     [[ $status -eq 1 ]]
 }
 
+@test "system blas" {
+    run sudo rig system blas set accelerate 4.1
+    [[ $status -eq 0 ]]
+    run readlink /Library/Frameworks/R.framework/Versions/4.1/Resources/lib/libRblas.dylib
+    [[ "$output" == "libRblas.vecLib.dylib" ]]
+    run rig system blas status 4.1
+    [[ $status -eq 0 ]]
+    echo $output | grep -q -- "accelerate"
+
+    run sudo rig system blas set reference 4.1
+    [[ $status -eq 0 ]]
+    run readlink /Library/Frameworks/R.framework/Versions/4.1/Resources/lib/libRblas.dylib
+    [[ "$output" == "libRblas.0.dylib" ]]
+    run rig system blas status 4.1
+    [[ $status -eq 0 ]]
+    echo $output | grep -q -- "reference"
+}
+
 @test "system allow-debugger" {
     run sudo rig default 4.1
     [[ "$status" -eq 0 ]]

@@ -85,6 +85,10 @@
 
 ## Other new features
 
+* New `rig system blas` commands, to check and switch which BLAS/LAPACK
+  library an installed R version uses on macOS, e.g. to switch to Apple's
+  faster Accelerate/vecLib BLAS (#212).
+
 * New `rig self update` to update rig, new `rig self uninstall` to remove
   rig, if it was installed via the install script.
 

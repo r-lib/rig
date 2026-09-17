@@ -779,11 +779,49 @@ pub fn rig_app() -> Command {
                     .action(clap::ArgAction::Append),
             );
 
+        let cmd_system_blas_status = Command::new("status")
+            .about(ABOUT_SYSTEM_BLAS_STATUS)
+            .long_about(HELP_SYSTEM_BLAS_STATUS)
+            .display_order(0)
+            .arg(
+                Arg::new("version")
+                    .help("R versions to check (default: all)")
+                    .required(false)
+                    .action(clap::ArgAction::Append),
+            );
+
+        let cmd_system_blas_set = Command::new("set")
+            .about(ABOUT_SYSTEM_BLAS_SET)
+            .long_about(HELP_SYSTEM_BLAS_SET)
+            .display_order(0)
+            .arg(
+                Arg::new("blas")
+                    .help("BLAS library to use")
+                    .required(true)
+                    .value_parser(["reference", "accelerate"]),
+            )
+            .arg(
+                Arg::new("version")
+                    .help("R versions to update (default: all)")
+                    .required(false)
+                    .action(clap::ArgAction::Append),
+            );
+
+        let cmd_system_blas = Command::new("blas")
+            .about(ABOUT_SYSTEM_BLAS)
+            .long_about(HELP_SYSTEM_BLAS)
+            .display_order(0)
+            .platform("macos")
+            .arg_required_else_help(true)
+            .subcommand(cmd_system_blas_status)
+            .subcommand(cmd_system_blas_set);
+
         cmd_system = cmd_system
             .subcommand(cmd_system_noopenmp)
             .subcommand(cmd_system_allow_debugger)
             .subcommand(cmd_system_allow_debugger_rstudio)
-            .subcommand(cmd_system_allow_core_dumps);
+            .subcommand(cmd_system_allow_core_dumps)
+            .subcommand(cmd_system_blas);
     }
 
     {

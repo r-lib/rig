@@ -1471,6 +1471,16 @@ pub fn sc_system_no_openmp(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+pub fn sc_system_blas_status(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    // Nothing to do on Linux
+    Ok(())
+}
+
+pub fn sc_system_blas_set(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    // Nothing to do on Linux
+    Ok(())
+}
+
 pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
     // Nothing to do on Linux
     Ok(())
