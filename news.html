@@ -523,7 +523,6 @@ ul.task-list li input[type="checkbox"] {
   <ul>
   <li><a href="#rig-0.10.0-beta3" id="toc-rig-0.10.0-beta3" class="nav-link active" data-scroll-target="#rig-0.10.0-beta3">rig 0.10.0-beta3</a>
   <ul class="collapse">
-  <li><a href="#rig-add" id="toc-rig-add" class="nav-link" data-scroll-target="#rig-add"><code>rig add</code></a></li>
   <li><a href="#web-site" id="toc-web-site" class="nav-link" data-scroll-target="#web-site">Web site</a></li>
   <li><a href="#user-mode" id="toc-user-mode" class="nav-link" data-scroll-target="#user-mode">User mode</a></li>
   <li><a href="#r-package-management" id="toc-r-package-management" class="nav-link" data-scroll-target="#r-package-management">R package management</a></li>
@@ -600,12 +599,6 @@ ul.task-list li input[type="checkbox"] {
 
 <section id="rig-0.10.0-beta3" class="level1">
 <h1>rig 0.10.0-beta3</h1>
-<section id="rig-add" class="level2">
-<h2 class="anchored" data-anchor-id="rig-add"><code>rig add</code></h2>
-<ul>
-<li><code>rig add</code> can now install the R version an <code>renv.lock</code> file requires, e.g.&nbsp;<code>rig add renv.lock</code> or <code>rig add path/to/renv.lock</code> (#294).</li>
-</ul>
-</section>
 <section id="web-site" class="level2">
 <h2 class="anchored" data-anchor-id="web-site">Web site</h2>
 <ul>
@@ -653,6 +646,8 @@ ul.task-list li input[type="checkbox"] {
 <section id="other-new-features" class="level2">
 <h2 class="anchored" data-anchor-id="other-new-features">Other new features</h2>
 <ul>
+<li><p><code>rig add</code> no longer reinstalls a version that is already installed, except for R-devel and R-next. Use <code>--reinstall</code> for force a re-install (#293).</p></li>
+<li><p><code>rig add</code> can now install the R version an <code>renv.lock</code> file requires, e.g.&nbsp;<code>rig add renv.lock</code> or <code>rig add path/to/renv.lock</code> (#294).</p></li>
 <li><p>New <code>rig system blas</code> commands, to check and switch which BLAS/LAPACK library an installed R version uses on macOS, e.g.&nbsp;to switch to Apple’s faster Accelerate/vecLib BLAS (#212).</p></li>
 <li><p>New <code>rig self update</code> to update rig, new <code>rig self uninstall</code> to remove rig, if it was installed via the install script.</p></li>
 <li><p>New <code>rig cache</code> command to inspect and manage rig’s download and build caches. rig now reflinks or hardlinks packages from the cache when possible, instead of copying them, to save disk space and time.</p></li>

@@ -605,6 +605,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </ul>
 <p>In user mode rig installs R into your home directory and never needs <code>sudo</code>. In admin mode you usually need to run this command with <code>sudo</code>: <code>sudo rig add ...</code>, otherwise rig will need to ask for your password.</p>
 <p>In admin mode on macOS rig cannot add multiple R versions from the same minor branch. E.g. it is not possible to have R 4.6.0 and R 4.6.1 installed at the same time. Adding one of them will automatically remove the other. In user mode there is no such restriction.</p>
+<p>If the requested version is already installed, <code>rig add</code> does nothing (other than making sure any implied alias, e.g.&nbsp;<code>release</code>, still points at it) instead of reinstalling it. Use <code>--reinstall</code> to reinstall anyway. <code>rig add devel</code> and <code>rig add next</code> are always reinstalled, since these are rebuilt daily under the same name.</p>
 <p>You can use <code>rig add</code> to install Rtools:</p>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> add rtools</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>will install all Rtools versions that are needed for the currently installed R versions. You can also request a specific Rtools version, e.g. <code>rig add rtools45</code>.</p>
@@ -651,6 +652,10 @@ pak version to install.
 <dt><code>--platform &lt;platform&gt;</code> <span class="rig-platform">Linux only</span></dt>
 <dd>
 Install the build for this platform, instead of auto-detecting it. Use <code>linux-portable</code> to install a portable (glibc/musl) build.
+</dd>
+<dt><code>--reinstall</code></dt>
+<dd>
+Reinstall, even if this R version is already installed.
 </dd>
 <dt><code>--user</code></dt>
 <dd>
