@@ -331,7 +331,10 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let dirname = if portable {
         safe_user_install(&target, &version, &install_platform)?
     } else {
-        let platform = detect_platform()?;
+        // Re-parse the already-resolved platform (honors `--platform`, then
+        // `RIG_PLATFORM`, then auto-detection) rather than re-detecting from
+        // scratch, so `--platform` overrides also pick the right package tool.
+        let platform = parse_platform_string(&install_platform)?;
         add_package(target.as_os_str(), &platform)?
     };
 
