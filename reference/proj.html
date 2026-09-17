@@ -622,6 +622,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   </ul></li>
   <li><a href="#rig-proj-sync" id="toc-rig-proj-sync" class="nav-link" data-scroll-target="#rig-proj-sync"><code>rig proj sync</code></a>
   <ul class="collapse">
+  <li><a href="#centralizing-the-project-library" id="toc-centralizing-the-project-library" class="nav-link" data-scroll-target="#centralizing-the-project-library">Centralizing the project library</a></li>
   <li><a href="#the-r-version-1" id="toc-the-r-version-1" class="nav-link" data-scroll-target="#the-r-version-1">The R version</a></li>
   <li><a href="#several-targets-in-one-lock-file" id="toc-several-targets-in-one-lock-file" class="nav-link" data-scroll-target="#several-targets-in-one-lock-file">Several targets in one lock file</a></li>
   <li><a href="#what-sync-writes" id="toc-what-sync-writes" class="nav-link" data-scroll-target="#what-sync-writes">What sync writes</a></li>
@@ -1475,6 +1476,11 @@ Run in user mode (overrides RIG_MODE and config)
 <p>Development dependencies are installed by default. <code>--no-dev</code> leaves them out; the lock file records which packages are dev-only, so this works the same with or without <code>--frozen</code>. <code>--max-concurrent</code> limits the number of simultaneous installations; it defaults to the <code>concurrent-installs</code> <a href="../reference/config.html">config</a> entry (<code>RIG_CONCURRENT_INSTALLS</code>), which itself defaults to the number of CPU cores.</p>
 <p>By default, sync also removes any package that is in the project library but not in <code>rproj.lock</code>, e.g.&nbsp;one dropped from <code>rproj.toml</code>, or a leftover from before <code>--no-dev</code>. Pass <code>--inexact</code> to leave those packages alone instead.</p>
 <p>Pass <code>--dry-run</code> to print what sync would install, remove or write, without touching the R installation, the project library or <code>.rvenv</code>.</p>
+<section id="centralizing-the-project-library" class="level3">
+<h3 class="anchored" data-anchor-id="centralizing-the-project-library">Centralizing the project library</h3>
+<p>The project library defaults to <code>.rvenv/lib</code>, inside the project. Set the <code>RIG_PROJ_LIBRARY_ROOT</code> environment variable, or the <code>proj-library-root</code> <a href="../reference/config.html">configuration entry</a>, to a directory to centralize every project’s library under it instead, one subdirectory per project. <code>rig system dirs --library-root</code> reports the effective root, or that none is set. <code>--library</code> still wins outright when passed, for either a one-off location or a shared library across several projects.</p>
+<p>When the library is centralized, sync still leaves a symlink at <code>.rvenv/lib</code> pointing at the real location, so anything that expects a library there keeps working.</p>
+</section>
 <section id="the-r-version-1" class="level3">
 <h3 class="anchored" data-anchor-id="the-r-version-1">The R version</h3>
 <p>The lock file records the R version its solve is valid for, and that is the R rig installs the packages with. It has to be that very version: another patch release of the same minor version would run the packages, but it is not the R the project was solved for, so rig does not quietly use it.</p>
@@ -1487,14 +1493,14 @@ Run in user mode (overrides RIG_MODE and config)
 </section>
 <section id="what-sync-writes" class="level3">
 <h3 class="anchored" data-anchor-id="what-sync-writes">What sync writes</h3>
-<p>Everything below <code>.rvenv</code> is machine-specific and is not committed. The project library is filled in from the lock file, and the rest is rewritten on every sync:</p>
+<p>Everything below <code>.rvenv</code> is machine-specific and is not committed. The project library is filled in from the lock file (see above for where it lives, by default or centralized), and the rest is rewritten on every sync:</p>
 <ul>
 <li><code>.rvenv/bin/R</code> and <code>.rvenv/bin/Rscript</code>, wrapper scripts that set the project’s environment and then hand over to the real R. Run them directly, or put <code>.rvenv/bin</code> on your <code>PATH</code>.</li>
 <li><code>.rvenv/bin/activate</code> and its <code>activate.csh</code> / <code>activate.fish</code> / <code>activate.bat</code> / <code>Activate.ps1</code> siblings, for the shells that prefer to be activated. Source the one for your shell, and call <code>deactivate</code> when you are done. Activation is a convenience, not a requirement: the wrappers work without it, and an R session started by an IDE picks the project up through the project’s <code>.Renviron</code>.</li>
 <li><code>.rvenv/rvenv.cfg</code>, which records the R version, the platform and the architecture the environment was built for. rig warns when it syncs an environment that was built for a different R.</li>
 <li><code>.rvenv/etc/repositories</code>, which the wrappers point <code>R_REPOSITORIES</code> at. Reposirories to set up for the project.</li>
 </ul>
-<p>After a successful sync rig records the lock file it installed from in <code>.rvenv/lib/.synced</code>. The <code>rvenv</code> package in <code>.rvenvlib</code> compares the two, and warns in every R session while the project library does not match <code>rproj.lock</code>.</p>
+<p>After a successful sync rig records the lock file it installed from in <code>.synced</code>, inside the project library (<code>.rvenv/lib</code> by default, or the centralized location). The <code>rvenv</code> package in <code>.rvenvlib</code> compares the two, and warns in every R session while the project library does not match <code>rproj.lock</code>.</p>
 </section>
 <section id="workspaces-1" class="level3">
 <h3 class="anchored" data-anchor-id="workspaces-1">Workspaces</h3>
@@ -1526,10 +1532,6 @@ Print help (see a summary with ‘-h’)
 <dt><code>--inexact</code></dt>
 <dd>
 Do not remove packages from the library that are not in rproj.lock (default: remove them)
-</dd>
-<dt><code>-l, --library &lt;library&gt;</code></dt>
-<dd>
-Library path where packages should be installed (default: .rvenv/lib)
 </dd>
 <dt><code>--max-concurrent &lt;max-concurrent&gt;</code></dt>
 <dd>

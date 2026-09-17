@@ -625,6 +625,7 @@ ul.task-list li input[type="checkbox"] {
 <li><p>New <code>rig proj tree</code> shows the dependency closure of a project as a tree.</p></li>
 <li><p><code>rig run</code> now uses the project environment, if you call it in a project directory: it starts <code>.rvenv/bin/R</code>, with the project’s package library and the R version the project’s lock file names, and it syncs the project first if the environment is missing or out of date. Use <code>--no-project</code> (or <code>--r-version</code>) to run the default R version instead.</p></li>
 <li><p><code>rig run &lt;name&gt;</code> now runs a script the project declares in a <code>[[bin]]</code> table of its <code>rproj.toml</code>, passing the remaining arguments on to the script. <code>rig run --list</code> lists the declared scripts.</p></li>
+<li><p><code>rig proj sync</code> can now centralize project package libraries outside the project directory: set the <code>RIG_PROJ_LIBRARY_ROOT</code> environment variable or the <code>proj-library-root</code> config key to a root directory, and each project gets its own library under it, keyed by project name and location. A compatibility symlink is left at the project’s usual <code>.rvenv/lib</code>. <code>rig system dirs --library-root</code> reports the effective root (#372).</p></li>
 </ul>
 </section>
 <section id="windows-specific" class="level2">
