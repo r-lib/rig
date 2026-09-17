@@ -63,13 +63,28 @@ pub fn check_installed(x: &String) -> Result<String, Box<dyn Error>> {
     bail!("R version {} is not installed", &x);
 }
 
-// Used by `rig add` to check whether the version it is about to install is
-// already installed, without erroring. `names` are the candidate directory
-// name(s) that install would use (platform/arch-specific, and sometimes more
-// than one when the mapping from version to directory name is ambiguous);
-// a candidate only counts as a match if the actual installed R version there
-// is exactly `version` (this is what makes it safe for macOS admin-mode
-// installs, whose directory names only encode the major.minor version).
+// Used by `rig add` to check whether `version` is already installed,
+// without erroring. Matches on the actual R version reported by each
+// installation (as `rig list` does), not on its directory name, since the
+// directory naming scheme is not guaranteed to encode the exact version
+// (e.g. macOS admin-mode directories only encode the major.minor version).
+#[cfg(target_os = "linux")]
+pub fn find_installed_by_version(version: &str) -> Result<Option<String>, Box<dyn Error>> {
+    let inst = sc_get_list_details()?;
+
+    for ver in inst {
+        if ver.version.as_deref() == Some(version) {
+            return Ok(Some(ver.name));
+        }
+    }
+
+    Ok(None)
+}
+
+// Same as `find_installed_by_version`, but also requires the candidate
+// directory name to be one of `names` (used on platforms where the version
+// alone doesn't disambiguate installs of different architectures).
+#[cfg(target_os = "windows")]
 pub fn find_installed_matching(
     names: &[String],
     version: &str,

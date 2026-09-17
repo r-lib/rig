@@ -264,12 +264,11 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // "already installed" never means "up to date" for them.
     let rolling = str == "devel" || str == "next";
 
-    // Fast path: a fully pinned version's install directory name is just
-    // the version itself, so we can check whether it's already installed
-    // before resolving anything over the network (and, since pinned
+    // Fast path: a fully pinned version's exact version number is already
+    // known without resolving anything over the network (and, since pinned
     // versions never get an alias, without escalating privileges either).
     if !reinstall && !rolling && is_pinned_version_string(str) {
-        if let Some(name) = find_installed_matching(std::slice::from_ref(str), str)? {
+        if let Some(name) = find_installed_by_version(str)? {
             return report_already_installed(&name, alias);
         }
     }
@@ -318,7 +317,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // only known once resolved. Skip here if it's already installed.
     if !reinstall && !rolling {
         if let Some(ref v) = ver {
-            if let Some(name) = find_installed_matching(std::slice::from_ref(v), v)? {
+            if let Some(name) = find_installed_by_version(v)? {
                 return report_already_installed(&name, alias);
             }
         }
