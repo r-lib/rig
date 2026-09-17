@@ -2155,7 +2155,10 @@ fn sc_rtools_add(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<(), Box<dy
     if ver == "all" {
         add_rtools("rtools".to_string(), arch)
     } else if ver.starts_with("rtools") {
-        add_rtools("rtools".to_string() + &normalize_rtools_version(&ver["rtools".len()..]), arch)
+        add_rtools(
+            "rtools".to_string() + &normalize_rtools_version(&ver["rtools".len()..]),
+            arch,
+        )
     } else {
         add_rtools("rtools".to_string() + &normalize_rtools_version(ver), arch)
     }
