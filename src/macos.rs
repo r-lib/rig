@@ -102,6 +102,13 @@ pub fn get_r_etc_path() -> Result<String, Box<dyn Error>> {
     Ok("{}/Resources/etc".to_string())
 }
 
+pub fn get_r_libpath() -> Result<String, Box<dyn Error>> {
+    if get_mode()? == crate::utils::Mode::User {
+        return Ok("{}/lib".to_string());
+    }
+    Ok("{}/Resources/lib".to_string())
+}
+
 pub fn get_r_versiondir() -> Result<String, Box<dyn Error>> {
     Ok(R_VERSIONDIR.to_string())
 }
@@ -1769,6 +1776,88 @@ fn system_no_openmp(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
                 bail!("Failed to update {}: {}", makevars.display(), err);
             }
         };
+    }
+
+    Ok(())
+}
+
+const BLAS_REFERENCE_LIB: &str = "libRblas.0.dylib";
+const BLAS_ACCELERATE_LIB: &str = "libRblas.vecLib.dylib";
+
+fn blas_lib_dir(ver: &str) -> Result<PathBuf, Box<dyn Error>> {
+    Ok(Path::new(&get_r_root()?).join(get_r_libpath()?.replace("{}", ver)))
+}
+
+pub fn sc_system_blas_status(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    let vers = args.get_many::<String>("version");
+    let vers: Option<Vec<String>> = vers.map(|v| v.map(|v| v.to_string()).collect());
+    system_blas_status(vers)
+}
+
+fn system_blas_status(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
+    let vers = match vers {
+        Some(x) => x,
+        None => sc_get_list()?,
+    };
+
+    for ver in vers {
+        let ver = check_installed(&ver)?;
+        let link = blas_lib_dir(&ver)?.join("libRblas.dylib");
+        let status = match std::fs::read_link(&link) {
+            Ok(target) => match target.file_name().and_then(|n| n.to_str()) {
+                Some(BLAS_REFERENCE_LIB) => "reference".to_string(),
+                Some(BLAS_ACCELERATE_LIB) => "accelerate".to_string(),
+                _ => format!("unknown ({})", target.display()),
+            },
+            Err(_) => "unknown (not a symlink)".to_string(),
+        };
+        OUTPUT.status(&format!("{}: {}", ver, status));
+    }
+
+    Ok(())
+}
+
+pub fn sc_system_blas_set(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    if get_mode()? == crate::utils::Mode::Admin {
+        escalate("updating BLAS configuration")?;
+    }
+    let which = args
+        .get_one::<String>("blas")
+        .ok_or(SimpleError::new("Internal argument error"))?
+        .to_string();
+    let vers = args.get_many::<String>("version");
+    let vers: Option<Vec<String>> = vers.map(|v| v.map(|v| v.to_string()).collect());
+    system_blas_set(&which, vers)
+}
+
+fn system_blas_set(which: &str, vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
+    let vers = match vers {
+        Some(x) => x,
+        None => sc_get_list()?,
+    };
+    let target_name = if which == "accelerate" {
+        BLAS_ACCELERATE_LIB
+    } else {
+        BLAS_REFERENCE_LIB
+    };
+
+    for ver in vers {
+        let ver = check_installed(&ver)?;
+        let lib = blas_lib_dir(&ver)?;
+        if !lib.join(target_name).exists() {
+            OUTPUT.error(&format!(
+                "R {} does not have {}, skipping",
+                ver, target_name
+            ));
+            error!("R {} does not have {}, skipping", ver, target_name);
+            continue;
+        }
+        let link = lib.join("libRblas.dylib");
+        if link.exists() || link.symlink_metadata().is_ok() {
+            std::fs::remove_file(&link)?;
+        }
+        std::os::unix::fs::symlink(target_name, &link)?;
+        OUTPUT.status(&format!("R {}: BLAS set to {}", ver, which));
     }
 
     Ok(())
