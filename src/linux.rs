@@ -396,7 +396,9 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 }
 
 fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>> {
-    if platform.distro.as_deref() == Some("debian") || platform.distro.as_deref() == Some("ubuntu")
+    if platform.distro.as_deref() == Some("debian")
+        || platform.distro.as_deref() == Some("ubuntu")
+        || platform.distro.as_deref() == Some("pop")
     {
         Ok(LinuxTools {
             package_name: "r-{}".to_string(),
