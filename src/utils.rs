@@ -445,6 +445,38 @@ pub fn get_r_install_dir() -> Result<Option<String>, Box<dyn Error>> {
     Ok(None)
 }
 
+/// The root directory for centralized `rig proj` package libraries, if
+/// configured. `None` means no override: each project's library stays at
+/// its default, in-project location.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub fn get_proj_library_root() -> Result<Option<String>, Box<dyn Error>> {
+    if let Ok(val) = std::env::var("RIG_PROJ_LIBRARY_ROOT") {
+        return Ok(Some(val.trim_end_matches('/').to_string()));
+    }
+
+    if let Some(val) = crate::config::get_global_config_value("proj-library-root")? {
+        return Ok(Some(val.trim_end_matches('/').to_string()));
+    }
+
+    Ok(None)
+}
+
+/// The root directory for centralized `rig proj` package libraries, if
+/// configured. `None` means no override: each project's library stays at
+/// its default, in-project location.
+#[cfg(target_os = "windows")]
+pub fn get_proj_library_root() -> Result<Option<String>, Box<dyn Error>> {
+    if let Ok(val) = std::env::var("RIG_PROJ_LIBRARY_ROOT") {
+        return Ok(Some(val.trim_end_matches('\\').to_string()));
+    }
+
+    if let Some(val) = crate::config::get_global_config_value("proj-library-root")? {
+        return Ok(Some(val.trim_end_matches('\\').to_string()));
+    }
+
+    Ok(None)
+}
+
 #[cfg(target_os = "windows")]
 pub fn get_rtools_install_dir() -> Result<Option<String>, Box<dyn Error>> {
     if let Ok(val) = std::env::var("RIG_RTOOLS_INSTALL_DIR") {

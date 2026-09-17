@@ -42,9 +42,10 @@ use crate::rproj::{
     RprojLockTarget, RPROJ_LOCK_VERSION, RPROJ_MANIFEST_FILE,
 };
 use crate::rvenv::{
-    existing_targets, find_project_root, find_workspace_root, project_library,
-    project_shim_package, read_rvenv_cfg, rvenv_init, rvenv_sync, rvenv_sync_needed,
-    workspace_members, write_sync_stamp, RvenvCfg, RPROJ_LOCK_FILE, RVENV_CFG_FILE,
+    existing_targets, find_project_root, find_workspace_root, link_library_compat_symlink,
+    project_library, project_library_in_tree, project_shim_package, read_rvenv_cfg, rvenv_init,
+    rvenv_sync, rvenv_sync_needed, workspace_members, write_sync_stamp, RvenvCfg, RPROJ_LOCK_FILE,
+    RVENV_CFG_FILE,
 };
 use crate::solver::*;
 use crate::textfmt::{dcf_field_to_text, reflow};
@@ -2974,10 +2975,6 @@ pub(crate) struct ProjSyncOptions {
     /// Install the manifest's dev dependencies as well (`--no-dev` turns this
     /// off).
     pub dev: bool,
-    /// Install into this library instead of the project's own `.rvenv/lib`
-    /// (`--library`). Only the project library gets the wrappers, the
-    /// repositories file and the sync stamp.
-    pub library: Option<PathBuf>,
     /// Install the R version the lock file names, if it is missing
     /// (`--no-install-r` turns this off).
     pub install_r: bool,
@@ -3010,7 +3007,6 @@ impl Default for ProjSyncOptions {
     fn default() -> Self {
         ProjSyncOptions {
             dev: true,
-            library: None,
             install_r: true,
             max_concurrent: None,
             r_version: None,
@@ -3035,7 +3031,6 @@ fn sc_proj_sync(
 
     let opts = ProjSyncOptions {
         dev: !args.get_flag("no-dev"),
-        library: args.get_one::<String>("library").map(PathBuf::from),
         install_r: !args.get_flag("no-install-r"),
         max_concurrent: args.get_one::<usize>("max-concurrent").copied(),
         r_version: args.get_one::<String>("r-version").cloned(),
@@ -3117,26 +3112,20 @@ pub(crate) fn proj_sync(
         &target.packages
     };
 
-    // Library path: --library, or the project library by default. The
-    // project library itself is created below, but only for a project `rig
-    // proj init` has already set up: the shim package is what init writes,
-    // and writing tracked project files is always an explicit request.
-    let library_path = match &opts.library {
-        Some(lib) => lib.clone(),
-        None => {
-            if !project_shim_package(root).exists() {
-                let msg = format!(
-                    "No project environment in {}, run `rig proj init` first \
-                     (or pass --library)",
-                    root.display()
-                );
-                OUTPUT.error(&msg);
-                error!("{}", msg);
-                bail!("{}", msg);
-            }
-            project_library(root)
-        }
-    };
+    // The project library itself is created below, but only for a project
+    // `rig proj init` has already set up: the shim package is what init
+    // writes, and writing tracked project files is always an explicit
+    // request.
+    if !project_shim_package(root).exists() {
+        let msg = format!(
+            "No project environment in {}, run `rig proj init` first",
+            root.display()
+        );
+        OUTPUT.error(&msg);
+        error!("{}", msg);
+        bail!("{}", msg);
+    }
+    let library_path = project_library(root)?;
 
     // `rig proj init` does not create the project library, this is where it
     // comes from. Create it now rather than just before the installs: an
@@ -3161,10 +3150,16 @@ pub(crate) fn proj_sync(
         opts.dry_run,
     )?;
 
-    // The project environment, as opposed to an arbitrary `--library`, also
-    // owns the wrappers, the activation scripts and the sync stamp.
-    let in_project_library = library_path == project_library(root);
-    if in_project_library {
+    {
+        // When the library is centralized, leave a compatibility symlink at
+        // its default in-project location, `.rvenv/lib`, pointing at the real
+        // (centralized) library -- mirroring uv's `.venv` junction for its
+        // own `centralized-project-envs` feature. Anything that still
+        // expects a real `.rvenv/lib` (manual inspection, other tools) keeps
+        // working; recreated on every sync like the rest of `.rvenv`.
+        if !opts.dry_run && crate::utils::get_proj_library_root()?.is_some() {
+            link_library_compat_symlink(&project_library_in_tree(root), &library_path)?;
+        }
         // The base of the shared tools library, `__tools` alongside it (see
         // `RvenvCfg::tools_lib`). Resolved here, once, rather than by the
         // shim at R startup: `rig run`'s wrapper sets `R_LIBS_USER` to the
@@ -3193,7 +3188,7 @@ pub(crate) fn proj_sync(
                     old.r_arch,
                     cfg.r_minor,
                     cfg.r_arch,
-                    project_library(root).display()
+                    library_path.display()
                 );
                 OUTPUT.warn(&msg);
                 info!("{}", msg);
@@ -3368,7 +3363,7 @@ pub(crate) fn proj_sync(
     // `rproj.lock` and warns in every R session while they differ, so it has
     // to be updated even when there was nothing to install.
     if todo.is_empty() {
-        if in_project_library && !opts.dry_run {
+        if !opts.dry_run {
             write_sync_stamp(&library_path, &lock_path)?;
         }
         OUTPUT.success(&format!(
@@ -3438,9 +3433,7 @@ pub(crate) fn proj_sync(
 
     let installed = install_packages(packages, &library_path, r_binary, max_concurrent)?;
 
-    if in_project_library {
-        write_sync_stamp(&library_path, &lock_path)?;
-    }
+    write_sync_stamp(&library_path, &lock_path)?;
 
     OUTPUT.success(&format!(
         "Deployment complete, installed {} packages",
