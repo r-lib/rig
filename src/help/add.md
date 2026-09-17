@@ -43,6 +43,10 @@ The desired R version can be specified in various ways:
   branch (`oldrel` is the same as `oldrel/1`).
 - `rig add <url>` uses a build from `<url>`.
 
+Use `--name` to assign a custom alias, so the installation can also be
+reached as `R-<name>`, e.g. `R-work`. This overrides the automatic alias
+(e.g. `release`, `oldrel`) that would otherwise be used.
+
 In user mode rig installs R into your home directory and never needs `sudo`.
 In admin mode you usually need to run this command with `sudo`: `sudo rig add
 ...`, otherwise rig will need to ask for your password.
@@ -86,6 +90,9 @@ rig add -a arm64 release
 
 # Install x86_64 build of R (default on x86_64 machines)
 rig add -a x86_64 release
+
+# Install a specific version with a custom alias
+rig add 4.6.1 --name work
 
 # Install all needed Rtools versions (Windows only)
 rig add rtools

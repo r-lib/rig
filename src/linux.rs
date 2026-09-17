@@ -257,6 +257,16 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let str: &String = args.get_one("str").unwrap();
     validate_version_arg(str)?;
 
+    if let Some(n) = args.get_one::<String>("name") {
+        validate_name_arg(n)?;
+        if sc_get_list()?.iter().any(|d| d == n) {
+            bail!(
+                "--name {} collides with an existing R installation directory",
+                n
+            );
+        }
+    }
+
     let mode = get_mode()?;
     if mode == Mode::Admin {
         escalate("adding new R versions")?;
@@ -295,7 +305,10 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             }
         }
     };
-    let alias = get_alias(args);
+    let alias = args
+        .get_one::<String>("name")
+        .cloned()
+        .or_else(|| get_alias(args));
     let ver = version.version.to_owned();
     let verstr = match ver {
         Some(ref x) => x,
@@ -350,6 +363,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     }
 
     if portable {
+        check_usr_bin_which();
         if let Err(e) = setup_user_cert(&dirname.to_string(), false) {
             OUTPUT.warn(&format!("Could not set up CA certificate bundle: {}", e));
             warn!("Could not set up CA certificate bundle: {}", e);
@@ -1224,7 +1238,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
 }
 
 pub fn re_alias() -> Regex {
-    Regex::new("^R-(release|oldrel)$").unwrap()
+    Regex::new("^R-([A-Za-z0-9][A-Za-z0-9._-]*)$").unwrap()
 }
 
 pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
@@ -1266,8 +1280,15 @@ pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
                             None => continue,
                             Some(version) => {
                                 trace!("{} -> {}", fnamestr, version);
+                                let alias = fnamestr[2..].to_string();
+                                // A plain per-version quick link (e.g. `R-devel`
+                                // when the install dir is itself named `devel`)
+                                // is not an alias, skip it.
+                                if alias == version {
+                                    continue;
+                                }
                                 let als = Alias {
-                                    alias: fnamestr[2..].to_string(),
+                                    alias,
                                     version: version.to_string(),
                                 };
                                 result.push(als);
@@ -1588,10 +1609,12 @@ fn find_admin_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
         if let Ok(tgt) = std::fs::read_link(&path) {
             if tgt.exists() {
                 if let Some(version) = version_from_link(tgt) {
-                    result.push(Alias {
-                        alias: name[2..].to_string(),
-                        version,
-                    });
+                    let alias = name[2..].to_string();
+                    // A plain per-version quick link is not an alias, skip it.
+                    if alias == version {
+                        continue;
+                    }
+                    result.push(Alias { alias, version });
                 }
             }
         }
@@ -1926,6 +1949,20 @@ pub fn get_system_profile(rver: &str) -> Result<PathBuf, Box<dyn Error>> {
         .join(rver)
         .join("lib/R/library/base/R/Rprofile");
     Ok(profile)
+}
+
+// R shells out to `which`, so portable (manylinux/musllinux) builds need
+// /usr/bin/which on the host; unlike check_usr_bin_sed there is no fixup,
+// just a warning.
+
+fn check_usr_bin_which() {
+    debug!("Checking if /usr/bin/which exists");
+    if !Path::new("/usr/bin/which").exists() {
+        let msg = "/usr/bin/which does not exist, R may not work properly. \
+                   Install it via your OS package manager, e.g. `dnf install which`.";
+        OUTPUT.warn(msg);
+        warn!("{}", msg);
+    }
 }
 
 // /usr/bin/sed might not be available, and R will need it (issue 119#)

@@ -357,6 +357,17 @@ pub fn rig_app() -> Command {
                 .required(false)
                 .value_parser(pak_version_values())
                 .default_value("stable"),
+        )
+        .arg(
+            Arg::new("name")
+                .help(
+                    "Custom alias for this R installation, so it can be\n\
+                    reached as `R-<name>`. Overrides the automatic alias\n\
+                    (e.g. `release`, `oldrel`) that would otherwise be used.",
+                )
+                .long("name")
+                .num_args(1)
+                .required(false),
         );
 
     {

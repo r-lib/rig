@@ -117,11 +117,24 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let str: &String = args.get_one("str").unwrap();
     validate_version_arg(str)?;
 
+    if let Some(n) = args.get_one::<String>("name") {
+        validate_name_arg(n)?;
+        if sc_get_list()?.iter().any(|d| d == n) {
+            bail!(
+                "--name {} collides with an existing R installation directory",
+                n
+            );
+        }
+    }
+
     if get_mode()? == crate::utils::Mode::Admin {
         escalate("adding new R versions")?;
     }
     let mut version = get_resolve(args)?;
-    let alias = get_alias(args);
+    let alias = args
+        .get_one::<String>("name")
+        .cloned()
+        .or_else(|| get_alias(args));
     let ver = version.version.to_owned();
     let verstr = match ver {
         Some(ref x) => x,
@@ -841,7 +854,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
 }
 
 pub fn re_alias() -> Regex {
-    Regex::new("^R-(next|devel|release|release-x86_64|oldrel|oldrel-x86_64)$").unwrap()
+    Regex::new("^R-([A-Za-z0-9][A-Za-z0-9._-]*)$").unwrap()
 }
 
 pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
@@ -875,8 +888,15 @@ pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
                         match version {
                             None => continue,
                             Some(version) => {
+                                let alias = fnamestr[2..].to_string();
+                                // A plain per-version quick link (e.g. `R-devel`
+                                // when the install dir is itself named `devel`)
+                                // is not an alias, skip it.
+                                if alias == version {
+                                    continue;
+                                }
                                 let als = Alias {
-                                    alias: fnamestr[2..].to_string(),
+                                    alias,
                                     version: version.to_string(),
                                 };
                                 result.push(als);
@@ -1417,10 +1437,12 @@ fn find_admin_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
         if let Ok(tgt) = std::fs::read_link(&path) {
             if tgt.exists() {
                 if let Some(version) = version_from_link(tgt) {
-                    result.push(Alias {
-                        alias: name[2..].to_string(),
-                        version,
-                    });
+                    let alias = name[2..].to_string();
+                    // A plain per-version quick link is not an alias, skip it.
+                    if alias == version {
+                        continue;
+                    }
+                    result.push(Alias { alias, version });
                 }
             }
         }
@@ -2343,6 +2365,23 @@ mod tests {
         let bindir = source_dir.join("bin");
         fs::create_dir_all(&bindir).unwrap();
         fs::write(bindir.join("R"), content).unwrap();
+    }
+
+    #[test]
+    fn re_alias_matches_keywords_and_custom_names() {
+        let re = re_alias();
+        assert!(re.is_match("R-release"));
+        assert!(re.is_match("R-oldrel"));
+        assert!(re.is_match("R-devel"));
+        assert!(re.is_match("R-next"));
+        assert!(re.is_match("R-release-x86_64"));
+        // Custom aliases (`rig add ... --name work`) match too. Distinguishing
+        // a genuine alias from a plain per-version quick link (which also
+        // matches this regex, e.g. `R-4.6.0` or `R-devel` when the install
+        // dir is itself named `devel`) happens in find_aliases() by comparing
+        // the link name against the version it resolves to, not here.
+        assert!(re.is_match("R-work"));
+        assert!(re.is_match("R-4.6.0"));
     }
 
     #[test]

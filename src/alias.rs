@@ -6,7 +6,7 @@ use std::os::unix::fs::symlink;
 
 use clap::ArgMatches;
 use log::*;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+use regex::Regex;
 use simple_error::*;
 
 #[cfg(target_os = "macos")]
@@ -22,6 +22,20 @@ use crate::escalate::*;
 use crate::output::OUTPUT;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use crate::utils::{check_local_bin_path, get_binary_dir};
+
+pub fn validate_name_arg(name: &str) -> Result<(), Box<dyn Error>> {
+    let re = Regex::new(r"^[A-Za-z0-9][A-Za-z0-9._-]*$").unwrap();
+    if !re.is_match(name) {
+        OUTPUT.error(&format!("Invalid --name value: {}", name));
+        error!("Invalid --name value: {}", name);
+        bail!(
+            "Invalid --name value: {}. Only letters, digits, `.`, `_` and `-` \
+            are allowed, and it must not be empty.",
+            name
+        );
+    }
+    Ok(())
+}
 
 #[cfg(target_os = "macos")]
 pub fn get_alias(args: &ArgMatches) -> Option<String> {
@@ -264,4 +278,25 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     };
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_name_arg_accepts_safe_names() {
+        assert!(validate_name_arg("work").is_ok());
+        assert!(validate_name_arg("my-r").is_ok());
+        assert!(validate_name_arg("4work").is_ok());
+        assert!(validate_name_arg("r.4.6").is_ok());
+    }
+
+    #[test]
+    fn validate_name_arg_rejects_unsafe_names() {
+        assert!(validate_name_arg("").is_err());
+        assert!(validate_name_arg("../etc").is_err());
+        assert!(validate_name_arg("a/b").is_err());
+        assert!(validate_name_arg("a b").is_err());
+    }
 }

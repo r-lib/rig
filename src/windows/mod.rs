@@ -347,14 +347,31 @@ fn user_install_name(install_dir: &Path, arch: &str) -> Result<String, Box<dyn E
 #[warn(unused_variables)]
 pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let str = args.get_one::<String>("str").unwrap();
-    if !(str.len() >= 6 && &str[0..6] == "rtools") {
+    let is_rtools = str.len() >= 6 && &str[0..6] == "rtools";
+    if !is_rtools {
         validate_version_arg(str)?;
     }
 
+    if let Some(n) = args.get_one::<String>("name") {
+        if is_rtools {
+            bail!("--name is not supported when installing Rtools");
+        }
+        validate_name_arg(n)?;
+        if sc_get_list()?.iter().any(|d| d == n) {
+            bail!(
+                "--name {} collides with an existing R installation directory",
+                n
+            );
+        }
+    }
+
     escalate("adding new R version")?;
-    let alias = get_alias(args);
+    let alias = args
+        .get_one::<String>("name")
+        .cloned()
+        .or_else(|| get_alias(args));
     sc_clean_registry()?;
-    if str.len() >= 6 && &str[0..6] == "rtools" {
+    if is_rtools {
         // For bare "rtools" (install all needed), only honour --arch when the user
         // explicitly passed it; the flag's native-arch default should not filter out
         // cross-arch installations.
@@ -1193,7 +1210,7 @@ pub fn sc_system_make_links() -> Result<(), Box<dyn Error>> {
 }
 
 fn re_alias() -> Regex {
-    Regex::new("^R-(oldrel|release|next)(-x86_64)?[.]exe$").unwrap()
+    Regex::new("^R-([A-Za-z0-9][A-Za-z0-9._-]*)[.]exe$").unwrap()
 }
 
 pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
@@ -1225,8 +1242,13 @@ pub fn find_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
         if re.is_match(fnamestr) {
             trace!("Checking {}", path.display());
             let rver = find_r_version_in_link(&path)?;
+            let alias = fnamestr[2..fnamestr.len() - 4].to_string();
+            // A plain per-version quick link is not an alias, skip it.
+            if alias == rver {
+                continue;
+            }
             let als = Alias {
-                alias: fnamestr[2..fnamestr.len() - 4].to_string(),
+                alias,
                 version: rver,
             };
             result.push(als);
@@ -1628,10 +1650,12 @@ fn find_admin_aliases() -> Result<Vec<Alias>, Box<dyn Error>> {
         };
         if let Some(version) = admin_name_from_link_line(&target) {
             // Strip the leading `R-` and trailing `.exe` to get the alias name.
-            result.push(Alias {
-                alias: fname[2..fname.len() - 4].to_string(),
-                version,
-            });
+            let alias = fname[2..fname.len() - 4].to_string();
+            // A plain per-version quick link is not an alias, skip it.
+            if alias == version {
+                continue;
+            }
+            result.push(Alias { alias, version });
         }
     }
     Ok(result)
@@ -2501,7 +2525,7 @@ mod tests {
     }
 
     #[test]
-    fn re_alias_matches_plain_and_x86_64_suffixed_names() {
+    fn re_alias_matches_plain_x86_64_suffixed_and_custom_names() {
         let re = re_alias();
         // Plain alias names.
         assert!(re.is_match("R-oldrel.exe"));
@@ -2513,10 +2537,18 @@ mod tests {
         assert!(re.is_match("R-oldrel-x86_64.exe"));
         assert!(re.is_match("R-release-x86_64.exe"));
         assert!(re.is_match("R-next-x86_64.exe"));
-        // Version links and other arch suffixes are not aliases.
-        assert!(!re.is_match("R-4.6.0.exe"));
-        assert!(!re.is_match("R-4.6.0-x86_64.exe"));
-        assert!(!re.is_match("R-oldrel-aarch64.exe"));
+        // Custom aliases (`rig add ... --name work`) match too. The regex
+        // deliberately no longer excludes version-looking or arbitrary
+        // suffixed names — telling a plain per-version quick link apart
+        // from a genuine alias happens in find_aliases() by comparing the
+        // link name against the version it resolves to, not here.
+        assert!(re.is_match("R-work.exe"));
+        assert!(re.is_match("R-4.6.0.exe"));
+        assert!(re.is_match("R-4.6.0-x86_64.exe"));
+        assert!(re.is_match("R-oldrel-aarch64.exe"));
+        // Not an `R-*.exe` link at all.
+        assert!(!re.is_match("R.exe"));
+        assert!(!re.is_match("Rscript.exe"));
     }
 
     #[test]
