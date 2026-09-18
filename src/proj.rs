@@ -2846,7 +2846,9 @@ fn find_r_installation(r_version: &str, arch: &str) -> Result<Option<String>, Bo
 /// (`manylinux_2_28-arm64`, `macos-x86_64`). `None` if the platform names no
 /// arch rig recognizes.
 fn platform_arch(platform: &str) -> Option<&str> {
-    let candidate = platform.rsplit_once('-').map_or(platform, |(_, suffix)| suffix);
+    let candidate = platform
+        .rsplit_once('-')
+        .map_or(platform, |(_, suffix)| suffix);
     match candidate {
         "arm64" | "aarch64" | "x86_64" => Some(candidate),
         _ => None,
