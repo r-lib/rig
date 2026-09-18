@@ -2840,14 +2840,26 @@ fn find_r_installation(r_version: &str, arch: &str) -> Result<Option<String>, Bo
     Ok(matching.pop().map(|v| v.name.clone()))
 }
 
+/// The raw CPU arch a lock target's platform string names (`arm64`,
+/// `aarch64`, `x86_64`), whether it is the whole string (a `--platform
+/// source` solve's bare-arch platform) or its last `-`-separated component
+/// (`manylinux_2_28-arm64`, `macos-x86_64`). `None` if the platform names no
+/// arch rig recognizes.
+fn platform_arch(platform: &str) -> Option<&str> {
+    let candidate = platform.rsplit_once('-').map_or(platform, |(_, suffix)| suffix);
+    match candidate {
+        "arm64" | "aarch64" | "x86_64" => Some(candidate),
+        _ => None,
+    }
+}
+
 /// The architecture the lock file's target platform needs, in the form
 /// [`rvenv_r_arch`] reports it, or the machine's own if the platform does not
 /// name one.
 fn target_r_arch(platform: &str) -> String {
-    match platform.rsplit_once('-') {
-        Some((_, "arm64")) | Some((_, "aarch64")) => native_arch_name("aarch64"),
-        Some((_, "x86_64")) => "x86_64".to_string(),
-        _ => native_arch_name(std::env::consts::ARCH),
+    match platform_arch(platform) {
+        Some(arch) => native_arch_name(arch),
+        None => native_arch_name(std::env::consts::ARCH),
     }
 }
 
@@ -2874,8 +2886,9 @@ fn this_os_family() -> &'static str {
 }
 
 /// The lock file target `rig proj sync` installs: the one whose platform's OS
-/// matches this machine (or names none), further narrowed by `--r-version`/
-/// `--platform` if the caller gave them. Several matches are not an error --
+/// and CPU arch match this machine (or name none), further narrowed by
+/// `--r-version`/`--platform` if the caller gave them. Several matches are
+/// not an error --
 /// the highest R version among them wins, so locking for several R versions
 /// just works without extra flags; only zero matches is a hard error.
 fn select_sync_target<'a>(
@@ -2884,10 +2897,15 @@ fn select_sync_target<'a>(
     platform: Option<&str>,
 ) -> Result<&'a RprojLockTarget, Box<dyn Error>> {
     let this_os = this_os_family();
+    let this_arch = native_arch_name(std::env::consts::ARCH);
     let mut candidates: Vec<&RprojLockTarget> = targets
         .iter()
         .filter(|t| match target_os_family(&t.platform) {
             Some(os) => os == this_os,
+            None => true,
+        })
+        .filter(|t| match platform_arch(&t.platform) {
+            Some(arch) => native_arch_name(arch) == this_arch,
             None => true,
         })
         .filter(|t| platform.is_none_or(|p| t.platform == p))
@@ -3988,7 +4006,7 @@ mod tests {
     #[test]
     fn select_sync_target_is_a_noop_with_a_single_target() {
         let this_os = this_os_family();
-        let platform = format!("{}-x86_64", this_os);
+        let platform = format!("{}-{}", this_os, std::env::consts::ARCH);
         let targets = vec![target("4.6.1", &platform)];
         let picked = select_sync_target(&targets, None, None).unwrap();
         assert_eq!(picked.r_version, "4.6.1");
@@ -3999,8 +4017,8 @@ mod tests {
         let this_os = this_os_family();
         let other_os = if this_os == "linux" { "macos" } else { "linux" };
         let targets = vec![
-            target("4.6.1", &format!("{}-x86_64", other_os)),
-            target("4.5.0", &format!("{}-x86_64", this_os)),
+            target("4.6.1", &format!("{}-{}", other_os, std::env::consts::ARCH)),
+            target("4.5.0", &format!("{}-{}", this_os, std::env::consts::ARCH)),
         ];
         let picked = select_sync_target(&targets, None, None).unwrap();
         assert_eq!(picked.r_version, "4.5.0");
@@ -4016,9 +4034,25 @@ mod tests {
     }
 
     #[test]
+    fn select_sync_target_ignores_foreign_arch_targets() {
+        let this_os = this_os_family();
+        let other_arch = if std::env::consts::ARCH == "x86_64" {
+            "arm64"
+        } else {
+            "x86_64"
+        };
+        let targets = vec![
+            target("4.6.1", &format!("{}-{}", this_os, other_arch)),
+            target("4.5.0", &format!("{}-{}", this_os, std::env::consts::ARCH)),
+        ];
+        let picked = select_sync_target(&targets, None, None).unwrap();
+        assert_eq!(picked.r_version, "4.5.0");
+    }
+
+    #[test]
     fn select_sync_target_picks_the_highest_r_version_among_matches() {
         let this_os = this_os_family();
-        let platform = format!("{}-x86_64", this_os);
+        let platform = format!("{}-{}", this_os, std::env::consts::ARCH);
         let targets = vec![
             target("4.5.0", &platform),
             target("4.6.1", &platform),
@@ -4031,7 +4065,7 @@ mod tests {
     #[test]
     fn select_sync_target_honors_an_explicit_r_version() {
         let this_os = this_os_family();
-        let platform = format!("{}-x86_64", this_os);
+        let platform = format!("{}-{}", this_os, std::env::consts::ARCH);
         let targets = vec![target("4.5.0", &platform), target("4.6.1", &platform)];
         let picked = select_sync_target(&targets, Some("4.5.0"), None).unwrap();
         assert_eq!(picked.r_version, "4.5.0");
