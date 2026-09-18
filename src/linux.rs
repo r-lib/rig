@@ -574,6 +574,14 @@ fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>
             is_installed: strvec!["rpm", "-q", "{}"],
             delete: strvec!["yum", "remove", "-y", "{}"],
         })
+    } else if platform.distro.as_deref() == Some("amzn") {
+        Ok(LinuxTools {
+            package_name: "R-{}".to_string(),
+            install: vec![strvec!["dnf", "install", "-y", "{}"]],
+            get_package_name: strvec!["rpm", "-q", "--qf", "%{NAME}", "-p", "{}"],
+            is_installed: strvec!["rpm", "-q", "{}"],
+            delete: strvec!["dnf", "remove", "-y", "{}"],
+        })
     } else {
         let distro = platform.distro.as_deref().unwrap_or("<unknown>");
         let version = platform.version.as_deref().unwrap_or("<unknown>");
