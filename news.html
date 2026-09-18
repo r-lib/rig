@@ -654,6 +654,7 @@ ul.task-list li input[type="checkbox"] {
 <li><p>New <code>rig cache</code> command to inspect and manage rig’s download and build caches. rig now reflinks or hardlinks packages from the cache when possible, instead of copying them, to save disk space and time.</p></li>
 <li><p>New <code>rig ppm</code> command queries Posit Package Manager. New <code>rig ppm build-log</code> shows the build log of a package on Posit Package Manager.</p></li>
 <li><p>New <code>rig repos status</code> checks the configured package repositories.</p></li>
+<li><p>New <code>rig system fix-aliases</code> to update <code>R-release</code>, <code>R-oldrel</code> etc. aliases (#234).</p></li>
 <li><p><code>rig library add</code>, <code>rig library default</code>, <code>rig library list</code> and <code>rig library rm</code> have a new <code>--r-version</code> (<code>-r</code>) option, to operate on the libraries of an R version other than the default one.</p></li>
 <li><p>New <code>rig system dirs</code> command to show the directories rig uses. With <code>--r</code>, <code>--binary</code>, <code>--data</code>, <code>--cache</code>, <code>--download</code>, <code>--log</code>, <code>--rtools</code> (Windows only) or <code>--fonts</code> (Linux only) it prints a single path, for use in scripts.</p></li>
 <li><p>New <code>rig config</code> command to manage the rig configuration file.</p></li>
