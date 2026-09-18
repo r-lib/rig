@@ -27,7 +27,9 @@ use crate::escalate::*;
 use crate::library::*;
 use crate::output::OUTPUT;
 use crate::repos::*;
-use crate::resolve::{get_resolve, is_pinned_version_string, validate_version_arg};
+use crate::resolve::{
+    get_resolve, is_pinned_version_string, resolve_versions, validate_version_arg,
+};
 use crate::run::*;
 use crate::rversion::*;
 use crate::utils::*;
@@ -1124,6 +1126,169 @@ pub fn update_entitlements(path: PathBuf) -> Result<(), Box<dyn Error>> {
 pub fn sc_system_fix_r_alias(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // Nothing to do on macOS
     Ok(())
+}
+
+pub fn sc_system_fix_aliases(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    let platform = get_platform(args)?;
+    let native_arch = get_arch(&platform, args);
+    let mode = get_mode()?;
+
+    for al in find_aliases()? {
+        let (base, arch) = fix_aliases_base_and_arch(&al.alias, &native_arch);
+
+        // In user mode `devel`/`next` install under a fixed directory name
+        // (see `user_install_dirname`), so the alias is always already
+        // correct there. In admin mode the install directory is named after
+        // its version number, which drifts when devel/next branches to a
+        // new minor version, so it needs the same R_STATUS-based check as
+        // `rig add devel`/`rig add next` themselves use to name the
+        // directory in the first place.
+        if base == "devel" || base == "next" {
+            if mode == crate::utils::Mode::Admin {
+                fix_devel_next_alias(&al, &base, &platform, &arch)?;
+            }
+            continue;
+        }
+
+        let resolved = match resolve_versions(vec![base.clone()], &platform, &arch) {
+            Ok(v) => v.into_iter().next(),
+            Err(err) => {
+                OUTPUT.warn(&format!(
+                    "Could not resolve `{}` to check R-{}: {}",
+                    base, al.alias, err
+                ));
+                continue;
+            }
+        };
+        let Some(rver) = resolved else { continue };
+        let Some(ref version) = rver.version else {
+            continue;
+        };
+
+        match find_installed_version_arch(version, &arch)? {
+            None => {
+                OUTPUT.warn(&format!(
+                    "R-{} should point to R {} ({}), but it is not installed. Removing the stale alias.",
+                    al.alias, version, arch
+                ));
+                remove_alias(&al.alias)?;
+            }
+            Some(name) if name == al.version => {}
+            Some(name) => {
+                OUTPUT.status(&format!(
+                    "Fixing R-{} alias: {} -> {}",
+                    al.alias, al.version, name
+                ));
+                add_alias(&name, &al.alias)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// Splits an alias name like "release-x86_64" into ("release", "x86_64"), or
+// "release" into ("release", native_arch) -- the inverse of
+// `alias_with_arch_suffix`.
+fn fix_aliases_base_and_arch(alias: &str, native_arch: &str) -> (String, String) {
+    match alias.strip_suffix("-x86_64") {
+        Some(base) => (base.to_string(), "x86_64".to_string()),
+        None => (alias.to_string(), native_arch.to_string()),
+    }
+}
+
+// Admin-mode `R-devel`/`R-next`: re-point the alias if the directory it
+// currently targets is no longer the current devel/next build. R_STATUS
+// alone is not enough to tell: it is frozen at install time, so an old
+// devel/next directory that has since branched into a plain release still
+// reports its original "under development" status forever. So a directory
+// only counts as the current devel/next build if its R_STATUS matches AND
+// its reported version is exactly the one `rig resolve devel`/`rig resolve
+// next` returns today.
+fn fix_devel_next_alias(
+    al: &Alias,
+    base: &str,
+    platform: &str,
+    arch: &str,
+) -> Result<(), Box<dyn Error>> {
+    let resolved_version = match resolve_versions(vec![base.to_string()], platform, arch) {
+        Ok(v) => v.into_iter().next().and_then(|r| r.version),
+        Err(err) => {
+            OUTPUT.warn(&format!(
+                "Could not resolve `{}` to check R-{}: {}",
+                base, al.alias, err
+            ));
+            return Ok(());
+        }
+    };
+    let Some(resolved_version) = resolved_version else {
+        return Ok(());
+    };
+
+    let installed = sc_get_list_details()?;
+
+    let current_ok = installed
+        .iter()
+        .find(|ver| ver.name == al.version)
+        .and_then(|ver| ver.path.as_deref())
+        .is_some_and(|path| is_current_dev_build(Path::new(path), base, &resolved_version));
+    if current_ok {
+        return Ok(());
+    }
+
+    for ver in &installed {
+        let Some(path) = ver.path.as_deref() else {
+            continue;
+        };
+        if is_current_dev_build(Path::new(path), base, &resolved_version) {
+            if ver.name != al.version {
+                OUTPUT.status(&format!(
+                    "Fixing R-{} alias: {} -> {}",
+                    al.alias, al.version, ver.name
+                ));
+                add_alias(&ver.name, &al.alias)?;
+            }
+            return Ok(());
+        }
+    }
+
+    OUTPUT.warn(&format!(
+        "R-{} should point to R {}, but it is not installed. Removing the stale alias.",
+        al.alias, resolved_version
+    ));
+    remove_alias(&al.alias)?;
+    Ok(())
+}
+
+fn is_current_dev_build(version_dir: &Path, base: &str, resolved_version: &str) -> bool {
+    let has_status = read_installed_r_status(version_dir)
+        .ok()
+        .and_then(|status| crate::common::user_mode_dev_dirname(Some(&status)))
+        .as_deref()
+        == Some(base);
+    if !has_status {
+        return false;
+    }
+    match read_built_version_arch(version_dir) {
+        Ok((version, _arch)) => version == resolved_version,
+        Err(_) => false,
+    }
+}
+
+// Same as `read_r_status`, but for an already-installed directory rather
+// than a freshly extracted .pkg payload: the `include` folder lives under
+// `Resources` in admin-mode installs, directly under the version directory
+// in user-mode ones.
+fn read_installed_r_status(version_dir: &Path) -> Result<String, Box<dyn Error>> {
+    for base in [version_dir.join("Resources"), version_dir.to_path_buf()] {
+        if let Ok(status) = read_r_status(&base) {
+            return Ok(status);
+        }
+    }
+    bail!(
+        "Cannot find include/Rversion.h under {}",
+        version_dir.display()
+    )
 }
 
 pub fn sc_system_make_orthogonal(args: &ArgMatches) -> Result<(), Box<dyn Error>> {

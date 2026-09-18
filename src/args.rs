@@ -612,6 +612,11 @@ pub fn rig_app() -> Command {
         .display_order(0)
         .long_about(HELP_SYSTEM_MAKE_LINKS);
 
+    let cmd_system_fix_aliases = Command::new("fix-aliases")
+        .about(ABOUT_SYSTEM_FIX_ALIASES)
+        .display_order(0)
+        .long_about(HELP_SYSTEM_FIX_ALIASES);
+
     let cmd_system_lib = Command::new("setup-user-lib")
         .about(ABOUT_SYSTEM_SETUP_USER_LIB)
         .long_about(HELP_SYSTEM_SETUP_USER_LIB)
@@ -999,6 +1004,7 @@ pub fn rig_app() -> Command {
 
     cmd_system = cmd_system
         .subcommand(cmd_system_links)
+        .subcommand(cmd_system_fix_aliases)
         .subcommand(cmd_system_lib)
         .subcommand(cmd_system_pak);
 

@@ -326,6 +326,7 @@ fn sc_system(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Err
         Some(("setup-user-lib", s)) => sc_system_setup_user_lib(s),
         Some(("dirs", s)) => crate::dirs::sc_system_dirs(s, mainargs),
         Some(("make-links", _)) => sc_system_make_links(),
+        Some(("fix-aliases", s)) => sc_system_fix_aliases(s),
         Some(("make-orthogonal", s)) => sc_system_make_orthogonal(s),
         Some(("fix-permissions", s)) => sc_system_fix_permissions(s),
         Some(("forget", _)) => sc_system_forget(),

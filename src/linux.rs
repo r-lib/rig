@@ -24,7 +24,9 @@ use crate::library::*;
 use crate::output::OUTPUT;
 use crate::platform::*;
 use crate::repos::*;
-use crate::resolve::{get_resolve_for, is_pinned_version_string, validate_version_arg};
+use crate::resolve::{
+    get_resolve_for, is_pinned_version_string, resolve_versions, validate_version_arg,
+};
 use crate::run::*;
 use crate::utils::*;
 
@@ -1487,6 +1489,45 @@ pub fn sc_system_make_orthogonal(_args: &ArgMatches) -> Result<(), Box<dyn Error
 
 pub fn sc_system_fix_r_alias(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // Nothing to do on Linux
+    Ok(())
+}
+
+pub fn sc_system_fix_aliases(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    let platform = get_platform(args)?;
+    let arch = get_arch(&platform, args);
+
+    for al in find_aliases()? {
+        let resolved = match resolve_versions(vec![al.alias.clone()], &platform, &arch) {
+            Ok(v) => v.into_iter().next(),
+            Err(err) => {
+                OUTPUT.warn(&format!("Could not resolve `{}`: {}", al.alias, err));
+                continue;
+            }
+        };
+        let Some(rver) = resolved else { continue };
+        let Some(ref version) = rver.version else {
+            continue;
+        };
+
+        match find_installed_by_version(version)? {
+            None => {
+                OUTPUT.warn(&format!(
+                    "R-{} should point to R {}, but it is not installed. Removing the stale alias.",
+                    al.alias, version
+                ));
+                remove_alias(&al.alias)?;
+            }
+            Some(name) if name == al.version => {}
+            Some(name) => {
+                OUTPUT.status(&format!(
+                    "Fixing R-{} alias: {} -> {}",
+                    al.alias, al.version, name
+                ));
+                add_alias(&name, &al.alias)?;
+            }
+        }
+    }
+
     Ok(())
 }
 

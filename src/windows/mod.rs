@@ -1482,6 +1482,145 @@ pub fn sc_system_fix_r_alias(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+pub fn sc_system_fix_aliases(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    let platform = get_platform(args)?;
+    let native_arch = get_arch(&platform, args);
+    let mode = get_mode()?;
+
+    for al in find_aliases()? {
+        let (base, arch) = fix_aliases_base_and_arch(&al.alias, &native_arch);
+
+        // In user mode `next` installs under a fixed directory name (see
+        // `user_install_name`), so the alias is always already correct
+        // there. In admin mode the install directory is named after its
+        // version number, which drifts when next branches to a new minor
+        // version, so it needs the same R_STATUS-based check `rig add next`
+        // itself uses to name the directory in the first place.
+        if base == "next" {
+            if mode == Mode::Admin {
+                fix_next_alias(&al, &platform, &arch)?;
+            }
+            continue;
+        }
+
+        let resolved = match resolve_versions(vec![base.clone()], &platform, &arch) {
+            Ok(v) => v.into_iter().next(),
+            Err(err) => {
+                OUTPUT.warn(&format!(
+                    "Could not resolve `{}` to check R-{}: {}",
+                    base, al.alias, err
+                ));
+                continue;
+            }
+        };
+        let Some(rver) = resolved else { continue };
+        let Some(ref version) = rver.version else {
+            continue;
+        };
+
+        let candidate = rig_name_for_arch(version, &arch);
+        match find_installed_matching(&[candidate], version)? {
+            None => {
+                OUTPUT.warn(&format!(
+                    "R-{} should point to R {} ({}), but it is not installed. Removing the stale alias.",
+                    al.alias, version, arch
+                ));
+                remove_alias(&al.alias)?;
+            }
+            Some(name) if name == al.version => {}
+            Some(name) => {
+                OUTPUT.status(&format!(
+                    "Fixing R-{} alias: {} -> {}",
+                    al.alias, al.version, name
+                ));
+                add_alias(&name, &al.alias)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// Splits an alias name like "release-x86_64" into ("release", "x86_64"), or
+// "release" into ("release", native_arch) -- the inverse of
+// `alias_with_arch_suffix`.
+fn fix_aliases_base_and_arch(alias: &str, native_arch: &str) -> (String, String) {
+    match alias.strip_suffix("-x86_64") {
+        Some(base) => (base.to_string(), "x86_64".to_string()),
+        None => (alias.to_string(), native_arch.to_string()),
+    }
+}
+
+// Admin-mode `R-next`: re-point the alias if the directory it currently
+// targets is no longer the one with `next`'s R_STATUS (e.g. next branched
+// to a new minor version, so the old directory is now a plain release and
+// a new directory has taken over the "next" status), by finding whichever
+// installed directory currently has that status.
+// R_STATUS alone is not enough: it is frozen at install time, so an old
+// `next` directory that has since branched into a plain release still
+// reports its original "under development" status forever. So a directory
+// only counts as the current `next` build if its R_STATUS matches AND its
+// reported version is exactly the one `rig resolve next` returns today.
+fn fix_next_alias(al: &Alias, platform: &str, arch: &str) -> Result<(), Box<dyn Error>> {
+    let resolved_version = match resolve_versions(vec!["next".to_string()], platform, arch) {
+        Ok(v) => v.into_iter().next().and_then(|r| r.version),
+        Err(err) => {
+            OUTPUT.warn(&format!(
+                "Could not resolve `next` to check R-{}: {}",
+                al.alias, err
+            ));
+            return Ok(());
+        }
+    };
+    let Some(resolved_version) = resolved_version else {
+        return Ok(());
+    };
+
+    let installed = sc_get_list_details()?;
+
+    let current_ok = installed
+        .iter()
+        .find(|ver| ver.name == al.version)
+        .and_then(|ver| ver.path.as_deref())
+        .is_some_and(|path| is_current_next_build(Path::new(path), &resolved_version));
+    if current_ok {
+        return Ok(());
+    }
+
+    for ver in &installed {
+        let Some(path) = ver.path.as_deref() else {
+            continue;
+        };
+        if is_current_next_build(Path::new(path), &resolved_version) {
+            if ver.name != al.version {
+                OUTPUT.status(&format!(
+                    "Fixing R-{} alias: {} -> {}",
+                    al.alias, al.version, ver.name
+                ));
+                add_alias(&ver.name, &al.alias)?;
+            }
+            return Ok(());
+        }
+    }
+
+    OUTPUT.warn(&format!(
+        "R-{} should point to R {}, but it is not installed. Removing the stale alias.",
+        al.alias, resolved_version
+    ));
+    remove_alias(&al.alias)?;
+    Ok(())
+}
+
+fn is_current_next_build(install_dir: &Path, resolved_version: &str) -> bool {
+    match read_rversion_h(install_dir) {
+        Ok((version, status)) => {
+            version == resolved_version
+                && crate::common::user_mode_dev_dirname(Some(&status)).as_deref() == Some("next")
+        }
+        Err(_) => false,
+    }
+}
+
 // ------------------------------------------------------------------------
 // `rig system user-mode` (Windows): switch rig to user mode and clean up an
 // existing admin-mode setup. Mirrors the macOS/Linux implementation:

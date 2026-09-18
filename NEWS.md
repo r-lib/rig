@@ -109,6 +109,9 @@
 
 * New `rig repos status` checks the configured package repositories.
 
+* New `rig system fix-aliases` to update `R-release`, `R-oldrel` etc.
+  aliases (#234).
+
 * `rig library add`, `rig library default`, `rig library list` and
   `rig library rm` have a new `--r-version` (`-r`) option, to operate on
   the libraries of an R version other than the default one.
