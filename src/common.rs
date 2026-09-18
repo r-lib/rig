@@ -148,11 +148,13 @@ pub fn set_default_if_none(ver: String) -> Result<(), Box<dyn Error>> {
 // development builds: `devel` for R-devel, `next` for R-next. Returns None for
 // released versions, which are named after their version number instead. The
 // status is read from the `R_STATUS` macro in `include/Rversion.h`: it is an
-// empty string for releases, "Under development (unstable)" for R-devel, and
-// another label (e.g. a prerelease string) for R-next.
+// empty string for releases, "Revised" for some older released versions
+// (e.g. 3.2.4), "Under development (unstable)" for R-devel, and another label
+// (e.g. a prerelease string) for R-next.
 pub fn user_mode_dev_dirname(status: Option<&str>) -> Option<String> {
     match status {
         Some("Under development (unstable)") => Some("devel".to_string()),
+        Some("Revised") => None,
         Some(s) if !s.is_empty() => Some("next".to_string()),
         _ => None,
     }
@@ -1222,6 +1224,21 @@ mod tests {
         edit(contents, |obj| {
             add_to_json_string_array(obj, POSITRON_ROOTS_KEY, "/home/u/r", "settings.json")
         })
+    }
+
+    #[test]
+    fn test_user_mode_dev_dirname() {
+        assert_eq!(user_mode_dev_dirname(None), None);
+        assert_eq!(user_mode_dev_dirname(Some("")), None);
+        assert_eq!(user_mode_dev_dirname(Some("Revised")), None);
+        assert_eq!(
+            user_mode_dev_dirname(Some("Under development (unstable)")),
+            Some("devel".to_string())
+        );
+        assert_eq!(
+            user_mode_dev_dirname(Some("Prerelease")),
+            Some("next".to_string())
+        );
     }
 
     #[test]
