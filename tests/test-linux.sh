@@ -351,7 +351,7 @@ teardown() {
     # --dev adds to the test dependency group
     run rig proj add 'testthat@>= 3.0' --dev --no-lock
     [[ "$status" -eq 0 ]]
-    grep -q '^\[dependency-groups.test\]$' rproj.toml
+    grep -q '^\[dependency-groups.dev\]$' rproj.toml
     grep -q '^testthat = ">= 3.0"$' rproj.toml
 
     # adding a package again updates its version requirement
