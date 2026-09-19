@@ -15,6 +15,17 @@ Development dependencies are included by default. Use `--r-version` to solve
 for a specific R version and `--no-dev` to leave out development
 dependencies.
 
+## Optional dependencies and dependency groups
+
+The manifest's `test`/`enhances` dependency groups and every
+`[optional-dependencies.*]` extra are optional dependencies: packages the
+project suggests or can take advantage of, but does not need to run. By
+default `rig proj lock` solves all of them together with the project's hard
+dependencies, in one solve, so a version picked for a shared package is the
+same whether it got pulled in as a hard or an optional dependency.
+`--no-dev` leaves all of them out instead. Other `[dependency-groups.*]`
+tables are not R packages and are not solved.
+
 ## The R version
 
 Without `--r-version` rig solves for the default R version, provided the

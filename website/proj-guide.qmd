@@ -58,10 +58,17 @@ and `rig proj sync` itself as needed, so day to day you mostly need
 
 `rproj.toml` is the manifest you and `rig proj add`/`remove` edit: project
 metadata plus dependency tables (`[dependencies]`,
-`[linking-dependencies]`, `[dependency-groups.*]`). A dependency can carry a
-version requirement (`^1.2.3`, `~1.2.3`, `>= 1.0, < 2.0`, or `*` for any
-version) or come straight from git, GitHub or GitLab. See [`rig proj
+`[linking-dependencies]`, `[dependency-groups.*]`,
+`[optional-dependencies.*]`). A dependency can carry a version requirement
+(`^1.2.3`, `~1.2.3`, `>= 1.0, < 2.0`, or `*` for any version) or come
+straight from git, GitHub or GitLab. See [`rig proj
 add`](reference/proj.qmd#rig-proj-add) for the full syntax.
+
+The `test`/`enhances` dependency groups and every `[optional-dependencies.*]`
+extra are optional dependencies: packages the project suggests or can take
+advantage of, but does not need to run. `rig proj lock` solves all of them
+together with the hard dependencies, in one solve, by default; `--no-dev`
+leaves them out. See [`rig proj lock`](reference/proj.qmd#rig-proj-lock).
 
 `rproj.lock` is written by `rig proj lock`, which reads `rproj.toml` and
 resolves it with rig's built-in solver into an exact, reproducible set of

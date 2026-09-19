@@ -1012,7 +1012,8 @@ impl Rproj {
         let mut out = vec![];
         let tables = std::iter::once(&self.dependencies)
             .chain(std::iter::once(&self.linking_dependencies))
-            .chain(self.dependency_groups.values().map(|g| &g.dependencies));
+            .chain(self.dependency_groups.values().map(|g| &g.dependencies))
+            .chain(self.optional_dependencies.values());
         for table in tables {
             for (name, dep) in table.iter() {
                 if let Dependency::Detailed(t) = dep {
@@ -1029,10 +1030,11 @@ impl Rproj {
     /// dependency field (`Depends`/`Imports`/`LinkingTo`/`Suggests`/
     /// `Enhances`), for [`Rproj::to_description`]'s `Remotes:` field. Scoped
     /// the same way as [`Rproj::to_dep_version_specs`] -- `[dependencies]`,
-    /// `[linking-dependencies]`, and the `test`/`enhances` dependency
-    /// groups -- unlike [`Rproj::git_dependencies`], which also sweeps
-    /// arbitrary `Config/Needs/*` groups that already carry their own pak-ref
-    /// entries and must not duplicate into `Remotes:`.
+    /// `[linking-dependencies]`, the `test`/`enhances` dependency groups, and
+    /// every `[optional-dependencies.*]` extra -- unlike
+    /// [`Rproj::git_dependencies`], which also sweeps arbitrary
+    /// `Config/Needs/*` groups that already carry their own pak-ref entries
+    /// and must not duplicate into `Remotes:`.
     fn description_git_dependencies(&self) -> Vec<(String, DepTable)> {
         let mut out = vec![];
         let tables = std::iter::once(&self.dependencies)
@@ -1041,7 +1043,8 @@ impl Rproj {
                 self.dependency_groups
                     .get(*group_name)
                     .map(|g| &g.dependencies)
-            }));
+            }))
+            .chain(self.optional_dependencies.values());
         for table in tables {
             for (name, dep) in table.iter() {
                 if let Dependency::Detailed(t) = dep {
@@ -1058,10 +1061,13 @@ impl Rproj {
     /// inverse of [`Rproj::merge_description`]: `[dependencies]` becomes
     /// `Depends` (entries marked `attach = true`, and `R` itself) or `Imports`,
     /// `[linking-dependencies]` becomes `LinkingTo`, and the `test` / `enhances`
-    /// dependency groups become `Suggests` / `Enhances`. Other groups have no
-    /// DESCRIPTION dependency type to map to and are left out -- they are
-    /// arbitrary `Config/Needs/*` lists (see [`Rproj::merge_config_needs`]),
-    /// not necessarily CRAN-installable packages.
+    /// dependency groups become `Suggests` / `Enhances`. Every
+    /// `[optional-dependencies.*]` extra is also folded in as `Suggests`, so
+    /// it is solved alongside everything else rather than in isolation. Other
+    /// `[dependency-groups.*]` tables have no DESCRIPTION dependency type to
+    /// map to and are left out -- they are arbitrary `Config/Needs/*` lists
+    /// (see [`Rproj::merge_config_needs`]), not necessarily CRAN-installable
+    /// packages.
     ///
     /// Soft dependencies are dropped unless `dev`; a package that is also a hard
     /// dependency stays, because it needs to be installed either way.
@@ -1092,6 +1098,12 @@ impl Rproj {
             }
         }
 
+        for extra in self.optional_dependencies.values() {
+            for (name, dep) in extra.iter() {
+                deps.push(dep_spec(name, dep, RDepType::Suggests)?);
+            }
+        }
+
         let mut pkg_deps = PackageDependencies { dependencies: deps };
         pkg_deps.simplify();
 
@@ -1106,12 +1118,13 @@ impl Rproj {
 
     /// The manifest's solvable dependency groups, as direct dependency names,
     /// for classifying a solved package graph by which group(s) need it:
-    /// `"main"` for the hard `[dependencies]`/`[linking-dependencies]`, plus
-    /// `"test"` / `"enhances"` for the two dependency groups
-    /// [`Rproj::to_dep_version_specs`] solves for -- the same set, so a
-    /// package this returns can always be found among that method's output.
-    /// Other `[dependency-groups.*]` tables are `Config/Needs/*` lists, not
-    /// solved or installed, so they have no roots here either.
+    /// `"main"` for the hard `[dependencies]`/`[linking-dependencies]`,
+    /// `"test"` / `"enhances"` for the two dependency groups, and each
+    /// `[optional-dependencies.*]` extra under its own name -- the same set
+    /// [`Rproj::to_dep_version_specs`] solves for, so a package this returns
+    /// can always be found among that method's output. Other
+    /// `[dependency-groups.*]` tables are `Config/Needs/*` lists, not solved
+    /// or installed, so they have no roots here either.
     pub fn dependency_group_roots(&self) -> HashMap<String, Vec<String>> {
         let mut roots: HashMap<String, Vec<String>> = HashMap::new();
 
@@ -1130,6 +1143,13 @@ impl Rproj {
                     .or_default()
                     .extend(group.dependencies.keys().cloned());
             }
+        }
+
+        for (extra_name, extra) in self.optional_dependencies.iter() {
+            roots
+                .entry(extra_name.clone())
+                .or_default()
+                .extend(extra.keys().cloned());
         }
 
         roots
@@ -2730,6 +2750,38 @@ mod tests {
     }
 
     #[test]
+    fn to_dep_version_specs_optional_dependencies_are_soft_and_need_dev() {
+        let mut m = Rproj::minimal("mypkg");
+        m.optional_dependencies.insert(
+            "viz".to_string(),
+            BTreeMap::from([("ggplot2".to_string(), dep(">= 3.4"))]),
+        );
+
+        let deps = m.to_dep_version_specs(false).unwrap();
+        assert_eq!(converted(&deps, "ggplot2"), None);
+
+        let deps = m.to_dep_version_specs(true).unwrap();
+        assert_eq!(
+            converted(&deps, "ggplot2"),
+            Some((&[RDepType::Suggests][..], vec![">= 3.4".to_string()]))
+        );
+    }
+
+    #[test]
+    fn dependency_group_roots_includes_optional_dependency_extras() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependencies.insert("cli".to_string(), dep("*"));
+        m.optional_dependencies.insert(
+            "viz".to_string(),
+            BTreeMap::from([("ggplot2".to_string(), dep("*"))]),
+        );
+
+        let roots = m.dependency_group_roots();
+        assert!(roots.get("main").unwrap().contains(&"cli".to_string()));
+        assert_eq!(roots.get("viz"), Some(&vec!["ggplot2".to_string()]));
+    }
+
+    #[test]
     fn to_dep_version_specs_keeps_a_soft_dep_that_is_also_hard() {
         let mut m = Rproj::minimal("mypkg");
         m.dependencies.insert("cli".to_string(), dep(">= 3.6.5"));
@@ -3714,6 +3766,27 @@ foo = "bar"
             .contains("Remotes:\n    jeroen/jsonlite@v1.8.0,\n    tidyverse/tidytemplate@main\n"));
         // `Remotes:` comes after the dependency fields.
         assert!(desc.find("Suggests:").unwrap() < desc.find("Remotes:").unwrap());
+    }
+
+    #[test]
+    fn to_description_writes_remotes_for_git_sourced_optional_dependencies() {
+        let mut m = Rproj::minimal("mypkg");
+        m.optional_dependencies.insert(
+            "viz".to_string(),
+            BTreeMap::from([(
+                "tidytemplate".to_string(),
+                Dependency::Detailed(Box::new(DepTable {
+                    git: Some("https://github.com/tidyverse/tidytemplate".to_string()),
+                    branch: Some("main".to_string()),
+                    ..Default::default()
+                })),
+            )]),
+        );
+
+        let (desc, dropped) = m.to_description().unwrap();
+        assert!(dropped.is_empty());
+        assert!(desc.contains("Suggests:\n    tidytemplate\n"));
+        assert!(desc.contains("Remotes:\n    tidyverse/tidytemplate@main\n"));
     }
 
     #[test]
