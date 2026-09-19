@@ -576,7 +576,7 @@ Show cache size and contents
 </section>
 <section id="rig-cache-clean" class="level2">
 <h2 class="anchored" data-anchor-id="rig-cache-clean"><code>rig cache clean</code></h2>
-<p>Deletes files from rig’s cache directory. With no options, deletes the whole cache. Use <code>--category</code> to delete only one category of cached files (<code>built</code>, <code>packages</code>, <code>metadata</code> or <code>p3m</code>), leaving the rest in place. See <a href="../reference/cache.html#rig-cache-info"><code>rig cache info</code></a> for what each category contains.</p>
+<p>Deletes files from rig’s cache directory. With no options, deletes the whole cache. Use <code>--category</code> to delete only one category of cached files (<code>built</code>, <code>packages</code>, <code>metadata</code>, <code>p3m</code> or <code>git-mirrors</code>), leaving the rest in place. See <a href="../reference/cache.html#rig-cache-info"><code>rig cache info</code></a> for what each category contains.</p>
 <section id="usage" class="level3">
 <h3 class="anchored" data-anchor-id="usage">Usage</h3>
 <pre class="text"><code>rig cache clean [OPTIONS]</code></pre>
@@ -591,7 +591,7 @@ Run in admin mode (overrides RIG_MODE and config)
 <dt><code>--category &lt;category&gt;</code></dt>
 <dd>
 Only delete this category of cached files
-<em>[possible values: built, packages, metadata, p3m]</em>
+<em>[possible values: built, packages, metadata, p3m, git-mirrors]</em>
 </dd>
 <dt><code>-h, --help</code></dt>
 <dd>
@@ -610,7 +610,7 @@ Run in user mode (overrides RIG_MODE and config)
 </section>
 <section id="rig-cache-info" class="level2">
 <h2 class="anchored" data-anchor-id="rig-cache-info"><code>rig cache info</code></h2>
-<p>Prints the total size of rig’s cache directory, broken down into categories: packages rig built from source, downloaded package files, package metadata (binary package indexes, CRAN-like package databases, package manifests, and repository data), and the cached PPM status document.</p>
+<p>Prints the total size of rig’s cache directory, broken down into categories: packages rig built from source, downloaded package files, package metadata (binary package indexes, CRAN-like package databases, package manifests, and repository data), the cached PPM status document, and the persistent git mirrors kept for git/GitHub dependency resolution (<code>rig proj lock</code>).</p>
 <p>Use <code>--json</code> for machine-readable output.</p>
 <section id="usage-1" class="level3">
 <h3 class="anchored" data-anchor-id="usage-1">Usage</h3>

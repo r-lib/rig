@@ -598,6 +598,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#optional-dependencies-and-dependency-groups" id="toc-optional-dependencies-and-dependency-groups" class="nav-link" data-scroll-target="#optional-dependencies-and-dependency-groups">Optional dependencies and dependency groups</a></li>
   <li><a href="#the-r-version" id="toc-the-r-version" class="nav-link" data-scroll-target="#the-r-version">The R version</a></li>
   <li><a href="#source-and-binary-packages" id="toc-source-and-binary-packages" class="nav-link" data-scroll-target="#source-and-binary-packages">Source and binary packages</a></li>
+  <li><a href="#sticky-lock-files" id="toc-sticky-lock-files" class="nav-link" data-scroll-target="#sticky-lock-files">Sticky lock files</a></li>
+  <li><a href="#git-and-github-dependencies" id="toc-git-and-github-dependencies" class="nav-link" data-scroll-target="#git-and-github-dependencies">Git and GitHub dependencies</a></li>
   <li><a href="#workspaces" id="toc-workspaces" class="nav-link" data-scroll-target="#workspaces">Workspaces</a></li>
   <li><a href="#usage-5" id="toc-usage-5" class="nav-link" data-scroll-target="#usage-5">Usage</a></li>
   <li><a href="#options-7" id="toc-options-7" class="nav-link" data-scroll-target="#options-7">Options</a></li>
@@ -1193,6 +1195,14 @@ Run in user mode (overrides RIG_MODE and config)
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> proj lock <span class="at">--platform</span> ubuntu-24.04</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p><code>--platform source</code> solves for source packages only. rig also falls back to source packages when there are no binaries for a platform at all.</p>
 <p>rig keeps the repository metadata and the binary package indices it solves from in its cache, and refreshes them once a day. Use <code>--no-cache</code> to ignore the cache, or clean the cache with <code>rig cached clean</code>.</p>
+</section>
+<section id="sticky-lock-files" class="level3">
+<h3 class="anchored" data-anchor-id="sticky-lock-files">Sticky lock files</h3>
+<p>A <code>rig proj lock</code> run that finds an existing <code>rproj.lock</code> already satisfying <code>rproj.toml</code> reuses it as-is, for every package, instead of re-resolving anything. This applies to ordinary dependencies, an existing pin that still satisfies the manifest’s version requirement is kept, even if a newer version has since been published, as well as to git/GitHub dependencies (see below). Use <code>rig proj lock --upgrade</code> to ignore the existing lock file and re-resolve every dependency instead, picking the latest version that still satisfies <code>rproj.toml</code>.</p>
+</section>
+<section id="git-and-github-dependencies" class="level3">
+<h3 class="anchored" data-anchor-id="git-and-github-dependencies">Git and GitHub dependencies</h3>
+<p>A <code>git::</code>/<code>github::</code> dependency pinned to a branch, a pull request, or no ref at all (the default branch’s tip) is only resolved against its remote the first time it’s locked. Once <code>rproj.lock</code> records a commit for it, later <code>rig proj lock</code> runs reuse that commit as-is rather than re-checking whether the branch moved on every lock. <code>rig proj lock --upgrade</code> re-checks every git/GitHub dependency’s ref and moves the pin forward if it changed. A <code>rev</code>/<code>tag</code> pins an exact commit already, so there’s nothing for <code>--upgrade</code> to move. <code>release = true</code> is sticky the same way: once locked, later runs keep the release it pinned instead of asking GitHub which release is latest every time. <code>rig proj lock --upgrade</code> re-checks and moves the pin forward if a newer release exists.</p>
 <p>The <code>rproj.lock</code> file records, for every package, whether it is a source or a binary package and the URL it is downloaded from. It also records where the file is cached, which is per <em>build</em> rather than per version: a repository can offer several binaries of one version for one platform and R version, and they are cached side by side.</p>
 </section>
 <section id="workspaces" class="level3">
@@ -1249,6 +1259,10 @@ Prefer an older version that has a binary package over a newer one that does not
 <dt><code>-r, --r-version &lt;r-version&gt;</code></dt>
 <dd>
 R version(s) to solve dependencies for, comma-separated to solve for several (e.g.&nbsp;<code>--r-version</code> 4.5,4.6). Combined with <code>--platform</code> as a cross product, one target per combination.
+</dd>
+<dt><code>-U, --upgrade</code></dt>
+<dd>
+Re-resolve every dependency instead of reusing an existing rproj.lock: re-check git/GitHub refs against their remotes, and re-run the solver for CRAN/PPM dependencies instead of keeping a pin that already satisfies rproj.toml.
 </dd>
 <dt><code>--user</code></dt>
 <dd>
