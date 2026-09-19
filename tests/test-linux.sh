@@ -348,7 +348,7 @@ teardown() {
     [[ "$status" -eq 0 ]]
     grep -q '^jsonlite = "\^1.8.0"$' rproj.toml
 
-    # --dev adds to the test dependency group
+    # --dev adds to the dev dependency group
     run rig proj add 'testthat@>= 3.0' --dev --no-lock
     [[ "$status" -eq 0 ]]
     grep -q '^\[dependency-groups.dev\]$' rproj.toml
