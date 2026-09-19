@@ -772,7 +772,7 @@ rig proj add 'git::https://gitlab.com/example/pkg.git@main'</code></pre>
 </section>
 <section id="options" class="level3">
 <h3 class="anchored" data-anchor-id="options">Options</h3>
-<p><code>--dev</code> adds the packages as development dependencies, into the <code>[dependency-groups.dev]</code> table instead of <code>[dependencies]</code>. These are installed by default, and left out by <code>rig proj lock --no-dev</code> and <code>rig proj sync --no-dev</code>.</p>
+<p><code>--dev</code> adds the packages as development dependencies, into the <code>[dependency-groups.dev]</code> table instead of <code>[dependencies]</code>. These are installed by default, and left out by <code>rig proj sync --no-dev</code>.</p>
 <p><code>--no-sync</code> updates <code>rproj.toml</code> and <code>rproj.lock</code>, but does not install anything.</p>
 <p><code>--no-lock</code> only updates <code>rproj.toml</code>. Nothing is resolved or installed, so this also works offline.</p>
 </section>
@@ -832,7 +832,7 @@ Run in user mode (overrides RIG_MODE and config)
 <h2 class="anchored" data-anchor-id="rig-proj-deps"><code>rig proj deps</code></h2>
 <p>Show the dependencies of an R project, in a table.</p>
 <p>rig reads the project manifest, <code>rproj.toml</code>, in the current directory.</p>
-<p>Add <code>--dev</code> to include development dependencies.</p>
+<p>Add <code>--dev</code> to include every dependency group and optional-dependency extra together – unlike <a href="#rig-proj-sync"><code>rig proj sync</code></a>, which selects each one separately with <code>--group</code>/<code>--extra</code>, this is an all-or-nothing view of the manifest.</p>
 <p>Use <code>--json</code> for machine readable output.</p>
 <p>The plain listing only reads the manifest, so it needs neither R nor the package repositories.</p>
 <section id="recursive-dependencies" class="level3">
@@ -1179,10 +1179,11 @@ Run in user mode (overrides RIG_MODE and config)
 <p>Resolve the dependencies of an R project to a concrete set of package versions, and write the result to <code>rproj.lock</code>.</p>
 <p>rig reads the project manifest, <code>rproj.toml</code>, in the current directory, and uses its built-in solver to find a compatible set of package versions from the configured repositories.</p>
 <p><code>rig proj solve</code> does not run R.</p>
-<p>Development dependencies are included by default. Use <code>--r-version</code> to solve for a specific R version and <code>--no-dev</code> to leave out development dependencies.</p>
+<p>Use <code>--r-version</code> to solve for a specific R version.</p>
 <section id="optional-dependencies-and-dependency-groups" class="level3">
 <h3 class="anchored" data-anchor-id="optional-dependencies-and-dependency-groups">Optional dependencies and dependency groups</h3>
-<p>Every <code>[dependency-groups.*]</code> table (<code>dev</code>, <code>enhances</code>, or any other name) and every <code>[optional-dependencies.*]</code> extra are optional dependencies: packages the project suggests or can take advantage of, but does not need to run. By default <code>rig proj lock</code> solves all of them together with the project’s hard dependencies, in one solve, so a version picked for a shared package is the same whether it got pulled in as a hard or an optional dependency. <code>--no-dev</code> leaves all of them out instead.</p>
+<p>Every <code>[dependency-groups.*]</code> table (<code>dev</code>, <code>enhances</code>, or any other name) and every <code>[optional-dependencies.*]</code> extra are optional dependencies: packages the project suggests or can take advantage of, but does not need to run. <code>rig proj lock</code> always solves all of them together with the project’s hard dependencies, in one solve, so <code>rproj.lock</code> is complete – a version picked for a shared package is the same whether it got pulled in as a hard or an optional dependency, and every group and extra is available to install without a new solve. A <code>[dependency-groups.*]</code> table can also <code>include-groups = [...]</code> other groups, pulling in their packages too; <code>rig proj lock</code> follows this when solving, and rejects a cycle (a group that includes itself, directly or through others).</p>
+<p><a href="#rig-proj-sync"><code>rig proj sync</code></a> is where a subset of this is picked for installation – by default <code>main</code> plus the <code>dev</code> group, more with <code>--group</code>/<code>--all-groups</code>/<code>--extra</code>/<code>--all-extras</code>.</p>
 </section>
 <section id="the-r-version" class="level3">
 <h3 class="anchored" data-anchor-id="the-r-version">The R version</h3>
@@ -1243,10 +1244,6 @@ JSON output
 <dt><code>--no-cache</code></dt>
 <dd>
 Do not read or write rig’s cache (overrides RIG_NO_CACHE and config)
-</dd>
-<dt><code>--no-dev</code></dt>
-<dd>
-Leave out dev (development) dependencies
 </dd>
 <dt><code>--platform &lt;platform&gt;</code></dt>
 <dd>
@@ -1492,8 +1489,11 @@ Run in user mode (overrides RIG_MODE and config)
 <h2 class="anchored" data-anchor-id="rig-proj-sync"><code>rig proj sync</code></h2>
 <p>Bring an R project’s environment in line with its <code>rproj.lock</code>: install the resolved dependencies, and write the rest of the <code>.rvenv</code> layout.</p>
 <p>rig looks for the project in the current directory and its parents, reads its <code>rproj.lock</code> and installs the packages into the project library. If the project has no <code>rproj.lock</code> yet, rig runs <a href="#rig-proj-lock"><code>rig proj lock</code></a> with its default options first. Pass <code>--frozen</code> to fail instead, without touching <code>rproj.toml</code> at all: every package <code>rproj.lock</code> lists already carries its own download URL, so nothing but the lock file is needed to install from it. The one exception is <code>.rvenv/etc/repositories</code> (see below), which still comes from <code>rproj.toml</code> when one is present, and is skipped otherwise.</p>
-<p>Development dependencies are installed by default. <code>--no-dev</code> leaves them out; the lock file records which packages are dev-only, so this works the same with or without <code>--frozen</code>. <code>--max-concurrent</code> limits the number of simultaneous installations; it defaults to the <code>concurrent-installs</code> <a href="../reference/config.html">config</a> entry (<code>RIG_CONCURRENT_INSTALLS</code>), which itself defaults to the number of CPU cores.</p>
-<p>By default, sync also removes any package that is in the project library but not in <code>rproj.lock</code>, e.g.&nbsp;one dropped from <code>rproj.toml</code>, or a leftover from before <code>--no-dev</code>. Pass <code>--inexact</code> to leave those packages alone instead.</p>
+<p>By default sync installs <code>[dependencies]</code> (<code>main</code>) plus the <code>dev</code> <a href="#rig-proj-lock">dependency group</a>, and nothing else: no other <code>[dependency-groups.*]</code> table, and no <code>[optional-dependencies.*]</code> extra. <code>--no-dev</code> leaves the <code>dev</code> group out too, installing only <code>main</code>. Pass <code>--group &lt;name&gt;</code> (repeatable, or comma-separated) to also install a specific named group, or <code>--all-groups</code> for every group the project declares.</p>
+<p><code>--extra &lt;name&gt;</code> / <code>--all-extras</code> do the same for optional-dependency extras, none of which are installed unless asked for.</p>
+<p>Naming a group always wins over <code>--no-dev</code>, which only skips the <code>dev</code> group that would otherwise be added automatically: <code>--no-dev --group dev</code> still installs <code>dev</code>, and <code>--group dev</code> on its own is equivalent to the default. The lock file records every group and extra each package belongs to, so this selection works the same with or without <code>--frozen</code>.</p>
+<p><code>--max-concurrent</code> limits the number of simultaneous installations. It defaults to the <code>concurrent-installs</code> <a href="../reference/config.html">config</a> entry (<code>RIG_CONCURRENT_INSTALLS</code>), which itself defaults to the number of CPU cores.</p>
+<p>By default, sync also removes any package that is in the project library but not selected for install by the flags above, e.g.&nbsp;one dropped from <code>rproj.toml</code>, or a group/extra left out. This only ever removes packages that are still in <code>rproj.lock</code> but not currently wanted – nothing is removed just because a group/extra selection changed since the last sync. Pass <code>--inexact</code> to leave those packages alone instead.</p>
 <p>Pass <code>--dry-run</code> to print what sync would install, remove or write, without touching the R installation, the project library or <code>.rvenv</code>.</p>
 <section id="centralizing-the-project-library" class="level3">
 <h3 class="anchored" data-anchor-id="centralizing-the-project-library">Centralizing the project library</h3>
@@ -1536,13 +1536,29 @@ Run in user mode (overrides RIG_MODE and config)
 <dd>
 Run in admin mode (overrides RIG_MODE and config)
 </dd>
+<dt><code>--all-extras</code></dt>
+<dd>
+Install every optional-dependency extra.
+</dd>
+<dt><code>--all-groups</code></dt>
+<dd>
+Install every dependency group.
+</dd>
 <dt><code>--dry-run</code></dt>
 <dd>
 Show what sync would do, without installing, removing or writing anything
 </dd>
+<dt><code>--extra &lt;NAME&gt;</code></dt>
+<dd>
+Install this optional-dependency extra. Not installed by default. Repeat or comma-separate for several.
+</dd>
 <dt><code>--frozen</code></dt>
 <dd>
 Install only from rproj.lock, without touching rproj.toml. Fails if rproj.lock does not exist, instead of creating it.
+</dd>
+<dt><code>--group &lt;NAME&gt;</code></dt>
+<dd>
+Also install this dependency group, in addition to the default set (main, plus dev unless <code>--no-dev</code>). Repeat or comma-separate for several.
 </dd>
 <dt><code>-h, --help</code></dt>
 <dd>
@@ -1562,7 +1578,7 @@ Do not read or write rig’s cache (overrides RIG_NO_CACHE and config)
 </dd>
 <dt><code>--no-dev</code></dt>
 <dd>
-Do not install dev (development) dependencies
+Do not install the dev dependency group (default: installed alongside main). An explicit <code>--group</code> dev or <code>--all-groups</code> installs it anyway.
 </dd>
 <dt><code>--no-install-r</code></dt>
 <dd>
@@ -1600,7 +1616,7 @@ Run in user mode (overrides RIG_MODE and config)
 <p>rig reads the project manifest, <code>rproj.toml</code>, in the current directory.</p>
 <section id="reading-the-tree" class="level3">
 <h3 class="anchored" data-anchor-id="reading-the-tree">Reading the tree</h3>
-<p>A package that several others need is expanded only once, under its first occurrence; later occurrences are marked <code>(*)</code>, meaning “its dependencies are above”. <code>--dev</code> adds the project’s development dependencies, in their own <code>[Suggests]</code> and <code>[Enhances]</code> sections; <code>--no-base</code> leaves out R and the base packages. Among the hard dependencies, <code>Imports</code> is not marked, <code>[D]</code> is a <code>Depends</code>, <code>[L]</code> a <code>LinkingTo</code>, <code>[DL]</code> both.</p>
+<p>A package that several others need is expanded only once, under its first occurrence; later occurrences are marked <code>(*)</code>, meaning “its dependencies are above”. <code>--dev</code> adds every dependency group and optional-dependency extra together, in their own <code>[Suggests]</code> and <code>[Enhances]</code> sections – unlike <a href="#rig-proj-sync"><code>rig proj sync</code></a>, which selects each group and extra separately with <code>--group</code>/<code>--extra</code>, this is an all-or-nothing view of the manifest. <code>--no-base</code> leaves out R and the base packages. Among the hard dependencies, <code>Imports</code> is not marked, <code>[D]</code> is a <code>Depends</code>, <code>[L]</code> a <code>LinkingTo</code>, <code>[DL]</code> both.</p>
 <p><code>--why &lt;package&gt;</code> (alias <code>--explain</code>) inverts the tree, so that the named package is the root and the tree grows towards the packages that need it, down to the project itself. Each line then says how <em>that</em> package needs the one above it, hence <code>needs</code>.</p>
 <p>rig follows the dependencies of the <em>latest</em> version of every package in the tree, so a version requirement that would force an older version, with different dependencies, is not taken into account.</p>
 </section>
