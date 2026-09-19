@@ -1353,7 +1353,6 @@ pub(crate) fn sc_proj_solve_project_deps(
         target,
         prefer_binary,
         report_status,
-        false,
     )
 }
 
@@ -1370,11 +1369,10 @@ pub(crate) fn sc_proj_solve_project_deps(
 pub(crate) fn sc_proj_solve_deps(
     r_version: &str,
     roots: &[SolveRoot],
-    git_deps: &[(String, DepTable)],
+    git_sources: &[ResolvedGitSource],
     target: Option<BinaryTarget>,
     prefer_binary: Option<usize>,
     report_status: bool,
-    dev: bool,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
     info!("Solving dependencies");
 
@@ -1393,12 +1391,12 @@ pub(crate) fn sc_proj_solve_deps(
 
     let (root_pkg, root_version) = register_roots(&reg, roots)?;
 
-    if !git_deps.is_empty() {
+    if !git_sources.is_empty() {
         if report_status {
-            OUTPUT.status("Fetching git/GitHub package sources");
+            OUTPUT.status("Registering git/GitHub package sources");
         }
-        info!("Fetching git/GitHub package sources");
-        register_git_sources(&reg, git_deps, dev)?;
+        info!("Registering git/GitHub package sources");
+        register_git_sources(&reg, git_sources);
     }
 
     // add R itself, for now a hardcoded version
@@ -1464,82 +1462,133 @@ pub(crate) fn sc_proj_solve_deps(
     }
 }
 
-/// Fetch every git/GitHub-sourced dependency in `git_deps` and register it
-/// with `reg` as a pre-resolved package version, the same mechanism
-/// `register_roots` uses for workspace members: the version and its
-/// dependencies are already known from the fetched `DESCRIPTION`, so the
-/// solver never looks it up in a repository index (`RPackageRegistry::
-/// add_package_version` marks it loaded).
+/// One git/GitHub-sourced dependency, already fetched and turned into
+/// everything [`register_git_sources`] needs to hand it to a solver's
+/// registry: no I/O left to do, just three lookups/inserts.
+pub(crate) struct ResolvedGitSource {
+    name: String,
+    version: RegistryPackageVersion,
+    ranges: HashMap<String, RPackageVersionRanges, rustc_hash::FxBuildHasher>,
+    git_source: GitSourceInfo,
+}
+
+/// Fetch every git/GitHub-sourced dependency in `git_deps`, and every
+/// dependency reachable from their `Remotes:` fields, exactly once -- not
+/// once per solve target. `sc_proj_solve_deps` used to call
+/// `fetch_and_read_git_package` itself, so a lockfile solved for several
+/// R versions/platforms (`proj_lock`'s `solve_targets.par_iter()`) fetched
+/// the same git ref once per target; callers now resolve everything up
+/// front with this function and pass the result to every target's
+/// [`register_git_sources`] instead.
 ///
 /// A fetched package's own `Remotes:` field, if it has one, is resolved the
 /// same way, recursively -- this is the only way a git/GitHub source can
 /// appear below the project's own direct dependencies: an ordinary CRAN/PPM
-/// package's index metadata has no `Remotes:` field to check.
-fn register_git_sources(
-    reg: &RPackageRegistry,
+/// package's index metadata has no `Remotes:` field to check. Since a
+/// package's `Remotes:` is only known once it's fetched, this walks the
+/// dependency graph breadth-first, one `git fetch` round trip per level, but
+/// fetches every dependency *within* a level in parallel: the common case
+/// (no `Remotes:` at all) is one round trip fetching every `git_deps` entry
+/// at once.
+pub(crate) fn resolve_git_sources(
     git_deps: &[(String, DepTable)],
     dev: bool,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<Vec<ResolvedGitSource>, Box<dyn Error>> {
     // Only the packages named directly (on the command line, or in
     // `rproj.toml`) are roots of the solve; a package reached through another
     // package's `Remotes:` is a transitive dependency, and like any other
     // transitive dependency only its hard dependencies matter -- see
     // `proj_deps_recursive`.
     let requested: HashSet<String> = git_deps.iter().map(|(name, _)| name.clone()).collect();
-    let mut worklist: Vec<(String, DepTable)> = git_deps.to_vec();
     let mut seen: HashSet<String> = HashSet::new();
+    let mut resolved: Vec<ResolvedGitSource> = vec![];
+    let mut frontier: Vec<(String, DepTable)> = git_deps.to_vec();
 
-    while let Some((name, table)) = worklist.pop() {
-        if !seen.insert(name.clone()) {
-            continue;
-        }
-        let git_url = table.git.clone().ok_or_else(|| {
-            SimpleError::new(format!(
-                "{} has a dependency source with no `git` URL",
-                name
-            ))
-        })?;
+    while !frontier.is_empty() {
+        let batch: Vec<(String, DepTable)> = frontier
+            .into_iter()
+            .filter(|(name, _)| seen.insert(name.clone()))
+            .collect();
 
-        let (pkg, git_source, remotes) = fetch_and_read_git_package(&git_url, &table)?;
+        let fetched: Vec<Result<(String, Package, GitSourceInfo, String), String>> = batch
+            .par_iter()
+            .map(|(name, table)| {
+                let git_url = table.git.clone().ok_or_else(|| {
+                    format!("{} has a dependency source with no `git` URL", name)
+                })?;
+                let (pkg, git_source, remotes) =
+                    fetch_and_read_git_package(&git_url, table).map_err(|err| err.to_string())?;
+                if pkg.name != *name {
+                    return Err(format!(
+                        "`{}` in rproj.toml points at {}, but its DESCRIPTION says `Package: {}`",
+                        name, git_url, pkg.name
+                    ));
+                }
+                Ok((name.clone(), pkg, git_source, remotes))
+            })
+            .collect();
 
-        if pkg.name != name {
-            bail!(
-                "`{}` in rproj.toml points at {}, but its DESCRIPTION says `Package: {}`",
-                name,
-                git_url,
-                pkg.name
-            );
-        }
+        let mut next_frontier: Vec<(String, DepTable)> = vec![];
+        for item in fetched {
+            let (name, pkg, git_source, remotes) = item.map_err(SimpleError::new)?;
 
-        let version = RegistryPackageVersion {
-            name: name.clone(),
-            version: pkg.version.clone(),
-            artifact: Artifact::Source,
-        };
-        let pkg_dev = dev && requested.contains(&name);
-        let ranges = rpackage_version_ranges_from_constraints(&pkg.dependencies, pkg_dev);
-        reg.add_package_version(name.clone(), version.clone(), ranges);
-        reg.set_git_source(name.clone(), version, git_source);
-
-        for entry in remotes.split(',') {
-            let entry = entry.trim();
-            if entry.is_empty() {
-                continue;
-            }
-            let Some(dep_name) = crate::rproj::pak_ref_name(entry) else {
-                continue;
+            let version = RegistryPackageVersion {
+                name: name.clone(),
+                version: pkg.version.clone(),
+                artifact: Artifact::Source,
             };
-            if seen.contains(&dep_name) {
-                continue;
-            }
-            if let Ok(crate::pkgsource::PkgSource::Remote(r)) =
-                crate::pkgsource::parse_pkg_source(entry)
-            {
-                worklist.push((dep_name, dep_table_from_remote(&r, entry)));
+            let pkg_dev = dev && requested.contains(&name);
+            let ranges = rpackage_version_ranges_from_constraints(&pkg.dependencies, pkg_dev);
+            resolved.push(ResolvedGitSource {
+                name,
+                version,
+                ranges,
+                git_source,
+            });
+
+            for entry in remotes.split(',') {
+                let entry = entry.trim();
+                if entry.is_empty() {
+                    continue;
+                }
+                let Some(dep_name) = crate::rproj::pak_ref_name(entry) else {
+                    continue;
+                };
+                if seen.contains(&dep_name) {
+                    continue;
+                }
+                if let Ok(crate::pkgsource::PkgSource::Remote(r)) =
+                    crate::pkgsource::parse_pkg_source(entry)
+                {
+                    next_frontier.push((dep_name, dep_table_from_remote(&r, entry)));
+                }
             }
         }
+        frontier = next_frontier;
     }
-    Ok(())
+    Ok(resolved)
+}
+
+/// Register every already-resolved git/GitHub-sourced dependency in
+/// `git_sources` with `reg` as a pre-resolved package version, the same
+/// mechanism `register_roots` uses for workspace members: the version and
+/// its dependencies are already known (see [`resolve_git_sources`]), so the
+/// solver never looks it up in a repository index (`RPackageRegistry::
+/// add_package_version` marks it loaded). Pure in-memory bookkeeping, no I/O,
+/// so it's cheap to call once per solve target.
+fn register_git_sources(reg: &RPackageRegistry, git_sources: &[ResolvedGitSource]) {
+    for source in git_sources {
+        reg.add_package_version(
+            source.name.clone(),
+            source.version.clone(),
+            source.ranges.clone(),
+        );
+        reg.set_git_source(
+            source.name.clone(),
+            source.version.clone(),
+            source.git_source.clone(),
+        );
+    }
 }
 
 /// The manifest `DepTable` a parsed `git`/`github::`/`gitlab::` reference
@@ -2236,6 +2285,10 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     // thread racing to update the same on-disk cache at once.
     ensure_allpackages_fresh()?;
 
+    // Resolve every git/GitHub dependency once, up front, instead of letting
+    // each solve target fetch it on its own -- see `resolve_git_sources`.
+    let git_sources = resolve_git_sources(&solve.git_deps, dev)?;
+
     for name in &no_binaries {
         OUTPUT.warn(&format!(
             "No binary packages for {}, using source packages",
@@ -2278,11 +2331,10 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
             let result = sc_proj_solve_deps(
                 &st.rver,
                 &solve.roots,
-                &solve.git_deps,
+                &git_sources,
                 st.target.clone(),
                 prefer_binary,
                 false,
-                dev,
             )
             .map_err(|e| e.to_string());
             (st.rver.clone(), st.platform_key.clone(), result)

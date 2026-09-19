@@ -48,7 +48,7 @@ use crate::output::OUTPUT;
 use crate::pkgsource::{parse_pkg_source, PkgSource};
 use crate::proj::{
     dep_table_from_remote, download_lockfile_packages, fetch_and_read_git_package,
-    lockfile_package_info, proj_binary_target, sc_proj_solve_deps, BASE_PKGS,
+    lockfile_package_info, proj_binary_target, resolve_git_sources, sc_proj_solve_deps, BASE_PKGS,
 };
 use crate::repos::DbSourcePackageLoader;
 use crate::rproj::{DepTable, RprojLockPackage, RprojLockTarget};
@@ -104,8 +104,9 @@ pub fn sc_pkg_install(
     }
 
     let roots = [SolveRoot::project(deps.clone())?];
+    let git_sources = resolve_git_sources(&git_deps, dev)?;
     let (registry, solution) =
-        sc_proj_solve_deps(&rver, &roots, &git_deps, target, prefer_binary, true, dev)?;
+        sc_proj_solve_deps(&rver, &roots, &git_sources, target, prefer_binary, true)?;
     OUTPUT.success("Solved dependencies");
     info!("Solved dependencies");
 
