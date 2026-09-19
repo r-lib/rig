@@ -17,14 +17,13 @@ dependencies.
 
 ## Optional dependencies and dependency groups
 
-The manifest's `test`/`enhances` dependency groups and every
-`[optional-dependencies.*]` extra are optional dependencies: packages the
-project suggests or can take advantage of, but does not need to run. By
-default `rig proj lock` solves all of them together with the project's hard
-dependencies, in one solve, so a version picked for a shared package is the
-same whether it got pulled in as a hard or an optional dependency.
-`--no-dev` leaves all of them out instead. Other `[dependency-groups.*]`
-tables are not R packages and are not solved.
+Every `[dependency-groups.*]` table (`test`, `enhances`, or any other name)
+and every `[optional-dependencies.*]` extra are optional dependencies:
+packages the project suggests or can take advantage of, but does not need to
+run. By default `rig proj lock` solves all of them together with the
+project's hard dependencies, in one solve, so a version picked for a shared
+package is the same whether it got pulled in as a hard or an optional
+dependency. `--no-dev` leaves all of them out instead.
 
 ## The R version
 

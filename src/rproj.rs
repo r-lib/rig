@@ -1061,17 +1061,32 @@ impl Rproj {
     /// inverse of [`Rproj::merge_description`]: `[dependencies]` becomes
     /// `Depends` (entries marked `attach = true`, and `R` itself) or `Imports`,
     /// `[linking-dependencies]` becomes `LinkingTo`, and the `test` / `enhances`
-    /// dependency groups become `Suggests` / `Enhances`. Every
-    /// `[optional-dependencies.*]` extra is also folded in as `Suggests`, so
-    /// it is solved alongside everything else rather than in isolation. Other
-    /// `[dependency-groups.*]` tables have no DESCRIPTION dependency type to
-    /// map to and are left out -- they are arbitrary `Config/Needs/*` lists
-    /// (see [`Rproj::merge_config_needs`]), not necessarily CRAN-installable
-    /// packages.
+    /// dependency groups become `Suggests` / `Enhances`. Every other
+    /// `[dependency-groups.*]` table -- an arbitrary `Config/Needs/*` list,
+    /// see [`Rproj::merge_config_needs`] -- is folded in as `Suggests` too,
+    /// the same as every `[optional-dependencies.*]` extra: none of these
+    /// have their own DESCRIPTION dependency type, but they are still solved
+    /// alongside everything else rather than left out or solved on their own.
     ///
     /// Soft dependencies are dropped unless `dev`; a package that is also a hard
     /// dependency stays, because it needs to be installed either way.
     pub fn to_dep_version_specs(&self, dev: bool) -> Result<PackageDependencies, Box<dyn Error>> {
+        self.to_dep_version_specs_impl(dev, true)
+    }
+
+    /// [`Rproj::to_dep_version_specs`], but with a switch for whether groups
+    /// other than `test`/`enhances` are folded in as `Suggests`.
+    /// [`Rproj::to_description`] needs that switched off: those groups are
+    /// rendered into their own `Config/Needs/<group>` field instead (see its
+    /// loop over [`Rproj::dependency_groups`]), and must not also show up
+    /// under `Suggests:`, or they would be listed, and installed, twice over.
+    /// Every other caller solves and installs the manifest's full dependency
+    /// set, so [`Rproj::to_dep_version_specs`] leaves the switch on.
+    fn to_dep_version_specs_impl(
+        &self,
+        dev: bool,
+        other_groups: bool,
+    ) -> Result<PackageDependencies, Box<dyn Error>> {
         let mut deps: Vec<DepVersionSpec> = Vec::new();
 
         for (name, dep) in self.dependencies.iter() {
@@ -1087,14 +1102,15 @@ impl Rproj {
             deps.push(dep_spec(name, dep, RDepType::LinkingTo)?);
         }
 
-        for (group, dep_type) in [
-            ("test", RDepType::Suggests),
-            ("enhances", RDepType::Enhances),
-        ] {
-            if let Some(group) = self.dependency_groups.get(group) {
-                for (name, dep) in group.dependencies.iter() {
-                    deps.push(dep_spec(name, dep, dep_type.clone())?);
-                }
+        for (group_name, group) in self.dependency_groups.iter() {
+            let dep_type = match group_name.as_str() {
+                "test" => RDepType::Suggests,
+                "enhances" => RDepType::Enhances,
+                _ if other_groups => RDepType::Suggests,
+                _ => continue,
+            };
+            for (name, dep) in group.dependencies.iter() {
+                deps.push(dep_spec(name, dep, dep_type.clone())?);
             }
         }
 
@@ -1118,13 +1134,11 @@ impl Rproj {
 
     /// The manifest's solvable dependency groups, as direct dependency names,
     /// for classifying a solved package graph by which group(s) need it:
-    /// `"main"` for the hard `[dependencies]`/`[linking-dependencies]`,
-    /// `"test"` / `"enhances"` for the two dependency groups, and each
+    /// `"main"` for the hard `[dependencies]`/`[linking-dependencies]`, every
+    /// `[dependency-groups.*]` table under its own name, and every
     /// `[optional-dependencies.*]` extra under its own name -- the same set
     /// [`Rproj::to_dep_version_specs`] solves for, so a package this returns
-    /// can always be found among that method's output. Other
-    /// `[dependency-groups.*]` tables are `Config/Needs/*` lists, not solved
-    /// or installed, so they have no roots here either.
+    /// can always be found among that method's output.
     pub fn dependency_group_roots(&self) -> HashMap<String, Vec<String>> {
         let mut roots: HashMap<String, Vec<String>> = HashMap::new();
 
@@ -1136,13 +1150,11 @@ impl Rproj {
             .collect();
         roots.insert("main".to_string(), main);
 
-        for group_name in DESCRIPTION_DEP_GROUPS {
-            if let Some(group) = self.dependency_groups.get(group_name) {
-                roots
-                    .entry(group_name.to_string())
-                    .or_default()
-                    .extend(group.dependencies.keys().cloned());
-            }
+        for (group_name, group) in self.dependency_groups.iter() {
+            roots
+                .entry(group_name.clone())
+                .or_default()
+                .extend(group.dependencies.keys().cloned());
         }
 
         for (extra_name, extra) in self.optional_dependencies.iter() {
@@ -1253,7 +1265,7 @@ impl Rproj {
         if let Some(bugreports) = self.project.urls.get("bugreports") {
             writeln!(out, "BugReports: {}", bugreports)?;
         }
-        let pkg_deps = self.to_dep_version_specs(true)?;
+        let pkg_deps = self.to_dep_version_specs_impl(true, false)?;
         for dep_type in RDepType::all() {
             let mut entries: Vec<&DepVersionSpec> = pkg_deps
                 .dependencies
@@ -2723,7 +2735,8 @@ mod tests {
                 dependencies: BTreeMap::from([("otherpkg".to_string(), dep("*"))]),
             },
         );
-        // an unknown group has no DESCRIPTION dependency type, and is left out
+        // an unknown group has no DESCRIPTION dependency type, but is still
+        // solved, as a `Suggests`
         m.dependency_groups.insert(
             "docs".to_string(),
             Group {
@@ -2743,10 +2756,13 @@ mod tests {
             Some((&[RDepType::Suggests][..], vec![">= 3.0".to_string()]))
         );
         assert_eq!(
+            converted(&deps, "pkgdown"),
+            Some((&[RDepType::Suggests][..], vec![]))
+        );
+        assert_eq!(
             converted(&deps, "otherpkg"),
             Some((&[RDepType::Enhances][..], vec![]))
         );
-        assert_eq!(converted(&deps, "pkgdown"), None);
     }
 
     #[test]
@@ -2779,6 +2795,21 @@ mod tests {
         let roots = m.dependency_group_roots();
         assert!(roots.get("main").unwrap().contains(&"cli".to_string()));
         assert_eq!(roots.get("viz"), Some(&vec!["ggplot2".to_string()]));
+    }
+
+    #[test]
+    fn dependency_group_roots_includes_arbitrary_dependency_groups() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependency_groups.insert(
+            "docs".to_string(),
+            Group {
+                include_groups: vec![],
+                dependencies: BTreeMap::from([("pkgdown".to_string(), dep("*"))]),
+            },
+        );
+
+        let roots = m.dependency_group_roots();
+        assert_eq!(roots.get("docs"), Some(&vec!["pkgdown".to_string()]));
     }
 
     #[test]

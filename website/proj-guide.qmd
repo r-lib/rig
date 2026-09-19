@@ -64,7 +64,7 @@ metadata plus dependency tables (`[dependencies]`,
 straight from git, GitHub or GitLab. See [`rig proj
 add`](reference/proj.qmd#rig-proj-add) for the full syntax.
 
-The `test`/`enhances` dependency groups and every `[optional-dependencies.*]`
+Every `[dependency-groups.*]` table and every `[optional-dependencies.*]`
 extra are optional dependencies: packages the project suggests or can take
 advantage of, but does not need to run. `rig proj lock` solves all of them
 together with the hard dependencies, in one solve, by default; `--no-dev`
