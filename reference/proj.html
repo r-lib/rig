@@ -772,7 +772,7 @@ rig proj add 'git::https://gitlab.com/example/pkg.git@main'</code></pre>
 </section>
 <section id="options" class="level3">
 <h3 class="anchored" data-anchor-id="options">Options</h3>
-<p><code>--dev</code> adds the packages as development dependencies, into the <code>[dependency-groups.test]</code> table instead of <code>[dependencies]</code>. These are installed by default, and left out by <code>rig proj lock --no-dev</code> and <code>rig proj sync --no-dev</code>.</p>
+<p><code>--dev</code> adds the packages as development dependencies, into the <code>[dependency-groups.dev]</code> table instead of <code>[dependencies]</code>. These are installed by default, and left out by <code>rig proj lock --no-dev</code> and <code>rig proj sync --no-dev</code>.</p>
 <p><code>--no-sync</code> updates <code>rproj.toml</code> and <code>rproj.lock</code>, but does not install anything.</p>
 <p><code>--no-lock</code> only updates <code>rproj.toml</code>. Nothing is resolved or installed, so this also works offline.</p>
 </section>
@@ -939,7 +939,7 @@ Run in user mode (overrides RIG_MODE and config)
 <td><code>LinkingTo</code></td>
 </tr>
 <tr class="odd">
-<td><code>[dependency-groups.test]</code></td>
+<td><code>[dependency-groups.dev]</code></td>
 <td><code>Suggests</code></td>
 </tr>
 <tr class="even">
@@ -1057,7 +1057,7 @@ Run in user mode (overrides RIG_MODE and config)
 </tr>
 <tr class="odd">
 <td><code>Suggests</code></td>
-<td><code>[dependency-groups.test]</code></td>
+<td><code>[dependency-groups.dev]</code></td>
 </tr>
 <tr class="even">
 <td><code>Enhances</code></td>
@@ -1070,7 +1070,7 @@ Run in user mode (overrides RIG_MODE and config)
 </tbody>
 </table>
 <p><code>Authors@R</code> is parsed into <code>[project].authors</code>, one entry per <code>person()</code> call, in order; this is a best-effort parser for common <code>person()</code> usage (name, <code>email</code>, <code>role</code>, and an <code>ORCID</code>/<code>ROR</code> <code>comment</code>), not a full R parser, so unusual calls are skipped with a warning. If <code>Authors@R</code> is absent, the simpler <code>Maintainer: Name &lt;email&gt;</code> field is used instead, as a single author with role <code>cre</code>.</p>
-<p><code>Config/Needs/&lt;name&gt;</code> depepdencies are parsed specially, an entry that is not a plain package name (with an optional version requirement) is kept verbatim as <code>ref = "..."</code>. E.g. <code>tidyverse/tidytemplate</code> becomes <code>tidytemplate = { ref = "tidyverse/tidytemplate" }</code>. <code>rig proj export</code> writes these back unchanged. Note that only the <code>test</code> and <code>enhances</code> groups are installed by rig, so a <code>Config/Needs/*</code> group is carried in the manifest, but not solved or installed by <code>rig proj lock</code> and <code>rig proj sync</code>. This behavior will be improved in the future.</p>
+<p><code>Config/Needs/&lt;name&gt;</code> depepdencies are parsed specially, an entry that is not a plain package name (with an optional version requirement) is kept verbatim as <code>ref = "..."</code>. E.g. <code>tidyverse/tidytemplate</code> becomes <code>tidytemplate = { ref = "tidyverse/tidytemplate" }</code>. <code>rig proj export</code> writes these back unchanged. Note that only the <code>dev</code> and <code>enhances</code> groups are installed by rig, so a <code>Config/Needs/*</code> group is carried in the manifest, but not solved or installed by <code>rig proj lock</code> and <code>rig proj sync</code>. This behavior will be improved in the future.</p>
 <section id="files-1" class="level3">
 <h3 class="anchored" data-anchor-id="files-1">Files</h3>
 <p>A full import sets up a whole project, not just its manifest, so it creates the same files as <a href="#rig-proj-init"><code>rig proj init</code></a> .</p>
@@ -1182,7 +1182,7 @@ Run in user mode (overrides RIG_MODE and config)
 <p>Development dependencies are included by default. Use <code>--r-version</code> to solve for a specific R version and <code>--no-dev</code> to leave out development dependencies.</p>
 <section id="optional-dependencies-and-dependency-groups" class="level3">
 <h3 class="anchored" data-anchor-id="optional-dependencies-and-dependency-groups">Optional dependencies and dependency groups</h3>
-<p>Every <code>[dependency-groups.*]</code> table (<code>test</code>, <code>enhances</code>, or any other name) and every <code>[optional-dependencies.*]</code> extra are optional dependencies: packages the project suggests or can take advantage of, but does not need to run. By default <code>rig proj lock</code> solves all of them together with the project’s hard dependencies, in one solve, so a version picked for a shared package is the same whether it got pulled in as a hard or an optional dependency. <code>--no-dev</code> leaves all of them out instead.</p>
+<p>Every <code>[dependency-groups.*]</code> table (<code>dev</code>, <code>enhances</code>, or any other name) and every <code>[optional-dependencies.*]</code> extra are optional dependencies: packages the project suggests or can take advantage of, but does not need to run. By default <code>rig proj lock</code> solves all of them together with the project’s hard dependencies, in one solve, so a version picked for a shared package is the same whether it got pulled in as a hard or an optional dependency. <code>--no-dev</code> leaves all of them out instead.</p>
 </section>
 <section id="the-r-version" class="level3">
 <h3 class="anchored" data-anchor-id="the-r-version">The R version</h3>
