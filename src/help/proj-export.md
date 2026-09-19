@@ -19,7 +19,7 @@ Read `rproj.toml`, rig's project and package manifest, and write a
 | `[project.urls].bugreports`    | `BugReports:`         |
 | `[dependencies]`               | `Depends` / `Imports`   |
 | `[linking-dependencies]`       | `LinkingTo`           |
-| `[dependency-groups.test]`     | `Suggests`            |
+| `[dependency-groups.dev]`      | `Suggests`            |
 | `[dependency-groups.enhances]` | `Enhances`            |
 | `[dependency-groups.<name>]`   | `Config/Needs/<name>` |
 

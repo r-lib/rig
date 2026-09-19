@@ -17,7 +17,7 @@ dependencies.
 
 ## Optional dependencies and dependency groups
 
-Every `[dependency-groups.*]` table (`test`, `enhances`, or any other name)
+Every `[dependency-groups.*]` table (`dev`, `enhances`, or any other name)
 and every `[optional-dependencies.*]` extra are optional dependencies:
 packages the project suggests or can take advantage of, but does not need to
 run. By default `rig proj lock` solves all of them together with the

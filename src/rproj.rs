@@ -50,11 +50,11 @@ pub const RPROJ_LOCK_VERSION: usize = 4;
 pub const RPROJ_MANIFEST_FILE: &str = "rproj.toml";
 
 /// The dependency groups that map onto a `DESCRIPTION` dependency field
-/// instead of onto a `Config/Needs/*` field: `test` is `Suggests` and
+/// instead of onto a `Config/Needs/*` field: `dev` is `Suggests` and
 /// `enhances` is `Enhances` (see [`Rproj::merge_description`]). Every other
 /// group is a `Config/Needs/<group>` field (see
 /// [`Rproj::merge_config_needs`]).
-const DESCRIPTION_DEP_GROUPS: [&str; 2] = ["test", "enhances"];
+const DESCRIPTION_DEP_GROUPS: [&str; 2] = ["dev", "enhances"];
 
 /// A parsed `rproj.toml` manifest.
 ///
@@ -664,7 +664,7 @@ impl Rproj {
     /// stays a plain version string); `LinkingTo` also lands in
     /// `[linking-dependencies]` (a package can be in both tables at once,
     /// e.g. `Rcpp` in both `Imports` and `LinkingTo`); `Suggests`/`Enhances`
-    /// land in `[dependency-groups.test]` / `[dependency-groups.enhances]`.
+    /// land in `[dependency-groups.dev]` / `[dependency-groups.enhances]`.
     pub fn merge_description(&mut self, pkg: &DcfPackage) {
         for dep in pkg.dependencies.dependencies.iter() {
             let version_str = format_constraints(&dep.constraints);
@@ -693,7 +693,7 @@ impl Rproj {
             if !hard {
                 if dep.types.contains(&RDepType::Suggests) {
                     self.dependency_groups
-                        .entry("test".to_string())
+                        .entry("dev".to_string())
                         .or_default()
                         .dependencies
                         .insert(dep.name.clone(), Dependency::Version(version_str.clone()));
@@ -773,7 +773,7 @@ impl Rproj {
     }
 
     /// Add a dependency to the manifest, or update it if the manifest lists it
-    /// already. `dev` puts it in the `test` dependency group (the group
+    /// already. `dev` puts it in the `dev` dependency group (the group
     /// `rig proj import` imports `Suggests` into) instead of
     /// `[dependencies]`.
     ///
@@ -785,7 +785,7 @@ impl Rproj {
         let table = if dev {
             &mut self
                 .dependency_groups
-                .entry("test".to_string())
+                .entry("dev".to_string())
                 .or_default()
                 .dependencies
         } else {
@@ -825,7 +825,7 @@ impl Rproj {
         let group = if dev {
             &mut self
                 .dependency_groups
-                .entry("test".to_string())
+                .entry("dev".to_string())
                 .or_default()
                 .dependencies
         } else {
@@ -879,7 +879,7 @@ impl Rproj {
     }
 
     /// Returns the table at `path` inside `doc` (e.g. `&["dependencies"]`,
-    /// `&["dependency-groups", "test"]`, `&["config", "testthat"]`),
+    /// `&["dependency-groups", "dev"]`, `&["config", "testthat"]`),
     /// creating any missing table along the way. A newly created table that
     /// isn't the last path segment -- a grouping table like
     /// `dependency-groups` or `config`, which only ever holds named
@@ -937,7 +937,7 @@ impl Rproj {
     }
 
     /// Insert or update `name` in the document-level table at `path`
-    /// (`&["dependencies"]`, `&["dependency-groups", "test"]`, ...),
+    /// (`&["dependencies"]`, `&["dependency-groups", "dev"]`, ...),
     /// mirroring [`Rproj::add_dependency`]/[`Rproj::add_remote_dependency`]
     /// on the ORIGINAL on-disk document, so any comment, blank-line
     /// grouping, or unmodeled table elsewhere in the file survives. A
@@ -1060,7 +1060,7 @@ impl Rproj {
     /// The manifest's dependencies as the solver's [`PackageDependencies`], the
     /// inverse of [`Rproj::merge_description`]: `[dependencies]` becomes
     /// `Depends` (entries marked `attach = true`, and `R` itself) or `Imports`,
-    /// `[linking-dependencies]` becomes `LinkingTo`, and the `test` / `enhances`
+    /// `[linking-dependencies]` becomes `LinkingTo`, and the `dev` / `enhances`
     /// dependency groups become `Suggests` / `Enhances`. Every other
     /// `[dependency-groups.*]` table -- an arbitrary `Config/Needs/*` list,
     /// see [`Rproj::merge_config_needs`] -- is folded in as `Suggests` too,
@@ -1075,7 +1075,7 @@ impl Rproj {
     }
 
     /// [`Rproj::to_dep_version_specs`], but with a switch for whether groups
-    /// other than `test`/`enhances` are folded in as `Suggests`.
+    /// other than `dev`/`enhances` are folded in as `Suggests`.
     /// [`Rproj::to_description`] needs that switched off: those groups are
     /// rendered into their own `Config/Needs/<group>` field instead (see its
     /// loop over [`Rproj::dependency_groups`]), and must not also show up
@@ -1104,7 +1104,7 @@ impl Rproj {
 
         for (group_name, group) in self.dependency_groups.iter() {
             let dep_type = match group_name.as_str() {
-                "test" => RDepType::Suggests,
+                "dev" => RDepType::Suggests,
                 "enhances" => RDepType::Enhances,
                 _ if other_groups => RDepType::Suggests,
                 _ => continue,
@@ -2423,7 +2423,7 @@ mod tests {
             },
         );
         m.dependency_groups.insert(
-            "dev".to_string(),
+            "extra".to_string(),
             Group {
                 include_groups: vec!["test".to_string()],
                 dependencies: BTreeMap::from([("lintr".to_string(), dep("*"))]),
@@ -2615,7 +2615,7 @@ mod tests {
         m.merge_description(&pkg);
         assert_eq!(
             m.dependency_groups
-                .get("test")
+                .get("dev")
                 .unwrap()
                 .dependencies
                 .get("testthat"),
@@ -2752,7 +2752,7 @@ mod tests {
     fn to_dep_version_specs_groups_are_soft_and_need_dev() {
         let mut m = Rproj::minimal("mypkg");
         m.dependency_groups.insert(
-            "test".to_string(),
+            "dev".to_string(),
             Group {
                 include_groups: vec![],
                 dependencies: BTreeMap::from([("testthat".to_string(), dep(">= 3.0"))]),
@@ -2847,7 +2847,7 @@ mod tests {
         let mut m = Rproj::minimal("mypkg");
         m.dependencies.insert("cli".to_string(), dep(">= 3.6.5"));
         m.dependency_groups.insert(
-            "test".to_string(),
+            "dev".to_string(),
             Group {
                 include_groups: vec![],
                 dependencies: BTreeMap::from([("cli".to_string(), dep("*"))]),
@@ -3034,13 +3034,13 @@ mod tests {
     }
 
     #[test]
-    fn add_dependency_dev_adds_to_the_test_group() {
+    fn add_dependency_dev_adds_to_the_dev_group() {
         let mut m = Rproj::minimal("mypkg");
         assert_eq!(m.add_dependency("testthat", ">= 3.0", true), None);
         assert!(!m.dependencies.contains_key("testthat"));
         assert_eq!(
             m.dependency_groups
-                .get("test")
+                .get("dev")
                 .unwrap()
                 .dependencies
                 .get("testthat"),
@@ -3172,7 +3172,7 @@ mod tests {
         m.linking_dependencies
             .insert("cpp11".to_string(), inherited());
         m.dependency_groups.insert(
-            "test".to_string(),
+            "dev".to_string(),
             Group {
                 dependencies: BTreeMap::from([("testthat".to_string(), inherited())]),
                 ..Default::default()
@@ -3243,7 +3243,7 @@ mod tests {
         assert_eq!(m.remove_dependency("testthat"), Some(dep(">= 3.0")));
         assert!(!m
             .dependency_groups
-            .get("test")
+            .get("dev")
             .unwrap()
             .dependencies
             .contains_key("testthat"));
@@ -3311,13 +3311,13 @@ bar = 1
         let mut doc: toml_edit::DocumentMut = text.parse().unwrap();
         Rproj::doc_set_dependency(
             &mut doc,
-            &["dependency-groups", "test"],
+            &["dependency-groups", "dev"],
             "testthat",
             &dep(">= 3.0"),
         )
         .unwrap();
         let out = doc.to_string();
-        assert!(out.contains("[dependency-groups.test]"), "{}", out);
+        assert!(out.contains("[dependency-groups.dev]"), "{}", out);
         assert!(!out.contains("[dependency-groups]\n"), "{}", out);
         assert!(out.contains("testthat = \">= 3.0\""), "{}", out);
     }
@@ -3763,15 +3763,15 @@ foo = "bar"
 
     #[test]
     fn merge_config_needs_merges_into_the_description_backed_groups() {
-        // `Config/Needs/test` has nowhere else to go, so it lands in the
+        // `Config/Needs/dev` has nowhere else to go, so it lands in the
         // group `Suggests` is imported into, and exports as `Suggests`.
         let mut m = Rproj::minimal("mypkg");
         m.add_dependency("testthat", ">= 3.0", true);
-        m.merge_config_needs(&needs(&[("test", "mockery")]));
+        m.merge_config_needs(&needs(&[("dev", "mockery")]));
 
-        let test = &m.dependency_groups.get("test").unwrap().dependencies;
-        assert_eq!(test.get("testthat"), Some(&dep(">= 3.0")));
-        assert_eq!(test.get("mockery"), Some(&dep("*")));
+        let dev = &m.dependency_groups.get("dev").unwrap().dependencies;
+        assert_eq!(dev.get("testthat"), Some(&dep(">= 3.0")));
+        assert_eq!(dev.get("mockery"), Some(&dep("*")));
 
         let (desc, _) = m.to_description().unwrap();
         assert!(desc.contains("Suggests:\n    mockery,\n    testthat (>= 3.0)\n"));

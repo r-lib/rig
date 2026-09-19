@@ -430,7 +430,7 @@ fn sc_proj_import(
                         Some(name) => {
                             let dev = manifest
                                 .dependency_groups
-                                .get("test")
+                                .get("dev")
                                 .is_some_and(|g| g.dependencies.contains_key(&name))
                                 && !manifest.dependencies.contains_key(&name);
                             let table = dep_table_from_remote(&r, entry);
@@ -706,14 +706,14 @@ fn sc_proj_add(
 
         if let Some(doc) = original_doc.as_mut() {
             let path: &[&str] = if dev {
-                &["dependency-groups", "test"]
+                &["dependency-groups", "dev"]
             } else {
                 &["dependencies"]
             };
             let value = if dev {
                 manifest
                     .dependency_groups
-                    .get("test")
+                    .get("dev")
                     .and_then(|group| group.dependencies.get(name))
             } else {
                 manifest.dependencies.get(name)
@@ -4620,7 +4620,7 @@ mod tests {
         let mut manifest = Rproj::minimal("mypkg");
         manifest.dependencies.insert("cli".to_string(), dep("*"));
         manifest.dependency_groups.insert(
-            "test".to_string(),
+            "dev".to_string(),
             Group {
                 include_groups: vec![],
                 dependencies: BTreeMap::from([("testthat".to_string(), dep("*"))]),
@@ -4639,10 +4639,10 @@ mod tests {
         assert_eq!(groups.get("cli").unwrap(), &vec!["main".to_string()]);
         assert_eq!(
             groups.get("glue").unwrap(),
-            &vec!["main".to_string(), "test".to_string()]
+            &vec!["dev".to_string(), "main".to_string()]
         );
-        assert_eq!(groups.get("testthat").unwrap(), &vec!["test".to_string()]);
-        assert_eq!(groups.get("waldo").unwrap(), &vec!["test".to_string()]);
+        assert_eq!(groups.get("testthat").unwrap(), &vec!["dev".to_string()]);
+        assert_eq!(groups.get("waldo").unwrap(), &vec!["dev".to_string()]);
     }
 
     /// Write `manifest` into `dir`, creating it, as one project or one
