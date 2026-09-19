@@ -212,12 +212,17 @@ pub fn sc_cache_info(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         ));
         let rendered = tab.to_string();
         let header_width = rendered.lines().next().unwrap_or("").len();
-        let mut lines = rendered.lines();
-        println!("{}", lines.next().unwrap_or(""));
+        let lines: Vec<&str> = rendered.lines().collect();
+        let (header, rest) = lines.split_first().unwrap();
+        println!("{}", header);
         println!("{}", "-".repeat(header_width));
-        for line in lines {
+        let (total_line, body) = rest.split_last().unwrap();
+        for line in body {
             println!("{}", line);
         }
+        println!("{}", "-".repeat(header_width));
+        println!("{}", total_line);
+        println!();
         println!("Cache directory: {}", cache_dir.display());
     }
 
