@@ -1346,14 +1346,7 @@ pub(crate) fn sc_proj_solve_project_deps(
     report_status: bool,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
     let roots = [SolveRoot::project(deps.clone())?];
-    sc_proj_solve_deps(
-        r_version,
-        &roots,
-        &[],
-        target,
-        prefer_binary,
-        report_status,
-    )
+    sc_proj_solve_deps(r_version, &roots, &[], target, prefer_binary, report_status)
 }
 
 /// Solve the dependencies of every root in `roots` for one R version and one
@@ -1513,9 +1506,10 @@ pub(crate) fn resolve_git_sources(
         let fetched: Vec<Result<(String, Package, GitSourceInfo, String), String>> = batch
             .par_iter()
             .map(|(name, table)| {
-                let git_url = table.git.clone().ok_or_else(|| {
-                    format!("{} has a dependency source with no `git` URL", name)
-                })?;
+                let git_url = table
+                    .git
+                    .clone()
+                    .ok_or_else(|| format!("{} has a dependency source with no `git` URL", name))?;
                 let (pkg, git_source, remotes) =
                     fetch_and_read_git_package(&git_url, table).map_err(|err| err.to_string())?;
                 if pkg.name != *name {

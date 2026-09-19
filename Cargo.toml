@@ -72,6 +72,8 @@ lazy_static = "1.4.0"
 # calling Rust from C
 libc = "0.2"
 log = "0.4"
+# cross-process/cross-thread file locking, for the git-mirror cache
+fs4 = { version = "0.9", features = ["sync"] }
 # symlinks, getuid & co.
 nix = { version = "0.28.0", features = ["fs", "user"] }
 # cache results, e.g. some parsed json

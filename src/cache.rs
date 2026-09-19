@@ -82,6 +82,22 @@ pub fn real_cache_dir() -> Result<PathBuf, Box<dyn Error>> {
     Ok(cache_dir)
 }
 
+/// `<cache>/git-mirrors/<hash-of-url>`, the persistent bare mirror for one
+/// git URL, or `None` when there's no usable cache.
+///
+/// Never an error: not caching a git fetch is a missed optimization, not a
+/// failure, same philosophy as `BuiltCache::new` in `src/built.rs`. One
+/// mirror serves every refspec/subdir ever requested for `url`, so the key
+/// is the URL alone.
+pub fn git_mirror_dir(url: &str) -> Option<PathBuf> {
+    if no_cache() {
+        return None;
+    }
+    let cache = get_cache_dir().ok()?;
+    let hash = crate::utils::calculate_hash(url);
+    Some(cache.join("git-mirrors").join(&hash[..16]))
+}
+
 static EPHEMERAL_CACHE_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 fn ephemeral_cache_dir() -> Result<PathBuf, Box<dyn Error>> {

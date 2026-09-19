@@ -1,10 +1,16 @@
 //! Fetching a `git::<url>` or `github::`/bare `owner/repo` package source by
-//! shelling out to the system `git` binary, with sparse-checkout and shallow
-//! fetches so only the bytes actually needed are downloaded: just
-//! `DESCRIPTION` when resolving a dependency (see [`fetch_git_description`]),
-//! or the whole repo tree (still with no history, and scoped to the
-//! package's subdirectory if it has one) when populating the package cache
-//! at sync time (see [`fetch_git_checkout`]).
+//! shelling out to the system `git` binary.
+//!
+//! Resolving a dependency (`rig proj lock`/solve) only ever needs
+//! `DESCRIPTION` at one commit, see [`fetch_git_description`]: it reuses a
+//! persistent, per-URL bare mirror under rig's cache directory (see
+//! [`crate::cache::git_mirror_dir`]) across separate `rig proj lock` runs,
+//! so a repeat resolution of an unchanged ref is a cheap ref check rather
+//! than a fresh clone, and reads the file straight out of the object store
+//! with `git show` instead of materializing a working tree. Populating the
+//! package cache at sync time (see [`fetch_git_checkout`]) still needs the
+//! whole package tree (for `R CMD INSTALL`) checked out fresh into a
+//! caller-supplied, sha-keyed destination -- that path is unchanged.
 //!
 //! Callers resolve whatever a `git::`/`github::` reference's `pr`/`release`/
 //! `rev`/`branch`/`tag` fields imply into a single `refspec` string (a
@@ -16,6 +22,8 @@
 use std::error::Error;
 use std::fs;
 use std::path::Path;
+
+use fs4::fs_std::FileExt;
 
 /// Run `git -C <dest> <args>`, returning trimmed stdout. Both `dest` and, if
 /// it doesn't exist yet, its ancestors must already exist for subcommands
@@ -79,25 +87,135 @@ fn fetch_and_checkout(dest: &Path, refspec: Option<&str>) -> Result<String, Box<
     run_git(dest, &["rev-parse", "FETCH_HEAD"])
 }
 
+/// `init --bare` a repo at `dest` and add `origin`, unless it already looks
+/// like one (has a `HEAD` file) -- called on every cached fetch, so this is
+/// the idempotent, cheap path once the mirror exists.
+fn ensure_bare_mirror(url: &str, dest: &Path) -> Result<(), Box<dyn Error>> {
+    if dest.join("HEAD").exists() {
+        return Ok(());
+    }
+    fs::create_dir_all(dest)?;
+    run_git(dest, &["init", "--quiet", "--bare"])?;
+    run_git(dest, &["remote", "add", "origin", url])?;
+    Ok(())
+}
+
+/// Fetch `refspec` (or `HEAD`) into a bare mirror already `ensure_bare_mirror`
+/// -ed at `dest`, and return the resolved commit sha, without checking
+/// anything out.
+///
+/// Tries a partial-clone fetch (`--filter=blob:none`) first: on a big repo
+/// where only one file is ever read back out (see [`read_blob`]), this skips
+/// downloading every other blob at that commit, deferring them to a lazy
+/// per-blob fetch if they're ever actually requested. Not every git host
+/// supports partial-clone filters, so a filtered fetch that fails is retried
+/// once without `--filter`.
+fn fetch_into_mirror(dest: &Path, refspec: Option<&str>) -> Result<String, Box<dyn Error>> {
+    let want = refspec.unwrap_or("HEAD");
+    let filtered = run_git(
+        dest,
+        &[
+            "fetch",
+            "--depth",
+            "1",
+            "--filter=blob:none",
+            "origin",
+            want,
+        ],
+    );
+    if filtered.is_err() {
+        run_git(dest, &["fetch", "--depth", "1", "origin", want])?;
+    }
+    run_git(dest, &["rev-parse", "FETCH_HEAD"])
+}
+
+/// Read `path` at `sha` out of a bare mirror at `dest`, via `git show`
+/// (which lazily fetches the blob first if `fetch_into_mirror` deferred it).
+fn read_blob(dest: &Path, sha: &str, path: &str) -> Result<String, Box<dyn Error>> {
+    run_git(dest, &["show", &format!("{}:{}", sha, path)])
+}
+
+/// An exclusive, blocking lock on `<mirror>.lock`, held for as long as the
+/// returned `File` stays alive (released on drop) -- guards one mirror
+/// directory against concurrent `git fetch`es, both from other threads in
+/// this process (`resolve_git_sources` resolves dependencies in parallel)
+/// and from other `rig` processes racing on the same cache.
+fn lock_mirror(mirror: &Path) -> Result<fs::File, Box<dyn Error>> {
+    let lock_path = mirror.with_extension("lock");
+    if let Some(parent) = lock_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let lock_file = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&lock_path)?;
+    lock_file.lock_exclusive()?;
+    Ok(lock_file)
+}
+
 /// Fetch just `DESCRIPTION` (or `<subdir>/DESCRIPTION`) from `url` at
-/// `refspec`, without downloading any other blob, and return its contents
-/// plus the resolved commit sha.
+/// `refspec`, and return its contents plus the resolved commit sha.
 ///
 /// Used while resolving a git/GitHub dependency (`rig proj lock`/solve): only
 /// the package metadata is needed at this point, not the rest of the
-/// repository.
+/// repository. Backed by a persistent, per-URL mirror when rig's cache is
+/// available (see [`crate::cache::git_mirror_dir`]), falling back to a
+/// throwaway clone otherwise -- caching a git fetch is a missed
+/// optimization when it's unavailable, never a hard failure.
 pub fn fetch_git_description(
     url: &str,
     refspec: Option<&str>,
     subdir: Option<&str>,
 ) -> Result<(String, String), Box<dyn Error>> {
-    let tmp = tempfile::tempdir()?;
-    let dest = tmp.path();
     let description_path = match subdir {
         Some(s) => format!("{}/DESCRIPTION", s),
         None => "DESCRIPTION".to_string(),
     };
-    init_sparse_repo(url, dest, Some((false, &[&description_path])))?;
+    match crate::cache::git_mirror_dir(url) {
+        Some(mirror) => fetch_git_description_cached(url, refspec, &description_path, &mirror),
+        None => fetch_git_description_tempdir(url, refspec, &description_path),
+    }
+}
+
+/// The persistent-mirror path for [`fetch_git_description`]: reuses (or
+/// creates) the bare mirror at `mirror`, fetches `refspec` into it, and reads
+/// `path` back out with `git show` -- no working tree, so no sparse-checkout
+/// and no race between concurrent calls checking out different refs into the
+/// same directory.
+fn fetch_git_description_cached(
+    url: &str,
+    refspec: Option<&str>,
+    path: &str,
+    mirror: &Path,
+) -> Result<(String, String), Box<dyn Error>> {
+    let _lock = lock_mirror(mirror)?;
+    ensure_bare_mirror(url, mirror)?;
+    let sha = fetch_into_mirror(mirror, refspec).map_err(|err| {
+        simple_error::SimpleError::new(format!(
+            "Cannot fetch {}{}: {}",
+            url,
+            refspec.map(|r| format!(" at {}", r)).unwrap_or_default(),
+            err
+        ))
+    })?;
+    let contents = read_blob(mirror, &sha, path).map_err(|err| {
+        simple_error::SimpleError::new(format!("Cannot read {} from {}: {}", path, url, err))
+    })?;
+    Ok((contents, sha))
+}
+
+/// The no-cache fallback for [`fetch_git_description`]: today's original
+/// throwaway-clone behavior, used when `--no-cache`/`RIG_NO_CACHE` is set or
+/// rig's cache directory can't be determined.
+fn fetch_git_description_tempdir(
+    url: &str,
+    refspec: Option<&str>,
+    path: &str,
+) -> Result<(String, String), Box<dyn Error>> {
+    let tmp = tempfile::tempdir()?;
+    let dest = tmp.path();
+    init_sparse_repo(url, dest, Some((false, &[path])))?;
     let sha = fetch_and_checkout(dest, refspec).map_err(|err| {
         simple_error::SimpleError::new(format!(
             "Cannot fetch {}{}: {}",
@@ -106,11 +224,8 @@ pub fn fetch_git_description(
             err
         ))
     })?;
-    let contents = fs::read_to_string(dest.join(&description_path)).map_err(|err| {
-        simple_error::SimpleError::new(format!(
-            "Cannot read {} from {}: {}",
-            description_path, url, err
-        ))
+    let contents = fs::read_to_string(dest.join(path)).map_err(|err| {
+        simple_error::SimpleError::new(format!("Cannot read {} from {}: {}", path, url, err))
     })?;
     Ok((contents, sha))
 }
@@ -272,12 +387,20 @@ mod tests {
     // default parallelism. Run explicitly with `cargo test -- --ignored`
     // (or `--test-threads=1`) to verify.
 
+    // These exercise `fetch_git_description_tempdir` directly (the
+    // no-cache fallback) rather than the public `fetch_git_description`, so
+    // the test doesn't depend on -- or write into -- whatever the real OS
+    // cache directory happens to be on the machine running the suite. The
+    // cached path has its own tests below, each pointed at an explicit
+    // tempdir `mirror` instead of `crate::cache::git_mirror_dir`'s real
+    // cache directory, for the same reason.
+
     #[test]
     #[ignore]
     fn description_only_fetch() {
         let fixture = bare_fixture();
         let url = format!("file://{}", fixture.path().join("work").display());
-        let (contents, sha) = fetch_git_description(&url, None, None).unwrap();
+        let (contents, sha) = fetch_git_description_tempdir(&url, None, "DESCRIPTION").unwrap();
         assert!(contents.contains("Package: fixture"));
         assert_eq!(sha.len(), 40);
     }
@@ -287,8 +410,75 @@ mod tests {
     fn description_only_fetch_from_subdir() {
         let fixture = bare_fixture();
         let url = format!("file://{}", fixture.path().join("work").display());
-        let (contents, _sha) = fetch_git_description(&url, None, Some("pkg")).unwrap();
+        let (contents, _sha) =
+            fetch_git_description_tempdir(&url, None, "pkg/DESCRIPTION").unwrap();
         assert!(contents.contains("Package: subpkg"));
+    }
+
+    #[test]
+    #[ignore]
+    fn cached_fetch_reuses_mirror() {
+        let fixture = bare_fixture();
+        let url = format!("file://{}", fixture.path().join("work").display());
+        let mirror = tempfile::tempdir().unwrap();
+
+        let (first, first_sha) =
+            fetch_git_description_cached(&url, None, "DESCRIPTION", mirror.path()).unwrap();
+        assert!(first.contains("Package: fixture"));
+
+        // A second call against the same mirror must succeed and agree --
+        // it should reuse the existing bare repo (`ensure_bare_mirror` is a
+        // no-op once `HEAD` exists) rather than fail trying to re-`init`/
+        // `remote add` over it.
+        let (second, second_sha) =
+            fetch_git_description_cached(&url, None, "DESCRIPTION", mirror.path()).unwrap();
+        assert_eq!(first, second);
+        assert_eq!(first_sha, second_sha);
+    }
+
+    #[test]
+    #[ignore]
+    fn cached_fetch_from_two_subdirs_reuses_one_mirror() {
+        let fixture = bare_fixture();
+        let url = format!("file://{}", fixture.path().join("work").display());
+        let mirror = tempfile::tempdir().unwrap();
+
+        let (root, _) =
+            fetch_git_description_cached(&url, None, "DESCRIPTION", mirror.path()).unwrap();
+        assert!(root.contains("Package: fixture"));
+
+        // No working tree/sparse-checkout state to reset between calls: a
+        // different path from the same URL just reads a different blob out
+        // of the same already-fetched mirror.
+        let (subdir, _) =
+            fetch_git_description_cached(&url, None, "pkg/DESCRIPTION", mirror.path()).unwrap();
+        assert!(subdir.contains("Package: subpkg"));
+    }
+
+    #[test]
+    #[ignore]
+    fn concurrent_cached_fetches_dont_corrupt() {
+        let fixture = bare_fixture();
+        let url = format!("file://{}", fixture.path().join("work").display());
+        let mirror = tempfile::tempdir().unwrap();
+        let mirror_path = mirror.path().to_path_buf();
+
+        let handles: Vec<_> = (0..4)
+            .map(|_| {
+                let url = url.clone();
+                let mirror_path = mirror_path.clone();
+                std::thread::spawn(move || {
+                    fetch_git_description_cached(&url, None, "DESCRIPTION", &mirror_path)
+                        .map_err(|err| err.to_string())
+                })
+            })
+            .collect();
+
+        for handle in handles {
+            let (contents, sha) = handle.join().unwrap().unwrap();
+            assert!(contents.contains("Package: fixture"));
+            assert_eq!(sha.len(), 40);
+        }
     }
 
     #[test]

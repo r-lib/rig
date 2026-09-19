@@ -1,15 +1,16 @@
 //! `rig cache info` and `rig cache clean`.
 //!
 //! rig's producers (binary indexes, built packages, downloaded package files,
-//! CRAN-like databases, package manifests, ...) each write into their own
-//! corner of `real_cache_dir()`, see [`crate::cache`]. Rather than teach this
-//! module every producer's file-naming scheme, categories are derived from the
-//! *name of the top-level entry* in the cache directory: `built`, `packages`
-//! and `p3m` are their own category, `metadata` collects every other kind of
-//! package metadata (binary indexes, CRAN-like databases, package manifests,
-//! repo data), and anything unrecognized left over at the cache root (e.g.
-//! stray files from an older rig's layout) falls back to `metadata` too, so
-//! this module stays correct without an update here.
+//! CRAN-like databases, package manifests, git mirrors, ...) each write into
+//! their own corner of `real_cache_dir()`, see [`crate::cache`]. Rather than
+//! teach this module every producer's file-naming scheme, categories are
+//! derived from the *name of the top-level entry* in the cache directory:
+//! `built`, `packages`, `p3m` and `git-mirrors` are their own category,
+//! `metadata` collects every other kind of package metadata (binary indexes,
+//! CRAN-like databases, package manifests, repo data), and anything
+//! unrecognized left over at the cache root (e.g. stray files from an older
+//! rig's layout) falls back to `metadata` too, so this module stays correct
+//! without an update here.
 
 use std::error::Error;
 use std::fs;
@@ -27,14 +28,16 @@ enum CacheCategory {
     Packages,
     Metadata,
     P3m,
+    GitMirrors,
 }
 
 impl CacheCategory {
-    const ALL: [CacheCategory; 4] = [
+    const ALL: [CacheCategory; 5] = [
         CacheCategory::Built,
         CacheCategory::Packages,
         CacheCategory::Metadata,
         CacheCategory::P3m,
+        CacheCategory::GitMirrors,
     ];
 
     fn label(self) -> &'static str {
@@ -43,6 +46,7 @@ impl CacheCategory {
             CacheCategory::Packages => "Packages",
             CacheCategory::Metadata => "Metadata",
             CacheCategory::P3m => "P3M status",
+            CacheCategory::GitMirrors => "Git mirrors",
         }
     }
 
@@ -54,6 +58,7 @@ impl CacheCategory {
             CacheCategory::Packages => "packages",
             CacheCategory::Metadata => "metadata",
             CacheCategory::P3m => "p3m",
+            CacheCategory::GitMirrors => "git-mirrors",
         }
     }
 }
@@ -65,6 +70,7 @@ fn classify_entry(name: &str) -> CacheCategory {
         "built" => CacheCategory::Built,
         "packages" => CacheCategory::Packages,
         "p3m" => CacheCategory::P3m,
+        "git-mirrors" => CacheCategory::GitMirrors,
         _ => CacheCategory::Metadata,
     }
 }
@@ -109,8 +115,8 @@ fn dir_usage(path: &Path) -> Usage {
     usage
 }
 
-fn cache_breakdown(cache_dir: &Path) -> [Usage; 4] {
-    let mut totals = [Usage::default(); 4];
+fn cache_breakdown(cache_dir: &Path) -> [Usage; 5] {
+    let mut totals = [Usage::default(); 5];
     let entries = match fs::read_dir(cache_dir) {
         Ok(entries) => entries,
         Err(_) => return totals,
@@ -165,6 +171,8 @@ struct CacheInfo {
     metadata_count: u64,
     p3m_size: u64,
     p3m_count: u64,
+    git_mirrors_size: u64,
+    git_mirrors_count: u64,
     total_size: u64,
     total_count: u64,
 }
@@ -189,6 +197,8 @@ pub fn sc_cache_info(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             metadata_count: totals[2].count,
             p3m_size: totals[3].size,
             p3m_count: totals[3].count,
+            git_mirrors_size: totals[4].size,
+            git_mirrors_count: totals[4].count,
             total_size: total.size,
             total_count: total.count,
         };
@@ -295,6 +305,7 @@ mod tests {
         // Anything unrecognized (e.g. left over from an older rig's cache
         // layout) falls back to the metadata catch-all.
         assert_eq!(classify_entry("leftover-file"), CacheCategory::Metadata);
+        assert_eq!(classify_entry("git-mirrors"), CacheCategory::GitMirrors);
     }
 
     #[test]
@@ -325,6 +336,13 @@ mod tests {
         fs::write(tmp.path().join("metadata").join("repo-xyz.data"), b"123").unwrap();
         fs::create_dir(tmp.path().join("p3m")).unwrap();
         fs::write(tmp.path().join("p3m").join("p3m-status.json"), b"12").unwrap();
+        fs::create_dir(tmp.path().join("git-mirrors")).unwrap();
+        fs::create_dir(tmp.path().join("git-mirrors").join("abc123")).unwrap();
+        fs::write(
+            tmp.path().join("git-mirrors").join("abc123").join("HEAD"),
+            b"ref: refs/heads/main\n",
+        )
+        .unwrap();
 
         let totals = cache_breakdown(tmp.path());
         assert_eq!(totals[0].size, 0); // built
@@ -333,6 +351,8 @@ mod tests {
         assert_eq!(totals[2].count, 2);
         assert_eq!(totals[3].size, 2); // p3m
         assert_eq!(totals[3].count, 1);
+        assert_eq!(totals[4].size, 21); // git-mirrors
+        assert_eq!(totals[4].count, 1);
     }
 
     #[test]
