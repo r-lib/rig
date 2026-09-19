@@ -40,7 +40,7 @@ use crate::repos::cranlike_metadata::minor_r_version;
 use crate::rvenv::RPROJ_LOCK_FILE;
 use crate::solver::{RPackageRegistry, RegistryPackageVersion};
 
-pub const RPROJ_LOCK_VERSION: usize = 3;
+pub const RPROJ_LOCK_VERSION: usize = 4;
 
 // `rproj.toml`: the project/package manifest (see the design doc). This is the
 // *requirements* file a human edits, as opposed to `rproj.lock` (the solved
@@ -1979,7 +1979,7 @@ fn expand_version_req(req: &str) -> Result<Vec<VersionConstraint>, Box<dyn Error
 
 /// Format a dependency's version constraints as an `rproj.toml` version
 /// string, e.g. `">= 1.0, < 2.0"`, or `"*"` if there are none.
-fn format_constraints(constraints: &[VersionConstraint]) -> String {
+pub(crate) fn format_constraints(constraints: &[VersionConstraint]) -> String {
     if constraints.is_empty() {
         return "*".to_string();
     }
@@ -1996,11 +1996,36 @@ pub struct RprojLock {
     pub targets: Vec<RprojLockTarget>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RprojLockTarget {
     pub r_version: String,
     pub platform: String,
+    /// Fingerprint of the manifest's own direct dependency requirements this
+    /// target was solved against: one entry per name in `solve.merged`
+    /// (minus `"R"` and the base packages, same as `packages` below), each
+    /// with its version requirement formatted the same way
+    /// [`format_constraints`] writes it into `rproj.toml`. Filled in by
+    /// `proj_lock` after the solve, the same way `groups` is on
+    /// [`RprojLockPackage`] -- it needs the manifest's roots, not just the
+    /// solution, so [`RprojLockTarget::from_solution`] leaves it empty.
+    ///
+    /// This is what lets a later `rig proj lock` run tell whether this target
+    /// still satisfies the manifest without re-solving: compare this list's
+    /// names against the manifest's current direct dependencies (catches an
+    /// added or removed dependency), and each entry's requirement against the
+    /// version actually pinned in `packages` (catches a tightened
+    /// constraint) -- see `lock_target_satisfies` in `src/proj.rs`.
+    pub direct_dependencies: Vec<LockDirectDependency>,
     pub packages: Vec<RprojLockPackage>,
+}
+
+/// One entry of [`RprojLockTarget::direct_dependencies`]: a manifest direct
+/// dependency's name and the version requirement it was solved against, e.g.
+/// `{ name: "dplyr", constraint: ">= 1.1.0" }`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct LockDirectDependency {
+    pub name: String,
+    pub constraint: String,
 }
 
 /// One solved package of one target, i.e. one file to install.
@@ -2191,6 +2216,7 @@ impl RprojLockTarget {
         RprojLockTarget {
             r_version,
             platform: platform.unwrap_or_else(|| std::env::consts::ARCH.to_string()),
+            direct_dependencies: vec![],
             packages: pkgs,
         }
     }
@@ -2445,6 +2471,7 @@ mod tests {
             targets: vec![RprojLockTarget {
                 r_version: "4.6".to_string(),
                 platform: "aarch64-apple-darwin".to_string(),
+                direct_dependencies: vec![],
                 packages: vec![sample_package()],
             }],
         };
@@ -2471,11 +2498,13 @@ mod tests {
                 RprojLockTarget {
                     r_version: "4.5".to_string(),
                     platform: "x86_64-pc-linux-gnu".to_string(),
+                    direct_dependencies: vec![],
                     packages: vec![linux_package],
                 },
                 RprojLockTarget {
                     r_version: "4.6".to_string(),
                     platform: "aarch64-apple-darwin".to_string(),
+                    direct_dependencies: vec![],
                     packages: vec![sample_package()],
                 },
             ],
@@ -2502,6 +2531,7 @@ mod tests {
             targets: vec![RprojLockTarget {
                 r_version: "4.6".to_string(),
                 platform: "aarch64-apple-darwin".to_string(),
+                direct_dependencies: vec![],
                 packages: vec![package],
             }],
         };

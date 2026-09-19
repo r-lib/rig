@@ -135,6 +135,30 @@ fn read_blob(dest: &Path, sha: &str, path: &str) -> Result<String, Box<dyn Error
     run_git(dest, &["show", &format!("{}:{}", sha, path)])
 }
 
+/// Make sure `sha` is present in a bare mirror already `ensure_bare_mirror`
+/// -ed at `dest`, and return it unchanged -- the "trust a known commit"
+/// counterpart to [`fetch_into_mirror`]'s "resolve a possibly-moved ref".
+///
+/// If `sha` was already fetched by an earlier `rig proj lock` (the common
+/// case: an unchanged git dependency, resolved before on this machine), this
+/// touches the network not at all -- `cat-file -e` only looks at local
+/// objects. Only a genuine cache miss (a fresh machine, a cleared cache, or
+/// a `sha` from a lockfile older than this mirror) falls through to fetching
+/// that one exact commit.
+fn ensure_commit(dest: &Path, sha: &str) -> Result<String, Box<dyn Error>> {
+    if run_git(dest, &["cat-file", "-e", &format!("{}^{{commit}}", sha)]).is_ok() {
+        return Ok(sha.to_string());
+    }
+    let filtered = run_git(
+        dest,
+        &["fetch", "--depth", "1", "--filter=blob:none", "origin", sha],
+    );
+    if filtered.is_err() {
+        run_git(dest, &["fetch", "--depth", "1", "origin", sha])?;
+    }
+    Ok(sha.to_string())
+}
+
 /// An exclusive, blocking lock on `<mirror>.lock`, held for as long as the
 /// returned `File` stays alive (released on drop) -- guards one mirror
 /// directory against concurrent `git fetch`es, both from other threads in
@@ -163,35 +187,52 @@ fn lock_mirror(mirror: &Path) -> Result<fs::File, Box<dyn Error>> {
 /// available (see [`crate::cache::git_mirror_dir`]), falling back to a
 /// throwaway clone otherwise -- caching a git fetch is a missed
 /// optimization when it's unavailable, never a hard failure.
+///
+/// `known_sha` is a commit an earlier `rig proj lock` already pinned this
+/// exact request (URL/refspec/subdir) to, if any -- see
+/// `crate::proj::existing_git_shas`. When given, it's trusted outright
+/// instead of re-resolving `refspec` against the remote (the same "a
+/// lockfile is sticky until asked to upgrade" behavior `Cargo.lock`/
+/// `uv.lock` have), and only costs a network round trip at all if the
+/// mirror doesn't already have that commit locally.
 pub fn fetch_git_description(
     url: &str,
     refspec: Option<&str>,
     subdir: Option<&str>,
+    known_sha: Option<&str>,
 ) -> Result<(String, String), Box<dyn Error>> {
     let description_path = match subdir {
         Some(s) => format!("{}/DESCRIPTION", s),
         None => "DESCRIPTION".to_string(),
     };
     match crate::cache::git_mirror_dir(url) {
-        Some(mirror) => fetch_git_description_cached(url, refspec, &description_path, &mirror),
-        None => fetch_git_description_tempdir(url, refspec, &description_path),
+        Some(mirror) => {
+            fetch_git_description_cached(url, refspec, known_sha, &description_path, &mirror)
+        }
+        None => fetch_git_description_tempdir(url, refspec, known_sha, &description_path),
     }
 }
 
 /// The persistent-mirror path for [`fetch_git_description`]: reuses (or
-/// creates) the bare mirror at `mirror`, fetches `refspec` into it, and reads
-/// `path` back out with `git show` -- no working tree, so no sparse-checkout
-/// and no race between concurrent calls checking out different refs into the
-/// same directory.
+/// creates) the bare mirror at `mirror`, makes sure the wanted commit is
+/// present in it (trusting `known_sha` if given, else resolving `refspec`
+/// against the remote), and reads `path` back out with `git show` -- no
+/// working tree, so no sparse-checkout and no race between concurrent calls
+/// checking out different refs into the same directory.
 fn fetch_git_description_cached(
     url: &str,
     refspec: Option<&str>,
+    known_sha: Option<&str>,
     path: &str,
     mirror: &Path,
 ) -> Result<(String, String), Box<dyn Error>> {
     let _lock = lock_mirror(mirror)?;
     ensure_bare_mirror(url, mirror)?;
-    let sha = fetch_into_mirror(mirror, refspec).map_err(|err| {
+    let sha = match known_sha {
+        Some(sha) => ensure_commit(mirror, sha),
+        None => fetch_into_mirror(mirror, refspec),
+    }
+    .map_err(|err| {
         simple_error::SimpleError::new(format!(
             "Cannot fetch {}{}: {}",
             url,
@@ -207,20 +248,25 @@ fn fetch_git_description_cached(
 
 /// The no-cache fallback for [`fetch_git_description`]: today's original
 /// throwaway-clone behavior, used when `--no-cache`/`RIG_NO_CACHE` is set or
-/// rig's cache directory can't be determined.
+/// rig's cache directory can't be determined. `known_sha`, when given, is
+/// fetched in place of `refspec` -- there's no persistent mirror to check it
+/// against, but a lockfile-pinned commit still shouldn't drift just because
+/// caching happens to be off.
 fn fetch_git_description_tempdir(
     url: &str,
     refspec: Option<&str>,
+    known_sha: Option<&str>,
     path: &str,
 ) -> Result<(String, String), Box<dyn Error>> {
     let tmp = tempfile::tempdir()?;
     let dest = tmp.path();
+    let want = known_sha.or(refspec);
     init_sparse_repo(url, dest, Some((false, &[path])))?;
-    let sha = fetch_and_checkout(dest, refspec).map_err(|err| {
+    let sha = fetch_and_checkout(dest, want).map_err(|err| {
         simple_error::SimpleError::new(format!(
             "Cannot fetch {}{}: {}",
             url,
-            refspec.map(|r| format!(" at {}", r)).unwrap_or_default(),
+            want.map(|r| format!(" at {}", r)).unwrap_or_default(),
             err
         ))
     })?;
@@ -400,7 +446,8 @@ mod tests {
     fn description_only_fetch() {
         let fixture = bare_fixture();
         let url = format!("file://{}", fixture.path().join("work").display());
-        let (contents, sha) = fetch_git_description_tempdir(&url, None, "DESCRIPTION").unwrap();
+        let (contents, sha) =
+            fetch_git_description_tempdir(&url, None, None, "DESCRIPTION").unwrap();
         assert!(contents.contains("Package: fixture"));
         assert_eq!(sha.len(), 40);
     }
@@ -411,7 +458,7 @@ mod tests {
         let fixture = bare_fixture();
         let url = format!("file://{}", fixture.path().join("work").display());
         let (contents, _sha) =
-            fetch_git_description_tempdir(&url, None, "pkg/DESCRIPTION").unwrap();
+            fetch_git_description_tempdir(&url, None, None, "pkg/DESCRIPTION").unwrap();
         assert!(contents.contains("Package: subpkg"));
     }
 
@@ -423,7 +470,7 @@ mod tests {
         let mirror = tempfile::tempdir().unwrap();
 
         let (first, first_sha) =
-            fetch_git_description_cached(&url, None, "DESCRIPTION", mirror.path()).unwrap();
+            fetch_git_description_cached(&url, None, None, "DESCRIPTION", mirror.path()).unwrap();
         assert!(first.contains("Package: fixture"));
 
         // A second call against the same mirror must succeed and agree --
@@ -431,9 +478,36 @@ mod tests {
         // no-op once `HEAD` exists) rather than fail trying to re-`init`/
         // `remote add` over it.
         let (second, second_sha) =
-            fetch_git_description_cached(&url, None, "DESCRIPTION", mirror.path()).unwrap();
+            fetch_git_description_cached(&url, None, None, "DESCRIPTION", mirror.path()).unwrap();
         assert_eq!(first, second);
         assert_eq!(first_sha, second_sha);
+    }
+
+    #[test]
+    #[ignore]
+    fn cached_fetch_with_known_sha_skips_resolving_refspec() {
+        let fixture = bare_fixture();
+        let url = format!("file://{}", fixture.path().join("work").display());
+        let mirror = tempfile::tempdir().unwrap();
+
+        // Warm the mirror the ordinary way first, to learn the fixture's
+        // commit sha and make sure the mirror actually has it locally.
+        let (_, sha) =
+            fetch_git_description_cached(&url, None, None, "DESCRIPTION", mirror.path()).unwrap();
+
+        // A bogus `refspec` would fail to resolve against the remote -- if
+        // this succeeds, `known_sha` was trusted outright and `refspec` was
+        // never consulted, exactly as `ensure_commit` intends.
+        let (contents, resolved_sha) = fetch_git_description_cached(
+            &url,
+            Some("no-such-branch"),
+            Some(&sha),
+            "DESCRIPTION",
+            mirror.path(),
+        )
+        .unwrap();
+        assert!(contents.contains("Package: fixture"));
+        assert_eq!(resolved_sha, sha);
     }
 
     #[test]
@@ -444,14 +518,15 @@ mod tests {
         let mirror = tempfile::tempdir().unwrap();
 
         let (root, _) =
-            fetch_git_description_cached(&url, None, "DESCRIPTION", mirror.path()).unwrap();
+            fetch_git_description_cached(&url, None, None, "DESCRIPTION", mirror.path()).unwrap();
         assert!(root.contains("Package: fixture"));
 
         // No working tree/sparse-checkout state to reset between calls: a
         // different path from the same URL just reads a different blob out
         // of the same already-fetched mirror.
         let (subdir, _) =
-            fetch_git_description_cached(&url, None, "pkg/DESCRIPTION", mirror.path()).unwrap();
+            fetch_git_description_cached(&url, None, None, "pkg/DESCRIPTION", mirror.path())
+                .unwrap();
         assert!(subdir.contains("Package: subpkg"));
     }
 
@@ -468,7 +543,7 @@ mod tests {
                 let url = url.clone();
                 let mirror_path = mirror_path.clone();
                 std::thread::spawn(move || {
-                    fetch_git_description_cached(&url, None, "DESCRIPTION", &mirror_path)
+                    fetch_git_description_cached(&url, None, None, "DESCRIPTION", &mirror_path)
                         .map_err(|err| err.to_string())
                 })
             })

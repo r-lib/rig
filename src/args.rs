@@ -1711,6 +1711,19 @@ pub fn rig_app() -> Command {
                         .long("no-dev")
                         .num_args(0)
                         .required(false),
+                )
+                .arg(
+                    Arg::new("upgrade")
+                        .help(
+                            "Re-resolve every dependency instead of reusing an existing\n\
+                            rproj.lock: re-check git/GitHub refs against their remotes,\n\
+                            and re-run the solver for CRAN/PPM dependencies instead of\n\
+                            keeping a pin that already satisfies rproj.toml.",
+                        )
+                        .long("upgrade")
+                        .short('U')
+                        .num_args(0)
+                        .required(false),
                 ),
         )
         .subcommand(

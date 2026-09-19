@@ -61,6 +61,31 @@ rig keeps the repository metadata and the binary package indices it solves
 from in its cache, and refreshes them once a day. Use `--no-cache` to ignore
 the cache, or clean the cache with `rig cached clean`.
 
+## Sticky lock files
+
+A `rig proj lock` run that finds an existing `rproj.lock` already satisfying
+`rproj.toml` reuses it as-is, for every package, instead of re-resolving
+anything. This applies to ordinary dependencies, an existing pin that still
+satisfies the manifest's version requirement is kept, even if a newer
+version has since been published, as well as to git/GitHub dependencies (see
+below). Use `rig proj lock --upgrade` to ignore the existing lock file and
+re-resolve every dependency instead, picking the latest version that still
+satisfies `rproj.toml`.
+
+## Git and GitHub dependencies
+
+A `git::`/`github::` dependency pinned to a branch, a pull request, or no ref
+at all (the default branch's tip) is only resolved against its remote the
+first time it's locked. Once `rproj.lock` records a commit for it, later
+`rig proj lock` runs reuse that commit as-is rather than re-checking whether
+the branch moved on every lock. `rig proj lock --upgrade` re-checks every
+git/GitHub dependency's ref and moves the pin forward if it changed. A
+`rev`/`tag` pins an exact commit already, so there's nothing for `--upgrade`
+to move. `release = true` is sticky the same way: once locked, later runs
+keep the release it pinned instead of asking GitHub which release is latest
+every time. `rig proj lock --upgrade` re-checks and moves the pin forward if
+a newer release exists.
+
 The `rproj.lock` file records, for every package, whether it is a source or a
 binary package and the URL it is downloaded from. It also records where the
 file is cached, which is per *build* rather than per version: a repository

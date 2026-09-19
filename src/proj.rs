@@ -38,8 +38,8 @@ use crate::repos::cranlike_metadata::{ensure_allpackages_fresh, minor_r_version}
 use crate::repos::*;
 use crate::resolve::resolve_versions;
 use crate::rproj::{
-    parse_add_spec, Author, DepTable, Repository, Rproj, RprojLock, RprojLockPackage,
-    RprojLockTarget, RPROJ_LOCK_VERSION, RPROJ_MANIFEST_FILE,
+    format_constraints, parse_add_spec, Author, DepTable, LockDirectDependency, Repository, Rproj,
+    RprojLock, RprojLockPackage, RprojLockTarget, RPROJ_LOCK_VERSION, RPROJ_MANIFEST_FILE,
 };
 use crate::rvenv::{
     existing_targets, find_project_root, find_workspace_root, link_library_compat_symlink,
@@ -617,7 +617,8 @@ fn parse_add_arg(spec: &str) -> Result<AddSpec, Box<dyn Error>> {
             let table = dep_table_from_remote(&r, spec);
             let git_url = table.git.clone().unwrap_or_default();
             OUTPUT.status(&format!("Fetching {}", git_url));
-            let (pkg, _source, _remotes) = fetch_and_read_git_package(&git_url, &table)?;
+            let (pkg, _source, _remotes) =
+                fetch_and_read_git_package(&git_url, &table, &HashMap::new(), &HashMap::new())?;
             let name = r.name_override.unwrap_or(pkg.name);
             Ok(AddSpec::Remote(name, Box::new(table)))
         }
@@ -1455,6 +1456,195 @@ pub(crate) fn sc_proj_solve_deps(
     }
 }
 
+/// The identity of a git/GitHub dependency's *request* -- its URL, resolved
+/// refspec (`None` meaning "just take the default branch tip"), and
+/// subdirectory -- but not the commit it resolves to. Two `rig proj lock`
+/// runs producing the same key for the same dependency are asking git the
+/// same question, so [`existing_git_shas`] lets the second one skip asking
+/// again. Deliberately excludes a `release = true` dependency, whose
+/// `refspec` (the release tag) is only known after asking GitHub which
+/// release is latest -- exactly the remote round trip being skipped, so it
+/// can't be part of the key up front. [`existing_release_refs`] gives that
+/// case its own sticky mechanism, keyed on URL and subdirectory alone.
+type GitSourceKey = (String, Option<String>, Option<String>);
+
+/// Read and parse the `rproj.lock` at `root`, if there is one and it's the
+/// current lock format -- `None` for a first `rig proj lock`, or one
+/// recovering from a corrupt or outdated lockfile, in which case every
+/// target always resolves fresh, same as before any sticky-lock behavior
+/// existed. Shared by [`existing_git_shas`] and [`existing_lock_satisfies`]
+/// so a `proj_lock` run parses the file once instead of twice.
+fn read_existing_lock(root: &Path) -> Option<RprojLock> {
+    let text = fs::read_to_string(root.join(RPROJ_LOCK_FILE)).ok()?;
+    RprojLock::check_version(&text).ok()?;
+    toml::from_str::<RprojLock>(&text).ok()
+}
+
+/// Every git/GitHub dependency's previously resolved commit, read from an
+/// already-parsed `rproj.lock`, keyed by [`GitSourceKey`].
+///
+/// This is what lets an ordinary `rig proj lock` run reuse a pinned commit
+/// without contacting the dependency's remote at all when its request is
+/// unchanged, instead of re-fetching a possibly-moved branch/tag/PR every
+/// time -- the same "a lockfile is sticky until you ask to upgrade" behavior
+/// `Cargo.lock`/`uv.lock` have (see the `--upgrade` flag, which skips calling
+/// this instead, forcing every git dependency to resolve fresh).
+fn existing_git_shas(lock: &RprojLock) -> HashMap<GitSourceKey, String> {
+    let mut map = HashMap::new();
+    for target in &lock.targets {
+        for pkg in &target.packages {
+            if !pkg.metadata.contains_key(REMOTE_TYPE_FIELD) {
+                continue;
+            }
+            let url = pkg.metadata.get(crate::install::REMOTE_URL_FIELD);
+            let sha = pkg.metadata.get(crate::install::REMOTE_SHA_FIELD);
+            let (Some(url), Some(sha)) = (url, sha) else {
+                continue;
+            };
+            let refspec = pkg.metadata.get(crate::install::REMOTE_REF_FIELD).cloned();
+            let subdir = pkg.metadata.get(REMOTE_SUBDIR_FIELD).cloned();
+            map.insert((url.clone(), refspec, subdir), sha.clone());
+        }
+    }
+    map
+}
+
+/// Every `release = true` dependency's previously resolved tag and commit,
+/// read from an already-parsed `rproj.lock`, keyed by (URL, subdirectory) --
+/// unlike [`existing_git_shas`]'s [`GitSourceKey`], not by refspec, since a
+/// release dependency's refspec (the release tag) is only known after
+/// resolving "whatever is latest" against the remote, which is exactly what
+/// this lets an ordinary `rig proj lock` run skip: reuse the previously
+/// resolved tag as-is instead of asking GitHub which release is latest every
+/// time. `--upgrade` skips calling this, same as [`existing_git_shas`], so a
+/// release dependency always re-resolves to whatever is actually latest.
+fn existing_release_refs(lock: &RprojLock) -> HashMap<(String, Option<String>), (String, String)> {
+    let mut map = HashMap::new();
+    for target in &lock.targets {
+        for pkg in &target.packages {
+            if !pkg.metadata.contains_key(REMOTE_TYPE_FIELD) {
+                continue;
+            }
+            let url = pkg.metadata.get(crate::install::REMOTE_URL_FIELD);
+            let sha = pkg.metadata.get(crate::install::REMOTE_SHA_FIELD);
+            let refspec = pkg.metadata.get(crate::install::REMOTE_REF_FIELD);
+            let (Some(url), Some(sha), Some(refspec)) = (url, sha, refspec) else {
+                continue;
+            };
+            let subdir = pkg.metadata.get(REMOTE_SUBDIR_FIELD).cloned();
+            map.insert((url.clone(), subdir), (refspec.clone(), sha.clone()));
+        }
+    }
+    map
+}
+
+/// Whether an existing lock `target` still satisfies the manifest's current
+/// direct dependencies, without solving anything: every name in
+/// `direct_deps` must be pinned in `target`, at a version satisfying its
+/// requirement (skipped for a git/GitHub-sourced entry -- those aren't
+/// versioned by the manifest, just named), and `target.direct_dependencies`
+/// -- the fingerprint recorded the last time this target was actually
+/// solved -- must name exactly the same set of packages, so an added or
+/// removed manifest dependency always forces a real solve.
+fn lock_target_satisfies(target: &RprojLockTarget, direct_deps: &[DepVersionSpec]) -> bool {
+    let fingerprint: HashSet<&str> = target
+        .direct_dependencies
+        .iter()
+        .map(|d| d.name.as_str())
+        .collect();
+    let wanted: HashSet<&str> = direct_deps.iter().map(|d| d.name.as_str()).collect();
+    if fingerprint != wanted {
+        return false;
+    }
+
+    let packages: HashMap<&str, &RprojLockPackage> = target
+        .packages
+        .iter()
+        .map(|p| (p.package.as_str(), p))
+        .collect();
+
+    for dep in direct_deps {
+        let Some(pkg) = packages.get(dep.name.as_str()) else {
+            return false;
+        };
+        if pkg.metadata.contains_key(REMOTE_TYPE_FIELD) {
+            continue;
+        }
+        match dep.satisfies(&pkg.version) {
+            Ok(true) => {}
+            _ => return false,
+        }
+    }
+    true
+}
+
+/// Whether every git/GitHub-sourced dependency `resolve_git_sources` just
+/// resolved for this target matches what the candidate lock `target` already
+/// has pinned -- same URL, ref and commit. A mismatch (a moved branch/PR, a
+/// changed `git =`/`ref =`/subdir, or a brand-new git dependency) means the
+/// target's git portion is stale and it needs a real solve, even if
+/// [`lock_target_satisfies`] passed for its CRAN/PPM dependencies.
+fn lock_target_git_sources_fresh(
+    target: &RprojLockTarget,
+    git_sources: &[ResolvedGitSource],
+) -> bool {
+    let packages: HashMap<&str, &RprojLockPackage> = target
+        .packages
+        .iter()
+        .map(|p| (p.package.as_str(), p))
+        .collect();
+
+    for source in git_sources {
+        let Some(pkg) = packages.get(source.name.as_str()) else {
+            // Not every resolved git source is necessarily a direct
+            // dependency of this project (a `Remotes:` dependency reached
+            // transitively might not have made it into a given target at
+            // all), so a resolved source absent from this target's packages
+            // isn't by itself a mismatch.
+            continue;
+        };
+        let url = pkg.metadata.get(crate::install::REMOTE_URL_FIELD);
+        let sha = pkg.metadata.get(crate::install::REMOTE_SHA_FIELD);
+        let refspec = pkg.metadata.get(crate::install::REMOTE_REF_FIELD);
+        let subdir = pkg.metadata.get(REMOTE_SUBDIR_FIELD);
+        if url != Some(&source.git_source.url)
+            || sha != Some(&source.git_source.sha)
+            || refspec != source.git_source.ref_.as_ref()
+            || subdir != source.git_source.subdir.as_ref()
+        {
+            return false;
+        }
+    }
+    true
+}
+
+/// Whether an already-parsed existing `lock` has a target for `(rver,
+/// platform_key)` that still satisfies the manifest's current direct
+/// dependencies (`direct_deps`) and git sources (`git_sources`), without
+/// solving anything -- see [`lock_target_satisfies`] and
+/// [`lock_target_git_sources_fresh`]. Returns a clone of that target, ready
+/// to reuse as-is, or `None` if there's no matching target or it no longer
+/// satisfies the manifest, in which case the target needs a real solve.
+fn existing_lock_satisfies(
+    lock: &RprojLock,
+    rver: &str,
+    platform_key: &str,
+    direct_deps: &[DepVersionSpec],
+    git_sources: &[ResolvedGitSource],
+) -> Option<RprojLockTarget> {
+    let target = lock
+        .targets
+        .iter()
+        .find(|t| t.r_version == rver && t.platform == platform_key)?;
+    if !lock_target_satisfies(target, direct_deps) {
+        return None;
+    }
+    if !lock_target_git_sources_fresh(target, git_sources) {
+        return None;
+    }
+    Some(target.clone())
+}
+
 /// One git/GitHub-sourced dependency, already fetched and turned into
 /// everything [`register_git_sources`] needs to hand it to a solver's
 /// registry: no I/O left to do, just three lookups/inserts.
@@ -1486,6 +1676,8 @@ pub(crate) struct ResolvedGitSource {
 pub(crate) fn resolve_git_sources(
     git_deps: &[(String, DepTable)],
     dev: bool,
+    known_shas: &HashMap<GitSourceKey, String>,
+    known_releases: &HashMap<(String, Option<String>), (String, String)>,
 ) -> Result<Vec<ResolvedGitSource>, Box<dyn Error>> {
     // Only the packages named directly (on the command line, or in
     // `rproj.toml`) are roots of the solve; a package reached through another
@@ -1511,7 +1703,8 @@ pub(crate) fn resolve_git_sources(
                     .clone()
                     .ok_or_else(|| format!("{} has a dependency source with no `git` URL", name))?;
                 let (pkg, git_source, remotes) =
-                    fetch_and_read_git_package(&git_url, table).map_err(|err| err.to_string())?;
+                    fetch_and_read_git_package(&git_url, table, known_shas, known_releases)
+                        .map_err(|err| err.to_string())?;
                 if pkg.name != *name {
                     return Err(format!(
                         "`{}` in rproj.toml points at {}, but its DESCRIPTION says `Package: {}`",
@@ -1623,9 +1816,18 @@ pub(crate) fn github_owner_repo(git_url: &str) -> Option<(&str, &str)> {
 /// `release`/`rev`/`branch`/`tag` fields (in that priority order) are
 /// resolved to a single refspec to fetch; `pr`/`release` only make sense for
 /// a `github.com` URL (mirroring `RemoteSource`'s doc comments).
+///
+/// `known_shas` is [`existing_git_shas`]'s map of this dependency's
+/// previously resolved commit, if any -- looked up by [`GitSourceKey`].
+/// `known_releases` is [`existing_release_refs`]'s equivalent for a
+/// `release = true` dependency, looked up by URL and subdirectory instead,
+/// since its refspec (the release tag) isn't known ahead of resolving it.
+/// Both are empty on `--upgrade`, forcing a fresh resolve either way.
 pub(crate) fn fetch_and_read_git_package(
     git_url: &str,
     table: &DepTable,
+    known_shas: &HashMap<GitSourceKey, String>,
+    known_releases: &HashMap<(String, Option<String>), (String, String)>,
 ) -> Result<(Package, GitSourceInfo, String), Box<dyn Error>> {
     let owner_repo = github_owner_repo(git_url);
 
@@ -1636,23 +1838,36 @@ pub(crate) fn fetch_and_read_git_package(
         );
     }
 
-    let refspec = if let Some(pr) = table.pr {
-        Some(format!("refs/pull/{}/head", pr))
-    } else if table.release == Some(true) {
+    let (refspec, known_sha) = if table.release == Some(true) {
         let (owner, repo) = owner_repo.expect("checked above");
-        Some(crate::pkgsource::git::resolve_release_tag(owner, repo)?)
+        let release_key = (git_url.to_string(), table.subdir.clone());
+        match known_releases.get(&release_key) {
+            Some((tag, sha)) => (Some(tag.clone()), Some(sha.clone())),
+            None => (
+                Some(crate::pkgsource::git::resolve_release_tag(owner, repo)?),
+                None,
+            ),
+        }
     } else {
-        table
-            .rev
-            .clone()
-            .or_else(|| table.branch.clone())
-            .or_else(|| table.tag.clone())
+        let refspec = if let Some(pr) = table.pr {
+            Some(format!("refs/pull/{}/head", pr))
+        } else {
+            table
+                .rev
+                .clone()
+                .or_else(|| table.branch.clone())
+                .or_else(|| table.tag.clone())
+        };
+        let key = (git_url.to_string(), refspec.clone(), table.subdir.clone());
+        let known_sha = known_shas.get(&key).cloned();
+        (refspec, known_sha)
     };
 
     let (description, sha) = crate::pkgsource::git::fetch_git_description(
         git_url,
         refspec.as_deref(),
         table.subdir.as_deref(),
+        known_sha.as_deref(),
     )?;
 
     let git_source = match owner_repo {
@@ -1749,6 +1964,13 @@ struct ProjLockOptions {
     platforms: Vec<String>,
     prefer_binary: Option<usize>,
     dev: bool,
+    /// `--upgrade`: re-resolve every dependency instead of reusing an
+    /// existing `rproj.lock`: re-check every git/GitHub dependency's ref
+    /// against its remote instead of reusing the commit already pinned (see
+    /// [`existing_git_shas`]), and re-run the solver for CRAN/PPM
+    /// dependencies instead of keeping a pin that already satisfies
+    /// `rproj.toml` (see [`existing_lock_satisfies`]).
+    upgrade: bool,
 }
 
 impl Default for ProjLockOptions {
@@ -1759,6 +1981,7 @@ impl Default for ProjLockOptions {
             prefer_binary: None,
             // dev dependencies are included unless --no-dev is given
             dev: true,
+            upgrade: false,
         }
     }
 }
@@ -1779,6 +2002,7 @@ fn sc_proj_lock(
             .unwrap_or_default(),
         prefer_binary: args.get_one::<usize>("prefer-binary").copied(),
         dev: !args.get_flag("no-dev"),
+        upgrade: args.get_flag("upgrade"),
     };
     proj_lock(&proj_lock_root()?, &opts, args)
 }
@@ -2272,16 +2496,79 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         }
     }
 
+    // The manifest's own direct dependencies, i.e. what a target's lock has
+    // to still satisfy to be reused untouched -- same name/BASE_PKGS scope
+    // `RprojLockTarget::from_solution` uses for `packages`, since that's the
+    // universe `lock_target_satisfies` looks names up in.
+    let direct_deps: Vec<DepVersionSpec> = solve
+        .merged
+        .dependencies
+        .iter()
+        .filter(|d| d.name != "R" && !BASE_PKGS.contains(&d.name.as_str()))
+        .cloned()
+        .collect();
+
+    // `--upgrade` and `--no-cache` both skip reading the existing lock at
+    // all, forcing every target to solve fresh -- same as a first `rig proj
+    // lock`, or one recovering from a corrupt/outdated lockfile.
+    let existing_lock = if opts.upgrade || crate::cache::no_cache() {
+        None
+    } else {
+        read_existing_lock(root)
+    };
+
+    // Resolve every git/GitHub dependency once, up front, instead of letting
+    // each solve target fetch it on its own -- see `resolve_git_sources`.
+    // `--upgrade` (folded into `existing_lock` above) skips `existing_git_shas`
+    // and `existing_release_refs` (empty maps) so every git dependency
+    // re-resolves against its remote instead of reusing whatever commit (or,
+    // for a `release = true` dependency, whatever tag) the existing lock file
+    // already pinned it to.
+    let (known_shas, known_releases) = match &existing_lock {
+        Some(lock) => (existing_git_shas(lock), existing_release_refs(lock)),
+        None => (HashMap::new(), HashMap::new()),
+    };
+    let git_sources = resolve_git_sources(&solve.git_deps, dev, &known_shas, &known_releases)?;
+
+    // Every target the existing lock already satisfies, reused byte-for-byte
+    // instead of solved again -- the "a lockfile is sticky until you ask to
+    // upgrade" behavior `Cargo.lock`/`uv.lock` have, now covering CRAN/PPM
+    // dependencies too (git/GitHub already got it via `known_shas` above).
+    let mut reused: Vec<RprojLockTarget> = vec![];
+    let mut to_solve: Vec<&SolveTarget> = vec![];
+    for st in &solve_targets {
+        let existing = existing_lock.as_ref().and_then(|lock| {
+            existing_lock_satisfies(lock, &st.rver, &st.platform_key, &direct_deps, &git_sources)
+        });
+        match existing {
+            Some(target) => reused.push(target),
+            None => to_solve.push(st),
+        }
+    }
+
+    // Every requested target was already satisfied: no metadata to refresh,
+    // no solving to do, and the lock file would come out byte-identical, so
+    // leave it untouched rather than rewriting the same bytes.
+    if to_solve.is_empty() {
+        OUTPUT.success("rproj.lock is already up to date");
+        info!("rproj.lock is already up to date, nothing to solve");
+        return Ok(());
+    }
+
+    if !reused.is_empty() {
+        OUTPUT.info(&format!(
+            "{} of {} targets already up to date",
+            reused.len(),
+            solve_targets.len()
+        ));
+    }
+
     // Refresh the shared package metadata cache once, sequentially, before
     // fanning the solves out to threads below. Each solve's
     // `DbSourcePackageLoader::new()` would otherwise do this too, but
     // finding it already fresh, it becomes a cheap read instead of every
     // thread racing to update the same on-disk cache at once.
     ensure_allpackages_fresh()?;
-
-    // Resolve every git/GitHub dependency once, up front, instead of letting
-    // each solve target fetch it on its own -- see `resolve_git_sources`.
-    let git_sources = resolve_git_sources(&solve.git_deps, dev)?;
 
     for name in &no_binaries {
         OUTPUT.warn(&format!(
@@ -2298,12 +2585,12 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     // The solves below run in parallel, so each one printing its own status
     // lines would give N interleaved copies of them. Report the phases once,
     // for the whole batch, instead (`report_status: false` below).
-    let multi = solve_targets.len() > 1;
+    let multi = to_solve.len() > 1;
     OUTPUT.status("Downloading binary package metadata");
     if multi {
         OUTPUT.status(&format!(
             "Solving dependencies for {} targets",
-            solve_targets.len()
+            to_solve.len()
         ));
     } else {
         OUTPUT.status("Solving dependencies");
@@ -2319,7 +2606,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     // target.
     type SolveResult = (RPackageRegistry, SelectedDependencies<RPackageRegistry>);
     let prefer_binary = opts.prefer_binary;
-    let solved: Vec<(String, String, Result<SolveResult, String>)> = solve_targets
+    let solved: Vec<(String, String, Result<SolveResult, String>)> = to_solve
         .par_iter()
         .map(|st| {
             let result = sc_proj_solve_deps(
@@ -2335,7 +2622,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         })
         .collect();
 
-    let mut targets: Vec<RprojLockTarget> = vec![];
+    let mut targets: Vec<RprojLockTarget> = reused;
     let mut summaries: Vec<TargetSolution> = vec![];
     for (rver, platform_key, result) in solved {
         let (registry, solution) = match result {
@@ -2360,6 +2647,13 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
                 pkg.groups = names.clone();
             }
         }
+        target.direct_dependencies = direct_deps
+            .iter()
+            .map(|d| LockDirectDependency {
+                name: d.name.clone(),
+                constraint: format_constraints(&d.constraints),
+            })
+            .collect();
         info!("Solved dependencies for R {} / {}", rver, platform_key);
 
         summaries.push(TargetSolution {
@@ -2386,8 +2680,8 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     // cross product of the R versions and the platforms, so listing the two
     // separately says the same thing in fewer, shorter lines.
     let header = if multi {
-        let rvers = dedup_in_order(solve_targets.iter().map(|st| st.rver.as_str()));
-        let platforms = dedup_in_order(solve_targets.iter().map(|st| st.platform_key.as_str()));
+        let rvers = dedup_in_order(to_solve.iter().map(|st| st.rver.as_str()));
+        let platforms = dedup_in_order(to_solve.iter().map(|st| st.platform_key.as_str()));
         Some(format!(
             "R {}: {}\n{}: {}",
             if rvers.len() > 1 {
@@ -4047,8 +4341,191 @@ mod tests {
         RprojLockTarget {
             r_version: r_version.to_string(),
             platform: platform.to_string(),
+            direct_dependencies: vec![],
             packages: vec![],
         }
+    }
+
+    /// A direct dependency requirement, e.g. for [`lock_target_satisfies`]
+    /// tests: `direct_dep("dplyr", ">= 1.0")`.
+    fn direct_dep(name: &str, constraint: &str) -> DepVersionSpec {
+        DepVersionSpec {
+            name: name.to_string(),
+            types: vec![],
+            constraints: crate::rproj::parse_constraints(constraint).unwrap(),
+        }
+    }
+
+    /// A [`RprojLockPackage`] fixture with a version other than `locked`'s
+    /// hard-coded `"1.0.0"`, for [`lock_target_satisfies`] tests.
+    fn locked_version(name: &str, version: &str, deps: &[&str]) -> RprojLockPackage {
+        let mut pkg = locked(name, deps);
+        pkg.version = version.to_string();
+        pkg
+    }
+
+    /// A git/GitHub-sourced [`RprojLockPackage`] fixture, for
+    /// [`lock_target_satisfies`]/[`lock_target_git_sources_fresh`] tests.
+    fn locked_git(name: &str, url: &str, sha: &str) -> RprojLockPackage {
+        let mut pkg = locked(name, &[]);
+        pkg.metadata
+            .insert(REMOTE_TYPE_FIELD.to_string(), "git".to_string());
+        pkg.metadata.insert(
+            crate::install::REMOTE_URL_FIELD.to_string(),
+            url.to_string(),
+        );
+        pkg.metadata.insert(
+            crate::install::REMOTE_SHA_FIELD.to_string(),
+            sha.to_string(),
+        );
+        pkg
+    }
+
+    fn resolved_git_source(name: &str, url: &str, sha: &str) -> ResolvedGitSource {
+        ResolvedGitSource {
+            name: name.to_string(),
+            version: RegistryPackageVersion::new(name, "1.0.0").unwrap(),
+            ranges: HashMap::default(),
+            git_source: GitSourceInfo {
+                remote_type: "git",
+                url: url.to_string(),
+                host: None,
+                repo: None,
+                username: None,
+                subdir: None,
+                ref_: None,
+                sha: sha.to_string(),
+            },
+        }
+    }
+
+    #[test]
+    fn existing_release_refs_reads_the_pinned_tag_and_sha() {
+        let mut pkg = locked_git("mypkg", "https://github.com/me/mypkg.git", "abc123");
+        pkg.metadata.insert(
+            crate::install::REMOTE_REF_FIELD.to_string(),
+            "v1.2.0".to_string(),
+        );
+        let mut t = target("4.6.1", "testos");
+        t.packages = vec![pkg];
+        let lock = RprojLock {
+            version: RPROJ_LOCK_VERSION,
+            targets: vec![t],
+        };
+        let refs = existing_release_refs(&lock);
+        assert_eq!(
+            refs.get(&("https://github.com/me/mypkg.git".to_string(), None)),
+            Some(&("v1.2.0".to_string(), "abc123".to_string()))
+        );
+    }
+
+    #[test]
+    fn lock_target_satisfies_an_unchanged_manifest() {
+        let mut t = target("4.6.1", "testos");
+        t.packages = vec![locked_version("dplyr", "1.1.0", &[])];
+        t.direct_dependencies = vec![LockDirectDependency {
+            name: "dplyr".to_string(),
+            constraint: ">= 1.0.0".to_string(),
+        }];
+        let direct_deps = vec![direct_dep("dplyr", ">= 1.0.0")];
+        assert!(lock_target_satisfies(&t, &direct_deps));
+    }
+
+    #[test]
+    fn lock_target_does_not_satisfy_a_tightened_constraint() {
+        let mut t = target("4.6.1", "testos");
+        t.packages = vec![locked_version("dplyr", "1.1.0", &[])];
+        t.direct_dependencies = vec![LockDirectDependency {
+            name: "dplyr".to_string(),
+            constraint: ">= 1.0.0".to_string(),
+        }];
+        // The manifest now asks for something newer than what's pinned.
+        let direct_deps = vec![direct_dep("dplyr", ">= 2.0.0")];
+        assert!(!lock_target_satisfies(&t, &direct_deps));
+    }
+
+    #[test]
+    fn lock_target_does_not_satisfy_a_newly_added_dependency() {
+        let mut t = target("4.6.1", "testos");
+        t.packages = vec![locked_version("dplyr", "1.1.0", &[])];
+        t.direct_dependencies = vec![LockDirectDependency {
+            name: "dplyr".to_string(),
+            constraint: "*".to_string(),
+        }];
+        // `tidyr` was just added to rproj.toml and has no fingerprint entry.
+        let direct_deps = vec![direct_dep("dplyr", "*"), direct_dep("tidyr", "*")];
+        assert!(!lock_target_satisfies(&t, &direct_deps));
+    }
+
+    #[test]
+    fn lock_target_does_not_satisfy_a_removed_dependency() {
+        let mut t = target("4.6.1", "testos");
+        t.packages = vec![
+            locked_version("dplyr", "1.1.0", &[]),
+            locked_version("tidyr", "1.3.0", &[]),
+        ];
+        t.direct_dependencies = vec![
+            LockDirectDependency {
+                name: "dplyr".to_string(),
+                constraint: "*".to_string(),
+            },
+            LockDirectDependency {
+                name: "tidyr".to_string(),
+                constraint: "*".to_string(),
+            },
+        ];
+        // `tidyr` was just removed from rproj.toml.
+        let direct_deps = vec![direct_dep("dplyr", "*")];
+        assert!(!lock_target_satisfies(&t, &direct_deps));
+    }
+
+    #[test]
+    fn lock_target_satisfies_skips_the_numeric_check_for_a_git_dependency() {
+        let mut t = target("4.6.1", "testos");
+        t.packages = vec![locked_git(
+            "mypkg",
+            "https://github.com/me/mypkg.git",
+            "abc123",
+        )];
+        t.direct_dependencies = vec![LockDirectDependency {
+            name: "mypkg".to_string(),
+            constraint: "*".to_string(),
+        }];
+        let direct_deps = vec![direct_dep("mypkg", "*")];
+        assert!(lock_target_satisfies(&t, &direct_deps));
+    }
+
+    #[test]
+    fn git_sources_are_fresh_when_unchanged() {
+        let mut t = target("4.6.1", "testos");
+        t.packages = vec![locked_git(
+            "mypkg",
+            "https://github.com/me/mypkg.git",
+            "abc123",
+        )];
+        let sources = vec![resolved_git_source(
+            "mypkg",
+            "https://github.com/me/mypkg.git",
+            "abc123",
+        )];
+        assert!(lock_target_git_sources_fresh(&t, &sources));
+    }
+
+    #[test]
+    fn git_sources_are_stale_when_the_resolved_commit_changed() {
+        let mut t = target("4.6.1", "testos");
+        t.packages = vec![locked_git(
+            "mypkg",
+            "https://github.com/me/mypkg.git",
+            "abc123",
+        )];
+        // The branch moved since the lock was last written.
+        let sources = vec![resolved_git_source(
+            "mypkg",
+            "https://github.com/me/mypkg.git",
+            "def456",
+        )];
+        assert!(!lock_target_git_sources_fresh(&t, &sources));
     }
 
     #[test]

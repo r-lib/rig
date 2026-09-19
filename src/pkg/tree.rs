@@ -375,7 +375,7 @@ impl RemoteResolver {
             .expect("a package only ends up in `pending` with a `git` URL set");
         OUTPUT.status(&format!("Fetching {} from {}", name, git_url));
 
-        match fetch_and_read_git_package(&git_url, table) {
+        match fetch_and_read_git_package(&git_url, table, &HashMap::new(), &HashMap::new()) {
             Ok((pkg, git_source, remotes_field)) => {
                 for (dep_name, dep_table) in parse_remotes_field(&remotes_field) {
                     if !self.cache.contains_key(&dep_name) {
@@ -468,7 +468,8 @@ fn remote_root_tree(
         .git
         .clone()
         .expect("dep_table_from_remote always sets `git`");
-    let (pkg, git_source, remotes_field) = fetch_and_read_git_package(&git_url, &table)?;
+    let (pkg, git_source, remotes_field) =
+        fetch_and_read_git_package(&git_url, &table, &HashMap::new(), &HashMap::new())?;
     let root_remotes = parse_remotes_field(&remotes_field);
 
     let loader = DbSourcePackageLoader::new()?;
