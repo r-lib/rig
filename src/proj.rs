@@ -1002,10 +1002,16 @@ pub(crate) struct ProjectSolve {
     /// non-dev subset of the lockfile needs.
     pub merged: PackageDependencies,
     /// Every member's dependency groups, merged by name: `"main"` for the
-    /// hard dependencies, plus every `[dependency-groups.*]` name, each
-    /// mapped to its direct dependency names. Used after the solve to tag
-    /// each locked package with the group(s) that need it.
+    /// hard dependencies, plus every `[dependency-groups.*]` name
+    /// (`include-groups` resolved), each mapped to its effective dependency
+    /// names. Used after the solve to tag each locked package with the
+    /// group(s) that need it. Kept separate from [`Self::extra_roots`] so
+    /// `rig proj sync`'s `--group`/`--all-groups` and `--extra`/`--all-extras`
+    /// mean different things.
     pub group_roots: HashMap<String, Vec<String>>,
+    /// Every member's `[optional-dependencies.*]` extras, merged by name,
+    /// each mapped to its direct dependency names. See [`Self::group_roots`].
+    pub extra_roots: HashMap<String, Vec<String>>,
     /// Every member's git/GitHub-sourced dependencies, merged, see
     /// [`Rproj::git_dependencies`]. Fetched and registered with the solver by
     /// [`register_git_sources`] before it runs.
@@ -1021,10 +1027,7 @@ pub(crate) struct ProjectSolve {
 /// (see [`Rproj::inherit_workspace_deps`]), and each becomes a root of the
 /// solve under its own name and version. Otherwise this is one plain project,
 /// and the single root is the synthetic one the solver has always used.
-pub(crate) fn proj_read_solve_roots(
-    root: &Path,
-    dev: bool,
-) -> Result<ProjectSolve, Box<dyn Error>> {
+pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn Error>> {
     let manifest = proj_read_manifest(root)?;
     let ws = match &manifest.workspace {
         Some(ws) if !ws.members.is_empty() => ws,
@@ -1034,14 +1037,16 @@ pub(crate) fn proj_read_solve_roots(
                 RPROJ_MANIFEST_FILE
             ));
             info!("Reading dependencies from {}", RPROJ_MANIFEST_FILE);
-            let deps = manifest.to_dep_version_specs(dev)?;
-            let group_roots = manifest.dependency_group_roots();
+            let deps = manifest.to_dep_version_specs(true)?;
+            let group_roots = manifest.main_and_group_roots()?;
+            let extra_roots = manifest.optional_dependency_roots();
             let git_deps = manifest.git_dependencies();
             return Ok(ProjectSolve {
                 members: vec![root.to_path_buf()],
                 roots: vec![SolveRoot::project(deps.clone())?],
                 merged: deps,
                 group_roots,
+                extra_roots,
                 git_deps,
             });
         }
@@ -1060,6 +1065,7 @@ pub(crate) fn proj_read_solve_roots(
         dependencies: vec![],
     };
     let mut group_roots: HashMap<String, Vec<String>> = HashMap::new();
+    let mut extra_roots: HashMap<String, Vec<String>> = HashMap::new();
     let mut seen: HashMap<String, PathBuf> = HashMap::new();
     let mut git_deps: Vec<(String, crate::rproj::DepTable)> = vec![];
 
@@ -1089,10 +1095,13 @@ pub(crate) fn proj_read_solve_roots(
             );
         }
 
-        let deps = member.to_dep_version_specs(dev)?;
+        let deps = member.to_dep_version_specs(true)?;
         merged.append(&mut deps.clone());
-        for (group_name, names) in member.dependency_group_roots() {
+        for (group_name, names) in member.main_and_group_roots()? {
             group_roots.entry(group_name).or_default().extend(names);
+        }
+        for (extra_name, names) in member.optional_dependency_roots() {
+            extra_roots.entry(extra_name).or_default().extend(names);
         }
         roots.push(SolveRoot {
             name,
@@ -1110,6 +1119,7 @@ pub(crate) fn proj_read_solve_roots(
         roots,
         merged,
         group_roots,
+        extra_roots,
         git_deps,
     })
 }
@@ -1951,6 +1961,7 @@ fn solution_to_sorted_vec(
 
 /// Everything `rig proj lock` takes from the command line. `rig proj sync`
 /// builds the default set of these when it has to create the lockfile itself.
+#[derive(Default)]
 struct ProjLockOptions {
     /// R versions to solve for, from `--r-version`'s comma-separated list.
     /// Empty means "the default logic in `proj_lock_r_version` picks one".
@@ -1963,7 +1974,6 @@ struct ProjLockOptions {
     /// `r_versions` as a cross product.
     platforms: Vec<String>,
     prefer_binary: Option<usize>,
-    dev: bool,
     /// `--upgrade`: re-resolve every dependency instead of reusing an
     /// existing `rproj.lock`: re-check every git/GitHub dependency's ref
     /// against its remote instead of reusing the commit already pinned (see
@@ -1971,19 +1981,6 @@ struct ProjLockOptions {
     /// dependencies instead of keeping a pin that already satisfies
     /// `rproj.toml` (see [`existing_lock_satisfies`]).
     upgrade: bool,
-}
-
-impl Default for ProjLockOptions {
-    fn default() -> Self {
-        ProjLockOptions {
-            r_versions: vec![],
-            platforms: vec![],
-            prefer_binary: None,
-            // dev dependencies are included unless --no-dev is given
-            dev: true,
-            upgrade: false,
-        }
-    }
 }
 
 fn sc_proj_lock(
@@ -2001,7 +1998,6 @@ fn sc_proj_lock(
             .map(|vs| vs.cloned().collect())
             .unwrap_or_default(),
         prefer_binary: args.get_one::<usize>("prefer-binary").copied(),
-        dev: !args.get_flag("no-dev"),
         upgrade: args.get_flag("upgrade"),
     };
     proj_lock(&proj_lock_root()?, &opts, args)
@@ -2141,7 +2137,7 @@ fn print_proj_status(
                     }
                 }
             }
-            let groups = m.dependency_group_roots();
+            let groups = m.dependency_group_roots()?;
             if !groups.is_empty() {
                 let mut names: Vec<&String> = groups.keys().collect();
                 names.sort();
@@ -2234,7 +2230,7 @@ fn print_proj_status_json(
                 _ => vec![],
             };
             let mut groups: Vec<(String, usize)> = m
-                .dependency_group_roots()
+                .dependency_group_roots()?
                 .into_iter()
                 .map(|(name, deps)| (name, deps.len()))
                 .collect();
@@ -2392,8 +2388,7 @@ fn r_requirement(req: Option<&DepVersionSpec>) -> String {
 /// comment below.
 fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // Do this first, to report local errors early
-    let dev = opts.dev;
-    let solve = proj_read_solve_roots(root, dev)?;
+    let solve = proj_read_solve_roots(root)?;
     let pkg_deps = &solve.merged;
 
     if solve.members.len() > 1 {
@@ -2528,7 +2523,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         Some(lock) => (existing_git_shas(lock), existing_release_refs(lock)),
         None => (HashMap::new(), HashMap::new()),
     };
-    let git_sources = resolve_git_sources(&solve.git_deps, dev, &known_shas, &known_releases)?;
+    let git_sources = resolve_git_sources(&solve.git_deps, true, &known_shas, &known_releases)?;
 
     // Every target the existing lock already satisfies, reused byte-for-byte
     // instead of solved again -- the "a lockfile is sticky until you ask to
@@ -2642,9 +2637,13 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
 
         let mut target = RprojLockTarget::from_solution(&registry, &solution);
         let groups = compute_package_groups(&solve.group_roots, &target.packages);
+        let extra_groups = compute_package_groups(&solve.extra_roots, &target.packages);
         for pkg in target.packages.iter_mut() {
             if let Some(names) = groups.get(&pkg.package) {
                 pkg.groups = names.clone();
+            }
+            if let Some(names) = extra_groups.get(&pkg.package) {
+                pkg.extra_groups = names.clone();
             }
         }
         target.direct_dependencies = direct_deps
@@ -3332,9 +3331,23 @@ fn native_arch_name(arch: &str) -> String {
 /// What [`proj_sync`] does beyond the defaults, i.e. the options of
 /// `rig proj sync`. `rig run` syncs with the defaults.
 pub(crate) struct ProjSyncOptions {
-    /// Install the manifest's dev dependencies as well (`--no-dev` turns this
-    /// off).
+    /// Install the `dev` dependency group, in addition to `main` (default:
+    /// on). `--no-dev` turns it off; an explicit `--group dev` or
+    /// `--all-groups` installs it regardless, since explicit selection wins
+    /// over the default-suppressing flag.
     pub dev: bool,
+    /// `--group`, repeatable/comma-separated: install these dependency
+    /// groups, in addition to the default set (`main`, plus `dev` unless
+    /// `--no-dev`).
+    pub groups: Vec<String>,
+    /// `--all-groups`: install every dependency group the manifest
+    /// declares, regardless of `dev`/`groups`.
+    pub all_groups: bool,
+    /// `--extra`, repeatable/comma-separated: install these
+    /// optional-dependency extras. None are installed by default.
+    pub extras: Vec<String>,
+    /// `--all-extras`: install every optional-dependency extra.
+    pub all_extras: bool,
     /// Install the R version the lock file names, if it is missing
     /// (`--no-install-r` turns this off).
     pub install_r: bool,
@@ -3367,6 +3380,10 @@ impl Default for ProjSyncOptions {
     fn default() -> Self {
         ProjSyncOptions {
             dev: true,
+            groups: vec![],
+            all_groups: false,
+            extras: vec![],
+            all_extras: false,
             install_r: true,
             max_concurrent: None,
             r_version: None,
@@ -3391,6 +3408,16 @@ fn sc_proj_sync(
 
     let opts = ProjSyncOptions {
         dev: !args.get_flag("no-dev"),
+        groups: args
+            .get_many::<String>("group")
+            .map(|vs| vs.cloned().collect())
+            .unwrap_or_default(),
+        all_groups: args.get_flag("all-groups"),
+        extras: args
+            .get_many::<String>("extra")
+            .map(|vs| vs.cloned().collect())
+            .unwrap_or_default(),
+        all_extras: args.get_flag("all-extras"),
         install_r: !args.get_flag("no-install-r"),
         max_concurrent: args.get_one::<usize>("max-concurrent").copied(),
         r_version: args.get_one::<String>("r-version").cloned(),
@@ -3401,6 +3428,44 @@ fn sc_proj_sync(
     };
 
     proj_sync(&root, &opts, args)
+}
+
+/// Which of a lock target's packages `rig proj sync` should install: `main`
+/// always, plus `dev` unless `opts.dev` is off, plus whatever `opts.groups`
+/// names, plus every group if `opts.all_groups`; extras work the same way
+/// through `opts.extras`/`opts.all_extras`, but none are installed unless
+/// asked for. Explicit selection (`--group dev`, `--all-groups`) wins over
+/// `--no-dev`, since that flag only skips the automatic `dev` insert below,
+/// it never removes a name that got in some other way.
+fn sync_wanted_packages(
+    packages: &[RprojLockPackage],
+    opts: &ProjSyncOptions,
+) -> Vec<RprojLockPackage> {
+    let mut wanted_groups: HashSet<String> = HashSet::from(["main".to_string()]);
+    if opts.all_groups {
+        wanted_groups.extend(packages.iter().flat_map(|p| p.groups.iter().cloned()));
+    } else {
+        if opts.dev {
+            wanted_groups.insert("dev".to_string());
+        }
+        wanted_groups.extend(opts.groups.iter().cloned());
+    }
+    let wanted_extras: HashSet<String> = if opts.all_extras {
+        packages
+            .iter()
+            .flat_map(|p| p.extra_groups.iter().cloned())
+            .collect()
+    } else {
+        opts.extras.iter().cloned().collect()
+    };
+    packages
+        .iter()
+        .filter(|p| {
+            p.groups.iter().any(|g| wanted_groups.contains(g))
+                || p.extra_groups.iter().any(|g| wanted_extras.contains(g))
+        })
+        .cloned()
+        .collect()
 }
 
 /// Install the project's locked dependencies into its environment, creating
@@ -3443,11 +3508,7 @@ pub(crate) fn proj_sync(
             RPROJ_LOCK_FILE
         ));
         info!("No {}, running `rig proj lock` first", RPROJ_LOCK_FILE);
-        let lock_opts = ProjLockOptions {
-            dev: opts.dev,
-            ..ProjLockOptions::default()
-        };
-        proj_lock(root, &lock_opts, args)?;
+        proj_lock(root, &ProjLockOptions::default(), args)?;
     }
 
     let lock_content = fs::read_to_string(&lock_path)?;
@@ -3459,18 +3520,8 @@ pub(crate) fn proj_sync(
         opts.platform.as_deref(),
     )?;
 
-    let nondev;
-    let wanted: &[RprojLockPackage] = if !opts.dev {
-        nondev = target
-            .packages
-            .iter()
-            .filter(|p| p.groups.iter().any(|g| g == "main"))
-            .cloned()
-            .collect::<Vec<_>>();
-        &nondev
-    } else {
-        &target.packages
-    };
+    let wanted: Vec<RprojLockPackage> = sync_wanted_packages(&target.packages, opts);
+    let wanted: &[RprojLockPackage] = &wanted;
 
     // The project library itself is created below, but only for a project
     // `rig proj init` has already set up: the shim package is what init
@@ -4255,11 +4306,144 @@ mod tests {
             sources: vec![],
             target: format!("bin/{}_1.0.0.tgz", name),
             groups: vec![],
+            extra_groups: vec![],
         }
     }
 
     fn dep(version: &str) -> Dependency {
         Dependency::Version(version.to_string())
+    }
+
+    /// A [`locked`] fixture tagged with the given `groups`/`extra_groups`,
+    /// for [`sync_wanted_packages`] tests.
+    fn locked_in(name: &str, groups: &[&str], extra_groups: &[&str]) -> RprojLockPackage {
+        let mut pkg = locked(name, &[]);
+        pkg.groups = groups.iter().map(|g| g.to_string()).collect();
+        pkg.extra_groups = extra_groups.iter().map(|g| g.to_string()).collect();
+        pkg
+    }
+
+    fn sync_opts() -> ProjSyncOptions {
+        ProjSyncOptions::default()
+    }
+
+    fn names(packages: &[RprojLockPackage]) -> Vec<String> {
+        let mut names: Vec<String> = packages.iter().map(|p| p.package.clone()).collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn sync_wanted_packages_default_is_main_and_dev_only() {
+        let packages = vec![
+            locked_in("cli", &["main"], &[]),
+            locked_in("devtools", &["dev"], &[]),
+            locked_in("testthat", &["test"], &[]),
+            locked_in("ggplot2", &[], &["viz"]),
+        ];
+        let wanted = sync_wanted_packages(&packages, &sync_opts());
+        assert_eq!(names(&wanted), vec!["cli", "devtools"]);
+    }
+
+    #[test]
+    fn sync_wanted_packages_no_dev_keeps_main_only() {
+        let packages = vec![
+            locked_in("cli", &["main"], &[]),
+            locked_in("devtools", &["dev"], &[]),
+        ];
+        let opts = ProjSyncOptions {
+            dev: false,
+            ..sync_opts()
+        };
+        assert_eq!(names(&sync_wanted_packages(&packages, &opts)), vec!["cli"]);
+    }
+
+    #[test]
+    fn sync_wanted_packages_group_adds_to_the_default_set() {
+        let packages = vec![
+            locked_in("cli", &["main"], &[]),
+            locked_in("devtools", &["dev"], &[]),
+            locked_in("testthat", &["test"], &[]),
+        ];
+        let opts = ProjSyncOptions {
+            groups: vec!["test".to_string()],
+            ..sync_opts()
+        };
+        assert_eq!(
+            names(&sync_wanted_packages(&packages, &opts)),
+            vec!["cli", "devtools", "testthat"]
+        );
+    }
+
+    #[test]
+    fn sync_wanted_packages_no_dev_with_explicit_group_dev_still_installs_dev() {
+        let packages = vec![
+            locked_in("cli", &["main"], &[]),
+            locked_in("devtools", &["dev"], &[]),
+        ];
+        let opts = ProjSyncOptions {
+            dev: false,
+            groups: vec!["dev".to_string()],
+            ..sync_opts()
+        };
+        assert_eq!(
+            names(&sync_wanted_packages(&packages, &opts)),
+            vec!["cli", "devtools"]
+        );
+    }
+
+    #[test]
+    fn sync_wanted_packages_all_groups_installs_every_group() {
+        let packages = vec![
+            locked_in("cli", &["main"], &[]),
+            locked_in("devtools", &["dev"], &[]),
+            locked_in("pkgdown", &["docs"], &[]),
+            locked_in("ggplot2", &[], &["viz"]),
+        ];
+        let opts = ProjSyncOptions {
+            all_groups: true,
+            ..sync_opts()
+        };
+        assert_eq!(
+            names(&sync_wanted_packages(&packages, &opts)),
+            vec!["cli", "devtools", "pkgdown"]
+        );
+    }
+
+    #[test]
+    fn sync_wanted_packages_extra_installs_only_that_extra() {
+        let packages = vec![
+            locked_in("cli", &["main"], &[]),
+            locked_in("ggplot2", &[], &["viz"]),
+            locked_in("dbi", &[], &["db"]),
+        ];
+        let opts = ProjSyncOptions {
+            extras: vec!["viz".to_string()],
+            ..sync_opts()
+        };
+        assert_eq!(
+            names(&sync_wanted_packages(&packages, &opts)),
+            vec!["cli", "ggplot2"]
+        );
+    }
+
+    #[test]
+    fn sync_wanted_packages_all_extras_installs_every_extra_but_no_extra_groups() {
+        let packages = vec![
+            locked_in("cli", &["main"], &[]),
+            locked_in("devtools", &["dev"], &[]),
+            locked_in("pkgdown", &["docs"], &[]),
+            locked_in("ggplot2", &[], &["viz"]),
+            locked_in("dbi", &[], &["db"]),
+        ];
+        let opts = ProjSyncOptions {
+            all_extras: true,
+            ..sync_opts()
+        };
+        assert_eq!(
+            names(&sync_wanted_packages(&packages, &opts)),
+            vec!["cli", "dbi", "devtools", "ggplot2"]
+        );
     }
 
     #[test]
@@ -4634,7 +4818,7 @@ mod tests {
             locked("waldo", &[]),
         ];
 
-        let groups = compute_package_groups(&manifest.dependency_group_roots(), &packages);
+        let groups = compute_package_groups(&manifest.dependency_group_roots().unwrap(), &packages);
         // `glue` is a dev dependency too, but a non-dev one pulls it in
         assert_eq!(groups.get("cli").unwrap(), &vec!["main".to_string()]);
         assert_eq!(
@@ -4643,6 +4827,29 @@ mod tests {
         );
         assert_eq!(groups.get("testthat").unwrap(), &vec!["dev".to_string()]);
         assert_eq!(groups.get("waldo").unwrap(), &vec!["dev".to_string()]);
+    }
+
+    #[test]
+    fn compute_package_groups_extras_are_tracked_separately_from_groups() {
+        let mut manifest = Rproj::minimal("mypkg");
+        manifest.dependencies.insert("cli".to_string(), dep("*"));
+        manifest.optional_dependencies.insert(
+            "viz".to_string(),
+            BTreeMap::from([("ggplot2".to_string(), dep("*"))]),
+        );
+
+        let packages = vec![locked("cli", &[]), locked("ggplot2", &[])];
+
+        let groups = compute_package_groups(&manifest.main_and_group_roots().unwrap(), &packages);
+        assert_eq!(groups.get("cli").unwrap(), &vec!["main".to_string()]);
+        assert_eq!(groups.get("ggplot2"), None);
+
+        let extra_groups = compute_package_groups(&manifest.optional_dependency_roots(), &packages);
+        assert_eq!(
+            extra_groups.get("ggplot2").unwrap(),
+            &vec!["viz".to_string()]
+        );
+        assert_eq!(extra_groups.get("cli"), None);
     }
 
     /// Write `manifest` into `dir`, creating it, as one project or one
@@ -4677,7 +4884,7 @@ mod tests {
     fn a_workspace_has_one_solve_root_per_member() {
         let dir = tempfile::tempdir().unwrap();
         two_member_workspace(dir.path());
-        let solve = proj_read_solve_roots(dir.path(), true).unwrap();
+        let solve = proj_read_solve_roots(dir.path()).unwrap();
         let names: Vec<&str> = solve.roots.iter().map(|r| r.name.as_str()).collect();
         // The workspace root is a member of its own workspace.
         assert_eq!(names, vec!["ws", "a", "b"]);
@@ -4695,7 +4902,7 @@ mod tests {
     fn a_plain_project_has_one_synthetic_solve_root() {
         let dir = tempfile::tempdir().unwrap();
         write_manifest(dir.path(), &Rproj::minimal("mypkg"));
-        let solve = proj_read_solve_roots(dir.path(), true).unwrap();
+        let solve = proj_read_solve_roots(dir.path()).unwrap();
         assert_eq!(solve.roots.len(), 1);
         assert_eq!(solve.roots[0].name, PROJECT_ROOT_PKG);
     }
@@ -4707,9 +4914,7 @@ mod tests {
         let mut clash = Rproj::minimal("a");
         clash.project.version = "9.9.9".to_string();
         write_manifest(&dir.path().join("packages/also-a"), &clash);
-        let err = proj_read_solve_roots(dir.path(), true)
-            .unwrap_err()
-            .to_string();
+        let err = proj_read_solve_roots(dir.path()).unwrap_err().to_string();
         assert!(err.contains("Two workspace members"), "{}", err);
         assert!(err.contains("packages"), "{}", err);
         assert!(err.contains("also-a"), "{}", err);
@@ -4720,9 +4925,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         two_member_workspace(dir.path());
         write_manifest(&dir.path().join("packages/stats"), &Rproj::minimal("stats"));
-        let err = proj_read_solve_roots(dir.path(), true)
-            .unwrap_err()
-            .to_string();
+        let err = proj_read_solve_roots(dir.path()).unwrap_err().to_string();
         assert!(err.contains("stats"), "{}", err);
     }
 
@@ -4734,7 +4937,7 @@ mod tests {
         b.dependencies.insert("R".to_string(), dep(">= 4.4, < 4.6"));
         write_manifest(&dir.path().join("packages/b"), &b);
 
-        let solve = proj_read_solve_roots(dir.path(), true).unwrap();
+        let solve = proj_read_solve_roots(dir.path()).unwrap();
         let r = solve
             .merged
             .dependencies
@@ -4756,7 +4959,7 @@ mod tests {
         // `b` is a member, so it is not a lockfile entry: the walk has to get
         // to `glue` from `b`'s own manifest, not by following `a` -> `b`.
         let packages = vec![locked("cli", &[]), locked("glue", &[])];
-        let solve = proj_read_solve_roots(dir.path(), true).unwrap();
+        let solve = proj_read_solve_roots(dir.path()).unwrap();
         let groups = compute_package_groups(&solve.group_roots, &packages);
         assert_eq!(groups.get("cli").unwrap(), &vec!["main".to_string()]);
         assert_eq!(groups.get("glue").unwrap(), &vec!["main".to_string()]);

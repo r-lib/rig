@@ -1102,6 +1102,17 @@ impl Rproj {
             deps.push(dep_spec(name, dep, RDepType::LinkingTo)?);
         }
 
+        let resolved_groups = self.resolved_dependency_groups()?;
+        // A group can also declare packages by naming, not owning, them --
+        // via `include-groups` -- so build a lookup from package name to
+        // whichever group actually owns its `Dependency`/version spec, for
+        // the inherited names below.
+        let mut owner: HashMap<&str, &Dependency> = HashMap::new();
+        for group in self.dependency_groups.values() {
+            for (name, dep) in group.dependencies.iter() {
+                owner.insert(name.as_str(), dep);
+            }
+        }
         for (group_name, group) in self.dependency_groups.iter() {
             let dep_type = match group_name.as_str() {
                 "dev" => RDepType::Suggests,
@@ -1111,6 +1122,19 @@ impl Rproj {
             };
             for (name, dep) in group.dependencies.iter() {
                 deps.push(dep_spec(name, dep, dep_type.clone())?);
+            }
+            // Packages inherited through `include-groups`, not declared
+            // directly in this group: same dep_type as this group's own
+            // packages, since they are just as much this group's concern.
+            if let Some(resolved) = resolved_groups.get(group_name) {
+                for name in resolved {
+                    if group.dependencies.contains_key(name) {
+                        continue;
+                    }
+                    if let Some(dep) = owner.get(name.as_str()) {
+                        deps.push(dep_spec(name, dep, dep_type.clone())?);
+                    }
+                }
             }
         }
 
@@ -1132,39 +1156,116 @@ impl Rproj {
         Ok(pkg_deps)
     }
 
-    /// The manifest's solvable dependency groups, as direct dependency names,
-    /// for classifying a solved package graph by which group(s) need it:
-    /// `"main"` for the hard `[dependencies]`/`[linking-dependencies]`, every
-    /// `[dependency-groups.*]` table under its own name, and every
-    /// `[optional-dependencies.*]` extra under its own name -- the same set
-    /// [`Rproj::to_dep_version_specs`] solves for, so a package this returns
-    /// can always be found among that method's output.
-    pub fn dependency_group_roots(&self) -> HashMap<String, Vec<String>> {
-        let mut roots: HashMap<String, Vec<String>> = HashMap::new();
+    /// One `[dependency-groups.<name>]` table's effective package names:
+    /// its own `dependencies`, plus every group named in its
+    /// `include-groups`, resolved the same way (recursively). `visiting`
+    /// tracks the names currently being resolved, to catch a group that
+    /// includes itself, directly or through others, as an error rather
+    /// than infinite recursion. `cache` memoizes groups already resolved,
+    /// since the same group can be included from several places.
+    fn resolve_group(
+        &self,
+        name: &str,
+        visiting: &mut Vec<String>,
+        cache: &mut HashMap<String, Vec<String>>,
+    ) -> Result<Vec<String>, Box<dyn Error>> {
+        if let Some(resolved) = cache.get(name) {
+            return Ok(resolved.clone());
+        }
+        if visiting.iter().any(|n| n == name) {
+            let mut path = visiting.clone();
+            path.push(name.to_string());
+            bail!("dependency group cycle: {}", path.join(" -> "));
+        }
+        let group = match self.dependency_groups.get(name) {
+            Some(group) => group,
+            None => bail!(
+                "`include-groups` names \"{}\", which is not a\n\
+                `[dependency-groups.{}]` table",
+                name,
+                name
+            ),
+        };
 
-        let main: Vec<String> = self
-            .dependencies
+        visiting.push(name.to_string());
+        let mut resolved: Vec<String> = group.dependencies.keys().cloned().collect();
+        for included in group.include_groups.iter() {
+            resolved.extend(self.resolve_group(included, visiting, cache)?);
+        }
+        visiting.pop();
+
+        resolved.sort();
+        resolved.dedup();
+        cache.insert(name.to_string(), resolved.clone());
+        Ok(resolved)
+    }
+
+    /// Every `[dependency-groups.*]` table's effective package names,
+    /// `include-groups` resolved all the way through: a group's set is its
+    /// own packages plus every included group's set, recursively. Errors on
+    /// a cycle, or on `include-groups` naming a group that does not exist.
+    pub fn resolved_dependency_groups(
+        &self,
+    ) -> Result<HashMap<String, Vec<String>>, Box<dyn Error>> {
+        let mut cache = HashMap::new();
+        let mut out = HashMap::new();
+        for name in self.dependency_groups.keys() {
+            let mut visiting = vec![];
+            let resolved = self.resolve_group(name, &mut visiting, &mut cache)?;
+            out.insert(name.clone(), resolved);
+        }
+        Ok(out)
+    }
+
+    /// Every `[optional-dependencies.*]` extra's package names, under its
+    /// own name. Unlike [`Rproj::resolved_dependency_groups`], extras have no
+    /// `include-groups` of their own, so this is a direct lookup.
+    pub fn optional_dependency_roots(&self) -> HashMap<String, Vec<String>> {
+        self.optional_dependencies
+            .iter()
+            .map(|(name, extra)| (name.clone(), extra.keys().cloned().collect()))
+            .collect()
+    }
+
+    /// `"main"`, the hard `[dependencies]`/`[linking-dependencies]` names --
+    /// shared by [`Rproj::dependency_group_roots`] and
+    /// [`Rproj::main_and_group_roots`].
+    fn main_roots(&self) -> Vec<String> {
+        self.dependencies
             .keys()
             .chain(self.linking_dependencies.keys())
             .cloned()
-            .collect();
-        roots.insert("main".to_string(), main);
+            .collect()
+    }
 
-        for (group_name, group) in self.dependency_groups.iter() {
-            roots
-                .entry(group_name.clone())
-                .or_default()
-                .extend(group.dependencies.keys().cloned());
-        }
+    /// `"main"` plus every `[dependency-groups.*]` table under its own name
+    /// (`include-groups` resolved, see [`Rproj::resolved_dependency_groups`]),
+    /// without the `[optional-dependencies.*]` extras --
+    /// [`rig proj sync`](crate::proj)'s `--group`/`--all-groups`/`--no-dev`
+    /// selection is scoped to this set, kept apart from extras so
+    /// `--all-groups` and `--all-extras` mean different things.
+    pub fn main_and_group_roots(&self) -> Result<HashMap<String, Vec<String>>, Box<dyn Error>> {
+        let mut roots: HashMap<String, Vec<String>> = HashMap::new();
+        roots.insert("main".to_string(), self.main_roots());
+        roots.extend(self.resolved_dependency_groups()?);
+        Ok(roots)
+    }
 
-        for (extra_name, extra) in self.optional_dependencies.iter() {
-            roots
-                .entry(extra_name.clone())
-                .or_default()
-                .extend(extra.keys().cloned());
-        }
-
-        roots
+    /// The manifest's solvable dependency groups, as direct dependency names,
+    /// for classifying a solved package graph by which group(s) need it:
+    /// `"main"` for the hard `[dependencies]`/`[linking-dependencies]`, every
+    /// `[dependency-groups.*]` table under its own name (`include-groups`
+    /// resolved, see [`Rproj::resolved_dependency_groups`]), and every
+    /// `[optional-dependencies.*]` extra under its own name -- the same set
+    /// [`Rproj::to_dep_version_specs`] solves for, so a package this returns
+    /// can always be found among that method's output. For solving/tagging
+    /// purposes where groups and extras must stay distinguishable, use
+    /// [`Rproj::main_and_group_roots`] and [`Rproj::optional_dependency_roots`]
+    /// instead; this merged view is for display (`rig proj status`).
+    pub fn dependency_group_roots(&self) -> Result<HashMap<String, Vec<String>>, Box<dyn Error>> {
+        let mut roots = self.main_and_group_roots()?;
+        roots.extend(self.optional_dependency_roots());
+        Ok(roots)
     }
 
     /// Replace every `{ workspace = true }` dependency with the workspace
@@ -2053,7 +2154,15 @@ pub struct RprojLockPackage {
     /// of every `[dependency-groups.*]` table that (transitively) needs it.
     /// Filled in by `proj_lock` after the solve, not by [`Self::from_solution`]
     /// itself, since it needs the whole package graph, not just one entry.
+    /// Kept separate from [`Self::extra_groups`] so `rig proj sync`'s
+    /// `--group`/`--all-groups` and `--extra`/`--all-extras` mean different
+    /// things.
     pub groups: Vec<String>,
+    /// Which `[optional-dependencies.*]` extra(s) (transitively) need this
+    /// package. See [`Self::groups`]. Absent (empty) in a lockfile written
+    /// before this field existed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extra_groups: Vec<String>,
 }
 
 impl RprojLockTarget {
@@ -2138,6 +2247,7 @@ impl RprojLockTarget {
                     sources,
                     target,
                     groups: vec![],
+                    extra_groups: vec![],
                 });
                 continue;
             }
@@ -2210,6 +2320,7 @@ impl RprojLockTarget {
                 sources,
                 target,
                 groups: vec![],
+                extra_groups: vec![],
             });
         }
 
@@ -2335,6 +2446,7 @@ mod tests {
             sources: vec!["https://example.com/cli.tgz".to_string()],
             target: "cli.tgz".to_string(),
             groups: vec!["main".to_string()],
+            extra_groups: vec![],
         }
     }
 
@@ -2822,7 +2934,7 @@ mod tests {
             BTreeMap::from([("ggplot2".to_string(), dep("*"))]),
         );
 
-        let roots = m.dependency_group_roots();
+        let roots = m.dependency_group_roots().unwrap();
         assert!(roots.get("main").unwrap().contains(&"cli".to_string()));
         assert_eq!(roots.get("viz"), Some(&vec!["ggplot2".to_string()]));
     }
@@ -2838,8 +2950,124 @@ mod tests {
             },
         );
 
-        let roots = m.dependency_group_roots();
+        let roots = m.dependency_group_roots().unwrap();
         assert_eq!(roots.get("docs"), Some(&vec!["pkgdown".to_string()]));
+    }
+
+    #[test]
+    fn include_groups_pulls_in_the_included_groups_packages() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependency_groups.insert(
+            "test".to_string(),
+            Group {
+                include_groups: vec![],
+                dependencies: BTreeMap::from([("testthat".to_string(), dep("*"))]),
+            },
+        );
+        m.dependency_groups.insert(
+            "dev".to_string(),
+            Group {
+                include_groups: vec!["test".to_string()],
+                dependencies: BTreeMap::from([("devtools".to_string(), dep("*"))]),
+            },
+        );
+
+        let roots = m.dependency_group_roots().unwrap();
+        let mut dev = roots.get("dev").unwrap().clone();
+        dev.sort();
+        assert_eq!(dev, vec!["devtools".to_string(), "testthat".to_string()]);
+    }
+
+    #[test]
+    fn include_groups_is_recursive() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependency_groups.insert(
+            "c".to_string(),
+            Group {
+                include_groups: vec![],
+                dependencies: BTreeMap::from([("pkgc".to_string(), dep("*"))]),
+            },
+        );
+        m.dependency_groups.insert(
+            "b".to_string(),
+            Group {
+                include_groups: vec!["c".to_string()],
+                dependencies: BTreeMap::new(),
+            },
+        );
+        m.dependency_groups.insert(
+            "a".to_string(),
+            Group {
+                include_groups: vec!["b".to_string()],
+                dependencies: BTreeMap::new(),
+            },
+        );
+
+        let roots = m.dependency_group_roots().unwrap();
+        assert_eq!(roots.get("a"), Some(&vec!["pkgc".to_string()]));
+    }
+
+    #[test]
+    fn include_groups_detects_a_cycle() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependency_groups.insert(
+            "a".to_string(),
+            Group {
+                include_groups: vec!["b".to_string()],
+                dependencies: BTreeMap::new(),
+            },
+        );
+        m.dependency_groups.insert(
+            "b".to_string(),
+            Group {
+                include_groups: vec!["a".to_string()],
+                dependencies: BTreeMap::new(),
+            },
+        );
+
+        assert!(m.dependency_group_roots().is_err());
+    }
+
+    #[test]
+    fn include_groups_errors_on_an_unknown_group_name() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependency_groups.insert(
+            "dev".to_string(),
+            Group {
+                include_groups: vec!["nope".to_string()],
+                dependencies: BTreeMap::new(),
+            },
+        );
+
+        assert!(m.dependency_group_roots().is_err());
+    }
+
+    #[test]
+    fn to_dep_version_specs_include_groups_are_soft_and_need_dev() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependency_groups.insert(
+            "test".to_string(),
+            Group {
+                include_groups: vec![],
+                dependencies: BTreeMap::from([("testthat".to_string(), dep("*"))]),
+            },
+        );
+        m.dependency_groups.insert(
+            "dev".to_string(),
+            Group {
+                include_groups: vec!["test".to_string()],
+                dependencies: BTreeMap::new(),
+            },
+        );
+
+        let nodev = m.to_dep_version_specs(false).unwrap();
+        assert!(converted(&nodev, "testthat").is_none());
+
+        let dev = m.to_dep_version_specs(true).unwrap();
+        assert_eq!(
+            converted(&dev, "testthat"),
+            Some((&[RDepType::Suggests][..], vec![]))
+        );
     }
 
     #[test]

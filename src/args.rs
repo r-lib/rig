@@ -1706,13 +1706,6 @@ pub fn rig_app() -> Command {
                         .required(false),
                 )
                 .arg(
-                    Arg::new("no-dev")
-                        .help("Leave out dev (development) dependencies")
-                        .long("no-dev")
-                        .num_args(0)
-                        .required(false),
-                )
-                .arg(
                     Arg::new("upgrade")
                         .help(
                             "Re-resolve every dependency instead of reusing an existing\n\
@@ -1768,8 +1761,53 @@ pub fn rig_app() -> Command {
                 )
                 .arg(
                     Arg::new("no-dev")
-                        .help("Do not install dev (development) dependencies")
+                        .help(
+                            "Do not install the dev dependency group (default:\n\
+                            installed alongside main). An explicit --group dev or\n\
+                            --all-groups installs it anyway.",
+                        )
                         .long("no-dev")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("group")
+                        .help(
+                            "Also install this dependency group, in addition to the\n\
+                            default set (main, plus dev unless --no-dev). Repeat or\n\
+                            comma-separate for several.",
+                        )
+                        .long("group")
+                        .value_name("NAME")
+                        .num_args(1)
+                        .value_delimiter(',')
+                        .action(clap::ArgAction::Append)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("all-groups")
+                        .help("Install every dependency group.")
+                        .long("all-groups")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("extra")
+                        .help(
+                            "Install this optional-dependency extra. Not installed by\n\
+                            default. Repeat or comma-separate for several.",
+                        )
+                        .long("extra")
+                        .value_name("NAME")
+                        .num_args(1)
+                        .value_delimiter(',')
+                        .action(clap::ArgAction::Append)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("all-extras")
+                        .help("Install every optional-dependency extra.")
+                        .long("all-extras")
                         .num_args(0)
                         .required(false),
                 )
@@ -2895,6 +2933,57 @@ mod tests {
         let (_name, sub) = matches.subcommand().unwrap();
         let (_name, sub) = sub.subcommand().unwrap();
         assert!(sub.get_flag("frozen"));
+    }
+
+    #[test]
+    fn proj_sync_group_flag_is_repeatable_and_comma_separated() {
+        let matches = rig_app()
+            .try_get_matches_from([
+                "rig",
+                "proj",
+                "sync",
+                "--group",
+                "dev",
+                "--group",
+                "test,docs",
+            ])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        let groups: Vec<&String> = sub.get_many::<String>("group").unwrap().collect();
+        assert_eq!(groups, vec!["dev", "test", "docs"]);
+    }
+
+    #[test]
+    fn proj_sync_extra_flag_is_repeatable_and_comma_separated() {
+        let matches = rig_app()
+            .try_get_matches_from([
+                "rig", "proj", "sync", "--extra", "viz", "--extra", "db,plot",
+            ])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        let extras: Vec<&String> = sub.get_many::<String>("extra").unwrap().collect();
+        assert_eq!(extras, vec!["viz", "db", "plot"]);
+    }
+
+    #[test]
+    fn proj_sync_all_groups_and_all_extras_flags() {
+        let matches = rig_app()
+            .try_get_matches_from(["rig", "proj", "sync", "--all-groups", "--all-extras"])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        assert!(sub.get_flag("all-groups"));
+        assert!(sub.get_flag("all-extras"));
+    }
+
+    #[test]
+    fn proj_lock_no_longer_has_a_no_dev_flag() {
+        let err = rig_app()
+            .try_get_matches_from(["rig", "proj", "lock", "--no-dev"])
+            .unwrap_err();
+        assert_eq!(err.kind(), clap::error::ErrorKind::UnknownArgument);
     }
 
     #[test]

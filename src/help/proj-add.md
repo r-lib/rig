@@ -87,8 +87,7 @@ components, so `^1.1.0.9000` is `>= 1.1.0.9000, < 2.0.0.0`.
 
 `--dev` adds the packages as development dependencies, into the
 `[dependency-groups.dev]` table instead of `[dependencies]`. These are
-installed by default, and left out by `rig proj lock --no-dev` and `rig proj
-sync --no-dev`.
+installed by default, and left out by `rig proj sync --no-dev`.
 
 `--no-sync` updates `rproj.toml` and `rproj.lock`, but does not install anything.
 

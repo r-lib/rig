@@ -14,16 +14,34 @@ URL, so nothing but the lock file is needed to install from it. The one
 exception is `.rvenv/etc/repositories` (see below), which still comes from
 `rproj.toml` when one is present, and is skipped otherwise.
 
-Development dependencies are installed by default. `--no-dev` leaves them
-out; the lock file records which packages are dev-only, so this works the
-same with or without `--frozen`. `--max-concurrent` limits the number of
-simultaneous installations; it defaults to the `concurrent-installs`
-[config](config.qmd) entry (`RIG_CONCURRENT_INSTALLS`), which itself defaults
-to the number of CPU cores.
+By default sync installs `[dependencies]` (`main`) plus the `dev`
+[dependency group](#rig-proj-lock), and nothing else: no other
+`[dependency-groups.*]` table, and no `[optional-dependencies.*]` extra.
+`--no-dev` leaves the `dev` group out too, installing only `main`. Pass
+`--group <name>` (repeatable, or comma-separated) to also install a
+specific named group, or `--all-groups` for every group the project
+declares.
+
+`--extra <name>` / `--all-extras` do the same for optional-dependency
+extras, none of which are installed unless asked for.
+
+Naming a group always wins over `--no-dev`, which only skips the `dev`
+group that would otherwise be added automatically: `--no-dev --group dev`
+still installs `dev`, and `--group dev` on its own is equivalent to the
+default. The lock file records every group and extra each package belongs
+to, so this selection works the same with or without `--frozen`.
+
+`--max-concurrent` limits the number of simultaneous installations. It
+defaults to the `concurrent-installs` [config](config.qmd) entry
+(`RIG_CONCURRENT_INSTALLS`), which itself defaults to the number of CPU
+cores.
 
 By default, sync also removes any package that is in the project library
-but not in `rproj.lock`, e.g. one dropped from `rproj.toml`, or a leftover from
-before `--no-dev`. Pass `--inexact` to leave those packages alone instead.
+but not selected for install by the flags above, e.g. one dropped from
+`rproj.toml`, or a group/extra left out. This only ever removes packages
+that are still in `rproj.lock` but not currently wanted -- nothing is
+removed just because a group/extra selection changed since the last sync.
+Pass `--inexact` to leave those packages alone instead.
 
 Pass `--dry-run` to print what sync would install, remove or write, without
 touching the R installation, the project library or `.rvenv`.

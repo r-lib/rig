@@ -11,19 +11,25 @@ the configured repositories.
 
 `rig proj solve` does not run R.
 
-Development dependencies are included by default. Use `--r-version` to solve
-for a specific R version and `--no-dev` to leave out development
-dependencies.
+Use `--r-version` to solve for a specific R version.
 
 ## Optional dependencies and dependency groups
 
 Every `[dependency-groups.*]` table (`dev`, `enhances`, or any other name)
 and every `[optional-dependencies.*]` extra are optional dependencies:
 packages the project suggests or can take advantage of, but does not need to
-run. By default `rig proj lock` solves all of them together with the
-project's hard dependencies, in one solve, so a version picked for a shared
-package is the same whether it got pulled in as a hard or an optional
-dependency. `--no-dev` leaves all of them out instead.
+run. `rig proj lock` always solves all of them together with the project's
+hard dependencies, in one solve, so `rproj.lock` is complete -- a version
+picked for a shared package is the same whether it got pulled in as a hard
+or an optional dependency, and every group and extra is available to install
+without a new solve. A `[dependency-groups.*]` table can also `include-groups
+= [...]` other groups, pulling in their packages too; `rig proj lock` follows
+this when solving, and rejects a cycle (a group that includes itself,
+directly or through others).
+
+[`rig proj sync`](#rig-proj-sync) is where a subset of this is picked for
+installation -- by default `main` plus the `dev` group, more with
+`--group`/`--all-groups`/`--extra`/`--all-extras`.
 
 ## The R version
 

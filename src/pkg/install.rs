@@ -607,6 +607,7 @@ mod tests {
             sources: vec![],
             target: format!("bin/{}_{}.tgz", name, version),
             groups: vec![],
+            extra_groups: vec![],
         }
     }
 

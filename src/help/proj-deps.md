@@ -6,7 +6,10 @@ Show the dependencies of an R project, in a table.
 
 rig reads the project manifest, `rproj.toml`, in the current directory.
 
-Add `--dev` to include development dependencies.
+Add `--dev` to include every dependency group and optional-dependency extra
+together -- unlike [`rig proj sync`](#rig-proj-sync), which selects each one
+separately with `--group`/`--extra`, this is an all-or-nothing view of the
+manifest.
 
 Use `--json` for machine readable output.
 
