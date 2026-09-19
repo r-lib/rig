@@ -847,6 +847,7 @@ pub fn install_packages(
             .progress_chars("=>-"),
     );
     install_pb.set_message("Installing");
+    OUTPUT.set_progress_bar(Some(install_pb.clone()));
 
     let installed_count = Cell::new(0);
 
@@ -874,6 +875,7 @@ pub fn install_packages(
     ));
 
     install_pb.finish_and_clear();
+    OUTPUT.set_progress_bar(None);
     result?;
 
     Ok(installed_count.get())

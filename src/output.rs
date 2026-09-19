@@ -1,6 +1,7 @@
 use std::io::IsTerminal;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
+use indicatif::ProgressBar;
 use lazy_static::lazy_static;
 use owo_colors::OwoColorize;
 
@@ -23,6 +24,7 @@ pub struct Output {
 
 struct OutputInner {
     interactive: bool,
+    bar: RwLock<Option<ProgressBar>>,
 }
 
 impl Output {
@@ -31,58 +33,75 @@ impl Output {
         Self {
             inner: Arc::new(OutputInner {
                 interactive: std::io::stdout().is_terminal(),
+                bar: RwLock::new(None),
             }),
+        }
+    }
+
+    /// Route output around `bar` until the bar is unset again.
+    ///
+    /// A progress bar owns the last line of the terminal and redraws it from its
+    /// own idea of what is on screen, so a plain `eprintln!` while the bar is
+    /// live lands on the bar's line and leaves a half-overwritten frame behind.
+    pub fn set_progress_bar(&self, bar: Option<ProgressBar>) {
+        *self.inner.bar.write().unwrap() = bar;
+    }
+
+    fn emit(&self, line: &str) {
+        match self.inner.bar.read().unwrap().as_ref() {
+            Some(bar) => bar.suspend(|| eprintln!("{}", line)),
+            None => eprintln!("{}", line),
         }
     }
 
     /// Display a success message
     pub fn success(&self, msg: &str) {
         if self.inner.interactive {
-            eprintln!("{} {}", "✓".green().bold(), msg.green());
+            self.emit(&format!("{} {}", "✓".green().bold(), msg.green()));
         } else {
-            eprintln!("{}", msg);
+            self.emit(msg);
         }
     }
 
     /// Display an error message
     pub fn error(&self, msg: &str) {
         if self.inner.interactive {
-            eprintln!("{} {}", "✗".red().bold(), msg.red().bold());
+            self.emit(&format!("{} {}", "✗".red().bold(), msg.red().bold()));
         } else {
-            eprintln!("Error: {}", msg);
+            self.emit(&format!("Error: {}", msg));
         }
     }
 
     /// Display a warning message
     pub fn warn(&self, msg: &str) {
         if self.inner.interactive {
-            eprintln!("{} {}", "⚠".yellow().bold(), msg.yellow());
+            self.emit(&format!("{} {}", "⚠".yellow().bold(), msg.yellow()));
         } else {
-            eprintln!("Warning: {}", msg);
+            self.emit(&format!("Warning: {}", msg));
         }
     }
 
     /// Display an info message
     pub fn info(&self, msg: &str) {
         if self.inner.interactive {
-            eprintln!("{} {}", "ℹ".blue(), msg);
+            self.emit(&format!("{} {}", "ℹ".blue(), msg));
         } else {
-            eprintln!("{}", msg);
+            self.emit(msg);
         }
     }
 
     /// Display a status message (for progress/operations)
     pub fn status(&self, msg: &str) {
         if self.inner.interactive {
-            eprintln!("{} {}", "▶".blue(), msg.blue());
+            self.emit(&format!("{} {}", "▶".blue(), msg.blue()));
         } else {
-            eprintln!("{}", msg);
+            self.emit(msg);
         }
     }
 
     /// Write directly to stderr with newline
     pub fn println(&self, msg: &str) {
-        eprintln!("{}", msg);
+        self.emit(msg);
     }
 }
 
