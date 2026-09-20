@@ -25,12 +25,13 @@ pub const REMOTE_HASH_FIELD: &str = "RemoteHash";
 /// binary index uses.
 pub const REMOTE_LINKINGTO_FIELD: &str = "RemoteLinkingToHashes";
 
-/// `DESCRIPTION` fields recording the provenance of a git/GitHub-sourced
+/// `DESCRIPTION` fields recording the provenance of a git/GitHub/url-sourced
 /// package, the same field names the R `remotes`/`pak`/`renv` packages use, so
 /// that a package rig installed this way is recognizable by other R tooling
-/// too. `REMOTE_TYPE_FIELD` is `"github"` or `"git"`; `REMOTE_HOST_FIELD`,
-/// `REMOTE_REPO_FIELD` and `REMOTE_USERNAME_FIELD` are only set for a GitHub
-/// source (a plain `git::` source has no owner/repo structure, only a URL).
+/// too. `REMOTE_TYPE_FIELD` is `"github"`, `"git"` or `"url"`;
+/// `REMOTE_HOST_FIELD`, `REMOTE_REPO_FIELD` and `REMOTE_USERNAME_FIELD` are
+/// only set for a GitHub source (a plain `git::`/`url::` source has no
+/// owner/repo structure, only a URL).
 pub const REMOTE_TYPE_FIELD: &str = "RemoteType";
 pub const REMOTE_URL_FIELD: &str = "RemoteUrl";
 pub const REMOTE_HOST_FIELD: &str = "RemoteHost";

@@ -521,8 +521,15 @@ pub struct DepTable {
     pub tag: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rev: Option<String>,
+    // A direct http(s) link to a package source archive (`.tar.gz`/`.tgz`/
+    // `.zip`), downloaded and extracted instead of cloned.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+    // The expected sha256 of a `url` dependency's downloaded archive, for
+    // integrity verification and reproducibility -- a URL, unlike a git
+    // commit, is not inherently content-addressed. Optional; when absent,
+    // whatever the URL currently serves is trusted and its sha256 is
+    // recorded in the lockfile.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hash: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -535,7 +542,8 @@ pub struct DepTable {
     #[serde(rename = "ref", default, skip_serializing_if = "Option::is_none")]
     pub ref_: Option<String>,
     // A subdirectory of `git`/`url` the package lives in, e.g. a monorepo
-    // package at `<repo>/subdir`. Only meaningful together with `git`.
+    // package at `<repo>/subdir`, or a package archive wrapped in a
+    // differently-named top-level directory.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subdir: Option<String>,
     // A GitHub pull request number (`owner/repo#41`). GitHub sources only,
@@ -811,9 +819,10 @@ impl Rproj {
         previous
     }
 
-    /// Add (or replace) a git/GitHub-sourced dependency: a [`DepTable`] with
-    /// `git` set, pinned by commit rather than by version range. Mirrors
-    /// [`Rproj::add_dependency`]'s dev/group placement.
+    /// Add (or replace) a git/GitHub/url-sourced dependency: a [`DepTable`]
+    /// with `git` or `url` set, pinned by commit or archive rather than by
+    /// version range. Mirrors [`Rproj::add_dependency`]'s dev/group
+    /// placement.
     ///
     /// If the manifest already lists this package, its version requirement
     /// (e.g. `Imports: pkgcache (>= 2.2.0)`) and, for a `Dependency::Detailed`
@@ -1005,9 +1014,9 @@ impl Rproj {
 
     /// Every dependency, anywhere in the manifest (`[dependencies]`,
     /// `[linking-dependencies]`, any `[dependency-groups.*]`), that has `git`
-    /// set: the git/GitHub-sourced packages, for the pre-solve fetch that
-    /// registers their real name/version/deps with the solver (see
-    /// `crate::proj::register_git_sources`).
+    /// or `url` set: the git/GitHub/url-sourced packages, for the pre-solve
+    /// fetch that registers their real name/version/deps with the solver
+    /// (see `crate::proj::register_git_sources`).
     pub fn git_dependencies(&self) -> Vec<(String, DepTable)> {
         let mut out = vec![];
         let tables = std::iter::once(&self.dependencies)
@@ -1017,7 +1026,7 @@ impl Rproj {
         for table in tables {
             for (name, dep) in table.iter() {
                 if let Dependency::Detailed(t) = dep {
-                    if t.git.is_some() {
+                    if t.git.is_some() || t.url.is_some() {
                         out.push((name.clone(), (**t).clone()));
                     }
                 }
@@ -1026,7 +1035,7 @@ impl Rproj {
         out
     }
 
-    /// The git/GitHub-sourced dependencies that end up in a DESCRIPTION
+    /// The git/GitHub/url-sourced dependencies that end up in a DESCRIPTION
     /// dependency field (`Depends`/`Imports`/`LinkingTo`/`Suggests`/
     /// `Enhances`), for [`Rproj::to_description`]'s `Remotes:` field. Scoped
     /// the same way as [`Rproj::to_dep_version_specs`] -- `[dependencies]`,
@@ -1048,7 +1057,7 @@ impl Rproj {
         for table in tables {
             for (name, dep) in table.iter() {
                 if let Dependency::Detailed(t) = dep {
-                    if t.git.is_some() {
+                    if t.git.is_some() || t.url.is_some() {
                         out.push((name.clone(), (**t).clone()));
                     }
                 }
@@ -1655,7 +1664,7 @@ fn format_group_entry(name: &str, dep: &Dependency) -> Result<(String, bool), Bo
         if let Some(ref_) = &table.ref_ {
             return Ok((ref_.clone(), false));
         }
-        if table.git.is_some() {
+        if table.git.is_some() || table.url.is_some() {
             return Ok((dep_table_to_pak_ref(name, table), false));
         }
     }
@@ -1663,8 +1672,9 @@ fn format_group_entry(name: &str, dep: &Dependency) -> Result<(String, bool), Bo
     Ok(format_dep_entry(&spec))
 }
 
-/// The inverse of [`crate::proj::dep_table_from_remote`]: rebuild a `pak`
-/// package reference from a `git`-sourced [`DepTable`], for writing a
+/// The inverse of [`crate::proj::dep_table_from_remote`]/
+/// [`crate::proj::dep_table_from_url`]: rebuild a `pak` package reference
+/// from a `git`- or `url`-sourced [`DepTable`], for writing a
 /// `Remotes:`/`Config/Needs/*` entry back to `DESCRIPTION`.
 ///
 /// If `table.ref_` is set (the normal case: it is filled in by
@@ -1673,19 +1683,24 @@ fn format_group_entry(name: &str, dep: &Dependency) -> Result<(String, bool), Bo
 /// reference (any host, with a subdir) and a GitHub reference's original
 /// spelling round-trip losslessly, since a git URL alone cannot always be
 /// reconstructed back into its source syntax. Otherwise (a `DepTable` built
-/// by hand, e.g. a `git = "..."` entry written directly into `rproj.toml`,
-/// which never went through `dep_table_from_remote`), fall back to
-/// rebuilding a reference from the structured fields: `<owner>/<repo>
-/// [/<subdir>][@<ref>|#<pr>|@*release]` for a GitHub URL, or
-/// `git::<url>[@<rev>]` otherwise. Either way, `name` is prefixed on with
-/// `<name>=` only when it does not match the name the reference itself
-/// implies (see [`pak_ref_name`]).
+/// by hand, e.g. a `git = "..."`/`url = "..."` entry written directly into
+/// `rproj.toml`, which never went through `dep_table_from_remote`), fall
+/// back to rebuilding a reference from the structured fields: `<owner>/<repo>
+/// [/<subdir>][@<ref>|#<pr>|@*release]` for a GitHub URL, `git::<url>[@<rev>]`
+/// for another git URL, or `url::<url>` for a `url` dependency. Either way,
+/// `name` is prefixed on with `<name>=` only when it does not match the name
+/// the reference itself implies (see [`pak_ref_name`]).
 fn dep_table_to_pak_ref(name: &str, table: &DepTable) -> String {
     if let Some(entry) = &table.ref_ {
         return match pak_ref_name(entry) {
             Some(implied) if implied == name => entry.clone(),
             _ => format!("{}={}", name, entry),
         };
+    }
+
+    if let Some(url) = &table.url {
+        let entry = format!("url::{}", url);
+        return format!("{}={}", name, entry);
     }
 
     let git_url = table.git.as_deref().unwrap_or_default();
@@ -1765,13 +1780,28 @@ fn config_needs_entry(entry: &str) -> (String, Dependency) {
         }
     }
 
-    if let Ok(crate::pkgsource::PkgSource::Remote(r)) = crate::pkgsource::parse_pkg_source(entry) {
-        if let Some(name) = pak_ref_name(entry) {
-            return (
-                name,
-                Dependency::Detailed(Box::new(crate::proj::dep_table_from_remote(&r, entry))),
-            );
+    match crate::pkgsource::parse_pkg_source(entry) {
+        Ok(crate::pkgsource::PkgSource::Remote(r)) => {
+            if let Some(name) = pak_ref_name(entry) {
+                return (
+                    name,
+                    Dependency::Detailed(Box::new(crate::proj::dep_table_from_remote(&r, entry))),
+                );
+            }
         }
+        Ok(crate::pkgsource::PkgSource::Url(u)) => {
+            // `pak_ref_name`'s "last path segment, minus one extension"
+            // heuristic misreads a versioned archive file name (e.g.
+            // `mypkg_1.0.0.tar.gz` -> `mypkg_1`), so a `url::` entry always
+            // needs its own `<name>=` override to be usable here.
+            if let Some(name) = &u.name_override {
+                return (
+                    name.clone(),
+                    Dependency::Detailed(Box::new(crate::proj::dep_table_from_url(&u))),
+                );
+            }
+        }
+        Ok(crate::pkgsource::PkgSource::Cran) | Err(_) => {}
     }
 
     let name = match pak_ref_name(entry) {
@@ -2191,9 +2221,10 @@ impl RprojLockTarget {
                 .filter(|dep| dep != "R" && !BASE_PKGS.contains(&dep.as_str()))
                 .collect();
 
-            // A git/GitHub-sourced package has no repository artifact at all:
-            // record its `Remote*` provenance instead of a CRAN download URL,
-            // and skip the source/binary-artifact bookkeeping below entirely.
+            // A git/GitHub/url-sourced package has no repository artifact at
+            // all: record its `Remote*` provenance instead of a CRAN download
+            // URL, and skip the source/binary-artifact bookkeeping below
+            // entirely.
             if let Some(git) = registry.git_source(k, v) {
                 let mut metadata: HashMap<String, String> = HashMap::new();
                 metadata.insert(REMOTE_TYPE_FIELD.to_string(), git.remote_type.to_string());
@@ -2230,6 +2261,8 @@ impl RprojLockTarget {
                         )],
                         format!("git/github/{}/{}", repo, git.sha),
                     )
+                } else if git.remote_type == "url" {
+                    (vec![git.url.clone()], format!("url/{}", git.sha))
                 } else {
                     (
                         vec![format!("git+{}#{}", git.url, git.sha)],
@@ -4118,6 +4151,25 @@ foo = "bar"
 
         let (desc, _) = m.to_description().unwrap();
         assert!(desc.contains("Remotes:\n    gitlab::https://gitlab.example.com/group/pkg\n"));
+    }
+
+    #[test]
+    fn to_description_writes_remotes_for_url_sourced_dependencies() {
+        let mut m = Rproj::minimal("mypkg");
+        m.add_remote_dependency(
+            "otherpkg",
+            DepTable {
+                url: Some("https://example.com/otherpkg_1.0.0.tar.gz".to_string()),
+                ..Default::default()
+            },
+            false,
+        );
+
+        let (desc, dropped) = m.to_description().unwrap();
+        assert!(dropped.is_empty());
+        assert!(desc.contains("Imports:\n    otherpkg\n"));
+        assert!(desc
+            .contains("Remotes:\n    otherpkg=url::https://example.com/otherpkg_1.0.0.tar.gz\n"));
     }
 
     #[test]

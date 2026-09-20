@@ -17,6 +17,7 @@ use std::error::Error;
 use simple_error::bail;
 
 pub mod git;
+pub mod url;
 
 /// A parsed, not yet fetched, package source. `Cran` means "not a
 /// git/github reference at all", so the caller can fall back to the existing
@@ -25,6 +26,20 @@ pub mod git;
 pub enum PkgSource {
     Cran,
     Remote(RemoteSource),
+    Url(UrlSource),
+}
+
+/// A `url::<https-url>` reference: a direct link to a package source archive
+/// (`.tar.gz`/`.tgz`/`.zip`), fetched and extracted rather than cloned. This
+/// is the shape written into `rproj.toml`'s `DepTable.url`. Unlike a git
+/// source there is no `branch`/`tag`/`rev`/`pr`/`release` to resolve -- the
+/// URL names one specific archive -- so this does not share `RemoteSource`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UrlSource {
+    /// An explicit `<name>=` override, if the spec had one.
+    pub name_override: Option<String>,
+    /// The archive URL, e.g. `https://example.com/mypkg_1.0.0.tar.gz`.
+    pub url: String,
 }
 
 /// A `git`/`github` reference, already normalized to a plain git URL plus
@@ -69,6 +84,10 @@ pub fn parse_pkg_source(spec: &str) -> Result<PkgSource, Box<dyn Error>> {
 
     if let Some(url) = body.strip_prefix("git::") {
         return Ok(PkgSource::Remote(parse_git_url(name_override, url)?));
+    }
+
+    if let Some(url) = body.strip_prefix("url::") {
+        return Ok(PkgSource::Url(parse_url_ref(name_override, url)?));
     }
 
     if let Some(rest) = body.strip_prefix("github::") {
@@ -307,6 +326,22 @@ fn parse_git_url(
     })
 }
 
+/// Parse `<https-url>` (the body after a `url::` prefix has already been
+/// stripped). No `[@<ref>]` suffix -- unlike `git::`, the URL names one
+/// specific archive, there is nothing left to resolve.
+fn parse_url_ref(name_override: Option<String>, body: &str) -> Result<UrlSource, Box<dyn Error>> {
+    if !body.starts_with("https://") && !body.starts_with("http://") {
+        bail!(
+            "Invalid `url::` package reference `{}`: expected an http(s) URL",
+            body
+        );
+    }
+    Ok(UrlSource {
+        name_override,
+        url: body.to_string(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -314,7 +349,14 @@ mod tests {
     fn remote(spec: &str) -> RemoteSource {
         match parse_pkg_source(spec).unwrap() {
             PkgSource::Remote(r) => r,
-            PkgSource::Cran => panic!("expected a remote source for `{}`", spec),
+            other => panic!("expected a remote source for `{}`, got {:?}", spec, other),
+        }
+    }
+
+    fn url_source(spec: &str) -> UrlSource {
+        match parse_pkg_source(spec).unwrap() {
+            PkgSource::Url(u) => u,
+            other => panic!("expected a url source for `{}`, got {:?}", spec, other),
         }
     }
 
@@ -485,5 +527,24 @@ mod tests {
     #[test]
     fn gitlab_rejects_malformed_path() {
         assert!(parse_pkg_source("gitlab::project").is_err());
+    }
+
+    #[test]
+    fn url_plain() {
+        let u = url_source("url::https://example.com/mypkg_1.0.0.tar.gz");
+        assert_eq!(u.url, "https://example.com/mypkg_1.0.0.tar.gz");
+        assert_eq!(u.name_override, None);
+    }
+
+    #[test]
+    fn url_with_name_override() {
+        let u = url_source("mypkg=url::https://example.com/archive.zip");
+        assert_eq!(u.url, "https://example.com/archive.zip");
+        assert_eq!(u.name_override.as_deref(), Some("mypkg"));
+    }
+
+    #[test]
+    fn url_rejects_non_http() {
+        assert!(parse_pkg_source("url::ftp://example.com/mypkg.tar.gz").is_err());
     }
 }
