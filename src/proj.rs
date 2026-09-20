@@ -1721,16 +1721,14 @@ pub(crate) struct ResolvedGitSource {
 /// at once.
 pub(crate) fn resolve_git_sources(
     git_deps: &[(String, DepTable)],
-    dev: bool,
     known_shas: &HashMap<GitSourceKey, String>,
     known_releases: &HashMap<(String, Option<String>), (String, String)>,
 ) -> Result<Vec<ResolvedGitSource>, Box<dyn Error>> {
-    // Only the packages named directly (on the command line, or in
-    // `rproj.toml`) are roots of the solve; a package reached through another
-    // package's `Remotes:` is a transitive dependency, and like any other
-    // transitive dependency only its hard dependencies matter -- see
-    // `proj_deps_recursive`.
-    let requested: HashSet<String> = git_deps.iter().map(|(name, _)| name.clone()).collect();
+    // A git/GitHub/URL-sourced package's own soft dependencies (`Suggests:`,
+    // `Enhances:`) are dropped here, the same as a CRAN/PPM package's --
+    // see the `dev = false` call in `ensure_loaded`. This applies whether the
+    // package is named directly in `rproj.toml` or reached transitively
+    // through another package's `Remotes:`.
     let mut seen: HashSet<String> = HashSet::new();
     let mut resolved: Vec<ResolvedGitSource> = vec![];
     let mut frontier: Vec<(String, DepTable)> = git_deps.to_vec();
@@ -1778,8 +1776,7 @@ pub(crate) fn resolve_git_sources(
                 version: pkg.version.clone(),
                 artifact: Artifact::Source,
             };
-            let pkg_dev = dev && requested.contains(&name);
-            let ranges = rpackage_version_ranges_from_constraints(&pkg.dependencies, pkg_dev);
+            let ranges = rpackage_version_ranges_from_constraints(&pkg.dependencies, false);
             resolved.push(ResolvedGitSource {
                 name,
                 version,
@@ -2620,7 +2617,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         Some(lock) => (existing_git_shas(lock), existing_release_refs(lock)),
         None => (HashMap::new(), HashMap::new()),
     };
-    let git_sources = resolve_git_sources(&solve.git_deps, true, &known_shas, &known_releases)?;
+    let git_sources = resolve_git_sources(&solve.git_deps, &known_shas, &known_releases)?;
 
     // Every target the existing lock already satisfies, reused byte-for-byte
     // instead of solved again -- the "a lockfile is sticky until you ask to
