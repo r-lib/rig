@@ -561,7 +561,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#subcommands" id="toc-subcommands" class="nav-link" data-scroll-target="#subcommands">Subcommands</a></li>
   <li><a href="#rig-proj-add" id="toc-rig-proj-add" class="nav-link" data-scroll-target="#rig-proj-add"><code>rig proj add</code></a>
   <ul class="collapse">
-  <li><a href="#git-github-and-gitlab-sources" id="toc-git-github-and-gitlab-sources" class="nav-link" data-scroll-target="#git-github-and-gitlab-sources">Git, GitHub and GitLab sources</a></li>
+  <li><a href="#git-github-gitlab-and-url-sources" id="toc-git-github-gitlab-and-url-sources" class="nav-link" data-scroll-target="#git-github-gitlab-and-url-sources">Git, GitHub, GitLab and URL sources</a></li>
   <li><a href="#version-requirements" id="toc-version-requirements" class="nav-link" data-scroll-target="#version-requirements">Version requirements</a></li>
   <li><a href="#options" id="toc-options" class="nav-link" data-scroll-target="#options">Options</a></li>
   <li><a href="#files" id="toc-files" class="nav-link" data-scroll-target="#files">Files</a></li>
@@ -599,7 +599,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#the-r-version" id="toc-the-r-version" class="nav-link" data-scroll-target="#the-r-version">The R version</a></li>
   <li><a href="#source-and-binary-packages" id="toc-source-and-binary-packages" class="nav-link" data-scroll-target="#source-and-binary-packages">Source and binary packages</a></li>
   <li><a href="#sticky-lock-files" id="toc-sticky-lock-files" class="nav-link" data-scroll-target="#sticky-lock-files">Sticky lock files</a></li>
-  <li><a href="#git-and-github-dependencies" id="toc-git-and-github-dependencies" class="nav-link" data-scroll-target="#git-and-github-dependencies">Git and GitHub dependencies</a></li>
+  <li><a href="#git-github-and-url-dependencies" id="toc-git-github-and-url-dependencies" class="nav-link" data-scroll-target="#git-github-and-url-dependencies">Git, GitHub and URL dependencies</a></li>
   <li><a href="#workspaces" id="toc-workspaces" class="nav-link" data-scroll-target="#workspaces">Workspaces</a></li>
   <li><a href="#usage-5" id="toc-usage-5" class="nav-link" data-scroll-target="#usage-5">Usage</a></li>
   <li><a href="#options-7" id="toc-options-7" class="nav-link" data-scroll-target="#options-7">Options</a></li>
@@ -741,8 +741,8 @@ rig proj add dplyr@1.1.0
 rig proj add 'cli@&gt;= 3.6' 'rlang@&gt;= 1.0, &lt; 2.0'</code></pre>
 <p>Without a version, the package is added as <code>"*"</code>, i.e.&nbsp;any version. The concrete version rig picks is recorded in <code>rproj.lock</code>, so a project does not need a version requirement for every dependency; use one when the project really needs a particular version.</p>
 <p>Because <code>@</code> and the comparison operators are meaningful to most shells, quote a specification that contains a space or a <code>&gt;</code> character, as in the examples above.</p>
-<section id="git-github-and-gitlab-sources" class="level3">
-<h3 class="anchored" data-anchor-id="git-github-and-gitlab-sources">Git, GitHub and GitLab sources</h3>
+<section id="git-github-gitlab-and-url-sources" class="level3">
+<h3 class="anchored" data-anchor-id="git-github-gitlab-and-url-sources">Git, GitHub, GitLab and URL sources</h3>
 <p>A package can also be added straight from a git repository, <a href="https://pak.r-lib.org/reference/pak_package_sources.html">pak’s package reference</a> syntax:</p>
 <pre><code>rig proj add r-lib/crayon
 rig proj add r-lib/crayon@84be6207
@@ -750,12 +750,14 @@ rig proj add r-lib/crayon@some-branch
 rig proj add r-lib/crayon#41
 rig proj add r-lib/crayon@*release
 rig proj add gitlab::group/project@main
-rig proj add 'git::https://gitlab.com/example/pkg.git@main'</code></pre>
+rig proj add 'git::https://gitlab.com/example/pkg.git@main'
+rig proj add https://cran.rstudio.com/src/contrib/processx_3.9.0.tar.gz</code></pre>
 <p>A bare <code>&lt;owner&gt;/&lt;repo&gt;</code> (optionally <code>github::&lt;owner&gt;/&lt;repo&gt;</code>) is a GitHub reference; <code>&lt;owner&gt;/&lt;repo&gt;/&lt;subdir&gt;</code> points at a package in a subdirectory of the repository. After the path, <code>@&lt;ref&gt;</code> pins a branch, tag or commit, <code>#&lt;pr&gt;</code> a pull request, and <code>@*release</code> the latest release.</p>
 <p><code>gitlab::&lt;group&gt;/&lt;project&gt;</code> is the same idea for GitLab, including nested subgroups (<code>gitlab::&lt;group&gt;/&lt;subgroup&gt;/&lt;project&gt;</code>); <code>@&lt;ref&gt;</code> pins a branch, tag or commit, and <code>/-/&lt;subdir&gt;</code> points at a subdirectory. Merge requests and <code>@*release</code> are not supported for GitLab. A self-hosted instance is <code>gitlab::&lt;https-url-of-group-and-project&gt;</code>, e.g. <code>gitlab::https://gitlab.example.com/group/project</code>.</p>
 <p>A <code>git::&lt;url&gt;</code> reference works with any git host, not only GitHub or GitLab.</p>
-<p>The package name is read from the fetched repository’s own <code>DESCRIPTION</code> (which may differ from the repository name), and the dependency is pinned by commit, not by version range: <code>rig proj add</code> resolves the reference to an exact commit right away, and <code>rproj.lock</code> records it.</p>
-<p>rig fetches a git/GitHub/GitLab source with the system <code>git</code>, which must be installed and on <code>PATH</code>. A private repository authenticates exactly the way a plain <code>git clone</code> would on your machine: a configured credential helper (Keychain, Windows Credential Manager, <code>git credential-store</code>, etc.), <code>.netrc</code>, an SSH agent, or credentials already embedded in the URL. There is no separate rig-specific token setting.</p>
+<p><code>url::&lt;https-url&gt;</code> (or a bare <code>&lt;https-url&gt;</code>) points straight at a package source archive.</p>
+<p>The package name is read from the fetched repository’s (or archive’s) own <code>DESCRIPTION</code> (which may differ from the repository name), and the dependency is pinned by commit, or by the archive’s sha256 for a <code>url::</code> source, not by version range: <code>rig proj add</code> resolves the reference right away, and <code>rproj.lock</code> records it.</p>
+<p>rig fetches a git/GitHub/GitLab source with the system <code>git</code>, which must be installed and on <code>PATH</code>. A private repository authenticates exactly the way a plain <code>git clone</code> would on your machine: a configured credential helper (Keychain, Windows Credential Manager, <code>git credential-store</code>, etc.), <code>.netrc</code>, an SSH agent, or credentials already embedded in the URL. There is no separate rig-specific token setting. A <code>url::</code> source is a plain HTTP(S) download and needs no such authentication.</p>
 </section>
 <section id="version-requirements" class="level3">
 <h3 class="anchored" data-anchor-id="version-requirements">Version requirements</h3>
@@ -1201,9 +1203,10 @@ Run in user mode (overrides RIG_MODE and config)
 <h3 class="anchored" data-anchor-id="sticky-lock-files">Sticky lock files</h3>
 <p>A <code>rig proj lock</code> run that finds an existing <code>rproj.lock</code> already satisfying <code>rproj.toml</code> reuses it as-is, for every package, instead of re-resolving anything. This applies to ordinary dependencies, an existing pin that still satisfies the manifest’s version requirement is kept, even if a newer version has since been published, as well as to git/GitHub dependencies (see below). Use <code>rig proj lock --upgrade</code> to ignore the existing lock file and re-resolve every dependency instead, picking the latest version that still satisfies <code>rproj.toml</code>.</p>
 </section>
-<section id="git-and-github-dependencies" class="level3">
-<h3 class="anchored" data-anchor-id="git-and-github-dependencies">Git and GitHub dependencies</h3>
+<section id="git-github-and-url-dependencies" class="level3">
+<h3 class="anchored" data-anchor-id="git-github-and-url-dependencies">Git, GitHub and URL dependencies</h3>
 <p>A <code>git::</code>/<code>github::</code> dependency pinned to a branch, a pull request, or no ref at all (the default branch’s tip) is only resolved against its remote the first time it’s locked. Once <code>rproj.lock</code> records a commit for it, later <code>rig proj lock</code> runs reuse that commit as-is rather than re-checking whether the branch moved on every lock. <code>rig proj lock --upgrade</code> re-checks every git/GitHub dependency’s ref and moves the pin forward if it changed. A <code>rev</code>/<code>tag</code> pins an exact commit already, so there’s nothing for <code>--upgrade</code> to move. <code>release = true</code> is sticky the same way: once locked, later runs keep the release it pinned instead of asking GitHub which release is latest every time. <code>rig proj lock --upgrade</code> re-checks and moves the pin forward if a newer release exists.</p>
+<p>A <code>url::</code> dependency names one exact archive rather than a movable ref, so there’s nothing for <code>--upgrade</code> to move either: every <code>rig proj lock</code> run downloads it (the download itself is cached) and records its sha256 in <code>rproj.lock</code>, which then changes only if the archive’s contents change. Set <code>hash</code> on a <code>url</code> dependency to pin the expected sha256 and catch that.</p>
 <p>The <code>rproj.lock</code> file records, for every package, whether it is a source or a binary package and the URL it is downloaded from. It also records where the file is cached, which is per <em>build</em> rather than per version: a repository can offer several binaries of one version for one platform and R version, and they are cached side by side.</p>
 </section>
 <section id="workspaces" class="level3">

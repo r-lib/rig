@@ -548,7 +548,7 @@ ul.task-list li input[type="checkbox"] {
   <li><a href="#rig-pkg-install" id="toc-rig-pkg-install" class="nav-link" data-scroll-target="#rig-pkg-install"><code>rig pkg install</code></a>
   <ul class="collapse">
   <li><a href="#note-3" id="toc-note-3" class="nav-link" data-scroll-target="#note-3">Note</a></li>
-  <li><a href="#git-github-and-gitlab-sources" id="toc-git-github-and-gitlab-sources" class="nav-link" data-scroll-target="#git-github-and-gitlab-sources">Git, GitHub and GitLab sources</a></li>
+  <li><a href="#git-github-gitlab-and-url-sources" id="toc-git-github-gitlab-and-url-sources" class="nav-link" data-scroll-target="#git-github-gitlab-and-url-sources">Git, GitHub, GitLab and URL sources</a></li>
   <li><a href="#dev-dependencies" id="toc-dev-dependencies" class="nav-link" data-scroll-target="#dev-dependencies">Dev dependencies</a></li>
   <li><a href="#binary-and-source-packages" id="toc-binary-and-source-packages" class="nav-link" data-scroll-target="#binary-and-source-packages">Binary and source packages</a></li>
   <li><a href="#caching-package-builds" id="toc-caching-package-builds" class="nav-link" data-scroll-target="#caching-package-builds">Caching package builds</a></li>
@@ -828,8 +828,8 @@ List all versions of the package, instead of the details of one
 <p>Install one or more R packages, and everything they need, into an R package library.</p>
 <p>rig resolves the whole dependency tree first, the same way <a href="../reference/proj.html"><code>rig proj lock</code></a> does for a project, so a package is only installed if every package it needs can be installed with it, at versions that work together. <code>--dry-run</code> runs the resolution and reports what it would install, without installing anything.</p>
 </section>
-<section id="git-github-and-gitlab-sources" class="level3">
-<h3 class="anchored" data-anchor-id="git-github-and-gitlab-sources">Git, GitHub and GitLab sources</h3>
+<section id="git-github-gitlab-and-url-sources" class="level3">
+<h3 class="anchored" data-anchor-id="git-github-gitlab-and-url-sources">Git, GitHub, GitLab and URL sources</h3>
 <p>A package can also be given straight from a git repository, <a href="https://pak.r-lib.org/reference/pak_package_sources.html">pak’s package reference</a> syntax, the same one <a href="../reference/proj.html"><code>rig proj add</code></a> accepts:</p>
 <pre><code>rig pkg install r-lib/crayon
 rig pkg install r-lib/crayon@84be6207
@@ -837,12 +837,14 @@ rig pkg install r-lib/crayon@some-branch
 rig pkg install r-lib/crayon#41
 rig pkg install r-lib/crayon@*release
 rig pkg install gitlab::group/project@main
-rig pkg install 'git::https://gitlab.com/example/pkg.git@main'</code></pre>
+rig pkg install 'git::https://gitlab.com/example/pkg.git@main'
+rig pkg install https://cran.rstudio.com/src/contrib/processx_3.9.0.tar.gz</code></pre>
 <p>A bare <code>&lt;owner&gt;/&lt;repo&gt;</code> (optionally <code>github::&lt;owner&gt;/&lt;repo&gt;</code>) is a GitHub reference; <code>&lt;owner&gt;/&lt;repo&gt;/&lt;subdir&gt;</code> points at a package in a subdirectory of the repository. After the path, <code>@&lt;ref&gt;</code> pins a branch, tag or commit, <code>#&lt;pr&gt;</code> a pull request, and <code>@*release</code> the latest release.</p>
 <p><code>gitlab::&lt;group&gt;/&lt;project&gt;</code> is the same idea for GitLab, including nested subgroups (<code>gitlab::&lt;group&gt;/&lt;subgroup&gt;/&lt;project&gt;</code>); <code>@&lt;ref&gt;</code> pins a branch, tag or commit, and <code>/-/&lt;subdir&gt;</code> points at a subdirectory. Merge requests and <code>@*release</code> are not supported for GitLab. A self-hosted instance is <code>gitlab::&lt;https-url-of-group-and-project&gt;</code>, e.g. <code>gitlab::https://gitlab.example.com/group/project</code>.</p>
 <p>A <code>git::&lt;url&gt;</code> reference works with any git host, not only GitHub or GitLab.</p>
-<p>The package name is read from the fetched repository’s own <code>DESCRIPTION</code> (which may differ from the repository name); the dependency is pinned to an exact commit, resolved right away, not to a version range.</p>
-<p>rig fetches a git/GitHub/GitLab source with the system <code>git</code>, which must be installed and on <code>PATH</code>. A private repository authenticates exactly the way a plain <code>git clone</code> would on your machine: a configured credential helper (Keychain, Windows Credential Manager, <code>git credential-store</code>, etc.), <code>.netrc</code>, an SSH agent, or credentials already embedded in the URL. There is no separate rig-specific token setting.</p>
+<p><code>url::&lt;https-url&gt;</code> (or a bare <code>&lt;https-url&gt;</code>) points straight at a package source archive.</p>
+<p>The package name is read from the fetched repository’s (or archive’s) own <code>DESCRIPTION</code> (which may differ from the repository name); the dependency is pinned to an exact commit, or to the archive’s sha256 for a <code>url::</code> source, resolved right away, not to a version range.</p>
+<p>rig fetches a git/GitHub/GitLab source with the system <code>git</code>, which must be installed and on <code>PATH</code>. A private repository authenticates exactly the way a plain <code>git clone</code> would on your machine: a configured credential helper (Keychain, Windows Credential Manager, <code>git credential-store</code>, etc.), <code>.netrc</code>, an SSH agent, or credentials already embedded in the URL. There is no separate rig-specific token setting. A <code>url::</code> source is a plain HTTP(S) download and needs no such authentication.</p>
 </section>
 <section id="dev-dependencies" class="level3">
 <h3 class="anchored" data-anchor-id="dev-dependencies">Dev dependencies</h3>
