@@ -47,8 +47,9 @@ use crate::library::library_rver;
 use crate::output::OUTPUT;
 use crate::pkgsource::{parse_pkg_source, PkgSource};
 use crate::proj::{
-    dep_table_from_remote, download_lockfile_packages, fetch_and_read_git_package,
-    lockfile_package_info, proj_binary_target, resolve_git_sources, sc_proj_solve_deps, BASE_PKGS,
+    dep_table_from_remote, dep_table_from_url, download_lockfile_packages,
+    fetch_and_read_git_package, fetch_and_read_url_package, lockfile_package_info,
+    proj_binary_target, resolve_git_sources, sc_proj_solve_deps, BASE_PKGS,
 };
 use crate::repos::DbSourcePackageLoader;
 use crate::rproj::{DepTable, RprojLockPackage, RprojLockTarget};
@@ -245,6 +246,17 @@ fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
                             OUTPUT.error(&err.to_string());
                         })?;
                 let resolved_name = r.name_override.unwrap_or(pkg.name);
+                git_deps.push((resolved_name.clone(), table));
+                resolved_name
+            }
+            PkgSource::Url(u) => {
+                let table = dep_table_from_url(&u);
+                OUTPUT.status(&format!("Fetching {}", u.url));
+                let (pkg, _source, _remotes) = fetch_and_read_url_package(&u.url, &table)
+                    .inspect_err(|err| {
+                        OUTPUT.error(&err.to_string());
+                    })?;
+                let resolved_name = u.name_override.unwrap_or(pkg.name);
                 git_deps.push((resolved_name.clone(), table));
                 resolved_name
             }

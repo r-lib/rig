@@ -5,12 +5,12 @@
 //! their own corner of `real_cache_dir()`, see [`crate::cache`]. Rather than
 //! teach this module every producer's file-naming scheme, categories are
 //! derived from the *name of the top-level entry* in the cache directory:
-//! `built`, `packages`, `p3m` and `git-mirrors` are their own category,
-//! `metadata` collects every other kind of package metadata (binary indexes,
-//! CRAN-like databases, package manifests, repo data), and anything
-//! unrecognized left over at the cache root (e.g. stray files from an older
-//! rig's layout) falls back to `metadata` too, so this module stays correct
-//! without an update here.
+//! `built`, `packages`, `p3m`, `git-mirrors` and `url-pkgs` are their own
+//! category, `metadata` collects every other kind of package metadata
+//! (binary indexes, CRAN-like databases, package manifests, repo data), and
+//! anything unrecognized left over at the cache root (e.g. stray files from
+//! an older rig's layout) falls back to `metadata` too, so this module stays
+//! correct without an update here.
 
 use std::error::Error;
 use std::fs;
@@ -29,15 +29,17 @@ enum CacheCategory {
     Metadata,
     P3m,
     GitMirrors,
+    UrlPkgs,
 }
 
 impl CacheCategory {
-    const ALL: [CacheCategory; 5] = [
+    const ALL: [CacheCategory; 6] = [
         CacheCategory::Built,
         CacheCategory::Packages,
         CacheCategory::Metadata,
         CacheCategory::P3m,
         CacheCategory::GitMirrors,
+        CacheCategory::UrlPkgs,
     ];
 
     fn label(self) -> &'static str {
@@ -47,6 +49,7 @@ impl CacheCategory {
             CacheCategory::Metadata => "Metadata",
             CacheCategory::P3m => "P3M status",
             CacheCategory::GitMirrors => "Git mirrors",
+            CacheCategory::UrlPkgs => "URL packages",
         }
     }
 
@@ -59,6 +62,7 @@ impl CacheCategory {
             CacheCategory::Metadata => "metadata",
             CacheCategory::P3m => "p3m",
             CacheCategory::GitMirrors => "git-mirrors",
+            CacheCategory::UrlPkgs => "url-pkgs",
         }
     }
 }
@@ -71,6 +75,7 @@ fn classify_entry(name: &str) -> CacheCategory {
         "packages" => CacheCategory::Packages,
         "p3m" => CacheCategory::P3m,
         "git-mirrors" => CacheCategory::GitMirrors,
+        "url-pkgs" => CacheCategory::UrlPkgs,
         _ => CacheCategory::Metadata,
     }
 }
@@ -115,8 +120,8 @@ fn dir_usage(path: &Path) -> Usage {
     usage
 }
 
-fn cache_breakdown(cache_dir: &Path) -> [Usage; 5] {
-    let mut totals = [Usage::default(); 5];
+fn cache_breakdown(cache_dir: &Path) -> [Usage; 6] {
+    let mut totals = [Usage::default(); 6];
     let entries = match fs::read_dir(cache_dir) {
         Ok(entries) => entries,
         Err(_) => return totals,
@@ -173,6 +178,8 @@ struct CacheInfo {
     p3m_count: u64,
     git_mirrors_size: u64,
     git_mirrors_count: u64,
+    url_pkgs_size: u64,
+    url_pkgs_count: u64,
     total_size: u64,
     total_count: u64,
 }
@@ -199,6 +206,8 @@ pub fn sc_cache_info(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             p3m_count: totals[3].count,
             git_mirrors_size: totals[4].size,
             git_mirrors_count: totals[4].count,
+            url_pkgs_size: totals[5].size,
+            url_pkgs_count: totals[5].count,
             total_size: total.size,
             total_count: total.count,
         };
@@ -306,6 +315,7 @@ mod tests {
         // layout) falls back to the metadata catch-all.
         assert_eq!(classify_entry("leftover-file"), CacheCategory::Metadata);
         assert_eq!(classify_entry("git-mirrors"), CacheCategory::GitMirrors);
+        assert_eq!(classify_entry("url-pkgs"), CacheCategory::UrlPkgs);
     }
 
     #[test]
@@ -343,6 +353,12 @@ mod tests {
             b"ref: refs/heads/main\n",
         )
         .unwrap();
+        fs::create_dir(tmp.path().join("url-pkgs")).unwrap();
+        fs::write(
+            tmp.path().join("url-pkgs").join("mypkg_1.0.0.tar.gz"),
+            b"123456",
+        )
+        .unwrap();
 
         let totals = cache_breakdown(tmp.path());
         assert_eq!(totals[0].size, 0); // built
@@ -353,6 +369,8 @@ mod tests {
         assert_eq!(totals[3].count, 1);
         assert_eq!(totals[4].size, 21); // git-mirrors
         assert_eq!(totals[4].count, 1);
+        assert_eq!(totals[5].size, 6); // url-pkgs
+        assert_eq!(totals[5].count, 1);
     }
 
     #[test]

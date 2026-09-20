@@ -24,7 +24,7 @@ Because `@` and the comparison operators are meaningful to most shells, quote
 a specification that contains a space or a `>` character, as in the examples
 above.
 
-## Git, GitHub and GitLab sources
+## Git, GitHub, GitLab and URL sources
 
 A package can also be added straight from a git repository, [pak's package
 reference](https://pak.r-lib.org/reference/pak_package_sources.html) syntax:
@@ -37,6 +37,7 @@ rig proj add r-lib/crayon#41
 rig proj add r-lib/crayon@*release
 rig proj add gitlab::group/project@main
 rig proj add 'git::https://gitlab.com/example/pkg.git@main'
+rig proj add https://cran.rstudio.com/src/contrib/processx_3.9.0.tar.gz
 ```
 
 A bare `<owner>/<repo>` (optionally `github::<owner>/<repo>`) is a GitHub
@@ -53,17 +54,22 @@ tag or commit, and `/-/<subdir>` points at a subdirectory. Merge requests and
 
 A `git::<url>` reference works with any git host, not only GitHub or GitLab.
 
-The package name is read from the fetched repository's own `DESCRIPTION`
-(which may differ from the repository name), and the dependency is pinned by
-commit, not by version range: `rig proj add` resolves the reference to an
-exact commit right away, and `rproj.lock` records it.
+`url::<https-url>` (or a bare `<https-url>`) points straight at a
+package source archive.
+
+The package name is read from the fetched repository's (or archive's) own
+`DESCRIPTION` (which may differ from the repository name), and the
+dependency is pinned by commit, or by the archive's sha256 for a `url::`
+source, not by version range: `rig proj add` resolves the reference right
+away, and `rproj.lock` records it.
 
 rig fetches a git/GitHub/GitLab source with the system `git`, which must be
 installed and on `PATH`. A private repository authenticates exactly the way
 a plain `git clone` would on your machine: a configured credential helper
 (Keychain, Windows Credential Manager, `git credential-store`, etc.),
 `.netrc`, an SSH agent, or credentials already embedded in the URL. There is
-no separate rig-specific token setting.
+no separate rig-specific token setting. A `url::` source is a plain HTTP(S)
+download and needs no such authentication.
 
 ## Version requirements
 

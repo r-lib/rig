@@ -78,7 +78,7 @@ below). Use `rig proj lock --upgrade` to ignore the existing lock file and
 re-resolve every dependency instead, picking the latest version that still
 satisfies `rproj.toml`.
 
-## Git and GitHub dependencies
+## Git, GitHub and URL dependencies
 
 A `git::`/`github::` dependency pinned to a branch, a pull request, or no ref
 at all (the default branch's tip) is only resolved against its remote the
@@ -91,6 +91,12 @@ to move. `release = true` is sticky the same way: once locked, later runs
 keep the release it pinned instead of asking GitHub which release is latest
 every time. `rig proj lock --upgrade` re-checks and moves the pin forward if
 a newer release exists.
+
+A `url::` dependency names one exact archive rather than a movable ref, so
+there's nothing for `--upgrade` to move either: every `rig proj lock` run
+downloads it (the download itself is cached) and records its sha256 in
+`rproj.lock`, which then changes only if the archive's contents change. Set
+`hash` on a `url` dependency to pin the expected sha256 and catch that.
 
 The `rproj.lock` file records, for every package, whether it is a source or a
 binary package and the URL it is downloaded from. It also records where the

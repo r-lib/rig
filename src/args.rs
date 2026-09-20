@@ -1224,7 +1224,14 @@ pub fn rig_app() -> Command {
                         .help("Only delete this category of cached files")
                         .long("category")
                         .required(false)
-                        .value_parser(["built", "packages", "metadata", "p3m", "git-mirrors"]),
+                        .value_parser([
+                            "built",
+                            "packages",
+                            "metadata",
+                            "p3m",
+                            "git-mirrors",
+                            "url-pkgs",
+                        ]),
                 ),
         );
 

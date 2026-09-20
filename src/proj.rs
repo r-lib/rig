@@ -413,10 +413,10 @@ fn sc_proj_import(
     }
 
     manifest.merge_description(&pkg);
-    // `Remotes:` names the git/GitHub/GitLab source for packages that are
+    // `Remotes:` names the git/GitHub/GitLab/url source for packages that are
     // also listed in `Depends`/`Imports`/`Suggests` above; only `git`/
-    // `github`/`gitlab` remotes are understood, other remote types (`bioc::`,
-    // `bitbucket::`, `local::`, `svn::`, `url::`, ...) are warned about and
+    // `github`/`gitlab`/`url` remotes are understood, other remote types
+    // (`bioc::`, `bitbucket::`, `local::`, `svn::`, ...) are warned about and
     // skipped rather than failing the whole import.
     if let Some(remotes) = paragraph.get("Remotes") {
         for entry in reflow(remotes).split(',') {
@@ -447,9 +447,32 @@ fn sc_proj_import(
                         }
                     }
                 }
+                // A `url::` reference's own `pak_ref_name` heuristic misreads
+                // a versioned archive file name, so unlike a git reference,
+                // only an explicit `<name>=` override is usable here.
+                Ok(crate::pkgsource::PkgSource::Url(u)) => match &u.name_override {
+                    Some(name) => {
+                        let dev = manifest
+                            .dependency_groups
+                            .get("dev")
+                            .is_some_and(|g| g.dependencies.contains_key(name))
+                            && !manifest.dependencies.contains_key(name);
+                        let table = dep_table_from_url(&u);
+                        manifest.add_remote_dependency(name, table, dev);
+                    }
+                    None => {
+                        let msg = format!(
+                            "Remotes entry `{}` has no `<name>=` override, cannot tell \
+                             which package it names, skipping it",
+                            entry
+                        );
+                        OUTPUT.warn(&msg);
+                        info!("{}", msg);
+                    }
+                },
                 Ok(crate::pkgsource::PkgSource::Cran) | Err(_) => {
                     let msg = format!(
-                        "Remotes entry `{}` is not a supported git/GitHub reference, \
+                        "Remotes entry `{}` is not a supported git/GitHub/url reference, \
                          skipping it",
                         entry
                     );
@@ -622,6 +645,19 @@ fn parse_add_arg(spec: &str) -> Result<AddSpec, Box<dyn Error>> {
             let name = r.name_override.unwrap_or(pkg.name);
             Ok(AddSpec::Remote(name, Box::new(table)))
         }
+        crate::pkgsource::PkgSource::Url(u) => {
+            let table = dep_table_from_url(&u);
+            OUTPUT.status(&format!("Fetching {}", u.url));
+            // The table written to `rproj.toml` keeps `subdir` as the user
+            // wrote it (usually unset) -- an archive's auto-detected
+            // top-level wrapper directory is resolved provenance, not
+            // manifest input, so it only ever goes into the lockfile's
+            // `RemoteSubdir`, via `GitSourceInfo` (see
+            // `fetch_and_read_url_package`).
+            let (pkg, _url_source, _remotes) = fetch_and_read_url_package(&u.url, &table)?;
+            let name = u.name_override.unwrap_or(pkg.name);
+            Ok(AddSpec::Remote(name, Box::new(table)))
+        }
     }
 }
 
@@ -695,12 +731,12 @@ fn sc_proj_add(
             }
             AddSpec::Remote(name, table) => {
                 manifest.add_remote_dependency(name, (**table).clone(), dev);
-                format!(
-                    "Added {} ({}) to {}",
-                    name,
-                    table.git.as_deref().unwrap_or_default(),
-                    RPROJ_MANIFEST_FILE
-                )
+                let source = table
+                    .git
+                    .as_deref()
+                    .or(table.url.as_deref())
+                    .unwrap_or_default();
+                format!("Added {} ({}) to {}", name, source, RPROJ_MANIFEST_FILE)
             }
         });
 
@@ -1397,9 +1433,9 @@ pub(crate) fn sc_proj_solve_deps(
 
     if !git_sources.is_empty() {
         if report_status {
-            OUTPUT.status("Registering git/GitHub package sources");
+            OUTPUT.status("Registering git/GitHub/URL package sources");
         }
-        info!("Registering git/GitHub package sources");
+        info!("Registering git/GitHub/URL package sources");
         register_git_sources(&reg, git_sources);
     }
 
@@ -1708,17 +1744,25 @@ pub(crate) fn resolve_git_sources(
         let fetched: Vec<Result<(String, Package, GitSourceInfo, String), String>> = batch
             .par_iter()
             .map(|(name, table)| {
-                let git_url = table
-                    .git
-                    .clone()
-                    .ok_or_else(|| format!("{} has a dependency source with no `git` URL", name))?;
-                let (pkg, git_source, remotes) =
-                    fetch_and_read_git_package(&git_url, table, known_shas, known_releases)
-                        .map_err(|err| err.to_string())?;
+                let (pkg, git_source, remotes, source_desc) = if let Some(git_url) = &table.git {
+                    let (pkg, git_source, remotes) =
+                        fetch_and_read_git_package(git_url, table, known_shas, known_releases)
+                            .map_err(|err| err.to_string())?;
+                    (pkg, git_source, remotes, git_url.clone())
+                } else if let Some(url) = &table.url {
+                    let (pkg, url_source, remotes) =
+                        fetch_and_read_url_package(url, table).map_err(|err| err.to_string())?;
+                    (pkg, url_source, remotes, url.clone())
+                } else {
+                    return Err(format!(
+                        "{} has a dependency source with no `git` or `url`",
+                        name
+                    ));
+                };
                 if pkg.name != *name {
                     return Err(format!(
                         "`{}` in rproj.toml points at {}, but its DESCRIPTION says `Package: {}`",
-                        name, git_url, pkg.name
+                        name, source_desc, pkg.name
                     ));
                 }
                 Ok((name.clone(), pkg, git_source, remotes))
@@ -1754,10 +1798,14 @@ pub(crate) fn resolve_git_sources(
                 if seen.contains(&dep_name) {
                     continue;
                 }
-                if let Ok(crate::pkgsource::PkgSource::Remote(r)) =
-                    crate::pkgsource::parse_pkg_source(entry)
-                {
-                    next_frontier.push((dep_name, dep_table_from_remote(&r, entry)));
+                match crate::pkgsource::parse_pkg_source(entry) {
+                    Ok(crate::pkgsource::PkgSource::Remote(r)) => {
+                        next_frontier.push((dep_name, dep_table_from_remote(&r, entry)));
+                    }
+                    Ok(crate::pkgsource::PkgSource::Url(u)) => {
+                        next_frontier.push((dep_name, dep_table_from_url(&u)));
+                    }
+                    Ok(crate::pkgsource::PkgSource::Cran) | Err(_) => {}
                 }
             }
         }
@@ -1805,6 +1853,17 @@ pub(crate) fn dep_table_from_remote(r: &crate::pkgsource::RemoteSource, entry: &
         release: if r.release { Some(true) } else { None },
         subdir: r.subdir.clone(),
         ref_: Some(entry.trim().to_string()),
+        ..Default::default()
+    }
+}
+
+/// The manifest `DepTable` a parsed `url::` reference implies -- the `url`
+/// counterpart of [`dep_table_from_remote`], used the same way: to feed a
+/// fetched package's own `Remotes:` entries back into
+/// [`register_git_sources`]'s worklist.
+pub(crate) fn dep_table_from_url(u: &crate::pkgsource::UrlSource) -> DepTable {
+    DepTable {
+        url: Some(u.url.clone()),
         ..Default::default()
     }
 }
@@ -1911,6 +1970,44 @@ pub(crate) fn fetch_and_read_git_package(
         .unwrap_or_default();
 
     Ok((pkg, git_source, remotes))
+}
+
+/// Fetch a `url`-sourced dependency's `DESCRIPTION`, the `url` counterpart of
+/// [`fetch_and_read_git_package`]. There is no cheap partial fetch for an
+/// arbitrary HTTP resource, so this downloads (and caches) the whole
+/// archive -- see [`crate::pkgsource::url::fetch_url_description`] -- and
+/// extracts it to read `DESCRIPTION` back out. `table.hash`, if set, pins
+/// the archive's expected sha256; otherwise whatever the URL currently
+/// serves is trusted, and its sha256 is recorded for the lockfile.
+pub(crate) fn fetch_and_read_url_package(
+    url: &str,
+    table: &DepTable,
+) -> Result<(Package, GitSourceInfo, String), Box<dyn Error>> {
+    let (description, sha256, effective_subdir) = crate::pkgsource::url::fetch_url_description(
+        url,
+        table.subdir.as_deref(),
+        table.hash.as_deref(),
+    )?;
+
+    let url_source = GitSourceInfo {
+        remote_type: "url",
+        url: url.to_string(),
+        host: None,
+        repo: None,
+        username: None,
+        subdir: effective_subdir,
+        ref_: None,
+        sha: sha256,
+    };
+
+    let paragraph = parse_description_paragraph(description.as_bytes())?;
+    let pkg = Package::from_dcf_paragraph(&paragraph)?;
+    let remotes = paragraph
+        .get("Remotes")
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+
+    Ok((pkg, url_source, remotes))
 }
 
 /// Show a solve failure: the headline as an error, the pubgrub report under it.
@@ -3917,9 +4014,10 @@ pub(crate) fn download_lockfile_packages(
     // Get cache directory
     let cache_dir = get_cache_dir()?;
 
-    // A git/GitHub package's `target` is a directory, fetched by unpacking a
-    // tarball or checking out a git worktree, not a plain HTTP download to a
-    // file -- handled separately, see `fetch_git_lockfile_packages`.
+    // A git/GitHub/url package's `target` is a directory, fetched by
+    // checking out a git worktree or downloading and extracting an archive,
+    // not a plain HTTP download to a file -- handled separately, see
+    // `fetch_git_lockfile_packages`.
     let (git_packages, http_packages): (Vec<&RprojLockPackage>, Vec<&RprojLockPackage>) = packages
         .iter()
         .partition(|pkg| pkg.metadata.contains_key(REMOTE_TYPE_FIELD));
@@ -3928,14 +4026,15 @@ pub(crate) fn download_lockfile_packages(
     download_http_lockfile_packages(&http_packages, &cache_dir)
 }
 
-/// Fetch every git/GitHub package in `packages` into its cache directory: a
-/// shallow (`--depth 1`), sparse-checkout-scoped `git` fetch (see
-/// [`crate::pkgsource::git::fetch_git_checkout`]), reusing the `RemoteUrl`/
-/// `RemoteRef`/`RemoteSubdir` recorded at lock time -- a GitHub and a
-/// non-GitHub `git::` source are fetched the exact same way. Skipped
-/// entirely when the target directory already exists -- the target is keyed
-/// by the resolved commit sha, so an existing one is always the right
-/// content.
+/// Fetch every git/GitHub/url package in `packages` into its cache
+/// directory: a shallow (`--depth 1`), sparse-checkout-scoped `git` fetch
+/// (see [`crate::pkgsource::git::fetch_git_checkout`]) for a git/GitHub
+/// source, or a cached archive download and extraction (see
+/// [`crate::pkgsource::url::fetch_url_checkout`]) for a `url` source, both
+/// reusing the `RemoteUrl`/`RemoteRef`/`RemoteSubdir`/`RemoteSha` recorded at
+/// lock time. Skipped entirely when the target directory already exists --
+/// the target is keyed by the resolved commit sha (or archive sha256), so an
+/// existing one is always the right content.
 fn fetch_git_lockfile_packages(
     packages: &[&RprojLockPackage],
     cache_dir: &Path,
@@ -3968,6 +4067,19 @@ fn fetch_git_lockfile_packages(
                     url,
                     refspec.as_deref(),
                     subdir.as_deref(),
+                    &target_dir,
+                )?;
+            }
+            Some("url") => {
+                let url = pkg
+                    .metadata
+                    .get(crate::install::REMOTE_URL_FIELD)
+                    .ok_or_else(|| SimpleError::new(format!("{} has no RemoteUrl", pkg.package)))?;
+                let expected_sha256 = pkg.metadata.get(crate::install::REMOTE_SHA_FIELD).cloned();
+                OUTPUT.status(&format!("Fetching {} from {}", pkg.package, url));
+                crate::pkgsource::url::fetch_url_checkout(
+                    url,
+                    expected_sha256.as_deref(),
                     &target_dir,
                 )?;
             }

@@ -98,6 +98,19 @@ pub fn git_mirror_dir(url: &str) -> Option<PathBuf> {
     Some(cache.join("git-mirrors").join(&hash[..16]))
 }
 
+/// `<cache>/url-pkgs/<hash-of-url>`, the persistent directory for one `url::`
+/// package dependency's downloaded archive and its extracted tree, or `None`
+/// when there's no usable cache. Same philosophy as [`git_mirror_dir`]: keyed
+/// on the URL alone, since a `url` dependency names one exact resource.
+pub fn url_pkg_dir(url: &str) -> Option<PathBuf> {
+    if no_cache() {
+        return None;
+    }
+    let cache = get_cache_dir().ok()?;
+    let hash = crate::utils::calculate_hash(url);
+    Some(cache.join("url-pkgs").join(&hash[..16]))
+}
+
 static EPHEMERAL_CACHE_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 fn ephemeral_cache_dir() -> Result<PathBuf, Box<dyn Error>> {
