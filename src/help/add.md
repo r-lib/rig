@@ -42,6 +42,9 @@ The desired R version can be specified in various ways:
 - `rig add oldrel/n` adds the latest release within the `n`th previous minor
   branch (`oldrel` is the same as `oldrel/1`).
 - `rig add <url>` uses a build from `<url>`.
+- `rig add renv.lock` (or a path to one, e.g. `rig add path/to/renv.lock`)
+  adds the R version recorded in an [renv](https://rstudio.github.io/renv/)
+  lock file.
 
 In user mode rig installs R into your home directory and never needs `sudo`.
 In admin mode you usually need to run this command with `sudo`: `sudo rig add
@@ -51,6 +54,12 @@ In admin mode on macOS rig cannot add multiple R versions from the same
 minor branch. E.g. it is not possible to have R 4.6.0 and R 4.6.1 installed
 at the same time. Adding one of them will automatically remove the other.
 In user mode there is no such restriction.
+
+If the requested version is already installed, `rig add` does nothing
+(other than making sure any implied alias, e.g. `release`, still points at
+it) instead of reinstalling it. Use `--reinstall` to reinstall anyway.
+`rig add devel` and `rig add next` are always reinstalled, since these are
+rebuilt daily under the same name.
 
 You can use `rig add` to install Rtools:
 
@@ -80,6 +89,9 @@ rig add 4.6.1
 
 # Install latest version within a minor branch
 rig add 4.6
+
+# Install the R version an renv.lock file requires
+rig add renv.lock
 
 # Install arm64 build of R (default on arm64 machines)
 rig add -a arm64 release

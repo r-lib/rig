@@ -209,9 +209,42 @@ pub fn project_venv(root: &Path) -> PathBuf {
     root.join(RVENV_DIR)
 }
 
-/// `<root>/.rvenv/lib`, the project package library.
-pub fn project_library(root: &Path) -> PathBuf {
+/// `<root>/.rvenv/lib`, the project package library's default, in-project
+/// location. Also where a compatibility symlink is written when the library
+/// is centralized, see [`project_library`].
+pub fn project_library_in_tree(root: &Path) -> PathBuf {
     root.join(RVENV_DIR).join(RVENV_LIB_SUBDIR)
+}
+
+/// The project package library: `<root>/.rvenv/lib`, unless
+/// `RIG_PROJ_LIBRARY_ROOT` (or the `proj-library-root` config key) names a
+/// centralized root, in which case it is `<root of that>/<project subdir>`
+/// instead. [`crate::proj::proj_sync`] leaves a compatibility symlink at
+/// [`project_library_in_tree`] pointing here when centralized, mirroring
+/// uv's `.venv` junction for its own `centralized-project-envs` feature.
+pub fn project_library(root: &Path) -> Result<PathBuf, Box<dyn Error>> {
+    match crate::utils::get_proj_library_root()? {
+        Some(base) => Ok(PathBuf::from(base).join(project_library_subdir(root)?)),
+        None => Ok(project_library_in_tree(root)),
+    }
+}
+
+/// A stable, collision-resistant directory name for `root`'s library under a
+/// centralized library root: the project directory's own name, plus a short
+/// hash of its canonicalized absolute path, so that two different projects
+/// that happen to share a basename do not collide.
+///
+/// Like renv's and uv's own project-hash caches, this is keyed on the
+/// project's current location: moving or renaming the project directory
+/// gets it a fresh, empty library on the next sync.
+fn project_library_subdir(root: &Path) -> Result<String, Box<dyn Error>> {
+    let canonical = root.canonicalize()?;
+    let hash = &crate::utils::calculate_hash(&canonical.to_string_lossy())[..16];
+    let name = canonical
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("project");
+    Ok(format!("{}-{}", name, hash))
 }
 
 /// `<root>/.rvenvlib`, rig's own library inside the project.
@@ -230,6 +263,73 @@ pub fn project_shim_library(root: &Path) -> PathBuf {
 /// nothing else creates it.
 pub fn project_shim_package(root: &Path) -> PathBuf {
     project_shim_library(root).join(RVENV_SHIM_PKG)
+}
+
+/// Leave a compatibility symlink at `link_path` (`.rvenv/lib`) pointing at
+/// `target`, the real library, when it has been centralized elsewhere. Called
+/// on every sync, so any stale entry is replaced first.
+///
+/// R itself never reads this path when the library is centralized -- the
+/// shim package points `R_LIBS_USER` straight at `target` -- this exists
+/// purely so that anything else that still expects a real `.rvenv/lib`
+/// (manual inspection, other tools) keeps working, the same way uv's
+/// `centralized-project-envs` feature leaves a `.venv` junction behind.
+pub fn link_library_compat_symlink(link_path: &Path, target: &Path) -> Result<(), Box<dyn Error>> {
+    if link_path.exists() || link_path.is_symlink() {
+        #[cfg(unix)]
+        {
+            // Unix symlinks -- to a file or a directory -- are always
+            // removed with `remove_file`; `remove_dir` on one fails with
+            // `ENOTDIR`.
+            if link_path.is_symlink() || link_path.is_file() {
+                fs::remove_file(link_path)?;
+            } else {
+                fs::remove_dir_all(link_path)?;
+            }
+        }
+        #[cfg(windows)]
+        {
+            // A Windows symlink to a directory has to go through
+            // `remove_dir` -- `remove_file` on it fails with "Access is
+            // denied" even though `is_symlink()` is true.
+            if link_path.is_symlink() {
+                if link_path.is_dir() {
+                    fs::remove_dir(link_path)?;
+                } else {
+                    fs::remove_file(link_path)?;
+                }
+            } else if link_path.is_file() {
+                fs::remove_file(link_path)?;
+            } else {
+                fs::remove_dir_all(link_path)?;
+            }
+        }
+    }
+    if let Some(parent) = link_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(target, link_path)?;
+    }
+    #[cfg(windows)]
+    {
+        // A directory symlink needs an elevated account or Developer Mode on
+        // older Windows; when refused, warn and skip rather than fail the
+        // sync -- the library is still fully usable at `target`, just not
+        // discoverable at the old `.rvenv/lib` path.
+        if let Err(err) = std::os::windows::fs::symlink_dir(target, link_path) {
+            log::warn!(
+                "Could not create a compatibility link at {}: {}. \
+                 The library is still usable at {}.",
+                link_path.display(),
+                err,
+                target.display()
+            );
+        }
+    }
+    Ok(())
 }
 
 /// `<root>/.rvenv/bin`, the wrapper scripts and the activation scripts.
@@ -278,7 +378,7 @@ pub fn rvenv_sync_needed(root: &Path) -> Result<Option<String>, Box<dyn Error>> 
         return Ok(Some(format!("there is no {} yet", RPROJ_LOCK_FILE)));
     }
 
-    let stamp_path = project_library(root).join(RVENV_SYNC_STAMP);
+    let stamp_path = project_library(root)?.join(RVENV_SYNC_STAMP);
     if !stamp_path.exists() {
         return Ok(Some(
             "the project library has not been synced yet".to_string(),
@@ -924,7 +1024,7 @@ fn shell_exports() -> String {
 }
 
 /// The `Rscript` next to an `R` binary.
-fn rscript_of(r_binary: &Path) -> PathBuf {
+pub(crate) fn rscript_of(r_binary: &Path) -> PathBuf {
     let name = if cfg!(windows) {
         "Rscript.exe"
     } else {
@@ -1442,6 +1542,49 @@ mod tests {
     }
 
     #[test]
+    fn project_library_subdir_disambiguates_same_named_projects() {
+        let tmp = tempfile::tempdir().unwrap();
+        let a = tmp.path().join("a").join("myproj");
+        let b = tmp.path().join("b").join("myproj");
+        fs::create_dir_all(&a).unwrap();
+        fs::create_dir_all(&b).unwrap();
+
+        let sub_a = project_library_subdir(&a).unwrap();
+        let sub_b = project_library_subdir(&b).unwrap();
+        assert_ne!(sub_a, sub_b);
+        assert!(sub_a.starts_with("myproj-"));
+        assert!(sub_b.starts_with("myproj-"));
+
+        // Stable across repeated calls for the same root.
+        assert_eq!(sub_a, project_library_subdir(&a).unwrap());
+    }
+
+    #[test]
+    fn link_library_compat_symlink_points_at_the_target() {
+        let tmp = tempfile::tempdir().unwrap();
+        let target = tmp.path().join("central").join("myproj-abcdef");
+        fs::create_dir_all(&target).unwrap();
+        fs::write(target.join("marker"), "x").unwrap();
+
+        let link_path = tmp
+            .path()
+            .join("proj")
+            .join(RVENV_DIR)
+            .join(RVENV_LIB_SUBDIR);
+        link_library_compat_symlink(&link_path, &target).unwrap();
+        assert!(link_path.join("marker").exists());
+
+        // Recreating it (e.g. a second sync, or after the root changed)
+        // replaces the old link rather than erroring out or nesting.
+        let other_target = tmp.path().join("central").join("myproj-123456");
+        fs::create_dir_all(&other_target).unwrap();
+        fs::write(other_target.join("other-marker"), "y").unwrap();
+        link_library_compat_symlink(&link_path, &other_target).unwrap();
+        assert!(link_path.join("other-marker").exists());
+        assert!(!link_path.join("marker").exists());
+    }
+
+    #[test]
     fn rvenv_init_writes_the_tracked_layout() {
         let tmp = tempfile::tempdir().unwrap();
         let written = rvenv_init(tmp.path()).unwrap();
@@ -1458,7 +1601,7 @@ mod tests {
         assert_eq!(written, expected);
         assert!(tmp.path().join(".rvenvlib/rvenv/DESCRIPTION").exists());
         // The project library is `rig proj sync`'s to create.
-        assert!(!project_library(tmp.path()).exists());
+        assert!(!project_library(tmp.path()).unwrap().exists());
     }
 
     // ------------------------------------------------------------- sync --

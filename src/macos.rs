@@ -17,6 +17,7 @@ use owo_colors::OwoColorize;
 use path_clean::PathClean;
 use regex::Regex;
 use simple_error::*;
+use tabular::*;
 
 use crate::alias::*;
 use crate::cache::ensure_download_dir;
@@ -26,7 +27,9 @@ use crate::escalate::*;
 use crate::library::*;
 use crate::output::OUTPUT;
 use crate::repos::*;
-use crate::resolve::{get_resolve, validate_version_arg};
+use crate::resolve::{
+    get_resolve, is_pinned_version_string, resolve_versions, validate_version_arg,
+};
 use crate::run::*;
 use crate::rversion::*;
 use crate::utils::*;
@@ -102,6 +105,13 @@ pub fn get_r_etc_path() -> Result<String, Box<dyn Error>> {
     Ok("{}/Resources/etc".to_string())
 }
 
+pub fn get_r_libpath() -> Result<String, Box<dyn Error>> {
+    if get_mode()? == crate::utils::Mode::User {
+        return Ok("{}/lib".to_string());
+    }
+    Ok("{}/Resources/lib".to_string())
+}
+
 pub fn get_r_versiondir() -> Result<String, Box<dyn Error>> {
     Ok(R_VERSIONDIR.to_string())
 }
@@ -117,12 +127,41 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let str: &String = args.get_one("str").unwrap();
     validate_version_arg(str)?;
 
-    if get_mode()? == crate::utils::Mode::Admin {
+    let mode = get_mode()?;
+    let alias = get_alias(args);
+    let reinstall = args.get_flag("reinstall");
+    // `devel`/`next` are rebuilt daily under the same directory name, so
+    // "already installed" never means "up to date" for them.
+    let rolling = str == "devel" || str == "next";
+
+    // Fast path: a fully pinned version's exact version number is already
+    // known without resolving anything over the network (and, since pinned
+    // versions never get an alias, without escalating privileges either).
+    if !reinstall && !rolling && is_pinned_version_string(str) {
+        let platform = get_platform(args)?;
+        let arch = get_arch(&platform, args);
+        if let Some(name) = find_installed_version_arch(str, &arch)? {
+            return report_already_installed(&name, alias_with_arch_suffix(alias, &arch));
+        }
+    }
+
+    if mode == crate::utils::Mode::Admin {
         escalate("adding new R versions")?;
     }
     let mut version = get_resolve(args)?;
-    let alias = get_alias(args);
     let ver = version.version.to_owned();
+
+    // General check: for requests that don't pin a full version (`release`,
+    // `oldrel(/n)`, bare/partial version numbers), the concrete version is
+    // only known once resolved. Skip here if it's already installed.
+    if !reinstall && !rolling {
+        if let Some(ref v) = ver {
+            let arch = version.arch.clone().unwrap_or_default();
+            if let Some(name) = find_installed_version_arch(v, &arch)? {
+                return report_already_installed(&name, alias_with_arch_suffix(alias, &arch));
+            }
+        }
+    }
     let verstr = match ver {
         Some(ref x) => x,
         None => "???",
@@ -172,8 +211,6 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // If installed from URL, then we'll use the version in the file
     let fver = extract_pkg_version(&target_str)?;
 
-    let mode = get_mode()?;
-
     match ver {
         Some(_) => {}
         None => {
@@ -209,15 +246,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     system_fix_permissions(Some(vec![dirname.to_string()]))?;
     library_update_rprofile(&dirname.to_string())?;
     sc_system_make_links()?;
-    // The `release`/`oldrel` aliases point at the native build. An
-    // x86_64 build on an arm64 machine gets an `-x86_64` suffix instead,
-    // to avoid colliding with the native alias.
-    if let Some(alias) = alias {
-        let alias = if fver.arch == "x86_64" && is_arm64_machine() {
-            format!("{}-x86_64", alias)
-        } else {
-            alias
-        };
+    if let Some(alias) = alias_with_arch_suffix(alias, &fver.arch) {
         add_alias(&dirname, &alias)?
     };
 
@@ -1099,6 +1128,169 @@ pub fn sc_system_fix_r_alias(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+pub fn sc_system_fix_aliases(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    let platform = get_platform(args)?;
+    let native_arch = get_arch(&platform, args);
+    let mode = get_mode()?;
+
+    for al in find_aliases()? {
+        let (base, arch) = fix_aliases_base_and_arch(&al.alias, &native_arch);
+
+        // In user mode `devel`/`next` install under a fixed directory name
+        // (see `user_install_dirname`), so the alias is always already
+        // correct there. In admin mode the install directory is named after
+        // its version number, which drifts when devel/next branches to a
+        // new minor version, so it needs the same R_STATUS-based check as
+        // `rig add devel`/`rig add next` themselves use to name the
+        // directory in the first place.
+        if base == "devel" || base == "next" {
+            if mode == crate::utils::Mode::Admin {
+                fix_devel_next_alias(&al, &base, &platform, &arch)?;
+            }
+            continue;
+        }
+
+        let resolved = match resolve_versions(vec![base.clone()], &platform, &arch) {
+            Ok(v) => v.into_iter().next(),
+            Err(err) => {
+                OUTPUT.warn(&format!(
+                    "Could not resolve `{}` to check R-{}: {}",
+                    base, al.alias, err
+                ));
+                continue;
+            }
+        };
+        let Some(rver) = resolved else { continue };
+        let Some(ref version) = rver.version else {
+            continue;
+        };
+
+        match find_installed_version_arch(version, &arch)? {
+            None => {
+                OUTPUT.warn(&format!(
+                    "R-{} should point to R {} ({}), but it is not installed. Removing the stale alias.",
+                    al.alias, version, arch
+                ));
+                remove_alias(&al.alias)?;
+            }
+            Some(name) if name == al.version => {}
+            Some(name) => {
+                OUTPUT.status(&format!(
+                    "Fixing R-{} alias: {} -> {}",
+                    al.alias, al.version, name
+                ));
+                add_alias(&name, &al.alias)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// Splits an alias name like "release-x86_64" into ("release", "x86_64"), or
+// "release" into ("release", native_arch) -- the inverse of
+// `alias_with_arch_suffix`.
+fn fix_aliases_base_and_arch(alias: &str, native_arch: &str) -> (String, String) {
+    match alias.strip_suffix("-x86_64") {
+        Some(base) => (base.to_string(), "x86_64".to_string()),
+        None => (alias.to_string(), native_arch.to_string()),
+    }
+}
+
+// Admin-mode `R-devel`/`R-next`: re-point the alias if the directory it
+// currently targets is no longer the current devel/next build. R_STATUS
+// alone is not enough to tell: it is frozen at install time, so an old
+// devel/next directory that has since branched into a plain release still
+// reports its original "under development" status forever. So a directory
+// only counts as the current devel/next build if its R_STATUS matches AND
+// its reported version is exactly the one `rig resolve devel`/`rig resolve
+// next` returns today.
+fn fix_devel_next_alias(
+    al: &Alias,
+    base: &str,
+    platform: &str,
+    arch: &str,
+) -> Result<(), Box<dyn Error>> {
+    let resolved_version = match resolve_versions(vec![base.to_string()], platform, arch) {
+        Ok(v) => v.into_iter().next().and_then(|r| r.version),
+        Err(err) => {
+            OUTPUT.warn(&format!(
+                "Could not resolve `{}` to check R-{}: {}",
+                base, al.alias, err
+            ));
+            return Ok(());
+        }
+    };
+    let Some(resolved_version) = resolved_version else {
+        return Ok(());
+    };
+
+    let installed = sc_get_list_details()?;
+
+    let current_ok = installed
+        .iter()
+        .find(|ver| ver.name == al.version)
+        .and_then(|ver| ver.path.as_deref())
+        .is_some_and(|path| is_current_dev_build(Path::new(path), base, &resolved_version));
+    if current_ok {
+        return Ok(());
+    }
+
+    for ver in &installed {
+        let Some(path) = ver.path.as_deref() else {
+            continue;
+        };
+        if is_current_dev_build(Path::new(path), base, &resolved_version) {
+            if ver.name != al.version {
+                OUTPUT.status(&format!(
+                    "Fixing R-{} alias: {} -> {}",
+                    al.alias, al.version, ver.name
+                ));
+                add_alias(&ver.name, &al.alias)?;
+            }
+            return Ok(());
+        }
+    }
+
+    OUTPUT.warn(&format!(
+        "R-{} should point to R {}, but it is not installed. Removing the stale alias.",
+        al.alias, resolved_version
+    ));
+    remove_alias(&al.alias)?;
+    Ok(())
+}
+
+fn is_current_dev_build(version_dir: &Path, base: &str, resolved_version: &str) -> bool {
+    let has_status = read_installed_r_status(version_dir)
+        .ok()
+        .and_then(|status| crate::common::user_mode_dev_dirname(Some(&status)))
+        .as_deref()
+        == Some(base);
+    if !has_status {
+        return false;
+    }
+    match read_built_version_arch(version_dir) {
+        Ok((version, _arch)) => version == resolved_version,
+        Err(_) => false,
+    }
+}
+
+// Same as `read_r_status`, but for an already-installed directory rather
+// than a freshly extracted .pkg payload: the `include` folder lives under
+// `Resources` in admin-mode installs, directly under the version directory
+// in user-mode ones.
+fn read_installed_r_status(version_dir: &Path) -> Result<String, Box<dyn Error>> {
+    for base in [version_dir.join("Resources"), version_dir.to_path_buf()] {
+        if let Ok(status) = read_r_status(&base) {
+            return Ok(status);
+        }
+    }
+    bail!(
+        "Cannot find include/Rversion.h under {}",
+        version_dir.display()
+    )
+}
+
 pub fn sc_system_make_orthogonal(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     if get_mode()? == crate::utils::Mode::User {
         return Ok(());
@@ -1774,6 +1966,92 @@ fn system_no_openmp(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+const BLAS_REFERENCE_LIB: &str = "libRblas.0.dylib";
+const BLAS_ACCELERATE_LIB: &str = "libRblas.vecLib.dylib";
+
+fn blas_lib_dir(ver: &str) -> Result<PathBuf, Box<dyn Error>> {
+    Ok(Path::new(&get_r_root()?).join(get_r_libpath()?.replace("{}", ver)))
+}
+
+pub fn sc_system_blas_status(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    let vers = args.get_many::<String>("version");
+    let vers: Option<Vec<String>> = vers.map(|v| v.map(|v| v.to_string()).collect());
+    system_blas_status(vers)
+}
+
+fn system_blas_status(vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
+    let vers = match vers {
+        Some(x) => x,
+        None => sc_get_list()?,
+    };
+
+    let mut tab = Table::new("{:<}  {:<}");
+    tab.add_row(row!["version", "blas"]);
+    tab.add_heading("------------------------------------------");
+    for ver in vers {
+        let ver = check_installed(&ver)?;
+        let link = blas_lib_dir(&ver)?.join("libRblas.dylib");
+        let status = match std::fs::read_link(&link) {
+            Ok(target) => match target.file_name().and_then(|n| n.to_str()) {
+                Some(BLAS_REFERENCE_LIB) => "reference".to_string(),
+                Some(BLAS_ACCELERATE_LIB) => "accelerate".to_string(),
+                _ => format!("unknown ({})", target.display()),
+            },
+            Err(_) => "unknown (not a symlink)".to_string(),
+        };
+        tab.add_row(row!(ver, status));
+    }
+    print!("{}", tab);
+
+    Ok(())
+}
+
+pub fn sc_system_blas_set(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    if get_mode()? == crate::utils::Mode::Admin {
+        escalate("updating BLAS configuration")?;
+    }
+    let which = args
+        .get_one::<String>("blas")
+        .ok_or(SimpleError::new("Internal argument error"))?
+        .to_string();
+    let vers = args.get_many::<String>("version");
+    let vers: Option<Vec<String>> = vers.map(|v| v.map(|v| v.to_string()).collect());
+    system_blas_set(&which, vers)
+}
+
+fn system_blas_set(which: &str, vers: Option<Vec<String>>) -> Result<(), Box<dyn Error>> {
+    let vers = match vers {
+        Some(x) => x,
+        None => sc_get_list()?,
+    };
+    let target_name = if which == "accelerate" {
+        BLAS_ACCELERATE_LIB
+    } else {
+        BLAS_REFERENCE_LIB
+    };
+
+    for ver in vers {
+        let ver = check_installed(&ver)?;
+        let lib = blas_lib_dir(&ver)?;
+        if !lib.join(target_name).exists() {
+            OUTPUT.error(&format!(
+                "R {} does not have {}, skipping",
+                ver, target_name
+            ));
+            error!("R {} does not have {}, skipping", ver, target_name);
+            continue;
+        }
+        let link = lib.join("libRblas.dylib");
+        if link.exists() || link.symlink_metadata().is_ok() {
+            std::fs::remove_file(&link)?;
+        }
+        std::os::unix::fs::symlink(target_name, &link)?;
+        OUTPUT.status(&format!("R {}: BLAS set to {}", ver, which));
+    }
+
+    Ok(())
+}
+
 pub fn sc_clean_registry() -> Result<(), Box<dyn Error>> {
     // Nothing to do on macOS
     Ok(())
@@ -2170,6 +2448,42 @@ pub fn sc_get_list() -> Result<Vec<String>, Box<dyn Error>> {
 fn get_minor_version(ver: &str) -> Result<String, Box<dyn Error>> {
     let re = Regex::new("[.][^.]*$")?;
     Ok(re.replace(ver, "").to_string())
+}
+
+// Used by `rig add` to check whether `version`/`arch` is already installed.
+// The directory name is not a reliable signal for this on macOS (in admin
+// mode it only encodes the major.minor version, e.g. `4.3`, and can't tell
+// `4.3.2` from `4.3.3`; see `read_built_version_arch`), so this reads the
+// exact version and architecture every installed R actually reports,
+// regardless of what its directory happens to be named.
+fn find_installed_version_arch(
+    version: &str,
+    arch: &str,
+) -> Result<Option<String>, Box<dyn Error>> {
+    for ver in sc_get_list_details()? {
+        let Some(path) = ver.path.as_deref() else {
+            continue;
+        };
+        if let Ok((installed_version, installed_arch)) = read_built_version_arch(Path::new(path)) {
+            if installed_version == version && installed_arch == arch {
+                return Ok(Some(ver.name));
+            }
+        }
+    }
+    Ok(None)
+}
+
+// The `release`/`oldrel` aliases point at the native build. An x86_64 build
+// installed on an arm64 machine gets an `-x86_64` suffix instead, to avoid
+// colliding with the native alias.
+fn alias_with_arch_suffix(alias: Option<String>, arch: &str) -> Option<String> {
+    alias.map(|a| {
+        if arch == "x86_64" && is_arm64_machine() {
+            format!("{}-x86_64", a)
+        } else {
+            a
+        }
+    })
 }
 
 fn extract_pkg_version(filename: &OsStr) -> Result<RversionDir, Box<dyn Error>> {

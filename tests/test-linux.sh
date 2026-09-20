@@ -31,6 +31,8 @@ teardown() {
     echo "$output" | grep -q "^Download dir  */tmp/rig-$(id -u)$"
     # rtools-dir is Windows only
     echo "$output" | grep -vq "^Rtools root"
+    # no centralized project library root by default
+    echo "$output" | grep -q "^Project library root  *(in-project, .rvenv/lib)$"
 
     run rig -q system dirs --json
     [[ "$status" -eq 0 ]]
@@ -39,6 +41,7 @@ teardown() {
     echo "$output" | grep -q '"fonts_dir": "/opt/rig/fontconfig"'
     echo "$output" | grep -q "\"download_dir\": \"/tmp/rig-$(id -u)\""
     echo "$output" | grep -vq '"rtools_root"'
+    echo "$output" | grep -q '"library_root": "(in-project, .rvenv/lib)"'
 
     run rig -q --json system dirs
     [[ "$status" -eq 0 ]]
@@ -74,6 +77,8 @@ teardown() {
     [[ "$output" = "/tmp/rig-bin" ]]
     run env RIG_DOWNLOAD_DIR=/tmp/rig-dl rig -q system dirs --download
     [[ "$output" = "/tmp/rig-dl" ]]
+    run env RIG_PROJ_LIBRARY_ROOT=/tmp/rig-projlibs rig -q system dirs --library-root
+    [[ "$output" = "/tmp/rig-projlibs" ]]
 
     run env RIG_MODE=user rig -q system dirs --r
     [[ "$status" -eq 0 ]]
@@ -343,10 +348,10 @@ teardown() {
     [[ "$status" -eq 0 ]]
     grep -q '^jsonlite = "\^1.8.0"$' rproj.toml
 
-    # --dev adds to the test dependency group
+    # --dev adds to the dev dependency group
     run rig proj add 'testthat@>= 3.0' --dev --no-lock
     [[ "$status" -eq 0 ]]
-    grep -q '^\[dependency-groups.test\]$' rproj.toml
+    grep -q '^\[dependency-groups.dev\]$' rproj.toml
     grep -q '^testthat = ">= 3.0"$' rproj.toml
 
     # adding a package again updates its version requirement

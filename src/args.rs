@@ -357,6 +357,13 @@ pub fn rig_app() -> Command {
                 .required(false)
                 .value_parser(pak_version_values())
                 .default_value("stable"),
+        )
+        .arg(
+            Arg::new("reinstall")
+                .help("Reinstall, even if this R version is already installed.")
+                .long("reinstall")
+                .num_args(0)
+                .required(false),
         );
 
     {
@@ -548,6 +555,52 @@ pub fn rig_app() -> Command {
         );
     }
 
+    let cmd_self_update = Command::new("update")
+        .about(ABOUT_SELF_UPDATE)
+        .long_about(HELP_SELF_UPDATE)
+        .display_order(0)
+        .arg(
+            Arg::new("dry-run")
+                .help("Check for a new version without downloading or installing it")
+                .long("dry-run")
+                .num_args(0)
+                .required(false),
+        )
+        .arg(
+            Arg::new("pre-release")
+                .help("Include pre-releases when looking for the latest version")
+                .long("pre-release")
+                .num_args(0)
+                .required(false),
+        );
+
+    let cmd_self_uninstall = Command::new("uninstall")
+        .about(ABOUT_SELF_UNINSTALL)
+        .long_about(HELP_SELF_UNINSTALL)
+        .display_order(0)
+        .arg(
+            Arg::new("dry-run")
+                .help("Show what would be removed, without removing anything")
+                .long("dry-run")
+                .num_args(0)
+                .required(false),
+        )
+        .arg(
+            Arg::new("force")
+                .help("Actually remove rig, instead of just showing what would be removed")
+                .long("force")
+                .num_args(0)
+                .required(false),
+        );
+
+    let cmd_self = Command::new("self")
+        .about(ABOUT_SELF)
+        .long_about(HELP_SELF)
+        .display_order(0)
+        .arg_required_else_help(true)
+        .subcommand(cmd_self_update)
+        .subcommand(cmd_self_uninstall);
+
     let mut cmd_system = Command::new("system")
         .about(ABOUT_SYSTEM)
         .long_about(HELP_SYSTEM)
@@ -558,6 +611,11 @@ pub fn rig_app() -> Command {
         .about(ABOUT_SYSTEM_MAKE_LINKS)
         .display_order(0)
         .long_about(HELP_SYSTEM_MAKE_LINKS);
+
+    let cmd_system_fix_aliases = Command::new("fix-aliases")
+        .about(ABOUT_SYSTEM_FIX_ALIASES)
+        .display_order(0)
+        .long_about(HELP_SYSTEM_FIX_ALIASES);
 
     let cmd_system_lib = Command::new("setup-user-lib")
         .about(ABOUT_SYSTEM_SETUP_USER_LIB)
@@ -733,11 +791,49 @@ pub fn rig_app() -> Command {
                     .action(clap::ArgAction::Append),
             );
 
+        let cmd_system_blas_status = Command::new("status")
+            .about(ABOUT_SYSTEM_BLAS_STATUS)
+            .long_about(HELP_SYSTEM_BLAS_STATUS)
+            .display_order(0)
+            .arg(
+                Arg::new("version")
+                    .help("R versions to check (default: all)")
+                    .required(false)
+                    .action(clap::ArgAction::Append),
+            );
+
+        let cmd_system_blas_set = Command::new("set")
+            .about(ABOUT_SYSTEM_BLAS_SET)
+            .long_about(HELP_SYSTEM_BLAS_SET)
+            .display_order(0)
+            .arg(
+                Arg::new("blas")
+                    .help("BLAS library to use")
+                    .required(true)
+                    .value_parser(["reference", "accelerate"]),
+            )
+            .arg(
+                Arg::new("version")
+                    .help("R versions to update (default: all)")
+                    .required(false)
+                    .action(clap::ArgAction::Append),
+            );
+
+        let cmd_system_blas = Command::new("blas")
+            .about(ABOUT_SYSTEM_BLAS)
+            .long_about(HELP_SYSTEM_BLAS)
+            .display_order(0)
+            .platform("macos")
+            .arg_required_else_help(true)
+            .subcommand(cmd_system_blas_status)
+            .subcommand(cmd_system_blas_set);
+
         cmd_system = cmd_system
             .subcommand(cmd_system_noopenmp)
             .subcommand(cmd_system_allow_debugger)
             .subcommand(cmd_system_allow_debugger_rstudio)
-            .subcommand(cmd_system_allow_core_dumps);
+            .subcommand(cmd_system_allow_core_dumps)
+            .subcommand(cmd_system_blas);
     }
 
     {
@@ -872,8 +968,20 @@ pub fn rig_app() -> Command {
             "Print rig's installer download directory only.",
         ))
         .arg(dir_arg("log", "Print rig's log directory only.").alias("logs"))
+        .arg(dir_arg(
+            "library-root",
+            "Print the centralized `rig proj` library root only.",
+        ))
         .group(ArgGroup::new("dir").args([
-            "r", "rtools", "binary", "data", "fonts", "cache", "download", "log",
+            "r",
+            "rtools",
+            "binary",
+            "data",
+            "fonts",
+            "cache",
+            "download",
+            "log",
+            "library-root",
         ]))
         // `--arch` only changes the answer on Windows, where the admin mode R
         // installation root is architecture dependent, so it is hidden
@@ -896,6 +1004,7 @@ pub fn rig_app() -> Command {
 
     cmd_system = cmd_system
         .subcommand(cmd_system_links)
+        .subcommand(cmd_system_fix_aliases)
         .subcommand(cmd_system_lib)
         .subcommand(cmd_system_pak);
 
@@ -1115,7 +1224,7 @@ pub fn rig_app() -> Command {
                         .help("Only delete this category of cached files")
                         .long("category")
                         .required(false)
-                        .value_parser(["built", "packages", "metadata", "p3m"]),
+                        .value_parser(["built", "packages", "metadata", "p3m", "git-mirrors"]),
                 ),
         );
 
@@ -1170,71 +1279,6 @@ pub fn rig_app() -> Command {
                     ),
             );
         rig = rig.subcommand(cmd_config);
-    }
-
-    {
-        let cmd_sysreqs = Command::new("sysreqs")
-            .about(ABOUT_SYSREQS)
-            .display_order(0)
-            .platform("macos")
-            .long_about(HELP_SYSREQS)
-            .arg_required_else_help(true)
-            .arg(
-                Arg::new("json")
-                    .help("JSON output")
-                    .long("json")
-                    .num_args(0)
-                    .required(false),
-            )
-            .subcommand(
-                Command::new("add")
-                    .about(ABOUT_SYSREQS_ADD)
-                    .long_about(HELP_SYSREQS_ADD)
-                    .display_order(0)
-                    .arg(
-                        Arg::new("name")
-                            .help("system tool to install")
-                            .required(true)
-                            .action(clap::ArgAction::Append),
-                    )
-                    .arg(
-                        Arg::new("arch")
-                            .help("Architecture to install for")
-                            .short('a')
-                            .long("arch")
-                            .required(false)
-                            .default_value(_default_arch)
-                            .value_parser(["arm64", "x86_64"]),
-                    ),
-            )
-            .subcommand(
-                Command::new("list")
-                    .about(ABOUT_SYSREQS_LIST)
-                    .long_about(HELP_SYSREQS_LIST)
-                    .display_order(0)
-                    .arg(
-                        Arg::new("json")
-                            .help("JSON output")
-                            .long("json")
-                            .num_args(0)
-                            .required(false),
-                    ),
-            )
-            .subcommand(
-                Command::new("info")
-                    .about(ABOUT_SYSREQS_INFO)
-                    .long_about(HELP_SYSREQS_INFO)
-                    .display_order(0)
-                    .arg(Arg::new("name").help("system tool to show").required(true))
-                    .arg(
-                        Arg::new("json")
-                            .help("JSON output")
-                            .long("json")
-                            .num_args(0)
-                            .required(false),
-                    ),
-            );
-        rig = rig.subcommand(cmd_sysreqs);
     }
 
     let cmd_run = Command::new("run")
@@ -1349,6 +1393,29 @@ pub fn rig_app() -> Command {
                 .long("json")
                 .action(clap::ArgAction::SetTrue)
                 .required(false),
+        )
+        .arg(
+            Arg::new("activate")
+                .help("Put the selected R version on PATH for the subprocess")
+                .long("activate")
+                .action(clap::ArgAction::SetTrue)
+                .required(false),
+        )
+        .arg(
+            Arg::new("shell")
+                .help("Run a shell instead of R, with the selected R version on PATH")
+                .long("shell")
+                .action(clap::ArgAction::SetTrue)
+                .required(false)
+                .conflicts_with_all(["eval", "script", "cmd", "list", "app-type", "command"]),
+        )
+        .arg(
+            Arg::new("rscript")
+                .help("Run with Rscript instead of R, e.g. for scripts (no echoing of input)")
+                .long("rscript")
+                .action(clap::ArgAction::SetTrue)
+                .required(false)
+                .conflicts_with_all(["cmd", "shell"]),
         )
         .arg(
             Arg::new("command")
@@ -1639,9 +1706,15 @@ pub fn rig_app() -> Command {
                         .required(false),
                 )
                 .arg(
-                    Arg::new("no-dev")
-                        .help("Leave out dev (development) dependencies")
-                        .long("no-dev")
+                    Arg::new("upgrade")
+                        .help(
+                            "Re-resolve every dependency instead of reusing an existing\n\
+                            rproj.lock: re-check git/GitHub refs against their remotes,\n\
+                            and re-run the solver for CRAN/PPM dependencies instead of\n\
+                            keeping a pin that already satisfies rproj.toml.",
+                        )
+                        .long("upgrade")
+                        .short('U')
                         .num_args(0)
                         .required(false),
                 ),
@@ -1665,17 +1738,6 @@ pub fn rig_app() -> Command {
                 .long_about(HELP_PROJ_SYNC)
                 .display_order(0)
                 .arg(
-                    Arg::new("library")
-                        .help(
-                            "Library path where packages should be installed \
-                               (default: .rvenv/lib)",
-                        )
-                        .long("library")
-                        .short('l')
-                        .num_args(1)
-                        .required(false),
-                )
-                .arg(
                     Arg::new("no-install-r")
                         .help(
                             "Fail if the R version the lockfile needs is not installed,\n\
@@ -1687,7 +1749,11 @@ pub fn rig_app() -> Command {
                 )
                 .arg(
                     Arg::new("max-concurrent")
-                        .help("Maximum number of concurrent installations (default: 8)")
+                        .help(
+                            "Maximum number of concurrent installations\n\
+                            (default: number of CPU cores, see 'concurrent-installs'\n\
+                            in 'rig config')",
+                        )
                         .long("max-concurrent")
                         .num_args(1)
                         .value_parser(clap::value_parser!(usize))
@@ -1695,8 +1761,53 @@ pub fn rig_app() -> Command {
                 )
                 .arg(
                     Arg::new("no-dev")
-                        .help("Do not install dev (development) dependencies")
+                        .help(
+                            "Do not install the dev dependency group (default:\n\
+                            installed alongside main). An explicit --group dev or\n\
+                            --all-groups installs it anyway.",
+                        )
                         .long("no-dev")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("group")
+                        .help(
+                            "Also install this dependency group, in addition to the\n\
+                            default set (main, plus dev unless --no-dev). Repeat or\n\
+                            comma-separate for several.",
+                        )
+                        .long("group")
+                        .value_name("NAME")
+                        .num_args(1)
+                        .value_delimiter(',')
+                        .action(clap::ArgAction::Append)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("all-groups")
+                        .help("Install every dependency group.")
+                        .long("all-groups")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("extra")
+                        .help(
+                            "Install this optional-dependency extra. Not installed by\n\
+                            default. Repeat or comma-separate for several.",
+                        )
+                        .long("extra")
+                        .value_name("NAME")
+                        .num_args(1)
+                        .value_delimiter(',')
+                        .action(clap::ArgAction::Append)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("all-extras")
+                        .help("Install every optional-dependency extra.")
+                        .long("all-extras")
                         .num_args(0)
                         .required(false),
                 )
@@ -2679,6 +2790,7 @@ pub fn rig_app() -> Command {
         .subcommand(cmd_list)
         .subcommand(cmd_add)
         .subcommand(cmd_rm)
+        .subcommand(cmd_self)
         .subcommand(cmd_system)
         .subcommand(cmd_rtools())
         .subcommand(cmd_resolve)
@@ -2728,8 +2840,56 @@ where
     out
 }
 
+// Splits `rig`'s raw arguments before clap sees them.
+//
+// `rig run --cmd <command> [args...]`: unchanged, delegates to
+// `rcmd_argv()` -- a literal `--` is auto-inserted right after `--cmd` so
+// clap doesn't reinterpret the R CMD command's own flags as rig's.
+//
+// `rig run [...] -- <r-args...>` (without `--cmd`): a literal `--`
+// separates rig's own arguments (an eval/script/app name and its own
+// arguments) from raw R/`Rscript` engine flags, e.g. `rig run -- --vanilla`
+// or `rig run report --format pdf -- --vanilla`. Everything from that `--`
+// onward is pulled out *here*, before clap ever sees it, so it can never
+// collide with rig's own flags (not even the built-in `--help`/`--version`),
+// and returned separately for `sc_run()` to forward straight to the R
+// process. `--` is not otherwise meaningful to any rig command.
+fn split_run_args<I>(argv: I) -> (Vec<std::ffi::OsString>, Vec<String>)
+where
+    I: IntoIterator<Item = std::ffi::OsString>,
+{
+    use std::ffi::OsStr;
+    let argv: Vec<std::ffi::OsString> = argv.into_iter().collect();
+    if argv.iter().any(|a| a.as_os_str() == OsStr::new("--cmd")) {
+        return (rcmd_argv(argv), vec![]);
+    }
+    let mut out = Vec::new();
+    let mut iter = argv.into_iter();
+    while let Some(arg) = iter.next() {
+        if arg.as_os_str() == OsStr::new("--") {
+            return (
+                out,
+                iter.map(|a| a.to_string_lossy().into_owned()).collect(),
+            );
+        }
+        out.push(arg);
+    }
+    (out, vec![])
+}
+
+static RUN_R_ARGS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+
+/// Raw R engine flags typed after a literal `--` in `rig run ... -- <flags>`
+/// (empty unless the matched subcommand is `run` and `--cmd` was not given;
+/// see `split_run_args()`).
+pub fn run_r_args() -> &'static [String] {
+    RUN_R_ARGS.get().map(|v| v.as_slice()).unwrap_or(&[])
+}
+
 pub fn parse_args() -> ArgMatches {
-    match rig_app().try_get_matches_from(rcmd_argv(std::env::args_os())) {
+    let (argv, r_args) = split_run_args(std::env::args_os());
+    let _ = RUN_R_ARGS.set(r_args);
+    match rig_app().try_get_matches_from(argv) {
         Ok(matches) => matches,
         Err(e) => {
             use clap::error::ErrorKind::*;
@@ -2845,6 +3005,57 @@ mod tests {
     }
 
     #[test]
+    fn proj_sync_group_flag_is_repeatable_and_comma_separated() {
+        let matches = rig_app()
+            .try_get_matches_from([
+                "rig",
+                "proj",
+                "sync",
+                "--group",
+                "dev",
+                "--group",
+                "test,docs",
+            ])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        let groups: Vec<&String> = sub.get_many::<String>("group").unwrap().collect();
+        assert_eq!(groups, vec!["dev", "test", "docs"]);
+    }
+
+    #[test]
+    fn proj_sync_extra_flag_is_repeatable_and_comma_separated() {
+        let matches = rig_app()
+            .try_get_matches_from([
+                "rig", "proj", "sync", "--extra", "viz", "--extra", "db,plot",
+            ])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        let extras: Vec<&String> = sub.get_many::<String>("extra").unwrap().collect();
+        assert_eq!(extras, vec!["viz", "db", "plot"]);
+    }
+
+    #[test]
+    fn proj_sync_all_groups_and_all_extras_flags() {
+        let matches = rig_app()
+            .try_get_matches_from(["rig", "proj", "sync", "--all-groups", "--all-extras"])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        assert!(sub.get_flag("all-groups"));
+        assert!(sub.get_flag("all-extras"));
+    }
+
+    #[test]
+    fn proj_lock_no_longer_has_a_no_dev_flag() {
+        let err = rig_app()
+            .try_get_matches_from(["rig", "proj", "lock", "--no-dev"])
+            .unwrap_err();
+        assert_eq!(err.kind(), clap::error::ErrorKind::UnknownArgument);
+    }
+
+    #[test]
     fn test_rcmd_argv_keeps_rig_flags_before_cmd() {
         assert_eq!(
             rcmd(&[
@@ -2916,6 +3127,71 @@ mod tests {
         assert_eq!(cmdargs, ["check", "--no-manual", "."]);
     }
 
+    fn split(argv: &[&str]) -> (Vec<String>, Vec<String>) {
+        let (out, r_args) = split_run_args(argv.iter().map(OsString::from));
+        let out = out
+            .iter()
+            .map(|x| x.to_string_lossy().into_owned())
+            .collect();
+        (out, r_args)
+    }
+
+    #[test]
+    fn test_split_run_args_no_separator() {
+        let (out, r_args) = split(&["rig", "run", "-e", "1+1"]);
+        assert_eq!(out, ["rig", "run", "-e", "1+1"]);
+        assert!(r_args.is_empty());
+    }
+
+    #[test]
+    fn test_split_run_args_bare() {
+        let (out, r_args) = split(&["rig", "run", "--", "--vanilla", "--no-save"]);
+        assert_eq!(out, ["rig", "run"]);
+        assert_eq!(r_args, ["--vanilla", "--no-save"]);
+    }
+
+    #[test]
+    fn test_split_run_args_with_app_and_own_args() {
+        let (out, r_args) = split(&["rig", "run", "report", "--format", "pdf", "--", "--vanilla"]);
+        assert_eq!(out, ["rig", "run", "report", "--format", "pdf"]);
+        assert_eq!(r_args, ["--vanilla"]);
+    }
+
+    #[test]
+    fn test_split_run_args_with_eval() {
+        let (out, r_args) = split(&["rig", "run", "-e", "1+1", "--", "--vanilla"]);
+        assert_eq!(out, ["rig", "run", "-e", "1+1"]);
+        assert_eq!(r_args, ["--vanilla"]);
+    }
+
+    #[test]
+    fn test_split_run_args_cmd_untouched() {
+        // Any `--cmd` in the argv delegates entirely to `rcmd_argv()`, and no
+        // raw R args are extracted, even if the user also typed a `--`.
+        let (out, r_args) = split(&["rig", "run", "--cmd", "check", "--no-manual", "."]);
+        assert_eq!(
+            out,
+            ["rig", "run", "--cmd", "--", "check", "--no-manual", "."]
+        );
+        assert!(r_args.is_empty());
+
+        let (out, r_args) = split(&["rig", "run", "--cmd", "check", "--", "--no-manual", "."]);
+        assert_eq!(
+            out,
+            [
+                "rig",
+                "run",
+                "--cmd",
+                "--",
+                "check",
+                "--",
+                "--no-manual",
+                "."
+            ]
+        );
+        assert!(r_args.is_empty());
+    }
+
     // The `rig system dirs` family. These tests run on every platform, so they
     // are also the guard that the items that are merely *hidden* off Windows
     // stay defined everywhere.
@@ -2943,7 +3219,17 @@ mod tests {
 
     #[test]
     fn test_system_dirs_selectors() {
-        for sel in ["r", "rtools", "binary", "data", "fonts", "cache", "log"] {
+        let selectors = [
+            "r",
+            "rtools",
+            "binary",
+            "data",
+            "fonts",
+            "cache",
+            "log",
+            "library-root",
+        ];
+        for sel in selectors {
             // `--rtools` is hidden off Windows and `--fonts` off Linux, but
             // they must still parse, so that scripts can call them
             // unconditionally.
@@ -2951,7 +3237,7 @@ mod tests {
             let dirs = m.subcommand_matches("dirs").unwrap();
             assert!(dirs.get_flag(sel), "--{} is not set", sel);
             // Setting one must not set any of the others.
-            for other in ["r", "rtools", "binary", "data", "fonts", "cache", "log"] {
+            for other in selectors {
                 assert_eq!(dirs.get_flag(other), other == sel);
             }
         }

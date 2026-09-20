@@ -22,7 +22,7 @@ to merge dependencies into an existing file instead.
 | `Depends`             | `[dependencies]`               |
 | `Imports`             | `[dependencies]`               |
 | `LinkingTo`           | `[linking-dependencies]`       |
-| `Suggests`            | `[dependency-groups.test]`     |
+| `Suggests`            | `[dependency-groups.dev]`      |
 | `Enhances`            | `[dependency-groups.enhances]` |
 | `Config/Needs/<name>` | `[dependency-groups.<name>]`   |
 
@@ -36,7 +36,7 @@ Name <email>` field is used instead, as a single author with role `cre`.
 a plain package name (with an optional version requirement) is kept
 verbatim as `ref = "..."`. E.g. `tidyverse/tidytemplate` becomes `tidytemplate =
 { ref = "tidyverse/tidytemplate" }`. `rig proj export` writes these back
-unchanged. Note that only the `test` and `enhances` groups are installed by
+unchanged. Note that only the `dev` and `enhances` groups are installed by
 rig, so a `Config/Needs/*` group is carried in the manifest, but not solved
 or installed by `rig proj lock` and `rig proj sync`. This behavior will be
 improved in the future.

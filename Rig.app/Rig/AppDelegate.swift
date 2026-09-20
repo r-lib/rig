@@ -30,7 +30,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func setStatusBarTitle() {
         let def = try? rigDefault()
-        if def == nil {
+        if def == nil || !UserDefaults.standard.bool(forKey: "versionShowNumber") {
             statusBarItem.button?.title = "R"
         } else {
             let lib = try? rigLibDefault()
@@ -40,6 +40,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
+        UserDefaults.standard.register(defaults: [
+            "showRStudioMenu": true,
+            "versionShowNumber": true,
+        ])
+
         let statusBar = NSStatusBar.system
         statusBarItem = statusBar.statusItem(withLength: NSStatusItem.variableLength)
         setStatusBarTitle()
@@ -115,17 +120,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         let rstudio = NSMenuItem(title: "RStudio", action: #selector(startRStudio), keyEquivalent: "")
         rstudio.submenu = rstudioMenu
-        menu.addItem(NSMenuItem(title: "Start", action: nil, keyEquivalent: ""))
-        menu.addItem(rstudio)
+        let showRStudioMenu = UserDefaults.standard.bool(forKey: "showRStudioMenu")
+        if showRStudioMenu {
+            menu.addItem(NSMenuItem(title: "Start", action: nil, keyEquivalent: ""))
+            menu.addItem(rstudio)
+        }
 
         // -- project menu -----------------------------------------------------------------------------------------------------
 
         let projects = recentRStudioProjects()
-        if projects != nil {
+        if projects != nil && showRStudioMenu {
             let projectMenu = NSMenu()
             for p in projects! {
                 if p == "" { continue }
-                let fileName = String((p as NSString).lastPathComponent.split(separator: ".").first!)
+                let fileName = (p as NSString).lastPathComponent
+                let displayName = (fileName as NSString).deletingPathExtension
                 let submenu = NSMenu()
                 let defitem = NSMenuItem(title: "Default", action: #selector(startRStudio2), keyEquivalent: "")
                 defitem.representedObject = [p, "default"]
@@ -137,7 +146,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     subitem.representedObject = [p, v.name]
                     submenu.addItem(subitem)
                 }
-                let item = NSMenuItem(title: fileName, action: #selector(startRStudio2), keyEquivalent: "")
+                let item = NSMenuItem(title: displayName, action: #selector(startRStudio2), keyEquivalent: "")
                 item.submenu = submenu
                 item.representedObject = [p, "default"]
                 projectMenu.addItem(item)
@@ -151,15 +160,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Current R Version", action: nil, keyEquivalent: ""))
+        let showVersionNumber = UserDefaults.standard.bool(forKey: "versionShowNumber")
         for v in list {
-            let mark = NSAttributedString(
-                string: v.version == "" ? " (broken?)" : (" (R " + v.version + ")"),
-                attributes: [ NSAttributedString.Key.foregroundColor: NSColor.systemGray]
-            )
-            let label = NSMutableAttributedString(string: "R " + v.name + "  ")
-            label.append(mark)
             let item = NSMenuItem()
-            item.attributedTitle = label
+            if showVersionNumber {
+                let mark = NSAttributedString(
+                    string: v.version == "" ? " (broken?)" : (" (R " + v.version + ")"),
+                    attributes: [ NSAttributedString.Key.foregroundColor: NSColor.systemGray]
+                )
+                let label = NSMutableAttributedString(string: "R " + v.name + "  ")
+                label.append(mark)
+                item.attributedTitle = label
+            } else {
+                item.title = "R " + v.name
+            }
             item.action = #selector(selectVersion)
             item.keyEquivalent = ""
             item.representedObject = v.name

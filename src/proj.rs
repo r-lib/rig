@@ -38,13 +38,14 @@ use crate::repos::cranlike_metadata::{ensure_allpackages_fresh, minor_r_version}
 use crate::repos::*;
 use crate::resolve::resolve_versions;
 use crate::rproj::{
-    parse_add_spec, Author, DepTable, Repository, Rproj, RprojLock, RprojLockPackage,
-    RprojLockTarget, RPROJ_LOCK_VERSION, RPROJ_MANIFEST_FILE,
+    format_constraints, parse_add_spec, Author, DepTable, LockDirectDependency, Repository, Rproj,
+    RprojLock, RprojLockPackage, RprojLockTarget, RPROJ_LOCK_VERSION, RPROJ_MANIFEST_FILE,
 };
 use crate::rvenv::{
-    existing_targets, find_project_root, find_workspace_root, project_library,
-    project_shim_package, read_rvenv_cfg, rvenv_init, rvenv_sync, rvenv_sync_needed,
-    workspace_members, write_sync_stamp, RvenvCfg, RPROJ_LOCK_FILE, RVENV_CFG_FILE,
+    existing_targets, find_project_root, find_workspace_root, link_library_compat_symlink,
+    project_library, project_library_in_tree, project_shim_package, read_rvenv_cfg, rvenv_init,
+    rvenv_sync, rvenv_sync_needed, workspace_members, write_sync_stamp, RvenvCfg, RPROJ_LOCK_FILE,
+    RVENV_CFG_FILE,
 };
 use crate::solver::*;
 use crate::textfmt::{dcf_field_to_text, reflow};
@@ -429,7 +430,7 @@ fn sc_proj_import(
                         Some(name) => {
                             let dev = manifest
                                 .dependency_groups
-                                .get("test")
+                                .get("dev")
                                 .is_some_and(|g| g.dependencies.contains_key(&name))
                                 && !manifest.dependencies.contains_key(&name);
                             let table = dep_table_from_remote(&r, entry);
@@ -616,7 +617,8 @@ fn parse_add_arg(spec: &str) -> Result<AddSpec, Box<dyn Error>> {
             let table = dep_table_from_remote(&r, spec);
             let git_url = table.git.clone().unwrap_or_default();
             OUTPUT.status(&format!("Fetching {}", git_url));
-            let (pkg, _source, _remotes) = fetch_and_read_git_package(&git_url, &table)?;
+            let (pkg, _source, _remotes) =
+                fetch_and_read_git_package(&git_url, &table, &HashMap::new(), &HashMap::new())?;
             let name = r.name_override.unwrap_or(pkg.name);
             Ok(AddSpec::Remote(name, Box::new(table)))
         }
@@ -704,14 +706,14 @@ fn sc_proj_add(
 
         if let Some(doc) = original_doc.as_mut() {
             let path: &[&str] = if dev {
-                &["dependency-groups", "test"]
+                &["dependency-groups", "dev"]
             } else {
                 &["dependencies"]
             };
             let value = if dev {
                 manifest
                     .dependency_groups
-                    .get("test")
+                    .get("dev")
                     .and_then(|group| group.dependencies.get(name))
             } else {
                 manifest.dependencies.get(name)
@@ -956,6 +958,36 @@ pub(crate) fn proj_read_manifest_deps(
     Ok((manifest.project.name, version, deps))
 }
 
+/// [`proj_read_manifest_deps`], plus the manifest's git/GitHub/GitLab-sourced
+/// dependencies (see [`crate::rproj::Rproj::git_dependencies`]), for
+/// `rig proj tree`, which needs them to resolve a remote package met while
+/// walking the tree the same way [`register_git_sources`] does for a solve.
+#[allow(clippy::type_complexity)]
+fn proj_read_manifest_deps_with_remotes(
+    root: &Path,
+    dev: bool,
+) -> Result<
+    (
+        String,
+        RPackageVersion,
+        PackageDependencies,
+        Vec<(String, DepTable)>,
+    ),
+    Box<dyn Error>,
+> {
+    OUTPUT.status(&format!(
+        "Reading dependencies from {}",
+        RPROJ_MANIFEST_FILE
+    ));
+    info!("Reading dependencies from {}", RPROJ_MANIFEST_FILE);
+    let manifest = proj_read_manifest(root)?;
+
+    let deps = manifest.to_dep_version_specs(dev)?;
+    let version = RPackageVersion::from_str(&manifest.project.version)?;
+    let git_deps = manifest.git_dependencies();
+    Ok((manifest.project.name, version, deps, git_deps))
+}
+
 /// What one solve is rooted at: a plain project, or every member of a
 /// workspace.
 #[derive(Debug)]
@@ -970,10 +1002,16 @@ pub(crate) struct ProjectSolve {
     /// non-dev subset of the lockfile needs.
     pub merged: PackageDependencies,
     /// Every member's dependency groups, merged by name: `"main"` for the
-    /// hard dependencies, plus every `[dependency-groups.*]` name, each
-    /// mapped to its direct dependency names. Used after the solve to tag
-    /// each locked package with the group(s) that need it.
+    /// hard dependencies, plus every `[dependency-groups.*]` name
+    /// (`include-groups` resolved), each mapped to its effective dependency
+    /// names. Used after the solve to tag each locked package with the
+    /// group(s) that need it. Kept separate from [`Self::extra_roots`] so
+    /// `rig proj sync`'s `--group`/`--all-groups` and `--extra`/`--all-extras`
+    /// mean different things.
     pub group_roots: HashMap<String, Vec<String>>,
+    /// Every member's `[optional-dependencies.*]` extras, merged by name,
+    /// each mapped to its direct dependency names. See [`Self::group_roots`].
+    pub extra_roots: HashMap<String, Vec<String>>,
     /// Every member's git/GitHub-sourced dependencies, merged, see
     /// [`Rproj::git_dependencies`]. Fetched and registered with the solver by
     /// [`register_git_sources`] before it runs.
@@ -989,10 +1027,7 @@ pub(crate) struct ProjectSolve {
 /// (see [`Rproj::inherit_workspace_deps`]), and each becomes a root of the
 /// solve under its own name and version. Otherwise this is one plain project,
 /// and the single root is the synthetic one the solver has always used.
-pub(crate) fn proj_read_solve_roots(
-    root: &Path,
-    dev: bool,
-) -> Result<ProjectSolve, Box<dyn Error>> {
+pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn Error>> {
     let manifest = proj_read_manifest(root)?;
     let ws = match &manifest.workspace {
         Some(ws) if !ws.members.is_empty() => ws,
@@ -1002,14 +1037,16 @@ pub(crate) fn proj_read_solve_roots(
                 RPROJ_MANIFEST_FILE
             ));
             info!("Reading dependencies from {}", RPROJ_MANIFEST_FILE);
-            let deps = manifest.to_dep_version_specs(dev)?;
-            let group_roots = manifest.dependency_group_roots();
+            let deps = manifest.to_dep_version_specs(true)?;
+            let group_roots = manifest.main_and_group_roots()?;
+            let extra_roots = manifest.optional_dependency_roots();
             let git_deps = manifest.git_dependencies();
             return Ok(ProjectSolve {
                 members: vec![root.to_path_buf()],
                 roots: vec![SolveRoot::project(deps.clone())?],
                 merged: deps,
                 group_roots,
+                extra_roots,
                 git_deps,
             });
         }
@@ -1028,6 +1065,7 @@ pub(crate) fn proj_read_solve_roots(
         dependencies: vec![],
     };
     let mut group_roots: HashMap<String, Vec<String>> = HashMap::new();
+    let mut extra_roots: HashMap<String, Vec<String>> = HashMap::new();
     let mut seen: HashMap<String, PathBuf> = HashMap::new();
     let mut git_deps: Vec<(String, crate::rproj::DepTable)> = vec![];
 
@@ -1057,10 +1095,13 @@ pub(crate) fn proj_read_solve_roots(
             );
         }
 
-        let deps = member.to_dep_version_specs(dev)?;
+        let deps = member.to_dep_version_specs(true)?;
         merged.append(&mut deps.clone());
-        for (group_name, names) in member.dependency_group_roots() {
+        for (group_name, names) in member.main_and_group_roots()? {
             group_roots.entry(group_name).or_default().extend(names);
+        }
+        for (extra_name, names) in member.optional_dependency_roots() {
+            extra_roots.entry(extra_name).or_default().extend(names);
         }
         roots.push(SolveRoot {
             name,
@@ -1078,6 +1119,7 @@ pub(crate) fn proj_read_solve_roots(
         roots,
         merged,
         group_roots,
+        extra_roots,
         git_deps,
     })
 }
@@ -1220,12 +1262,14 @@ fn sc_proj_tree(
     let no_base = args.get_flag("no-base");
     let why = args.get_one::<String>("why").map(|s| s.as_str());
     let json = args.get_flag("json") || projargs.get_flag("json") || mainargs.get_flag("json");
-    let (name, version, pkg_deps) = proj_read_manifest_deps(Path::new("."), dev)?;
+    let (name, version, pkg_deps, git_deps) =
+        proj_read_manifest_deps_with_remotes(Path::new("."), dev)?;
 
     proj_tree(
         &name,
         &version,
         &pkg_deps.dependencies,
+        git_deps.into_iter().collect(),
         dev,
         no_base,
         why,
@@ -1313,15 +1357,7 @@ pub(crate) fn sc_proj_solve_project_deps(
     report_status: bool,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
     let roots = [SolveRoot::project(deps.clone())?];
-    sc_proj_solve_deps(
-        r_version,
-        &roots,
-        &[],
-        target,
-        prefer_binary,
-        report_status,
-        false,
-    )
+    sc_proj_solve_deps(r_version, &roots, &[], target, prefer_binary, report_status)
 }
 
 /// Solve the dependencies of every root in `roots` for one R version and one
@@ -1337,11 +1373,10 @@ pub(crate) fn sc_proj_solve_project_deps(
 pub(crate) fn sc_proj_solve_deps(
     r_version: &str,
     roots: &[SolveRoot],
-    git_deps: &[(String, DepTable)],
+    git_sources: &[ResolvedGitSource],
     target: Option<BinaryTarget>,
     prefer_binary: Option<usize>,
     report_status: bool,
-    dev: bool,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
     info!("Solving dependencies");
 
@@ -1360,12 +1395,12 @@ pub(crate) fn sc_proj_solve_deps(
 
     let (root_pkg, root_version) = register_roots(&reg, roots)?;
 
-    if !git_deps.is_empty() {
+    if !git_sources.is_empty() {
         if report_status {
-            OUTPUT.status("Fetching git/GitHub package sources");
+            OUTPUT.status("Registering git/GitHub package sources");
         }
-        info!("Fetching git/GitHub package sources");
-        register_git_sources(&reg, git_deps, dev)?;
+        info!("Registering git/GitHub package sources");
+        register_git_sources(&reg, git_sources);
     }
 
     // add R itself, for now a hardcoded version
@@ -1431,82 +1466,326 @@ pub(crate) fn sc_proj_solve_deps(
     }
 }
 
-/// Fetch every git/GitHub-sourced dependency in `git_deps` and register it
-/// with `reg` as a pre-resolved package version, the same mechanism
-/// `register_roots` uses for workspace members: the version and its
-/// dependencies are already known from the fetched `DESCRIPTION`, so the
-/// solver never looks it up in a repository index (`RPackageRegistry::
-/// add_package_version` marks it loaded).
+/// The identity of a git/GitHub dependency's *request* -- its URL, resolved
+/// refspec (`None` meaning "just take the default branch tip"), and
+/// subdirectory -- but not the commit it resolves to. Two `rig proj lock`
+/// runs producing the same key for the same dependency are asking git the
+/// same question, so [`existing_git_shas`] lets the second one skip asking
+/// again. Deliberately excludes a `release = true` dependency, whose
+/// `refspec` (the release tag) is only known after asking GitHub which
+/// release is latest -- exactly the remote round trip being skipped, so it
+/// can't be part of the key up front. [`existing_release_refs`] gives that
+/// case its own sticky mechanism, keyed on URL and subdirectory alone.
+type GitSourceKey = (String, Option<String>, Option<String>);
+
+/// Read and parse the `rproj.lock` at `root`, if there is one and it's the
+/// current lock format -- `None` for a first `rig proj lock`, or one
+/// recovering from a corrupt or outdated lockfile, in which case every
+/// target always resolves fresh, same as before any sticky-lock behavior
+/// existed. Shared by [`existing_git_shas`] and [`existing_lock_satisfies`]
+/// so a `proj_lock` run parses the file once instead of twice.
+fn read_existing_lock(root: &Path) -> Option<RprojLock> {
+    let text = fs::read_to_string(root.join(RPROJ_LOCK_FILE)).ok()?;
+    RprojLock::check_version(&text).ok()?;
+    toml::from_str::<RprojLock>(&text).ok()
+}
+
+/// Every git/GitHub dependency's previously resolved commit, read from an
+/// already-parsed `rproj.lock`, keyed by [`GitSourceKey`].
+///
+/// This is what lets an ordinary `rig proj lock` run reuse a pinned commit
+/// without contacting the dependency's remote at all when its request is
+/// unchanged, instead of re-fetching a possibly-moved branch/tag/PR every
+/// time -- the same "a lockfile is sticky until you ask to upgrade" behavior
+/// `Cargo.lock`/`uv.lock` have (see the `--upgrade` flag, which skips calling
+/// this instead, forcing every git dependency to resolve fresh).
+fn existing_git_shas(lock: &RprojLock) -> HashMap<GitSourceKey, String> {
+    let mut map = HashMap::new();
+    for target in &lock.targets {
+        for pkg in &target.packages {
+            if !pkg.metadata.contains_key(REMOTE_TYPE_FIELD) {
+                continue;
+            }
+            let url = pkg.metadata.get(crate::install::REMOTE_URL_FIELD);
+            let sha = pkg.metadata.get(crate::install::REMOTE_SHA_FIELD);
+            let (Some(url), Some(sha)) = (url, sha) else {
+                continue;
+            };
+            let refspec = pkg.metadata.get(crate::install::REMOTE_REF_FIELD).cloned();
+            let subdir = pkg.metadata.get(REMOTE_SUBDIR_FIELD).cloned();
+            map.insert((url.clone(), refspec, subdir), sha.clone());
+        }
+    }
+    map
+}
+
+/// Every `release = true` dependency's previously resolved tag and commit,
+/// read from an already-parsed `rproj.lock`, keyed by (URL, subdirectory) --
+/// unlike [`existing_git_shas`]'s [`GitSourceKey`], not by refspec, since a
+/// release dependency's refspec (the release tag) is only known after
+/// resolving "whatever is latest" against the remote, which is exactly what
+/// this lets an ordinary `rig proj lock` run skip: reuse the previously
+/// resolved tag as-is instead of asking GitHub which release is latest every
+/// time. `--upgrade` skips calling this, same as [`existing_git_shas`], so a
+/// release dependency always re-resolves to whatever is actually latest.
+fn existing_release_refs(lock: &RprojLock) -> HashMap<(String, Option<String>), (String, String)> {
+    let mut map = HashMap::new();
+    for target in &lock.targets {
+        for pkg in &target.packages {
+            if !pkg.metadata.contains_key(REMOTE_TYPE_FIELD) {
+                continue;
+            }
+            let url = pkg.metadata.get(crate::install::REMOTE_URL_FIELD);
+            let sha = pkg.metadata.get(crate::install::REMOTE_SHA_FIELD);
+            let refspec = pkg.metadata.get(crate::install::REMOTE_REF_FIELD);
+            let (Some(url), Some(sha), Some(refspec)) = (url, sha, refspec) else {
+                continue;
+            };
+            let subdir = pkg.metadata.get(REMOTE_SUBDIR_FIELD).cloned();
+            map.insert((url.clone(), subdir), (refspec.clone(), sha.clone()));
+        }
+    }
+    map
+}
+
+/// Whether an existing lock `target` still satisfies the manifest's current
+/// direct dependencies, without solving anything: every name in
+/// `direct_deps` must be pinned in `target`, at a version satisfying its
+/// requirement (skipped for a git/GitHub-sourced entry -- those aren't
+/// versioned by the manifest, just named), and `target.direct_dependencies`
+/// -- the fingerprint recorded the last time this target was actually
+/// solved -- must name exactly the same set of packages, so an added or
+/// removed manifest dependency always forces a real solve.
+fn lock_target_satisfies(target: &RprojLockTarget, direct_deps: &[DepVersionSpec]) -> bool {
+    let fingerprint: HashSet<&str> = target
+        .direct_dependencies
+        .iter()
+        .map(|d| d.name.as_str())
+        .collect();
+    let wanted: HashSet<&str> = direct_deps.iter().map(|d| d.name.as_str()).collect();
+    if fingerprint != wanted {
+        return false;
+    }
+
+    let packages: HashMap<&str, &RprojLockPackage> = target
+        .packages
+        .iter()
+        .map(|p| (p.package.as_str(), p))
+        .collect();
+
+    for dep in direct_deps {
+        let Some(pkg) = packages.get(dep.name.as_str()) else {
+            return false;
+        };
+        if pkg.metadata.contains_key(REMOTE_TYPE_FIELD) {
+            continue;
+        }
+        match dep.satisfies(&pkg.version) {
+            Ok(true) => {}
+            _ => return false,
+        }
+    }
+    true
+}
+
+/// Whether every git/GitHub-sourced dependency `resolve_git_sources` just
+/// resolved for this target matches what the candidate lock `target` already
+/// has pinned -- same URL, ref and commit. A mismatch (a moved branch/PR, a
+/// changed `git =`/`ref =`/subdir, or a brand-new git dependency) means the
+/// target's git portion is stale and it needs a real solve, even if
+/// [`lock_target_satisfies`] passed for its CRAN/PPM dependencies.
+fn lock_target_git_sources_fresh(
+    target: &RprojLockTarget,
+    git_sources: &[ResolvedGitSource],
+) -> bool {
+    let packages: HashMap<&str, &RprojLockPackage> = target
+        .packages
+        .iter()
+        .map(|p| (p.package.as_str(), p))
+        .collect();
+
+    for source in git_sources {
+        let Some(pkg) = packages.get(source.name.as_str()) else {
+            // Not every resolved git source is necessarily a direct
+            // dependency of this project (a `Remotes:` dependency reached
+            // transitively might not have made it into a given target at
+            // all), so a resolved source absent from this target's packages
+            // isn't by itself a mismatch.
+            continue;
+        };
+        let url = pkg.metadata.get(crate::install::REMOTE_URL_FIELD);
+        let sha = pkg.metadata.get(crate::install::REMOTE_SHA_FIELD);
+        let refspec = pkg.metadata.get(crate::install::REMOTE_REF_FIELD);
+        let subdir = pkg.metadata.get(REMOTE_SUBDIR_FIELD);
+        if url != Some(&source.git_source.url)
+            || sha != Some(&source.git_source.sha)
+            || refspec != source.git_source.ref_.as_ref()
+            || subdir != source.git_source.subdir.as_ref()
+        {
+            return false;
+        }
+    }
+    true
+}
+
+/// Whether an already-parsed existing `lock` has a target for `(rver,
+/// platform_key)` that still satisfies the manifest's current direct
+/// dependencies (`direct_deps`) and git sources (`git_sources`), without
+/// solving anything -- see [`lock_target_satisfies`] and
+/// [`lock_target_git_sources_fresh`]. Returns a clone of that target, ready
+/// to reuse as-is, or `None` if there's no matching target or it no longer
+/// satisfies the manifest, in which case the target needs a real solve.
+fn existing_lock_satisfies(
+    lock: &RprojLock,
+    rver: &str,
+    platform_key: &str,
+    direct_deps: &[DepVersionSpec],
+    git_sources: &[ResolvedGitSource],
+) -> Option<RprojLockTarget> {
+    let target = lock
+        .targets
+        .iter()
+        .find(|t| t.r_version == rver && t.platform == platform_key)?;
+    if !lock_target_satisfies(target, direct_deps) {
+        return None;
+    }
+    if !lock_target_git_sources_fresh(target, git_sources) {
+        return None;
+    }
+    Some(target.clone())
+}
+
+/// One git/GitHub-sourced dependency, already fetched and turned into
+/// everything [`register_git_sources`] needs to hand it to a solver's
+/// registry: no I/O left to do, just three lookups/inserts.
+pub(crate) struct ResolvedGitSource {
+    name: String,
+    version: RegistryPackageVersion,
+    ranges: HashMap<String, RPackageVersionRanges, rustc_hash::FxBuildHasher>,
+    git_source: GitSourceInfo,
+}
+
+/// Fetch every git/GitHub-sourced dependency in `git_deps`, and every
+/// dependency reachable from their `Remotes:` fields, exactly once -- not
+/// once per solve target. `sc_proj_solve_deps` used to call
+/// `fetch_and_read_git_package` itself, so a lockfile solved for several
+/// R versions/platforms (`proj_lock`'s `solve_targets.par_iter()`) fetched
+/// the same git ref once per target; callers now resolve everything up
+/// front with this function and pass the result to every target's
+/// [`register_git_sources`] instead.
 ///
 /// A fetched package's own `Remotes:` field, if it has one, is resolved the
 /// same way, recursively -- this is the only way a git/GitHub source can
 /// appear below the project's own direct dependencies: an ordinary CRAN/PPM
-/// package's index metadata has no `Remotes:` field to check.
-fn register_git_sources(
-    reg: &RPackageRegistry,
+/// package's index metadata has no `Remotes:` field to check. Since a
+/// package's `Remotes:` is only known once it's fetched, this walks the
+/// dependency graph breadth-first, one `git fetch` round trip per level, but
+/// fetches every dependency *within* a level in parallel: the common case
+/// (no `Remotes:` at all) is one round trip fetching every `git_deps` entry
+/// at once.
+pub(crate) fn resolve_git_sources(
     git_deps: &[(String, DepTable)],
     dev: bool,
-) -> Result<(), Box<dyn Error>> {
+    known_shas: &HashMap<GitSourceKey, String>,
+    known_releases: &HashMap<(String, Option<String>), (String, String)>,
+) -> Result<Vec<ResolvedGitSource>, Box<dyn Error>> {
     // Only the packages named directly (on the command line, or in
     // `rproj.toml`) are roots of the solve; a package reached through another
     // package's `Remotes:` is a transitive dependency, and like any other
     // transitive dependency only its hard dependencies matter -- see
     // `proj_deps_recursive`.
     let requested: HashSet<String> = git_deps.iter().map(|(name, _)| name.clone()).collect();
-    let mut worklist: Vec<(String, DepTable)> = git_deps.to_vec();
     let mut seen: HashSet<String> = HashSet::new();
+    let mut resolved: Vec<ResolvedGitSource> = vec![];
+    let mut frontier: Vec<(String, DepTable)> = git_deps.to_vec();
 
-    while let Some((name, table)) = worklist.pop() {
-        if !seen.insert(name.clone()) {
-            continue;
-        }
-        let git_url = table.git.clone().ok_or_else(|| {
-            SimpleError::new(format!(
-                "{} has a dependency source with no `git` URL",
-                name
-            ))
-        })?;
+    while !frontier.is_empty() {
+        let batch: Vec<(String, DepTable)> = frontier
+            .into_iter()
+            .filter(|(name, _)| seen.insert(name.clone()))
+            .collect();
 
-        let (pkg, git_source, remotes) = fetch_and_read_git_package(&git_url, &table)?;
+        let fetched: Vec<Result<(String, Package, GitSourceInfo, String), String>> = batch
+            .par_iter()
+            .map(|(name, table)| {
+                let git_url = table
+                    .git
+                    .clone()
+                    .ok_or_else(|| format!("{} has a dependency source with no `git` URL", name))?;
+                let (pkg, git_source, remotes) =
+                    fetch_and_read_git_package(&git_url, table, known_shas, known_releases)
+                        .map_err(|err| err.to_string())?;
+                if pkg.name != *name {
+                    return Err(format!(
+                        "`{}` in rproj.toml points at {}, but its DESCRIPTION says `Package: {}`",
+                        name, git_url, pkg.name
+                    ));
+                }
+                Ok((name.clone(), pkg, git_source, remotes))
+            })
+            .collect();
 
-        if pkg.name != name {
-            bail!(
-                "`{}` in rproj.toml points at {}, but its DESCRIPTION says `Package: {}`",
-                name,
-                git_url,
-                pkg.name
-            );
-        }
+        let mut next_frontier: Vec<(String, DepTable)> = vec![];
+        for item in fetched {
+            let (name, pkg, git_source, remotes) = item.map_err(SimpleError::new)?;
 
-        let version = RegistryPackageVersion {
-            name: name.clone(),
-            version: pkg.version.clone(),
-            artifact: Artifact::Source,
-        };
-        let pkg_dev = dev && requested.contains(&name);
-        let ranges = rpackage_version_ranges_from_constraints(&pkg.dependencies, pkg_dev);
-        reg.add_package_version(name.clone(), version.clone(), ranges);
-        reg.set_git_source(name.clone(), version, git_source);
-
-        for entry in remotes.split(',') {
-            let entry = entry.trim();
-            if entry.is_empty() {
-                continue;
-            }
-            let Some(dep_name) = crate::rproj::pak_ref_name(entry) else {
-                continue;
+            let version = RegistryPackageVersion {
+                name: name.clone(),
+                version: pkg.version.clone(),
+                artifact: Artifact::Source,
             };
-            if seen.contains(&dep_name) {
-                continue;
-            }
-            if let Ok(crate::pkgsource::PkgSource::Remote(r)) =
-                crate::pkgsource::parse_pkg_source(entry)
-            {
-                worklist.push((dep_name, dep_table_from_remote(&r, entry)));
+            let pkg_dev = dev && requested.contains(&name);
+            let ranges = rpackage_version_ranges_from_constraints(&pkg.dependencies, pkg_dev);
+            resolved.push(ResolvedGitSource {
+                name,
+                version,
+                ranges,
+                git_source,
+            });
+
+            for entry in remotes.split(',') {
+                let entry = entry.trim();
+                if entry.is_empty() {
+                    continue;
+                }
+                let Some(dep_name) = crate::rproj::pak_ref_name(entry) else {
+                    continue;
+                };
+                if seen.contains(&dep_name) {
+                    continue;
+                }
+                if let Ok(crate::pkgsource::PkgSource::Remote(r)) =
+                    crate::pkgsource::parse_pkg_source(entry)
+                {
+                    next_frontier.push((dep_name, dep_table_from_remote(&r, entry)));
+                }
             }
         }
+        frontier = next_frontier;
     }
-    Ok(())
+    Ok(resolved)
+}
+
+/// Register every already-resolved git/GitHub-sourced dependency in
+/// `git_sources` with `reg` as a pre-resolved package version, the same
+/// mechanism `register_roots` uses for workspace members: the version and
+/// its dependencies are already known (see [`resolve_git_sources`]), so the
+/// solver never looks it up in a repository index (`RPackageRegistry::
+/// add_package_version` marks it loaded). Pure in-memory bookkeeping, no I/O,
+/// so it's cheap to call once per solve target.
+fn register_git_sources(reg: &RPackageRegistry, git_sources: &[ResolvedGitSource]) {
+    for source in git_sources {
+        reg.add_package_version(
+            source.name.clone(),
+            source.version.clone(),
+            source.ranges.clone(),
+        );
+        reg.set_git_source(
+            source.name.clone(),
+            source.version.clone(),
+            source.git_source.clone(),
+        );
+    }
 }
 
 /// The manifest `DepTable` a parsed `git`/`github::`/`gitlab::` reference
@@ -1547,9 +1826,18 @@ pub(crate) fn github_owner_repo(git_url: &str) -> Option<(&str, &str)> {
 /// `release`/`rev`/`branch`/`tag` fields (in that priority order) are
 /// resolved to a single refspec to fetch; `pr`/`release` only make sense for
 /// a `github.com` URL (mirroring `RemoteSource`'s doc comments).
+///
+/// `known_shas` is [`existing_git_shas`]'s map of this dependency's
+/// previously resolved commit, if any -- looked up by [`GitSourceKey`].
+/// `known_releases` is [`existing_release_refs`]'s equivalent for a
+/// `release = true` dependency, looked up by URL and subdirectory instead,
+/// since its refspec (the release tag) isn't known ahead of resolving it.
+/// Both are empty on `--upgrade`, forcing a fresh resolve either way.
 pub(crate) fn fetch_and_read_git_package(
     git_url: &str,
     table: &DepTable,
+    known_shas: &HashMap<GitSourceKey, String>,
+    known_releases: &HashMap<(String, Option<String>), (String, String)>,
 ) -> Result<(Package, GitSourceInfo, String), Box<dyn Error>> {
     let owner_repo = github_owner_repo(git_url);
 
@@ -1560,23 +1848,36 @@ pub(crate) fn fetch_and_read_git_package(
         );
     }
 
-    let refspec = if let Some(pr) = table.pr {
-        Some(format!("refs/pull/{}/head", pr))
-    } else if table.release == Some(true) {
+    let (refspec, known_sha) = if table.release == Some(true) {
         let (owner, repo) = owner_repo.expect("checked above");
-        Some(crate::pkgsource::git::resolve_release_tag(owner, repo)?)
+        let release_key = (git_url.to_string(), table.subdir.clone());
+        match known_releases.get(&release_key) {
+            Some((tag, sha)) => (Some(tag.clone()), Some(sha.clone())),
+            None => (
+                Some(crate::pkgsource::git::resolve_release_tag(owner, repo)?),
+                None,
+            ),
+        }
     } else {
-        table
-            .rev
-            .clone()
-            .or_else(|| table.branch.clone())
-            .or_else(|| table.tag.clone())
+        let refspec = if let Some(pr) = table.pr {
+            Some(format!("refs/pull/{}/head", pr))
+        } else {
+            table
+                .rev
+                .clone()
+                .or_else(|| table.branch.clone())
+                .or_else(|| table.tag.clone())
+        };
+        let key = (git_url.to_string(), refspec.clone(), table.subdir.clone());
+        let known_sha = known_shas.get(&key).cloned();
+        (refspec, known_sha)
     };
 
     let (description, sha) = crate::pkgsource::git::fetch_git_description(
         git_url,
         refspec.as_deref(),
         table.subdir.as_deref(),
+        known_sha.as_deref(),
     )?;
 
     let git_source = match owner_repo {
@@ -1660,6 +1961,7 @@ fn solution_to_sorted_vec(
 
 /// Everything `rig proj lock` takes from the command line. `rig proj sync`
 /// builds the default set of these when it has to create the lockfile itself.
+#[derive(Default)]
 struct ProjLockOptions {
     /// R versions to solve for, from `--r-version`'s comma-separated list.
     /// Empty means "the default logic in `proj_lock_r_version` picks one".
@@ -1672,19 +1974,13 @@ struct ProjLockOptions {
     /// `r_versions` as a cross product.
     platforms: Vec<String>,
     prefer_binary: Option<usize>,
-    dev: bool,
-}
-
-impl Default for ProjLockOptions {
-    fn default() -> Self {
-        ProjLockOptions {
-            r_versions: vec![],
-            platforms: vec![],
-            prefer_binary: None,
-            // dev dependencies are included unless --no-dev is given
-            dev: true,
-        }
-    }
+    /// `--upgrade`: re-resolve every dependency instead of reusing an
+    /// existing `rproj.lock`: re-check every git/GitHub dependency's ref
+    /// against its remote instead of reusing the commit already pinned (see
+    /// [`existing_git_shas`]), and re-run the solver for CRAN/PPM
+    /// dependencies instead of keeping a pin that already satisfies
+    /// `rproj.toml` (see [`existing_lock_satisfies`]).
+    upgrade: bool,
 }
 
 fn sc_proj_lock(
@@ -1702,7 +1998,7 @@ fn sc_proj_lock(
             .map(|vs| vs.cloned().collect())
             .unwrap_or_default(),
         prefer_binary: args.get_one::<usize>("prefer-binary").copied(),
-        dev: !args.get_flag("no-dev"),
+        upgrade: args.get_flag("upgrade"),
     };
     proj_lock(&proj_lock_root()?, &opts, args)
 }
@@ -1841,7 +2137,7 @@ fn print_proj_status(
                     }
                 }
             }
-            let groups = m.dependency_group_roots();
+            let groups = m.dependency_group_roots()?;
             if !groups.is_empty() {
                 let mut names: Vec<&String> = groups.keys().collect();
                 names.sort();
@@ -1934,7 +2230,7 @@ fn print_proj_status_json(
                 _ => vec![],
             };
             let mut groups: Vec<(String, usize)> = m
-                .dependency_group_roots()
+                .dependency_group_roots()?
                 .into_iter()
                 .map(|(name, deps)| (name, deps.len()))
                 .collect();
@@ -2092,8 +2388,7 @@ fn r_requirement(req: Option<&DepVersionSpec>) -> String {
 /// comment below.
 fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // Do this first, to report local errors early
-    let dev = opts.dev;
-    let solve = proj_read_solve_roots(root, dev)?;
+    let solve = proj_read_solve_roots(root)?;
     let pkg_deps = &solve.merged;
 
     if solve.members.len() > 1 {
@@ -2196,6 +2491,73 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         }
     }
 
+    // The manifest's own direct dependencies, i.e. what a target's lock has
+    // to still satisfy to be reused untouched -- same name/BASE_PKGS scope
+    // `RprojLockTarget::from_solution` uses for `packages`, since that's the
+    // universe `lock_target_satisfies` looks names up in.
+    let direct_deps: Vec<DepVersionSpec> = solve
+        .merged
+        .dependencies
+        .iter()
+        .filter(|d| d.name != "R" && !BASE_PKGS.contains(&d.name.as_str()))
+        .cloned()
+        .collect();
+
+    // `--upgrade` and `--no-cache` both skip reading the existing lock at
+    // all, forcing every target to solve fresh -- same as a first `rig proj
+    // lock`, or one recovering from a corrupt/outdated lockfile.
+    let existing_lock = if opts.upgrade || crate::cache::no_cache() {
+        None
+    } else {
+        read_existing_lock(root)
+    };
+
+    // Resolve every git/GitHub dependency once, up front, instead of letting
+    // each solve target fetch it on its own -- see `resolve_git_sources`.
+    // `--upgrade` (folded into `existing_lock` above) skips `existing_git_shas`
+    // and `existing_release_refs` (empty maps) so every git dependency
+    // re-resolves against its remote instead of reusing whatever commit (or,
+    // for a `release = true` dependency, whatever tag) the existing lock file
+    // already pinned it to.
+    let (known_shas, known_releases) = match &existing_lock {
+        Some(lock) => (existing_git_shas(lock), existing_release_refs(lock)),
+        None => (HashMap::new(), HashMap::new()),
+    };
+    let git_sources = resolve_git_sources(&solve.git_deps, true, &known_shas, &known_releases)?;
+
+    // Every target the existing lock already satisfies, reused byte-for-byte
+    // instead of solved again -- the "a lockfile is sticky until you ask to
+    // upgrade" behavior `Cargo.lock`/`uv.lock` have, now covering CRAN/PPM
+    // dependencies too (git/GitHub already got it via `known_shas` above).
+    let mut reused: Vec<RprojLockTarget> = vec![];
+    let mut to_solve: Vec<&SolveTarget> = vec![];
+    for st in &solve_targets {
+        let existing = existing_lock.as_ref().and_then(|lock| {
+            existing_lock_satisfies(lock, &st.rver, &st.platform_key, &direct_deps, &git_sources)
+        });
+        match existing {
+            Some(target) => reused.push(target),
+            None => to_solve.push(st),
+        }
+    }
+
+    // Every requested target was already satisfied: no metadata to refresh,
+    // no solving to do, and the lock file would come out byte-identical, so
+    // leave it untouched rather than rewriting the same bytes.
+    if to_solve.is_empty() {
+        OUTPUT.success("rproj.lock is already up to date");
+        info!("rproj.lock is already up to date, nothing to solve");
+        return Ok(());
+    }
+
+    if !reused.is_empty() {
+        OUTPUT.info(&format!(
+            "{} of {} targets already up to date",
+            reused.len(),
+            solve_targets.len()
+        ));
+    }
+
     // Refresh the shared package metadata cache once, sequentially, before
     // fanning the solves out to threads below. Each solve's
     // `DbSourcePackageLoader::new()` would otherwise do this too, but
@@ -2218,12 +2580,12 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     // The solves below run in parallel, so each one printing its own status
     // lines would give N interleaved copies of them. Report the phases once,
     // for the whole batch, instead (`report_status: false` below).
-    let multi = solve_targets.len() > 1;
+    let multi = to_solve.len() > 1;
     OUTPUT.status("Downloading binary package metadata");
     if multi {
         OUTPUT.status(&format!(
             "Solving dependencies for {} targets",
-            solve_targets.len()
+            to_solve.len()
         ));
     } else {
         OUTPUT.status("Solving dependencies");
@@ -2239,24 +2601,23 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     // target.
     type SolveResult = (RPackageRegistry, SelectedDependencies<RPackageRegistry>);
     let prefer_binary = opts.prefer_binary;
-    let solved: Vec<(String, String, Result<SolveResult, String>)> = solve_targets
+    let solved: Vec<(String, String, Result<SolveResult, String>)> = to_solve
         .par_iter()
         .map(|st| {
             let result = sc_proj_solve_deps(
                 &st.rver,
                 &solve.roots,
-                &solve.git_deps,
+                &git_sources,
                 st.target.clone(),
                 prefer_binary,
                 false,
-                dev,
             )
             .map_err(|e| e.to_string());
             (st.rver.clone(), st.platform_key.clone(), result)
         })
         .collect();
 
-    let mut targets: Vec<RprojLockTarget> = vec![];
+    let mut targets: Vec<RprojLockTarget> = reused;
     let mut summaries: Vec<TargetSolution> = vec![];
     for (rver, platform_key, result) in solved {
         let (registry, solution) = match result {
@@ -2276,11 +2637,22 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
 
         let mut target = RprojLockTarget::from_solution(&registry, &solution);
         let groups = compute_package_groups(&solve.group_roots, &target.packages);
+        let extra_groups = compute_package_groups(&solve.extra_roots, &target.packages);
         for pkg in target.packages.iter_mut() {
             if let Some(names) = groups.get(&pkg.package) {
                 pkg.groups = names.clone();
             }
+            if let Some(names) = extra_groups.get(&pkg.package) {
+                pkg.extra_groups = names.clone();
+            }
         }
+        target.direct_dependencies = direct_deps
+            .iter()
+            .map(|d| LockDirectDependency {
+                name: d.name.clone(),
+                constraint: format_constraints(&d.constraints),
+            })
+            .collect();
         info!("Solved dependencies for R {} / {}", rver, platform_key);
 
         summaries.push(TargetSolution {
@@ -2307,8 +2679,8 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     // cross product of the R versions and the platforms, so listing the two
     // separately says the same thing in fewer, shorter lines.
     let header = if multi {
-        let rvers = dedup_in_order(solve_targets.iter().map(|st| st.rver.as_str()));
-        let platforms = dedup_in_order(solve_targets.iter().map(|st| st.platform_key.as_str()));
+        let rvers = dedup_in_order(to_solve.iter().map(|st| st.rver.as_str()));
+        let platforms = dedup_in_order(to_solve.iter().map(|st| st.platform_key.as_str()));
         Some(format!(
             "R {}: {}\n{}: {}",
             if rvers.len() > 1 {
@@ -2807,14 +3179,28 @@ fn find_r_installation(r_version: &str, arch: &str) -> Result<Option<String>, Bo
     Ok(matching.pop().map(|v| v.name.clone()))
 }
 
+/// The raw CPU arch a lock target's platform string names (`arm64`,
+/// `aarch64`, `x86_64`), whether it is the whole string (a `--platform
+/// source` solve's bare-arch platform) or its last `-`-separated component
+/// (`manylinux_2_28-arm64`, `macos-x86_64`). `None` if the platform names no
+/// arch rig recognizes.
+fn platform_arch(platform: &str) -> Option<&str> {
+    let candidate = platform
+        .rsplit_once('-')
+        .map_or(platform, |(_, suffix)| suffix);
+    match candidate {
+        "arm64" | "aarch64" | "x86_64" => Some(candidate),
+        _ => None,
+    }
+}
+
 /// The architecture the lock file's target platform needs, in the form
 /// [`rvenv_r_arch`] reports it, or the machine's own if the platform does not
 /// name one.
 fn target_r_arch(platform: &str) -> String {
-    match platform.rsplit_once('-') {
-        Some((_, "arm64")) | Some((_, "aarch64")) => native_arch_name("aarch64"),
-        Some((_, "x86_64")) => "x86_64".to_string(),
-        _ => native_arch_name(std::env::consts::ARCH),
+    match platform_arch(platform) {
+        Some(arch) => native_arch_name(arch),
+        None => native_arch_name(std::env::consts::ARCH),
     }
 }
 
@@ -2841,8 +3227,9 @@ fn this_os_family() -> &'static str {
 }
 
 /// The lock file target `rig proj sync` installs: the one whose platform's OS
-/// matches this machine (or names none), further narrowed by `--r-version`/
-/// `--platform` if the caller gave them. Several matches are not an error --
+/// and CPU arch match this machine (or name none), further narrowed by
+/// `--r-version`/`--platform` if the caller gave them. Several matches are
+/// not an error --
 /// the highest R version among them wins, so locking for several R versions
 /// just works without extra flags; only zero matches is a hard error.
 fn select_sync_target<'a>(
@@ -2851,10 +3238,15 @@ fn select_sync_target<'a>(
     platform: Option<&str>,
 ) -> Result<&'a RprojLockTarget, Box<dyn Error>> {
     let this_os = this_os_family();
+    let this_arch = native_arch_name(std::env::consts::ARCH);
     let mut candidates: Vec<&RprojLockTarget> = targets
         .iter()
         .filter(|t| match target_os_family(&t.platform) {
             Some(os) => os == this_os,
+            None => true,
+        })
+        .filter(|t| match platform_arch(&t.platform) {
+            Some(arch) => native_arch_name(arch) == this_arch,
             None => true,
         })
         .filter(|t| platform.is_none_or(|p| t.platform == p))
@@ -2939,18 +3331,31 @@ fn native_arch_name(arch: &str) -> String {
 /// What [`proj_sync`] does beyond the defaults, i.e. the options of
 /// `rig proj sync`. `rig run` syncs with the defaults.
 pub(crate) struct ProjSyncOptions {
-    /// Install the manifest's dev dependencies as well (`--no-dev` turns this
-    /// off).
+    /// Install the `dev` dependency group, in addition to `main` (default:
+    /// on). `--no-dev` turns it off; an explicit `--group dev` or
+    /// `--all-groups` installs it regardless, since explicit selection wins
+    /// over the default-suppressing flag.
     pub dev: bool,
-    /// Install into this library instead of the project's own `.rvenv/lib`
-    /// (`--library`). Only the project library gets the wrappers, the
-    /// repositories file and the sync stamp.
-    pub library: Option<PathBuf>,
+    /// `--group`, repeatable/comma-separated: install these dependency
+    /// groups, in addition to the default set (`main`, plus `dev` unless
+    /// `--no-dev`).
+    pub groups: Vec<String>,
+    /// `--all-groups`: install every dependency group the manifest
+    /// declares, regardless of `dev`/`groups`.
+    pub all_groups: bool,
+    /// `--extra`, repeatable/comma-separated: install these
+    /// optional-dependency extras. None are installed by default.
+    pub extras: Vec<String>,
+    /// `--all-extras`: install every optional-dependency extra.
+    pub all_extras: bool,
     /// Install the R version the lock file names, if it is missing
     /// (`--no-install-r` turns this off).
     pub install_r: bool,
     /// How many packages to install at the same time (`--max-concurrent`).
-    pub max_concurrent: usize,
+    /// `None` means fall back to `get_concurrent_installs()` (the
+    /// `concurrent-installs` config entry / `RIG_CONCURRENT_INSTALLS`, or the
+    /// number of CPU cores).
+    pub max_concurrent: Option<usize>,
     /// Which target to sync when more than one matches this machine
     /// (`--r-version`). Selects among `rproj.lock`'s existing targets, does
     /// not trigger a new solve.
@@ -2975,9 +3380,12 @@ impl Default for ProjSyncOptions {
     fn default() -> Self {
         ProjSyncOptions {
             dev: true,
-            library: None,
+            groups: vec![],
+            all_groups: false,
+            extras: vec![],
+            all_extras: false,
             install_r: true,
-            max_concurrent: 8,
+            max_concurrent: None,
             r_version: None,
             platform: None,
             inexact: false,
@@ -3000,12 +3408,18 @@ fn sc_proj_sync(
 
     let opts = ProjSyncOptions {
         dev: !args.get_flag("no-dev"),
-        library: args.get_one::<String>("library").map(PathBuf::from),
+        groups: args
+            .get_many::<String>("group")
+            .map(|vs| vs.cloned().collect())
+            .unwrap_or_default(),
+        all_groups: args.get_flag("all-groups"),
+        extras: args
+            .get_many::<String>("extra")
+            .map(|vs| vs.cloned().collect())
+            .unwrap_or_default(),
+        all_extras: args.get_flag("all-extras"),
         install_r: !args.get_flag("no-install-r"),
-        max_concurrent: args
-            .get_one::<usize>("max-concurrent")
-            .copied()
-            .unwrap_or(8),
+        max_concurrent: args.get_one::<usize>("max-concurrent").copied(),
         r_version: args.get_one::<String>("r-version").cloned(),
         platform: args.get_one::<String>("platform").cloned(),
         inexact: args.get_flag("inexact"),
@@ -3014,6 +3428,44 @@ fn sc_proj_sync(
     };
 
     proj_sync(&root, &opts, args)
+}
+
+/// Which of a lock target's packages `rig proj sync` should install: `main`
+/// always, plus `dev` unless `opts.dev` is off, plus whatever `opts.groups`
+/// names, plus every group if `opts.all_groups`; extras work the same way
+/// through `opts.extras`/`opts.all_extras`, but none are installed unless
+/// asked for. Explicit selection (`--group dev`, `--all-groups`) wins over
+/// `--no-dev`, since that flag only skips the automatic `dev` insert below,
+/// it never removes a name that got in some other way.
+fn sync_wanted_packages(
+    packages: &[RprojLockPackage],
+    opts: &ProjSyncOptions,
+) -> Vec<RprojLockPackage> {
+    let mut wanted_groups: HashSet<String> = HashSet::from(["main".to_string()]);
+    if opts.all_groups {
+        wanted_groups.extend(packages.iter().flat_map(|p| p.groups.iter().cloned()));
+    } else {
+        if opts.dev {
+            wanted_groups.insert("dev".to_string());
+        }
+        wanted_groups.extend(opts.groups.iter().cloned());
+    }
+    let wanted_extras: HashSet<String> = if opts.all_extras {
+        packages
+            .iter()
+            .flat_map(|p| p.extra_groups.iter().cloned())
+            .collect()
+    } else {
+        opts.extras.iter().cloned().collect()
+    };
+    packages
+        .iter()
+        .filter(|p| {
+            p.groups.iter().any(|g| wanted_groups.contains(g))
+                || p.extra_groups.iter().any(|g| wanted_extras.contains(g))
+        })
+        .cloned()
+        .collect()
 }
 
 /// Install the project's locked dependencies into its environment, creating
@@ -3056,11 +3508,7 @@ pub(crate) fn proj_sync(
             RPROJ_LOCK_FILE
         ));
         info!("No {}, running `rig proj lock` first", RPROJ_LOCK_FILE);
-        let lock_opts = ProjLockOptions {
-            dev: opts.dev,
-            ..ProjLockOptions::default()
-        };
-        proj_lock(root, &lock_opts, args)?;
+        proj_lock(root, &ProjLockOptions::default(), args)?;
     }
 
     let lock_content = fs::read_to_string(&lock_path)?;
@@ -3072,39 +3520,23 @@ pub(crate) fn proj_sync(
         opts.platform.as_deref(),
     )?;
 
-    let nondev;
-    let wanted: &[RprojLockPackage] = if !opts.dev {
-        nondev = target
-            .packages
-            .iter()
-            .filter(|p| p.groups.iter().any(|g| g == "main"))
-            .cloned()
-            .collect::<Vec<_>>();
-        &nondev
-    } else {
-        &target.packages
-    };
+    let wanted: Vec<RprojLockPackage> = sync_wanted_packages(&target.packages, opts);
+    let wanted: &[RprojLockPackage] = &wanted;
 
-    // Library path: --library, or the project library by default. The
-    // project library itself is created below, but only for a project `rig
-    // proj init` has already set up: the shim package is what init writes,
-    // and writing tracked project files is always an explicit request.
-    let library_path = match &opts.library {
-        Some(lib) => lib.clone(),
-        None => {
-            if !project_shim_package(root).exists() {
-                let msg = format!(
-                    "No project environment in {}, run `rig proj init` first \
-                     (or pass --library)",
-                    root.display()
-                );
-                OUTPUT.error(&msg);
-                error!("{}", msg);
-                bail!("{}", msg);
-            }
-            project_library(root)
-        }
-    };
+    // The project library itself is created below, but only for a project
+    // `rig proj init` has already set up: the shim package is what init
+    // writes, and writing tracked project files is always an explicit
+    // request.
+    if !project_shim_package(root).exists() {
+        let msg = format!(
+            "No project environment in {}, run `rig proj init` first",
+            root.display()
+        );
+        OUTPUT.error(&msg);
+        error!("{}", msg);
+        bail!("{}", msg);
+    }
+    let library_path = project_library(root)?;
 
     // `rig proj init` does not create the project library, this is where it
     // comes from. Create it now rather than just before the installs: an
@@ -3129,10 +3561,16 @@ pub(crate) fn proj_sync(
         opts.dry_run,
     )?;
 
-    // The project environment, as opposed to an arbitrary `--library`, also
-    // owns the wrappers, the activation scripts and the sync stamp.
-    let in_project_library = library_path == project_library(root);
-    if in_project_library {
+    {
+        // When the library is centralized, leave a compatibility symlink at
+        // its default in-project location, `.rvenv/lib`, pointing at the real
+        // (centralized) library -- mirroring uv's `.venv` junction for its
+        // own `centralized-project-envs` feature. Anything that still
+        // expects a real `.rvenv/lib` (manual inspection, other tools) keeps
+        // working; recreated on every sync like the rest of `.rvenv`.
+        if !opts.dry_run && crate::utils::get_proj_library_root()?.is_some() {
+            link_library_compat_symlink(&project_library_in_tree(root), &library_path)?;
+        }
         // The base of the shared tools library, `__tools` alongside it (see
         // `RvenvCfg::tools_lib`). Resolved here, once, rather than by the
         // shim at R startup: `rig run`'s wrapper sets `R_LIBS_USER` to the
@@ -3161,7 +3599,7 @@ pub(crate) fn proj_sync(
                     old.r_arch,
                     cfg.r_minor,
                     cfg.r_arch,
-                    project_library(root).display()
+                    library_path.display()
                 );
                 OUTPUT.warn(&msg);
                 info!("{}", msg);
@@ -3347,7 +3785,7 @@ pub(crate) fn proj_sync(
     // `rproj.lock` and warns in every R session while they differ, so it has
     // to be updated even when there was nothing to install.
     if todo.is_empty() {
-        if in_project_library && !opts.dry_run {
+        if !opts.dry_run {
             write_sync_stamp(&library_path, &lock_path)?;
         }
         OUTPUT.success(&format!(
@@ -3396,7 +3834,10 @@ pub(crate) fn proj_sync(
         })
         .collect();
 
-    let max_concurrent = opts.max_concurrent;
+    let max_concurrent = match opts.max_concurrent {
+        Some(n) => n,
+        None => crate::utils::get_concurrent_installs()?,
+    };
 
     let total_packages = packages.len();
     OUTPUT.status(&format!(
@@ -3414,9 +3855,7 @@ pub(crate) fn proj_sync(
 
     let installed = install_packages(packages, &library_path, r_binary, max_concurrent)?;
 
-    if in_project_library {
-        write_sync_stamp(&library_path, &lock_path)?;
-    }
+    write_sync_stamp(&library_path, &lock_path)?;
 
     OUTPUT.success(&format!(
         "Deployment complete, installed {} packages",
@@ -3610,7 +4049,7 @@ fn download_http_lockfile_packages(
                 overall_pb.finish_and_clear();
             }
         },
-    );
+    )?;
 
     // Check if there was an error
     if let Some((idx, err)) = error.into_inner() {
@@ -3878,11 +4317,144 @@ mod tests {
             sources: vec![],
             target: format!("bin/{}_1.0.0.tgz", name),
             groups: vec![],
+            extra_groups: vec![],
         }
     }
 
     fn dep(version: &str) -> Dependency {
         Dependency::Version(version.to_string())
+    }
+
+    /// A [`locked`] fixture tagged with the given `groups`/`extra_groups`,
+    /// for [`sync_wanted_packages`] tests.
+    fn locked_in(name: &str, groups: &[&str], extra_groups: &[&str]) -> RprojLockPackage {
+        let mut pkg = locked(name, &[]);
+        pkg.groups = groups.iter().map(|g| g.to_string()).collect();
+        pkg.extra_groups = extra_groups.iter().map(|g| g.to_string()).collect();
+        pkg
+    }
+
+    fn sync_opts() -> ProjSyncOptions {
+        ProjSyncOptions::default()
+    }
+
+    fn names(packages: &[RprojLockPackage]) -> Vec<String> {
+        let mut names: Vec<String> = packages.iter().map(|p| p.package.clone()).collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn sync_wanted_packages_default_is_main_and_dev_only() {
+        let packages = vec![
+            locked_in("cli", &["main"], &[]),
+            locked_in("devtools", &["dev"], &[]),
+            locked_in("testthat", &["test"], &[]),
+            locked_in("ggplot2", &[], &["viz"]),
+        ];
+        let wanted = sync_wanted_packages(&packages, &sync_opts());
+        assert_eq!(names(&wanted), vec!["cli", "devtools"]);
+    }
+
+    #[test]
+    fn sync_wanted_packages_no_dev_keeps_main_only() {
+        let packages = vec![
+            locked_in("cli", &["main"], &[]),
+            locked_in("devtools", &["dev"], &[]),
+        ];
+        let opts = ProjSyncOptions {
+            dev: false,
+            ..sync_opts()
+        };
+        assert_eq!(names(&sync_wanted_packages(&packages, &opts)), vec!["cli"]);
+    }
+
+    #[test]
+    fn sync_wanted_packages_group_adds_to_the_default_set() {
+        let packages = vec![
+            locked_in("cli", &["main"], &[]),
+            locked_in("devtools", &["dev"], &[]),
+            locked_in("testthat", &["test"], &[]),
+        ];
+        let opts = ProjSyncOptions {
+            groups: vec!["test".to_string()],
+            ..sync_opts()
+        };
+        assert_eq!(
+            names(&sync_wanted_packages(&packages, &opts)),
+            vec!["cli", "devtools", "testthat"]
+        );
+    }
+
+    #[test]
+    fn sync_wanted_packages_no_dev_with_explicit_group_dev_still_installs_dev() {
+        let packages = vec![
+            locked_in("cli", &["main"], &[]),
+            locked_in("devtools", &["dev"], &[]),
+        ];
+        let opts = ProjSyncOptions {
+            dev: false,
+            groups: vec!["dev".to_string()],
+            ..sync_opts()
+        };
+        assert_eq!(
+            names(&sync_wanted_packages(&packages, &opts)),
+            vec!["cli", "devtools"]
+        );
+    }
+
+    #[test]
+    fn sync_wanted_packages_all_groups_installs_every_group() {
+        let packages = vec![
+            locked_in("cli", &["main"], &[]),
+            locked_in("devtools", &["dev"], &[]),
+            locked_in("pkgdown", &["docs"], &[]),
+            locked_in("ggplot2", &[], &["viz"]),
+        ];
+        let opts = ProjSyncOptions {
+            all_groups: true,
+            ..sync_opts()
+        };
+        assert_eq!(
+            names(&sync_wanted_packages(&packages, &opts)),
+            vec!["cli", "devtools", "pkgdown"]
+        );
+    }
+
+    #[test]
+    fn sync_wanted_packages_extra_installs_only_that_extra() {
+        let packages = vec![
+            locked_in("cli", &["main"], &[]),
+            locked_in("ggplot2", &[], &["viz"]),
+            locked_in("dbi", &[], &["db"]),
+        ];
+        let opts = ProjSyncOptions {
+            extras: vec!["viz".to_string()],
+            ..sync_opts()
+        };
+        assert_eq!(
+            names(&sync_wanted_packages(&packages, &opts)),
+            vec!["cli", "ggplot2"]
+        );
+    }
+
+    #[test]
+    fn sync_wanted_packages_all_extras_installs_every_extra_but_no_extra_groups() {
+        let packages = vec![
+            locked_in("cli", &["main"], &[]),
+            locked_in("devtools", &["dev"], &[]),
+            locked_in("pkgdown", &["docs"], &[]),
+            locked_in("ggplot2", &[], &["viz"]),
+            locked_in("dbi", &[], &["db"]),
+        ];
+        let opts = ProjSyncOptions {
+            all_extras: true,
+            ..sync_opts()
+        };
+        assert_eq!(
+            names(&sync_wanted_packages(&packages, &opts)),
+            vec!["cli", "dbi", "devtools", "ggplot2"]
+        );
     }
 
     #[test]
@@ -3964,14 +4536,197 @@ mod tests {
         RprojLockTarget {
             r_version: r_version.to_string(),
             platform: platform.to_string(),
+            direct_dependencies: vec![],
             packages: vec![],
         }
+    }
+
+    /// A direct dependency requirement, e.g. for [`lock_target_satisfies`]
+    /// tests: `direct_dep("dplyr", ">= 1.0")`.
+    fn direct_dep(name: &str, constraint: &str) -> DepVersionSpec {
+        DepVersionSpec {
+            name: name.to_string(),
+            types: vec![],
+            constraints: crate::rproj::parse_constraints(constraint).unwrap(),
+        }
+    }
+
+    /// A [`RprojLockPackage`] fixture with a version other than `locked`'s
+    /// hard-coded `"1.0.0"`, for [`lock_target_satisfies`] tests.
+    fn locked_version(name: &str, version: &str, deps: &[&str]) -> RprojLockPackage {
+        let mut pkg = locked(name, deps);
+        pkg.version = version.to_string();
+        pkg
+    }
+
+    /// A git/GitHub-sourced [`RprojLockPackage`] fixture, for
+    /// [`lock_target_satisfies`]/[`lock_target_git_sources_fresh`] tests.
+    fn locked_git(name: &str, url: &str, sha: &str) -> RprojLockPackage {
+        let mut pkg = locked(name, &[]);
+        pkg.metadata
+            .insert(REMOTE_TYPE_FIELD.to_string(), "git".to_string());
+        pkg.metadata.insert(
+            crate::install::REMOTE_URL_FIELD.to_string(),
+            url.to_string(),
+        );
+        pkg.metadata.insert(
+            crate::install::REMOTE_SHA_FIELD.to_string(),
+            sha.to_string(),
+        );
+        pkg
+    }
+
+    fn resolved_git_source(name: &str, url: &str, sha: &str) -> ResolvedGitSource {
+        ResolvedGitSource {
+            name: name.to_string(),
+            version: RegistryPackageVersion::new(name, "1.0.0").unwrap(),
+            ranges: HashMap::default(),
+            git_source: GitSourceInfo {
+                remote_type: "git",
+                url: url.to_string(),
+                host: None,
+                repo: None,
+                username: None,
+                subdir: None,
+                ref_: None,
+                sha: sha.to_string(),
+            },
+        }
+    }
+
+    #[test]
+    fn existing_release_refs_reads_the_pinned_tag_and_sha() {
+        let mut pkg = locked_git("mypkg", "https://github.com/me/mypkg.git", "abc123");
+        pkg.metadata.insert(
+            crate::install::REMOTE_REF_FIELD.to_string(),
+            "v1.2.0".to_string(),
+        );
+        let mut t = target("4.6.1", "testos");
+        t.packages = vec![pkg];
+        let lock = RprojLock {
+            version: RPROJ_LOCK_VERSION,
+            targets: vec![t],
+        };
+        let refs = existing_release_refs(&lock);
+        assert_eq!(
+            refs.get(&("https://github.com/me/mypkg.git".to_string(), None)),
+            Some(&("v1.2.0".to_string(), "abc123".to_string()))
+        );
+    }
+
+    #[test]
+    fn lock_target_satisfies_an_unchanged_manifest() {
+        let mut t = target("4.6.1", "testos");
+        t.packages = vec![locked_version("dplyr", "1.1.0", &[])];
+        t.direct_dependencies = vec![LockDirectDependency {
+            name: "dplyr".to_string(),
+            constraint: ">= 1.0.0".to_string(),
+        }];
+        let direct_deps = vec![direct_dep("dplyr", ">= 1.0.0")];
+        assert!(lock_target_satisfies(&t, &direct_deps));
+    }
+
+    #[test]
+    fn lock_target_does_not_satisfy_a_tightened_constraint() {
+        let mut t = target("4.6.1", "testos");
+        t.packages = vec![locked_version("dplyr", "1.1.0", &[])];
+        t.direct_dependencies = vec![LockDirectDependency {
+            name: "dplyr".to_string(),
+            constraint: ">= 1.0.0".to_string(),
+        }];
+        // The manifest now asks for something newer than what's pinned.
+        let direct_deps = vec![direct_dep("dplyr", ">= 2.0.0")];
+        assert!(!lock_target_satisfies(&t, &direct_deps));
+    }
+
+    #[test]
+    fn lock_target_does_not_satisfy_a_newly_added_dependency() {
+        let mut t = target("4.6.1", "testos");
+        t.packages = vec![locked_version("dplyr", "1.1.0", &[])];
+        t.direct_dependencies = vec![LockDirectDependency {
+            name: "dplyr".to_string(),
+            constraint: "*".to_string(),
+        }];
+        // `tidyr` was just added to rproj.toml and has no fingerprint entry.
+        let direct_deps = vec![direct_dep("dplyr", "*"), direct_dep("tidyr", "*")];
+        assert!(!lock_target_satisfies(&t, &direct_deps));
+    }
+
+    #[test]
+    fn lock_target_does_not_satisfy_a_removed_dependency() {
+        let mut t = target("4.6.1", "testos");
+        t.packages = vec![
+            locked_version("dplyr", "1.1.0", &[]),
+            locked_version("tidyr", "1.3.0", &[]),
+        ];
+        t.direct_dependencies = vec![
+            LockDirectDependency {
+                name: "dplyr".to_string(),
+                constraint: "*".to_string(),
+            },
+            LockDirectDependency {
+                name: "tidyr".to_string(),
+                constraint: "*".to_string(),
+            },
+        ];
+        // `tidyr` was just removed from rproj.toml.
+        let direct_deps = vec![direct_dep("dplyr", "*")];
+        assert!(!lock_target_satisfies(&t, &direct_deps));
+    }
+
+    #[test]
+    fn lock_target_satisfies_skips_the_numeric_check_for_a_git_dependency() {
+        let mut t = target("4.6.1", "testos");
+        t.packages = vec![locked_git(
+            "mypkg",
+            "https://github.com/me/mypkg.git",
+            "abc123",
+        )];
+        t.direct_dependencies = vec![LockDirectDependency {
+            name: "mypkg".to_string(),
+            constraint: "*".to_string(),
+        }];
+        let direct_deps = vec![direct_dep("mypkg", "*")];
+        assert!(lock_target_satisfies(&t, &direct_deps));
+    }
+
+    #[test]
+    fn git_sources_are_fresh_when_unchanged() {
+        let mut t = target("4.6.1", "testos");
+        t.packages = vec![locked_git(
+            "mypkg",
+            "https://github.com/me/mypkg.git",
+            "abc123",
+        )];
+        let sources = vec![resolved_git_source(
+            "mypkg",
+            "https://github.com/me/mypkg.git",
+            "abc123",
+        )];
+        assert!(lock_target_git_sources_fresh(&t, &sources));
+    }
+
+    #[test]
+    fn git_sources_are_stale_when_the_resolved_commit_changed() {
+        let mut t = target("4.6.1", "testos");
+        t.packages = vec![locked_git(
+            "mypkg",
+            "https://github.com/me/mypkg.git",
+            "abc123",
+        )];
+        // The branch moved since the lock was last written.
+        let sources = vec![resolved_git_source(
+            "mypkg",
+            "https://github.com/me/mypkg.git",
+            "def456",
+        )];
+        assert!(!lock_target_git_sources_fresh(&t, &sources));
     }
 
     #[test]
     fn select_sync_target_is_a_noop_with_a_single_target() {
         let this_os = this_os_family();
-        let platform = format!("{}-x86_64", this_os);
+        let platform = format!("{}-{}", this_os, std::env::consts::ARCH);
         let targets = vec![target("4.6.1", &platform)];
         let picked = select_sync_target(&targets, None, None).unwrap();
         assert_eq!(picked.r_version, "4.6.1");
@@ -3982,8 +4737,8 @@ mod tests {
         let this_os = this_os_family();
         let other_os = if this_os == "linux" { "macos" } else { "linux" };
         let targets = vec![
-            target("4.6.1", &format!("{}-x86_64", other_os)),
-            target("4.5.0", &format!("{}-x86_64", this_os)),
+            target("4.6.1", &format!("{}-{}", other_os, std::env::consts::ARCH)),
+            target("4.5.0", &format!("{}-{}", this_os, std::env::consts::ARCH)),
         ];
         let picked = select_sync_target(&targets, None, None).unwrap();
         assert_eq!(picked.r_version, "4.5.0");
@@ -3999,9 +4754,25 @@ mod tests {
     }
 
     #[test]
+    fn select_sync_target_ignores_foreign_arch_targets() {
+        let this_os = this_os_family();
+        let other_arch = if std::env::consts::ARCH == "x86_64" {
+            "arm64"
+        } else {
+            "x86_64"
+        };
+        let targets = vec![
+            target("4.6.1", &format!("{}-{}", this_os, other_arch)),
+            target("4.5.0", &format!("{}-{}", this_os, std::env::consts::ARCH)),
+        ];
+        let picked = select_sync_target(&targets, None, None).unwrap();
+        assert_eq!(picked.r_version, "4.5.0");
+    }
+
+    #[test]
     fn select_sync_target_picks_the_highest_r_version_among_matches() {
         let this_os = this_os_family();
-        let platform = format!("{}-x86_64", this_os);
+        let platform = format!("{}-{}", this_os, std::env::consts::ARCH);
         let targets = vec![
             target("4.5.0", &platform),
             target("4.6.1", &platform),
@@ -4014,7 +4785,7 @@ mod tests {
     #[test]
     fn select_sync_target_honors_an_explicit_r_version() {
         let this_os = this_os_family();
-        let platform = format!("{}-x86_64", this_os);
+        let platform = format!("{}-{}", this_os, std::env::consts::ARCH);
         let targets = vec![target("4.5.0", &platform), target("4.6.1", &platform)];
         let picked = select_sync_target(&targets, Some("4.5.0"), None).unwrap();
         assert_eq!(picked.r_version, "4.5.0");
@@ -4044,7 +4815,7 @@ mod tests {
         let mut manifest = Rproj::minimal("mypkg");
         manifest.dependencies.insert("cli".to_string(), dep("*"));
         manifest.dependency_groups.insert(
-            "test".to_string(),
+            "dev".to_string(),
             Group {
                 include_groups: vec![],
                 dependencies: BTreeMap::from([("testthat".to_string(), dep("*"))]),
@@ -4058,15 +4829,38 @@ mod tests {
             locked("waldo", &[]),
         ];
 
-        let groups = compute_package_groups(&manifest.dependency_group_roots(), &packages);
+        let groups = compute_package_groups(&manifest.dependency_group_roots().unwrap(), &packages);
         // `glue` is a dev dependency too, but a non-dev one pulls it in
         assert_eq!(groups.get("cli").unwrap(), &vec!["main".to_string()]);
         assert_eq!(
             groups.get("glue").unwrap(),
-            &vec!["main".to_string(), "test".to_string()]
+            &vec!["dev".to_string(), "main".to_string()]
         );
-        assert_eq!(groups.get("testthat").unwrap(), &vec!["test".to_string()]);
-        assert_eq!(groups.get("waldo").unwrap(), &vec!["test".to_string()]);
+        assert_eq!(groups.get("testthat").unwrap(), &vec!["dev".to_string()]);
+        assert_eq!(groups.get("waldo").unwrap(), &vec!["dev".to_string()]);
+    }
+
+    #[test]
+    fn compute_package_groups_extras_are_tracked_separately_from_groups() {
+        let mut manifest = Rproj::minimal("mypkg");
+        manifest.dependencies.insert("cli".to_string(), dep("*"));
+        manifest.optional_dependencies.insert(
+            "viz".to_string(),
+            BTreeMap::from([("ggplot2".to_string(), dep("*"))]),
+        );
+
+        let packages = vec![locked("cli", &[]), locked("ggplot2", &[])];
+
+        let groups = compute_package_groups(&manifest.main_and_group_roots().unwrap(), &packages);
+        assert_eq!(groups.get("cli").unwrap(), &vec!["main".to_string()]);
+        assert_eq!(groups.get("ggplot2"), None);
+
+        let extra_groups = compute_package_groups(&manifest.optional_dependency_roots(), &packages);
+        assert_eq!(
+            extra_groups.get("ggplot2").unwrap(),
+            &vec!["viz".to_string()]
+        );
+        assert_eq!(extra_groups.get("cli"), None);
     }
 
     /// Write `manifest` into `dir`, creating it, as one project or one
@@ -4101,7 +4895,7 @@ mod tests {
     fn a_workspace_has_one_solve_root_per_member() {
         let dir = tempfile::tempdir().unwrap();
         two_member_workspace(dir.path());
-        let solve = proj_read_solve_roots(dir.path(), true).unwrap();
+        let solve = proj_read_solve_roots(dir.path()).unwrap();
         let names: Vec<&str> = solve.roots.iter().map(|r| r.name.as_str()).collect();
         // The workspace root is a member of its own workspace.
         assert_eq!(names, vec!["ws", "a", "b"]);
@@ -4119,7 +4913,7 @@ mod tests {
     fn a_plain_project_has_one_synthetic_solve_root() {
         let dir = tempfile::tempdir().unwrap();
         write_manifest(dir.path(), &Rproj::minimal("mypkg"));
-        let solve = proj_read_solve_roots(dir.path(), true).unwrap();
+        let solve = proj_read_solve_roots(dir.path()).unwrap();
         assert_eq!(solve.roots.len(), 1);
         assert_eq!(solve.roots[0].name, PROJECT_ROOT_PKG);
     }
@@ -4131,9 +4925,7 @@ mod tests {
         let mut clash = Rproj::minimal("a");
         clash.project.version = "9.9.9".to_string();
         write_manifest(&dir.path().join("packages/also-a"), &clash);
-        let err = proj_read_solve_roots(dir.path(), true)
-            .unwrap_err()
-            .to_string();
+        let err = proj_read_solve_roots(dir.path()).unwrap_err().to_string();
         assert!(err.contains("Two workspace members"), "{}", err);
         assert!(err.contains("packages"), "{}", err);
         assert!(err.contains("also-a"), "{}", err);
@@ -4144,9 +4936,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         two_member_workspace(dir.path());
         write_manifest(&dir.path().join("packages/stats"), &Rproj::minimal("stats"));
-        let err = proj_read_solve_roots(dir.path(), true)
-            .unwrap_err()
-            .to_string();
+        let err = proj_read_solve_roots(dir.path()).unwrap_err().to_string();
         assert!(err.contains("stats"), "{}", err);
     }
 
@@ -4158,7 +4948,7 @@ mod tests {
         b.dependencies.insert("R".to_string(), dep(">= 4.4, < 4.6"));
         write_manifest(&dir.path().join("packages/b"), &b);
 
-        let solve = proj_read_solve_roots(dir.path(), true).unwrap();
+        let solve = proj_read_solve_roots(dir.path()).unwrap();
         let r = solve
             .merged
             .dependencies
@@ -4180,7 +4970,7 @@ mod tests {
         // `b` is a member, so it is not a lockfile entry: the walk has to get
         // to `glue` from `b`'s own manifest, not by following `a` -> `b`.
         let packages = vec![locked("cli", &[]), locked("glue", &[])];
-        let solve = proj_read_solve_roots(dir.path(), true).unwrap();
+        let solve = proj_read_solve_roots(dir.path()).unwrap();
         let groups = compute_package_groups(&solve.group_roots, &packages);
         assert_eq!(groups.get("cli").unwrap(), &vec!["main".to_string()]);
         assert_eq!(groups.get("glue").unwrap(), &vec!["main".to_string()]);

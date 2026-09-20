@@ -235,10 +235,6 @@
 >   * https://github.com/r-hub/rtools43/releases,
 >   * https://github.com/r-hub/rtools42/releases,
 >   * https://cloud.r-project.org/bin/windows/Rtools
-> - https://github.com/R-macos/gcc-darwin-arm64/releases,
->   https://github.com/fxcoudert/gfortran-for-macOS/releases and whatever
->   domains Homebrew is using, to download system packages for
->   `rig sysreqs` on macOS.
 > - `rig add` downloads https://curl.se/ca/cacert.pem (the CA bundle) and
 >   the fallback fonts from https://github.com/r-lib/rig/releases for the
 >   portable Linux R builds.

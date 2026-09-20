@@ -25,6 +25,7 @@ use crate::linux::*;
 #[cfg(target_os = "linux")]
 use crate::platform::*;
 
+use crate::alias::*;
 use crate::download::download_json_sync;
 use crate::output::OUTPUT;
 use crate::renv;
@@ -32,22 +33,83 @@ use crate::run::*;
 use crate::rversion::*;
 use crate::utils::*;
 
-pub fn check_installed(x: &String) -> Result<String, Box<dyn Error>> {
+// Returns the installed dirname matching `x`, either directly or via an
+// alias, or `None` if nothing matches. Does not error or print anything, so
+// callers can use it to check for existence without treating a miss as a
+// failure (unlike `check_installed`).
+pub fn find_installed(x: &str) -> Result<Option<String>, Box<dyn Error>> {
     let inst = sc_get_list_details()?;
 
     for ver in inst {
-        if &ver.name == x {
-            return Ok(ver.name);
+        if ver.name == x {
+            return Ok(Some(ver.name));
         }
-        if ver.aliases.contains(x) {
+        if ver.aliases.iter().any(|a| a == x) {
             debug!("Alias {} is resolved to version {}", x, ver.name);
-            return Ok(ver.name);
+            return Ok(Some(ver.name));
         }
+    }
+
+    Ok(None)
+}
+
+pub fn check_installed(x: &String) -> Result<String, Box<dyn Error>> {
+    if let Some(name) = find_installed(x)? {
+        return Ok(name);
     }
 
     OUTPUT.error(&format!("R version {} is not installed", x));
     error!("R version {} is not installed", x);
     bail!("R version {} is not installed", &x);
+}
+
+// Used by `rig add` to check whether `version` is already installed,
+// without erroring. Matches on the actual R version reported by each
+// installation (as `rig list` does), not on its directory name, since the
+// directory naming scheme is not guaranteed to encode the exact version
+// (e.g. macOS admin-mode directories only encode the major.minor version).
+#[cfg(target_os = "linux")]
+pub fn find_installed_by_version(version: &str) -> Result<Option<String>, Box<dyn Error>> {
+    let inst = sc_get_list_details()?;
+
+    for ver in inst {
+        if ver.version.as_deref() == Some(version) {
+            return Ok(Some(ver.name));
+        }
+    }
+
+    Ok(None)
+}
+
+// Same as `find_installed_by_version`, but also requires the candidate
+// directory name to be one of `names` (used on platforms where the version
+// alone doesn't disambiguate installs of different architectures).
+#[cfg(target_os = "windows")]
+pub fn find_installed_matching(
+    names: &[String],
+    version: &str,
+) -> Result<Option<String>, Box<dyn Error>> {
+    let inst = sc_get_list_details()?;
+
+    for ver in inst {
+        if names.iter().any(|n| n == &ver.name) && ver.version.as_deref() == Some(version) {
+            return Ok(Some(ver.name));
+        }
+    }
+
+    Ok(None)
+}
+
+// Used by `rig add` when it decides to skip installing an already-installed
+// version: makes sure any alias the request implies (e.g. `rig add release`)
+// still ends up on that version, then reports the skip.
+pub fn report_already_installed(name: &str, alias: Option<String>) -> Result<(), Box<dyn Error>> {
+    if let Some(alias) = alias {
+        add_alias(name, &alias)?;
+    }
+    OUTPUT.success(&format!("R version {} is already installed", name));
+    info!("R version {} is already installed", name);
+    Ok(())
 }
 
 // -- rig default ---------------------------------------------------------
@@ -86,11 +148,13 @@ pub fn set_default_if_none(ver: String) -> Result<(), Box<dyn Error>> {
 // development builds: `devel` for R-devel, `next` for R-next. Returns None for
 // released versions, which are named after their version number instead. The
 // status is read from the `R_STATUS` macro in `include/Rversion.h`: it is an
-// empty string for releases, "Under development (unstable)" for R-devel, and
-// another label (e.g. a prerelease string) for R-next.
+// empty string for releases, "Revised" for some older released versions
+// (e.g. 3.2.4), "Under development (unstable)" for R-devel, and another label
+// (e.g. a prerelease string) for R-next.
 pub fn user_mode_dev_dirname(status: Option<&str>) -> Option<String> {
     match status {
         Some("Under development (unstable)") => Some("devel".to_string()),
+        Some("Revised") => None,
         Some(s) if !s.is_empty() => Some("next".to_string()),
         _ => None,
     }
@@ -1160,6 +1224,21 @@ mod tests {
         edit(contents, |obj| {
             add_to_json_string_array(obj, POSITRON_ROOTS_KEY, "/home/u/r", "settings.json")
         })
+    }
+
+    #[test]
+    fn test_user_mode_dev_dirname() {
+        assert_eq!(user_mode_dev_dirname(None), None);
+        assert_eq!(user_mode_dev_dirname(Some("")), None);
+        assert_eq!(user_mode_dev_dirname(Some("Revised")), None);
+        assert_eq!(
+            user_mode_dev_dirname(Some("Under development (unstable)")),
+            Some("devel".to_string())
+        );
+        assert_eq!(
+            user_mode_dev_dirname(Some("Prerelease")),
+            Some("next".to_string())
+        );
     }
 
     #[test]

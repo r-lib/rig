@@ -48,7 +48,7 @@ use crate::output::OUTPUT;
 use crate::pkgsource::{parse_pkg_source, PkgSource};
 use crate::proj::{
     dep_table_from_remote, download_lockfile_packages, fetch_and_read_git_package,
-    lockfile_package_info, proj_binary_target, sc_proj_solve_deps, BASE_PKGS,
+    lockfile_package_info, proj_binary_target, resolve_git_sources, sc_proj_solve_deps, BASE_PKGS,
 };
 use crate::repos::DbSourcePackageLoader;
 use crate::rproj::{DepTable, RprojLockPackage, RprojLockTarget};
@@ -104,8 +104,9 @@ pub fn sc_pkg_install(
     }
 
     let roots = [SolveRoot::project(deps.clone())?];
+    let git_sources = resolve_git_sources(&git_deps, dev, &HashMap::new(), &HashMap::new())?;
     let (registry, solution) =
-        sc_proj_solve_deps(&rver, &roots, &git_deps, target, prefer_binary, true, dev)?;
+        sc_proj_solve_deps(&rver, &roots, &git_sources, target, prefer_binary, true)?;
     OUTPUT.success("Solved dependencies");
     info!("Solved dependencies");
 
@@ -248,10 +249,11 @@ fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
                 let table = dep_table_from_remote(&r, name);
                 let git_url = table.git.clone().unwrap_or_default();
                 OUTPUT.status(&format!("Fetching {}", git_url));
-                let (pkg, _source, _remotes) = fetch_and_read_git_package(&git_url, &table)
-                    .inspect_err(|err| {
-                        OUTPUT.error(&err.to_string());
-                    })?;
+                let (pkg, _source, _remotes) =
+                    fetch_and_read_git_package(&git_url, &table, &HashMap::new(), &HashMap::new())
+                        .inspect_err(|err| {
+                            OUTPUT.error(&err.to_string());
+                        })?;
                 let resolved_name = r.name_override.unwrap_or(pkg.name);
                 git_deps.push((resolved_name.clone(), table));
                 resolved_name
@@ -631,6 +633,7 @@ mod tests {
             sources: vec![],
             target: format!("bin/{}_{}.tgz", name, version),
             groups: vec![],
+            extra_groups: vec![],
         }
     }
 

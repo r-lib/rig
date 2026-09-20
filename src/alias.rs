@@ -148,6 +148,26 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
+pub fn remove_alias(alias: &str) -> Result<(), Box<dyn Error>> {
+    let mode = crate::utils::get_mode()?;
+    let msg = "Removing R-".to_string() + alias + " alias";
+    if mode == crate::utils::Mode::Admin {
+        escalate(&msg)?;
+    }
+
+    let binary_dir = get_binary_dir()?;
+    let linkfile = Path::new(&binary_dir).join("R-".to_string() + alias);
+
+    if std::fs::symlink_metadata(&linkfile).is_ok() {
+        OUTPUT.status(&format!("Removing R-{} alias", alias));
+        info!("Removing R-{} alias", alias);
+        std::fs::remove_file(&linkfile)?;
+    }
+
+    Ok(())
+}
+
 #[cfg(target_os = "windows")]
 pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     let msg = "Adding R-".to_string() + alias + " alias";
@@ -182,6 +202,24 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
     OUTPUT.status(&format!("{} R-{} alias to R {}", op, alias, ver));
     info!("{} R-{} -> {} alias", op, alias, ver);
     write_shim_link(&linkfile, &target, "")?;
+
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+pub fn remove_alias(alias: &str) -> Result<(), Box<dyn Error>> {
+    let msg = "Removing R-".to_string() + alias + " alias";
+    escalate(&msg)?;
+
+    let links_dir = get_links_dir()?;
+    let filename = "R-".to_string() + alias + ".exe";
+    let linkfile = Path::new(&links_dir).join(&filename);
+
+    if linkfile.exists() {
+        OUTPUT.status(&format!("Removing R-{} alias", alias));
+        info!("Removing R-{} alias", alias);
+        std::fs::remove_file(&linkfile)?;
+    }
 
     Ok(())
 }
@@ -262,6 +300,26 @@ pub fn add_alias(ver: &str, alias: &str) -> Result<(), Box<dyn Error>> {
             err.to_string()
         )
     };
+
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+pub fn remove_alias(alias: &str) -> Result<(), Box<dyn Error>> {
+    let mode = crate::utils::get_mode()?;
+    let msg = "Removing R-".to_string() + alias + " alias";
+    if mode == crate::utils::Mode::Admin {
+        escalate(&msg)?;
+    }
+
+    let binary_dir = get_binary_dir()?;
+    let linkfile = Path::new(&binary_dir).join("R-".to_string() + alias);
+
+    if std::fs::symlink_metadata(&linkfile).is_ok() {
+        OUTPUT.status(&format!("Removing R-{} alias", alias));
+        info!("Removing R-{} alias", alias);
+        std::fs::remove_file(&linkfile)?;
+    }
 
     Ok(())
 }

@@ -302,6 +302,24 @@ teardown() {
     [[ $status -eq 1 ]]
 }
 
+@test "system blas" {
+    run sudo rig system blas set accelerate 4.1
+    [[ $status -eq 0 ]]
+    run readlink /Library/Frameworks/R.framework/Versions/4.1/Resources/lib/libRblas.dylib
+    [[ "$output" == "libRblas.vecLib.dylib" ]]
+    run rig system blas status 4.1
+    [[ $status -eq 0 ]]
+    echo $output | grep -q -- "accelerate"
+
+    run sudo rig system blas set reference 4.1
+    [[ $status -eq 0 ]]
+    run readlink /Library/Frameworks/R.framework/Versions/4.1/Resources/lib/libRblas.dylib
+    [[ "$output" == "libRblas.0.dylib" ]]
+    run rig system blas status 4.1
+    [[ $status -eq 0 ]]
+    echo $output | grep -q -- "reference"
+}
+
 @test "system allow-debugger" {
     run sudo rig default 4.1
     [[ "$status" -eq 0 ]]
@@ -459,10 +477,10 @@ teardown() {
     [[ "$status" -eq 0 ]]
     grep -q '^jsonlite = "\^1.8.0"$' rproj.toml
 
-    # --dev adds to the test dependency group
+    # --dev adds to the dev dependency group
     run rig proj add 'testthat@>= 3.0' --dev --no-lock
     [[ "$status" -eq 0 ]]
-    grep -q '^\[dependency-groups.test\]$' rproj.toml
+    grep -q '^\[dependency-groups.dev\]$' rproj.toml
     grep -q '^testthat = ">= 3.0"$' rproj.toml
 
     # adding a package again updates its version requirement

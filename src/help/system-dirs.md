@@ -5,8 +5,9 @@ Print the directories rig uses
 Print the directories rig uses: where R and (on Windows) Rtools is
 installed, where the quick links are created, where (on Linux) rig keeps
 the fontconfig configuration and the fallback fonts of the portable R
-builds, where rig downloads the installers to, and where rig keeps its own
-configuration, data, cache and log files.
+builds, where rig downloads the installers to, where rig keeps its own
+configuration, data, cache and log files, and the root `rig proj`
+centralizes project package libraries under, if configured.
 
 The directories themselves may not exist.
 
@@ -48,3 +49,10 @@ builds. On non-Linux platforms `--fonts` prints nothing and is hidden.
 system temporary directory and its name contains your user id, so that
 [admin and user mode](../admin-vs-user-mode.qmd) installs, and different users of the same machine,
 never share it. See the `download-dir` [configuration entry](config.qmd) to change it.
+
+`--library-root` is the root [`rig proj sync`](proj.qmd#rig-proj-sync)
+centralizes project package libraries under, if the `RIG_PROJ_LIBRARY_ROOT`
+environment variable or the `proj-library-root` [configuration
+entry](config.qmd) is set. Unset by default: each project's library then
+stays at its own `.rvenv/lib`, and `--library-root` prints that fact instead
+of a path.

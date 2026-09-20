@@ -265,6 +265,19 @@ pub(super) fn rig_name_for_arch(base: &str, arch: &str) -> String {
     }
 }
 
+// The `release`/`oldrel` aliases point at the native build. An x86_64 build
+// installed on an aarch64 machine gets an `-x86_64` suffix instead, to avoid
+// colliding with the native alias.
+fn alias_with_arch_suffix(alias: Option<String>, arch: &str) -> Option<String> {
+    alias.map(|a| {
+        if arch == "x86_64" && get_native_arch() == "aarch64" {
+            format!("{}-x86_64", a)
+        } else {
+            a
+        }
+    })
+}
+
 pub fn get_r_syslibpath() -> Result<String, Box<dyn Error>> {
     if get_mode()? == Mode::User {
         Ok("{}\\library".to_string())
@@ -351,10 +364,30 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         validate_version_arg(str)?;
     }
 
-    escalate("adding new R version")?;
     let alias = get_alias(args);
+    let reinstall = args.get_flag("reinstall");
+    // `devel`/`next` are rebuilt daily under the same directory name, so
+    // "already installed" never means "up to date" for them.
+    let rolling = str == "devel" || str == "next";
+    let is_rtools = str.len() >= 6 && &str[0..6] == "rtools";
+
+    // Fast path: a fully pinned version's install directory name is
+    // deterministic from the version and arch alone, so we can check
+    // whether it's already installed before resolving anything over the
+    // network (and, since pinned versions never get an alias, without
+    // escalating privileges either).
+    if !reinstall && !rolling && !is_rtools && is_pinned_version_string(str) {
+        let platform = get_platform(args)?;
+        let arch = get_arch(&platform, args);
+        let candidate = rig_name_for_arch(str, &arch);
+        if let Some(name) = find_installed_matching(&[candidate], str)? {
+            return report_already_installed(&name, alias_with_arch_suffix(alias, &arch));
+        }
+    }
+
+    escalate("adding new R version")?;
     sc_clean_registry()?;
-    if str.len() >= 6 && &str[0..6] == "rtools" {
+    if is_rtools {
         // For bare "rtools" (install all needed), only honour --arch when the user
         // explicitly passed it; the flag's native-arch default should not filter out
         // cross-arch installations.
@@ -367,6 +400,25 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         };
         return add_rtools(str.to_string(), arch);
     }
+
+    // General check: for requests that don't pin a full version (`release`,
+    // `oldrel(/n)`, bare/partial version numbers), the concrete version is
+    // only known once resolved. Skip here if it's already installed, before
+    // downloading the installer.
+    if !reinstall && !rolling {
+        let version = get_resolve(args)?;
+        if let Some(ref v) = version.version {
+            let arch = version
+                .arch
+                .clone()
+                .unwrap_or_else(|| get_native_arch().to_string());
+            let candidate = rig_name_for_arch(v, &arch);
+            if let Some(name) = find_installed_matching(&[candidate], v)? {
+                return report_already_installed(&name, alias_with_arch_suffix(alias, &arch));
+            }
+        }
+    }
+
     let (version_info, target) = download_r(args)?;
     let installed_arch = version_info
         .arch
@@ -482,15 +534,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match dirname {
         None => {}
         Some(ref dirname) => {
-            // The `release`/`oldrel` aliases point at the native build. An
-            // x86_64 build on an aarch64 machine gets an `-x86_64` suffix
-            // instead, to avoid colliding with the native alias.
-            if let Some(alias) = alias {
-                let alias = if installed_arch == "x86_64" && get_native_arch() == "aarch64" {
-                    format!("{}-x86_64", alias)
-                } else {
-                    alias
-                };
+            if let Some(alias) = alias_with_arch_suffix(alias, &installed_arch) {
                 add_alias(dirname, &alias)?
             }
         }
@@ -1438,6 +1482,145 @@ pub fn sc_system_fix_r_alias(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+pub fn sc_system_fix_aliases(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    let platform = get_platform(args)?;
+    let native_arch = get_arch(&platform, args);
+    let mode = get_mode()?;
+
+    for al in find_aliases()? {
+        let (base, arch) = fix_aliases_base_and_arch(&al.alias, &native_arch);
+
+        // In user mode `next` installs under a fixed directory name (see
+        // `user_install_name`), so the alias is always already correct
+        // there. In admin mode the install directory is named after its
+        // version number, which drifts when next branches to a new minor
+        // version, so it needs the same R_STATUS-based check `rig add next`
+        // itself uses to name the directory in the first place.
+        if base == "next" {
+            if mode == Mode::Admin {
+                fix_next_alias(&al, &platform, &arch)?;
+            }
+            continue;
+        }
+
+        let resolved = match resolve_versions(vec![base.clone()], &platform, &arch) {
+            Ok(v) => v.into_iter().next(),
+            Err(err) => {
+                OUTPUT.warn(&format!(
+                    "Could not resolve `{}` to check R-{}: {}",
+                    base, al.alias, err
+                ));
+                continue;
+            }
+        };
+        let Some(rver) = resolved else { continue };
+        let Some(ref version) = rver.version else {
+            continue;
+        };
+
+        let candidate = rig_name_for_arch(version, &arch);
+        match find_installed_matching(&[candidate], version)? {
+            None => {
+                OUTPUT.warn(&format!(
+                    "R-{} should point to R {} ({}), but it is not installed. Removing the stale alias.",
+                    al.alias, version, arch
+                ));
+                remove_alias(&al.alias)?;
+            }
+            Some(name) if name == al.version => {}
+            Some(name) => {
+                OUTPUT.status(&format!(
+                    "Fixing R-{} alias: {} -> {}",
+                    al.alias, al.version, name
+                ));
+                add_alias(&name, &al.alias)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// Splits an alias name like "release-x86_64" into ("release", "x86_64"), or
+// "release" into ("release", native_arch) -- the inverse of
+// `alias_with_arch_suffix`.
+fn fix_aliases_base_and_arch(alias: &str, native_arch: &str) -> (String, String) {
+    match alias.strip_suffix("-x86_64") {
+        Some(base) => (base.to_string(), "x86_64".to_string()),
+        None => (alias.to_string(), native_arch.to_string()),
+    }
+}
+
+// Admin-mode `R-next`: re-point the alias if the directory it currently
+// targets is no longer the one with `next`'s R_STATUS (e.g. next branched
+// to a new minor version, so the old directory is now a plain release and
+// a new directory has taken over the "next" status), by finding whichever
+// installed directory currently has that status.
+// R_STATUS alone is not enough: it is frozen at install time, so an old
+// `next` directory that has since branched into a plain release still
+// reports its original "under development" status forever. So a directory
+// only counts as the current `next` build if its R_STATUS matches AND its
+// reported version is exactly the one `rig resolve next` returns today.
+fn fix_next_alias(al: &Alias, platform: &str, arch: &str) -> Result<(), Box<dyn Error>> {
+    let resolved_version = match resolve_versions(vec!["next".to_string()], platform, arch) {
+        Ok(v) => v.into_iter().next().and_then(|r| r.version),
+        Err(err) => {
+            OUTPUT.warn(&format!(
+                "Could not resolve `next` to check R-{}: {}",
+                al.alias, err
+            ));
+            return Ok(());
+        }
+    };
+    let Some(resolved_version) = resolved_version else {
+        return Ok(());
+    };
+
+    let installed = sc_get_list_details()?;
+
+    let current_ok = installed
+        .iter()
+        .find(|ver| ver.name == al.version)
+        .and_then(|ver| ver.path.as_deref())
+        .is_some_and(|path| is_current_next_build(Path::new(path), &resolved_version));
+    if current_ok {
+        return Ok(());
+    }
+
+    for ver in &installed {
+        let Some(path) = ver.path.as_deref() else {
+            continue;
+        };
+        if is_current_next_build(Path::new(path), &resolved_version) {
+            if ver.name != al.version {
+                OUTPUT.status(&format!(
+                    "Fixing R-{} alias: {} -> {}",
+                    al.alias, al.version, ver.name
+                ));
+                add_alias(&ver.name, &al.alias)?;
+            }
+            return Ok(());
+        }
+    }
+
+    OUTPUT.warn(&format!(
+        "R-{} should point to R {}, but it is not installed. Removing the stale alias.",
+        al.alias, resolved_version
+    ));
+    remove_alias(&al.alias)?;
+    Ok(())
+}
+
+fn is_current_next_build(install_dir: &Path, resolved_version: &str) -> bool {
+    match read_rversion_h(install_dir) {
+        Ok((version, status)) => {
+            version == resolved_version
+                && crate::common::user_mode_dev_dirname(Some(&status)).as_deref() == Some("next")
+        }
+        Err(_) => false,
+    }
+}
+
 // ------------------------------------------------------------------------
 // `rig system user-mode` (Windows): switch rig to user mode and clean up an
 // existing admin-mode setup. Mirrors the macOS/Linux implementation:
@@ -1971,6 +2154,16 @@ pub fn sc_system_no_openmp(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+pub fn sc_system_blas_status(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    // Nothing to do on Windows
+    Ok(())
+}
+
+pub fn sc_system_blas_set(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    // Nothing to do on Windows
+    Ok(())
+}
+
 // ------------------------------------------------------------------------
 
 fn list_r_in_root(root: &str, suffix: &str, vers: &mut Vec<String>) -> Result<(), Box<dyn Error>> {
@@ -2141,16 +2334,26 @@ pub fn sc_system_rtools(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), 
     }
 }
 
+// Rtools versions are named without a dot ("45", "44", "40"), unlike R versions.
+// Users naturally type the R-version-style "4.5" though (see #313), so accept
+// and normalize that too by dropping any dots.
+fn normalize_rtools_version(ver: &str) -> String {
+    ver.replace('.', "")
+}
+
 fn sc_rtools_add(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     escalate("adding Rtools")?;
     let ver = args.get_one::<String>("version").unwrap();
     let arch = args.get_one::<String>("arch").map(|s| normalize_arch(s));
     if ver == "all" {
         add_rtools("rtools".to_string(), arch)
-    } else if ver.starts_with("rtools") {
-        add_rtools(ver.to_string(), arch)
+    } else if let Some(stripped) = ver.strip_prefix("rtools") {
+        add_rtools(
+            "rtools".to_string() + &normalize_rtools_version(stripped),
+            arch,
+        )
     } else {
-        add_rtools("rtools".to_string() + ver, arch)
+        add_rtools("rtools".to_string() + &normalize_rtools_version(ver), arch)
     }
 }
 
@@ -2166,10 +2369,16 @@ fn sc_rtools_rm(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<(), Box<dyn
     for ver in vers {
         if ver == "all" {
             rm_rtools("rtools".to_string(), arch.clone())?;
-        } else if ver.starts_with("rtools") {
-            rm_rtools(ver.to_string(), arch.clone())?;
+        } else if let Some(stripped) = ver.strip_prefix("rtools") {
+            rm_rtools(
+                "rtools".to_string() + &normalize_rtools_version(stripped),
+                arch.clone(),
+            )?;
         } else {
-            rm_rtools("rtools".to_string() + ver, arch.clone())?;
+            rm_rtools(
+                "rtools".to_string() + &normalize_rtools_version(ver),
+                arch.clone(),
+            )?;
         }
     }
 

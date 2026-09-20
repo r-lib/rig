@@ -47,6 +47,7 @@ mod dirs;
 mod download;
 mod hardcoded;
 mod install;
+mod install_receipt;
 mod library;
 mod output;
 mod pager;
@@ -64,8 +65,9 @@ mod rproj;
 mod run;
 mod rvenv;
 mod rversion;
+mod self_uninstall;
+mod self_update;
 mod solver;
-mod sysreqs;
 mod test;
 mod textfmt;
 mod utils;
@@ -77,7 +79,6 @@ use platform::*;
 use ppm::*;
 use proj::*;
 use repos::*;
-use sysreqs::*;
 use utils::unset_r_envvars;
 
 use crate::common::*;
@@ -286,6 +287,7 @@ fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
         Some(("list", sub)) => sc_list(sub, args)?,
         Some(("proj", sub)) => sc_proj(sub, args)?,
         Some(("rm", sub)) => sc_rm(sub)?,
+        Some(("self", sub)) => sc_self(sub, args)?,
         Some(("system", sub)) => sc_system(sub, args)?,
         Some(("rtools", sub)) => sc_system_rtools(sub, args)?,
         Some(("pkg", sub)) => sc_pkg(sub, args)?,
@@ -296,13 +298,22 @@ fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
         Some(("library", sub)) => sc_library(sub, args)?,
         Some(("cache", sub)) => sc_cache(sub)?,
         Some(("config", sub)) => crate::config::sc_config(sub, args)?,
-        Some(("sysreqs", sub)) => sc_sysreqs(sub, args)?,
         Some(("available", sub)) => sc_available(sub, args)?,
         Some(("run", sub)) => retval = sc_run(sub, args)?,
         Some(("test", sub)) => sc_test(sub, args)?,
         _ => (), // unreachable
     }
     Ok(retval)
+}
+
+fn sc_self(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    match args.subcommand() {
+        Some(("update", s)) => self_update::sc_self_update(s, mainargs),
+        Some(("uninstall", s)) => self_uninstall::sc_self_uninstall(s, mainargs),
+        // Every subcommand defined in `args.rs` has an arm above, so this is
+        // only reached if one is renamed there without updating this list.
+        _ => Ok(()),
+    }
 }
 
 fn sc_system(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
@@ -315,10 +326,20 @@ fn sc_system(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Err
         Some(("setup-user-lib", s)) => sc_system_setup_user_lib(s),
         Some(("dirs", s)) => crate::dirs::sc_system_dirs(s, mainargs),
         Some(("make-links", _)) => sc_system_make_links(),
+        Some(("fix-aliases", s)) => sc_system_fix_aliases(s),
         Some(("make-orthogonal", s)) => sc_system_make_orthogonal(s),
         Some(("fix-permissions", s)) => sc_system_fix_permissions(s),
         Some(("forget", _)) => sc_system_forget(),
         Some(("no-openmp", s)) => sc_system_no_openmp(s),
+        Some(("blas", s)) => match s.subcommand() {
+            Some(("status", s2)) => sc_system_blas_status(s2),
+            Some(("set", s2)) => sc_system_blas_set(s2),
+            Some((name, _)) => bail!(
+                "Internal error: unknown `rig system blas` subcommand: {}",
+                name
+            ),
+            None => Ok(()),
+        },
         Some(("user-mode", s)) => sc_system_user_mode(s),
         Some(("clean-admin-r", s)) => sc_system_clean_admin_r(s),
         Some(("fix-r-alias", s)) => sc_system_fix_r_alias(s),

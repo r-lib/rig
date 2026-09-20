@@ -32,14 +32,23 @@ curl -Ls https://github.com/r-lib/rig/releases/download/latest/rig-macos-arm64-l
 ```
 
 Make sure `~/.local/bin` is on your `PATH`. The binary in these archives is
-signed and notarized, so it runs without Gatekeeper warnings.
+signed and notarized, so it runs without Gatekeeper warnings. Note that
+`rig self update` and `rig self uninstall` do not work for this manually-unpacked archive, only for
+the install script above.
+
+To update a script-installed rig, just run:
+
+```sh
+rig self update
+```
 
 ---
 
 ### Method 2: system install (with menu bar app)
 
 Download the latest release from <https://github.com/r-lib/rig/releases>
-and install it the usual way.
+and install it the usual way. `rig self update` and `rig self uninstall` do not work for this
+install method; download and run a newer installer instead.
 
 ---
 
@@ -63,7 +72,8 @@ You can use x86_64 rig on Arm macs, and it will be able to install Arm
 builds of R. But you cannot use Arm rig on Intel macs. If you use both brew
 versions, only install rig with one of them.
 
-To update rig you can run
+`rig self update` and `rig self uninstall` do not work for a Homebrew install; use `brew upgrade`
+instead. To update rig you can run
 
 ```sh
 brew upgrade r-rig-app
@@ -94,7 +104,14 @@ rig add release
 Alternatively, download the `rig-windows-<arch>-<version>.zip` archive
 (`x86_64` or `arm64`) from <https://github.com/r-lib/rig/releases> and extract
 it into `%USERPROFILE%\.local`, then add `%USERPROFILE%\.local\bin` to your
-`PATH`.
+`PATH`. Note that `rig self update` and `rig self uninstall` do not work for this manually-extracted
+archive, only for the install script above.
+
+To update a script-installed rig, just run:
+
+``` powershell
+rig self update
+```
 
 ---
 
@@ -104,7 +121,9 @@ Download the latest release from <https://github.com/r-lib/rig/releases>
 and install it the usual way.
 
 `rig` adds itself to the user's path, but you might need to restart your
-terminal after the installation on Windows.
+terminal after the installation on Windows. `rig self update` and `rig self
+uninstall` do not work for this install method; download and run a newer
+installer instead.
 
 ---
 
@@ -125,6 +144,9 @@ To update run
 scoop update rig
 ```
 
+`rig self update` and `rig self uninstall` do not work for a Scoop install; use `scoop update`
+instead.
+
 ---
 
 ### Method 4: Chocolatey
@@ -142,6 +164,9 @@ and upgrade to the latest version with
 choco upgrade rig
 ```
 
+`rig self update` and `rig self uninstall` do not work for a Chocolatey install; use
+`choco upgrade` instead.
+
 ---
 
 ### Method 5: WinGet
@@ -152,6 +177,9 @@ built-in WinGet package manager. The name of the package is `posit.rig`.
 ``` powershell
 winget install posit.rig
 ```
+
+`rig self update` and `rig self uninstall` do not work for a WinGet install; run
+`winget upgrade posit.rig` instead.
 
 ## Linux
 
@@ -190,7 +218,15 @@ curl -Ls https://github.com/r-lib/rig/releases/download/latest/rig-linux-$(arch)
   tar xz -C ~/.local
 ```
 
-Make sure `~/.local/bin` is on your `PATH`.
+Make sure `~/.local/bin` is on your `PATH`. Note that `rig self update` and
+`rig self uninstall` do not work for this manually-unpacked archive, only
+for the install script above.
+
+To update a script-installed rig, just run:
+
+```sh
+rig self update
+```
 
 ---
 
@@ -201,6 +237,7 @@ install rig. First you add our key to your config:
 
 ```sh
 `which sudo` curl -L https://rig.r-pkg.org/deb/rig.gpg -o /etc/apt/trusted.gpg.d/rig.gpg
+`which sudo` chmod 644 /etc/apt/trusted.gpg.d/rig.gpg
 ```
 
 Then add the rig repository:
@@ -217,6 +254,9 @@ package (`rig` is a different package in Debian and Ubuntu):
 `which sudo` apt install r-rig
 ```
 
+`rig self update` and `rig self uninstall` do not work for a DEB install; use `apt` to update
+instead.
+
 ---
 
 ### Method 3: RHEL, Fedora, Rocky Linux, Almalinux, etc. (RPM package)
@@ -229,6 +269,9 @@ our RPM package directly:
   https://github.com/r-lib/rig/releases/download/latest/r-rig-latest-1.$(arch).rpm
 ```
 
+`rig self update` and `rig self uninstall` do not work for an RPM install; use `yum`/`dnf` to
+update instead.
+
 ---
 
 ### Method 4: OpenSUSE and SLES (RPM package)
@@ -239,6 +282,9 @@ On OpenSUSE and SLES use `zypper` instead of `yum`:
 `which sudo` zypper install -y --allow-unsigned-rpm \
   https://github.com/r-lib/rig/releases/download/latest/r-rig-latest-1.$(arch).rpm
 ```
+
+`rig self update` and `rig self uninstall` do not work for an RPM install; use `zypper` to update
+instead.
 
 ---
 
@@ -251,5 +297,8 @@ and uncompress it to `/usr/local`
 curl -Ls https://github.com/r-lib/rig/releases/download/latest/rig-linux-$(arch)-latest.tar.gz |
   `which sudo` tar xz -C /usr/local
 ```
+
+`rig self update` and `rig self uninstall` do not work for this manually-unpacked tarball, only for
+the Method 1 install script into `~/.local`.
 
 :::

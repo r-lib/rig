@@ -1,7 +1,7 @@
 // The directories rig uses: `rig system dirs` prints all of them, and with one
 // of the `--r`, `--rtools`, `--binary`, `--data`, `--fonts`, `--cache`,
-// `--download` and `--log` flags it prints a single one, as a bare path, for
-// use in scripts.
+// `--download`, `--log` and `--library-root` flags it prints a single one, as
+// a bare path, for use in scripts.
 //
 // All of these report the *effective* values, i.e. what rig will actually use,
 // after applying the mode, the RIG_* environment variables and the config file.
@@ -29,7 +29,7 @@ use tabular::{row, Table};
 
 use crate::cache::{get_data_dir, get_download_dir, get_logs_dir, real_cache_dir};
 use crate::output::OUTPUT;
-use crate::utils::{get_binary_dir, get_mode};
+use crate::utils::{get_binary_dir, get_mode, get_proj_library_root};
 
 #[cfg(target_os = "linux")]
 use crate::linux::{get_fontconfig_dir, get_r_root};
@@ -62,7 +62,15 @@ pub struct RigDirs {
     // it installs them. Per effective uid, see get_download_dir().
     pub download_dir: String,
     pub logs_dir: String,
+    // The root `rig proj` centralizes project package libraries under, if
+    // configured; the placeholder string below when it is not, since (unlike
+    // the other roots here) the default is "no root at all", not a fixed
+    // path -- each project's library then stays at its own `.rvenv/lib`.
+    pub library_root: String,
 }
+
+// What `library_root` reports when no centralized root is configured.
+const NO_LIBRARY_ROOT: &str = "(in-project, .rvenv/lib)";
 
 // The native architecture of the machine, spelled the way this platform's
 // `rig add --arch` spells it, so it can be fed straight back to rig. (This is
@@ -148,6 +156,7 @@ pub fn rig_dirs(arch: &str) -> Result<RigDirs, Box<dyn Error>> {
         cache_dir: path_string(real_cache_dir()?),
         download_dir: path_string(get_download_dir()?),
         logs_dir: path_string(get_logs_dir()?),
+        library_root: get_proj_library_root()?.unwrap_or_else(|| NO_LIBRARY_ROOT.to_string()),
     })
 }
 
@@ -167,13 +176,22 @@ fn dirs_rows(dirs: &RigDirs) -> Vec<(&'static str, &str)> {
     rows.push(("Cache dir", dirs.cache_dir.as_str()));
     rows.push(("Download dir", dirs.download_dir.as_str()));
     rows.push(("Logs dir", dirs.logs_dir.as_str()));
+    rows.push(("Project library root", dirs.library_root.as_str()));
     rows
 }
 
 // The flags that select a single directory, in the order they are reported.
 // clap makes them mutually exclusive, via the `dir` argument group.
-const SELECTORS: [&str; 8] = [
-    "r", "rtools", "binary", "data", "fonts", "cache", "download", "log",
+const SELECTORS: [&str; 9] = [
+    "r",
+    "rtools",
+    "binary",
+    "data",
+    "fonts",
+    "cache",
+    "download",
+    "log",
+    "library-root",
 ];
 
 fn selected_dir(args: &ArgMatches) -> Option<&'static str> {
@@ -213,6 +231,12 @@ pub fn sc_system_dirs(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Bo
             "cache" => println!("{}", path_string(real_cache_dir()?)),
             "download" => println!("{}", path_string(get_download_dir()?)),
             "log" => println!("{}", path_string(get_logs_dir()?)),
+            "library-root" => {
+                println!(
+                    "{}",
+                    get_proj_library_root()?.unwrap_or_else(|| NO_LIBRARY_ROOT.to_string())
+                )
+            }
             _ => unreachable!(),
         }
         return Ok(());
@@ -290,6 +314,7 @@ mod tests {
             cache_dir: "cache-dir".to_string(),
             download_dir: "download-dir".to_string(),
             logs_dir: "logs-dir".to_string(),
+            library_root: "library-root".to_string(),
         };
 
         let mut expected = vec!["mode", "arch", "r_root"];
@@ -300,7 +325,7 @@ mod tests {
         if cfg!(target_os = "linux") {
             expected.push("fonts_dir");
         }
-        expected.extend(["cache_dir", "download_dir", "logs_dir"]);
+        expected.extend(["cache_dir", "download_dir", "logs_dir", "library_root"]);
 
         // serde_json's Map sorts its keys, so compare the key set here and the
         // order of the actual output separately, below.

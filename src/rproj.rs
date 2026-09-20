@@ -40,7 +40,7 @@ use crate::repos::cranlike_metadata::minor_r_version;
 use crate::rvenv::RPROJ_LOCK_FILE;
 use crate::solver::{RPackageRegistry, RegistryPackageVersion};
 
-pub const RPROJ_LOCK_VERSION: usize = 3;
+pub const RPROJ_LOCK_VERSION: usize = 4;
 
 // `rproj.toml`: the project/package manifest (see the design doc). This is the
 // *requirements* file a human edits, as opposed to `rproj.lock` (the solved
@@ -50,11 +50,11 @@ pub const RPROJ_LOCK_VERSION: usize = 3;
 pub const RPROJ_MANIFEST_FILE: &str = "rproj.toml";
 
 /// The dependency groups that map onto a `DESCRIPTION` dependency field
-/// instead of onto a `Config/Needs/*` field: `test` is `Suggests` and
+/// instead of onto a `Config/Needs/*` field: `dev` is `Suggests` and
 /// `enhances` is `Enhances` (see [`Rproj::merge_description`]). Every other
 /// group is a `Config/Needs/<group>` field (see
 /// [`Rproj::merge_config_needs`]).
-const DESCRIPTION_DEP_GROUPS: [&str; 2] = ["test", "enhances"];
+const DESCRIPTION_DEP_GROUPS: [&str; 2] = ["dev", "enhances"];
 
 /// A parsed `rproj.toml` manifest.
 ///
@@ -664,7 +664,7 @@ impl Rproj {
     /// stays a plain version string); `LinkingTo` also lands in
     /// `[linking-dependencies]` (a package can be in both tables at once,
     /// e.g. `Rcpp` in both `Imports` and `LinkingTo`); `Suggests`/`Enhances`
-    /// land in `[dependency-groups.test]` / `[dependency-groups.enhances]`.
+    /// land in `[dependency-groups.dev]` / `[dependency-groups.enhances]`.
     pub fn merge_description(&mut self, pkg: &DcfPackage) {
         for dep in pkg.dependencies.dependencies.iter() {
             let version_str = format_constraints(&dep.constraints);
@@ -693,7 +693,7 @@ impl Rproj {
             if !hard {
                 if dep.types.contains(&RDepType::Suggests) {
                     self.dependency_groups
-                        .entry("test".to_string())
+                        .entry("dev".to_string())
                         .or_default()
                         .dependencies
                         .insert(dep.name.clone(), Dependency::Version(version_str.clone()));
@@ -773,7 +773,7 @@ impl Rproj {
     }
 
     /// Add a dependency to the manifest, or update it if the manifest lists it
-    /// already. `dev` puts it in the `test` dependency group (the group
+    /// already. `dev` puts it in the `dev` dependency group (the group
     /// `rig proj import` imports `Suggests` into) instead of
     /// `[dependencies]`.
     ///
@@ -785,7 +785,7 @@ impl Rproj {
         let table = if dev {
             &mut self
                 .dependency_groups
-                .entry("test".to_string())
+                .entry("dev".to_string())
                 .or_default()
                 .dependencies
         } else {
@@ -825,7 +825,7 @@ impl Rproj {
         let group = if dev {
             &mut self
                 .dependency_groups
-                .entry("test".to_string())
+                .entry("dev".to_string())
                 .or_default()
                 .dependencies
         } else {
@@ -879,7 +879,7 @@ impl Rproj {
     }
 
     /// Returns the table at `path` inside `doc` (e.g. `&["dependencies"]`,
-    /// `&["dependency-groups", "test"]`, `&["config", "testthat"]`),
+    /// `&["dependency-groups", "dev"]`, `&["config", "testthat"]`),
     /// creating any missing table along the way. A newly created table that
     /// isn't the last path segment -- a grouping table like
     /// `dependency-groups` or `config`, which only ever holds named
@@ -937,7 +937,7 @@ impl Rproj {
     }
 
     /// Insert or update `name` in the document-level table at `path`
-    /// (`&["dependencies"]`, `&["dependency-groups", "test"]`, ...),
+    /// (`&["dependencies"]`, `&["dependency-groups", "dev"]`, ...),
     /// mirroring [`Rproj::add_dependency`]/[`Rproj::add_remote_dependency`]
     /// on the ORIGINAL on-disk document, so any comment, blank-line
     /// grouping, or unmodeled table elsewhere in the file survives. A
@@ -1012,7 +1012,8 @@ impl Rproj {
         let mut out = vec![];
         let tables = std::iter::once(&self.dependencies)
             .chain(std::iter::once(&self.linking_dependencies))
-            .chain(self.dependency_groups.values().map(|g| &g.dependencies));
+            .chain(self.dependency_groups.values().map(|g| &g.dependencies))
+            .chain(self.optional_dependencies.values());
         for table in tables {
             for (name, dep) in table.iter() {
                 if let Dependency::Detailed(t) = dep {
@@ -1029,10 +1030,11 @@ impl Rproj {
     /// dependency field (`Depends`/`Imports`/`LinkingTo`/`Suggests`/
     /// `Enhances`), for [`Rproj::to_description`]'s `Remotes:` field. Scoped
     /// the same way as [`Rproj::to_dep_version_specs`] -- `[dependencies]`,
-    /// `[linking-dependencies]`, and the `test`/`enhances` dependency
-    /// groups -- unlike [`Rproj::git_dependencies`], which also sweeps
-    /// arbitrary `Config/Needs/*` groups that already carry their own pak-ref
-    /// entries and must not duplicate into `Remotes:`.
+    /// `[linking-dependencies]`, the `test`/`enhances` dependency groups, and
+    /// every `[optional-dependencies.*]` extra -- unlike
+    /// [`Rproj::git_dependencies`], which also sweeps arbitrary
+    /// `Config/Needs/*` groups that already carry their own pak-ref entries
+    /// and must not duplicate into `Remotes:`.
     fn description_git_dependencies(&self) -> Vec<(String, DepTable)> {
         let mut out = vec![];
         let tables = std::iter::once(&self.dependencies)
@@ -1041,7 +1043,8 @@ impl Rproj {
                 self.dependency_groups
                     .get(*group_name)
                     .map(|g| &g.dependencies)
-            }));
+            }))
+            .chain(self.optional_dependencies.values());
         for table in tables {
             for (name, dep) in table.iter() {
                 if let Dependency::Detailed(t) = dep {
@@ -1057,15 +1060,33 @@ impl Rproj {
     /// The manifest's dependencies as the solver's [`PackageDependencies`], the
     /// inverse of [`Rproj::merge_description`]: `[dependencies]` becomes
     /// `Depends` (entries marked `attach = true`, and `R` itself) or `Imports`,
-    /// `[linking-dependencies]` becomes `LinkingTo`, and the `test` / `enhances`
-    /// dependency groups become `Suggests` / `Enhances`. Other groups have no
-    /// DESCRIPTION dependency type to map to and are left out -- they are
-    /// arbitrary `Config/Needs/*` lists (see [`Rproj::merge_config_needs`]),
-    /// not necessarily CRAN-installable packages.
+    /// `[linking-dependencies]` becomes `LinkingTo`, and the `dev` / `enhances`
+    /// dependency groups become `Suggests` / `Enhances`. Every other
+    /// `[dependency-groups.*]` table -- an arbitrary `Config/Needs/*` list,
+    /// see [`Rproj::merge_config_needs`] -- is folded in as `Suggests` too,
+    /// the same as every `[optional-dependencies.*]` extra: none of these
+    /// have their own DESCRIPTION dependency type, but they are still solved
+    /// alongside everything else rather than left out or solved on their own.
     ///
     /// Soft dependencies are dropped unless `dev`; a package that is also a hard
     /// dependency stays, because it needs to be installed either way.
     pub fn to_dep_version_specs(&self, dev: bool) -> Result<PackageDependencies, Box<dyn Error>> {
+        self.to_dep_version_specs_impl(dev, true)
+    }
+
+    /// [`Rproj::to_dep_version_specs`], but with a switch for whether groups
+    /// other than `dev`/`enhances` are folded in as `Suggests`.
+    /// [`Rproj::to_description`] needs that switched off: those groups are
+    /// rendered into their own `Config/Needs/<group>` field instead (see its
+    /// loop over [`Rproj::dependency_groups`]), and must not also show up
+    /// under `Suggests:`, or they would be listed, and installed, twice over.
+    /// Every other caller solves and installs the manifest's full dependency
+    /// set, so [`Rproj::to_dep_version_specs`] leaves the switch on.
+    fn to_dep_version_specs_impl(
+        &self,
+        dev: bool,
+        other_groups: bool,
+    ) -> Result<PackageDependencies, Box<dyn Error>> {
         let mut deps: Vec<DepVersionSpec> = Vec::new();
 
         for (name, dep) in self.dependencies.iter() {
@@ -1081,14 +1102,45 @@ impl Rproj {
             deps.push(dep_spec(name, dep, RDepType::LinkingTo)?);
         }
 
-        for (group, dep_type) in [
-            ("test", RDepType::Suggests),
-            ("enhances", RDepType::Enhances),
-        ] {
-            if let Some(group) = self.dependency_groups.get(group) {
-                for (name, dep) in group.dependencies.iter() {
-                    deps.push(dep_spec(name, dep, dep_type.clone())?);
+        let resolved_groups = self.resolved_dependency_groups()?;
+        // A group can also declare packages by naming, not owning, them --
+        // via `include-groups` -- so build a lookup from package name to
+        // whichever group actually owns its `Dependency`/version spec, for
+        // the inherited names below.
+        let mut owner: HashMap<&str, &Dependency> = HashMap::new();
+        for group in self.dependency_groups.values() {
+            for (name, dep) in group.dependencies.iter() {
+                owner.insert(name.as_str(), dep);
+            }
+        }
+        for (group_name, group) in self.dependency_groups.iter() {
+            let dep_type = match group_name.as_str() {
+                "dev" => RDepType::Suggests,
+                "enhances" => RDepType::Enhances,
+                _ if other_groups => RDepType::Suggests,
+                _ => continue,
+            };
+            for (name, dep) in group.dependencies.iter() {
+                deps.push(dep_spec(name, dep, dep_type.clone())?);
+            }
+            // Packages inherited through `include-groups`, not declared
+            // directly in this group: same dep_type as this group's own
+            // packages, since they are just as much this group's concern.
+            if let Some(resolved) = resolved_groups.get(group_name) {
+                for name in resolved {
+                    if group.dependencies.contains_key(name) {
+                        continue;
+                    }
+                    if let Some(dep) = owner.get(name.as_str()) {
+                        deps.push(dep_spec(name, dep, dep_type.clone())?);
+                    }
                 }
+            }
+        }
+
+        for extra in self.optional_dependencies.values() {
+            for (name, dep) in extra.iter() {
+                deps.push(dep_spec(name, dep, RDepType::Suggests)?);
             }
         }
 
@@ -1104,35 +1156,116 @@ impl Rproj {
         Ok(pkg_deps)
     }
 
-    /// The manifest's solvable dependency groups, as direct dependency names,
-    /// for classifying a solved package graph by which group(s) need it:
-    /// `"main"` for the hard `[dependencies]`/`[linking-dependencies]`, plus
-    /// `"test"` / `"enhances"` for the two dependency groups
-    /// [`Rproj::to_dep_version_specs`] solves for -- the same set, so a
-    /// package this returns can always be found among that method's output.
-    /// Other `[dependency-groups.*]` tables are `Config/Needs/*` lists, not
-    /// solved or installed, so they have no roots here either.
-    pub fn dependency_group_roots(&self) -> HashMap<String, Vec<String>> {
-        let mut roots: HashMap<String, Vec<String>> = HashMap::new();
+    /// One `[dependency-groups.<name>]` table's effective package names:
+    /// its own `dependencies`, plus every group named in its
+    /// `include-groups`, resolved the same way (recursively). `visiting`
+    /// tracks the names currently being resolved, to catch a group that
+    /// includes itself, directly or through others, as an error rather
+    /// than infinite recursion. `cache` memoizes groups already resolved,
+    /// since the same group can be included from several places.
+    fn resolve_group(
+        &self,
+        name: &str,
+        visiting: &mut Vec<String>,
+        cache: &mut HashMap<String, Vec<String>>,
+    ) -> Result<Vec<String>, Box<dyn Error>> {
+        if let Some(resolved) = cache.get(name) {
+            return Ok(resolved.clone());
+        }
+        if visiting.iter().any(|n| n == name) {
+            let mut path = visiting.clone();
+            path.push(name.to_string());
+            bail!("dependency group cycle: {}", path.join(" -> "));
+        }
+        let group = match self.dependency_groups.get(name) {
+            Some(group) => group,
+            None => bail!(
+                "`include-groups` names \"{}\", which is not a\n\
+                `[dependency-groups.{}]` table",
+                name,
+                name
+            ),
+        };
 
-        let main: Vec<String> = self
-            .dependencies
+        visiting.push(name.to_string());
+        let mut resolved: Vec<String> = group.dependencies.keys().cloned().collect();
+        for included in group.include_groups.iter() {
+            resolved.extend(self.resolve_group(included, visiting, cache)?);
+        }
+        visiting.pop();
+
+        resolved.sort();
+        resolved.dedup();
+        cache.insert(name.to_string(), resolved.clone());
+        Ok(resolved)
+    }
+
+    /// Every `[dependency-groups.*]` table's effective package names,
+    /// `include-groups` resolved all the way through: a group's set is its
+    /// own packages plus every included group's set, recursively. Errors on
+    /// a cycle, or on `include-groups` naming a group that does not exist.
+    pub fn resolved_dependency_groups(
+        &self,
+    ) -> Result<HashMap<String, Vec<String>>, Box<dyn Error>> {
+        let mut cache = HashMap::new();
+        let mut out = HashMap::new();
+        for name in self.dependency_groups.keys() {
+            let mut visiting = vec![];
+            let resolved = self.resolve_group(name, &mut visiting, &mut cache)?;
+            out.insert(name.clone(), resolved);
+        }
+        Ok(out)
+    }
+
+    /// Every `[optional-dependencies.*]` extra's package names, under its
+    /// own name. Unlike [`Rproj::resolved_dependency_groups`], extras have no
+    /// `include-groups` of their own, so this is a direct lookup.
+    pub fn optional_dependency_roots(&self) -> HashMap<String, Vec<String>> {
+        self.optional_dependencies
+            .iter()
+            .map(|(name, extra)| (name.clone(), extra.keys().cloned().collect()))
+            .collect()
+    }
+
+    /// `"main"`, the hard `[dependencies]`/`[linking-dependencies]` names --
+    /// shared by [`Rproj::dependency_group_roots`] and
+    /// [`Rproj::main_and_group_roots`].
+    fn main_roots(&self) -> Vec<String> {
+        self.dependencies
             .keys()
             .chain(self.linking_dependencies.keys())
             .cloned()
-            .collect();
-        roots.insert("main".to_string(), main);
+            .collect()
+    }
 
-        for group_name in DESCRIPTION_DEP_GROUPS {
-            if let Some(group) = self.dependency_groups.get(group_name) {
-                roots
-                    .entry(group_name.to_string())
-                    .or_default()
-                    .extend(group.dependencies.keys().cloned());
-            }
-        }
+    /// `"main"` plus every `[dependency-groups.*]` table under its own name
+    /// (`include-groups` resolved, see [`Rproj::resolved_dependency_groups`]),
+    /// without the `[optional-dependencies.*]` extras --
+    /// [`rig proj sync`](crate::proj)'s `--group`/`--all-groups`/`--no-dev`
+    /// selection is scoped to this set, kept apart from extras so
+    /// `--all-groups` and `--all-extras` mean different things.
+    pub fn main_and_group_roots(&self) -> Result<HashMap<String, Vec<String>>, Box<dyn Error>> {
+        let mut roots: HashMap<String, Vec<String>> = HashMap::new();
+        roots.insert("main".to_string(), self.main_roots());
+        roots.extend(self.resolved_dependency_groups()?);
+        Ok(roots)
+    }
 
-        roots
+    /// The manifest's solvable dependency groups, as direct dependency names,
+    /// for classifying a solved package graph by which group(s) need it:
+    /// `"main"` for the hard `[dependencies]`/`[linking-dependencies]`, every
+    /// `[dependency-groups.*]` table under its own name (`include-groups`
+    /// resolved, see [`Rproj::resolved_dependency_groups`]), and every
+    /// `[optional-dependencies.*]` extra under its own name -- the same set
+    /// [`Rproj::to_dep_version_specs`] solves for, so a package this returns
+    /// can always be found among that method's output. For solving/tagging
+    /// purposes where groups and extras must stay distinguishable, use
+    /// [`Rproj::main_and_group_roots`] and [`Rproj::optional_dependency_roots`]
+    /// instead; this merged view is for display (`rig proj status`).
+    pub fn dependency_group_roots(&self) -> Result<HashMap<String, Vec<String>>, Box<dyn Error>> {
+        let mut roots = self.main_and_group_roots()?;
+        roots.extend(self.optional_dependency_roots());
+        Ok(roots)
     }
 
     /// Replace every `{ workspace = true }` dependency with the workspace
@@ -1233,7 +1366,7 @@ impl Rproj {
         if let Some(bugreports) = self.project.urls.get("bugreports") {
             writeln!(out, "BugReports: {}", bugreports)?;
         }
-        let pkg_deps = self.to_dep_version_specs(true)?;
+        let pkg_deps = self.to_dep_version_specs_impl(true, false)?;
         for dep_type in RDepType::all() {
             let mut entries: Vec<&DepVersionSpec> = pkg_deps
                 .dependencies
@@ -1947,7 +2080,7 @@ fn expand_version_req(req: &str) -> Result<Vec<VersionConstraint>, Box<dyn Error
 
 /// Format a dependency's version constraints as an `rproj.toml` version
 /// string, e.g. `">= 1.0, < 2.0"`, or `"*"` if there are none.
-fn format_constraints(constraints: &[VersionConstraint]) -> String {
+pub(crate) fn format_constraints(constraints: &[VersionConstraint]) -> String {
     if constraints.is_empty() {
         return "*".to_string();
     }
@@ -1964,11 +2097,36 @@ pub struct RprojLock {
     pub targets: Vec<RprojLockTarget>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RprojLockTarget {
     pub r_version: String,
     pub platform: String,
+    /// Fingerprint of the manifest's own direct dependency requirements this
+    /// target was solved against: one entry per name in `solve.merged`
+    /// (minus `"R"` and the base packages, same as `packages` below), each
+    /// with its version requirement formatted the same way
+    /// [`format_constraints`] writes it into `rproj.toml`. Filled in by
+    /// `proj_lock` after the solve, the same way `groups` is on
+    /// [`RprojLockPackage`] -- it needs the manifest's roots, not just the
+    /// solution, so [`RprojLockTarget::from_solution`] leaves it empty.
+    ///
+    /// This is what lets a later `rig proj lock` run tell whether this target
+    /// still satisfies the manifest without re-solving: compare this list's
+    /// names against the manifest's current direct dependencies (catches an
+    /// added or removed dependency), and each entry's requirement against the
+    /// version actually pinned in `packages` (catches a tightened
+    /// constraint) -- see `lock_target_satisfies` in `src/proj.rs`.
+    pub direct_dependencies: Vec<LockDirectDependency>,
     pub packages: Vec<RprojLockPackage>,
+}
+
+/// One entry of [`RprojLockTarget::direct_dependencies`]: a manifest direct
+/// dependency's name and the version requirement it was solved against, e.g.
+/// `{ name: "dplyr", constraint: ">= 1.1.0" }`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct LockDirectDependency {
+    pub name: String,
+    pub constraint: String,
 }
 
 /// One solved package of one target, i.e. one file to install.
@@ -1996,7 +2154,15 @@ pub struct RprojLockPackage {
     /// of every `[dependency-groups.*]` table that (transitively) needs it.
     /// Filled in by `proj_lock` after the solve, not by [`Self::from_solution`]
     /// itself, since it needs the whole package graph, not just one entry.
+    /// Kept separate from [`Self::extra_groups`] so `rig proj sync`'s
+    /// `--group`/`--all-groups` and `--extra`/`--all-extras` mean different
+    /// things.
     pub groups: Vec<String>,
+    /// Which `[optional-dependencies.*]` extra(s) (transitively) need this
+    /// package. See [`Self::groups`]. Absent (empty) in a lockfile written
+    /// before this field existed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extra_groups: Vec<String>,
 }
 
 impl RprojLockTarget {
@@ -2081,6 +2247,7 @@ impl RprojLockTarget {
                     sources,
                     target,
                     groups: vec![],
+                    extra_groups: vec![],
                 });
                 continue;
             }
@@ -2153,12 +2320,14 @@ impl RprojLockTarget {
                 sources,
                 target,
                 groups: vec![],
+                extra_groups: vec![],
             });
         }
 
         RprojLockTarget {
             r_version,
             platform: platform.unwrap_or_else(|| std::env::consts::ARCH.to_string()),
+            direct_dependencies: vec![],
             packages: pkgs,
         }
     }
@@ -2277,6 +2446,7 @@ mod tests {
             sources: vec!["https://example.com/cli.tgz".to_string()],
             target: "cli.tgz".to_string(),
             groups: vec!["main".to_string()],
+            extra_groups: vec![],
         }
     }
 
@@ -2365,7 +2535,7 @@ mod tests {
             },
         );
         m.dependency_groups.insert(
-            "dev".to_string(),
+            "extra".to_string(),
             Group {
                 include_groups: vec!["test".to_string()],
                 dependencies: BTreeMap::from([("lintr".to_string(), dep("*"))]),
@@ -2413,6 +2583,7 @@ mod tests {
             targets: vec![RprojLockTarget {
                 r_version: "4.6".to_string(),
                 platform: "aarch64-apple-darwin".to_string(),
+                direct_dependencies: vec![],
                 packages: vec![sample_package()],
             }],
         };
@@ -2439,11 +2610,13 @@ mod tests {
                 RprojLockTarget {
                     r_version: "4.5".to_string(),
                     platform: "x86_64-pc-linux-gnu".to_string(),
+                    direct_dependencies: vec![],
                     packages: vec![linux_package],
                 },
                 RprojLockTarget {
                     r_version: "4.6".to_string(),
                     platform: "aarch64-apple-darwin".to_string(),
+                    direct_dependencies: vec![],
                     packages: vec![sample_package()],
                 },
             ],
@@ -2470,6 +2643,7 @@ mod tests {
             targets: vec![RprojLockTarget {
                 r_version: "4.6".to_string(),
                 platform: "aarch64-apple-darwin".to_string(),
+                direct_dependencies: vec![],
                 packages: vec![package],
             }],
         };
@@ -2553,7 +2727,7 @@ mod tests {
         m.merge_description(&pkg);
         assert_eq!(
             m.dependency_groups
-                .get("test")
+                .get("dev")
                 .unwrap()
                 .dependencies
                 .get("testthat"),
@@ -2690,7 +2864,7 @@ mod tests {
     fn to_dep_version_specs_groups_are_soft_and_need_dev() {
         let mut m = Rproj::minimal("mypkg");
         m.dependency_groups.insert(
-            "test".to_string(),
+            "dev".to_string(),
             Group {
                 include_groups: vec![],
                 dependencies: BTreeMap::from([("testthat".to_string(), dep(">= 3.0"))]),
@@ -2703,7 +2877,8 @@ mod tests {
                 dependencies: BTreeMap::from([("otherpkg".to_string(), dep("*"))]),
             },
         );
-        // an unknown group has no DESCRIPTION dependency type, and is left out
+        // an unknown group has no DESCRIPTION dependency type, but is still
+        // solved, as a `Suggests`
         m.dependency_groups.insert(
             "docs".to_string(),
             Group {
@@ -2723,10 +2898,176 @@ mod tests {
             Some((&[RDepType::Suggests][..], vec![">= 3.0".to_string()]))
         );
         assert_eq!(
+            converted(&deps, "pkgdown"),
+            Some((&[RDepType::Suggests][..], vec![]))
+        );
+        assert_eq!(
             converted(&deps, "otherpkg"),
             Some((&[RDepType::Enhances][..], vec![]))
         );
-        assert_eq!(converted(&deps, "pkgdown"), None);
+    }
+
+    #[test]
+    fn to_dep_version_specs_optional_dependencies_are_soft_and_need_dev() {
+        let mut m = Rproj::minimal("mypkg");
+        m.optional_dependencies.insert(
+            "viz".to_string(),
+            BTreeMap::from([("ggplot2".to_string(), dep(">= 3.4"))]),
+        );
+
+        let deps = m.to_dep_version_specs(false).unwrap();
+        assert_eq!(converted(&deps, "ggplot2"), None);
+
+        let deps = m.to_dep_version_specs(true).unwrap();
+        assert_eq!(
+            converted(&deps, "ggplot2"),
+            Some((&[RDepType::Suggests][..], vec![">= 3.4".to_string()]))
+        );
+    }
+
+    #[test]
+    fn dependency_group_roots_includes_optional_dependency_extras() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependencies.insert("cli".to_string(), dep("*"));
+        m.optional_dependencies.insert(
+            "viz".to_string(),
+            BTreeMap::from([("ggplot2".to_string(), dep("*"))]),
+        );
+
+        let roots = m.dependency_group_roots().unwrap();
+        assert!(roots.get("main").unwrap().contains(&"cli".to_string()));
+        assert_eq!(roots.get("viz"), Some(&vec!["ggplot2".to_string()]));
+    }
+
+    #[test]
+    fn dependency_group_roots_includes_arbitrary_dependency_groups() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependency_groups.insert(
+            "docs".to_string(),
+            Group {
+                include_groups: vec![],
+                dependencies: BTreeMap::from([("pkgdown".to_string(), dep("*"))]),
+            },
+        );
+
+        let roots = m.dependency_group_roots().unwrap();
+        assert_eq!(roots.get("docs"), Some(&vec!["pkgdown".to_string()]));
+    }
+
+    #[test]
+    fn include_groups_pulls_in_the_included_groups_packages() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependency_groups.insert(
+            "test".to_string(),
+            Group {
+                include_groups: vec![],
+                dependencies: BTreeMap::from([("testthat".to_string(), dep("*"))]),
+            },
+        );
+        m.dependency_groups.insert(
+            "dev".to_string(),
+            Group {
+                include_groups: vec!["test".to_string()],
+                dependencies: BTreeMap::from([("devtools".to_string(), dep("*"))]),
+            },
+        );
+
+        let roots = m.dependency_group_roots().unwrap();
+        let mut dev = roots.get("dev").unwrap().clone();
+        dev.sort();
+        assert_eq!(dev, vec!["devtools".to_string(), "testthat".to_string()]);
+    }
+
+    #[test]
+    fn include_groups_is_recursive() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependency_groups.insert(
+            "c".to_string(),
+            Group {
+                include_groups: vec![],
+                dependencies: BTreeMap::from([("pkgc".to_string(), dep("*"))]),
+            },
+        );
+        m.dependency_groups.insert(
+            "b".to_string(),
+            Group {
+                include_groups: vec!["c".to_string()],
+                dependencies: BTreeMap::new(),
+            },
+        );
+        m.dependency_groups.insert(
+            "a".to_string(),
+            Group {
+                include_groups: vec!["b".to_string()],
+                dependencies: BTreeMap::new(),
+            },
+        );
+
+        let roots = m.dependency_group_roots().unwrap();
+        assert_eq!(roots.get("a"), Some(&vec!["pkgc".to_string()]));
+    }
+
+    #[test]
+    fn include_groups_detects_a_cycle() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependency_groups.insert(
+            "a".to_string(),
+            Group {
+                include_groups: vec!["b".to_string()],
+                dependencies: BTreeMap::new(),
+            },
+        );
+        m.dependency_groups.insert(
+            "b".to_string(),
+            Group {
+                include_groups: vec!["a".to_string()],
+                dependencies: BTreeMap::new(),
+            },
+        );
+
+        assert!(m.dependency_group_roots().is_err());
+    }
+
+    #[test]
+    fn include_groups_errors_on_an_unknown_group_name() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependency_groups.insert(
+            "dev".to_string(),
+            Group {
+                include_groups: vec!["nope".to_string()],
+                dependencies: BTreeMap::new(),
+            },
+        );
+
+        assert!(m.dependency_group_roots().is_err());
+    }
+
+    #[test]
+    fn to_dep_version_specs_include_groups_are_soft_and_need_dev() {
+        let mut m = Rproj::minimal("mypkg");
+        m.dependency_groups.insert(
+            "test".to_string(),
+            Group {
+                include_groups: vec![],
+                dependencies: BTreeMap::from([("testthat".to_string(), dep("*"))]),
+            },
+        );
+        m.dependency_groups.insert(
+            "dev".to_string(),
+            Group {
+                include_groups: vec!["test".to_string()],
+                dependencies: BTreeMap::new(),
+            },
+        );
+
+        let nodev = m.to_dep_version_specs(false).unwrap();
+        assert!(converted(&nodev, "testthat").is_none());
+
+        let dev = m.to_dep_version_specs(true).unwrap();
+        assert_eq!(
+            converted(&dev, "testthat"),
+            Some((&[RDepType::Suggests][..], vec![]))
+        );
     }
 
     #[test]
@@ -2734,7 +3075,7 @@ mod tests {
         let mut m = Rproj::minimal("mypkg");
         m.dependencies.insert("cli".to_string(), dep(">= 3.6.5"));
         m.dependency_groups.insert(
-            "test".to_string(),
+            "dev".to_string(),
             Group {
                 include_groups: vec![],
                 dependencies: BTreeMap::from([("cli".to_string(), dep("*"))]),
@@ -2921,13 +3262,13 @@ mod tests {
     }
 
     #[test]
-    fn add_dependency_dev_adds_to_the_test_group() {
+    fn add_dependency_dev_adds_to_the_dev_group() {
         let mut m = Rproj::minimal("mypkg");
         assert_eq!(m.add_dependency("testthat", ">= 3.0", true), None);
         assert!(!m.dependencies.contains_key("testthat"));
         assert_eq!(
             m.dependency_groups
-                .get("test")
+                .get("dev")
                 .unwrap()
                 .dependencies
                 .get("testthat"),
@@ -3059,7 +3400,7 @@ mod tests {
         m.linking_dependencies
             .insert("cpp11".to_string(), inherited());
         m.dependency_groups.insert(
-            "test".to_string(),
+            "dev".to_string(),
             Group {
                 dependencies: BTreeMap::from([("testthat".to_string(), inherited())]),
                 ..Default::default()
@@ -3130,7 +3471,7 @@ mod tests {
         assert_eq!(m.remove_dependency("testthat"), Some(dep(">= 3.0")));
         assert!(!m
             .dependency_groups
-            .get("test")
+            .get("dev")
             .unwrap()
             .dependencies
             .contains_key("testthat"));
@@ -3198,13 +3539,13 @@ bar = 1
         let mut doc: toml_edit::DocumentMut = text.parse().unwrap();
         Rproj::doc_set_dependency(
             &mut doc,
-            &["dependency-groups", "test"],
+            &["dependency-groups", "dev"],
             "testthat",
             &dep(">= 3.0"),
         )
         .unwrap();
         let out = doc.to_string();
-        assert!(out.contains("[dependency-groups.test]"), "{}", out);
+        assert!(out.contains("[dependency-groups.dev]"), "{}", out);
         assert!(!out.contains("[dependency-groups]\n"), "{}", out);
         assert!(out.contains("testthat = \">= 3.0\""), "{}", out);
     }
@@ -3650,15 +3991,15 @@ foo = "bar"
 
     #[test]
     fn merge_config_needs_merges_into_the_description_backed_groups() {
-        // `Config/Needs/test` has nowhere else to go, so it lands in the
+        // `Config/Needs/dev` has nowhere else to go, so it lands in the
         // group `Suggests` is imported into, and exports as `Suggests`.
         let mut m = Rproj::minimal("mypkg");
         m.add_dependency("testthat", ">= 3.0", true);
-        m.merge_config_needs(&needs(&[("test", "mockery")]));
+        m.merge_config_needs(&needs(&[("dev", "mockery")]));
 
-        let test = &m.dependency_groups.get("test").unwrap().dependencies;
-        assert_eq!(test.get("testthat"), Some(&dep(">= 3.0")));
-        assert_eq!(test.get("mockery"), Some(&dep("*")));
+        let dev = &m.dependency_groups.get("dev").unwrap().dependencies;
+        assert_eq!(dev.get("testthat"), Some(&dep(">= 3.0")));
+        assert_eq!(dev.get("mockery"), Some(&dep("*")));
 
         let (desc, _) = m.to_description().unwrap();
         assert!(desc.contains("Suggests:\n    mockery,\n    testthat (>= 3.0)\n"));
@@ -3714,6 +4055,27 @@ foo = "bar"
             .contains("Remotes:\n    jeroen/jsonlite@v1.8.0,\n    tidyverse/tidytemplate@main\n"));
         // `Remotes:` comes after the dependency fields.
         assert!(desc.find("Suggests:").unwrap() < desc.find("Remotes:").unwrap());
+    }
+
+    #[test]
+    fn to_description_writes_remotes_for_git_sourced_optional_dependencies() {
+        let mut m = Rproj::minimal("mypkg");
+        m.optional_dependencies.insert(
+            "viz".to_string(),
+            BTreeMap::from([(
+                "tidytemplate".to_string(),
+                Dependency::Detailed(Box::new(DepTable {
+                    git: Some("https://github.com/tidyverse/tidytemplate".to_string()),
+                    branch: Some("main".to_string()),
+                    ..Default::default()
+                })),
+            )]),
+        );
+
+        let (desc, dropped) = m.to_description().unwrap();
+        assert!(dropped.is_empty());
+        assert!(desc.contains("Suggests:\n    tidytemplate\n"));
+        assert!(desc.contains("Remotes:\n    tidyverse/tidytemplate@main\n"));
     }
 
     #[test]
