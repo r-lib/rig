@@ -1,11 +1,13 @@
-//! Parsing for `git`/`github`/`gitlab` package sources, the `pak`-compatible
-//! syntax accepted by `rig proj add` (and, recursively, a fetched package's
-//! own `Remotes:` DESCRIPTION field):
+//! Parsing for `git`/`github`/`gitlab`/`url` package sources, the
+//! `pak`-compatible syntax accepted by `rig proj add` (and, recursively, a
+//! fetched package's own `Remotes:` DESCRIPTION field):
 //!
 //!   - `[<name>=][github::]<owner>/<repo>[/<subdir>][@<ref>|#<pr>|@*release]`
 //!   - bare `<owner>/<repo>...` (same suffixes) auto-detects as GitHub
 //!   - `[<name>=]git::<https-url>[.git][@<ref>]`
 //!   - `[<name>=]gitlab::[<scheme>://<host>/]<group>[/<subgroup>...]/<project>[/-/<subdir>][@<ref>]`
+//!   - `[<name>=]url::<https-url>`, a direct link to a package source archive
+//!   - bare `<https-url>` (same) auto-detects as a `url` source
 //!
 //! A CRAN-style spec (`dplyr`, `dplyr@1.1.0`, `dplyr@>= 1.1`) never contains
 //! `/` or `::`, which is what tells the two apart: anything with a `/` or a
@@ -77,7 +79,9 @@ pub struct RemoteSource {
 /// Parse a `rig proj add`-style package specification into a [`PkgSource`].
 ///
 /// A spec with no `/` and no `::` is always [`PkgSource::Cran`] -- the
-/// existing `<package>`/`<package>@<version>` syntax, untouched.
+/// existing `<package>`/`<package>@<version>` syntax, untouched. A bare
+/// `http(s)://` URL, with no `url::` prefix, auto-detects as a `url` source,
+/// the same way a bare `<owner>/<repo>` auto-detects as GitHub.
 pub fn parse_pkg_source(spec: &str) -> Result<PkgSource, Box<dyn Error>> {
     let spec = spec.trim();
     let (name_override, body) = strip_name_override(spec);
@@ -100,6 +104,14 @@ pub fn parse_pkg_source(spec: &str) -> Result<PkgSource, Box<dyn Error>> {
 
     if looks_like_owner_repo(body) {
         return Ok(PkgSource::Remote(parse_github_ref(name_override, body)?));
+    }
+
+    // A bare `http(s)://` URL, with no `url::` prefix, auto-detects as a
+    // `url` source, the same way a bare `<owner>/<repo>` auto-detects as
+    // GitHub -- there's nothing else a plain URL not prefixed with `git::`
+    // could mean.
+    if body.starts_with("https://") || body.starts_with("http://") {
+        return Ok(PkgSource::Url(parse_url_ref(name_override, body)?));
     }
 
     if body.contains("::") || body.contains('/') {
@@ -546,5 +558,27 @@ mod tests {
     #[test]
     fn url_rejects_non_http() {
         assert!(parse_pkg_source("url::ftp://example.com/mypkg.tar.gz").is_err());
+    }
+
+    #[test]
+    fn bare_url_auto_detects_as_a_url_source() {
+        let u = url_source("https://cran.rstudio.com/src/contrib/processx_3.9.0.tar.gz");
+        assert_eq!(
+            u.url,
+            "https://cran.rstudio.com/src/contrib/processx_3.9.0.tar.gz"
+        );
+        assert_eq!(u.name_override, None);
+    }
+
+    #[test]
+    fn bare_url_with_name_override() {
+        let u = url_source("processx=https://cran.rstudio.com/src/contrib/processx_3.9.0.tar.gz");
+        assert_eq!(u.name_override.as_deref(), Some("processx"));
+    }
+
+    #[test]
+    fn bare_http_url_also_auto_detects() {
+        let u = url_source("http://example.com/mypkg_1.0.0.tar.gz");
+        assert_eq!(u.url, "http://example.com/mypkg_1.0.0.tar.gz");
     }
 }

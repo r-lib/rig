@@ -112,13 +112,14 @@ impl BuiltCache {
     /// identified.
     ///
     /// The key is what the package was built *from* -- the source tarball's
-    /// sha256 for a CRAN/PPM package, or the commit (`RemoteSha`) for a
-    /// git/GitHub-sourced one, which pins its content exactly as well -- plus
-    /// what it is compiled against (its `LinkingTo` provenance, which the
-    /// solve records for source packages too) and the user's `Makevars`. It is
-    /// a *directory* component rather than part of the file name, so that the
-    /// file name stays exactly the one `R CMD INSTALL --build` would have
-    /// given the archive.
+    /// sha256 for a CRAN/PPM package, or `RemoteSha` for a git/GitHub/url
+    /// one (the resolved commit, or the downloaded archive's own sha256),
+    /// which pins its content exactly as well -- plus what it is compiled
+    /// against (its `LinkingTo` provenance, which the solve records for
+    /// source packages too) and the user's `Makevars`. It is a *directory*
+    /// component rather than part of the file name, so that the file name
+    /// stays exactly the one `R CMD INSTALL --build` would have given the
+    /// archive.
     ///
     /// A package with neither has no entry: without one there is nothing to
     /// tell one build of a version from another.

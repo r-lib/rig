@@ -30,6 +30,7 @@ rig pkg install r-lib/crayon#41
 rig pkg install r-lib/crayon@*release
 rig pkg install gitlab::group/project@main
 rig pkg install 'git::https://gitlab.com/example/pkg.git@main'
+rig pkg install https://cran.rstudio.com/src/contrib/processx_3.9.0.tar.gz
 ```
 
 A bare `<owner>/<repo>` (optionally `github::<owner>/<repo>`) is a GitHub
@@ -46,10 +47,8 @@ tag or commit, and `/-/<subdir>` points at a subdirectory. Merge requests and
 
 A `git::<url>` reference works with any git host, not only GitHub or GitLab.
 
-`url::<https-url>` points straight at a package source archive (`.tar.gz`,
-`.tgz` or `.zip`), instead of a git repository, e.g.
-`url::https://example.com/mypkg_1.0.0.tar.gz`. rig downloads and extracts it
-to read its `DESCRIPTION`, and caches the download for later installs.
+`url::<https-url>` (or a bare `<https-url>`) points straight at a
+package source archive.
 
 The package name is read from the fetched repository's (or archive's) own
 `DESCRIPTION` (which may differ from the repository name); the dependency is

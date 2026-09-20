@@ -731,12 +731,12 @@ fn sc_proj_add(
             }
             AddSpec::Remote(name, table) => {
                 manifest.add_remote_dependency(name, (**table).clone(), dev);
-                format!(
-                    "Added {} ({}) to {}",
-                    name,
-                    table.git.as_deref().unwrap_or_default(),
-                    RPROJ_MANIFEST_FILE
-                )
+                let source = table
+                    .git
+                    .as_deref()
+                    .or(table.url.as_deref())
+                    .unwrap_or_default();
+                format!("Added {} ({}) to {}", name, source, RPROJ_MANIFEST_FILE)
             }
         });
 
