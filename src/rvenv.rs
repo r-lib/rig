@@ -798,7 +798,10 @@ pub fn ensure_rvenv_files(root: &Path) -> Result<(), Box<dyn Error>> {
     if root.join(RPROJ_MANIFEST_FILE).exists() && !project_shim_package(root).exists() {
         rvenv_init(root)?;
         OUTPUT.info("Filled in missing .Renviron/.rvenvlib for this project");
-        info!("Filled in missing .Renviron/.rvenvlib in {}", root.display());
+        info!(
+            "Filled in missing .Renviron/.rvenvlib in {}",
+            root.display()
+        );
     }
     Ok(())
 }
