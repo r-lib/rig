@@ -42,10 +42,10 @@ use crate::rproj::{
     RprojLock, RprojLockPackage, RprojLockTarget, RPROJ_LOCK_VERSION, RPROJ_MANIFEST_FILE,
 };
 use crate::rvenv::{
-    existing_targets, find_project_root, find_workspace_root, link_library_compat_symlink,
-    project_library, project_library_in_tree, project_shim_package, read_rvenv_cfg, rvenv_init,
-    rvenv_sync, rvenv_sync_needed, workspace_members, write_sync_stamp, RvenvCfg, RPROJ_LOCK_FILE,
-    RVENV_CFG_FILE,
+    ensure_rvenv_files, existing_targets, find_project_root, find_workspace_root,
+    link_library_compat_symlink, project_library, project_library_in_tree, read_rvenv_cfg,
+    rvenv_init, rvenv_sync, rvenv_sync_needed, workspace_members, write_sync_stamp, RvenvCfg,
+    RPROJ_LOCK_FILE, RVENV_CFG_FILE,
 };
 use crate::solver::*;
 use crate::textfmt::{dcf_field_to_text, reflow};
@@ -2517,6 +2517,10 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     let solve = proj_read_solve_roots(root)?;
     let pkg_deps = &solve.merged;
 
+    // Lock itself never reads `.Renviron`/`.rvenvlib` -- they only matter for
+    // R started directly -- but fill them in if missing, same as sync/run.
+    ensure_rvenv_files(root)?;
+
     if solve.members.len() > 1 {
         let names = solve
             .roots
@@ -3636,19 +3640,11 @@ pub(crate) fn proj_sync(
     let wanted: Vec<RprojLockPackage> = sync_wanted_packages(&target.packages, opts);
     let wanted: &[RprojLockPackage] = &wanted;
 
-    // The project library itself is created below, but only for a project
-    // `rig proj init` has already set up: the shim package is what init
-    // writes, and writing tracked project files is always an explicit
-    // request.
-    if !project_shim_package(root).exists() {
-        let msg = format!(
-            "No project environment in {}, run `rig proj init` first",
-            root.display()
-        );
-        OUTPUT.error(&msg);
-        error!("{}", msg);
-        bail!("{}", msg);
-    }
+    // The project library itself is created below, for a project `rig proj
+    // init` has already set up (there is an `rproj.toml`) -- but nothing
+    // else here reads `.Renviron`/`.rvenvlib`, they only matter for R
+    // started directly, so fill them in if missing rather than failing.
+    ensure_rvenv_files(root)?;
     let library_path = project_library(root)?;
 
     // `rig proj init` does not create the project library, this is where it
