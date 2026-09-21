@@ -35,8 +35,12 @@
     `rig-windows-${VERSION}.exe` and `rig-windows-arm64-${VERSION}.exe`.
 - [ ] Download the artifacts for the new version for Linux (x2)
 - [ ] Create tag for the current version, push to GH.
-- [ ] Create release on GH, add the installers.
+- [ ] Create the release on GH **as a draft** (`gh release create --draft ...`
+      or the GH UI), and add all the installers to the draft.
 - [ ] Test the macOS installers. (The rest are tested in the CI.)
+- [ ] Once every installer is attached, publish the draft release
+      (`gh release edit <tag> --draft=false`, or the "Publish release"
+      button in the GH UI).
 - [ ] `git commit` with the NEWS and README updates, update tag, push to GH,
       `--tags` as well.
 - [ ] Update Debian repo, by running the Action manually, and then check out
