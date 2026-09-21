@@ -1,5 +1,5 @@
 use std::error::Error;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use directories::ProjectDirs;
@@ -152,6 +152,20 @@ pub fn cleanup_ephemeral_cache_dir() {
             dir.display(),
             err
         ),
+    }
+}
+
+/// Delete a downloaded file (installer/tarball) after it has been used
+/// successfully, but only when `--no-cache` was passed — normal runs keep
+/// it in the persistent download dir for reuse. Best-effort, like
+/// `cleanup_ephemeral_cache_dir`.
+pub fn remove_download_if_no_cache(path: &Path) {
+    if !no_cache() {
+        return;
+    }
+    match std::fs::remove_file(path) {
+        Ok(()) => debug!("Removed downloaded file {}", path.display()),
+        Err(err) => debug!("Cannot remove downloaded file {}: {}", path.display(), err),
     }
 }
 

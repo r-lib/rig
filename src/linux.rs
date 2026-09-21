@@ -366,6 +366,8 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         add_package(target.as_os_str(), &platform)?
     };
 
+    crate::cache::remove_download_if_no_cache(&target);
+
     set_default_if_none(dirname.to_string())?;
 
     // In user mode, make sure the `R`/`Rscript` aliases in the binary directory
@@ -2358,6 +2360,9 @@ fn download_fonts(force: bool) -> Result<(), Box<dyn Error>> {
     };
     let result = install();
     let _ = std::fs::remove_dir_all(&staging);
+    if result.is_ok() {
+        crate::cache::remove_download_if_no_cache(&target);
+    }
     result?;
 
     OUTPUT.success(&format!("Installed fallback fonts to {}", fonts.display()));

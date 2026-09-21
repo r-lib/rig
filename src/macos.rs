@@ -666,6 +666,8 @@ fn safe_user_install(
         );
     }
 
+    crate::cache::remove_download_if_no_cache(&target);
+
     Ok(dirname)
 }
 
