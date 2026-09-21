@@ -17,6 +17,17 @@ use crate::utils::{grep_lines, read_lines, unquote};
 
 use crate::rversion::*;
 
+/// P3M/rig's arch spelling, normalized to the `std::env::consts::ARCH` one
+/// used elsewhere in the codebase, or `None` if `arch` isn't a recognized
+/// arch token at all (e.g. it's actually a distro version like `22.04`).
+fn normalize_ppm_arch(arch: &str) -> Option<&'static str> {
+    match arch {
+        "x86_64" | "amd64" => Some("x86_64"),
+        "aarch64" | "arm64" => Some("aarch64"),
+        _ => None,
+    }
+}
+
 pub fn parse_platform_string(platform: &str) -> Result<OsVersion, Box<dyn Error>> {
     // macos -> {aarch64,x86_64}-apple-darwin<x> depending on R version
     // linux-ubuntu-22.04
@@ -41,7 +52,28 @@ pub fn parse_platform_string(platform: &str) -> Result<OsVersion, Box<dyn Error>
         let platform = platform.strip_prefix("linux-").unwrap();
         format!("{}-unknown-linux-{}", native_arch, platform)
     } else if platform.matches('-').count() == 1 {
-        format!("{}-unknown-linux-{}", native_arch, platform)
+        let (prefix, suffix) = platform.split_once('-').unwrap();
+        match normalize_ppm_arch(suffix) {
+            // `<platform>-<arch>`, the spelling `BinaryTarget::name()` writes
+            // into lockfiles (e.g. `macos-arm64`, `manylinux_2_28-arm64`) --
+            // accept it back as `--platform` input, with the arch the string
+            // actually names rather than the host's.
+            Some(arch) if prefix == "macos" => format!("{}-apple-darwin", arch),
+            Some(arch) if prefix == "windows" => format!("{}-w64-mingw32", arch),
+            Some(arch) => {
+                return Ok(OsVersion {
+                    rig_platform: Some(platform.to_string()),
+                    arch: arch.to_string(),
+                    vendor: "unknown".to_string(),
+                    os: "linux".to_string(),
+                    distro: Some(prefix.to_string()),
+                    version: None,
+                });
+            }
+            // Not an arch suffix: the short Linux distro-version form, e.g.
+            // `ubuntu-22.04`.
+            None => format!("{}-unknown-linux-{}", native_arch, platform),
+        }
     } else {
         platform.to_string()
     };
@@ -387,6 +419,33 @@ mod tests {
         assert_eq!(result.os, "linux");
         assert_eq!(result.distro, Some("ubuntu".to_string()));
         assert_eq!(result.version, Some("22.04".to_string()));
+    }
+
+    #[test]
+    fn test_parse_platform_string_macos_arm64() {
+        // Lockfile spelling `BinaryTarget::name()` writes, e.g. "macos-arm64".
+        let result = parse_platform_string("macos-arm64").unwrap();
+        assert_eq!(result.arch, "aarch64");
+        assert_eq!(result.vendor, "apple");
+        assert!(result.os.starts_with("darwin"));
+    }
+
+    #[test]
+    fn test_parse_platform_string_windows_x86_64() {
+        let result = parse_platform_string("windows-x86_64").unwrap();
+        assert_eq!(result.arch, "x86_64");
+        assert_eq!(result.vendor, "w64");
+        assert_eq!(result.os, "mingw32");
+    }
+
+    #[test]
+    fn test_parse_platform_string_manylinux() {
+        let result = parse_platform_string("manylinux_2_28-arm64").unwrap();
+        assert_eq!(result.arch, "aarch64");
+        assert_eq!(result.vendor, "unknown");
+        assert_eq!(result.os, "linux");
+        assert_eq!(result.distro, Some("manylinux_2_28".to_string()));
+        assert_eq!(result.version, None);
     }
 
     #[test]

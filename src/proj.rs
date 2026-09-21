@@ -2067,6 +2067,9 @@ struct ProjLockOptions {
     /// `proj_lock`). More than one solves each in turn, combined with
     /// `r_versions` as a cross product.
     platforms: Vec<String>,
+    /// Platforms to add to `platforms` (or the default set), from
+    /// `--add-platform`'s comma-separated, repeatable list.
+    add_platforms: Vec<String>,
     prefer_binary: Option<usize>,
     /// `--upgrade`: re-resolve every dependency instead of reusing an
     /// existing `rproj.lock`: re-check every git/GitHub dependency's ref
@@ -2089,6 +2092,10 @@ fn sc_proj_lock(
             .unwrap_or_default(),
         platforms: args
             .get_many::<String>("platform")
+            .map(|vs| vs.cloned().collect())
+            .unwrap_or_default(),
+        add_platforms: args
+            .get_many::<String>("add-platform")
             .map(|vs| vs.cloned().collect())
             .unwrap_or_default(),
         prefer_binary: args.get_one::<usize>("prefer-binary").copied(),
@@ -2472,14 +2479,39 @@ fn r_requirement(req: Option<&DepVersionSpec>) -> String {
         .join(", ")
 }
 
+/// The platforms `proj_lock` solves for, given `--platform` and
+/// `--add-platform`. With no `--platform`, solve for this machine plus the
+/// three other platforms a project typically needs to run on: Windows, a
+/// generic glibc Linux build (P3M's "manylinux" distro-independent build,
+/// covering any glibc-based x86_64 distro P3M has no specific build for),
+/// and macOS on arm64. Each platform string is fully explicit
+/// (arch-vendor-os), so it resolves the same regardless of which OS `rig
+/// proj lock` itself runs on; only "this machine" (`None`) depends on the
+/// host. `--add-platform` extends that set (or an explicit `--platform`
+/// list) instead of replacing it. Duplicates (e.g. "this machine" already
+/// being macOS arm64, or a redundant `--add-platform`) are dropped before
+/// solving, by the resolved-target dedup in `proj_lock`, so a redundant
+/// solve is never dispatched in the first place.
+fn lock_platform_specs(opts: &ProjLockOptions) -> Vec<Option<String>> {
+    let mut specs: Vec<Option<String>> = if !opts.platforms.is_empty() {
+        opts.platforms.iter().cloned().map(Some).collect()
+    } else {
+        vec![
+            None,
+            Some("x86_64-w64-mingw32".to_string()),
+            Some("x86_64-unknown-linux-gnu".to_string()),
+            Some("aarch64-apple-darwin".to_string()),
+        ]
+    };
+    specs.extend(opts.add_platforms.iter().cloned().map(Some));
+    specs
+}
+
 /// Solve the dependencies of the project in `root` for every `(R version,
 /// platform)` combination `opts` asks for (a cross product of
-/// `opts.r_versions` and `opts.platforms`), and write them all into
-/// `rproj.lock`. An empty `opts.r_versions` picks one R version the usual
-/// way (`proj_lock_r_version`); an empty `opts.platforms` solves for this
-/// machine plus three other platforms a project typically has to run on
-/// (Windows, generic glibc Linux, macOS arm64) -- see the platform_specs
-/// comment below.
+/// `opts.r_versions` and the platforms from [`lock_platform_specs`]), and
+/// write them all into `rproj.lock`. An empty `opts.r_versions` picks one R
+/// version the usual way (`proj_lock_r_version`).
 fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // Do this first, to report local errors early
     let solve = proj_read_solve_roots(root)?;
@@ -2511,26 +2543,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     } else {
         opts.r_versions.clone()
     };
-    // With no --platform, solve for this machine plus the three other
-    // platforms a project typically needs to run on: Windows, a generic
-    // glibc Linux build (P3M's "manylinux" distro-independent build,
-    // covering any glibc-based x86_64 distro P3M has no specific build
-    // for), and macOS on arm64. Each platform string is fully explicit
-    // (arch-vendor-os), so it resolves the same regardless of which OS
-    // `rig proj lock` itself runs on; only "this machine" (`None`) depends
-    // on the host. Duplicates (e.g. "this machine" already being macOS
-    // arm64) are dropped before solving, by the resolved-target dedup below,
-    // so a redundant solve is never dispatched in the first place.
-    let platform_specs: Vec<Option<String>> = if !opts.platforms.is_empty() {
-        opts.platforms.iter().cloned().map(Some).collect()
-    } else {
-        vec![
-            None,
-            Some("x86_64-w64-mingw32".to_string()),
-            Some("x86_64-unknown-linux-gnu".to_string()),
-            Some("aarch64-apple-darwin".to_string()),
-        ]
-    };
+    let platform_specs = lock_platform_specs(opts);
 
     // Resolve and dedup every `(rver, platform)` pair up front, sequentially,
     // before any solving starts. This does two things: it decides the dedup
@@ -2564,10 +2577,16 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
             // Mirrors how `RprojLockTarget::from_solution` derives the
             // target's `platform` field (src/rproj.rs), so this pre-solve key
             // matches the key the old post-solve dedup used.
-            let platform_key = target
-                .as_ref()
-                .map(|t| t.name())
-                .unwrap_or_else(|| std::env::consts::ARCH.to_string());
+            let platform_key = target.as_ref().map(|t| t.name()).unwrap_or_else(|| {
+                // "This machine" (no `--platform` spec) still keys on the
+                // host arch, so it can dedup against a fixed default
+                // platform that resolves to the same target. Two distinct
+                // named `--platform` specs that both fail to resolve must
+                // not collapse onto that same key.
+                platform
+                    .clone()
+                    .unwrap_or_else(|| std::env::consts::ARCH.to_string())
+            });
             let key = (rver.clone(), platform_key.clone());
             if !seen.insert(key.clone()) {
                 // Not worth a warning: with the default platform set, "this
@@ -4596,6 +4615,41 @@ mod tests {
             } else {
                 vec!["rig", "add", "4.6.1"]
             }
+        );
+    }
+
+    #[test]
+    fn add_platform_extends_the_default_platform_set() {
+        let opts = ProjLockOptions {
+            add_platforms: vec!["ubuntu-24.04".to_string()],
+            ..Default::default()
+        };
+        assert_eq!(
+            lock_platform_specs(&opts),
+            vec![
+                None,
+                Some("x86_64-w64-mingw32".to_string()),
+                Some("x86_64-unknown-linux-gnu".to_string()),
+                Some("aarch64-apple-darwin".to_string()),
+                Some("ubuntu-24.04".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn add_platform_extends_an_explicit_platform_list() {
+        let opts = ProjLockOptions {
+            platforms: vec!["macos".to_string()],
+            add_platforms: vec!["windows".to_string(), "linux".to_string()],
+            ..Default::default()
+        };
+        assert_eq!(
+            lock_platform_specs(&opts),
+            vec![
+                Some("macos".to_string()),
+                Some("windows".to_string()),
+                Some("linux".to_string()),
+            ]
         );
     }
 

@@ -202,7 +202,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     } else {
         OUTPUT.status(&format!("Downloading {} -> {}", url, target_dsp));
         info!("Downloading {} -> {}", url, target_dsp);
-        let client = &reqwest::Client::new();
+        let client = &http_client();
         download_file(client, &url, &target_str)?;
     }
 
@@ -665,6 +665,8 @@ fn safe_user_install(
             err
         );
     }
+
+    crate::cache::remove_download_if_no_cache(&target);
 
     Ok(dirname)
 }

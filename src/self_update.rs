@@ -21,6 +21,8 @@ use crate::install_receipt::{
     gate, read_receipt, receipt_path, refusal_message, GateResult, Receipt,
 };
 use crate::output::OUTPUT;
+use crate::utils::http_client;
+use crate::utils::http_client_builder;
 use crate::utils::write_atomically;
 
 const REPO: &str = "r-lib/rig";
@@ -87,7 +89,7 @@ fn tags_from_releases_page(html: &str) -> Vec<String> {
 
 #[tokio::main]
 async fn latest_stable_tag() -> Result<String, Box<dyn Error>> {
-    let client = reqwest::Client::builder()
+    let client = http_client_builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()?;
     let url = format!("https://github.com/{}/releases/latest", REPO);
@@ -102,7 +104,7 @@ async fn latest_stable_tag() -> Result<String, Box<dyn Error>> {
 
 #[tokio::main]
 async fn all_tags() -> Result<Vec<String>, Box<dyn Error>> {
-    let client = reqwest::Client::new();
+    let client = http_client();
     let url = format!("https://github.com/{}/releases", REPO);
     let resp = client.get(&url).send().await?.error_for_status()?;
     let html = resp.text().await?;
@@ -155,7 +157,7 @@ pub fn sc_self_update(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<(), B
     let tmp_dir = tempfile::tempdir()?;
     let archive_path = tmp_dir.path().join(&asset);
     OUTPUT.status(&format!("Downloading {} ...", asset));
-    let client = reqwest::Client::new();
+    let client = http_client();
     crate::download::download_file(&client, &url, archive_path.as_os_str())?;
 
     let extract_dir = tmp_dir.path().join("extracted");

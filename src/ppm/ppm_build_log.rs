@@ -17,6 +17,7 @@ use crate::ppm::{use_color, want_json};
 use crate::repos::binaries::{ppm_url, validate_package_name, PpmStatus};
 use crate::rversion::OsVersion;
 use crate::textfmt::print_field;
+use crate::utils::http_client;
 
 /// Width of the label column in the scalar block, matching `rig ppm status`.
 const LABEL_WIDTH: usize = 12;
@@ -148,7 +149,7 @@ fn build_log_url(
 }
 
 async fn fetch_build_log(url: &reqwest::Url) -> Result<Option<String>, Box<dyn Error>> {
-    let resp = reqwest::Client::new().get(url.clone()).send().await?;
+    let resp = http_client().get(url.clone()).send().await?;
     // P3M's CDN reports a missing log as either status, per its own comment.
     if resp.status() == reqwest::StatusCode::NOT_FOUND
         || resp.status() == reqwest::StatusCode::FORBIDDEN

@@ -420,6 +420,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     }
 
     let (version_info, target) = download_r(args)?;
+    let target_for_cleanup = std::path::PathBuf::from(&target);
     let installed_arch = version_info
         .arch
         .clone()
@@ -517,6 +518,8 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             }
         }
     };
+
+    crate::cache::remove_download_if_no_cache(&target_for_cleanup);
 
     match dirname {
         None => {
@@ -861,7 +864,7 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<(), Box<dyn Error
         }
 
         // from admin shells rtools 3.x updates HKLM, always, work around that
-        let installer = target.into_os_string();
+        let installer = target.clone().into_os_string();
         if user_mode && is_legacy_rtools(&item.version) && is_elevated::is_elevated() {
             let reloc = LegacyRtoolsRegRelocation::begin()?;
             run(installer, cmd_args, "installer")?;
@@ -883,6 +886,7 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<(), Box<dyn Error
             error!("{}", msg);
             bail!("{}", msg);
         }
+        crate::cache::remove_download_if_no_cache(&target);
         OUTPUT.success(&format!("Installed Rtools{} ({})", item.version, item.arch));
         info!("Installed Rtools{} ({})", item.version, item.arch);
     }
