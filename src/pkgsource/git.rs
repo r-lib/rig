@@ -25,6 +25,8 @@ use std::path::Path;
 
 use fs4::fs_std::FileExt;
 
+use crate::utils::http_client_builder;
+
 /// Run `git -C <dest> <args>`, returning trimmed stdout. Both `dest` and, if
 /// it doesn't exist yet, its ancestors must already exist for subcommands
 /// other than `init` (`init` creates `dest` itself).
@@ -318,7 +320,7 @@ pub fn resolve_release_tag(owner: &str, repo: &str) -> Result<String, Box<dyn Er
 #[tokio::main]
 async fn resolve_release_tag_(owner: &str, repo: &str) -> Result<String, Box<dyn Error>> {
     let url = format!("https://github.com/{}/{}/releases/latest", owner, repo);
-    let client = reqwest::Client::builder()
+    let client = http_client_builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()?;
     let resp = client.get(&url).send().await?;

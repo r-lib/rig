@@ -85,6 +85,7 @@ const PREFETCH_CONCURRENCY: usize = 16;
 pub mod blob;
 pub mod loader;
 use crate::rversion::OsVersion;
+use crate::utils::http_client;
 use crate::utils::write_atomically;
 use blob::IndexBlob;
 pub use blob::LinkingTo;
@@ -472,7 +473,7 @@ pub fn prefetch_binary_indices(packages: &[String], ttl: Option<Duration>) {
 /// in flight instead of being tacked onto the end of them.
 #[tokio::main]
 async fn prefetch_all(todo: &[(String, Option<String>)]) -> Result<(), Box<dyn Error>> {
-    let client = reqwest::Client::new();
+    let client = http_client();
     futures::stream::iter(todo.iter().map(|(package, etag)| {
         let client = &client;
         async move {

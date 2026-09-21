@@ -351,7 +351,7 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     } else {
         OUTPUT.status(&format!("Downloading {} -> {}", url, target.display()));
         info!("Downloading {} -> {}", url, target.display());
-        let client = &reqwest::Client::new();
+        let client = &http_client();
         download_file(client, &url, target.as_os_str())?;
     }
 
@@ -2129,7 +2129,7 @@ fn download_cacert(force: bool) -> Result<PathBuf, Box<dyn Error>> {
         cert.display()
     ));
     info!("Downloading CA bundle {} -> {}", CACERT_URL, cert.display());
-    let client = &reqwest::Client::new();
+    let client = &http_client();
     download_file(client, CACERT_URL, cert.as_os_str())?;
     Ok(cert)
 }
@@ -2310,7 +2310,7 @@ fn download_fonts(force: bool) -> Result<(), Box<dyn Error>> {
         fonts.display()
     ));
     info!("Downloading fallback fonts {} -> {}", url, target.display());
-    let client = &reqwest::Client::new();
+    let client = &http_client();
     if let Err(e) = download_file(client, &url, target.as_os_str()) {
         bail!(
             "Cannot download the fallback fonts from {}: {}.\n        \
