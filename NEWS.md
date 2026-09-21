@@ -508,7 +508,7 @@
 ## macOS
 
 * New macOS `rim system` commands to allow debugging:
-  `rim system allow-debugger`; and to allow core dumps:
+  `rim system allow-debugger`, and to allow core dumps:
   `rim system allow-core-dumps`.
 
 * rim now uses better R-devel URLs on macOS, that do not fail if the daily
