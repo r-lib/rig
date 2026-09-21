@@ -60,6 +60,14 @@ distro:
 rig proj lock --platform ubuntu-24.04
 ```
 
+Use `--add-platform` instead to add a platform to that default set rather
+than replacing it, e.g. to also solve for one extra distro on top of the
+usual four. `--add-platform` can be repeated:
+
+```sh
+rig proj lock --add-platform ubuntu-24.04 --add-platform linux-fedora-42
+```
+
 `--platform source` solves for source packages only. rig also falls back to
 source packages when there are no binaries for a platform at all.
 
