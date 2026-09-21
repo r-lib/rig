@@ -522,6 +522,7 @@ ul.task-list li input[type="checkbox"] {
    
   <ul>
   <li><a href="#all-containers" id="toc-all-containers" class="nav-link active" data-scroll-target="#all-containers">All containers</a></li>
+  <li><a href="#binary-only-image" id="toc-binary-only-image" class="nav-link" data-scroll-target="#binary-only-image">Binary-only image</a></li>
   <li><a href="#docker-container-features" id="toc-docker-container-features" class="nav-link" data-scroll-target="#docker-container-features">Docker container features</a></li>
   </ul>
 </nav>
@@ -864,6 +865,11 @@ ul.task-list li input[type="checkbox"] {
 </tbody>
 </table>
 <p>See all container images on <a href="https://github.com/orgs/r-lib/packages?repo_name=rig">GitHub</a>.</p>
+</section>
+<section id="binary-only-image" class="level2">
+<h2 class="anchored" data-anchor-id="binary-only-image">Binary-only image</h2>
+<p><code>ghcr.io/r-lib/rig/base</code> contains nothing but the <code>rig</code> binary — no R, no OS tools. It exists so you can copy the binary into your own image without pulling in a full container:</p>
+<pre><code>COPY --from=ghcr.io/r-lib/rig/base:latest /rig /usr/local/bin/rig</code></pre>
 </section>
 <section id="docker-container-features" class="level2">
 <h2 class="anchored" data-anchor-id="docker-container-features">Docker container features</h2>

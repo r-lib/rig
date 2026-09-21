@@ -187,6 +187,17 @@
     ]
   },
   {
+    "objectID": "docker.html#binary-only-image",
+    "href": "docker.html#binary-only-image",
+    "title": "Docker containers with rig",
+    "section": "Binary-only image",
+    "text": "Binary-only image\nghcr.io/r-lib/rig/base contains nothing but the rig binary — no R, no OS tools. It exists so you can copy the binary into your own image without pulling in a full container:\nCOPY --from=ghcr.io/r-lib/rig/base:latest /rig /usr/local/bin/rig",
+    "crumbs": [
+      "Guide",
+      "Docker containers"
+    ]
+  },
+  {
     "objectID": "docker.html#docker-container-features",
     "href": "docker.html#docker-container-features",
     "title": "Docker containers with rig",
