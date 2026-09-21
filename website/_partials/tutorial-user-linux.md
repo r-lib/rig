@@ -35,7 +35,7 @@ rig add release
 
 No password prompt this time: everything is written under your home directory.
 
-In user mode rig always installs a **portable** R build, one that does not
+In user mode rig always installs a portable R build, one that does not
 depend on your distribution's packages, picked for your libc (glibc or musl).
 Very old glibc versions are not supported; if yours is too old, rig says so
 instead of installing a broken R. rig also downloads a CA certificate bundle

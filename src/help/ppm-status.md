@@ -10,16 +10,16 @@ Bioconductor releases and macOS build flavors it serves.
 
 The report shows an initial block and then four tables:
 
-* **R versions** — the minor R versions binaries are built for. Same list
+* **R versions**: the minor R versions binaries are built for. Same list
   as [`rig ppm r-versions`](ppm.qmd#rig-ppm-r-versions) .
 
-* **Build targets** — the platforms, as reported, retired ones included.
+* **Build targets**: the platforms, as reported, retired ones included.
   Same table as [`rig ppm platforms --all`](ppm.qmd#rig-ppm-platforms) , which documents the columns.
 
-* **Bioconductor versions** — each Bioconductor release, the R version it
+* **Bioconductor versions**: each Bioconductor release, the R version it
   goes with, and the CRAN snapshot it is pinned to.
 
-* **macOS binaries** — the macOS build flavor used for each R version, per
+* **macOS binaries**: the macOS build flavor used for each R version, per
   architecture. `default` is what a newer R version gets. An empty cell means
   there are no macOS binaries for that R version and architecture.
 

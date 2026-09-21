@@ -89,9 +89,8 @@ See all container images on
 
 ## Binary-only image
 
-`ghcr.io/r-lib/rig/base` contains nothing but the `rig` binary — no R, no OS
-tools. It exists so you can copy the binary into your own image without
-pulling in a full container:
+`ghcr.io/r-lib/rig/base` contains nothing but the `rig` binary.
+You can use it to copy the binary into your own image:
 
 ```
 COPY --from=ghcr.io/r-lib/rig/base:latest /rig /usr/local/bin/rig
