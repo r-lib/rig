@@ -2577,10 +2577,16 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
             // Mirrors how `RprojLockTarget::from_solution` derives the
             // target's `platform` field (src/rproj.rs), so this pre-solve key
             // matches the key the old post-solve dedup used.
-            let platform_key = target
-                .as_ref()
-                .map(|t| t.name())
-                .unwrap_or_else(|| std::env::consts::ARCH.to_string());
+            let platform_key = target.as_ref().map(|t| t.name()).unwrap_or_else(|| {
+                // "This machine" (no `--platform` spec) still keys on the
+                // host arch, so it can dedup against a fixed default
+                // platform that resolves to the same target. Two distinct
+                // named `--platform` specs that both fail to resolve must
+                // not collapse onto that same key.
+                platform
+                    .clone()
+                    .unwrap_or_else(|| std::env::consts::ARCH.to_string())
+            });
             let key = (rver.clone(), platform_key.clone());
             if !seen.insert(key.clone()) {
                 // Not worth a warning: with the default platform set, "this

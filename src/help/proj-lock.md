@@ -68,8 +68,21 @@ usual four. `--add-platform` can be repeated:
 rig proj lock --add-platform ubuntu-24.04 --add-platform linux-fedora-42
 ```
 
-`--platform source` solves for source packages only. rig also falls back to
-source packages when there are no binaries for a platform at all.
+`--platform`/`--add-platform` accept:
+
+- `macos-arm64`, `windows-x86_64` -- an OS plus arch, for the two
+  non-Linux platforms.
+- `ubuntu-24.04`, `fedora-42`, `opensuse-15.6` -- a Linux distro and version,
+  matched against P3M's build list.
+- `manylinux_2_28-arm64`, `jammy-x86_64` -- a P3M platform name and arch
+  directly, e.g. copied from another `rproj.lock`'s `platform` field.
+- `source` -- source packages only, for any platform.
+
+A Linux distro/version or platform name P3M has no specific build for falls
+back to its generic manylinux build for the given arch, rather than failing.
+
+rig also falls back to source packages when there are no binaries for a
+platform at all.
 
 rig keeps the repository metadata and the binary package indices it solves
 from in its cache, and refreshes them once a day. Use `--no-cache` to ignore
