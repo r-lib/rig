@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
     <id>rig</id>
-    <version>0.10.0-beta3</version>
+    <version>0.10.0</version>
     <packageSourceUrl>https://github.com/r-lib/rig</packageSourceUrl>
     <owners>Gábor Csárdi</owners>
     <title>rig</title>
@@ -95,7 +95,7 @@
 Please open an issue in our issue tracker at https://github.com/r-lib/rig/issues
     </description>
     <releaseNotes>
-# rig 0.10.0-beta3
+# rig 0.10.0
 
 ## Web site
 
@@ -147,7 +147,17 @@ Please open an issue in our issue tracker at https://github.com/r-lib/rig/issues
   table of its `rproj.toml`, passing the remaining arguments on to the
   script. `rig run --list` lists the declared scripts.
 
+* `rig proj sync` can now centralize project package libraries outside the
+  project directory: set the `RIG_PROJ_LIBRARY_ROOT` environment variable or
+  the `proj-library-root` config key to a root directory, and each project
+  gets its own library under it, keyed by project name and location. A
+  compatibility symlink is left at the project's usual `.rvenv/lib`. `rig
+  system dirs --library-root` reports the effective root (#372).
+
 ## Windows specific
+
+* Windows builds of rig are now signed, thanks to the SignPath Foundation,
+  https://signpath.org/.
 
 * On Windows rig now creates `.exe` shims instead of `bat` shims.
   With `.exe` shims it is easier to pass command line arguments to
@@ -165,7 +175,27 @@ Please open an issue in our issue tracker at https://github.com/r-lib/rig/issues
 * On Windows, `R CMD config` now works without manually putting Rtools on
   the `PATH`. So do `R CMD sh`, `R CMD make` and `rig run --cmd config`.
 
+## macOS specific
+
+* `rig sysreqs` has been removed. It did not reliably set up a working
+  Fortran toolchain (#262). Install gfortran from
+  <https://mac.r-project.org/tools> instead.
+
 ## Other new features
+
+* `rig add` no longer reinstalls a version that is already installed,
+  except for R-devel and R-next. Use `--reinstall` for force a re-install
+  (#293).
+
+* `rig add` can now install the R version an `renv.lock` file requires,
+  e.g. `rig add renv.lock` or `rig add path/to/renv.lock` (#294).
+
+* New `rig system blas` commands, to check and switch which BLAS/LAPACK
+  library an installed R version uses on macOS, e.g. to switch to Apple's
+  faster Accelerate/vecLib BLAS (#212).
+
+* New `rig self update` to update rig, new `rig self uninstall` to remove
+  rig, if it was installed via the install script.
 
 * New `rig cache` command to inspect and manage rig's download and build
   caches. rig now reflinks or hardlinks packages from the cache when
@@ -175,6 +205,9 @@ Please open an issue in our issue tracker at https://github.com/r-lib/rig/issues
   build-log` shows the build log of a package on Posit Package Manager.
 
 * New `rig repos status` checks the configured package repositories.
+
+* New `rig system fix-aliases` to update `R-release`, `R-oldrel` etc.
+  aliases (#234).
 
 * `rig library add`, `rig library default`, `rig library list` and
   `rig library rm` have a new `--r-version` (`-r`) option, to operate on
@@ -189,6 +222,14 @@ Please open an issue in our issue tracker at https://github.com/r-lib/rig/issues
 
 * `rig run --cmd <command> [args...]` now runs `R CMD <command> [args...]`
   with the selected R version.
+
+* `rig run -- <flags>` now passes raw arguments straight to the R process,
+  e.g. `rig run -- --vanilla` or `rig run -e '1+1' -- --vanilla` (#249).
+
+* Plain `rig run` (i.e. without `-e`/`-f`/an app/`--cmd`) now defaults to
+  `--no-save --no-restore`, so it no longer shows the "Save workspace
+  image?" prompt on exit. Use `rig run -- --save --restore` to get the old
+  behavior back (#249).
 
 ## Other changes
 

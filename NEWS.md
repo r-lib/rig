@@ -1,4 +1,4 @@
-# rig 0.10.0-beta3
+# rig 0.10.0
 
 ## Web site
 
