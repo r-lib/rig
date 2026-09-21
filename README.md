@@ -26,11 +26,11 @@ Install, remove, configure R versions. Manage R packages and projects.
 **Cross-platform and self-contained**
 
 - Works on macOS, Windows and Linux. Has native builds for many [Linux
-  distributions](install.qmd#id-supported-linux-distributions), and
+  distributions](https://r-lib.github.io/rig/install.html#id-supported-linux-distributions), and
   portable builds that run on any glibc- or musl-based Linux.
 - A single standalone tool with no system requirements. Easy to install
   and update on every platform.
-- Two [installation modes](admin-vs-user-mode.qmd): the default *admin
+- Two [installation modes](https://r-lib.github.io/rig/admin-vs-user-mode.html): the default *admin
   mode* installs R system-wide (elevating to root/administrator only
   when needed), while the newer *user mode* installs everything into
   your home directory with no `sudo` or administrator rights.
@@ -45,15 +45,15 @@ Install, remove, configure R versions. Manage R packages and projects.
   requirements
   installation](https://pak.r-lib.org/dev/reference/sysreqs.html).
 - Creates and configures per-user package libraries.
-- [`rig repos`](reference/repos.qmd) manages package repositories across
+- [`rig repos`](https://r-lib.github.io/rig/reference/repos.html) manages package repositories across
   all your R versions.
-- [`rig pkg`](reference/pkg.qmd) (experimental) installs, removes and
+- [`rig pkg`](https://r-lib.github.io/rig/reference/pkg.html) (experimental) installs, removes and
   lists packages in a library, and looks up package info, dependencies
   and dependency trees from the repositories, all without running R.
 
 **Project dependency management (experimental)**
 
-- [`rig proj`](reference/proj.qmd) manages an R project through an
+- [`rig proj`](https://r-lib.github.io/rig/reference/proj.html) manages an R project through an
   `rproj.toml` manifest: add or remove dependencies, resolve them with
   rig’s built-in solver into an `rproj.lock` lockfile, and sync a
   project library to match, all without running R.
@@ -71,7 +71,7 @@ Install, remove, configure R versions. Manage R packages and projects.
 
 **Platform niceties**
 
-- A [macOS menu bar app](macos-app.qmd) shows the default R version and
+- A [macOS menu bar app](https://r-lib.github.io/rig/macos-app.html) shows the default R version and
   lets you switch it interactively.
 - Installs and configures the right Rtools versions on Windows, and
   cleans up stale R entries from the Windows registry.

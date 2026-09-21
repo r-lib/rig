@@ -295,8 +295,9 @@ rig-macos-%-$(VERSION).tar.gz: rig-$(VERSION)-macOS-%.pkg
 # README.md is the short landing page, generated from README.qmd (which
 # includes shared partials from website/_partials). The full documentation
 # lives in the Quarto website under website/.
-README.md: README.qmd website/_partials/intro.md website/_partials/feedback.md
+README.md: README.qmd website/_partials/intro.md website/_partials/feedback.md website/_partials/features.md
 	quarto render README.qmd --to gfm
+	perl -pi -e 's{\]\(((?:reference/)?[\w-]+)\.qmd(#[\w-]*)?\)}{](https://r-lib.github.io/rig/$$1.html$$2)}g' README.md
 
 .PHONY: help readme docs docs-preview cli-reference fonts-asset
 
