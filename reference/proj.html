@@ -1198,7 +1198,15 @@ Run in user mode (overrides RIG_MODE and config)
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> proj lock <span class="at">--platform</span> ubuntu-24.04</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Use <code>--add-platform</code> instead to add a platform to that default set rather than replacing it, e.g.&nbsp;to also solve for one extra distro on top of the usual four. <code>--add-platform</code> can be repeated:</p>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> proj lock <span class="at">--add-platform</span> ubuntu-24.04 <span class="at">--add-platform</span> linux-fedora-42</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p><code>--platform source</code> solves for source packages only. rig also falls back to source packages when there are no binaries for a platform at all.</p>
+<p><code>--platform</code>/<code>--add-platform</code> accept:</p>
+<ul>
+<li><code>macos-arm64</code>, <code>windows-x86_64</code> – an OS plus arch, for the two non-Linux platforms.</li>
+<li><code>ubuntu-24.04</code>, <code>fedora-42</code>, <code>opensuse-15.6</code> – a Linux distro and version, matched against P3M’s build list.</li>
+<li><code>manylinux_2_28-arm64</code>, <code>jammy-x86_64</code> – a P3M platform name and arch directly, e.g.&nbsp;copied from another <code>rproj.lock</code>’s <code>platform</code> field.</li>
+<li><code>source</code> – source packages only, for any platform.</li>
+</ul>
+<p>A Linux distro/version or platform name P3M has no specific build for falls back to its generic manylinux build for the given arch, rather than failing.</p>
+<p>rig also falls back to source packages when there are no binaries for a platform at all.</p>
 <p>rig keeps the repository metadata and the binary package indices it solves from in its cache, and refreshes them once a day. Use <code>--no-cache</code> to ignore the cache, or clean the cache with <code>rig cached clean</code>.</p>
 </section>
 <section id="sticky-lock-files" class="level3">
