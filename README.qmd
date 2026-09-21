@@ -7,14 +7,15 @@ format: gfm
 
 # The R Installation Manager
 
-Install, remove, configure R versions.
+Install, remove, configure R versions. Manage R packages and projects.
 
-{{< include website/_partials/intro.md >}}
+## Features
+
+{{< include website/_partials/features.md >}}
 
 ## 📖 Documentation
 
-**Full documentation — installation, usage, all commands, FAQ — is on the rig
-website: <https://r-lib.github.io/rig/>**
+Full documentation is on the rig website: <https://r-lib.github.io/rig/>
 
 Quick start:
 
