@@ -1,3 +1,19 @@
+# Development version
+
+* `rig pkg install <path>` is now supported. `<path>` can be a directory,
+  of a source or binary package file.
+
+* `rig pkg install` now supports constraints. E.g. to install a specific
+  version of a package use `rig pkg install '<pkg>@=<ver>'`.
+
+* `rig proj import --force` now correctly overwrites the existing project
+  files.
+
+* `rig proj lock` now considers the root project as a package.
+
+* `rig proj lock` now rewrites the lock file if the list of R versions to
+  solve for changes.
+
 # rig 0.10.0
 
 ## Web site
