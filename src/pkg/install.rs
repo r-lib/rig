@@ -231,10 +231,13 @@ fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
         let source = parse_pkg_source(name).inspect_err(|err| {
             OUTPUT.error(&err.to_string());
         })?;
+        let mut constraints: Vec<crate::dcf::VersionConstraint> = vec![];
         let resolved_name = match source {
             PkgSource::Cran => {
-                cran_names.push(name.clone());
-                name.clone()
+                let (cran_name, version) = crate::rproj::parse_add_spec(name)?;
+                cran_names.push(cran_name.clone());
+                constraints = crate::rproj::parse_constraints(&version)?;
+                cran_name
             }
             PkgSource::Remote(r) => {
                 let table = dep_table_from_remote(&r, name);
@@ -268,7 +271,7 @@ fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
         }
         deps.dependencies.push(DepVersionSpec {
             name: resolved_name,
-            constraints: vec![],
+            constraints,
             types: vec![RDepType::Depends],
         });
     }
