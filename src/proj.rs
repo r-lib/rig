@@ -293,7 +293,7 @@ fn sc_proj_import(
     let path = root.join(RPROJ_MANIFEST_FILE);
     let path = path.as_path();
 
-    if !dependencies_only && path.exists() {
+    if !dependencies_only && !args.get_flag("force") && path.exists() {
         let msg = format!(
             "{} already exists; import would only overwrite dependencies, not \
              merge full metadata. Use --dependencies to merge into it, or \
