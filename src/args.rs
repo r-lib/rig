@@ -1224,7 +1224,14 @@ pub fn rig_app() -> Command {
                         .help("Only delete this category of cached files")
                         .long("category")
                         .required(false)
-                        .value_parser(["built", "packages", "metadata", "p3m", "git-mirrors"]),
+                        .value_parser([
+                            "built",
+                            "packages",
+                            "metadata",
+                            "p3m",
+                            "git-mirrors",
+                            "url-pkgs",
+                        ]),
                 ),
         );
 
@@ -1688,6 +1695,19 @@ pub fn rig_app() -> Command {
                         .long("platform")
                         .num_args(1)
                         .value_delimiter(',')
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("add-platform")
+                        .help(
+                            "Add platform(s) to the set --platform would otherwise\n\
+                            solve for, instead of replacing it. Comma-separated, and\n\
+                            can be repeated.",
+                        )
+                        .long("add-platform")
+                        .num_args(1)
+                        .value_delimiter(',')
+                        .action(clap::ArgAction::Append)
                         .required(false),
                 )
                 .arg(
@@ -2973,6 +2993,28 @@ mod tests {
         let platforms: Vec<&String> = sub.get_many::<String>("platform").unwrap().collect();
         assert_eq!(r_versions, vec!["4.5.0", "4.6.1"]);
         assert_eq!(platforms, vec!["macos", "ubuntu-24.04"]);
+    }
+
+    #[test]
+    fn proj_lock_add_platform_is_repeatable_and_comma_separated() {
+        let matches = rig_app()
+            .try_get_matches_from([
+                "rig",
+                "proj",
+                "lock",
+                "--add-platform",
+                "ubuntu-24.04,linux-fedora-42",
+                "--add-platform",
+                "windows",
+            ])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        let add_platforms: Vec<&String> = sub.get_many::<String>("add-platform").unwrap().collect();
+        assert_eq!(
+            add_platforms,
+            vec!["ubuntu-24.04", "linux-fedora-42", "windows"]
+        );
     }
 
     #[test]

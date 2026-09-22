@@ -63,6 +63,10 @@ use std::path::{Path, PathBuf};
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 use simple_error::bail;
 
+use log::info;
+
+use crate::output::OUTPUT;
+
 use crate::hardcoded::{
     HC_RVENV_PKG_CODE, HC_RVENV_PKG_DESCRIPTION, HC_RVENV_PKG_LICENSE, HC_RVENV_PKG_META,
     HC_RVENV_PKG_NAMESPACE,
@@ -781,6 +785,25 @@ pub fn rvenv_init(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
         root.join(RVENV_GITIGNORE_FILE),
         project_shim_package(root),
     ])
+}
+
+/// Fill in `.Renviron` and `.rvenvlib` for a project that already has an
+/// `rproj.toml` but is missing them -- deleted locally, or a manifest that
+/// predates rvenv. Every `rig proj` subcommand that operates on an existing
+/// project calls this, so that R started directly (terminal, RStudio,
+/// Positron) keeps working: those commands never read either file
+/// themselves, they set `R_LIBS_USER` on their own. A no-op if the manifest
+/// is missing (nothing to fill in) or the shim package is already there.
+pub fn ensure_rvenv_files(root: &Path) -> Result<(), Box<dyn Error>> {
+    if root.join(RPROJ_MANIFEST_FILE).exists() && !project_shim_package(root).exists() {
+        rvenv_init(root)?;
+        OUTPUT.info("Filled in missing .Renviron/.rvenvlib for this project");
+        info!(
+            "Filled in missing .Renviron/.rvenvlib in {}",
+            root.display()
+        );
+    }
+    Ok(())
 }
 
 // --------------------------------------------------------------------- sync --

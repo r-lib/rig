@@ -171,15 +171,22 @@ impl SolveRoot {
 /// Every root is marked local ([`RPackageRegistry::mark_local`]): a member is a
 /// directory in the monorepo, and a synthetic root is not a package at all, so
 /// neither is anything to download.
+///
+/// `self_alias`, when given, is registered the same way as a root, so that a
+/// plain project whose own name matches one of its dependencies resolves that
+/// dependency to itself, at its declared version and dependencies, rather than
+/// fetching it from CRAN/PPM. Unlike a root it never affects which package
+/// [`resolve`] is called for: a plain project still solves as `_project`.
 pub fn register_roots(
     reg: &RPackageRegistry,
     roots: &[SolveRoot],
+    self_alias: Option<&SolveRoot>,
 ) -> Result<(RPackageName, RegistryPackageVersion), Box<dyn Error>> {
     if roots.is_empty() {
         bail!("Nothing to solve, no project or workspace member was given");
     }
 
-    for root in roots {
+    for root in roots.iter().chain(self_alias) {
         reg.add_package_version(
             root.name.clone(),
             RegistryPackageVersion {
@@ -1604,7 +1611,7 @@ mod tests {
     ) {
         let reg = RPackageRegistry::with_loaders(Box::new(source), None);
         let roots: Vec<SolveRoot> = members.iter().map(|m| member(*m)).collect();
-        let (root_pkg, root_version) = register_roots(&reg, &roots).unwrap();
+        let (root_pkg, root_version) = register_roots(&reg, &roots, None).unwrap();
         // The failure is the rendered report, which is what a caller shows,
         // rather than `NoSolution`'s own fixed "There is no solution".
         let solution = resolve(&reg, root_pkg, root_version).map_err(format_solver_error);
@@ -1663,6 +1670,25 @@ mod tests {
     }
 
     #[test]
+    fn a_self_alias_shadows_a_repository_package_of_the_same_name() {
+        // A plain project (not a workspace) named `rlang`, depending on `cli`,
+        // registers a self-alias root for `rlang` itself, so a package
+        // depending on `rlang` gets the project's own version and
+        // dependencies instead of CRAN/PPM's.
+        let reg = RPackageRegistry::with_loaders(
+            Box::new(StubSource {
+                packages: vec![("rlang", "0.4.0", ""), ("cli", "3.6.0", "rlang")],
+            }),
+            None,
+        );
+        let roots = [SolveRoot::project(imports("cli")).unwrap()];
+        let self_alias = member(("rlang", "1.0.1", ""));
+        let (root_pkg, root_version) = register_roots(&reg, &roots, Some(&self_alias)).unwrap();
+        let solution = resolve(&reg, root_pkg, root_version).unwrap();
+        assert_eq!(solution["rlang"], source("rlang", "1.0.1"));
+    }
+
+    #[test]
     fn a_member_depending_on_a_sibling_gets_the_siblings_dependencies() {
         let (_reg, solution) = solve_members(
             StubSource {
@@ -1718,7 +1744,7 @@ mod tests {
             None,
         );
         let roots = [SolveRoot::project(imports("cli")).unwrap()];
-        let (root_pkg, _version) = register_roots(&reg, &roots).unwrap();
+        let (root_pkg, _version) = register_roots(&reg, &roots, None).unwrap();
         assert_eq!(root_pkg, PROJECT_ROOT_PKG);
         // No synthetic workspace node in a single-project solve, so its
         // conflict reports read exactly as they did before workspaces.
@@ -1728,6 +1754,6 @@ mod tests {
     #[test]
     fn solving_nothing_is_an_error() {
         let reg = RPackageRegistry::with_loaders(Box::new(StubSource { packages: vec![] }), None);
-        assert!(register_roots(&reg, &[]).is_err());
+        assert!(register_roots(&reg, &[], None).is_err());
     }
 }

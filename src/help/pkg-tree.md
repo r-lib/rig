@@ -37,9 +37,9 @@ dependencies are above".
 
 Key for markers:
 
-* `[D]` — a `Depends`, so the package is *attached*, not merely loaded.
-* `[L]` — a `LinkingTo`, so this package is compiled against it.
-* `[DL]` — both.
+* `[D]`: a `Depends`, so the package is *attached*, not merely loaded.
+* `[L]`: a `LinkingTo`, so this package is compiled against it.
+* `[DL]`: both.
 
 (`Imports` is the most common and it is not marked.)
 

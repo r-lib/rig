@@ -13,8 +13,9 @@ use crate::common::*;
 use crate::output::OUTPUT;
 use crate::proj::{proj_read_manifest_opt, proj_sync, ProjSyncOptions};
 use crate::rproj::Bin;
+use crate::rproj::RPROJ_MANIFEST_FILE;
 use crate::rvenv::{
-    find_project_root, project_r_wrapper, project_shim_package, rscript_of, rvenv_sync_needed,
+    ensure_rvenv_files, find_project_root, project_r_wrapper, rscript_of, rvenv_sync_needed,
 };
 
 #[cfg(target_os = "macos")]
@@ -268,16 +269,13 @@ fn project_r_binary(args: &ArgMatches, dry_run: bool) -> Result<Option<String>, 
         Some(root) => root,
     };
 
-    // A project that has never been initialized has no environment to use.
-    // `rig proj init` writes the committed part of the environment, the shim
-    // package in `.rvenvlib`, and neither `rig proj sync` nor `rig run` writes
-    // it: writing tracked project files is always an explicit request. Fail
-    // rather than fall back to the default R, the same way `rig proj sync`
-    // does -- inside a project, `rig run` running a non-project R would be
-    // the more surprising outcome.
-    if !project_shim_package(&root).exists() {
+    // A directory with no manifest at all has never been initialized, so
+    // there is nothing to fill in. Fail rather than fall back to the default
+    // R, the same way `rig proj sync` does -- inside a project, `rig run`
+    // running a non-project R would be the more surprising outcome.
+    if !root.join(RPROJ_MANIFEST_FILE).exists() {
         let msg = format!(
-            "No project environment in {}, run `rig proj init` first \
+            "No project manifest in {}, run `rig proj init` first \
              (or `rig run --no-project`)",
             root.display()
         );
@@ -285,6 +283,11 @@ fn project_r_binary(args: &ArgMatches, dry_run: bool) -> Result<Option<String>, 
         error!("{}", msg);
         bail!("{}", msg);
     }
+    // `.Renviron`/`.rvenvlib` are only needed to start R directly (terminal,
+    // an IDE), not by this wrapper, which sets `R_LIBS_USER` itself -- but
+    // fill them in if missing anyway, so a direct R start in this project
+    // keeps working too.
+    ensure_rvenv_files(&root)?;
 
     match rvenv_sync_needed(&root)? {
         None => {}

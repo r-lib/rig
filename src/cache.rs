@@ -1,5 +1,5 @@
 use std::error::Error;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use directories::ProjectDirs;
@@ -98,6 +98,19 @@ pub fn git_mirror_dir(url: &str) -> Option<PathBuf> {
     Some(cache.join("git-mirrors").join(&hash[..16]))
 }
 
+/// `<cache>/url-pkgs/<hash-of-url>`, the persistent directory for one `url::`
+/// package dependency's downloaded archive and its extracted tree, or `None`
+/// when there's no usable cache. Same philosophy as [`git_mirror_dir`]: keyed
+/// on the URL alone, since a `url` dependency names one exact resource.
+pub fn url_pkg_dir(url: &str) -> Option<PathBuf> {
+    if no_cache() {
+        return None;
+    }
+    let cache = get_cache_dir().ok()?;
+    let hash = crate::utils::calculate_hash(url);
+    Some(cache.join("url-pkgs").join(&hash[..16]))
+}
+
 static EPHEMERAL_CACHE_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 fn ephemeral_cache_dir() -> Result<PathBuf, Box<dyn Error>> {
@@ -139,6 +152,20 @@ pub fn cleanup_ephemeral_cache_dir() {
             dir.display(),
             err
         ),
+    }
+}
+
+/// Delete a downloaded file (installer/tarball) after it has been used
+/// successfully, but only when `--no-cache` was passed — normal runs keep
+/// it in the persistent download dir for reuse. Best-effort, like
+/// `cleanup_ephemeral_cache_dir`.
+pub fn remove_download_if_no_cache(path: &Path) {
+    if !no_cache() {
+        return;
+    }
+    match std::fs::remove_file(path) {
+        Ok(()) => debug!("Removed downloaded file {}", path.display()),
+        Err(err) => debug!("Cannot remove downloaded file {}: {}", path.display(), err),
     }
 }
 

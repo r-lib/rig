@@ -6,11 +6,13 @@
   - rig.iss
   - choco/rig/rig.nuspec
   - NEWS file
+  - website/install.ps1
+  - website/install.sh
 - [ ] If needed, commit to have a CI build with the right version number.
 - [ ] Make sure CI is OK
 - [ ] Build README:
   ```
-  Rscript -e 'rmarkdown::render("README.Rmd")'
+  make readme
   ```
 - [ ] Update NEWS header to remove `(not released yet)`
 - [ ] Build signed and notarized macOS packages locally:
@@ -29,16 +31,21 @@
     selecting the `release-signing` signing policy. It builds and signs
     both the x86_64 and aarch64 installers.
   - Approve each signing request in the SignPath UI if prompted.
-  - Download the `rig-windows-x86_64-signed` and `rig-windows-aarch64-signed`
-    artifacts from the workflow run; use these signed `.exe` files for the
-    release (not the unsigned CI artifacts). Rename them to
-    `rig-windows-${VERSION}.exe` and `rig-windows-arm64-${VERSION}.exe`.
-- [ ] Download the artifacts for the new version for Linux (x2)
 - [ ] Create tag for the current version, push to GH.
-- [ ] Create release on GH, add the installers.
-- [ ] Test the macOS installers. (The rest are tested in the CI.)
+- [ ] Create the release on GH **as a draft** (`gh release create --draft ...`
+      or the GH UI), and add all the installers to the draft.
+- [ ] Download the artifacts and add them to the (draft) release:
+      ```
+      mkdir releases/...
+      cp rig-0*.pkg rig-macos-*.tar.gz releases/...
+      cd releases/...
+      ../../tools/release-assets.sh --tag ... --build-run ... --win-run ... --macos-dir  .
+      ```
 - [ ] `git commit` with the NEWS and README updates, update tag, push to GH,
       `--tags` as well.
+- [ ] Once every installer is attached, publish the draft release
+      (`gh release edit <tag> --draft=false`, or the "Publish release"
+      button in the GH UI).
 - [ ] Update Debian repo, by running the Action manually, and then check out
       the `gh-pages` branch (into another directory, probably), add the
       dokku remote, cherry-pick the updates from the dokku remote, and

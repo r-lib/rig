@@ -26,8 +26,11 @@ use super::deps::{
 };
 use crate::dcf::{DepVersionSpec, RDepType, RPackageVersion, DEP_TYPES_SOFT};
 use crate::output::OUTPUT;
-use crate::pkgsource::{parse_pkg_source, PkgSource, RemoteSource};
-use crate::proj::{dep_table_from_remote, fetch_and_read_git_package, github_owner_repo};
+use crate::pkgsource::{parse_pkg_source, PkgSource, RemoteSource, UrlSource};
+use crate::proj::{
+    dep_table_from_remote, dep_table_from_url, fetch_and_read_git_package,
+    fetch_and_read_url_package, github_owner_repo,
+};
 use crate::repos::DbSourcePackageLoader;
 use crate::rproj::{pak_ref_name, DepTable};
 use crate::solver::{is_base_package, GitSourceInfo, PackageVersionLoader};
@@ -53,6 +56,7 @@ pub fn sc_pkg_tree(
     })?;
     let tree = match source {
         PkgSource::Remote(r) => remote_root_tree(&package, &r, dev, no_base)?,
+        PkgSource::Url(u) => url_root_tree(&u, dev, no_base)?,
         PkgSource::Cran => {
             let loader = DbSourcePackageLoader::new()?;
             dep_tree(&loader, &package, &ver, dev, no_base).inspect_err(|err| {
@@ -369,14 +373,21 @@ impl RemoteResolver {
     }
 
     fn fetch(&mut self, name: &str, table: &DepTable) -> RemoteFetch {
-        let git_url = table
+        let source_desc = table
             .git
             .clone()
-            .expect("a package only ends up in `pending` with a `git` URL set");
-        OUTPUT.status(&format!("Fetching {} from {}", name, git_url));
+            .or_else(|| table.url.clone())
+            .expect("a package only ends up in `pending` with a `git` or `url` source set");
+        OUTPUT.status(&format!("Fetching {} from {}", name, source_desc));
 
-        match fetch_and_read_git_package(&git_url, table, &HashMap::new(), &HashMap::new()) {
-            Ok((pkg, git_source, remotes_field)) => {
+        let fetched = if let Some(git_url) = &table.git {
+            fetch_and_read_git_package(git_url, table, &HashMap::new(), &HashMap::new())
+        } else {
+            fetch_and_read_url_package(table.url.as_deref().unwrap(), table)
+        };
+
+        match fetched {
+            Ok((pkg, source, remotes_field)) => {
                 for (dep_name, dep_table) in parse_remotes_field(&remotes_field) {
                     if !self.cache.contains_key(&dep_name) {
                         self.pending.entry(dep_name).or_insert(dep_table);
@@ -385,18 +396,18 @@ impl RemoteResolver {
                 RemoteFetch {
                     version: Some(pkg.version),
                     deps: pkg.dependencies.dependencies,
-                    label: remote_label(&git_source),
+                    label: remote_label(&source),
                 }
             }
             Err(err) => {
                 debug!(
                     "Failed to fetch remote package '{}' from {}: {}",
-                    name, git_url, err
+                    name, source_desc, err
                 );
                 RemoteFetch {
                     version: None,
                     deps: vec![],
-                    label: remote_label_unresolved(&git_url),
+                    label: remote_label_unresolved(&source_desc),
                 }
             }
         }
@@ -419,8 +430,14 @@ fn parse_remotes_field(remotes_field: &str) -> HashMap<String, DepTable> {
         let Some(dep_name) = pak_ref_name(entry) else {
             continue;
         };
-        if let Ok(PkgSource::Remote(r)) = parse_pkg_source(entry) {
-            out.insert(dep_name, dep_table_from_remote(&r, entry));
+        match parse_pkg_source(entry) {
+            Ok(PkgSource::Remote(r)) => {
+                out.insert(dep_name, dep_table_from_remote(&r, entry));
+            }
+            Ok(PkgSource::Url(u)) => {
+                out.insert(dep_name, dep_table_from_url(&u));
+            }
+            Ok(PkgSource::Cran) | Err(_) => {}
         }
     }
     out
@@ -432,6 +449,9 @@ fn parse_remotes_field(remotes_field: &str) -> HashMap<String, DepTable> {
 /// `fetch_and_read_git_package`), so they get the same generic `git:` label
 /// as any other non-GitHub remote.
 fn remote_label(info: &GitSourceInfo) -> String {
+    if info.remote_type == "url" {
+        return format!("url: {}", info.url);
+    }
     let at = info
         .ref_
         .clone()
@@ -444,11 +464,12 @@ fn remote_label(info: &GitSourceInfo) -> String {
 
 /// The label for a remote dependency whose fetch failed (bad ref, network
 /// error, unparseable `DESCRIPTION`), so the user sees which package and
-/// source is broken instead of a plain unresolved leaf.
-fn remote_label_unresolved(git_url: &str) -> String {
-    match github_owner_repo(git_url) {
+/// source is broken instead of a plain unresolved leaf. `source_desc` is
+/// whatever URL the dependency came from, git or `url`.
+fn remote_label_unresolved(source_desc: &str) -> String {
+    match github_owner_repo(source_desc) {
         Some((owner, repo)) => format!("github: {}/{} (fetch failed)", owner, repo),
-        None => format!("git: {} (fetch failed)", git_url),
+        None => format!("git/url: {} (fetch failed)", source_desc),
     }
 }
 
@@ -483,6 +504,28 @@ fn remote_root_tree(
         no_base,
     );
     tree.root.source = Some(remote_label(&git_source));
+    Ok(tree)
+}
+
+/// The tree of an ad-hoc `url::` package root, e.g.
+/// `rig pkg tree url::https://example.com/mypkg_1.0.0.tar.gz`, the `url`
+/// counterpart of [`remote_root_tree`].
+fn url_root_tree(u: &UrlSource, dev: bool, no_base: bool) -> Result<DepTree, Box<dyn Error>> {
+    let table = dep_table_from_url(u);
+    let (pkg, url_source, remotes_field) = fetch_and_read_url_package(&u.url, &table)?;
+    let root_remotes = parse_remotes_field(&remotes_field);
+
+    let loader = DbSourcePackageLoader::new()?;
+    let mut tree = tree_from_deps(
+        &loader,
+        &pkg.name,
+        Some(pkg.version.clone()),
+        &pkg.dependencies.dependencies,
+        root_remotes,
+        dev,
+        no_base,
+    );
+    tree.root.source = Some(remote_label(&url_source));
     Ok(tree)
 }
 

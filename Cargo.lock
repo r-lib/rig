@@ -2109,7 +2109,7 @@ dependencies = [
 
 [[package]]
 name = "rig"
-version = "0.10.0-beta3"
+version = "0.10.0"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -2166,6 +2166,7 @@ dependencies = [
  "toml",
  "toml_edit",
  "version-ranges",
+ "webpki-root-certs",
  "whoami",
  "winreg",
  "wiremock",

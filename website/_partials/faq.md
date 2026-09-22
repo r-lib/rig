@@ -124,7 +124,7 @@
 >
 > The portable R builds rig installs on Linux bundle the fontconfig
 > library, but not its configuration and not any fonts. On a minimal
-> system — a slim container, Alpine, a bare server — R then has nothing to
+> system (a slim container, Alpine, a bare server) R then has nothing to
 > render text with, and crashes on the first plot.
 >
 > So after installing a portable build, `rig add` writes a `fonts.conf`
@@ -192,7 +192,7 @@
 > **Windows.** R uses the system font list on Windows, not fontconfig, and
 > rig does not configure fonts at all there. To install a font for
 > yourself only, right-click the font file in Explorer and choose
-> *Install for current user* (or open it and click *Install* — Windows
+> *Install for current user* (or open it and click *Install*. Windows
 > installs it into `%LOCALAPPDATA%\Microsoft\Windows\Fonts` for your user,
 > without administrator rights).
 >

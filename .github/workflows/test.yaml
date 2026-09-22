@@ -395,6 +395,32 @@ jobs:
         bats tests/test-windows.sh
       shell: bash
 
+  msrv:
+    runs-on: ${{ matrix.os }}
+    name: Build with Rust 1.91.0 (${{ matrix.os }})
+    env:
+      RUST_BACKTRACE: 1
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-2022]
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 10
+
+    - name: Install rust 1.91.0
+      uses: dtolnay/rust-toolchain@1.91.0
+
+    - name: Build rig
+      run: |
+        cargo build
+        cargo test
+      shell: bash
+
   coverage:
     runs-on: ubuntu-latest
     name: Test coverage

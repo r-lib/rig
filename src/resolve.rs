@@ -18,6 +18,7 @@ use crate::download::*;
 use crate::hardcoded::*;
 use crate::output::OUTPUT;
 use crate::rversion::*;
+use crate::utils::http_client;
 use crate::utils::*;
 
 const API_URI: &str = "https://api.r-hub.io/rversions/resolve/";
@@ -141,7 +142,7 @@ pub async fn resolve_versions(
     platform: &str,
     arch: &str,
 ) -> Result<Vec<Rversion>, Box<dyn Error>> {
-    let client = reqwest::Client::new();
+    let client = http_client();
     let client = &client;
     let out: Vec<Result<Rversion, Box<dyn Error>>> = future::join_all(
         vers.into_iter()

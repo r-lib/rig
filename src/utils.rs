@@ -770,6 +770,42 @@ pub fn check_local_bin_path() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// A `reqwest::ClientBuilder` with a compiled-in Mozilla root CA bundle added
+/// as extra trust roots, so TLS still works on Linux systems/containers that
+/// have no system CA store (`rustls-platform-verifier` otherwise errors with
+/// "No CA certificates were loaded from the system"). On macOS and Windows
+/// the platform's own certificate store is always available, so this is a
+/// no-op passthrough there.
+pub fn http_client_builder() -> reqwest::ClientBuilder {
+    let builder = reqwest::Client::builder();
+    #[cfg(target_os = "linux")]
+    let builder = {
+        let mut builder = builder;
+        for cert in webpki_root_certs::TLS_SERVER_ROOT_CERTS {
+            match reqwest::Certificate::from_der(cert.as_ref()) {
+                Ok(cert) => builder = builder.add_root_certificate(cert),
+                Err(err) => debug!("Skipping unparsable embedded root certificate: {}", err),
+            }
+        }
+        builder
+    };
+    builder
+}
+
+/// A shared `reqwest::Client` built via [`http_client_builder`]. The root
+/// store is only assembled once per process; clones of the returned `Client`
+/// share the same connection pool and configuration.
+pub fn http_client() -> reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            http_client_builder()
+                .build()
+                .expect("failed to build HTTP client")
+        })
+        .clone()
+}
+
 #[cfg(test)]
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod tests {

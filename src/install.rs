@@ -25,12 +25,13 @@ pub const REMOTE_HASH_FIELD: &str = "RemoteHash";
 /// binary index uses.
 pub const REMOTE_LINKINGTO_FIELD: &str = "RemoteLinkingToHashes";
 
-/// `DESCRIPTION` fields recording the provenance of a git/GitHub-sourced
+/// `DESCRIPTION` fields recording the provenance of a git/GitHub/url-sourced
 /// package, the same field names the R `remotes`/`pak`/`renv` packages use, so
 /// that a package rig installed this way is recognizable by other R tooling
-/// too. `REMOTE_TYPE_FIELD` is `"github"` or `"git"`; `REMOTE_HOST_FIELD`,
-/// `REMOTE_REPO_FIELD` and `REMOTE_USERNAME_FIELD` are only set for a GitHub
-/// source (a plain `git::` source has no owner/repo structure, only a URL).
+/// too. `REMOTE_TYPE_FIELD` is `"github"`, `"git"` or `"url"`;
+/// `REMOTE_HOST_FIELD`, `REMOTE_REPO_FIELD` and `REMOTE_USERNAME_FIELD` are
+/// only set for a GitHub source (a plain `git::`/`url::` source has no
+/// owner/repo structure, only a URL).
 pub const REMOTE_TYPE_FIELD: &str = "RemoteType";
 pub const REMOTE_URL_FIELD: &str = "RemoteUrl";
 pub const REMOTE_HOST_FIELD: &str = "RemoteHost";
@@ -301,27 +302,38 @@ fn recreate_symlink(from: &Path, to: &Path) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// Extract a package archive into `dest`: a `.zip` on Windows, a gzipped
-/// tarball everywhere else. The extension decides, not the platform, so that a
+/// Extract a package archive into `dest`. The format (zip, or a tarball
+/// compressed with gzip, zstd or xz) is detected from the file's leading
+/// magic bytes, not from its name or the current platform, so a
 /// `--platform` other than this machine's still does the right thing.
 pub(crate) fn unpack_package(archive: &Path, dest: &Path) -> Result<(), Box<dyn Error>> {
-    let is_zip = archive
-        .extension()
-        .and_then(|x| x.to_str())
-        .map(|x| x.eq_ignore_ascii_case("zip"))
-        .unwrap_or(false);
+    use std::io::Read;
+
+    let mut header = [0u8; 6];
+    let n = std::fs::File::open(archive)?.read(&mut header)?;
+    let header = &header[..n];
 
     let file = std::fs::File::open(archive)?;
-    if is_zip {
+    if header.starts_with(&[0x50, 0x4B]) {
         let mut ar = zip::ZipArchive::new(file)?;
         ar.extract(dest)?;
+    } else if header.starts_with(&[0x1F, 0x8B]) {
+        unpack_tar(flate2::read::GzDecoder::new(file), dest)?;
+    } else if header.starts_with(&[0x28, 0xB5, 0x2F, 0xFD]) {
+        unpack_tar(zstd::stream::Decoder::new(file)?, dest)?;
+    } else if header.starts_with(&[0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00]) {
+        unpack_tar(xz2::read::XzDecoder::new(file), dest)?;
     } else {
-        let decoder = flate2::read::GzDecoder::new(file);
-        let mut ar = tar::Archive::new(decoder);
-        ar.set_preserve_permissions(true);
-        ar.set_overwrite(true);
-        ar.unpack(dest)?;
+        bail!("unrecognized archive format: {}", archive.display());
     }
+    Ok(())
+}
+
+fn unpack_tar<R: std::io::Read>(reader: R, dest: &Path) -> Result<(), Box<dyn Error>> {
+    let mut ar = tar::Archive::new(reader);
+    ar.set_preserve_permissions(true);
+    ar.set_overwrite(true);
+    ar.unpack(dest)?;
     Ok(())
 }
 

@@ -26,6 +26,8 @@ use crate::resolve::get_resolve;
 #[cfg(target_os = "windows")]
 use crate::rversion::Rversion;
 use crate::utils::get_concurrent_downloads;
+use crate::utils::http_client;
+use crate::utils::http_client_builder;
 use crate::utils::write_atomically;
 #[cfg(target_os = "windows")]
 use crate::utils::*;
@@ -77,7 +79,7 @@ pub fn download_r(args: &ArgMatches) -> Result<(Rversion, OsString), Box<dyn Err
     } else {
         OUTPUT.status(&format!("Downloading {} -> {}", url, target.display()));
         info!("Downloading {} -> {}", url, target.display());
-        let client = &reqwest::Client::new();
+        let client = &http_client();
         download_file(client, &url, target.as_os_str())?;
     }
 
@@ -170,7 +172,7 @@ pub async fn download_file(
 }
 
 pub fn download_json_sync(urls: Vec<String>) -> Result<Vec<serde_json::Value>, Box<dyn Error>> {
-    let client = reqwest::Client::new();
+    let client = http_client();
     let client = &client;
     let resp = download_json_(client, urls)?;
     Ok(resp)
@@ -227,7 +229,7 @@ pub async fn download_if_newer__(
 ) -> Result<(bool, Option<String>), Box<dyn Error>> {
     let client_ = match client {
         Some(c) => c,
-        None => &reqwest::Client::new(),
+        None => &http_client(),
     };
     download_if_newer(client_, url, local_path, None).await
 }
@@ -324,7 +326,7 @@ pub fn download_first_available_(
 
     let client_ = match client {
         Some(c) => c,
-        None => &reqwest::Client::new(),
+        None => &http_client(),
     };
 
     download_first_available__(client_, urls, local_path, etag)
@@ -363,7 +365,7 @@ pub fn fetch_optional_if_modified_(
 ) -> Result<ConditionalFetch, Box<dyn Error>> {
     let client_ = match client {
         Some(c) => c,
-        None => &reqwest::Client::new(),
+        None => &http_client(),
     };
     fetch_optional_if_modified__(client_, url, etag)
 }
@@ -528,9 +530,9 @@ fn probe_error_message(err: &reqwest::Error) -> String {
 pub async fn probe_urls_(urls: &[String]) -> Vec<UrlProbe> {
     // `reqwest::Client::new()` has no timeout of its own, and one shared client
     // means one connection pool for the repositories that share a host.
-    let client = match reqwest::Client::builder().timeout(PROBE_TIMEOUT).build() {
+    let client = match http_client_builder().timeout(PROBE_TIMEOUT).build() {
         Ok(c) => c,
-        Err(_) => reqwest::Client::new(),
+        Err(_) => http_client(),
     };
     let client = &client;
     future::join_all(
@@ -638,7 +640,7 @@ pub fn download_optional_if_newer_(
 
     let client_ = match client {
         Some(c) => c,
-        None => &reqwest::Client::new(),
+        None => &http_client(),
     };
 
     download_optional_if_newer__(client_, url, local_path, etag)
@@ -662,7 +664,7 @@ pub fn download_multiple_first_available_(
 
     let client_ = match client {
         Some(c) => c,
-        None => &reqwest::Client::new(),
+        None => &http_client(),
     };
 
     download_multiple_first_available__(client_, downloads, update_older)
@@ -724,7 +726,7 @@ where
 
     let client_ = match client {
         Some(c) => c,
-        None => &reqwest::Client::new(),
+        None => &http_client(),
     };
 
     let limit = get_concurrent_downloads()?;

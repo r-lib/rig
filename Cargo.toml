@@ -8,7 +8,7 @@ members = ["xtask"]
 
 [package]
 name = "rig"
-version = "0.10.0-beta3"
+version = "0.10.0"
 edition = "2021"
 authors = ["Gábor Csárdi <csardi.gabor@gmail.com>"]
 license = "MIT"
@@ -140,6 +140,11 @@ is_elevated = "0.1.2"
 remove_dir_all = "0.7.0"
 whoami = "1.4.1"
 winreg = "0.10"
+
+# Compiled-in Mozilla root CA bundle (like curl's cacert.pem), added as extra
+# roots on Linux so rig works in minimal containers without a system CA store.
+[target.'cfg(target_os = "linux")'.dependencies]
+webpki-root-certs = "1"
 
 [build-dependencies]
 clap = { version = "4.3.8", features = ["cargo", "color"] }

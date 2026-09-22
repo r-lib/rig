@@ -87,6 +87,15 @@ Tag                                | Current Image           | Description
 See all container images on
 [GitHub](https://github.com/orgs/r-lib/packages?repo_name=rig).
 
+## Binary-only image
+
+`ghcr.io/r-lib/rig/base` contains nothing but the `rig` binary.
+You can use it to copy the binary into your own image:
+
+```
+COPY --from=ghcr.io/r-lib/rig/base:latest /rig /usr/local/bin/rig
+```
+
 ## Docker container features
 
 For all containers:

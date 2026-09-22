@@ -60,8 +60,29 @@ distro:
 rig proj lock --platform ubuntu-24.04
 ```
 
-`--platform source` solves for source packages only. rig also falls back to
-source packages when there are no binaries for a platform at all.
+Use `--add-platform` instead to add a platform to that default set rather
+than replacing it, e.g. to also solve for one extra distro on top of the
+usual four. `--add-platform` can be repeated:
+
+```sh
+rig proj lock --add-platform ubuntu-24.04 --add-platform linux-fedora-42
+```
+
+`--platform`/`--add-platform` accept:
+
+- `macos-arm64`, `windows-x86_64` -- an OS plus arch, for the two
+  non-Linux platforms.
+- `ubuntu-24.04`, `fedora-42`, `opensuse-15.6` -- a Linux distro and version,
+  matched against P3M's build list.
+- `manylinux_2_28-arm64`, `jammy-x86_64` -- a P3M platform name and arch
+  directly, e.g. copied from another `rproj.lock`'s `platform` field.
+- `source` -- source packages only, for any platform.
+
+A Linux distro/version or platform name P3M has no specific build for falls
+back to its generic manylinux build for the given arch, rather than failing.
+
+rig also falls back to source packages when there are no binaries for a
+platform at all.
 
 rig keeps the repository metadata and the binary package indices it solves
 from in its cache, and refreshes them once a day. Use `--no-cache` to ignore
@@ -78,7 +99,7 @@ below). Use `rig proj lock --upgrade` to ignore the existing lock file and
 re-resolve every dependency instead, picking the latest version that still
 satisfies `rproj.toml`.
 
-## Git and GitHub dependencies
+## Git, GitHub and URL dependencies
 
 A `git::`/`github::` dependency pinned to a branch, a pull request, or no ref
 at all (the default branch's tip) is only resolved against its remote the
@@ -91,6 +112,12 @@ to move. `release = true` is sticky the same way: once locked, later runs
 keep the release it pinned instead of asking GitHub which release is latest
 every time. `rig proj lock --upgrade` re-checks and moves the pin forward if
 a newer release exists.
+
+A `url::` dependency names one exact archive rather than a movable ref, so
+there's nothing for `--upgrade` to move either: every `rig proj lock` run
+downloads it (the download itself is cached) and records its sha256 in
+`rproj.lock`, which then changes only if the archive's contents change. Set
+`hash` on a `url` dependency to pin the expected sha256 and catch that.
 
 The `rproj.lock` file records, for every package, whether it is a source or a
 binary package and the URL it is downloaded from. It also records where the

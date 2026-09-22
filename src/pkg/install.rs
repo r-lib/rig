@@ -39,7 +39,9 @@ use crate::linux::get_r_binary;
 
 use crate::built::BuiltCache;
 use crate::cache::get_cache_dir;
-use crate::dcf::{DepVersionSpec, PackageDependencies, RDepType, DEP_TYPES_SOFT};
+use crate::dcf::{
+    DepVersionSpec, PackageDependencies, RDepType, VersionConstraintType, DEP_TYPES_SOFT,
+};
 use crate::install::{
     install_packages, PackageInfo, REMOTE_HASH_FIELD, REMOTE_SHA_FIELD, REMOTE_TYPE_FIELD,
 };
@@ -47,8 +49,9 @@ use crate::library::library_rver;
 use crate::output::OUTPUT;
 use crate::pkgsource::{parse_pkg_source, PkgSource};
 use crate::proj::{
-    dep_table_from_remote, download_lockfile_packages, fetch_and_read_git_package,
-    lockfile_package_info, proj_binary_target, resolve_git_sources, sc_proj_solve_deps, BASE_PKGS,
+    dep_table_from_remote, dep_table_from_url, download_lockfile_packages,
+    fetch_and_read_git_package, fetch_and_read_url_package, lockfile_package_info,
+    proj_binary_target, resolve_git_sources, sc_proj_solve_deps, BASE_PKGS,
 };
 use crate::repos::DbSourcePackageLoader;
 use crate::rproj::{DepTable, RprojLockPackage, RprojLockTarget};
@@ -104,9 +107,16 @@ pub fn sc_pkg_install(
     }
 
     let roots = [SolveRoot::project(deps.clone())?];
-    let git_sources = resolve_git_sources(&git_deps, dev, &HashMap::new(), &HashMap::new())?;
-    let (registry, solution) =
-        sc_proj_solve_deps(&rver, &roots, &git_sources, target, prefer_binary, true)?;
+    let git_sources = resolve_git_sources(&git_deps, &HashMap::new(), &HashMap::new())?;
+    let (registry, solution) = sc_proj_solve_deps(
+        &rver,
+        &roots,
+        None,
+        &git_sources,
+        target,
+        prefer_binary,
+        true,
+    )?;
     OUTPUT.success("Solved dependencies");
     info!("Solved dependencies");
 
@@ -240,10 +250,13 @@ fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
         let source = parse_pkg_source(name).inspect_err(|err| {
             OUTPUT.error(&err.to_string());
         })?;
+        let mut constraints: Vec<crate::dcf::VersionConstraint> = vec![];
         let resolved_name = match source {
             PkgSource::Cran => {
-                cran_names.push(name.clone());
-                name.clone()
+                let (cran_name, version) = crate::rproj::parse_add_spec(name)?;
+                cran_names.push(cran_name.clone());
+                constraints = crate::rproj::parse_constraints(&version)?;
+                cran_name
             }
             PkgSource::Remote(r) => {
                 let table = dep_table_from_remote(&r, name);
@@ -258,6 +271,17 @@ fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
                 git_deps.push((resolved_name.clone(), table));
                 resolved_name
             }
+            PkgSource::Url(u) => {
+                let table = dep_table_from_url(&u);
+                OUTPUT.status(&format!("Fetching {}", u.url));
+                let (pkg, _source, _remotes) = fetch_and_read_url_package(&u.url, &table)
+                    .inspect_err(|err| {
+                        OUTPUT.error(&err.to_string());
+                    })?;
+                let resolved_name = u.name_override.unwrap_or(pkg.name);
+                git_deps.push((resolved_name.clone(), table));
+                resolved_name
+            }
         };
 
         if deps.dependencies.iter().any(|d| d.name == resolved_name) {
@@ -266,7 +290,7 @@ fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
         }
         deps.dependencies.push(DepVersionSpec {
             name: resolved_name,
-            constraints: vec![],
+            constraints,
             types: vec![RDepType::Depends],
         });
     }
@@ -305,7 +329,22 @@ fn add_dev_deps(
     let mut unavailable: Vec<String> = vec![];
 
     for name in names {
-        let package = root_package(loader, name, "latest")?;
+        // A pinned exact version (`pkg@==1.0.1`) is what the solve will use for
+        // `name` itself, so its `Suggests`/`Enhances` have to come from that
+        // version's `DESCRIPTION`, not `latest`'s: an old pin's dev
+        // dependencies can need much older (or no) versions of packages that
+        // latest's `DESCRIPTION` requires a newer version of, which would
+        // force a conflict that has nothing to do with what was actually asked
+        // for.
+        let pinned = deps.dependencies.iter().find_map(|d| {
+            if d.name != *name {
+                return None;
+            }
+            d.constraints.iter().find_map(|c| {
+                (c.constraint_type == VersionConstraintType::Equal).then(|| c.version.to_string())
+            })
+        });
+        let package = root_package(loader, name, pinned.as_deref().unwrap_or("latest"))?;
         for dep in package.dependencies.dependencies.iter() {
             // A dependency that is also a hard dependency is being installed
             // anyway, and is already in `deps`.
@@ -985,6 +1024,26 @@ mod tests {
         )
         .unwrap();
         assert_eq!(out, vec!["a".to_string(), "t".to_string()]);
+    }
+
+    #[test]
+    fn a_pinned_version_uses_its_own_suggests_not_latests() {
+        // `a`'s latest version suggests `t` >= 2.0.0, but the pinned older
+        // version only suggests an unconstrained `t`: the dev deps must come
+        // from the pinned version, not from latest.
+        let loader = Stub {
+            packages: vec![
+                ("a", "1.0.0", "Suggests: t"),
+                ("a", "2.0.0", "Suggests: t (>= 2.0.0)"),
+                ("t", "1.0.0", ""),
+            ],
+        };
+        let names = vec!["a@==1.0.0".to_string()];
+        let (mut deps, _git_deps, cran_names) = requested_deps(&names).unwrap();
+        add_dev_deps(&loader, &cran_names, &mut deps, false).unwrap();
+
+        let t = deps.dependencies.iter().find(|d| d.name == "t").unwrap();
+        assert_eq!(requirements(t), Vec::<String>::new());
     }
 
     #[test]
