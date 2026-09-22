@@ -30,18 +30,36 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Skip the whole build/deploy when Cargo.toml carries a pre-release
+      # version (e.g. `0.10.1-dev`), so the published site always reflects
+      # the latest release, not in-progress work on main.
+      - name: Check for release version
+        id: version
+        run: |
+          version=$(grep -m1 '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
+          if [[ "$version" == *-* ]]; then
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
+            echo "Version $version is a pre-release, skipping site deploy."
+          else
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: quarto-dev/quarto-actions/setup@v2
+        if: steps.version.outputs.is_release == 'true'
 
       # `make docs` regenerates the CLI reference from the rig binary
       # (`make cli-reference`) before rendering, so we need a built rig.
       # A debug build is enough; gen-cli-reference.sh falls back to it.
       - name: Build rig
+        if: steps.version.outputs.is_release == 'true'
         run: cargo build
 
       - name: Render site
+        if: steps.version.outputs.is_release == 'true'
         run: make docs
 
       - name: Deploy to website branch
+        if: steps.version.outputs.is_release == 'true'
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           branch: website
