@@ -377,6 +377,11 @@ pub struct GitSourceInfo {
     pub ref_: Option<String>,
     /// The commit this ref resolved to.
     pub sha: String,
+    /// Whether the source is a built binary package, which is installed by
+    /// unpacking it instead of by `R CMD INSTALL`. Only a `"local"` source
+    /// can be one: a git checkout is source by definition, and a `url::`
+    /// archive is treated as source.
+    pub binary: bool,
 }
 
 /// A source of binary artifacts for one build target, queried lazily per package

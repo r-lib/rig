@@ -76,6 +76,21 @@ A few flags worth knowing:
   repositories. See [`rig pkg install`](reference/pkg.qmd#rig-pkg-install)
   for the full syntax.
 
+A package on your own machine is installed by path:
+
+```sh
+rig pkg install .                    # the package in the current directory
+rig pkg install ./mypkg
+rig pkg install mypkg_1.0.0.tar.gz   # a source tarball
+rig pkg install mypkg_1.0.0.tgz      # a binary package file
+```
+
+A path is a package source directory, a source tarball, or a binary package
+built with `R CMD INSTALL --build`; its dependencies are resolved and
+installed as usual. An argument is a path when it is `.`, starts with `./`,
+`../`, `~/` or `/`, or names a package file that exists, so `mypkg` still
+means the repositories' `mypkg`.
+
 ## Listing and removing packages
 
 ```sh

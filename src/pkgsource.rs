@@ -8,6 +8,11 @@
 //!   - `[<name>=]gitlab::[<scheme>://<host>/]<group>[/<subgroup>...]/<project>[/-/<subdir>][@<ref>]`
 //!   - `[<name>=]url::<https-url>`, a direct link to a package source archive
 //!   - bare `<https-url>` (same) auto-detects as a `url` source
+//!   - `[<name>=]local::<path>`, a package directory or package file on this
+//!     machine
+//!   - a bare path (`.`, `./pkg`, `../pkg`, `~/pkg`, `/abs/pkg`, or an
+//!     existing `*.tar.gz`/`*.tgz`/`*.zip` file) auto-detects as a `local`
+//!     source
 //!
 //! A CRAN-style spec (`dplyr`, `dplyr@1.1.0`, `dplyr@>= 1.1`) never contains
 //! `/` or `::`, which is what tells the two apart: anything with a `/` or a
@@ -19,6 +24,7 @@ use std::error::Error;
 use simple_error::bail;
 
 pub mod git;
+pub mod local;
 pub mod url;
 
 /// A parsed, not yet fetched, package source. `Cran` means "not a
@@ -29,6 +35,21 @@ pub enum PkgSource {
     Cran,
     Remote(RemoteSource),
     Url(UrlSource),
+    Local(LocalSource),
+}
+
+/// A `local::<path>` reference, or a bare path that looks like one: a package
+/// source directory, a source tarball, or a built binary package file on this
+/// machine. Nothing is downloaded -- the path is read where it is, and
+/// `R CMD INSTALL` (or, for a binary, the unpacker) is pointed straight at
+/// it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LocalSource {
+    /// An explicit `<name>=` override, if the spec had one.
+    pub name_override: Option<String>,
+    /// The path as the user wrote it, not yet expanded or canonicalized --
+    /// see [`local::resolve_local_path`].
+    pub path: String,
 }
 
 /// A `url::<https-url>` reference: a direct link to a package source archive
@@ -94,12 +115,29 @@ pub fn parse_pkg_source(spec: &str) -> Result<PkgSource, Box<dyn Error>> {
         return Ok(PkgSource::Url(parse_url_ref(name_override, url)?));
     }
 
+    if let Some(path) = body.strip_prefix("local::") {
+        return Ok(PkgSource::Local(LocalSource {
+            name_override,
+            path: path.trim().to_string(),
+        }));
+    }
+
     if let Some(rest) = body.strip_prefix("github::") {
         return Ok(PkgSource::Remote(parse_github_ref(name_override, rest)?));
     }
 
     if let Some(rest) = body.strip_prefix("gitlab::") {
         return Ok(PkgSource::Remote(parse_gitlab_ref(name_override, rest)?));
+    }
+
+    // Before the GitHub shorthand: `./pkg` is a `<owner>/<repo>` as far as
+    // `looks_like_owner_repo` can tell (a `.` is a valid GitHub path
+    // character), so a path has to claim it first.
+    if looks_like_local_path(body) {
+        return Ok(PkgSource::Local(LocalSource {
+            name_override,
+            path: body.to_string(),
+        }));
     }
 
     if looks_like_owner_repo(body) {
@@ -146,6 +184,54 @@ fn is_r_package_name(name: &str) -> bool {
         _ => return false,
     }
     chars.all(|c| c.is_ascii_alphanumeric() || c == '.')
+}
+
+/// Whether `body` (already stripped of any `<name>=` override) is a bare path
+/// to a local package, with no `local::` prefix.
+///
+/// Only an explicitly relative or absolute path counts, so that an ordinary
+/// package name and the `<owner>/<repo>` GitHub shorthand keep their meaning:
+/// `mypkg` is CRAN's `mypkg`, and `r-lib/crayon` is GitHub's, whatever
+/// directories happen to exist in the working directory.
+///
+/// The one exception is a package *file*: a path ending in `.tar.gz`, `.tgz`
+/// or `.zip` that really exists is local even when written without a `./`,
+/// because that is how people name package files. No CRAN package name ends
+/// in one of those, so nothing is shadowed; requiring the file to exist keeps
+/// a mistyped name from turning into a confusing path error.
+fn looks_like_local_path(body: &str) -> bool {
+    if body == "." || body == ".." {
+        return true;
+    }
+
+    const PREFIXES: &[&str] = &["./", "../", "~/", "/"];
+    if PREFIXES.iter().any(|p| body.starts_with(p)) {
+        return true;
+    }
+
+    // Windows spellings: `.\pkg`, `..\pkg`, `\pkg`, `C:\pkg`, `C:/pkg`.
+    if cfg!(target_os = "windows") {
+        const WIN_PREFIXES: &[&str] = &[".\\", "..\\", "\\", "~\\"];
+        if WIN_PREFIXES.iter().any(|p| body.starts_with(p)) {
+            return true;
+        }
+        let mut chars = body.chars();
+        if let (Some(drive), Some(':'), Some(sep)) = (chars.next(), chars.next(), chars.next()) {
+            if drive.is_ascii_alphabetic() && (sep == '\\' || sep == '/') {
+                return true;
+            }
+        }
+    }
+
+    is_package_file_name(body) && std::path::Path::new(body).is_file()
+}
+
+/// Whether `path` ends in one of the extensions an R package file has: a
+/// source tarball (`.tar.gz`), a macOS/Linux binary (`.tgz`), or a Windows
+/// binary (`.zip`).
+pub(crate) fn is_package_file_name(path: &str) -> bool {
+    let lower = path.to_lowercase();
+    lower.ends_with(".tar.gz") || lower.ends_with(".tgz") || lower.ends_with(".zip")
 }
 
 /// Whether `body` (already stripped of any `<name>=` override) looks like a
@@ -370,6 +456,74 @@ mod tests {
             PkgSource::Url(u) => u,
             other => panic!("expected a url source for `{}`, got {:?}", spec, other),
         }
+    }
+
+    fn local_source(spec: &str) -> LocalSource {
+        match parse_pkg_source(spec).unwrap() {
+            PkgSource::Local(l) => l,
+            other => panic!("expected a local source for `{}`, got {:?}", spec, other),
+        }
+    }
+
+    #[test]
+    fn relative_and_absolute_paths_are_local() {
+        for spec in [".", "..", "./pkg", "../pkg", "~/pkg", "/opt/pkg"] {
+            assert_eq!(local_source(spec).path, spec, "{}", spec);
+        }
+    }
+
+    #[test]
+    fn an_explicit_local_prefix_is_local() {
+        assert_eq!(local_source("local::pkg").path, "pkg");
+        assert_eq!(local_source("local::/opt/pkg").path, "/opt/pkg");
+    }
+
+    #[test]
+    fn a_local_path_takes_a_name_override() {
+        let l = local_source("mypkg=./some/dir");
+        assert_eq!(l.name_override.as_deref(), Some("mypkg"));
+        assert_eq!(l.path, "./some/dir");
+    }
+
+    #[test]
+    fn an_existing_package_file_is_local_without_a_prefix() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("mypkg_1.0.0.tar.gz");
+        std::fs::write(&archive, b"not really a tarball").unwrap();
+
+        // The bare-file-name rule is about the file existing, not about the
+        // path being absolute -- an absolute path is local either way.
+        assert!(looks_like_local_path(&archive.display().to_string()));
+        assert!(!looks_like_local_path("mypkg_1.0.0.tar.gz"));
+        assert!(!looks_like_local_path("mypkg"));
+    }
+
+    #[test]
+    fn package_file_extensions() {
+        for name in ["x.tar.gz", "x.tgz", "x.zip", "X.TAR.GZ"] {
+            assert!(is_package_file_name(name), "{}", name);
+        }
+        for name in ["x.tar", "x.gz", "xzip", "dplyr"] {
+            assert!(!is_package_file_name(name), "{}", name);
+        }
+    }
+
+    #[test]
+    fn a_package_file_name_that_does_not_exist_is_a_cran_name() {
+        // A mistyped name has to fail as a package name, not as a path.
+        assert_eq!(
+            parse_pkg_source("nosuchpkg_1.0.0.tar.gz").unwrap(),
+            PkgSource::Cran
+        );
+    }
+
+    #[test]
+    fn a_bare_name_or_owner_repo_is_never_local() {
+        assert_eq!(parse_pkg_source("mypkg").unwrap(), PkgSource::Cran);
+        assert_eq!(
+            remote("r-lib/crayon").git,
+            "https://github.com/r-lib/crayon.git"
+        );
     }
 
     #[test]

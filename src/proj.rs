@@ -470,7 +470,9 @@ fn sc_proj_import(
                         info!("{}", msg);
                     }
                 },
-                Ok(crate::pkgsource::PkgSource::Cran) | Err(_) => {
+                Ok(crate::pkgsource::PkgSource::Cran)
+                | Ok(crate::pkgsource::PkgSource::Local(_))
+                | Err(_) => {
                     let msg = format!(
                         "Remotes entry `{}` is not a supported git/GitHub/url reference, \
                          skipping it",
@@ -657,6 +659,17 @@ fn parse_add_arg(spec: &str) -> Result<AddSpec, Box<dyn Error>> {
             let (pkg, _url_source, _remotes) = fetch_and_read_url_package(&u.url, &table)?;
             let name = u.name_override.unwrap_or(pkg.name);
             Ok(AddSpec::Remote(name, Box::new(table)))
+        }
+        // A project's dependencies have to mean the same thing on another
+        // machine, and a path on this one does not, so `rproj.toml` has no
+        // local sources yet.
+        crate::pkgsource::PkgSource::Local(l) => {
+            bail!(
+                "`{}` is a local path. Local packages cannot be project \
+                 dependencies, use `rig pkg install {}` to install one.",
+                l.path,
+                l.path
+            );
         }
     }
 }
@@ -921,7 +934,7 @@ fn read_description_paragraph(
 /// content) from any [`std::io::Read`], the shared body behind
 /// [`read_description_paragraph`] (path-based) and a git/GitHub dependency's
 /// fetched content (in-memory, via [`fetch_and_read_git_package`]).
-fn parse_description_paragraph<R: std::io::Read>(
+pub(crate) fn parse_description_paragraph<R: std::io::Read>(
     reader: R,
 ) -> Result<deb822_fast::Paragraph, Box<dyn Error>> {
     let desc = parse_dcf_reader(reader)?;
@@ -1784,9 +1797,13 @@ pub(crate) fn resolve_git_sources(
                     let (pkg, url_source, remotes) =
                         fetch_and_read_url_package(url, table).map_err(|err| err.to_string())?;
                     (pkg, url_source, remotes, url.clone())
+                } else if let Some(path) = &table.path {
+                    let (pkg, local_source, remotes) =
+                        read_local_package(Path::new(path)).map_err(|err| err.to_string())?;
+                    (pkg, local_source, remotes, path.clone())
                 } else {
                     return Err(format!(
-                        "{} has a dependency source with no `git` or `url`",
+                        "{} has a dependency source with no `git`, `url` or `path`",
                         name
                     ));
                 };
@@ -1835,7 +1852,11 @@ pub(crate) fn resolve_git_sources(
                     Ok(crate::pkgsource::PkgSource::Url(u)) => {
                         next_frontier.push((dep_name, dep_table_from_url(&u)));
                     }
-                    Ok(crate::pkgsource::PkgSource::Cran) | Err(_) => {}
+                    // A `Remotes:` entry that is a path on whoever's
+                    // machine wrote it means nothing here.
+                    Ok(crate::pkgsource::PkgSource::Cran)
+                    | Ok(crate::pkgsource::PkgSource::Local(_))
+                    | Err(_) => {}
                 }
             }
         }
@@ -1896,6 +1917,54 @@ pub(crate) fn dep_table_from_url(u: &crate::pkgsource::UrlSource) -> DepTable {
         url: Some(u.url.clone()),
         ..Default::default()
     }
+}
+
+/// The `DepTable` a local path implies: the `path` field, always absolute, so
+/// that the rest of the pipeline never has to know what rig's working
+/// directory was. `path` is resolved by the caller
+/// ([`crate::pkgsource::local::resolve_local_path`]), which is also what
+/// checks that it exists.
+pub(crate) fn dep_table_from_local(path: &Path) -> DepTable {
+    DepTable {
+        path: Some(path.display().to_string()),
+        ..Default::default()
+    }
+}
+
+/// Read a local package's `DESCRIPTION`, the local counterpart of
+/// [`fetch_and_read_url_package`]: same return shape, no I/O beyond reading
+/// the path (and extracting a package file to a tempdir, see
+/// [`crate::pkgsource::local::read_local_package_files`]).
+///
+/// A local source has no commit and no meaningful content hash -- the
+/// directory can change between two rig runs, and does, which is the point of
+/// installing from one -- so `sha` is empty and the package is reinstalled
+/// every time (see `needs_install` in `crate::pkg::install`).
+pub(crate) fn read_local_package(
+    path: &Path,
+) -> Result<(Package, GitSourceInfo, String), Box<dyn Error>> {
+    let files = crate::pkgsource::local::read_local_package_files(path)?;
+
+    let local_source = GitSourceInfo {
+        remote_type: "local",
+        url: path.display().to_string(),
+        host: None,
+        repo: None,
+        username: None,
+        subdir: None,
+        ref_: None,
+        sha: String::new(),
+        binary: files.binary,
+    };
+
+    let paragraph = parse_description_paragraph(files.description.as_bytes())?;
+    let pkg = Package::from_dcf_paragraph(&paragraph)?;
+    let remotes = paragraph
+        .get("Remotes")
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+
+    Ok((pkg, local_source, remotes))
 }
 
 /// A github.com URL's `owner`/`repo`, if `git_url` is one.
@@ -1979,6 +2048,7 @@ pub(crate) fn fetch_and_read_git_package(
             subdir: table.subdir.clone(),
             ref_: refspec.clone(),
             sha,
+            binary: false,
         },
         None => GitSourceInfo {
             remote_type: "git",
@@ -1989,6 +2059,7 @@ pub(crate) fn fetch_and_read_git_package(
             subdir: table.subdir.clone(),
             ref_: refspec.clone(),
             sha,
+            binary: false,
         },
     };
 
@@ -2028,6 +2099,7 @@ pub(crate) fn fetch_and_read_url_package(
         subdir: effective_subdir,
         ref_: None,
         sha: sha256,
+        binary: false,
     };
 
     let paragraph = parse_description_paragraph(description.as_bytes())?;
@@ -4027,14 +4099,26 @@ pub(crate) fn lockfile_package_info(
             remote.insert(field.to_string(), value.clone());
         }
     }
+    // A local package is never fetched and never cached: it is installed from
+    // where it already is, which `RemoteUrl` holds as an absolute path.
+    let local = pkg.metadata.get(REMOTE_TYPE_FIELD).map(|t| t.as_str()) == Some("local");
     // A git/GitHub package's `target` is the fetched directory (a tarball
     // unpacked, or a git checkout); a subdirectory source lives at
     // `<target>/<subdir>` within it. An ordinary CRAN/PPM package's `target`
     // is the downloaded file itself.
-    let base = cache_dir.join("packages").join(&pkg.target);
-    let file_path = match pkg.metadata.get(REMOTE_SUBDIR_FIELD) {
-        Some(subdir) => base.join(subdir),
-        None => base,
+    let file_path = if local {
+        PathBuf::from(
+            pkg.metadata
+                .get(crate::install::REMOTE_URL_FIELD)
+                .cloned()
+                .unwrap_or_default(),
+        )
+    } else {
+        let base = cache_dir.join("packages").join(&pkg.target);
+        match pkg.metadata.get(REMOTE_SUBDIR_FIELD) {
+            Some(subdir) => base.join(subdir),
+            None => base,
+        }
     };
     let mut info = PackageInfo {
         name: pkg.package.clone(),
@@ -4051,7 +4135,10 @@ pub(crate) fn lockfile_package_info(
         built: None,
         remote,
     };
-    if !info.binary {
+    // The build cache is keyed on the source's content hash, and a local
+    // source has none: the directory is editable, so yesterday's build is not
+    // this build.
+    if !info.binary && !local {
         info.built = built.and_then(|cache| cache.path(&info));
     }
     info
@@ -4099,6 +4186,11 @@ fn fetch_git_lockfile_packages(
     cache_dir: &Path,
 ) -> Result<(), Box<dyn Error>> {
     for pkg in packages {
+        // A local source is already on disk, where the user pointed rig at
+        // it, so there is nothing to fetch and nothing to cache.
+        if pkg.metadata.get(REMOTE_TYPE_FIELD).map(|s| s.as_str()) == Some("local") {
+            continue;
+        }
         let target_dir = cache_dir.join("packages").join(&pkg.target);
         if target_dir.exists() {
             OUTPUT.success(&format!(
@@ -4785,6 +4877,7 @@ mod tests {
                 subdir: None,
                 ref_: None,
                 sha: sha.to_string(),
+                binary: false,
             },
         }
     }

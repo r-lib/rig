@@ -40,18 +40,19 @@ use crate::linux::get_r_binary;
 use crate::built::BuiltCache;
 use crate::cache::get_cache_dir;
 use crate::dcf::{
-    DepVersionSpec, PackageDependencies, RDepType, VersionConstraintType, DEP_TYPES_SOFT,
+    DepVersionSpec, Package, PackageDependencies, RDepType, VersionConstraintType, DEP_TYPES_SOFT,
 };
 use crate::install::{
     install_packages, PackageInfo, REMOTE_HASH_FIELD, REMOTE_SHA_FIELD, REMOTE_TYPE_FIELD,
 };
 use crate::library::library_rver;
 use crate::output::OUTPUT;
+use crate::pkgsource::local::resolve_local_path;
 use crate::pkgsource::{parse_pkg_source, PkgSource};
 use crate::proj::{
-    dep_table_from_remote, dep_table_from_url, download_lockfile_packages,
+    dep_table_from_local, dep_table_from_remote, dep_table_from_url, download_lockfile_packages,
     fetch_and_read_git_package, fetch_and_read_url_package, lockfile_package_info,
-    proj_binary_target, resolve_git_sources, sc_proj_solve_deps, BASE_PKGS,
+    proj_binary_target, read_local_package, resolve_git_sources, sc_proj_solve_deps, BASE_PKGS,
 };
 use crate::repos::DbSourcePackageLoader;
 use crate::rproj::{DepTable, RprojLockPackage, RprojLockTarget};
@@ -79,12 +80,13 @@ pub fn sc_pkg_install(
         .map(|x| x.to_string())
         .collect();
     let dev = args.get_flag("dev");
-    let (mut deps, git_deps, cran_names) = requested_deps(&names)?;
+    let (mut deps, git_deps, cran_names, dev_packages) = requested_deps(&names)?;
     if dev {
         let loader = DbSourcePackageLoader::new()?;
         add_dev_deps(
             &loader,
             &cran_names,
+            &dev_packages,
             &mut deps,
             args.get_flag("ignore-unavailable"),
         )?;
@@ -220,12 +222,24 @@ pub fn sc_pkg_install(
 /// The third element is the subset of `names` that are plain CRAN names --
 /// what `--dev` looks up on CRAN/PPM for its own `Suggests`/`Enhances`, since a
 /// git/GitHub reference is not a name the repositories know.
-type RequestedDeps = (PackageDependencies, Vec<(String, DepTable)>, Vec<String>);
+///
+/// The fourth element is the `DESCRIPTION` already fetched for every
+/// git/GitHub/URL/local reference among `names`: `--dev` needs their
+/// `Suggests`/`Enhances` too, and unlike a CRAN name there is no repository
+/// loader that can look those up later, so the parsed package from the fetch
+/// done here is carried along instead of being fetched a second time.
+type RequestedDeps = (
+    PackageDependencies,
+    Vec<(String, DepTable)>,
+    Vec<String>,
+    Vec<Package>,
+);
 
 fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
     let mut deps = PackageDependencies::new();
     let mut git_deps: Vec<(String, DepTable)> = vec![];
     let mut cran_names: Vec<String> = vec![];
+    let mut dev_packages: Vec<Package> = vec![];
     let mut base: Vec<&str> = vec![];
 
     for name in names {
@@ -257,7 +271,21 @@ fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
                         .inspect_err(|err| {
                             OUTPUT.error(&err.to_string());
                         })?;
+                dev_packages.push(pkg.clone());
                 let resolved_name = r.name_override.unwrap_or(pkg.name);
+                git_deps.push((resolved_name.clone(), table));
+                resolved_name
+            }
+            PkgSource::Local(l) => {
+                let path = resolve_local_path(&l.path).inspect_err(|err| {
+                    OUTPUT.error(&err.to_string());
+                })?;
+                let table = dep_table_from_local(&path);
+                let (pkg, _source, _remotes) = read_local_package(&path).inspect_err(|err| {
+                    OUTPUT.error(&err.to_string());
+                })?;
+                dev_packages.push(pkg.clone());
+                let resolved_name = l.name_override.unwrap_or(pkg.name);
                 git_deps.push((resolved_name.clone(), table));
                 resolved_name
             }
@@ -268,6 +296,7 @@ fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
                     .inspect_err(|err| {
                         OUTPUT.error(&err.to_string());
                     })?;
+                dev_packages.push(pkg.clone());
                 let resolved_name = u.name_override.unwrap_or(pkg.name);
                 git_deps.push((resolved_name.clone(), table));
                 resolved_name
@@ -300,7 +329,7 @@ fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
         bail!("No packages to install");
     }
 
-    Ok((deps, git_deps, cran_names))
+    Ok((deps, git_deps, cran_names, dev_packages))
 }
 
 /// Add the dev dependencies of the named packages to the set that is solved.
@@ -310,6 +339,7 @@ fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
 fn add_dev_deps(
     loader: &dyn PackageVersionLoader,
     names: &[String],
+    other_packages: &[Package],
     deps: &mut PackageDependencies,
     ignore_unavailable: bool,
 ) -> Result<(), Box<dyn Error>> {
@@ -335,33 +365,14 @@ fn add_dev_deps(
             })
         });
         let package = root_package(loader, name, pinned.as_deref().unwrap_or("latest"))?;
-        for dep in package.dependencies.dependencies.iter() {
-            // A dependency that is also a hard dependency is being installed
-            // anyway, and is already in `deps`.
-            if !dep.types.iter().all(|t| DEP_TYPES_SOFT.contains(t)) {
-                continue;
-            }
-            // Suggesting R or a base package, e.g. `Suggests: tools`, is
-            // routine, and there is nothing to install for those.
-            if dep.name == "R" || is_base_package(&dep.name) {
-                continue;
-            }
-            if deps.dependencies.iter().any(|d| d.name == dep.name) {
-                debug!(
-                    "{} is already being installed, not adding it again",
-                    dep.name
-                );
-                continue;
-            }
-            if loader.load_versions(&dep.name)?.is_empty() {
-                if !unavailable.contains(&dep.name) {
-                    unavailable.push(dep.name.clone());
-                }
-                continue;
-            }
-            debug!("Adding dev dependency {} of {}", dep.name, name);
-            deps.dependencies.push(dep.clone());
-        }
+        add_dev_deps_of_package(loader, &package, deps, &mut unavailable)?;
+    }
+
+    // A git/GitHub/URL/local reference's `DESCRIPTION` was already fetched to
+    // learn its name, so its `Suggests`/`Enhances` are read from that, rather
+    // than looked up again by name (the repositories do not know it at all).
+    for package in other_packages {
+        add_dev_deps_of_package(loader, package, deps, &mut unavailable)?;
     }
 
     if !unavailable.is_empty() {
@@ -386,6 +397,44 @@ fn add_dev_deps(
         }
     }
 
+    Ok(())
+}
+
+/// Add one package's `Suggests`/`Enhances` to `deps`, the shared body of the
+/// two loops in [`add_dev_deps`].
+fn add_dev_deps_of_package(
+    loader: &dyn PackageVersionLoader,
+    package: &Package,
+    deps: &mut PackageDependencies,
+    unavailable: &mut Vec<String>,
+) -> Result<(), Box<dyn Error>> {
+    for dep in package.dependencies.dependencies.iter() {
+        // A dependency that is also a hard dependency is being installed
+        // anyway, and is already in `deps`.
+        if !dep.types.iter().all(|t| DEP_TYPES_SOFT.contains(t)) {
+            continue;
+        }
+        // Suggesting R or a base package, e.g. `Suggests: tools`, is
+        // routine, and there is nothing to install for those.
+        if dep.name == "R" || is_base_package(&dep.name) {
+            continue;
+        }
+        if deps.dependencies.iter().any(|d| d.name == dep.name) {
+            debug!(
+                "{} is already being installed, not adding it again",
+                dep.name
+            );
+            continue;
+        }
+        if loader.load_versions(&dep.name)?.is_empty() {
+            if !unavailable.contains(&dep.name) {
+                unavailable.push(dep.name.clone());
+            }
+            continue;
+        }
+        debug!("Adding dev dependency {} of {}", dep.name, package.name);
+        deps.dependencies.push(dep.clone());
+    }
     Ok(())
 }
 
@@ -518,6 +567,13 @@ fn needs_install(
     // -- its identity is the commit it was fetched at, so that is what decides
     // whether it needs replacing, and the ordinary hash/`LinkingTo` checks
     // below do not apply to it.
+    // A local source is whatever is in that directory right now, which rig
+    // has no way to compare against what it installed from it last time, and
+    // which the user is most likely editing. So it is always reinstalled.
+    if solved.metadata.get(REMOTE_TYPE_FIELD).map(|t| t.as_str()) == Some("local") {
+        return Some("local source".to_string());
+    }
+
     if solved.metadata.contains_key(REMOTE_TYPE_FIELD) {
         return match (&installed.remote_sha, solved.metadata.get(REMOTE_SHA_FIELD)) {
             (Some(have), Some(want)) if have == want => None,
@@ -689,6 +745,17 @@ mod tests {
     }
 
     #[test]
+    fn a_local_source_is_always_reinstalled() {
+        let mut pkg = solved("mypkg", "1.0.0", None);
+        pkg.binary = false;
+        pkg.metadata
+            .insert(REMOTE_TYPE_FIELD.to_string(), "local".to_string());
+        let out = plan(&[pkg], &[inst("mypkg", "1.0.0", None, &[])], false);
+        assert!(out["mypkg"].0);
+        assert_eq!(out["mypkg"].1, "local source");
+    }
+
+    #[test]
     fn the_same_artifact_is_left_alone() {
         let out = plan(
             &[solved("cli", "3.6.3", Some("aa"))],
@@ -853,7 +920,7 @@ mod tests {
 
     #[test]
     fn a_package_named_twice_is_installed_once() {
-        let (deps, _git_deps, _cran_names) =
+        let (deps, _git_deps, _cran_names, _dev_packages) =
             requested_deps(&["cli".to_string(), "cli".to_string()]).unwrap();
         assert_eq!(deps.dependencies.len(), 1);
         assert_eq!(deps.dependencies[0].name, "cli");
@@ -871,8 +938,14 @@ mod tests {
     ) -> Result<Vec<String>, Box<dyn Error>> {
         let loader = Stub { packages };
         let names: Vec<String> = names.iter().map(|n| n.to_string()).collect();
-        let (mut deps, _git_deps, cran_names) = requested_deps(&names)?;
-        add_dev_deps(&loader, &cran_names, &mut deps, ignore_unavailable)?;
+        let (mut deps, _git_deps, cran_names, dev_packages) = requested_deps(&names)?;
+        add_dev_deps(
+            &loader,
+            &cran_names,
+            &dev_packages,
+            &mut deps,
+            ignore_unavailable,
+        )?;
         Ok(deps.dependencies.iter().map(|d| d.name.clone()).collect())
     }
 
@@ -886,8 +959,8 @@ mod tests {
             ],
         };
         let names = vec!["a".to_string()];
-        let (mut deps, _git_deps, cran_names) = requested_deps(&names).unwrap();
-        add_dev_deps(&loader, &cran_names, &mut deps, false).unwrap();
+        let (mut deps, _git_deps, cran_names, dev_packages) = requested_deps(&names).unwrap();
+        add_dev_deps(&loader, &cran_names, &dev_packages, &mut deps, false).unwrap();
 
         let t = deps.dependencies.iter().find(|d| d.name == "t").unwrap();
         assert_eq!(t.types, vec![RDepType::Suggests]);
@@ -983,6 +1056,28 @@ mod tests {
     }
 
     #[test]
+    fn a_local_package_suggests_is_a_dev_dependency_too() {
+        let dir = tempfile::tempdir().unwrap();
+        let pkg_dir = dir.path().join("mypkg");
+        std::fs::create_dir(&pkg_dir).unwrap();
+        std::fs::write(
+            pkg_dir.join("DESCRIPTION"),
+            "Package: mypkg\nVersion: 1.0.0\nSuggests: t\n",
+        )
+        .unwrap();
+
+        let loader = Stub {
+            packages: vec![("t", "1.0.0", "")],
+        };
+        let names = vec![format!("local::{}", pkg_dir.display())];
+        let (mut deps, _git_deps, cran_names, dev_packages) = requested_deps(&names).unwrap();
+        add_dev_deps(&loader, &cran_names, &dev_packages, &mut deps, false).unwrap();
+
+        let names: Vec<String> = deps.dependencies.iter().map(|d| d.name.clone()).collect();
+        assert_eq!(names, vec!["mypkg".to_string(), "t".to_string()]);
+    }
+
+    #[test]
     fn an_unavailable_dev_dependency_is_an_error() {
         let err = dev(vec![("a", "1.0.0", "Suggests: t, bioc")], &["a"], false).unwrap_err();
         assert!(err.to_string().contains("bioc"), "{}", err);
@@ -1013,8 +1108,8 @@ mod tests {
             ],
         };
         let names = vec!["a@==1.0.0".to_string()];
-        let (mut deps, _git_deps, cran_names) = requested_deps(&names).unwrap();
-        add_dev_deps(&loader, &cran_names, &mut deps, false).unwrap();
+        let (mut deps, _git_deps, cran_names, dev_packages) = requested_deps(&names).unwrap();
+        add_dev_deps(&loader, &cran_names, &dev_packages, &mut deps, false).unwrap();
 
         let t = deps.dependencies.iter().find(|d| d.name == "t").unwrap();
         assert_eq!(requirements(t), Vec::<String>::new());

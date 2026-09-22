@@ -1816,7 +1816,9 @@ fn config_needs_entry(entry: &str) -> (String, Dependency) {
                 );
             }
         }
-        Ok(crate::pkgsource::PkgSource::Cran) | Err(_) => {}
+        Ok(crate::pkgsource::PkgSource::Cran)
+        | Ok(crate::pkgsource::PkgSource::Local(_))
+        | Err(_) => {}
     }
 
     let name = match pak_ref_name(entry) {
@@ -2259,7 +2261,11 @@ impl RprojLockTarget {
                 if let Some(ref_) = &git.ref_ {
                     metadata.insert(REMOTE_REF_FIELD.to_string(), ref_.clone());
                 }
-                metadata.insert(REMOTE_SHA_FIELD.to_string(), git.sha.clone());
+                // A local source has no commit and no content hash: the path
+                // it was installed from is its whole provenance.
+                if !git.sha.is_empty() {
+                    metadata.insert(REMOTE_SHA_FIELD.to_string(), git.sha.clone());
+                }
 
                 // Both are directories: a github tarball is unpacked, and a
                 // git:: clone is a worktree checkout. `sources` still carries
@@ -2278,6 +2284,12 @@ impl RprojLockTarget {
                     )
                 } else if git.remote_type == "url" {
                     (vec![git.url.clone()], format!("url/{}", git.sha))
+                } else if git.remote_type == "local" {
+                    // Nothing to download, and nothing in the cache: the
+                    // installer reads `RemoteUrl` (the absolute path) instead
+                    // of a `target` under the cache directory, see
+                    // `lockfile_package_info`.
+                    (vec![], String::new())
                 } else {
                     (
                         vec![format!("git+{}#{}", git.url, git.sha)],
@@ -2288,8 +2300,12 @@ impl RprojLockTarget {
                 pkgs.push(RprojLockPackage {
                     package: k.to_string(),
                     version: v.version.to_string(),
-                    binary: false,
-                    platform: "source".to_string(),
+                    binary: git.binary,
+                    platform: if git.binary {
+                        platform.clone().unwrap_or_else(|| "source".to_string())
+                    } else {
+                        "source".to_string()
+                    },
                     dependencies: deps,
                     metadata,
                     sources,
