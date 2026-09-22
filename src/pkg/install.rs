@@ -324,8 +324,7 @@ fn add_dev_deps(
                 return None;
             }
             d.constraints.iter().find_map(|c| {
-                (c.constraint_type == VersionConstraintType::Equal)
-                    .then(|| c.version.to_string())
+                (c.constraint_type == VersionConstraintType::Equal).then(|| c.version.to_string())
             })
         });
         let package = root_package(loader, name, pinned.as_deref().unwrap_or("latest"))?;
