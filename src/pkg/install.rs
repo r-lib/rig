@@ -39,7 +39,9 @@ use crate::linux::get_r_binary;
 
 use crate::built::BuiltCache;
 use crate::cache::get_cache_dir;
-use crate::dcf::{DepVersionSpec, PackageDependencies, RDepType, DEP_TYPES_SOFT};
+use crate::dcf::{
+    DepVersionSpec, PackageDependencies, RDepType, VersionConstraintType, DEP_TYPES_SOFT,
+};
 use crate::install::{
     install_packages, PackageInfo, REMOTE_HASH_FIELD, REMOTE_SHA_FIELD, REMOTE_TYPE_FIELD,
 };
@@ -310,7 +312,23 @@ fn add_dev_deps(
     let mut unavailable: Vec<String> = vec![];
 
     for name in names {
-        let package = root_package(loader, name, "latest")?;
+        // A pinned exact version (`pkg@==1.0.1`) is what the solve will use for
+        // `name` itself, so its `Suggests`/`Enhances` have to come from that
+        // version's `DESCRIPTION`, not `latest`'s: an old pin's dev
+        // dependencies can need much older (or no) versions of packages that
+        // latest's `DESCRIPTION` requires a newer version of, which would
+        // force a conflict that has nothing to do with what was actually asked
+        // for.
+        let pinned = deps.dependencies.iter().find_map(|d| {
+            if d.name != *name {
+                return None;
+            }
+            d.constraints.iter().find_map(|c| {
+                (c.constraint_type == VersionConstraintType::Equal)
+                    .then(|| c.version.to_string())
+            })
+        });
+        let package = root_package(loader, name, pinned.as_deref().unwrap_or("latest"))?;
         for dep in package.dependencies.dependencies.iter() {
             // A dependency that is also a hard dependency is being installed
             // anyway, and is already in `deps`.
@@ -974,6 +992,26 @@ mod tests {
         )
         .unwrap();
         assert_eq!(out, vec!["a".to_string(), "t".to_string()]);
+    }
+
+    #[test]
+    fn a_pinned_version_uses_its_own_suggests_not_latests() {
+        // `a`'s latest version suggests `t` >= 2.0.0, but the pinned older
+        // version only suggests an unconstrained `t`: the dev deps must come
+        // from the pinned version, not from latest.
+        let loader = Stub {
+            packages: vec![
+                ("a", "1.0.0", "Suggests: t"),
+                ("a", "2.0.0", "Suggests: t (>= 2.0.0)"),
+                ("t", "1.0.0", ""),
+            ],
+        };
+        let names = vec!["a@==1.0.0".to_string()];
+        let (mut deps, _git_deps, cran_names) = requested_deps(&names).unwrap();
+        add_dev_deps(&loader, &cran_names, &mut deps, false).unwrap();
+
+        let t = deps.dependencies.iter().find(|d| d.name == "t").unwrap();
+        assert_eq!(requirements(t), Vec::<String>::new());
     }
 
     #[test]
