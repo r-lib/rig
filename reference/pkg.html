@@ -1093,9 +1093,9 @@ Run in user mode (overrides RIG_MODE and config)
 <p>A package that several others need is expanded only once, under its first occurrence. Later occurrences are a single line marked <code>(*)</code>, meaning “its dependencies are above”.</p>
 <p>Key for markers:</p>
 <ul>
-<li><code>[D]</code> — a <code>Depends</code>, so the package is <em>attached</em>, not merely loaded.</li>
-<li><code>[L]</code> — a <code>LinkingTo</code>, so this package is compiled against it.</li>
-<li><code>[DL]</code> — both.</li>
+<li><code>[D]</code>: a <code>Depends</code>, so the package is <em>attached</em>, not merely loaded.</li>
+<li><code>[L]</code>: a <code>LinkingTo</code>, so this package is compiled against it.</li>
+<li><code>[DL]</code>: both.</li>
 </ul>
 <p>(<code>Imports</code> is the most common and it is not marked.)</p>
 <p>By default rig follows the hard dependencies only. <code>--dev</code> adds <code>Suggests</code> and <code>Enhances</code>, in their own <code>[Suggests]</code> and <code>[Enhances]</code> sections.</p>

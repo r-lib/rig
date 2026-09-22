@@ -734,11 +734,11 @@ package version (default: latest)
 <section id="the-columns" class="level3">
 <h3 class="anchored" data-anchor-id="the-columns">The columns</h3>
 <ul>
-<li><p><code>version</code> — the package version, as published.</p></li>
-<li><p><code>platform</code> — <code>source</code> for the CRAN source tarball, otherwise the build target: <code>macos</code>, <code>windows</code>, or a Linux target name such as <code>jammy</code>. <a href="../reference/ppm.html#rig-ppm-platforms"><code>rig ppm platforms</code></a> lists the target names.</p></li>
-<li><p><code>arch</code>, <code>r_version</code> — the architecture and minor R version the binary is for. Both are <code>*</code> on a source row, which is architecture- and version-independent.</p></li>
-<li><p><code>linkingto</code> — the package versions the binary was compiled against, for packages with a <code>LinkingTo:</code> field. This column is what tells otherwise identical rows apart. PPM republishes a binary when a compiled-against dependency changes, so the same version, platform, architecture and R version can legitimately have several builds; <code>linkingto</code> is the only difference between them.</p></li>
-<li><p><code>url</code> — where to download that artifact. The date in the URL is the CRAN snapshot the build was published against.</p></li>
+<li><p><code>version</code>: the package version, as published.</p></li>
+<li><p><code>platform</code>: <code>source</code> for the CRAN source tarball, otherwise the build target: <code>macos</code>, <code>windows</code>, or a Linux target name such as <code>jammy</code>. <a href="../reference/ppm.html#rig-ppm-platforms"><code>rig ppm platforms</code></a> lists the target names.</p></li>
+<li><p><code>arch</code>, <code>r_version</code>: the architecture and minor R version the binary is for. Both are <code>*</code> on a source row, which is architecture- and version-independent.</p></li>
+<li><p><code>linkingto</code>: the package versions the binary was compiled against, for packages with a <code>LinkingTo:</code> field. This column is what tells otherwise identical rows apart. PPM republishes a binary when a compiled-against dependency changes, so the same version, platform, architecture and R version can legitimately have several builds; <code>linkingto</code> is the only difference between them.</p></li>
+<li><p><code>url</code>: where to download that artifact. The date in the URL is the CRAN snapshot the build was published against.</p></li>
 </ul>
 <p><code>--json</code> output adds a <code>sha256</code> for each row, and for each <code>linkingto</code> entry: it is the hash of the original CRAN source tarball, and not the hash what the URL serves.</p>
 </section>
@@ -802,13 +802,13 @@ package version to list (default: all)
 <section id="the-columns-1" class="level3">
 <h3 class="anchored" data-anchor-id="the-columns-1">The columns</h3>
 <ul>
-<li><p><code>name</code> — PPM’s name for the entry.</p></li>
-<li><p><code>os</code> — <code>linux</code>, <code>macos</code> or <code>windows</code>.</p></li>
-<li><p><code>platform</code> — the name this target goes by in a package’s build index, so this is the value to match against the <code>platform</code> column of <a href="../reference/ppm.html#rig-ppm-builds"><code>rig ppm builds</code></a> . Several entries can share one: CentOS 7 and RHEL 7 both use the <code>centos7</code> binaries.</p></li>
-<li><p><code>distribution</code> and <code>release</code> — the distribution PPM <em>builds</em> the target on, which is not always the one it serves. The <code>rhel9</code> target is built on Rocky Linux, so its <code>distribution</code> is <code>rockylinux</code>.</p></li>
-<li><p><code>arch</code> — the architectures this target is built for. Most Linux targets are x86_64 only.</p></li>
-<li><p><code>binaries</code> — whether PPM builds binary packages for the target at all. Where this is off, the target is still served, from source.</p></li>
-<li><p><code>hidden</code> — only shown with <code>--all</code>: set on the targets PPM no longer advertises, i.e.&nbsp;retired distribution releases. Their binaries stay downloadable, which is why they can be listed at all.</p></li>
+<li><p><code>name</code>: PPM’s name for the entry.</p></li>
+<li><p><code>os</code>: <code>linux</code>, <code>macos</code> or <code>windows</code>.</p></li>
+<li><p><code>platform</code>: the name this target goes by in a package’s build index, so this is the value to match against the <code>platform</code> column of <a href="../reference/ppm.html#rig-ppm-builds"><code>rig ppm builds</code></a> . Several entries can share one: CentOS 7 and RHEL 7 both use the <code>centos7</code> binaries.</p></li>
+<li><p><code>distribution</code>, <code>release</code>: the distribution PPM <em>builds</em> the target on, which is not always the one it serves. The <code>rhel9</code> target is built on Rocky Linux, so its <code>distribution</code> is <code>rockylinux</code>.</p></li>
+<li><p><code>arch</code>: the architectures this target is built for. Most Linux targets are x86_64 only.</p></li>
+<li><p><code>binaries</code>: whether PPM builds binary packages for the target at all. Where this is off, the target is still served, from source.</p></li>
+<li><p><code>hidden</code>: only shown with <code>--all</code>: set on the targets PPM no longer advertises, i.e.&nbsp;retired distribution releases. Their binaries stay downloadable, which is why they can be listed at all.</p></li>
 </ul>
 </section>
 <section id="usage-2" class="level3">
@@ -885,10 +885,10 @@ Run in user mode (overrides RIG_MODE and config)
 <h3 class="anchored" data-anchor-id="the-report">The report</h3>
 <p>The report shows an initial block and then four tables:</p>
 <ul>
-<li><p><strong>R versions</strong> — the minor R versions binaries are built for. Same list as <a href="../reference/ppm.html#rig-ppm-r-versions"><code>rig ppm r-versions</code></a> .</p></li>
-<li><p><strong>Build targets</strong> — the platforms, as reported, retired ones included. Same table as <a href="../reference/ppm.html#rig-ppm-platforms"><code>rig ppm platforms --all</code></a> , which documents the columns.</p></li>
-<li><p><strong>Bioconductor versions</strong> — each Bioconductor release, the R version it goes with, and the CRAN snapshot it is pinned to.</p></li>
-<li><p><strong>macOS binaries</strong> — the macOS build flavor used for each R version, per architecture. <code>default</code> is what a newer R version gets. An empty cell means there are no macOS binaries for that R version and architecture.</p></li>
+<li><p><strong>R versions</strong>: the minor R versions binaries are built for. Same list as <a href="../reference/ppm.html#rig-ppm-r-versions"><code>rig ppm r-versions</code></a> .</p></li>
+<li><p><strong>Build targets</strong>: the platforms, as reported, retired ones included. Same table as <a href="../reference/ppm.html#rig-ppm-platforms"><code>rig ppm platforms --all</code></a> , which documents the columns.</p></li>
+<li><p><strong>Bioconductor versions</strong>: each Bioconductor release, the R version it goes with, and the CRAN snapshot it is pinned to.</p></li>
+<li><p><strong>macOS binaries</strong>: the macOS build flavor used for each R version, per architecture. <code>default</code> is what a newer R version gets. An empty cell means there are no macOS binaries for that R version and architecture.</p></li>
 </ul>
 <p>An instance may report fields rig does not show. Use <code>--json</code> to see the status document in full; nothing is dropped from it.</p>
 <p>This command does not cache information from PPM, it always performs an HTTP query.</p>

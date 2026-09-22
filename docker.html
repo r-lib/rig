@@ -868,7 +868,7 @@ ul.task-list li input[type="checkbox"] {
 </section>
 <section id="binary-only-image" class="level2">
 <h2 class="anchored" data-anchor-id="binary-only-image">Binary-only image</h2>
-<p><code>ghcr.io/r-lib/rig/base</code> contains nothing but the <code>rig</code> binary — no R, no OS tools. It exists so you can copy the binary into your own image without pulling in a full container:</p>
+<p><code>ghcr.io/r-lib/rig/base</code> contains nothing but the <code>rig</code> binary. You can use it to copy the binary into your own image:</p>
 <pre><code>COPY --from=ghcr.io/r-lib/rig/base:latest /rig /usr/local/bin/rig</code></pre>
 </section>
 <section id="docker-container-features" class="level2">
