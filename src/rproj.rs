@@ -123,6 +123,18 @@ pub struct Project {
     pub urls: BTreeMap<String, String>,
 }
 
+impl Project {
+    /// Whether this project builds an installable R package, i.e. its `Type:`
+    /// in DESCRIPTION would be "Package". An absent `type_` defaults to
+    /// "package", same as [`Rproj::to_description`].
+    pub fn is_package(&self) -> bool {
+        self.type_
+            .as_deref()
+            .unwrap_or("package")
+            .eq_ignore_ascii_case("package")
+    }
+}
+
 /// One `authors = [...]` entry; generates a `person()` in `Authors@R`.
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
 pub struct Author {
@@ -1337,9 +1349,12 @@ impl Rproj {
         let mut dropped: Vec<String> = Vec::new();
 
         writeln!(out, "Package: {}", self.project.name)?;
-        let type_ = self.project.type_.as_deref().unwrap_or("package");
-        if !type_.eq_ignore_ascii_case("package") {
-            writeln!(out, "Type: {}", title_case(type_))?;
+        if !self.project.is_package() {
+            writeln!(
+                out,
+                "Type: {}",
+                title_case(self.project.type_.as_deref().unwrap_or("package"))
+            )?;
         }
         if let Some(title) = &self.project.title {
             writeln!(out, "{}", fold_dcf_prose("Title", title, 75))?;

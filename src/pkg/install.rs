@@ -108,8 +108,15 @@ pub fn sc_pkg_install(
 
     let roots = [SolveRoot::project(deps.clone())?];
     let git_sources = resolve_git_sources(&git_deps, &HashMap::new(), &HashMap::new())?;
-    let (registry, solution) =
-        sc_proj_solve_deps(&rver, &roots, &git_sources, target, prefer_binary, true)?;
+    let (registry, solution) = sc_proj_solve_deps(
+        &rver,
+        &roots,
+        None,
+        &git_sources,
+        target,
+        prefer_binary,
+        true,
+    )?;
     OUTPUT.success("Solved dependencies");
     info!("Solved dependencies");
 

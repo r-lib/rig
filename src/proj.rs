@@ -1033,6 +1033,12 @@ pub(crate) struct ProjectSolve {
     pub members: Vec<PathBuf>,
     /// The solver roots, in the same order as `members`.
     pub roots: Vec<SolveRoot>,
+    /// For a plain (non-workspace) project whose own type is "package": a
+    /// root, under the project's own real name and version, so a dependency
+    /// on that name resolves to the project itself instead of CRAN/PPM. See
+    /// [`register_roots`]. Workspace members already get this via `roots`,
+    /// under their own real names, so this is always `None` for a workspace.
+    pub self_alias: Option<SolveRoot>,
     /// Every root's dependencies in one set, for the decisions taken once for
     /// the whole solve: which R version to solve for, and which packages the
     /// non-dev subset of the lockfile needs.
@@ -1077,9 +1083,26 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
             let group_roots = manifest.main_and_group_roots()?;
             let extra_roots = manifest.optional_dependency_roots();
             let git_deps = manifest.git_dependencies();
+            // Same name/base-package restriction as a workspace member (see
+            // below): it would be nonsense for the project's own name to
+            // shadow R or a base package in the registry.
+            let name = &manifest.project.name;
+            let self_alias = if manifest.project.is_package()
+                && name != "R"
+                && !BASE_PKGS.contains(&name.as_str())
+            {
+                Some(SolveRoot {
+                    name: name.clone(),
+                    version: RPackageVersion::from_str(&manifest.project.version)?,
+                    deps: deps.clone(),
+                })
+            } else {
+                None
+            };
             return Ok(ProjectSolve {
                 members: vec![root.to_path_buf()],
                 roots: vec![SolveRoot::project(deps.clone())?],
+                self_alias,
                 merged: deps,
                 group_roots,
                 extra_roots,
@@ -1153,6 +1176,7 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
     Ok(ProjectSolve {
         members: dirs,
         roots,
+        self_alias: None,
         merged,
         group_roots,
         extra_roots,
@@ -1393,7 +1417,15 @@ pub(crate) fn sc_proj_solve_project_deps(
     report_status: bool,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
     let roots = [SolveRoot::project(deps.clone())?];
-    sc_proj_solve_deps(r_version, &roots, &[], target, prefer_binary, report_status)
+    sc_proj_solve_deps(
+        r_version,
+        &roots,
+        None,
+        &[],
+        target,
+        prefer_binary,
+        report_status,
+    )
 }
 
 /// Solve the dependencies of every root in `roots` for one R version and one
@@ -1409,6 +1441,7 @@ pub(crate) fn sc_proj_solve_project_deps(
 pub(crate) fn sc_proj_solve_deps(
     r_version: &str,
     roots: &[SolveRoot],
+    self_alias: Option<&SolveRoot>,
     git_sources: &[ResolvedGitSource],
     target: Option<BinaryTarget>,
     prefer_binary: Option<usize>,
@@ -1429,7 +1462,7 @@ pub(crate) fn sc_proj_solve_deps(
     let reg: RPackageRegistry =
         RPackageRegistry::with_loaders(Box::new(loader), binaries).prefer_binary(prefer_binary);
 
-    let (root_pkg, root_version) = register_roots(&reg, roots)?;
+    let (root_pkg, root_version) = register_roots(&reg, roots, self_alias)?;
 
     if !git_sources.is_empty() {
         if report_status {
@@ -2724,6 +2757,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
             let result = sc_proj_solve_deps(
                 &st.rver,
                 &solve.roots,
+                solve.self_alias.as_ref(),
                 &git_sources,
                 st.target.clone(),
                 prefer_binary,
@@ -5064,6 +5098,32 @@ mod tests {
         let solve = proj_read_solve_roots(dir.path()).unwrap();
         assert_eq!(solve.roots.len(), 1);
         assert_eq!(solve.roots[0].name, PROJECT_ROOT_PKG);
+        // `Rproj::minimal` marks the project `type = "project"`, not a
+        // package, so there is nothing for another dependency to resolve to.
+        assert!(solve.self_alias.is_none());
+    }
+
+    #[test]
+    fn a_plain_package_project_gets_a_self_alias() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut manifest = Rproj::minimal("rlang");
+        manifest.project.type_ = Some("package".to_string());
+        manifest.project.version = "1.0.1".to_string();
+        write_manifest(dir.path(), &manifest);
+        let solve = proj_read_solve_roots(dir.path()).unwrap();
+        let alias = solve
+            .self_alias
+            .expect("package project should get a self-alias root");
+        assert_eq!(alias.name, "rlang");
+        assert_eq!(alias.version, RPackageVersion::from_str("1.0.1").unwrap());
+    }
+
+    #[test]
+    fn a_workspace_has_no_self_alias() {
+        let dir = tempfile::tempdir().unwrap();
+        two_member_workspace(dir.path());
+        let solve = proj_read_solve_roots(dir.path()).unwrap();
+        assert!(solve.self_alias.is_none());
     }
 
     #[test]
