@@ -204,6 +204,18 @@ impl InstalledPackage {
         hash: Option<&str>,
         linkingto: Vec<(String, String, String)>,
     ) -> InstalledPackage {
+        Self::for_test_remote(package, version, hash, linkingto, None)
+    }
+
+    /// Like [`Self::for_test`], but also setting `remote_sha`, for tests of a
+    /// git/GitHub/url/local-sourced package.
+    pub(super) fn for_test_remote(
+        package: &str,
+        version: &str,
+        hash: Option<&str>,
+        linkingto: Vec<(String, String, String)>,
+        remote_sha: Option<&str>,
+    ) -> InstalledPackage {
         InstalledPackage {
             package: package.to_string(),
             version: version.to_string(),
@@ -214,7 +226,7 @@ impl InstalledPackage {
             remote: None,
             hash: hash.map(|x| x.to_string()),
             linkingto,
-            remote_sha: None,
+            remote_sha: remote_sha.map(|x| x.to_string()),
         }
     }
 }

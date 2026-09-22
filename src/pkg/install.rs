@@ -567,16 +567,28 @@ fn needs_install(
     // -- its identity is the commit it was fetched at, so that is what decides
     // whether it needs replacing, and the ordinary hash/`LinkingTo` checks
     // below do not apply to it.
-    // A local source is whatever is in that directory right now, which rig
-    // has no way to compare against what it installed from it last time, and
-    // which the user is most likely editing. So it is always reinstalled.
-    if solved.metadata.get(REMOTE_TYPE_FIELD).map(|t| t.as_str()) == Some("local") {
-        return Some("local source".to_string());
+    // A local directory is whatever is in it right now, which rig has no way
+    // to compare against what it installed from it last time, and which the
+    // user is most likely editing. So it is always reinstalled. Likewise a
+    // local binary package file is just unpacked, never compiled, so there is
+    // no build to cache and it is reinstalled every time too. A local
+    // *source* file (a tarball or `.zip`) has a `RemoteSha` instead (its own
+    // sha256, see `read_local_package`), which is compared just like a
+    // git/GitHub/url source's below.
+    let is_local = solved.metadata.get(REMOTE_TYPE_FIELD).map(|t| t.as_str()) == Some("local");
+    if is_local && !solved.metadata.contains_key(REMOTE_SHA_FIELD) {
+        let reason = if solved.binary {
+            "local binary package"
+        } else {
+            "local source (directory)"
+        };
+        return Some(reason.to_string());
     }
 
     if solved.metadata.contains_key(REMOTE_TYPE_FIELD) {
         return match (&installed.remote_sha, solved.metadata.get(REMOTE_SHA_FIELD)) {
             (Some(have), Some(want)) if have == want => None,
+            _ if is_local => Some("a different file is installed".to_string()),
             _ => Some("a different commit is installed".to_string()),
         };
     }
@@ -745,14 +757,55 @@ mod tests {
     }
 
     #[test]
-    fn a_local_source_is_always_reinstalled() {
+    fn a_local_directory_source_is_always_reinstalled() {
         let mut pkg = solved("mypkg", "1.0.0", None);
         pkg.binary = false;
         pkg.metadata
             .insert(REMOTE_TYPE_FIELD.to_string(), "local".to_string());
         let out = plan(&[pkg], &[inst("mypkg", "1.0.0", None, &[])], false);
         assert!(out["mypkg"].0);
-        assert_eq!(out["mypkg"].1, "local source");
+        assert_eq!(out["mypkg"].1, "local source (directory)");
+    }
+
+    #[test]
+    fn a_local_binary_package_is_always_reinstalled() {
+        let mut pkg = solved("mypkg", "1.0.0", None);
+        pkg.binary = true;
+        pkg.metadata
+            .insert(REMOTE_TYPE_FIELD.to_string(), "local".to_string());
+        let out = plan(&[pkg], &[inst("mypkg", "1.0.0", None, &[])], false);
+        assert!(out["mypkg"].0);
+        assert_eq!(out["mypkg"].1, "local binary package");
+    }
+
+    #[test]
+    fn a_local_file_source_with_the_same_hash_is_left_alone() {
+        let mut pkg = solved("mypkg", "1.0.0", None);
+        pkg.binary = false;
+        pkg.metadata
+            .insert(REMOTE_TYPE_FIELD.to_string(), "local".to_string());
+        pkg.metadata
+            .insert(REMOTE_SHA_FIELD.to_string(), "aa".to_string());
+        let installed =
+            InstalledPackage::for_test_remote("mypkg", "1.0.0", None, vec![], Some("aa"));
+        let out = plan(&[pkg], &[installed], false);
+        assert!(!out["mypkg"].0);
+        assert_eq!(out["mypkg"].1, "up to date");
+    }
+
+    #[test]
+    fn a_local_file_source_with_a_different_hash_is_reinstalled() {
+        let mut pkg = solved("mypkg", "1.0.0", None);
+        pkg.binary = false;
+        pkg.metadata
+            .insert(REMOTE_TYPE_FIELD.to_string(), "local".to_string());
+        pkg.metadata
+            .insert(REMOTE_SHA_FIELD.to_string(), "bb".to_string());
+        let installed =
+            InstalledPackage::for_test_remote("mypkg", "1.0.0", None, vec![], Some("aa"));
+        let out = plan(&[pkg], &[installed], false);
+        assert!(out["mypkg"].0);
+        assert_eq!(out["mypkg"].1, "a different file is installed");
     }
 
     #[test]

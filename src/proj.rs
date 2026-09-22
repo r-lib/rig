@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use clap::ArgMatches;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use log::{error, info};
+use log::{debug, error, info};
 use pubgrub::{resolve, SelectedDependencies};
 use rayon::prelude::*;
 use simple_error::*;
@@ -21,7 +21,7 @@ use crate::dcf::*;
 use crate::download::download_multiple_first_available_with_progress;
 use crate::install::{
     install_packages, parse_linkingto, PackageInfo, REMOTE_GIT_FIELDS, REMOTE_HASH_FIELD,
-    REMOTE_LINKINGTO_FIELD, REMOTE_SUBDIR_FIELD, REMOTE_TYPE_FIELD,
+    REMOTE_LINKINGTO_FIELD, REMOTE_SHA_FIELD, REMOTE_SUBDIR_FIELD, REMOTE_TYPE_FIELD,
 };
 use crate::library::get_library_path;
 use crate::output::OUTPUT;
@@ -1936,14 +1936,26 @@ pub(crate) fn dep_table_from_local(path: &Path) -> DepTable {
 /// the path (and extracting a package file to a tempdir, see
 /// [`crate::pkgsource::local::read_local_package_files`]).
 ///
-/// A local source has no commit and no meaningful content hash -- the
-/// directory can change between two rig runs, and does, which is the point of
-/// installing from one -- so `sha` is empty and the package is reinstalled
-/// every time (see `needs_install` in `crate::pkg::install`).
+/// A local directory has no commit and no meaningful content hash -- it can
+/// change between two rig runs, and does, which is the point of installing
+/// from one -- so `sha` is empty and the package is reinstalled every time
+/// (see `needs_install` in `crate::pkg::install`). A local *file* (a source
+/// tarball or `.zip`, not a directory, and not one already built) is pinned
+/// to its own sha256 instead, which lets it be cached exactly like any other
+/// non-CRAN source.
 pub(crate) fn read_local_package(
     path: &Path,
 ) -> Result<(Package, GitSourceInfo, String), Box<dyn Error>> {
     let files = crate::pkgsource::local::read_local_package_files(path)?;
+
+    let sha = if !files.binary && path.is_file() {
+        crate::utils::calculate_file_hash(path).unwrap_or_else(|err| {
+            debug!("Not caching {}, cannot hash it: {}", path.display(), err);
+            String::new()
+        })
+    } else {
+        String::new()
+    };
 
     let local_source = GitSourceInfo {
         remote_type: "local",
@@ -1953,7 +1965,7 @@ pub(crate) fn read_local_package(
         username: None,
         subdir: None,
         ref_: None,
-        sha: String::new(),
+        sha,
         binary: files.binary,
     };
 
@@ -4135,10 +4147,11 @@ pub(crate) fn lockfile_package_info(
         built: None,
         remote,
     };
-    // The build cache is keyed on the source's content hash, and a local
-    // source has none: the directory is editable, so yesterday's build is not
-    // this build.
-    if !info.binary && !local {
+    // The build cache is keyed on the source's content hash. A local
+    // directory has none -- it is editable, so yesterday's build is not this
+    // build -- but a local file does (see `read_local_package`), recorded as
+    // `RemoteSha` in `info.remote` just like a git/GitHub/url source's.
+    if !info.binary && (!local || info.remote.contains_key(REMOTE_SHA_FIELD)) {
         info.built = built.and_then(|cache| cache.path(&info));
     }
     info
@@ -5288,5 +5301,46 @@ mod tests {
         let groups = compute_package_groups(&solve.group_roots, &packages);
         assert_eq!(groups.get("cli").unwrap(), &vec!["main".to_string()]);
         assert_eq!(groups.get("glue").unwrap(), &vec!["main".to_string()]);
+    }
+
+    #[test]
+    fn a_local_directory_has_no_content_hash() {
+        let dir = tempfile::tempdir().unwrap();
+        let pkg_dir = dir.path().join("mypkg");
+        std::fs::create_dir(&pkg_dir).unwrap();
+        std::fs::write(
+            pkg_dir.join("DESCRIPTION"),
+            "Package: mypkg\nVersion: 1.0.0\n",
+        )
+        .unwrap();
+
+        let (_pkg, source, _remotes) = read_local_package(&pkg_dir).unwrap();
+        assert_eq!(source.sha, "");
+    }
+
+    #[test]
+    fn a_local_file_is_hashed() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("mypkg_1.0.0.tar.gz");
+        {
+            let file = std::fs::File::create(&archive).unwrap();
+            let enc = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+            let mut ar = tar::Builder::new(enc);
+            let contents: &[u8] = b"Package: mypkg\nVersion: 1.0.0\n";
+            let mut header = tar::Header::new_gnu();
+            header.set_size(contents.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            ar.append_data(&mut header, "mypkg/DESCRIPTION", contents)
+                .unwrap();
+            ar.finish().unwrap();
+        }
+
+        let (_pkg, source, _remotes) = read_local_package(&archive).unwrap();
+        assert_eq!(
+            source.sha,
+            crate::utils::calculate_file_hash(&archive).unwrap()
+        );
+        assert_ne!(source.sha, "");
     }
 }
