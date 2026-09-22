@@ -1936,13 +1936,15 @@ pub(crate) fn dep_table_from_local(path: &Path) -> DepTable {
 /// the path (and extracting a package file to a tempdir, see
 /// [`crate::pkgsource::local::read_local_package_files`]).
 ///
-/// A local directory has no commit and no meaningful content hash -- it can
-/// change between two rig runs, and does, which is the point of installing
-/// from one -- so `sha` is empty and the package is reinstalled every time
-/// (see `needs_install` in `crate::pkg::install`). A local *file* (a source
-/// tarball or `.zip`, not a directory, and not one already built) is pinned
-/// to its own sha256 instead, which lets it be cached exactly like any other
-/// non-CRAN source.
+/// A local *file* (a source tarball or `.zip`, not a directory, and not one
+/// already built) is pinned to its own content sha256. A local directory is
+/// pinned to a stat digest instead (see [`compute_dir_stat_digest`]): hashing
+/// its full content on every install scales with the package's payload size,
+/// which gets expensive for a package that vendors a large or compiled tree,
+/// while a digest of every file's path/size/mtime is a constant-cost stat
+/// call per file. Either way `sha` lets the directory or file be cached
+/// exactly like any other non-CRAN source (see `needs_install` in
+/// `crate::pkg::install`), rebuilding only when that digest changes.
 pub(crate) fn read_local_package(
     path: &Path,
 ) -> Result<(Package, GitSourceInfo, String), Box<dyn Error>> {
@@ -1951,6 +1953,11 @@ pub(crate) fn read_local_package(
     let sha = if !files.binary && path.is_file() {
         crate::utils::calculate_file_hash(path).unwrap_or_else(|err| {
             debug!("Not caching {}, cannot hash it: {}", path.display(), err);
+            String::new()
+        })
+    } else if !files.binary && path.is_dir() {
+        compute_dir_stat_digest(path).unwrap_or_else(|err| {
+            debug!("Not caching {}, cannot stat it: {}", path.display(), err);
             String::new()
         })
     } else {
@@ -1977,6 +1984,97 @@ pub(crate) fn read_local_package(
         .unwrap_or_default();
 
     Ok((pkg, local_source, remotes))
+}
+
+/// A directory's `RemoteSha`: a hash of every file's path, size, and
+/// modification time (never its content), skipping `.git` directories and
+/// anything `.Rbuildignore` excludes. Two calls on an unchanged directory
+/// return the same digest; touching a file's mtime, or adding/removing one,
+/// changes it. This mirrors `uv`'s local-path caching, which also keys on
+/// file stat rather than content for a directory source, for the same
+/// reason: a stat is a fixed-cost syscall per file, while hashing content
+/// scales with the package's total payload size.
+fn compute_dir_stat_digest(path: &Path) -> std::io::Result<String> {
+    let ignore = read_rbuildignore(path);
+
+    let mut entries = Vec::new();
+    collect_dir_stats(path, path, &ignore, &mut entries)?;
+    entries.sort();
+
+    let mut buf = String::new();
+    for (rel, len, mtime) in &entries {
+        buf.push_str(rel);
+        buf.push('\n');
+        buf.push_str(&len.to_string());
+        buf.push('\n');
+        buf.push_str(mtime);
+        buf.push('\n');
+    }
+    Ok(crate::utils::calculate_hash(&buf))
+}
+
+/// `<dir>/.Rbuildignore`'s patterns, as compiled regexes, exactly as R
+/// reads them: one Perl-style regex per line, blank lines skipped, each
+/// tested unanchored against a file's path relative to `dir`. A missing
+/// file, or a line that isn't a valid regex, is treated as no pattern.
+fn read_rbuildignore(dir: &Path) -> Vec<regex::Regex> {
+    let Ok(content) = fs::read_to_string(dir.join(".Rbuildignore")) else {
+        return Vec::new();
+    };
+    content
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .filter_map(|line| regex::Regex::new(line).ok())
+        .collect()
+}
+
+/// Recursively collects `(relative_path, len, mtime)` for every file under
+/// `dir`, skipping `.git` directories and anything matching `ignore`.
+/// `mtime` is the file's modification time as whole nanoseconds since the
+/// Unix epoch, textually, so it sorts and compares like any other field
+/// here without depending on a particular `SystemTime` debug format.
+fn collect_dir_stats(
+    root: &Path,
+    dir: &Path,
+    ignore: &[regex::Regex],
+    out: &mut Vec<(String, u64, String)>,
+) -> std::io::Result<()> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        let file_type = entry.file_type()?;
+
+        if file_type.is_dir() {
+            if path.file_name().is_some_and(|n| n == ".git") {
+                continue;
+            }
+            collect_dir_stats(root, &path, ignore, out)?;
+            continue;
+        }
+        if !file_type.is_file() {
+            continue;
+        }
+
+        let rel = path
+            .strip_prefix(root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        if ignore.iter().any(|re| re.is_match(&rel)) {
+            continue;
+        }
+
+        let metadata = entry.metadata()?;
+        let mtime = metadata
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_nanos().to_string())
+            .unwrap_or_default();
+        out.push((rel, metadata.len(), mtime));
+    }
+    Ok(())
 }
 
 /// A github.com URL's `owner`/`repo`, if `git_url` is one.
@@ -4147,9 +4245,9 @@ pub(crate) fn lockfile_package_info(
         built: None,
         remote,
     };
-    // The build cache is keyed on the source's content hash. A local
-    // directory has none -- it is editable, so yesterday's build is not this
-    // build -- but a local file does (see `read_local_package`), recorded as
+    // The build cache is keyed on the source's content hash -- a stat digest
+    // (path/size/mtime, not content) for a local directory, a real content
+    // sha256 for a local file (see `read_local_package`) -- recorded as
     // `RemoteSha` in `info.remote` just like a git/GitHub/url source's.
     if !info.binary && (!local || info.remote.contains_key(REMOTE_SHA_FIELD)) {
         info.built = built.and_then(|cache| cache.path(&info));
@@ -5304,7 +5402,7 @@ mod tests {
     }
 
     #[test]
-    fn a_local_directory_has_no_content_hash() {
+    fn a_local_directory_gets_a_stat_digest() {
         let dir = tempfile::tempdir().unwrap();
         let pkg_dir = dir.path().join("mypkg");
         std::fs::create_dir(&pkg_dir).unwrap();
@@ -5315,7 +5413,80 @@ mod tests {
         .unwrap();
 
         let (_pkg, source, _remotes) = read_local_package(&pkg_dir).unwrap();
-        assert_eq!(source.sha, "");
+        assert_ne!(source.sha, "");
+        assert_eq!(source.sha, compute_dir_stat_digest(&pkg_dir).unwrap());
+    }
+
+    #[test]
+    fn an_unchanged_directory_has_a_stable_digest() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("DESCRIPTION"), "Package: mypkg\n").unwrap();
+        std::fs::create_dir(dir.path().join("R")).unwrap();
+        std::fs::write(dir.path().join("R/foo.R"), "foo <- function() 1\n").unwrap();
+
+        let first = compute_dir_stat_digest(dir.path()).unwrap();
+        let second = compute_dir_stat_digest(dir.path()).unwrap();
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn touching_a_files_mtime_changes_the_digest() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("DESCRIPTION");
+        std::fs::write(&file, "Package: mypkg\n").unwrap();
+        let before = compute_dir_stat_digest(dir.path()).unwrap();
+
+        let newer = filetime::FileTime::from_unix_time(
+            filetime::FileTime::now().unix_seconds() + 3600,
+            0,
+        );
+        filetime::set_file_mtime(&file, newer).unwrap();
+
+        let after = compute_dir_stat_digest(dir.path()).unwrap();
+        assert_ne!(before, after);
+    }
+
+    #[test]
+    fn adding_or_removing_a_file_changes_the_digest() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("DESCRIPTION"), "Package: mypkg\n").unwrap();
+        let before = compute_dir_stat_digest(dir.path()).unwrap();
+
+        let extra = dir.path().join("NEWS.md");
+        std::fs::write(&extra, "# mypkg 1.0.0\n").unwrap();
+        let with_extra = compute_dir_stat_digest(dir.path()).unwrap();
+        assert_ne!(before, with_extra);
+
+        std::fs::remove_file(&extra).unwrap();
+        let after_removal = compute_dir_stat_digest(dir.path()).unwrap();
+        assert_eq!(before, after_removal);
+    }
+
+    #[test]
+    fn rbuildignore_excludes_matching_files_from_the_digest() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("DESCRIPTION"), "Package: mypkg\n").unwrap();
+        std::fs::write(dir.path().join(".Rbuildignore"), "^ignored\\.txt$\n").unwrap();
+        std::fs::write(dir.path().join("ignored.txt"), "v1").unwrap();
+
+        let before = compute_dir_stat_digest(dir.path()).unwrap();
+        std::fs::write(dir.path().join("ignored.txt"), "a very different value").unwrap();
+        let after = compute_dir_stat_digest(dir.path()).unwrap();
+        assert_eq!(before, after);
+    }
+
+    #[test]
+    fn dot_git_changes_are_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("DESCRIPTION"), "Package: mypkg\n").unwrap();
+        let before = compute_dir_stat_digest(dir.path()).unwrap();
+
+        let git_dir = dir.path().join(".git");
+        std::fs::create_dir(&git_dir).unwrap();
+        std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+
+        let after = compute_dir_stat_digest(dir.path()).unwrap();
+        assert_eq!(before, after);
     }
 
     #[test]
