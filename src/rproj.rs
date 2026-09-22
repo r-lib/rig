@@ -1025,11 +1025,18 @@ impl Rproj {
     }
 
     /// Every dependency, anywhere in the manifest (`[dependencies]`,
-    /// `[linking-dependencies]`, any `[dependency-groups.*]`), that has `git`
-    /// or `url` set: the git/GitHub/url-sourced packages, for the pre-solve
-    /// fetch that registers their real name/version/deps with the solver
-    /// (see `crate::proj::register_git_sources`).
-    pub fn git_dependencies(&self) -> Vec<(String, DepTable)> {
+    /// `[linking-dependencies]`, any `[dependency-groups.*]`), that has
+    /// `git`, `url` or `path` set: the git/GitHub/url/local-sourced packages,
+    /// for the pre-solve fetch that registers their real name/version/deps
+    /// with the solver (see `crate::proj::register_git_sources`).
+    ///
+    /// A `path` is stored in `rproj.toml` relative to `root` (the manifest's
+    /// own directory), so that the file stays portable when committed and
+    /// checked out elsewhere -- see `crate::proj::relativize_to_root`. It is
+    /// resolved back to an absolute path here, against `root`, before
+    /// anything downstream (`crate::proj::resolve_git_sources`) reads it, so
+    /// that code never has to know rig's working directory either.
+    pub fn git_dependencies(&self, root: &Path) -> Vec<(String, DepTable)> {
         let mut out = vec![];
         let tables = std::iter::once(&self.dependencies)
             .chain(std::iter::once(&self.linking_dependencies))
@@ -1038,8 +1045,15 @@ impl Rproj {
         for table in tables {
             for (name, dep) in table.iter() {
                 if let Dependency::Detailed(t) = dep {
-                    if t.git.is_some() || t.url.is_some() {
-                        out.push((name.clone(), (**t).clone()));
+                    if t.git.is_some() || t.url.is_some() || t.path.is_some() {
+                        let mut t = (**t).clone();
+                        if let Some(path) = &t.path {
+                            let path = Path::new(path);
+                            if path.is_relative() {
+                                t.path = Some(root.join(path).display().to_string());
+                            }
+                        }
+                        out.push((name.clone(), t));
                     }
                 }
             }
@@ -1047,15 +1061,18 @@ impl Rproj {
         out
     }
 
-    /// The git/GitHub/url-sourced dependencies that end up in a DESCRIPTION
-    /// dependency field (`Depends`/`Imports`/`LinkingTo`/`Suggests`/
-    /// `Enhances`), for [`Rproj::to_description`]'s `Remotes:` field. Scoped
-    /// the same way as [`Rproj::to_dep_version_specs`] -- `[dependencies]`,
-    /// `[linking-dependencies]`, the `test`/`enhances` dependency groups, and
-    /// every `[optional-dependencies.*]` extra -- unlike
-    /// [`Rproj::git_dependencies`], which also sweeps arbitrary
+    /// The git/GitHub/url/local-sourced dependencies that end up in a
+    /// DESCRIPTION dependency field (`Depends`/`Imports`/`LinkingTo`/
+    /// `Suggests`/`Enhances`), for [`Rproj::to_description`]'s `Remotes:`
+    /// field. Scoped the same way as [`Rproj::to_dep_version_specs`] --
+    /// `[dependencies]`, `[linking-dependencies]`, the `test`/`enhances`
+    /// dependency groups, and every `[optional-dependencies.*]` extra --
+    /// unlike [`Rproj::git_dependencies`], which also sweeps arbitrary
     /// `Config/Needs/*` groups that already carry their own pak-ref entries
-    /// and must not duplicate into `Remotes:`.
+    /// and must not duplicate into `Remotes:`. Unlike `git_dependencies`, a
+    /// `path` here is kept exactly as stored in the manifest (relative to
+    /// its directory), since `DESCRIPTION` is written into that same
+    /// directory, so the relative path is exactly as usable from there.
     fn description_git_dependencies(&self) -> Vec<(String, DepTable)> {
         let mut out = vec![];
         let tables = std::iter::once(&self.dependencies)
@@ -1069,7 +1086,7 @@ impl Rproj {
         for table in tables {
             for (name, dep) in table.iter() {
                 if let Dependency::Detailed(t) = dep {
-                    if t.git.is_some() || t.url.is_some() {
+                    if t.git.is_some() || t.url.is_some() || t.path.is_some() {
                         out.push((name.clone(), (**t).clone()));
                     }
                 }
@@ -1670,16 +1687,16 @@ fn format_dep_entry(dep: &DepVersionSpec) -> (String, bool) {
 
 /// Format one dependency-group entry as a `Config/Needs/*` entry. An entry
 /// that kept its reference verbatim (see [`Rproj::merge_config_needs`]) is
-/// written back as it came in; a `git`-sourced entry goes through
-/// [`dep_table_to_pak_ref`], which rebuilds a `pak` reference from its
-/// `DepTable` fields; anything else goes through [`format_dep_entry`], so it
-/// looks like a DESCRIPTION dependency entry.
+/// written back as it came in; a `git`/`url`/`path`-sourced entry goes
+/// through [`dep_table_to_pak_ref`], which rebuilds a `pak` reference from
+/// its `DepTable` fields; anything else goes through [`format_dep_entry`],
+/// so it looks like a DESCRIPTION dependency entry.
 fn format_group_entry(name: &str, dep: &Dependency) -> Result<(String, bool), Box<dyn Error>> {
     if let Dependency::Detailed(table) = dep {
         if let Some(ref_) = &table.ref_ {
             return Ok((ref_.clone(), false));
         }
-        if table.git.is_some() || table.url.is_some() {
+        if table.git.is_some() || table.url.is_some() || table.path.is_some() {
             return Ok((dep_table_to_pak_ref(name, table), false));
         }
     }
@@ -1688,9 +1705,10 @@ fn format_group_entry(name: &str, dep: &Dependency) -> Result<(String, bool), Bo
 }
 
 /// The inverse of [`crate::proj::dep_table_from_remote`]/
-/// [`crate::proj::dep_table_from_url`]: rebuild a `pak` package reference
-/// from a `git`- or `url`-sourced [`DepTable`], for writing a
-/// `Remotes:`/`Config/Needs/*` entry back to `DESCRIPTION`.
+/// [`crate::proj::dep_table_from_url`]/[`crate::proj::dep_table_from_local`]:
+/// rebuild a `pak` package reference from a `git`-, `url`- or `path`-sourced
+/// [`DepTable`], for writing a `Remotes:`/`Config/Needs/*` entry back to
+/// `DESCRIPTION`.
 ///
 /// If `table.ref_` is set (the normal case: it is filled in by
 /// [`crate::proj::dep_table_from_remote`] with the original reference text),
@@ -1716,6 +1734,14 @@ fn dep_table_to_pak_ref(name: &str, table: &DepTable) -> String {
     if let Some(url) = &table.url {
         let entry = format!("url::{}", url);
         return format!("{}={}", name, entry);
+    }
+
+    if let Some(path) = &table.path {
+        let entry = format!("local::{}", path);
+        return match pak_ref_name(&entry) {
+            Some(implied) if implied == name => entry,
+            _ => format!("{}={}", name, entry),
+        };
     }
 
     let git_url = table.git.as_deref().unwrap_or_default();

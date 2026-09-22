@@ -631,8 +631,10 @@ impl AddSpec {
 
 /// Parse one `rig proj add` argument. A git/GitHub reference is fetched here,
 /// so that its real package name and pinned commit are known before anything
-/// is written to `rproj.toml` -- see [`fetch_and_read_git_package`].
-fn parse_add_arg(spec: &str) -> Result<AddSpec, Box<dyn Error>> {
+/// is written to `rproj.toml` -- see [`fetch_and_read_git_package`]. `root`
+/// is the project's own directory, against which a local path is made
+/// relative -- see [`relativize_to_root`].
+fn parse_add_arg(spec: &str, root: &Path) -> Result<AddSpec, Box<dyn Error>> {
     match crate::pkgsource::parse_pkg_source(spec)? {
         crate::pkgsource::PkgSource::Cran => {
             let (name, version) = parse_add_spec(spec)?;
@@ -660,16 +662,20 @@ fn parse_add_arg(spec: &str) -> Result<AddSpec, Box<dyn Error>> {
             let name = u.name_override.unwrap_or(pkg.name);
             Ok(AddSpec::Remote(name, Box::new(table)))
         }
-        // A project's dependencies have to mean the same thing on another
-        // machine, and a path on this one does not, so `rproj.toml` has no
-        // local sources yet.
+        // A local path is resolved against `root` and stored relative to it
+        // (see `relativize_to_root`), so the dependency still means the same
+        // thing after the project is moved or checked out elsewhere, as long
+        // as the local package stays at the same relative location.
         crate::pkgsource::PkgSource::Local(l) => {
-            bail!(
-                "`{}` is a local path. Local packages cannot be project \
-                 dependencies, use `rig pkg install {}` to install one.",
-                l.path,
-                l.path
-            );
+            let resolved = crate::pkgsource::local::resolve_local_path(&l.path)?;
+            let (pkg, _source, _remotes) = read_local_package(&resolved)?;
+            let name = l.name_override.unwrap_or(pkg.name);
+            let relative = relativize_to_root(root, &resolved)?;
+            let table = DepTable {
+                path: Some(relative),
+                ..Default::default()
+            };
+            Ok(AddSpec::Remote(name, Box::new(table)))
         }
     }
 }
@@ -707,7 +713,7 @@ fn sc_proj_add(
     // in the last one does not leave the earlier ones added.
     let mut specs: Vec<AddSpec> = Vec::new();
     for spec in args.get_many::<String>("package").unwrap_or_default() {
-        specs.push(parse_add_arg(spec).map_err(|err| {
+        specs.push(parse_add_arg(spec, &root).map_err(|err| {
             OUTPUT.error(&err.to_string());
             error!("{}", err);
             err
@@ -748,6 +754,7 @@ fn sc_proj_add(
                     .git
                     .as_deref()
                     .or(table.url.as_deref())
+                    .or(table.path.as_deref())
                     .unwrap_or_default();
                 format!("Added {} ({}) to {}", name, source, RPROJ_MANIFEST_FILE)
             }
@@ -1033,7 +1040,7 @@ fn proj_read_manifest_deps_with_remotes(
 
     let deps = manifest.to_dep_version_specs(dev)?;
     let version = RPackageVersion::from_str(&manifest.project.version)?;
-    let git_deps = manifest.git_dependencies();
+    let git_deps = manifest.git_dependencies(root);
     Ok((manifest.project.name, version, deps, git_deps))
 }
 
@@ -1095,7 +1102,7 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
             let deps = manifest.to_dep_version_specs(true)?;
             let group_roots = manifest.main_and_group_roots()?;
             let extra_roots = manifest.optional_dependency_roots();
-            let git_deps = manifest.git_dependencies();
+            let git_deps = manifest.git_dependencies(root);
             // Same name/base-package restriction as a workspace member (see
             // below): it would be nonsense for the project's own name to
             // shadow R or a base package in the registry.
@@ -1145,7 +1152,7 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
         let mut member = proj_read_manifest(dir)?;
         member.inherit_workspace_deps(ws, &dir.join(RPROJ_MANIFEST_FILE))?;
         let name = member.project.name.clone();
-        git_deps.extend(member.git_dependencies());
+        git_deps.extend(member.git_dependencies(dir));
 
         // The solver equates R and the base packages with the R version
         // itself, so a member of one of those names would be resolved against
@@ -1929,6 +1936,41 @@ pub(crate) fn dep_table_from_local(path: &Path) -> DepTable {
         path: Some(path.display().to_string()),
         ..Default::default()
     }
+}
+
+/// `target`, as a path relative to `root`: for `rig proj add <path>`, so the
+/// `path` written to `rproj.toml` stays correct if the project is moved or
+/// checked out elsewhere with the local package at the same relative
+/// location -- unlike [`dep_table_from_local`]'s always-absolute path, which
+/// is fine for `rig pkg install`'s one-shot, never-persisted use but wrong
+/// for a manifest meant to be committed. Both `root` and `target` are
+/// canonicalized first, so the result is exact regardless of `..`/`.` or
+/// symlinks in either. [`crate::rproj::Rproj::git_dependencies`] is the
+/// inverse: it resolves this relative path back to absolute against the
+/// project root before anything reads it.
+pub(crate) fn relativize_to_root(root: &Path, target: &Path) -> Result<String, Box<dyn Error>> {
+    let root = root.canonicalize()?;
+    let target = target.canonicalize()?;
+
+    let root_components: Vec<_> = root.components().collect();
+    let target_components: Vec<_> = target.components().collect();
+    let common = root_components
+        .iter()
+        .zip(target_components.iter())
+        .take_while(|(a, b)| a == b)
+        .count();
+
+    let mut result = PathBuf::new();
+    for _ in common..root_components.len() {
+        result.push("..");
+    }
+    for component in &target_components[common..] {
+        result.push(component);
+    }
+    if result.as_os_str().is_empty() {
+        result.push(".");
+    }
+    Ok(result.display().to_string())
 }
 
 /// Read a local package's `DESCRIPTION`, the local counterpart of
