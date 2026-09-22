@@ -2692,9 +2692,12 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     }
 
     // Every requested target was already satisfied: no metadata to refresh,
-    // no solving to do, and the lock file would come out byte-identical, so
-    // leave it untouched rather than rewriting the same bytes.
-    if to_solve.is_empty() {
+    // no solving to do. Still only a no-op if the existing lock doesn't also
+    // carry stray targets outside this request (e.g. a previous `--r-version
+    // 4.3,4.4` narrowed to `--r-version 4.3`) -- those have to be dropped, so
+    // the file gets rewritten even though nothing needed solving.
+    let existing_count = existing_lock.as_ref().map_or(0, |l| l.targets.len());
+    if to_solve.is_empty() && reused.len() == existing_count {
         OUTPUT.success("rproj.lock is already up to date");
         info!("rproj.lock is already up to date, nothing to solve");
         return Ok(());
@@ -2707,38 +2710,46 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
             solve_targets.len()
         ));
     }
-
-    // Refresh the shared package metadata cache once, sequentially, before
-    // fanning the solves out to threads below. Each solve's
-    // `DbSourcePackageLoader::new()` would otherwise do this too, but
-    // finding it already fresh, it becomes a cheap read instead of every
-    // thread racing to update the same on-disk cache at once.
-    ensure_allpackages_fresh()?;
-
-    for name in &no_binaries {
-        OUTPUT.warn(&format!(
-            "No binary packages for {}, using source packages",
-            name
+    if existing_count > reused.len() + to_solve.len() {
+        OUTPUT.info(&format!(
+            "Dropping {} target(s) no longer requested",
+            existing_count - reused.len() - to_solve.len()
         ));
     }
 
-    if opts.prefer_binary.is_some() && source_only {
-        OUTPUT.warn("There are no binary packages to prefer, ignoring --prefer-binary");
-        info!("Ignoring --prefer-binary: solving for source packages only");
-    }
-
-    // The solves below run in parallel, so each one printing its own status
-    // lines would give N interleaved copies of them. Report the phases once,
-    // for the whole batch, instead (`report_status: false` below).
     let multi = to_solve.len() > 1;
-    OUTPUT.status("Downloading binary package metadata");
-    if multi {
-        OUTPUT.status(&format!(
-            "Solving dependencies for {} targets",
-            to_solve.len()
-        ));
-    } else {
-        OUTPUT.status("Solving dependencies");
+    if !to_solve.is_empty() {
+        // Refresh the shared package metadata cache once, sequentially, before
+        // fanning the solves out to threads below. Each solve's
+        // `DbSourcePackageLoader::new()` would otherwise do this too, but
+        // finding it already fresh, it becomes a cheap read instead of every
+        // thread racing to update the same on-disk cache at once.
+        ensure_allpackages_fresh()?;
+
+        for name in &no_binaries {
+            OUTPUT.warn(&format!(
+                "No binary packages for {}, using source packages",
+                name
+            ));
+        }
+
+        if opts.prefer_binary.is_some() && source_only {
+            OUTPUT.warn("There are no binary packages to prefer, ignoring --prefer-binary");
+            info!("Ignoring --prefer-binary: solving for source packages only");
+        }
+
+        // The solves below run in parallel, so each one printing its own status
+        // lines would give N interleaved copies of them. Report the phases once,
+        // for the whole batch, instead (`report_status: false` below).
+        OUTPUT.status("Downloading binary package metadata");
+        if multi {
+            OUTPUT.status(&format!(
+                "Solving dependencies for {} targets",
+                to_solve.len()
+            ));
+        } else {
+            OUTPUT.status("Solving dependencies");
+        }
     }
 
     // A single solver over the full CRAN version history: it picks the
@@ -2815,42 +2826,44 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         targets.push(target);
     }
 
-    if multi {
-        OUTPUT.success(&format!(
-            "Solved dependencies for {} targets",
-            summaries.len()
-        ));
-    } else {
-        OUTPUT.success("Solved dependencies");
-    }
+    if !to_solve.is_empty() {
+        if multi {
+            OUTPUT.success(&format!(
+                "Solved dependencies for {} targets",
+                summaries.len()
+            ));
+        } else {
+            OUTPUT.success("Solved dependencies");
+        }
 
-    // The targets mostly resolve to the same packages at the same versions, so
-    // one merged table with the differences called out is both shorter and
-    // easier to compare than one full table per target. The targets are the
-    // cross product of the R versions and the platforms, so listing the two
-    // separately says the same thing in fewer, shorter lines.
-    let header = if multi {
-        let rvers = dedup_in_order(to_solve.iter().map(|st| st.rver.as_str()));
-        let platforms = dedup_in_order(to_solve.iter().map(|st| st.platform_key.as_str()));
-        Some(format!(
-            "R {}: {}\n{}: {}",
-            if rvers.len() > 1 {
-                "versions"
-            } else {
-                "version"
-            },
-            rvers.join(", "),
-            if platforms.len() > 1 {
-                "Platforms"
-            } else {
-                "Platform"
-            },
-            platforms.join(", ")
-        ))
-    } else {
-        None
-    };
-    print_solution_table(&summaries, header.as_deref());
+        // The targets mostly resolve to the same packages at the same versions, so
+        // one merged table with the differences called out is both shorter and
+        // easier to compare than one full table per target. The targets are the
+        // cross product of the R versions and the platforms, so listing the two
+        // separately says the same thing in fewer, shorter lines.
+        let header = if multi {
+            let rvers = dedup_in_order(to_solve.iter().map(|st| st.rver.as_str()));
+            let platforms = dedup_in_order(to_solve.iter().map(|st| st.platform_key.as_str()));
+            Some(format!(
+                "R {}: {}\n{}: {}",
+                if rvers.len() > 1 {
+                    "versions"
+                } else {
+                    "version"
+                },
+                rvers.join(", "),
+                if platforms.len() > 1 {
+                    "Platforms"
+                } else {
+                    "Platform"
+                },
+                platforms.join(", ")
+            ))
+        } else {
+            None
+        };
+        print_solution_table(&summaries, header.as_deref());
+    }
 
     // Deterministic diffs: always the same order regardless of the order
     // --r-version/--platform were given in.
