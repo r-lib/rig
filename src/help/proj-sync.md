@@ -51,8 +51,8 @@ touching the R installation, the project library or `.rvenv`.
 If the project's `type` is `"package"`, [`rig proj lock`](#rig-proj-lock) records the project
 itself in `rproj.lock`, and sync installs it into the project library from
 the project directory, the same way it installs a `path` dependency. Sync
-(re)writes `DESCRIPTION` at the project root from `rproj.toml` first, the
-same as [`rig proj export --force`](#rig-proj-export) would.
+updates an automatically generated `DESCRIPTION` at the project root from
+`rproj.toml` first, same as [`rig proj export`](#rig-proj-export) would.
 
 Pass `--no-install-project` to leave it out. It still gets installed if
 another package in the wanted set actually depends on it by name.
