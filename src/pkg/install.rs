@@ -714,6 +714,7 @@ mod tests {
             target: format!("bin/{}_{}.tgz", name, version),
             groups: vec![],
             extra_groups: vec![],
+            is_project: false,
         }
     }
 

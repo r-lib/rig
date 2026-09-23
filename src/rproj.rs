@@ -2236,6 +2236,14 @@ pub struct RprojLockPackage {
     /// before this field existed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub extra_groups: Vec<String>,
+    /// Whether this is the project's own package (`type = "package"` in
+    /// `rproj.toml`), installed from the project root itself -- see
+    /// `ProjectSolve::self_alias` in `src/proj.rs` -- rather than downloaded.
+    /// Lets `rig proj sync --no-install-project` find it, and tells it apart
+    /// from an ordinary same-named `path` dependency. Absent (false) in a
+    /// lockfile written before this existed.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub is_project: bool,
 }
 
 impl RprojLockTarget {
@@ -2338,6 +2346,7 @@ impl RprojLockTarget {
                     target,
                     groups: vec![],
                     extra_groups: vec![],
+                    is_project: false,
                 });
                 continue;
             }
@@ -2411,6 +2420,7 @@ impl RprojLockTarget {
                 target,
                 groups: vec![],
                 extra_groups: vec![],
+                is_project: false,
             });
         }
 
@@ -2537,6 +2547,7 @@ mod tests {
             target: "cli.tgz".to_string(),
             groups: vec!["main".to_string()],
             extra_groups: vec![],
+            is_project: false,
         }
     }
 

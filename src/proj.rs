@@ -45,7 +45,7 @@ use crate::rvenv::{
     ensure_rvenv_files, existing_targets, find_project_root, find_workspace_root,
     link_library_compat_symlink, project_library, project_library_in_tree, read_rvenv_cfg,
     rvenv_init, rvenv_sync, rvenv_sync_needed, workspace_members, write_sync_stamp, RvenvCfg,
-    RPROJ_LOCK_FILE, RVENV_CFG_FILE,
+    RPROJ_LOCK_FILE, RVENV_CFG_FILE, RVENV_DIR,
 };
 use crate::solver::*;
 use crate::textfmt::{dcf_field_to_text, reflow};
@@ -594,6 +594,20 @@ fn sc_proj_export(
     let root = find_project_root(&cwd).unwrap_or(cwd);
     let manifest = proj_read_manifest(&root)?;
 
+    write_description_to(path, &manifest)?;
+
+    let msg = format!("Exported {} to {}", RPROJ_MANIFEST_FILE, output);
+    OUTPUT.success(&msg);
+    info!("{}", msg);
+    Ok(())
+}
+
+/// Render `manifest.to_description()` and write it to `path`, warning about
+/// any dropped upper version bound the same way either caller needs it: the
+/// explicit `rig proj export`, and `rig proj sync`'s automatic (re)write of
+/// the project's own `DESCRIPTION` before installing it, see
+/// [`ProjSyncOptions::install_project`].
+fn write_description_to(path: &Path, manifest: &Rproj) -> Result<(), Box<dyn Error>> {
     let (description, dropped) = manifest.to_description()?;
     fs::write(path, description)?;
 
@@ -604,10 +618,6 @@ fn sc_proj_export(
             dropped.join(", ")
         ));
     }
-
-    let msg = format!("Exported {} to {}", RPROJ_MANIFEST_FILE, output);
-    OUTPUT.success(&msg);
-    info!("{}", msg);
     Ok(())
 }
 
@@ -1717,6 +1727,77 @@ fn lock_target_git_sources_fresh(
     true
 }
 
+/// Whether `target`'s own recorded project-package entry (if any) still
+/// matches the project's current name, version and content digest -- the
+/// project-specific half of "is this lock target still fresh", alongside
+/// [`lock_target_satisfies`]/[`lock_target_git_sources_fresh`]'s CRAN/git
+/// checks. `self_alias: None` (not a package project, or a workspace, see
+/// `ProjectSolve::self_alias`) trivially always passes: there is no project
+/// entry to go stale. `self_sha` is the project's current content digest
+/// (`compute_dir_stat_digest`), recomputed once per `rig proj lock` run the
+/// same way `git_sources` resolves a real `path` dependency's digest fresh
+/// every time.
+fn project_entry_fresh(
+    target: &RprojLockTarget,
+    self_alias: Option<&SolveRoot>,
+    self_sha: Option<&String>,
+) -> bool {
+    let Some(alias) = self_alias else {
+        return true;
+    };
+    let Some(pkg) = target.packages.iter().find(|p| p.is_project) else {
+        return false;
+    };
+    pkg.package == alias.name
+        && pkg.version == alias.version.to_string()
+        && pkg.metadata.get(REMOTE_SHA_FIELD) == self_sha
+}
+
+/// The [`RprojLockPackage`] entry for the project's own package -- `alias` is
+/// `solve.self_alias`, `root_abs` the project's canonicalized root, `self_sha`
+/// its content digest (`compute_dir_stat_digest`, empty/`None` if it could not
+/// be computed). Mirrors the "local" `RemoteType` case
+/// [`RprojLockTarget::from_solution`] already writes for a real `path`
+/// dependency, so [`lockfile_package_info`]/[`fetch_git_lockfile_packages`]
+/// handle it with no changes: `sources`/`target` are empty, since the
+/// installer reads `RemoteUrl` directly instead of downloading or caching
+/// anything.
+fn project_lock_package(
+    alias: &SolveRoot,
+    root_abs: &Path,
+    self_sha: Option<&str>,
+) -> RprojLockPackage {
+    let mut metadata: HashMap<String, String> = HashMap::new();
+    metadata.insert(REMOTE_TYPE_FIELD.to_string(), "local".to_string());
+    metadata.insert(
+        crate::install::REMOTE_URL_FIELD.to_string(),
+        root_abs.display().to_string(),
+    );
+    if let Some(sha) = self_sha.filter(|s| !s.is_empty()) {
+        metadata.insert(REMOTE_SHA_FIELD.to_string(), sha.to_string());
+    }
+    let dependencies: Vec<String> = alias
+        .deps
+        .dependencies
+        .iter()
+        .map(|d| d.name.clone())
+        .filter(|n| n != "R" && !BASE_PKGS.contains(&n.as_str()))
+        .collect();
+    RprojLockPackage {
+        package: alias.name.clone(),
+        version: alias.version.to_string(),
+        binary: false,
+        platform: "source".to_string(),
+        dependencies,
+        metadata,
+        sources: vec![],
+        target: String::new(),
+        groups: vec!["main".to_string()],
+        extra_groups: vec![],
+        is_project: true,
+    }
+}
+
 /// Whether an already-parsed existing `lock` has a target for `(rver,
 /// platform_key)` that still satisfies the manifest's current direct
 /// dependencies (`direct_deps`) and git sources (`git_sources`), without
@@ -1998,7 +2079,7 @@ pub(crate) fn read_local_package(
             String::new()
         })
     } else if !files.binary && path.is_dir() {
-        compute_dir_stat_digest(path).unwrap_or_else(|err| {
+        compute_dir_stat_digest(path, false).unwrap_or_else(|err| {
             debug!("Not caching {}, cannot stat it: {}", path.display(), err);
             String::new()
         })
@@ -2036,11 +2117,23 @@ pub(crate) fn read_local_package(
 /// file stat rather than content for a directory source, for the same
 /// reason: a stat is a fixed-cost syscall per file, while hashing content
 /// scales with the package's total payload size.
-fn compute_dir_stat_digest(path: &Path) -> std::io::Result<String> {
+///
+/// `skip_description` also leaves out `DESCRIPTION` at the directory's root:
+/// pass `true` only when hashing a package project's own root for its
+/// `is_project` lock entry (see `project_lock_package`), never for an
+/// ordinary `path` dependency. There, `DESCRIPTION` is the dependency's real,
+/// user-maintained metadata and has to be hashed like any other file -- an
+/// added `Imports:` entry must invalidate the digest. The project's own
+/// `DESCRIPTION`, in contrast, is rig's own generated mirror of `rproj.toml`
+/// (see `rig proj sync`'s `write_description_to` call), rewritten on every
+/// sync -- hashing it would make `rig proj lock` see a "changed" project
+/// after every sync that touched nothing else, defeating the sticky-lock
+/// behavior the same way a hashed `.rvenv`/`rproj.lock` would.
+fn compute_dir_stat_digest(path: &Path, skip_description: bool) -> std::io::Result<String> {
     let ignore = read_rbuildignore(path);
 
     let mut entries = Vec::new();
-    collect_dir_stats(path, path, &ignore, &mut entries)?;
+    collect_dir_stats(path, path, &ignore, skip_description, &mut entries)?;
     entries.sort();
 
     let mut buf = String::new();
@@ -2076,10 +2169,22 @@ fn read_rbuildignore(dir: &Path) -> Vec<regex::Regex> {
 /// `mtime` is the file's modification time as whole nanoseconds since the
 /// Unix epoch, textually, so it sorts and compares like any other field
 /// here without depending on a particular `SystemTime` debug format.
+///
+/// Also always skips `.rvenv` (rig's own machine-specific environment) and
+/// `rproj.lock` at the directory's root, regardless of `.Rbuildignore`:
+/// hashing either would make a `rig proj lock`/`sync` run on a package
+/// project change its own digest just by having run, since both are rewritten
+/// by rig itself and neither is part of the package's installable content.
+/// This matters for a `path` dependency in general, but is guaranteed to bite
+/// when `dir` is the project's own root, since `.rvenv`/`rproj.lock` always
+/// live right there (see `ProjectSolve::self_alias`). `skip_description`
+/// additionally leaves out a root-level `DESCRIPTION` -- see
+/// [`compute_dir_stat_digest`].
 fn collect_dir_stats(
     root: &Path,
     dir: &Path,
     ignore: &[regex::Regex],
+    skip_description: bool,
     out: &mut Vec<(String, u64, String)>,
 ) -> std::io::Result<()> {
     for entry in fs::read_dir(dir)? {
@@ -2088,13 +2193,22 @@ fn collect_dir_stats(
         let file_type = entry.file_type()?;
 
         if file_type.is_dir() {
-            if path.file_name().is_some_and(|n| n == ".git") {
+            if path.file_name().is_some_and(|n| n == ".git")
+                || (dir == root && path.file_name().is_some_and(|n| n == RVENV_DIR))
+            {
                 continue;
             }
-            collect_dir_stats(root, &path, ignore, out)?;
+            collect_dir_stats(root, &path, ignore, skip_description, out)?;
             continue;
         }
         if !file_type.is_file() {
+            continue;
+        }
+
+        if dir == root
+            && ((path.file_name().is_some_and(|n| n == RPROJ_LOCK_FILE))
+                || (skip_description && path.file_name().is_some_and(|n| n == "DESCRIPTION")))
+        {
             continue;
         }
 
@@ -2899,6 +3013,25 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     };
     let git_sources = resolve_git_sources(&solve.git_deps, &known_shas, &known_releases)?;
 
+    // For a package project (see `solve.self_alias`): the project's own
+    // content digest, resolved once up front the same way `git_sources` is
+    // above, and reused both to decide whether an existing target's own
+    // package entry is still fresh (`project_fresh` below) and to build that
+    // entry when a target does need solving (further down). Recomputed on
+    // every `rig proj lock`, unconditionally, the same as a real `path`
+    // dependency's digest -- so editing the project's own source, or
+    // renaming/re-versioning it, forces a fresh lock the same way a changed
+    // dependency does.
+    let root_abs = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    let self_sha = solve
+        .self_alias
+        .as_ref()
+        .map(|_| compute_dir_stat_digest(&root_abs, true).unwrap_or_default());
+
+    let project_fresh = |target: &RprojLockTarget| {
+        project_entry_fresh(target, solve.self_alias.as_ref(), self_sha.as_ref())
+    };
+
     // Every target the existing lock already satisfies, reused byte-for-byte
     // instead of solved again -- the "a lockfile is sticky until you ask to
     // upgrade" behavior `Cargo.lock`/`uv.lock` have, now covering CRAN/PPM
@@ -2908,6 +3041,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     for st in &solve_targets {
         let existing = existing_lock.as_ref().and_then(|lock| {
             existing_lock_satisfies(lock, &st.rver, &st.platform_key, &direct_deps, &git_sources)
+                .filter(project_fresh)
         });
         match existing {
             Some(target) => reused.push(target),
@@ -3032,6 +3166,17 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
                 pkg.extra_groups = names.clone();
             }
         }
+
+        // The project's own package, for a package project (`solve.self_alias`):
+        // built directly rather than read off `solution`, since nothing may
+        // actually depend on the project by name -- `self_alias` only makes it
+        // *available* to the solver, it doesn't force it into the graph.
+        if let Some(alias) = solve.self_alias.as_ref() {
+            target
+                .packages
+                .push(project_lock_package(alias, &root_abs, self_sha.as_deref()));
+        }
+
         target.direct_dependencies = direct_deps
             .iter()
             .map(|d| LockDirectDependency {
@@ -3739,6 +3884,13 @@ pub(crate) struct ProjSyncOptions {
     /// Install the R version the lock file names, if it is missing
     /// (`--no-install-r` turns this off).
     pub install_r: bool,
+    /// Install the project's own package (`type = "package"` in
+    /// `rproj.toml`), i.e. the `rproj.lock` entry with
+    /// [`RprojLockPackage::is_project`] set (`--no-install-project` turns
+    /// this off). Even then, the entry stays in the wanted set -- and so
+    /// still gets installed -- if some other wanted package actually depends
+    /// on it by name; see [`sync_wanted_packages`].
+    pub install_project: bool,
     /// How many packages to install at the same time (`--max-concurrent`).
     /// `None` means fall back to `get_concurrent_installs()` (the
     /// `concurrent-installs` config entry / `RIG_CONCURRENT_INSTALLS`, or the
@@ -3773,6 +3925,7 @@ impl Default for ProjSyncOptions {
             extras: vec![],
             all_extras: false,
             install_r: true,
+            install_project: true,
             max_concurrent: None,
             r_version: None,
             platform: None,
@@ -3807,6 +3960,7 @@ fn sc_proj_sync(
             .unwrap_or_default(),
         all_extras: args.get_flag("all-extras"),
         install_r: !args.get_flag("no-install-r"),
+        install_project: !args.get_flag("no-install-project"),
         max_concurrent: args.get_one::<usize>("max-concurrent").copied(),
         r_version: args.get_one::<String>("r-version").cloned(),
         platform: args.get_one::<String>("platform").cloned(),
@@ -3846,13 +4000,32 @@ fn sync_wanted_packages(
     } else {
         opts.extras.iter().cloned().collect()
     };
-    packages
+    let wanted: Vec<RprojLockPackage> = packages
         .iter()
         .filter(|p| {
             p.groups.iter().any(|g| wanted_groups.contains(g))
                 || p.extra_groups.iter().any(|g| wanted_extras.contains(g))
         })
         .cloned()
+        .collect();
+
+    // `--no-install-project` (`opts.install_project == false`) drops the
+    // project's own package from the wanted set -- but only if nothing else
+    // still wanted actually needs it. `self_alias` exists precisely so
+    // another package (or the project's own optional dependency graph) can
+    // depend on the project by name, and installing it *as a dependency* is
+    // not the same thing the flag opts out of.
+    if opts.install_project {
+        return wanted;
+    }
+    let still_needed: HashSet<String> = wanted
+        .iter()
+        .filter(|p| !p.is_project)
+        .flat_map(|p| p.dependencies.iter().cloned())
+        .collect();
+    wanted
+        .into_iter()
+        .filter(|p| !p.is_project || still_needed.contains(&p.package))
         .collect()
 }
 
@@ -3910,6 +4083,22 @@ pub(crate) fn proj_sync(
 
     let wanted: Vec<RprojLockPackage> = sync_wanted_packages(&target.packages, opts);
     let wanted: &[RprojLockPackage] = &wanted;
+
+    // The project's own package needs a real `DESCRIPTION` on disk: rig's
+    // local-path installer always points `R CMD INSTALL` at a directory
+    // containing one (see `src/pkgsource/local.rs`), but `rproj.toml` is
+    // the only thing rig otherwise keeps in sync automatically. So, right
+    // before installing it, (re)write `DESCRIPTION` from the current
+    // manifest -- as if `rig proj export --force` had just run -- so it
+    // never drifts out of sync with `rproj.toml` between syncs.
+    if wanted.iter().any(|p| p.is_project) {
+        if opts.dry_run {
+            OUTPUT.info(&format!("Would write {}/DESCRIPTION", root.display()));
+        } else {
+            let manifest = proj_read_manifest(root)?;
+            write_description_to(&root.join("DESCRIPTION"), &manifest)?;
+        }
+    }
 
     // The project library itself is created below, for a project `rig proj
     // init` has already set up (there is an `rproj.toml`) -- but nothing
@@ -4723,6 +4912,7 @@ mod tests {
             target: format!("bin/{}_1.0.0.tgz", name),
             groups: vec![],
             extra_groups: vec![],
+            is_project: false,
         }
     }
 
@@ -5362,6 +5552,143 @@ mod tests {
         assert!(solve.self_alias.is_none());
     }
 
+    /// A [`SolveRoot`] fixture for [`project_lock_package`]/
+    /// [`project_entry_fresh`] tests: same shape `self_alias` is built with in
+    /// [`proj_read_solve_roots`].
+    fn self_alias(name: &str, version: &str, deps: &[&str]) -> SolveRoot {
+        SolveRoot {
+            name: name.to_string(),
+            version: RPackageVersion::from_str(version).unwrap(),
+            deps: PackageDependencies {
+                dependencies: deps.iter().map(|d| direct_dep(d, "*")).collect(),
+            },
+        }
+    }
+
+    #[test]
+    fn project_lock_package_records_name_version_path_and_sha() {
+        let alias = self_alias("mypkg", "1.2.0", &["cli", "rlang"]);
+        let root = Path::new("/tmp/mypkg");
+        let pkg = project_lock_package(&alias, root, Some("abc123"));
+
+        assert_eq!(pkg.package, "mypkg");
+        assert_eq!(pkg.version, "1.2.0");
+        assert!(pkg.is_project);
+        assert_eq!(names(std::slice::from_ref(&pkg)), vec!["mypkg"]);
+        assert_eq!(
+            pkg.dependencies.iter().collect::<HashSet<_>>(),
+            HashSet::from([&"cli".to_string(), &"rlang".to_string()])
+        );
+        assert_eq!(pkg.groups, vec!["main".to_string()]);
+        assert!(pkg.extra_groups.is_empty());
+        assert!(pkg.sources.is_empty());
+        assert!(pkg.target.is_empty());
+        assert_eq!(
+            pkg.metadata.get(REMOTE_TYPE_FIELD),
+            Some(&"local".to_string())
+        );
+        assert_eq!(
+            pkg.metadata.get(crate::install::REMOTE_URL_FIELD),
+            Some(&root.display().to_string())
+        );
+        assert_eq!(
+            pkg.metadata.get(crate::install::REMOTE_SHA_FIELD),
+            Some(&"abc123".to_string())
+        );
+    }
+
+    #[test]
+    fn project_lock_package_drops_r_and_base_packages_from_dependencies() {
+        let alias = self_alias("mypkg", "1.0.0", &["R", "methods", "cli"]);
+        let pkg = project_lock_package(&alias, Path::new("/tmp/mypkg"), None);
+        assert_eq!(pkg.dependencies, vec!["cli".to_string()]);
+        assert!(!pkg.metadata.contains_key(crate::install::REMOTE_SHA_FIELD));
+    }
+
+    #[test]
+    fn project_entry_fresh_with_no_self_alias_always_passes() {
+        let t = target("4.6.1", "testos");
+        assert!(project_entry_fresh(&t, None, None));
+    }
+
+    #[test]
+    fn project_entry_fresh_requires_a_project_entry_to_exist() {
+        let alias = self_alias("mypkg", "1.0.0", &[]);
+        let t = target("4.6.1", "testos");
+        assert!(!project_entry_fresh(
+            &t,
+            Some(&alias),
+            Some(&"abc".to_string())
+        ));
+    }
+
+    #[test]
+    fn project_entry_fresh_detects_a_changed_digest() {
+        let alias = self_alias("mypkg", "1.0.0", &[]);
+        let mut t = target("4.6.1", "testos");
+        t.packages = vec![project_lock_package(
+            &alias,
+            Path::new("/tmp/mypkg"),
+            Some("old-sha"),
+        )];
+        assert!(!project_entry_fresh(
+            &t,
+            Some(&alias),
+            Some(&"new-sha".to_string())
+        ));
+        assert!(project_entry_fresh(
+            &t,
+            Some(&alias),
+            Some(&"old-sha".to_string())
+        ));
+    }
+
+    #[test]
+    fn project_entry_fresh_detects_a_version_bump() {
+        let alias = self_alias("mypkg", "1.0.0", &[]);
+        let mut t = target("4.6.1", "testos");
+        t.packages = vec![project_lock_package(
+            &alias,
+            Path::new("/tmp/mypkg"),
+            Some("sha"),
+        )];
+        let bumped = self_alias("mypkg", "2.0.0", &[]);
+        assert!(!project_entry_fresh(
+            &t,
+            Some(&bumped),
+            Some(&"sha".to_string())
+        ));
+    }
+
+    #[test]
+    fn sync_wanted_packages_no_install_project_drops_the_project_package() {
+        let mut project = locked_in("mypkg", &["main"], &[]);
+        project.is_project = true;
+        let packages = vec![locked_in("cli", &["main"], &[]), project];
+        let opts = ProjSyncOptions {
+            install_project: false,
+            ..sync_opts()
+        };
+        assert_eq!(names(&sync_wanted_packages(&packages, &opts)), vec!["cli"]);
+    }
+
+    #[test]
+    fn sync_wanted_packages_no_install_project_keeps_it_if_still_a_dependency() {
+        let mut project = locked_in("mypkg", &["main"], &[]);
+        project.is_project = true;
+        let mut dependent = locked_in("otherpkg", &["main"], &[]);
+        dependent.dependencies = vec!["mypkg".to_string()];
+        let packages = vec![dependent, project];
+        let opts = ProjSyncOptions {
+            install_project: false,
+            ..sync_opts()
+        };
+        assert_eq!(
+            names(&sync_wanted_packages(&packages, &opts)),
+            vec!["mypkg", "otherpkg"]
+        );
+    }
+
     #[test]
     fn a_plain_package_project_gets_a_self_alias() {
         let dir = tempfile::tempdir().unwrap();
@@ -5456,7 +5783,10 @@ mod tests {
 
         let (_pkg, source, _remotes) = read_local_package(&pkg_dir).unwrap();
         assert_ne!(source.sha, "");
-        assert_eq!(source.sha, compute_dir_stat_digest(&pkg_dir).unwrap());
+        assert_eq!(
+            source.sha,
+            compute_dir_stat_digest(&pkg_dir, false).unwrap()
+        );
     }
 
     #[test]
@@ -5466,8 +5796,8 @@ mod tests {
         std::fs::create_dir(dir.path().join("R")).unwrap();
         std::fs::write(dir.path().join("R/foo.R"), "foo <- function() 1\n").unwrap();
 
-        let first = compute_dir_stat_digest(dir.path()).unwrap();
-        let second = compute_dir_stat_digest(dir.path()).unwrap();
+        let first = compute_dir_stat_digest(dir.path(), false).unwrap();
+        let second = compute_dir_stat_digest(dir.path(), false).unwrap();
         assert_eq!(first, second);
     }
 
@@ -5476,7 +5806,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("DESCRIPTION");
         std::fs::write(&file, "Package: mypkg\n").unwrap();
-        let before = compute_dir_stat_digest(dir.path()).unwrap();
+        let before = compute_dir_stat_digest(dir.path(), false).unwrap();
 
         let newer = filetime::FileTime::from_unix_time(
             filetime::FileTime::now().unix_seconds() + 3600,
@@ -5484,7 +5814,7 @@ mod tests {
         );
         filetime::set_file_mtime(&file, newer).unwrap();
 
-        let after = compute_dir_stat_digest(dir.path()).unwrap();
+        let after = compute_dir_stat_digest(dir.path(), false).unwrap();
         assert_ne!(before, after);
     }
 
@@ -5492,15 +5822,15 @@ mod tests {
     fn adding_or_removing_a_file_changes_the_digest() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("DESCRIPTION"), "Package: mypkg\n").unwrap();
-        let before = compute_dir_stat_digest(dir.path()).unwrap();
+        let before = compute_dir_stat_digest(dir.path(), false).unwrap();
 
         let extra = dir.path().join("NEWS.md");
         std::fs::write(&extra, "# mypkg 1.0.0\n").unwrap();
-        let with_extra = compute_dir_stat_digest(dir.path()).unwrap();
+        let with_extra = compute_dir_stat_digest(dir.path(), false).unwrap();
         assert_ne!(before, with_extra);
 
         std::fs::remove_file(&extra).unwrap();
-        let after_removal = compute_dir_stat_digest(dir.path()).unwrap();
+        let after_removal = compute_dir_stat_digest(dir.path(), false).unwrap();
         assert_eq!(before, after_removal);
     }
 
@@ -5511,9 +5841,9 @@ mod tests {
         std::fs::write(dir.path().join(".Rbuildignore"), "^ignored\\.txt$\n").unwrap();
         std::fs::write(dir.path().join("ignored.txt"), "v1").unwrap();
 
-        let before = compute_dir_stat_digest(dir.path()).unwrap();
+        let before = compute_dir_stat_digest(dir.path(), false).unwrap();
         std::fs::write(dir.path().join("ignored.txt"), "a very different value").unwrap();
-        let after = compute_dir_stat_digest(dir.path()).unwrap();
+        let after = compute_dir_stat_digest(dir.path(), false).unwrap();
         assert_eq!(before, after);
     }
 
@@ -5521,14 +5851,57 @@ mod tests {
     fn dot_git_changes_are_ignored() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("DESCRIPTION"), "Package: mypkg\n").unwrap();
-        let before = compute_dir_stat_digest(dir.path()).unwrap();
+        let before = compute_dir_stat_digest(dir.path(), false).unwrap();
 
         let git_dir = dir.path().join(".git");
         std::fs::create_dir(&git_dir).unwrap();
         std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
 
-        let after = compute_dir_stat_digest(dir.path()).unwrap();
+        let after = compute_dir_stat_digest(dir.path(), false).unwrap();
         assert_eq!(before, after);
+    }
+
+    #[test]
+    fn rvenv_and_the_lock_file_are_ignored_at_the_root() {
+        // Both are rig's own output, rewritten by every `rig proj lock`/
+        // `sync` -- hashing either would make a package project's own digest
+        // (see `ProjectSolve::self_alias`) change just from having run.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("DESCRIPTION"), "Package: mypkg\n").unwrap();
+        let before = compute_dir_stat_digest(dir.path(), false).unwrap();
+
+        std::fs::write(dir.path().join(RPROJ_LOCK_FILE), "version = 1\n").unwrap();
+        let rvenv_dir = dir.path().join(RVENV_DIR);
+        std::fs::create_dir(&rvenv_dir).unwrap();
+        std::fs::write(rvenv_dir.join("rvenv.cfg"), "r_version = \"4.5.0\"\n").unwrap();
+
+        let after = compute_dir_stat_digest(dir.path(), false).unwrap();
+        assert_eq!(before, after);
+    }
+
+    #[test]
+    fn skip_description_ignores_the_root_description_only_when_asked() {
+        // `rig proj sync` rewrites the project's own `DESCRIPTION` from
+        // `rproj.toml` on every sync (`write_description_to`), so hashing it
+        // for the project's own `is_project` entry would make `rig proj
+        // lock` see a "changed" project after every sync that touched
+        // nothing else. An ordinary `path` dependency's `DESCRIPTION`, in
+        // contrast, is real content and must still be hashed.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("DESCRIPTION"), "Package: mypkg\n").unwrap();
+        let before_skip = compute_dir_stat_digest(dir.path(), true).unwrap();
+        let before_hash = compute_dir_stat_digest(dir.path(), false).unwrap();
+
+        std::fs::write(
+            dir.path().join("DESCRIPTION"),
+            "Package: mypkg\nImports: cli\n",
+        )
+        .unwrap();
+
+        let after_skip = compute_dir_stat_digest(dir.path(), true).unwrap();
+        let after_hash = compute_dir_stat_digest(dir.path(), false).unwrap();
+        assert_eq!(before_skip, after_skip);
+        assert_ne!(before_hash, after_hash);
     }
 
     #[test]

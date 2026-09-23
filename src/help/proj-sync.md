@@ -46,6 +46,17 @@ Pass `--inexact` to leave those packages alone instead.
 Pass `--dry-run` to print what sync would install, remove or write, without
 touching the R installation, the project library or `.rvenv`.
 
+## The project's own package
+
+If the project's `type` is `"package"`, [`rig proj lock`](#rig-proj-lock) records the project
+itself in `rproj.lock`, and sync installs it into the project library from
+the project directory, the same way it installs a `path` dependency. Sync
+(re)writes `DESCRIPTION` at the project root from `rproj.toml` first, the
+same as [`rig proj export --force`](#rig-proj-export) would.
+
+Pass `--no-install-project` to leave it out. It still gets installed if
+another package in the wanted set actually depends on it by name.
+
 ## Centralizing the project library
 
 The project library defaults to `.rvenv/lib`, inside the project. Set the

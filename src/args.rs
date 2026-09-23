@@ -1768,6 +1768,17 @@ pub fn rig_app() -> Command {
                         .required(false),
                 )
                 .arg(
+                    Arg::new("no-install-project")
+                        .help(
+                            "Do not install the project's own package (default:\n\
+                            installed when 'type = \"package\"'). Still installed if\n\
+                            another package actually depends on it.",
+                        )
+                        .long("no-install-project")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
                     Arg::new("max-concurrent")
                         .help(
                             "Maximum number of concurrent installations\n\
