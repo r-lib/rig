@@ -49,6 +49,11 @@ pub const RPROJ_LOCK_VERSION: usize = 4;
 // `rig proj init`.
 pub const RPROJ_MANIFEST_FILE: &str = "rproj.toml";
 
+/// The DCF field rig writes into every generated `DESCRIPTION` (see
+/// [`Rproj::to_description`]) to mark the file as rig-generated. `rig proj
+/// export` uses its presence to overwrite such a file without `--force`.
+pub const DESCRIPTION_RIG_NOTE_FIELD: &str = "Config/rig/note";
+
 /// The dependency groups that map onto a `DESCRIPTION` dependency field
 /// instead of onto a `Config/Needs/*` field: `dev` is `Suggests` and
 /// `enhances` is `Enhances` (see [`Rproj::merge_description`]). Every other
@@ -1365,6 +1370,11 @@ impl Rproj {
         let mut out = String::new();
         let mut dropped: Vec<String> = Vec::new();
 
+        writeln!(
+            out,
+            "{}: This file was created by rig, do not edit it manually",
+            DESCRIPTION_RIG_NOTE_FIELD
+        )?;
         writeln!(out, "Package: {}", self.project.name)?;
         if !self.project.is_package() {
             writeln!(

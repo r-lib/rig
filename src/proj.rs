@@ -39,7 +39,8 @@ use crate::repos::*;
 use crate::resolve::resolve_versions;
 use crate::rproj::{
     format_constraints, parse_add_spec, Author, DepTable, LockDirectDependency, Repository, Rproj,
-    RprojLock, RprojLockPackage, RprojLockTarget, RPROJ_LOCK_VERSION, RPROJ_MANIFEST_FILE,
+    RprojLock, RprojLockPackage, RprojLockTarget, DESCRIPTION_RIG_NOTE_FIELD, RPROJ_LOCK_VERSION,
+    RPROJ_MANIFEST_FILE,
 };
 use crate::rvenv::{
     ensure_rvenv_files, existing_targets, find_project_root, find_workspace_root,
@@ -583,7 +584,7 @@ fn sc_proj_export(
     let force = args.get_flag("force");
     let path = Path::new(output);
 
-    if path.exists() && !force {
+    if path.exists() && !force && !description_is_rig_generated(path) {
         let msg = format!("{} already exists, use --force to overwrite", output);
         OUTPUT.error(&msg);
         error!("{}", msg);
@@ -600,6 +601,22 @@ fn sc_proj_export(
     OUTPUT.success(&msg);
     info!("{}", msg);
     Ok(())
+}
+
+/// Whether `path` looks like a `DESCRIPTION` rig itself generated, i.e. it
+/// carries the [`DESCRIPTION_RIG_NOTE_FIELD`] rig writes in
+/// [`Rproj::to_description`]. `rig proj export` uses this to overwrite such
+/// a file without requiring `--force`. Any read/parse failure is treated as
+/// "not rig-generated" rather than an error, since the caller falls back to
+/// the normal existing-file check.
+fn description_is_rig_generated(path: &Path) -> bool {
+    let Ok(file) = File::open(path) else {
+        return false;
+    };
+    let Ok(paragraph) = parse_description_paragraph(file) else {
+        return false;
+    };
+    paragraph.get(DESCRIPTION_RIG_NOTE_FIELD).is_some()
 }
 
 /// Render `manifest.to_description()` and write it to `path`, warning about
