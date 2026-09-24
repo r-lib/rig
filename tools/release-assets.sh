@@ -11,8 +11,9 @@
 #       - rig-windows-x86_64-signed   (rig-<ver>.exe -> rig-windows-<ver>.exe)
 #       - rig-windows-aarch64-signed  (rig-<ver>.exe -> rig-windows-arm64-<ver>.exe)
 #   * Windows zips from the same sign-windows.yaml run. These are the assets
-#     `website/install.ps1` downloads, and they are NOT signed: SignPath only
-#     signs the installer, so there is no signed loose rig.exe to repackage.
+#     `website/install.ps1` downloads; their rig.exe/rig-shim.exe are signed
+#     by SignPath (round 1, before the installer is built), same as the
+#     binaries baked into the installer.
 #       - rig-windows-x86_64-zip      (-> rig-windows-x86_64-<ver>.zip)
 #       - rig-windows-aarch64-zip     (-> rig-windows-arm64-<ver>.zip)
 #   * Optionally, macOS packages/tarballs from a local directory (built and
