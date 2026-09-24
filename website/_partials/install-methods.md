@@ -186,7 +186,7 @@ winget install posit.rig
 On Linux you can install rig into your home directory without administrator
 rights, or system-wide from a DEB or RPM package, or from a tarball. See the
 [supported distributions](install.qmd#id-supported-linux-distributions) below
-for admin mode rig. In user mode rig runs on any glibc (>=2.28) or musl
+for admin mode rig. In user mode rig runs on any glibc (>=2.34) or musl
 (>=1.2) based Linux.
 
 ### Method 1: User install (no admin rights needed)

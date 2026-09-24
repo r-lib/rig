@@ -48,7 +48,7 @@ touch system directories.
    patches your shell profiles if the R binary directory is not
    already on your `PATH`.
 
-4. In user mode, on Linux, rig supports all glibc (>= 2.28) and musl (>= 1.2)
+4. In user mode, on Linux, rig supports all glibc (>= 2.34) and musl (>= 1.2)
    distros. It uses self-contained R builds that do not depend on the system
    package manager or system packages. It sets up Posit Package Manager's
    manylinux R package repositories to install self-contained binary R
