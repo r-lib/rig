@@ -5835,10 +5835,8 @@ mod tests {
         std::fs::write(&file, "Package: mypkg\n").unwrap();
         let before = compute_dir_stat_digest(dir.path(), false).unwrap();
 
-        let newer = filetime::FileTime::from_unix_time(
-            filetime::FileTime::now().unix_seconds() + 3600,
-            0,
-        );
+        let newer =
+            filetime::FileTime::from_unix_time(filetime::FileTime::now().unix_seconds() + 3600, 0);
         filetime::set_file_mtime(&file, newer).unwrap();
 
         let after = compute_dir_stat_digest(dir.path(), false).unwrap();
