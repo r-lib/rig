@@ -73,6 +73,7 @@ jobs:
         api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
         organization-id: 'ce0224dd-53d3-46e4-8e82-b71df4fcef90'
         project-slug: 'rig'
+        artifact-configuration-slug: 'windows-binaries'
         signing-policy-slug: '${{ inputs.signing-policy }}'
         github-artifact-id: '${{ steps.upload-unsigned-bin-artifact.outputs.artifact-id }}'
         wait-for-completion: true
@@ -111,6 +112,7 @@ jobs:
         api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
         organization-id: 'ce0224dd-53d3-46e4-8e82-b71df4fcef90'
         project-slug: 'rig'
+        artifact-configuration-slug: 'windows-installer'
         signing-policy-slug: '${{ inputs.signing-policy }}'
         github-artifact-id: '${{ steps.upload-unsigned-artifact.outputs.artifact-id }}'
         wait-for-completion: true
