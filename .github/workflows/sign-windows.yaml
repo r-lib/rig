@@ -81,8 +81,8 @@ jobs:
 
     - name: Install signed binaries
       run: |
-        ls -l signed-bin
-        unzip -o -j signed-bin/*.zip rig.exe rig-shim.exe -d target/release
+        cp signed-bin/rig.exe target/release/rig.exe
+        cp signed-bin/rig-shim.exe target/release/rig-shim.exe
         touch target/release/rig.exe target/release/rig-shim.exe
       shell: bash
 
