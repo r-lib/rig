@@ -55,20 +55,18 @@ jobs:
         make target/release/rig.exe target/release/rig-shim.exe
       shell: bash
 
-    - name: Zip binaries for signing
-      run: |
-        rm -rf signing-bin
-        mkdir signing-bin
-        cp target/release/rig.exe target/release/rig-shim.exe signing-bin/
-        rm -f rig-windows-${{ matrix.config.arch }}-unsigned-bin.zip
-        cd signing-bin && 7z a ../rig-windows-${{ matrix.config.arch }}-unsigned-bin.zip rig.exe rig-shim.exe
-      shell: bash
-
+    # Upload the raw exes (not pre-zipped): actions/upload-artifact wraps
+    # them in its own single zip, which is exactly the one zip level
+    # SignPath's <zip-file><pe-file path="*.exe"> config expects. Zipping
+    # them ourselves first would add a second zip layer and SignPath would
+    # find 0 matching pe-files.
     - uses: actions/upload-artifact@v7
       id: upload-unsigned-bin-artifact
       with:
         name: rig-windows-${{ matrix.config.arch }}-unsigned-bin
-        path: 'rig-windows-*-unsigned-bin.zip'
+        path: |
+          target/release/rig.exe
+          target/release/rig-shim.exe
 
     - uses: signpath/github-action-submit-signing-request@v2
       with:
@@ -84,7 +82,6 @@ jobs:
       run: |
         unzip -o -j signed-bin/*.zip -d target/release
         touch target/release/rig.exe target/release/rig-shim.exe
-        rm -f rig-windows-*-unsigned-bin.zip
       shell: bash
 
     # Round 2: build the installer (now embedding the signed exes) and the
