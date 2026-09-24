@@ -31,6 +31,9 @@
     selecting the `release-signing` signing policy. It builds and signs
     both the x86_64 and aarch64 installers.
   - Approve each signing request in the SignPath UI if prompted.
+  - The same run also uploads the (unsigned) `rig-windows-*.zip` artifacts
+    that `website/install.ps1` downloads; `release-assets.sh` picks these up
+    from the `--win-run` run as well.
 - [ ] Create tag for the current version, push to GH.
 - [ ] Create the release on GH **as a draft** (`gh release create --draft ...`
       or the GH UI), and add all the installers to the draft.

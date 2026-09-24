@@ -10,6 +10,11 @@
 #   * Signed Windows artifacts from a sign-windows.yaml run:
 #       - rig-windows-x86_64-signed   (rig-<ver>.exe -> rig-windows-<ver>.exe)
 #       - rig-windows-aarch64-signed  (rig-<ver>.exe -> rig-windows-arm64-<ver>.exe)
+#   * Windows zips from the same sign-windows.yaml run. These are the assets
+#     `website/install.ps1` downloads, and they are NOT signed: SignPath only
+#     signs the installer, so there is no signed loose rig.exe to repackage.
+#       - rig-windows-x86_64-zip      (-> rig-windows-x86_64-<ver>.zip)
+#       - rig-windows-aarch64-zip     (-> rig-windows-arm64-<ver>.zip)
 #   * Optionally, macOS packages/tarballs from a local directory (built and
 #     notarized locally):
 #       - rig-<ver>-macOS-{arm64,x86_64}.pkg
@@ -44,7 +49,7 @@ warn() { printf 'warning: %s\n' "$*" >&2; }
 info() { printf '==> %s\n' "$*"; }
 
 usage() {
-    sed -n '3,30p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '3,35p' "$0" | sed 's/^# \{0,1\}//'
     exit "${1:-0}"
 }
 
@@ -65,6 +70,8 @@ done
 [ -n "$BUILD_RUN" ] || err "--build-run is required (a test.yaml run id)"
 [ -n "$WIN_RUN" ]   || err "--win-run is required (a sign-windows.yaml run id)"
 command -v gh >/dev/null || err "the GitHub CLI ('gh') is required"
+command -v unzip >/dev/null || err "'unzip' is required"
+command -v file >/dev/null || err "'file' is required"
 
 VERSION="${TAG#v}"
 info "repo=$REPO tag=$TAG version=$VERSION"
@@ -87,6 +94,8 @@ download_artifact "$BUILD_RUN" rig-linux-x86_64          linux-x86_64
 download_artifact "$BUILD_RUN" rig-linux-aarch64         linux-aarch64
 download_artifact "$WIN_RUN"   rig-windows-x86_64-signed win-x86_64
 download_artifact "$WIN_RUN"   rig-windows-aarch64-signed win-aarch64
+download_artifact "$WIN_RUN"   rig-windows-x86_64-zip    zip-x86_64
+download_artifact "$WIN_RUN"   rig-windows-aarch64-zip   zip-arm64
 
 # ---------------------------------------------------------------------------
 # Stage the canonical release-named files into $STAGE.
@@ -119,6 +128,28 @@ stage "$DL/linux-aarch64" 'r-rig-*.aarch64.rpm'
 info "staging signed Windows assets"
 stage "$DL/win-x86_64"  '*.exe' "rig-windows-${VERSION}.exe"
 stage "$DL/win-aarch64" '*.exe' "rig-windows-arm64-${VERSION}.exe"
+
+# Don't trust the arch in the zip's own file name: it comes from `make win`'s
+# `ARCH`, and Git Bash on the arm64 runner reports `uname -m` as `x86_64`, so
+# a missing `ARCH=` in CI silently mislabels it. Check the PE machine type of
+# the binary inside instead.
+check_zip_arch() { # <staged-zip> <expected 'file' fragment>
+    local zip="$STAGE/$1" want="$2" tmp got
+    tmp="$(mktemp -d "$WORKDIR/zipcheck.XXXXXX")"
+    unzip -q -o -d "$tmp" "$zip" bin/rig.exe || err "$1 has no bin/rig.exe"
+    got="$(file -b "$tmp/bin/rig.exe")"
+    case "$got" in
+        *"$want"*) printf '    checked %-37s %s\n' "$1" "$want" ;;
+        *) err "$1: bin/rig.exe is '$got', expected $want" ;;
+    esac
+    rm -rf "$tmp"
+}
+
+info "staging Windows zips (unsigned)"
+stage "$DL/zip-x86_64" '*.zip' "rig-windows-x86_64-${VERSION}.zip"
+stage "$DL/zip-arm64"  '*.zip' "rig-windows-arm64-${VERSION}.zip"
+check_zip_arch "rig-windows-x86_64-${VERSION}.zip" 'x86-64'
+check_zip_arch "rig-windows-arm64-${VERSION}.zip"  'Aarch64'
 
 if [ -n "$MACOS_DIR" ]; then
     [ -d "$MACOS_DIR" ] || err "--macos-dir '$MACOS_DIR' is not a directory"
@@ -175,6 +206,8 @@ latest_names() { # <canonical-basename>
         r-rig-*.aarch64.rpm)        echo r-rig-latest-1.aarch64.rpm ;;
         rig-windows-arm64-*.exe)    echo rig-windows-arm64-latest.exe ;;
         rig-windows-*.exe)          echo rig-windows-latest.exe ;;
+        rig-windows-arm64-*.zip)    echo rig-windows-arm64-latest.zip ;;
+        rig-windows-x86_64-*.zip)   echo rig-windows-x86_64-latest.zip ;;
         rig-*-macOS-arm64.pkg)      echo rig-latest-macOS-arm64.pkg ;;
         rig-*-macOS-x86_64.pkg)     echo rig-latest-macOS-x86_64.pkg ;;
         rig-macos-arm64-*.tar.gz)   echo rig-macos-arm64-latest.tar.gz ;;

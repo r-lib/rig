@@ -48,7 +48,7 @@ jobs:
       run: choco install curl
 
     - run: |
-        make win
+        make win ARCH=${{ matrix.config.arch }}
       shell: bash
 
     - uses: actions/upload-artifact@v7
@@ -56,6 +56,14 @@ jobs:
       with:
         name: rig-windows-${{ matrix.config.arch }}-unsigned
         path: 'rig-*.exe'
+
+    # The zip is what `website/install.ps1` downloads. SignPath only signs the
+    # installer, so this one goes out unsigned; upload it here anyway so that
+    # `tools/release-assets.sh` can take every Windows asset from one run.
+    - uses: actions/upload-artifact@v7
+      with:
+        name: rig-windows-${{ matrix.config.arch }}-zip
+        path: 'rig-windows-*.zip'
 
     - uses: signpath/github-action-submit-signing-request@v2
       with:

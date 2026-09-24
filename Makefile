@@ -54,11 +54,17 @@ rig-windows-$(ARCH)-$(VERSION).zip: target/release/rig.exe target/release/rig-sh
 	rm -f $@
 	cd zipdir && 7z a ../$@ bin share
 
+ifeq "$(ARCH)" "aarch64"
+    GSUDO_ARCH := arm64
+else
+    GSUDO_ARCH := x64
+endif
+
 gsudo.exe:
 	mkdir -p gsudo
 	curl -L https://github.com/gerardog/gsudo/releases/download/v2.6.1/gsudo.portable.zip -o gsudo/gsudo.zip
 	cd gsudo && unzip -o gsudo.zip
-	cp gsudo/x64/gsudo.exe .
+	cp gsudo/$(GSUDO_ARCH)/gsudo.exe .
 
 # -------------------------------------------------------------------------
 
