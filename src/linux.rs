@@ -160,17 +160,23 @@ fn parse_libc(text: &str) -> Result<Libc, Box<dyn Error>> {
     } else if lower.contains("glibc") || lower.contains("gnu libc") {
         LibcType::Glibc
     } else {
-        bail!("Could not determine libc type from `ldd --version` output");
+        let msg = "Could not determine libc type from `ldd --version` output".to_string();
+        OUTPUT.error(&msg);
+        bail!(msg);
     };
 
     // Grab the first version-looking token, e.g. "2.35" or "1.2.4".
     let re = Regex::new(r"[0-9]+\.[0-9]+(\.[0-9]+)?")?;
     let version = match re.find(text) {
         Some(m) => m.as_str().to_string(),
-        None => bail!(
-            "Could not determine {} version from `ldd --version` output",
-            kind
-        ),
+        None => {
+            let msg = format!(
+                "Could not determine {} version from `ldd --version` output",
+                kind
+            );
+            OUTPUT.error(&msg);
+            bail!(msg);
+        }
     };
 
     Ok(Libc { kind, version })
@@ -204,14 +210,13 @@ fn check_libc_supported(libc: &Libc) -> Result<(), Box<dyn Error>> {
         LibcType::Musl => MIN_MUSL_VERSION,
     };
     if !version_at_least(&libc.version, minimum) {
-        bail!(
+        let msg = format!(
             "Unsupported {} version {}: user-mode R installation requires \
              {} {} or later",
-            libc.kind,
-            libc.version,
-            libc.kind,
-            minimum
+            libc.kind, libc.version, libc.kind, minimum
         );
+        OUTPUT.error(&msg);
+        bail!(msg);
     }
     Ok(())
 }
