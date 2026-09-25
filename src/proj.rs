@@ -1596,11 +1596,15 @@ pub(crate) fn sc_proj_solve_deps(
     }
     info!("Downloading binary package metadata");
     // A root is a local directory, or synthetic, so there is no binary index
-    // to fetch for it, however many members depend on it.
+    // to fetch for it, however many members depend on it. Same for a
+    // git/URL/path-sourced package (`git_sources`, despite the name, covers
+    // all three -- see `resolve_git_sources`): its version is already
+    // resolved, so there is no repo binary index to fetch.
+    let git_names: HashSet<&str> = git_sources.iter().map(|s| s.name.as_str()).collect();
     let mut direct: Vec<String> = roots
         .iter()
         .flat_map(|root| root.deps.dependencies.iter().map(|d| d.name.clone()))
-        .filter(|name| !reg.is_local(name))
+        .filter(|name| !reg.is_local(name) && !git_names.contains(name.as_str()))
         .collect();
     direct.sort();
     direct.dedup();
