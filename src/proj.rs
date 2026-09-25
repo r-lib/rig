@@ -1854,6 +1854,13 @@ fn project_lock_package(
         .deps
         .dependencies
         .iter()
+        // Only a hard dependency (`Depends`/`Imports`/`LinkingTo`) gates
+        // install order; a dev-group/`Suggests`-only entry (e.g. testthat,
+        // rmarkdown) is installed too, but never has to come before the
+        // project's own package, and some of them (e.g. pillar, tibble)
+        // depend on the project itself, which would deadlock as a circular
+        // dependency if it were treated as a hard dependency here.
+        .filter(|d| !d.types.iter().all(|t| DEP_TYPES_SOFT.contains(t)))
         .map(|d| d.name.clone())
         .filter(|n| n != "R" && !BASE_PKGS.contains(&n.as_str()))
         .collect();
