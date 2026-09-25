@@ -1129,9 +1129,11 @@ impl Rproj {
                     .get(*group_name)
                     .map(|g| &g.dependencies)
             }))
-            .chain(DESCRIPTION_DEP_GROUPS.iter().filter_map(|group_name| {
-                self.optional_dependencies.get(*group_name)
-            }));
+            .chain(
+                DESCRIPTION_DEP_GROUPS
+                    .iter()
+                    .filter_map(|group_name| self.optional_dependencies.get(*group_name)),
+            );
         for table in tables {
             for (name, dep) in table.iter() {
                 if let Dependency::Detailed(t) = dep {

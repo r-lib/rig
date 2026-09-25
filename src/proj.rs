@@ -553,7 +553,12 @@ fn sc_proj_import(
             let before_extra = before_optional.get(group_name);
             for (name, dep) in extra.iter() {
                 if before_extra.and_then(|g| g.get(name)) != Some(dep) {
-                    Rproj::doc_set_dependency(doc, &["optional-dependencies", group_name], name, dep)?;
+                    Rproj::doc_set_dependency(
+                        doc,
+                        &["optional-dependencies", group_name],
+                        name,
+                        dep,
+                    )?;
                 }
             }
         }
