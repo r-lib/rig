@@ -93,8 +93,10 @@ pub(crate) fn minor_r_version(r_version: &str) -> Result<String, Box<dyn Error>>
     let version = match semver::Version::parse(&version_str) {
         Ok(v) => v,
         Err(e) => {
-            OUTPUT.error(&format!("Invalid R version format: {}", r_version));
-            error!("Invalid R version format '{}': {}", r_version, e);
+            // Some callers (e.g. the build cache) treat this as a routine
+            // "not a numeric version" case and handle it quietly; the ones
+            // that consider it a real failure report it themselves.
+            debug!("Invalid R version format '{}': {}", r_version, e);
             bail!("Invalid R version format '{}': {}", r_version, e)
         }
     };

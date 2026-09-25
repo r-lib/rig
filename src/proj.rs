@@ -16,7 +16,10 @@ use tabular::*;
 use crate::args::rig_app;
 use crate::built::BuiltCache;
 use crate::cache::get_cache_dir;
-use crate::common::{get_arch, get_default_r_version, get_platform, sc_get_list_details};
+use crate::common::{
+    find_installed, get_arch, get_default_r_version, get_platform, get_r_version_data_version,
+    sc_get_list_details,
+};
 use crate::dcf::*;
 use crate::download::download_multiple_first_available_with_progress;
 use crate::install::{
@@ -1384,6 +1387,19 @@ fn sc_proj_tree(
     )
 }
 
+/// Turns a symbolic, installed R name (e.g. `"devel"`, `"next"`) into the
+/// numeric R version P3M's binary repo paths need. Names that already look
+/// like a version are passed through unchanged.
+fn resolve_binary_target_r_version(r_version: &str) -> Result<String, Box<dyn Error>> {
+    if r_version.starts_with(|c: char| c.is_ascii_digit()) {
+        return Ok(r_version.to_string());
+    }
+    match find_installed(r_version)? {
+        Some(name) => get_r_version_data_version(&name),
+        None => Ok(r_version.to_string()),
+    }
+}
+
 /// The P3M build target to resolve binary packages for.
 ///
 /// `--platform source` means "source only", and so does a platform P3M has no
@@ -1422,6 +1438,8 @@ pub(crate) fn proj_binary_target_quiet(
         Some(p) => parse_platform_string(p)?,
         None => detect_platform()?,
     };
+
+    let r_version = &resolve_binary_target_r_version(r_version)?;
 
     let target = match BinaryTarget::detect(&platform, r_version) {
         Ok(target) => target,
@@ -1495,6 +1513,11 @@ pub(crate) fn sc_proj_solve_deps(
     report_status: bool,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
     info!("Solving dependencies");
+
+    // `r_version` may be a symbolic, installed R name (e.g. "devel", "next")
+    // rather than a numeric version: resolve it before it reaches package
+    // version comparisons, which expect numbers.
+    let r_version = &resolve_binary_target_r_version(r_version)?;
 
     // The registry lazily loads each package's versions from the local database
     // (the full ALLPACKAGES history) as the solver visits them, instead of
