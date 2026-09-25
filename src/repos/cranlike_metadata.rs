@@ -6,18 +6,19 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use flate2::read::GzDecoder;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use rds2rust::RObject;
 use rds2rust::RObject::*;
 use rds2rust::VectorData;
 use rusqlite::{params, Connection};
+use sha2::{Digest, Sha256};
 use simple_error::bail;
 use xz2::read::XzDecoder;
 use zstd::stream::read::Decoder as ZstdDecoder;
 
 use crate::cache::get_cache_dir;
 use crate::dcf::*;
-use crate::download::download_first_available_;
+use crate::download::{download_first_available_, fetch_range_suffix_, RangeFetch};
 use crate::output::OUTPUT;
 use crate::rds::*;
 use crate::solver::PackageVersionLoader;
@@ -447,10 +448,212 @@ enum CacheState {
     Cached,
 }
 
+/// Number of trailing bytes of previously-parsed text kept as a fingerprint,
+/// to detect the origin rewriting a feed rather than only appending to it.
+const TAIL_WINDOW: usize = 512;
+
+fn tail_window_len(parsed_len: i64) -> usize {
+    (parsed_len.max(0) as usize).min(TAIL_WINDOW)
+}
+
+/// The last [`TAIL_WINDOW`] bytes of `data` (or all of it, if shorter).
+fn tail_slice(data: &[u8]) -> &[u8] {
+    &data[data.len().saturating_sub(TAIL_WINDOW)..]
+}
+
+fn hash_bytes(data: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    format!("{:x}", hasher.finalize())
+}
+
+/// How much of a feed has already been parsed and stored, if any:
+/// `(parsed_len, tail_hash)`, as recorded by the last successful parse.
+fn get_repo_progress(db_path: &PathBuf, repo_url: &str, pkg_type: &str) -> Option<(i64, String)> {
+    let conn = open_db(db_path).ok()?;
+    let repo_url = repo_url.trim_end_matches('/');
+    conn.query_row(
+        "SELECT parsed_len, tail_hash FROM repos
+         WHERE url = ?1 AND pkg_type = ?2 AND parsed_len IS NOT NULL AND tail_hash IS NOT NULL",
+        params![repo_url, pkg_type],
+        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+    )
+    .ok()
+}
+
+fn touch_repo_last_updated(
+    db_path: &PathBuf,
+    repo_url: &str,
+    pkg_type: &str,
+) -> Result<(), Box<dyn Error>> {
+    let conn = open_db(db_path)?;
+    let repo_url = repo_url.trim_end_matches('/');
+    conn.execute(
+        "UPDATE repos SET last_updated = CURRENT_TIMESTAMP WHERE url = ?1 AND pkg_type = ?2",
+        params![repo_url, pkg_type],
+    )?;
+    Ok(())
+}
+
+/// Parse `packages` and store them, dispatching to the feed's table.
+#[allow(clippy::too_many_arguments)]
+fn store_packages(
+    packages: &Vec<Package>,
+    repo_db: &PathBuf,
+    repo_url_key: &str,
+    r_version: Option<&str>,
+    pkg_type: &str,
+    path: &str,
+    feed: Feed,
+    etag: Option<&str>,
+    replace: bool,
+    progress: Option<(i64, &str)>,
+) -> Result<(), Box<dyn Error>> {
+    match feed {
+        Feed::Cranlike => save_packages_to_db(
+            packages,
+            repo_db,
+            repo_url_key,
+            r_version,
+            pkg_type,
+            path,
+            etag,
+            replace,
+            progress,
+        ),
+        Feed::Archived => save_archived_to_db(
+            packages,
+            repo_db,
+            repo_url_key,
+            pkg_type,
+            path,
+            etag,
+            replace,
+            progress,
+        ),
+    }
+}
+
+/// Outcome of a trailing-only refresh attempt. See [`try_trailing_refresh`].
+enum TrailingOutcome {
+    /// The feed has not grown since `parsed_len`; nothing to parse.
+    Unchanged,
+    /// The tail overlap matched: the feed only grew by appending. Holds the
+    /// overlap plus the genuinely new bytes, exactly as fetched.
+    Appended(Vec<u8>),
+    /// The server returned the whole plain-text body (it ignored `Range`).
+    Full(Vec<u8>),
+}
+
+/// Try to refresh a feed by fetching only what was appended after
+/// `parsed_len`, verifying the origin didn't rewrite anything at or before
+/// that point (see the `tail_hash` fingerprint in the plan/schema).
+///
+/// Returns `Err` on any transport failure, or when the tail fingerprint does
+/// not match — i.e. whenever the caller should fall back to a full download.
+fn try_trailing_refresh(
+    plain_url: &str,
+    parsed_len: i64,
+    tail_hash: &str,
+) -> Result<TrailingOutcome, Box<dyn Error>> {
+    let window_len = tail_window_len(parsed_len);
+    let from = parsed_len as u64 - window_len as u64;
+
+    match fetch_range_suffix_(plain_url, from, None)? {
+        RangeFetch::OutOfRange => Ok(TrailingOutcome::Unchanged),
+        RangeFetch::Full(bytes) => Ok(TrailingOutcome::Full(bytes)),
+        RangeFetch::Partial(data) => {
+            if data.len() < window_len || hash_bytes(&data[..window_len]) != tail_hash {
+                bail!(
+                    "Metadata at {} was rewritten, not just appended to",
+                    plain_url
+                );
+            }
+            Ok(TrailingOutcome::Appended(data))
+        }
+    }
+}
+
+/// The full-download path: (re)download `candidate_urls[0]` (or a fallback),
+/// parse it, and store it, replacing whatever was there before.
+///
+/// `use_etag`: whether to send the repo's stored etag (a 304 then means
+/// "already cached, nothing to do"). Set to `false` to force a full response
+/// when recovering from a database that lost its rows despite a fresh-looking
+/// cached download — in that case a failed download is a hard error, not a
+/// cache hit.
+#[allow(clippy::too_many_arguments)]
+fn force_full_download(
+    candidate_urls: &[&str],
+    repo_local: &PathBuf,
+    repo_db: &PathBuf,
+    repo_url_key: &str,
+    r_version: Option<&str>,
+    pkg_type: &str,
+    path: &str,
+    feed: Feed,
+    use_etag: bool,
+) -> Result<CacheState, Box<dyn Error>> {
+    create_parent_dir_if_needed(repo_local)?;
+    info!(
+        "Checking for repo metadata updates from {}",
+        candidate_urls[0]
+    );
+
+    let existing_etag = if use_etag {
+        get_repo_etag(repo_db, repo_url_key, pkg_type).ok()
+    } else {
+        // Drop the stale download file so it is not treated as cached.
+        let _ = std::fs::remove_file(repo_local);
+        None
+    };
+
+    let (dl_status, new_etag) = download_first_available_(
+        candidate_urls,
+        repo_local,
+        None,
+        None,
+        existing_etag.as_deref(),
+    )?;
+
+    if !dl_status {
+        if use_etag {
+            return Ok(CacheState::Cached);
+        }
+        OUTPUT.error("Failed to load package metadata, database is corrupt?");
+        error!(
+            "Failed to recover package metadata from {}",
+            candidate_urls[0]
+        );
+        bail!(
+            "Failed to refresh package metadata from {}",
+            candidate_urls[0]
+        );
+    }
+
+    parse_store_and_cleanup(
+        repo_local,
+        repo_db,
+        repo_url_key,
+        r_version,
+        pkg_type,
+        path,
+        new_etag.as_deref(),
+        feed,
+    )?;
+    Ok(CacheState::FreshlyParsed)
+}
+
 /// Ensure a cranlike metadata file is present and fresh in the SQLite database,
 /// downloading and parsing it if the 24h / etag cache is stale. Does **not**
 /// load the stored rows back into memory when the cache is already fresh, so
 /// callers that query the database lazily avoid materializing everything.
+///
+/// For feeds that only ever grow by appending (ALLPACKAGES, ARCHIVEDPACKAGES),
+/// a stale cache first tries a trailing-only refresh — fetching just the bytes
+/// appended since the last parse from the plain-text mirror of `candidate_urls
+/// [0]` (its `.zst` counterpart can't be range-fetched: zstd is a single
+/// compressed frame) — before falling back to a full re-download.
 #[allow(clippy::too_many_arguments)]
 fn ensure_packages_cached(
     candidate_urls: &[&str],
@@ -484,82 +687,99 @@ fn ensure_packages_cached(
         }
     };
 
-    let (dl_status, new_etag) = if should_download {
-        create_parent_dir_if_needed(&repo_local)?;
-        info!(
-            "Checking for repo metadata updates from {}",
-            candidate_urls[0]
-        );
-
-        // Try to get existing etag from database
-        let existing_etag = get_repo_etag(&repo_db, repo_url_key, pkg_type).ok();
-
-        // Download with etag (will return false if 304 Not Modified or file is cached)
-        download_first_available_(
+    if !should_download {
+        info!("Repo metadata is up to date (cached)");
+        // The database should hold the rows. It may not if a previous run
+        // downloaded the metadata but was interrupted (or aborted) before
+        // storing it: the cached download file then looks fresh while the
+        // database is empty. Recover by forcing a fresh download rather than
+        // dead-ending on a "database is corrupt" error.
+        if repo_has_packages(&repo_db, repo_url_key, pkg_type, feed)? {
+            return Ok(CacheState::Cached);
+        }
+        info!("Cached metadata missing from database, forcing a fresh download");
+        return force_full_download(
             candidate_urls,
-            &repo_local,
-            None,
-            None,
-            existing_etag.as_deref(),
-        )?
-    } else {
-        // Skip download, database is recent
-        (false, None)
-    };
-
-    if dl_status {
-        parse_store_and_cleanup(
             &repo_local,
             &repo_db,
             repo_url_key,
             r_version,
             pkg_type,
             path,
-            new_etag.as_deref(),
             feed,
-        )?;
-        return Ok(CacheState::FreshlyParsed);
-    }
-
-    info!("Repo metadata is up to date (cached)");
-    // The database should hold the rows. It may not if a previous run
-    // downloaded the metadata but was interrupted (or aborted) before storing
-    // it: the cached download file then looks fresh while the database is
-    // empty. Recover by forcing a fresh download rather than dead-ending on a
-    // "database is corrupt" error.
-    if repo_has_packages(&repo_db, repo_url_key, pkg_type, feed)? {
-        return Ok(CacheState::Cached);
-    }
-
-    info!("Cached metadata missing from database, forcing a fresh download");
-    // Drop the stale download file so it is not treated as cached, and download
-    // without an etag to force a full response.
-    let _ = std::fs::remove_file(&repo_local);
-    create_parent_dir_if_needed(&repo_local)?;
-    let (dl_status, new_etag) =
-        download_first_available_(candidate_urls, &repo_local, None, None, None)?;
-    if !dl_status {
-        OUTPUT.error("Failed to load package metadata, database is corrupt?");
-        error!(
-            "Failed to recover package metadata from {}",
-            candidate_urls[0]
-        );
-        bail!(
-            "Failed to refresh package metadata from {}",
-            candidate_urls[0]
+            false,
         );
     }
-    parse_store_and_cleanup(
+
+    if let Some((parsed_len, tail_hash)) = get_repo_progress(&repo_db, repo_url_key, pkg_type) {
+        let plain_url = candidate_urls[0].trim_end_matches(".zst");
+        match try_trailing_refresh(plain_url, parsed_len, &tail_hash) {
+            Ok(TrailingOutcome::Unchanged) => {
+                touch_repo_last_updated(&repo_db, repo_url_key, pkg_type)?;
+                return Ok(CacheState::Cached);
+            }
+            Ok(TrailingOutcome::Appended(data)) => {
+                let window_len = tail_window_len(parsed_len);
+                let new_suffix = &data[window_len..];
+                let packages = parse_dcf_bytes(new_suffix)?;
+                let new_parsed_len = parsed_len + new_suffix.len() as i64;
+                let new_tail_hash = hash_bytes(tail_slice(&data));
+                info!(
+                    "Appended {} new package record(s) from {}",
+                    packages.len(),
+                    plain_url
+                );
+                store_packages(
+                    &packages,
+                    &repo_db,
+                    repo_url_key,
+                    r_version,
+                    pkg_type,
+                    path,
+                    feed,
+                    None,
+                    false,
+                    Some((new_parsed_len, &new_tail_hash)),
+                )?;
+                return Ok(CacheState::FreshlyParsed);
+            }
+            Ok(TrailingOutcome::Full(data)) => {
+                let packages = parse_dcf_bytes(&data)?;
+                let new_tail_hash = hash_bytes(tail_slice(&data));
+                store_packages(
+                    &packages,
+                    &repo_db,
+                    repo_url_key,
+                    r_version,
+                    pkg_type,
+                    path,
+                    feed,
+                    None,
+                    true,
+                    Some((data.len() as i64, &new_tail_hash)),
+                )?;
+                return Ok(CacheState::FreshlyParsed);
+            }
+            Err(e) => {
+                warn!(
+                    "Trailing refresh of {} failed, falling back to a full download: {}",
+                    plain_url, e
+                );
+            }
+        }
+    }
+
+    force_full_download(
+        candidate_urls,
         &repo_local,
         &repo_db,
         repo_url_key,
         r_version,
         pkg_type,
         path,
-        new_etag.as_deref(),
         feed,
-    )?;
-    Ok(CacheState::FreshlyParsed)
+        true,
+    )
 }
 
 /// Whether the database holds at least one row for the given repo, in the table
@@ -606,23 +826,24 @@ fn parse_store_and_cleanup(
 ) -> Result<Vec<Package>, Box<dyn Error>> {
     info!("Downloaded new repo metadata to {}", repo_local.display());
     // Parse DCF/RDS file and save to database
-    let packages = parse_packages(repo_local)?;
+    let (packages, data) = parse_packages(repo_local)?;
+    let tail_hash = hash_bytes(tail_slice(&data));
 
-    // Save to database with the etag from the download
-    match feed {
-        Feed::Cranlike => save_packages_to_db(
-            &packages,
-            repo_db,
-            repo_url_key,
-            r_version,
-            pkg_type,
-            path,
-            etag,
-        )?,
-        Feed::Archived => {
-            save_archived_to_db(&packages, repo_db, repo_url_key, pkg_type, path, etag)?
-        }
-    }
+    // Save to database with the etag from the download, recording how much of
+    // the (decompressed) feed has now been parsed, for a trailing-only
+    // refresh next time.
+    store_packages(
+        &packages,
+        repo_db,
+        repo_url_key,
+        r_version,
+        pkg_type,
+        path,
+        feed,
+        etag,
+        true,
+        Some((data.len() as i64, &tail_hash)),
+    )?;
 
     // Delete the temporary data file after saving to database
     if let Err(e) = std::fs::remove_file(repo_local) {
@@ -640,7 +861,7 @@ fn parse_store_and_cleanup(
     }
 }
 
-fn parse_packages(dcf_path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
+fn parse_packages(dcf_path: &PathBuf) -> Result<(Vec<Package>, Vec<u8>), Box<dyn Error>> {
     let mut file = File::open(dcf_path)?;
 
     // Peek at first 6 bytes to check for compression magic numbers
@@ -690,13 +911,21 @@ fn parse_packages(dcf_path: &PathBuf) -> Result<Vec<Package>, Box<dyn Error>> {
         if is_rds {
             info!("Detected RDS format, parsing as RDS");
             let robj = read_rds(&data)?;
-            return parse_packages_from_rds_object(robj);
+            let packages = parse_packages_from_rds_object(robj)?;
+            return Ok((packages, data));
         }
     }
 
-    // Parse as DCF format
+    let packages = parse_dcf_bytes(&data)?;
+    Ok((packages, data))
+}
+
+/// Parse `data` as a standalone DCF paragraph stream (no decompression, no
+/// RDS detection — for feeds known to be plain DCF text, such as a
+/// trailing-only refresh's fetched suffix).
+fn parse_dcf_bytes(data: &[u8]) -> Result<Vec<Package>, Box<dyn Error>> {
     info!("Parsing as DCF format");
-    let desc = parse_dcf_reader(&data[..])?;
+    let desc = parse_dcf_reader(data)?;
     info!("Parsed {} packages from repo metadata", desc.len());
 
     let mut packages: Vec<Package> = vec![];
@@ -927,10 +1156,24 @@ fn ensure_db_schema(db_path: &PathBuf) -> Result<(), Box<dyn Error>> {
             r_version TEXT,
             path TEXT NOT NULL,
             etag TEXT,
-            last_updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            last_updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            parsed_len INTEGER,
+            tail_hash TEXT
         )",
         [],
     )?;
+
+    // Databases created before trailing-only refreshes lack these columns.
+    for stmt in [
+        "ALTER TABLE repos ADD COLUMN parsed_len INTEGER",
+        "ALTER TABLE repos ADD COLUMN tail_hash TEXT",
+    ] {
+        if let Err(e) = conn.execute(stmt, []) {
+            if !e.to_string().contains("duplicate column") {
+                return Err(e.into());
+            }
+        }
+    }
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS packages (
@@ -1035,6 +1278,7 @@ fn is_repo_cache_recent(
     Ok(is_recent)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn save_packages_to_db(
     packages: &Vec<Package>,
     db_path: &PathBuf,
@@ -1043,6 +1287,8 @@ fn save_packages_to_db(
     pkg_type: &str,
     path: &str,
     etag: Option<&str>,
+    replace: bool,
+    progress: Option<(i64, &str)>,
 ) -> Result<(), Box<dyn Error>> {
     let mut conn = open_db(db_path)?;
 
@@ -1065,9 +1311,10 @@ fn save_packages_to_db(
         params![repo_url, pkg_type, r_version_to_store, path, etag],
     )?;
 
-    // Update etag and last_updated timestamp for existing repos
+    // Update last_updated always; only overwrite etag when we actually have a
+    // new one (a trailing-only refresh has no `.zst` etag of its own).
     tx.execute(
-        "UPDATE repos SET etag = ?1, last_updated = CURRENT_TIMESTAMP
+        "UPDATE repos SET etag = COALESCE(?1, etag), last_updated = CURRENT_TIMESTAMP
          WHERE url = ?2 AND pkg_type = ?3 AND r_version IS ?4 AND path = ?5",
         params![etag, repo_url, pkg_type, r_version_to_store, path],
     )?;
@@ -1078,8 +1325,11 @@ fn save_packages_to_db(
         |row| row.get(0),
     )?;
 
-    // Clear existing data for this repository only
-    tx.execute("DELETE FROM packages WHERE repo_id = ?1", params![repo_id])?;
+    // A trailing-only refresh only ever adds rows; a full (re)download
+    // replaces everything for this repo.
+    if replace {
+        tx.execute("DELETE FROM packages WHERE repo_id = ?1", params![repo_id])?;
+    }
 
     // Insert packages
     let mut stmt = tx.prepare(
@@ -1116,6 +1366,13 @@ fn save_packages_to_db(
         ])?;
     }
 
+    if let Some((parsed_len, tail_hash)) = progress {
+        tx.execute(
+            "UPDATE repos SET parsed_len = ?1, tail_hash = ?2 WHERE id = ?3",
+            params![parsed_len, tail_hash, repo_id],
+        )?;
+    }
+
     drop(stmt); // Drop statement before committing
     tx.commit()?;
 
@@ -1123,6 +1380,7 @@ fn save_packages_to_db(
 }
 
 /// Store the ARCHIVEDPACKAGES records in the `archived_packages` table.
+#[allow(clippy::too_many_arguments)]
 fn save_archived_to_db(
     packages: &[Package],
     db_path: &PathBuf,
@@ -1130,6 +1388,8 @@ fn save_archived_to_db(
     pkg_type: &str,
     path: &str,
     etag: Option<&str>,
+    replace: bool,
+    progress: Option<(i64, &str)>,
 ) -> Result<(), Box<dyn Error>> {
     let mut conn = open_db(db_path)?;
     let repo_url = repo_url.trim_end_matches('/');
@@ -1143,8 +1403,10 @@ fn save_archived_to_db(
         params![repo_url, pkg_type, path, etag],
     )?;
 
+    // Update last_updated always; only overwrite etag when we actually have a
+    // new one (a trailing-only refresh has no `.zst` etag of its own).
     tx.execute(
-        "UPDATE repos SET etag = ?1, last_updated = CURRENT_TIMESTAMP
+        "UPDATE repos SET etag = COALESCE(?1, etag), last_updated = CURRENT_TIMESTAMP
          WHERE url = ?2 AND pkg_type = ?3 AND r_version IS NULL AND path = ?4",
         params![etag, repo_url, pkg_type, path],
     )?;
@@ -1155,10 +1417,14 @@ fn save_archived_to_db(
         |row| row.get(0),
     )?;
 
-    tx.execute(
-        "DELETE FROM archived_packages WHERE repo_id = ?1",
-        params![repo_id],
-    )?;
+    // A trailing-only refresh only ever adds rows; a full (re)download
+    // replaces everything for this repo.
+    if replace {
+        tx.execute(
+            "DELETE FROM archived_packages WHERE repo_id = ?1",
+            params![repo_id],
+        )?;
+    }
 
     let mut stmt = tx.prepare(
         "INSERT INTO archived_packages (name, archived, repo_id)
@@ -1175,6 +1441,13 @@ fn save_archived_to_db(
         };
         stmt.execute(params![&pkg.name, archived, repo_id])?;
         stored += 1;
+    }
+
+    if let Some((parsed_len, tail_hash)) = progress {
+        tx.execute(
+            "UPDATE repos SET parsed_len = ?1, tail_hash = ?2 WHERE id = ?3",
+            params![parsed_len, tail_hash, repo_id],
+        )?;
     }
 
     drop(stmt); // Drop statement before committing
@@ -1235,7 +1508,7 @@ Depends: R (>= 3.5.0)
         let result = parse_packages(&path);
         let _ = std::fs::remove_file(&path);
 
-        let packages = result.expect("parse zstd-compressed PACKAGES");
+        let (packages, _data) = result.expect("parse zstd-compressed PACKAGES");
         assert_eq!(packages.len(), 3);
         let mut vers: Vec<_> = packages
             .iter()
@@ -1275,7 +1548,7 @@ Version: 2.1.0
         let result = parse_packages(&path);
         let _ = std::fs::remove_file(&path);
 
-        let packages = result.expect("parse zstd-compressed ARCHIVEDPACKAGES");
+        let (packages, _data) = result.expect("parse zstd-compressed ARCHIVEDPACKAGES");
         let a = packages.iter().find(|p| p.name == "gpclib").unwrap();
         assert_eq!(a.archived.as_deref(), Some("2020-03-08"));
         // A record without the field, as every other repo's records are.
@@ -1308,7 +1581,17 @@ Version: 2.1.0
             // Not from this feed, so there is nothing to record about it.
             archived_record("pkgB", None),
         ];
-        save_archived_to_db(&packages, &db, url, "source", "ARCHIVEDPACKAGES", None).unwrap();
+        save_archived_to_db(
+            &packages,
+            &db,
+            url,
+            "source",
+            "ARCHIVEDPACKAGES",
+            None,
+            true,
+            None,
+        )
+        .unwrap();
 
         let found = archived_package_in_db(&db, url, "gpclib").unwrap();
         assert_eq!(found.map(|a| a.archived), Some("2020-03-08".to_string()));
@@ -1325,6 +1608,8 @@ Version: 2.1.0
             url,
             "source",
             "ARCHIVEDPACKAGES",
+            None,
+            true,
             None,
         )
         .unwrap();
@@ -1364,7 +1649,7 @@ Version: 2.1.0
         let result = parse_packages(&path);
         let _ = std::fs::remove_file(&path);
 
-        let packages = result.expect("parse PACKAGES with SHA256Original");
+        let (packages, _data) = result.expect("parse PACKAGES with SHA256Original");
         let a = packages.iter().find(|p| p.name == "pkgA").unwrap();
         assert_eq!(
             a.sha256sum.as_deref(),
@@ -1406,7 +1691,7 @@ Imports: pkgGood
         let result = parse_packages(&path);
         let _ = std::fs::remove_file(&path);
 
-        let packages = result.expect("parse must not abort on a malformed paragraph");
+        let (packages, _data) = result.expect("parse must not abort on a malformed paragraph");
         let mut names: Vec<_> = packages.iter().map(|p| p.name.as_str()).collect();
         names.sort();
         assert_eq!(names, vec!["pkgAlsoGood", "pkgGood"]);
@@ -1578,5 +1863,201 @@ Imports: pkgGood
     fn test_minor_r_version_empty() {
         let result = minor_r_version("");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_try_trailing_refresh_appends_when_tail_matches() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let old_text = "Package: pkgA\nVersion: 1.0.0\n\n";
+        let new_paragraph = "Package: pkgB\nVersion: 2.0.0\n";
+        let parsed_len = old_text.len() as i64;
+        let tail_hash = hash_bytes(tail_slice(old_text.as_bytes()));
+
+        // `parsed_len` is well under `TAIL_WINDOW`, so the overlap the real
+        // server would be asked for is the whole of `old_text`: a correctly
+        // behaving server's response is exactly `old_text` + the new bytes.
+        let mut response_body = old_text.to_string();
+        response_body.push_str(new_paragraph);
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let mock_server = rt.block_on(MockServer::start());
+        rt.block_on(
+            Mock::given(method("GET"))
+                .and(path("/ALLPACKAGES"))
+                .respond_with(ResponseTemplate::new(206).set_body_string(response_body))
+                .mount(&mock_server),
+        );
+
+        let url = format!("{}/ALLPACKAGES", mock_server.uri());
+        let outcome = try_trailing_refresh(&url, parsed_len, &tail_hash).unwrap();
+
+        let TrailingOutcome::Appended(data) = outcome else {
+            panic!("expected an Appended outcome");
+        };
+        let window_len = tail_window_len(parsed_len);
+        assert_eq!(&data[..window_len], old_text.as_bytes());
+        assert_eq!(&data[window_len..], new_paragraph.as_bytes());
+    }
+
+    #[test]
+    fn test_try_trailing_refresh_detects_rewrite() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let old_text = "Package: pkgA\nVersion: 1.0.0\n\n";
+        let parsed_len = old_text.len() as i64;
+        let tail_hash = hash_bytes(tail_slice(old_text.as_bytes()));
+
+        // The origin rewrote history: same length, different content, so a
+        // naive offset-only fetch would silently look plausible.
+        let rewritten = "Package: pkgA\nVersion: 9.9.9\n\n";
+        assert_eq!(rewritten.len(), old_text.len());
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let mock_server = rt.block_on(MockServer::start());
+        rt.block_on(
+            Mock::given(method("GET"))
+                .and(path("/ALLPACKAGES"))
+                .respond_with(ResponseTemplate::new(206).set_body_string(rewritten))
+                .mount(&mock_server),
+        );
+
+        let url = format!("{}/ALLPACKAGES", mock_server.uri());
+        let result = try_trailing_refresh(&url, parsed_len, &tail_hash);
+        assert!(result.is_err(), "a tail-hash mismatch must be rejected");
+    }
+
+    #[test]
+    fn test_try_trailing_refresh_out_of_range_is_unchanged() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let mock_server = rt.block_on(MockServer::start());
+        rt.block_on(
+            Mock::given(method("GET"))
+                .and(path("/ALLPACKAGES"))
+                .respond_with(ResponseTemplate::new(416))
+                .mount(&mock_server),
+        );
+
+        let url = format!("{}/ALLPACKAGES", mock_server.uri());
+        let outcome = try_trailing_refresh(&url, 100, "irrelevant").unwrap();
+        assert!(matches!(outcome, TrailingOutcome::Unchanged));
+    }
+
+    /// Simulates two refresh cycles at the DB layer (independent of the
+    /// network): a full download followed by a trailing-only append, then a
+    /// full-replace fallback as would follow a detected rewrite.
+    #[test]
+    fn test_store_packages_incremental_append_and_replace_fallback() {
+        let mut db = std::env::temp_dir();
+        db.push(format!(
+            "rig-test-trailing-append-{}.db",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&db);
+        ensure_db_schema(&db).unwrap();
+
+        let url = "https://example.com/ALLPACKAGES.zst";
+
+        // Run 1: full download and parse.
+        let first = vec![Package::from_crandb(
+            "pkgA".to_string(),
+            RPackageVersion::from_str("1.0.0").unwrap(),
+            vec![],
+        )];
+        store_packages(
+            &first,
+            &db,
+            url,
+            None,
+            "source",
+            "ALLPACKAGES",
+            Feed::Cranlike,
+            None,
+            true,
+            Some((100, "hash-v1")),
+        )
+        .unwrap();
+
+        // Run 2: trailing-only append of a newly published package.
+        let second = vec![Package::from_crandb(
+            "pkgB".to_string(),
+            RPackageVersion::from_str("2.0.0").unwrap(),
+            vec![],
+        )];
+        store_packages(
+            &second,
+            &db,
+            url,
+            None,
+            "source",
+            "ALLPACKAGES",
+            Feed::Cranlike,
+            None,
+            false,
+            Some((150, "hash-v2")),
+        )
+        .unwrap();
+
+        let conn = open_db(&db).unwrap();
+        let mut stmt = conn
+            .prepare("SELECT name FROM packages ORDER BY name")
+            .unwrap();
+        let names: Vec<String> = stmt
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(names, vec!["pkgA".to_string(), "pkgB".to_string()]);
+
+        let (parsed_len, tail_hash): (i64, String) = conn
+            .query_row(
+                "SELECT parsed_len, tail_hash FROM repos WHERE url = ?1 AND pkg_type = 'source'",
+                params![url],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(parsed_len, 150);
+        assert_eq!(tail_hash, "hash-v2");
+        drop(stmt);
+        drop(conn);
+
+        // Run 3: a rewrite was detected, so the caller falls back to a full
+        // replace rather than trusting the (now invalid) appended state.
+        let replacement = vec![Package::from_crandb(
+            "pkgC".to_string(),
+            RPackageVersion::from_str("3.0.0").unwrap(),
+            vec![],
+        )];
+        store_packages(
+            &replacement,
+            &db,
+            url,
+            None,
+            "source",
+            "ALLPACKAGES",
+            Feed::Cranlike,
+            None,
+            true,
+            Some((90, "hash-v3")),
+        )
+        .unwrap();
+
+        let conn = open_db(&db).unwrap();
+        let mut stmt = conn
+            .prepare("SELECT name FROM packages ORDER BY name")
+            .unwrap();
+        let names: Vec<String> = stmt
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(names, vec!["pkgC".to_string()]);
+
+        let _ = std::fs::remove_file(&db);
     }
 }
