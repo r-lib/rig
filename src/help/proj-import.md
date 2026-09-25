@@ -25,6 +25,7 @@ to merge dependencies into an existing file instead.
 | `Suggests`            | `[dependency-groups.dev]`      |
 | `Enhances`            | `[dependency-groups.enhances]` |
 | `Config/Needs/<name>` | `[dependency-groups.<name>]`   |
+| `Config/Needs/Optional/<name>` | `[optional-dependencies.<name>]` |
 
 `Authors@R` is parsed into `[project].authors`, one entry per `person()` call, in
 order; this is a best-effort parser for common `person()` usage (name, `email`,
@@ -40,6 +41,13 @@ unchanged. Note that only the `dev` and `enhances` groups are installed by
 rig, so a `Config/Needs/*` group is carried in the manifest, but not solved
 or installed by `rig proj lock` and `rig proj sync`. This behavior will be
 improved in the future.
+
+`Config/Needs/Optional/<name>` fields are parsed the same way, into
+`[optional-dependencies.<name>]` instead of `[dependency-groups.<name>]`. A
+package listed there is also `Suggests`-listed in the same `DESCRIPTION`
+file (`rig proj export` writes it to both places, since `R CMD check` only
+allows using a package conditionally if it's `Suggests`-listed), so it also
+ends up in `[dependency-groups.dev]`, same as any other `Suggests` entry.
 
 ## Files
 

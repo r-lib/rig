@@ -755,6 +755,11 @@ impl Rproj {
     ///
     /// A field with an empty value creates an empty group, so that it, too,
     /// round-trips.
+    ///
+    /// This only ever handles a plain `Config/Needs/<name>` field, i.e. one
+    /// that maps to `[dependency-groups.<name>]`. `Config/Needs/Optional/<name>`
+    /// -- which maps to `[optional-dependencies.<name>]` instead -- is
+    /// handled separately by [`Rproj::merge_optional_dependencies`].
     pub fn merge_config_needs(&mut self, needs: &[(String, String)]) {
         for (group_name, value) in needs.iter() {
             if DESCRIPTION_DEP_GROUPS.contains(&group_name.as_str()) {
@@ -776,6 +781,38 @@ impl Rproj {
                 }
                 let (name, dep) = config_needs_entry(entry);
                 group.dependencies.insert(name, dep);
+            }
+        }
+    }
+
+    /// Merge a DESCRIPTION's `Config/Needs/Optional/*` fields into this
+    /// manifest's `[optional-dependencies.*]` extras: `Config/Needs/Optional/viz`
+    /// becomes `[optional-dependencies.viz]`. Otherwise identical to
+    /// [`Rproj::merge_config_needs`] -- see its docs for `needs`'s shape and
+    /// how each entry's value is parsed -- just targeting
+    /// `optional_dependencies` instead of `dependency_groups`.
+    pub fn merge_optional_dependencies(&mut self, needs: &[(String, String)]) {
+        for (group_name, value) in needs.iter() {
+            if DESCRIPTION_DEP_GROUPS.contains(&group_name.as_str()) {
+                warn!(
+                    "Config/Needs/Optional/{} is merged into the `{}` \
+                     dependency group, which `rig proj export` writes as a \
+                     DESCRIPTION dependency field, not as \
+                     Config/Needs/Optional/{}",
+                    group_name, group_name, group_name
+                );
+            }
+            let group = self
+                .optional_dependencies
+                .entry(group_name.clone())
+                .or_default();
+            for entry in value.split(',') {
+                let entry = entry.trim();
+                if entry.is_empty() {
+                    continue;
+                }
+                let (name, dep) = config_needs_entry(entry);
+                group.insert(name, dep);
             }
         }
     }
@@ -1070,14 +1107,19 @@ impl Rproj {
     /// DESCRIPTION dependency field (`Depends`/`Imports`/`LinkingTo`/
     /// `Suggests`/`Enhances`), for [`Rproj::to_description`]'s `Remotes:`
     /// field. Scoped the same way as [`Rproj::to_dep_version_specs`] --
-    /// `[dependencies]`, `[linking-dependencies]`, the `test`/`enhances`
-    /// dependency groups, and every `[optional-dependencies.*]` extra --
-    /// unlike [`Rproj::git_dependencies`], which also sweeps arbitrary
-    /// `Config/Needs/*` groups that already carry their own pak-ref entries
-    /// and must not duplicate into `Remotes:`. Unlike `git_dependencies`, a
-    /// `path` here is kept exactly as stored in the manifest (relative to
-    /// its directory), since `DESCRIPTION` is written into that same
-    /// directory, so the relative path is exactly as usable from there.
+    /// `[dependencies]`, `[linking-dependencies]`, the `dev`/`enhances`
+    /// dependency groups, and the `dev`/`enhances` `[optional-dependencies.*]`
+    /// extras -- unlike [`Rproj::git_dependencies`], which also sweeps
+    /// arbitrary `Config/Needs/*` groups that already carry their own pak-ref
+    /// entries and must not duplicate into `Remotes:`. A non-reserved
+    /// `[optional-dependencies.*]` extra is excluded the same way a
+    /// non-reserved `[dependency-groups.*]` one is: its git/url/path-sourced
+    /// entries are written into their own `Config/Needs/Optional/<name>`
+    /// field instead (see [`Rproj::to_description`]), so must not also show
+    /// up under `Remotes:`. Unlike `git_dependencies`, a `path` here is kept
+    /// exactly as stored in the manifest (relative to its directory), since
+    /// `DESCRIPTION` is written into that same directory, so the relative
+    /// path is exactly as usable from there.
     fn description_git_dependencies(&self) -> Vec<(String, DepTable)> {
         let mut out = vec![];
         let tables = std::iter::once(&self.dependencies)
@@ -1087,7 +1129,9 @@ impl Rproj {
                     .get(*group_name)
                     .map(|g| &g.dependencies)
             }))
-            .chain(self.optional_dependencies.values());
+            .chain(DESCRIPTION_DEP_GROUPS.iter().filter_map(|group_name| {
+                self.optional_dependencies.get(*group_name)
+            }));
         for table in tables {
             for (name, dep) in table.iter() {
                 if let Dependency::Detailed(t) = dep {
@@ -1117,14 +1161,24 @@ impl Rproj {
         self.to_dep_version_specs_impl(dev, true)
     }
 
-    /// [`Rproj::to_dep_version_specs`], but with a switch for whether groups
-    /// other than `dev`/`enhances` are folded in as `Suggests`.
-    /// [`Rproj::to_description`] needs that switched off: those groups are
-    /// rendered into their own `Config/Needs/<group>` field instead (see its
-    /// loop over [`Rproj::dependency_groups`]), and must not also show up
-    /// under `Suggests:`, or they would be listed, and installed, twice over.
-    /// Every other caller solves and installs the manifest's full dependency
-    /// set, so [`Rproj::to_dep_version_specs`] leaves the switch on.
+    /// [`Rproj::to_dep_version_specs`], but with a switch for whether
+    /// `[dependency-groups.*]` groups other than `dev`/`enhances` are folded
+    /// in as `Suggests`. [`Rproj::to_description`] needs that switched off:
+    /// those groups are rendered into their own `Config/Needs/<group>` field
+    /// instead (see its loop over [`Rproj::dependency_groups`]), and must not
+    /// also show up under `Suggests:`, or they would be listed, and
+    /// installed, twice over. Every other caller solves and installs the
+    /// manifest's full dependency set, so [`Rproj::to_dep_version_specs`]
+    /// leaves the switch on.
+    ///
+    /// The switch does *not* apply to `[optional-dependencies.*]` extras:
+    /// those always fold into `Suggests`, even from [`Rproj::to_description`]
+    /// (which also writes each one into its own
+    /// `Config/Needs/Optional/<name>` field, see
+    /// [`Rproj::merge_optional_dependencies`]) -- an optional dependency has
+    /// to be `Suggests`-listed for `R CMD check` to allow using it
+    /// conditionally, unlike an arbitrary `Config/Needs/*` group, which has
+    /// no such requirement.
     fn to_dep_version_specs_impl(
         &self,
         dev: bool,
@@ -1467,6 +1521,30 @@ impl Rproj {
                 writeln!(out, "Config/Needs/{}:", group_name)?;
             } else {
                 writeln!(out, "Config/Needs/{}:{}", group_name, fold_dcf_list(&items))?;
+            }
+        }
+
+        for (group_name, extra) in self.optional_dependencies.iter() {
+            if DESCRIPTION_DEP_GROUPS.contains(&group_name.as_str()) {
+                continue;
+            }
+            let mut items: Vec<String> = Vec::new();
+            for (name, dep) in extra.iter() {
+                let (item, was_dropped) = format_group_entry(name, dep)?;
+                if was_dropped {
+                    dropped.push(name.clone());
+                }
+                items.push(item);
+            }
+            if items.is_empty() {
+                writeln!(out, "Config/Needs/Optional/{}:", group_name)?;
+            } else {
+                writeln!(
+                    out,
+                    "Config/Needs/Optional/{}:{}",
+                    group_name,
+                    fold_dcf_list(&items)
+                )?;
             }
         }
 
@@ -4169,7 +4247,7 @@ foo = "bar"
     }
 
     #[test]
-    fn to_description_writes_remotes_for_git_sourced_optional_dependencies() {
+    fn to_description_writes_config_needs_optional_for_git_sourced_optional_dependencies() {
         let mut m = Rproj::minimal("mypkg");
         m.optional_dependencies.insert(
             "viz".to_string(),
@@ -4185,8 +4263,99 @@ foo = "bar"
 
         let (desc, dropped) = m.to_description().unwrap();
         assert!(dropped.is_empty());
+        // Still `Suggests`-listed, so `R CMD check` allows using it
+        // conditionally, but its pak reference lives only in
+        // `Config/Needs/Optional/viz` now, not also duplicated into
+        // `Remotes:`.
         assert!(desc.contains("Suggests:\n    tidytemplate\n"));
-        assert!(desc.contains("Remotes:\n    tidyverse/tidytemplate@main\n"));
+        assert!(!desc.contains("Remotes:"));
+        assert!(desc.contains("Config/Needs/Optional/viz:\n    tidyverse/tidytemplate@main\n"));
+    }
+
+    #[test]
+    fn to_description_writes_optional_dependencies_as_config_needs_optional() {
+        let mut m = Rproj::minimal("mypkg");
+        m.optional_dependencies.insert(
+            "viz".to_string(),
+            BTreeMap::from([
+                ("ggplot2".to_string(), dep(">= 3.4")),
+                ("plotly".to_string(), dep("*")),
+            ]),
+        );
+
+        let (desc, dropped) = m.to_description().unwrap();
+        assert!(dropped.is_empty());
+        assert!(desc.contains("Suggests:\n    ggplot2 (>= 3.4),\n    plotly\n"));
+        assert!(desc.contains("Config/Needs/Optional/viz:\n    ggplot2 (>= 3.4),\n    plotly\n"));
+    }
+
+    #[test]
+    fn merge_optional_dependencies_creates_a_group_per_field() {
+        let mut m = Rproj::minimal("mypkg");
+        m.merge_optional_dependencies(&needs(&[
+            ("viz", "ggplot2, tidyverse/tidytemplate"),
+            ("docs", "pkgdown (>= 2.0)"),
+        ]));
+
+        let viz = m.optional_dependencies.get("viz").unwrap();
+        assert_eq!(viz.get("ggplot2"), Some(&dep("*")));
+        assert_eq!(
+            viz.get("tidytemplate"),
+            Some(&Dependency::Detailed(Box::new(DepTable {
+                git: Some("https://github.com/tidyverse/tidytemplate.git".to_string()),
+                ref_: Some("tidyverse/tidytemplate".to_string()),
+                ..Default::default()
+            })))
+        );
+        assert_eq!(
+            m.optional_dependencies.get("docs").unwrap().get("pkgdown"),
+            Some(&dep(">= 2.0"))
+        );
+    }
+
+    #[test]
+    fn merge_optional_dependencies_keeps_an_empty_field_as_an_empty_group() {
+        let mut m = Rproj::minimal("mypkg");
+        m.merge_optional_dependencies(&needs(&[("viz", "")]));
+        assert!(m.optional_dependencies.get("viz").unwrap().is_empty());
+
+        let (desc, _) = m.to_description().unwrap();
+        assert!(desc.contains("Config/Needs/Optional/viz:\n"));
+    }
+
+    #[test]
+    fn optional_dependencies_roundtrip_through_description() {
+        let mut m = Rproj::minimal("mypkg");
+        m.merge_config_needs(&needs(&[("dev", "mockery")]));
+        m.merge_optional_dependencies(&needs(&[(
+            "viz",
+            "ggplot2 (>= 3.4), tidyverse/tidytemplate",
+        )]));
+
+        let (desc, _) = m.to_description().unwrap();
+        let paragraph =
+            crate::proj::parse_description_paragraph(std::io::Cursor::new(desc)).unwrap();
+        let pkg = DcfPackage::from_dcf_paragraph(&paragraph).unwrap();
+
+        let mut m2 = Rproj::minimal("mypkg");
+        m2.merge_description(&pkg);
+        let optional_needs: Vec<(String, String)> = paragraph
+            .iter()
+            .filter_map(|(key, value)| {
+                key.strip_prefix("Config/Needs/Optional/")
+                    .map(|group| (group.to_string(), value.to_string()))
+            })
+            .collect();
+        m2.merge_optional_dependencies(&optional_needs);
+
+        assert_eq!(m2.optional_dependencies, m.optional_dependencies);
+        // `ggplot2`/`tidytemplate` are `Suggests`-listed too, so they also
+        // land in `dependency_groups["dev"]`, alongside the unrelated
+        // `mockery` -- no dedup against `optional_dependencies`.
+        let dev = &m2.dependency_groups.get("dev").unwrap().dependencies;
+        assert!(dev.contains_key("mockery"));
+        assert!(dev.contains_key("ggplot2"));
+        assert!(dev.contains_key("tidytemplate"));
     }
 
     #[test]

@@ -350,12 +350,14 @@ fn sc_proj_import(
     let mut before_dependencies = BTreeMap::new();
     let mut before_linking = BTreeMap::new();
     let mut before_groups = BTreeMap::new();
+    let mut before_optional = BTreeMap::new();
     let mut before_config = BTreeMap::new();
     if let Some(text) = existing_text.as_deref() {
         original_doc = Some(text.parse()?);
         before_dependencies = manifest.dependencies.clone();
         before_linking = manifest.linking_dependencies.clone();
         before_groups = manifest.dependency_groups.clone();
+        before_optional = manifest.optional_dependencies.clone();
         before_config = manifest.config.clone();
     }
 
@@ -489,15 +491,29 @@ fn sc_proj_import(
         }
     }
     // `Config/Needs/*` fields are dependencies as well, so they are imported
-    // in `--dependencies` mode, too.
+    // in `--dependencies` mode, too. `Config/Needs/Optional/<name>` is its own
+    // sub-namespace -- it maps to `[optional-dependencies.<name>]`, not
+    // `[dependency-groups.<name>]` -- so it's excluded here and collected
+    // separately below.
     let needs: Vec<(String, String)> = paragraph
         .iter()
         .filter_map(|(key, value)| {
-            key.strip_prefix("Config/Needs/")
-                .map(|group| (group.to_string(), reflow(value)))
+            let group = key.strip_prefix("Config/Needs/")?;
+            if group.starts_with("Optional/") {
+                return None;
+            }
+            Some((group.to_string(), reflow(value)))
         })
         .collect();
     manifest.merge_config_needs(&needs);
+    let optional_needs: Vec<(String, String)> = paragraph
+        .iter()
+        .filter_map(|(key, value)| {
+            key.strip_prefix("Config/Needs/Optional/")
+                .map(|group| (group.to_string(), reflow(value)))
+        })
+        .collect();
+    manifest.merge_optional_dependencies(&optional_needs);
     // `Config/<group>/<key>` fields, other than `Config/Needs/*` above, become
     // `[config.<group>]` entries, e.g. `Config/testthat/edition: 3` becomes
     // `edition = 3` under `[config.testthat]`.
@@ -533,6 +549,14 @@ fn sc_proj_import(
                 }
             }
         }
+        for (group_name, extra) in manifest.optional_dependencies.iter() {
+            let before_extra = before_optional.get(group_name);
+            for (name, dep) in extra.iter() {
+                if before_extra.and_then(|g| g.get(name)) != Some(dep) {
+                    Rproj::doc_set_dependency(doc, &["optional-dependencies", group_name], name, dep)?;
+                }
+            }
+        }
         for (group_name, table) in manifest.config.iter() {
             let before_table = before_config.get(group_name);
             for (key, value) in table.iter() {
@@ -548,7 +572,8 @@ fn sc_proj_import(
         None => fs::write(path, manifest.to_toml()?)?,
     }
 
-    let groups = match needs.len() {
+    let groups_count = needs.len() + optional_needs.len();
+    let groups = match groups_count {
         0 => "".to_string(),
         1 => " and 1 dependency group".to_string(),
         n => format!(" and {} dependency groups", n),

@@ -22,6 +22,7 @@ Read `rproj.toml`, rig's project and package manifest, and write a
 | `[dependency-groups.dev]`      | `Suggests`            |
 | `[dependency-groups.enhances]` | `Enhances`            |
 | `[dependency-groups.<name>]`   | `Config/Needs/<name>` |
+| `[optional-dependencies.<name>]` | `Config/Needs/Optional/<name>` + `Suggests` |
 
 DESCRIPTION's dependency syntax only supports a single version comparison
 per package (`pkg (>= 1.2.3)`), unlike `rproj.toml`, which can express a
