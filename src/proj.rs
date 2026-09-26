@@ -4758,6 +4758,7 @@ fn download_http_lockfile_packages(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dcf::RDepType;
     use crate::rproj::{Dependency, Group, Workspace};
     use std::collections::BTreeMap;
 
@@ -5651,7 +5652,14 @@ mod tests {
             name: name.to_string(),
             version: RPackageVersion::from_str(version).unwrap(),
             deps: PackageDependencies {
-                dependencies: deps.iter().map(|d| direct_dep(d, "*")).collect(),
+                dependencies: deps
+                    .iter()
+                    .map(|d| {
+                        let mut dep = direct_dep(d, "*");
+                        dep.types = vec![RDepType::Imports];
+                        dep
+                    })
+                    .collect(),
             },
         }
     }
