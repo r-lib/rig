@@ -102,18 +102,41 @@ fn ensure_bare_mirror(url: &str, dest: &Path) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// Resolve `want` (a branch, tag, or `HEAD`) to the remote's current commit
+/// sha via `git ls-remote`, without transferring any objects -- one small
+/// round trip, no clone/fetch negotiation. Returns `None` for anything
+/// `ls-remote` can't resolve as a ref (e.g. a raw commit sha from `rev`),
+/// leaving that case to the full fetch in [`fetch_into_mirror`].
+fn resolve_remote_sha(dest: &Path, want: &str) -> Option<String> {
+    let out = run_git(dest, &["ls-remote", "--exit-code", "origin", want]).ok()?;
+    let sha = out.lines().next()?.split_whitespace().next()?;
+    Some(sha.to_string())
+}
+
 /// Fetch `refspec` (or `HEAD`) into a bare mirror already `ensure_bare_mirror`
 /// -ed at `dest`, and return the resolved commit sha, without checking
 /// anything out.
 ///
-/// Tries a partial-clone fetch (`--filter=blob:none`) first: on a big repo
-/// where only one file is ever read back out (see [`read_blob`]), this skips
-/// downloading every other blob at that commit, deferring them to a lazy
-/// per-blob fetch if they're ever actually requested. Not every git host
-/// supports partial-clone filters, so a filtered fetch that fails is retried
-/// once without `--filter`.
+/// First tries a cheap `git ls-remote` (see [`resolve_remote_sha`]): if it
+/// resolves `refspec` to a commit the mirror already has locally (an
+/// unchanged branch/tag since the last `rig proj lock`, the common case for
+/// `--upgrade`), this returns without any object transfer at all -- just the
+/// one small ref lookup. Only a moved ref (or a `refspec` `ls-remote` can't
+/// resolve, e.g. a raw sha) falls through to an actual fetch.
+///
+/// The fetch itself tries a partial-clone fetch (`--filter=blob:none`)
+/// first: on a big repo where only one file is ever read back out (see
+/// [`read_blob`]), this skips downloading every other blob at that commit,
+/// deferring them to a lazy per-blob fetch if they're ever actually
+/// requested. Not every git host supports partial-clone filters, so a
+/// filtered fetch that fails is retried once without `--filter`.
 fn fetch_into_mirror(dest: &Path, refspec: Option<&str>) -> Result<String, Box<dyn Error>> {
     let want = refspec.unwrap_or("HEAD");
+    if let Some(sha) = resolve_remote_sha(dest, want) {
+        if run_git(dest, &["cat-file", "-e", &format!("{}^{{commit}}", sha)]).is_ok() {
+            return Ok(sha);
+        }
+    }
     let filtered = run_git(
         dest,
         &[
