@@ -2516,7 +2516,7 @@ impl RprojLockTarget {
 
         RprojLockTarget {
             r_version,
-            platform: platform.unwrap_or_else(|| std::env::consts::ARCH.to_string()),
+            platform: platform.unwrap_or_else(|| "source".to_string()),
             direct_dependencies: vec![],
             packages: pkgs,
         }
