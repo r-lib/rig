@@ -268,6 +268,7 @@ fn main_() -> i32 {
             exitcode
         }
         Err(err) => {
+            OUTPUT.error(&format!("{}", err));
             error!("{}", err);
             info!("RIG END [pid:{}] {}", pid, cmdline);
             1
