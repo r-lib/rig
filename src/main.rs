@@ -236,11 +236,13 @@ fn main_() -> i32 {
 
     if args.get_flag("user") {
         if let Err(e) = utils::set_mode(utils::Mode::User) {
+            OUTPUT.error(&format!("{}", e));
             error!("{}", e);
             return 1;
         }
     } else if args.get_flag("admin") {
         if let Err(e) = utils::set_mode(utils::Mode::Admin) {
+            OUTPUT.error(&format!("{}", e));
             error!("{}", e);
             return 1;
         }
@@ -248,6 +250,7 @@ fn main_() -> i32 {
 
     if args.get_flag("no-cache") {
         if let Err(e) = cache::set_no_cache(true) {
+            OUTPUT.error(&format!("{}", e));
             error!("{}", e);
             return 1;
         }
