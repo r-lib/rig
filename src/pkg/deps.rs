@@ -16,6 +16,13 @@ use simple_error::*;
 use tabular::*;
 
 use crate::dcf::{DepVersionSpec, Package, RDepType, RPackageVersion, DEP_TYPES_SOFT};
+use crate::output::OUTPUT;
+use crate::pkgsource::local::resolve_local_path;
+use crate::pkgsource::{parse_pkg_source, LocalSource, PkgSource, RemoteSource, UrlSource};
+use crate::proj::{
+    dep_table_from_remote, dep_table_from_url, fetch_and_read_git_package,
+    fetch_and_read_url_package, read_local_package,
+};
 use crate::repos::DbSourcePackageLoader;
 use crate::solver::{is_base_package, PackageVersionLoader};
 
@@ -31,27 +38,117 @@ pub fn sc_pkg_deps(
         "latest".to_string()
     };
     let dev = args.get_flag("dev");
+    let recursive = args.get_flag("recursive");
     let json = args.get_flag("json") || pkgargs.get_flag("json") || mainargs.get_flag("json");
 
-    let loader = DbSourcePackageLoader::new()?;
+    let source = parse_pkg_source(&package).inspect_err(|err| {
+        OUTPUT.error(&err.to_string());
+    })?;
+    let (name, version, deps) = match source {
+        PkgSource::Remote(r) => remote_root(&package, &r)?,
+        PkgSource::Url(u) => url_root(&u)?,
+        PkgSource::Local(l) => local_root(&l)?,
+        PkgSource::Cran => {
+            let loader = DbSourcePackageLoader::new()?;
+            let root = root_package(&loader, &package, &ver)?;
+            (
+                package.clone(),
+                root.version,
+                root.dependencies.dependencies,
+            )
+        }
+    };
 
-    if args.get_flag("recursive") {
-        let (version, rows, num_direct) = recursive_deps(&loader, &package, &ver, dev)?;
+    let loader = DbSourcePackageLoader::new()?;
+    if recursive {
+        let (rows, num_direct) = walk_deps(&loader, &name, &deps, dev);
         if json {
             print_deps_json(&rows, true)?;
         } else {
-            print_deps_recursive(&package, &version, num_direct, &rows);
+            print_deps_recursive(&name, &version, num_direct, &rows);
         }
     } else {
-        let (version, rows) = direct_deps(&loader, &package, &ver, dev)?;
+        let rows = direct_deps_of(&deps, &loader, dev);
         if json {
             print_deps_json(&rows, false)?;
         } else {
-            print_deps(&package, &version, &rows);
+            print_deps(&name, &version, &rows);
         }
     }
 
     Ok(())
+}
+
+/// The `(name, version, dependencies)` of an ad-hoc remote package root, e.g.
+/// `rig pkg deps github::r-lib/crayon`, the `deps` counterpart of
+/// [`super::tree::remote_root_tree`].
+fn remote_root(
+    spec: &str,
+    r: &RemoteSource,
+) -> Result<(String, RPackageVersion, Vec<DepVersionSpec>), Box<dyn Error>> {
+    let table = dep_table_from_remote(r, spec);
+    let git_url = table
+        .git
+        .clone()
+        .expect("dep_table_from_remote always sets `git`");
+    let (pkg, _git_source, _remotes_field) =
+        fetch_and_read_git_package(&git_url, &table, &HashMap::new(), &HashMap::new())?;
+    Ok((pkg.name, pkg.version, pkg.dependencies.dependencies))
+}
+
+/// The `deps` counterpart of [`super::tree::url_root_tree`].
+fn url_root(
+    u: &UrlSource,
+) -> Result<(String, RPackageVersion, Vec<DepVersionSpec>), Box<dyn Error>> {
+    let table = dep_table_from_url(u);
+    let (pkg, _url_source, _remotes_field) = fetch_and_read_url_package(&u.url, &table)?;
+    Ok((pkg.name, pkg.version, pkg.dependencies.dependencies))
+}
+
+/// The `deps` counterpart of [`super::tree::local_root_tree`].
+fn local_root(
+    l: &LocalSource,
+) -> Result<(String, RPackageVersion, Vec<DepVersionSpec>), Box<dyn Error>> {
+    let path = resolve_local_path(&l.path)?;
+    let (pkg, _local_source, _remotes_field) = read_local_package(&path)?;
+    Ok((pkg.name, pkg.version, pkg.dependencies.dependencies))
+}
+
+/// The direct dependencies of an already-resolved dependency list, the shared
+/// tail of [`direct_deps`] once the root package's dependencies are in hand.
+fn direct_deps_of(
+    root_deps: &[DepVersionSpec],
+    loader: &dyn PackageVersionLoader,
+    dev: bool,
+) -> Vec<DepRow> {
+    let mut newest = Newest::new(loader);
+
+    let mut rows: Vec<DepRow> = vec![];
+    for dep in root_deps.iter() {
+        if !wanted_dep(dep, dev) {
+            continue;
+        }
+        rows.push(DepRow {
+            name: dep.name.clone(),
+            version: newest_version(&mut newest, &dep.name),
+            types: dep.types.clone(),
+            requires: requirements(dep),
+            depth: 1,
+            needed_by: vec![],
+        });
+    }
+
+    // R first, then group by dependency type, in the order R lists the fields
+    // in, and sort by name within a type.
+    rows.sort_by(|a, b| {
+        sort_key(a).cmp(&sort_key(b)).then_with(|| {
+            type_rank(&a.types)
+                .cmp(&type_rank(&b.types))
+                .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        })
+    });
+
+    rows
 }
 
 // ------------------------------------------------------------------------
@@ -77,6 +174,7 @@ pub(crate) struct DepRow {
 }
 
 /// The direct dependencies of one version of a package.
+#[cfg(test)]
 fn direct_deps(
     loader: &dyn PackageVersionLoader,
     package: &str,
@@ -84,33 +182,7 @@ fn direct_deps(
     dev: bool,
 ) -> Result<(RPackageVersion, Vec<DepRow>), Box<dyn Error>> {
     let root = root_package(loader, package, ver)?;
-    let mut newest = Newest::new(loader);
-
-    let mut rows: Vec<DepRow> = vec![];
-    for dep in root.dependencies.dependencies.iter() {
-        if !wanted_dep(dep, dev) {
-            continue;
-        }
-        rows.push(DepRow {
-            name: dep.name.clone(),
-            version: newest_version(&mut newest, &dep.name),
-            types: dep.types.clone(),
-            requires: requirements(dep),
-            depth: 1,
-            needed_by: vec![],
-        });
-    }
-
-    // R first, then group by dependency type, in the order R lists the fields
-    // in, and sort by name within a type.
-    rows.sort_by(|a, b| {
-        sort_key(a).cmp(&sort_key(b)).then_with(|| {
-            type_rank(&a.types)
-                .cmp(&type_rank(&b.types))
-                .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-        })
-    });
-
+    let rows = direct_deps_of(&root.dependencies.dependencies, loader, dev);
     Ok((root.version, rows))
 }
 
@@ -127,6 +199,7 @@ fn direct_deps(
 /// — is not honored. That is the same approximation
 /// [`crate::solver::RPackageRegistry::prefetch_binaries`] makes; a full,
 /// version-consistent resolution is what `rig proj lock` is for.
+#[cfg(test)]
 fn recursive_deps(
     loader: &dyn PackageVersionLoader,
     package: &str,

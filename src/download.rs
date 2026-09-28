@@ -422,6 +422,76 @@ pub async fn fetch_optional_if_modified(
     }
 }
 
+/// What a suffix-range GET found. See [`fetch_range_suffix_`].
+pub enum RangeFetch {
+    /// `206 Partial Content` — exactly the requested suffix.
+    Partial(Vec<u8>),
+    /// `200 OK` — the server ignored `Range`; this is the whole body.
+    Full(Vec<u8>),
+    /// `416 Range Not Satisfiable` — `from` is already at or past the end.
+    OutOfRange,
+}
+
+/// Fetch only the bytes from `from` to the end of `url`, into memory.
+///
+/// Used to refresh append-only feeds (e.g. CRAN-wide package metadata)
+/// without re-downloading content already parsed and stored. There is no
+/// conditional/etag handling here — a plain `Range` GET — since `If-Range`
+/// is not reliably honored by every server; callers that need to detect a
+/// non-append rewrite must verify the response themselves.
+pub fn fetch_range_suffix_(
+    url: &str,
+    from: u64,
+    client: Option<&reqwest::Client>,
+) -> Result<RangeFetch, Box<dyn Error>> {
+    let client_ = match client {
+        Some(c) => c,
+        None => &http_client(),
+    };
+    fetch_range_suffix__(client_, url, from)
+}
+
+#[tokio::main]
+async fn fetch_range_suffix__(
+    client: &reqwest::Client,
+    url: &str,
+    from: u64,
+) -> Result<RangeFetch, Box<dyn Error>> {
+    fetch_range_suffix(client, url, from).await
+}
+
+/// The async form of [`fetch_range_suffix_`].
+pub async fn fetch_range_suffix(
+    client: &reqwest::Client,
+    url: &str,
+    from: u64,
+) -> Result<RangeFetch, Box<dyn Error>> {
+    info!("Fetching {} from byte {}", url, from);
+    let resp = client
+        .get(url)
+        .header("Range", format!("bytes={}-", from))
+        .send()
+        .await?;
+
+    match resp.status() {
+        StatusCode::PARTIAL_CONTENT => Ok(RangeFetch::Partial(resp.bytes().await?.to_vec())),
+        StatusCode::OK => Ok(RangeFetch::Full(resp.bytes().await?.to_vec())),
+        StatusCode::RANGE_NOT_SATISFIABLE => Ok(RangeFetch::OutOfRange),
+        status => {
+            error!(
+                "Failed to fetch {} from byte {}, status: {}",
+                url, from, status
+            );
+            bail!(
+                "Failed to fetch {} from byte {}, status: {}",
+                url,
+                from,
+                status
+            );
+        }
+    }
+}
+
 // ------------------------------------------------------------------------
 // probing URLs
 // ------------------------------------------------------------------------

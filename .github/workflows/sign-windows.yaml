@@ -47,8 +47,50 @@ jobs:
     - name: Install curl
       run: choco install curl
 
+    # Round 1: sign the loose rig.exe / rig-shim.exe binaries themselves,
+    # before they get baked into the installer and the user-mode zip. This
+    # way both the installer and the zip (what `website/install.ps1`
+    # downloads) end up carrying signed binaries.
     - run: |
-        make win
+        make target/release/rig.exe target/release/rig-shim.exe
+      shell: bash
+
+    # Upload the raw exes (not pre-zipped): actions/upload-artifact wraps
+    # them in its own single zip, which is exactly the one zip level
+    # SignPath's <zip-file><pe-file path="*.exe"> config expects. Zipping
+    # them ourselves first would add a second zip layer and SignPath would
+    # find 0 matching pe-files.
+    - uses: actions/upload-artifact@v7
+      id: upload-unsigned-bin-artifact
+      with:
+        name: rig-windows-${{ matrix.config.arch }}-unsigned-bin
+        path: |
+          target/release/rig.exe
+          target/release/rig-shim.exe
+
+    - uses: signpath/github-action-submit-signing-request@v2
+      with:
+        api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
+        organization-id: 'ce0224dd-53d3-46e4-8e82-b71df4fcef90'
+        project-slug: 'rig'
+        artifact-configuration-slug: 'windows-binaries'
+        signing-policy-slug: '${{ inputs.signing-policy }}'
+        github-artifact-id: '${{ steps.upload-unsigned-bin-artifact.outputs.artifact-id }}'
+        wait-for-completion: true
+        output-artifact-directory: 'signed-bin'
+
+    - name: Install signed binaries
+      run: |
+        cp signed-bin/rig.exe target/release/rig.exe
+        cp signed-bin/rig-shim.exe target/release/rig-shim.exe
+        touch target/release/rig.exe target/release/rig-shim.exe
+      shell: bash
+
+    # Round 2: build the installer (now embedding the signed exes) and the
+    # user-mode zip (now containing the signed exes too), then sign the
+    # installer itself.
+    - run: |
+        make win ARCH=${{ matrix.config.arch }}
       shell: bash
 
     - uses: actions/upload-artifact@v7
@@ -57,11 +99,21 @@ jobs:
         name: rig-windows-${{ matrix.config.arch }}-unsigned
         path: 'rig-*.exe'
 
+    # The zip is what `website/install.ps1` downloads. Its rig.exe /
+    # rig-shim.exe were already signed in round 1 above; upload it here so
+    # that `tools/release-assets.sh` can take every Windows asset from one
+    # run.
+    - uses: actions/upload-artifact@v7
+      with:
+        name: rig-windows-${{ matrix.config.arch }}-zip
+        path: 'rig-windows-*.zip'
+
     - uses: signpath/github-action-submit-signing-request@v2
       with:
         api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
         organization-id: 'ce0224dd-53d3-46e4-8e82-b71df4fcef90'
         project-slug: 'rig'
+        artifact-configuration-slug: 'windows-installer'
         signing-policy-slug: '${{ inputs.signing-policy }}'
         github-artifact-id: '${{ steps.upload-unsigned-artifact.outputs.artifact-id }}'
         wait-for-completion: true

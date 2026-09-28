@@ -49,6 +49,11 @@ pub const RPROJ_LOCK_VERSION: usize = 4;
 // `rig proj init`.
 pub const RPROJ_MANIFEST_FILE: &str = "rproj.toml";
 
+/// The DCF field rig writes into every generated `DESCRIPTION` (see
+/// [`Rproj::to_description`]) to mark the file as rig-generated. `rig proj
+/// export` uses its presence to overwrite such a file without `--force`.
+pub const DESCRIPTION_RIG_NOTE_FIELD: &str = "Config/rig/note";
+
 /// The dependency groups that map onto a `DESCRIPTION` dependency field
 /// instead of onto a `Config/Needs/*` field: `dev` is `Suggests` and
 /// `enhances` is `Enhances` (see [`Rproj::merge_description`]). Every other
@@ -750,6 +755,11 @@ impl Rproj {
     ///
     /// A field with an empty value creates an empty group, so that it, too,
     /// round-trips.
+    ///
+    /// This only ever handles a plain `Config/Needs/<name>` field, i.e. one
+    /// that maps to `[dependency-groups.<name>]`. `Config/Needs/Optional/<name>`
+    /// -- which maps to `[optional-dependencies.<name>]` instead -- is
+    /// handled separately by [`Rproj::merge_optional_dependencies`].
     pub fn merge_config_needs(&mut self, needs: &[(String, String)]) {
         for (group_name, value) in needs.iter() {
             if DESCRIPTION_DEP_GROUPS.contains(&group_name.as_str()) {
@@ -771,6 +781,38 @@ impl Rproj {
                 }
                 let (name, dep) = config_needs_entry(entry);
                 group.dependencies.insert(name, dep);
+            }
+        }
+    }
+
+    /// Merge a DESCRIPTION's `Config/Needs/Optional/*` fields into this
+    /// manifest's `[optional-dependencies.*]` extras: `Config/Needs/Optional/viz`
+    /// becomes `[optional-dependencies.viz]`. Otherwise identical to
+    /// [`Rproj::merge_config_needs`] -- see its docs for `needs`'s shape and
+    /// how each entry's value is parsed -- just targeting
+    /// `optional_dependencies` instead of `dependency_groups`.
+    pub fn merge_optional_dependencies(&mut self, needs: &[(String, String)]) {
+        for (group_name, value) in needs.iter() {
+            if DESCRIPTION_DEP_GROUPS.contains(&group_name.as_str()) {
+                warn!(
+                    "Config/Needs/Optional/{} is merged into the `{}` \
+                     dependency group, which `rig proj export` writes as a \
+                     DESCRIPTION dependency field, not as \
+                     Config/Needs/Optional/{}",
+                    group_name, group_name, group_name
+                );
+            }
+            let group = self
+                .optional_dependencies
+                .entry(group_name.clone())
+                .or_default();
+            for entry in value.split(',') {
+                let entry = entry.trim();
+                if entry.is_empty() {
+                    continue;
+                }
+                let (name, dep) = config_needs_entry(entry);
+                group.insert(name, dep);
             }
         }
     }
@@ -1025,11 +1067,18 @@ impl Rproj {
     }
 
     /// Every dependency, anywhere in the manifest (`[dependencies]`,
-    /// `[linking-dependencies]`, any `[dependency-groups.*]`), that has `git`
-    /// or `url` set: the git/GitHub/url-sourced packages, for the pre-solve
-    /// fetch that registers their real name/version/deps with the solver
-    /// (see `crate::proj::register_git_sources`).
-    pub fn git_dependencies(&self) -> Vec<(String, DepTable)> {
+    /// `[linking-dependencies]`, any `[dependency-groups.*]`), that has
+    /// `git`, `url` or `path` set: the git/GitHub/url/local-sourced packages,
+    /// for the pre-solve fetch that registers their real name/version/deps
+    /// with the solver (see `crate::proj::register_git_sources`).
+    ///
+    /// A `path` is stored in `rproj.toml` relative to `root` (the manifest's
+    /// own directory), so that the file stays portable when committed and
+    /// checked out elsewhere -- see `crate::proj::relativize_to_root`. It is
+    /// resolved back to an absolute path here, against `root`, before
+    /// anything downstream (`crate::proj::resolve_git_sources`) reads it, so
+    /// that code never has to know rig's working directory either.
+    pub fn git_dependencies(&self, root: &Path) -> Vec<(String, DepTable)> {
         let mut out = vec![];
         let tables = std::iter::once(&self.dependencies)
             .chain(std::iter::once(&self.linking_dependencies))
@@ -1038,8 +1087,15 @@ impl Rproj {
         for table in tables {
             for (name, dep) in table.iter() {
                 if let Dependency::Detailed(t) = dep {
-                    if t.git.is_some() || t.url.is_some() {
-                        out.push((name.clone(), (**t).clone()));
+                    if t.git.is_some() || t.url.is_some() || t.path.is_some() {
+                        let mut t = (**t).clone();
+                        if let Some(path) = &t.path {
+                            let path = Path::new(path);
+                            if path.is_relative() {
+                                t.path = Some(root.join(path).display().to_string());
+                            }
+                        }
+                        out.push((name.clone(), t));
                     }
                 }
             }
@@ -1047,15 +1103,23 @@ impl Rproj {
         out
     }
 
-    /// The git/GitHub/url-sourced dependencies that end up in a DESCRIPTION
-    /// dependency field (`Depends`/`Imports`/`LinkingTo`/`Suggests`/
-    /// `Enhances`), for [`Rproj::to_description`]'s `Remotes:` field. Scoped
-    /// the same way as [`Rproj::to_dep_version_specs`] -- `[dependencies]`,
-    /// `[linking-dependencies]`, the `test`/`enhances` dependency groups, and
-    /// every `[optional-dependencies.*]` extra -- unlike
-    /// [`Rproj::git_dependencies`], which also sweeps arbitrary
-    /// `Config/Needs/*` groups that already carry their own pak-ref entries
-    /// and must not duplicate into `Remotes:`.
+    /// The git/GitHub/url/local-sourced dependencies that end up in a
+    /// DESCRIPTION dependency field (`Depends`/`Imports`/`LinkingTo`/
+    /// `Suggests`/`Enhances`), for [`Rproj::to_description`]'s `Remotes:`
+    /// field. Scoped the same way as [`Rproj::to_dep_version_specs`] --
+    /// `[dependencies]`, `[linking-dependencies]`, the `dev`/`enhances`
+    /// dependency groups, and the `dev`/`enhances` `[optional-dependencies.*]`
+    /// extras -- unlike [`Rproj::git_dependencies`], which also sweeps
+    /// arbitrary `Config/Needs/*` groups that already carry their own pak-ref
+    /// entries and must not duplicate into `Remotes:`. A non-reserved
+    /// `[optional-dependencies.*]` extra is excluded the same way a
+    /// non-reserved `[dependency-groups.*]` one is: its git/url/path-sourced
+    /// entries are written into their own `Config/Needs/Optional/<name>`
+    /// field instead (see [`Rproj::to_description`]), so must not also show
+    /// up under `Remotes:`. Unlike `git_dependencies`, a `path` here is kept
+    /// exactly as stored in the manifest (relative to its directory), since
+    /// `DESCRIPTION` is written into that same directory, so the relative
+    /// path is exactly as usable from there.
     fn description_git_dependencies(&self) -> Vec<(String, DepTable)> {
         let mut out = vec![];
         let tables = std::iter::once(&self.dependencies)
@@ -1065,11 +1129,15 @@ impl Rproj {
                     .get(*group_name)
                     .map(|g| &g.dependencies)
             }))
-            .chain(self.optional_dependencies.values());
+            .chain(
+                DESCRIPTION_DEP_GROUPS
+                    .iter()
+                    .filter_map(|group_name| self.optional_dependencies.get(*group_name)),
+            );
         for table in tables {
             for (name, dep) in table.iter() {
                 if let Dependency::Detailed(t) = dep {
-                    if t.git.is_some() || t.url.is_some() {
+                    if t.git.is_some() || t.url.is_some() || t.path.is_some() {
                         out.push((name.clone(), (**t).clone()));
                     }
                 }
@@ -1095,14 +1163,24 @@ impl Rproj {
         self.to_dep_version_specs_impl(dev, true)
     }
 
-    /// [`Rproj::to_dep_version_specs`], but with a switch for whether groups
-    /// other than `dev`/`enhances` are folded in as `Suggests`.
-    /// [`Rproj::to_description`] needs that switched off: those groups are
-    /// rendered into their own `Config/Needs/<group>` field instead (see its
-    /// loop over [`Rproj::dependency_groups`]), and must not also show up
-    /// under `Suggests:`, or they would be listed, and installed, twice over.
-    /// Every other caller solves and installs the manifest's full dependency
-    /// set, so [`Rproj::to_dep_version_specs`] leaves the switch on.
+    /// [`Rproj::to_dep_version_specs`], but with a switch for whether
+    /// `[dependency-groups.*]` groups other than `dev`/`enhances` are folded
+    /// in as `Suggests`. [`Rproj::to_description`] needs that switched off:
+    /// those groups are rendered into their own `Config/Needs/<group>` field
+    /// instead (see its loop over [`Rproj::dependency_groups`]), and must not
+    /// also show up under `Suggests:`, or they would be listed, and
+    /// installed, twice over. Every other caller solves and installs the
+    /// manifest's full dependency set, so [`Rproj::to_dep_version_specs`]
+    /// leaves the switch on.
+    ///
+    /// The switch does *not* apply to `[optional-dependencies.*]` extras:
+    /// those always fold into `Suggests`, even from [`Rproj::to_description`]
+    /// (which also writes each one into its own
+    /// `Config/Needs/Optional/<name>` field, see
+    /// [`Rproj::merge_optional_dependencies`]) -- an optional dependency has
+    /// to be `Suggests`-listed for `R CMD check` to allow using it
+    /// conditionally, unlike an arbitrary `Config/Needs/*` group, which has
+    /// no such requirement.
     fn to_dep_version_specs_impl(
         &self,
         dev: bool,
@@ -1348,6 +1426,11 @@ impl Rproj {
         let mut out = String::new();
         let mut dropped: Vec<String> = Vec::new();
 
+        writeln!(
+            out,
+            "{}: This file was created by rig, do not edit it manually",
+            DESCRIPTION_RIG_NOTE_FIELD
+        )?;
         writeln!(out, "Package: {}", self.project.name)?;
         if !self.project.is_package() {
             writeln!(
@@ -1440,6 +1523,30 @@ impl Rproj {
                 writeln!(out, "Config/Needs/{}:", group_name)?;
             } else {
                 writeln!(out, "Config/Needs/{}:{}", group_name, fold_dcf_list(&items))?;
+            }
+        }
+
+        for (group_name, extra) in self.optional_dependencies.iter() {
+            if DESCRIPTION_DEP_GROUPS.contains(&group_name.as_str()) {
+                continue;
+            }
+            let mut items: Vec<String> = Vec::new();
+            for (name, dep) in extra.iter() {
+                let (item, was_dropped) = format_group_entry(name, dep)?;
+                if was_dropped {
+                    dropped.push(name.clone());
+                }
+                items.push(item);
+            }
+            if items.is_empty() {
+                writeln!(out, "Config/Needs/Optional/{}:", group_name)?;
+            } else {
+                writeln!(
+                    out,
+                    "Config/Needs/Optional/{}:{}",
+                    group_name,
+                    fold_dcf_list(&items)
+                )?;
             }
         }
 
@@ -1670,16 +1777,16 @@ fn format_dep_entry(dep: &DepVersionSpec) -> (String, bool) {
 
 /// Format one dependency-group entry as a `Config/Needs/*` entry. An entry
 /// that kept its reference verbatim (see [`Rproj::merge_config_needs`]) is
-/// written back as it came in; a `git`-sourced entry goes through
-/// [`dep_table_to_pak_ref`], which rebuilds a `pak` reference from its
-/// `DepTable` fields; anything else goes through [`format_dep_entry`], so it
-/// looks like a DESCRIPTION dependency entry.
+/// written back as it came in; a `git`/`url`/`path`-sourced entry goes
+/// through [`dep_table_to_pak_ref`], which rebuilds a `pak` reference from
+/// its `DepTable` fields; anything else goes through [`format_dep_entry`],
+/// so it looks like a DESCRIPTION dependency entry.
 fn format_group_entry(name: &str, dep: &Dependency) -> Result<(String, bool), Box<dyn Error>> {
     if let Dependency::Detailed(table) = dep {
         if let Some(ref_) = &table.ref_ {
             return Ok((ref_.clone(), false));
         }
-        if table.git.is_some() || table.url.is_some() {
+        if table.git.is_some() || table.url.is_some() || table.path.is_some() {
             return Ok((dep_table_to_pak_ref(name, table), false));
         }
     }
@@ -1688,9 +1795,10 @@ fn format_group_entry(name: &str, dep: &Dependency) -> Result<(String, bool), Bo
 }
 
 /// The inverse of [`crate::proj::dep_table_from_remote`]/
-/// [`crate::proj::dep_table_from_url`]: rebuild a `pak` package reference
-/// from a `git`- or `url`-sourced [`DepTable`], for writing a
-/// `Remotes:`/`Config/Needs/*` entry back to `DESCRIPTION`.
+/// [`crate::proj::dep_table_from_url`]/[`crate::proj::dep_table_from_local`]:
+/// rebuild a `pak` package reference from a `git`-, `url`- or `path`-sourced
+/// [`DepTable`], for writing a `Remotes:`/`Config/Needs/*` entry back to
+/// `DESCRIPTION`.
 ///
 /// If `table.ref_` is set (the normal case: it is filled in by
 /// [`crate::proj::dep_table_from_remote`] with the original reference text),
@@ -1716,6 +1824,14 @@ fn dep_table_to_pak_ref(name: &str, table: &DepTable) -> String {
     if let Some(url) = &table.url {
         let entry = format!("url::{}", url);
         return format!("{}={}", name, entry);
+    }
+
+    if let Some(path) = &table.path {
+        let entry = format!("local::{}", path);
+        return match pak_ref_name(&entry) {
+            Some(implied) if implied == name => entry,
+            _ => format!("{}={}", name, entry),
+        };
     }
 
     let git_url = table.git.as_deref().unwrap_or_default();
@@ -1816,7 +1932,9 @@ fn config_needs_entry(entry: &str) -> (String, Dependency) {
                 );
             }
         }
-        Ok(crate::pkgsource::PkgSource::Cran) | Err(_) => {}
+        Ok(crate::pkgsource::PkgSource::Cran)
+        | Ok(crate::pkgsource::PkgSource::Local(_))
+        | Err(_) => {}
     }
 
     let name = match pak_ref_name(entry) {
@@ -2208,6 +2326,14 @@ pub struct RprojLockPackage {
     /// before this field existed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub extra_groups: Vec<String>,
+    /// Whether this is the project's own package (`type = "package"` in
+    /// `rproj.toml`), installed from the project root itself -- see
+    /// `ProjectSolve::self_alias` in `src/proj.rs` -- rather than downloaded.
+    /// Lets `rig proj sync --no-install-project` find it, and tells it apart
+    /// from an ordinary same-named `path` dependency. Absent (false) in a
+    /// lockfile written before this existed.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub is_project: bool,
 }
 
 impl RprojLockTarget {
@@ -2259,7 +2385,11 @@ impl RprojLockTarget {
                 if let Some(ref_) = &git.ref_ {
                     metadata.insert(REMOTE_REF_FIELD.to_string(), ref_.clone());
                 }
-                metadata.insert(REMOTE_SHA_FIELD.to_string(), git.sha.clone());
+                // A local source has no commit and no content hash: the path
+                // it was installed from is its whole provenance.
+                if !git.sha.is_empty() {
+                    metadata.insert(REMOTE_SHA_FIELD.to_string(), git.sha.clone());
+                }
 
                 // Both are directories: a github tarball is unpacked, and a
                 // git:: clone is a worktree checkout. `sources` still carries
@@ -2278,6 +2408,12 @@ impl RprojLockTarget {
                     )
                 } else if git.remote_type == "url" {
                     (vec![git.url.clone()], format!("url/{}", git.sha))
+                } else if git.remote_type == "local" {
+                    // Nothing to download, and nothing in the cache: the
+                    // installer reads `RemoteUrl` (the absolute path) instead
+                    // of a `target` under the cache directory, see
+                    // `lockfile_package_info`.
+                    (vec![], String::new())
                 } else {
                     (
                         vec![format!("git+{}#{}", git.url, git.sha)],
@@ -2288,14 +2424,19 @@ impl RprojLockTarget {
                 pkgs.push(RprojLockPackage {
                     package: k.to_string(),
                     version: v.version.to_string(),
-                    binary: false,
-                    platform: "source".to_string(),
+                    binary: git.binary,
+                    platform: if git.binary {
+                        platform.clone().unwrap_or_else(|| "source".to_string())
+                    } else {
+                        "source".to_string()
+                    },
                     dependencies: deps,
                     metadata,
                     sources,
                     target,
                     groups: vec![],
                     extra_groups: vec![],
+                    is_project: false,
                 });
                 continue;
             }
@@ -2369,12 +2510,13 @@ impl RprojLockTarget {
                 target,
                 groups: vec![],
                 extra_groups: vec![],
+                is_project: false,
             });
         }
 
         RprojLockTarget {
             r_version,
-            platform: platform.unwrap_or_else(|| std::env::consts::ARCH.to_string()),
+            platform: platform.unwrap_or_else(|| "source".to_string()),
             direct_dependencies: vec![],
             packages: pkgs,
         }
@@ -2495,6 +2637,7 @@ mod tests {
             target: "cli.tgz".to_string(),
             groups: vec!["main".to_string()],
             extra_groups: vec![],
+            is_project: false,
         }
     }
 
@@ -4106,7 +4249,7 @@ foo = "bar"
     }
 
     #[test]
-    fn to_description_writes_remotes_for_git_sourced_optional_dependencies() {
+    fn to_description_writes_config_needs_optional_for_git_sourced_optional_dependencies() {
         let mut m = Rproj::minimal("mypkg");
         m.optional_dependencies.insert(
             "viz".to_string(),
@@ -4122,8 +4265,99 @@ foo = "bar"
 
         let (desc, dropped) = m.to_description().unwrap();
         assert!(dropped.is_empty());
+        // Still `Suggests`-listed, so `R CMD check` allows using it
+        // conditionally, but its pak reference lives only in
+        // `Config/Needs/Optional/viz` now, not also duplicated into
+        // `Remotes:`.
         assert!(desc.contains("Suggests:\n    tidytemplate\n"));
-        assert!(desc.contains("Remotes:\n    tidyverse/tidytemplate@main\n"));
+        assert!(!desc.contains("Remotes:"));
+        assert!(desc.contains("Config/Needs/Optional/viz:\n    tidyverse/tidytemplate@main\n"));
+    }
+
+    #[test]
+    fn to_description_writes_optional_dependencies_as_config_needs_optional() {
+        let mut m = Rproj::minimal("mypkg");
+        m.optional_dependencies.insert(
+            "viz".to_string(),
+            BTreeMap::from([
+                ("ggplot2".to_string(), dep(">= 3.4")),
+                ("plotly".to_string(), dep("*")),
+            ]),
+        );
+
+        let (desc, dropped) = m.to_description().unwrap();
+        assert!(dropped.is_empty());
+        assert!(desc.contains("Suggests:\n    ggplot2 (>= 3.4),\n    plotly\n"));
+        assert!(desc.contains("Config/Needs/Optional/viz:\n    ggplot2 (>= 3.4),\n    plotly\n"));
+    }
+
+    #[test]
+    fn merge_optional_dependencies_creates_a_group_per_field() {
+        let mut m = Rproj::minimal("mypkg");
+        m.merge_optional_dependencies(&needs(&[
+            ("viz", "ggplot2, tidyverse/tidytemplate"),
+            ("docs", "pkgdown (>= 2.0)"),
+        ]));
+
+        let viz = m.optional_dependencies.get("viz").unwrap();
+        assert_eq!(viz.get("ggplot2"), Some(&dep("*")));
+        assert_eq!(
+            viz.get("tidytemplate"),
+            Some(&Dependency::Detailed(Box::new(DepTable {
+                git: Some("https://github.com/tidyverse/tidytemplate.git".to_string()),
+                ref_: Some("tidyverse/tidytemplate".to_string()),
+                ..Default::default()
+            })))
+        );
+        assert_eq!(
+            m.optional_dependencies.get("docs").unwrap().get("pkgdown"),
+            Some(&dep(">= 2.0"))
+        );
+    }
+
+    #[test]
+    fn merge_optional_dependencies_keeps_an_empty_field_as_an_empty_group() {
+        let mut m = Rproj::minimal("mypkg");
+        m.merge_optional_dependencies(&needs(&[("viz", "")]));
+        assert!(m.optional_dependencies.get("viz").unwrap().is_empty());
+
+        let (desc, _) = m.to_description().unwrap();
+        assert!(desc.contains("Config/Needs/Optional/viz:\n"));
+    }
+
+    #[test]
+    fn optional_dependencies_roundtrip_through_description() {
+        let mut m = Rproj::minimal("mypkg");
+        m.merge_config_needs(&needs(&[("dev", "mockery")]));
+        m.merge_optional_dependencies(&needs(&[(
+            "viz",
+            "ggplot2 (>= 3.4), tidyverse/tidytemplate",
+        )]));
+
+        let (desc, _) = m.to_description().unwrap();
+        let paragraph =
+            crate::proj::parse_description_paragraph(std::io::Cursor::new(desc)).unwrap();
+        let pkg = DcfPackage::from_dcf_paragraph(&paragraph).unwrap();
+
+        let mut m2 = Rproj::minimal("mypkg");
+        m2.merge_description(&pkg);
+        let optional_needs: Vec<(String, String)> = paragraph
+            .iter()
+            .filter_map(|(key, value)| {
+                key.strip_prefix("Config/Needs/Optional/")
+                    .map(|group| (group.to_string(), value.to_string()))
+            })
+            .collect();
+        m2.merge_optional_dependencies(&optional_needs);
+
+        assert_eq!(m2.optional_dependencies, m.optional_dependencies);
+        // `ggplot2`/`tidytemplate` are `Suggests`-listed too, so they also
+        // land in `dependency_groups["dev"]`, alongside the unrelated
+        // `mockery` -- no dedup against `optional_dependencies`.
+        let dev = &m2.dependency_groups.get("dev").unwrap().dependencies;
+        assert!(dev.contains_key("mockery"));
+        assert!(dev.contains_key("ggplot2"));
+        assert!(dev.contains_key("tidytemplate"));
     }
 
     #[test]

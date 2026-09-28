@@ -22,6 +22,7 @@ Read `rproj.toml`, rig's project and package manifest, and write a
 | `[dependency-groups.dev]`      | `Suggests`            |
 | `[dependency-groups.enhances]` | `Enhances`            |
 | `[dependency-groups.<name>]`   | `Config/Needs/<name>` |
+| `[optional-dependencies.<name>]` | `Config/Needs/Optional/<name>` + `Suggests` |
 
 DESCRIPTION's dependency syntax only supports a single version comparison
 per package (`pkg (>= 1.2.3)`), unlike `rproj.toml`, which can express a
@@ -30,5 +31,8 @@ has both a lower and an upper bound, only the lower bound is written; rig
 prints a warning listing which packages were affected.
 
 By default rig writes `DESCRIPTION` in the current directory; use `--output` to
-write to a different file. rig refuses to overwrite an existing file unless
-`--force` is given.
+write to a different file.
+
+rig refuses to overwrite an existing `DESCRIPTION` file that was not
+created by rig. Pass `--force` is given to overwrite an existing
+`DESCRIPTION` file.

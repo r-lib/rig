@@ -1,3 +1,29 @@
+# Development version
+
+## Windows specific
+
+* The rig binaries themselves are now signed on Windows, not only the
+  rig installer.
+
+* `rig proj` commands now support `path` dependencies.
+
+* `rig pkg install <path>` is now supported. `<path>` can be a directory,
+  of a source or binary package file.
+
+* `rig pkg install` now supports constraints. E.g. to install a specific
+  version of a package use `rig pkg install '<pkg>@=<ver>'`.
+
+* `rig proj import --force` now correctly overwrites the existing project
+  files.
+
+* If the root project is a package, `rig proj lock` now includes it in the
+  solution. It also calls `rig proj export` to (re)create its `DESCRIPTION`
+  file and `rig proj sync` now installs the root project if it is a
+  package.
+
+* `rig proj lock` now rewrites the lock file if the list of R versions to
+  solve for changes.
+
 # rig 0.10.0
 
 ## Web site

@@ -63,6 +63,31 @@ a plain `git clone` would on your machine: a configured credential helper
 no separate rig-specific token setting. A `url::` source is a plain HTTP(S)
 download and needs no such authentication.
 
+## Local paths
+
+A package that is already on this machine is installed from where it is:
+
+```
+rig pkg install .
+rig pkg install ./mypkg
+rig pkg install ../mypkg
+rig pkg install ~/works/mypkg
+rig pkg install /opt/src/mypkg
+rig pkg install mypkg_1.0.0.tar.gz
+rig pkg install local::mypkg
+```
+
+A path can be a package source directory or a package file: a source tarball
+(`.tar.gz`), or a binary package built by `R CMD INSTALL --build` (`.tgz` on
+macOS and Linux, `.zip` on Windows). A source directory or tarball is
+installed with `R CMD INSTALL`, a binary is unpacked into the library
+directly.
+
+An argument counts as a path when it is `.` or `..`, starts with `./`, `../`,
+`~/` or `/` (on Windows also `.\`, `..\`, `\` or a drive letter), or is the
+name of a package file that exists. The `local::` prefix forces a path,
+whatever it looks like.
+
 ## Dev dependencies
 
 By default rig installs the hard dependencies only: `Depends`, `Imports` and

@@ -330,7 +330,7 @@ jobs:
       run: choco install curl
 
     - run: |
-        make win
+        make win ARCH=x86_64
       shell: bash
 
     - name: Run cargo tests
@@ -467,7 +467,7 @@ jobs:
       run: choco install curl
 
     - run: |
-        make win
+        make win ARCH=aarch64
       shell: bash
 
     - name: Run cargo tests

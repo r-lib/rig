@@ -71,6 +71,23 @@ a plain `git clone` would on your machine: a configured credential helper
 no separate rig-specific token setting. A `url::` source is a plain HTTP(S)
 download and needs no such authentication.
 
+## Local sources
+
+A package that is already on this machine, in a source directory or a
+package file, can be added straight from there:
+
+```
+rig proj add ../mypkg
+rig proj add ~/works/mypkg
+rig proj add mypkg_1.0.0.tar.gz
+rig proj add local::mypkg
+```
+
+The path is recorded in `rproj.toml` relative to the project's own directory
+(not the directory `rig proj add` was run from), so the manifest stays
+correct after the project is moved or checked out elsewhere, as long as the
+local package stays in the same place relative to it.
+
 ## Version requirements
 
 * `^1.2.3` is *compatible with* 1.2.3, i.e. `>= 1.2.3, < 2.0.0`.

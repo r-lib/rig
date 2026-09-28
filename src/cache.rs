@@ -111,6 +111,21 @@ pub fn url_pkg_dir(url: &str) -> Option<PathBuf> {
     Some(cache.join("url-pkgs").join(&hash[..16]))
 }
 
+/// `<cache>/local-pkgs/<hash-of-path>`, the staging directory an out-of-tree
+/// build of a `local::` path package is done in, so `R CMD INSTALL` never
+/// writes build artifacts (`.o`/`.so`, a generated `src/Makevars`,
+/// `config.log`, ...) into the user's own source directory.
+///
+/// Unlike [`git_mirror_dir`]/[`url_pkg_dir`], this always returns a usable
+/// directory, `--no-cache` included: `get_cache_dir()` already falls back to
+/// the ephemeral no-cache directory in that case, and a local build always
+/// needs somewhere to be staged.
+pub fn local_pkg_build_dir(path: &Path) -> Result<PathBuf, Box<dyn Error>> {
+    let cache = get_cache_dir()?;
+    let hash = crate::utils::calculate_hash(&path.to_string_lossy());
+    Ok(cache.join("local-pkgs").join(&hash[..16]))
+}
+
 static EPHEMERAL_CACHE_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 fn ephemeral_cache_dir() -> Result<PathBuf, Box<dyn Error>> {

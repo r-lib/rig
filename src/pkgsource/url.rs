@@ -96,7 +96,10 @@ fn download_and_verify(
 /// directory's name becomes the effective subdir, returned so the lockfile
 /// can record where the package actually lives -- or the archive's root
 /// itself, if it has no such single wrapping directory.
-fn locate_package_dir(extracted: &Path, subdir: Option<&str>) -> (PathBuf, Option<String>) {
+pub(crate) fn locate_package_dir(
+    extracted: &Path,
+    subdir: Option<&str>,
+) -> (PathBuf, Option<String>) {
     match subdir {
         Some(s) => (extracted.join(s), Some(s.to_string())),
         None => match crate::install::single_subdir(extracted) {

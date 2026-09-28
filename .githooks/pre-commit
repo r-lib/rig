@@ -1,0 +1,9 @@
+#!/bin/sh
+# Reject commit if code is not formatted. Enable with:
+#   git config core.hooksPath .githooks
+
+cargo fmt --check
+if [ $? -ne 0 ]; then
+    echo "cargo fmt --check failed. Run 'cargo fmt' and stage changes." >&2
+    exit 1
+fi
