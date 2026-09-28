@@ -248,6 +248,44 @@ fn link_package_tree(src: &Path, dst: &Path) -> Result<(), Box<dyn Error>> {
     link_tree_entries(src, dst)
 }
 
+/// Populate `dst`, which must not exist yet, with everything under `src`,
+/// for an out-of-tree build of a local path package.
+///
+/// Unlike [`link_package_tree`], this never hard-links a file: a hard link
+/// shares an inode, so a write to the copy (e.g. a compiler dropping a `.o`
+/// file, or `configure` regenerating `src/Makevars`) would land in the user's
+/// original file too, which is exactly what staging is meant to avoid. A
+/// reflink is fine -- it's copy-on-write, so the two sides diverge on the
+/// first write to either. `.git` is skipped: it's never needed to build the
+/// package and can be large.
+fn stage_local_source(src: &Path, dst: &Path) -> Result<(), Box<dyn Error>> {
+    if cfg!(target_os = "macos") && reflink_copy::reflink(src, dst).is_ok() {
+        return Ok(());
+    }
+    stage_local_source_entries(src, dst)
+}
+
+fn stage_local_source_entries(src: &Path, dst: &Path) -> Result<(), Box<dyn Error>> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        if entry.file_name() == ".git" {
+            continue;
+        }
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            stage_local_source_entries(&from, &to)?;
+        } else if file_type.is_symlink() {
+            recreate_symlink(&from, &to)?;
+        } else if reflink_copy::reflink(&from, &to).is_err() {
+            std::fs::copy(&from, &to)?;
+        }
+    }
+    Ok(())
+}
+
 fn link_tree_entries(src: &Path, dst: &Path) -> Result<(), Box<dyn Error>> {
     std::fs::create_dir_all(dst)?;
     for entry in std::fs::read_dir(src)? {
@@ -496,6 +534,30 @@ where
     let run_dir = tempfile::tempdir()?;
     let library_path_abs = library_path.canonicalize()?;
     let package_path_abs = package_path.canonicalize()?;
+
+    // A `local::` source directory is the user's own checkout: build a copy
+    // of it in rig's cache instead of the original, so `R CMD INSTALL` never
+    // leaves compiled artifacts (`.o`/`.so`, a generated `src/Makevars`,
+    // `config.log`, ...) behind in the user's source tree. A tarball/zip or
+    // an already-built binary is unaffected -- R (or rig's own unpacker)
+    // already extracts those into a throwaway location on its own.
+    let is_local = pkg.remote.get(REMOTE_TYPE_FIELD).map(String::as_str) == Some("local");
+    let package_path_abs = if is_local && package_path_abs.is_dir() {
+        let staged = crate::cache::local_pkg_build_dir(&package_path_abs)?;
+        if staged.exists() {
+            std::fs::remove_dir_all(&staged)?;
+        }
+        debug!(
+            "Staging local package {} from {} to {} for an out-of-tree build",
+            package_name,
+            package_path_abs.display(),
+            staged.display()
+        );
+        stage_local_source(&package_path_abs, &staged)?;
+        staged
+    } else {
+        package_path_abs
+    };
 
     let status = Command::new(r_binary)
         .arg("CMD")
@@ -1243,6 +1305,50 @@ mod tests {
         let link = lib.join("foo/libs/link.so");
         assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
         assert_eq!(std::fs::read_link(&link).unwrap(), Path::new("real.so"));
+    }
+
+    #[test]
+    fn stage_local_source_copies_git_dir_aside() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("pkg");
+        std::fs::create_dir_all(src.join(".git")).unwrap();
+        std::fs::write(src.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+        std::fs::create_dir_all(src.join("R")).unwrap();
+        std::fs::write(src.join("R/foo.R"), "foo <- function() 1\n").unwrap();
+        std::fs::write(src.join("DESCRIPTION"), "Package: foo\n").unwrap();
+
+        let dst = tmp.path().join("staged");
+        stage_local_source_entries(&src, &dst).unwrap();
+
+        assert!(!dst.join(".git").exists());
+        assert_eq!(
+            std::fs::read_to_string(dst.join("R/foo.R")).unwrap(),
+            "foo <- function() 1\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dst.join("DESCRIPTION")).unwrap(),
+            "Package: foo\n"
+        );
+    }
+
+    #[test]
+    fn stage_local_source_copy_is_independent_of_the_original() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("pkg");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("DESCRIPTION"), "Package: foo\n").unwrap();
+
+        let dst = tmp.path().join("staged");
+        stage_local_source_entries(&src, &dst).unwrap();
+
+        // A write to the staged copy (standing in for a build writing a
+        // compiled artifact) must never show up in the user's original
+        // directory -- which would happen if the copy were a hard link.
+        std::fs::write(dst.join("DESCRIPTION"), "Package: foo\nBuilt: yes\n").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(src.join("DESCRIPTION")).unwrap(),
+            "Package: foo\n"
+        );
     }
 
     // ----------------------------------------------------------------
