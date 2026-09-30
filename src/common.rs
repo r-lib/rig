@@ -206,6 +206,13 @@ pub fn restore_user_mode_default(map: &[(String, String)], default: &Option<Stri
     }
 }
 
+/// The system library of an installed R version, i.e. `.Library`, where the
+/// base and recommended packages are.
+pub fn get_r_syslib_dir(name: &str) -> Result<PathBuf, Box<dyn Error>> {
+    Ok(Path::new(&get_r_root_for(name)?)
+        .join(get_r_syslibpath()?.replace("{}", &version_dir_key(name))))
+}
+
 pub fn get_default_r_version() -> Result<Option<String>, Box<dyn Error>> {
     let default = sc_get_default()?;
     let re = Regex::new("^Version:[ ]?")?;
@@ -213,9 +220,7 @@ pub fn get_default_r_version() -> Result<Option<String>, Box<dyn Error>> {
         None => Ok(None),
         Some(d) => {
             let name = check_installed(&d)?;
-            let desc = Path::new(&get_r_root_for(&name)?)
-                .join(get_r_syslibpath()?.replace("{}", &version_dir_key(&name)))
-                .join("base/DESCRIPTION");
+            let desc = get_r_syslib_dir(&name)?.join("base/DESCRIPTION");
             let lines = read_lines(&desc).unwrap_or_default();
             let idx = grep_lines(&re, &lines);
             let version: Option<String> = if idx.is_empty() {
@@ -233,9 +238,7 @@ pub fn get_default_r_version() -> Result<Option<String>, Box<dyn Error>> {
 
 pub fn get_r_version_data_version(name: &str) -> Result<String, Box<dyn Error>> {
     let re = Regex::new("^Version:[ ]?").expect("Invalid regex pattern");
-    let desc = Path::new(&get_r_root_for(name)?)
-        .join(get_r_syslibpath()?.replace("{}", &version_dir_key(name)))
-        .join("base/DESCRIPTION");
+    let desc = get_r_syslib_dir(name)?.join("base/DESCRIPTION");
     let lines = read_lines(&desc).unwrap_or_default();
     let idx = grep_lines(&re, &lines);
     if idx.is_empty() {

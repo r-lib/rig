@@ -1,5 +1,9 @@
 # Development version
 
+* New `rig pkg doctor` command to find problems with the packages in a
+  library: missing or too old dependencies, and packages compiled against
+  another version of a `LinkingTo` dependency (#393).
+
 * `rig proj` commands now support `path` dependencies.
 
 * `rig pkg install <path>` is now supported. `<path>` can be a directory,
