@@ -29,6 +29,10 @@
 * `rig proj lock` now rewrites the lock file if the list of R versions to
   solve for changes.
 
+* `rig proj lock` now also solves for source packages by default
+  `rig proj sync` uses this target only if no other target matches the
+  machine.
+
 ## Windows specific changes
 
 * The rig binaries themselves are now signed on Windows, not only the

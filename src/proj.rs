@@ -2936,7 +2936,9 @@ fn r_requirement(req: Option<&DepVersionSpec>) -> String {
 /// three other platforms a project typically needs to run on: Windows, a
 /// generic glibc Linux build (P3M's "manylinux" distro-independent build,
 /// covering any glibc-based x86_64 distro P3M has no specific build for),
-/// and macOS on arm64. Each platform string is fully explicit
+/// and macOS on arm64, plus a source-only target (`source`), so the lock
+/// file also works on platforms with no binaries. Each platform string is
+/// fully explicit
 /// (arch-vendor-os), so it resolves the same regardless of which OS `rig
 /// proj lock` itself runs on; only "this machine" (`None`) depends on the
 /// host. `--add-platform` extends that set (or an explicit `--platform`
@@ -2953,6 +2955,7 @@ fn lock_platform_specs(opts: &ProjLockOptions) -> Vec<Option<String>> {
             Some("x86_64-w64-mingw32".to_string()),
             Some("x86_64-unknown-linux-gnu".to_string()),
             Some("aarch64-apple-darwin".to_string()),
+            Some("source".to_string()),
         ]
     };
     specs.extend(opts.add_platforms.iter().cloned().map(Some));
@@ -3020,29 +3023,23 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     let mut seen: HashSet<(String, String)> = HashSet::new();
     // Warned about once each below, not once per (R version, platform) pair.
     let mut no_binaries: BTreeSet<String> = BTreeSet::new();
-    let mut source_only = false;
 
     for rver in &rvers {
         for platform in &platform_specs {
             let (target, missing) = proj_binary_target_quiet(platform.as_ref(), rver)?;
-            source_only = source_only || target.is_none();
             if let Some(name) = missing {
                 no_binaries.insert(name);
             }
 
             // Mirrors how `RprojLockTarget::from_solution` derives the
-            // target's `platform` field (src/rproj.rs), so this pre-solve key
-            // matches the key the old post-solve dedup used.
-            let platform_key = target.as_ref().map(|t| t.name()).unwrap_or_else(|| {
-                // "This machine" (no `--platform` spec) still keys on the
-                // host arch, so it can dedup against a fixed default
-                // platform that resolves to the same target. Two distinct
-                // named `--platform` specs that both fail to resolve must
-                // not collapse onto that same key.
-                platform
-                    .clone()
-                    .unwrap_or_else(|| std::env::consts::ARCH.to_string())
-            });
+            // target's `platform` field (src/rproj.rs): every source-only
+            // solve is recorded as `source`, so they all dedup onto one
+            // target, e.g. "this machine" having no binaries and the default
+            // `source` platform.
+            let platform_key = target
+                .as_ref()
+                .map(|t| t.name())
+                .unwrap_or_else(|| "source".to_string());
             let key = (rver.clone(), platform_key.clone());
             if !seen.insert(key.clone()) {
                 // Not worth a warning: with the default platform set, "this
@@ -3172,6 +3169,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
             ));
         }
 
+        let source_only = solve_targets.iter().all(|t| t.target.is_none());
         if opts.prefer_binary.is_some() && source_only {
             OUTPUT.warn("There are no binary packages to prefer, ignoring --prefer-binary");
             info!("Ignoring --prefer-binary: solving for source packages only");
@@ -3532,6 +3530,20 @@ fn solution_table_rows(targets: &[TargetSolution]) -> Vec<SolutionTableRow> {
             .enumerate()
             .filter_map(|(i, t)| t.rows.get(pkg).map(|r| (i, r)))
             .collect();
+        // A source-only target always solves to source packages, so saying so
+        // adds nothing, unless it picked a version no other target did.
+        let is_source = |i: usize| targets[i].platform == "source";
+        let have: Vec<(usize, &SolvedRow)> = have
+            .iter()
+            .filter(|(i, r)| {
+                !(is_source(*i)
+                    && r.kind == "source"
+                    && have
+                        .iter()
+                        .any(|(j, o)| !is_source(*j) && o.version == r.version))
+            })
+            .copied()
+            .collect();
 
         // The targets a package is missing from are said on its first row.
         let missing: Vec<usize> = targets
@@ -3819,9 +3831,10 @@ fn target_r_arch(platform: &str) -> String {
 }
 
 /// The OS family a lock target's platform string implies, or `None` if it
-/// names none -- a `--platform source` solve's `platform` field is just the
-/// bare CPU arch (e.g. `"aarch64"`, see `RprojLockTarget::from_solution`), which
-/// carries no OS marker and so matches any machine with the right arch.
+/// names none -- a `--platform source` solve's `platform` field is `source`
+/// (see `RprojLockTarget::from_solution`), which carries no OS marker and so
+/// matches any machine. (Older lock files used the bare CPU arch, e.g.
+/// `"aarch64"`, which also has no OS marker.)
 fn target_os_family(platform: &str) -> Option<&'static str> {
     match platform.rsplit_once('-') {
         Some(("macos", _)) => Some("macos"),
@@ -3845,7 +3858,9 @@ fn this_os_family() -> &'static str {
 /// `--r-version`/`--platform` if the caller gave them. Several matches are
 /// not an error --
 /// the highest R version among them wins, so locking for several R versions
-/// just works without extra flags; only zero matches is a hard error.
+/// just works without extra flags; only zero matches is a hard error. For the
+/// same R version a target for this OS wins over a source-only one, which
+/// matches every machine.
 fn select_sync_target<'a>(
     targets: &'a [RprojLockTarget],
     r_version: Option<&str>,
@@ -3891,7 +3906,12 @@ fn select_sync_target<'a>(
         bail!("{}", msg);
     }
 
-    candidates.sort_by_key(|t| r_components(&t.r_version).unwrap_or_default());
+    candidates.sort_by_key(|t| {
+        (
+            r_components(&t.r_version).unwrap_or_default(),
+            target_os_family(&t.platform).is_some(),
+        )
+    });
     Ok(candidates.pop().unwrap())
 }
 
@@ -4835,6 +4855,36 @@ mod tests {
     }
 
     #[test]
+    fn the_source_target_is_left_unsaid_unless_its_version_differs() {
+        let rows = table_rows(&[
+            solved_target(
+                "4.5.1",
+                "macos-arm64",
+                &[
+                    ("cli", "3.6.5", "binary", None),
+                    ("glue", "1.8.0", "binary", None),
+                ],
+            ),
+            solved_target(
+                "4.5.1",
+                "source",
+                &[
+                    ("cli", "3.6.5", "source", None),
+                    ("glue", "1.8.1", "source", None),
+                ],
+            ),
+        ]);
+        assert_eq!(
+            rows,
+            vec![
+                "cli 3.6.5 binary",
+                "glue 1.8.0 binary",
+                "1.8.1 source source"
+            ]
+        );
+    }
+
+    #[test]
     fn a_target_that_solved_differently_is_a_row_of_its_own() {
         let rows = table_rows(&[
             solved_target(
@@ -5201,6 +5251,7 @@ mod tests {
                 Some("x86_64-w64-mingw32".to_string()),
                 Some("x86_64-unknown-linux-gnu".to_string()),
                 Some("aarch64-apple-darwin".to_string()),
+                Some("source".to_string()),
                 Some("ubuntu-24.04".to_string()),
             ]
         );
@@ -5249,7 +5300,9 @@ mod tests {
         assert_eq!(target_os_family("windows-x86_64"), Some("windows"));
         assert_eq!(target_os_family("jammy-x86_64"), Some("linux"));
         assert_eq!(target_os_family("linux-ubuntu-24.04-x86_64"), Some("linux"));
-        // A `--platform source` solve's platform is a bare CPU arch: no OS.
+        // A `--platform source` solve's platform has no OS. (Older lock
+        // files used the bare CPU arch.)
+        assert_eq!(target_os_family("source"), None);
         assert_eq!(target_os_family("aarch64"), None);
         assert_eq!(target_os_family("x86_64"), None);
     }
@@ -5469,11 +5522,32 @@ mod tests {
 
     #[test]
     fn select_sync_target_matches_a_source_only_target_on_any_os() {
-        // A `--platform source` solve's platform is a bare CPU arch, with no
-        // OS marker, so it matches this machine regardless of OS.
+        // A `--platform source` solve's platform has no OS marker, so it
+        // matches this machine regardless of OS. Older lock files used the
+        // bare CPU arch, which also has no OS marker.
+        let targets = vec![target("4.6.1", "source")];
+        let picked = select_sync_target(&targets, None, None).unwrap();
+        assert_eq!(picked.r_version, "4.6.1");
         let targets = vec![target("4.6.1", std::env::consts::ARCH)];
         let picked = select_sync_target(&targets, None, None).unwrap();
         assert_eq!(picked.r_version, "4.6.1");
+    }
+
+    #[test]
+    fn select_sync_target_prefers_this_os_over_source() {
+        let platform = format!("{}-{}", this_os_family(), std::env::consts::ARCH);
+        for targets in [
+            vec![target("4.6.1", &platform), target("4.6.1", "source")],
+            vec![target("4.6.1", "source"), target("4.6.1", &platform)],
+        ] {
+            let picked = select_sync_target(&targets, None, None).unwrap();
+            assert_eq!(picked.platform, platform);
+        }
+
+        // A higher R version still wins, even if it is source-only.
+        let targets = vec![target("4.5.0", &platform), target("4.6.1", "source")];
+        let picked = select_sync_target(&targets, None, None).unwrap();
+        assert_eq!(picked.platform, "source");
     }
 
     #[test]

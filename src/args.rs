@@ -1690,7 +1690,7 @@ pub fn rig_app() -> Command {
                             combination. Use --platform source to solve for source\n\
                             packages only.\n\
                             Default: this machine, windows, generic glibc Linux (x86_64),\n\
-                            and macos-arm64.",
+                            macos-arm64 and source.",
                         )
                         .long("platform")
                         .num_args(1)

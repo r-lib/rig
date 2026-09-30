@@ -52,7 +52,10 @@ versions of a package are considered; `--prefer-binary=5` considers five.
 Versions held back this way are marked in the output.
 
 By default rig solves for this machine plus the three other common
-platforms (macOS arm64, Windows x86_64 and GNU Linux x86_64). Use
+platforms (macOS arm64, Windows x86_64 and GNU Linux x86_64), and for
+source packages only, so the lock file also works on platforms without
+binary packages. `rig proj sync` only uses the source target if no other
+target matches the machine. Use
 `--platform` to solve for a different set instead, e.g. a single specific
 distro:
 
@@ -62,7 +65,7 @@ rig proj lock --platform ubuntu-24.04
 
 Use `--add-platform` instead to add a platform to that default set rather
 than replacing it, e.g. to also solve for one extra distro on top of the
-usual four. `--add-platform` can be repeated:
+usual five. `--add-platform` can be repeated:
 
 ```sh
 rig proj lock --add-platform ubuntu-24.04 --add-platform linux-fedora-42
