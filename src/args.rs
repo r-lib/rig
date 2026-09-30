@@ -2043,6 +2043,58 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("doctor")
+                .about(ABOUT_PKG_DOCTOR)
+                .long_about(HELP_PKG_DOCTOR)
+                .display_order(0)
+                .arg(
+                    Arg::new("package")
+                        .help("packages to report on (default: all)")
+                        .required(false)
+                        .num_args(0..),
+                )
+                .arg(
+                    Arg::new("library")
+                        .help("Library name or path, instead of the default library")
+                        .long("library")
+                        .short('l')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version to operate on, instead of the default")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("dev")
+                        .help("Also check the Suggests and Enhances dependencies")
+                        .long("dev")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("stale")
+                        .help(
+                            "Warn about packages that rig did not install, if a LinkingTo\n\
+                            dependency was built after them",
+                        )
+                        .long("stale")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
             Command::new("info")
                 .about(ABOUT_PKG_INFO)
                 .long_about(HELP_PKG_INFO)
