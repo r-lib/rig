@@ -19,9 +19,17 @@ config setting). rig points each R version at it by setting
 
 In admin mode this command needs an administrator account.
 
+With `--json`, rig prints a JSON array to the standard output, with one
+entry for each Rtools version it installed or found already installed. The
+fields are the same as in `rig rtools list --json` (`name`, `version`,
+`fullversion`, `path`, `arch`), plus `new-install`, which is `true` if rig
+installed that Rtools version now and `false` if it was already installed.
+All other messages go to the standard error.
+
 ## Examples
 
 ```sh
 rig rtools add 43
 rig rtools add all
+rig rtools add --json
 ```

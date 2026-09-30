@@ -77,7 +77,8 @@ rig add rtools
 
 will install all Rtools versions that are needed for the currently
 installed R versions. You can also request a specific Rtools version, e.g.
-`rig add rtools45`.
+`rig add rtools45`. `rig add rtools` does not support `--json`, use
+`rig rtools add --json` instead.
 
 In user mode rig installs R and Rtools into your user profile, without
 administrator rights. In admin mode you need an administrator account to

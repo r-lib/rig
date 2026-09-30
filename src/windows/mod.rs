@@ -2,8 +2,9 @@ mod registry;
 pub use registry::sc_clean_registry;
 use registry::{
     add_user_bin_to_path, admin_rtools_paths, clean_admin_registry, clean_admin_rtools_registry,
-    get_latest_install_path, list_admin_rtools, maybe_update_registry_default, sc_rtools_ls,
-    unset_registry_default, update_registry_default, LegacyRtoolsRegRelocation,
+    get_latest_install_path, list_admin_rtools, list_rtools, maybe_update_registry_default,
+    sc_rtools_ls, unset_registry_default, update_registry_default, LegacyRtoolsRegRelocation,
+    RtoolsVersion,
 };
 
 use regex::Regex;
@@ -818,7 +819,15 @@ fn patch_env_file(path: &Path, body: &str, pos: BlockPos) {
     }
 }
 
-fn add_rtools(version: String, arch: Option<String>) -> Result<(), Box<dyn Error>> {
+// What `add_rtools()` did with one Rtools version: installed it now, or kept
+// the already installed one.
+struct AddedRtools {
+    version: String,
+    arch: String,
+    new_install: bool,
+}
+
+fn add_rtools(version: String, arch: Option<String>) -> Result<Vec<AddedRtools>, Box<dyn Error>> {
     let needed: Vec<NeededRtools> = if version == "rtools" {
         get_rtools_needed(None, arch.as_deref())?
     } else {
@@ -830,6 +839,7 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<(), Box<dyn Error
         }]
     };
     let client = &reqwest::Client::new();
+    let mut added: Vec<AddedRtools> = vec![];
     for item in needed {
         let instdirpath = rtools_install_path(&item.version, &item.arch)?;
         if instdirpath.exists() {
@@ -841,6 +851,11 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<(), Box<dyn Error
                 "Rtools{} ({}) is already installed",
                 item.version, item.arch
             );
+            added.push(AddedRtools {
+                version: item.version,
+                arch: item.arch,
+                new_install: false,
+            });
             continue;
         }
         let rtver = get_rtools_version(&item.version, &item.arch)?;
@@ -893,6 +908,11 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<(), Box<dyn Error
         crate::cache::remove_download_if_no_cache(&target);
         OUTPUT.success(&format!("Installed Rtools{} ({})", item.version, item.arch));
         info!("Installed Rtools{} ({})", item.version, item.arch);
+        added.push(AddedRtools {
+            version: item.version,
+            arch: item.arch,
+            new_install: true,
+        });
     }
 
     // Re-run the patch now so an Rtools installed after R is picked up, and so that
@@ -901,7 +921,7 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<(), Box<dyn Error
     // and only acts on Rtools that is actually installed.
     patch_for_rtools()?;
 
-    Ok(())
+    Ok(added)
 }
 
 fn patch_for_rtools() -> Result<(), Box<dyn Error>> {
@@ -2349,19 +2369,66 @@ fn normalize_rtools_version(ver: &str) -> String {
     ver.replace('.', "")
 }
 
-fn sc_rtools_add(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
+fn sc_rtools_add(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    #[derive(serde::Serialize)]
+    struct AddedRtoolsJson {
+        #[serde(flatten)]
+        rtools: RtoolsVersion,
+        #[serde(rename = "new-install")]
+        new_install: bool,
+    }
+
     escalate("adding Rtools")?;
     let ver = args.get_one::<String>("version").unwrap();
     let arch = args.get_one::<String>("arch").map(|s| normalize_arch(s));
-    if ver == "all" {
-        add_rtools("rtools".to_string(), arch)
+    let added = if ver == "all" {
+        add_rtools("rtools".to_string(), arch)?
     } else if let Some(stripped) = ver.strip_prefix("rtools") {
         add_rtools(
             "rtools".to_string() + &normalize_rtools_version(stripped),
             arch,
-        )
+        )?
     } else {
-        add_rtools("rtools".to_string() + &normalize_rtools_version(ver), arch)
+        add_rtools("rtools".to_string() + &normalize_rtools_version(ver), arch)?
+    };
+
+    if args.get_flag("json") || mainargs.get_flag("json") {
+        let installed = list_rtools()?;
+        let mut out: Vec<AddedRtoolsJson> = vec![];
+        for item in added {
+            let rtools = match installed
+                .iter()
+                .find(|v| v.name == item.version && v.arch == item.arch)
+            {
+                Some(v) => v.clone(),
+                // Not in the registry, report what we know.
+                None => RtoolsVersion {
+                    name: item.version.clone(),
+                    version: rtools_dotted_version(&item.version),
+                    fullversion: "".to_string(),
+                    path: rtools_install_path(&item.version, &item.arch)?
+                        .display()
+                        .to_string(),
+                    arch: item.arch.clone(),
+                },
+            };
+            out.push(AddedRtoolsJson {
+                rtools,
+                new_install: item.new_install,
+            });
+        }
+        println!("{}", serde_json::to_string_pretty(&out)?);
+    }
+
+    Ok(())
+}
+
+// "43" -> "4.3", the `version` field of `rig rtools list --json`.
+fn rtools_dotted_version(name: &str) -> String {
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(first) => format!("{}.{}", first, chars.as_str()),
+        None => "".to_string(),
     }
 }
 

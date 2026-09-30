@@ -158,6 +158,13 @@ fn cmd_rtools() -> Command {
                 .long("arch")
                 .required(false)
                 .value_parser(["x86_64", "aarch64", "arm64"]),
+        )
+        .arg(
+            Arg::new("json")
+                .help("JSON output")
+                .long("json")
+                .num_args(0)
+                .required(false),
         );
     let cmd_rtools_rm = Command::new("rm")
         .about(ABOUT_RTOOLS_RM)

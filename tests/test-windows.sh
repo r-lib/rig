@@ -267,6 +267,21 @@ teardown() {
 # For the output we take the last line, in case there are warnings at
 # startup. (This does happen in bash for R 4.1.1.)
 
+@test "rtools add --json" {
+    # Only if Rtools 4.5 is already there (e.g. on the GHA runner), so
+    # nothing is installed, only reported.
+    if [[ ! -d /c/rtools45 ]]; then
+        skip "Rtools 4.5 is not installed"
+    fi
+    run bash -c "rig rtools add 45 --json 2>/dev/null"
+    echo "status = ${status}"
+    echo "output = ${output}"
+    [[ "$status" -eq 0 ]]
+    [[ "$(echo "$output" | jq -r '.[0].name')" = "45" ]]
+    [[ "$(echo "$output" | jq -r '.[0].version')" = "4.5" ]]
+    [[ "$(echo "$output" | jq -r '.[0]."new-install"')" = "false" ]]
+}
+
 @test "system create-lib" {
     # Must already exist
     run R-4.5.0.exe -q -s -e suppressWarnings\(file.exists\(Sys.getenv\(\'R_LIBS_USER\'\)\)\)

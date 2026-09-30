@@ -407,7 +407,8 @@ fn get_rtools_versions(rtoolskey: &RegKey) -> Result<Vec<RtoolsVersion>, Box<dyn
     Ok(versions)
 }
 
-pub(super) fn sc_rtools_ls(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
+// The Rtools versions installed in the current mode.
+pub(super) fn list_rtools() -> Result<Vec<RtoolsVersion>, Box<dyn Error>> {
     let mut versions: Vec<RtoolsVersion> = vec![];
 
     // Admin installs register under HKLM, per-user installs under HKCU.
@@ -417,6 +418,11 @@ pub(super) fn sc_rtools_ls(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(
             versions.append(&mut get_rtools_versions(&key)?);
         }
     }
+    Ok(versions)
+}
+
+pub(super) fn sc_rtools_ls(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    let versions = list_rtools()?;
 
     let json = args.get_flag("json") || mainargs.get_flag("json");
     if json {

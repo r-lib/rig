@@ -424,9 +424,10 @@ fn sc_add_cmd(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Er
     {
         let str: &String = args.get_one("str").unwrap();
         if json && str.starts_with("rtools") {
-            OUTPUT.error("--json is not supported for `rig add rtools`");
-            error!("--json is not supported for `rig add rtools`");
-            bail!("--json is not supported for `rig add rtools`");
+            let msg = "--json is not supported for `rig add rtools`, use `rig rtools add --json`";
+            OUTPUT.error(msg);
+            error!("{}", msg);
+            bail!("{}", msg);
         }
     }
 
