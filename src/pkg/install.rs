@@ -42,6 +42,7 @@ use crate::cache::get_cache_dir;
 use crate::dcf::{
     DepVersionSpec, Package, PackageDependencies, RDepType, VersionConstraintType, DEP_TYPES_SOFT,
 };
+use crate::exclude_newer::exclude_newer_arg;
 use crate::install::{
     install_packages, PackageInfo, REMOTE_HASH_FIELD, REMOTE_SHA_FIELD, REMOTE_TYPE_FIELD,
 };
@@ -84,8 +85,18 @@ pub fn sc_pkg_install(
     // The packages named on the command line, by their real names, before
     // `--dev` adds their dev dependencies to `deps`.
     let named: HashSet<String> = deps.dependencies.iter().map(|d| d.name.clone()).collect();
+    let exclude_newer = match exclude_newer_arg(args)? {
+        Some(spec) => {
+            let cutoff = spec.cutoff()?;
+            let msg = format!("Ignoring package versions published after {}", cutoff);
+            OUTPUT.info(&msg);
+            info!("{}", msg);
+            Some(cutoff)
+        }
+        None => None,
+    };
     if dev {
-        let loader = DbSourcePackageLoader::new()?;
+        let loader = DbSourcePackageLoader::new()?.with_exclude_newer(exclude_newer.clone());
         add_dev_deps(
             &loader,
             &cran_names,
@@ -120,6 +131,7 @@ pub fn sc_pkg_install(
         &git_sources,
         target,
         prefer_binary,
+        exclude_newer.as_deref(),
         true,
     )?;
     OUTPUT.success("Solved dependencies");

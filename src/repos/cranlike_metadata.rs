@@ -162,6 +162,9 @@ pub struct DbSourcePackageLoader {
     conn: Connection,
     /// repo ids of the ALLPACKAGES history to search.
     repo_ids: Vec<i64>,
+    /// `--exclude-newer` cutoff day, `YYYY-MM-DD`: versions whose snapshot
+    /// date is after it are hidden from the solver.
+    exclude_newer: Option<String>,
 }
 
 impl DbSourcePackageLoader {
@@ -176,8 +179,39 @@ impl DbSourcePackageLoader {
 
         let repo_ids = source_repo_ids(&conn, &allpackages_url(), "source")?;
 
-        Ok(DbSourcePackageLoader { conn, repo_ids })
+        Ok(DbSourcePackageLoader {
+            conn,
+            repo_ids,
+            exclude_newer: None,
+        })
     }
+
+    /// Hide the versions published after `cutoff` (`YYYY-MM-DD`), see
+    /// [`crate::exclude_newer`]. `None` keeps every version.
+    pub fn with_exclude_newer(mut self, cutoff: Option<String>) -> Self {
+        self.exclude_newer = cutoff;
+        self
+    }
+}
+
+/// The P3M snapshot date, `YYYY-MM-DD`, in an ALLPACKAGES `DownloadURL`, e.g.
+/// `2026-06-08` for
+/// `https://p3m.dev/cran/2026-06-08/src/contrib/pak_0.10.0.tar.gz`. This is
+/// the date the version was first published in a snapshot.
+pub fn snapshot_date(url: &str) -> Option<&str> {
+    lazy_static::lazy_static! {
+        static ref SNAPSHOT: regex::Regex = regex::Regex::new(r"/(\d{4}-\d{2}-\d{2})/").unwrap();
+    }
+    Some(SNAPSHOT.captures(url)?.get(1)?.as_str())
+}
+
+/// Whether a version with `download_url` is published on or before `cutoff`
+/// (`YYYY-MM-DD`). Versions without a snapshot date are kept.
+fn published_by(download_url: Option<&str>, cutoff: Option<&str>) -> bool {
+    let (Some(cutoff), Some(date)) = (cutoff, download_url.and_then(snapshot_date)) else {
+        return true;
+    };
+    date <= cutoff
 }
 
 /// Resolve the repo id(s) for a given `(url, pkg_type)` in the shared database.
@@ -206,7 +240,8 @@ impl PackageVersionLoader for DbSourcePackageLoader {
         // on a source-only solve, where no binary index is loaded at all.
         let mut best: HashMap<String, (String, Option<String>)> = HashMap::new();
         let mut stmt = self.conn.prepare_cached(
-            "SELECT version, dependencies, sha256sum, repo_id FROM packages WHERE name = ?1",
+            "SELECT version, dependencies, sha256sum, repo_id, download_url \
+             FROM packages WHERE name = ?1",
         )?;
         let rows = stmt.query_map(params![package], |row| {
             Ok((
@@ -214,12 +249,16 @@ impl PackageVersionLoader for DbSourcePackageLoader {
                 row.get::<_, String>(1)?,
                 row.get::<_, Option<String>>(2)?,
                 row.get::<_, i64>(3)?,
+                row.get::<_, Option<String>>(4)?,
             ))
         })?;
         for row in rows {
-            let (ver, deps_json, sha256sum, repo_id) = row?;
+            let (ver, deps_json, sha256sum, repo_id, download_url) = row?;
             if !self.repo_ids.contains(&repo_id) {
                 continue; // row from a repo we do not source from
+            }
+            if !published_by(download_url.as_deref(), self.exclude_newer.as_deref()) {
+                continue; // published after the --exclude-newer cutoff
             }
             best.entry(ver).or_insert((deps_json, sha256sum));
         }
@@ -252,9 +291,7 @@ impl AllPackagesVersion {
     /// The P3M snapshot date the version was published in, as `YYYY-MM-DD`,
     /// taken from the date component of [`Self::download_url`].
     pub fn snapshot(&self) -> Option<String> {
-        let url = self.download_url.as_deref()?;
-        let re = regex::Regex::new(r"/(\d{4}-\d{2}-\d{2})/").ok()?;
-        Some(re.captures(url)?.get(1)?.as_str().to_string())
+        snapshot_date(self.download_url.as_deref()?).map(|s| s.to_string())
     }
 }
 
@@ -1619,6 +1656,96 @@ Version: 2.1.0
         assert!(archived_package_in_db(&db, url, "zipcode")
             .unwrap()
             .is_none());
+
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
+    fn snapshot_date_is_read_from_the_download_url() {
+        assert_eq!(
+            snapshot_date("https://p3m.dev/cran/2026-06-08/src/contrib/pak_0.10.0.tar.gz"),
+            Some("2026-06-08")
+        );
+        assert_eq!(
+            snapshot_date("https://cran.r-project.org/src/contrib/pak_0.10.0.tar.gz"),
+            None
+        );
+    }
+
+    #[test]
+    fn published_by_compares_the_snapshot_date_to_the_cutoff() {
+        let url = Some("https://p3m.dev/cran/2020-01-09/src/contrib/cli_2.0.1.tar.gz");
+        assert!(published_by(url, None));
+        assert!(published_by(url, Some("2020-01-09")));
+        assert!(published_by(url, Some("2020-01-10")));
+        assert!(!published_by(url, Some("2020-01-08")));
+        // No snapshot date to go by: kept.
+        assert!(published_by(None, Some("2020-01-08")));
+    }
+
+    #[test]
+    fn exclude_newer_hides_versions_published_after_the_cutoff() {
+        use std::io::Write;
+
+        let url = "https://example.com/ALLPACKAGES.zst";
+        let dcf = "\
+Package: cli
+Version: 2.0.0
+DownloadURL: https://p3m.dev/cran/2019-12-10/src/contrib/cli_2.0.0.tar.gz
+
+Package: cli
+Version: 2.0.1
+DownloadURL: https://p3m.dev/cran/2020-01-09/src/contrib/cli_2.0.1.tar.gz
+";
+        let compressed = zstd::stream::encode_all(dcf.as_bytes(), 0).unwrap();
+        let mut path = std::env::temp_dir();
+        path.push(format!("rig-test-exclude-newer-{}.zst", std::process::id()));
+        File::create(&path).unwrap().write_all(&compressed).unwrap();
+        let (packages, _data) = parse_packages(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+
+        let mut db = std::env::temp_dir();
+        db.push(format!("rig-test-exclude-newer-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&db);
+        ensure_db_schema(&db).unwrap();
+        save_packages_to_db(
+            &packages,
+            &db,
+            url,
+            None,
+            "source",
+            "ALLPACKAGES",
+            None,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let loader = |cutoff: Option<&str>| {
+            let conn = open_db(&db).unwrap();
+            let repo_ids = source_repo_ids(&conn, url, "source").unwrap();
+            DbSourcePackageLoader {
+                conn,
+                repo_ids,
+                exclude_newer: None,
+            }
+            .with_exclude_newer(cutoff.map(|c| c.to_string()))
+        };
+        let versions = |cutoff: Option<&str>| {
+            let mut vers: Vec<String> = loader(cutoff)
+                .load_versions("cli")
+                .unwrap()
+                .iter()
+                .map(|p| p.version.to_string())
+                .collect();
+            vers.sort();
+            vers
+        };
+
+        assert_eq!(versions(None), vec!["2.0.0", "2.0.1"]);
+        assert_eq!(versions(Some("2020-01-09")), vec!["2.0.0", "2.0.1"]);
+        assert_eq!(versions(Some("2020-01-01")), vec!["2.0.0"]);
+        assert!(versions(Some("2019-01-01")).is_empty());
 
         let _ = std::fs::remove_file(&db);
     }

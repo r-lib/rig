@@ -30,6 +30,7 @@ use crate::dcf::{
     DepVersionSpec, Package as DcfPackage, PackageDependencies, RDepType, RPackageVersion,
     VersionConstraint, VersionConstraintType, DEP_TYPES_SOFT,
 };
+use crate::exclude_newer::ExcludeNewerSpec;
 use crate::install::{
     format_linkingto, REMOTE_HASH_FIELD, REMOTE_HOST_FIELD, REMOTE_LINKINGTO_FIELD,
     REMOTE_REF_FIELD, REMOTE_REPO_FIELD, REMOTE_SHA_FIELD, REMOTE_SUBDIR_FIELD, REMOTE_TYPE_FIELD,
@@ -103,6 +104,11 @@ pub struct Rproj {
     pub description: toml::Table,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace: Option<Workspace>,
+    // `[tool.<name>]`: settings of a specific tool, e.g. `[tool.rig]`, kept
+    // out of the generic manifest. Never written to DESCRIPTION. Tables of
+    // other tools are passed through verbatim.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub tool: BTreeMap<String, toml::Table>,
 }
 
 /// `[project]` — identity/metadata. Scalar fields serialize before `urls`
@@ -732,6 +738,19 @@ impl Rproj {
                 }
             }
         }
+    }
+
+    /// The `exclude-newer` setting of `[tool.rig]`: hide CRAN versions
+    /// published after this date (or span) from the solver, see
+    /// [`crate::exclude_newer`].
+    pub fn exclude_newer(&self) -> Result<Option<ExcludeNewerSpec>, Box<dyn Error>> {
+        let Some(value) = self.tool.get("rig").and_then(|t| t.get("exclude-newer")) else {
+            return Ok(None);
+        };
+        let Some(value) = value.as_str() else {
+            bail!("`exclude-newer` in `[tool.rig]` must be a string, e.g. \"2025-06-01\"");
+        };
+        Ok(Some(value.parse()?))
     }
 
     /// Merge a DESCRIPTION's `Config/Needs/*` fields into this manifest's
@@ -2257,7 +2276,56 @@ pub(crate) fn format_constraints(constraints: &[VersionConstraint]) -> String {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RprojLock {
     pub version: usize,
+    /// Tool-specific settings, e.g. the solver options rig solved with.
+    /// Absent (default) in a lockfile solved without any, including every one
+    /// written before this field existed.
+    #[serde(default, skip_serializing_if = "RprojLockTool::is_empty")]
+    pub tool: RprojLockTool,
     pub targets: Vec<RprojLockTarget>,
+}
+
+/// `[tool.<name>]` of `rproj.lock`: tool-specific settings, kept out of the
+/// generic lock format, like `[tool.<name>]` in `rproj.toml`. Only rig's own
+/// table is read; rig rewrites the whole lock file, so it does not keep other
+/// tools' tables.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+pub struct RprojLockTool {
+    #[serde(default, skip_serializing_if = "RprojLockOptions::is_empty")]
+    pub rig: RprojLockOptions,
+}
+
+impl RprojLockTool {
+    pub fn is_empty(&self) -> bool {
+        self.rig.is_empty()
+    }
+}
+
+/// `[tool.rig]` of `rproj.lock`: the solver options that change which
+/// versions a solve can pick, so that a later `rig proj lock` re-solves when
+/// they change instead of reusing the lock.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+pub struct RprojLockOptions {
+    /// The `--exclude-newer` cutoff day, `YYYY-MM-DD`.
+    #[serde(
+        rename = "exclude-newer",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub exclude_newer: Option<String>,
+    /// The `--exclude-newer` span, as written, if it was a relative one, e.g.
+    /// `7 days`. `exclude_newer` is the day it resolved to at lock time.
+    #[serde(
+        rename = "exclude-newer-span",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub exclude_newer_span: Option<String>,
+}
+
+impl RprojLockOptions {
+    pub fn is_empty(&self) -> bool {
+        *self == RprojLockOptions::default()
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -2771,6 +2839,7 @@ mod tests {
     fn roundtrips_through_toml() {
         let lock = RprojLock {
             version: RPROJ_LOCK_VERSION,
+            tool: Default::default(),
             targets: vec![RprojLockTarget {
                 r_version: "4.6".to_string(),
                 platform: "aarch64-apple-darwin".to_string(),
@@ -2797,6 +2866,7 @@ mod tests {
 
         let lock = RprojLock {
             version: RPROJ_LOCK_VERSION,
+            tool: Default::default(),
             targets: vec![
                 RprojLockTarget {
                     r_version: "4.5".to_string(),
@@ -2831,6 +2901,7 @@ mod tests {
         ]);
         let lock = RprojLock {
             version: RPROJ_LOCK_VERSION,
+            tool: Default::default(),
             targets: vec![RprojLockTarget {
                 r_version: "4.6".to_string(),
                 platform: "aarch64-apple-darwin".to_string(),
@@ -4048,6 +4119,55 @@ foo = "bar"
         m.project.description = Some("First paragraph.\n\nSecond paragraph.".to_string());
         let (desc, _) = m.to_description().unwrap();
         assert!(desc.contains("Description: First paragraph.\n    .\n    Second paragraph.\n"));
+    }
+
+    #[test]
+    fn exclude_newer_is_read_from_tool_rig() {
+        let m: Rproj = toml::from_str(
+            "[project]\nname = \"p\"\nversion = \"1.0\"\n\n\
+             [tool.rig]\nexclude-newer = \"2020-01-01\"\n",
+        )
+        .unwrap();
+        let spec = m.exclude_newer().unwrap().unwrap();
+        assert_eq!(spec.cutoff().unwrap(), "2020-01-01");
+
+        assert!(Rproj::minimal("p").exclude_newer().unwrap().is_none());
+
+        // `[config.rig]` is a DESCRIPTION `Config/rig/*` field, not a setting.
+        let m: Rproj = toml::from_str(
+            "[project]\nname = \"p\"\nversion = \"1.0\"\n\n\
+             [config.rig]\nexclude-newer = \"2020-01-01\"\n",
+        )
+        .unwrap();
+        assert!(m.exclude_newer().unwrap().is_none());
+
+        let m: Rproj = toml::from_str(
+            "[project]\nname = \"p\"\nversion = \"1.0\"\n\n\
+             [tool.rig]\nexclude-newer = 2020\n",
+        )
+        .unwrap();
+        assert!(m.exclude_newer().is_err());
+    }
+
+    #[test]
+    fn tool_tables_round_trip_and_stay_out_of_description() {
+        let text = "[project]\nname = \"p\"\nversion = \"1.0\"\n\n\
+                    [tool.rig]\nexclude-newer = \"2020-01-01\"\n\n\
+                    [tool.other]\nkey = \"x\"\n";
+        let m: Rproj = toml::from_str(text).unwrap();
+        let out = m.to_toml().unwrap();
+        assert!(
+            out.contains("[tool.rig]\nexclude-newer = \"2020-01-01\"\n"),
+            "{}",
+            out
+        );
+        assert!(out.contains("[tool.other]\nkey = \"x\"\n"), "{}", out);
+        let back: Rproj = toml::from_str(&out).unwrap();
+        assert_eq!(back, m);
+
+        let (desc, _) = m.to_description().unwrap();
+        assert!(!desc.contains("exclude-newer"), "{}", desc);
+        assert!(!desc.contains("other"), "{}", desc);
     }
 
     #[test]
