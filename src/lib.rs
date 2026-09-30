@@ -22,6 +22,7 @@ mod config;
 mod dcf;
 mod download;
 mod escalate;
+mod exclude_newer;
 mod hardcoded;
 mod install;
 mod library;

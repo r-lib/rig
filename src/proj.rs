@@ -22,6 +22,7 @@ use crate::common::{
 };
 use crate::dcf::*;
 use crate::download::download_multiple_first_available_with_progress;
+use crate::exclude_newer::{exclude_newer_arg, ExcludeNewerSpec};
 use crate::install::{
     install_packages, parse_linkingto, PackageInfo, REMOTE_GIT_FIELDS, REMOTE_HASH_FIELD,
     REMOTE_LINKINGTO_FIELD, REMOTE_SHA_FIELD, REMOTE_SUBDIR_FIELD, REMOTE_TYPE_FIELD,
@@ -42,8 +43,8 @@ use crate::repos::*;
 use crate::resolve::resolve_versions;
 use crate::rproj::{
     format_constraints, parse_add_spec, Author, DepTable, LockDirectDependency, Repository, Rproj,
-    RprojLock, RprojLockPackage, RprojLockTarget, DESCRIPTION_RIG_NOTE_FIELD, RPROJ_LOCK_VERSION,
-    RPROJ_MANIFEST_FILE,
+    RprojLock, RprojLockOptions, RprojLockPackage, RprojLockTarget, RprojLockTool,
+    DESCRIPTION_RIG_NOTE_FIELD, RPROJ_LOCK_VERSION, RPROJ_MANIFEST_FILE,
 };
 use crate::rvenv::{
     ensure_rvenv_files, existing_targets, find_project_root, find_workspace_root,
@@ -1138,6 +1139,9 @@ pub(crate) struct ProjectSolve {
     /// [`Rproj::git_dependencies`]. Fetched and registered with the solver by
     /// [`register_git_sources`] before it runs.
     pub git_deps: Vec<(String, crate::rproj::DepTable)>,
+    /// The root manifest's `exclude-newer` setting, see
+    /// [`Rproj::exclude_newer`]. A workspace takes it from its root only.
+    pub exclude_newer: Option<ExcludeNewerSpec>,
 }
 
 /// Read the project or workspace rooted at `root` and turn it into the roots
@@ -1187,6 +1191,7 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
                 group_roots,
                 extra_roots,
                 git_deps,
+                exclude_newer: manifest.exclude_newer()?,
             });
         }
     };
@@ -1261,6 +1266,7 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
         group_roots,
         extra_roots,
         git_deps,
+        exclude_newer: manifest.exclude_newer()?,
     })
 }
 
@@ -1519,6 +1525,7 @@ pub(crate) fn sc_proj_solve_project_deps(
         &[],
         target,
         prefer_binary,
+        None,
         report_status,
     )
 }
@@ -1533,6 +1540,7 @@ pub(crate) fn sc_proj_solve_project_deps(
 /// the per-solve lines here would only be N interleaved, unlabelled copies of
 /// them. Single-target callers pass `true` and get the progress reported as
 /// each phase starts. The log file gets the messages either way.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn sc_proj_solve_deps(
     r_version: &str,
     roots: &[SolveRoot],
@@ -1540,6 +1548,7 @@ pub(crate) fn sc_proj_solve_deps(
     git_sources: &[ResolvedGitSource],
     target: Option<BinaryTarget>,
     prefer_binary: Option<usize>,
+    exclude_newer: Option<&str>,
     report_status: bool,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
     info!("Solving dependencies");
@@ -1552,7 +1561,8 @@ pub(crate) fn sc_proj_solve_deps(
     // The registry lazily loads each package's versions from the local database
     // (the full ALLPACKAGES history) as the solver visits them, instead of
     // preloading the entire CRAN version history.
-    let loader = DbSourcePackageLoader::new()?;
+    let loader =
+        DbSourcePackageLoader::new()?.with_exclude_newer(exclude_newer.map(|c| c.to_string()));
     // Binary builds are candidates alongside the source tarball, so that the
     // `LinkingTo` versions a build was compiled against become constraints the
     // solver can backtrack over. Their indices are fetched lazily too, one
@@ -1661,6 +1671,32 @@ fn read_existing_lock(root: &Path) -> Option<RprojLock> {
     let text = fs::read_to_string(root.join(RPROJ_LOCK_FILE)).ok()?;
     RprojLock::check_version(&text).ok()?;
     toml::from_str::<RprojLock>(&text).ok()
+}
+
+/// The `[tool.rig]` options a `rig proj lock` run solves with, given the effective
+/// `exclude-newer` setting and the options of the existing lock, if any.
+///
+/// A relative span, e.g. `7 days`, keeps the cutoff day the existing lock
+/// resolved it to, as long as the span itself is unchanged. Otherwise the
+/// cutoff would move every day and the lock would never be reused. `--upgrade`
+/// ignores the existing lock, so it resolves the span afresh.
+fn resolve_lock_options(
+    exclude_newer: Option<&ExcludeNewerSpec>,
+    existing: Option<&RprojLockOptions>,
+) -> Result<RprojLockOptions, Box<dyn Error>> {
+    let Some(spec) = exclude_newer else {
+        return Ok(RprojLockOptions::default());
+    };
+    if let (Some(span), Some(existing)) = (spec.span(), existing) {
+        if existing.exclude_newer_span.as_deref() == Some(span) && existing.exclude_newer.is_some()
+        {
+            return Ok(existing.clone());
+        }
+    }
+    Ok(RprojLockOptions {
+        exclude_newer: Some(spec.cutoff()?),
+        exclude_newer_span: spec.span().map(|s| s.to_string()),
+    })
 }
 
 /// Every git/GitHub dependency's previously resolved commit, read from an
@@ -2523,6 +2559,9 @@ struct ProjLockOptions {
     /// `--add-platform`'s comma-separated, repeatable list.
     add_platforms: Vec<String>,
     prefer_binary: Option<usize>,
+    /// `--exclude-newer`: hide CRAN versions published after this date (or
+    /// span). Overrides the manifest's `exclude-newer` setting.
+    exclude_newer: Option<ExcludeNewerSpec>,
     /// `--upgrade`: re-resolve every dependency instead of reusing an
     /// existing `rproj.lock`: re-check every git/GitHub dependency's ref
     /// against its remote instead of reusing the commit already pinned (see
@@ -2551,6 +2590,7 @@ fn sc_proj_lock(
             .map(|vs| vs.cloned().collect())
             .unwrap_or_default(),
         prefer_binary: args.get_one::<usize>("prefer-binary").copied(),
+        exclude_newer: exclude_newer_arg(args)?,
         upgrade: args.get_flag("upgrade"),
     };
     proj_lock(&proj_lock_root()?, &opts, args)
@@ -3078,6 +3118,20 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         read_existing_lock(root)
     };
 
+    // `--exclude-newer` wins over the manifest's setting. A lock solved with
+    // different options cannot be reused, see `resolve_lock_options`.
+    let exclude_newer = opts.exclude_newer.as_ref().or(solve.exclude_newer.as_ref());
+    let lock_options =
+        resolve_lock_options(exclude_newer, existing_lock.as_ref().map(|l| &l.tool.rig))?;
+    let options_match = existing_lock
+        .as_ref()
+        .is_some_and(|l| l.tool.rig == lock_options);
+    if let Some(cutoff) = &lock_options.exclude_newer {
+        let msg = format!("Ignoring package versions published after {}", cutoff);
+        OUTPUT.info(&msg);
+        info!("{}", msg);
+    }
+
     // Resolve every git/GitHub dependency once, up front, instead of letting
     // each solve target fetch it on its own -- see `resolve_git_sources`.
     // `--upgrade` (folded into `existing_lock` above) skips `existing_git_shas`
@@ -3114,13 +3168,24 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     // instead of solved again -- the "a lockfile is sticky until you ask to
     // upgrade" behavior `Cargo.lock`/`uv.lock` have, now covering CRAN/PPM
     // dependencies too (git/GitHub already got it via `known_shas` above).
+    // Only if the lock was solved with the same options, though: e.g. a new
+    // `--exclude-newer` cutoff can rule out versions the lock pins.
     let mut reused: Vec<RprojLockTarget> = vec![];
     let mut to_solve: Vec<&SolveTarget> = vec![];
     for st in &solve_targets {
-        let existing = existing_lock.as_ref().and_then(|lock| {
-            existing_lock_satisfies(lock, &st.rver, &st.platform_key, &direct_deps, &git_sources)
+        let existing = existing_lock
+            .as_ref()
+            .filter(|_| options_match)
+            .and_then(|lock| {
+                existing_lock_satisfies(
+                    lock,
+                    &st.rver,
+                    &st.platform_key,
+                    &direct_deps,
+                    &git_sources,
+                )
                 .filter(project_fresh)
-        });
+            });
         match existing {
             Some(target) => reused.push(target),
             None => to_solve.push(st),
@@ -3209,6 +3274,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
                 &git_sources,
                 st.target.clone(),
                 prefer_binary,
+                lock_options.exclude_newer.as_deref(),
                 false,
             )
             .map_err(|e| e.to_string());
@@ -3319,6 +3385,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
 
     let rproj_lock = RprojLock {
         version: RPROJ_LOCK_VERSION,
+        tool: RprojLockTool { rig: lock_options },
         targets,
     };
     fs::write(root.join(RPROJ_LOCK_FILE), rproj_lock.to_toml()?)?;
@@ -4015,6 +4082,9 @@ pub(crate) struct ProjSyncOptions {
     /// Report what sync would install, remove or write, without actually
     /// doing any of it (`--dry-run`).
     pub dry_run: bool,
+    /// `--exclude-newer`: (re)lock with this cutoff before syncing, see
+    /// `ProjLockOptions::exclude_newer`.
+    pub exclude_newer: Option<ExcludeNewerSpec>,
 }
 
 impl Default for ProjSyncOptions {
@@ -4033,6 +4103,7 @@ impl Default for ProjSyncOptions {
             inexact: false,
             frozen: false,
             dry_run: false,
+            exclude_newer: None,
         }
     }
 }
@@ -4068,6 +4139,7 @@ fn sc_proj_sync(
         inexact: args.get_flag("inexact"),
         frozen: args.get_flag("frozen"),
         dry_run: args.get_flag("dry-run"),
+        exclude_newer: exclude_newer_arg(args)?,
     };
 
     proj_sync(&root, &opts, args)
@@ -4148,6 +4220,10 @@ pub(crate) fn proj_sync(
     // of erroring out. `rig proj lock` reads the project's `rproj.toml`, and
     // errors out itself if there is none.
     let lock_path = root.join(RPROJ_LOCK_FILE);
+    let lock_opts = ProjLockOptions {
+        exclude_newer: opts.exclude_newer.clone(),
+        ..Default::default()
+    };
     if !lock_path.exists() {
         if opts.frozen {
             let msg = format!(
@@ -4170,7 +4246,16 @@ pub(crate) fn proj_sync(
             RPROJ_LOCK_FILE
         ));
         info!("No {}, running `rig proj lock` first", RPROJ_LOCK_FILE);
-        proj_lock(root, &ProjLockOptions::default(), args)?;
+        proj_lock(root, &lock_opts, args)?;
+    } else if opts.exclude_newer.is_some() {
+        // Re-lock with the new cutoff. `proj_lock` keeps the lock as it is if
+        // it was already solved with the same one. (`--frozen` conflicts with
+        // `--exclude-newer`.)
+        if opts.dry_run {
+            OUTPUT.info("`rig proj sync` would run `rig proj lock --exclude-newer` first");
+        } else {
+            proj_lock(root, &lock_opts, args)?;
+        }
     }
 
     let lock_content = fs::read_to_string(&lock_path)?;
@@ -5239,6 +5324,82 @@ mod tests {
     }
 
     #[test]
+    fn lock_options_are_empty_without_exclude_newer() {
+        let existing = RprojLockOptions {
+            exclude_newer: Some("2020-01-01".to_string()),
+            exclude_newer_span: None,
+        };
+        let opts = resolve_lock_options(None, Some(&existing)).unwrap();
+        assert!(opts.is_empty());
+    }
+
+    #[test]
+    fn lock_options_record_an_absolute_cutoff() {
+        let spec: ExcludeNewerSpec = "2020-01-01".parse().unwrap();
+        let opts = resolve_lock_options(Some(&spec), None).unwrap();
+        assert_eq!(opts.exclude_newer.as_deref(), Some("2020-01-01"));
+        assert_eq!(opts.exclude_newer_span, None);
+    }
+
+    #[test]
+    fn lock_options_keep_the_cutoff_of_an_unchanged_span() {
+        let spec: ExcludeNewerSpec = "7 days".parse().unwrap();
+        let existing = RprojLockOptions {
+            exclude_newer: Some("2020-01-01".to_string()),
+            exclude_newer_span: Some("7 days".to_string()),
+        };
+        let opts = resolve_lock_options(Some(&spec), Some(&existing)).unwrap();
+        assert_eq!(opts, existing);
+
+        // A different span resolves afresh, from today.
+        let spec: ExcludeNewerSpec = "8 days".parse().unwrap();
+        let opts = resolve_lock_options(Some(&spec), Some(&existing)).unwrap();
+        assert_eq!(opts.exclude_newer_span.as_deref(), Some("8 days"));
+        assert_ne!(opts.exclude_newer.as_deref(), Some("2020-01-01"));
+    }
+
+    #[test]
+    fn lock_options_round_trip_through_the_lock_file() {
+        let lock = RprojLock {
+            version: RPROJ_LOCK_VERSION,
+            tool: RprojLockTool {
+                rig: RprojLockOptions {
+                    exclude_newer: Some("2020-01-01".to_string()),
+                    exclude_newer_span: Some("7 days".to_string()),
+                },
+            },
+            targets: vec![],
+        };
+        let text = lock.to_toml().unwrap();
+        assert!(
+            text.contains("[tool.rig]\nexclude-newer = \"2020-01-01\"\n"),
+            "{}",
+            text
+        );
+        let back: RprojLock = toml::from_str(&text).unwrap();
+        assert_eq!(back.tool, lock.tool);
+
+        // No options, no `[tool]` table, as in older lock files.
+        let lock = RprojLock {
+            version: RPROJ_LOCK_VERSION,
+            tool: Default::default(),
+            targets: vec![],
+        };
+        let text = lock.to_toml().unwrap();
+        assert!(!text.contains("[tool"), "{}", text);
+        let back: RprojLock = toml::from_str(&text).unwrap();
+        assert!(back.tool.is_empty());
+
+        // Other tools' tables in a lock file are ignored, not an error.
+        let text = format!(
+            "version = {}\ntargets = []\n\n[tool.other]\nkey = 1\n\n[tool.rig]\nexclude-newer = \"2020-01-01\"\n",
+            RPROJ_LOCK_VERSION
+        );
+        let back: RprojLock = toml::from_str(&text).unwrap();
+        assert_eq!(back.tool.rig.exclude_newer.as_deref(), Some("2020-01-01"));
+    }
+
+    #[test]
     fn add_platform_extends_the_default_platform_set() {
         let opts = ProjLockOptions {
             add_platforms: vec!["ubuntu-24.04".to_string()],
@@ -5381,6 +5542,7 @@ mod tests {
         t.packages = vec![pkg];
         let lock = RprojLock {
             version: RPROJ_LOCK_VERSION,
+            tool: Default::default(),
             targets: vec![t],
         };
         let refs = existing_release_refs(&lock);

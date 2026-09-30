@@ -46,6 +46,11 @@ Pass `--inexact` to leave those packages alone instead.
 Pass `--dry-run` to print what sync would install, remove or write, without
 touching the R installation, the project library or `.rvenv`.
 
+`--exclude-newer` runs [`rig proj lock`](#rig-proj-lock) with the same
+option first, even if there is an `rproj.lock` already, to ignore CRAN
+package versions published after a date. The existing lock is kept if it
+was solved with the same cutoff. It cannot be combined with `--frozen`.
+
 ## The project's own package
 
 If the project's `type` is `"package"`, [`rig proj lock`](#rig-proj-lock) records the project

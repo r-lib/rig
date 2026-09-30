@@ -102,6 +102,39 @@ below). Use `rig proj lock --upgrade` to ignore the existing lock file and
 re-resolve every dependency instead, picking the latest version that still
 satisfies `rproj.toml`.
 
+## Excluding newer package versions
+
+`--exclude-newer` makes the solver ignore CRAN package versions published
+after a date, so you can lock the project as CRAN was on that day, or skip
+versions released in the last few days:
+
+```sh
+rig proj lock --exclude-newer 2025-06-01
+rig proj lock --exclude-newer "7 days"
+```
+
+It takes a date (`2025-06-01`), an RFC 3339 timestamp (only its UTC date is
+used), or a span back from today, e.g. `7 days`, `2 weeks` or `P1M`. A
+version's publication date is the day it first appeared in a Posit Package
+Manager snapshot, so the cutoff is a day, and it cannot be earlier than
+2017-10-10, the first snapshot. It only applies to CRAN packages, not to
+git, GitHub, URL or local dependencies, and binary builds of a version are
+used no matter when they were built.
+
+To make it part of the project, set it in `rproj.toml`; `--exclude-newer`
+overrides it:
+
+```toml
+[tool.rig]
+exclude-newer = "2025-06-01"
+```
+
+`rproj.lock` records the cutoff in its own `[tool.rig]` table, and a lock
+solved with a different one is not reused. For a span, the lock records the
+span as well, and the lock is reused as long as the span stays the same, so
+the cutoff does not move every day. Use `--upgrade` to solve again with a
+fresh cutoff.
+
 ## Git, GitHub and URL dependencies
 
 A `git::`/`github::` dependency pinned to a branch, a pull request, or no ref

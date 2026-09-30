@@ -32,6 +32,22 @@ fn pak_version_values() -> clap::builder::PossibleValuesParser {
     ])
 }
 
+// `--exclude-newer` of the commands that solve dependencies. A plain string:
+// this file is also compiled into the build script, so it cannot use
+// `crate::exclude_newer` to parse it. `exclude_newer::exclude_newer_arg()` does.
+fn exclude_newer_arg() -> Arg {
+    Arg::new("exclude-newer")
+        .help(
+            "Ignore CRAN package versions published after this date.\n\
+            A date (2025-06-01), an RFC 3339 timestamp, or a span back\n\
+            from today (7 days, 2 weeks, P1M). Not before 2017-10-10.",
+        )
+        .long("exclude-newer")
+        .value_name("DATE")
+        .num_args(1)
+        .required(false)
+}
+
 fn reference_mode() -> bool {
     std::env::var_os("RIG_GEN_REFERENCE").is_some()
 }
@@ -1725,6 +1741,7 @@ pub fn rig_app() -> Command {
                         .value_parser(clap::value_parser!(usize))
                         .required(false),
                 )
+                .arg(exclude_newer_arg())
                 .arg(
                     Arg::new("upgrade")
                         .help(
@@ -1886,6 +1903,7 @@ pub fn rig_app() -> Command {
                         .num_args(0)
                         .required(false),
                 )
+                .arg(exclude_newer_arg().conflicts_with("frozen"))
                 .arg(
                     Arg::new("dry-run")
                         .help(
@@ -2228,6 +2246,7 @@ pub fn rig_app() -> Command {
                         .value_parser(clap::value_parser!(usize))
                         .required(false),
                 )
+                .arg(exclude_newer_arg())
                 .arg(
                     Arg::new("json")
                         .help("JSON output")

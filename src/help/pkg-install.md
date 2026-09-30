@@ -132,6 +132,13 @@ installation fails.
 build, which is useful when compiling is expensive; it takes the number of
 versions to look back through, e.g. `--prefer-binary=5`, and defaults to 3.
 
+## Excluding newer package versions
+
+`--exclude-newer` ignores CRAN package versions published after a date, e.g.
+`--exclude-newer 2025-06-01`, or after a span back from today, e.g.
+`--exclude-newer "7 days"`. See [`rig proj lock`](proj.qmd#rig-proj-lock)
+for the accepted formats and details.
+
 ## Caching package builds
 
 rig caches the packages that it compiles and uses it in subsequent

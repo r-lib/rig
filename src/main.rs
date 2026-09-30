@@ -45,6 +45,7 @@ mod config;
 mod dcf;
 mod dirs;
 mod download;
+mod exclude_newer;
 mod hardcoded;
 mod install;
 mod install_receipt;

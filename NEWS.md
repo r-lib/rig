@@ -29,6 +29,12 @@
 * `rig proj lock` now rewrites the lock file if the list of R versions to
   solve for changes.
 
+* New `--exclude-newer` option for `rig proj lock`, `rig proj sync` and
+  `rig pkg install`, to ignore CRAN package versions published after a
+  date, e.g. `--exclude-newer 2025-06-01`, or in the last few days, e.g.
+  `--exclude-newer "7 days"`. Projects can set it in `rproj.toml`, with
+  `exclude-newer` in `[tool.rig]`.
+
 * `rig proj lock` now also solves for source packages by default
   `rig proj sync` uses this target only if no other target matches the
   machine.

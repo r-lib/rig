@@ -65,6 +65,8 @@ futures = "0.3.17"
 futures-util = "0.3.14"
 # to match patterns in repos.json files
 globset = "0.4.18"
+# dates, timestamps and spans for --exclude-newer
+jiff = "0.2"
 # JSONC (JSON with comments), to edit Positron/VS Code settings.json in place
 jsonc-parser = { version = "0.33", features = ["cst"] }
 # lazy static variables
