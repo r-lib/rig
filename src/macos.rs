@@ -123,7 +123,7 @@ pub fn get_r_current() -> Result<String, Box<dyn Error>> {
     Ok("/Library/Frameworks/R.framework/Versions/Current".to_string())
 }
 
-pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
     let str: &String = args.get_one("str").unwrap();
     validate_version_arg(str)?;
 
@@ -261,7 +261,10 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         system_add_pak(Some(vec![dirname.to_string()]), pakver, explicit)?;
     }
 
-    Ok(())
+    Ok(Some(AddResult {
+        name: dirname.to_string(),
+        new_install: true,
+    }))
 }
 
 fn random_string() -> String {
@@ -2462,6 +2465,9 @@ fn find_installed_version_arch(
     version: &str,
     arch: &str,
 ) -> Result<Option<String>, Box<dyn Error>> {
+    // `get_arch()` and the resolver may say `aarch64`, while
+    // `read_built_version_arch()` always says `arm64`.
+    let arch = if arch == "aarch64" { "arm64" } else { arch };
     for ver in sc_get_list_details()? {
         let Some(path) = ver.path.as_deref() else {
             continue;

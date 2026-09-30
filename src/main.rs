@@ -287,7 +287,7 @@ fn main_() -> i32 {
 fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
     let mut retval: i32 = 0;
     match args.subcommand() {
-        Some(("add", sub)) => sc_add(sub)?,
+        Some(("add", sub)) => sc_add_cmd(sub, args)?,
         Some(("default", sub)) => sc_default(sub, args)?,
         Some(("list", sub)) => sc_list(sub, args)?,
         Some(("proj", sub)) => sc_proj(sub, args)?,
@@ -404,6 +404,61 @@ fn sc_resolve(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Er
 }
 
 // ------------------------------------------------------------------------
+
+fn sc_add_cmd(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    #[derive(serde::Serialize)]
+    struct AddedVersion<'a> {
+        name: &'a str,
+        default: bool,
+        version: &'a Option<String>,
+        aliases: &'a Vec<String>,
+        path: &'a Option<String>,
+        binary: &'a Option<String>,
+        #[serde(rename = "new-install")]
+        new_install: bool,
+    }
+
+    let json = args.get_flag("json") || mainargs.get_flag("json");
+
+    #[cfg(target_os = "windows")]
+    {
+        let str: &String = args.get_one("str").unwrap();
+        if json && str.starts_with("rtools") {
+            OUTPUT.error("--json is not supported for `rig add rtools`");
+            error!("--json is not supported for `rig add rtools`");
+            bail!("--json is not supported for `rig add rtools`");
+        }
+    }
+
+    let res = sc_add(args)?;
+    if !json {
+        return Ok(());
+    }
+    let res = match res {
+        Some(r) => r,
+        None => bail!("Cannot determine the installed R version"),
+    };
+
+    let vers = sc_get_list_details()?;
+    let ver = match vers.iter().find(|v| v.name == res.name) {
+        Some(v) => v,
+        None => bail!("Cannot find the installed R version '{}'", res.name),
+    };
+    let def = sc_get_default()?.unwrap_or_default();
+
+    let out = AddedVersion {
+        name: &ver.name,
+        default: def == ver.name,
+        version: &ver.version,
+        aliases: &ver.aliases,
+        path: &ver.path,
+        binary: &ver.binary,
+        new_install: res.new_install,
+    };
+    println!("{}", serde_json::to_string_pretty(&out)?);
+
+    Ok(())
+}
 
 fn sc_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     #[derive(serde::Serialize)]

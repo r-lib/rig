@@ -358,7 +358,7 @@ fn user_install_name(install_dir: &Path, arch: &str) -> Result<String, Box<dyn E
 }
 
 #[warn(unused_variables)]
-pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
     let str = args.get_one::<String>("str").unwrap();
     if !(str.len() >= 6 && &str[0..6] == "rtools") {
         validate_version_arg(str)?;
@@ -398,7 +398,8 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         } else {
             None
         };
-        return add_rtools(str.to_string(), arch);
+        add_rtools(str.to_string(), arch)?;
+        return Ok(None);
     }
 
     // General check: for requests that don't pin a full version (`release`,
@@ -581,7 +582,10 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         }
     }
 
-    Ok(())
+    Ok(dirname.map(|name| AddResult {
+        name,
+        new_install: true,
+    }))
 }
 
 pub(crate) fn normalize_arch(arch: &str) -> String {

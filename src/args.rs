@@ -380,6 +380,13 @@ pub fn rig_app() -> Command {
                 .long("reinstall")
                 .num_args(0)
                 .required(false),
+        )
+        .arg(
+            Arg::new("json")
+                .help("JSON output")
+                .long("json")
+                .num_args(0)
+                .required(false),
         );
 
     {

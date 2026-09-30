@@ -198,6 +198,18 @@ teardown() {
     echo "$output" | grep -q "^  4.0"
 }
 
+@test "add --json" {
+    # Already installed, so nothing is installed, only reported.
+    run bash -c "rig add --json 4.0.5 -a x86_64 2>/dev/null"
+    echo "status = ${status}"
+    echo "output = ${output}"
+    [[ "$status" -eq 0 ]]
+    [[ "$(echo "$output" | jq -r .name)" = "4.0" ]]
+    [[ "$(echo "$output" | jq -r .version)" = "4.0.5" ]]
+    [[ "$(echo "$output" | jq -r .default)" = "false" ]]
+    [[ "$(echo "$output" | jq -r '."new-install"')" = "false" ]]
+}
+
 @test "resolve" {
     run rig resolve devel
     [[ "$status" -eq 0 ]]

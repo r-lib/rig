@@ -1,5 +1,9 @@
 # Development version
 
+* `rig add` now has a `--json` option. It prints information about the
+  installed R version (or the already installed version that was kept),
+  including whether it is a new installation and whether it is the default.
+
 * New `rig pkg search` command to search CRAN packages, using the same
   web service as the pkgsearch R package.
 

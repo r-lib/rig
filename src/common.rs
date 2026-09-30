@@ -100,16 +100,29 @@ pub fn find_installed_matching(
     Ok(None)
 }
 
+// What `rig add` did: the name of the R version it installed, or of the
+// already-installed version it kept, and which of these two happened.
+pub struct AddResult {
+    pub name: String,
+    pub new_install: bool,
+}
+
 // Used by `rig add` when it decides to skip installing an already-installed
 // version: makes sure any alias the request implies (e.g. `rig add release`)
 // still ends up on that version, then reports the skip.
-pub fn report_already_installed(name: &str, alias: Option<String>) -> Result<(), Box<dyn Error>> {
+pub fn report_already_installed(
+    name: &str,
+    alias: Option<String>,
+) -> Result<Option<AddResult>, Box<dyn Error>> {
     if let Some(alias) = alias {
         add_alias(name, &alias)?;
     }
     OUTPUT.success(&format!("R version {} is already installed", name));
     info!("R version {} is already installed", name);
-    Ok(())
+    Ok(Some(AddResult {
+        name: name.to_string(),
+        new_install: false,
+    }))
 }
 
 // -- rig default ---------------------------------------------------------

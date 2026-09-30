@@ -254,7 +254,7 @@ pub fn maybe_expand_portable(platform: &str) -> Result<String, Box<dyn Error>> {
     }
 }
 
-pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
     if args.value_source("arch") == Some(clap::parser::ValueSource::CommandLine) {
         OUTPUT.error("`--arch` is not supported on Linux.");
         error!("`--arch` is not supported on Linux");
@@ -427,7 +427,10 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         )?;
     }
 
-    Ok(())
+    Ok(Some(AddResult {
+        name: dirname.to_string(),
+        new_install: true,
+    }))
 }
 
 fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>> {

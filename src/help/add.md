@@ -61,6 +61,14 @@ it) instead of reinstalling it. Use `--reinstall` to reinstall anyway.
 `rig add devel` and `rig add next` are always reinstalled, since these are
 rebuilt daily under the same name.
 
+With `--json`, `rig add` prints a JSON object to the standard output about
+the R version it installed, or about the already installed version it kept.
+The fields are the same as in `rig list --json` (`name`, `default`,
+`version`, `aliases`, `path`, `binary`), plus `new-install`, which is `true`
+if rig installed R now and `false` if it kept an existing installation.
+`default` tells whether this version is the default one after `rig add`
+finished. All other messages go to the standard error.
+
 You can use `rig add` to install Rtools:
 
 ```sh
@@ -86,6 +94,9 @@ rig add release
 
 # Install specific version
 rig add 4.6.1
+
+# Install a version and print information about it as JSON
+rig add --json release
 
 # Install latest version within a minor branch
 rig add 4.6
