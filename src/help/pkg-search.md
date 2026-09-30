@@ -65,3 +65,6 @@ the next page.
 `--json` prints the results in JSON, including more fields: the maintainer's
 email address, the number of reverse dependencies, the number of downloads in
 the last month, the license, the URLs and the bug report URL.
+
+In a terminal, the output is shown through a pager: `$RIG_PAGER`, `$PAGER`
+or `less`, in this order. Set `RIG_PAGER` to `cat` to turn this off.

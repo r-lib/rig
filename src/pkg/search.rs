@@ -77,9 +77,9 @@ pub fn sc_pkg_search(
         lines.push(String::new());
         lines.push(next);
     }
-    for line in lines {
-        println!("{}", line);
-    }
+    let mut text = lines.join("\n");
+    text.push('\n');
+    crate::pager::page_text(&text);
     Ok(())
 }
 
