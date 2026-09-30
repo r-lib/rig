@@ -5789,6 +5789,31 @@ mod tests {
     }
 
     #[test]
+    fn sync_wanted_packages_no_install_project_keeps_it_for_a_dev_dependency() {
+        let mut project = locked_in("mypkg", &["main"], &[]);
+        project.is_project = true;
+        let mut dependent = locked_in("otherpkg", &["dev"], &[]);
+        dependent.dependencies = vec!["mypkg".to_string()];
+        let packages = vec![dependent, project];
+        let opts = ProjSyncOptions {
+            install_project: false,
+            ..sync_opts()
+        };
+        assert_eq!(
+            names(&sync_wanted_packages(&packages, &opts)),
+            vec!["mypkg", "otherpkg"]
+        );
+        // With `--no-dev` the dev dependency is not wanted, so neither is
+        // the project package.
+        let opts = ProjSyncOptions {
+            install_project: false,
+            dev: false,
+            ..sync_opts()
+        };
+        assert!(names(&sync_wanted_packages(&packages, &opts)).is_empty());
+    }
+
+    #[test]
     fn a_plain_package_project_gets_a_self_alias() {
         let dir = tempfile::tempdir().unwrap();
         let mut manifest = Rproj::minimal("rlang");
