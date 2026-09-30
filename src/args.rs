@@ -2139,6 +2139,17 @@ pub fn rig_app() -> Command {
                         .required(false),
                 )
                 .arg(
+                    Arg::new("no-install-project")
+                        .help(
+                            "Do not install the packages named on the command line, only\n\
+                            their dependencies. A named package is still installed if\n\
+                            another package that is installed depends on it.",
+                        )
+                        .long("no-install-project")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
                     Arg::new("platform")
                         .help(
                             "Platform to install binary packages for, e.g. macos, windows,\n\

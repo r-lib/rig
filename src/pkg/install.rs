@@ -81,6 +81,9 @@ pub fn sc_pkg_install(
         .collect();
     let dev = args.get_flag("dev");
     let (mut deps, git_deps, cran_names, dev_packages) = requested_deps(&names)?;
+    // The packages named on the command line, by their real names, before
+    // `--dev` adds their dev dependencies to `deps`.
+    let named: HashSet<String> = deps.dependencies.iter().map(|d| d.name.clone()).collect();
     if dev {
         let loader = DbSourcePackageLoader::new()?;
         add_dev_deps(
@@ -127,7 +130,10 @@ pub fn sc_pkg_install(
     // dependency lists with R and the base packages filtered out, and the
     // provenance hashes. `rig pkg install` builds one in memory and never
     // writes it.
-    let lockfile = RprojLockTarget::from_solution(&registry, &solution);
+    let mut lockfile = RprojLockTarget::from_solution(&registry, &solution);
+    if args.get_flag("no-install-project") {
+        lockfile.packages = drop_named_packages(lockfile.packages, &named);
+    }
 
     // A library that does not exist yet holds nothing; rig creates it below,
     // but only once it knows there is something to put in it, so that a
@@ -436,6 +442,43 @@ fn add_dev_deps_of_package(
         deps.dependencies.push(dep.clone());
     }
     Ok(())
+}
+
+/// `--no-install-project`: leave the packages named on the command line out
+/// of the solution, keeping only their dependencies -- the same thing
+/// `rig proj sync --no-install-project` does for a project's own package.
+///
+/// A named package still stays if some package that stays depends on it,
+/// e.g. `rig pkg install --no-install-project cli pkgA` where `pkgA` imports
+/// `cli`, or a `--dev` dependency that imports the named package. That is
+/// iterated to a fixpoint, since a named package kept that way can in turn
+/// depend on another named package.
+fn drop_named_packages(
+    packages: Vec<RprojLockPackage>,
+    named: &HashSet<String>,
+) -> Vec<RprojLockPackage> {
+    let mut keep: HashSet<&str> = packages
+        .iter()
+        .filter(|p| !named.contains(&p.package))
+        .map(|p| p.package.as_str())
+        .collect();
+    loop {
+        let needed: HashSet<&str> = packages
+            .iter()
+            .filter(|p| keep.contains(p.package.as_str()))
+            .flat_map(|p| p.dependencies.iter().map(|d| d.as_str()))
+            .filter(|d| named.contains(*d) && !keep.contains(*d))
+            .collect();
+        if needed.is_empty() {
+            break;
+        }
+        keep.extend(needed);
+    }
+    let keep: HashSet<String> = keep.into_iter().map(|s| s.to_string()).collect();
+    packages
+        .into_iter()
+        .filter(|p| keep.contains(&p.package))
+        .collect()
 }
 
 // ------------------------------------------------------------------------
@@ -1012,6 +1055,52 @@ mod tests {
         assert_eq!(deps.dependencies.len(), 1);
         assert_eq!(deps.dependencies[0].name, "cli");
         assert!(deps.dependencies[0].constraints.is_empty());
+    }
+
+    // ------------------------------------------------------------------
+    // --no-install-project
+
+    /// The names `drop_named_packages` keeps, sorted. `solution` is
+    /// `(package, dependencies)`.
+    fn dropped(solution: &[(&str, &[&str])], named: &[&str]) -> Vec<String> {
+        let packages: Vec<RprojLockPackage> = solution
+            .iter()
+            .map(|(name, deps)| {
+                let mut p = solved(name, "1.0.0", None);
+                p.dependencies = deps.iter().map(|d| d.to_string()).collect();
+                p
+            })
+            .collect();
+        let named: HashSet<String> = named.iter().map(|s| s.to_string()).collect();
+        let mut out: Vec<String> = drop_named_packages(packages, &named)
+            .into_iter()
+            .map(|p| p.package)
+            .collect();
+        out.sort();
+        out
+    }
+
+    #[test]
+    fn no_install_project_keeps_only_the_dependencies() {
+        let out = dropped(
+            &[("mypkg", &["cli", "rlang"]), ("cli", &[]), ("rlang", &[])],
+            &["mypkg"],
+        );
+        assert_eq!(out, vec!["cli", "rlang"]);
+    }
+
+    #[test]
+    fn no_install_project_keeps_a_named_package_another_one_needs() {
+        let out = dropped(
+            &[("pkga", &["cli"]), ("cli", &[]), ("rlang", &[])],
+            &["pkga", "cli", "rlang"],
+        );
+        assert_eq!(out, Vec::<String>::new());
+        let out = dropped(
+            &[("dep", &["pkga"]), ("pkga", &["pkgb"]), ("pkgb", &[])],
+            &["pkga", "pkgb"],
+        );
+        assert_eq!(out, vec!["dep", "pkga", "pkgb"]);
     }
 
     // ------------------------------------------------------------------

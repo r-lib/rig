@@ -88,6 +88,19 @@ An argument counts as a path when it is `.` or `..`, starts with `./`, `../`,
 name of a package file that exists. The `local::` prefix forces a path,
 whatever it looks like.
 
+## Installing only the dependencies
+
+`--no-install-project` installs the dependencies of the named packages, but
+not the named packages themselves, e.g. to set up a library for working on a
+package from its source directory:
+
+```
+rig pkg install --no-install-project --dev .
+```
+
+A named package is still installed if another package that is being
+installed depends on it.
+
 ## Dev dependencies
 
 By default rig installs the hard dependencies only: `Depends`, `Imports` and
