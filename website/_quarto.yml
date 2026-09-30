@@ -70,8 +70,11 @@ format:
       light: [cosmo, theme.scss]
       dark: [darkly, theme.scss]
     # Seed the dark theme on first visit when the OS/browser prefers dark.
+    # _analytics.html: Plausible page view tracking (cookieless), same setup
+    # as the other r-lib sites.
     include-in-header:
       - _dark-default.html
+      - _analytics.html
     # Puts the headings inside `.panel-tabset` blocks (the per-OS tabs in the
     # tutorials) into the on-page table of contents; Quarto drops them.
     include-after-body:
