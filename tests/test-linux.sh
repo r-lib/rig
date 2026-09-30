@@ -207,10 +207,10 @@ teardown() {
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
-    [[ "$(echo "$output" | jq -r .name)" = "4.5.1" ]]
-    [[ "$(echo "$output" | jq -r .version)" = "4.5.1" ]]
-    [[ "$(echo "$output" | jq -r .default)" = "true" ]]
-    [[ "$(echo "$output" | jq -r '."new-install"')" = "false" ]]
+    echo "$output" | grep -q '"name": "4.5.1"'
+    echo "$output" | grep -q '"version": "4.5.1"'
+    echo "$output" | grep -q '"default": true\(,\|$\)'
+    echo "$output" | grep -q '"new-install": false\(,\|$\)'
 }
 
 @test "resolve" {

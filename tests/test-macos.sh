@@ -204,10 +204,10 @@ teardown() {
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
-    [[ "$(echo "$output" | jq -r .name)" = "4.0" ]]
-    [[ "$(echo "$output" | jq -r .version)" = "4.0.5" ]]
-    [[ "$(echo "$output" | jq -r .default)" = "false" ]]
-    [[ "$(echo "$output" | jq -r '."new-install"')" = "false" ]]
+    echo "$output" | grep -q '"name": "4.0"'
+    echo "$output" | grep -q '"version": "4.0.5"'
+    echo "$output" | grep -q '"default": false\(,\|$\)'
+    echo "$output" | grep -q '"new-install": false\(,\|$\)'
 }
 
 @test "resolve" {
