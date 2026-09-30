@@ -268,17 +268,19 @@ teardown() {
 # startup. (This does happen in bash for R 4.1.1.)
 
 @test "rtools add --json" {
-    # Only if Rtools 4.5 is already there (e.g. on the GHA runner), so
-    # nothing is installed, only reported.
+    # Only if x86_64 Rtools 4.5 is already there (e.g. on the GHA runner),
+    # so nothing is installed, only reported. `-a x86_64` because on arm64
+    # machines the native Rtools is a different one, in C:\rtools45-aarch64.
     if [[ ! -d /c/rtools45 ]]; then
-        skip "Rtools 4.5 is not installed"
+        skip "Rtools 4.5 (x86_64) is not installed"
     fi
-    run bash -c "rig rtools add 45 --json 2>/dev/null"
+    run bash -c "rig rtools add 45 -a x86_64 --json 2>/dev/null"
     echo "status = ${status}"
     echo "output = ${output}"
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q '"name": "45"'
     echo "$output" | grep -q '"version": "4.5"'
+    echo "$output" | grep -q '"arch": "x86_64"'
     echo "$output" | grep -q '"new-install": false\(,\|$\)'
 }
 
