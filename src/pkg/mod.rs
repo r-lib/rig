@@ -19,6 +19,7 @@ use crate::repos::cranlike_metadata::{self, ArchivedPackage};
 use crate::textfmt::{reflow, wrap, write_field};
 
 pub(crate) mod deps;
+pub(crate) mod doctor;
 pub(crate) mod install;
 pub(crate) mod list;
 mod manifest;
@@ -32,6 +33,7 @@ pub fn sc_pkg(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Er
     match args.subcommand() {
         Some(("available", s)) => sc_pkg_available(s, args, mainargs),
         Some(("deps", s)) => deps::sc_pkg_deps(s, args, mainargs),
+        Some(("doctor", s)) => doctor::sc_pkg_doctor(s, args, mainargs),
         Some(("info", s)) => sc_pkg_info(s, args, mainargs),
         Some(("install", s)) => install::sc_pkg_install(s, args, mainargs),
         Some(("list", s)) => list::sc_pkg_list(s, args, mainargs),
