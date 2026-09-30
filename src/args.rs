@@ -2310,6 +2310,68 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("search")
+                .about(ABOUT_PKG_SEARCH)
+                .long_about(HELP_PKG_SEARCH)
+                .display_order(0)
+                .arg(
+                    Arg::new("query")
+                        .help("search terms")
+                        .required(true)
+                        .num_args(1..),
+                )
+                .arg(
+                    Arg::new("short")
+                        .help("Short output, one line per package")
+                        .long("short")
+                        .short('s')
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("from")
+                        .help("Rank of the first result to show")
+                        .long("from")
+                        .num_args(1)
+                        .value_parser(clap::value_parser!(u32).range(1..))
+                        .default_value("1")
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("size")
+                        .help("Number of results to show [default: 8, or 20 with --short]")
+                        .long("size")
+                        .short('n')
+                        .num_args(1)
+                        .value_parser(clap::value_parser!(u32))
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                )
+                // The search does not depend on the installation mode, so
+                // override the global --user/--admin flags with hidden versions
+                // to keep them out of the help.
+                .arg(
+                    Arg::new("user")
+                        .long("user")
+                        .global(false)
+                        .action(clap::ArgAction::SetTrue)
+                        .hide(true),
+                )
+                .arg(
+                    Arg::new("admin")
+                        .long("admin")
+                        .global(false)
+                        .action(clap::ArgAction::SetTrue)
+                        .hide(true),
+                ),
+        )
+        .subcommand(
             Command::new("tree")
                 .about(ABOUT_PKG_TREE)
                 .long_about(HELP_PKG_TREE)
@@ -3317,6 +3379,47 @@ mod tests {
 
         assert!(rig_app()
             .try_get_matches_from(["rig", "system", "dirs", "--arch", "amd64"])
+            .is_err());
+    }
+
+    #[test]
+    fn test_pkg_search_args() {
+        let m = rig_app()
+            .try_get_matches_from(["rig", "pkg", "search", "permutation", "test"])
+            .unwrap();
+        let search = m
+            .subcommand_matches("pkg")
+            .unwrap()
+            .subcommand_matches("search")
+            .unwrap();
+        let query: Vec<&String> = search.get_many::<String>("query").unwrap().collect();
+        assert_eq!(query, ["permutation", "test"]);
+        assert!(!search.get_flag("short"));
+        assert!(!search.get_flag("json"));
+        assert_eq!(search.get_one::<u32>("from"), Some(&1));
+        assert_eq!(search.get_one::<u32>("size"), None);
+
+        let m = rig_app()
+            .try_get_matches_from([
+                "rig", "pkg", "search", "cli", "-s", "--from", "11", "-n", "5", "--json",
+            ])
+            .unwrap();
+        let search = m
+            .subcommand_matches("pkg")
+            .unwrap()
+            .subcommand_matches("search")
+            .unwrap();
+        assert!(search.get_flag("short"));
+        assert!(search.get_flag("json"));
+        assert_eq!(search.get_one::<u32>("from"), Some(&11));
+        assert_eq!(search.get_one::<u32>("size"), Some(&5));
+
+        // A query is required, and --from starts at 1.
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "pkg", "search"])
+            .is_err());
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "pkg", "search", "cli", "--from", "0"])
             .is_err());
     }
 
