@@ -23,6 +23,7 @@ pub(crate) mod install;
 pub(crate) mod list;
 mod manifest;
 pub(crate) mod remove;
+pub(crate) mod search;
 #[cfg(test)]
 mod stub;
 pub(crate) mod tree;
@@ -35,6 +36,7 @@ pub fn sc_pkg(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Er
         Some(("install", s)) => install::sc_pkg_install(s, args, mainargs),
         Some(("list", s)) => list::sc_pkg_list(s, args, mainargs),
         Some(("remove", s)) => remove::sc_pkg_remove(s, args, mainargs),
+        Some(("search", s)) => search::sc_pkg_search(s, args, mainargs),
         Some(("tree", s)) => tree::sc_pkg_tree(s, args, mainargs),
         _ => Ok(()), // unreachable
     }

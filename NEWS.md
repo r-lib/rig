@@ -1,5 +1,8 @@
 # Development version
 
+* New `rig pkg search` command to search CRAN packages, using the same
+  web service as the pkgsearch R package.
+
 * `rig proj` commands now support `path` dependencies.
 
 * `rig pkg install <path>` is now supported. `<path>` can be a directory,
