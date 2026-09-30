@@ -1,6 +1,5 @@
 //! Paging long output through `$RIG_PAGER` / `$PAGER` / `less`, the way git
-//! does it. Used for `--help` and for `rig pkg info`, whose output
-//! includes the package README.
+//! does it. Used for `--help` and for `rig pkg search`.
 
 use std::io::{IsTerminal, Write};
 use std::process::{Command, Stdio};

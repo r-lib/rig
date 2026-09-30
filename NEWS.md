@@ -1,5 +1,8 @@
 # Development version
 
+* New `rig pkg search` command to search CRAN packages, using the same
+  web service as the pkgsearch R package.
+
 * New `rig pkg doctor` command to find problems with the packages in a
   library: missing or too old dependencies, and packages compiled against
   another version of a `LinkingTo` dependency (#393).
@@ -31,6 +34,10 @@
   date, e.g. `--exclude-newer 2025-06-01`, or in the last few days, e.g.
   `--exclude-newer "7 days"`. Projects can set it in `rproj.toml`, with
   `exclude-newer` in `[tool.rig]`.
+
+* `rig proj lock` now also solves for source packages by default
+  `rig proj sync` uses this target only if no other target matches the
+  machine.
 
 ## Windows specific changes
 
