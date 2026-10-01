@@ -1,9 +1,17 @@
 # Development version
 
+## Inline scripts
+
 * `rig run` now support self-contained scripts, that declare the packages
   and the R version they need in a `# /// script` comment block. rig then
   runs the script in its own environment, in the cache directory, and
   installs R and the packages as needed.
+
+* `rig proj init`, `rig proj add` and `rig proj remove` have a new
+  `--script` option, to create and edit the `# /// script` block of an R
+  script, instead of a project's `rproj.toml` (#414).
+
+## Other new features
 
 * `rig add` now has a `--json` option. It prints information about the
   installed R version (or the already installed version that was kept),

@@ -35,6 +35,25 @@ deleted and rebuilt at any time.
 Note that `R --vanilla` ignores `.Renviron`, and so does not use the project
 library.
 
+## Scripts
+
+`rig proj init --script script.R` sets up a single script instead of a project:
+it adds a `# /// script` block with an R requirement to the top of the script,
+or creates the script, if it does not exist yet:
+
+```r
+# /// script
+# [dependencies]
+# R = ">= 4.6"
+# ///
+```
+
+The block goes after a `#!` line, if the script has one. It does not create any
+other file. Add packages to the block with [`rig proj add --script`](#rig-proj-add), and run the
+script with [`rig run`](run.qmd), which sets up an environment for it, see [scripts with
+inline dependencies](run.qmd#scripts-with-inline-dependencies). rig refuses to replace a block that is already there, pass
+`--force` to replace it.
+
 ## Options
 
 `--r-version` sets the R version the project is for. It does not have to be

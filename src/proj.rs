@@ -107,6 +107,9 @@ fn sc_proj_init(
     _projargs: &ArgMatches,
     _mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
+    if let Some(script) = args.get_one::<String>("script") {
+        return crate::script_meta::sc_proj_init_script(Path::new(script), args);
+    }
     let root = std::env::current_dir()?;
     let force = args.get_flag("force");
 
@@ -205,7 +208,7 @@ pub fn init_rvenv_for_manifest(
 /// what the project is set up for should be the R it will be locked and synced
 /// against, see [`proj_lock_r_version`]. Nothing in the committed `.rvenv`
 /// layout is tied to an R version.
-fn resolve_project_r_version(args: &ArgMatches) -> Result<String, Box<dyn Error>> {
+pub(crate) fn resolve_project_r_version(args: &ArgMatches) -> Result<String, Box<dyn Error>> {
     if let Some(rv) = args.get_one::<String>("r-version") {
         return Ok(rv.to_string());
     }
@@ -676,13 +679,13 @@ fn write_description_to(path: &Path, manifest: &Rproj) -> Result<(), Box<dyn Err
 /// `<package>@<version>`, or a git/GitHub reference, already fetched to learn
 /// its real package name (from `DESCRIPTION`'s `Package:` field, which may
 /// differ from the repository name) and pinned commit.
-enum AddSpec {
+pub(crate) enum AddSpec {
     Cran(String, String),
     Remote(String, Box<DepTable>),
 }
 
 impl AddSpec {
-    fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         match self {
             AddSpec::Cran(name, _) => name,
             AddSpec::Remote(name, _) => name,
@@ -695,7 +698,7 @@ impl AddSpec {
 /// is written to `rproj.toml` -- see [`fetch_and_read_git_package`]. `root`
 /// is the project's own directory, against which a local path is made
 /// relative -- see [`relativize_to_root`].
-fn parse_add_arg(spec: &str, root: &Path) -> Result<AddSpec, Box<dyn Error>> {
+pub(crate) fn parse_add_arg(spec: &str, root: &Path) -> Result<AddSpec, Box<dyn Error>> {
     match crate::pkgsource::parse_pkg_source(spec)? {
         crate::pkgsource::PkgSource::Cran => {
             let (name, version) = parse_add_spec(spec)?;
@@ -741,6 +744,39 @@ fn parse_add_arg(spec: &str, root: &Path) -> Result<AddSpec, Box<dyn Error>> {
     }
 }
 
+/// Add the package of `spec` to `manifest`, see [`Rproj::add_dependency`]
+/// and [`Rproj::add_remote_dependency`], and return the message that tells
+/// the user what happened to `target`, the file that lists the dependencies.
+pub(crate) fn add_spec_to_manifest(
+    manifest: &mut Rproj,
+    spec: &AddSpec,
+    dev: bool,
+    target: &str,
+) -> String {
+    match spec {
+        AddSpec::Cran(name, version) => match manifest.add_dependency(name, version, dev) {
+            Some(previous) if previous == *version => {
+                format!("Kept {} ({}) in {}", name, version, target)
+            }
+            Some(previous) => format!(
+                "Updated {} in {}, {} -> {}",
+                name, target, previous, version
+            ),
+            None => format!("Added {} ({}) to {}", name, version, target),
+        },
+        AddSpec::Remote(name, table) => {
+            manifest.add_remote_dependency(name, (**table).clone(), dev);
+            let source = table
+                .git
+                .as_deref()
+                .or(table.url.as_deref())
+                .or(table.path.as_deref())
+                .unwrap_or_default();
+            format!("Added {} ({}) to {}", name, source, target)
+        }
+    }
+}
+
 /// Add dependencies to `rproj.toml`, then update the lockfile and install
 /// them: `rig proj add`.
 fn sc_proj_add(
@@ -748,6 +784,9 @@ fn sc_proj_add(
     _projargs: &ArgMatches,
     _mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
+    if let Some(script) = args.get_one::<String>("script") {
+        return crate::script_meta::sc_proj_add_script(Path::new(script), args);
+    }
     // The project is the nearest one at or above the current directory, like
     // `rig proj sync`, so that `rig proj add` works from a subdirectory.
     let cwd = std::env::current_dir()?;
@@ -795,31 +834,12 @@ fn sc_proj_add(
             ));
         }
 
-        messages.push(match spec {
-            AddSpec::Cran(name, version) => {
-                let previous = manifest.add_dependency(name, version, dev);
-                match previous {
-                    Some(previous) if previous == *version => {
-                        format!("Kept {} ({}) in {}", name, version, RPROJ_MANIFEST_FILE)
-                    }
-                    Some(previous) => format!(
-                        "Updated {} in {}, {} -> {}",
-                        name, RPROJ_MANIFEST_FILE, previous, version
-                    ),
-                    None => format!("Added {} ({}) to {}", name, version, RPROJ_MANIFEST_FILE),
-                }
-            }
-            AddSpec::Remote(name, table) => {
-                manifest.add_remote_dependency(name, (**table).clone(), dev);
-                let source = table
-                    .git
-                    .as_deref()
-                    .or(table.url.as_deref())
-                    .or(table.path.as_deref())
-                    .unwrap_or_default();
-                format!("Added {} ({}) to {}", name, source, RPROJ_MANIFEST_FILE)
-            }
-        });
+        messages.push(add_spec_to_manifest(
+            &mut manifest,
+            spec,
+            dev,
+            RPROJ_MANIFEST_FILE,
+        ));
 
         if let Some(doc) = original_doc.as_mut() {
             let path: &[&str] = if dev {
@@ -886,6 +906,9 @@ fn sc_proj_remove(
     _projargs: &ArgMatches,
     _mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
+    if let Some(script) = args.get_one::<String>("script") {
+        return crate::script_meta::sc_proj_remove_script(Path::new(script), args);
+    }
     let cwd = std::env::current_dir()?;
     let root = find_project_root(&cwd).unwrap_or(cwd);
     let path = root.join(RPROJ_MANIFEST_FILE);

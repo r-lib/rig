@@ -422,3 +422,47 @@ SCRIPT
     [[ "$status" -ne 0 ]]
     echo "$output" | grep -q "does not start with"
 }
+
+@test "proj init/add/remove --script" {
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf scriptedit && mkdir scriptedit && cd scriptedit
+
+    # init adds a block after the shebang, and refuses to replace it
+    printf '#!/usr/bin/env -S rig run\ncat("praise", format(packageVersion("praise")), "\\n")\n' > s.R
+    run rig proj init --script s.R
+    [[ "$status" -eq 0 ]]
+    [[ "$(sed -n 2p s.R)" == "# /// script" ]]
+    grep -q '^# R = ">= ' s.R
+    run rig proj init --script s.R
+    [[ "$status" -ne 0 ]]
+    echo "$output" | grep -q "already has"
+    [[ ! -e rproj.toml ]]
+
+    # init creates a missing script
+    run rig proj init --script new.R
+    [[ "$status" -eq 0 ]]
+    [[ "$(head -1 new.R)" == "# /// script" ]]
+
+    # add edits the block and sets up the environment
+    run rig proj add --script s.R praise
+    [[ "$status" -eq 0 ]]
+    grep -q '^# praise = "\*"$' s.R
+    run rig run s.R
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "^praise "
+    ! echo "$output" | grep -q "Setting up the environment"
+
+    # a package that does not exist leaves the script alone
+    cp s.R s.R.orig
+    run rig proj add --script s.R notapackageatall
+    [[ "$status" -ne 0 ]]
+    cmp s.R s.R.orig
+
+    # remove edits the block, a missing name is an error
+    run rig proj remove --script s.R praise --no-lock
+    [[ "$status" -eq 0 ]]
+    ! grep -q 'praise = ' s.R
+    run rig proj remove --script s.R praise --no-lock
+    [[ "$status" -ne 0 ]]
+    echo "$output" | grep -q "Not a dependency"
+}

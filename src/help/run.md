@@ -86,6 +86,11 @@ share one environment, and changing the block creates a new one. A script
 with a block always uses its own environment, even inside a project.
 `--r-version` selects the R version, which must fit the `R` requirement.
 
+`rig proj init --script script.R` adds a block with an `R` requirement to a
+script (or creates the script), and `rig proj add --script script.R <package>`
+and `rig proj remove --script script.R <package>` edit its `[dependencies]`, so
+you do not have to write the block by hand.
+
 `rig cache clean --category scripts` deletes all script environments. A
 script can start with `#!/usr/bin/env -S rig run`, to run it directly.
 

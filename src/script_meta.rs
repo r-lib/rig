@@ -25,16 +25,19 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use clap::ArgMatches;
-use log::{info, trace};
+use log::{error, info, trace};
 use serde::{Deserialize, Serialize};
 use simple_error::bail;
+use toml_edit::DocumentMut;
 
 use crate::cache::get_cache_dir;
 use crate::common::get_r_version_data_version;
 use crate::output::OUTPUT;
 use crate::proj::{
-    is_foreign_arch, proj_lock_host, proj_sync, requested_r_installation, ProjSyncOptions,
+    add_spec_to_manifest, is_foreign_arch, parse_add_arg, proj_lock_host, proj_sync,
+    requested_r_installation, resolve_project_r_version, AddSpec, ProjSyncOptions,
 };
+use crate::repos::cranlike_metadata::minor_r_version;
 use crate::rproj::{Dependency, Repository, Rproj, RPROJ_MANIFEST_FILE};
 use crate::rvenv::{
     ensure_rvenv_files, project_r_wrapper, read_rvenv_cfg, rvenv_sync_needed, RPROJ_LOCK_FILE,
@@ -64,8 +67,21 @@ pub struct ScriptMeta {
     pub tool: BTreeMap<String, toml::Table>,
 }
 
-/// The TOML body of the `# /// script` block in `text`, with the comment
-/// prefixes removed, or `None` if there is no such block.
+/// The `# /// script` block of a script: its comment marker, where it is,
+/// and its TOML body.
+#[derive(Debug, PartialEq)]
+struct ScriptBlock {
+    /// `#` or `##`, see [`BLOCK_MARKERS`].
+    marker: &'static str,
+    /// The index of the opening `# /// script` line.
+    start: usize,
+    /// The index of the closing `# ///` line.
+    end: usize,
+    /// The TOML body, with the comment prefixes removed.
+    body: String,
+}
+
+/// The `# /// script` block in `text`, or `None` if there is no such block.
 ///
 /// The block can also use `##` instead of `#`, i.e. start with `## ///
 /// script`, see [`BLOCK_MARKERS`]. Every line between the opening and the
@@ -73,10 +89,10 @@ pub struct ScriptMeta {
 /// alone, or the marker followed by the content, usually after one space,
 /// which is removed. A file can have at most one `script` block, and the
 /// block must be closed.
-fn extract_script_block(text: &str) -> Result<Option<String>, Box<dyn Error>> {
-    let mut body: Option<String> = None;
+fn find_script_block(text: &str) -> Result<Option<ScriptBlock>, Box<dyn Error>> {
+    let mut block: Option<ScriptBlock> = None;
     let mut lines = text.lines().enumerate();
-    while let Some((_, line)) = lines.next() {
+    while let Some((startno, line)) = lines.next() {
         let line = line.trim_end();
         let Some(marker) = BLOCK_MARKERS
             .iter()
@@ -84,17 +100,17 @@ fn extract_script_block(text: &str) -> Result<Option<String>, Box<dyn Error>> {
         else {
             continue;
         };
-        if body.is_some() {
+        if block.is_some() {
             bail!("more than one `{}` block", BLOCK_START);
         }
         let start = format!("{} /// script", marker);
         let end = format!("{} ///", marker);
         let mut content = String::new();
-        let mut closed = false;
+        let mut endno = None;
         for (lineno, line) in lines.by_ref() {
             let line = line.trim_end_matches('\r');
             if line.trim_end() == end {
-                closed = true;
+                endno = Some(lineno);
                 break;
             }
             let Some(rest) = line.strip_prefix(marker) else {
@@ -110,12 +126,81 @@ fn extract_script_block(text: &str) -> Result<Option<String>, Box<dyn Error>> {
             content.push_str(rest.strip_prefix(' ').unwrap_or(rest));
             content.push('\n');
         }
-        if !closed {
+        let Some(endno) = endno else {
             bail!("the `{}` block has no closing `{}` line", start, end);
-        }
-        body = Some(content);
+        };
+        block = Some(ScriptBlock {
+            marker,
+            start: startno,
+            end: endno,
+            body: content,
+        });
     }
-    Ok(body)
+    Ok(block)
+}
+
+/// The TOML body of the `# /// script` block in `text`, with the comment
+/// prefixes removed, or `None` if there is no such block. See
+/// [`find_script_block`].
+fn extract_script_block(text: &str) -> Result<Option<String>, Box<dyn Error>> {
+    Ok(find_script_block(text)?.map(|block| block.body))
+}
+
+/// A `script` block with the TOML `body`, every line commented out with
+/// `marker`, and every line ending in `eol`.
+fn render_script_block(marker: &str, body: &str, eol: &str) -> String {
+    let mut out = format!("{} /// script{}", marker, eol);
+    for line in body.trim_end().lines() {
+        if line.is_empty() {
+            out.push_str(marker);
+        } else {
+            out.push_str(&format!("{} {}", marker, line));
+        }
+        out.push_str(eol);
+    }
+    out.push_str(&format!("{} ///{}", marker, eol));
+    out
+}
+
+/// `text` with its `block` replaced by a block with the TOML `body`. Without
+/// a `block`, the new block goes at the top, after the `#!` line, if there
+/// is one, and before an empty line. The new block keeps the marker of the
+/// old one, and the file keeps its line endings.
+fn replace_script_block(text: &str, block: Option<&ScriptBlock>, body: &str) -> String {
+    let eol = if text.contains("\r\n") { "\r\n" } else { "\n" };
+    let marker = block.map(|b| b.marker).unwrap_or(BLOCK_MARKERS[1]);
+    let rendered = render_script_block(marker, body, eol);
+    let lines: Vec<&str> = text.split_inclusive('\n').collect();
+    let mut out = String::new();
+    match block {
+        Some(block) => {
+            lines[..block.start].iter().for_each(|l| out.push_str(l));
+            out.push_str(&rendered);
+            lines[block.end + 1..].iter().for_each(|l| out.push_str(l));
+        }
+        None => {
+            let skip = usize::from(lines.first().is_some_and(|l| l.starts_with("#!")));
+            for line in &lines[..skip] {
+                out.push_str(line);
+                if !line.ends_with('\n') {
+                    out.push_str(eol);
+                }
+            }
+            out.push_str(&rendered);
+            if lines.len() > skip {
+                out.push_str(eol);
+            }
+            lines[skip..].iter().for_each(|l| out.push_str(l));
+        }
+    }
+    out
+}
+
+/// Parse a `script` block body, with an error message that names the
+/// block.
+fn parse_block_body(body: &str) -> Result<ScriptMeta, Box<dyn Error>> {
+    Ok(toml::from_str(body)
+        .map_err(|e| format!("invalid TOML in the `{}` block: {}", BLOCK_START, e))?)
 }
 
 /// The inline metadata of a script, or `None` if it has none.
@@ -124,9 +209,7 @@ pub fn parse_script_metadata(text: &str) -> Result<Option<ScriptMeta>, Box<dyn E
         None => return Ok(None),
         Some(body) => body,
     };
-    let meta: ScriptMeta = toml::from_str(&body)
-        .map_err(|e| format!("invalid TOML in the `{}` block: {}", BLOCK_START, e))?;
-    Ok(Some(meta))
+    Ok(Some(parse_block_body(&body)?))
 }
 
 impl ScriptMeta {
@@ -248,16 +331,69 @@ pub fn script_r_binary(
     // the script, e.g. `rig run script.R > out.csv`.
     let _stdout_guard = StdoutToStderr::new();
 
-    let script_dir = script
+    meta.absolutize_paths(&script_dir_of(script)?);
+
+    let mut created = None;
+    let envdir = match prepare_script_env(script, &meta, args, dry_run, true, &mut created)? {
+        Some(envdir) => envdir,
+        None => {
+            let requested = args
+                .try_get_one::<String>("r-version")
+                .ok()
+                .flatten()
+                .map(String::as_str)
+                .unwrap_or_default();
+            return Ok(Some(format!("<R {} environment>", requested)));
+        }
+    };
+    let wrapper = project_r_wrapper(&envdir);
+
+    if !wrapper.exists() && !dry_run {
+        let msg = format!(
+            "No R wrapper at {} after syncing the environment of {}",
+            wrapper.display(),
+            script.display()
+        );
+        bail!("{}", msg);
+    }
+
+    Ok(Some(
+        wrapper
+            .to_str()
+            .ok_or("The cache path is not valid Unicode")?
+            .to_string(),
+    ))
+}
+
+/// The directory of `script`, to resolve its relative `path = "..."`
+/// dependencies against.
+fn script_dir_of(script: &Path) -> Result<PathBuf, Box<dyn Error>> {
+    Ok(script
         .canonicalize()?
         .parent()
         .map(|p| p.to_path_buf())
-        .unwrap_or_default();
-    meta.absolutize_paths(&script_dir);
+        .unwrap_or_default())
+}
 
+/// Create, lock and, with `sync`, sync the environment of `script`, which
+/// has the metadata `meta`, with its paths already made absolute. Returns
+/// the environment's directory, or `None` in a dry run, if the R that
+/// `--r-version` selects is not installed. If this call creates the
+/// directory, it also puts it into `created`, so a caller can remove it if
+/// a later step fails.
+fn prepare_script_env(
+    script: &Path,
+    meta: &ScriptMeta,
+    args: &ArgMatches,
+    dry_run: bool,
+    sync: bool,
+    created: &mut Option<PathBuf>,
+) -> Result<Option<PathBuf>, Box<dyn Error>> {
     // Resolve `--r-version` to an installation first, installing it if
-    // needed, so the environment is keyed on the R it actually uses.
-    let (rver, r_arch) = match args.get_one::<String>("r-version") {
+    // needed, so the environment is keyed on the R it actually uses. Not
+    // every command that gets here has an `--r-version`.
+    let requested = args.try_get_one::<String>("r-version").ok().flatten();
+    let (rver, r_arch) = match requested {
         None => (None, None),
         Some(requested) => match requested_r_installation(requested, dry_run)? {
             Some((version, arch)) => (Some(version), Some(arch)),
@@ -265,7 +401,7 @@ pub fn script_r_binary(
                 let msg = format!("Would create an environment for {}", script.display());
                 OUTPUT.info(&msg);
                 info!("{}", msg);
-                return Ok(Some(format!("<R {} environment>", requested)));
+                return Ok(None);
             }
         },
     };
@@ -273,8 +409,7 @@ pub fn script_r_binary(
         .as_ref()
         .zip(r_arch.as_ref())
         .map(|(version, arch)| format!("{} {}", version, arch));
-    let envdir = script_env_dir(&meta, r_id.as_deref())?;
-    let wrapper = project_r_wrapper(&envdir);
+    let envdir = script_env_dir(meta, r_id.as_deref())?;
     trace!(
         "Environment of {} is at {}",
         script.display(),
@@ -317,13 +452,23 @@ pub fn script_r_binary(
             );
             OUTPUT.info(&msg);
             info!("{}", msg);
-            return Ok(Some(wrapper.display().to_string()));
+            return Ok(Some(envdir));
+        }
+        if !envdir.exists() {
+            *created = Some(envdir.clone());
         }
         fs::create_dir_all(&envdir)?;
         let manifest = toml::to_string(&meta.to_manifest())?;
         write_atomically(&manifest_path, manifest.as_bytes())?;
     }
     ensure_rvenv_files(&envdir)?;
+
+    if !sync {
+        if !envdir.join(RPROJ_LOCK_FILE).exists() {
+            proj_lock_host(&envdir, rver, r_arch.as_deref(), args)?;
+        }
+        return Ok(Some(envdir));
+    }
 
     match rvenv_sync_needed(&envdir)? {
         None => {}
@@ -358,21 +503,213 @@ pub fn script_r_binary(
         }
     }
 
-    if !wrapper.exists() && !dry_run {
-        let msg = format!(
-            "No R wrapper at {} after syncing the environment of {}",
-            wrapper.display(),
-            script.display()
+    Ok(Some(envdir))
+}
+
+/// The text of `script`, its `script` block and the parsed block, or empty
+/// metadata if it has no block.
+fn read_script(script: &Path) -> Result<(String, Option<ScriptBlock>, ScriptMeta), Box<dyn Error>> {
+    let text = fs::read_to_string(script)
+        .map_err(|e| format!("Cannot read {}: {}", script.display(), e))?;
+    let block = find_script_block(&text).map_err(|e| format!("{}: {}", script.display(), e))?;
+    let meta = match &block {
+        Some(block) => {
+            parse_block_body(&block.body).map_err(|e| format!("{}: {}", script.display(), e))?
+        }
+        None => ScriptMeta::default(),
+    };
+    Ok((text, block, meta))
+}
+
+/// Write the `script` block with the TOML `body` into `script`, which
+/// currently has the content `text`, replacing `block`. Checks that the new
+/// block is valid first.
+fn write_script_block(
+    script: &Path,
+    text: &str,
+    block: Option<&ScriptBlock>,
+    body: &str,
+) -> Result<(), Box<dyn Error>> {
+    parse_block_body(body).map_err(|e| format!("{}: {}", script.display(), e))?;
+    // `fs::write` keeps the file's permissions, e.g. the executable bit of
+    // a script with a `#!` line.
+    fs::write(script, replace_script_block(text, block, body))?;
+    Ok(())
+}
+
+/// Create a `script` block in a new or existing R script: `rig proj init
+/// --script`.
+pub fn sc_proj_init_script(script: &Path, args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    let exists = script.exists();
+    let (text, block, _meta) = if exists {
+        read_script(script)?
+    } else {
+        (String::new(), None, ScriptMeta::default())
+    };
+    if block.is_some() && !args.get_flag("force") {
+        bail!(
+            "{} already has a `{}` block, use --force to replace it",
+            script.display(),
+            BLOCK_START
         );
-        bail!("{}", msg);
     }
 
-    Ok(Some(
-        wrapper
-            .to_str()
-            .ok_or("The cache path is not valid Unicode")?
-            .to_string(),
-    ))
+    let rver = resolve_project_r_version(args)?;
+    let body = format!("[dependencies]\nR = \">= {}\"\n", minor_r_version(&rver)?);
+    write_script_block(script, &text, block.as_ref(), &body)?;
+
+    let msg = if !exists {
+        format!("Created {}", script.display())
+    } else if block.is_some() {
+        format!(
+            "Replaced the `{}` block of {}",
+            BLOCK_START,
+            script.display()
+        )
+    } else {
+        format!("Added a `{}` block to {}", BLOCK_START, script.display())
+    };
+    OUTPUT.success(&msg);
+    info!("{}", msg);
+    OUTPUT.info(&format!(
+        "Script set up for R {}. Next: add dependencies with \
+         `rig proj add --script {}`, then run it with `rig run {}`.",
+        rver,
+        script.display(),
+        script.display()
+    ));
+    Ok(())
+}
+
+/// Add dependencies to the `script` block of an R script, creating the block
+/// if needed, then set up the script's environment: `rig proj add --script`.
+pub fn sc_proj_add_script(script: &Path, args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    let (text, block, meta) = read_script(script)?;
+    let script_dir = script_dir_of(script)?;
+    let target = script.display().to_string();
+
+    // Parse (and fetch) every specification before changing anything, same
+    // as `rig proj add`. Local paths are relative to the script.
+    let mut specs: Vec<AddSpec> = Vec::new();
+    for spec in args.get_many::<String>("package").unwrap_or_default() {
+        specs.push(parse_add_arg(spec, &script_dir)?);
+    }
+
+    // Edit the block's own TOML document, to keep its comments and
+    // formatting, and use a manifest with the same dependencies to work out
+    // the new entries and the messages.
+    let mut doc: DocumentMut = block.as_ref().map_or("", |b| b.body.as_str()).parse()?;
+    let mut manifest = Rproj {
+        dependencies: meta.dependencies,
+        ..Default::default()
+    };
+    let mut messages: Vec<String> = Vec::new();
+    for spec in specs.iter() {
+        messages.push(add_spec_to_manifest(&mut manifest, spec, false, &target));
+        let value = manifest
+            .dependencies
+            .get(spec.name())
+            .expect("just inserted by add_spec_to_manifest");
+        Rproj::doc_set_dependency(&mut doc, &["dependencies"], spec.name(), value)?;
+    }
+
+    let body = doc.to_string();
+    write_script_block(script, &text, block.as_ref(), &body)?;
+    for msg in messages.iter() {
+        OUTPUT.success(msg);
+        info!("{}", msg);
+    }
+
+    update_script_env(script, &text, &body, args)
+}
+
+/// Remove dependencies from the `script` block of an R script, then set up
+/// the script's new environment: `rig proj remove --script`.
+pub fn sc_proj_remove_script(script: &Path, args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    let (text, block, meta) = read_script(script)?;
+    let Some(block) = block else {
+        bail!("{} has no `{}` block", script.display(), BLOCK_START);
+    };
+
+    let mut names: Vec<String> = Vec::new();
+    for name in args.get_many::<String>("package").unwrap_or_default() {
+        if !names.contains(name) {
+            names.push(name.clone());
+        }
+    }
+    // All or none, same as `rig proj remove`.
+    let missing: Vec<&str> = names
+        .iter()
+        .filter(|name| !meta.dependencies.contains_key(name.as_str()))
+        .map(|name| name.as_str())
+        .collect();
+    if !missing.is_empty() {
+        bail!(
+            "Not a {} in {}: {}",
+            if missing.len() == 1 {
+                "dependency"
+            } else {
+                "dependencies"
+            },
+            script.display(),
+            missing.join(", ")
+        );
+    }
+
+    let mut doc: DocumentMut = block.body.parse()?;
+    let mut messages: Vec<String> = Vec::new();
+    for name in names.iter() {
+        Rproj::doc_remove_dependency(&mut doc, name);
+        messages.push(format!("Removed {} from {}", name, script.display()));
+    }
+
+    let body = doc.to_string();
+    write_script_block(script, &text, Some(&block), &body)?;
+    for msg in messages.iter() {
+        OUTPUT.success(msg);
+        info!("{}", msg);
+    }
+
+    update_script_env(script, &text, &body, args)
+}
+
+/// After `rig proj add --script` or `rig proj remove --script` changed the
+/// block of `script` to `body`: lock the script's environment and, without
+/// `--no-sync`, sync it, unless `--no-lock`. If locking or syncing fails,
+/// put back the `original` content of the script, and remove the
+/// environment if it was new, so a failed command leaves no trace.
+fn update_script_env(
+    script: &Path,
+    original: &str,
+    body: &str,
+    args: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+    if args.get_flag("no-lock") {
+        OUTPUT.info(&format!(
+            "Next: run `rig run {}` to set up its environment.",
+            script.display()
+        ));
+        return Ok(());
+    }
+
+    let mut meta = parse_block_body(body)?;
+    meta.absolutize_paths(&script_dir_of(script)?);
+    let sync = !args.get_flag("no-sync");
+    let mut created = None;
+    if let Err(err) = prepare_script_env(script, &meta, args, false, sync, &mut created) {
+        fs::write(script, original)?;
+        if let Some(envdir) = created {
+            let _ = fs::remove_dir_all(envdir);
+        }
+        let msg = format!(
+            "Could not resolve the dependencies, {} unchanged",
+            script.display()
+        );
+        OUTPUT.error(&msg);
+        error!("{}", msg);
+        return Err(err);
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -556,6 +893,81 @@ library(cli)
         assert_eq!(
             meta.to_manifest().dependencies.get("R"),
             Some(&Dependency::Version(">= 4.4".to_string()))
+        );
+    }
+
+    #[test]
+    fn find_script_block_reports_the_lines_and_marker() {
+        let text = "#!/usr/bin/env -S rig run\n## /// script\n## [dependencies]\n## ///\n1\n";
+        let block = find_script_block(text).unwrap().unwrap();
+        assert_eq!(block.marker, "##");
+        assert_eq!((block.start, block.end), (1, 3));
+        assert_eq!(block.body, "[dependencies]\n");
+    }
+
+    #[test]
+    fn a_new_block_goes_to_the_top() {
+        let body = "[dependencies]\nR = \">= 4.6\"\n";
+        assert_eq!(
+            replace_script_block("", None, body),
+            "# /// script\n# [dependencies]\n# R = \">= 4.6\"\n# ///\n"
+        );
+        assert_eq!(
+            replace_script_block("library(cli)\n", None, body),
+            "# /// script\n# [dependencies]\n# R = \">= 4.6\"\n# ///\n\nlibrary(cli)\n"
+        );
+    }
+
+    #[test]
+    fn a_new_block_goes_after_the_shebang() {
+        let out = replace_script_block("#!/usr/bin/env -S rig run\n1\n", None, "[dependencies]\n");
+        assert_eq!(
+            out,
+            "#!/usr/bin/env -S rig run\n# /// script\n# [dependencies]\n# ///\n\n1\n"
+        );
+        // without a newline after the shebang
+        let out = replace_script_block("#!/usr/bin/env -S rig run", None, "[dependencies]\n");
+        assert_eq!(
+            out,
+            "#!/usr/bin/env -S rig run\n# /// script\n# [dependencies]\n# ///\n"
+        );
+    }
+
+    #[test]
+    fn replacing_a_block_keeps_the_rest_the_marker_and_the_line_endings() {
+        let text = "x <- 1\r\n## /// script\r\n## [dependencies]\r\n## ///\r\ny <- 2\r\n";
+        let block = find_script_block(text).unwrap().unwrap();
+        let out = replace_script_block(text, Some(&block), "[dependencies]\n\ncli = \"*\"\n");
+        assert_eq!(
+            out,
+            "x <- 1\r\n## /// script\r\n## [dependencies]\r\n##\r\n## cli = \"*\"\r\n## ///\r\ny <- 2\r\n"
+        );
+        let meta = parse_script_metadata(&out).unwrap().unwrap();
+        assert!(meta.dependencies.contains_key("cli"));
+    }
+
+    #[test]
+    fn editing_the_block_document_keeps_its_comments() {
+        let text = "# /// script\n# [dependencies]\n# # for the output\n# cli = \"*\"\n# ///\n";
+        let block = find_script_block(text).unwrap().unwrap();
+        let mut doc: DocumentMut = block.body.parse().unwrap();
+        Rproj::doc_set_dependency(
+            &mut doc,
+            &["dependencies"],
+            "glue",
+            &Dependency::Version(">= 1.6".to_string()),
+        )
+        .unwrap();
+        let out = replace_script_block(text, Some(&block), &doc.to_string());
+        assert_eq!(
+            out,
+            "# /// script\n# [dependencies]\n# # for the output\n# cli = \"*\"\n# glue = \">= 1.6\"\n# ///\n"
+        );
+        assert!(Rproj::doc_remove_dependency(&mut doc, "cli"));
+        let out = replace_script_block(text, Some(&block), &doc.to_string());
+        assert_eq!(
+            out,
+            "# /// script\n# [dependencies]\n# glue = \">= 1.6\"\n# ///\n"
         );
     }
 }
