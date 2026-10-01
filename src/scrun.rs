@@ -16,7 +16,7 @@ use crate::rproj::Bin;
 use crate::rproj::RPROJ_MANIFEST_FILE;
 use crate::rvenv::{
     ensure_rvenv_files, find_project_root, project_r_wrapper, rscript_of, rvenv_sync_needed,
-    rvenv_wrapper_target,
+    rvenv_wrapper_target, WrapperTarget,
 };
 use crate::script_meta::script_r_binary;
 use crate::stdout_redirect::StdoutToStderr;
@@ -210,7 +210,7 @@ struct RunEnv {
     /// it forwards to and the variables it sets (see
     /// `rvenv_wrapper_target`). Running these directly skips starting the
     /// wrapper, `rbin` is still what dry runs and logs show.
-    direct: Option<(PathBuf, Vec<(String, String)>)>,
+    direct: Option<WrapperTarget>,
     /// `R_ENVIRON_USER` override for `--no-project` (see
     /// `no_project_renviron_user`).
     renviron_user: Option<PathBuf>,

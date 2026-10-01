@@ -355,6 +355,10 @@ pub fn project_r_wrapper(root: &Path) -> PathBuf {
     project_bin(root).join(if cfg!(windows) { "R.exe" } else { "R" })
 }
 
+/// The real R binary an rvenv wrapper forwards to, and the environment
+/// variables it sets. See [`rvenv_wrapper_target`].
+pub type WrapperTarget = (PathBuf, Vec<(String, String)>);
+
 /// What the `.rvenv/bin/R` or `.rvenv/bin/Rscript` wrapper at `wrapper` would
 /// run: the real R binary it forwards to, and the environment variables it
 /// sets (see [`rvenv_env_vars`]). `None` if `wrapper` is not such a wrapper,
@@ -363,9 +367,7 @@ pub fn project_r_wrapper(root: &Path) -> PathBuf {
 /// `rig run` uses this to start the real R directly, which saves a shell
 /// start (Unix) or a shim start (Windows) on every run. The result is the
 /// same as running the wrapper, both come from the same `rvenv.cfg`.
-pub fn rvenv_wrapper_target(
-    wrapper: &Path,
-) -> Result<Option<(PathBuf, Vec<(String, String)>)>, Box<dyn Error>> {
+pub fn rvenv_wrapper_target(wrapper: &Path) -> Result<Option<WrapperTarget>, Box<dyn Error>> {
     let Some(bin) = wrapper.parent() else {
         return Ok(None);
     };
