@@ -5816,21 +5816,23 @@ mod tests {
     fn select_sync_target_for_arch_picks_the_requested_arch() {
         let this_os = this_os_family();
         let native = native_arch_name(std::env::consts::ARCH);
-        let other = if native == "x86_64" {
+        // "arm64" on macOS, "aarch64" on Linux and Windows
+        let other = native_arch_name(if native == "x86_64" {
             "arm64"
         } else {
             "x86_64"
-        };
+        });
         let targets = vec![
             target("4.6.1", &format!("{}-{}", this_os, native)),
             target("4.6.1", &format!("{}-{}", this_os, other)),
         ];
-        let picked = select_sync_target_for_arch(&targets, None, None, Some(other)).unwrap();
+        let picked =
+            select_sync_target_for_arch(&targets, None, None, Some(other.as_str())).unwrap();
         assert_eq!(
             platform_arch(&picked.platform)
                 .map(native_arch_name)
                 .as_deref(),
-            Some(other)
+            Some(other.as_str())
         );
         let picked = select_sync_target(&targets, None, None).unwrap();
         assert_eq!(
