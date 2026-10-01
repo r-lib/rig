@@ -459,6 +459,12 @@ pub struct RPackageRegistry {
     prefer_binary: Option<usize>,
     // Passed over newer version that does not have a binary.
     held_back: RefCell<HashMap<(RPackageName, RegistryPackageVersion), RPackageVersion>>,
+    // The version to pick for a package, if it is still allowed, typically
+    // the one an existing lock file pins. See `with_preferences`.
+    preferred: HashMap<RPackageName, RPackageVersion>,
+    // Extra version ranges, on top of what the dependencies ask for, for
+    // this solve only. See `with_overrides`.
+    overrides: HashMap<RPackageName, RPackageVersionRanges, rustc_hash::FxBuildHasher>,
 }
 
 impl RPackageRegistry {
@@ -480,6 +486,37 @@ impl RPackageRegistry {
     pub fn prefer_binary(mut self, lookback: Option<usize>) -> Self {
         self.prefer_binary = lookback;
         self
+    }
+
+    /// Pick these versions when they are still allowed, instead of the newest
+    /// one. This is how a re-solve keeps the versions an existing lock file
+    /// pins: a preferred version that conflicts with something is passed over
+    /// the usual way, when pubgrub backtracks.
+    pub fn with_preferences(mut self, preferred: HashMap<RPackageName, RPackageVersion>) -> Self {
+        self.preferred = preferred;
+        self
+    }
+
+    /// Only allow the versions that satisfy these constraints, in addition to
+    /// whatever the dependencies of the solve ask for. Used for the
+    /// requirements of `--upgrade-package <pkg>@<version>`, which are not
+    /// written to the manifest. A package that nothing depends on is not
+    /// pulled in by this.
+    pub fn with_overrides(mut self, overrides: &PackageDependencies) -> Self {
+        self.overrides = rpackage_version_ranges_from_constraints(overrides, true);
+        self
+    }
+
+    /// `range` narrowed by the override of `package`, if it has one.
+    fn effective_range(
+        &self,
+        package: &RPackageName,
+        range: &RPackageVersionRanges,
+    ) -> RPackageVersionRanges {
+        match self.overrides.get(package) {
+            Some(extra) => range.intersection(extra),
+            None => range.clone(),
+        }
     }
 
     /// Record that `pkg` is solved from a local directory, or is a synthetic
@@ -866,6 +903,7 @@ impl DependencyProvider for RPackageRegistry {
         _stats: &PackageResolutionStatistics,
     ) -> Self::Priority {
         self.ensure_loaded(package);
+        let range = self.effective_range(package, range);
         let count = self
             .versions
             .borrow()
@@ -888,8 +926,21 @@ impl DependencyProvider for RPackageRegistry {
             Some(vlist) => vlist,
             None => return Err(ProviderError::UnknownPackage),
         };
+        let range = self.effective_range(package, range);
         let in_range: Vec<&RegistryPackageVersion> =
             vlist.iter().filter(|v| range.contains(v)).collect();
+
+        // The preferred version, if it is still allowed, best artifact first.
+        if let Some(preferred) = self.preferred.get(package) {
+            if let Some(best) = in_range
+                .iter()
+                .copied()
+                .filter(|v| &v.version == preferred)
+                .max()
+            {
+                return Ok(Some(best.clone()));
+            }
+        }
 
         // Choice without a binary preference.
         let latest = match in_range.iter().copied().max() {
@@ -1760,5 +1811,100 @@ mod tests {
     fn solving_nothing_is_an_error() {
         let reg = RPackageRegistry::with_loaders(Box::new(StubSource { packages: vec![] }), None);
         assert!(register_roots(&reg, &[], None).is_err());
+    }
+
+    // ---------------------------------------------------------------------
+    // Preferred versions and overrides
+
+    /// The solution, or `None` if there is none.
+    fn solve_with(
+        reg: RPackageRegistry,
+        deps: &str,
+    ) -> Option<HashMap<String, RegistryPackageVersion, rustc_hash::FxBuildHasher>> {
+        reg.add_package_version(
+            "_project".to_string(),
+            RegistryPackageVersion::new("_project", "1.0.0").unwrap(),
+            ranges(deps),
+        );
+        resolve(
+            &reg,
+            "_project".to_string(),
+            RegistryPackageVersion::new("_project", "1.0.0").unwrap(),
+        )
+        .ok()
+    }
+
+    fn three_versions() -> StubSource {
+        StubSource {
+            packages: vec![("a", "1.0.0", ""), ("a", "2.0.0", ""), ("a", "3.0.0", "")],
+        }
+    }
+
+    fn prefer(name: &str, version: &str) -> HashMap<String, RPackageVersion> {
+        HashMap::from([(
+            name.to_string(),
+            RPackageVersion::from_str(version).unwrap(),
+        )])
+    }
+
+    #[test]
+    fn a_preferred_version_wins_over_the_newest() {
+        let reg = RPackageRegistry::with_loaders(Box::new(three_versions()), None)
+            .with_preferences(prefer("a", "2.0.0"));
+        let solution = solve_with(reg, "a").unwrap();
+        assert_eq!(solution["a"], source("a", "2.0.0"));
+    }
+
+    #[test]
+    fn a_preferred_version_out_of_range_falls_back_to_the_newest() {
+        let reg = RPackageRegistry::with_loaders(Box::new(three_versions()), None)
+            .with_preferences(prefer("a", "1.0.0"));
+        let solution = solve_with(reg, "a (>= 2.0.0)").unwrap();
+        assert_eq!(solution["a"], source("a", "3.0.0"));
+    }
+
+    #[test]
+    fn a_preferred_version_prefers_its_binary() {
+        let binaries = StubBinaries {
+            builds: vec![("a", "2.0.0", 1, "")],
+            ..Default::default()
+        };
+        let reg =
+            RPackageRegistry::with_loaders(Box::new(three_versions()), Some(Box::new(binaries)))
+                .with_preferences(prefer("a", "2.0.0"));
+        let solution = solve_with(reg, "a").unwrap();
+        assert_eq!(solution["a"], binary("a", "2.0.0", 1));
+    }
+
+    #[test]
+    fn an_override_narrows_the_choice() {
+        let reg = RPackageRegistry::with_loaders(Box::new(three_versions()), None)
+            .with_overrides(&imports("a (< 3.0.0)"));
+        let solution = solve_with(reg, "a").unwrap();
+        assert_eq!(solution["a"], source("a", "2.0.0"));
+    }
+
+    #[test]
+    fn an_override_beats_a_preferred_version() {
+        let reg = RPackageRegistry::with_loaders(Box::new(three_versions()), None)
+            .with_preferences(prefer("a", "1.0.0"))
+            .with_overrides(&imports("a (>= 2.0.0)"));
+        let solution = solve_with(reg, "a").unwrap();
+        assert_eq!(solution["a"], source("a", "3.0.0"));
+    }
+
+    #[test]
+    fn an_override_that_conflicts_with_the_dependencies_fails() {
+        let reg = RPackageRegistry::with_loaders(Box::new(three_versions()), None)
+            .with_overrides(&imports("a (< 2.0.0)"));
+        assert!(solve_with(reg, "a (>= 2.0.0)").is_none());
+    }
+
+    #[test]
+    fn an_override_does_not_pull_a_package_in() {
+        let reg = RPackageRegistry::with_loaders(Box::new(three_versions()), None)
+            .with_overrides(&imports("b (>= 1.0.0)"));
+        let solution = solve_with(reg, "a").unwrap();
+        assert!(!solution.contains_key("b"));
     }
 }
