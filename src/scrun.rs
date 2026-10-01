@@ -9,6 +9,7 @@ use log::{error, info, trace, warn};
 use regex::Regex;
 use simple_error::*;
 
+use crate::args::is_r_script_file;
 use crate::common::*;
 use crate::output::OUTPUT;
 use crate::proj::{proj_read_manifest_opt, proj_sync, ProjSyncOptions};
@@ -391,15 +392,6 @@ fn project_r_binary(args: &ArgMatches, dry_run: bool) -> Result<Option<String>, 
 // name could technically end in one of these, but `rig run report.R` meaning
 // anything other than the file `report.R` would be a bad surprise.
 const NOT_BIN_NAME_EXTENSIONS: [&str; 4] = [".R", ".r", ".Rmd", ".qmd"];
-
-/// Whether `arg` is an existing `.R` file, which `rig run <arg>` runs as a
-/// script, same as `rig run -f <arg>`.
-fn is_r_script_file(arg: &str) -> bool {
-    let path = Path::new(arg);
-    path.extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("r"))
-        && path.is_file()
-}
 
 /// Whether `arg` can name a `[[bin]]` in `rproj.toml`. Anything that looks
 /// like a path or like a package script is not a name, so a declared script
@@ -1237,24 +1229,6 @@ mod tests {
         let empty = OsString::new();
         let got = prepend_path(Path::new("/opt/R/4.4.1/bin"), &empty);
         assert_eq!(got, OsString::from(format!("/opt/R/4.4.1/bin{}", sep)));
-    }
-
-    #[test]
-    fn test_is_r_script_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let upper = dir.path().join("a.R");
-        let lower = dir.path().join("b.r");
-        let other = dir.path().join("c.Rmd");
-        for f in [&upper, &lower, &other] {
-            std::fs::write(f, "1\n").unwrap();
-        }
-        assert!(is_r_script_file(upper.to_str().unwrap()));
-        assert!(is_r_script_file(lower.to_str().unwrap()));
-        assert!(!is_r_script_file(other.to_str().unwrap()));
-        assert!(!is_r_script_file(
-            dir.path().join("missing.R").to_str().unwrap()
-        ));
-        assert!(!is_r_script_file(dir.path().to_str().unwrap()));
     }
 
     #[test]
