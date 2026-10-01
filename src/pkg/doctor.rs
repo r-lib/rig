@@ -28,7 +28,6 @@ use std::path::{Path, PathBuf};
 
 use clap::ArgMatches;
 use log::debug;
-use simple_error::*;
 use tabular::*;
 
 #[cfg(target_os = "macos")]

@@ -9,7 +9,6 @@ use std::io::IsTerminal;
 
 use clap::ArgMatches;
 use owo_colors::OwoColorize;
-use simple_error::bail;
 use tabular::{row, Table};
 
 use crate::ppm::{print_table, use_color, want_json};

@@ -10,7 +10,6 @@ use std::io::IsTerminal;
 
 use clap::ArgMatches;
 use lazy_static::lazy_static;
-use simple_error::*;
 use tabular::*;
 
 use crate::dcf::{Package, RDepType, RPackageVersion};

@@ -2,7 +2,6 @@ use std::env;
 use std::error::Error;
 
 use clap::ArgMatches;
-use simple_error::*;
 
 use crate::hardcoded::*;
 

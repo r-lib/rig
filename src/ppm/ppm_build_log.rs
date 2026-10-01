@@ -9,7 +9,6 @@ use std::error::Error;
 
 use clap::ArgMatches;
 use owo_colors::OwoColorize;
-use simple_error::bail;
 
 use crate::common::get_default_r_version;
 use crate::platform::detect_platform;

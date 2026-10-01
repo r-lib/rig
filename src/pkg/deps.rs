@@ -12,7 +12,6 @@ use std::io::IsTerminal;
 
 use clap::ArgMatches;
 use log::debug;
-use simple_error::*;
 use tabular::*;
 
 use crate::dcf::{DepVersionSpec, Package, RDepType, RPackageVersion, DEP_TYPES_SOFT};

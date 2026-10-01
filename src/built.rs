@@ -17,7 +17,6 @@ use std::error::Error;
 use std::path::{Path, PathBuf};
 
 use log::debug;
-use simple_error::bail;
 
 use crate::cache::{artifact_cache_key, get_cache_dir};
 use crate::install::{format_linkingto, PackageInfo, REMOTE_SHA_FIELD};

@@ -7,7 +7,6 @@ use clap::ArgMatches;
 use log::{error, info};
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
-use simple_error::*;
 
 use crate::common::*;
 use crate::dcf::{DepVersionSpec, RDepType};

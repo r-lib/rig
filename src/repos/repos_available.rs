@@ -3,7 +3,6 @@ use std::error::Error;
 use std::io::IsTerminal;
 
 use clap::ArgMatches;
-use simple_error::*;
 use tabular::*;
 
 use super::config::{Enabled, RepoEntry, Repository};

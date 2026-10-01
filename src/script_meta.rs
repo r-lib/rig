@@ -27,7 +27,6 @@ use std::path::{Path, PathBuf};
 use clap::ArgMatches;
 use log::{info, trace};
 use serde::{Deserialize, Serialize};
-use simple_error::bail;
 
 use crate::cache::get_cache_dir;
 use crate::common::get_r_version_data_version;
