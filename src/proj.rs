@@ -2569,6 +2569,10 @@ struct ProjLockOptions {
     /// dependencies instead of keeping a pin that already satisfies
     /// `rproj.toml` (see [`existing_lock_satisfies`]).
     upgrade: bool,
+    /// Solve for this machine only, instead of the default platform set.
+    /// Used for the environments of scripts with inline metadata, which only
+    /// ever run where they are created.
+    host_only: bool,
 }
 
 fn sc_proj_lock(
@@ -2592,8 +2596,36 @@ fn sc_proj_lock(
         prefer_binary: args.get_one::<usize>("prefer-binary").copied(),
         exclude_newer: exclude_newer_arg(args)?,
         upgrade: args.get_flag("upgrade"),
+        host_only: false,
     };
     proj_lock(&proj_lock_root()?, &opts, args)
+}
+
+/// Lock the project in `root` for this machine only, for `r_version` if
+/// given, else for the R version `proj_lock_r_version` picks. This is what
+/// the environment of a script with inline metadata needs: it is created
+/// and used on the same machine, so the other platforms would only make the
+/// first run slower.
+///
+/// `arch` is the architecture of the R to lock for, if it is not the
+/// machine's own. Only macOS has R builds for more than one architecture.
+pub(crate) fn proj_lock_host(
+    root: &Path,
+    r_version: Option<String>,
+    arch: Option<&str>,
+    args: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+    let platforms = match arch {
+        Some(arch) if is_foreign_arch(arch) => vec![macos_platform_for_arch(arch)],
+        _ => vec![],
+    };
+    let opts = ProjLockOptions {
+        r_versions: r_version.into_iter().collect(),
+        host_only: platforms.is_empty(),
+        platforms,
+        ..Default::default()
+    };
+    proj_lock(root, &opts, args)
 }
 
 /// The directory `rig proj lock` and `rig proj sync` work on: the workspace a
@@ -2987,6 +3019,9 @@ fn r_requirement(req: Option<&DepVersionSpec>) -> String {
 /// solving, by the resolved-target dedup in `proj_lock`, so a redundant
 /// solve is never dispatched in the first place.
 fn lock_platform_specs(opts: &ProjLockOptions) -> Vec<Option<String>> {
+    if opts.host_only {
+        return vec![None];
+    }
     let mut specs: Vec<Option<String>> = if !opts.platforms.is_empty() {
         opts.platforms.iter().cloned().map(Some).collect()
     } else {
@@ -3783,22 +3818,7 @@ fn rvenv_r_installation(
         bail!("{}", msg);
     }
 
-    OUTPUT.status(&format!(
-        "R {} ({}) is not installed, installing it now",
-        r_version, arch
-    ));
-    info!(
-        "R {} ({}) is not installed, installing it now",
-        r_version, arch
-    );
-    // `rig add` is a subcommand, not a function that takes a version, so go
-    // through clap. It escalates on its own in admin mode.
-    let matches = rig_app().try_get_matches_from(add_args)?;
-    let (_name, addargs) = match matches.subcommand() {
-        Some(x) => x,
-        None => bail!("Internal error: `rig add` did not parse"),
-    };
-    sc_add(addargs)?;
+    install_r_with_rig_add(r_version, arch)?;
 
     match find_r_installation(r_version, arch)? {
         Some(name) => {
@@ -3815,6 +3835,87 @@ fn rvenv_r_installation(
             bail!("{}", msg)
         }
     }
+}
+
+/// Whether `arch` (as rig names it, see [`native_arch_name`]) is not this
+/// machine's own architecture.
+pub(crate) fn is_foreign_arch(arch: &str) -> bool {
+    native_arch_name(arch) != native_arch_name(std::env::consts::ARCH)
+}
+
+/// The platform string of macOS on `arch`, in the form `proj_lock` takes.
+fn macos_platform_for_arch(arch: &str) -> String {
+    let arch = if arch == "arm64" { "aarch64" } else { arch };
+    format!("{}-apple-darwin", arch)
+}
+
+/// Install `r_version` for `arch` with `rig add`.
+fn install_r_with_rig_add(r_version: &str, arch: &str) -> Result<(), Box<dyn Error>> {
+    OUTPUT.status(&format!(
+        "R {} ({}) is not installed, installing it now",
+        r_version, arch
+    ));
+    info!(
+        "R {} ({}) is not installed, installing it now",
+        r_version, arch
+    );
+    // `rig add` is a subcommand, not a function that takes a version, so go
+    // through clap. It escalates on its own in admin mode.
+    let matches = rig_app().try_get_matches_from(r_add_args(r_version, arch))?;
+    let (_name, addargs) = match matches.subcommand() {
+        Some(x) => x,
+        None => bail!("Internal error: `rig add` did not parse"),
+    };
+    sc_add(addargs)?;
+    Ok(())
+}
+
+/// The installed R that `r_version` (an `--r-version` argument) selects: an
+/// installation of that name or alias (`4.6.1`, `release`), else the newest
+/// installation of that version on this machine's architecture (`4.5` for
+/// `4.5.3`). Installs it with `rig add` if there is none, or, with `dry_run`,
+/// only says so and returns `None`.
+///
+/// Returns the installation's R version and architecture, e.g. `("4.6.1",
+/// "arm64")`. These identify the R build the way an alias or a short version
+/// cannot: `release` and `4.6` mean different builds over time.
+pub(crate) fn requested_r_installation(
+    r_version: &str,
+    dry_run: bool,
+) -> Result<Option<(String, String)>, Box<dyn Error>> {
+    let arch = native_arch_name(std::env::consts::ARCH);
+    let find = || -> Result<Option<String>, Box<dyn Error>> {
+        if let Some(name) = find_installed(r_version)? {
+            return Ok(Some(name));
+        }
+        find_r_installation(r_version, &arch)
+    };
+
+    let name = match find()? {
+        Some(name) => name,
+        None if dry_run => {
+            let msg = format!(
+                "R {} is not installed, would install it with `rig {}`",
+                r_version,
+                r_add_args(r_version, &arch)[1..].join(" ")
+            );
+            OUTPUT.info(&msg);
+            info!("{}", msg);
+            return Ok(None);
+        }
+        None => {
+            install_r_with_rig_add(r_version, &arch)?;
+            match find()? {
+                Some(name) => name,
+                None => bail!("Installed R {}, but cannot find it now", r_version),
+            }
+        }
+    };
+
+    Ok(Some((
+        get_r_version_data_version(&name)?,
+        rvenv_r_arch(&name),
+    )))
 }
 
 /// The `rig add` command line that installs `r_version` for `arch`. Only
@@ -3863,11 +3964,17 @@ fn find_r_installation(r_version: &str, arch: &str) -> Result<Option<String>, Bo
             }
         })
         .collect();
+    // For the same version, prefer an installation named after its version
+    // (`4.6.1-x86_64`) over a symbolic one (`next-x86_64`), which can point
+    // at another version later.
     matching.sort_by_key(|c| {
-        c.version
-            .as_deref()
-            .and_then(r_components)
-            .unwrap_or_default()
+        (
+            c.version
+                .as_deref()
+                .and_then(r_components)
+                .unwrap_or_default(),
+            c.name.starts_with(|ch: char| ch.is_ascii_digit()),
+        )
     });
     Ok(matching.pop().map(|v| v.name.clone()))
 }
@@ -3928,13 +4035,25 @@ fn this_os_family() -> &'static str {
 /// just works without extra flags; only zero matches is a hard error. For the
 /// same R version a target for this OS wins over a source-only one, which
 /// matches every machine.
+#[cfg(test)]
 fn select_sync_target<'a>(
     targets: &'a [RprojLockTarget],
     r_version: Option<&str>,
     platform: Option<&str>,
 ) -> Result<&'a RprojLockTarget, Box<dyn Error>> {
+    select_sync_target_for_arch(targets, r_version, platform, None)
+}
+
+/// [`select_sync_target`], for an R of architecture `arch` instead of the
+/// machine's own, if `arch` is given, see [`ProjSyncOptions::arch`].
+fn select_sync_target_for_arch<'a>(
+    targets: &'a [RprojLockTarget],
+    r_version: Option<&str>,
+    platform: Option<&str>,
+    arch: Option<&str>,
+) -> Result<&'a RprojLockTarget, Box<dyn Error>> {
     let this_os = this_os_family();
-    let this_arch = native_arch_name(std::env::consts::ARCH);
+    let this_arch = native_arch_name(arch.unwrap_or(std::env::consts::ARCH));
     let mut candidates: Vec<&RprojLockTarget> = targets
         .iter()
         .filter(|t| match target_os_family(&t.platform) {
@@ -4085,6 +4204,12 @@ pub(crate) struct ProjSyncOptions {
     /// `--exclude-newer`: (re)lock with this cutoff before syncing, see
     /// `ProjLockOptions::exclude_newer`.
     pub exclude_newer: Option<ExcludeNewerSpec>,
+    /// Sync for an R of this architecture (`arm64`, `x86_64`), instead of the
+    /// machine's own: pick a lock target for it, and run an R build for it.
+    /// Not a `rig proj sync` option, the environments of scripts with inline
+    /// metadata use it, for an `--r-version` like `4.6.1-x86_64` on an arm64
+    /// Mac.
+    pub arch: Option<String>,
 }
 
 impl Default for ProjSyncOptions {
@@ -4104,6 +4229,7 @@ impl Default for ProjSyncOptions {
             frozen: false,
             dry_run: false,
             exclude_newer: None,
+            arch: None,
         }
     }
 }
@@ -4140,6 +4266,7 @@ fn sc_proj_sync(
         frozen: args.get_flag("frozen"),
         dry_run: args.get_flag("dry-run"),
         exclude_newer: exclude_newer_arg(args)?,
+        arch: None,
     };
 
     proj_sync(&root, &opts, args)
@@ -4261,10 +4388,11 @@ pub(crate) fn proj_sync(
     let lock_content = fs::read_to_string(&lock_path)?;
     RprojLock::check_version(&lock_content)?;
     let lock: RprojLock = toml::from_str(&lock_content)?;
-    let target = select_sync_target(
+    let target = select_sync_target_for_arch(
         &lock.targets,
         opts.r_version.as_deref(),
         opts.platform.as_deref(),
+        opts.arch.as_deref(),
     )?;
 
     let wanted: Vec<RprojLockPackage> = sync_wanted_packages(&target.packages, opts);
@@ -4318,7 +4446,11 @@ pub(crate) fn proj_sync(
     // The architecture comes from the lock file's platform, not from the
     // machine: a lock file solved for macos-x86_64 needs an x86_64 R even on
     // an arm64 Mac.
-    let r_arch = target_r_arch(&target.platform);
+    // A source-only target names no arch, then `opts.arch` decides, if given.
+    let r_arch = match (platform_arch(&target.platform), &opts.arch) {
+        (None, Some(arch)) => native_arch_name(arch),
+        _ => target_r_arch(&target.platform),
+    };
     let (r_name, r_binary) = rvenv_r_installation(
         &target.r_version,
         &r_arch,
@@ -5419,6 +5551,16 @@ mod tests {
     }
 
     #[test]
+    fn host_only_locks_for_this_machine_only() {
+        let opts = ProjLockOptions {
+            host_only: true,
+            add_platforms: vec!["windows".to_string()],
+            ..Default::default()
+        };
+        assert_eq!(lock_platform_specs(&opts), vec![None]);
+    }
+
+    #[test]
     fn add_platform_extends_an_explicit_platform_list() {
         let opts = ProjLockOptions {
             platforms: vec!["macos".to_string()],
@@ -5668,6 +5810,43 @@ mod tests {
         let targets = vec![target("4.6.1", &platform)];
         let picked = select_sync_target(&targets, None, None).unwrap();
         assert_eq!(picked.r_version, "4.6.1");
+    }
+
+    #[test]
+    fn select_sync_target_for_arch_picks_the_requested_arch() {
+        let this_os = this_os_family();
+        let native = native_arch_name(std::env::consts::ARCH);
+        // "arm64" on macOS, "aarch64" on Linux and Windows
+        let other = native_arch_name(if native == "x86_64" {
+            "arm64"
+        } else {
+            "x86_64"
+        });
+        let targets = vec![
+            target("4.6.1", &format!("{}-{}", this_os, native)),
+            target("4.6.1", &format!("{}-{}", this_os, other)),
+        ];
+        let picked =
+            select_sync_target_for_arch(&targets, None, None, Some(other.as_str())).unwrap();
+        assert_eq!(
+            platform_arch(&picked.platform)
+                .map(native_arch_name)
+                .as_deref(),
+            Some(other.as_str())
+        );
+        let picked = select_sync_target(&targets, None, None).unwrap();
+        assert_eq!(
+            platform_arch(&picked.platform)
+                .map(native_arch_name)
+                .as_deref(),
+            Some(native.as_str())
+        );
+    }
+
+    #[test]
+    fn macos_platform_for_arch_uses_lock_platform_names() {
+        assert_eq!(macos_platform_for_arch("x86_64"), "x86_64-apple-darwin");
+        assert_eq!(macos_platform_for_arch("arm64"), "aarch64-apple-darwin");
     }
 
     #[test]

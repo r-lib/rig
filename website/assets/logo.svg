@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 173.2 200" width="173.2" height="200" role="img" aria-label="rig">
+  <title>rig</title>
+
+  <!-- Hex sticker geometry: regular hexagon, points at top and bottom,
+       side 100 => width 100*sqrt(3) = 173.2, height 200. -->
+
+  <!-- hex body -->
+  <path d="M 86.6 0 L 173.2 50 L 173.2 150 L 86.6 200 L 0 150 L 0 50 Z"
+        fill="#1B2A41"/>
+
+  <!-- inner border -->
+  <path d="M 86.6 7 L 167.14 53.5 L 167.14 146.5 L 86.6 193 L 6.06 146.5 L 6.06 53.5 Z"
+        fill="none" stroke="#F2EFE9" stroke-width="6" stroke-linejoin="round"/>
+
+  <!-- Mainsail = the bowl of an R. The head slopes down from the masthead
+       like a gaff, the leech bellies out to leeward, the foot sits on the
+       boom. The counter is the sail's window. -->
+  <path fill="#E8703A" fill-rule="evenodd"
+        d="M 66 46
+           L 94 51
+           C 114 55, 123 62, 123 71
+           C 123 81, 114 92, 94 92
+           L 66 92 Z
+           M 78 61
+           L 92 63
+           C 102 65, 106 67, 106 71
+           C 106 76, 102 80, 92 80
+           L 78 80 Z"/>
+
+  <!-- Jib / R's leg: runs from the bowl junction down to the clew. -->
+  <path fill="#E8703A"
+        d="M 90 92 L 111 92 L 135 132 L 112 132 Z"/>
+
+  <!-- mast: also the R's stem -->
+  <line x1="61" y1="40" x2="61" y2="137"
+        stroke="#F2EFE9" stroke-width="11" stroke-linecap="round"/>
+
+  <!-- boom: also the R's baseline -->
+  <line x1="54" y1="137" x2="140" y2="137"
+        stroke="#F2EFE9" stroke-width="9" stroke-linecap="round"/>
+
+  <text x="86.6" y="172" text-anchor="middle"
+        font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+        font-size="32" font-weight="600" letter-spacing="3" fill="#F2EFE9">rig</text>
+</svg>

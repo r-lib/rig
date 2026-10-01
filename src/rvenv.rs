@@ -355,6 +355,47 @@ pub fn project_r_wrapper(root: &Path) -> PathBuf {
     project_bin(root).join(if cfg!(windows) { "R.exe" } else { "R" })
 }
 
+/// The real R binary an rvenv wrapper forwards to, and the environment
+/// variables it sets. See [`rvenv_wrapper_target`].
+pub type WrapperTarget = (PathBuf, Vec<(String, String)>);
+
+/// What the `.rvenv/bin/R` or `.rvenv/bin/Rscript` wrapper at `wrapper` would
+/// run: the real R binary it forwards to, and the environment variables it
+/// sets (see [`rvenv_env_vars`]). `None` if `wrapper` is not such a wrapper,
+/// or if its environment has no usable `rvenv.cfg`.
+///
+/// `rig run` uses this to start the real R directly, which saves a shell
+/// start (Unix) or a shim start (Windows) on every run. The result is the
+/// same as running the wrapper, both come from the same `rvenv.cfg`.
+pub fn rvenv_wrapper_target(wrapper: &Path) -> Result<Option<WrapperTarget>, Box<dyn Error>> {
+    let Some(bin) = wrapper.parent() else {
+        return Ok(None);
+    };
+    let Some(venv) = bin.parent() else {
+        return Ok(None);
+    };
+    if bin.file_name() != Some(RVENV_BIN_SUBDIR.as_ref())
+        || venv.file_name() != Some(RVENV_DIR.as_ref())
+    {
+        return Ok(None);
+    }
+    let Some(root) = venv.parent() else {
+        return Ok(None);
+    };
+    let Some(cfg) = read_rvenv_cfg(root)? else {
+        return Ok(None);
+    };
+    let target = match wrapper.file_stem().and_then(|s| s.to_str()) {
+        Some("R") => cfg.r_binary,
+        Some("Rscript") => rscript_of(&cfg.r_binary),
+        _ => return Ok(None),
+    };
+    if !target.exists() {
+        return Ok(None);
+    }
+    Ok(Some((target, rvenv_env_vars(venv))))
+}
+
 /// Why the project environment in `root` is not usable as it is, or `None` if
 /// it is up to date. Callers use this both to decide whether to run
 /// `rig proj sync` and to tell the user why they are waiting for one.
@@ -1760,7 +1801,7 @@ mod tests {
             );
             // The environment comes from `rvenv_env_vars`, relative to
             // $RVENV, which the wrapper works out from its own location.
-            assert!(body.contains("RVENV=$(cd \"$(dirname \"$0\")/..\" && pwd)"));
+            assert!(body.contains("RVENV=$(cd \"$RVENV/..\" && pwd)"));
             for (name, value) in rvenv_env_vars(Path::new("$RVENV")) {
                 if name == "RVENV" {
                     continue;

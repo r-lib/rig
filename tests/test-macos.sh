@@ -507,3 +507,47 @@ teardown() {
     [[ "$status" -ne 0 ]]
     grep -q '^praise = "\*"$' rproj.toml
 }
+
+@test "run script with inline dependencies" {
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf scriptdir && mkdir scriptdir && cd scriptdir
+
+    # a plain script runs like `rig run -f`
+    printf 'cat(commandArgs(TRUE), "\\n")\n' > plain.R
+    run rig run plain.R a b
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "^a b"
+
+    cat > deps.R <<'SCRIPT'
+# /// script
+# [dependencies]
+# R = ">= 4.1"
+# praise = "*"
+# ///
+cat("praise", format(packageVersion("praise")), "\n")
+cat("libpath", .libPaths()[1], "\n")
+cat("args", commandArgs(TRUE), "\n")
+SCRIPT
+    run rig run deps.R x
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "^praise "
+    echo "$output" | grep -q "^libpath .*scripts"
+    echo "$output" | grep -q "^args x"
+
+    # the second run reuses the environment
+    run rig run deps.R
+    [[ "$status" -eq 0 ]]
+    ! echo "$output" | grep -q "Setting up the environment"
+
+    # setting up the environment writes nothing to stdout, that is the
+    # script's. --no-cache forces a new environment.
+    printf '# /// script\n# [dependencies]\n# praise = "*"\n# ///\ncat("only this\\n")\n' > quiet.R
+    out="$(rig --no-cache run quiet.R 2>/dev/null)"
+    [[ "$out" == "only this" ]]
+
+    # a broken block is an error
+    printf '# /// script\n# [dependencies]\n1\n' > bad.R
+    run rig run bad.R
+    [[ "$status" -ne 0 ]]
+    echo "$output" | grep -q "does not start with"
+}

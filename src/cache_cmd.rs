@@ -5,7 +5,7 @@
 //! their own corner of `real_cache_dir()`, see [`crate::cache`]. Rather than
 //! teach this module every producer's file-naming scheme, categories are
 //! derived from the *name of the top-level entry* in the cache directory:
-//! `built`, `packages`, `p3m`, `git-mirrors` and `url-pkgs` are their own
+//! `built`, `packages`, `p3m`, `git-mirrors`, `url-pkgs` and `scripts` are their own
 //! category, `metadata` collects every other kind of package metadata
 //! (binary indexes, CRAN-like databases, package manifests, repo data), and
 //! anything unrecognized left over at the cache root (e.g. stray files from
@@ -30,16 +30,18 @@ enum CacheCategory {
     P3m,
     GitMirrors,
     UrlPkgs,
+    Scripts,
 }
 
 impl CacheCategory {
-    const ALL: [CacheCategory; 6] = [
+    const ALL: [CacheCategory; 7] = [
         CacheCategory::Built,
         CacheCategory::Packages,
         CacheCategory::Metadata,
         CacheCategory::P3m,
         CacheCategory::GitMirrors,
         CacheCategory::UrlPkgs,
+        CacheCategory::Scripts,
     ];
 
     fn label(self) -> &'static str {
@@ -50,6 +52,7 @@ impl CacheCategory {
             CacheCategory::P3m => "P3M status",
             CacheCategory::GitMirrors => "Git mirrors",
             CacheCategory::UrlPkgs => "URL packages",
+            CacheCategory::Scripts => "Script environments",
         }
     }
 
@@ -63,6 +66,7 @@ impl CacheCategory {
             CacheCategory::P3m => "p3m",
             CacheCategory::GitMirrors => "git-mirrors",
             CacheCategory::UrlPkgs => "url-pkgs",
+            CacheCategory::Scripts => "scripts",
         }
     }
 }
@@ -76,6 +80,7 @@ fn classify_entry(name: &str) -> CacheCategory {
         "p3m" => CacheCategory::P3m,
         "git-mirrors" => CacheCategory::GitMirrors,
         "url-pkgs" => CacheCategory::UrlPkgs,
+        "scripts" => CacheCategory::Scripts,
         _ => CacheCategory::Metadata,
     }
 }
@@ -120,8 +125,8 @@ fn dir_usage(path: &Path) -> Usage {
     usage
 }
 
-fn cache_breakdown(cache_dir: &Path) -> [Usage; 6] {
-    let mut totals = [Usage::default(); 6];
+fn cache_breakdown(cache_dir: &Path) -> [Usage; CacheCategory::ALL.len()] {
+    let mut totals = [Usage::default(); CacheCategory::ALL.len()];
     let entries = match fs::read_dir(cache_dir) {
         Ok(entries) => entries,
         Err(_) => return totals,
@@ -180,6 +185,8 @@ struct CacheInfo {
     git_mirrors_count: u64,
     url_pkgs_size: u64,
     url_pkgs_count: u64,
+    scripts_size: u64,
+    scripts_count: u64,
     total_size: u64,
     total_count: u64,
 }
@@ -208,6 +215,8 @@ pub fn sc_cache_info(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             git_mirrors_count: totals[4].count,
             url_pkgs_size: totals[5].size,
             url_pkgs_count: totals[5].count,
+            scripts_size: totals[6].size,
+            scripts_count: totals[6].count,
             total_size: total.size,
             total_count: total.count,
         };
@@ -316,6 +325,7 @@ mod tests {
         assert_eq!(classify_entry("leftover-file"), CacheCategory::Metadata);
         assert_eq!(classify_entry("git-mirrors"), CacheCategory::GitMirrors);
         assert_eq!(classify_entry("url-pkgs"), CacheCategory::UrlPkgs);
+        assert_eq!(classify_entry("scripts"), CacheCategory::Scripts);
     }
 
     #[test]
