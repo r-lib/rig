@@ -39,6 +39,8 @@ Currently supported apps are:
 
 Anything after a literal `--` is passed straight to the R (or `Rscript`)
 process as its own command-line flags, e.g. `rig run -- --vanilla`.
+This does not work for R scripts: everything after a script goes to the
+script, see "Scripts" below.
 
 Plain `rig run` (no `-e`/`-f`/app/`--cmd`) defaults to
 `--no-save --no-restore`, so it never shows the "Save workspace image?"
@@ -52,6 +54,19 @@ the project's own environment instead of the default R version: it runs
 
 Use `--no-project` to ignore a project, or `--r-version` to select an R
 version directly.
+
+## Scripts
+
+`rig run <script.R> [args...]` and `rig run -f <script> [args...]` pass
+every argument after the script on to the script, unchanged, where
+`commandArgs(TRUE)` picks them up. This includes arguments that look like
+rig's own flags, and `--`. rig's own flags go before the script:
+`rig run -r 4.5 script.R --verbose`.
+
+A script can start with a `#!/usr/bin/env -S rig run` line, and then you
+can run it directly, after making it executable with `chmod +x`. A file
+that starts with `#!` is a script for `rig run`, whatever its name, so
+the script does not need an `.R` extension.
 
 ## Scripts with inline dependencies
 
@@ -101,8 +116,7 @@ rig run --upgrade script.R
 rig run --upgrade-package cli script.R
 ```
 
-`rig cache clean --category scripts` deletes all script environments. A
-script can start with `#!/usr/bin/env -S rig run`, to run it directly.
+`rig cache clean --category scripts` deletes all script environments.
 
 ## Project scripts
 

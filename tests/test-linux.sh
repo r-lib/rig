@@ -389,6 +389,14 @@ teardown() {
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^a b"
 
+    # a script with a #! line can have any name, and gets all arguments
+    # after it, even the ones that look like flags
+    printf '#!/usr/bin/env -S rig run\ncat(commandArgs(TRUE), "\\n")\n' > shebang
+    chmod +x shebang
+    run ./shebang --foo -- bar --help
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q -- "^--foo -- bar --help"
+
     cat > deps.R <<'SCRIPT'
 # /// script
 # [dependencies]
