@@ -547,6 +547,17 @@ SCRIPT
     [[ "$status" -eq 0 ]]
     ! echo "$output" | grep -q "Setting up the environment"
 
+    # --upgrade-package solves the environment again
+    run rig run -P praise deps.R
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "Re-locking the environment"
+    echo "$output" | grep -q "^praise "
+
+    # the upgrade flags only work for scripts with a block
+    run rig run --upgrade plain.R
+    [[ "$status" -ne 0 ]]
+    echo "$output" | grep -q "only work for scripts"
+
     # setting up the environment writes nothing to stdout, that is the
     # script's. --no-cache forces a new environment.
     printf '# /// script\n# [dependencies]\n# praise = "*"\n# ///\ncat("only this\\n")\n' > quiet.R

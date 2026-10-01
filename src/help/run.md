@@ -101,6 +101,16 @@ share one environment, and changing the block creates a new one. A script
 with a block always uses its own environment, even inside a project.
 `--r-version` selects the R version, which must fit the `R` requirement.
 
+Like a project's lock file, the environment keeps the package versions it
+was created with. Use `--upgrade` to solve the dependencies again, with the
+latest versions that fit, or `--upgrade-package` to upgrade only some
+packages, the same way as for [`rig proj lock`](proj.qmd#rig-proj-lock):
+
+```sh
+rig run --upgrade script.R
+rig run --upgrade-package cli script.R
+```
+
 `rig cache clean --category scripts` deletes all script environments.
 
 ## Project scripts

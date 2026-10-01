@@ -1456,6 +1456,34 @@ pub fn rig_app() -> Command {
                 .conflicts_with_all(["cmd", "shell"]),
         )
         .arg(
+            Arg::new("upgrade")
+                .help(
+                    "Re-resolve every dependency of a script with a `# /// script`\n\
+                    block, instead of keeping the versions its environment has",
+                )
+                .long("upgrade")
+                .short('U')
+                .action(clap::ArgAction::SetTrue)
+                .required(false)
+                .conflicts_with_all(["eval", "cmd", "list", "shell", "app-type"]),
+        )
+        .arg(
+            Arg::new("upgrade-package")
+                .help(
+                    "Upgrade only these packages in the environment of a script\n\
+                    with a `# /// script` block. As <package> or\n\
+                    <package>@<version>. Comma-separated, and can be repeated.",
+                )
+                .long("upgrade-package")
+                .short('P')
+                .value_name("PACKAGE")
+                .num_args(1)
+                .value_delimiter(',')
+                .action(clap::ArgAction::Append)
+                .required(false)
+                .conflicts_with_all(["upgrade", "eval", "cmd", "list", "shell", "app-type"]),
+        )
+        .arg(
             Arg::new("command")
                 .help("R script, project script name, project or R CMD command to run, with parameters")
                 .required(false)
@@ -1769,6 +1797,24 @@ pub fn rig_app() -> Command {
                         .short('U')
                         .num_args(0)
                         .required(false),
+                )
+                .arg(
+                    Arg::new("upgrade-package")
+                        .help(
+                            "Upgrade only these packages, and keep the versions\n\
+                            rproj.lock pins for the rest, where they still fit.\n\
+                            As <package> or <package>@<version>, e.g. cli or\n\
+                            'cli@>= 3.6.4'. The version is not written to\n\
+                            rproj.toml. Comma-separated, and can be repeated.",
+                        )
+                        .long("upgrade-package")
+                        .short('P')
+                        .value_name("PACKAGE")
+                        .num_args(1)
+                        .value_delimiter(',')
+                        .action(clap::ArgAction::Append)
+                        .required(false)
+                        .conflicts_with("upgrade"),
                 ),
         )
         .subcommand(
@@ -3183,6 +3229,48 @@ mod tests {
         let platforms: Vec<&String> = sub.get_many::<String>("platform").unwrap().collect();
         assert_eq!(r_versions, vec!["4.5.0", "4.6.1"]);
         assert_eq!(platforms, vec!["macos", "ubuntu-24.04"]);
+    }
+
+    #[test]
+    fn proj_lock_upgrade_package_is_repeatable_and_comma_separated() {
+        let matches = rig_app()
+            .try_get_matches_from([
+                "rig",
+                "proj",
+                "lock",
+                "-P",
+                "cli,glue",
+                "--upgrade-package",
+                "rlang@>= 1.1",
+            ])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        let pkgs: Vec<&String> = sub.get_many::<String>("upgrade-package").unwrap().collect();
+        assert_eq!(pkgs, vec!["cli", "glue", "rlang@>= 1.1"]);
+    }
+
+    #[test]
+    fn proj_lock_upgrade_and_upgrade_package_conflict() {
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "proj", "lock", "-U", "-P", "cli"])
+            .is_err());
+    }
+
+    #[test]
+    fn run_upgrade_flags_are_for_scripts() {
+        let matches = rig_app()
+            .try_get_matches_from(["rig", "run", "-P", "cli", "script.R"])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let pkgs: Vec<&String> = sub.get_many::<String>("upgrade-package").unwrap().collect();
+        assert_eq!(pkgs, vec!["cli"]);
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "run", "-U", "script.R"])
+            .is_ok());
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "run", "-U", "-e", "1"])
+            .is_err());
     }
 
     #[test]

@@ -52,7 +52,8 @@ use crate::pkgsource::{parse_pkg_source, PkgSource};
 use crate::proj::{
     dep_table_from_local, dep_table_from_remote, dep_table_from_url, download_lockfile_packages,
     fetch_and_read_git_package, fetch_and_read_url_package, lockfile_package_info,
-    proj_binary_target, read_local_package, resolve_git_sources, sc_proj_solve_deps, BASE_PKGS,
+    proj_binary_target, read_local_package, resolve_git_sources, sc_proj_solve_deps, SolvePins,
+    BASE_PKGS,
 };
 use crate::repos::DbSourcePackageLoader;
 use crate::rproj::{DepTable, RprojLockPackage, RprojLockTarget};
@@ -131,6 +132,7 @@ pub fn sc_pkg_install(
         target,
         prefer_binary,
         exclude_newer.as_deref(),
+        &SolvePins::default(),
         true,
     )?;
     OUTPUT.success("Solved dependencies");
