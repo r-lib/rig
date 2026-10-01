@@ -6,7 +6,6 @@ use std::{file, line};
 
 use clap::ArgMatches;
 use log::{debug, error, info, warn};
-use simple_error::*;
 
 #[cfg(target_os = "macos")]
 use crate::macos::*;

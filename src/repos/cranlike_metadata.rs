@@ -12,7 +12,6 @@ use rds2rust::RObject::*;
 use rds2rust::VectorData;
 use rusqlite::{params, Connection};
 use sha2::{Digest, Sha256};
-use simple_error::bail;
 use xz2::read::XzDecoder;
 use zstd::stream::read::Decoder as ZstdDecoder;
 

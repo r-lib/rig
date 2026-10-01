@@ -10,7 +10,7 @@ use jsonc_parser::cst::{CstInputValue, CstObject, CstRootNode};
 use jsonc_parser::ParseOptions;
 use log::{debug, error, info, warn};
 use semver::Version;
-use simple_error::*;
+use simple_error::SimpleError;
 use tabular::*;
 
 #[cfg(target_os = "macos")]

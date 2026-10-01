@@ -10,7 +10,6 @@ use std::path::Path;
 use regex::Regex;
 
 use clap::ArgMatches;
-use simple_error::bail;
 
 #[cfg(target_os = "linux")]
 use crate::utils::{grep_lines, read_lines, unquote};

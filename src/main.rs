@@ -6,8 +6,11 @@ use std::sync::{Arc, Mutex};
 use clap::ArgMatches;
 use log::{error, info, Level, LevelFilter};
 use owo_colors::OwoColorize;
-use simple_error::*;
+use simple_error::SimpleError;
 use tabular::*;
+
+#[macro_use]
+mod macros;
 
 mod args;
 use args::*;

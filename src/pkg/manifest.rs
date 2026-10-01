@@ -30,7 +30,6 @@ use std::time::Duration;
 
 use log::debug;
 use serde_json::{Map, Value};
-use simple_error::bail;
 
 use crate::cache::get_cache_dir;
 use crate::dcf::{parse_dcf, Package, PackageDependencies, RPackageVersion};

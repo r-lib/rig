@@ -7,7 +7,6 @@ use std::process::Command;
 use clap::ArgMatches;
 use log::{error, info, trace, warn};
 use regex::Regex;
-use simple_error::*;
 
 use crate::args::is_r_script_file;
 use crate::common::*;

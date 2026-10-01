@@ -10,7 +10,7 @@ use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use log::{debug, error, info};
 use pubgrub::{resolve, SelectedDependencies};
 use rayon::prelude::*;
-use simple_error::*;
+use simple_error::SimpleError;
 use tabular::*;
 
 use crate::args::rig_app;

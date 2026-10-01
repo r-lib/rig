@@ -16,7 +16,6 @@ use clap::ArgMatches;
 use lazy_static::lazy_static;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use simple_error::*;
 
 use crate::utils::http_client;
 

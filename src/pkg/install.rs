@@ -25,7 +25,6 @@ use std::io::ErrorKind;
 
 use clap::ArgMatches;
 use log::{debug, info};
-use simple_error::*;
 use tabular::*;
 
 #[cfg(target_os = "macos")]

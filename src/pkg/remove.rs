@@ -16,7 +16,6 @@ use std::path::{Path, PathBuf};
 
 use clap::ArgMatches;
 use log::{debug, info};
-use simple_error::*;
 
 use crate::output::OUTPUT;
 use crate::proj::BASE_PKGS;

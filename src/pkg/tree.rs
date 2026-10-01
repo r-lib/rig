@@ -19,7 +19,6 @@ use std::io::IsTerminal;
 
 use clap::ArgMatches;
 use log::debug;
-use simple_error::*;
 
 use super::deps::{
     newest_version, requirements, root_package, type_rank, version_cell_for, wanted_dep, Newest,

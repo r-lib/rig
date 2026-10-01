@@ -14,8 +14,6 @@
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
-use simple_error::bail;
-
 /// sha256 of a file's contents, hex-encoded.
 fn sha256_file(path: &Path) -> Result<String, Box<dyn Error>> {
     use sha2::{Digest, Sha256};

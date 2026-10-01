@@ -8,7 +8,6 @@ use log::error;
 use log::warn;
 #[cfg(target_os = "windows")]
 use serde_json::{Map, Value};
-use simple_error::bail;
 #[cfg(target_os = "windows")]
 use std::sync::{LazyLock, RwLock};
 

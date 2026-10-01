@@ -6,8 +6,6 @@ use std::os::unix::fs::symlink;
 
 use clap::ArgMatches;
 use log::*;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-use simple_error::*;
 
 #[cfg(target_os = "macos")]
 use crate::macos::*;

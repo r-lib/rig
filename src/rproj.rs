@@ -23,7 +23,7 @@ use std::path::Path;
 
 use log::warn;
 use serde::{Deserialize, Serialize};
-use simple_error::*;
+use simple_error::SimpleError;
 
 use crate::cache::{artifact_cache_key, target_path};
 use crate::dcf::{

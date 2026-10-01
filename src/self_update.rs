@@ -14,7 +14,6 @@ use std::error::Error;
 use clap::ArgMatches;
 use log::info;
 use regex::Regex;
-use simple_error::bail;
 
 use crate::install::unpack_package;
 use crate::install_receipt::{
