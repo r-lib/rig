@@ -91,6 +91,16 @@ script (or creates the script), and `rig proj add --script script.R <package>`
 and `rig proj remove --script script.R <package>` edit its `[dependencies]`, so
 you do not have to write the block by hand.
 
+Like a project's lock file, the environment keeps the package versions it
+was created with. Use `--upgrade` to solve the dependencies again, with the
+latest versions that fit, or `--upgrade-package` to upgrade only some
+packages, the same way as for [`rig proj lock`](proj.qmd#rig-proj-lock):
+
+```sh
+rig run --upgrade script.R
+rig run --upgrade-package cli script.R
+```
+
 `rig cache clean --category scripts` deletes all script environments. A
 script can start with `#!/usr/bin/env -S rig run`, to run it directly.
 

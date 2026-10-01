@@ -33,8 +33,8 @@ use crate::cache::get_cache_dir;
 use crate::common::get_r_version_data_version;
 use crate::output::OUTPUT;
 use crate::proj::{
-    add_spec_to_manifest, is_foreign_arch, parse_add_arg, proj_lock_host, proj_sync,
-    requested_r_installation, resolve_project_r_version, AddSpec, ProjSyncOptions,
+    add_spec_to_manifest, is_foreign_arch, parse_add_arg, parse_upgrade_packages, proj_lock_host,
+    proj_sync, requested_r_installation, resolve_project_r_version, AddSpec, ProjSyncOptions,
 };
 use crate::repos::cranlike_metadata::minor_r_version;
 use crate::rproj::{Dependency, Repository, Rproj, RPROJ_MANIFEST_FILE};
@@ -464,9 +464,46 @@ fn prepare_script_env(
 
     if !sync {
         if !envdir.join(RPROJ_LOCK_FILE).exists() {
-            proj_lock_host(&envdir, rver, r_arch.as_deref(), args)?;
+            proj_lock_host(&envdir, rver, r_arch.as_deref(), false, vec![], args)?;
         }
         return Ok(Some(envdir));
+    }
+
+    // `--upgrade` / `--upgrade-package`: solve the existing lock again, the
+    // sync below then installs what changed. An environment without a lock
+    // yet is solved from scratch anyway.
+    // Not every command that gets here has these options.
+    let upgrade = args
+        .try_get_one::<bool>("upgrade")
+        .ok()
+        .flatten()
+        .copied()
+        .unwrap_or(false);
+    let upgrade_packages = if args.try_contains_id("upgrade-package").is_ok() {
+        parse_upgrade_packages(args)?
+    } else {
+        vec![]
+    };
+    let relock = upgrade || !upgrade_packages.is_empty();
+    let has_lock = envdir.join(RPROJ_LOCK_FILE).exists();
+    if relock && has_lock {
+        if dry_run {
+            let msg = format!("Would re-lock the environment of {}", script.display());
+            OUTPUT.info(&msg);
+            info!("{}", msg);
+        } else {
+            let msg = format!("Re-locking the environment of {}", script.display());
+            OUTPUT.info(&msg);
+            info!("{}", msg);
+            proj_lock_host(
+                &envdir,
+                rver.clone(),
+                r_arch.as_deref(),
+                upgrade,
+                upgrade_packages,
+                args,
+            )?;
+        }
     }
 
     match rvenv_sync_needed(&envdir)? {
@@ -489,7 +526,7 @@ fn prepare_script_env(
             OUTPUT.info(&msg);
             info!("{}", msg);
             if !envdir.join(RPROJ_LOCK_FILE).exists() {
-                proj_lock_host(&envdir, rver, r_arch.as_deref(), args)?;
+                proj_lock_host(&envdir, rver, r_arch.as_deref(), false, vec![], args)?;
             }
             // An R of another architecture than the machine's, e.g.
             // `4.6.1-x86_64` on an arm64 Mac, needs that arch's lock target

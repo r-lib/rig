@@ -5,7 +5,18 @@
 * `rig run` now support self-contained scripts, that declare the packages
   and the R version they need in a `# /// script` comment block. rig then
   runs the script in its own environment, in the cache directory, and
-  installs R and the packages as needed.
+  installs R and the packages as needed. `rig run --upgrade` and
+  `rig run --upgrade-package` upgrade the packages of a script's
+  environment.
+
+* New `rig proj lock --upgrade-package` (`-P`) option, to upgrade only
+  some packages, and keep the versions `rproj.lock` pins for the rest. It
+  also takes a version requirement, e.g. `-P 'cli@>= 3.6.4'`, for this
+  run only (#410).
+
+* `rig proj lock` now keeps the versions `rproj.lock` pins when it has to
+  solve the dependencies again, e.g. after `rig proj add`, as long as they
+  still fit `rproj.toml`. Use `--upgrade` to pick the latest versions.
 
 * `rig proj init`, `rig proj add` and `rig proj remove` have a new
   `--script` option, to create and edit the `# /// script` block of an R

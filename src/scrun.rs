@@ -67,6 +67,9 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
         Some(path) => script_r_binary(Path::new(path), args, dry_run)?,
         None => None,
     };
+    if script_rbin.is_none() && (args.get_flag("upgrade") || args.contains_id("upgrade-package")) {
+        bail!("--upgrade and --upgrade-package only work for scripts with a `# /// script` block");
+    }
 
     let (rbin, renviron_user) = match script_rbin {
         Some(rbin) => (rscript_if_asked(args, rbin)?, user_renviron()),

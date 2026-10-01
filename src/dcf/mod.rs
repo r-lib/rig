@@ -256,7 +256,7 @@ impl std::fmt::Display for DepVersionSpec {
 // e.g. Depends, or it can be used for the combined dependencies of a
 // package
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PackageDependencies {
     pub dependencies: Vec<DepVersionSpec>,
 }

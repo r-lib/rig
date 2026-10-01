@@ -1549,8 +1549,21 @@ pub(crate) fn sc_proj_solve_project_deps(
         target,
         prefer_binary,
         None,
+        &SolvePins::default(),
         report_status,
     )
+}
+
+/// What a solve keeps from an existing lock file, and the extra constraints
+/// `--upgrade-package <pkg>@<version>` adds, see
+/// [`RPackageRegistry::with_preferences`] and
+/// [`RPackageRegistry::with_overrides`]. Empty for a fresh solve.
+#[derive(Default)]
+pub(crate) struct SolvePins {
+    /// The version to pick for a package, if it is still allowed.
+    pub preferred: HashMap<String, RPackageVersion>,
+    /// Extra version constraints, for this solve only.
+    pub overrides: PackageDependencies,
 }
 
 /// Solve the dependencies of every root in `roots` for one R version and one
@@ -1572,6 +1585,7 @@ pub(crate) fn sc_proj_solve_deps(
     target: Option<BinaryTarget>,
     prefer_binary: Option<usize>,
     exclude_newer: Option<&str>,
+    pins: &SolvePins,
     report_status: bool,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
     info!("Solving dependencies");
@@ -1592,8 +1606,10 @@ pub(crate) fn sc_proj_solve_deps(
     // request per package the solve visits.
     let binaries: Option<Box<dyn BinaryIndexLoader>> =
         target.map(|t| Box::new(P3mBinaryLoader::new(t)) as Box<dyn BinaryIndexLoader>);
-    let reg: RPackageRegistry =
-        RPackageRegistry::with_loaders(Box::new(loader), binaries).prefer_binary(prefer_binary);
+    let reg: RPackageRegistry = RPackageRegistry::with_loaders(Box::new(loader), binaries)
+        .prefer_binary(prefer_binary)
+        .with_preferences(pins.preferred.clone())
+        .with_overrides(&pins.overrides);
 
     let (root_pkg, root_version) = register_roots(&reg, roots, self_alias)?;
 
@@ -1730,12 +1746,14 @@ fn resolve_lock_options(
 /// unchanged, instead of re-fetching a possibly-moved branch/tag/PR every
 /// time -- the same "a lockfile is sticky until you ask to upgrade" behavior
 /// `Cargo.lock`/`uv.lock` have (see the `--upgrade` flag, which skips calling
-/// this instead, forcing every git dependency to resolve fresh).
-fn existing_git_shas(lock: &RprojLock) -> HashMap<GitSourceKey, String> {
+/// this instead, forcing every git dependency to resolve fresh). The packages
+/// in `skip`, the ones `--upgrade-package` names, are left out, so they
+/// resolve fresh, too.
+fn existing_git_shas(lock: &RprojLock, skip: &HashSet<String>) -> HashMap<GitSourceKey, String> {
     let mut map = HashMap::new();
     for target in &lock.targets {
         for pkg in &target.packages {
-            if !pkg.metadata.contains_key(REMOTE_TYPE_FIELD) {
+            if !pkg.metadata.contains_key(REMOTE_TYPE_FIELD) || skip.contains(&pkg.package) {
                 continue;
             }
             let url = pkg.metadata.get(crate::install::REMOTE_URL_FIELD);
@@ -1760,11 +1778,15 @@ fn existing_git_shas(lock: &RprojLock) -> HashMap<GitSourceKey, String> {
 /// resolved tag as-is instead of asking GitHub which release is latest every
 /// time. `--upgrade` skips calling this, same as [`existing_git_shas`], so a
 /// release dependency always re-resolves to whatever is actually latest.
-fn existing_release_refs(lock: &RprojLock) -> HashMap<(String, Option<String>), (String, String)> {
+/// `skip` is the same as for [`existing_git_shas`].
+fn existing_release_refs(
+    lock: &RprojLock,
+    skip: &HashSet<String>,
+) -> HashMap<(String, Option<String>), (String, String)> {
     let mut map = HashMap::new();
     for target in &lock.targets {
         for pkg in &target.packages {
-            if !pkg.metadata.contains_key(REMOTE_TYPE_FIELD) {
+            if !pkg.metadata.contains_key(REMOTE_TYPE_FIELD) || skip.contains(&pkg.package) {
                 continue;
             }
             let url = pkg.metadata.get(crate::install::REMOTE_URL_FIELD);
@@ -1963,6 +1985,87 @@ fn existing_lock_satisfies(
         return None;
     }
     Some(target.clone())
+}
+
+/// The extra version constraints of `--upgrade-package <pkg>@<requirement>`,
+/// for [`RPackageRegistry::with_overrides`]. A plain `<pkg>` adds none.
+fn upgrade_overrides(
+    upgrade_packages: &[(String, String)],
+) -> Result<PackageDependencies, Box<dyn Error>> {
+    let mut overrides = PackageDependencies::new();
+    for (name, req) in upgrade_packages {
+        let constraints = crate::rproj::parse_constraints(req)?;
+        if constraints.is_empty() {
+            continue;
+        }
+        overrides.dependencies.push(DepVersionSpec {
+            name: name.clone(),
+            types: vec![RDepType::Imports],
+            constraints,
+        });
+    }
+    Ok(overrides)
+}
+
+/// Warn about the `--upgrade-package` packages that are neither dependencies
+/// of the project nor in its lock file: they have no effect.
+fn warn_unknown_upgrade_packages(
+    upgrade_packages: &[(String, String)],
+    deps: &PackageDependencies,
+    lock: Option<&RprojLock>,
+) {
+    for (name, _) in upgrade_packages {
+        let in_deps = deps.dependencies.iter().any(|d| &d.name == name);
+        let in_lock = lock.is_some_and(|l| {
+            l.targets
+                .iter()
+                .any(|t| t.packages.iter().any(|p| &p.package == name))
+        });
+        if !in_deps && !in_lock {
+            let msg = format!(
+                "`{}` is not a dependency of the project, ignoring it in --upgrade-package",
+                name
+            );
+            OUTPUT.warn(&msg);
+            info!("{}", msg);
+        }
+    }
+}
+
+/// The versions the existing lock target for `rver` / `platform_key` pins, for
+/// the solver to keep where they still fit, see
+/// [`RPackageRegistry::with_preferences`]. Leaves out R and the base packages,
+/// git/GitHub/URL/local packages, which have their own sticky logic, and the
+/// packages in `skip`, the ones `--upgrade-package` names.
+///
+/// A target the lock does not have yet, e.g. a new platform, uses another
+/// target for the same R version instead, so that it gets the same versions
+/// as the rest. Empty if there is no target for this R version either.
+fn lock_target_preferences(
+    lock: &RprojLock,
+    rver: &str,
+    platform_key: &str,
+    skip: &HashSet<String>,
+) -> HashMap<String, RPackageVersion> {
+    let target = lock
+        .targets
+        .iter()
+        .find(|t| t.r_version == rver && t.platform == platform_key)
+        .or_else(|| lock.targets.iter().find(|t| t.r_version == rver));
+    let Some(target) = target else {
+        return HashMap::new();
+    };
+    target
+        .packages
+        .iter()
+        .filter(|p| !is_base_package(&p.package) && !skip.contains(&p.package))
+        .filter(|p| !p.metadata.contains_key(REMOTE_TYPE_FIELD))
+        .filter_map(|p| {
+            RPackageVersion::from_str(&p.version)
+                .ok()
+                .map(|v| (p.package.clone(), v))
+        })
+        .collect()
 }
 
 /// One git/GitHub-sourced dependency, already fetched and turned into
@@ -2592,6 +2695,12 @@ struct ProjLockOptions {
     /// dependencies instead of keeping a pin that already satisfies
     /// `rproj.toml` (see [`existing_lock_satisfies`]).
     upgrade: bool,
+    /// `--upgrade-package`: re-solve every target, and let these packages
+    /// move to the newest version allowed, while the rest keep the versions
+    /// the existing lock pins, if they still fit. Each entry is a package
+    /// name and an extra version requirement for this solve only, `"*"` if
+    /// none was given, see [`parse_upgrade_packages`].
+    upgrade_packages: Vec<(String, String)>,
     /// Solve for this machine only, instead of the default platform set.
     /// Used for the environments of scripts with inline metadata, which only
     /// ever run where they are created.
@@ -2619,9 +2728,21 @@ fn sc_proj_lock(
         prefer_binary: args.get_one::<usize>("prefer-binary").copied(),
         exclude_newer: exclude_newer_arg(args)?,
         upgrade: args.get_flag("upgrade"),
+        upgrade_packages: parse_upgrade_packages(args)?,
         host_only: false,
     };
     proj_lock(&proj_lock_root()?, &opts, args)
+}
+
+/// The `--upgrade-package` arguments, as package name and version
+/// requirement pairs. They have the same `<package>@<requirement>` syntax as
+/// `rig proj add`'s, see [`parse_add_spec`].
+pub(crate) fn parse_upgrade_packages(
+    args: &ArgMatches,
+) -> Result<Vec<(String, String)>, Box<dyn Error>> {
+    args.get_many::<String>("upgrade-package")
+        .map(|vs| vs.map(|v| parse_add_spec(v)).collect())
+        .unwrap_or_else(|| Ok(vec![]))
 }
 
 /// Lock the project in `root` for this machine only, for `r_version` if
@@ -2632,10 +2753,15 @@ fn sc_proj_lock(
 ///
 /// `arch` is the architecture of the R to lock for, if it is not the
 /// machine's own. Only macOS has R builds for more than one architecture.
+///
+/// `upgrade` and `upgrade_packages` are `rig run`'s `--upgrade` and
+/// `--upgrade-package`, with the same meaning as for `rig proj lock`.
 pub(crate) fn proj_lock_host(
     root: &Path,
     r_version: Option<String>,
     arch: Option<&str>,
+    upgrade: bool,
+    upgrade_packages: Vec<(String, String)>,
     args: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
     let platforms = match arch {
@@ -2644,6 +2770,8 @@ pub(crate) fn proj_lock_host(
     };
     let opts = ProjLockOptions {
         r_versions: r_version.into_iter().collect(),
+        upgrade,
+        upgrade_packages,
         host_only: platforms.is_empty(),
         platforms,
         ..Default::default()
@@ -3176,6 +3304,12 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         read_existing_lock(root)
     };
 
+    warn_unknown_upgrade_packages(
+        &opts.upgrade_packages,
+        &solve.merged,
+        existing_lock.as_ref(),
+    );
+
     // `--exclude-newer` wins over the manifest's setting. A lock solved with
     // different options cannot be reused, see `resolve_lock_options`.
     let exclude_newer = opts.exclude_newer.as_ref().or(solve.exclude_newer.as_ref());
@@ -3197,8 +3331,18 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     // re-resolves against its remote instead of reusing whatever commit (or,
     // for a `release = true` dependency, whatever tag) the existing lock file
     // already pinned it to.
+    // `--upgrade-package` leaves the packages it names out, so a git
+    // dependency among them re-resolves, too.
+    let upgrade_names: HashSet<String> = opts
+        .upgrade_packages
+        .iter()
+        .map(|(n, _)| n.clone())
+        .collect();
     let (known_shas, known_releases) = match &existing_lock {
-        Some(lock) => (existing_git_shas(lock), existing_release_refs(lock)),
+        Some(lock) => (
+            existing_git_shas(lock, &upgrade_names),
+            existing_release_refs(lock, &upgrade_names),
+        ),
         None => (HashMap::new(), HashMap::new()),
     };
     let git_sources = resolve_git_sources(&solve.git_deps, &known_shas, &known_releases)?;
@@ -3228,12 +3372,14 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     // dependencies too (git/GitHub already got it via `known_shas` above).
     // Only if the lock was solved with the same options, though: e.g. a new
     // `--exclude-newer` cutoff can rule out versions the lock pins.
+    // `--upgrade-package` re-solves every target, with the existing lock's
+    // versions as preferences, so only the named packages move.
     let mut reused: Vec<RprojLockTarget> = vec![];
     let mut to_solve: Vec<&SolveTarget> = vec![];
     for st in &solve_targets {
         let existing = existing_lock
             .as_ref()
-            .filter(|_| options_match)
+            .filter(|_| options_match && opts.upgrade_packages.is_empty())
             .and_then(|lock| {
                 existing_lock_satisfies(
                     lock,
@@ -3320,11 +3466,25 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     // one. Independent targets (different R versions and/or platforms) don't
     // share any solver state, so they solve in parallel, one thread per
     // target.
+    //
+    // A target that has to be solved again still keeps the versions the
+    // existing lock pins for it, where they fit, so e.g. adding a dependency
+    // does not upgrade everything else. Only `--upgrade` (and `--no-cache`),
+    // which ignore the existing lock, solve from scratch.
+    let overrides = upgrade_overrides(&opts.upgrade_packages)?;
+    let pins_of = |st: &SolveTarget| SolvePins {
+        preferred: existing_lock
+            .as_ref()
+            .map(|lock| lock_target_preferences(lock, &st.rver, &st.platform_key, &upgrade_names))
+            .unwrap_or_default(),
+        overrides: overrides.clone(),
+    };
     type SolveResult = (RPackageRegistry, SelectedDependencies<RPackageRegistry>);
     let prefer_binary = opts.prefer_binary;
     let solved: Vec<(String, String, Result<SolveResult, String>)> = to_solve
         .par_iter()
         .map(|st| {
+            let pins = pins_of(st);
             let result = sc_proj_solve_deps(
                 &st.rver,
                 &solve.roots,
@@ -3333,6 +3493,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
                 st.target.clone(),
                 prefer_binary,
                 lock_options.exclude_newer.as_deref(),
+                &pins,
                 false,
             )
             .map_err(|e| e.to_string());
@@ -5710,7 +5871,7 @@ mod tests {
             tool: Default::default(),
             targets: vec![t],
         };
-        let refs = existing_release_refs(&lock);
+        let refs = existing_release_refs(&lock, &HashSet::new());
         assert_eq!(
             refs.get(&("https://github.com/me/mypkg.git".to_string(), None)),
             Some(&("v1.2.0".to_string(), "abc123".to_string()))
