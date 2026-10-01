@@ -121,6 +121,10 @@
 > runs reuse the environment. This works the same in admin and user mode;
 > if rig needs to install R, it installs it the way the current mode does.
 > See [`rig run`](reference/run.qmd) for the details.
+>
+> You do not have to write the block by hand: `rig proj init --script
+> script.R` adds one, and `rig proj add --script script.R cli` and
+> `rig proj remove --script script.R cli` edit it.
 </details>
 
 <details>

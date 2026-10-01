@@ -1522,6 +1522,14 @@ pub fn rig_app() -> Command {
                         .short('r')
                         .num_args(1)
                         .required(false),
+                )
+                .arg(
+                    Arg::new("script")
+                        .help("Create the inline metadata block of this R script, instead of a project")
+                        .long("script")
+                        .value_name("SCRIPT")
+                        .num_args(1)
+                        .required(false),
                 ),
         )
         .subcommand(
@@ -1602,6 +1610,15 @@ pub fn rig_app() -> Command {
                         .help("Add as a dev (development) dependency")
                         .long("dev")
                         .num_args(0)
+                        .required(false)
+                        .conflicts_with("script"),
+                )
+                .arg(
+                    Arg::new("script")
+                        .help("Add the packages to the inline metadata of this R script, instead of rproj.toml")
+                        .long("script")
+                        .value_name("SCRIPT")
+                        .num_args(1)
                         .required(false),
                 )
                 .arg(
@@ -1632,6 +1649,14 @@ pub fn rig_app() -> Command {
                         .value_name("PACKAGE")
                         .required(true)
                         .num_args(1..),
+                )
+                .arg(
+                    Arg::new("script")
+                        .help("Remove the packages from the inline metadata of this R script, instead of rproj.toml")
+                        .long("script")
+                        .value_name("SCRIPT")
+                        .num_args(1)
+                        .required(false),
                 )
                 .arg(
                     Arg::new("no-lock")
@@ -3312,6 +3337,27 @@ mod tests {
         let (_name, sub) = sub.subcommand().unwrap();
         assert_eq!(sub.get_one::<String>("r-version").unwrap(), "4.6.1");
         assert_eq!(sub.get_one::<String>("platform").unwrap(), "macos-arm64");
+    }
+
+    #[test]
+    fn proj_init_add_remove_take_a_script() {
+        for cmd in [
+            vec!["rig", "proj", "init", "--script", "a.R"],
+            vec!["rig", "proj", "add", "--script", "a.R", "cli"],
+            vec!["rig", "proj", "remove", "--script", "a.R", "cli"],
+        ] {
+            let matches = rig_app().try_get_matches_from(&cmd).unwrap();
+            let (_name, sub) = matches.subcommand().unwrap();
+            let (_name, sub) = sub.subcommand().unwrap();
+            assert_eq!(
+                sub.get_one::<String>("script").map(String::as_str),
+                Some("a.R")
+            );
+        }
+        // script blocks have no dependency groups
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "proj", "add", "--script", "a.R", "--dev", "cli"])
+            .is_err());
     }
 
     #[test]

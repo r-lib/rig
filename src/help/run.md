@@ -101,6 +101,11 @@ share one environment, and changing the block creates a new one. A script
 with a block always uses its own environment, even inside a project.
 `--r-version` selects the R version, which must fit the `R` requirement.
 
+`rig proj init --script script.R` adds a block with an `R` requirement to a
+script (or creates the script), and `rig proj add --script script.R <package>`
+and `rig proj remove --script script.R <package>` edit its `[dependencies]`, so
+you do not have to write the block by hand.
+
 Like a project's lock file, the environment keeps the package versions it
 was created with. Use `--upgrade` to solve the dependencies again, with the
 latest versions that fit, or `--upgrade-package` to upgrade only some
