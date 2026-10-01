@@ -11,7 +11,7 @@ use std::process::{Command, Stdio};
 
 use clap::ArgMatches;
 use log::{debug, error, info, trace, warn};
-use simple_error::*;
+use simple_error::SimpleError;
 
 use crate::rversion::*;
 

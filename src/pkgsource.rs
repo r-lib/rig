@@ -21,8 +21,6 @@
 
 use std::error::Error;
 
-use simple_error::bail;
-
 pub mod git;
 pub mod local;
 pub mod url;

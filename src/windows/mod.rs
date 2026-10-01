@@ -21,7 +21,7 @@ use directories::BaseDirs;
 use log::{debug, error, info, trace, warn};
 use owo_colors::OwoColorize;
 use remove_dir_all::remove_dir_all;
-use simple_error::{bail, SimpleError};
+use simple_error::SimpleError;
 use whoami::{fallible::hostname, username};
 
 use crate::alias::*;

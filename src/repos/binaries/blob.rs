@@ -74,8 +74,6 @@
 use std::collections::HashMap;
 use std::error::Error;
 
-use simple_error::bail;
-
 use super::BinaryRow;
 use crate::dcf::RPackageVersion;
 

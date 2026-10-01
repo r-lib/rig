@@ -16,7 +16,7 @@ use nix::unistd::{access, AccessFlags};
 use owo_colors::OwoColorize;
 use path_clean::PathClean;
 use regex::Regex;
-use simple_error::*;
+use simple_error::SimpleError;
 use tabular::*;
 
 use crate::alias::*;

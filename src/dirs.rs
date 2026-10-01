@@ -24,7 +24,6 @@ use std::path::PathBuf;
 
 use clap::ArgMatches;
 use log::error;
-use simple_error::bail;
 use tabular::{row, Table};
 
 use crate::cache::{get_data_dir, get_download_dir, get_logs_dir, real_cache_dir};

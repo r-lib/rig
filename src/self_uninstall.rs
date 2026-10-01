@@ -14,7 +14,6 @@ use std::path::{Path, PathBuf};
 
 use clap::ArgMatches;
 use log::info;
-use simple_error::bail;
 
 use crate::install_receipt::{
     gate, read_receipt, receipt_path, refusal_message, GateResult, Receipt,

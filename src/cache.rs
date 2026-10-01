@@ -4,7 +4,6 @@ use std::sync::OnceLock;
 
 use directories::ProjectDirs;
 use log::*;
-use simple_error::bail;
 
 use crate::output::OUTPUT;
 

@@ -18,7 +18,6 @@ use clap::ArgMatches;
 use filetime::FileTime;
 use log::*;
 use reqwest::StatusCode;
-use simple_error::bail;
 
 use crate::output::OUTPUT;
 #[cfg(target_os = "windows")]

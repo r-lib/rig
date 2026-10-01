@@ -12,7 +12,6 @@ use sha2::{Digest, Sha256};
 use log::debug;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use log::error;
-use simple_error::*;
 use std::error::Error;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -309,7 +308,7 @@ pub fn get_user() -> Result<User, Box<dyn Error>> {
         // fixed in Rust 1.85 and the deprecation will be removed in 1.87.
         dir = std::env::home_dir()
             .map(|x| x.into_os_string())
-            .ok_or(SimpleError::new("Failed to find user HOME"))?;
+            .ok_or(simple_error::SimpleError::new("Failed to find user HOME"))?;
     }
 
     Ok(User {

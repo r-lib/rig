@@ -63,7 +63,6 @@ use std::time::{Duration, SystemTime};
 use futures::stream::StreamExt;
 use log::*;
 use serde::{Deserialize, Serialize};
-use simple_error::bail;
 use zstd::stream::read::Decoder as ZstdDecoder;
 
 use crate::cache::get_cache_dir;

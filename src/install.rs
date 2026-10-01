@@ -9,7 +9,6 @@ use std::sync::Arc;
 use futures::stream::{FuturesUnordered, StreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, error, info};
-use simple_error::bail;
 use tokio::fs::create_dir_all;
 use tokio::process::Command;
 use tokio::sync::Mutex;

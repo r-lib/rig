@@ -13,7 +13,6 @@ use std::str::FromStr;
 use clap::ArgMatches;
 use jiff::civil::Date;
 use jiff::{Span, Timestamp, Zoned};
-use simple_error::*;
 
 /// The first P3M snapshot. ALLPACKAGES stamps every version published before
 /// it with this date, so an earlier cutoff cannot be applied correctly.

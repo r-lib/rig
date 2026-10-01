@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use clap::ArgMatches;
 
-use simple_error::{bail, SimpleError};
+use simple_error::SimpleError;
 
 use serde_derive::Deserialize;
 use serde_derive::Serialize;

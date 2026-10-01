@@ -61,7 +61,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
-use simple_error::bail;
 
 use log::info;
 
