@@ -98,9 +98,40 @@ A `rig proj lock` run that finds an existing `rproj.lock` already satisfying
 anything. This applies to ordinary dependencies, an existing pin that still
 satisfies the manifest's version requirement is kept, even if a newer
 version has since been published, as well as to git/GitHub dependencies (see
-below). Use `rig proj lock --upgrade` to ignore the existing lock file and
+below).
+
+If `rproj.toml` changed, e.g. after `rig proj add`, rig solves the
+dependencies again, but it still keeps the versions `rproj.lock` pins, as
+long as they fit. So adding a package only changes the versions it needs
+changed, and does not upgrade the rest of the project. A platform or R
+version that is new to the lock file gets the same versions as the other
+platforms of the same R version, where possible.
+
+Use `rig proj lock --upgrade` to ignore the existing lock file and
 re-resolve every dependency instead, picking the latest version that still
 satisfies `rproj.toml`.
+
+Use `--upgrade-package` to upgrade only some packages, and keep the rest:
+
+```sh
+rig proj lock --upgrade-package cli
+rig proj lock -P cli,glue
+```
+
+The packages they depend on are only upgraded if they need to be. You can
+also give a version requirement, with the same `<package>@<version>` syntax
+as `rig proj add`, e.g. to upgrade or downgrade to a specific version:
+
+```sh
+rig proj lock -P 'cli@>= 3.6.4'
+rig proj lock -P 'cli@=3.6.2'
+```
+
+The requirement only applies to this run, it is not written to
+`rproj.toml`. Later `rig proj lock` runs keep the version it picked, as
+long as it fits `rproj.toml`. A git/GitHub dependency named in
+`--upgrade-package` is checked against its remote again, like with
+`--upgrade`.
 
 ## Excluding newer package versions
 
@@ -130,7 +161,8 @@ exclude-newer = "2025-06-01"
 ```
 
 `rproj.lock` records the cutoff in its own `[tool.rig]` table, and a lock
-solved with a different one is not reused. For a span, the lock records the
+solved with a different one is solved again. This keeps the pinned versions
+that are not newer than the new cutoff, see "Sticky lock files" above. For a span, the lock records the
 span as well, and the lock is reused as long as the span stays the same, so
 the cutoff does not move every day. Use `--upgrade` to solve again with a
 fresh cutoff.
