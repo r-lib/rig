@@ -456,7 +456,7 @@ SCRIPT
     cp s.R s.R.orig
     run rig proj add --script s.R notapackageatall
     [[ "$status" -ne 0 ]]
-    cmp s.R s.R.orig
+    [[ "$(< s.R)" == "$(< s.R.orig)" ]]
 
     # remove edits the block, a missing name is an error
     run rig proj remove --script s.R praise --no-lock
