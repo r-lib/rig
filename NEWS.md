@@ -63,6 +63,11 @@
   `rig proj sync` uses this target only if no other target matches the
   machine.
 
+* `rig run <script>` now passes every argument after the script on to the
+  script, including the ones starting with `-`, and `--`. A script that
+  starts with `#!`, e.g. `#!/usr/bin/env -S rig run`, does not need an
+  `.R` extension any more (#413).
+
 ## Windows specific changes
 
 * The rig binaries themselves are now signed on Windows, not only the

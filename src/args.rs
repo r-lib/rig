@@ -3007,20 +3007,62 @@ where
     out
 }
 
+/// Whether `arg` is an existing file that `rig run <arg>` runs as a script,
+/// same as `rig run -f <arg>`: a `.R` file, or any file that starts with
+/// `#!`, so a script with a `#!/usr/bin/env -S rig run` line can have any
+/// name.
+pub fn is_r_script_file(arg: &str) -> bool {
+    use std::io::Read;
+    let path = std::path::Path::new(arg);
+    if !path.is_file() {
+        return false;
+    }
+    if path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("r"))
+    {
+        return true;
+    }
+    let mut start = [0u8; 2];
+    std::fs::File::open(path)
+        .and_then(|mut f| f.read_exact(&mut start))
+        .is_ok_and(|_| &start == b"#!")
+}
+
+// `rig run` options that take a value, in a separate argument unless they
+// are written as `--opt=value` or `-oVALUE`.
+const RUN_VALUE_OPTS: [&str; 8] = [
+    "-r",
+    "--r-version",
+    "-t",
+    "--app-type",
+    "-e",
+    "--eval",
+    "-f",
+    "--script",
+];
+
 // Splits `rig`'s raw arguments before clap sees them.
 //
 // `rig run --cmd <command> [args...]`: unchanged, delegates to
 // `rcmd_argv()` -- a literal `--` is auto-inserted right after `--cmd` so
 // clap doesn't reinterpret the R CMD command's own flags as rig's.
 //
-// `rig run [...] -- <r-args...>` (without `--cmd`): a literal `--`
-// separates rig's own arguments (an eval/script/app name and its own
-// arguments) from raw R/`Rscript` engine flags, e.g. `rig run -- --vanilla`
-// or `rig run report --format pdf -- --vanilla`. Everything from that `--`
-// onward is pulled out *here*, before clap ever sees it, so it can never
-// collide with rig's own flags (not even the built-in `--help`/`--version`),
-// and returned separately for `sc_run()` to forward straight to the R
-// process. `--` is not otherwise meaningful to any rig command.
+// `rig run [...] <script> [args...]` and `rig run [...] -f <script>
+// [args...]`: every argument after the script goes to the script as is,
+// even if it looks like a flag of rig, or it is a `--`. This is what a
+// script with a `#!/usr/bin/env -S rig run` line needs. A `--` is inserted
+// before these arguments, so clap puts them into `command` unchanged.
+//
+// `rig run [...] -- <r-args...>` (otherwise): a literal `--` separates rig's
+// own arguments (an eval expression, or an app or project script name and
+// its own arguments) from raw R/`Rscript` engine flags, e.g.
+// `rig run -- --vanilla` or `rig run report --format pdf -- --vanilla`.
+// Everything from that `--` onward is pulled out *here*, before clap ever
+// sees it, so it can never collide with rig's own flags (not even the
+// built-in `--help`/`--version`), and returned separately for `sc_run()` to
+// forward straight to the R process. `--` is not otherwise meaningful to
+// any rig command.
 fn split_run_args<I>(argv: I) -> (Vec<std::ffi::OsString>, Vec<String>)
 where
     I: IntoIterator<Item = std::ffi::OsString>,
@@ -3032,6 +3074,23 @@ where
     }
     let mut out = Vec::new();
     let mut iter = argv.into_iter();
+    // argv[0], then global flags (none of them takes a value) up to the
+    // subcommand.
+    let mut is_run = false;
+    if let Some(arg0) = iter.next() {
+        out.push(arg0);
+    }
+    for arg in iter.by_ref() {
+        let flag = arg.to_string_lossy().starts_with('-');
+        is_run = arg.as_os_str() == OsStr::new("run");
+        out.push(arg);
+        if !flag {
+            break;
+        }
+    }
+    // Only scripts given before the first non-script positional argument
+    // count, the arguments of an app or a project script are not checked.
+    let mut seen_positional = false;
     while let Some(arg) = iter.next() {
         if arg.as_os_str() == OsStr::new("--") {
             return (
@@ -3039,7 +3098,37 @@ where
                 iter.map(|a| a.to_string_lossy().into_owned()).collect(),
             );
         }
+        let s = arg.to_string_lossy().into_owned();
         out.push(arg);
+        if !is_run || seen_positional {
+            continue;
+        }
+        let script = if s == "-f" || s == "--script" {
+            match iter.next() {
+                Some(file) => {
+                    out.push(file);
+                    true
+                }
+                None => false,
+            }
+        } else if s.starts_with("--script=") || (s.starts_with("-f") && s.len() > 2) {
+            true
+        } else if RUN_VALUE_OPTS.contains(&s.as_str()) {
+            if let Some(value) = iter.next() {
+                out.push(value);
+            }
+            false
+        } else if s.starts_with('-') {
+            false
+        } else {
+            seen_positional = true;
+            is_r_script_file(&s)
+        };
+        if script {
+            out.push(std::ffi::OsString::from("--"));
+            out.extend(iter);
+            return (out, vec![]);
+        }
     }
     (out, vec![])
 }
@@ -3393,6 +3482,142 @@ mod tests {
         let (out, r_args) = split(&["rig", "run", "-e", "1+1", "--", "--vanilla"]);
         assert_eq!(out, ["rig", "run", "-e", "1+1"]);
         assert_eq!(r_args, ["--vanilla"]);
+    }
+
+    #[test]
+    fn test_is_r_script_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let upper = dir.path().join("a.R");
+        let lower = dir.path().join("b.r");
+        let other = dir.path().join("c.Rmd");
+        let shebang = dir.path().join("d");
+        let plain = dir.path().join("e");
+        let short = dir.path().join("f");
+        for f in [&upper, &lower, &other, &plain] {
+            std::fs::write(f, "1\n").unwrap();
+        }
+        std::fs::write(&shebang, "#!/usr/bin/env -S rig run\n1\n").unwrap();
+        std::fs::write(&short, "#").unwrap();
+        assert!(is_r_script_file(upper.to_str().unwrap()));
+        assert!(is_r_script_file(lower.to_str().unwrap()));
+        assert!(is_r_script_file(shebang.to_str().unwrap()));
+        assert!(!is_r_script_file(other.to_str().unwrap()));
+        assert!(!is_r_script_file(plain.to_str().unwrap()));
+        assert!(!is_r_script_file(short.to_str().unwrap()));
+        assert!(!is_r_script_file(
+            dir.path().join("missing.R").to_str().unwrap()
+        ));
+        assert!(!is_r_script_file(dir.path().to_str().unwrap()));
+    }
+
+    // A directory with an `s.R` script and an `s` script without an
+    // extension, but with a `#!` line.
+    fn script_dir() -> (tempfile::TempDir, String, String) {
+        let dir = tempfile::tempdir().unwrap();
+        let r = dir.path().join("s.R");
+        let sh = dir.path().join("s");
+        std::fs::write(&r, "1\n").unwrap();
+        std::fs::write(&sh, "#!/usr/bin/env -S rig run\n1\n").unwrap();
+        let r = r.to_string_lossy().into_owned();
+        let sh = sh.to_string_lossy().into_owned();
+        (dir, r, sh)
+    }
+
+    #[test]
+    fn test_split_run_args_script_args() {
+        let (_dir, r, _) = script_dir();
+        let (out, r_args) = split(&["rig", "run", &r, "a", "--foo", "-x"]);
+        assert_eq!(out, ["rig", "run", &r, "--", "a", "--foo", "-x"]);
+        assert!(r_args.is_empty());
+    }
+
+    #[test]
+    fn test_split_run_args_script_gets_separator() {
+        let (_dir, r, _) = script_dir();
+        let (out, r_args) = split(&["rig", "run", &r, "a", "--", "b"]);
+        assert_eq!(out, ["rig", "run", &r, "--", "a", "--", "b"]);
+        assert!(r_args.is_empty());
+    }
+
+    #[test]
+    fn test_split_run_args_shebang_script() {
+        let (_dir, _, sh) = script_dir();
+        let (out, r_args) = split(&["rig", "run", &sh, "--help"]);
+        assert_eq!(out, ["rig", "run", &sh, "--", "--help"]);
+        assert!(r_args.is_empty());
+    }
+
+    #[test]
+    fn test_split_run_args_script_flag() {
+        let (_dir, _, sh) = script_dir();
+        let (out, _) = split(&["rig", "run", "-f", &sh, "a", "--help"]);
+        assert_eq!(out, ["rig", "run", "-f", &sh, "--", "a", "--help"]);
+        let opt = format!("--script={}", sh);
+        let (out, _) = split(&["rig", "run", &opt, "-r", "4.4"]);
+        assert_eq!(out, ["rig", "run", &opt, "--", "-r", "4.4"]);
+    }
+
+    #[test]
+    fn test_split_run_args_rig_options_before_script() {
+        let (_dir, r, _) = script_dir();
+        let (out, _) = split(&[
+            "rig",
+            "--user",
+            "run",
+            "-r",
+            "4.4",
+            "--rscript",
+            &r,
+            "--dry-run",
+        ]);
+        assert_eq!(
+            out,
+            [
+                "rig",
+                "--user",
+                "run",
+                "-r",
+                "4.4",
+                "--rscript",
+                &r,
+                "--",
+                "--dry-run"
+            ]
+        );
+        // `-e` takes a value, which is not a script, even if it names a file.
+        let (out, r_args) = split(&["rig", "run", "-e", &r, "--", "--vanilla"]);
+        assert_eq!(out, ["rig", "run", "-e", &r]);
+        assert_eq!(r_args, ["--vanilla"]);
+    }
+
+    #[test]
+    fn test_split_run_args_script_only_first_positional() {
+        // The arguments of an app are not scripts.
+        let (_dir, r, _) = script_dir();
+        let (out, r_args) = split(&["rig", "run", "myapp", &r, "--", "--vanilla"]);
+        assert_eq!(out, ["rig", "run", "myapp", &r]);
+        assert_eq!(r_args, ["--vanilla"]);
+    }
+
+    #[test]
+    fn test_run_script_args() {
+        let (_dir, r, sh) = script_dir();
+        let matches = |argv: &[&str]| {
+            let (out, _) = split(argv);
+            rig_app().try_get_matches_from(out).unwrap()
+        };
+        let m = matches(&["rig", "run", &r, "a", "--dry-run", "--", "-x"]);
+        let run = m.subcommand_matches("run").unwrap();
+        assert!(!run.get_flag("dry-run"));
+        let cmdargs: Vec<&String> = run.get_many::<String>("command").unwrap().collect();
+        assert_eq!(cmdargs, [&r, "a", "--dry-run", "--", "-x"]);
+
+        let m = matches(&["rig", "run", "--dry-run", "-f", &sh, "--help"]);
+        let run = m.subcommand_matches("run").unwrap();
+        assert!(run.get_flag("dry-run"));
+        assert_eq!(run.get_one::<String>("script"), Some(&sh));
+        let cmdargs: Vec<&String> = run.get_many::<String>("command").unwrap().collect();
+        assert_eq!(cmdargs, ["--help"]);
     }
 
     #[test]
