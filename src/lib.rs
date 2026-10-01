@@ -11,7 +11,9 @@ use std::sync::Mutex;
 static GLOBAL: System = System;
 
 use lazy_static::lazy_static;
-use simple_error::bail;
+
+#[macro_use]
+mod macros;
 
 mod alias;
 mod args;

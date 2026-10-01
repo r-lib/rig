@@ -12,7 +12,7 @@
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
-use simple_error::{bail, SimpleError};
+use simple_error::SimpleError;
 
 /// What a local path holds: everything the solver and the installer need to
 /// know about it before anything is installed.

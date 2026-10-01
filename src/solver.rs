@@ -7,7 +7,6 @@ use std::fmt;
 use log::debug;
 use pubgrub::*;
 use serde::{Deserialize, Serialize};
-use simple_error::bail;
 
 use crate::dcf::*;
 

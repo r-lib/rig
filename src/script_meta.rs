@@ -27,7 +27,6 @@ use std::path::{Path, PathBuf};
 use clap::ArgMatches;
 use log::{error, info, trace};
 use serde::{Deserialize, Serialize};
-use simple_error::bail;
 use toml_edit::DocumentMut;
 
 use crate::cache::get_cache_dir;

@@ -6,7 +6,6 @@ use std::io::Read;
 
 use deb822_fast::{Deb822, Paragraph};
 use serde::{Deserialize, Serialize};
-use simple_error::*;
 
 // ------------------------------------------------------------------------
 // Parsing DCF documents

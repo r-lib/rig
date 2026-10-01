@@ -18,7 +18,6 @@ use std::path::{Path, PathBuf};
 
 use clap::ArgMatches;
 use log::debug;
-use simple_error::*;
 use tabular::*;
 
 use crate::dcf::{parse_dcf_reader, DCFBuilt, DepVersionSpec};

@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 
 use globset::Glob;
 use log::{debug, error, warn};
-use simple_error::*;
 
 use crate::common::*;
 use crate::dcf::*;
