@@ -12,7 +12,9 @@ use tabular::*;
 mod args;
 use args::*;
 
+mod script_meta;
 mod scrun;
+mod stdout_redirect;
 use scrun::*;
 
 #[cfg(target_os = "macos")]

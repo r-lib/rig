@@ -101,6 +101,29 @@
 </details>
 
 <details>
+<summary>Can an R script declare the packages it needs?</summary>
+>
+> Yes. Put a `# /// script` comment block at the top of the script, with
+> the packages and the R version it needs, and run it with
+> `rig run script.R`:
+>
+> ```r
+> # /// script
+> # [dependencies]
+> # R = ">= 4.4"
+> # cli = "*"
+> # ///
+> cli::cli_text("Hello from {.pkg cli}!")
+> ```
+>
+> rig creates an environment for the script in its cache directory,
+> installs R and the packages if needed, and runs the script there. Later
+> runs reuse the environment. This works the same in admin and user mode;
+> if rig needs to install R, it installs it the way the current mode does.
+> See [`rig run`](reference/run.qmd) for the details.
+</details>
+
+<details>
 <summary>How is rig different from RSwitch?</summary>
 >
 > While there is a small overlap in functionality, rig and

@@ -8,7 +8,9 @@
 #
 # RVENV is derived from this script's own location, so the project directory
 # can be moved or checked out anywhere.
-RVENV=$(cd "$(dirname "$0")/.." && pwd)
+# `${0%/*}` instead of `dirname`, which would be one more process to start.
+case $0 in */*) RVENV=${0%/*} ;; *) RVENV=. ;; esac
+RVENV=$(cd "$RVENV/.." && pwd)
 export RVENV
 # R_LIBS is empty, so that .libPaths()[1] stays the project library, and
 # R_LIBS_SITE points at a path that cannot exist, because an empty one does

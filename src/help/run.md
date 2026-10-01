@@ -9,6 +9,7 @@ version.
 
 ```sh
 rig run                    # start R
+rig run <script.R>         # run an R script
 rig run -f <script-file>   # run an R script
 rig run -e <expression>    # evaluate an R expression
 rig run <pkg>::<script>    # run a script from a package's exec directory
@@ -52,6 +53,42 @@ the project's own environment instead of the default R version: it runs
 Use `--no-project` to ignore a project, or `--r-version` to select an R
 version directly.
 
+## Scripts with inline dependencies
+
+`rig run -f script.R` runs an R script (the `-f` can be omitted). A
+script can declare the packages and the R version it needs in a comment
+block at its top, so it runs anywhere without a project:
+
+```r
+# /// script
+# [dependencies]
+# R = ">= 4.4"
+# cli = "*"
+# dplyr = ">= 1.1"
+#
+# [tool.rig]
+# exclude-newer = "2026-06-01"
+# ///
+library(dplyr)
+```
+
+The block starts with a `# /// script` line and ends with a `# ///` line.
+In between, every line is a comment, and without the leading `#` they form
+a TOML document. The block takes the `[dependencies]`, `[[repository]]` and
+`[tool.rig]` tables of `rproj.toml`, with the same meaning.
+
+rig creates an environment for the script in its cache directory, and runs
+the script there, isolated from your own package library. It picks an
+installed R version that fits the `R` requirement, or installs one, then
+locks and installs the packages, the same way `rig proj sync` does for a
+project. Later runs reuse the environment. Scripts with the same block
+share one environment, and changing the block creates a new one. A script
+with a block always uses its own environment, even inside a project.
+`--r-version` selects the R version, which must fit the `R` requirement.
+
+`rig cache clean --category scripts` deletes all script environments. A
+script can start with `#!/usr/bin/env -S rig run`, to run it directly.
+
 ## Project scripts
 
 A project can give its own scripts a name, in the `[[bin]]` tables of its
@@ -93,6 +130,6 @@ library and repositories too, not just its version.
 Unlike `R -e`/`R -f`, `Rscript` never echoes back the code it runs, which
 fits scripts and pipelines better than `R`'s interactive-style echo.
 
-`--rscript` works with `-e`/`-f`, project scripts, apps and `--activate`,
+`--rscript` works with `-e`/`-f`, scripts, project scripts, apps and `--activate`,
 but not with `--cmd` (`R CMD` only exists as part of the `R` front-end) or
 `--shell` (which never runs the R binary at all).

@@ -1261,6 +1261,7 @@ pub fn rig_app() -> Command {
                             "p3m",
                             "git-mirrors",
                             "url-pkgs",
+                            "scripts",
                         ]),
                 ),
         );

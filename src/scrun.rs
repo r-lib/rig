@@ -16,7 +16,10 @@ use crate::rproj::Bin;
 use crate::rproj::RPROJ_MANIFEST_FILE;
 use crate::rvenv::{
     ensure_rvenv_files, find_project_root, project_r_wrapper, rscript_of, rvenv_sync_needed,
+    rvenv_wrapper_target,
 };
+use crate::script_meta::script_r_binary;
+use crate::stdout_redirect::StdoutToStderr;
 
 #[cfg(target_os = "macos")]
 use crate::macos::*;
@@ -42,11 +45,44 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
         return sc_run_list(args);
     }
 
-    let rbin = run_r_binary(args, dry_run)?;
+    let eval = args.get_one::<String>("eval");
+    let script = args.get_one::<String>("script");
+    let shell_or_cmd = args.get_flag("shell") || args.get_flag("cmd");
+
+    // `rig run script.R` is the same as `rig run -f script.R`.
+    let positional_script = !shell_or_cmd
+        && eval.is_none()
+        && script.is_none()
+        && cmdargs.first().is_some_and(|a| is_r_script_file(a));
+
+    // A script with inline metadata runs in its own environment, whether or
+    // not there is a project here.
+    let script_path = if shell_or_cmd || eval.is_some() {
+        None
+    } else if positional_script {
+        Some(cmdargs[0].clone())
+    } else {
+        script.cloned()
+    };
+    let script_rbin = match &script_path {
+        Some(path) => script_r_binary(Path::new(path), args, dry_run)?,
+        None => None,
+    };
+
+    let (rbin, renviron_user) = match script_rbin {
+        Some(rbin) => (rscript_if_asked(args, rbin)?, user_renviron()),
+        None => (run_r_binary(args, dry_run)?, no_project_renviron_user(args)),
+    };
     let path_prepend = activate_path_prepend(args, &rbin);
+    let direct = if dry_run {
+        None
+    } else {
+        rvenv_wrapper_target(Path::new(&rbin))?
+    };
     let env = RunEnv {
         rbin,
-        renviron_user: no_project_renviron_user(args),
+        direct,
+        renviron_user,
         path_prepend,
     };
 
@@ -58,9 +94,6 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
     if args.get_flag("cmd") {
         return sc_run_cmd(env, cmdargs, dry_run);
     }
-
-    let eval = args.get_one::<String>("eval");
-    let script = args.get_one::<String>("script");
 
     // `Rscript` rejects `-q`/`--slave`: it already behaves as if they were
     // given (and always suppresses startup messages/echo), so passing them
@@ -83,6 +116,9 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
         sc_run_eval(env, rargs, eval.to_string(), cmdargs, dry_run)
     } else if let Some(script) = script {
         sc_run_script(env, rargs, script.to_string(), cmdargs, rscript, dry_run)
+    } else if positional_script {
+        let script = cmdargs[0].clone();
+        sc_run_script(env, rargs, script, cmdargs[1..].to_vec(), rscript, dry_run)
     } else if !cmdargs.is_empty() {
         let app_type: Option<&String> = args.get_one("app-type");
         if cmdargs[0].contains("::") {
@@ -150,6 +186,14 @@ fn no_project_renviron_user(args: &ArgMatches) -> Option<PathBuf> {
     if !args.get_flag("no-project") {
         return None;
     }
+    user_renviron()
+}
+
+/// `~/.Renviron`, to use as `R_ENVIRON_USER` instead of a `.Renviron` in the
+/// current directory, which could belong to a project. `None` if
+/// `R_ENVIRON_USER` is already set (never override an explicit choice), or if
+/// the home directory cannot be determined.
+fn user_renviron() -> Option<PathBuf> {
     if std::env::var_os("R_ENVIRON_USER").is_some() {
         return None;
     }
@@ -158,10 +202,15 @@ fn no_project_renviron_user(args: &ArgMatches) -> Option<PathBuf> {
 }
 
 /// The R binary to run and the environment to run it in, bundled together
-/// because every `sc_run_*` execution path needs all three to build its
+/// because every `sc_run_*` execution path needs all of them to build its
 /// `Command`.
 struct RunEnv {
     rbin: String,
+    /// If `rbin` is an environment's `.rvenv/bin` wrapper, the real R binary
+    /// it forwards to and the variables it sets (see
+    /// `rvenv_wrapper_target`). Running these directly skips starting the
+    /// wrapper, `rbin` is still what dry runs and logs show.
+    direct: Option<(PathBuf, Vec<(String, String)>)>,
     /// `R_ENVIRON_USER` override for `--no-project` (see
     /// `no_project_renviron_user`).
     renviron_user: Option<PathBuf>,
@@ -171,13 +220,20 @@ struct RunEnv {
 }
 
 impl RunEnv {
-    /// A `Command` for `rbin`, with `R_ENVIRON_USER` and `PATH` set as
+    /// A `Command` for `rbin` (or its `direct` target), with `R_ENVIRON_USER` and `PATH` set as
     /// configured. The `PATH` change is set on this one `Command` only: it
     /// never touches the parent shell's environment, but it is inherited by
     /// this process and anything it spawns (a nested shell, or R's own
     /// `system("R ...")`).
     fn command(&self) -> Command {
-        let mut cmd = Command::new(&self.rbin);
+        let mut cmd = match &self.direct {
+            Some((target, vars)) => {
+                let mut cmd = Command::new(target);
+                cmd.envs(vars.iter().map(|(k, v)| (k, v)));
+                cmd
+            }
+            None => Command::new(&self.rbin),
+        };
         if let Some(renviron) = &self.renviron_user {
             cmd.env("R_ENVIRON_USER", renviron);
         }
@@ -227,7 +283,11 @@ fn run_r_binary(args: &ArgMatches, dry_run: bool) -> Result<String, Box<dyn Erro
             get_r_binary(&rver)?.to_string_lossy().into_owned()
         }
     };
+    rscript_if_asked(args, rbin)
+}
 
+/// `Rscript` next to `rbin` under `--rscript`, otherwise `rbin` itself.
+fn rscript_if_asked(args: &ArgMatches, rbin: String) -> Result<String, Box<dyn Error>> {
     if args.get_flag("rscript") {
         Ok(rscript_of(Path::new(&rbin))
             .to_str()
@@ -301,6 +361,8 @@ fn project_r_binary(args: &ArgMatches, dry_run: bool) -> Result<Option<String>, 
             let msg = format!("Syncing the project in {}, because {}", root.display(), why);
             OUTPUT.info(&msg);
             info!("{}", msg);
+            // stdout belongs to what `rig run` runs, not to the sync.
+            let _stdout_guard = StdoutToStderr::new();
             proj_sync(&root, &ProjSyncOptions::default(), args)?;
         }
     }
@@ -329,6 +391,15 @@ fn project_r_binary(args: &ArgMatches, dry_run: bool) -> Result<Option<String>, 
 // name could technically end in one of these, but `rig run report.R` meaning
 // anything other than the file `report.R` would be a bad surprise.
 const NOT_BIN_NAME_EXTENSIONS: [&str; 4] = [".R", ".r", ".Rmd", ".qmd"];
+
+/// Whether `arg` is an existing `.R` file, which `rig run <arg>` runs as a
+/// script, same as `rig run -f <arg>`.
+fn is_r_script_file(arg: &str) -> bool {
+    let path = Path::new(arg);
+    path.extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("r"))
+        && path.is_file()
+}
 
 /// Whether `arg` can name a `[[bin]]` in `rproj.toml`. Anything that looks
 /// like a path or like a package script is not a name, so a declared script
@@ -1166,6 +1237,24 @@ mod tests {
         let empty = OsString::new();
         let got = prepend_path(Path::new("/opt/R/4.4.1/bin"), &empty);
         assert_eq!(got, OsString::from(format!("/opt/R/4.4.1/bin{}", sep)));
+    }
+
+    #[test]
+    fn test_is_r_script_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let upper = dir.path().join("a.R");
+        let lower = dir.path().join("b.r");
+        let other = dir.path().join("c.Rmd");
+        for f in [&upper, &lower, &other] {
+            std::fs::write(f, "1\n").unwrap();
+        }
+        assert!(is_r_script_file(upper.to_str().unwrap()));
+        assert!(is_r_script_file(lower.to_str().unwrap()));
+        assert!(!is_r_script_file(other.to_str().unwrap()));
+        assert!(!is_r_script_file(
+            dir.path().join("missing.R").to_str().unwrap()
+        ));
+        assert!(!is_r_script_file(dir.path().to_str().unwrap()));
     }
 
     #[test]
