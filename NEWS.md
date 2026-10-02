@@ -127,6 +127,12 @@
 
 * New `rig proj tree` shows the dependency closure of a project as a tree.
 
+* When no version of a package matches a version requirement, e.g.
+  `dplyr = "0.13.0"`, which means `>= 0.13.0, < 0.14.0`, the error message
+  now says so, and lists the nearest versions that do exist. An unknown
+  package is now reported as not available, and the error is not printed
+  twice any more (#423).
+
 * `rig run` now uses the project environment, if you call it in a project
   directory: it starts `.rvenv/bin/R`, with the project's package library
   and the R version the project's lock file names, and it syncs the project

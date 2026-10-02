@@ -110,3 +110,18 @@ impl Default for Output {
         Self::new()
     }
 }
+
+/// An error whose message has already been shown to the user, so the
+/// top-level handler in `main` should only log it, not print it again.
+/// `Display` is the message itself, so a caller that logs or wraps the error
+/// still sees the text.
+#[derive(Debug)]
+pub struct ReportedError(pub String);
+
+impl std::fmt::Display for ReportedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::error::Error for ReportedError {}
