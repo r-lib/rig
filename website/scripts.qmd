@@ -6,7 +6,8 @@ title: "Scripts"
 declare the R version and the packages it needs in a comment block at its
 top. rig then installs R and the packages if needed, and runs the script in
 its own environment, so you can share a single `.R` file and it runs the
-same way on every machine, without a project or any setup.
+same way on every machine, without a project or any setup. A lock file next
+to the script can pin the exact R and package versions, too.
 
 ::: {.callout-note}
 ## Experimental
@@ -96,9 +97,11 @@ directory. [`rig proj remove --script`](reference/proj.qmd#rig-proj-remove)
 removes packages from the block.
 
 Both commands then set up the script's environment, so the next
-`rig run script.R` starts right away. `--no-sync` and `--no-lock` work the
-same way as for a project. If resolving the dependencies fails,
-`rig proj add --script` restores the script to what it was.
+`rig run script.R` starts right away. If the script has a
+[lock file](#lock-files), they update it, too. `--no-sync` and `--no-lock`
+work the same way as for a project. If resolving the dependencies fails,
+`rig proj add --script` restores the script, and its lock file, to what they
+were.
 
 ## The script's environment
 
@@ -112,14 +115,20 @@ When you run a script with a block, rig:
    [`rig proj sync`](reference/proj.qmd#rig-proj-sync),
 4. runs the script with that R version and library.
 
+If the script has a [lock file](#lock-files), rig skips the first two
+steps, and installs the R version and the package versions the lock file
+names instead.
+
 The environment lives in rig's cache directory, isolated from your own
 package libraries, so running a script never changes them. Later runs reuse
 the environment and start right away. Scripts with the same block share one
-environment, and changing the block creates a new one.
+environment, and changing the block creates a new one. A script with a lock
+file always gets an environment of its own.
 
 A script with a block always uses its own environment, even inside a
 project. `--r-version` (`-r`) selects the R version, which must fit the `R`
-requirement.
+requirement. For a script with a lock file, it must be one of the R
+versions in the lock file.
 
 While rig sets up the environment, it writes its messages to standard
 error, so standard output belongs to the script, and you can redirect it:
@@ -144,10 +153,17 @@ rig run --upgrade script.R
 rig run --upgrade-package cli script.R
 ```
 
+For a script with a [lock file](#lock-files), these also update the lock
+file.
+
 ## Reproducible scripts
 
-To make a script use the same package versions every time, on every
-machine, set `exclude-newer` in its `[tool.rig]` table. The solver then
+There are two ways to make a script use the same package versions every
+time: a cutoff date for CRAN packages, and a lock file.
+
+### Excluding newer packages
+
+Set `exclude-newer` in the script's `[tool.rig]` table. The solver then
 ignores CRAN package versions published after that date:
 
 ```r
@@ -165,10 +181,14 @@ ignores CRAN package versions published after that date:
 to skip packages released in the last few days. See
 [`rig proj lock`](reference/proj.qmd#rig-proj-lock) for the details.
 
-## Lock files
+This keeps everything in the script itself, but it only fixes the CRAN
+packages. The R version and git, GitHub and URL dependencies can still
+change.
 
-`exclude-newer` fixes the CRAN snapshot, but not the R version or the
-binary builds. For that, lock the script:
+### Lock files
+
+A lock file pins everything: the R version, and the exact version, build
+and download URL of every package. Lock the script with:
 
 ```sh
 rig proj lock --script script.R
@@ -194,9 +214,9 @@ still fit, and updates `script.R.lock`. To fail instead, e.g. in CI, use
 rig run --locked script.R
 ```
 
-`--upgrade` and `--upgrade-package` also update the lock file. With a lock
-file, `--r-version` must name one of the R versions in the lock file, like
-`4.6` or `4.6.1`.
+On a machine, or with an `--r-version`, that the lock file has no target
+for, `rig run` fails, and tells you how to add one with
+`rig proj lock --script`.
 
 ## Executable scripts
 
