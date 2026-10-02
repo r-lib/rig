@@ -291,6 +291,62 @@ teardown() {
     [[ "$uid" -eq "`id -u`" ]]
 }
 
+@test "pkg install system requirements" {
+    if ! rig ls | grep -q '^[* ] 4.5.1'; then
+	run rig -v add 4.5.1
+	[[ "$status" -eq 0 ]]
+    fi
+    lib="$BATS_TEST_TMPDIR/sysreqs-lib"
+    rm -rf "$lib"
+
+    # A source build of XML needs the libxml2 development files. XML has no
+    # R package dependencies, and any libxml2 will do, so it compiles on every
+    # distro. A dry run names the OS packages, and the command that installs
+    # them, but installs nothing.
+    run rig pkg install -r 4.5.1 --library "$lib" --platform source --dry-run XML
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "Checking system requirements"
+    # Whether anything is missing depends on the image.
+    echo "$output" | grep -qE "Missing [0-9]+ system package|All .* required system package"
+    [[ ! -d "$lib" ]]
+
+    # --no-sysreqs skips the check
+    run rig pkg install -r 4.5.1 --library "$lib" --platform source --dry-run --no-sysreqs XML
+    [[ "$status" -eq 0 ]]
+    [[ "$output" != *"Checking system requirements"* ]]
+
+    # The tests run as root, so rig installs the OS packages itself, and then
+    # XML compiles. Not on openSUSE Leap 15.6: its repositories cannot install
+    # libxml2-devel at all, because its readline-devel dependency conflicts
+    # with the image's newer libncurses6. Plain `zypper install` fails the
+    # same way.
+    source /etc/os-release
+    if [[ "$ID" != opensuse* ]]; then
+        run $SUDO `which rig` pkg install -r 4.5.1 --library "$lib" --platform source XML
+        [[ "$status" -eq 0 ]]
+        echo "$output" | grep -qE "Installed [0-9]+ system package|All .* required system package"
+        run R-4.5.1 -q -s -e "library(XML, lib.loc = '$lib'); cat(xmlValue(xmlRoot(xmlParse('<a>ok</a>'))))"
+        [[ "$status" -eq 0 ]]
+        [[ "$output" == *"ok"* ]]
+
+        # rig pkg doctor finds nothing missing now
+        run rig pkg doctor -r 4.5.1 --library "$lib"
+        [[ "$status" -eq 0 ]]
+        echo "$output" | grep -q "No problems found"
+    fi
+
+    # A package that needs libsodium, which none of the test images have. A
+    # missing system package is a warning, so doctor still succeeds.
+    mkdir -p "$lib/needsodium"
+    printf 'Package: needsodium\nVersion: 1.0.0\nSystemRequirements: libsodium\n' \
+        > "$lib/needsodium/DESCRIPTION"
+    run rig pkg doctor -r 4.5.1 --library "$lib"
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -qE "needsodium .* warning .* sysreqs .* needs libsodium-dev(el)?, not installed"
+    echo "$output" | grep -q "To install the missing system packages, run:"
+    echo "$output" | grep -qE "install .*libsodium-dev"
+}
+
 @test "proj init" {
     cd "$BATS_TEST_TMPDIR"
     rm -rf myproj && mkdir myproj && cd myproj

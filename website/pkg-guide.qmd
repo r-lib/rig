@@ -91,6 +91,13 @@ installed as usual. An argument is a path when it is `.`, starts with `./`,
 `../`, `~/` or `/`, or names a package file that exists, so `mypkg` still
 means the repositories' `mypkg`.
 
+On Linux, rig also installs the system libraries and tools that the
+packages need, e.g. `libcurl4-openssl-dev` for curl on Ubuntu, from their
+`SystemRequirements` fields. It does this itself if it runs as `root` or if
+`sudo` works without a password, and otherwise prints the commands to run.
+`--no-sysreqs` turns this off. See
+[`rig pkg install`](reference/pkg.qmd#rig-pkg-install) for the details.
+
 ## Listing and removing packages
 
 ```sh

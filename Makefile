@@ -299,7 +299,7 @@ README.md: README.qmd website/_partials/intro.md website/_partials/feedback.md w
 	quarto render README.qmd --to gfm
 	perl -pi -e 's{\]\(((?:reference/)?[\w-]+)\.qmd(#[\w-]*)?\)}{](https://r-lib.github.io/rig/$$1.html$$2)}g' README.md
 
-.PHONY: help readme docs docs-preview cli-reference fonts-asset
+.PHONY: help readme docs docs-preview cli-reference fonts-asset sysreqs-rules
 
 # Build the fallback font asset that rig downloads for the portable Linux R
 # builds. This is published once, to its own non-moving GitHub release tag, and
@@ -322,6 +322,15 @@ help:
 # --check`, which needs no R.
 rvenv-shim:
 	cargo xtask gen-rvenv-shim
+
+# Regenerate the embedded system requirements rules,
+# src/data/sysreqs-rules.json, from the current r-system-requirements rules on
+# GitHub. rig uses this copy when it cannot download the rules itself.
+sysreqs-rules:
+	rm -rf target/sysreqs-rules && mkdir -p target/sysreqs-rules
+	curl -fsSL https://codeload.github.com/r-hub/r-system-requirements/tar.gz/refs/heads/main | \
+	  tar xz -C target/sysreqs-rules --strip-components=1
+	cargo xtask gen-sysreqs-rules target/sysreqs-rules
 
 readme: README.md
 

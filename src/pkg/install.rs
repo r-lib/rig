@@ -172,16 +172,18 @@ pub fn sc_pkg_install(
         print_plan(&lib.tag(), &plan);
     }
 
-    if dry_run {
-        info!("--dry-run, not installing anything");
-        return Ok(());
-    }
-
     let todo: Vec<&RprojLockPackage> = plan
         .iter()
         .filter(|p| p.install)
         .map(|p| p.package)
         .collect();
+    let sysreqs = crate::sysreqs::cli_flag(args);
+
+    if dry_run {
+        crate::sysreqs::ensure(&todo, sysreqs, true)?;
+        info!("--dry-run, not installing anything");
+        return Ok(());
+    }
 
     if todo.is_empty() {
         if !json {
@@ -195,6 +197,8 @@ pub fn sc_pkg_install(
     if let Err(err) = fs::create_dir_all(&lib.path) {
         bail!("{}", library_error(&lib, err));
     }
+
+    crate::sysreqs::ensure(&todo, sysreqs, false)?;
 
     let to_download: Vec<RprojLockPackage> = todo.iter().map(|p| (*p).clone()).collect();
     download_lockfile_packages(&to_download)?;
@@ -791,6 +795,7 @@ mod tests {
             extra_groups: vec![],
             is_project: false,
             repository: None,
+            system_requirements: None,
         }
     }
 

@@ -47,6 +47,7 @@ mod rversion;
 mod script_meta;
 mod solver;
 mod stdout_redirect;
+mod sysreqs;
 mod textfmt;
 mod utils;
 use common::*;

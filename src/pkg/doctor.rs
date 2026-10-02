@@ -96,8 +96,10 @@ pub fn sc_pkg_doctor(
     let mut problems = diagnose(&contents, &syslib, &rinfo, &checks);
 
     let mut checked = contents.pkgs.len();
-    if let Some(names) = args.get_many::<String>("package") {
-        let names: Vec<&str> = names.map(|x| x.as_str()).collect();
+    let names: Option<Vec<&str>> = args
+        .get_many::<String>("package")
+        .map(|names| names.map(|x| x.as_str()).collect());
+    if let Some(names) = &names {
         for name in names.iter() {
             if !contents.pkgs.iter().any(|p| p.package == *name) {
                 bail!("{} is not installed in {}", name, lib.path.display());
@@ -107,11 +109,28 @@ pub fn sc_pkg_doctor(
         checked = names.len();
     }
 
+    // Only for the selected packages, so that the command that fixes them
+    // installs nothing else.
+    let selected: Vec<&InstalledPackage> = contents
+        .pkgs
+        .iter()
+        .filter(|p| {
+            names
+                .as_ref()
+                .is_none_or(|n| n.contains(&p.package.as_str()))
+        })
+        .collect();
+    let (sysreqs, sysreqs_fix) = sysreqs_problems(&selected);
+    if !sysreqs.is_empty() {
+        problems.extend(sysreqs);
+        sort_problems(&mut problems);
+    }
+
     if json {
         println!("{}", serde_json::to_string_pretty(&problems)?);
     } else {
         print_problems(&lib.tag(), checked, &problems);
-        print_hint(args, &problems);
+        print_hint(args, &problems, &sysreqs_fix);
     }
 
     let errors = problems
@@ -211,6 +230,9 @@ pub(crate) enum Kind {
     /// A directory that cannot be read as a package, or a package whose
     /// dependencies cannot be parsed.
     Broken,
+    /// OS packages that the package needs, according to its
+    /// `SystemRequirements`, are not installed. Linux only.
+    Sysreqs,
 }
 
 impl Kind {
@@ -226,6 +248,7 @@ impl Kind {
             Kind::Name => "name",
             Kind::Lock => "lock",
             Kind::Broken => "broken",
+            Kind::Sysreqs => "sysreqs",
         }
     }
 }
@@ -303,6 +326,12 @@ pub(crate) fn diagnose(
         });
     }
 
+    sort_problems(&mut problems);
+    problems
+}
+
+/// By package, then errors first.
+fn sort_problems(problems: &mut [Problem]) {
     problems.sort_by(|a, b| {
         a.package
             .to_lowercase()
@@ -311,7 +340,85 @@ pub(crate) fn diagnose(
             .then_with(|| a.severity.cmp(&b.severity))
             .then_with(|| a.dependency.cmp(&b.dependency))
     });
-    problems
+}
+
+/// The `sysreqs` problems of `pkgs`, one per package that needs OS packages
+/// that are not installed, and the commands that install those. Linux only,
+/// and only if the `sysreqs` setting is not `false`.
+///
+/// A missing OS package is a warning, not an error, because the rules name
+/// the development packages, e.g. `libcurl4-openssl-dev`, which a package
+/// only needs to compile. An installed package usually only needs the
+/// runtime library, e.g. `libcurl4`, so it may work fine, but it cannot be
+/// reinstalled from source.
+fn sysreqs_problems(pkgs: &[&InstalledPackage]) -> (Vec<Problem>, Vec<String>) {
+    use crate::sysreqs::{check, settings, Checked, Mode};
+
+    if !cfg!(target_os = "linux") {
+        return (vec![], vec![]);
+    }
+    let settings = match settings(None) {
+        Ok(settings) => settings,
+        Err(err) => {
+            OUTPUT.warn(&format!("Not checking system requirements: {}", err));
+            return (vec![], vec![]);
+        }
+    };
+    if settings.mode == Mode::Off {
+        return (vec![], vec![]);
+    }
+    // A manylinux binary bundles its libraries.
+    let wanted: Vec<(String, String)> = pkgs
+        .iter()
+        .filter(|p| !p.bundles_libs)
+        .filter_map(|p| {
+            p.system_requirements
+                .as_ref()
+                .map(|s| (p.package.clone(), s.clone()))
+        })
+        .collect();
+    if wanted.is_empty() {
+        return (vec![], vec![]);
+    }
+
+    let found = match check(&wanted) {
+        Ok(Checked::Missing(found)) => found,
+        Ok(Checked::Unsupported(distro)) => {
+            debug!("Not checking system requirements on {}", distro);
+            return (vec![], vec![]);
+        }
+        Ok(Checked::Installed { .. }) => return (vec![], vec![]),
+        Err(err) => {
+            OUTPUT.warn(&format!("Cannot check the system requirements: {}", err));
+            return (vec![], vec![]);
+        }
+    };
+
+    let problems = pkgs
+        .iter()
+        .filter_map(|p| {
+            let missing = found.for_package(&p.package);
+            if missing.is_empty() {
+                return None;
+            }
+            Some(Problem {
+                package: p.package.clone(),
+                version: p.version.clone(),
+                severity: Severity::Warning,
+                problem: Kind::Sysreqs,
+                dependency: None,
+                details: format!("needs {}, not installed", missing.join(", ")),
+                path: None,
+            })
+        })
+        .collect();
+    let sudo = !crate::sysreqs::install::is_root();
+    let fix = found
+        .steps(settings.update)
+        .iter()
+        .map(|s| s.display(sudo))
+        .collect();
+    (problems, fix)
 }
 
 fn check_package(
@@ -728,12 +835,18 @@ fn shell_quote(x: &str) -> String {
     format!("'{}'", escaped)
 }
 
-fn print_hint(args: &ArgMatches, problems: &[Problem]) {
-    let fixes = fix_commands(
+fn print_hint(args: &ArgMatches, problems: &[Problem], sysreqs_fix: &[String]) {
+    let mut fixes = fix_commands(
         problems,
         args.get_one::<String>("library").map(|x| x.as_str()),
         args.get_one::<String>("r-version").map(|x| x.as_str()),
     );
+    if !sysreqs_fix.is_empty() {
+        fixes.push((
+            "To install the missing system packages, run:",
+            sysreqs_fix.to_vec(),
+        ));
+    }
     for (what, cmds) in fixes {
         println!();
         println!("{}", what);
@@ -762,6 +875,41 @@ mod tests {
         let dir = lib.join(dir);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("DESCRIPTION"), desc).unwrap();
+    }
+
+    /// The fields the `sysreqs` check needs: the `SystemRequirements` text,
+    /// and whether the package is a manylinux binary that bundles its
+    /// libraries.
+    #[test]
+    fn reads_system_requirements() {
+        let (_tmp, lib) = library(&[
+            (
+                "curl",
+                "Package: curl\nVersion: 8.0.0\nSystemRequirements: libcurl (>= 7.73): \
+                 libcurl-devel (rpm) or\n    libcurl4-openssl-dev (deb)\n",
+            ),
+            (
+                "curlml",
+                "Package: curlml\nVersion: 8.0.0\nSystemRequirements: libcurl\n\
+                 Platform: x86_64-pc-linux-gnu-manylinux_2_27\n",
+            ),
+            (
+                "curlsl",
+                "Package: curlsl\nVersion: 8.0.0\nSystemRequirements: libcurl\n\
+                 Built/SystemLibs: openssl-libs 1.1.1k-17.el8_10\n",
+            ),
+            ("cli", "Package: cli\nVersion: 3.6.6\n"),
+        ]);
+        let get = |name: &str| lib.pkgs.iter().find(|p| p.package == name).unwrap();
+        assert_eq!(
+            get("curl").system_requirements.as_deref(),
+            Some("libcurl (>= 7.73): libcurl-devel (rpm) or libcurl4-openssl-dev (deb)")
+        );
+        assert!(!get("curl").bundles_libs);
+        assert!(get("curlml").bundles_libs);
+        assert!(get("curlsl").bundles_libs);
+        assert_eq!(get("cli").system_requirements, None);
+        assert!(!get("cli").bundles_libs);
     }
 
     const NONE: Checks = Checks {

@@ -140,6 +140,34 @@ installation fails.
 build, which is useful when compiling is expensive; it takes the number of
 versions to look back through, e.g. `--prefer-binary=5`, and defaults to 3.
 
+## System requirements
+
+On Linux, many R packages need system libraries and tools, e.g. `libcurl` for the
+curl package, and a source package needs their development files to compile. A
+package lists these in the `SystemRequirements` field of its `DESCRIPTION`. Before
+installing, rig matches this field against the [r-system-requirements](https://github.com/r-hub/r-system-requirements) rules for
+your Linux distribution, checks which of the needed OS packages are installed
+already, and installs the missing ones with the distribution's package manager
+(`apt-get`, `dnf`, `yum`, `zypper` or `apk`).
+
+This is only needed for source packages and for binaries built for one
+distribution. A `manylinux` binary has its libraries built in, so rig does not
+look at its system requirements. On macOS and Windows there are no system
+requirements to install.
+
+rig installs the OS packages itself if it runs as `root`, or if `sudo` works without
+a password. Otherwise it prints the commands that would install them, and
+carries on: the R packages may still install, and if one fails, rig names the
+system packages it was missing. This is the same in [admin mode and in user mode](../admin-vs-user-mode.qmd):
+OS packages always need administrator rights, even if rig does not need them for
+anything else.
+
+`--no-sysreqs` turns this off for one run, and `--sysreqs` turns it on even if the
+`sysreqs` [config](config.qmd) entry turns it off. With `--dry-run`, rig shows the missing OS
+packages and the commands, and installs nothing. Set the `sysreqs` [config](config.qmd)
+entry to `print` to always only show them. See [`rig config`](config.qmd) for the `sysreqs`,
+`sysreqs-sudo`, `sysreqs-update` and `sysreqs-rules-url` entries.
+
 ## Excluding newer package versions
 
 `--exclude-newer` ignores CRAN and Bioconductor package versions published

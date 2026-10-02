@@ -465,6 +465,11 @@ pub struct RPackageRegistry {
     repositories: RefCell<HashMap<(RPackageName, RegistryPackageVersion), RepoId>>,
     // The Bioconductor release the loader searches besides CRAN, if any.
     bioc_version: Option<String>,
+    // The `SystemRequirements` of every package version we know one for, by
+    // version rather than by artifact: the source and binary builds of a
+    // version share it. Never read by the solver itself, only by the lockfile
+    // writer, see `RprojLockTarget::from_solution`.
+    system_requirements: RefCell<HashMap<(RPackageName, RPackageVersion), String>>,
     // How many newest binaries win. Can be None.
     prefer_binary: Option<usize>,
     // Passed over newer version that does not have a binary.
@@ -705,6 +710,30 @@ impl RPackageRegistry {
             .cloned()
     }
 
+    /// Record the `SystemRequirements` of `pkg` `version`.
+    pub fn set_system_requirements(
+        &self,
+        pkg: &RPackageName,
+        version: &RPackageVersion,
+        text: String,
+    ) {
+        self.system_requirements
+            .borrow_mut()
+            .insert((pkg.clone(), version.clone()), text);
+    }
+
+    /// The `SystemRequirements` of `pkg` `version`, when it has any.
+    pub fn system_requirements(
+        &self,
+        pkg: &RPackageName,
+        version: &RPackageVersion,
+    ) -> Option<String> {
+        self.system_requirements
+            .borrow()
+            .get(&(pkg.clone(), version.clone()))
+            .cloned()
+    }
+
     pub fn add_package_version(
         &self,
         pkg: RPackageName,
@@ -801,6 +830,9 @@ impl RPackageRegistry {
                             self.linkingto_names
                                 .borrow_mut()
                                 .insert((pkg.clone(), src.clone()), lt_names.clone());
+                        }
+                        if let Some(sysreqs) = &package.system_requirements {
+                            self.set_system_requirements(pkg, &package.version, sysreqs.clone());
                         }
                         self.add_package_version(pkg.clone(), src, ranges.clone());
                         for bin in artifacts.binaries.iter().filter(|b| {

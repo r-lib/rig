@@ -107,7 +107,7 @@ const REQUIRED_COLUMNS: [&str; 7] = [
 /// P3M's generic glibc Linux build, used for any Linux without a specific
 /// target. This is the one target name we have to know by name, because P3M
 /// lists it against the distro it is built on rather than the ones it serves.
-const MANYLINUX: &str = "manylinux_2_28";
+pub(crate) const MANYLINUX: &str = "manylinux_2_28";
 
 /// One `pkg@version=sha256` entry from the `linkingto` column: a dependency
 /// source version this binary was compiled against.
@@ -1139,7 +1139,7 @@ fn ppm_distribution(distro: &str) -> Option<&'static str> {
 /// Undo `detect_platform()`'s dot-stripping for SUSE versions, which reports
 /// openSUSE 15.6 as `156` (see the workaround in `platform.rs`). P3M spells the
 /// release `15.6`.
-fn suse_version_with_dot(version: &str) -> String {
+pub(crate) fn suse_version_with_dot(version: &str) -> String {
     if !version.contains('.') && version.len() >= 3 && version.chars().all(|c| c.is_ascii_digit()) {
         format!("{}.{}", &version[..2], &version[2..])
     } else {

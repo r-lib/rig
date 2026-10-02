@@ -56,6 +56,29 @@ fn no_bioc_arg() -> Arg {
         .required(false)
 }
 
+/// `--sysreqs` and `--no-sysreqs`, for the commands that install packages.
+/// Linux only: elsewhere there are no system requirements to install.
+fn sysreqs_args() -> [Arg; 2] {
+    [
+        Arg::new("sysreqs")
+            .help(
+                "Install the system packages the R packages need, even if the\n\
+                sysreqs setting turns this off",
+            )
+            .long("sysreqs")
+            .num_args(0)
+            .required(false)
+            .conflicts_with("no-sysreqs")
+            .platform("linux"),
+        Arg::new("no-sysreqs")
+            .help("Do not install the system packages the R packages need")
+            .long("no-sysreqs")
+            .num_args(0)
+            .required(false)
+            .platform("linux"),
+    ]
+}
+
 fn reference_mode() -> bool {
     std::env::var_os("RIG_GEN_REFERENCE").is_some()
 }
@@ -2052,7 +2075,8 @@ pub fn rig_app() -> Command {
                         .long("dry-run")
                         .num_args(0)
                         .required(false),
-                ),
+                )
+                .args(sysreqs_args()),
         );
     let cmd_renv = Command::new("renv")
         .about(ABOUT_PROJ_RENV)
@@ -2332,6 +2356,7 @@ pub fn rig_app() -> Command {
                         .num_args(0)
                         .required(false),
                 )
+                .args(sysreqs_args())
                 .arg(
                     Arg::new("dev")
                         .help("Include dev (development) dependencies")

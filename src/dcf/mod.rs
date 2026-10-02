@@ -408,6 +408,24 @@ pub struct Package {
     // the repository (CRAN or a Bioconductor release) the solver found this
     // version in. Unset outside the solver.
     pub repository: Option<RepoId>,
+    // the `SystemRequirements` field, with its whitespace collapsed (see
+    // [`normalize_system_requirements`]). Matched against the
+    // r-system-requirements rules to find the OS packages a Linux install
+    // needs.
+    pub system_requirements: Option<String>,
+}
+
+/// Collapse the whitespace of a `SystemRequirements` field, including the
+/// newlines of DCF continuation lines, so that a rule pattern like
+/// `\bGNU make\b` matches no matter where the field was wrapped. An empty
+/// field is `None`.
+pub fn normalize_system_requirements(text: &str) -> Option<String> {
+    let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if text.is_empty() || text == "NA" {
+        None
+    } else {
+        Some(text)
+    }
 }
 
 impl Package {
@@ -435,6 +453,7 @@ impl Package {
             sha256sum: None,
             archived: None,
             repository: None,
+            system_requirements: None,
         }
     }
 
@@ -466,6 +485,9 @@ impl Package {
         let filesize = pkg.get("Filesize").and_then(|s| s.parse::<u64>().ok());
         let sha256sum = pkg.get("SHA256Original").map(|s| s.to_string());
         let archived = pkg.get("Archived").map(|a| a.to_string());
+        let system_requirements = pkg
+            .get("SystemRequirements")
+            .and_then(normalize_system_requirements);
 
         Ok(Package {
             name,
@@ -484,6 +506,7 @@ impl Package {
             sha256sum,
             archived,
             repository: None,
+            system_requirements,
         })
     }
 }
