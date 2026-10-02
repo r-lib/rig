@@ -20,7 +20,7 @@ use clap::ArgMatches;
 use log::debug;
 use tabular::*;
 
-use crate::dcf::{parse_dcf_reader, DCFBuilt, DepVersionSpec};
+use crate::dcf::{normalize_system_requirements, parse_dcf_reader, DCFBuilt, DepVersionSpec};
 use crate::install::{
     parse_linkingto, REMOTE_HASH_FIELD, REMOTE_LINKINGTO_FIELD, REMOTE_SHA_FIELD,
 };
@@ -200,6 +200,14 @@ pub(crate) struct InstalledPackage {
     /// The dependency entries that could not be parsed, as error messages.
     /// They are left out of `deps`.
     pub(crate) deps_errors: Vec<String>,
+    /// The `SystemRequirements` field, with its whitespace collapsed.
+    pub(crate) system_requirements: Option<String>,
+    /// Whether the package bundles the system libraries it links to, i.e. it
+    /// is a P3M manylinux (or musllinux) binary. Those have a `Platform`
+    /// field like `x86_64-pc-linux-gnu-manylinux_2_27`, and list the bundled
+    /// libraries in `Built/SystemLibs`. Such a package needs none of its
+    /// `SystemRequirements` installed.
+    pub(crate) bundles_libs: bool,
 }
 
 #[cfg(test)]
@@ -238,6 +246,8 @@ impl InstalledPackage {
             remote_sha: remote_sha.map(|x| x.to_string()),
             deps: vec![],
             deps_errors: vec![],
+            system_requirements: None,
+            bundles_libs: false,
         }
     }
 }
@@ -397,6 +407,14 @@ fn read_package(dir: &Path, dir_name: &str) -> Result<Option<InstalledPackage>, 
         }
     }
 
+    let system_requirements = para
+        .get("SystemRequirements")
+        .and_then(normalize_system_requirements);
+    let bundles_libs = para.get("Built/SystemLibs").is_some()
+        || para
+            .get("Platform")
+            .is_some_and(|p| p.contains("manylinux") || p.contains("musllinux"));
+
     Ok(Some(InstalledPackage {
         package,
         version,
@@ -411,6 +429,8 @@ fn read_package(dir: &Path, dir_name: &str) -> Result<Option<InstalledPackage>, 
         remote_sha,
         deps,
         deps_errors,
+        system_requirements,
+        bundles_libs,
     }))
 }
 

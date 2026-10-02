@@ -212,6 +212,98 @@ fn install_steps(
     steps
 }
 
+/// What [`check`] found.
+#[derive(Debug)]
+pub enum Checked {
+    /// The rules do not know the local Linux distribution, e.g.
+    /// `amzn 2023`.
+    Unsupported(String),
+    /// Every OS package that the R packages need is installed. `needed` is
+    /// empty if they need none.
+    Installed {
+        needed: Vec<String>,
+    },
+    Missing(Missing),
+}
+
+/// The OS packages that are missing, and the rules that need them.
+#[derive(Debug)]
+pub struct Missing {
+    pub system: SysreqsSystem,
+    /// The rules that need at least one of `missing`.
+    pub rules: Vec<MatchedRule>,
+    pub missing: Vec<String>,
+}
+
+impl Missing {
+    /// The R packages that need the OS package `os`, sorted.
+    pub fn needed_by(&self, os: &str) -> Vec<&str> {
+        let mut out: Vec<&str> = self
+            .rules
+            .iter()
+            .filter(|r| r.packages.iter().any(|p| p == os))
+            .flat_map(|r| r.r_packages.iter().map(|p| p.as_str()))
+            .collect();
+        out.sort();
+        out.dedup();
+        out
+    }
+
+    /// The missing OS packages that the R package `pkg` needs.
+    pub fn for_package(&self, pkg: &str) -> Vec<String> {
+        let rules: Vec<&MatchedRule> = self
+            .rules
+            .iter()
+            .filter(|r| r.r_packages.iter().any(|p| p == pkg))
+            .collect();
+        collect(&rules, |r| &r.packages)
+            .into_iter()
+            .filter(|p| self.missing.contains(p))
+            .collect()
+    }
+
+    /// The commands that install the missing OS packages.
+    pub fn steps(&self, update: bool) -> Vec<Step> {
+        let rules: Vec<&MatchedRule> = self.rules.iter().collect();
+        install_steps(&self.system, &rules, &self.missing, update)
+    }
+}
+
+/// Which of the OS packages `packages` need, given as `(R package,
+/// SystemRequirements)`, are missing on this machine. Only works on Linux,
+/// elsewhere it reports an unsupported system.
+pub fn check(packages: &[(String, String)]) -> Result<Checked, Box<dyn Error>> {
+    let platform = detect_platform()?;
+    let Some(system) = SysreqsSystem::from_os_version(&platform) else {
+        return Ok(Checked::Unsupported(format!(
+            "{} {}",
+            platform.distro.as_deref().unwrap_or("unknown"),
+            platform.version.as_deref().unwrap_or("")
+        )));
+    };
+    info!("Checking system requirements on {}", system.display());
+    let db = RuleDb::load()?;
+    let matched = resolve(&db, &system, packages);
+    let all: Vec<&MatchedRule> = matched.iter().collect();
+    let needed = collect(&all, |r| &r.packages);
+    if needed.is_empty() {
+        return Ok(Checked::Installed { needed });
+    }
+    let missing = installed::missing(&system, &needed)?;
+    if missing.is_empty() {
+        return Ok(Checked::Installed { needed });
+    }
+    let rules = matched
+        .into_iter()
+        .filter(|r| r.packages.iter().any(|p| missing.contains(p)))
+        .collect();
+    Ok(Checked::Missing(Missing {
+        system,
+        rules,
+        missing,
+    }))
+}
+
 /// Install the OS packages that `packages` need and that are missing, before
 /// rig installs `packages` themselves. Does nothing except on Linux.
 ///
@@ -236,8 +328,10 @@ pub fn ensure(
         return Ok(());
     }
 
+    // Before saying anything about checking: on a distribution the rules do
+    // not know there is nothing to check.
     let platform = detect_platform()?;
-    let Some(system) = SysreqsSystem::from_os_version(&platform) else {
+    if SysreqsSystem::from_os_version(&platform).is_none() {
         let msg = format!(
             "Not installing system requirements: rig does not know the system \
              packages of this Linux distribution ({} {})",
@@ -249,21 +343,32 @@ pub fn ensure(
         }
         info!("{}", msg);
         return Ok(());
-    };
-
-    OUTPUT.status("Checking system requirements");
-    info!("Checking system requirements on {}", system.display());
-    let db = RuleDb::load()?;
-    let matched = resolve(&db, &system, &wanted);
-    let all: Vec<&MatchedRule> = matched.iter().collect();
-    let needed = collect(&all, |r| &r.packages);
-    if needed.is_empty() {
-        info!("No system packages needed");
-        return Ok(());
     }
 
-    let missing = match installed::missing(&system, &needed) {
-        Ok(missing) => missing,
+    OUTPUT.status("Checking system requirements");
+    let found = match check(&wanted) {
+        // Checked above already.
+        Ok(Checked::Unsupported(_)) => return Ok(()),
+        Ok(Checked::Installed { needed }) => {
+            if !needed.is_empty() {
+                let word = if needed.len() == 1 {
+                    "package is"
+                } else {
+                    "packages are"
+                };
+                OUTPUT.success(&format!(
+                    "All {} required system {} installed",
+                    needed.len(),
+                    word
+                ));
+            }
+            info!(
+                "All system requirements are installed: {}",
+                needed.join(", ")
+            );
+            return Ok(());
+        }
+        Ok(Checked::Missing(found)) => found,
         Err(e) => {
             let msg = format!("Cannot check which system packages are installed: {}", e);
             OUTPUT.warn(&msg);
@@ -271,48 +376,26 @@ pub fn ensure(
             return Ok(());
         }
     };
-    if missing.is_empty() {
-        let word = if needed.len() == 1 {
-            "package is"
-        } else {
-            "packages are"
-        };
-        OUTPUT.success(&format!(
-            "All {} required system {} installed",
-            needed.len(),
-            word
-        ));
-        info!(
-            "All system requirements are installed: {}",
-            needed.join(", ")
-        );
-        return Ok(());
-    }
 
-    let rules: Vec<&MatchedRule> = matched
-        .iter()
-        .filter(|r| r.packages.iter().any(|p| missing.contains(p)))
-        .collect();
-    remember_missing(&rules, &missing);
+    let rules: Vec<&MatchedRule> = found.rules.iter().collect();
+    let missing = &found.missing;
+    remember_missing(&rules, missing);
     let word = if missing.len() == 1 {
         "package"
     } else {
         "packages"
     };
     OUTPUT.status(&format!("Missing {} system {}:", missing.len(), word));
-    for os in &missing {
-        let mut needed_by: Vec<&str> = rules
-            .iter()
-            .filter(|r| r.packages.contains(os))
-            .flat_map(|r| r.r_packages.iter().map(|p| p.as_str()))
-            .collect();
-        needed_by.sort();
-        needed_by.dedup();
-        OUTPUT.println(&format!("  {} (for {})", os, needed_by.join(", ")));
+    for os in missing {
+        OUTPUT.println(&format!(
+            "  {} (for {})",
+            os,
+            found.needed_by(os).join(", ")
+        ));
     }
     info!("Missing system packages: {}", missing.join(", "));
 
-    let steps = install_steps(&system, &rules, &missing, settings.update);
+    let steps = found.steps(settings.update);
     let print_only = dry_run || settings.mode == Mode::Print;
     let privilege = if print_only {
         Privilege::None

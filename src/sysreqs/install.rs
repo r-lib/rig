@@ -31,12 +31,12 @@ pub enum SudoSetting {
 }
 
 #[cfg(unix)]
-fn is_root() -> bool {
+pub fn is_root() -> bool {
     nix::unistd::geteuid().is_root()
 }
 
 #[cfg(not(unix))]
-fn is_root() -> bool {
+pub fn is_root() -> bool {
     false
 }
 

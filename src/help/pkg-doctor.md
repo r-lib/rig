@@ -64,6 +64,8 @@ Warnings:
 * `lock`: a `00LOCK*` directory, left behind by an interrupted installation.
 * `broken`: a directory without a readable `DESCRIPTION` file, or a package
   whose dependencies cannot be parsed.
+* `sysreqs`: Linux only. OS packages that the package needs, according to its
+  `SystemRequirements` field, are not installed. See below.
 
 `--dev` also checks the `Suggests` and `Enhances` dependencies. A missing or
 too old `Suggests` or `Enhances` dependency is a warning. `Suggests` are
@@ -86,6 +88,23 @@ package also needs it in `Depends` or `Imports`.
 Dependencies are looked up in the library first, then in the system library
 of the R version, which holds the base and recommended packages. The base
 packages always count as installed.
+
+## System requirements
+
+On Linux rig matches the `SystemRequirements` field of each package against
+the [r-system-requirements](https://github.com/r-hub/r-system-requirements)
+rules for your distribution, the same way [`rig pkg install`](#rig-pkg-install)
+does, and reports the OS packages that are not installed. After the table it
+prints the command that installs them.
+
+This is a warning, not an error. The rules name the development packages,
+e.g. `libcurl4-openssl-dev`, which a package needs to compile from source.
+An installed package usually only needs the runtime library, e.g. `libcurl4`,
+so it may work fine without them, but it cannot be reinstalled from source.
+
+A manylinux binary package bundles the libraries it needs, so rig does not
+check its system requirements. Set the `sysreqs` [config](config.qmd) entry to
+`false` to turn this check off.
 
 ## Which library
 
