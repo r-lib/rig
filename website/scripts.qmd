@@ -191,6 +191,30 @@ A file that starts with `#!` is a script for `rig run`, whatever its name,
 so it does not need an `.R` extension. You can also put rig's own flags in
 the `#!` line, e.g. `#!/usr/bin/env -S rig run --rscript`.
 
+### Script commands
+
+Windows ignores `#!` lines. Instead, `rig run --install` adds a command for
+the script to the directory of rig's quick links, which is on your `PATH`.
+This works on macOS and Linux, too, and you can then run the script from
+any directory:
+
+```sh
+rig run --install hello.R
+hello
+```
+
+The command is called after the script, without the `.R` extension; use
+`--name` to choose another name, e.g. `rig run --install hello.R --name hi`.
+In admin mode, adding a command needs `sudo` or an administrator account.
+
+The command runs the script with `rig run`, using its full path, so do not
+move the script after you add the command. The rig flags of the script's
+`#!` line, e.g. `--rscript`, apply on every platform, including Windows.
+rig reads them when it adds the command, so run `rig run --install` again
+after you change the `#!` line.
+
+`rig run --uninstall hello` removes the command.
+
 On Windows, `rig system script-assoc` makes `.R` files run with rig from
 `cmd` and PowerShell, e.g. `hello.R a b`, or just `hello a b` if the script
 is on the `PATH`. It changes how `.R` files open for the current user, and

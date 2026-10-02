@@ -1499,6 +1499,39 @@ pub fn rig_app() -> Command {
                 .conflicts_with_all(["upgrade", "eval", "cmd", "list", "shell", "app-type"]),
         )
         .arg(
+            Arg::new("install")
+                .help("Add a command for this R script to the quick-link directory")
+                .long("install")
+                .value_name("SCRIPT")
+                .num_args(1)
+                .required(false)
+                .conflicts_with_all([
+                    "eval", "script", "cmd", "list", "shell", "app-type", "command", "uninstall",
+                    "upgrade", "upgrade-package",
+                ]),
+        )
+        .arg(
+            Arg::new("name")
+                .help("Name of the command that --install adds (default: script name without .R)")
+                .long("name")
+                .value_name("NAME")
+                .num_args(1)
+                .required(false)
+                .requires("install"),
+        )
+        .arg(
+            Arg::new("uninstall")
+                .help("Remove a command that --install added")
+                .long("uninstall")
+                .value_name("NAME")
+                .num_args(1)
+                .required(false)
+                .conflicts_with_all([
+                    "eval", "script", "cmd", "list", "shell", "app-type", "command",
+                    "upgrade", "upgrade-package",
+                ]),
+        )
+        .arg(
             Arg::new("command")
                 .help("R script, project script name, project or R CMD command to run, with parameters")
                 .required(false)
@@ -3071,9 +3104,12 @@ pub fn is_r_script_file(arg: &str) -> bool {
 
 // `rig run` options that take a value, in a separate argument unless they
 // are written as `--opt=value` or `-oVALUE`.
-const RUN_VALUE_OPTS: [&str; 8] = [
+const RUN_VALUE_OPTS: [&str; 11] = [
     "-r",
     "--r-version",
+    "--install",
+    "--uninstall",
+    "--name",
     "-t",
     "--app-type",
     "-e",
@@ -3616,6 +3652,17 @@ mod tests {
         let opt = format!("--script={}", sh);
         let (out, _) = split(&["rig", "run", &opt, "-r", "4.4"]);
         assert_eq!(out, ["rig", "run", &opt, "--", "-r", "4.4"]);
+    }
+
+    #[test]
+    fn test_split_run_args_install_takes_the_script_as_value() {
+        let (_dir, r, _) = script_dir();
+        let (out, _) = split(&["rig", "run", "--install", &r, "--name", "hi"]);
+        assert_eq!(out, ["rig", "run", "--install", &r, "--name", "hi"]);
+        let (out, _) = split(&["rig", "run", "--name", "hi", "--install", &r]);
+        assert_eq!(out, ["rig", "run", "--name", "hi", "--install", &r]);
+        let (out, _) = split(&["rig", "run", "--uninstall", "hi"]);
+        assert_eq!(out, ["rig", "run", "--uninstall", "hi"]);
     }
 
     #[test]

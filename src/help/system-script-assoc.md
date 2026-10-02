@@ -11,7 +11,9 @@ as `hello`. It runs `rig run -f <file>` for a `.R` file.
 
 This also changes what happens when you double-click a `.R` file: it runs
 the script, instead of opening it in RStudio, Positron, RGui or another
-editor.
+editor. If you only need to run a few scripts by name, use
+[`rig run --install`](run.qmd) instead, it does not change how `.R` files
+open.
 
 If you chose an app for `.R` files in the *Open with* dialog of Windows,
 then Windows uses that app, and rig cannot change it. rig warns about

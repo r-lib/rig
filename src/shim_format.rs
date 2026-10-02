@@ -17,15 +17,27 @@
 //   [ target_len: u32 LE ][ marker_len: u32 LE ][ env_len: u32 LE ]
 //   [ MAGIC_V2: 8 bytes ]
 //
+// V3 (`RIGSHIM3`, adds a block of leading arguments — used by the script
+// launchers `rig run --install` writes, which forward to `rig.exe` with
+// `run -- <script>` in front of the user's own arguments):
+//   [ template bytes ][ target path, UTF-8 ][ marker, UTF-8 (may be empty) ]
+//   [ env block ][ args block ]
+//   [ target_len: u32 LE ][ marker_len: u32 LE ][ env_len: u32 LE ]
+//   [ args_len: u32 LE ][ MAGIC_V3: 8 bytes ]
+//
 // Env block: zero or more entries back-to-back, each
 //   [ key_len: u16 LE ][ key, UTF-8 ][ val_len: u16 LE ][ val, UTF-8 ]
 // parsed by consuming entries until `env_len` bytes are used up.
+//
+// Args block: zero or more entries back-to-back, each
+//   [ arg_len: u16 LE ][ arg, UTF-8 ]
+// parsed by consuming entries until `args_len` bytes are used up.
 //
 // `target` is the absolute path of the real `R.exe`/`Rscript.exe` to run.
 // `marker` is only non-empty for the default-version links (`R.exe`,
 // `RS.exe`, `Rscript.exe`); it records the rig version/alias name that is
 // currently the default, the same thing the old `::<ver>` first line in
-// `R.bat` used to record.
+// `R.bat` used to record. Script launchers use `script:<script path>`.
 
 use std::error::Error;
 use std::fs::File;
@@ -34,8 +46,10 @@ use std::path::Path;
 
 pub const MAGIC_V1: &[u8; 8] = b"RIGSHIM1";
 pub const MAGIC_V2: &[u8; 8] = b"RIGSHIM2";
+pub const MAGIC_V3: &[u8; 8] = b"RIGSHIM3";
 const TRAILER_LEN_V1: u64 = 4 + 4 + 8;
 const TRAILER_LEN_V2: u64 = 4 + 4 + 4 + 8;
+const TRAILER_LEN_V3: u64 = 4 + 4 + 4 + 4 + 8;
 
 pub struct ShimFooter {
     pub target: String,
@@ -43,6 +57,9 @@ pub struct ShimFooter {
     pub marker: String,
     #[allow(dead_code)] // read by src/shim/main.rs; not yet by the `rig` binary
     pub env: Vec<(String, String)>,
+    // Arguments to pass to `target` before the shim's own arguments.
+    #[allow(dead_code)] // read by src/shim/main.rs; not yet by the `rig` binary
+    pub args: Vec<String>,
 }
 
 #[allow(dead_code)] // only used by the `rig` binary, not the shim itself
@@ -67,13 +84,7 @@ pub fn build_shim_bytes_env(
     marker: &str,
     envs: &[(String, String)],
 ) -> Vec<u8> {
-    let mut env_block = Vec::new();
-    for (k, v) in envs {
-        env_block.extend_from_slice(&(k.len() as u16).to_le_bytes());
-        env_block.extend_from_slice(k.as_bytes());
-        env_block.extend_from_slice(&(v.len() as u16).to_le_bytes());
-        env_block.extend_from_slice(v.as_bytes());
-    }
+    let env_block = env_block(envs);
     let mut out =
         Vec::with_capacity(template.len() + target.len() + marker.len() + env_block.len() + 20);
     out.extend_from_slice(template);
@@ -85,6 +96,66 @@ pub fn build_shim_bytes_env(
     out.extend_from_slice(&(env_block.len() as u32).to_le_bytes());
     out.extend_from_slice(MAGIC_V2);
     out
+}
+
+fn env_block(envs: &[(String, String)]) -> Vec<u8> {
+    let mut block = Vec::new();
+    for (k, v) in envs {
+        block.extend_from_slice(&(k.len() as u16).to_le_bytes());
+        block.extend_from_slice(k.as_bytes());
+        block.extend_from_slice(&(v.len() as u16).to_le_bytes());
+        block.extend_from_slice(v.as_bytes());
+    }
+    block
+}
+
+// Same as `build_shim_bytes_env`, but also bakes in a list of arguments the
+// shim passes to `target` before its own arguments.
+#[allow(dead_code)] // only used by the `rig` binary, not the shim itself
+pub fn build_shim_bytes_args(
+    template: &[u8],
+    target: &str,
+    marker: &str,
+    envs: &[(String, String)],
+    args: &[String],
+) -> Vec<u8> {
+    let env_block = env_block(envs);
+    let mut args_block = Vec::new();
+    for a in args {
+        args_block.extend_from_slice(&(a.len() as u16).to_le_bytes());
+        args_block.extend_from_slice(a.as_bytes());
+    }
+    let mut out = Vec::with_capacity(
+        template.len() + target.len() + marker.len() + env_block.len() + args_block.len() + 24,
+    );
+    out.extend_from_slice(template);
+    out.extend_from_slice(target.as_bytes());
+    out.extend_from_slice(marker.as_bytes());
+    out.extend_from_slice(&env_block);
+    out.extend_from_slice(&args_block);
+    out.extend_from_slice(&(target.len() as u32).to_le_bytes());
+    out.extend_from_slice(&(marker.len() as u32).to_le_bytes());
+    out.extend_from_slice(&(env_block.len() as u32).to_le_bytes());
+    out.extend_from_slice(&(args_block.len() as u32).to_le_bytes());
+    out.extend_from_slice(MAGIC_V3);
+    out
+}
+
+fn parse_args_block(mut data: &[u8]) -> Option<Vec<String>> {
+    let mut args = Vec::new();
+    while !data.is_empty() {
+        if data.len() < 2 {
+            return None;
+        }
+        let len = u16::from_le_bytes(data[0..2].try_into().unwrap()) as usize;
+        data = &data[2..];
+        if data.len() < len {
+            return None;
+        }
+        args.push(String::from_utf8(data[..len].to_vec()).ok()?);
+        data = &data[len..];
+    }
+    Some(args)
 }
 
 fn parse_env_block(mut data: &[u8]) -> Option<Vec<(String, String)>> {
@@ -122,6 +193,54 @@ pub fn read_shim_footer(path: &Path) -> Result<Option<ShimFooter>, Box<dyn Error
     let mut magic = [0u8; 8];
     f.seek(SeekFrom::End(-8))?;
     f.read_exact(&mut magic)?;
+
+    if magic == *MAGIC_V3 {
+        if file_len < TRAILER_LEN_V3 {
+            return Ok(None);
+        }
+        let mut trailer = [0u8; TRAILER_LEN_V3 as usize];
+        f.seek(SeekFrom::End(-(TRAILER_LEN_V3 as i64)))?;
+        f.read_exact(&mut trailer)?;
+
+        let target_len = u32::from_le_bytes(trailer[0..4].try_into().unwrap()) as u64;
+        let marker_len = u32::from_le_bytes(trailer[4..8].try_into().unwrap()) as u64;
+        let env_len = u32::from_le_bytes(trailer[8..12].try_into().unwrap()) as u64;
+        let args_len = u32::from_le_bytes(trailer[12..16].try_into().unwrap()) as u64;
+        let data_len = target_len + marker_len + env_len + args_len;
+        if file_len < TRAILER_LEN_V3 + data_len {
+            return Ok(None);
+        }
+
+        let mut data = vec![0u8; data_len as usize];
+        f.seek(SeekFrom::Start(file_len - TRAILER_LEN_V3 - data_len))?;
+        f.read_exact(&mut data)?;
+
+        let (target_bytes, rest) = data.split_at(target_len as usize);
+        let (marker_bytes, rest) = rest.split_at(marker_len as usize);
+        let (env_bytes, args_bytes) = rest.split_at(env_len as usize);
+        let target = match String::from_utf8(target_bytes.to_vec()) {
+            Ok(s) => s,
+            Err(_) => return Ok(None),
+        };
+        let marker = match String::from_utf8(marker_bytes.to_vec()) {
+            Ok(s) => s,
+            Err(_) => return Ok(None),
+        };
+        let env = match parse_env_block(env_bytes) {
+            Some(e) => e,
+            None => return Ok(None),
+        };
+        let args = match parse_args_block(args_bytes) {
+            Some(a) => a,
+            None => return Ok(None),
+        };
+        return Ok(Some(ShimFooter {
+            target,
+            marker,
+            env,
+            args,
+        }));
+    }
 
     if magic == *MAGIC_V2 {
         if file_len < TRAILER_LEN_V2 {
@@ -161,6 +280,7 @@ pub fn read_shim_footer(path: &Path) -> Result<Option<ShimFooter>, Box<dyn Error
             target,
             marker,
             env,
+            args: Vec::new(),
         }));
     }
 
@@ -196,6 +316,7 @@ pub fn read_shim_footer(path: &Path) -> Result<Option<ShimFooter>, Box<dyn Error
         target,
         marker,
         env: Vec::new(),
+        args: Vec::new(),
     }))
 }
 
@@ -243,6 +364,38 @@ mod tests {
         assert_eq!(footer.target, "C:\\R\\bin\\R.exe");
         assert_eq!(footer.marker, "");
         assert_eq!(footer.env, envs);
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn v3_roundtrip_with_args() {
+        let template = b"FAKE_TEMPLATE_BYTES";
+        let envs = vec![("RIG_X".to_string(), "1".to_string())];
+        let args = vec![
+            "run".to_string(),
+            "--rscript".to_string(),
+            "--".to_string(),
+            "C:\\scripts\\hello world.R".to_string(),
+            "".to_string(),
+        ];
+        let bytes = build_shim_bytes_args(
+            template,
+            "C:\\rig\\rig.exe",
+            "script:C:\\scripts\\hello world.R",
+            &envs,
+            &args,
+        );
+        let dir = std::env::temp_dir();
+        let path = dir.join("rig_shim_test_v3.bin");
+        std::fs::File::create(&path)
+            .unwrap()
+            .write_all(&bytes)
+            .unwrap();
+        let footer = read_shim_footer(&path).unwrap().unwrap();
+        assert_eq!(footer.target, "C:\\rig\\rig.exe");
+        assert_eq!(footer.marker, "script:C:\\scripts\\hello world.R");
+        assert_eq!(footer.env, envs);
+        assert_eq!(footer.args, args);
         std::fs::remove_file(&path).unwrap();
     }
 

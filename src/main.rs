@@ -15,6 +15,7 @@ mod macros;
 mod args;
 use args::*;
 
+mod script_install;
 mod script_meta;
 mod scrun;
 mod stdout_redirect;

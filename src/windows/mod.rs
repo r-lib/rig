@@ -135,6 +135,31 @@ pub(crate) fn write_shim_link_env(
     Ok(())
 }
 
+// Same as `write_shim_link_env`, without env vars, but with a list of
+// arguments for the shim to pass to `target` before its own arguments. Used
+// for the script commands of `rig run --install`, which forward to `rig.exe
+// run ... -f <script>`, see src/script_install.rs.
+pub(crate) fn write_shim_link_args(
+    path: &Path,
+    target: &str,
+    marker: &str,
+    args: &[String],
+) -> Result<(), Box<dyn Error>> {
+    let template = std::fs::read(find_shim_template()?)?;
+    let bytes = crate::shim_format::build_shim_bytes_args(&template, target, marker, &[], args);
+    std::fs::write(path, bytes)?;
+    Ok(())
+}
+
+// In user mode, make sure the quick-link directory is on the user's PATH.
+// The admin-mode directory is put on the system PATH by the rig installer.
+pub(crate) fn ensure_binary_dir_on_path() -> Result<(), Box<dyn Error>> {
+    if get_mode()? == Mode::User {
+        add_user_bin_to_path()?;
+    }
+    Ok(())
+}
+
 // Read the (target, marker) a quick-link `.exe` at `path` forwards to, or
 // `None` if `path` doesn't exist, isn't one of our shims, or can't be read.
 pub(crate) fn read_shim_link(path: &Path) -> Option<(String, String)> {

@@ -20,6 +20,7 @@ rig run --cmd <command>    # run `R CMD <command>`
 rig run --activate         # start R with the selected version on PATH
 rig run --shell            # start a shell with the selected version on PATH
 rig run --rscript ...      # run `Rscript` instead of `R`
+rig run --install <script> # add a command that runs the script
 rig run -- --vanilla       # pass flags to R/Rscript
 ```
 
@@ -68,8 +69,33 @@ can run it directly, after making it executable with `chmod +x`. A file
 that starts with `#!` is a script for `rig run`, whatever its name, so
 the script does not need an `.R` extension.
 
-On Windows, `#!` lines do not work. Use [`rig system script-assoc`](system.qmd#rig-system-script-assoc) to run
-`.R` files with rig from `cmd` and PowerShell instead.
+## Script commands
+
+`rig run --install <script>` adds a command for a script to the directory
+of rig's quick links, so you can run the script by its name, from any
+directory: `/usr/local/bin` in admin mode, `~/.local/bin` in
+[user mode](../admin-vs-user-mode.qmd) (`C:\Program Files\R\bin` and
+`%USERPROFILE%\.local\bin` on Windows). This is the way to run a script
+directly on Windows, where `#!` lines do not work. The command is called
+after the script, without the `.R` extension; use `--name` to choose
+another name:
+
+```sh
+rig run --install hello.R --name hi
+hi a b c
+```
+
+The command runs `rig run -f <script>` with the full path of the script,
+so do not move the script after adding the command. The command also uses
+the rig flags of the script's `#!/usr/bin/env -S rig run ...` line, if it
+has one, on every platform, e.g. `--rscript`. rig reads these flags when it
+adds the command, so run `rig run --install` again after you change them.
+
+`rig run --uninstall <name>` removes a command that `rig run --install`
+added.
+
+On Windows, you can also make `.R` files run with rig from the command line
+with [`rig system script-assoc`](system.qmd#rig-system-script-assoc).
 
 ## Scripts with inline dependencies
 

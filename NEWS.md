@@ -22,6 +22,12 @@
   `--script` option, to create and edit the `# /// script` block of an R
   script, instead of a project's `rproj.toml` (#414).
 
+* New `rig run --install <script>` option, that adds a command for an R
+  script to the directory of rig's quick links, so the script runs by its
+  name, from any directory. This is the way to run a script directly on
+  Windows, where `#!` lines do not work. `rig run --uninstall` removes the
+  command.
+
 * New `rig system script-assoc` command on Windows, to run `.R` files with
   rig from `cmd` and PowerShell, e.g. `hello.R a b`.
 

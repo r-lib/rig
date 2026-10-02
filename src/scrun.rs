@@ -39,6 +39,14 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
 
     let dry_run = args.get_flag("dry-run");
 
+    // Adding or removing a command for a script does not run R.
+    if args.contains_id("install") {
+        return crate::script_install::sc_run_install(args);
+    }
+    if args.contains_id("uninstall") {
+        return crate::script_install::sc_run_uninstall(args);
+    }
+
     // Listing the project's scripts needs neither an R version nor an
     // up to date project environment, so it comes before both.
     if args.get_flag("list") {

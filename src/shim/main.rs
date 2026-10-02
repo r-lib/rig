@@ -37,6 +37,7 @@ fn main() {
 
     let args: Vec<_> = env::args_os().skip(1).collect();
     match Command::new(&footer.target)
+        .args(&footer.args)
         .args(&args)
         .envs(footer.env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
         .status()
