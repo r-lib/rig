@@ -108,14 +108,17 @@ impl SysreqsSystem {
     }
 
     /// The command that refreshes the package index before an install, if
-    /// the package manager needs one. dnf, yum and zypper refresh their
-    /// metadata on their own.
+    /// the package manager needs one. dnf and yum refresh expired metadata
+    /// on their own. zypper only warns about it, and then fails to resolve
+    /// packages that need newer versions of installed ones.
     pub fn update_command(&self) -> Option<Vec<String>> {
-        match self.family {
-            Family::Apt => Some(vec!["apt-get".to_string(), "update".to_string()]),
-            Family::Apk => Some(vec!["apk".to_string(), "update".to_string()]),
-            Family::Dnf | Family::Yum | Family::Zypper => None,
-        }
+        let cmd: &[&str] = match self.family {
+            Family::Apt => &["apt-get", "update"],
+            Family::Apk => &["apk", "update"],
+            Family::Zypper => &["zypper", "--non-interactive", "refresh"],
+            Family::Dnf | Family::Yum => return None,
+        };
+        Some(cmd.iter().map(|s| s.to_string()).collect())
     }
 }
 

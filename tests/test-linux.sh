@@ -299,28 +299,30 @@ teardown() {
     lib="$BATS_TEST_TMPDIR/sysreqs-lib"
     rm -rf "$lib"
 
-    # A source build of curl needs the libcurl development files. A dry run
-    # names them, and the command that installs them, but installs nothing.
-    run rig pkg install -r 4.5.1 --library "$lib" --platform source --dry-run curl
+    # A source build of XML needs the libxml2 development files. XML has no
+    # R package dependencies, and any libxml2 will do, so it compiles on every
+    # distro. A dry run names the OS packages, and the command that installs
+    # them, but installs nothing.
+    run rig pkg install -r 4.5.1 --library "$lib" --platform source --dry-run XML
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "Checking system requirements"
-    # What is missing depends on the image: R's own dependencies often
-    # include libcurl already.
+    # Whether anything is missing depends on the image.
     echo "$output" | grep -qE "Missing [0-9]+ system package|All .* required system package"
     [[ ! -d "$lib" ]]
 
     # --no-sysreqs skips the check
-    run rig pkg install -r 4.5.1 --library "$lib" --platform source --dry-run --no-sysreqs curl
+    run rig pkg install -r 4.5.1 --library "$lib" --platform source --dry-run --no-sysreqs XML
     [[ "$status" -eq 0 ]]
     [[ "$output" != *"Checking system requirements"* ]]
 
     # The tests run as root, so rig installs the OS packages itself, and then
-    # curl compiles.
-    run $SUDO `which rig` pkg install -r 4.5.1 --library "$lib" --platform source curl
+    # XML compiles.
+    run $SUDO `which rig` pkg install -r 4.5.1 --library "$lib" --platform source XML
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -qE "Installed [0-9]+ system package|All .* required system package"
-    run R-4.5.1 -q -s -e "library(curl, lib.loc = '$lib'); cat(curl_version()\$version)"
+    run R-4.5.1 -q -s -e "library(XML, lib.loc = '$lib'); cat(xmlValue(xmlRoot(xmlParse('<a>ok</a>'))))"
     [[ "$status" -eq 0 ]]
+    [[ "$output" == *"ok"* ]]
 }
 
 @test "proj init" {

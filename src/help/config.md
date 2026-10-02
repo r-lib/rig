@@ -88,7 +88,8 @@ configuration file takes precedence over rig's built-in default.
   it asks for a password; `false` never uses it.
 
 - `sysreqs-update` (`RIG_SYSREQS_UPDATE`): whether to update the package index
-  (`apt-get update`, `apk update`) before installing OS packages. Defaults to `true`.
+  (`apt-get update`, `zypper refresh`, `apk update`) before installing OS packages.
+  Defaults to `true`.
 
 - `sysreqs-rules-url` (`RIG_SYSREQS_RULES_URL`): where rig downloads the [system
   requirements rules](https://github.com/r-hub/r-system-requirements) from, a gzipped tarball of the repository. rig downloads
