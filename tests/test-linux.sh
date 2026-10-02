@@ -493,3 +493,61 @@ SCRIPT
     [[ "$status" -ne 0 ]]
     echo "$output" | grep -q "Not a dependency"
 }
+
+@test "script lock files" {
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf scriptlock && mkdir scriptlock && cd scriptlock
+
+    # a script without a block cannot be locked
+    printf 'cat("hi\\n")\n' > plain.R
+    run rig proj lock --script plain.R
+    [[ "$status" -ne 0 ]]
+    echo "$output" | grep -q "has no"
+    [[ ! -e plain.R.lock ]]
+
+    cat > s.R <<'SCRIPT'
+# /// script
+# [dependencies]
+# praise = "*"
+# ///
+cat("praise", format(packageVersion("praise")), "\n")
+SCRIPT
+    run rig proj lock --script s.R
+    [[ "$status" -eq 0 ]]
+    grep -q 'package = "praise"' s.R.lock
+    [[ "$(grep -c '^\[\[targets\]\]' s.R.lock)" -gt 1 ]]
+
+    # run uses the lock file, and does not change it
+    cp s.R.lock s.R.lock.orig
+    run rig run s.R
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "^praise "
+    cmp s.R.lock s.R.lock.orig
+    run rig run --locked s.R
+    [[ "$status" -eq 0 ]]
+
+    # a changed block does not fit the lock file any more: --locked fails,
+    # a plain run updates the lock file
+    cat > s.R <<'SCRIPT'
+# /// script
+# [dependencies]
+# praise = "*"
+# glue = "*"
+# ///
+cat("praise", format(packageVersion("praise")), "\n")
+SCRIPT
+    run rig run --locked s.R
+    [[ "$status" -ne 0 ]]
+    echo "$output" | grep -q "does not fit"
+    cmp s.R.lock s.R.lock.orig
+    run rig run s.R
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "^praise "
+    grep -q 'package = "glue"' s.R.lock
+    run rig run --locked s.R
+    [[ "$status" -eq 0 ]]
+
+    # --locked only works for scripts with a block
+    run rig run --locked plain.R
+    [[ "$status" -ne 0 ]]
+}

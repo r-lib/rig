@@ -125,6 +125,11 @@
 > You do not have to write the block by hand: `rig proj init --script
 > script.R` adds one, and `rig proj add --script script.R cli` and
 > `rig proj remove --script script.R cli` edit it.
+>
+> To pin the exact R and package versions, run
+> `rig proj lock --script script.R`. It writes `script.R.lock` next to the
+> script, and `rig run` installs the versions it names. See
+> [Scripts](scripts.qmd#lock-files).
 </details>
 
 <details>
