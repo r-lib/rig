@@ -29,6 +29,7 @@ use crate::install::{
 };
 use crate::library::get_library_path;
 use crate::output::{ReportedError, OUTPUT};
+use crate::pkg::default_r_feeds;
 use crate::pkg::deps::{
     dep_count, print_deps_json, print_deps_recursive, print_header, type_list, walk_deps,
 };
@@ -38,7 +39,8 @@ use crate::pkg::remove::remove_package;
 use crate::pkg::tree::proj_tree;
 use crate::platform::{detect_platform, parse_platform_string};
 use crate::repos::binaries::loader::{BinaryTarget, P3mBinaryLoader};
-use crate::repos::cranlike_metadata::{ensure_allpackages_fresh, minor_r_version};
+use crate::repos::cranlike_metadata::{ensure_feeds_fresh, minor_r_version};
+use crate::repos::feed::{BiocSetting, MetadataFeed, RepoId};
 use crate::repos::*;
 use crate::resolve::resolve_versions;
 use crate::rproj::{
@@ -481,6 +483,37 @@ fn sc_proj_import(
                         info!("{}", msg);
                     }
                 },
+                // `bioc::<package>`: the package comes from Bioconductor.
+                Ok(crate::pkgsource::PkgSource::Bioc) => {
+                    let body = crate::pkgsource::strip_bioc_prefix(entry);
+                    match crate::rproj::parse_add_spec(body) {
+                        // Only a dependency the package has comes from
+                        // Bioconductor, the entry does not add one.
+                        Ok((name, _)) if manifest.has_dependency(&name) => {
+                            let dev = manifest
+                                .dependency_groups
+                                .get("dev")
+                                .is_some_and(|g| g.dependencies.contains_key(&name))
+                                && !manifest.dependencies.contains_key(&name);
+                            manifest.add_bioc_dependency(&name, None, dev);
+                        }
+                        Ok(_) => {
+                            let msg = format!(
+                                "Remotes entry `{}` is not a dependency of the package, \
+                                 skipping it",
+                                entry
+                            );
+                            OUTPUT.warn(&msg);
+                            info!("{}", msg);
+                        }
+                        Err(_) => {
+                            let msg =
+                                format!("Cannot parse Remotes entry `{}`, skipping it", entry);
+                            OUTPUT.warn(&msg);
+                            info!("{}", msg);
+                        }
+                    }
+                }
                 Ok(crate::pkgsource::PkgSource::Cran)
                 | Ok(crate::pkgsource::PkgSource::Local(_))
                 | Err(_) => {
@@ -682,6 +715,8 @@ fn write_description_to(path: &Path, manifest: &Rproj) -> Result<(), Box<dyn Err
 /// differ from the repository name) and pinned commit.
 pub(crate) enum AddSpec {
     Cran(String, String),
+    /// `bioc::<package>[@<requirement>]`, see [`Rproj::add_bioc_dependency`].
+    Bioc(String, String),
     Remote(String, Box<DepTable>),
 }
 
@@ -689,6 +724,7 @@ impl AddSpec {
     pub(crate) fn name(&self) -> &str {
         match self {
             AddSpec::Cran(name, _) => name,
+            AddSpec::Bioc(name, _) => name,
             AddSpec::Remote(name, _) => name,
         }
     }
@@ -704,6 +740,10 @@ pub(crate) fn parse_add_arg(spec: &str, root: &Path) -> Result<AddSpec, Box<dyn 
         crate::pkgsource::PkgSource::Cran => {
             let (name, version) = parse_add_spec(spec)?;
             Ok(AddSpec::Cran(name, version))
+        }
+        crate::pkgsource::PkgSource::Bioc => {
+            let (name, version) = parse_add_spec(crate::pkgsource::strip_bioc_prefix(spec))?;
+            Ok(AddSpec::Bioc(name, version))
         }
         crate::pkgsource::PkgSource::Remote(r) => {
             let table = dep_table_from_remote(&r, spec);
@@ -765,6 +805,18 @@ pub(crate) fn add_spec_to_manifest(
             ),
             None => format!("Added {} ({}) to {}", name, version, target),
         },
+        AddSpec::Bioc(name, version) => {
+            match manifest.add_bioc_dependency(name, Some(version), dev) {
+                Some(previous) if previous == *version => {
+                    format!("Kept {} ({}, Bioconductor) in {}", name, version, target)
+                }
+                Some(previous) => format!(
+                    "Updated {} in {}, {} -> {}, Bioconductor",
+                    name, target, previous, version
+                ),
+                None => format!("Added {} ({}, Bioconductor) to {}", name, version, target),
+            }
+        }
         AddSpec::Remote(name, table) => {
             manifest.add_remote_dependency(name, (**table).clone(), dev);
             let source = table
@@ -1065,6 +1117,12 @@ fn proj_read_manifest(root: &Path) -> Result<Rproj, Box<dyn Error>> {
         error!("Cannot parse {}: {}", RPROJ_MANIFEST_FILE, e);
         e
     })?;
+    if let Err(e) = manifest.check_repositories() {
+        let msg = format!("Invalid {}: {}", RPROJ_MANIFEST_FILE, e);
+        OUTPUT.error(&msg);
+        error!("{}", msg);
+        bail!(ReportedError(msg));
+    }
     Ok(manifest)
 }
 
@@ -1166,6 +1224,9 @@ pub(crate) struct ProjectSolve {
     /// The root manifest's `exclude-newer` setting, see
     /// [`Rproj::exclude_newer`]. A workspace takes it from its root only.
     pub exclude_newer: Option<ExcludeNewerSpec>,
+    /// The root manifest's Bioconductor setting, see [`Rproj::bioc_setting`].
+    /// A workspace takes it from its root only.
+    pub bioc: BiocSetting,
 }
 
 /// Read the project or workspace rooted at `root` and turn it into the roots
@@ -1216,6 +1277,7 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
                 extra_roots,
                 git_deps,
                 exclude_newer: manifest.exclude_newer()?,
+                bioc: manifest.bioc_setting(),
             });
         }
     };
@@ -1291,6 +1353,7 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
         extra_roots,
         git_deps,
         exclude_newer: manifest.exclude_newer()?,
+        bioc: manifest.bioc_setting(),
     })
 }
 
@@ -1305,7 +1368,8 @@ fn sc_proj_deps(
     let (name, version, pkg_deps) = proj_read_manifest_deps(Path::new("."), dev)?;
 
     if args.get_flag("recursive") {
-        return proj_deps_recursive(&name, &version, &pkg_deps, json);
+        let feeds = default_r_feeds(&proj_read_manifest(Path::new("."))?.bioc_setting());
+        return proj_deps_recursive(&name, &version, &pkg_deps, &feeds, json);
     }
 
     let mut deps = pkg_deps.dependencies.clone();
@@ -1400,9 +1464,10 @@ fn proj_deps_recursive(
     name: &str,
     version: &RPackageVersion,
     deps: &PackageDependencies,
+    feeds: &[MetadataFeed],
     json: bool,
 ) -> Result<(), Box<dyn Error>> {
-    let loader = DbSourcePackageLoader::new()?;
+    let loader = DbSourcePackageLoader::new_for(feeds)?;
     let (rows, num_direct) = walk_deps(&loader, name, &deps.dependencies, true);
 
     if json {
@@ -1435,11 +1500,13 @@ fn sc_proj_tree(
     let (name, version, pkg_deps, git_deps) =
         proj_read_manifest_deps_with_remotes(Path::new("."), dev)?;
 
+    let feeds = default_r_feeds(&proj_read_manifest(Path::new("."))?.bioc_setting());
     proj_tree(
         &name,
         &version,
         &pkg_deps.dependencies,
         git_deps.into_iter().collect(),
+        &feeds,
         dev,
         no_base,
         why,
@@ -1458,6 +1525,14 @@ fn resolve_binary_target_r_version(r_version: &str) -> Result<String, Box<dyn Er
         Some(name) => get_r_version_data_version(&name),
         None => Ok(r_version.to_string()),
     }
+}
+
+/// The Bioconductor release a solve for `r_version` uses with `bioc`, see
+/// [`BiocSetting::bioc_version`]. `r_version` may be a symbolic, installed R
+/// name, like for [`sc_proj_solve_deps`].
+fn solve_bioc_version(bioc: &BiocSetting, r_version: &str, cutoff: Option<&str>) -> Option<String> {
+    let r_version = resolve_binary_target_r_version(r_version).ok()?;
+    bioc.bioc_version(&r_version, cutoff)
 }
 
 /// The P3M build target to resolve binary packages for.
@@ -1550,6 +1625,7 @@ pub(crate) fn sc_proj_solve_project_deps(
         target,
         prefer_binary,
         None,
+        &BiocSetting::default(),
         &SolvePins::default(),
         report_status,
     )
@@ -1586,6 +1662,7 @@ pub(crate) fn sc_proj_solve_deps(
     target: Option<BinaryTarget>,
     prefer_binary: Option<usize>,
     exclude_newer: Option<&str>,
+    bioc: &BiocSetting,
     pins: &SolvePins,
     report_status: bool,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
@@ -1597,17 +1674,31 @@ pub(crate) fn sc_proj_solve_deps(
     let r_version = &resolve_binary_target_r_version(r_version)?;
 
     // The registry lazily loads each package's versions from the local database
-    // (the full ALLPACKAGES history) as the solver visits them, instead of
-    // preloading the entire CRAN version history.
-    let loader =
-        DbSourcePackageLoader::new()?.with_exclude_newer(exclude_newer.map(|c| c.to_string()));
+    // (the full ALLPACKAGES histories of CRAN and the R version's
+    // Bioconductor release) as the solver visits them, instead of preloading
+    // the entire version history.
+    let feeds = bioc.feeds(r_version, exclude_newer);
+    let loader = DbSourcePackageLoader::new_for(&feeds)?
+        .with_exclude_newer(exclude_newer.map(|c| c.to_string()))
+        .with_bioc_only(bioc.only.clone());
+    // A Bioconductor feed that failed to load is not searched.
+    let repositories = loader.repositories();
+    let feeds: Vec<MetadataFeed> = feeds
+        .into_iter()
+        .filter(|f| repositories.contains(&f.repo))
+        .collect();
+    let bioc_version = feeds.iter().find_map(|f| match &f.repo {
+        RepoId::Bioc(v) => Some(v.clone()),
+        RepoId::Cran => None,
+    });
     // Binary builds are candidates alongside the source tarball, so that the
     // `LinkingTo` versions a build was compiled against become constraints the
     // solver can backtrack over. Their indices are fetched lazily too, one
     // request per package the solve visits.
     let binaries: Option<Box<dyn BinaryIndexLoader>> =
-        target.map(|t| Box::new(P3mBinaryLoader::new(t)) as Box<dyn BinaryIndexLoader>);
+        target.map(|t| Box::new(P3mBinaryLoader::new_for(t, &feeds)) as Box<dyn BinaryIndexLoader>);
     let reg: RPackageRegistry = RPackageRegistry::with_loaders(Box::new(loader), binaries)
+        .with_bioc_version(bioc_version)
         .prefer_binary(prefer_binary)
         .with_preferences(pins.preferred.clone())
         .with_overrides(&pins.overrides);
@@ -1959,6 +2050,7 @@ fn project_lock_package(
         groups: vec!["main".to_string()],
         extra_groups: vec![],
         is_project: true,
+        repository: None,
         // `rproj.toml` has no `SystemRequirements` of its own yet.
         system_requirements: None,
     }
@@ -2191,8 +2283,10 @@ pub(crate) fn resolve_git_sources(
                         next_frontier.push((dep_name, dep_table_from_url(&u)));
                     }
                     // A `Remotes:` entry that is a path on whoever's
-                    // machine wrote it means nothing here.
+                    // machine wrote it means nothing here. A `bioc::` one
+                    // is found in Bioconductor anyway.
                     Ok(crate::pkgsource::PkgSource::Cran)
+                    | Ok(crate::pkgsource::PkgSource::Bioc)
                     | Ok(crate::pkgsource::PkgSource::Local(_))
                     | Err(_) => {}
                 }
@@ -3376,6 +3470,8 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         rver: String,
         target: Option<BinaryTarget>,
         platform_key: String,
+        /// The Bioconductor release the target solves with, if any.
+        bioc_version: Option<String>,
     }
     let mut solve_targets: Vec<SolveTarget> = vec![];
     let mut seen: HashSet<(String, String)> = HashSet::new();
@@ -3411,6 +3507,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
                 rver: rver.clone(),
                 target,
                 platform_key,
+                bioc_version: None,
             });
         }
     }
@@ -3454,6 +3551,11 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         let msg = format!("Ignoring package versions published after {}", cutoff);
         OUTPUT.info(&msg);
         info!("{}", msg);
+    }
+    // The cutoff can choose between the Bioconductor releases of an R version.
+    for st in &mut solve_targets {
+        st.bioc_version =
+            solve_bioc_version(&solve.bioc, &st.rver, lock_options.exclude_newer.as_deref());
     }
 
     // Resolve every git/GitHub dependency once, up front, instead of letting
@@ -3521,6 +3623,8 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
                     &git_sources,
                 )
                 .filter(project_fresh)
+                // Solved with another Bioconductor release, or without one.
+                .filter(|t| t.bioc_version == st.bioc_version)
             });
         match existing {
             Some(target) => reused.push(target),
@@ -3562,7 +3666,15 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         // `DbSourcePackageLoader::new()` would otherwise do this too, but
         // finding it already fresh, it becomes a cheap read instead of every
         // thread racing to update the same on-disk cache at once.
-        ensure_allpackages_fresh()?;
+        let mut feeds: Vec<MetadataFeed> = vec![];
+        for st in &to_solve {
+            for feed in MetadataFeed::for_target(st.bioc_version.as_deref()) {
+                if !feeds.contains(&feed) {
+                    feeds.push(feed);
+                }
+            }
+        }
+        ensure_feeds_fresh(&feeds)?;
 
         for name in &no_binaries {
             OUTPUT.warn(&format!(
@@ -3626,6 +3738,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
                 st.target.clone(),
                 prefer_binary,
                 lock_options.exclude_newer.as_deref(),
+                &solve.bioc,
                 &pins,
                 false,
             )
@@ -4879,7 +4992,7 @@ pub(crate) fn proj_sync(
                 r_binary.display()
             ));
         } else {
-            let written = rvenv_sync(root, &cfg, repos)?;
+            let written = rvenv_sync(root, &cfg, repos, target.bioc_version.as_deref())?;
             if written.is_empty() {
                 info!(
                     "Project environment for R {} ({}) is already up to date",
@@ -5599,6 +5712,7 @@ mod tests {
             groups: vec![],
             extra_groups: vec![],
             is_project: false,
+            repository: None,
             system_requirements: None,
         }
     }
@@ -5943,6 +6057,7 @@ mod tests {
             r_version: r_version.to_string(),
             platform: platform.to_string(),
             direct_dependencies: vec![],
+            bioc_version: None,
             packages: vec![],
         }
     }

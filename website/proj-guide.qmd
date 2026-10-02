@@ -16,8 +16,10 @@ format may still change.
 ::: {.callout-note}
 ## P3M only
 
-`rig proj` commands currently only use P3M (Posit Public Package Manager)
-and ignore the repositories configured in the manifest and also the ones configured via [`rig repos`](reference/repos.qmd).
+`rig proj` commands currently only use P3M (Posit Public Package Manager),
+for CRAN and Bioconductor packages, and ignore the repositories configured in
+the manifest and also the ones configured via [`rig repos`](reference/repos.qmd).
+See "Bioconductor packages" in [`rig proj lock`](reference/proj.qmd#rig-proj-lock).
 :::
 
 `rig proj` is a companion to [`rig pkg`](pkg-guide.qmd): use `rig pkg

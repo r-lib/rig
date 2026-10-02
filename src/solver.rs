@@ -10,6 +10,7 @@ use pubgrub::*;
 use serde::{Deserialize, Serialize};
 
 use crate::dcf::*;
+use crate::repos::feed::RepoId;
 
 type RPackageName = String;
 
@@ -342,6 +343,10 @@ pub struct BinaryArtifact {
     /// their own upstream-CRAN hashes. This, not [`BinaryArtifact::sha256`], is
     /// what tells two builds of the same version apart.
     pub linkingto: Vec<(RPackageName, RPackageVersion, String)>,
+    /// The repository whose index has this build. A version is only offered
+    /// with the builds of the repository the solver took it from. `None`
+    /// matches any repository.
+    pub repository: Option<RepoId>,
 }
 
 /// Everything a binary index knows about one package, for one build target.
@@ -455,6 +460,11 @@ pub struct RPackageRegistry {
     // `GitSourceInfo`. Populated by `set_git_source`, read by the lockfile
     // writer (`RprojLockTarget::from_solution`) in place of `urls`/`sha256`.
     git_sources: RefCell<HashMap<(RPackageName, RegistryPackageVersion), GitSourceInfo>>,
+    // The repository (CRAN or a Bioconductor release) of every artifact we
+    // offered from a repository, for the lockfile writers.
+    repositories: RefCell<HashMap<(RPackageName, RegistryPackageVersion), RepoId>>,
+    // The Bioconductor release the loader searches besides CRAN, if any.
+    bioc_version: Option<String>,
     // The `SystemRequirements` of every package version we know one for, by
     // version rather than by artifact: the source and binary builds of a
     // version share it. Never read by the solver itself, only by the lockfile
@@ -485,6 +495,18 @@ impl RPackageRegistry {
             binaries,
             ..Default::default()
         }
+    }
+
+    /// Record the Bioconductor release the loader searches, see
+    /// [`Self::bioc_version`].
+    pub fn with_bioc_version(mut self, bioc_version: Option<String>) -> Self {
+        self.bioc_version = bioc_version;
+        self
+    }
+
+    /// The Bioconductor release the solve searched besides CRAN, if any.
+    pub fn bioc_version(&self) -> Option<&str> {
+        self.bioc_version.as_deref()
     }
 
     /// Let an older binary win against the most recent version.
@@ -593,6 +615,18 @@ impl RPackageRegistry {
         version: &RegistryPackageVersion,
     ) -> Option<String> {
         self.urls
+            .borrow()
+            .get(&(package.clone(), version.clone()))
+            .cloned()
+    }
+
+    /// The repository of a resolved artifact, when it came from one.
+    pub fn artifact_repository(
+        &self,
+        package: &RPackageName,
+        version: &RegistryPackageVersion,
+    ) -> Option<RepoId> {
+        self.repositories
             .borrow()
             .get(&(package.clone(), version.clone()))
             .cloned()
@@ -762,10 +796,21 @@ impl RPackageRegistry {
                             version: package.version.clone(),
                             artifact: Artifact::Source,
                         };
-                        if let Some(url) = artifacts.source_urls.get(&package.version) {
+                        // The index's source URL, else the source metadata's own
+                        // `DownloadURL`, both snapshot-pinned.
+                        if let Some(url) = artifacts
+                            .source_urls
+                            .get(&package.version)
+                            .or(package.download_url.as_ref())
+                        {
                             self.urls
                                 .borrow_mut()
                                 .insert((pkg.clone(), src.clone()), url.clone());
+                        }
+                        if let Some(repo) = &package.repository {
+                            self.repositories
+                                .borrow_mut()
+                                .insert((pkg.clone(), src.clone()), repo.clone());
                         }
                         // The index's source row is authoritative when we have
                         // one; the source metadata's own `SHA256Original` is the
@@ -790,11 +835,12 @@ impl RPackageRegistry {
                             self.set_system_requirements(pkg, &package.version, sysreqs.clone());
                         }
                         self.add_package_version(pkg.clone(), src, ranges.clone());
-                        for bin in artifacts
-                            .binaries
-                            .iter()
-                            .filter(|b| b.version == package.version)
-                        {
+                        for bin in artifacts.binaries.iter().filter(|b| {
+                            b.version == package.version
+                                && (b.repository.is_none()
+                                    || package.repository.is_none()
+                                    || b.repository == package.repository)
+                        }) {
                             match binary_artifact_deps(&ranges, bin) {
                                 Some(deps) => {
                                     let v = RegistryPackageVersion {
@@ -808,6 +854,11 @@ impl RPackageRegistry {
                                     self.sha256
                                         .borrow_mut()
                                         .insert((pkg.clone(), v.clone()), bin.sha256.clone());
+                                    if let Some(repo) = &package.repository {
+                                        self.repositories
+                                            .borrow_mut()
+                                            .insert((pkg.clone(), v.clone()), repo.clone());
+                                    }
                                     if !bin.linkingto.is_empty() {
                                         let prov: Vec<(String, String, String)> = bin
                                             .linkingto
@@ -1084,10 +1135,16 @@ pub fn format_solver_error(err: PubGrubError<RPackageRegistry>, reg: &RPackageRe
             package,
             source: ProviderError::UnknownPackage,
         } => {
-            return format!(
-                "  Package {} is not available in the configured repositories.",
-                package
-            )
+            return match reg.bioc_version() {
+                Some(bioc) => format!(
+                    "  Package {} is not available on CRAN or Bioconductor {}.",
+                    package, bioc
+                ),
+                None => format!(
+                    "  Package {} is not available in the configured repositories.",
+                    package
+                ),
+            }
         }
         other => return other.to_string(),
     };
@@ -1320,6 +1377,7 @@ mod tests {
                             )
                         })
                         .collect(),
+                    repository: None,
                 })
                 .collect();
             Ok(PackageArtifacts {
@@ -1464,6 +1522,21 @@ mod tests {
         );
         assert!(
             msg.contains("Nearest available versions: 0.8.5 (below), 1.0.0 (above)."),
+            "{}",
+            msg
+        );
+    }
+
+    #[test]
+    fn an_unknown_package_names_the_bioc_release() {
+        let reg = RPackageRegistry::with_loaders(Box::new(StubSource { packages: vec![] }), None)
+            .with_bioc_version(Some("3.23".to_string()));
+        let root = RegistryPackageVersion::new("_project", "1.0.0").unwrap();
+        reg.add_package_version("_project".to_string(), root.clone(), ranges("nope"));
+        let err = resolve(&reg, "_project".to_string(), root).unwrap_err();
+        let msg = format_solver_error(err, &reg);
+        assert!(
+            msg.contains("Package nope is not available on CRAN or Bioconductor 3.23."),
             "{}",
             msg
         );

@@ -240,14 +240,7 @@ impl ScriptMeta {
             .dependencies
             .entry("R".to_string())
             .or_insert_with(|| Dependency::Version("*".to_string()));
-        manifest.repository = self
-            .repository
-            .iter()
-            .map(|r| Repository {
-                name: r.name.clone(),
-                url: r.url.clone(),
-            })
-            .collect();
+        manifest.repository = self.repository.clone();
         manifest.tool = self.tool.clone();
         manifest
     }

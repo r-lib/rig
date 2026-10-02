@@ -245,5 +245,6 @@ Package {
     filesize: None,
     sha256sum: None,
     archived: None,
+    repository: None,
     system_requirements: None,
 }

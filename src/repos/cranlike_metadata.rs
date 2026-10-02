@@ -20,6 +20,7 @@ use crate::dcf::*;
 use crate::download::{download_first_available_, fetch_range_suffix_, RangeFetch};
 use crate::output::OUTPUT;
 use crate::rds::*;
+use crate::repos::feed::{MetadataFeed, RepoId};
 use crate::solver::PackageVersionLoader;
 use crate::utils::{calculate_hash, create_parent_dir_if_needed};
 
@@ -114,32 +115,29 @@ pub(crate) fn cranlike_urls(repo_url: &str, path: &str) -> [String; 3] {
     ]
 }
 
-/// Downloads/refreshes the shared ALLPACKAGES cache if stale. `rig proj lock`
-/// calls this once, sequentially, before fanning solves for several targets
-/// out to threads, so those threads only ever read the cache (via
-/// `DbSourcePackageLoader::new`, which also calls this but then finds
-/// nothing to download).
-pub(crate) fn ensure_allpackages_fresh() -> Result<(), Box<dyn Error>> {
-    let url = allpackages_url();
+/// Downloads/refreshes the ALLPACKAGES and ARCHIVEDPACKAGES caches of `feed`
+/// if stale.
+fn ensure_feed_fresh(feed: &MetadataFeed) -> Result<(), Box<dyn Error>> {
+    let url = feed.allpackages_url.as_str();
     ensure_packages_cached(
-        &[url.as_str()],
-        &url,
-        &url,
+        &[url],
+        url,
+        url,
         "source",
         None,
         "ALLPACKAGES",
         Feed::Cranlike,
     )?;
-    ensure_archived_fresh()?;
+    ensure_archived_fresh(feed)?;
     Ok(())
 }
 
-fn ensure_archived_fresh() -> Result<(), Box<dyn Error>> {
-    let url = archivedpackages_url();
+fn ensure_archived_fresh(feed: &MetadataFeed) -> Result<(), Box<dyn Error>> {
+    let url = feed.archived_url.as_str();
     ensure_packages_cached(
-        &[url.as_str()],
-        &url,
-        &url,
+        &[url],
+        url,
+        url,
         "source",
         None,
         "ARCHIVEDPACKAGES",
@@ -148,10 +146,62 @@ fn ensure_archived_fresh() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+lazy_static::lazy_static! {
+    /// The Bioconductor feeds that failed to load in this process. They are
+    /// not tried again, so that the solves of several targets do not each
+    /// download (and warn about) the same missing feed.
+    static ref FAILED_FEEDS: std::sync::Mutex<std::collections::HashSet<String>> =
+        std::sync::Mutex::new(std::collections::HashSet::new());
+}
+
+/// Downloads/refreshes the caches of `feeds` if stale, and returns the feeds
+/// that are usable. `rig proj lock` calls this once, sequentially, before
+/// fanning solves for several targets out to threads, so those threads only
+/// ever read the cache (via [`DbSourcePackageLoader::new_for`], which also
+/// calls this but then finds nothing to download).
+///
+/// CRAN's feed must load. A Bioconductor feed that fails to load (e.g. a
+/// release older than the metadata server has) is dropped with a warning, and
+/// the solve goes on with CRAN only.
+pub(crate) fn ensure_feeds_fresh(
+    feeds: &[MetadataFeed],
+) -> Result<Vec<MetadataFeed>, Box<dyn Error>> {
+    let mut out = vec![];
+    for feed in feeds {
+        if !feed.repo.is_bioc() {
+            ensure_feed_fresh(feed)?;
+            out.push(feed.clone());
+            continue;
+        }
+        if FAILED_FEEDS.lock().unwrap().contains(&feed.allpackages_url) {
+            continue;
+        }
+        match ensure_feed_fresh(feed) {
+            Ok(()) => out.push(feed.clone()),
+            Err(e) => {
+                warn!(
+                    "Cannot load Bioconductor metadata from {}, using CRAN only: {}",
+                    feed.allpackages_url, e
+                );
+                OUTPUT.warn(&format!(
+                    "Cannot load Bioconductor {} metadata, using CRAN packages only.",
+                    feed.repo
+                ));
+                FAILED_FEEDS
+                    .lock()
+                    .unwrap()
+                    .insert(feed.allpackages_url.clone());
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// A [`PackageVersionLoader`] backed by the shared SQLite database. It queries a
-/// single package's versions on demand from the ALLPACKAGES history, so the
-/// solver only materializes the packages it actually visits instead of the whole
-/// CRAN version history.
+/// single package's versions on demand from the ALLPACKAGES histories of its
+/// feeds (CRAN, and possibly a Bioconductor release), so the solver only
+/// materializes the packages it actually visits instead of the whole version
+/// history.
 ///
 /// ALLPACKAGES already lists every version of every package ever published on
 /// CRAN, including the current ones, so the current `PACKAGES` file of a CRAN
@@ -159,30 +209,39 @@ fn ensure_archived_fresh() -> Result<(), Box<dyn Error>> {
 /// between the last ALLPACKAGES rebuild and now.
 pub struct DbSourcePackageLoader {
     conn: Connection,
-    /// repo ids of the ALLPACKAGES history to search.
-    repo_ids: Vec<i64>,
+    /// repo ids of the ALLPACKAGES histories to search, with the repository
+    /// each belongs to.
+    repo_ids: Vec<(i64, RepoId)>,
     /// `--exclude-newer` cutoff day, `YYYY-MM-DD`: versions whose snapshot
     /// date is after it are hidden from the solver.
     exclude_newer: Option<String>,
+    /// Packages whose CRAN versions are hidden, because they must come from
+    /// Bioconductor.
+    bioc_only: std::collections::BTreeSet<String>,
 }
 
 impl DbSourcePackageLoader {
-    /// Ensure the metadata is fresh in the database, then open a connection
-    /// ready to serve per-package queries.
-    pub fn new() -> Result<Self, Box<dyn Error>> {
-        ensure_allpackages_fresh()?;
-
-        let repo_local = repo_local_file(&allpackages_url())?;
-        let repo_db = repo_db_file(&repo_local)?;
-        let conn = open_db(&repo_db)?;
-
-        let repo_ids = source_repo_ids(&conn, &allpackages_url(), "source")?;
-
+    /// A loader for `feeds`. Ensure their metadata is fresh in the database,
+    /// then open a connection ready to serve per-package queries. See
+    /// [`ensure_feeds_fresh`] for the feeds that fail to load.
+    pub fn new_for(feeds: &[MetadataFeed]) -> Result<Self, Box<dyn Error>> {
+        let feeds = ensure_feeds_fresh(feeds)?;
+        let conn = open_metadata_db()?;
+        let repo_ids = feed_repo_ids(&conn, &feeds)?;
         Ok(DbSourcePackageLoader {
             conn,
             repo_ids,
             exclude_newer: None,
+            bioc_only: Default::default(),
         })
+    }
+
+    /// Hide the CRAN versions of `packages`, see [`BiocSetting::only`].
+    ///
+    /// [`BiocSetting::only`]: crate::repos::feed::BiocSetting::only
+    pub fn with_bioc_only(mut self, packages: std::collections::BTreeSet<String>) -> Self {
+        self.bioc_only = packages;
+        self
     }
 
     /// Hide the versions published after `cutoff` (`YYYY-MM-DD`), see
@@ -191,6 +250,44 @@ impl DbSourcePackageLoader {
         self.exclude_newer = cutoff;
         self
     }
+
+    /// The repositories this loader searches.
+    pub fn repositories(&self) -> Vec<RepoId> {
+        let mut out: Vec<RepoId> = vec![];
+        for (_, repo) in &self.repo_ids {
+            if !out.contains(repo) {
+                out.push(repo.clone());
+            }
+        }
+        out
+    }
+
+    fn repo_of(&self, repo_id: i64) -> Option<&RepoId> {
+        self.repo_ids
+            .iter()
+            .find(|(id, _)| *id == repo_id)
+            .map(|(_, repo)| repo)
+    }
+}
+
+/// The shared metadata database, the same file every feed is cached in.
+fn open_metadata_db() -> Result<Connection, Box<dyn Error>> {
+    let repo_local = repo_local_file(&MetadataFeed::cran().allpackages_url)?;
+    open_db(repo_db_file(&repo_local)?)
+}
+
+/// The repo ids of the ALLPACKAGES histories of `feeds`.
+fn feed_repo_ids(
+    conn: &Connection,
+    feeds: &[MetadataFeed],
+) -> Result<Vec<(i64, RepoId)>, Box<dyn Error>> {
+    let mut out = vec![];
+    for feed in feeds {
+        for id in source_repo_ids(conn, &feed.allpackages_url, "source")? {
+            out.push((id, feed.repo.clone()));
+        }
+    }
+    Ok(out)
 }
 
 /// The P3M snapshot date, `YYYY-MM-DD`, in an ALLPACKAGES `DownloadURL`, e.g.
@@ -239,7 +336,18 @@ impl PackageVersionLoader for DbSourcePackageLoader {
         // on a source-only solve, where no binary index is loaded at all.
         // `system_requirements` too: the lockfile records it, so that
         // `rig proj sync` can install the OS packages a Linux install needs.
-        let mut best: HashMap<String, (String, Option<String>, Option<String>)> = HashMap::new();
+        //
+        // A package may be in both CRAN and Bioconductor: the solver sees the
+        // versions of both, and if the same version is in both, the
+        // Bioconductor row wins.
+        struct Row {
+            deps_json: String,
+            sha256sum: Option<String>,
+            download_url: Option<String>,
+            system_requirements: Option<String>,
+            repo: RepoId,
+        }
+        let mut best: HashMap<String, Row> = HashMap::new();
         let mut stmt = self.conn.prepare_cached(
             "SELECT version, dependencies, sha256sum, repo_id, download_url, \
              system_requirements FROM packages WHERE name = ?1",
@@ -256,26 +364,63 @@ impl PackageVersionLoader for DbSourcePackageLoader {
         })?;
         for row in rows {
             let (ver, deps_json, sha256sum, repo_id, download_url, sysreqs) = row?;
-            if !self.repo_ids.contains(&repo_id) {
+            let Some(repo) = self.repo_of(repo_id) else {
                 continue; // row from a repo we do not source from
+            };
+            if !repo.is_bioc() && self.bioc_only.contains(package) {
+                continue; // must come from Bioconductor
             }
             if !published_by(download_url.as_deref(), self.exclude_newer.as_deref()) {
                 continue; // published after the --exclude-newer cutoff
             }
-            best.entry(ver).or_insert((deps_json, sha256sum, sysreqs));
+            if best
+                .get(&ver)
+                .is_some_and(|b| b.repo.is_bioc() || !repo.is_bioc())
+            {
+                continue;
+            }
+            best.insert(
+                ver,
+                Row {
+                    deps_json,
+                    sha256sum,
+                    download_url,
+                    system_requirements: sysreqs,
+                    repo: repo.clone(),
+                },
+            );
         }
 
         let mut out: Vec<Package> = Vec::with_capacity(best.len());
-        for (ver, (deps_json, sha256sum, sysreqs)) in best {
+        for (ver, row) in best {
             let version = RPackageVersion::from_str(&ver)?;
-            let deps: PackageDependencies = serde_json::from_str(&deps_json)?;
+            let deps: PackageDependencies = serde_json::from_str(&row.deps_json)?;
             let mut pkg = Package::from_crandb(package.to_string(), version, deps.dependencies);
-            pkg.sha256sum = sha256sum;
-            pkg.system_requirements = sysreqs;
+            pkg.sha256sum = row.sha256sum;
+            pkg.download_url = row.download_url;
+            pkg.system_requirements = row.system_requirements;
+            pkg.repository = Some(row.repo);
             out.push(pkg);
         }
         Ok(out)
     }
+}
+
+/// The names of the packages in `feed`'s ALLPACKAGES history, from the
+/// cache, without refreshing it.
+pub fn feed_package_names(
+    feed: &MetadataFeed,
+) -> Result<std::collections::HashSet<String>, Box<dyn Error>> {
+    let conn = open_metadata_db()?;
+    let repo_ids = source_repo_ids(&conn, &feed.allpackages_url, "source")?;
+    let mut out = std::collections::HashSet::new();
+    let mut stmt = conn.prepare_cached("SELECT DISTINCT name FROM packages WHERE repo_id = ?1")?;
+    for id in repo_ids {
+        for name in stmt.query_map(params![id], |row| row.get::<_, String>(0))? {
+            out.insert(name?);
+        }
+    }
+    Ok(out)
 }
 
 /// One version of a package in the ALLPACKAGES history, with the fields that
@@ -301,12 +446,11 @@ impl AllPackagesVersion {
 /// Every version of `package` in the ALLPACKAGES history, refreshing the
 /// metadata first if the cache is stale.
 pub fn allpackages_versions(package: &str) -> Result<Vec<AllPackagesVersion>, Box<dyn Error>> {
-    ensure_allpackages_fresh()?;
+    let feed = MetadataFeed::cran();
+    ensure_feed_fresh(&feed)?;
 
-    let repo_local = repo_local_file(&allpackages_url())?;
-    let repo_db = repo_db_file(&repo_local)?;
-    let conn = open_db(&repo_db)?;
-    let repo_ids = source_repo_ids(&conn, &allpackages_url(), "source")?;
+    let conn = open_metadata_db()?;
+    let repo_ids = source_repo_ids(&conn, &feed.allpackages_url, "source")?;
 
     // Query by name only, for the same reason as `load_versions()` above: it
     // keeps SQLite on the `(name, ...)` index instead of scanning the whole
@@ -339,20 +483,62 @@ pub fn allpackages_versions(package: &str) -> Result<Vec<AllPackagesVersion>, Bo
     Ok(out)
 }
 
-/// Every package on CRAN, at its latest version, from the shared ALLPACKAGES
-/// history, refreshing the metadata first if the cache is stale.
+/// Every package of `feeds` (CRAN, and possibly a Bioconductor release), at
+/// its latest version, from the shared ALLPACKAGES histories, refreshing the
+/// metadata first if the cache is stale.
 ///
 /// ALLPACKAGES keeps the full history of every version ever published,
-/// archived or not, so packages CRAN has archived are omitted by cross
-/// referencing ARCHIVEDPACKAGES, unless `include_archived` is set.
-pub fn all_available_packages(include_archived: bool) -> Result<Vec<Package>, Box<dyn Error>> {
-    ensure_allpackages_fresh()?;
+/// archived or not, so packages a feed has archived are omitted by cross
+/// referencing its ARCHIVEDPACKAGES, unless `include_archived` is set. A
+/// package archived in one feed is still listed if it is alive in another
+/// one. A package in several feeds is listed at its highest version, and on a
+/// tie with its Bioconductor version.
+pub fn all_available_packages(
+    feeds: &[MetadataFeed],
+    include_archived: bool,
+) -> Result<Vec<Package>, Box<dyn Error>> {
+    let feeds = ensure_feeds_fresh(feeds)?;
+    let conn = open_metadata_db()?;
 
-    let repo_local = repo_local_file(&allpackages_url())?;
-    let repo_db = repo_db_file(&repo_local)?;
-    let conn = open_db(&repo_db)?;
-    let repo_ids = source_repo_ids(&conn, &allpackages_url(), "source")?;
+    let mut best: HashMap<String, (RPackageVersion, String, RepoId)> = HashMap::new();
+    for feed in &feeds {
+        let feed_best = feed_latest_packages(&conn, &feed.allpackages_url)?;
+        let archived = if include_archived {
+            std::collections::HashSet::new()
+        } else {
+            feed_archived_names(&conn, &feed.archived_url)?
+        };
+        for (name, (version, deps_json)) in feed_best {
+            if archived.contains(&name) {
+                continue;
+            }
+            let better = match best.get(&name) {
+                None => true,
+                Some((v, _, repo)) => version > *v || (version == *v && !repo.is_bioc()),
+            };
+            if better {
+                best.insert(name, (version, deps_json, feed.repo.clone()));
+            }
+        }
+    }
 
+    let mut out = Vec::with_capacity(best.len());
+    for (name, (version, deps_json, repo)) in best {
+        let deps: PackageDependencies = serde_json::from_str(&deps_json)?;
+        let mut pkg = Package::from_crandb(name, version, deps.dependencies);
+        pkg.repository = Some(repo);
+        out.push(pkg);
+    }
+    Ok(out)
+}
+
+/// `name -> (latest version, dependencies JSON)` of the ALLPACKAGES feed at
+/// `url`.
+fn feed_latest_packages(
+    conn: &Connection,
+    url: &str,
+) -> Result<HashMap<String, (RPackageVersion, String)>, Box<dyn Error>> {
+    let repo_ids = source_repo_ids(conn, url, "source")?;
     let mut best: HashMap<String, (RPackageVersion, String)> = HashMap::new();
     let placeholders = repo_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
     let sql = format!(
@@ -381,50 +567,31 @@ pub fn all_available_packages(include_archived: bool) -> Result<Vec<Package>, Bo
             }
         }
     }
-
-    let archived: std::collections::HashSet<String> = if include_archived {
-        std::collections::HashSet::new()
-    } else {
-        let archived_repo_ids = source_repo_ids(&conn, &archivedpackages_url(), "source")?;
-        let placeholders = archived_repo_ids
-            .iter()
-            .map(|_| "?")
-            .collect::<Vec<_>>()
-            .join(",");
-        let sql = format!(
-            "SELECT DISTINCT name FROM archived_packages WHERE repo_id IN ({})",
-            placeholders
-        );
-        let mut stmt = conn.prepare(&sql)?;
-        let sql_params: Vec<&dyn rusqlite::ToSql> = archived_repo_ids
-            .iter()
-            .map(|id| id as &dyn rusqlite::ToSql)
-            .collect();
-        let rows = stmt.query_map(sql_params.as_slice(), |row| row.get::<_, String>(0))?;
-        rows.collect::<Result<_, _>>()?
-    };
-
-    let mut out = Vec::with_capacity(best.len());
-    for (name, (version, deps_json)) in best {
-        if archived.contains(&name) {
-            continue;
-        }
-        let deps: PackageDependencies = serde_json::from_str(&deps_json)?;
-        out.push(Package::from_crandb(name, version, deps.dependencies));
-    }
-    Ok(out)
+    Ok(best)
 }
 
-/// URL of the CRAN-wide ALLPACKAGES metadata (every version of every package
-/// ever published on CRAN), overridable via the `RIG_ALLPACKAGES_URL` env var.
-fn allpackages_url() -> String {
-    std::env::var("RIG_ALLPACKAGES_URL")
-        .unwrap_or_else(|_| "https://ppm.r-pkg.org/ALLPACKAGES.zst".to_string())
-}
-
-fn archivedpackages_url() -> String {
-    std::env::var("RIG_ARCHIVEDPACKAGES_URL")
-        .unwrap_or_else(|_| "https://ppm.r-pkg.org/ARCHIVEDPACKAGES.zst".to_string())
+/// The names of the packages in the ARCHIVEDPACKAGES feed at `url`.
+fn feed_archived_names(
+    conn: &Connection,
+    url: &str,
+) -> Result<std::collections::HashSet<String>, Box<dyn Error>> {
+    let archived_repo_ids = source_repo_ids(conn, url, "source")?;
+    let placeholders = archived_repo_ids
+        .iter()
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(",");
+    let sql = format!(
+        "SELECT DISTINCT name FROM archived_packages WHERE repo_id IN ({})",
+        placeholders
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let sql_params: Vec<&dyn rusqlite::ToSql> = archived_repo_ids
+        .iter()
+        .map(|id| id as &dyn rusqlite::ToSql)
+        .collect();
+    let rows = stmt.query_map(sql_params.as_slice(), |row| row.get::<_, String>(0))?;
+    Ok(rows.collect::<Result<_, _>>()?)
 }
 
 #[derive(Debug, Clone)]
@@ -435,11 +602,12 @@ pub struct ArchivedPackage {
 
 /// Whether CRAN has archived `package`, and if so when.
 pub fn archived_package(package: &str) -> Result<Option<ArchivedPackage>, Box<dyn Error>> {
-    ensure_archived_fresh()?;
+    let feed = MetadataFeed::cran();
+    ensure_archived_fresh(&feed)?;
 
-    let repo_local = repo_local_file(&archivedpackages_url())?;
+    let repo_local = repo_local_file(&feed.archived_url)?;
     let repo_db = repo_db_file(&repo_local)?;
-    archived_package_in_db(&repo_db, &archivedpackages_url(), package)
+    archived_package_in_db(&repo_db, &feed.archived_url, package)
 }
 
 /// The `archived_packages` row of `package` for the feed at `feed_url`, without
@@ -734,7 +902,12 @@ fn ensure_packages_cached(
         // storing it: the cached download file then looks fresh while the
         // database is empty. Recover by forcing a fresh download rather than
         // dead-ending on a "database is corrupt" error.
-        if repo_has_packages(&repo_db, repo_url_key, pkg_type, feed)? {
+        // A recorded parse progress also counts: it is written in the same
+        // transaction as the rows, and a feed may have no rows at all (e.g.
+        // the ARCHIVEDPACKAGES of an old Bioconductor release).
+        if repo_has_packages(&repo_db, repo_url_key, pkg_type, feed)?
+            || get_repo_progress(&repo_db, repo_url_key, pkg_type).is_some()
+        {
             return Ok(CacheState::Cached);
         }
         info!("Cached metadata missing from database, forcing a fresh download");
@@ -1174,6 +1347,7 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
             sha256sum: na_to_none(&sha256sum),
             // Only the ARCHIVEDPACKAGES DCF feed has this, no RDS repo does.
             archived: None,
+            repository: None,
             system_requirements: normalize_system_requirements(&system_requirements),
         };
         packages.push(pkg);
@@ -1755,11 +1929,16 @@ DownloadURL: https://p3m.dev/cran/2020-01-09/src/contrib/cli_2.0.1.tar.gz
 
         let loader = |cutoff: Option<&str>| {
             let conn = open_db(&db).unwrap();
-            let repo_ids = source_repo_ids(&conn, url, "source").unwrap();
+            let repo_ids = source_repo_ids(&conn, url, "source")
+                .unwrap()
+                .into_iter()
+                .map(|id| (id, RepoId::Cran))
+                .collect();
             DbSourcePackageLoader {
                 conn,
                 repo_ids,
                 exclude_newer: None,
+                bioc_only: Default::default(),
             }
             .with_exclude_newer(cutoff.map(|c| c.to_string()))
         };
@@ -1778,6 +1957,109 @@ DownloadURL: https://p3m.dev/cran/2020-01-09/src/contrib/cli_2.0.1.tar.gz
         assert_eq!(versions(Some("2020-01-09")), vec!["2.0.0", "2.0.1"]);
         assert_eq!(versions(Some("2020-01-01")), vec!["2.0.0"]);
         assert!(versions(Some("2019-01-01")).is_empty());
+
+        let _ = std::fs::remove_file(&db);
+    }
+
+    /// Store `dcf` as the ALLPACKAGES feed at `url` in the database `db`.
+    fn store_feed(db: &PathBuf, url: &str, dcf: &str) {
+        let packages = parse_dcf_bytes(dcf.as_bytes()).unwrap();
+        save_packages_to_db(
+            &packages,
+            db,
+            url,
+            None,
+            "source",
+            "ALLPACKAGES",
+            None,
+            true,
+            None,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn cran_and_bioc_versions_are_merged() {
+        let cran_url = "https://example.com/cran/ALLPACKAGES.zst";
+        let bioc_url = "https://example.com/bioc/3.22/ALLPACKAGES.zst";
+        let mut db = std::env::temp_dir();
+        db.push(format!("rig-test-cran-bioc-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&db);
+        ensure_db_schema(&db).unwrap();
+        store_feed(
+            &db,
+            cran_url,
+            "\
+Package: RBGL
+Version: 1.0.0
+DownloadURL: https://p3m.dev/cran/2020-01-01/src/contrib/RBGL_1.0.0.tar.gz
+
+Package: RBGL
+Version: 1.86.0
+DownloadURL: https://p3m.dev/cran/2025-11-01/src/contrib/RBGL_1.86.0.tar.gz
+
+Package: cli
+Version: 3.6.0
+",
+        );
+        store_feed(
+            &db,
+            bioc_url,
+            "\
+Package: RBGL
+Version: 1.86.0
+DownloadURL: https://p3m.dev/bioconductor/2025-11-04/packages/3.22/bioc/src/contrib/RBGL_1.86.0.tar.gz
+
+Package: limma
+Version: 3.66.0
+DownloadURL: https://p3m.dev/bioconductor/2025-10-30/packages/3.22/bioc/src/contrib/limma_3.66.0.tar.gz
+",
+        );
+
+        let conn = open_db(&db).unwrap();
+        let bioc = RepoId::Bioc("3.22".to_string());
+        let mut repo_ids: Vec<(i64, RepoId)> = vec![];
+        for (url, repo) in [(cran_url, RepoId::Cran), (bioc_url, bioc.clone())] {
+            for id in source_repo_ids(&conn, url, "source").unwrap() {
+                repo_ids.push((id, repo.clone()));
+            }
+        }
+        let loader = DbSourcePackageLoader {
+            conn,
+            repo_ids,
+            exclude_newer: None,
+            bioc_only: Default::default(),
+        };
+
+        let versions = |name: &str| {
+            let mut out: Vec<(String, RepoId, String)> = loader
+                .load_versions(name)
+                .unwrap()
+                .into_iter()
+                .map(|p| {
+                    (
+                        p.version.to_string(),
+                        p.repository.unwrap(),
+                        p.download_url.unwrap_or_default(),
+                    )
+                })
+                .collect();
+            out.sort();
+            out
+        };
+
+        // In both: the versions of both, the Bioconductor one on a tie.
+        let rbgl = versions("RBGL");
+        assert_eq!(rbgl.len(), 2);
+        assert_eq!(rbgl[0].0, "1.0.0");
+        assert_eq!(rbgl[0].1, RepoId::Cran);
+        assert_eq!(rbgl[1].0, "1.86.0");
+        assert_eq!(rbgl[1].1, bioc);
+        assert!(rbgl[1].2.contains("/bioconductor/"));
+
+        assert_eq!(versions("limma")[0].1, bioc);
+        assert_eq!(versions("cli")[0].1, RepoId::Cran);
+        assert!(versions("nope").is_empty());
 
         let _ = std::fs::remove_file(&db);
     }

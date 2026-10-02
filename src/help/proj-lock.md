@@ -39,6 +39,41 @@ newest installed R version that does, and failing that the current R
 release. The version it picks does not have to be installed: `rig proj lock`
 never runs R, and [`rig proj sync`](#rig-proj-sync) installs the R version the lock file names.
 
+## Bioconductor packages
+
+rig solves from CRAN and from the Bioconductor release that belongs to the
+target's R version, e.g. Bioconductor 3.23 for R 4.6. You do not need to set
+up anything: `rig proj add limma` works like `rig proj add dplyr`. Some R
+versions have two Bioconductor releases, e.g. 3.21 and 3.22 for R 4.5, and
+rig uses the newer one. With `--exclude-newer` it uses the release that was
+current on the cutoff day, see below.
+
+A `bioc` entry in `[[repository]]` pins the Bioconductor release, e.g. to use
+the development version, or turns Bioconductor off:
+
+```toml
+[[repository]]
+name = "bioc"
+version = "3.24"
+```
+
+```toml
+[[repository]]
+name = "bioc"
+enabled = false
+```
+
+The `bioc` entry has no `url`. The `R_BIOC_VERSION` environment variable
+also pins the release, and `RIG_BIOCONDUCTOR=false` turns Bioconductor off
+for every project.
+
+`rproj.lock` records the Bioconductor release of each target as
+`bioc-version`, and `repository = "bioc/<version>"` for each Bioconductor
+package. A target solved with another release is solved again.
+[`rig proj sync`](#rig-proj-sync) also adds the Bioconductor repositories of
+that release to the project environment, so `install.packages()` finds
+Bioconductor packages, too.
+
 ## Source and binary packages
 
 The solver considers binary packages as well as source packages, and
@@ -135,9 +170,10 @@ long as it fits `rproj.toml`. A git/GitHub dependency named in
 
 ## Excluding newer package versions
 
-`--exclude-newer` makes the solver ignore CRAN package versions published
-after a date, so you can lock the project as CRAN was on that day, or skip
-versions released in the last few days:
+`--exclude-newer` makes the solver ignore CRAN and Bioconductor package
+versions published after a date, so you can lock the project as the
+repositories were on that day, or skip versions released in the last few
+days:
 
 ```sh
 rig proj lock --exclude-newer 2025-06-01
@@ -148,9 +184,11 @@ It takes a date (`2025-06-01`), an RFC 3339 timestamp (only its UTC date is
 used), or a span back from today, e.g. `7 days`, `2 weeks` or `P1M`. A
 version's publication date is the day it first appeared in a Posit Package
 Manager snapshot, so the cutoff is a day, and it cannot be earlier than
-2017-10-10, the first snapshot. It only applies to CRAN packages, not to
-git, GitHub, URL or local dependencies, and binary builds of a version are
-used no matter when they were built.
+2017-10-10, the first snapshot. It only applies to CRAN and Bioconductor
+packages, not to git, GitHub, URL or local dependencies, and binary builds
+of a version are used no matter when they were built. If the target's R
+version has two Bioconductor releases, the cutoff also chooses between them:
+the newer one if it was released by the cutoff day, otherwise the older one.
 
 To make it part of the project, set it in `rproj.toml`; `--exclude-newer`
 overrides it:

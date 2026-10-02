@@ -38,6 +38,7 @@ use crate::install::{
 };
 use crate::proj::BASE_PKGS;
 use crate::repos::cranlike_metadata::minor_r_version;
+use crate::repos::feed::BiocSetting;
 use crate::rvenv::RPROJ_LOCK_FILE;
 use crate::solver::{RPackageRegistry, RegistryPackageVersion};
 
@@ -607,10 +608,40 @@ pub struct Group {
 }
 
 /// One `[[repository]]`. Array order is precedence (first = highest).
-#[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
+///
+/// An entry is a package repository at `url`, or the built-in Bioconductor
+/// repository, named [`BIOC_REPOSITORY_NAME`], which has no `url`. Bioconductor
+/// is on without an entry, the entry only pins its `version` or turns it off
+/// with `enabled = false`. See [`Rproj::check_repositories`].
+#[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
 pub struct Repository {
     pub name: String,
-    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+}
+
+/// The name of the built-in Bioconductor entry of `[[repository]]`.
+pub const BIOC_REPOSITORY_NAME: &str = "bioc";
+
+impl Repository {
+    /// A package repository at `url`.
+    #[cfg(test)]
+    pub fn at_url(name: &str, url: &str) -> Repository {
+        Repository {
+            name: name.to_string(),
+            url: Some(url.to_string()),
+            ..Default::default()
+        }
+    }
+
+    /// Whether this is the built-in Bioconductor entry.
+    pub fn is_bioc(&self) -> bool {
+        self.name.eq_ignore_ascii_case(BIOC_REPOSITORY_NAME)
+    }
 }
 
 /// `[build]` — package build flags.
@@ -743,6 +774,77 @@ impl Rproj {
     /// The `exclude-newer` setting of `[tool.rig]`: hide CRAN versions
     /// published after this date (or span) from the solver, see
     /// [`crate::exclude_newer`].
+    /// Check the `[[repository]]` entries: the built-in
+    /// [`BIOC_REPOSITORY_NAME`] entry has no `url`, and appears at most once,
+    /// every other entry has a `url`, and no `version` or `enabled`.
+    pub fn check_repositories(&self) -> Result<(), Box<dyn Error>> {
+        let mut seen_bioc = false;
+        for repo in &self.repository {
+            if repo.is_bioc() {
+                if repo.url.is_some() {
+                    bail!(
+                        "`[[repository]]` `{}` is the built-in Bioconductor repository, \
+                         it cannot have a `url`",
+                        repo.name
+                    );
+                }
+                if seen_bioc {
+                    bail!("`[[repository]]` `{}` appears more than once", repo.name);
+                }
+                seen_bioc = true;
+            } else {
+                if repo.url.is_none() {
+                    bail!("`[[repository]]` `{}` needs a `url`", repo.name);
+                }
+                if repo.version.is_some() || repo.enabled.is_some() {
+                    bail!(
+                        "`[[repository]]` `{}` cannot have a `version` or `enabled`, \
+                         only the `{}` entry can",
+                        repo.name,
+                        BIOC_REPOSITORY_NAME
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// The manifest's Bioconductor setting, from its
+    /// [`BIOC_REPOSITORY_NAME`] `[[repository]]` entry. `RIG_BIOCONDUCTOR`
+    /// turns Bioconductor off for every project.
+    pub fn bioc_setting(&self) -> BiocSetting {
+        let mut setting = BiocSetting::default();
+        if let Some(repo) = self.repository.iter().find(|r| r.is_bioc()) {
+            setting.enabled = setting.enabled && repo.enabled.unwrap_or(true);
+            setting.version = repo.version.clone();
+        }
+        setting.only = self.bioc_dependency_names();
+        setting
+    }
+
+    /// The dependencies with `repository = "bioc"`, which must come from
+    /// Bioconductor, in every dependency table.
+    pub fn bioc_dependency_names(&self) -> std::collections::BTreeSet<String> {
+        let tables = std::iter::once(&self.dependencies)
+            .chain(std::iter::once(&self.linking_dependencies))
+            .chain(self.dependency_groups.values().map(|g| &g.dependencies))
+            .chain(self.optional_dependencies.values());
+        let mut out = std::collections::BTreeSet::new();
+        for table in tables {
+            for (name, dep) in table {
+                if let Dependency::Detailed(t) = dep {
+                    if t.repository
+                        .as_deref()
+                        .is_some_and(|r| r.eq_ignore_ascii_case(BIOC_REPOSITORY_NAME))
+                    {
+                        out.insert(name.clone());
+                    }
+                }
+            }
+        }
+        out
+    }
+
     pub fn exclude_newer(&self) -> Result<Option<ExcludeNewerSpec>, Box<dyn Error>> {
         let Some(value) = self.tool.get("rig").and_then(|t| t.get("exclude-newer")) else {
             return Ok(None);
@@ -889,6 +991,52 @@ impl Rproj {
         };
 
         table.insert(name.to_string(), value);
+        previous
+    }
+
+    /// Add (or update) a dependency that must come from Bioconductor: a
+    /// [`DepTable`] with `repository = "bioc"`, see
+    /// [`Rproj::bioc_setting`]. Mirrors [`Rproj::add_dependency`]'s dev
+    /// placement. `version` replaces the existing version requirement, if
+    /// given. A git/url/path source of an existing entry is dropped, its
+    /// `attach`/`enhances`/`vignette-builder` flags are kept.
+    ///
+    /// Returns the previous version requirement, if the manifest already
+    /// listed the package.
+    pub fn add_bioc_dependency(
+        &mut self,
+        name: &str,
+        version: Option<&str>,
+        dev: bool,
+    ) -> Option<String> {
+        let group = if dev {
+            &mut self
+                .dependency_groups
+                .entry("dev".to_string())
+                .or_default()
+                .dependencies
+        } else {
+            &mut self.dependencies
+        };
+        let mut table = DepTable {
+            repository: Some(BIOC_REPOSITORY_NAME.to_string()),
+            ..Default::default()
+        };
+        let previous = match group.get(name) {
+            Some(Dependency::Version(old)) => Some(old.clone()),
+            Some(Dependency::Detailed(old)) => {
+                table.attach = old.attach;
+                table.enhances = old.enhances;
+                table.vignette_builder = old.vignette_builder;
+                Some(old.version.clone().unwrap_or_else(|| "*".to_string()))
+            }
+            None => None,
+        };
+        table.version = version
+            .map(|v| v.to_string())
+            .or_else(|| previous.clone())
+            .or_else(|| Some("*".to_string()));
+        group.insert(name.to_string(), Dependency::Detailed(Box::new(table)));
         previous
     }
 
@@ -1951,6 +2099,21 @@ fn config_needs_entry(entry: &str) -> (String, Dependency) {
                 );
             }
         }
+        // Kept verbatim in `ref`, for the round trip to `DESCRIPTION`, and
+        // solved from Bioconductor.
+        Ok(crate::pkgsource::PkgSource::Bioc) => {
+            let body = crate::pkgsource::strip_bioc_prefix(entry);
+            if let Ok((name, _)) = parse_add_spec(body) {
+                return (
+                    name,
+                    Dependency::Detailed(Box::new(DepTable {
+                        repository: Some(BIOC_REPOSITORY_NAME.to_string()),
+                        ref_: Some(entry.to_string()),
+                        ..Default::default()
+                    })),
+                );
+            }
+        }
         Ok(crate::pkgsource::PkgSource::Cran)
         | Ok(crate::pkgsource::PkgSource::Local(_))
         | Err(_) => {}
@@ -2348,6 +2511,14 @@ pub struct RprojLockTarget {
     /// version actually pinned in `packages` (catches a tightened
     /// constraint) -- see `lock_target_satisfies` in `src/proj.rs`.
     pub direct_dependencies: Vec<LockDirectDependency>,
+    /// The Bioconductor release this target was solved with, besides CRAN,
+    /// e.g. `3.22`. Absent if it was solved with CRAN only.
+    #[serde(
+        rename = "bioc-version",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub bioc_version: Option<String>,
     pub packages: Vec<RprojLockPackage>,
 }
 
@@ -2402,6 +2573,11 @@ pub struct RprojLockPackage {
     /// lockfile written before this existed.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_project: bool,
+    /// The repository the package comes from, `bioc/<version>` for a
+    /// Bioconductor package. Absent for CRAN and non-repository (git, URL,
+    /// local) packages.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repository: Option<String>,
     /// The package's `SystemRequirements`, with its whitespace collapsed.
     /// `rig proj sync` matches it against the r-system-requirements rules to
     /// install the OS packages it needs on Linux. Only recorded where it can
@@ -2530,6 +2706,7 @@ impl RprojLockTarget {
                     groups: vec![],
                     extra_groups: vec![],
                     is_project: false,
+                    repository: None,
                     system_requirements,
                 });
                 continue;
@@ -2564,10 +2741,11 @@ impl RprojLockTarget {
                     format_linkingto(&linkingto),
                 );
             }
-            // The index's URL is snapshot-pinned; the CRAN ones are guesses, and
-            // there are two of them because a version that has been superseded
-            // has moved into the archive.
+            // The index's (or the metadata's) URL is snapshot-pinned; the CRAN
+            // ones are guesses, and there are two of them because a version
+            // that has been superseded has moved into the archive.
             let filename = format!("{}_{}.tar.gz", k, v.version);
+            let repository = registry.artifact_repository(k, v);
             let sources = match registry.artifact_url(k, v) {
                 Some(url) => vec![url],
                 None => vec![
@@ -2608,6 +2786,7 @@ impl RprojLockTarget {
                 groups: vec![],
                 extra_groups: vec![],
                 is_project: false,
+                repository: repository.filter(|r| r.is_bioc()).map(|r| r.to_string()),
                 system_requirements,
             });
         }
@@ -2616,6 +2795,7 @@ impl RprojLockTarget {
             r_version,
             platform: platform.unwrap_or_else(|| "source".to_string()),
             direct_dependencies: vec![],
+            bioc_version: registry.bioc_version().map(|v| v.to_string()),
             packages: pkgs,
         }
     }
@@ -2736,6 +2916,7 @@ mod tests {
             groups: vec!["main".to_string()],
             extra_groups: vec![],
             is_project: false,
+            repository: None,
             system_requirements: None,
         }
     }
@@ -2832,10 +3013,7 @@ mod tests {
             },
         );
 
-        m.repository = vec![Repository {
-            name: "CRAN".to_string(),
-            url: "https://cran.r-project.org".to_string(),
-        }];
+        m.repository = vec![Repository::at_url("CRAN", "https://cran.r-project.org")];
         m.build = Some(Build {
             byte_compile: Some(true),
             needs_compilation: Some(true),
@@ -2875,6 +3053,7 @@ mod tests {
                 r_version: "4.6".to_string(),
                 platform: "aarch64-apple-darwin".to_string(),
                 direct_dependencies: vec![],
+                bioc_version: None,
                 packages: vec![sample_package()],
             }],
         };
@@ -2903,12 +3082,14 @@ mod tests {
                     r_version: "4.5".to_string(),
                     platform: "x86_64-pc-linux-gnu".to_string(),
                     direct_dependencies: vec![],
+                    bioc_version: None,
                     packages: vec![linux_package],
                 },
                 RprojLockTarget {
                     r_version: "4.6".to_string(),
                     platform: "aarch64-apple-darwin".to_string(),
                     direct_dependencies: vec![],
+                    bioc_version: None,
                     packages: vec![sample_package()],
                 },
             ],
@@ -2937,6 +3118,7 @@ mod tests {
                 r_version: "4.6".to_string(),
                 platform: "aarch64-apple-darwin".to_string(),
                 direct_dependencies: vec![],
+                bioc_version: None,
                 packages: vec![package],
             }],
         };
@@ -4585,6 +4767,62 @@ foo = "bar"
     }
 
     #[test]
+    fn bioc_repository_entry_is_checked() {
+        let parse = |text: &str| -> Rproj {
+            let m: Rproj = toml::from_str(&format!(
+                "[project]\nname = \"p\"\nversion = \"1.0.0\"\n{}",
+                text
+            ))
+            .unwrap();
+            m
+        };
+        let ok = parse("[[repository]]\nname = \"bioc\"\nversion = \"3.24\"\n");
+        assert!(ok.check_repositories().is_ok());
+        let setting = ok.bioc_setting();
+        assert_eq!(setting.version.as_deref(), Some("3.24"));
+
+        let off = parse("[[repository]]\nname = \"bioc\"\nenabled = false\n");
+        assert!(!off.bioc_setting().enabled);
+
+        let with_url = parse("[[repository]]\nname = \"bioc\"\nurl = \"https://x\"\n");
+        assert!(with_url.check_repositories().is_err());
+        let no_url = parse("[[repository]]\nname = \"other\"\n");
+        assert!(no_url.check_repositories().is_err());
+        let url_version =
+            parse("[[repository]]\nname = \"other\"\nurl = \"https://x\"\nversion = \"1\"\n");
+        assert!(url_version.check_repositories().is_err());
+
+        // Round trip keeps the entry and its place.
+        let both = parse(
+            "[[repository]]\nname = \"other\"\nurl = \"https://x\"\n\n\
+             [[repository]]\nname = \"bioc\"\nversion = \"3.24\"\n",
+        );
+        let text = toml::to_string_pretty(&both).unwrap();
+        assert_eq!(toml::from_str::<Rproj>(&text).unwrap(), both);
+        assert!(both.repository[1].is_bioc());
+    }
+
+    #[test]
+    fn bioc_dependencies_are_bioc_only() {
+        let mut m = Rproj::minimal("mypkg");
+        assert_eq!(m.add_bioc_dependency("limma", Some(">= 3.60"), false), None);
+        m.add_dependency("cli", "*", false);
+        assert_eq!(
+            m.bioc_setting().only.into_iter().collect::<Vec<_>>(),
+            vec!["limma".to_string()]
+        );
+        // Re-adding keeps the requirement, unless a new one is given.
+        assert_eq!(
+            m.add_bioc_dependency("limma", None, false).as_deref(),
+            Some(">= 3.60")
+        );
+        match &m.dependencies["limma"] {
+            Dependency::Detailed(t) => assert_eq!(t.version.as_deref(), Some(">= 3.60")),
+            other => panic!("{:?}", other),
+        }
+    }
+
+    #[test]
     fn config_needs_roundtrips_through_the_manifest() {
         let mut m = Rproj::minimal("mypkg");
         let field = "tidyverse/tidytemplate, pkgdown (>= 2.0), \
@@ -4740,12 +4978,13 @@ foo = "bar"
         }
 
         // `bioc::S4Vectors` is not a `git`/GitHub reference, so it is kept
-        // verbatim in `ref`.
+        // verbatim in `ref`, and it comes from Bioconductor.
         let (key, dep) = config_needs_entry("bioc::S4Vectors");
         assert_eq!(key, "S4Vectors");
         assert_eq!(
             dep,
             Dependency::Detailed(Box::new(DepTable {
+                repository: Some("bioc".to_string()),
                 ref_: Some("bioc::S4Vectors".to_string()),
                 ..Default::default()
             }))

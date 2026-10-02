@@ -52,33 +52,28 @@ pub static HC_PROFILE_REPOS_MARKERS: Lazy<ProfileReposMarkers> = Lazy::new(|| {
     }
 });
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BiocVersionMapping {
     pub r_version: String,
     pub bioc_version: String,
+    /// `YYYY-MM-DD`, `None` for a release that is still in development.
+    #[serde(default)]
+    pub release_date: Option<String>,
 }
 
-pub static HC_R_VERSION_TO_BIOC_VERSION: Lazy<HashMap<String, String>> = Lazy::new(|| {
+/// Every Bioconductor release, oldest first, with the R minor version it
+/// belongs to. Recent R minor versions have two Bioconductor releases.
+pub static HC_BIOC_VERSIONS: Lazy<Vec<BiocVersionMapping>> = Lazy::new(|| {
     let data = include_str!("data/r-version-to-bioc-version.json");
-    let mappings: Vec<BiocVersionMapping> =
-        serde_json::from_str(data).expect("Invalid JSON in data/r-version-to-bioc-version.json");
-    let mut map = HashMap::new();
-    for mapping in mappings {
-        map.insert(mapping.r_version.clone(), mapping.bioc_version.clone());
-    }
-    map
+    serde_json::from_str(data).expect("Invalid JSON in data/r-version-to-bioc-version.json")
 });
 
 #[allow(dead_code)]
 pub static HC_BIOC_VERSION_TO_R_VERSION: Lazy<HashMap<String, String>> = Lazy::new(|| {
-    let data = include_str!("data/r-version-to-bioc-version.json");
-    let mappings: Vec<BiocVersionMapping> =
-        serde_json::from_str(data).expect("Invalid JSON in data/r-version-to-bioc-version.json");
-    let mut map = HashMap::new();
-    for mapping in mappings {
-        map.insert(mapping.bioc_version.clone(), mapping.r_version.clone());
-    }
-    map
+    HC_BIOC_VERSIONS
+        .iter()
+        .map(|m| (m.bioc_version.clone(), m.r_version.clone()))
+        .collect()
 });
 
 #[cfg(target_os = "windows")]

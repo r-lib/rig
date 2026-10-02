@@ -47,6 +47,7 @@ use crate::install::{
 };
 use crate::library::library_rver;
 use crate::output::OUTPUT;
+use crate::pkg::pkg_bioc_setting;
 use crate::pkgsource::local::resolve_local_path;
 use crate::pkgsource::{parse_pkg_source, PkgSource};
 use crate::proj::{
@@ -95,8 +96,22 @@ pub fn sc_pkg_install(
         }
         None => None,
     };
+    let lib = resolve_library(args)?;
+    // Installing needs an R version even when `--library` is a plain path: it
+    // selects which binary builds are usable, and provides the `R` that installs
+    // a source package. It also selects the Bioconductor release.
+    let rver = match &lib.rversion {
+        Some(rver) => rver.clone(),
+        None => library_rver(args)?,
+    };
+    let mut bioc = pkg_bioc_setting(args);
+    bioc.only = bioc_names(&names);
+
     if dev {
-        let loader = DbSourcePackageLoader::new()?.with_exclude_newer(exclude_newer.clone());
+        let feeds = bioc.feeds(&rver, exclude_newer.as_deref());
+        let loader = DbSourcePackageLoader::new_for(&feeds)?
+            .with_exclude_newer(exclude_newer.clone())
+            .with_bioc_only(bioc.only.clone());
         add_dev_deps(
             &loader,
             &cran_names,
@@ -105,15 +120,6 @@ pub fn sc_pkg_install(
             args.get_flag("ignore-unavailable"),
         )?;
     }
-
-    let lib = resolve_library(args)?;
-    // Installing needs an R version even when `--library` is a plain path: it
-    // selects which binary builds are usable, and provides the `R` that installs
-    // a source package.
-    let rver = match &lib.rversion {
-        Some(rver) => rver.clone(),
-        None => library_rver(args)?,
-    };
 
     let target = proj_binary_target(args.get_one::<String>("platform"), &rver)?;
     let prefer_binary = args.get_one::<usize>("prefer-binary").copied();
@@ -132,6 +138,7 @@ pub fn sc_pkg_install(
         target,
         prefer_binary,
         exclude_newer.as_deref(),
+        &bioc,
         &SolvePins::default(),
         true,
     )?;
@@ -258,6 +265,17 @@ type RequestedDeps = (
     Vec<Package>,
 );
 
+/// The names of the `bioc::` references in `names`, which must come from
+/// Bioconductor.
+fn bioc_names(names: &[String]) -> std::collections::BTreeSet<String> {
+    names
+        .iter()
+        .filter(|n| matches!(parse_pkg_source(n), Ok(PkgSource::Bioc)))
+        .filter_map(|n| crate::rproj::parse_add_spec(crate::pkgsource::strip_bioc_prefix(n)).ok())
+        .map(|(name, _)| name)
+        .collect()
+}
+
 fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
     let mut deps = PackageDependencies::new();
     let mut git_deps: Vec<(String, DepTable)> = vec![];
@@ -279,8 +297,9 @@ fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
         })?;
         let mut constraints: Vec<crate::dcf::VersionConstraint> = vec![];
         let resolved_name = match source {
-            PkgSource::Cran => {
-                let (cran_name, version) = crate::rproj::parse_add_spec(name)?;
+            PkgSource::Cran | PkgSource::Bioc => {
+                let spec = crate::pkgsource::strip_bioc_prefix(name);
+                let (cran_name, version) = crate::rproj::parse_add_spec(spec)?;
                 cran_names.push(cran_name.clone());
                 constraints = crate::rproj::parse_constraints(&version)?;
                 cran_name
@@ -775,6 +794,7 @@ mod tests {
             groups: vec![],
             extra_groups: vec![],
             is_project: false,
+            repository: None,
             system_requirements: None,
         }
     }

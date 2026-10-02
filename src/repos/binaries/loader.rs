@@ -7,13 +7,17 @@
 //! are worth keeping because they are snapshot-pinned and the CRAN URLs we would
 //! otherwise construct are guesses.
 
+use std::collections::HashSet;
 use std::error::Error;
 
 use log::*;
 
 use crate::dcf::RPackageVersion;
-use crate::repos::binaries::{load_binary_index, prefetch_binary_indices, BinaryIndex, PpmStatus};
-use crate::repos::cranlike_metadata::minor_r_version;
+use crate::repos::binaries::{
+    load_binary_index_in, prefetch_binary_indices_in, BinaryIndex, PpmStatus,
+};
+use crate::repos::cranlike_metadata::{feed_package_names, minor_r_version};
+use crate::repos::feed::MetadataFeed;
 use crate::rversion::OsVersion;
 use crate::solver::{BinaryArtifact, BinaryIndexLoader, PackageArtifacts};
 
@@ -58,26 +62,75 @@ impl BinaryTarget {
     }
 }
 
-/// A [`BinaryIndexLoader`] backed by the P3M per-package indices.
+/// A [`BinaryIndexLoader`] backed by the P3M per-package indices of one or
+/// more feeds: CRAN's, and possibly a Bioconductor release's.
 ///
-/// One HTTP request per package, cached for a day, made lazily as the solver
-/// visits packages.
+/// One HTTP request per package and feed, cached for a day, made lazily as the
+/// solver visits packages. A Bioconductor index is only requested for the
+/// packages that release has, so CRAN packages cost no extra requests.
 pub struct P3mBinaryLoader {
     target: BinaryTarget,
+    feeds: Vec<(MetadataFeed, Option<HashSet<String>>)>,
 }
 
 impl P3mBinaryLoader {
-    pub fn new(target: BinaryTarget) -> Self {
-        P3mBinaryLoader { target }
+    /// A loader for the indices of `feeds`, whose metadata must already be
+    /// in the cache, see [`crate::repos::cranlike_metadata::ensure_feeds_fresh`].
+    pub fn new_for(target: BinaryTarget, feeds: &[MetadataFeed]) -> Self {
+        let feeds = feeds
+            .iter()
+            .map(|feed| {
+                let names = if feed.repo.is_bioc() {
+                    // Without the names, no Bioconductor index is fetched,
+                    // and the release's packages solve from source.
+                    Some(feed_package_names(feed).unwrap_or_else(|e| {
+                        debug!("Cannot list the packages of {}: {}", feed.repo, e);
+                        HashSet::new()
+                    }))
+                } else {
+                    None
+                };
+                (feed.clone(), names)
+            })
+            .collect();
+        P3mBinaryLoader { target, feeds }
+    }
+
+    fn has(names: &Option<HashSet<String>>, package: &str) -> bool {
+        names.as_ref().is_none_or(|n| n.contains(package))
     }
 }
 
 impl BinaryIndexLoader for P3mBinaryLoader {
     fn load_artifacts(&self, package: &str) -> Result<PackageArtifacts, Box<dyn Error>> {
-        match load_binary_index(package, None)? {
-            None => Ok(PackageArtifacts::default()),
-            Some(cached) => Ok(artifacts_for_target(&cached.index, &self.target)),
+        let mut out = PackageArtifacts::default();
+        for (feed, names) in &self.feeds {
+            if !Self::has(names, package) {
+                continue;
+            }
+            let Some(cached) = load_binary_index_in(feed, package, None)? else {
+                continue;
+            };
+            let mut artifacts = artifacts_for_target(&cached.index, &self.target);
+            for bin in &mut artifacts.binaries {
+                bin.repository = Some(feed.repo.clone());
+            }
+            out.binaries.append(&mut artifacts.binaries);
+            // On a version both feeds have, the source metadata takes the
+            // Bioconductor one, so its URL wins here, too.
+            let bioc = feed.repo.is_bioc();
+            for (ver, url) in artifacts.source_urls {
+                if bioc || !out.source_urls.contains_key(&ver) {
+                    out.source_urls.insert(ver, url);
+                }
+            }
+            for (ver, sha) in artifacts.source_sha256 {
+                if bioc || !out.source_sha256.contains_key(&ver) {
+                    out.source_sha256.insert(ver, sha);
+                }
+            }
         }
+        Ok(out)
     }
 
     fn target_name(&self) -> String {
@@ -85,7 +138,14 @@ impl BinaryIndexLoader for P3mBinaryLoader {
     }
 
     fn prefetch(&self, packages: &[String]) {
-        prefetch_binary_indices(packages, None);
+        for (feed, names) in &self.feeds {
+            let packages: Vec<String> = packages
+                .iter()
+                .filter(|p| Self::has(names, p))
+                .cloned()
+                .collect();
+            prefetch_binary_indices_in(feed, &packages, None);
+        }
     }
 }
 
@@ -157,6 +217,7 @@ pub fn artifacts_for_target(index: &BinaryIndex, target: &BinaryTarget) -> Packa
                 url: row.url().to_string(),
                 sha256: row.sha256().to_string(),
                 linkingto,
+                repository: None,
             });
         }
     }
