@@ -522,7 +522,7 @@ SCRIPT
     run rig run s.R
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^praise "
-    cmp s.R.lock s.R.lock.orig
+    [[ "$(< s.R.lock)" == "$(< s.R.lock.orig)" ]]
     run rig run --locked s.R
     [[ "$status" -eq 0 ]]
 
@@ -539,7 +539,7 @@ SCRIPT
     run rig run --locked s.R
     [[ "$status" -ne 0 ]]
     echo "$output" | grep -q "does not fit"
-    cmp s.R.lock s.R.lock.orig
+    [[ "$(< s.R.lock)" == "$(< s.R.lock.orig)" ]]
     run rig run s.R
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^praise "
