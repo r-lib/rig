@@ -456,8 +456,8 @@ teardown() {
 	Package: impremotes
 	Version: 1.0.0
 	Title: A Test Package
-	Imports: crayon (>= 1.5.0)
-	Remotes: r-lib/crayon@main, bioc::biocpkg
+	Imports: crayon (>= 1.5.0), limma
+	Remotes: r-lib/crayon@main, bioc::limma, bioc::biocpkg, bitbucket::user/repo
 	EOF
 
     run rig proj import --dependencies
@@ -467,10 +467,16 @@ teardown() {
     grep -q 'rev = "main"' rproj.toml
     # The version requirement from Imports is kept alongside the git source.
     grep -q 'version = ">= 1.5.0"' rproj.toml
-    # Unsupported remote type: warned about, not written as a git source, and
-    # does not fail the import.
+    # A `bioc::` remote of a dependency: it comes from Bioconductor.
+    grep -q '^limma = { version = "\*", repository = "bioc" }$' rproj.toml
+    # A `bioc::` remote of a package that is not a dependency: warned about,
+    # and not added.
     echo "$output" | grep -q "bioc::biocpkg"
     ! grep -q 'biocpkg' rproj.toml
+    # Unsupported remote type: warned about, not written as a git source, and
+    # does not fail the import.
+    echo "$output" | grep -q "bitbucket::user/repo"
+    ! grep -q 'bitbucket' rproj.toml
 }
 
 @test "proj add" {

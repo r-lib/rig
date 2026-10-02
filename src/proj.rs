@@ -487,13 +487,24 @@ fn sc_proj_import(
                 Ok(crate::pkgsource::PkgSource::Bioc) => {
                     let body = crate::pkgsource::strip_bioc_prefix(entry);
                     match crate::rproj::parse_add_spec(body) {
-                        Ok((name, _)) => {
+                        // Only a dependency the package has comes from
+                        // Bioconductor, the entry does not add one.
+                        Ok((name, _)) if manifest.has_dependency(&name) => {
                             let dev = manifest
                                 .dependency_groups
                                 .get("dev")
                                 .is_some_and(|g| g.dependencies.contains_key(&name))
                                 && !manifest.dependencies.contains_key(&name);
                             manifest.add_bioc_dependency(&name, None, dev);
+                        }
+                        Ok(_) => {
+                            let msg = format!(
+                                "Remotes entry `{}` is not a dependency of the package, \
+                                 skipping it",
+                                entry
+                            );
+                            OUTPUT.warn(&msg);
+                            info!("{}", msg);
                         }
                         Err(_) => {
                             let msg =
