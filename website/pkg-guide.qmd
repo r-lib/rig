@@ -15,8 +15,8 @@ repositories, all without starting R.
 ::: {.callout-note}
 ## P3M only
 
-`rig pkg` commands currently only use P3M (Posit Public Package Manager)
-and ignore your configured repositories.
+`rig pkg` commands currently only use P3M (Posit Public Package Manager),
+for CRAN and Bioconductor packages, and ignore your configured repositories.
 :::
 
 `rig pkg` operates on packages, inside a library. It is a companion to two

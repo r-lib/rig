@@ -7,6 +7,8 @@ use std::io::Read;
 use deb822_fast::{Deb822, Paragraph};
 use serde::{Deserialize, Serialize};
 
+use crate::repos::feed::RepoId;
+
 // ------------------------------------------------------------------------
 // Parsing DCF documents
 
@@ -403,6 +405,9 @@ pub struct Package {
     // the date CRAN archived the package, as `YYYY-MM-DD`. Only the
     // ARCHIVEDPACKAGES feed has this field, every other repo leaves it unset.
     pub archived: Option<String>,
+    // the repository (CRAN or a Bioconductor release) the solver found this
+    // version in. Unset outside the solver.
+    pub repository: Option<RepoId>,
 }
 
 impl Package {
@@ -429,6 +434,7 @@ impl Package {
             filesize: None,
             sha256sum: None,
             archived: None,
+            repository: None,
         }
     }
 
@@ -477,6 +483,7 @@ impl Package {
             filesize,
             sha256sum,
             archived,
+            repository: None,
         })
     }
 }

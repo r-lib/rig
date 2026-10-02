@@ -16,6 +16,14 @@ needs can be installed with it, at versions that work together. `--dry-run`
 runs the resolution and reports what it would install, without installing
 anything.
 
+## Bioconductor packages
+
+rig installs from CRAN and from the Bioconductor release of the R version,
+e.g. Bioconductor 3.23 for R 4.6, so `rig pkg install limma` works like
+`rig pkg install dplyr`. The `bioc::` prefix works, too, e.g.
+`rig pkg install bioc::limma`. Use `--no-bioc` to use CRAN only. `R_BIOC_VERSION` selects another Bioconductor
+release. See "Bioconductor packages" in [`rig proj lock`](proj.qmd#rig-proj-lock).
+
 ## Git, GitHub, GitLab and URL sources
 
 A package can also be given straight from a git repository, [pak's package
@@ -134,7 +142,8 @@ versions to look back through, e.g. `--prefer-binary=5`, and defaults to 3.
 
 ## Excluding newer package versions
 
-`--exclude-newer` ignores CRAN package versions published after a date, e.g.
+`--exclude-newer` ignores CRAN and Bioconductor package versions published
+after a date, e.g.
 `--exclude-newer 2025-06-01`, or after a span back from today, e.g.
 `--exclude-newer "7 days"`. See [`rig proj lock`](proj.qmd#rig-proj-lock)
 for the accepted formats and details.

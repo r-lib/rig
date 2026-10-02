@@ -25,12 +25,16 @@ use super::deps::{
 };
 use crate::dcf::{DepVersionSpec, RDepType, RPackageVersion, DEP_TYPES_SOFT};
 use crate::output::OUTPUT;
+use crate::pkg::pkg_feeds;
 use crate::pkgsource::local::resolve_local_path;
-use crate::pkgsource::{parse_pkg_source, LocalSource, PkgSource, RemoteSource, UrlSource};
+use crate::pkgsource::{
+    parse_pkg_source, strip_bioc_prefix, LocalSource, PkgSource, RemoteSource, UrlSource,
+};
 use crate::proj::{
     dep_table_from_remote, dep_table_from_url, fetch_and_read_git_package,
     fetch_and_read_url_package, github_owner_repo, read_local_package,
 };
+use crate::repos::feed::MetadataFeed;
 use crate::repos::DbSourcePackageLoader;
 use crate::rproj::{pak_ref_name, DepTable};
 use crate::solver::{is_base_package, GitSourceInfo, PackageVersionLoader};
@@ -54,13 +58,22 @@ pub fn sc_pkg_tree(
     let source = parse_pkg_source(&package).inspect_err(|err| {
         OUTPUT.error(&err.to_string());
     })?;
+    let feeds = pkg_feeds(args);
     let tree = match source {
-        PkgSource::Remote(r) => remote_root_tree(&package, &r, dev, no_base)?,
-        PkgSource::Url(u) => url_root_tree(&u, dev, no_base)?,
-        PkgSource::Local(l) => local_root_tree(&l, dev, no_base)?,
+        PkgSource::Remote(r) => remote_root_tree(&package, &r, &feeds, dev, no_base)?,
+        PkgSource::Url(u) => url_root_tree(&u, &feeds, dev, no_base)?,
+        PkgSource::Local(l) => local_root_tree(&l, &feeds, dev, no_base)?,
         PkgSource::Cran => {
-            let loader = DbSourcePackageLoader::new()?;
+            let loader = DbSourcePackageLoader::new_for(&feeds)?;
             dep_tree(&loader, &package, &ver, dev, no_base).inspect_err(|err| {
+                OUTPUT.error(&err.to_string());
+            })?
+        }
+        PkgSource::Bioc => {
+            let name = strip_bioc_prefix(&package).to_string();
+            let loader = DbSourcePackageLoader::new_for(&feeds)?
+                .with_bioc_only([name.clone()].into_iter().collect());
+            dep_tree(&loader, &name, &ver, dev, no_base).inspect_err(|err| {
                 OUTPUT.error(&err.to_string());
             })?
         }
@@ -91,12 +104,13 @@ pub(crate) fn proj_tree(
     root_version: &RPackageVersion,
     root_deps: &[DepVersionSpec],
     root_remotes: HashMap<String, DepTable>,
+    feeds: &[MetadataFeed],
     dev: bool,
     no_base: bool,
     why: Option<&str>,
     json: bool,
 ) -> Result<(), Box<dyn Error>> {
-    let loader = DbSourcePackageLoader::new()?;
+    let loader = DbSourcePackageLoader::new_for(feeds)?;
     let tree = tree_from_deps(
         &loader,
         root_name,
@@ -440,7 +454,7 @@ fn parse_remotes_field(remotes_field: &str) -> HashMap<String, DepTable> {
             }
             // A `Remotes:` entry that is a path on whoever's machine
             // wrote it means nothing here.
-            Ok(PkgSource::Cran) | Ok(PkgSource::Local(_)) | Err(_) => {}
+            Ok(PkgSource::Cran) | Ok(PkgSource::Bioc) | Ok(PkgSource::Local(_)) | Err(_) => {}
         }
     }
     out
@@ -487,6 +501,7 @@ fn remote_label_unresolved(source_desc: &str) -> String {
 fn remote_root_tree(
     spec: &str,
     r: &RemoteSource,
+    feeds: &[MetadataFeed],
     dev: bool,
     no_base: bool,
 ) -> Result<DepTree, Box<dyn Error>> {
@@ -499,7 +514,7 @@ fn remote_root_tree(
         fetch_and_read_git_package(&git_url, &table, &HashMap::new(), &HashMap::new())?;
     let root_remotes = parse_remotes_field(&remotes_field);
 
-    let loader = DbSourcePackageLoader::new()?;
+    let loader = DbSourcePackageLoader::new_for(feeds)?;
     let mut tree = tree_from_deps(
         &loader,
         &pkg.name,
@@ -516,12 +531,17 @@ fn remote_root_tree(
 /// The tree of an ad-hoc `url::` package root, e.g.
 /// `rig pkg tree url::https://example.com/mypkg_1.0.0.tar.gz`, the `url`
 /// counterpart of [`remote_root_tree`].
-fn url_root_tree(u: &UrlSource, dev: bool, no_base: bool) -> Result<DepTree, Box<dyn Error>> {
+fn url_root_tree(
+    u: &UrlSource,
+    feeds: &[MetadataFeed],
+    dev: bool,
+    no_base: bool,
+) -> Result<DepTree, Box<dyn Error>> {
     let table = dep_table_from_url(u);
     let (pkg, url_source, remotes_field) = fetch_and_read_url_package(&u.url, &table)?;
     let root_remotes = parse_remotes_field(&remotes_field);
 
-    let loader = DbSourcePackageLoader::new()?;
+    let loader = DbSourcePackageLoader::new_for(feeds)?;
     let mut tree = tree_from_deps(
         &loader,
         &pkg.name,
@@ -538,12 +558,17 @@ fn url_root_tree(u: &UrlSource, dev: bool, no_base: bool) -> Result<DepTree, Box
 /// The tree of a local package root, e.g. `rig pkg tree ./mypkg`: the
 /// `local` counterpart of [`url_root_tree`], reading the `DESCRIPTION` off
 /// the path instead of fetching anything.
-fn local_root_tree(l: &LocalSource, dev: bool, no_base: bool) -> Result<DepTree, Box<dyn Error>> {
+fn local_root_tree(
+    l: &LocalSource,
+    feeds: &[MetadataFeed],
+    dev: bool,
+    no_base: bool,
+) -> Result<DepTree, Box<dyn Error>> {
     let path = resolve_local_path(&l.path)?;
     let (pkg, local_source, remotes_field) = read_local_package(&path)?;
     let root_remotes = parse_remotes_field(&remotes_field);
 
-    let loader = DbSourcePackageLoader::new()?;
+    let loader = DbSourcePackageLoader::new_for(feeds)?;
     let mut tree = tree_from_deps(
         &loader,
         &pkg.name,

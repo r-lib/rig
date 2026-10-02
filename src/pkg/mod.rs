@@ -12,9 +12,17 @@ use clap::ArgMatches;
 use lazy_static::lazy_static;
 use tabular::*;
 
+#[cfg(target_os = "linux")]
+use crate::linux::sc_get_default;
+#[cfg(target_os = "macos")]
+use crate::macos::sc_get_default;
+#[cfg(target_os = "windows")]
+use crate::windows::sc_get_default;
+
 use crate::dcf::{Package, RDepType, RPackageVersion};
 use crate::proj::BASE_PKGS;
 use crate::repos::cranlike_metadata::{self, ArchivedPackage};
+use crate::repos::feed::{BiocSetting, MetadataFeed};
 use crate::textfmt::{reflow, wrap, write_field};
 
 pub(crate) mod deps;
@@ -43,13 +51,50 @@ pub fn sc_pkg(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Er
     }
 }
 
+/// The Bioconductor setting of a `rig pkg` command: on, unless `--no-bioc`
+/// or `RIG_BIOCONDUCTOR=false`.
+pub(crate) fn pkg_bioc_setting(args: &ArgMatches) -> BiocSetting {
+    if args.get_flag("no-bioc") {
+        BiocSetting::disabled()
+    } else {
+        BiocSetting::default()
+    }
+}
+
+/// The metadata feeds of a `rig pkg` command without an R version of its
+/// own: CRAN, and the Bioconductor release of the default R version, or the
+/// newest release if there is no default R version.
+pub(crate) fn pkg_feeds(args: &ArgMatches) -> Vec<MetadataFeed> {
+    default_r_feeds(&pkg_bioc_setting(args))
+}
+
+/// The metadata feeds for the default R version with `bioc`: CRAN, and the
+/// Bioconductor release of the default R version, or the newest release if
+/// there is no default R version.
+pub(crate) fn default_r_feeds(bioc: &BiocSetting) -> Vec<MetadataFeed> {
+    if !bioc.enabled {
+        return MetadataFeed::for_target(None);
+    }
+    let default_r = sc_get_default().ok().flatten();
+    match default_r {
+        Some(rver) => bioc.feeds(&rver, None),
+        None => MetadataFeed::for_target(
+            bioc.version
+                .clone()
+                .or_else(crate::repos::latest_bioc_release)
+                .as_deref(),
+        ),
+    }
+}
+
 fn sc_pkg_available(
     args: &ArgMatches,
     _pkgargs: &ArgMatches,
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
     let include_archived = args.get_flag("include-archived");
-    let mut packages = cranlike_metadata::all_available_packages(include_archived)?;
+    let feeds = pkg_feeds(args);
+    let mut packages = cranlike_metadata::all_available_packages(&feeds, include_archived)?;
     // Order the listing case-insensitively by package name, breaking ties by
     // version, so the output is stable regardless of how the metadata was
     // stored or downloaded.

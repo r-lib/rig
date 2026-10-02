@@ -70,12 +70,13 @@ use crate::download::{
     download_optional_if_newer_, fetch_optional_if_modified, fetch_optional_if_modified_,
     ConditionalFetch,
 };
+use crate::repos::feed::{MetadataFeed, RepoId};
 
 /// How long a cached index or status document is used without asking the
 /// server, matching the default in `crate::download`.
 const DEFAULT_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 
-/// How many indices [`prefetch_binary_indices`] has in flight at once. There is
+/// How many indices [`prefetch_binary_indices_in`] has in flight at once. There is
 /// one request per package and they are small, so the whole batch is round-trip
 /// bound; the limit is there to be a good citizen towards P3M rather than to
 /// protect us.
@@ -148,19 +149,26 @@ pub struct CachedIndex {
     pub downloaded: bool,
 }
 
-/// Base URL for the per-package indices, overridable with `RIG_BINARIES_URL`.
-pub fn binaries_base_url() -> String {
-    std::env::var("RIG_BINARIES_URL")
-        .unwrap_or_else(|_| "https://ppm.r-pkg.org/binaries".to_string())
+/// URL of a package's CRAN binary index.
+pub fn binary_index_url(package: &str) -> String {
+    binary_index_url_in(&MetadataFeed::cran(), package)
 }
 
-/// URL of a package's binary index.
-pub fn binary_index_url(package: &str) -> String {
-    format!(
-        "{}/{}.tsv.zst",
-        binaries_base_url().trim_end_matches('/'),
-        package
-    )
+/// URL of a package's binary index in `feed`.
+pub fn binary_index_url_in(feed: &MetadataFeed, package: &str) -> String {
+    format!("{}/{}.tsv.zst", feed.binaries_url, package)
+}
+
+/// The cache directory of `feed`'s binary indices: CRAN's are in
+/// `<cache>/metadata/binaries`, a Bioconductor release's in a subdirectory
+/// of it, e.g. `bioc-3.22`, because the same package name may have an index
+/// in both.
+fn binary_index_dir(feed: &MetadataFeed) -> Result<PathBuf, Box<dyn Error>> {
+    let dir = get_cache_dir()?.join("metadata").join("binaries");
+    Ok(match &feed.repo {
+        RepoId::Cran => dir,
+        RepoId::Bioc(v) => dir.join(format!("bioc-{}", v)),
+    })
 }
 
 /// Reject anything that is not a plain R package name.
@@ -189,11 +197,12 @@ pub fn validate_package_name(package: &str) -> Result<(), Box<dyn Error>> {
 /// layout does not find the old file at all rather than reading one it would
 /// have to reject.
 pub fn binary_index_blob_file(package: &str) -> Result<PathBuf, Box<dyn Error>> {
+    blob_file_in(&MetadataFeed::cran(), package)
+}
+
+fn blob_file_in(feed: &MetadataFeed, package: &str) -> Result<PathBuf, Box<dyn Error>> {
     validate_package_name(package)?;
-    Ok(get_cache_dir()?
-        .join("metadata")
-        .join("binaries")
-        .join(format!("{}.v{}.rbi", package, blob::FORMAT_VERSION)))
+    Ok(binary_index_dir(feed)?.join(format!("{}.v{}.rbi", package, blob::FORMAT_VERSION)))
 }
 
 /// Cache path of a blob's marker file,
@@ -215,11 +224,12 @@ pub fn binary_index_blob_file(package: &str) -> Result<PathBuf, Box<dyn Error>> 
 /// An empty file means the response carried no `ETag`: still a valid marker,
 /// just nothing to revalidate with.
 pub fn binary_index_etag_file(package: &str) -> Result<PathBuf, Box<dyn Error>> {
+    etag_file_in(&MetadataFeed::cran(), package)
+}
+
+fn etag_file_in(feed: &MetadataFeed, package: &str) -> Result<PathBuf, Box<dyn Error>> {
     validate_package_name(package)?;
-    Ok(get_cache_dir()?
-        .join("metadata")
-        .join("binaries")
-        .join(format!("{}.v{}.etag", package, blob::FORMAT_VERSION)))
+    Ok(binary_index_dir(feed)?.join(format!("{}.v{}.etag", package, blob::FORMAT_VERSION)))
 }
 
 /// Sidecar holding the ETag of a cached file.
@@ -299,10 +309,19 @@ pub fn load_binary_index(
     package: &str,
     ttl: Option<Duration>,
 ) -> Result<Option<CachedIndex>, Box<dyn Error>> {
-    let etag_path = binary_index_etag_file(package)?;
+    load_binary_index_in(&MetadataFeed::cran(), package, ttl)
+}
+
+/// [`load_binary_index`] for the index of `package` in `feed`.
+pub fn load_binary_index_in(
+    feed: &MetadataFeed,
+    package: &str,
+    ttl: Option<Duration>,
+) -> Result<Option<CachedIndex>, Box<dyn Error>> {
+    let etag_path = etag_file_in(feed, package)?;
     let ttl = ttl.unwrap_or(DEFAULT_TTL);
 
-    let cached = read_cached_blob(&binary_index_blob_file(package)?);
+    let cached = read_cached_blob(&blob_file_in(feed, package)?);
     if cached.is_none() {
         // A marker without a usable blob would suppress the download, or ask
         // for a 304 we could not use.
@@ -326,7 +345,7 @@ pub fn load_binary_index(
         .and_then(|_| fs::read_to_string(&etag_path).ok())
         .filter(|e| !e.is_empty());
 
-    let url = binary_index_url(package);
+    let url = binary_index_url_in(feed, package);
     match fetch_optional_if_modified_(&url, etag.as_deref(), None)? {
         ConditionalFetch::NotFound => {
             debug!("No binary index for package '{}'", package);
@@ -335,7 +354,7 @@ pub fn load_binary_index(
 
         ConditionalFetch::NotModified => match cached {
             Some(index) => {
-                restart_ttl(package);
+                restart_ttl(feed, package);
                 Ok(Some(CachedIndex {
                     index,
                     downloaded: false,
@@ -347,7 +366,7 @@ pub fn load_binary_index(
         },
 
         ConditionalFetch::Fetched { bytes, etag } => Ok(Some(CachedIndex {
-            index: BinaryIndex::open_blob(&store_index(package, &bytes, etag)?)?,
+            index: BinaryIndex::open_blob(&store_index(feed, package, &bytes, etag)?)?,
             downloaded: true,
         })),
     }
@@ -360,7 +379,12 @@ pub fn load_binary_index(
 /// beside it is complete. A cache we cannot write is a slow next run, not a
 /// failure of this one, so neither write is fatal — but the marker must not
 /// outlive a blob that never landed.
-fn store_index(package: &str, tsv: &[u8], etag: Option<String>) -> Result<Vec<u8>, Box<dyn Error>> {
+fn store_index(
+    feed: &MetadataFeed,
+    package: &str,
+    tsv: &[u8],
+    etag: Option<String>,
+) -> Result<Vec<u8>, Box<dyn Error>> {
     let rows = parse_binaries_tsv(tsv)?;
     let built = blob::build(package, &rows)?;
     debug!(
@@ -369,8 +393,8 @@ fn store_index(package: &str, tsv: &[u8], etag: Option<String>) -> Result<Vec<u8
         rows.len(),
         built.len()
     );
-    let blob_path = binary_index_blob_file(package)?;
-    let etag_path = binary_index_etag_file(package)?;
+    let blob_path = blob_file_in(feed, package)?;
+    let etag_path = etag_file_in(feed, package)?;
     match write_atomically(&blob_path, &built) {
         Ok(()) => {
             if let Err(err) = write_atomically(&etag_path, etag.unwrap_or_default().as_bytes()) {
@@ -387,8 +411,8 @@ fn store_index(package: &str, tsv: &[u8], etag: Option<String>) -> Result<Vec<u8
 
 /// Note that a cached blob was just confirmed current, so the TTL is measured
 /// from now instead of from when it was downloaded.
-fn restart_ttl(package: &str) {
-    if let Ok(etag_path) = binary_index_etag_file(package) {
+fn restart_ttl(feed: &MetadataFeed, package: &str) {
+    if let Ok(etag_path) = etag_file_in(feed, package) {
         let _ = filetime::set_file_mtime(&etag_path, filetime::FileTime::now());
     }
 }
@@ -407,9 +431,13 @@ enum Prefetch {
 /// Unlike [`load_binary_index`] this only checks that a blob is *there*, it
 /// does not open it: prefetching is a head start, and a blob that turns out to
 /// be unusable is `load_binary_index`'s problem when it gets to it.
-fn prefetch_plan(package: &str, ttl: Duration) -> Result<Prefetch, Box<dyn Error>> {
-    let blob_path = binary_index_blob_file(package)?;
-    let etag_path = binary_index_etag_file(package)?;
+fn prefetch_plan(
+    feed: &MetadataFeed,
+    package: &str,
+    ttl: Duration,
+) -> Result<Prefetch, Box<dyn Error>> {
+    let blob_path = blob_file_in(feed, package)?;
+    let etag_path = etag_file_in(feed, package)?;
     if !blob_path.exists() {
         let _ = fs::remove_file(&etag_path);
         return Ok(Prefetch::Fetch(None));
@@ -424,9 +452,10 @@ fn prefetch_plan(package: &str, ttl: Duration) -> Result<Prefetch, Box<dyn Error
     ))
 }
 
-/// Fill the cache for many packages at once, with several requests in flight.
+/// Fill the cache of `feed`'s indices for many packages at once, with several
+/// requests in flight.
 ///
-/// [`load_binary_index`] makes one blocking request per package, so a solve
+/// [`load_binary_index_in`] makes one blocking request per package, so a solve
 /// that walks a hundred packages pays a hundred round trips end to end. Given
 /// the packages up front, this pays them concurrently instead, and leaves
 /// exactly what `load_binary_index` would have written.
@@ -435,7 +464,7 @@ fn prefetch_plan(package: &str, ttl: Duration) -> Result<Prefetch, Box<dyn Error
 /// one that `load_binary_index` fetches itself later. Packages whose cached
 /// index is still fresh cost nothing here, so calling this with more packages
 /// than the solve turns out to need is cheap on a warm cache.
-pub fn prefetch_binary_indices(packages: &[String], ttl: Option<Duration>) {
+pub fn prefetch_binary_indices_in(feed: &MetadataFeed, packages: &[String], ttl: Option<Duration>) {
     let ttl = ttl.unwrap_or(DEFAULT_TTL);
     let mut seen: HashSet<&str> = HashSet::new();
     let mut todo: Vec<(String, Option<String>)> = vec![];
@@ -443,7 +472,7 @@ pub fn prefetch_binary_indices(packages: &[String], ttl: Option<Duration>) {
         if !seen.insert(package.as_str()) {
             continue;
         }
-        match prefetch_plan(package, ttl) {
+        match prefetch_plan(feed, package, ttl) {
             Ok(Prefetch::Cached) => {}
             Ok(Prefetch::Fetch(etag)) => todo.push((package.clone(), etag)),
             Err(err) => debug!("Not prefetching binary index of '{}': {}", package, err),
@@ -460,33 +489,37 @@ pub fn prefetch_binary_indices(packages: &[String], ttl: Option<Duration>) {
         seen.len(),
         PREFETCH_CONCURRENCY
     );
-    if let Err(err) = prefetch_all(&todo) {
+    if let Err(err) = prefetch_all(feed, &todo) {
         debug!("Could not prefetch binary indices: {}", err);
     }
 }
 
-/// The request half of [`prefetch_binary_indices`], on its own runtime.
+/// The request half of [`prefetch_binary_indices_in`], on its own runtime.
 ///
 /// Parsing an index and building its blob takes a couple of milliseconds, which
 /// is why it happens on the blocking pool: it overlaps with the requests still
 /// in flight instead of being tacked onto the end of them.
 #[tokio::main]
-async fn prefetch_all(todo: &[(String, Option<String>)]) -> Result<(), Box<dyn Error>> {
+async fn prefetch_all(
+    feed: &MetadataFeed,
+    todo: &[(String, Option<String>)],
+) -> Result<(), Box<dyn Error>> {
     let client = http_client();
     futures::stream::iter(todo.iter().map(|(package, etag)| {
         let client = &client;
         async move {
-            let url = binary_index_url(package);
+            let url = binary_index_url_in(feed, package);
             match fetch_optional_if_modified(client, &url, etag.as_deref()).await {
                 Err(err) => debug!("Could not prefetch {}: {}", url, err),
                 Ok(ConditionalFetch::NotFound) => {
                     debug!("No binary index for package '{}'", package)
                 }
-                Ok(ConditionalFetch::NotModified) => restart_ttl(package),
+                Ok(ConditionalFetch::NotModified) => restart_ttl(feed, package),
                 Ok(ConditionalFetch::Fetched { bytes, etag }) => {
                     let package = package.clone();
+                    let feed = feed.clone();
                     let stored = tokio::task::spawn_blocking(move || {
-                        store_index(&package, &bytes, etag)
+                        store_index(&feed, &package, &bytes, etag)
                             .map(|_| ())
                             .map_err(|e| {
                                 format!("Could not store binary index of '{}': {}", package, e)
@@ -885,8 +918,9 @@ const DEFAULT_PPM_URL: &str = "https://packagemanager.posit.co";
 /// private P3M, so rig honors that rather than inventing a name for the same
 /// thing.
 ///
-/// Note that this does *not* affect [`binaries_base_url`]: the per-package
-/// indices are rig's own derived data, and no P3M instance serves them.
+/// Note that this does *not* affect the binary index URLs of
+/// [`MetadataFeed`]: the per-package indices are rig's own derived data, and
+/// no P3M instance serves them.
 pub fn ppm_url() -> String {
     ppm_url_from(std::env::var("PACKAGEMANAGER_ADDRESS").ok().as_deref())
 }

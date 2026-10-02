@@ -1,5 +1,15 @@
 # Development version
 
+## Bioconductor
+
+* `rig proj` and `rig pkg` now install Bioconductor packages, besides CRAN
+  packages, from the Bioconductor release that belongs to the R version.
+  `bioc::<package>` references work, too. A `bioc` entry in the
+  `[[repository]]` array of `rproj.toml` pins the Bioconductor release, or
+  turns Bioconductor off. `rig pkg` commands have a new `--no-bioc` option
+  to use CRAN only. `rproj.lock` is now version 5, and records the
+  Bioconductor release of every target.
+
 ## Inline scripts
 
 * `rig run` now support self-contained scripts, that declare the packages

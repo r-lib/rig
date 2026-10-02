@@ -38,13 +38,21 @@ fn pak_version_values() -> clap::builder::PossibleValuesParser {
 fn exclude_newer_arg() -> Arg {
     Arg::new("exclude-newer")
         .help(
-            "Ignore CRAN package versions published after this date.\n\
+            "Ignore package versions published after this date.\n\
             A date (2025-06-01), an RFC 3339 timestamp, or a span back\n\
             from today (7 days, 2 weeks, P1M). Not before 2017-10-10.",
         )
         .long("exclude-newer")
         .value_name("DATE")
         .num_args(1)
+        .required(false)
+}
+
+fn no_bioc_arg() -> Arg {
+    Arg::new("no-bioc")
+        .help("Use CRAN packages only, not Bioconductor packages.")
+        .long("no-bioc")
+        .num_args(0)
         .required(false)
 }
 
@@ -2136,6 +2144,7 @@ pub fn rig_app() -> Command {
                 .about(ABOUT_PKG_AVAILABLE)
                 .long_about(HELP_PKG_AVAILABLE)
                 .display_order(0)
+                .arg(no_bioc_arg())
                 .arg(
                     Arg::new("json")
                         .help("JSON output")
@@ -2156,6 +2165,7 @@ pub fn rig_app() -> Command {
                 .about(ABOUT_PKG_DEPS)
                 .long_about(HELP_PKG_DEPS)
                 .display_order(0)
+                .arg(no_bioc_arg())
                 .arg(
                     Arg::new("package")
                         .help("package to show the dependencies of")
@@ -2285,6 +2295,7 @@ pub fn rig_app() -> Command {
                 .about(ABOUT_PKG_INSTALL)
                 .long_about(HELP_PKG_INSTALL)
                 .display_order(0)
+                .arg(no_bioc_arg())
                 .arg(
                     Arg::new("package")
                         .help("packages to install")
@@ -2526,6 +2537,7 @@ pub fn rig_app() -> Command {
                 .about(ABOUT_PKG_TREE)
                 .long_about(HELP_PKG_TREE)
                 .display_order(0)
+                .arg(no_bioc_arg())
                 .arg(
                     Arg::new("package")
                         .help("package to show the dependency tree of")

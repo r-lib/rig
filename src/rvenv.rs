@@ -132,6 +132,31 @@ fn ppm_repo_url(platform: &str) -> Option<String> {
     }
 }
 
+/// The P3M Bioconductor repositories of release `bioc_version`, as
+/// `(name, URL)`, under the names R and BiocManager use for them. Like
+/// [`ppm_repo_url`], the `latest` snapshot, and on Linux the binary URL of
+/// the lock file's platform.
+fn bioc_repo_urls(platform: &str, bioc_version: &str) -> Vec<(&'static str, String)> {
+    let target = platform
+        .strip_suffix("-x86_64")
+        .or_else(|| platform.strip_suffix("-arm64"))
+        .unwrap_or("");
+    let base = match target {
+        "" | "macos" | "windows" => format!("{}/bioconductor/latest", ppm_url()),
+        linux => format!("{}/bioconductor/__linux__/{}/latest", ppm_url(), linux),
+    };
+    [
+        ("BioCsoft", "bioc"),
+        ("BioCann", "data/annotation"),
+        ("BioCexp", "data/experiment"),
+        ("BioCworkflows", "workflows"),
+        ("BioCbooks", "books"),
+    ]
+    .into_iter()
+    .map(|(name, sub)| (name, format!("{}/packages/{}/{}", base, bioc_version, sub)))
+    .collect()
+}
+
 /// The stamp file `rig proj sync` writes into the project library: a copy of
 /// the lock file it installed from. The shim package compares it to
 /// `rproj.lock` to decide whether to warn about an unsynced project. A copy
@@ -994,7 +1019,11 @@ pub fn rvenv_env_vars(venv: &Path) -> Vec<(String, String)> {
 /// `R_REPOSITORIES` is a plain environment variable R reads at startup, so it
 /// survives `--vanilla` and is inherited by child processes -- unlike
 /// `options(repos = )`, which neither does.
-fn repositories_contents(platform: &str, repos: &[ManifestRepository]) -> RepositoriesContents {
+fn repositories_contents(
+    platform: &str,
+    repos: &[ManifestRepository],
+    bioc_version: Option<&str>,
+) -> RepositoriesContents {
     let entry = |name: &str, url: &str, menu: &str| RepoFileEntry {
         name: name.to_string(),
         description: menu.to_string(),
@@ -1028,8 +1057,30 @@ fn repositories_contents(platform: &str, repos: &[ManifestRepository]) -> Reposi
         None => {}
     }
     let first_is_ppm = !data.is_empty();
-    for (i, r) in repos.iter().enumerate() {
-        let name = if i == 0 && !first_is_ppm {
+    // The Bioconductor repositories go where the manifest's `bioc` entry is,
+    // or, without one, right after the main repository.
+    let bioc_entries = || -> Vec<RepoFileEntry> {
+        bioc_version
+            .map(|v| {
+                bioc_repo_urls(platform, v)
+                    .into_iter()
+                    .map(|(name, url)| entry(name, &url, name))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let has_bioc_entry = repos.iter().any(|r| r.is_bioc());
+    let url_repos: Vec<&ManifestRepository> = repos.iter().filter(|r| r.url.is_some()).collect();
+    for r in repos {
+        if r.is_bioc() {
+            data.extend(bioc_entries());
+            continue;
+        }
+        let Some(url) = &r.url else {
+            continue;
+        };
+        let is_first = url_repos.first().is_some_and(|f| std::ptr::eq(*f, r));
+        let name = if is_first && !first_is_ppm {
             RVENV_CRAN_NAME
         } else {
             &r.name
@@ -1042,7 +1093,11 @@ fn repositories_contents(platform: &str, repos: &[ManifestRepository]) -> Reposi
         if data.iter().any(|e: &RepoFileEntry| e.name == name) {
             continue;
         }
-        data.push(entry(name, &r.url, &r.name));
+        data.push(entry(name, url, &r.name));
+    }
+    if !has_bioc_entry {
+        let at = data.len().min(1);
+        data.splice(at..at, bioc_entries());
     }
     RepositoriesContents {
         data,
@@ -1128,6 +1183,7 @@ pub fn rvenv_sync(
     root: &Path,
     cfg: &RvenvCfg,
     repos: &[ManifestRepository],
+    bioc_version: Option<&str>,
 ) -> Result<Vec<PathBuf>, Box<dyn Error>> {
     let venv = project_venv(root);
     let bin = project_bin(root);
@@ -1166,7 +1222,10 @@ pub fn rvenv_sync(
         .ok_or("The project path is not valid Unicode")?
         .to_string();
     if let Some(p) = write_if_changed(repos_path.clone(), || {
-        write_repositories_file(repositories_contents(&cfg.platform, repos), &repos_path_str)
+        write_repositories_file(
+            repositories_contents(&cfg.platform, repos, bioc_version),
+            &repos_path_str,
+        )
     })? {
         written.push(p);
     }
@@ -1722,7 +1781,7 @@ mod tests {
     fn rvenv_sync_writes_the_machine_specific_layout() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
-        let written = rvenv_sync(root, &test_cfg(), &[]).unwrap();
+        let written = rvenv_sync(root, &test_cfg(), &[], None).unwrap();
         for path in &written {
             assert!(path.exists(), "{} was not written", path.display());
         }
@@ -1755,9 +1814,9 @@ mod tests {
     fn rvenv_sync_is_idempotent() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
-        let written = rvenv_sync(root, &test_cfg(), &[]).unwrap();
+        let written = rvenv_sync(root, &test_cfg(), &[], None).unwrap();
         let before: Vec<Vec<u8>> = written.iter().map(|p| fs::read(p).unwrap()).collect();
-        rvenv_sync(root, &test_cfg(), &[]).unwrap();
+        rvenv_sync(root, &test_cfg(), &[], None).unwrap();
         let after: Vec<Vec<u8>> = written.iter().map(|p| fs::read(p).unwrap()).collect();
         assert_eq!(before, after);
     }
@@ -1769,9 +1828,9 @@ mod tests {
         // back empty -- otherwise the message fires on every run.
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
-        let first = rvenv_sync(root, &test_cfg(), &[]).unwrap();
+        let first = rvenv_sync(root, &test_cfg(), &[], None).unwrap();
         assert!(!first.is_empty());
-        let second = rvenv_sync(root, &test_cfg(), &[]).unwrap();
+        let second = rvenv_sync(root, &test_cfg(), &[], None).unwrap();
         assert!(second.is_empty());
     }
 
@@ -1783,7 +1842,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let cfg = test_cfg();
-        rvenv_sync(root, &cfg, &[]).unwrap();
+        rvenv_sync(root, &cfg, &[], None).unwrap();
 
         for (file, binary) in [
             ("R", "/opt/R/4.6/bin/R"),
@@ -1823,7 +1882,7 @@ mod tests {
     fn every_activation_script_sets_the_same_variables() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
-        rvenv_sync(root, &test_cfg(), &[]).unwrap();
+        rvenv_sync(root, &test_cfg(), &[], None).unwrap();
         for (file, _) in ACTIVATE_TEMPLATES {
             if *file == "deactivate.bat" {
                 continue;
@@ -1876,7 +1935,7 @@ mod tests {
     fn the_default_repository_is_the_targets_ppm() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
-        rvenv_sync(root, &test_cfg(), &[]).unwrap();
+        rvenv_sync(root, &test_cfg(), &[], None).unwrap();
         assert_eq!(
             written_repositories(root),
             vec![(
@@ -1891,7 +1950,7 @@ mod tests {
     fn a_linux_target_gets_its_own_binary_url() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
-        rvenv_sync(root, &test_cfg_for("jammy-x86_64"), &[]).unwrap();
+        rvenv_sync(root, &test_cfg_for("jammy-x86_64"), &[], None).unwrap();
         assert_eq!(
             written_repositories(root)[0].2,
             format!("{}/cran/__linux__/jammy/latest", ppm_url())
@@ -1904,7 +1963,7 @@ mod tests {
         // P3M target, so there are no binaries to install from.
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
-        rvenv_sync(root, &test_cfg_for("x86_64"), &[]).unwrap();
+        rvenv_sync(root, &test_cfg_for("x86_64"), &[], None).unwrap();
         assert_eq!(
             written_repositories(root),
             vec![(
@@ -1920,16 +1979,10 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let repos = vec![
-            ManifestRepository {
-                name: "internal".to_string(),
-                url: "https://example.com/internal".to_string(),
-            },
-            ManifestRepository {
-                name: "extra".to_string(),
-                url: "https://example.com/extra".to_string(),
-            },
+            ManifestRepository::at_url("internal", "https://example.com/internal"),
+            ManifestRepository::at_url("extra", "https://example.com/extra"),
         ];
-        rvenv_sync(root, &test_cfg(), &repos).unwrap();
+        rvenv_sync(root, &test_cfg(), &repos, None).unwrap();
         // `rig proj sync` installs P3M binaries, so an `install.packages()`
         // in the environment installs from P3M as well. The project's own
         // repositories keep their names and follow it.
@@ -1956,20 +2009,71 @@ mod tests {
     }
 
     #[test]
+    fn bioc_repositories_follow_the_main_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let repos = vec![ManifestRepository::at_url(
+            "internal",
+            "https://example.com/internal",
+        )];
+        rvenv_sync(root, &test_cfg_for("jammy-x86_64"), &repos, Some("3.23")).unwrap();
+        let names: Vec<String> = written_repositories(root)
+            .into_iter()
+            .map(|(name, _, _)| name)
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                "CRAN",
+                "BioCsoft",
+                "BioCann",
+                "BioCexp",
+                "BioCworkflows",
+                "BioCbooks",
+                "internal"
+            ]
+        );
+        let soft = &written_repositories(root)[1].2;
+        assert!(
+            soft.ends_with("/bioconductor/__linux__/jammy/latest/packages/3.23/bioc"),
+            "{}",
+            soft
+        );
+    }
+
+    #[test]
+    fn bioc_repositories_go_where_the_bioc_entry_is() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let repos = vec![
+            ManifestRepository::at_url("internal", "https://example.com/internal"),
+            ManifestRepository {
+                name: "bioc".to_string(),
+                ..Default::default()
+            },
+        ];
+        rvenv_sync(root, &test_cfg_for("macos-arm64"), &repos, Some("3.23")).unwrap();
+        let written = written_repositories(root);
+        let names: Vec<&str> = written.iter().map(|(name, _, _)| name.as_str()).collect();
+        assert_eq!(names[..3], ["CRAN", "internal", "BioCsoft"]);
+        assert!(written[2]
+            .2
+            .ends_with("/bioconductor/latest/packages/3.23/bioc"));
+
+        // Without a Bioconductor release, the entry writes nothing.
+        rvenv_sync(root, &test_cfg_for("macos-arm64"), &repos, None).unwrap();
+        assert_eq!(written_repositories(root).len(), 2);
+    }
+
+    #[test]
     fn the_first_repository_is_written_as_cran_without_ppm() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let repos = vec![
-            ManifestRepository {
-                name: "internal".to_string(),
-                url: "https://example.com/internal".to_string(),
-            },
-            ManifestRepository {
-                name: "extra".to_string(),
-                url: "https://example.com/extra".to_string(),
-            },
+            ManifestRepository::at_url("internal", "https://example.com/internal"),
+            ManifestRepository::at_url("extra", "https://example.com/extra"),
         ];
-        rvenv_sync(root, &test_cfg_for("x86_64"), &repos).unwrap();
+        rvenv_sync(root, &test_cfg_for("x86_64"), &repos, None).unwrap();
         // Without a P3M entry the first project repository is called CRAN in
         // the file, whatever the manifest calls it: R replaces its own
         // `@CRAN@` placeholder with an entry of that name only, and a
@@ -1996,11 +2100,11 @@ mod tests {
     fn a_project_repository_called_cran_does_not_duplicate_the_name() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
-        let repos = vec![ManifestRepository {
-            name: "CRAN".to_string(),
-            url: "https://cran.r-project.org".to_string(),
-        }];
-        rvenv_sync(root, &test_cfg(), &repos).unwrap();
+        let repos = vec![ManifestRepository::at_url(
+            "CRAN",
+            "https://cran.r-project.org",
+        )];
+        rvenv_sync(root, &test_cfg(), &repos, None).unwrap();
         assert_eq!(
             written_repositories(root),
             vec![(

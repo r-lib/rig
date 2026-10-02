@@ -31,6 +31,10 @@ pub mod url;
 #[derive(Debug, Clone, PartialEq)]
 pub enum PkgSource {
     Cran,
+    /// `bioc::<package>[@<requirement>]`: a repository package that must come
+    /// from Bioconductor, not CRAN. Like [`PkgSource::Cran`], the caller
+    /// parses the name and the requirement, from [`strip_bioc_prefix`].
+    Bioc,
     Remote(RemoteSource),
     Url(UrlSource),
     Local(LocalSource),
@@ -120,6 +124,16 @@ pub fn parse_pkg_source(spec: &str) -> Result<PkgSource, Box<dyn Error>> {
         }));
     }
 
+    if let Some(rest) = body.strip_prefix("bioc::") {
+        if name_override.is_some() || rest.contains("::") || rest.contains('/') {
+            bail!(
+                "Cannot parse package reference `{}`: expected `bioc::<package>`",
+                spec
+            );
+        }
+        return Ok(PkgSource::Bioc);
+    }
+
     if let Some(rest) = body.strip_prefix("github::") {
         return Ok(PkgSource::Remote(parse_github_ref(name_override, rest)?));
     }
@@ -159,6 +173,13 @@ pub fn parse_pkg_source(spec: &str) -> Result<PkgSource, Box<dyn Error>> {
     }
 
     Ok(PkgSource::Cran)
+}
+
+/// `spec` without its `bioc::` prefix, e.g. `limma@>= 3.60` for
+/// `bioc::limma@>= 3.60`. Other specs are returned unchanged.
+pub fn strip_bioc_prefix(spec: &str) -> &str {
+    let spec = spec.trim();
+    spec.strip_prefix("bioc::").unwrap_or(spec)
 }
 
 /// Split off an optional `<name>=` override prefix, the way `pak` refs allow
@@ -518,6 +539,13 @@ mod tests {
     #[test]
     fn a_bare_name_or_owner_repo_is_never_local() {
         assert_eq!(parse_pkg_source("mypkg").unwrap(), PkgSource::Cran);
+        assert_eq!(parse_pkg_source("bioc::limma").unwrap(), PkgSource::Bioc);
+        assert_eq!(
+            parse_pkg_source("bioc::limma@>= 3.60").unwrap(),
+            PkgSource::Bioc
+        );
+        assert_eq!(strip_bioc_prefix("bioc::limma@>= 3.60"), "limma@>= 3.60");
+        assert!(parse_pkg_source("bioc::owner/repo").is_err());
         assert_eq!(
             remote("r-lib/crayon").git,
             "https://github.com/r-lib/crayon.git"

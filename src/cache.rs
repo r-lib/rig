@@ -306,7 +306,15 @@ fn keyed_file_name(name: &str, key: &str) -> String {
 ///   r_version)` and therefore one URL path, differing only in the snapshot
 ///   date that this path drops. See [`artifact_cache_key`].
 pub(crate) fn target_path(url: &str, fallback: &str, key: Option<&str>) -> String {
-    let path = url.split('?').next().unwrap_or(url);
+    let (path, query) = url.split_once('?').unwrap_or((url, ""));
+    if let Some(linux) = linux_binary_dir(path, query) {
+        let file = path.rsplit('/').next().unwrap_or(fallback);
+        let file = match key {
+            Some(key) => keyed_file_name(file, key),
+            None => file.to_string(),
+        };
+        return format!("{}/{}", linux, file);
+    }
     let mut pieces = path.split('/');
     let mut rest: Vec<&str> = vec![];
     for piece in pieces.by_ref() {
@@ -330,6 +338,29 @@ pub(crate) fn target_path(url: &str, fallback: &str, key: Option<&str>) -> Strin
         *rest.last_mut().unwrap() = keyed;
     }
     rest.join("/")
+}
+
+/// The cache directory of a Linux binary from a URL in the
+/// `__linux__/<distro>/` layout, which P3M uses for Bioconductor binaries,
+/// e.g.
+/// `.../bioconductor/__linux__/jammy/2026-04-30/packages/3.23/bioc/src/contrib/X_1.0.tar.gz?r_version=4.6&arch=x86_64`.
+/// Its path looks like a source package's, so the distro, arch and R
+/// version are taken from the `__linux__` component and the query instead,
+/// as `bin/linux/jammy-x86_64/4.6`, the directory of a CRAN binary of the
+/// same target.
+fn linux_binary_dir(path: &str, query: &str) -> Option<String> {
+    let mut pieces = path.split('/');
+    pieces.find(|p| *p == "__linux__")?;
+    let distro = pieces.next().filter(|d| !d.is_empty())?;
+    let param = |name: &str| {
+        query
+            .split('&')
+            .find_map(|kv| kv.strip_prefix(name)?.strip_prefix('='))
+            .filter(|v| !v.is_empty())
+    };
+    let arch = param("arch")?;
+    let r_version = param("r_version")?;
+    Some(format!("bin/linux/{}-{}/{}", distro, arch, r_version))
 }
 
 /// Whether `get_download_dir()` was overridden by the user
@@ -450,6 +481,29 @@ mod artifact_path_tests {
     const DPLYR_SHA: &str = "7b1fc90750fbb46483423da6721832c545d37b157f4f3355784a65e50fada8c2";
     const DPLYR_PLOGR_01: &str = "BH@1.66.0-1=17d9eb5512d74aa7dd02ec98953408422e728b01ce63493a6a473070b9596a92,Rcpp@0.12.16=d4e1636e53e2b656e173b49085b7abbb627981787cd63d63df325c713c83a8e6,bindrcpp@0.2=d0efa1313cb8148880f7902a4267de1dcedae916f28d9a0ef5911f44bf103450,plogr@0.1-1=22755c93c76c26252841f43195df31681ea865e91aa89726010bd1b9288ef48f";
     const DPLYR_PLOGR_02: &str = "BH@1.66.0-1=17d9eb5512d74aa7dd02ec98953408422e728b01ce63493a6a473070b9596a92,Rcpp@0.12.16=d4e1636e53e2b656e173b49085b7abbb627981787cd63d63df325c713c83a8e6,bindrcpp@0.2=d0efa1313cb8148880f7902a4267de1dcedae916f28d9a0ef5911f44bf103450,plogr@0.2.0=0e63ba2e1f624005fe25c67cdd403636a912e063d682eca07f2f1d65e9870d29";
+
+    #[test]
+    fn target_path_of_a_linux_binary_in_the_linux_layout() {
+        let url = "https://p3m.dev/bioconductor/__linux__/jammy/2026-04-30/packages/3.23/\
+                   bioc/src/contrib/AnnotationDbi_1.74.0.tar.gz?r_version=4.6&arch=x86_64";
+        assert_eq!(
+            target_path(url, "src/AnnotationDbi_1.74.0.tar.gz", None),
+            "bin/linux/jammy-x86_64/4.6/AnnotationDbi_1.74.0.tar.gz"
+        );
+        // Not the source package's path.
+        let src = "https://p3m.dev/bioconductor/2026-04-30/packages/3.23/bioc/src/contrib/\
+                   AnnotationDbi_1.74.0.tar.gz";
+        assert_eq!(
+            target_path(src, "src/AnnotationDbi_1.74.0.tar.gz", None),
+            "src/AnnotationDbi_1.74.0.tar.gz"
+        );
+        // Without the query, the usual rules apply.
+        let bare = "https://p3m.dev/bioconductor/__linux__/jammy/latest/src/contrib/X_1.0.tar.gz";
+        assert_eq!(
+            target_path(bare, "src/X_1.0.tar.gz", None),
+            "src/X_1.0.tar.gz"
+        );
+    }
 
     #[test]
     fn target_path_follows_the_repository_layout() {
