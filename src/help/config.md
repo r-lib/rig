@@ -68,6 +68,33 @@ configuration file takes precedence over rig's built-in default.
   unless overridden with its own `--max-concurrent` flag. Defaults to the
   number of CPU cores.
 
+- `sysreqs` (`RIG_SYSREQS`): Linux only. What
+  [`rig pkg install`](pkg.qmd#rig-pkg-install) and
+  [`rig proj sync`](proj.qmd#rig-proj-sync) do with the OS packages that the
+  R packages need, see their help:
+  - `auto`, the default: install them on the Linux distributions that the
+    system requirements rules know, and quietly skip them on others.
+  - `true`: the same, but also warn on other distributions.
+  - `print`: show the missing OS packages and the commands that install
+    them, but do not run the commands.
+  - `false`: do nothing.
+
+  If neither this entry nor `RIG_SYSREQS` is set, rig also respects pak's
+  `PKG_SYSREQS=false` environment variable.
+
+- `sysreqs-sudo` (`RIG_SYSREQS_SUDO`): how rig installs OS packages when it does not
+  run as `root`. `auto`, the default, uses `sudo` if it works without a password, and
+  otherwise prints the commands for you to run; `true` always uses `sudo`, even if
+  it asks for a password; `false` never uses it.
+
+- `sysreqs-update` (`RIG_SYSREQS_UPDATE`): whether to update the package index
+  (`apt-get update`, `apk update`) before installing OS packages. Defaults to `true`.
+
+- `sysreqs-rules-url` (`RIG_SYSREQS_RULES_URL`): where rig downloads the [system
+  requirements rules](https://github.com/r-hub/r-system-requirements) from, a gzipped tarball of the repository. rig downloads
+  them at most once a day, and uses the copy built into rig if it cannot
+  download them.
+
 - `positron-setup`: [user mode](../admin-vs-user-mode.qmd) only. Set it to `false` to stop rig from updating
   Positron's settings: adding its R installation root to
   `positron.r.customRootFolders`, and pointing

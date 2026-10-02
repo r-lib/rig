@@ -41,7 +41,7 @@ use crate::repos::cranlike_metadata::minor_r_version;
 use crate::rvenv::RPROJ_LOCK_FILE;
 use crate::solver::{RPackageRegistry, RegistryPackageVersion};
 
-pub const RPROJ_LOCK_VERSION: usize = 4;
+pub const RPROJ_LOCK_VERSION: usize = 5;
 
 // `rproj.toml`: the project/package manifest (see the design doc). This is the
 // *requirements* file a human edits, as opposed to `rproj.lock` (the solved
@@ -2402,6 +2402,28 @@ pub struct RprojLockPackage {
     /// lockfile written before this existed.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_project: bool,
+    /// The package's `SystemRequirements`, with its whitespace collapsed.
+    /// `rig proj sync` matches it against the r-system-requirements rules to
+    /// install the OS packages it needs on Linux. Only recorded where it can
+    /// matter, see [`lock_needs_system_requirements`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system_requirements: Option<String>,
+}
+
+/// Whether a lockfile entry records its `SystemRequirements`.
+///
+/// A package needs OS packages only on Linux, and not when it is a manylinux
+/// binary, which bundles its libraries. This goes by the lock *target's*
+/// platform, `None` for a source-only target, not by the machine rig runs
+/// on, so a lockfile solved on macOS for a Linux target is the same as one
+/// solved on Linux. A source-only target can be installed anywhere, Linux
+/// included, so it keeps the field.
+pub fn lock_needs_system_requirements(target_platform: Option<&str>, binary: bool) -> bool {
+    match target_platform {
+        None => true,
+        Some(p) if p.starts_with("macos") || p.starts_with("windows") => false,
+        Some(p) => !(binary && p.starts_with(crate::repos::binaries::MANYLINUX)),
+    }
 }
 
 impl RprojLockTarget {
@@ -2489,6 +2511,9 @@ impl RprojLockTarget {
                     )
                 };
 
+                let system_requirements = registry
+                    .system_requirements(k, &v.version)
+                    .filter(|_| lock_needs_system_requirements(platform.as_deref(), git.binary));
                 pkgs.push(RprojLockPackage {
                     package: k.to_string(),
                     version: v.version.to_string(),
@@ -2505,6 +2530,7 @@ impl RprojLockTarget {
                     groups: vec![],
                     extra_groups: vec![],
                     is_project: false,
+                    system_requirements,
                 });
                 continue;
             }
@@ -2563,6 +2589,9 @@ impl RprojLockTarget {
                 },
             );
             let target = target_path(&sources[0], &format!("src/{}", filename), key.as_deref());
+            let system_requirements = registry
+                .system_requirements(k, &v.version)
+                .filter(|_| lock_needs_system_requirements(platform.as_deref(), binary));
             pkgs.push(RprojLockPackage {
                 package: k.to_string(),
                 version: v.version.to_string(),
@@ -2579,6 +2608,7 @@ impl RprojLockTarget {
                 groups: vec![],
                 extra_groups: vec![],
                 is_project: false,
+                system_requirements,
             });
         }
 
@@ -2706,6 +2736,7 @@ mod tests {
             groups: vec!["main".to_string()],
             extra_groups: vec![],
             is_project: false,
+            system_requirements: None,
         }
     }
 

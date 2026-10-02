@@ -19,3 +19,6 @@ pulldown-cmark = { version = "0.12", default-features = false }
 # for the SOURCE-HASH manifest
 flate2 = "1.0"
 sha2 = "0.10"
+# merge the r-system-requirements rules into the committed
+# src/data/sysreqs-rules.json (gen-sysreqs-rules)
+serde_json = "1.0"

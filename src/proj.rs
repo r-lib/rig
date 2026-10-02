@@ -1958,6 +1958,8 @@ fn project_lock_package(
         groups: vec!["main".to_string()],
         extra_groups: vec![],
         is_project: true,
+        // `rproj.toml` has no `SystemRequirements` of its own yet.
+        system_requirements: None,
     }
 }
 
@@ -2077,6 +2079,8 @@ pub(crate) struct ResolvedGitSource {
     version: RegistryPackageVersion,
     ranges: HashMap<String, RPackageVersionRanges, rustc_hash::FxBuildHasher>,
     git_source: GitSourceInfo,
+    /// The `SystemRequirements` of the fetched `DESCRIPTION`.
+    system_requirements: Option<String>,
 }
 
 /// Fetch every git/GitHub-sourced dependency in `git_deps`, and every
@@ -2164,6 +2168,7 @@ pub(crate) fn resolve_git_sources(
                 version,
                 ranges,
                 git_source,
+                system_requirements: pkg.system_requirements.clone(),
             });
 
             for entry in remotes.split(',') {
@@ -2216,6 +2221,9 @@ fn register_git_sources(reg: &RPackageRegistry, git_sources: &[ResolvedGitSource
             source.version.clone(),
             source.git_source.clone(),
         );
+        if let Some(sysreqs) = &source.system_requirements {
+            reg.set_system_requirements(&source.name, &source.version.version, sysreqs.clone());
+        }
     }
 }
 
@@ -4395,6 +4403,10 @@ pub(crate) struct ProjSyncOptions {
     /// metadata use it, for an `--r-version` like `4.6.1-x86_64` on an arm64
     /// Mac.
     pub arch: Option<String>,
+    /// `--sysreqs` / `--no-sysreqs`: whether to install the system packages
+    /// the R packages need, overriding the `sysreqs` setting. `None` goes by
+    /// the setting.
+    pub sysreqs: Option<bool>,
 }
 
 impl Default for ProjSyncOptions {
@@ -4415,6 +4427,7 @@ impl Default for ProjSyncOptions {
             dry_run: false,
             exclude_newer: None,
             arch: None,
+            sysreqs: None,
         }
     }
 }
@@ -4452,6 +4465,7 @@ fn sc_proj_sync(
         dry_run: args.get_flag("dry-run"),
         exclude_newer: exclude_newer_arg(args)?,
         arch: None,
+        sysreqs: crate::sysreqs::cli_flag(args),
     };
 
     proj_sync(&root, &opts, args)
@@ -4866,6 +4880,10 @@ pub(crate) fn proj_sync(
         info!("Nothing to install in {}", library_path.display());
         return Ok(());
     }
+
+    // The OS packages the R packages need, on Linux, before downloading
+    // anything: a dry run shows them too.
+    crate::sysreqs::ensure(&todo, opts.sysreqs, opts.dry_run)?;
 
     if opts.dry_run {
         OUTPUT.info(&format!(
@@ -5457,6 +5475,7 @@ mod tests {
             groups: vec![],
             extra_groups: vec![],
             is_project: false,
+            system_requirements: None,
         }
     }
 
@@ -5855,6 +5874,7 @@ mod tests {
                 sha: sha.to_string(),
                 binary: false,
             },
+            system_requirements: None,
         }
     }
 

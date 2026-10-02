@@ -291,6 +291,38 @@ teardown() {
     [[ "$uid" -eq "`id -u`" ]]
 }
 
+@test "pkg install system requirements" {
+    if ! rig ls | grep -q '^[* ] 4.5.1'; then
+	run rig -v add 4.5.1
+	[[ "$status" -eq 0 ]]
+    fi
+    lib="$BATS_TEST_TMPDIR/sysreqs-lib"
+    rm -rf "$lib"
+
+    # A source build of curl needs the libcurl development files. A dry run
+    # names them, and the command that installs them, but installs nothing.
+    run rig pkg install -r 4.5.1 --library "$lib" --platform source --dry-run curl
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "Checking system requirements"
+    # What is missing depends on the image: R's own dependencies often
+    # include libcurl already.
+    echo "$output" | grep -qE "Missing [0-9]+ system package|All .* required system package"
+    [[ ! -d "$lib" ]]
+
+    # --no-sysreqs skips the check
+    run rig pkg install -r 4.5.1 --library "$lib" --platform source --dry-run --no-sysreqs curl
+    [[ "$status" -eq 0 ]]
+    [[ "$output" != *"Checking system requirements"* ]]
+
+    # The tests run as root, so rig installs the OS packages itself, and then
+    # curl compiles.
+    run $SUDO `which rig` pkg install -r 4.5.1 --library "$lib" --platform source curl
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -qE "Installed [0-9]+ system package|All .* required system package"
+    run R-4.5.1 -q -s -e "library(curl, lib.loc = '$lib'); cat(curl_version()\$version)"
+    [[ "$status" -eq 0 ]]
+}
+
 @test "proj init" {
     cd "$BATS_TEST_TMPDIR"
     rm -rf myproj && mkdir myproj && cd myproj
