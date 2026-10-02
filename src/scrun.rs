@@ -116,7 +116,7 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
     rargs.extend(crate::args::run_r_args().iter().cloned());
 
     if let Some(eval) = eval {
-        sc_run_eval(env, rargs, eval.to_string(), cmdargs, dry_run)
+        sc_run_eval(env, rargs, eval.to_string(), cmdargs, rscript, dry_run)
     } else if let Some(script) = script {
         sc_run_script(env, rargs, script.to_string(), cmdargs, rscript, dry_run)
     } else if positional_script {
@@ -651,12 +651,17 @@ fn sc_run_eval(
     args: Vec<String>,
     expr: String,
     cmdargs: Vec<String>,
+    rscript: bool,
     dry_run: bool,
 ) -> Result<i32, Box<dyn Error>> {
     let mut args2: Vec<String> = args;
     args2.push("-e".to_string());
     args2.push(expr);
-    args2.push("--args".to_string());
+    // `Rscript` passes everything after the expression to it, and it would
+    // pass `--args` on as well.
+    if !rscript {
+        args2.push("--args".to_string());
+    }
     for a in cmdargs {
         args2.push(a.to_string());
     }
@@ -690,7 +695,11 @@ fn sc_run_script(
         args2.push("-f".to_string());
     }
     args2.push(script);
-    args2.push("--args".to_string());
+    // `Rscript` passes everything after the script to it, and it would pass
+    // `--args` on as well.
+    if !rscript {
+        args2.push("--args".to_string());
+    }
     for a in cmdargs {
         args2.push(a.to_string());
     }
@@ -1194,7 +1203,11 @@ fn sc_run_package_script(
         allargs.push("-f".into());
     }
     allargs.push(script.into_os_string());
-    allargs.push("--args".into());
+    // `Rscript` passes everything after the script to it, and it would pass
+    // `--args` on as well.
+    if !rscript {
+        allargs.push("--args".into());
+    }
     for a in &cmdargs[1..] {
         allargs.push(a.into());
     }

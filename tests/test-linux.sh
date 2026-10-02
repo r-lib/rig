@@ -389,6 +389,14 @@ teardown() {
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^a b"
 
+    # Rscript gets the arguments without an extra `--args`
+    run rig run --rscript plain.R a b
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "^a b"
+    run rig run --rscript -e 'cat(commandArgs(TRUE), "\n")' a b
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "^a b"
+
     # a script with a #! line can have any name, and gets all arguments
     # after it, even the ones that look like flags
     printf '#!/usr/bin/env -S rig run\ncat(commandArgs(TRUE), "\\n")\n' > shebang

@@ -76,6 +76,10 @@
   starts with `#!`, e.g. `#!/usr/bin/env -S rig run`, does not need an
   `.R` extension any more (#413).
 
+* `rig run --rscript` does not pass an extra `--args` argument to scripts
+  and `-e` expressions any more, so `commandArgs(TRUE)` only has the
+  arguments you gave.
+
 ## Windows specific changes
 
 * The rig binaries themselves are now signed on Windows, not only the
