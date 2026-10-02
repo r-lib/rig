@@ -60,6 +60,13 @@ inline dependencies](run.qmd#scripts-with-inline-dependencies). rig refuses to r
 installed. Defaults to the current default R version, or the current R
 release if there is no default.
 
+`--prefer-binary` writes `prefer-binary = true` into the manifest's
+`[tool.rig]` table (or the script's block), so `rig proj lock` prefers an
+older version with a binary package over a newer one without, see
+[`rig proj lock`](#rig-proj-lock). `--prefer-binary=5` writes
+`prefer-binary = 5`, to consider the five newest versions instead of
+three.
+
 rig refuses to overwrite any of the files above; pass `--force` to replace
 them. The `.gitignore` block is the exception: rig never refuses on an
 existing `.gitignore`, it just merges its block into it (or adds one),

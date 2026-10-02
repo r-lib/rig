@@ -35,6 +35,24 @@ fn pak_version_values() -> clap::builder::PossibleValuesParser {
 // `--exclude-newer` of the commands that solve dependencies. A plain string:
 // this file is also compiled into the build script, so it cannot use
 // `crate::exclude_newer` to parse it. `exclude_newer::exclude_newer_arg()` does.
+// `--prefer-binary` of `rig proj init` and `rig proj import`, which write it
+// into the manifest's `[tool.rig]` table instead of solving with it.
+fn init_prefer_binary_arg() -> Arg {
+    Arg::new("prefer-binary")
+        .help(
+            "Write `prefer-binary` into the [tool.rig] table of the manifest,\n\
+            see `rig proj lock --prefer-binary`. Optionally give how many of\n\
+            the newest versions to consider, e.g. --prefer-binary=5\n\
+            (default: 3). --prefer-binary=0 writes `prefer-binary = false`.",
+        )
+        .long("prefer-binary")
+        .num_args(0..=1)
+        .require_equals(true)
+        .default_missing_value("3")
+        .value_parser(clap::value_parser!(usize))
+        .required(false)
+}
+
 fn exclude_newer_arg() -> Arg {
     Arg::new("exclude-newer")
         .help(
@@ -1595,7 +1613,8 @@ pub fn rig_app() -> Command {
                         .value_name("SCRIPT")
                         .num_args(1)
                         .required(false),
-                ),
+                )
+                .arg(init_prefer_binary_arg()),
         )
         .subcommand(
             Command::new("import")
@@ -1631,7 +1650,8 @@ pub fn rig_app() -> Command {
                         .short('r')
                         .num_args(1)
                         .required(false),
-                ),
+                )
+                .arg(init_prefer_binary_arg()),
         )
         .subcommand(
             Command::new("export")
@@ -1876,7 +1896,8 @@ pub fn rig_app() -> Command {
                             "Prefer an older version that has a binary package over a\n\
                             newer one that does not. Optionally give how many of the\n\
                             newest versions to consider, e.g. --prefer-binary=5\n\
-                            (default: 3).",
+                            (default: 3). Overrides `prefer-binary` in rproj.toml,\n\
+                            --prefer-binary=0 turns it off.",
                         )
                         .long("prefer-binary")
                         .num_args(0..=1)

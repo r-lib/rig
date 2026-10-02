@@ -44,9 +44,10 @@ use crate::repos::feed::{BiocSetting, MetadataFeed, RepoId};
 use crate::repos::*;
 use crate::resolve::resolve_versions;
 use crate::rproj::{
-    format_constraints, parse_add_spec, Author, DepTable, LockDirectDependency, Repository, Rproj,
-    RprojLock, RprojLockOptions, RprojLockPackage, RprojLockTarget, RprojLockTool,
-    DESCRIPTION_RIG_NOTE_FIELD, RPROJ_LOCK_VERSION, RPROJ_MANIFEST_FILE,
+    format_constraints, parse_add_spec, prefer_binary_lookback, Author, DepTable,
+    LockDirectDependency, Repository, Rproj, RprojLock, RprojLockOptions, RprojLockPackage,
+    RprojLockTarget, RprojLockTool, DESCRIPTION_RIG_NOTE_FIELD, RPROJ_LOCK_VERSION,
+    RPROJ_MANIFEST_FILE,
 };
 use crate::rvenv::{
     ensure_rvenv_files, existing_targets, find_project_root, find_workspace_root,
@@ -134,7 +135,10 @@ fn sc_proj_init(
         .filter(|n| !n.is_empty())
         .unwrap_or_else(|| "myproject".to_string());
 
-    let manifest = Rproj::minimal_for_r(&name, &rver)?;
+    let mut manifest = Rproj::minimal_for_r(&name, &rver)?;
+    if let Some(n) = args.get_one::<usize>("prefer-binary") {
+        manifest.set_prefer_binary(*n);
+    }
     let manifest_path = root.join(RPROJ_MANIFEST_FILE);
     fs::write(&manifest_path, manifest.to_toml()?)?;
 
@@ -567,8 +571,15 @@ fn sc_proj_import(
         })
         .collect();
     manifest.merge_config(&config);
+    let prefer_binary = args.get_one::<usize>("prefer-binary").copied();
+    if let Some(n) = prefer_binary {
+        manifest.set_prefer_binary(n);
+    }
 
     if let Some(doc) = original_doc.as_mut() {
+        if let Some(n) = prefer_binary {
+            Rproj::doc_set_prefer_binary(doc, n);
+        }
         for (name, dep) in manifest.dependencies.iter() {
             if before_dependencies.get(name) != Some(dep) {
                 Rproj::doc_set_dependency(doc, &["dependencies"], name, dep)?;
@@ -1227,6 +1238,9 @@ pub(crate) struct ProjectSolve {
     /// The root manifest's Bioconductor setting, see [`Rproj::bioc_setting`].
     /// A workspace takes it from its root only.
     pub bioc: BiocSetting,
+    /// The root manifest's `prefer-binary` setting, see
+    /// [`Rproj::prefer_binary`]. A workspace takes it from its root only.
+    pub prefer_binary: Option<usize>,
 }
 
 /// Read the project or workspace rooted at `root` and turn it into the roots
@@ -1278,6 +1292,7 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
                 git_deps,
                 exclude_newer: manifest.exclude_newer()?,
                 bioc: manifest.bioc_setting(),
+                prefer_binary: manifest.prefer_binary()?,
             });
         }
     };
@@ -1354,6 +1369,7 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
         git_deps,
         exclude_newer: manifest.exclude_newer()?,
         bioc: manifest.bioc_setting(),
+        prefer_binary: manifest.prefer_binary()?,
     })
 }
 
@@ -1806,7 +1822,8 @@ fn read_existing_lock(root: &Path) -> Option<RprojLock> {
 }
 
 /// The `[tool.rig]` options a `rig proj lock` run solves with, given the effective
-/// `exclude-newer` setting and the options of the existing lock, if any.
+/// `exclude-newer` and `prefer-binary` settings and the options of the
+/// existing lock, if any.
 ///
 /// A relative span, e.g. `7 days`, keeps the cutoff day the existing lock
 /// resolved it to, as long as the span itself is unchanged. Otherwise the
@@ -1814,21 +1831,30 @@ fn read_existing_lock(root: &Path) -> Option<RprojLock> {
 /// ignores the existing lock, so it resolves the span afresh.
 fn resolve_lock_options(
     exclude_newer: Option<&ExcludeNewerSpec>,
+    prefer_binary: Option<usize>,
     existing: Option<&RprojLockOptions>,
 ) -> Result<RprojLockOptions, Box<dyn Error>> {
-    let Some(spec) = exclude_newer else {
-        return Ok(RprojLockOptions::default());
+    let mut options = RprojLockOptions {
+        prefer_binary,
+        ..Default::default()
     };
-    if let (Some(span), Some(existing)) = (spec.span(), existing) {
-        if existing.exclude_newer_span.as_deref() == Some(span) && existing.exclude_newer.is_some()
+    let Some(spec) = exclude_newer else {
+        return Ok(options);
+    };
+    match (spec.span(), existing) {
+        (Some(span), Some(existing))
+            if existing.exclude_newer_span.as_deref() == Some(span)
+                && existing.exclude_newer.is_some() =>
         {
-            return Ok(existing.clone());
+            options.exclude_newer = existing.exclude_newer.clone();
+            options.exclude_newer_span = existing.exclude_newer_span.clone();
+        }
+        _ => {
+            options.exclude_newer = Some(spec.cutoff()?);
+            options.exclude_newer_span = spec.span().map(|s| s.to_string());
         }
     }
-    Ok(RprojLockOptions {
-        exclude_newer: Some(spec.cutoff()?),
-        exclude_newer_span: spec.span().map(|s| s.to_string()),
-    })
+    Ok(options)
 }
 
 /// Every git/GitHub dependency's previously resolved commit, read from an
@@ -2934,7 +2960,11 @@ pub(crate) fn lock_fits_manifest(root: &Path) -> Result<bool, Box<dyn Error>> {
         return Ok(false);
     };
     let solve = proj_read_solve_roots(root)?;
-    let lock_options = resolve_lock_options(solve.exclude_newer.as_ref(), Some(&lock.tool.rig))?;
+    let lock_options = resolve_lock_options(
+        solve.exclude_newer.as_ref(),
+        solve.prefer_binary,
+        Some(&lock.tool.rig),
+    )?;
     if lock.tool.rig != lock_options {
         return Ok(false);
     }
@@ -3539,11 +3569,20 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         existing_lock.as_ref(),
     );
 
-    // `--exclude-newer` wins over the manifest's setting. A lock solved with
-    // different options cannot be reused, see `resolve_lock_options`.
+    // `--exclude-newer` and `--prefer-binary` win over the manifest's
+    // settings, `--prefer-binary=0` turns a manifest's `prefer-binary` off.
+    // A lock solved with different options cannot be reused, see
+    // `resolve_lock_options`.
     let exclude_newer = opts.exclude_newer.as_ref().or(solve.exclude_newer.as_ref());
-    let lock_options =
-        resolve_lock_options(exclude_newer, existing_lock.as_ref().map(|l| &l.tool.rig))?;
+    let prefer_binary = match opts.prefer_binary {
+        Some(n) => prefer_binary_lookback(n),
+        None => solve.prefer_binary,
+    };
+    let lock_options = resolve_lock_options(
+        exclude_newer,
+        prefer_binary,
+        existing_lock.as_ref().map(|l| &l.tool.rig),
+    )?;
     let options_match = existing_lock
         .as_ref()
         .is_some_and(|l| l.tool.rig == lock_options);
@@ -3684,7 +3723,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         }
 
         let source_only = solve_targets.iter().all(|t| t.target.is_none());
-        if opts.prefer_binary.is_some() && source_only {
+        if opts.prefer_binary.is_some_and(|n| n > 0) && source_only {
             OUTPUT.warn("There are no binary packages to prefer, ignoring --prefer-binary");
             info!("Ignoring --prefer-binary: solving for source packages only");
         }
@@ -3725,7 +3764,6 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         overrides: overrides.clone(),
     };
     type SolveResult = (RPackageRegistry, SelectedDependencies<RPackageRegistry>);
-    let prefer_binary = opts.prefer_binary;
     let solved: Vec<(String, String, Result<SolveResult, String>)> = to_solve
         .par_iter()
         .map(|st| {
@@ -3736,7 +3774,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
                 solve.self_alias.as_ref(),
                 &git_sources,
                 st.target.clone(),
-                prefer_binary,
+                lock_options.prefer_binary,
                 lock_options.exclude_newer.as_deref(),
                 &solve.bioc,
                 &pins,
@@ -5902,15 +5940,35 @@ mod tests {
         let existing = RprojLockOptions {
             exclude_newer: Some("2020-01-01".to_string()),
             exclude_newer_span: None,
+            prefer_binary: Some(3),
         };
-        let opts = resolve_lock_options(None, Some(&existing)).unwrap();
+        let opts = resolve_lock_options(None, None, Some(&existing)).unwrap();
         assert!(opts.is_empty());
+    }
+
+    #[test]
+    fn lock_options_record_prefer_binary() {
+        let opts = resolve_lock_options(None, Some(5), None).unwrap();
+        assert_eq!(opts.prefer_binary, Some(5));
+        assert_eq!(opts.exclude_newer, None);
+
+        // An unchanged span keeps its cutoff, but takes the new lookback.
+        let spec: ExcludeNewerSpec = "7 days".parse().unwrap();
+        let existing = RprojLockOptions {
+            exclude_newer: Some("2020-01-01".to_string()),
+            exclude_newer_span: Some("7 days".to_string()),
+            prefer_binary: None,
+        };
+        let opts = resolve_lock_options(Some(&spec), Some(3), Some(&existing)).unwrap();
+        assert_eq!(opts.exclude_newer.as_deref(), Some("2020-01-01"));
+        assert_eq!(opts.prefer_binary, Some(3));
+        assert_ne!(opts, existing);
     }
 
     #[test]
     fn lock_options_record_an_absolute_cutoff() {
         let spec: ExcludeNewerSpec = "2020-01-01".parse().unwrap();
-        let opts = resolve_lock_options(Some(&spec), None).unwrap();
+        let opts = resolve_lock_options(Some(&spec), None, None).unwrap();
         assert_eq!(opts.exclude_newer.as_deref(), Some("2020-01-01"));
         assert_eq!(opts.exclude_newer_span, None);
     }
@@ -5921,13 +5979,14 @@ mod tests {
         let existing = RprojLockOptions {
             exclude_newer: Some("2020-01-01".to_string()),
             exclude_newer_span: Some("7 days".to_string()),
+            prefer_binary: None,
         };
-        let opts = resolve_lock_options(Some(&spec), Some(&existing)).unwrap();
+        let opts = resolve_lock_options(Some(&spec), None, Some(&existing)).unwrap();
         assert_eq!(opts, existing);
 
         // A different span resolves afresh, from today.
         let spec: ExcludeNewerSpec = "8 days".parse().unwrap();
-        let opts = resolve_lock_options(Some(&spec), Some(&existing)).unwrap();
+        let opts = resolve_lock_options(Some(&spec), None, Some(&existing)).unwrap();
         assert_eq!(opts.exclude_newer_span.as_deref(), Some("8 days"));
         assert_ne!(opts.exclude_newer.as_deref(), Some("2020-01-01"));
     }
@@ -5940,6 +5999,7 @@ mod tests {
                 rig: RprojLockOptions {
                     exclude_newer: Some("2020-01-01".to_string()),
                     exclude_newer_span: Some("7 days".to_string()),
+                    prefer_binary: Some(5),
                 },
             },
             targets: vec![],

@@ -63,6 +63,26 @@ pub const DESCRIPTION_RIG_NOTE_FIELD: &str = "Config/rig/note";
 /// [`Rproj::merge_config_needs`]).
 const DESCRIPTION_DEP_GROUPS: [&str; 2] = ["dev", "enhances"];
 
+/// How many of the newest versions of a package `--prefer-binary` (and
+/// `prefer-binary = true` in `[tool.rig]`) considers, if not given.
+pub const PREFER_BINARY_DEFAULT: usize = 3;
+
+/// A `--prefer-binary=<n>` / `prefer-binary = <n>` number as the solver's
+/// lookback: `0` turns it off, so it can override a manifest's setting.
+pub fn prefer_binary_lookback(n: usize) -> Option<usize> {
+    (n > 0).then_some(n)
+}
+
+/// The `prefer-binary` value of `[tool.rig]` for a `--prefer-binary=<n>`
+/// number: `true` for the default, `false` for `0`, the number otherwise.
+pub fn prefer_binary_toml_value(n: usize) -> toml::Value {
+    match n {
+        0 => toml::Value::Boolean(false),
+        PREFER_BINARY_DEFAULT => toml::Value::Boolean(true),
+        n => toml::Value::Integer(n as i64),
+    }
+}
+
 /// A parsed `rproj.toml` manifest.
 ///
 /// Key ordering is not significant, so dependency tables use `BTreeMap` (they
@@ -853,6 +873,41 @@ impl Rproj {
             bail!("`exclude-newer` in `[tool.rig]` must be a string, e.g. \"2025-06-01\"");
         };
         Ok(Some(value.parse()?))
+    }
+
+    /// The `prefer-binary` setting of `[tool.rig]`, as the number of newest
+    /// versions the solver considers, like `--prefer-binary=<n>`: `true` is
+    /// the default number, [`PREFER_BINARY_DEFAULT`], `false` or `0` turns it
+    /// off (`None`).
+    pub fn prefer_binary(&self) -> Result<Option<usize>, Box<dyn Error>> {
+        let Some(value) = self.tool.get("rig").and_then(|t| t.get("prefer-binary")) else {
+            return Ok(None);
+        };
+        match value {
+            toml::Value::Boolean(true) => Ok(Some(PREFER_BINARY_DEFAULT)),
+            toml::Value::Boolean(false) => Ok(None),
+            toml::Value::Integer(n) if *n >= 0 => Ok(prefer_binary_lookback(*n as usize)),
+            _ => bail!(
+                "`prefer-binary` in `[tool.rig]` must be `true`, `false` or a \
+                 non-negative number, e.g. 5"
+            ),
+        }
+    }
+
+    /// Set `prefer-binary` in `[tool.rig]`, from a `--prefer-binary=<n>`
+    /// number, see [`prefer_binary_toml_value`].
+    pub fn set_prefer_binary(&mut self, n: usize) {
+        self.tool
+            .entry("rig".to_string())
+            .or_default()
+            .insert("prefer-binary".to_string(), prefer_binary_toml_value(n));
+    }
+
+    /// [`Rproj::set_prefer_binary`] on the ORIGINAL on-disk document, see
+    /// [`Rproj::doc_set_dependency`].
+    pub fn doc_set_prefer_binary(doc: &mut toml_edit::DocumentMut, n: usize) {
+        let item = Self::config_value_to_item(&prefer_binary_toml_value(n));
+        Self::doc_get_or_create_table(doc, &["tool", "rig"]).insert("prefer-binary", item);
     }
 
     /// Merge a DESCRIPTION's `Config/Needs/*` fields into this manifest's
@@ -2483,6 +2538,13 @@ pub struct RprojLockOptions {
         skip_serializing_if = "Option::is_none"
     )]
     pub exclude_newer_span: Option<String>,
+    /// The `--prefer-binary` lookback, see [`Rproj::prefer_binary`].
+    #[serde(
+        rename = "prefer-binary",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub prefer_binary: Option<usize>,
 }
 
 impl RprojLockOptions {
@@ -4360,6 +4422,56 @@ foo = "bar"
         )
         .unwrap();
         assert!(m.exclude_newer().is_err());
+    }
+
+    #[test]
+    fn prefer_binary_is_read_from_tool_rig() {
+        let read = |value: &str| {
+            let text = format!(
+                "[project]\nname = \"p\"\nversion = \"1.0\"\n\n\
+                 [tool.rig]\nprefer-binary = {}\n",
+                value
+            );
+            toml::from_str::<Rproj>(&text).unwrap().prefer_binary()
+        };
+        assert_eq!(read("true").unwrap(), Some(PREFER_BINARY_DEFAULT));
+        assert_eq!(read("false").unwrap(), None);
+        assert_eq!(read("5").unwrap(), Some(5));
+        assert_eq!(read("0").unwrap(), None);
+        assert!(read("-1").is_err());
+        assert!(read("\"yes\"").is_err());
+        assert!(Rproj::minimal("p").prefer_binary().unwrap().is_none());
+    }
+
+    #[test]
+    fn prefer_binary_is_written_to_tool_rig() {
+        for (n, written, read) in [
+            (3, "prefer-binary = true", Some(3)),
+            (5, "prefer-binary = 5", Some(5)),
+            (0, "prefer-binary = false", None),
+        ] {
+            let mut m = Rproj::minimal("p");
+            m.set_prefer_binary(n);
+            let out = m.to_toml().unwrap();
+            assert!(
+                out.contains(&format!("[tool.rig]\n{}\n", written)),
+                "{}",
+                out
+            );
+            let back: Rproj = toml::from_str(&out).unwrap();
+            assert_eq!(back.prefer_binary().unwrap(), read);
+
+            let mut doc: toml_edit::DocumentMut =
+                "# keep me\n[project]\nname = \"p\"\n".parse().unwrap();
+            Rproj::doc_set_prefer_binary(&mut doc, n);
+            let out = doc.to_string();
+            assert!(out.starts_with("# keep me\n"), "{}", out);
+            assert!(
+                out.contains(&format!("[tool.rig]\n{}\n", written)),
+                "{}",
+                out
+            );
+        }
     }
 
     #[test]

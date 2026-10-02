@@ -70,7 +70,8 @@ with the same meaning:
   [`rig proj add`](reference/proj.qmd#rig-proj-add) for the syntax. A
   relative `path` is relative to the directory of the script.
 - `[[repository]]`: extra package repositories.
-- `[tool.rig]`: rig settings, e.g. `exclude-newer`, see below.
+- `[tool.rig]`: rig settings, e.g. `exclude-newer`, see below, and
+  `prefer-binary`, see [`rig proj lock`](reference/proj.qmd#rig-proj-lock).
 
 Any other table is an error, so typos do not go unnoticed.
 

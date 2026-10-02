@@ -102,6 +102,10 @@
   `--exclude-newer "7 days"`. Projects can set it in `rproj.toml`, with
   `exclude-newer` in `[tool.rig]`.
 
+* Projects and scripts can now set `prefer-binary` in `[tool.rig]`.
+  `rig proj init` and `rig proj import` have a new `--prefer-binary`
+  option, to write the setting into the manifest.
+
 * `rig proj lock` now also solves for source packages by default
   `rig proj sync` uses this target only if no other target matches the
   machine.

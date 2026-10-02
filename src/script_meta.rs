@@ -38,7 +38,9 @@ use crate::proj::{
     requested_r_installation, resolve_project_r_version, rvenv_r_arch, AddSpec, ProjSyncOptions,
 };
 use crate::repos::cranlike_metadata::minor_r_version;
-use crate::rproj::{Dependency, Repository, Rproj, RprojLock, RPROJ_MANIFEST_FILE};
+use crate::rproj::{
+    prefer_binary_toml_value, Dependency, Repository, Rproj, RprojLock, RPROJ_MANIFEST_FILE,
+};
 use crate::rvenv::{
     ensure_rvenv_files, project_r_wrapper, read_rvenv_cfg, rvenv_sync_needed, RPROJ_LOCK_FILE,
 };
@@ -903,7 +905,13 @@ pub fn sc_proj_init_script(script: &Path, args: &ArgMatches) -> Result<(), Box<d
     }
 
     let rver = resolve_project_r_version(args)?;
-    let body = format!("[dependencies]\nR = \">= {}\"\n", minor_r_version(&rver)?);
+    let mut body = format!("[dependencies]\nR = \">= {}\"\n", minor_r_version(&rver)?);
+    if let Some(n) = args.get_one::<usize>("prefer-binary") {
+        body.push_str(&format!(
+            "\n[tool.rig]\nprefer-binary = {}\n",
+            prefer_binary_toml_value(*n)
+        ));
+    }
     write_script_block(script, &text, block.as_ref(), &body)?;
 
     let msg = if !exists {

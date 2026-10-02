@@ -86,6 +86,19 @@ released so recently that it has not been built yet. Only the three newest
 versions of a package are considered; `--prefer-binary=5` considers five.
 Versions held back this way are marked in the output.
 
+To make it part of the project, set it in `rproj.toml`. `true` means the
+default of three versions, a number gives the number of versions:
+
+```toml
+[tool.rig]
+prefer-binary = true
+```
+
+`--prefer-binary` overrides it, and `--prefer-binary=0` turns it off.
+`rproj.lock` records the setting in its `[tool.rig]` table, and a lock solved
+with a different one is solved again, keeping the pinned versions where they
+fit, see "Sticky lock files" below.
+
 By default rig solves for this machine plus the three other common
 platforms (macOS arm64, Windows x86_64 and GNU Linux x86_64), and for
 source packages only, so the lock file also works on platforms without

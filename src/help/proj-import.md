@@ -59,3 +59,9 @@ to be installed, and it does not change what is written: the manifest's R
 requirement always comes from the `DESCRIPTION` file, and the `.rvenvlib/rvenv`
 shim package works with every R. The default is the current default R
 version, or the current R release if there is no default.
+
+`--prefer-binary` writes `prefer-binary = true` (`--prefer-binary=5`:
+`prefer-binary = 5`) into the manifest's `[tool.rig]` table, like for
+[`rig proj init`](#rig-proj-init). With `--dependencies` it is set in the
+existing manifest, too, and `--prefer-binary=0` writes
+`prefer-binary = false`, to turn it off.
