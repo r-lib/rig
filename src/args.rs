@@ -1499,6 +1499,25 @@ pub fn rig_app() -> Command {
                 .conflicts_with_all(["upgrade", "eval", "cmd", "list", "shell", "app-type"]),
         )
         .arg(
+            Arg::new("locked")
+                .help(
+                    "Fail if the lock file of a script (<script>.lock) does not fit\n\
+                    its `# /// script` block, instead of updating the lock file",
+                )
+                .long("locked")
+                .action(clap::ArgAction::SetTrue)
+                .required(false)
+                .conflicts_with_all([
+                    "upgrade",
+                    "upgrade-package",
+                    "eval",
+                    "cmd",
+                    "list",
+                    "shell",
+                    "app-type",
+                ]),
+        )
+        .arg(
             Arg::new("command")
                 .help("R script, project script name, project or R CMD command to run, with parameters")
                 .required(false)
@@ -1807,6 +1826,17 @@ pub fn rig_app() -> Command {
                         .num_args(1)
                         .value_delimiter(',')
                         .action(clap::ArgAction::Append)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("script")
+                        .help(
+                            "Lock the inline metadata of this R script into <SCRIPT>.lock,\n\
+                            instead of locking the project",
+                        )
+                        .long("script")
+                        .value_name("SCRIPT")
+                        .num_args(1)
                         .required(false),
                 )
                 .arg(

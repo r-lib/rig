@@ -193,6 +193,15 @@ file is cached, which is per *build* rather than per version: a repository
 can offer several binaries of one version for one platform and R version,
 and they are cached side by side.
 
+## Scripts
+
+`rig proj lock --script script.R` locks the dependencies in the
+`# /// script` block of an R script, instead of a project, and writes them
+to `script.R.lock`, next to the script. It takes the same options as for a
+project, and an existing `script.R.lock` is sticky in the same way.
+`rig run script.R` then installs the versions the lock file names, see
+[`rig run`](run.qmd).
+
 ## Workspaces
 
 A manifest with a `[workspace]` table is the root of a workspace: a monorepo

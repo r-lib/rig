@@ -33,11 +33,12 @@ use crate::cache::get_cache_dir;
 use crate::common::get_r_version_data_version;
 use crate::output::OUTPUT;
 use crate::proj::{
-    add_spec_to_manifest, is_foreign_arch, parse_add_arg, parse_upgrade_packages, proj_lock_host,
-    proj_sync, requested_r_installation, resolve_project_r_version, AddSpec, ProjSyncOptions,
+    add_spec_to_manifest, is_foreign_arch, lock_file_label, lock_fits_manifest, parse_add_arg,
+    parse_upgrade_packages, proj_lock_host, proj_lock_keep_targets, proj_sync,
+    requested_r_installation, resolve_project_r_version, rvenv_r_arch, AddSpec, ProjSyncOptions,
 };
 use crate::repos::cranlike_metadata::minor_r_version;
-use crate::rproj::{Dependency, Repository, Rproj, RPROJ_MANIFEST_FILE};
+use crate::rproj::{Dependency, Repository, Rproj, RprojLock, RPROJ_MANIFEST_FILE};
 use crate::rvenv::{
     ensure_rvenv_files, project_r_wrapper, read_rvenv_cfg, rvenv_sync_needed, RPROJ_LOCK_FILE,
 };
@@ -257,20 +258,82 @@ impl ScriptMeta {
     /// the R version and architecture of the installation (see
     /// [`requested_r_installation`]), not the argument as given, so `4.6`,
     /// `4.6.1` and `release` share an environment if they select the same R.
-    fn env_key(&self, r_version: Option<&str>) -> Result<String, Box<dyn Error>> {
+    ///
+    /// A script with a lock file also has the absolute path of the lock file
+    /// in its key: its environment is synced from that lock file, so it must
+    /// not be shared with another script that has the same block.
+    fn env_key(
+        &self,
+        r_version: Option<&str>,
+        lock: Option<&Path>,
+    ) -> Result<String, Box<dyn Error>> {
         let mut canonical = toml::to_string(self)?;
         if let Some(rver) = r_version {
             canonical.push_str(&format!("\n# r-version = {}\n", rver));
+        }
+        if let Some(lock) = lock {
+            canonical.push_str(&format!("\n# lock = {}\n", lock.display()));
         }
         Ok(calculate_hash(&canonical)[..16].to_string())
     }
 }
 
 /// The cache directory of the environment of `meta`.
-fn script_env_dir(meta: &ScriptMeta, r_version: Option<&str>) -> Result<PathBuf, Box<dyn Error>> {
+fn script_env_dir(
+    meta: &ScriptMeta,
+    r_version: Option<&str>,
+    lock: Option<&Path>,
+) -> Result<PathBuf, Box<dyn Error>> {
     Ok(get_cache_dir()?
         .join(SCRIPTS_CACHE_SUBDIR)
-        .join(meta.env_key(r_version)?))
+        .join(meta.env_key(r_version, lock)?))
+}
+
+/// The lock file of `script`: the script's path with `.lock` appended, e.g.
+/// `analysis.R.lock` for `analysis.R`.
+pub(crate) fn script_lock_path(script: &Path) -> PathBuf {
+    let mut path = script.as_os_str().to_owned();
+    path.push(".lock");
+    PathBuf::from(path)
+}
+
+/// The absolute path of the lock file of `script`, for the key of its
+/// environment. The lock file does not have to exist.
+fn canonical_lock_path(script: &Path) -> Result<PathBuf, Box<dyn Error>> {
+    Ok(script_lock_path(&script.canonicalize()?))
+}
+
+/// Set up the environment that `rig proj lock --script` solves the block of
+/// `script` in: the same one `rig run` uses for the script once it has a
+/// lock file. Returns its directory. The caller puts the script's lock file
+/// into it, if there is one.
+pub(crate) fn script_lock_env(script: &Path) -> Result<PathBuf, Box<dyn Error>> {
+    let (_text, block, mut meta) = read_script(script)?;
+    if block.is_none() {
+        bail!(
+            "{} has no `{}` block, create one with `rig proj init --script {}`",
+            script.display(),
+            BLOCK_START,
+            script.display()
+        );
+    }
+    meta.absolutize_paths(&script_dir_of(script)?);
+    let lock = canonical_lock_path(script)?;
+    let envdir = script_env_dir(&meta, None, Some(&lock))?;
+    write_env_manifest(&envdir, &meta)?;
+    Ok(envdir)
+}
+
+/// Create the environment directory `envdir` for `meta`, if needed, with its
+/// `rproj.toml` and the other files of a project environment.
+fn write_env_manifest(envdir: &Path, meta: &ScriptMeta) -> Result<(), Box<dyn Error>> {
+    let manifest_path = envdir.join(RPROJ_MANIFEST_FILE);
+    if !manifest_path.exists() {
+        fs::create_dir_all(envdir)?;
+        let manifest = toml::to_string(&meta.to_manifest())?;
+        write_atomically(&manifest_path, manifest.as_bytes())?;
+    }
+    ensure_rvenv_files(envdir)
 }
 
 /// Why the synced environment in `envdir` does not use R `version` on
@@ -388,10 +451,25 @@ fn prepare_script_env(
     sync: bool,
     created: &mut Option<PathBuf>,
 ) -> Result<Option<PathBuf>, Box<dyn Error>> {
-    // Resolve `--r-version` to an installation first, installing it if
-    // needed, so the environment is keyed on the R it actually uses. Not
-    // every command that gets here has an `--r-version`.
+    // Not every command that gets here has an `--r-version`.
     let requested = args.try_get_one::<String>("r-version").ok().flatten();
+
+    let lock_path = script_lock_path(script);
+    if lock_path.exists() {
+        return prepare_locked_script_env(
+            script,
+            &lock_path,
+            meta,
+            requested.map(String::as_str),
+            args,
+            dry_run,
+            sync,
+            created,
+        );
+    }
+
+    // Resolve `--r-version` to an installation first, installing it if
+    // needed, so the environment is keyed on the R it actually uses.
     let (rver, r_arch) = match requested {
         None => (None, None),
         Some(requested) => match requested_r_installation(requested, dry_run)? {
@@ -408,7 +486,7 @@ fn prepare_script_env(
         .as_ref()
         .zip(r_arch.as_ref())
         .map(|(version, arch)| format!("{} {}", version, arch));
-    let envdir = script_env_dir(meta, r_id.as_deref())?;
+    let envdir = script_env_dir(meta, r_id.as_deref(), None)?;
     trace!(
         "Environment of {} is at {}",
         script.display(),
@@ -456,11 +534,8 @@ fn prepare_script_env(
         if !envdir.exists() {
             *created = Some(envdir.clone());
         }
-        fs::create_dir_all(&envdir)?;
-        let manifest = toml::to_string(&meta.to_manifest())?;
-        write_atomically(&manifest_path, manifest.as_bytes())?;
     }
-    ensure_rvenv_files(&envdir)?;
+    write_env_manifest(&envdir, meta)?;
 
     if !sync {
         if !envdir.join(RPROJ_LOCK_FILE).exists() {
@@ -540,6 +615,250 @@ fn prepare_script_env(
     }
 
     Ok(Some(envdir))
+}
+
+/// [`prepare_script_env`] for a script that has a lock file, `lock_path`.
+///
+/// The environment is synced from the lock file, so it installs the R
+/// version and the package versions the lock file names. If the lock file
+/// changed since the environment last used it, check that it still fits the
+/// script's block, and if it does not, lock again, for the same R versions
+/// and platforms, and update the lock file. With `--locked`, fail instead.
+/// `--upgrade` and `--upgrade-package` also update the lock file.
+///
+/// `requested` is `--r-version`. It picks the lock file target, so it is a
+/// version number like `4.6` or `4.6.1`, optionally with an architecture,
+/// like `4.6.1-x86_64`.
+#[allow(clippy::too_many_arguments)]
+fn prepare_locked_script_env(
+    script: &Path,
+    lock_path: &Path,
+    meta: &ScriptMeta,
+    requested: Option<&str>,
+    args: &ArgMatches,
+    dry_run: bool,
+    sync: bool,
+    created: &mut Option<PathBuf>,
+) -> Result<Option<PathBuf>, Box<dyn Error>> {
+    let label = lock_file_label(lock_path);
+    let envdir = script_env_dir(meta, requested, Some(&canonical_lock_path(script)?))?;
+    trace!(
+        "Environment of {} is at {}",
+        script.display(),
+        envdir.display()
+    );
+
+    if dry_run && !envdir.join(RPROJ_MANIFEST_FILE).exists() {
+        let msg = format!(
+            "Would create an environment for {} from {} in {}",
+            script.display(),
+            label,
+            envdir.display()
+        );
+        OUTPUT.info(&msg);
+        info!("{}", msg);
+        return Ok(Some(envdir));
+    }
+    if !dry_run {
+        if !envdir.exists() {
+            *created = Some(envdir.clone());
+        }
+        write_env_manifest(&envdir, meta)?;
+    }
+
+    // Not every command that gets here has these options.
+    let flag = |name: &str| {
+        args.try_get_one::<bool>(name)
+            .ok()
+            .flatten()
+            .copied()
+            .unwrap_or(false)
+    };
+    let upgrade = flag("upgrade");
+    let locked = flag("locked");
+    let upgrade_packages = if args.try_contains_id("upgrade-package").is_ok() {
+        parse_upgrade_packages(args)?
+    } else {
+        vec![]
+    };
+
+    // The environment has a copy of the lock file. If it is the same, the
+    // lock file was already checked against this block (the block is part of
+    // the environment's key), and there is nothing to check.
+    let env_lock = envdir.join(RPROJ_LOCK_FILE);
+    let script_lock = fs::read(lock_path)?;
+    let lock_changed = fs::read(&env_lock).ok().as_deref() != Some(&script_lock[..]);
+    if lock_changed && dry_run {
+        let msg = format!(
+            "Would check that {} fits the `{}` block of {}",
+            label,
+            BLOCK_START,
+            script.display()
+        );
+        OUTPUT.info(&msg);
+        info!("{}", msg);
+    }
+
+    if !dry_run {
+        // Until the lock file is checked, and updated if needed, the copy in
+        // the environment must not look like it was, so remove it on errors.
+        let result = update_script_lock(
+            script,
+            lock_path,
+            &label,
+            &envdir,
+            &script_lock,
+            lock_changed,
+            locked,
+            upgrade,
+            upgrade_packages,
+            args,
+        );
+        if result.is_err() {
+            let _ = fs::remove_file(&env_lock);
+        }
+        result?;
+    } else if upgrade || !upgrade_packages.is_empty() {
+        let msg = format!("Would re-lock {} and update {}", script.display(), label);
+        OUTPUT.info(&msg);
+        info!("{}", msg);
+    }
+
+    if !sync {
+        return Ok(Some(envdir));
+    }
+
+    match rvenv_sync_needed(&envdir)? {
+        None => {}
+        Some(why) if dry_run => {
+            let msg = format!(
+                "Would sync the environment of {} from {} first, because {}",
+                script.display(),
+                label,
+                why
+            );
+            OUTPUT.info(&msg);
+            info!("{}", msg);
+        }
+        Some(why) => {
+            let msg = format!(
+                "Setting up the environment of {} from {}, because {}",
+                script.display(),
+                label,
+                why
+            );
+            OUTPUT.info(&msg);
+            info!("{}", msg);
+            // `--r-version` picks the lock file target, and the R build of
+            // that target is what the environment uses. An R of another
+            // architecture than the machine's, e.g. `4.6.1-x86_64` on an
+            // arm64 Mac, needs that arch's target and R build.
+            let (r_version, r_arch) = match requested {
+                None => (None, None),
+                Some(requested) => match requested.rsplit_once('-') {
+                    Some((version, arch)) if arch == "arm64" || arch == "x86_64" => {
+                        (Some(version.to_string()), Some(rvenv_r_arch(requested)))
+                    }
+                    _ => (Some(requested.to_string()), None),
+                },
+            };
+            let sync_opts = ProjSyncOptions {
+                r_version,
+                arch: r_arch.filter(|arch| is_foreign_arch(arch)),
+                ..Default::default()
+            };
+            if let Err(err) = proj_sync(&envdir, &sync_opts, args) {
+                // The lock file has no target for this machine or for
+                // `--r-version`: say how to add one.
+                if err.to_string().starts_with("No target in") {
+                    OUTPUT.info(&format!(
+                        "Lock {} for this machine with `rig proj lock --script {}{}`.",
+                        script.display(),
+                        script.display(),
+                        lock_r_versions_arg(lock_path, requested)
+                    ));
+                }
+                return Err(err);
+            }
+        }
+    }
+
+    Ok(Some(envdir))
+}
+
+/// The `--r-version` argument of `rig proj lock` that keeps the R versions
+/// of the lock file at `lock_path` and adds `requested`, or an empty string
+/// if nothing was requested. `rig proj lock` drops the R versions it is not
+/// given.
+fn lock_r_versions_arg(lock_path: &Path, requested: Option<&str>) -> String {
+    let Some(requested) = requested else {
+        return String::new();
+    };
+    let mut versions: Vec<String> = fs::read_to_string(lock_path)
+        .ok()
+        .and_then(|text| toml::from_str::<RprojLock>(&text).ok())
+        .map(|lock| lock.targets.into_iter().map(|t| t.r_version).collect())
+        .unwrap_or_default();
+    versions.push(requested.to_string());
+    let mut seen = std::collections::HashSet::new();
+    versions.retain(|v| seen.insert(v.clone()));
+    format!(" --r-version {}", versions.join(","))
+}
+
+/// Put the lock file of `script` into its environment, if it changed, and
+/// check that it fits the block. Lock again and update the lock file if it
+/// does not, or for `--upgrade` / `--upgrade-package`. With `--locked`, a lock
+/// file that does not fit is an error.
+#[allow(clippy::too_many_arguments)]
+fn update_script_lock(
+    script: &Path,
+    lock_path: &Path,
+    label: &str,
+    envdir: &Path,
+    script_lock: &[u8],
+    lock_changed: bool,
+    locked: bool,
+    upgrade: bool,
+    upgrade_packages: Vec<(String, String)>,
+    args: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+    let env_lock = envdir.join(RPROJ_LOCK_FILE);
+    let mut why = None;
+    if lock_changed {
+        write_atomically(&env_lock, script_lock)?;
+        if !lock_fits_manifest(envdir)? {
+            if locked {
+                bail!(
+                    "{} does not fit the `{}` block of {} any more, update it with \
+                     `rig proj lock --script {}`",
+                    label,
+                    BLOCK_START,
+                    script.display(),
+                    script.display()
+                );
+            }
+            why = Some(format!(
+                "Updating {}, because it does not fit the `{}` block of {}",
+                label,
+                BLOCK_START,
+                script.display()
+            ));
+        }
+    }
+    if upgrade || !upgrade_packages.is_empty() {
+        why = Some(format!(
+            "Re-locking {} and updating {}",
+            script.display(),
+            label
+        ));
+    }
+    if let Some(msg) = why {
+        OUTPUT.info(&msg);
+        info!("{}", msg);
+        proj_lock_keep_targets(envdir, upgrade, upgrade_packages, label, args)?;
+        write_atomically(lock_path, &fs::read(&env_lock)?)?;
+    }
+    Ok(())
 }
 
 /// The text of `script`, its `script` block and the parsed block, or empty
@@ -732,8 +1051,14 @@ fn update_script_env(
     meta.absolutize_paths(&script_dir_of(script)?);
     let sync = !args.get_flag("no-sync");
     let mut created = None;
+    // The lock file of the script, if it has one, is updated, too.
+    let lock_path = script_lock_path(script);
+    let original_lock = fs::read(&lock_path).ok();
     if let Err(err) = prepare_script_env(script, &meta, args, false, sync, &mut created) {
         fs::write(script, original)?;
+        if let Some(lock) = original_lock {
+            fs::write(&lock_path, lock)?;
+        }
         if let Some(envdir) = created {
             let _ = fs::remove_dir_all(envdir);
         }
@@ -901,10 +1226,46 @@ library(cli)
         let c = parse_script_metadata("# /// script\n# [dependencies]\n# cli = \"*\"\n# ///\n")
             .unwrap()
             .unwrap();
-        assert_eq!(a.env_key(None).unwrap(), b.env_key(None).unwrap());
-        assert_ne!(a.env_key(None).unwrap(), c.env_key(None).unwrap());
-        assert_ne!(a.env_key(None).unwrap(), a.env_key(Some("4.5")).unwrap());
-        assert_eq!(a.env_key(None).unwrap().len(), 16);
+        assert_eq!(
+            a.env_key(None, None).unwrap(),
+            b.env_key(None, None).unwrap()
+        );
+        assert_ne!(
+            a.env_key(None, None).unwrap(),
+            c.env_key(None, None).unwrap()
+        );
+        assert_ne!(
+            a.env_key(None, None).unwrap(),
+            a.env_key(Some("4.5"), None).unwrap()
+        );
+        assert_eq!(a.env_key(None, None).unwrap().len(), 16);
+    }
+
+    #[test]
+    fn a_lock_file_gives_a_separate_env_key() {
+        let meta = parse_script_metadata("# /// script\n# [dependencies]\n# cli = \"*\"\n# ///\n")
+            .unwrap()
+            .unwrap();
+        let lock = Path::new("/home/me/a.R.lock");
+        let other = Path::new("/home/me/b.R.lock");
+        let plain = meta.env_key(None, None).unwrap();
+        let locked = meta.env_key(None, Some(lock)).unwrap();
+        assert_ne!(plain, locked);
+        assert_eq!(locked, meta.env_key(None, Some(lock)).unwrap());
+        assert_ne!(locked, meta.env_key(None, Some(other)).unwrap());
+        assert_ne!(locked, meta.env_key(Some("4.5"), Some(lock)).unwrap());
+    }
+
+    #[test]
+    fn the_lock_file_of_a_script_is_next_to_it() {
+        assert_eq!(
+            script_lock_path(Path::new("analysis.R")),
+            PathBuf::from("analysis.R.lock")
+        );
+        assert_eq!(
+            script_lock_path(Path::new("/tmp/dir/run-me")),
+            PathBuf::from("/tmp/dir/run-me.lock")
+        );
     }
 
     #[test]

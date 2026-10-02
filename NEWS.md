@@ -22,6 +22,12 @@
   `--script` option, to create and edit the `# /// script` block of an R
   script, instead of a project's `rproj.toml` (#414).
 
+* New `rig proj lock --script script.R` to lock the dependencies of a
+  script with a `# /// script` block into `script.R.lock`, next to the
+  script. `rig run` then installs the R and package versions of the lock
+  file, and updates it if the block changes. `rig run --locked` fails
+  instead of updating it (#422).
+
 * New `rig system script-assoc` command on Windows, to run `.R` files with
   rig from `cmd` and PowerShell, e.g. `hello.R a b`.
 

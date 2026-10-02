@@ -119,7 +119,35 @@ rig run --upgrade script.R
 rig run --upgrade-package cli script.R
 ```
 
-`rig cache clean --category scripts` deletes all script environments.
+## Script lock files
+
+For a script you share or rerun later, a lock file pins the exact R and
+package versions, the same way `rproj.lock` does for a project.
+`rig proj lock --script script.R` writes it next to the script, as
+`script.R.lock`:
+
+```sh
+rig proj lock --script script.R
+```
+
+By default it covers this machine and the other common platforms, like
+[`rig proj lock`](proj.qmd#rig-proj-lock), so the script and its lock file
+work on other machines, too. It takes the same options, e.g. `--r-version`,
+`--platform` and `--exclude-newer`.
+
+When `script.R.lock` exists, `rig run script.R` installs the R version and
+the package versions it names. If you change the block, and the lock file
+does not fit it any more, `rig run` locks the dependencies again, for the
+same R versions and platforms, keeps the pinned versions where they still
+fit, and updates `script.R.lock`. Use `--locked` to fail instead, e.g. in
+CI. `--upgrade` and `--upgrade-package` also update the lock file, and so
+do `rig proj add --script` and `rig proj remove --script`. With a lock
+file, `--r-version` selects one of the R versions in the lock file, so it
+must be a version number like `4.6` or `4.6.1`.
+
+`rig cache clean --category scripts` deletes all script environments. A
+script's lock file stays, and the next `rig run` sets up the environment
+from it again.
 
 ## Project scripts
 

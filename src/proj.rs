@@ -52,9 +52,10 @@ use crate::rvenv::{
     rvenv_init, rvenv_sync, rvenv_sync_needed, workspace_members, write_sync_stamp, RvenvCfg,
     RPROJ_LOCK_FILE, RVENV_CFG_FILE, RVENV_DIR,
 };
+use crate::script_meta::{script_lock_env, script_lock_path};
 use crate::solver::*;
 use crate::textfmt::{dcf_field_to_text, reflow};
-use crate::utils::create_parent_dir_if_needed;
+use crate::utils::{create_parent_dir_if_needed, write_atomically};
 use toml_edit::DocumentMut;
 
 #[cfg(target_os = "macos")]
@@ -2706,6 +2707,10 @@ struct ProjLockOptions {
     /// Used for the environments of scripts with inline metadata, which only
     /// ever run where they are created.
     host_only: bool,
+    /// The name of the lock file in messages, if it is not `rproj.lock`.
+    /// `rig proj lock --script` locks in the script's cache environment and
+    /// copies the result next to the script, as `<script>.lock`.
+    lockfile_label: Option<String>,
 }
 
 fn sc_proj_lock(
@@ -2731,8 +2736,126 @@ fn sc_proj_lock(
         upgrade: args.get_flag("upgrade"),
         upgrade_packages: parse_upgrade_packages(args)?,
         host_only: false,
+        lockfile_label: None,
     };
+    if let Some(script) = args.get_one::<String>("script") {
+        return proj_lock_script(Path::new(script), opts, args);
+    }
     proj_lock(&proj_lock_root()?, &opts, args)
+}
+
+/// `rig proj lock --script`: lock the dependencies in the `# /// script`
+/// block of `script` into `<script>.lock`, next to the script. The solve
+/// happens in the script's cache environment, the same one `rig run` uses,
+/// with an existing `<script>.lock` as the starting point, so the targets
+/// that still fit are kept.
+fn proj_lock_script(
+    script: &Path,
+    mut opts: ProjLockOptions,
+    args: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+    let lock_path = script_lock_path(script);
+    let envdir = script_lock_env(script)?;
+    let env_lock = envdir.join(RPROJ_LOCK_FILE);
+    if lock_path.exists() {
+        write_atomically(&env_lock, &fs::read(&lock_path)?)?;
+    } else if env_lock.exists() {
+        fs::remove_file(&env_lock)?;
+    }
+    opts.lockfile_label = Some(lock_file_label(&lock_path));
+    proj_lock(&envdir, &opts, args)?;
+    write_atomically(&lock_path, &fs::read(&env_lock)?)?;
+    Ok(())
+}
+
+/// How a script's lock file is named in messages: its file name.
+pub(crate) fn lock_file_label(lock_path: &Path) -> String {
+    lock_path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| lock_path.display().to_string())
+}
+
+/// Lock the project in `root` again, for the same R versions and platforms
+/// its existing lock has. This is how `rig run` updates the lock file of a
+/// script, when the script's `# /// script` block changed, or for
+/// `--upgrade` / `--upgrade-package`. R versions the manifest's `R`
+/// requirement does not allow any more are dropped. If none is left, or there
+/// is no lock, the default R version and platform set are used, as for
+/// `rig proj lock`.
+pub(crate) fn proj_lock_keep_targets(
+    root: &Path,
+    upgrade: bool,
+    upgrade_packages: Vec<(String, String)>,
+    lockfile_label: &str,
+    args: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+    let solve = proj_read_solve_roots(root)?;
+    let req = solve.merged.dependencies.iter().find(|d| d.name == "R");
+    let mut r_versions: Vec<String> = vec![];
+    let mut platforms: Vec<String> = vec![];
+    if let Some(lock) = read_existing_lock(root) {
+        for target in &lock.targets {
+            let allowed = req.is_none_or(|r| r.satisfies(&target.r_version).unwrap_or(false));
+            if allowed && !r_versions.contains(&target.r_version) {
+                r_versions.push(target.r_version.clone());
+            }
+            if !platforms.contains(&target.platform) {
+                platforms.push(target.platform.clone());
+            }
+        }
+    }
+    if r_versions.is_empty() {
+        platforms.clear();
+    }
+    let opts = ProjLockOptions {
+        r_versions,
+        platforms,
+        upgrade,
+        upgrade_packages,
+        lockfile_label: Some(lockfile_label.to_string()),
+        ..Default::default()
+    };
+    proj_lock(root, &opts, args)
+}
+
+/// Whether the existing lock of the project in `root` still fits its
+/// manifest, without solving anything: the lock was solved with the same
+/// options, and every target pins every direct dependency at an allowed
+/// version, for an allowed R version. `false` if there is no usable lock.
+///
+/// This is the check `rig proj lock` makes to reuse a target, for every
+/// target of the lock. `rig run` uses it to decide whether a script's lock
+/// file needs updating.
+pub(crate) fn lock_fits_manifest(root: &Path) -> Result<bool, Box<dyn Error>> {
+    let Some(lock) = read_existing_lock(root) else {
+        return Ok(false);
+    };
+    let solve = proj_read_solve_roots(root)?;
+    let lock_options = resolve_lock_options(solve.exclude_newer.as_ref(), Some(&lock.tool.rig))?;
+    if lock.tool.rig != lock_options {
+        return Ok(false);
+    }
+    let req = solve.merged.dependencies.iter().find(|d| d.name == "R");
+    let direct_deps: Vec<DepVersionSpec> = solve
+        .merged
+        .dependencies
+        .iter()
+        .filter(|d| d.name != "R" && !BASE_PKGS.contains(&d.name.as_str()))
+        .cloned()
+        .collect();
+    let no_upgrades = HashSet::new();
+    let git_sources = resolve_git_sources(
+        &solve.git_deps,
+        &existing_git_shas(&lock, &no_upgrades),
+        &existing_release_refs(&lock, &no_upgrades),
+    )?;
+    Ok(!lock.targets.is_empty()
+        && lock.targets.iter().all(|target| {
+            req.is_none_or(|r| r.satisfies(&target.r_version).unwrap_or(false))
+                && lock_target_satisfies(target, &direct_deps)
+                && lock_target_git_sources_fresh(target, &git_sources)
+        }))
 }
 
 /// The `--upgrade-package` arguments, as package name and version
@@ -3403,9 +3526,10 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     // 4.3,4.4` narrowed to `--r-version 4.3`) -- those have to be dropped, so
     // the file gets rewritten even though nothing needed solving.
     let existing_count = existing_lock.as_ref().map_or(0, |l| l.targets.len());
+    let label = opts.lockfile_label.as_deref().unwrap_or(RPROJ_LOCK_FILE);
     if to_solve.is_empty() && reused.len() == existing_count {
-        OUTPUT.success("rproj.lock is already up to date");
-        info!("rproj.lock is already up to date, nothing to solve");
+        OUTPUT.success(&format!("{} is already up to date", label));
+        info!("{} is already up to date, nothing to solve", label);
         return Ok(());
     }
 
@@ -3609,8 +3733,8 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         targets,
     };
     fs::write(root.join(RPROJ_LOCK_FILE), rproj_lock.to_toml()?)?;
-    OUTPUT.success("Written project lockfile to rproj.lock");
-    info!("Written project lockfile to rproj.lock");
+    OUTPUT.success(&format!("Written project lockfile to {}", label));
+    info!("Written project lockfile to {}", label);
 
     Ok(())
 }
@@ -4316,7 +4440,7 @@ fn r_components(version: &str) -> Option<Vec<u32>> {
 
 /// The architecture of an R installation, from its name (`4.6-arm64`), or the
 /// machine's own if the name does not say.
-fn rvenv_r_arch(name: &str) -> String {
+pub(crate) fn rvenv_r_arch(name: &str) -> String {
     match name.rsplit_once('-') {
         Some((_, arch)) if arch == "arm64" || arch == "x86_64" => arch.to_string(),
         _ => native_arch_name(std::env::consts::ARCH),
@@ -5889,6 +6013,65 @@ mod tests {
         }];
         let direct_deps = vec![direct_dep("dplyr", ">= 1.0.0")];
         assert!(lock_target_satisfies(&t, &direct_deps));
+    }
+
+    /// A project in `dir` with the manifest dependencies `deps`, and a lock
+    /// with one R 4.6.1 target that pins dplyr 1.1.0.
+    fn write_dplyr_project(dir: &Path, deps: &[(&str, &str)]) {
+        let mut manifest = Rproj::minimal("test");
+        for (name, req) in deps {
+            manifest
+                .dependencies
+                .insert(name.to_string(), Dependency::Version(req.to_string()));
+        }
+        fs::write(
+            dir.join(RPROJ_MANIFEST_FILE),
+            toml::to_string(&manifest).unwrap(),
+        )
+        .unwrap();
+        let mut t = target("4.6.1", "source");
+        t.packages = vec![locked_version("dplyr", "1.1.0", &[])];
+        t.direct_dependencies = vec![LockDirectDependency {
+            name: "dplyr".to_string(),
+            constraint: "*".to_string(),
+        }];
+        let lock = RprojLock {
+            version: RPROJ_LOCK_VERSION,
+            tool: Default::default(),
+            targets: vec![t],
+        };
+        fs::write(dir.join(RPROJ_LOCK_FILE), lock.to_toml().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn lock_fits_an_unchanged_manifest() {
+        let dir = tempfile::tempdir().unwrap();
+        write_dplyr_project(dir.path(), &[("R", "*"), ("dplyr", "*")]);
+        assert!(lock_fits_manifest(dir.path()).unwrap());
+    }
+
+    #[test]
+    fn lock_does_not_fit_a_changed_manifest() {
+        let dir = tempfile::tempdir().unwrap();
+        write_dplyr_project(dir.path(), &[("dplyr", "*"), ("cli", "*")]);
+        assert!(!lock_fits_manifest(dir.path()).unwrap());
+
+        let dir = tempfile::tempdir().unwrap();
+        write_dplyr_project(dir.path(), &[("dplyr", ">= 2.0.0")]);
+        assert!(!lock_fits_manifest(dir.path()).unwrap());
+
+        // The lock is for R 4.6.1, which the manifest does not allow.
+        let dir = tempfile::tempdir().unwrap();
+        write_dplyr_project(dir.path(), &[("R", ">= 4.7"), ("dplyr", "*")]);
+        assert!(!lock_fits_manifest(dir.path()).unwrap());
+    }
+
+    #[test]
+    fn no_lock_does_not_fit() {
+        let dir = tempfile::tempdir().unwrap();
+        write_dplyr_project(dir.path(), &[("dplyr", "*")]);
+        fs::remove_file(dir.path().join(RPROJ_LOCK_FILE)).unwrap();
+        assert!(!lock_fits_manifest(dir.path()).unwrap());
     }
 
     #[test]
