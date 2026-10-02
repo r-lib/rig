@@ -22,6 +22,9 @@
   `--script` option, to create and edit the `# /// script` block of an R
   script, instead of a project's `rproj.toml` (#414).
 
+* New `rig system script-assoc` command on Windows, to run `.R` files with
+  rig from `cmd` and PowerShell, e.g. `hello.R a b`.
+
 ## Other new features
 
 * `rig add` now has a `--json` option. It prints information about the

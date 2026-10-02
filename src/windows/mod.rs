@@ -1,5 +1,6 @@
 mod registry;
 pub use registry::sc_clean_registry;
+pub use registry::sc_system_script_assoc;
 use registry::{
     add_user_bin_to_path, admin_rtools_paths, clean_admin_registry, clean_admin_rtools_registry,
     get_latest_install_path, list_admin_rtools, list_rtools, maybe_update_registry_default,
