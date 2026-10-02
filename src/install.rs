@@ -597,10 +597,19 @@ where
         Ok(())
     } else {
         // User output: Always use OUTPUT for errors (they should be visible)
+        // A missing system library is the most common reason a source
+        // package fails to compile.
+        let missing = crate::sysreqs::still_missing(package_name);
+        let hint = if missing.is_empty() {
+            String::new()
+        } else {
+            format!("\n  Missing system packages: {}", missing.join(", "))
+        };
         OUTPUT.error(&format!(
-            "Failed to install {}\n  See log: {}",
+            "Failed to install {}\n  See log: {}{}",
             package_name,
-            log_file_path.display()
+            log_file_path.display(),
+            hint
         ));
 
         error!(

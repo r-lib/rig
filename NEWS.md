@@ -31,6 +31,22 @@
 * New `rig system script-assoc` command on Windows, to run `.R` files with
   rig from `cmd` and PowerShell, e.g. `hello.R a b`.
 
+## System requirements
+
+* `rig pkg install`, `rig proj sync` and `rig run` now install the system
+  requirements of R packages on Linux, like pak does. rig matches each
+  package's `SystemRequirements` field against the
+  [r-system-requirements](https://github.com/r-hub/r-system-requirements)
+  rules, and installs the missing OS packages if it runs as root or if
+  `sudo` needs no password. Otherwise it prints the commands to run.
+  Source packages and distribution-specific binaries need this, manylinux
+  binaries do not. `--no-sysreqs` turns this off for one run; the new
+  `sysreqs`, `sysreqs-sudo`, `sysreqs-update` and `sysreqs-rules-url`
+  config entries configure it; `sysreqs = "print"` only shows the commands.
+
+* `rproj.lock` now records the `SystemRequirements` of each package, so it
+  is version 5. Run `rig proj lock` to update an older lock file.
+
 ## Other new features
 
 * `rig add` now has a `--json` option. It prints information about the

@@ -74,6 +74,7 @@ mod rversion;
 mod self_uninstall;
 mod self_update;
 mod solver;
+mod sysreqs;
 mod test;
 mod textfmt;
 mod utils;

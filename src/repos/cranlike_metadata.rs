@@ -237,10 +237,12 @@ impl PackageVersionLoader for DbSourcePackageLoader {
         // upstream CRAN tarball, which `rig pkg install` records in the
         // installed package as `RemoteHash`. It is the only source of that hash
         // on a source-only solve, where no binary index is loaded at all.
-        let mut best: HashMap<String, (String, Option<String>)> = HashMap::new();
+        // `system_requirements` too: the lockfile records it, so that
+        // `rig proj sync` can install the OS packages a Linux install needs.
+        let mut best: HashMap<String, (String, Option<String>, Option<String>)> = HashMap::new();
         let mut stmt = self.conn.prepare_cached(
-            "SELECT version, dependencies, sha256sum, repo_id, download_url \
-             FROM packages WHERE name = ?1",
+            "SELECT version, dependencies, sha256sum, repo_id, download_url, \
+             system_requirements FROM packages WHERE name = ?1",
         )?;
         let rows = stmt.query_map(params![package], |row| {
             Ok((
@@ -249,25 +251,27 @@ impl PackageVersionLoader for DbSourcePackageLoader {
                 row.get::<_, Option<String>>(2)?,
                 row.get::<_, i64>(3)?,
                 row.get::<_, Option<String>>(4)?,
+                row.get::<_, Option<String>>(5)?,
             ))
         })?;
         for row in rows {
-            let (ver, deps_json, sha256sum, repo_id, download_url) = row?;
+            let (ver, deps_json, sha256sum, repo_id, download_url, sysreqs) = row?;
             if !self.repo_ids.contains(&repo_id) {
                 continue; // row from a repo we do not source from
             }
             if !published_by(download_url.as_deref(), self.exclude_newer.as_deref()) {
                 continue; // published after the --exclude-newer cutoff
             }
-            best.entry(ver).or_insert((deps_json, sha256sum));
+            best.entry(ver).or_insert((deps_json, sha256sum, sysreqs));
         }
 
         let mut out: Vec<Package> = Vec::with_capacity(best.len());
-        for (ver, (deps_json, sha256sum)) in best {
+        for (ver, (deps_json, sha256sum, sysreqs)) in best {
             let version = RPackageVersion::from_str(&ver)?;
             let deps: PackageDependencies = serde_json::from_str(&deps_json)?;
             let mut pkg = Package::from_crandb(package.to_string(), version, deps.dependencies);
             pkg.sha256sum = sha256sum;
+            pkg.system_requirements = sysreqs;
             out.push(pkg);
         }
         Ok(out)
@@ -1101,6 +1105,7 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
         "InternalsID",
         "Filesize",
         "SHA256Original",
+        "SystemRequirements",
     ];
     let mut cols: HashMap<&str, Vec<Arc<str>>> = HashMap::new();
     let nacol: Vec<Arc<str>> = vec!["NA".into(); dim.0];
@@ -1148,6 +1153,7 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
         let internals_id = cols.get("InternalsID").unwrap()[i].clone();
         let filesize = cols.get("Filesize").unwrap()[i].clone();
         let sha256sum = cols.get("SHA256Original").unwrap()[i].clone();
+        let system_requirements = cols.get("SystemRequirements").unwrap()[i].clone();
 
         let pkg = Package {
             name: name.to_string(),
@@ -1168,6 +1174,7 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
             sha256sum: na_to_none(&sha256sum),
             // Only the ARCHIVEDPACKAGES DCF feed has this, no RDS repo does.
             archived: None,
+            system_requirements: normalize_system_requirements(&system_requirements),
         };
         packages.push(pkg);
     }
@@ -1228,10 +1235,35 @@ fn ensure_db_schema(db_path: &PathBuf) -> Result<(), Box<dyn Error>> {
             filesize INTEGER,
             sha256sum TEXT,
             repo_id INTEGER NOT NULL,
+            system_requirements TEXT,
             FOREIGN KEY (repo_id) REFERENCES repos(id)
         )",
         [],
     )?;
+
+    // Databases created before rig stored `SystemRequirements` lack the
+    // column. Their rows have no system requirements, so after adding it,
+    // forget every repo's cache state: the next lookup then downloads and
+    // parses each feed again, in full, instead of a trailing-only refresh
+    // that would only fill in the new rows.
+    match conn.execute(
+        "ALTER TABLE packages ADD COLUMN system_requirements TEXT",
+        [],
+    ) {
+        Ok(_) => {
+            info!("Added system_requirements column, invalidating cached metadata");
+            conn.execute(
+                "UPDATE repos SET etag = NULL, parsed_len = NULL, tail_hash = NULL,
+                 last_updated = '1970-01-01 00:00:00'",
+                [],
+            )?;
+        }
+        Err(e) => {
+            if !e.to_string().contains("duplicate column") {
+                return Err(e.into());
+            }
+        }
+    }
 
     // Create index for fast lookups by name, version, platform, arch
     conn.execute(
@@ -1372,8 +1404,8 @@ fn save_packages_to_db(
         "INSERT INTO packages
          (name, version, dependencies, download_url, file, path, built,
           license, platform, arch, graphics_api_version, internals_id, filesize,
-          sha256sum, repo_id)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+          sha256sum, repo_id, system_requirements)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
     )?;
 
     for pkg in packages {
@@ -1399,6 +1431,7 @@ fn save_packages_to_db(
             pkg.filesize,
             &pkg.sha256sum,
             repo_id,
+            &pkg.system_requirements,
         ])?;
     }
 
