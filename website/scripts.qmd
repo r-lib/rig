@@ -1,0 +1,218 @@
+---
+title: "Scripts"
+---
+
+`rig run` runs R scripts with any installed R version. A script can also
+declare the R version and the packages it needs in a comment block at its
+top. rig then installs R and the packages if needed, and runs the script in
+its own environment, so you can share a single `.R` file and it runs the
+same way on every machine, without a project or any setup.
+
+::: {.callout-note}
+## Experimental
+
+Scripts with inline dependencies use the same machinery as
+[`rig proj`](proj-guide.qmd), which is experimental. The format of the
+comment block may still change.
+:::
+
+## Running a script
+
+```sh
+rig run script.R              # run with the default R version
+rig run -r 4.5 script.R       # run with R 4.5
+rig run --rscript script.R    # run with Rscript instead of R
+rig run script.R --verbose 3  # pass arguments to the script
+```
+
+Every argument after the script goes to the script, unchanged, where
+`commandArgs(TRUE)` picks it up. This includes arguments that look like
+rig's own flags, and `--`. rig's own flags go before the script.
+
+`rig run -f script.R` is the same as `rig run script.R`. Without `-f`, rig
+treats a file as a script if its name ends in `.R` or `.r`, or if it starts
+with `#!`. Use `-f` for other files.
+
+Inside an [R project](proj-guide.qmd), `rig run script.R` runs the script
+in the project's environment, unless the script has its own inline
+dependencies, see below. Use `--no-project` to ignore the project.
+
+## Inline dependencies
+
+A script can declare what it needs in a `# /// script` comment block:
+
+```r
+# /// script
+# [dependencies]
+# R = ">= 4.4"
+# cli = "*"
+# dplyr = ">= 1.1"
+# ///
+
+library(dplyr)
+cli::cli_text("Hello from {.pkg cli}!")
+```
+
+The block starts with a `# /// script` line and ends with a `# ///` line.
+Every line in between must be a comment. Without the leading `#`, these
+lines form a TOML document. A block can also use `##` instead of `#`, but
+then every line of the block must start with `##`. A script can have at
+most one block.
+
+The block takes these tables of [`rproj.toml`](proj-guide.qmd#the-manifest-and-the-lock-file),
+with the same meaning:
+
+- `[dependencies]`: the packages the script needs, with optional version
+  requirements (`^1.2.3`, `~1.2.3`, `>= 1.0, < 2.0`, or `*` for any
+  version). `R` is the R version. A dependency can also come from git,
+  GitHub, GitLab, a URL or a local path, see
+  [`rig proj add`](reference/proj.qmd#rig-proj-add) for the syntax. A
+  relative `path` is relative to the directory of the script.
+- `[[repository]]`: extra package repositories.
+- `[tool.rig]`: rig settings, e.g. `exclude-newer`, see below.
+
+Any other table is an error, so typos do not go unnoticed.
+
+## Creating and editing the block
+
+You can write the block by hand, or let rig manage it:
+
+```sh
+rig proj init --script script.R           # add a block, or create the script
+rig proj add --script script.R cli dplyr  # add packages to the block
+rig proj remove --script script.R dplyr   # remove packages from the block
+```
+
+[`rig proj init --script`](reference/proj.qmd#rig-proj-init) adds a block
+with an `R` requirement to the top of the script, after the `#!` line if
+there is one. If the script does not exist yet, it creates it. It does not
+replace a block that is already there, unless you pass `--force`.
+
+[`rig proj add --script`](reference/proj.qmd#rig-proj-add) adds packages to
+the block, and creates the block if the script has none. You give the
+packages the same way as for a project, e.g. `'dplyr@>= 1.1'` or
+`r-lib/cli`, and a local path is recorded relative to the script's
+directory. [`rig proj remove --script`](reference/proj.qmd#rig-proj-remove)
+removes packages from the block.
+
+Both commands then set up the script's environment, so the next
+`rig run script.R` starts right away. `--no-sync` and `--no-lock` work the
+same way as for a project. If resolving the dependencies fails,
+`rig proj add --script` restores the script to what it was.
+
+## The script's environment
+
+When you run a script with a block, rig:
+
+1. picks an installed R version that fits the `R` requirement, or installs
+   one,
+2. resolves the dependencies to exact package versions, like
+   [`rig proj lock`](reference/proj.qmd#rig-proj-lock),
+3. installs the packages into a library of their own, like
+   [`rig proj sync`](reference/proj.qmd#rig-proj-sync),
+4. runs the script with that R version and library.
+
+The environment lives in rig's cache directory, isolated from your own
+package libraries, so running a script never changes them. Later runs reuse
+the environment and start right away. Scripts with the same block share one
+environment, and changing the block creates a new one.
+
+A script with a block always uses its own environment, even inside a
+project. `--r-version` (`-r`) selects the R version, which must fit the `R`
+requirement.
+
+While rig sets up the environment, it writes its messages to standard
+error, so standard output belongs to the script, and you can redirect it:
+
+```sh
+rig run report.R > report.csv
+```
+
+Scripts with inline dependencies work the same way in
+[admin and user mode](admin-vs-user-mode.qmd). If rig needs to install R
+for a script, it installs it the way the current mode does.
+
+## Upgrading packages
+
+Like a project's lock file, a script's environment keeps the package
+versions it was created with, even if newer versions come out. To solve
+the dependencies again with the latest versions that fit, use `--upgrade`,
+or `--upgrade-package` to upgrade only some packages:
+
+```sh
+rig run --upgrade script.R
+rig run --upgrade-package cli script.R
+```
+
+## Reproducible scripts
+
+To make a script use the same package versions every time, on every
+machine, set `exclude-newer` in its `[tool.rig]` table. The solver then
+ignores CRAN package versions published after that date:
+
+```r
+# /// script
+# [dependencies]
+# R = ">= 4.4"
+# dplyr = "*"
+#
+# [tool.rig]
+# exclude-newer = "2026-06-01"
+# ///
+```
+
+`exclude-newer` also takes a time interval back from today, e.g. `"7 days"`,
+to skip packages released in the last few days. See
+[`rig proj lock`](reference/proj.qmd#rig-proj-lock) for the details.
+
+## Executable scripts
+
+On macOS and Linux, a script can start with a `#!` line that runs it with
+rig:
+
+```r
+#!/usr/bin/env -S rig run
+# /// script
+# [dependencies]
+# cli = "*"
+# ///
+
+cli::cli_text("Hello from {.pkg cli}!")
+```
+
+Make it executable, and then run it directly, like any other command:
+
+```sh
+chmod +x hello
+./hello
+```
+
+A file that starts with `#!` is a script for `rig run`, whatever its name,
+so it does not need an `.R` extension. You can also put rig's own flags in
+the `#!` line, e.g. `#!/usr/bin/env -S rig run --rscript`.
+
+## Scripts from packages and projects
+
+`rig run <pkg>::<script>` runs a script from the `exec` directory of an
+installed package, e.g. a command line tool that a package ships.
+
+A project can give its own scripts a name, in the `[[bin]]` tables of
+`rproj.toml`, and then `rig run <name>` runs them in the project's
+environment. See [Named scripts](proj-guide.qmd#named-scripts).
+
+## Cleaning up
+
+`rig cache info` shows how much space the script environments take, and
+
+```sh
+rig cache clean --category scripts
+```
+
+deletes all of them. rig creates them again the next time you run the
+scripts.
+
+## See also
+
+- The [`rig run` reference](reference/run.qmd) for every option.
+- [R projects](proj-guide.qmd), for code that needs more than a single
+  file.

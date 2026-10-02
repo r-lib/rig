@@ -85,6 +85,7 @@ that `{{< include >}}` a partial. Edit the partials, not the rendered HTML.
   start, features, known issues) plus the flat Guide pages
   (`install.qmd`, the tutorials — `tutorial.qmd` (hub), `tutorial-admin.qmd`,
   `tutorial-user.qmd`, `tutorial-migrate.qmd` —, `admin-vs-user-mode.qmd`,
+  `pkg-guide.qmd`, `proj-guide.qmd`, `scripts.qmd`,
   `macos-app.qmd`, `docker.qmd`,
   `faq.qmd`), `reference/index.qmd` and `news.qmd`. Do **not** add a
   further level of sub-pages. The one exception is the **generated** CLI

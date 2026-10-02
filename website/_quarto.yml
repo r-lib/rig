@@ -49,6 +49,8 @@ website:
             file: pkg-guide.qmd
           - text: "R projects"
             file: proj-guide.qmd
+          - text: "Scripts"
+            file: scripts.qmd
           - text: "macOS menu bar app"
             file: macos-app.qmd
           - text: "Docker containers"
