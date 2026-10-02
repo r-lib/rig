@@ -948,3 +948,204 @@ mod tests {
         assert_eq!(flag, "1");
     }
 }
+
+// ------------------------------------------------- `rig system script-assoc` --
+
+// The ProgID that `rig system script-assoc` registers for `.R` files.
+const RIG_SCRIPT_PROGID: &str = "rig.RScript";
+
+// PATHEXT of a stock Windows installation, used if the system value cannot
+// be read.
+const DEFAULT_PATHEXT: &str = ".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC";
+
+// `pathext` with `.R` added at the end, or `None` if it already has it.
+fn pathext_with_r(pathext: &str) -> Option<String> {
+    if pathext
+        .split(';')
+        .any(|e| e.trim().eq_ignore_ascii_case(".r"))
+    {
+        return None;
+    }
+    let base = pathext.trim_end_matches(';');
+    if base.is_empty() {
+        Some(".R".to_string())
+    } else {
+        Some(format!("{};.R", base))
+    }
+}
+
+// `pathext` without `.R`, or `None` if it does not have it.
+fn pathext_without_r(pathext: &str) -> Option<String> {
+    let exts: Vec<&str> = pathext.split(';').collect();
+    let kept: Vec<&str> = exts
+        .iter()
+        .copied()
+        .filter(|e| !e.trim().eq_ignore_ascii_case(".r"))
+        .collect();
+    if kept.len() == exts.len() {
+        None
+    } else {
+        Some(kept.join(";"))
+    }
+}
+
+fn system_pathext() -> String {
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    hklm.open_subkey("SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment")
+        .and_then(|k| k.get_value::<String, _>("PATHEXT"))
+        .unwrap_or_else(|_| DEFAULT_PATHEXT.to_string())
+}
+
+// The app the user picked for `.R` files in Explorer's "Open with" dialog.
+// Windows uses it instead of the registered default, and rig cannot change
+// it, because Windows protects it with a hash.
+fn r_user_choice() -> Option<String> {
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    hkcu.open_subkey(
+        "Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\.R\\UserChoice",
+    )
+    .and_then(|k| k.get_value::<String, _>("ProgId"))
+    .ok()
+}
+
+pub fn sc_system_script_assoc(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    if args.get_flag("undo") {
+        script_assoc_undo()
+    } else {
+        script_assoc_add()
+    }
+}
+
+fn script_assoc_add() -> Result<(), Box<dyn Error>> {
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let rig = std::env::current_exe()?.display().to_string();
+    let command = format!("\"{}\" run -f \"%1\" %*", rig);
+
+    let (progid, _) = hkcu.create_subkey(format!("Software\\Classes\\{}", RIG_SCRIPT_PROGID))?;
+    progid.set_value("", &"R script (runs with rig)")?;
+    let (cmd, _) = progid.create_subkey("shell\\open\\command")?;
+    cmd.set_value("", &command)?;
+
+    // Remember the old default, so `--undo` can put it back.
+    let (ext, _) = hkcu.create_subkey("Software\\Classes\\.R")?;
+    let previous: Option<String> = ext.get_value("").ok();
+    if let Some(previous) = previous.filter(|p| !p.is_empty() && p != RIG_SCRIPT_PROGID) {
+        progid.set_value("PreviousProgID", &previous)?;
+    }
+    ext.set_value("", &RIG_SCRIPT_PROGID)?;
+    let (owp, _) = ext.create_subkey("OpenWithProgids")?;
+    owp.set_value(RIG_SCRIPT_PROGID, &"")?;
+    OUTPUT.status(&format!("Associated .R files with {}", command));
+    info!("Associated .R files with {}", command);
+
+    // A user PATHEXT replaces the system one, it is not appended to it, so
+    // a new user PATHEXT starts from the system value.
+    let env = hkcu.open_subkey_with_flags("Environment", KEY_READ | KEY_WRITE)?;
+    let pathext = match env.get_value::<String, _>("PATHEXT") {
+        Ok(p) => p,
+        Err(_) => {
+            progid.set_value("CreatedPathExt", &1u32)?;
+            system_pathext()
+        }
+    };
+    if let Some(new) = pathext_with_r(&pathext) {
+        env.set_value("PATHEXT", &new)?;
+        OUTPUT.status("Added .R to the user PATHEXT");
+        info!("Added .R to the user PATHEXT: {}", new);
+    }
+
+    if let Some(choice) = r_user_choice().filter(|c| c != RIG_SCRIPT_PROGID) {
+        let msg = format!(
+            "Windows opens .R files with '{}', because it was chosen in the 'Open with' \
+             dialog, and rig cannot change that. To run .R files with rig, right-click a \
+             .R file, select 'Open with' > 'Choose another app', pick 'R script (runs with \
+             rig)' and 'Always'.",
+            choice
+        );
+        OUTPUT.warn(&msg);
+        warn!("{}", msg);
+    }
+
+    OUTPUT.warn("Double-clicking a .R file now runs it, instead of opening it in an editor.");
+    OUTPUT.warn("Open a new terminal for the PATHEXT change to take effect.");
+    Ok(())
+}
+
+fn script_assoc_undo() -> Result<(), Box<dyn Error>> {
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let classes = hkcu.open_subkey_with_flags("Software\\Classes", KEY_ALL_ACCESS)?;
+    let progid = match classes.open_subkey(RIG_SCRIPT_PROGID) {
+        Ok(k) => k,
+        Err(_) => {
+            OUTPUT.info(".R files are not associated with rig, nothing to do.");
+            return Ok(());
+        }
+    };
+    let previous: Option<String> = progid.get_value("PreviousProgID").ok();
+    let created_pathext = progid.get_value::<u32, _>("CreatedPathExt").ok() == Some(1);
+    drop(progid);
+
+    if let Ok(ext) = classes.open_subkey_with_flags(".R", KEY_ALL_ACCESS) {
+        let current: Option<String> = ext.get_value("").ok();
+        if current.as_deref() == Some(RIG_SCRIPT_PROGID) {
+            match &previous {
+                Some(p) => ext.set_value("", p)?,
+                None => {
+                    let _ = ext.delete_value("");
+                }
+            }
+        }
+        if let Ok(owp) = ext.open_subkey_with_flags("OpenWithProgids", KEY_ALL_ACCESS) {
+            let _ = owp.delete_value(RIG_SCRIPT_PROGID);
+        }
+    }
+    classes.delete_subkey_all(RIG_SCRIPT_PROGID)?;
+    OUTPUT.status("Removed the association of .R files with rig");
+    info!("Removed the association of .R files with rig");
+
+    let env = hkcu.open_subkey_with_flags("Environment", KEY_READ | KEY_WRITE)?;
+    if let Ok(pathext) = env.get_value::<String, _>("PATHEXT") {
+        if let Some(new) = pathext_without_r(&pathext) {
+            // Delete a user PATHEXT that rig created, unless the user
+            // changed it since, so the system value is used again.
+            if created_pathext && new.eq_ignore_ascii_case(&system_pathext()) {
+                env.delete_value("PATHEXT")?;
+            } else {
+                env.set_value("PATHEXT", &new)?;
+            }
+            OUTPUT.status("Removed .R from the user PATHEXT");
+            info!("Removed .R from the user PATHEXT");
+            OUTPUT.warn("Open a new terminal for the PATHEXT change to take effect.");
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod script_assoc_tests {
+    use super::*;
+
+    #[test]
+    fn pathext_add_and_remove() {
+        assert_eq!(
+            pathext_with_r(".COM;.EXE;.BAT").as_deref(),
+            Some(".COM;.EXE;.BAT;.R")
+        );
+        assert_eq!(
+            pathext_with_r(".COM;.EXE;").as_deref(),
+            Some(".COM;.EXE;.R")
+        );
+        assert_eq!(pathext_with_r("").as_deref(), Some(".R"));
+        assert_eq!(pathext_with_r(".COM;.r;.EXE"), None);
+
+        assert_eq!(
+            pathext_without_r(".COM;.R;.EXE").as_deref(),
+            Some(".COM;.EXE")
+        );
+        assert_eq!(
+            pathext_without_r(".COM;.EXE;.r").as_deref(),
+            Some(".COM;.EXE")
+        );
+        assert_eq!(pathext_without_r(".COM;.EXE"), None);
+    }
+}
