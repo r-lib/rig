@@ -244,6 +244,12 @@ A file that starts with `#!` is a script for `rig run`, whatever its name,
 so it does not need an `.R` extension. You can also put rig's own flags in
 the `#!` line, e.g. `#!/usr/bin/env -S rig run --rscript`.
 
+On Windows, `rig system script-assoc` makes `.R` files run with rig from
+`cmd` and PowerShell, e.g. `hello.R a b`, or just `hello a b` if the script
+is on the `PATH`. It changes how `.R` files open for the current user, and
+double-clicking a `.R` file then runs it, instead of opening it in your
+editor. `rig system script-assoc --undo` restores the old association.
+
 ## Scripts from packages and projects
 
 `rig run <pkg>::<script>` runs a script from the `exec` directory of an

@@ -277,7 +277,9 @@ fn main_() -> i32 {
             exitcode
         }
         Err(err) => {
-            OUTPUT.error(&format!("{}", err));
+            if err.downcast_ref::<output::ReportedError>().is_none() {
+                OUTPUT.error(&format!("{}", err));
+            }
             error!("{}", err);
             info!("RIG END [pid:{}] {}", pid, cmdline);
             1
@@ -353,6 +355,7 @@ fn sc_system(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Err
         Some(("user-mode", s)) => sc_system_user_mode(s),
         Some(("clean-admin-r", s)) => sc_system_clean_admin_r(s),
         Some(("fix-r-alias", s)) => sc_system_fix_r_alias(s),
+        Some(("script-assoc", s)) => sc_system_script_assoc(s),
         Some(("update-certs", _)) => sc_system_update_certs(),
         Some(("update-rtools40", _)) => sc_system_update_rtools40(),
         Some(("detect-platform", s)) => sc_system_detect_platform(s, mainargs),

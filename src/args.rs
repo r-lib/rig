@@ -693,9 +693,10 @@ pub fn rig_app() -> Command {
         );
 
     {
-        // `clean-registry`, `update-rtools40` and `rtools` are real commands on
-        // Windows, but hidden no-ops on macOS and Linux, so that they are
-        // always available (e.g. in scripts).
+        // `clean-registry`, `update-rtools40`, `rtools`, `fix-r-alias` and
+        // `script-assoc` are real commands on Windows, but hidden no-ops on
+        // macOS and Linux, so that they are always available (e.g. in
+        // scripts).
         let cmd_system_cleanreg = Command::new("clean-registry")
             .about(ABOUT_SYSTEM_CLEAN_REGISTRY)
             .display_order(0)
@@ -729,6 +730,20 @@ pub fn rig_app() -> Command {
                     .required(false),
             );
         cmd_system = cmd_system.subcommand(cmd_system_fix_r_alias);
+
+        let cmd_system_script_assoc = Command::new("script-assoc")
+            .about(ABOUT_SYSTEM_SCRIPT_ASSOC)
+            .display_order(0)
+            .platform("windows")
+            .long_about(HELP_SYSTEM_SCRIPT_ASSOC)
+            .arg(
+                Arg::new("undo")
+                    .help("Remove the association, and restore the previous one.")
+                    .long("undo")
+                    .num_args(0)
+                    .required(false),
+            );
+        cmd_system = cmd_system.subcommand(cmd_system_script_assoc);
     }
 
     {

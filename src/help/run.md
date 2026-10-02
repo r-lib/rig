@@ -68,6 +68,9 @@ can run it directly, after making it executable with `chmod +x`. A file
 that starts with `#!` is a script for `rig run`, whatever its name, so
 the script does not need an `.R` extension.
 
+On Windows, `#!` lines do not work. Use [`rig system script-assoc`](system.qmd#rig-system-script-assoc) to run
+`.R` files with rig from `cmd` and PowerShell instead.
+
 ## Scripts with inline dependencies
 
 `rig run -f script.R` runs an R script (the `-f` can be omitted). A

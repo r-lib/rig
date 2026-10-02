@@ -28,7 +28,7 @@ use crate::install::{
     REMOTE_LINKINGTO_FIELD, REMOTE_SHA_FIELD, REMOTE_SUBDIR_FIELD, REMOTE_TYPE_FIELD,
 };
 use crate::library::get_library_path;
-use crate::output::OUTPUT;
+use crate::output::{ReportedError, OUTPUT};
 use crate::pkg::deps::{
     dep_count, print_deps_json, print_deps_recursive, print_header, type_list, walk_deps,
 };
@@ -1676,14 +1676,15 @@ pub(crate) fn sc_proj_solve_deps(
                 "Cannot resolve dependencies for R {} / {}:\n{}",
                 r_version,
                 solve_platform_key(reg.binary_target()),
-                format_solver_error(e)
+                format_solver_error(e, &reg)
             );
             // Parallel callers print the one failure that aborts the command
             // themselves; N copies of the same report would say less, not more.
+            error!("{}", msg);
             if report_status {
                 report_solve_failure(&msg);
+                bail!(ReportedError(msg))
             }
-            error!("{}", msg);
             bail!("{}", msg)
         }
     }
@@ -3639,7 +3640,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
             // reaches the log file in interactive mode.
             Err(msg) => {
                 report_solve_failure(&msg);
-                bail!("{}", msg);
+                bail!(ReportedError(msg));
             }
         };
 

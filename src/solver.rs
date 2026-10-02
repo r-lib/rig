@@ -3,6 +3,7 @@ use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::error::Error;
 use std::fmt;
+use std::ops::Bound;
 
 use log::debug;
 use pubgrub::*;
@@ -530,6 +531,43 @@ impl RPackageRegistry {
         self.locals.borrow().contains(pkg)
     }
 
+    /// The nearest versions of `pkg` below and above `range`, for a range that
+    /// no version of `pkg` is in. `None` if some version is in `range`, i.e.
+    /// when the range is not the problem.
+    fn nearest_versions(
+        &self,
+        pkg: &RPackageName,
+        range: &RPackageVersionRanges,
+    ) -> Option<(Option<RPackageVersion>, Option<RPackageVersion>)> {
+        self.ensure_loaded(pkg);
+        let versions = self.versions.borrow();
+        let versions = versions.get(pkg).map(|v| v.as_slice()).unwrap_or(&[]);
+        if versions.iter().any(|v| range.contains(v)) {
+            return None;
+        }
+        let Some((lower, upper)) = range.bounding_range() else {
+            // An empty range: no version could ever match, there is nothing
+            // nearer than any other.
+            return None;
+        };
+        let below_range = |v: &RegistryPackageVersion| match lower {
+            Bound::Included(b) => v < b,
+            Bound::Excluded(b) => v <= b,
+            Bound::Unbounded => false,
+        };
+        let above_range = |v: &RegistryPackageVersion| match upper {
+            Bound::Included(b) => v > b,
+            Bound::Excluded(b) => v >= b,
+            Bound::Unbounded => false,
+        };
+        let below = versions.iter().filter(|v| below_range(v)).max();
+        let above = versions.iter().filter(|v| above_range(v)).min();
+        Some((
+            below.map(|v| v.version.clone()),
+            above.map(|v| v.version.clone()),
+        ))
+    }
+
     /// The version `choose_version` passed over when it picked `version` for
     /// having a binary, if that is why this artifact was chosen.
     pub fn held_back_from(
@@ -1000,11 +1038,52 @@ impl DependencyProvider for RPackageRegistry {
 /// solution": the whole explanation is in the derivation tree it carries, and
 /// rendering that tree is what this does. The other variants carry a message
 /// already.
-pub fn format_solver_error(err: PubGrubError<RPackageRegistry>) -> String {
+///
+/// The report says which requirement failed, but not that the reason is that
+/// no version of the package matches it, e.g. a `dplyr = "0.13.0"` that is
+/// really `>= 0.13.0, < 0.14.0`, when there is no 0.13.x. So for every
+/// requirement in the tree that no version of the package satisfies, a hint
+/// after the report names the nearest versions that do exist.
+pub fn format_solver_error(err: PubGrubError<RPackageRegistry>, reg: &RPackageRegistry) -> String {
     let mut tree = match err {
         PubGrubError::NoSolution(tree) => tree,
+        // `choose_version` fails only for a package with no versions at all.
+        PubGrubError::ErrorChoosingVersion {
+            package,
+            source: ProviderError::UnknownPackage,
+        } => {
+            return format!(
+                "  Package {} is not available in the configured repositories.",
+                package
+            )
+        }
         other => return other.to_string(),
     };
+
+    let mut requirements = Vec::new();
+    collect_requirements(&tree, &mut requirements);
+    let mut hinted: HashSet<&RPackageName> = HashSet::new();
+    let mut hints: Vec<String> = Vec::new();
+    for (pkg, range) in requirements {
+        if is_base_package(pkg) || reg.is_local(pkg) || hinted.contains(pkg) {
+            continue;
+        }
+        let Some((below, above)) = reg.nearest_versions(pkg, range) else {
+            continue;
+        };
+        hinted.insert(pkg);
+        hints.push(format!("No version of {} matches {}.", pkg, range));
+        let nearest: Vec<String> = [(below, "below"), (above, "above")]
+            .into_iter()
+            .filter_map(|(v, side)| v.map(|v| format!("{} ({})", v, side)))
+            .collect();
+        if !nearest.is_empty() {
+            hints.push(format!(
+                "Nearest available versions: {}.",
+                nearest.join(", ")
+            ));
+        }
+    }
 
     // The registry is not offline — it loads every known version of a package
     // from the local package database — so a "no versions" node really means
@@ -1024,9 +1103,31 @@ pub fn format_solver_error(err: PubGrubError<RPackageRegistry>) -> String {
 
     report
         .lines()
+        .map(String::from)
+        .chain(hints)
         .map(|line| format!("  {}", line))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// Every `(package, range)` requirement in a derivation tree, i.e. the ranges
+/// the dependencies ask for. Not the ranges of the `NoVersions` nodes: pubgrub
+/// also derives those itself, e.g. "a, but not 1.0.0" once it ruled out
+/// a 1.0.0, and no version of `a` matching that range is not news to anybody.
+fn collect_requirements<'a, M: Eq + Clone + fmt::Debug + fmt::Display>(
+    tree: &'a DerivationTree<RPackageName, RPackageVersionRanges, M>,
+    out: &mut Vec<(&'a RPackageName, &'a RPackageVersionRanges)>,
+) {
+    match tree {
+        DerivationTree::External(External::FromDependencyOf(_, _, pkg, range)) => {
+            out.push((pkg, range))
+        }
+        DerivationTree::External(_) => {}
+        DerivationTree::Derived(derived) => {
+            collect_requirements(&derived.cause1, out);
+            collect_requirements(&derived.cause2, out);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1262,12 +1363,107 @@ mod tests {
         )
         .unwrap_err();
 
-        let msg = format_solver_error(err);
+        let msg = format_solver_error(err, &reg);
         // Not pubgrub's own `Display`, which is only "There is no solution".
         assert!(msg.contains("b >=2.0.0"), "{}", msg);
         assert!(msg.contains("this project"), "{}", msg);
         assert!(!msg.contains("_project"), "{}", msg);
         assert!(msg.lines().all(|l| l.starts_with("  ")), "{}", msg);
+        // No b version is >= 2.0.0, so the nearest one is named.
+        assert!(msg.contains("No version of b matches >=2.0.0."), "{}", msg);
+        assert!(
+            msg.contains("Nearest available versions: 1.0.0 (below)."),
+            "{}",
+            msg
+        );
+    }
+
+    /// The solver error for a project that depends on `deps`, which are
+    /// version ranges keyed by package name.
+    fn solve_error(
+        source: StubSource,
+        deps: HashMap<RPackageName, RPackageVersionRanges, rustc_hash::FxBuildHasher>,
+    ) -> String {
+        let reg = RPackageRegistry::with_loaders(Box::new(source), None);
+        reg.add_package_version(
+            "_project".to_string(),
+            RegistryPackageVersion::new("_project", "1.0.0").unwrap(),
+            deps,
+        );
+        let err = resolve(
+            &reg,
+            "_project".to_string(),
+            RegistryPackageVersion::new("_project", "1.0.0").unwrap(),
+        )
+        .unwrap_err();
+        format_solver_error(err, &reg)
+    }
+
+    #[test]
+    fn a_range_with_no_versions_names_the_nearest_ones() {
+        // `^0.13.0`, i.e. `>= 0.13.0, < 0.14.0`, with no 0.13.x.
+        let range = Range::higher_than(RegistryPackageVersion::bound(
+            "a",
+            &version("0.13.0"),
+            Artifact::LowerBound,
+        ))
+        .intersection(&Range::strictly_lower_than(RegistryPackageVersion::bound(
+            "a",
+            &version("0.14.0"),
+            Artifact::LowerBound,
+        )));
+        let mut deps = HashMap::with_hasher(rustc_hash::FxBuildHasher);
+        deps.insert("a".to_string(), range);
+        let msg = solve_error(
+            StubSource {
+                packages: vec![
+                    ("a", "0.8.0", ""),
+                    ("a", "0.8.5", ""),
+                    ("a", "1.0.0", ""),
+                    ("a", "1.1.0", ""),
+                ],
+            },
+            deps,
+        );
+        assert!(
+            msg.contains("No version of a matches >=0.13.0, <0.14.0."),
+            "{}",
+            msg
+        );
+        assert!(
+            msg.contains("Nearest available versions: 0.8.5 (below), 1.0.0 (above)."),
+            "{}",
+            msg
+        );
+    }
+
+    #[test]
+    fn an_unknown_package_is_reported_as_not_available() {
+        let msg = solve_error(StubSource { packages: vec![] }, ranges("nope"));
+        assert!(
+            msg.contains("Package nope is not available in the configured repositories."),
+            "{}",
+            msg
+        );
+        assert!(!msg.contains("Nearest"), "{}", msg);
+    }
+
+    #[test]
+    fn a_conflict_between_existing_versions_gets_no_hint() {
+        // Both c versions exist, they just cannot both be picked.
+        let msg = solve_error(
+            StubSource {
+                packages: vec![
+                    ("a", "1.0.0", "c (< 2.0.0)"),
+                    ("b", "1.0.0", "c (>= 2.0.0)"),
+                    ("c", "1.0.0", ""),
+                    ("c", "2.0.0", ""),
+                ],
+            },
+            ranges("a, b"),
+        );
+        assert!(!msg.contains("No version of"), "{}", msg);
+        assert!(!msg.contains("Nearest"), "{}", msg);
     }
 
     #[test]
@@ -1669,7 +1865,8 @@ mod tests {
         let (root_pkg, root_version) = register_roots(&reg, &roots, None).unwrap();
         // The failure is the rendered report, which is what a caller shows,
         // rather than `NoSolution`'s own fixed "There is no solution".
-        let solution = resolve(&reg, root_pkg, root_version).map_err(format_solver_error);
+        let solution =
+            resolve(&reg, root_pkg, root_version).map_err(|e| format_solver_error(e, &reg));
         (reg, solution)
     }
 

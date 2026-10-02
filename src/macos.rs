@@ -1133,6 +1133,11 @@ pub fn sc_system_fix_r_alias(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+pub fn sc_system_script_assoc(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    // Nothing to do on macOS
+    Ok(())
+}
+
 pub fn sc_system_fix_aliases(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let platform = get_platform(args)?;
     let native_arch = get_arch(&platform, args);
