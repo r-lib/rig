@@ -221,8 +221,8 @@ fn print_repo_list(config: &[Repository]) {
     println!();
 
     // -- Table -------------------------------------------------------------
-    let mut tab: Table = Table::new("{:<}   {:<}   {:<}");
-    tab.add_row(row!("Name", "Default", "Title"));
+    let mut tab: Table = Table::new("{:<}   {:<}   {:<}   {:<}");
+    tab.add_row(row!("Name", "Default", "Type", "Title"));
     tab.add_heading(
         "-----------------------------------------------------------------------------",
     );
@@ -230,6 +230,7 @@ fn print_repo_list(config: &[Repository]) {
         tab.add_row(row!(
             &repo.name,
             default_column(repo),
+            if repo.custom { "custom" } else { "built-in" },
             repo.title.as_deref().unwrap_or("")
         ));
     }
@@ -324,6 +325,7 @@ mod tests {
             description: None,
             enabled,
             repos,
+            custom: false,
         }
     }
 

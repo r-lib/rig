@@ -198,6 +198,33 @@ teardown() {
     echo "$output" | grep -q "^  4.0"
 }
 
+@test "repos add/enable/disable/rm" {
+    run rig repos add rigtest https://cloud.r-project.org --title "rig test repo"
+    [[ "$status" -eq 0 ]]
+    run rig repos available
+    echo "$output" | grep -q "^rigtest .*custom"
+    run rig repos enable rigtest -r 4.1
+    [[ "$status" -eq 0 ]]
+    run rig repos list -r 4.1
+    echo "$output" | grep -q "^rigtest "
+    # choices survive a new setup
+    run rig repos setup -r 4.1
+    [[ "$status" -eq 0 ]]
+    run rig repos list -r 4.1
+    echo "$output" | grep -q "^rigtest "
+    run rig repos disable rigtest -r 4.1
+    [[ "$status" -eq 0 ]]
+    run rig repos list -r 4.1
+    ! echo "$output" | grep -q "^rigtest "
+    run rig repos enable rigtest -r 4.1
+    run rig repos rm rigtest
+    [[ "$status" -eq 0 ]]
+    run rig repos list -r 4.1
+    ! echo "$output" | grep -q "^rigtest "
+    run rig repos rm cran
+    [[ ! "$status" -eq 0 ]]
+}
+
 @test "add --json" {
     # Already installed, so nothing is installed, only reported.
     run bash -c "rig add --json 4.0.5 -a x86_64 2>/dev/null"

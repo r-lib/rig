@@ -15,6 +15,7 @@ use crate::utils::*;
 use super::{
     config::{get_repos_config, Enabled, RepoEntry, Repository},
     interpret_repos_args::ReposSetupArgs,
+    state::{get_setup_state, save_setup_state, SetupState},
 };
 
 #[cfg(target_os = "macos")]
@@ -87,6 +88,22 @@ fn validate_repos_in_setup(
     Ok(())
 }
 
+/// Set up the repositories of R installations.
+///
+/// `setup` (from `--with-repos`, `--without-repos`, `rig repos enable`, etc.)
+/// is merged into the stored repository choices of each installation, see
+/// [`SetupState::merge`], and the result is stored and written to the
+/// installation's `repositories` file.
+/// Fail if any of `names` (lowercase) is not a known repository.
+pub fn validate_repo_names(names: &[String]) -> Result<(), Box<dyn Error>> {
+    validate_repos_in_setup(
+        &get_repos_config()?,
+        &ReposSetupArgs::Empty {
+            whitelist: names.to_vec(),
+        },
+    )
+}
+
 pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(), Box<dyn Error>> {
     let vers = match vers {
         Some(v) => v,
@@ -99,11 +116,7 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
 
     for ver in vers {
         let ver = check_installed(&ver.to_string())?;
-        let root: String = get_r_root_for(&ver)?;
-        let repositories = root.clone()
-            + "/"
-            + &get_r_etc_path()?.replace("{}", &version_dir_key(&ver))
-            + "/repositories";
+        let repositories = repositories_file(&ver)?;
 
         // if no 'repositories' file, skip. Maybe this happens for very old R versions?
         if !PathBuf::from(&repositories).exists() {
@@ -124,13 +137,27 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
             std::fs::copy(&repositories, &orig)?;
         }
 
-        debug!("Updating repositories file at {}", repositories);
-        let mut repos = read_repositories_file(&orig)?;
-
         let rdata = get_r_data(&ver)?;
         debug!("Detected architecture {:?}", rdata);
 
         let rdata_platform = rdata_platform_string(&rdata);
+
+        let stored = match get_setup_state(&ver)? {
+            Some(state) => state,
+            None => {
+                let current = read_repositories_file(&repositories)?;
+                let original = read_repositories_file(&orig)?;
+                let state = infer_setup_state(&current, &original, &config, &rdata)?;
+                debug!("Inferred repository setup for {}: {:?}", ver, state);
+                state
+            }
+        };
+        let state = stored.merge(&setup);
+        save_setup_state(&ver, Some(state.clone()))?;
+        let setup = state.to_args();
+
+        debug!("Updating repositories file at {}", repositories);
+        let mut repos = read_repositories_file(&orig)?;
 
         add_repositories_comment(&mut repos, "start added by rig");
         for repo in config.iter() {
@@ -153,18 +180,12 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
 
         write_repositories_file(repos, &repositories)?;
 
-        let profile =
-            root.clone() + "/" + &get_r_base_profile()?.replace("{}", &version_dir_key(&ver));
+        let profile = profile_file(&ver)?;
         debug!("Updating R profile at {}", profile);
         let mut profile_lines = read_lines(Path::new(&profile))?;
 
         // maybe already current?
-        if !grep_lines(
-            &Regex::new(&HC_PROFILE_REPOS_MARKERS.current_start.to_string())?,
-            &profile_lines,
-        )
-        .is_empty()
-        {
+        if profile_is_current(&profile_lines)? {
             continue;
         }
 
@@ -212,6 +233,148 @@ fn rdata_platform_string(rdata: &RData) -> String {
         platform += r;
     }
     platform
+}
+
+fn profile_file(ver: &str) -> Result<String, Box<dyn Error>> {
+    let root: String = get_r_root_for(ver)?;
+    Ok(root + "/" + &get_r_base_profile()?.replace("{}", &version_dir_key(ver)))
+}
+
+// Whether the R profile already has the current version of rig's repository
+// setup code.
+fn profile_is_current(lines: &[String]) -> Result<bool, Box<dyn Error>> {
+    let re = Regex::new(&HC_PROFILE_REPOS_MARKERS.current_start.to_string())?;
+    Ok(!grep_lines(&re, lines).is_empty())
+}
+
+/// The files and directories [`repos_setup`] would write for the R
+/// installations `vers`, that the current user cannot write. Empty if it
+/// can run without administrator rights.
+pub fn repos_setup_unwritable(vers: &[String]) -> Result<Vec<PathBuf>, Box<dyn Error>> {
+    let mut result = vec![];
+    for ver in vers {
+        let ver = check_installed(ver)?;
+        let repositories = PathBuf::from(repositories_file(&ver)?);
+        if !repositories.exists() {
+            continue;
+        }
+        if !file_is_writable(&repositories) {
+            result.push(repositories.clone());
+        }
+        // The `.orig` copy is created in the same directory, on first use.
+        let orig = PathBuf::from(repositories.display().to_string() + ".orig");
+        if !orig.exists() {
+            if let Some(dir) = repositories.parent() {
+                if !dir_is_writable(dir) {
+                    result.push(dir.to_path_buf());
+                }
+            }
+        }
+        let profile = PathBuf::from(profile_file(&ver)?);
+        if !profile_is_current(&read_lines(&profile)?)? && !file_is_writable(&profile) {
+            result.push(profile);
+        }
+    }
+    Ok(result)
+}
+
+// Opening for writing, without truncating, does not change the file.
+fn file_is_writable(path: &Path) -> bool {
+    std::fs::OpenOptions::new().write(true).open(path).is_ok()
+}
+
+fn dir_is_writable(path: &Path) -> bool {
+    tempfile::Builder::new()
+        .prefix(".rig-write-test-")
+        .tempfile_in(path)
+        .is_ok()
+}
+
+fn repositories_file(ver: &str) -> Result<String, Box<dyn Error>> {
+    let root: String = get_r_root_for(ver)?;
+    Ok(root + "/" + &get_r_etc_path()?.replace("{}", &version_dir_key(ver)) + "/repositories")
+}
+
+// The repository choices of an installation that was set up before rig stored
+// them, worked out from its `repositories` file: the repositories rig added
+// that are not defaults were enabled, the defaults it did not add were
+// disabled.
+fn infer_setup_state(
+    current: &RepositoriesContents,
+    orig: &RepositoriesContents,
+    config: &[Repository],
+    rdata: &RData,
+) -> Result<SetupState, Box<dyn Error>> {
+    let mut state = SetupState::default();
+    if !current
+        .comments
+        .iter()
+        .any(|(_, c)| c.contains("added by rig"))
+    {
+        // Not set up by rig at all.
+        return Ok(state);
+    }
+
+    let added: Vec<&RepoFileEntry> = current
+        .data
+        .iter()
+        .filter(|e| {
+            e.default
+                && !orig
+                    .data
+                    .iter()
+                    .any(|o| o.default && o.name == e.name && o.url == e.url)
+        })
+        .collect();
+
+    let rdata_platform = rdata_platform_string(rdata);
+    for repo in config.iter() {
+        let mut default = false;
+        for entry in repo.repos.iter() {
+            let enabled = entry.enabled.as_ref().unwrap_or(&repo.enabled);
+            if enabled_by_default(enabled, &rdata_platform, &repo.name)
+                && should_activate_repo(repo, entry, rdata)?
+            {
+                default = true;
+            }
+        }
+        let present = repo
+            .repos
+            .iter()
+            .any(|e| added.iter().any(|a| a.name == e.name));
+        let name = repo.name.to_lowercase();
+        if present && !default {
+            state.enable.push(name);
+        } else if !present && default {
+            state.disable.push(name);
+        }
+    }
+
+    Ok(state)
+}
+
+/// The repositories in `names` (lowercase) that have no URL for the R
+/// installation `ver`, i.e. that cannot be enabled for it.
+pub fn repos_not_applicable(ver: &str, names: &[String]) -> Result<Vec<String>, Box<dyn Error>> {
+    let config = get_repos_config()?;
+    let rdata = get_r_data(ver)?;
+    let mut result = vec![];
+    for name in names {
+        let Some(repo) = config.iter().find(|r| &r.name.to_lowercase() == name) else {
+            continue;
+        };
+        let mut applies = false;
+        for entry in repo.repos.iter() {
+            if should_activate_repo(repo, entry, &rdata)? {
+                applies = true;
+                break;
+            }
+        }
+        if !applies {
+            result.push(repo.name.clone());
+        }
+    }
+    Ok(result)
 }
 
 // Whether `rdata_platform` matches any of the given platform globs. Invalid
@@ -459,11 +622,13 @@ fn get_r_data(ver: &str) -> Result<RData, Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        enabled_by_default, rdata_platform_string, should_activate_repo, should_include_repo,
-        validate_repos_in_setup, RData,
+        enabled_by_default, infer_setup_state, rdata_platform_string, should_activate_repo,
+        should_include_repo, validate_repos_in_setup, RData,
     };
     use crate::repos::config::{Enabled, RepoEntry, Repository};
     use crate::repos::interpret_repos_args::ReposSetupArgs;
+    use crate::repos::state::SetupState;
+    use crate::repositories::{RepoFileEntry, RepositoriesContents};
 
     fn make_repo(name: &str) -> Repository {
         Repository {
@@ -472,6 +637,7 @@ mod tests {
             description: None,
             enabled: Enabled::Always(true),
             repos: vec![],
+            custom: false,
         }
     }
 
@@ -787,5 +953,126 @@ mod tests {
         };
         assert!(should_include_repo(&setup, "CRAN", true));
         assert!(!should_include_repo(&setup, "P3M", true));
+    }
+
+    // --- infer_setup_state ---
+
+    fn file_entry(name: &str, url: &str, default: bool) -> RepoFileEntry {
+        RepoFileEntry {
+            name: name.to_string(),
+            description: name.to_string(),
+            url: url.to_string(),
+            default,
+            source: true,
+            win_binary: true,
+            mac_binary: true,
+        }
+    }
+
+    fn orig_file() -> RepositoriesContents {
+        RepositoriesContents {
+            data: vec![
+                file_entry("CRAN", "@CRAN@", true),
+                file_entry("BioCsoft", "%bm/packages/%v/bioc", false),
+            ],
+            comments: vec![],
+        }
+    }
+
+    fn rig_file(mut data: Vec<RepoFileEntry>) -> RepositoriesContents {
+        let mut all = vec![file_entry("BioCsoft", "%bm/packages/%v/bioc", false)];
+        all.append(&mut data);
+        RepositoriesContents {
+            data: all,
+            comments: vec![(1, "## start added by rig".to_string())],
+        }
+    }
+
+    fn infer_config() -> Vec<Repository> {
+        let entry = |name: &str, url: &str| {
+            let mut e = make_entry();
+            e.name = name.to_string();
+            e.url = url.to_string();
+            e
+        };
+        let mut cran = make_repo("CRAN");
+        cran.repos = vec![entry("CRAN", "https://cloud.r-project.org")];
+        let mut p3m = make_repo("P3M");
+        p3m.repos = vec![entry("P3M", "https://p3m.dev/cran/latest")];
+        let mut bioc = make_repo("Bioconductor");
+        bioc.enabled = Enabled::Always(false);
+        bioc.repos = vec![entry(
+            "BioCsoft",
+            "https://bioconductor.org/packages/3.22/bioc",
+        )];
+        vec![cran, p3m, bioc]
+    }
+
+    #[test]
+    fn infer_nothing_if_not_set_up_by_rig() {
+        let state = infer_setup_state(
+            &orig_file(),
+            &orig_file(),
+            &infer_config(),
+            &rdata("x86_64-apple-darwin20", "x86_64", "4.5.1"),
+        )
+        .unwrap();
+        assert_eq!(state, SetupState::default());
+    }
+
+    #[test]
+    fn infer_defaults() {
+        let current = rig_file(vec![
+            file_entry("CRAN", "https://cloud.r-project.org", true),
+            file_entry("P3M", "https://p3m.dev/cran/latest", true),
+        ]);
+        let state = infer_setup_state(
+            &current,
+            &orig_file(),
+            &infer_config(),
+            &rdata("x86_64-apple-darwin20", "x86_64", "4.5.1"),
+        )
+        .unwrap();
+        assert_eq!(state, SetupState::default());
+    }
+
+    #[test]
+    fn infer_enabled_and_disabled_repos() {
+        // `--with-repos=bioconductor --without-repos=p3m`
+        let current = rig_file(vec![
+            file_entry("CRAN", "https://cloud.r-project.org", true),
+            file_entry(
+                "BioCsoft",
+                "https://bioconductor.org/packages/3.22/bioc",
+                true,
+            ),
+        ]);
+        let state = infer_setup_state(
+            &current,
+            &orig_file(),
+            &infer_config(),
+            &rdata("x86_64-apple-darwin20", "x86_64", "4.5.1"),
+        )
+        .unwrap();
+        assert_eq!(state.enable, vec!["bioconductor".to_string()]);
+        assert_eq!(state.disable, vec!["p3m".to_string()]);
+    }
+
+    #[test]
+    fn infer_r_default_cran_is_not_rigs() {
+        // `--without-repos=cran`: R's own `@CRAN@` entry stays in the file.
+        let current = rig_file(vec![
+            file_entry("CRAN", "@CRAN@", true),
+            file_entry("P3M", "https://p3m.dev/cran/latest", true),
+        ]);
+        let state = infer_setup_state(
+            &current,
+            &orig_file(),
+            &infer_config(),
+            &rdata("x86_64-apple-darwin20", "x86_64", "4.5.1"),
+        )
+        .unwrap();
+        assert!(state.enable.is_empty());
+        assert_eq!(state.disable, vec!["cran".to_string()]);
     }
 }

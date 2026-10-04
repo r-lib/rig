@@ -1,5 +1,23 @@
 # Development version
 
+## Custom repositories
+
+* New `rig repos add` and `rig repos rm` commands to add and remove your
+  own CRAN-like package repositories, e.g. an internal CRAN mirror or an
+  r-universe. rig stores them in its configuration file, and they work like
+  the built-in repositories, e.g. with `--with-repos`.
+  `rig repos add --enable --all-versions` enables a repository for all
+  R versions, including the ones you install later.
+
+* New `rig repos enable` and `rig repos disable` commands to turn
+  repositories, built-in or custom, on and off for each R version.
+
+* rig now remembers the repositories enabled and disabled for each R
+  version, with these commands or with `--with-repos` / `--without-repos`,
+  and applies them again on `rig repos setup`. `rig repos setup` now asks
+  for administrator rights if the current user cannot update the files of
+  the R installations, e.g. in admin mode on Linux and Windows.
+
 ## Bioconductor
 
 * `rig proj` and `rig pkg` now install Bioconductor packages, besides CRAN
