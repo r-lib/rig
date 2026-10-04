@@ -241,13 +241,6 @@ impl Default for BiocSetting {
 }
 
 impl BiocSetting {
-    pub fn disabled() -> Self {
-        BiocSetting {
-            enabled: false,
-            version: None,
-        }
-    }
-
     /// The Bioconductor release to use with R version `rver`, if any, see
     /// [`crate::repos::bioc_version_for`]. `cutoff` is the `--exclude-newer`
     /// day.

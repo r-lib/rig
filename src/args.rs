@@ -66,14 +66,6 @@ fn exclude_newer_arg() -> Arg {
         .required(false)
 }
 
-fn no_bioc_arg() -> Arg {
-    Arg::new("no-bioc")
-        .help("Use CRAN packages only, not Bioconductor packages.")
-        .long("no-bioc")
-        .num_args(0)
-        .required(false)
-}
-
 /// `--r-version` for the `rig pkg` commands that read the repositories
 /// configured for an R version. `short`: whether `-r` is free for it.
 fn pkg_r_version_arg(short: bool) -> Arg {
@@ -2205,7 +2197,6 @@ pub fn rig_app() -> Command {
                 .long_about(HELP_PKG_AVAILABLE)
                 .display_order(0)
                 .arg(pkg_r_version_arg(true))
-                .arg(no_bioc_arg())
                 .arg(
                     Arg::new("json")
                         .help("JSON output")
@@ -2227,7 +2218,6 @@ pub fn rig_app() -> Command {
                 .long_about(HELP_PKG_DEPS)
                 .display_order(0)
                 .arg(pkg_r_version_arg(false))
-                .arg(no_bioc_arg())
                 .arg(
                     Arg::new("package")
                         .help("package to show the dependencies of")
@@ -2358,7 +2348,6 @@ pub fn rig_app() -> Command {
                 .about(ABOUT_PKG_INSTALL)
                 .long_about(HELP_PKG_INSTALL)
                 .display_order(0)
-                .arg(no_bioc_arg())
                 .arg(
                     Arg::new("package")
                         .help("packages to install")
@@ -2602,7 +2591,6 @@ pub fn rig_app() -> Command {
                 .long_about(HELP_PKG_TREE)
                 .display_order(0)
                 .arg(pkg_r_version_arg(true))
-                .arg(no_bioc_arg())
                 .arg(
                     Arg::new("package")
                         .help("package to show the dependency tree of")

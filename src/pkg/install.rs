@@ -48,7 +48,7 @@ use crate::install::{
 };
 use crate::library::library_rver;
 use crate::output::OUTPUT;
-use crate::pkg::{pkg_bioc_setting, pkg_repos};
+use crate::pkg::pkg_repos;
 use crate::pkgsource::local::resolve_local_path;
 use crate::pkgsource::{parse_pkg_source, PkgSource};
 use crate::proj::{
@@ -57,6 +57,7 @@ use crate::proj::{
     proj_binary_target, read_local_package, resolve_git_sources, sc_proj_solve_deps, SolvePins,
     BASE_PKGS,
 };
+use crate::repos::feed::BiocSetting;
 use crate::repos::DbSourcePackageLoader;
 use crate::rproj::{DepTable, RprojLockPackage, RprojLockTarget};
 use crate::solver::{is_base_package, PackageVersionLoader, SolveRoot};
@@ -105,7 +106,7 @@ pub fn sc_pkg_install(
         Some(rver) => rver.clone(),
         None => library_rver(args)?,
     };
-    let bioc = pkg_bioc_setting(args);
+    let bioc = BiocSetting::default();
     // The repositories configured for the R version.
     let repos = pkg_repos(&rver, &bioc, exclude_newer.as_deref());
 

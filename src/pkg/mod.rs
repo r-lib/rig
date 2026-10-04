@@ -55,23 +55,12 @@ pub fn sc_pkg(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Er
     }
 }
 
-/// The Bioconductor setting of a `rig pkg` command: on, unless `--no-bioc`
-/// or `RIG_BIOCONDUCTOR=false`.
-pub(crate) fn pkg_bioc_setting(args: &ArgMatches) -> BiocSetting {
-    // `rig pkg info` has no `--no-bioc`.
-    if args.try_get_one::<bool>("no-bioc").ok().flatten() == Some(&true) {
-        BiocSetting::disabled()
-    } else {
-        BiocSetting::default()
-    }
-}
-
 /// The repositories of a `rig pkg` command: the ones configured for its R
 /// version, see [`pkg_repos`]. The R version is `--r-version`, if the command
 /// has it, or else the default R version. Without any R version it is CRAN,
 /// and Bioconductor unless it is turned off, see [`default_r_feeds`].
 pub(crate) fn pkg_repos_for(args: &ArgMatches) -> Result<Vec<PkgRepo>, Box<dyn Error>> {
-    let bioc = pkg_bioc_setting(args);
+    let bioc = BiocSetting::default();
     let rver = match args.try_get_one::<String>("r-version").ok().flatten() {
         Some(_) => Some(crate::library::library_rver(args)?),
         None => sc_get_default().ok().flatten(),

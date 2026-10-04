@@ -21,7 +21,7 @@ CRAN itself, an r-universe, or one added with [`rig repos add`](repos.qmd#rig-re
 from its `PACKAGES` files, so only its current packages are available.
 If the Bioconductor repositories are enabled, the list includes the packages
 of the Bioconductor release of the R version, e.g. Bioconductor 3.23 for
-R 4.6. Use `--no-bioc` to leave them out. Without any R version rig lists
+R 4.6. Without any R version rig lists
 CRAN, and the newest Bioconductor release.
 
 Packages CRAN or Bioconductor has archived are omitted by default; pass

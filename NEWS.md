@@ -42,8 +42,7 @@
   entry in `Remotes:` or `Config/Needs/*` is the same as `<package>`. A
   `bioc` entry in the
   `[[repository]]` array of `rproj.toml` pins the Bioconductor release, or
-  turns Bioconductor off. `rig pkg` commands have a new `--no-bioc` option
-  to use CRAN only. `rproj.lock` is now version 5, and records the
+  turns Bioconductor off. `rproj.lock` is now version 5, and records the
   Bioconductor release of every target.
 
 * `rig pkg info` now shows the full `DESCRIPTION` of the current version
