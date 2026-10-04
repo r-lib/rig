@@ -22,10 +22,12 @@ so older and archived versions are available, too. Any other repository, e.g.
 CRAN itself, an r-universe, or one added with [`rig repos add`](repos.qmd#rig-repos-add), is read
 from its `PACKAGES` files, so only its current packages are available.
 
-rig shows the full `DESCRIPTION` file only for a package version that comes
-from P3M. For a package version from any other repository, including
-Bioconductor, rig only knows the fields of the repository's index: its
-version, its dependencies and where to download it.
+rig shows the full `DESCRIPTION` file for a package version from P3M, and
+for the current version of a Bioconductor package, from the `VIEWS` file of
+its Bioconductor repository (software, annotation, experiment data,
+workflows or books). For a package version from any other repository, and
+for an older Bioconductor version, rig only knows the fields of the
+repository's index: its version, its dependencies and where to download it.
 
 ## README of a package
 

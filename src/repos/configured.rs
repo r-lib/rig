@@ -1,4 +1,3 @@
-use std::env;
 use std::error::Error;
 
 use crate::common::get_r_version_data_version;
@@ -79,10 +78,7 @@ pub(crate) fn configured_repos(
         if has_bioc {
             let ver = get_r_version_data_version(&rver)?;
             let biocver = r_version_to_bioc_version(&ver)?;
-            let biocmirror = match env::var("R_BIOC_MIRROR") {
-                Ok(v) => v,
-                Err(_) => "https://bioconductor.org".to_string(),
-            };
+            let biocmirror = super::bioc_mirror();
             for repo in repos.iter_mut() {
                 repo.url = repo.url.replace("%v", &biocver).replace("%bm", &biocmirror);
             }

@@ -44,6 +44,10 @@
   to use CRAN only. `rproj.lock` is now version 5, and records the
   Bioconductor release of every target.
 
+* `rig pkg info` now shows the full `DESCRIPTION` of the current version
+  of a Bioconductor package, e.g. its title, description and maintainer,
+  from the `VIEWS` file of its Bioconductor repository.
+
 ## Inline scripts
 
 * `rig run` now support self-contained scripts, that declare the packages

@@ -38,6 +38,7 @@ pub(crate) mod search;
 #[cfg(test)]
 mod stub;
 pub(crate) mod tree;
+mod views;
 
 pub fn sc_pkg(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
@@ -350,8 +351,9 @@ fn sc_pkg_info(
     };
 
     // The version to show, from the configured repositories. For a CRAN
-    // version P3M's manifests have the full DESCRIPTION, for any other
-    // repository we only know the fields of its index.
+    // version P3M's manifests have the full DESCRIPTION, for a Bioconductor
+    // version the repository's `VIEWS` file, for any other repository we only
+    // know the fields of its index.
     let all = repo_versions(args, &package)?;
     let shown = if ver == "latest" {
         all.iter().max_by(|a, b| a.version.cmp(&b.version))
@@ -372,7 +374,7 @@ fn sc_pkg_info(
             manifest::get_package_description(&package, &pkg.version.original)?
         }
         Some(pkg) => manifest::PackageInfo {
-            description: index_description(pkg),
+            description: repo_description(pkg),
             readme: None,
             readme_type: None,
             archived: None,
@@ -408,6 +410,23 @@ fn repo_versions(args: &ArgMatches, package: &str) -> Result<Vec<Package>, Box<d
 /// its full DESCRIPTION.
 fn is_cran(pkg: &Package) -> bool {
     pkg.repository == Some(RepoId::Cran)
+}
+
+/// The DESCRIPTION of a non-CRAN package version: the full one from the
+/// `VIEWS` file of a Bioconductor repository, if it has this version, else
+/// the fields of the repository's index. `Repository` and `DownloadURL` always
+/// come from the index, so they are the same for every repository.
+fn repo_description(pkg: &Package) -> serde_json::Value {
+    let index = index_description(pkg);
+    let Some(serde_json::Value::Object(mut desc)) = views::bioc_description(pkg) else {
+        return index;
+    };
+    for key in ["Repository", "DownloadURL"] {
+        if let Some(value) = index.get(key) {
+            desc.insert(key.to_string(), value.clone());
+        }
+    }
+    serde_json::Value::Object(desc)
 }
 
 /// The DESCRIPTION fields we know of a package version from the index of

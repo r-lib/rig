@@ -57,6 +57,14 @@ pub fn sc_repos(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn 
     }
 }
 
+/// The Bioconductor mirror: `R_BIOC_MIRROR` if set, like R itself, else
+/// <https://bioconductor.org>. Without a trailing `/`.
+pub fn bioc_mirror() -> String {
+    env::var("R_BIOC_MIRROR")
+        .map(|m| m.trim_end_matches('/').to_string())
+        .unwrap_or_else(|_| "https://bioconductor.org".to_string())
+}
+
 pub fn r_version_to_bioc_version(rver: &str) -> Result<String, Box<dyn Error>> {
     match env::var("R_BIOC_VERSION") {
         Ok(biocver) => Ok(biocver),
