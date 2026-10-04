@@ -20,4 +20,6 @@ entry name, the `group` field is the name of the rig repository, or `null`, and 
 `metadata` field holds the base URL of the extended metadata, or `null`.
 
 The list includes the custom repositories (see [`rig repos add`](#rig-repos-add)) that are enabled
-for the R version. Use [`rig repos enable`](#rig-repos-enable) and [`rig repos disable`](#rig-repos-disable) to change it.
+for the R version, and the repositories that come with R itself, e.g. `CRANextra`
+and `R-Forge`; with `--all` also the ones that are not enabled. Use
+[`rig repos enable`](#rig-repos-enable) and [`rig repos disable`](#rig-repos-disable) to change it.

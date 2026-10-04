@@ -39,15 +39,21 @@ struct RData {
     pub release: Option<String>,
 }
 
+// Fail if `setup` names a repository that is neither in `config` nor in
+// `r_names`, the (lowercase) names of R's own repositories, see
+// [`r_own_repo_names`].
 fn validate_repos_in_setup(
     config: &[Repository],
+    r_names: &[String],
     setup: &ReposSetupArgs,
 ) -> Result<(), Box<dyn Error>> {
     let mut valid_repo_names: Vec<String> = config
         .iter()
         .map(|r| r.name.to_lowercase())
+        .chain(r_names.iter().cloned())
         .collect::<Vec<_>>();
     valid_repo_names.sort();
+    valid_repo_names.dedup();
 
     let mut invalid_repos: Vec<String> = Vec::new();
 
@@ -88,22 +94,90 @@ fn validate_repos_in_setup(
     Ok(())
 }
 
-/// Set up the repositories of R installations.
-///
-/// `setup` (from `--with-repos`, `--without-repos`, `rig repos enable`, etc.)
-/// is merged into the stored repository choices of each installation, see
-/// [`SetupState::merge`], and the result is stored and written to the
-/// installation's `repositories` file.
-/// Fail if any of `names` (lowercase) is not a known repository.
-pub fn validate_repo_names(names: &[String]) -> Result<(), Box<dyn Error>> {
+/// Fail if any of `names` (lowercase) is not a known repository: a rig
+/// repository, or one of R's own repositories of an installation in `vers`.
+pub fn validate_repo_names(names: &[String], vers: &[String]) -> Result<(), Box<dyn Error>> {
+    let config = get_repos_config()?;
     validate_repos_in_setup(
-        &get_repos_config()?,
+        &config,
+        &r_own_repo_names_of(&config, vers)?,
         &ReposSetupArgs::Empty {
             whitelist: names.to_vec(),
         },
     )
 }
 
+// The lowercase names of the entries of rig's repositories, e.g. `biocsoft`.
+fn rig_entry_names(config: &[Repository]) -> Vec<String> {
+    config
+        .iter()
+        .flat_map(|r| r.repos.iter())
+        .map(|e| e.name.to_lowercase())
+        .collect()
+}
+
+// Whether a `repositories` file entry is one of R's own repositories, i.e.
+// not one that rig sets up, e.g. `CRANextra` and `R-Forge`.
+fn is_r_own_repo(entry: &RepoFileEntry, rig_names: &[String]) -> bool {
+    !rig_names.contains(&entry.name.to_lowercase())
+}
+
+/// The lowercase names of R's own repositories of installation `ver`, the
+/// entries of its original `repositories` file that rig does not set up
+/// itself. These can be enabled and disabled the same way as rig's
+/// repositories. Empty if the installation has no `repositories` file.
+pub fn r_own_repo_names(config: &[Repository], ver: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    let repositories = repositories_file(ver)?;
+    let orig = repositories.clone() + ".orig";
+    let path = if PathBuf::from(&orig).exists() {
+        orig
+    } else if PathBuf::from(&repositories).exists() {
+        repositories
+    } else {
+        return Ok(vec![]);
+    };
+    let rig_names = rig_entry_names(config);
+    Ok(read_repositories_file(&path)?
+        .data
+        .iter()
+        .filter(|e| is_r_own_repo(e, &rig_names))
+        .map(|e| e.name.to_lowercase())
+        .collect())
+}
+
+// [`r_own_repo_names`] of all installations in `vers`.
+fn r_own_repo_names_of(
+    config: &[Repository],
+    vers: &[String],
+) -> Result<Vec<String>, Box<dyn Error>> {
+    let mut names = vec![];
+    for ver in vers {
+        names.extend(r_own_repo_names(config, &check_installed(ver)?)?);
+    }
+    names.sort();
+    names.dedup();
+    Ok(names)
+}
+
+// Turn R's own repositories in `repos` (the original `repositories` file) on
+// or off, according to `setup`. The ones that are not mentioned keep R's
+// setting, unless `setup` starts from no repositories.
+fn set_r_own_repos(repos: &mut RepositoriesContents, rig_names: &[String], setup: &ReposSetupArgs) {
+    for entry in repos.data.iter_mut() {
+        if is_r_own_repo(entry, rig_names) {
+            entry.default = should_include_repo(setup, &entry.name, entry.default);
+        }
+    }
+}
+
+/// Set up the repositories of R installations.
+///
+/// `setup` (from `--with-repos`, `--without-repos`, `rig repos enable`, etc.)
+/// is merged into the stored repository choices of each installation, see
+/// [`SetupState::merge`], and the result is stored and written to the
+/// installation's `repositories` file. Rig's repositories that are selected
+/// are added to the file, and R's own repositories, see [`r_own_repo_names`],
+/// are turned on or off.
 pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(), Box<dyn Error>> {
     let vers = match vers {
         Some(v) => v,
@@ -111,8 +185,9 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
     };
     let config = get_repos_config()?;
 
-    // Validate that all repositories in whitelist and blacklist exist in config
-    validate_repos_in_setup(&config, &setup)?;
+    // Validate that all repositories in whitelist and blacklist exist
+    validate_repos_in_setup(&config, &r_own_repo_names_of(&config, &vers)?, &setup)?;
+    let rig_names = rig_entry_names(&config);
 
     for ver in vers {
         let ver = check_installed(&ver.to_string())?;
@@ -156,6 +231,7 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
 
         debug!("Updating repositories file at {}", repositories);
         let mut repos = read_repositories_file(&orig)?;
+        set_r_own_repos(&mut repos, &rig_names, &setup);
 
         add_repositories_comment(&mut repos, "start added by rig");
         let selected = selected_entries(&config, &rdata, |repo, enabled_default| {
@@ -338,9 +414,13 @@ fn infer_setup_state(
 pub fn repos_not_applicable(ver: &str, names: &[String]) -> Result<Vec<String>, Box<dyn Error>> {
     let config = get_repos_config()?;
     let rdata = get_r_data(ver)?;
+    let r_names = r_own_repo_names(&config, ver)?;
     let mut result = vec![];
     for name in names {
         let Some(repo) = config.iter().find(|r| &r.name.to_lowercase() == name) else {
+            if !r_names.contains(name) {
+                result.push(name.clone());
+            }
             continue;
         };
         let mut applies = false;
@@ -637,7 +717,7 @@ fn get_r_data(ver: &str) -> Result<RData, Box<dyn Error>> {
 mod tests {
     use super::{
         enabled_by_default, infer_setup_state, rdata_platform_string, selected_entries,
-        should_activate_repo, should_include_repo, validate_repos_in_setup, RData,
+        set_r_own_repos, should_activate_repo, should_include_repo, validate_repos_in_setup, RData,
     };
     use crate::repos::config::{Enabled, RepoEntry, Repository};
     use crate::repos::interpret_repos_args::ReposSetupArgs;
@@ -689,7 +769,7 @@ mod tests {
             whitelist: vec!["cran".to_string()],
             blacklist: vec!["p3m".to_string()],
         };
-        assert!(validate_repos_in_setup(&config, &setup).is_ok());
+        assert!(validate_repos_in_setup(&config, &[], &setup).is_ok());
     }
 
     #[test]
@@ -699,7 +779,7 @@ mod tests {
             whitelist: vec!["bioc".to_string()],
             blacklist: vec![],
         };
-        assert!(validate_repos_in_setup(&config, &setup).is_err());
+        assert!(validate_repos_in_setup(&config, &[], &setup).is_err());
     }
 
     #[test]
@@ -709,7 +789,7 @@ mod tests {
             whitelist: vec![],
             blacklist: vec!["p3m".to_string()],
         };
-        assert!(validate_repos_in_setup(&config, &setup).is_err());
+        assert!(validate_repos_in_setup(&config, &[], &setup).is_err());
     }
 
     #[test]
@@ -719,7 +799,7 @@ mod tests {
             whitelist: vec![],
             blacklist: vec![],
         };
-        assert!(validate_repos_in_setup(&config, &setup).is_ok());
+        assert!(validate_repos_in_setup(&config, &[], &setup).is_ok());
     }
 
     #[test]
@@ -728,7 +808,7 @@ mod tests {
         let setup = ReposSetupArgs::Empty {
             whitelist: vec!["cran".to_string()],
         };
-        assert!(validate_repos_in_setup(&config, &setup).is_ok());
+        assert!(validate_repos_in_setup(&config, &[], &setup).is_ok());
     }
 
     #[test]
@@ -737,7 +817,7 @@ mod tests {
         let setup = ReposSetupArgs::Empty {
             whitelist: vec!["bioc".to_string()],
         };
-        assert!(validate_repos_in_setup(&config, &setup).is_err());
+        assert!(validate_repos_in_setup(&config, &[], &setup).is_err());
     }
 
     // --- should_activate_repo ---
@@ -1216,5 +1296,104 @@ mod tests {
         .unwrap();
         assert!(state.enable.is_empty());
         assert_eq!(state.disable, vec!["cran".to_string()]);
+    }
+
+    // --- R's own repositories ---
+
+    fn r_orig_file() -> RepositoriesContents {
+        RepositoriesContents {
+            data: vec![
+                file_entry("CRAN", "@CRAN@", true),
+                file_entry("BioCsoft", "%bm/packages/%v/bioc", false),
+                file_entry("CRANextra", "https://www.stats.ox.ac.uk/pub/RWin", false),
+                file_entry("R-Forge", "https://R-Forge.R-project.org", true),
+            ],
+            comments: vec![],
+        }
+    }
+
+    fn defaults(repos: &RepositoriesContents) -> Vec<(String, bool)> {
+        repos
+            .data
+            .iter()
+            .map(|e| (e.name.clone(), e.default))
+            .collect()
+    }
+
+    fn rig_names() -> Vec<String> {
+        vec![
+            "cran".to_string(),
+            "p3m".to_string(),
+            "biocsoft".to_string(),
+        ]
+    }
+
+    #[test]
+    fn r_own_repos_enable_and_disable() {
+        let mut repos = r_orig_file();
+        set_r_own_repos(
+            &mut repos,
+            &rig_names(),
+            &ReposSetupArgs::Default {
+                whitelist: vec!["cranextra".to_string()],
+                blacklist: vec!["r-forge".to_string(), "cran".to_string()],
+            },
+        );
+        // CRAN and BioCsoft are rig's, they are left alone.
+        assert_eq!(
+            defaults(&repos),
+            vec![
+                ("CRAN".to_string(), true),
+                ("BioCsoft".to_string(), false),
+                ("CRANextra".to_string(), true),
+                ("R-Forge".to_string(), false),
+            ]
+        );
+    }
+
+    #[test]
+    fn r_own_repos_keep_r_setting() {
+        let mut repos = r_orig_file();
+        set_r_own_repos(
+            &mut repos,
+            &rig_names(),
+            &ReposSetupArgs::Default {
+                whitelist: vec![],
+                blacklist: vec![],
+            },
+        );
+        assert_eq!(defaults(&repos), defaults(&r_orig_file()));
+    }
+
+    #[test]
+    fn r_own_repos_without_repos() {
+        let mut repos = r_orig_file();
+        set_r_own_repos(
+            &mut repos,
+            &rig_names(),
+            &ReposSetupArgs::Empty {
+                whitelist: vec!["cranextra".to_string()],
+            },
+        );
+        assert_eq!(
+            defaults(&repos),
+            vec![
+                ("CRAN".to_string(), true),
+                ("BioCsoft".to_string(), false),
+                ("CRANextra".to_string(), true),
+                ("R-Forge".to_string(), false),
+            ]
+        );
+    }
+
+    #[test]
+    fn validate_accepts_r_own_repos() {
+        let config = vec![make_repo("CRAN")];
+        let setup = ReposSetupArgs::Default {
+            whitelist: vec!["cranextra".to_string()],
+            blacklist: vec![],
+        };
+        assert!(validate_repos_in_setup(&config, &[], &setup).is_err());
+        assert!(validate_repos_in_setup(&config, &["cranextra".to_string()], &setup).is_ok());
     }
 }

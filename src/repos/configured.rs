@@ -15,8 +15,8 @@ use crate::windows::*;
 use crate::linux::*;
 
 /// The repositories an R installation is configured to use, i.e. the contents
-/// of its `etc/repositories` file, filtered and sorted the way `rig repos list`
-/// shows them.
+/// of its `etc/repositories` file, in the same order, filtered the way
+/// `rig repos list` shows them.
 pub(crate) struct ConfiguredRepos {
     /// Installation name, e.g. `4.5.1`, `devel`.
     pub rver: String,
@@ -65,7 +65,6 @@ pub(crate) fn configured_repos(
     if !all {
         repos.retain(|x| x.default);
     }
-    repos.sort_by_key(|b| std::cmp::Reverse(b.default));
 
     // Only looked up when a Bioconductor URL needs it: an installation with a
     // missing `base/DESCRIPTION` should still list its repositories.

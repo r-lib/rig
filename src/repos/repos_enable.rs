@@ -14,8 +14,8 @@ pub fn sc_repos_enable(
     _mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
     let names = repo_names_arg(args);
-    validate_repo_names(&names)?;
     let vers = target_versions(args)?;
+    validate_repo_names(&names, &vers)?;
 
     // Fail early, before `sudo`, if a repository has no URL for a version.
     for ver in vers.iter() {
@@ -52,8 +52,8 @@ pub fn sc_repos_disable(
     _mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
     let names = repo_names_arg(args);
-    validate_repo_names(&names)?;
     let vers = target_versions(args)?;
+    validate_repo_names(&names, &vers)?;
 
     escalate_if_needed(&vers, "disabling package repositories")?;
     repos_setup(
