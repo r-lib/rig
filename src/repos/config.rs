@@ -27,6 +27,11 @@ pub struct RepoEntry {
     pub archs: Option<Vec<String>>,
     pub rversions: Option<Vec<String>>,
     pub enabled: Option<Enabled>,
+    /// Use this URL only if no other URL with the same `metadata` is set up,
+    /// from any repository. E.g. P3M's source package URL is for the
+    /// platforms that P3M has no binary packages for.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub fallback: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -79,6 +84,7 @@ impl CustomRepo {
                 archs: None,
                 rversions: None,
                 enabled: None,
+                fallback: false,
             }],
             custom: true,
         }

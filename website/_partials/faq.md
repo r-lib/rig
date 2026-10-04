@@ -65,6 +65,11 @@
 > On Windows, it includes up to date binary packages for older R versions as
 > well.
 >
+> rig sets up P3M on macOS, x86_64 Windows and Linux. Where P3M has no
+> binary packages, e.g. on some Linux distributions, it is a CRAN mirror of
+> source packages. rig does not set up P3M on aarch64 Windows, because P3M
+> only has x86_64 Windows binaries.
+>
 > To avoid P3M use the `--without-repos=p3m` option of `rig add`.
 >
 </details>

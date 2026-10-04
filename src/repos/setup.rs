@@ -140,8 +140,6 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
         let rdata = get_r_data(&ver)?;
         debug!("Detected architecture {:?}", rdata);
 
-        let rdata_platform = rdata_platform_string(&rdata);
-
         let stored = match get_setup_state(&ver)? {
             Some(state) => state,
             None => {
@@ -160,21 +158,11 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
         let mut repos = read_repositories_file(&orig)?;
 
         add_repositories_comment(&mut repos, "start added by rig");
-        for repo in config.iter() {
-            for entry in repo.repos.iter() {
-                // An entry's `enabled` (if present) overrides the repo's. Whether
-                // a repo is enabled by default can depend on the installation's
-                // platform (e.g. P3M-manylinux is a default only on manylinux).
-                let enabled = entry.enabled.as_ref().unwrap_or(&repo.enabled);
-                let enabled_default = enabled_by_default(enabled, &rdata_platform, &repo.name);
-                if !should_include_repo(&setup, &repo.name, enabled_default) {
-                    continue;
-                }
-                if !should_activate_repo(repo, entry, &rdata)? {
-                    continue;
-                }
-                add_repository(&mut repos, entry);
-            }
+        let selected = selected_entries(&config, &rdata, |repo, enabled_default| {
+            should_include_repo(&setup, &repo.name, enabled_default)
+        })?;
+        for (_, entry) in selected {
+            add_repository(&mut repos, entry);
         }
         add_repositories_comment(&mut repos, "end added by rig");
 
@@ -327,17 +315,9 @@ fn infer_setup_state(
         })
         .collect();
 
-    let rdata_platform = rdata_platform_string(rdata);
+    let defaults = selected_entries(config, rdata, |_, enabled_default| enabled_default)?;
     for repo in config.iter() {
-        let mut default = false;
-        for entry in repo.repos.iter() {
-            let enabled = entry.enabled.as_ref().unwrap_or(&repo.enabled);
-            if enabled_by_default(enabled, &rdata_platform, &repo.name)
-                && should_activate_repo(repo, entry, rdata)?
-            {
-                default = true;
-            }
-        }
+        let default = defaults.iter().any(|(r, _)| r.name == repo.name);
         let present = repo
             .repos
             .iter()
@@ -375,6 +355,40 @@ pub fn repos_not_applicable(ver: &str, names: &[String]) -> Result<Vec<String>, 
         }
     }
     Ok(result)
+}
+
+// The URLs to set up for an installation, in catalog order: the URLs that
+// apply to it, of the repositories that `include` selects. `include` gets
+// whether the URL is enabled by default; an entry's `enabled` (if present)
+// overrides the repo's, and it can depend on the installation's platform
+// (e.g. P3M-manylinux is a default only on manylinux). A fallback URL is
+// dropped if another selected URL has the same metadata, e.g. P3M's source
+// URL if P3M-manylinux is set up.
+fn selected_entries<'a>(
+    config: &'a [Repository],
+    rdata: &RData,
+    include: impl Fn(&Repository, bool) -> bool,
+) -> Result<Vec<(&'a Repository, &'a RepoEntry)>, Box<dyn Error>> {
+    let rdata_platform = rdata_platform_string(rdata);
+    let mut selected = vec![];
+    for repo in config.iter() {
+        for entry in repo.repos.iter() {
+            let enabled = entry.enabled.as_ref().unwrap_or(&repo.enabled);
+            let enabled_default = enabled_by_default(enabled, &rdata_platform, &repo.name);
+            if include(repo, enabled_default) && should_activate_repo(repo, entry, rdata)? {
+                selected.push((repo, entry));
+            }
+        }
+    }
+    let specific: Vec<String> = selected
+        .iter()
+        .filter(|(_, e)| !e.fallback)
+        .filter_map(|(_, e)| e.metadata.clone())
+        .collect();
+    Ok(selected
+        .into_iter()
+        .filter(|(_, e)| !e.fallback || e.metadata.as_ref().is_none_or(|m| !specific.contains(m)))
+        .collect())
 }
 
 // Whether `rdata_platform` matches any of the given platform globs. Invalid
@@ -622,8 +636,8 @@ fn get_r_data(ver: &str) -> Result<RData, Box<dyn Error>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        enabled_by_default, infer_setup_state, rdata_platform_string, should_activate_repo,
-        should_include_repo, validate_repos_in_setup, RData,
+        enabled_by_default, infer_setup_state, rdata_platform_string, selected_entries,
+        should_activate_repo, should_include_repo, validate_repos_in_setup, RData,
     };
     use crate::repos::config::{Enabled, RepoEntry, Repository};
     use crate::repos::interpret_repos_args::ReposSetupArgs;
@@ -652,6 +666,7 @@ mod tests {
             archs: None,
             rversions: None,
             enabled: None,
+            fallback: false,
         }
     }
 
@@ -954,6 +969,132 @@ mod tests {
         };
         assert!(should_include_repo(&setup, "CRAN", true));
         assert!(!should_include_repo(&setup, "P3M", true));
+    }
+
+    // --- selected_entries ---
+
+    // P3M with a binary URL for Ubuntu and a source fallback, and
+    // P3M-manylinux, a default only on manylinux, with the same metadata.
+    fn fallback_config() -> Vec<Repository> {
+        let entry = |name: &str, url: &str, platforms: Option<&str>, fallback: bool| {
+            let mut e = make_entry();
+            e.name = name.to_string();
+            e.url = url.to_string();
+            e.metadata = Some("https://ppm.r-pkg.org".to_string());
+            e.platforms = platforms.map(|p| vec![p.to_string()]);
+            e.fallback = fallback;
+            e
+        };
+        let mut p3m = make_repo("P3M");
+        p3m.repos = vec![
+            entry("P3M", "https://p3m.dev/cran/latest", None, true),
+            entry(
+                "P3M",
+                "https://p3m.dev/cran/__linux__/jammy/latest",
+                Some("*-linux-gnu-ubuntu-22.04"),
+                false,
+            ),
+        ];
+        let mut manylinux = make_repo("P3M-manylinux");
+        manylinux.enabled = Enabled::OnPlatforms {
+            platforms: vec!["*-linux-gnu-manylinux-*".to_string()],
+        };
+        manylinux.repos = vec![entry(
+            "P3M-manylinux",
+            "https://p3m.dev/cran/__linux__/manylinux_2_28/latest",
+            Some("*-linux-gnu-*"),
+            false,
+        )];
+        vec![p3m, manylinux]
+    }
+
+    fn linux_rdata(distro: &str, release: &str) -> RData {
+        let mut rd = rdata("x86_64-pc-linux-gnu", "x86_64", "4.5.1");
+        rd.distro = Some(distro.to_string());
+        rd.release = Some(release.to_string());
+        rd
+    }
+
+    fn selected_urls(rd: &RData, blacklist: &[&str]) -> Vec<String> {
+        let config = fallback_config();
+        let setup = ReposSetupArgs::Default {
+            whitelist: vec![],
+            blacklist: blacklist.iter().map(|s| s.to_string()).collect(),
+        };
+        selected_entries(&config, rd, |repo, default| {
+            should_include_repo(&setup, &repo.name, default)
+        })
+        .unwrap()
+        .into_iter()
+        .map(|(_, e)| e.url.clone())
+        .collect()
+    }
+
+    #[test]
+    fn fallback_dropped_if_a_specific_url_applies() {
+        assert_eq!(
+            selected_urls(&linux_rdata("ubuntu", "22.04"), &[]),
+            vec!["https://p3m.dev/cran/__linux__/jammy/latest"]
+        );
+    }
+
+    #[test]
+    fn fallback_used_if_no_specific_url_applies() {
+        assert_eq!(
+            selected_urls(&linux_rdata("fedora", "43"), &[]),
+            vec!["https://p3m.dev/cran/latest"]
+        );
+        assert_eq!(
+            selected_urls(&rdata("aarch64-apple-darwin20", "aarch64", "4.5.1"), &[]),
+            vec!["https://p3m.dev/cran/latest"]
+        );
+    }
+
+    #[test]
+    fn fallback_dropped_for_another_repo_with_the_same_metadata() {
+        let manylinux = linux_rdata("manylinux", "2.34");
+        assert_eq!(
+            selected_urls(&manylinux, &[]),
+            vec!["https://p3m.dev/cran/__linux__/manylinux_2_28/latest"]
+        );
+        // Without P3M-manylinux, P3M's fallback is used.
+        assert_eq!(
+            selected_urls(&manylinux, &["p3m-manylinux"]),
+            vec!["https://p3m.dev/cran/latest"]
+        );
+    }
+
+    // The P3M URL of the built-in catalog, by default, if any.
+    fn catalog_p3m_url(rd: &RData) -> Option<String> {
+        let config = crate::repos::config::get_repos_config().unwrap();
+        selected_entries(&config, rd, |_, default| default)
+            .unwrap()
+            .into_iter()
+            .find(|(r, _)| r.name == "P3M")
+            .map(|(_, e)| e.url.clone())
+    }
+
+    #[test]
+    fn catalog_p3m_defaults() {
+        let latest = Some("https://packagemanager.posit.co/cran/latest".to_string());
+        // P3M only has x86_64 Windows binaries.
+        assert_eq!(
+            catalog_p3m_url(&rdata("aarch64-w64-mingw32", "aarch64", "4.5.1")),
+            None
+        );
+        assert_eq!(
+            catalog_p3m_url(&rdata("x86_64-w64-mingw32", "x86_64", "4.5.1")),
+            latest
+        );
+        assert_eq!(
+            catalog_p3m_url(&rdata("aarch64-apple-darwin20", "aarch64", "4.5.1")),
+            latest
+        );
+        assert_eq!(catalog_p3m_url(&linux_rdata("fedora", "43")), latest);
+        assert_eq!(
+            catalog_p3m_url(&linux_rdata("ubuntu", "24.04")),
+            Some("https://packagemanager.posit.co/cran/__linux__/noble/latest".to_string())
+        );
     }
 
     // --- infer_setup_state ---

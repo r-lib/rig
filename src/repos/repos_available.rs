@@ -177,6 +177,12 @@ fn entry_fields(repo: &Repository, entry: &RepoEntry) -> Vec<(&'static str, Stri
     if let Some(enabled) = &entry.enabled {
         fields.push(("Default", entry_default_detail(enabled)));
     }
+    if entry.fallback {
+        fields.push((
+            "Fallback",
+            "only if no other URL of the same packages applies".to_string(),
+        ));
+    }
     for (label, values) in [
         ("Platforms", &entry.platforms),
         ("Archs", &entry.archs),
@@ -340,6 +346,7 @@ mod tests {
             archs: None,
             rversions: None,
             enabled: None,
+            fallback: false,
         }
     }
 
@@ -450,8 +457,8 @@ mod tests {
     fn catalog_default_states() {
         // The catalog's own verdicts, so that the `Default` column cannot start
         // claiming that a conditional repository is a default everywhere. Only
-        // CRAN is: every P3M URL is limited to a platform and architecture, and
-        // CRAN-archive's is limited to Windows and macOS and R older than 4.0.0.
+        // CRAN is: P3M has no URL for aarch64 Windows, and CRAN-archive's is
+        // limited to Windows and macOS and R older than 4.0.0.
         let config = get_repos_config().unwrap();
         let states: Vec<(&str, &str)> = config
             .iter()

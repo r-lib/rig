@@ -21,14 +21,11 @@
                 "name": "P3M",
                 "url": "https://packagemanager.posit.co/cran/latest",
                 "metadata": "https://ppm.r-pkg.org",
-                "enabled": false,
+                "fallback": true,
                 "platforms": [
                     "macos",
-                    "*-apple-*"
-                ],
-                "archs": [
-                    "x86_64",
-                    "aarch64"
+                    "*-apple-*",
+                    "*-linux-*"
                 ]
             },
             {

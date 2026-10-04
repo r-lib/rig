@@ -421,7 +421,7 @@ pub fn rig_app() -> Command {
             Arg::new("without-p3m")
                 .aliases(["without-rspm"])
                 .help(
-                    "Do not set up P3M. This is the default on macOS.\n\
+                    "Do not set up P3M.\n\
                     Deprecated in favor of --without-repos=p3m. \n\
                     [alias: --without-rspm]",
                 )

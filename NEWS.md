@@ -28,6 +28,12 @@
   Bioconductor repositories are enabled for the R version, e.g. with
   `rig repos enable bioconductor`, or for a `bioc::<package>` reference.
 
+* rig now sets up P3M by default on macOS, and on the Linux
+  distributions P3M has no binary packages for, where P3M is a CRAN
+  mirror of source packages. P3M stays off on aarch64 Windows, because it
+  only has x86_64 Windows binaries. Use
+  `--without-repos=p3m` or `rig repos disable p3m` to turn it off.
+
 ## Bioconductor
 
 * `rig proj` and `rig pkg` now install Bioconductor packages, besides CRAN
