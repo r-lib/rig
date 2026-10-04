@@ -130,6 +130,7 @@ fn ensure_feed_fresh(feed: &MetadataFeed) -> Result<(), Box<dyn Error>> {
         None,
         "ALLPACKAGES",
         Feed::Cranlike,
+        &feed_display_name(feed),
     )?;
     ensure_archived_fresh(feed)?;
     Ok(())
@@ -145,8 +146,18 @@ fn ensure_archived_fresh(feed: &MetadataFeed) -> Result<(), Box<dyn Error>> {
         None,
         "ARCHIVEDPACKAGES",
         Feed::Archived,
+        &feed_display_name(feed),
     )?;
     Ok(())
+}
+
+/// The name of `feed` in status messages.
+fn feed_display_name(feed: &MetadataFeed) -> String {
+    match &feed.repo {
+        RepoId::Cran => "P3M".to_string(),
+        RepoId::Bioc(v) => format!("Bioconductor {}", v),
+        RepoId::Cranlike { name, .. } => name.clone(),
+    }
 }
 
 lazy_static::lazy_static! {
@@ -155,6 +166,20 @@ lazy_static::lazy_static! {
     /// download (and warn about) the same missing feed.
     static ref FAILED_FEEDS: std::sync::Mutex<std::collections::HashSet<String>> =
         std::sync::Mutex::new(std::collections::HashSet::new());
+
+    /// The repositories whose metadata update was already reported in this
+    /// process, see [`announce_update`].
+    static ref ANNOUNCED_REPOS: std::sync::Mutex<std::collections::HashSet<String>> =
+        std::sync::Mutex::new(std::collections::HashSet::new());
+}
+
+/// Report that the metadata of repository `name` is being updated, once per
+/// process. A repository has several metadata files (e.g. a source and a
+/// binary index), and they should not each print a line.
+fn announce_update(name: &str) {
+    if ANNOUNCED_REPOS.lock().unwrap().insert(name.to_string()) {
+        OUTPUT.status(&format!("Updating metadata of repository {}", name));
+    }
 }
 
 /// Downloads/refreshes the caches of `feeds` if stale, and returns the feeds
@@ -262,7 +287,7 @@ pub(crate) fn ensure_cranlike_index(
         return Ok(());
     }
 
-    OUTPUT.status(&format!("Updating metadata of repository {}", repo.name));
+    announce_update(&repo.name);
     let etag = get_repo_etag(&db, &key, pkg_type).ok();
     for file in ["PACKAGES.gz", "PACKAGES"] {
         let url = format!("{}/{}", key, file);
@@ -1155,6 +1180,7 @@ fn ensure_packages_cached(
     r_version: Option<&str>,
     path: &str,
     feed: Feed,
+    display_name: &str,
 ) -> Result<CacheState, Box<dyn Error>> {
     // Use a temporary file for downloads (will be deleted after parsing)
     let repo_local = repo_local_file(cache_key)?;
@@ -1173,7 +1199,6 @@ fn ensure_packages_cached(
         }
         Err(_) => {
             // No database entry, need to download
-            OUTPUT.status("Updating repository metadata");
             info!("No database cache found, will download");
             true
         }
@@ -1195,6 +1220,7 @@ fn ensure_packages_cached(
             return Ok(CacheState::Cached);
         }
         info!("Cached metadata missing from database, forcing a fresh download");
+        announce_update(display_name);
         return force_full_download(
             candidate_urls,
             &repo_local,
@@ -1208,6 +1234,7 @@ fn ensure_packages_cached(
         );
     }
 
+    announce_update(display_name);
     if let Some((parsed_len, tail_hash)) = get_repo_progress(&repo_db, repo_url_key, pkg_type) {
         let plain_url = candidate_urls[0].trim_end_matches(".zst");
         match try_trailing_refresh(plain_url, parsed_len, &tail_hash) {
