@@ -68,26 +68,38 @@ pub(crate) fn configured_repos(
 
     // Only looked up when a Bioconductor URL needs it: an installation with a
     // missing `base/DESCRIPTION` should still list its repositories.
-    let mut numver: Option<String> = None;
-
-    if resolve_vars {
-        let has_bioc = repos
-            .iter()
-            .any(|x| x.url.contains("%v") || x.url.contains("%bm"));
-        if has_bioc {
-            let ver = get_r_version_data_version(&rver)?;
-            let biocver = r_version_to_bioc_version(&ver)?;
-            let biocmirror = super::bioc_mirror();
-            for repo in repos.iter_mut() {
-                repo.url = repo.url.replace("%v", &biocver).replace("%bm", &biocmirror);
-            }
-            numver = Some(ver);
-        }
-    }
+    let numver = if resolve_vars {
+        resolve_bioc_vars(&rver, &mut repos)?
+    } else {
+        None
+    };
 
     Ok(ConfiguredRepos {
         rver,
         numver,
         repos,
     })
+}
+
+/// Substitute the Bioconductor `%v` and `%bm` variables in the URLs of
+/// `repos`, entries of the `repositories` file of installation `rver`.
+/// Returns the numeric R version of the installation, if it had to be looked
+/// up, i.e. if there were any variables.
+pub(crate) fn resolve_bioc_vars(
+    rver: &str,
+    repos: &mut [RepoFileEntry],
+) -> Result<Option<String>, Box<dyn Error>> {
+    let has_bioc = repos
+        .iter()
+        .any(|x| x.url.contains("%v") || x.url.contains("%bm"));
+    if !has_bioc {
+        return Ok(None);
+    }
+    let ver = get_r_version_data_version(rver)?;
+    let biocver = r_version_to_bioc_version(&ver)?;
+    let biocmirror = super::bioc_mirror();
+    for repo in repos.iter_mut() {
+        repo.url = repo.url.replace("%v", &biocver).replace("%bm", &biocmirror);
+    }
+    Ok(Some(ver))
 }

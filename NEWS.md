@@ -24,6 +24,12 @@
   `rig pkg available` and `rig pkg info` have a new `--r-version` option.
   `rig pkg search` still searches CRAN only.
 
+* `rig pkg install`, `rig pkg deps`, `rig pkg tree`, `rig pkg available`
+  and `rig pkg info` have new `--with-repos` and `--without-repos`
+  options, with aliases `--index` and `--no-index`, to use other
+  repositories for one command, without changing the setup of the R
+  version. `--with-repos` also takes repository URLs, or `name=URL`.
+
 * `rig pkg` commands now only use Bioconductor packages if the
   Bioconductor repositories are enabled for the R version, e.g. with
   `rig repos enable bioconductor`.

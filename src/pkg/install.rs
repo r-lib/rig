@@ -58,6 +58,7 @@ use crate::proj::{
     BASE_PKGS,
 };
 use crate::repos::feed::BiocSetting;
+use crate::repos::interpret_pkg_repos_args;
 use crate::repos::DbSourcePackageLoader;
 use crate::rproj::{DepTable, RprojLockPackage, RprojLockTarget};
 use crate::solver::{is_base_package, PackageVersionLoader, SolveRoot};
@@ -107,8 +108,10 @@ pub fn sc_pkg_install(
         None => library_rver(args)?,
     };
     let bioc = BiocSetting::default();
-    // The repositories configured for the R version.
-    let repos = pkg_repos(&rver, &bioc, exclude_newer.as_deref());
+    // The repositories configured for the R version, changed by
+    // `--with-repos` and `--without-repos`.
+    let over = interpret_pkg_repos_args(args)?;
+    let repos = pkg_repos(&rver, &bioc, exclude_newer.as_deref(), over.as_ref())?;
 
     if dev {
         let loader =

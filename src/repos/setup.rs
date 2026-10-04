@@ -215,33 +215,13 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
         let rdata = get_r_data(&ver)?;
         debug!("Detected architecture {:?}", rdata);
 
-        let stored = match get_setup_state(&ver)? {
-            Some(state) => state,
-            None => {
-                let current = read_repositories_file(&repositories)?;
-                let original = read_repositories_file(&orig)?;
-                let state = infer_setup_state(&current, &original, &config, &rdata)?;
-                debug!("Inferred repository setup for {}: {:?}", ver, state);
-                state
-            }
-        };
+        let stored = stored_setup_state(&ver, &config, &rdata, &repositories, &orig)?;
         let state = stored.merge(&setup);
         save_setup_state(&ver, Some(state.clone()))?;
         let setup = state.to_args();
 
         debug!("Updating repositories file at {}", repositories);
-        let mut repos = read_repositories_file(&orig)?;
-        set_r_own_repos(&mut repos, &rig_names, &setup);
-
-        add_repositories_comment(&mut repos, "start added by rig");
-        let selected = selected_entries(&config, &rdata, |repo, enabled_default| {
-            should_include_repo(&setup, &repo.name, enabled_default)
-        })?;
-        for (_, entry) in selected {
-            add_repository(&mut repos, entry);
-        }
-        add_repositories_comment(&mut repos, "end added by rig");
-
+        let repos = build_repositories(&orig, &config, &rig_names, &rdata, &setup, false)?;
         write_repositories_file(repos, &repositories)?;
 
         let profile = profile_file(&ver)?;
@@ -282,6 +262,97 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
     }
 
     Ok(())
+}
+
+// The stored repository choices of installation `ver`, or if there are none,
+// the ones worked out from its `repositories` file and the original one.
+fn stored_setup_state(
+    ver: &str,
+    config: &[Repository],
+    rdata: &RData,
+    repositories: &str,
+    orig: &str,
+) -> Result<SetupState, Box<dyn Error>> {
+    Ok(match get_setup_state(ver)? {
+        Some(state) => state,
+        None => {
+            let current = read_repositories_file(repositories)?;
+            let original = read_repositories_file(orig)?;
+            let state = infer_setup_state(&current, &original, config, rdata)?;
+            debug!("Inferred repository setup for {}: {:?}", ver, state);
+            state
+        }
+    })
+}
+
+// The contents of the `repositories` file for `setup`: the original file
+// `orig`, with R's own repositories turned on or off, and the selected rig
+// repositories added. With `strict`, the entries of the original file that
+// are rig repositories, e.g. R's `@CRAN@`, are off unless they are selected.
+// Otherwise they keep R's setting.
+fn build_repositories(
+    orig: &str,
+    config: &[Repository],
+    rig_names: &[String],
+    rdata: &RData,
+    setup: &ReposSetupArgs,
+    strict: bool,
+) -> Result<RepositoriesContents, Box<dyn Error>> {
+    let mut repos = read_repositories_file(orig)?;
+    set_r_own_repos(&mut repos, rig_names, setup);
+    if strict {
+        for entry in repos.data.iter_mut() {
+            if !is_r_own_repo(entry, rig_names) {
+                entry.default = false;
+            }
+        }
+    }
+
+    add_repositories_comment(&mut repos, "start added by rig");
+    let selected = selected_entries(config, rdata, |repo, enabled_default| {
+        should_include_repo(setup, &repo.name, enabled_default)
+    })?;
+    for (_, entry) in selected {
+        add_repository(&mut repos, entry);
+    }
+    add_repositories_comment(&mut repos, "end added by rig");
+    Ok(repos)
+}
+
+/// The repositories that installation `ver` would use if `setup` was applied
+/// on top of its repository choices, like `rig repos enable` and
+/// `rig repos disable` do, but without storing anything or changing its
+/// `repositories` file. Only the entries that are on, in the order of the
+/// file. URLs are not resolved, see [`super::resolve_bioc_vars`].
+///
+/// `None` if the installation has no `repositories` file.
+pub(crate) fn repos_with_setup(
+    ver: &str,
+    setup: &ReposSetupArgs,
+) -> Result<Option<Vec<RepoFileEntry>>, Box<dyn Error>> {
+    let ver = check_installed(&ver.to_string())?;
+    let config = get_repos_config()?;
+    validate_repos_in_setup(&config, &r_own_repo_names(&config, &ver)?, setup)?;
+
+    let repositories = repositories_file(&ver)?;
+    if !PathBuf::from(&repositories).exists() {
+        return Ok(None);
+    }
+    let orig: String = repositories.clone() + ".orig";
+    let orig = if PathBuf::from(&orig).exists() {
+        orig
+    } else {
+        repositories.clone()
+    };
+
+    let rdata = get_r_data(&ver)?;
+    let stored = stored_setup_state(&ver, &config, &rdata, &repositories, &orig)?;
+    let setup = stored.merge(setup).to_args();
+    let rig_names = rig_entry_names(&config);
+    // Strict: `--without-repos=cran` should not use R's own `@CRAN@` entry.
+    let mut repos = build_repositories(&orig, &config, &rig_names, &rdata, &setup, true)?.data;
+    repos.retain(|x| x.default);
+    Ok(Some(repos))
 }
 
 // Compose the full platform string that platform globs are matched against,

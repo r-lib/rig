@@ -22,10 +22,13 @@ use crate::windows::sc_get_default;
 use crate::dcf::{Package, RDepType, RPackageVersion};
 use crate::output::OUTPUT;
 use crate::proj::BASE_PKGS;
-use crate::repos::configured_repos;
 use crate::repos::cranlike_metadata::{self, ArchivedPackage};
 use crate::repos::feed::{BiocSetting, CranlikeRepo, MetadataFeed, PkgRepo, RepoId};
+use crate::repos::interpret_repos_args::ReposSetupArgs;
 use crate::repos::repo_metadata_urls;
+use crate::repos::{
+    configured_repos, interpret_pkg_repos_args, repos_with_setup, resolve_bioc_vars, PkgReposArgs,
+};
 use crate::textfmt::{reflow, wrap, write_field};
 
 pub(crate) mod deps;
@@ -56,39 +59,118 @@ pub fn sc_pkg(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Er
 }
 
 /// The repositories of a `rig pkg` command: the ones configured for its R
-/// version, see [`pkg_repos`]. The R version is `--r-version`, if the command
-/// has it, or else the default R version. Without any R version it is CRAN,
-/// and Bioconductor unless it is turned off, see [`default_r_feeds`].
+/// version, see [`pkg_repos`], changed by `--with-repos` and
+/// `--without-repos`, if the command has them. The R version is
+/// `--r-version`, if the command has it, or else the default R version.
+/// Without any R version it is CRAN, and Bioconductor unless it is turned
+/// off, see [`default_r_feeds`].
 pub(crate) fn pkg_repos_for(args: &ArgMatches) -> Result<Vec<PkgRepo>, Box<dyn Error>> {
     let bioc = BiocSetting::default();
+    let over = interpret_pkg_repos_args(args)?;
     let rver = match args.try_get_one::<String>("r-version").ok().flatten() {
         Some(_) => Some(crate::library::library_rver(args)?),
         None => sc_get_default().ok().flatten(),
     };
-    Ok(match rver {
-        Some(rver) => pkg_repos(&rver, &bioc, None),
-        None => PkgRepo::from_feeds(default_r_feeds(&bioc)),
-    })
+    match rver {
+        Some(rver) => pkg_repos(&rver, &bioc, None, over.as_ref()),
+        None => no_r_repos(&bioc, over.as_ref()),
+    }
+}
+
+// The repositories without an installed R version: CRAN and Bioconductor,
+// unless `--without-repos` turns them off, plus the ones in `--with-repos`
+// given by URL. Repository names need an R version.
+fn no_r_repos(
+    bioc: &BiocSetting,
+    over: Option<&PkgReposArgs>,
+) -> Result<Vec<PkgRepo>, Box<dyn Error>> {
+    let Some(over) = over else {
+        return Ok(PkgRepo::from_feeds(default_r_feeds(bioc)));
+    };
+    let mut names: Vec<String> = over.enabled_names().to_vec();
+    if let ReposSetupArgs::Default { blacklist, .. } = &over.setup {
+        names.extend(blacklist.iter().cloned());
+    }
+    if !names.is_empty() {
+        bail!(
+            "Selecting repositories by name needs an installed R version: {}",
+            names.join(", ")
+        );
+    }
+    let mut repos: Vec<PkgRepo> = over
+        .urls
+        .iter()
+        .map(|(name, url)| PkgRepo::Cranlike(CranlikeRepo::new(name, url)))
+        .collect();
+    if !over.is_empty_base() {
+        repos.extend(PkgRepo::from_feeds(default_r_feeds(bioc)));
+    }
+    Ok(repos)
 }
 
 /// The repositories configured for R installation `rver`, in the order of
 /// its `repositories` file, see [`repos_from_entries`].
 ///
+/// `over` (from `--with-repos` and `--without-repos`) changes them for this
+/// command, the same way `rig repos enable` and `rig repos disable` would,
+/// but without changing the setup of the installation. Its repositories given
+/// by URL come first.
+///
 /// If the `repositories` file cannot be read, e.g. for a very old R version,
 /// it is CRAN, and Bioconductor unless it is turned off.
-pub(crate) fn pkg_repos(rver: &str, bioc: &BiocSetting, cutoff: Option<&str>) -> Vec<PkgRepo> {
-    let configured = match configured_repos(Some(rver), false, true) {
-        Ok(c) => c.repos,
-        Err(e) => {
+pub(crate) fn pkg_repos(
+    rver: &str,
+    bioc: &BiocSetting,
+    cutoff: Option<&str>,
+    over: Option<&PkgReposArgs>,
+) -> Result<Vec<PkgRepo>, Box<dyn Error>> {
+    let configured = match over {
+        Some(over) => match repos_with_setup(rver, &over.setup)? {
+            Some(mut entries) => {
+                resolve_bioc_vars(rver, &mut entries)?;
+                Some(entries)
+            }
+            None => None,
+        },
+        None => match configured_repos(Some(rver), false, true) {
+            Ok(c) => Some(c.repos),
+            Err(e) => {
+                log::debug!("Cannot read the repositories of R {}: {}", rver, e);
+                None
+            }
+        },
+    };
+    // Repositories given by URL are plain CRAN-like ones, even if their name
+    // is the name of a repository with extended metadata.
+    let url_repos = over.map_or(vec![], |o| {
+        repos_from_entries(&o.urls, &Default::default(), true, None)
+    });
+    let entries: Vec<(String, String)> = match configured {
+        Some(configured) => configured.into_iter().map(|r| (r.name, r.url)).collect(),
+        None => {
             log::debug!(
-                "Cannot read the repositories of R {}, using CRAN and Bioconductor: {}",
-                rver,
-                e
+                "No repositories file for R {}, using CRAN and Bioconductor",
+                rver
             );
-            return PkgRepo::from_feeds(bioc.feeds(rver, cutoff));
+            if over.is_some_and(|o| !o.enabled_names().is_empty()) {
+                OUTPUT.warn(&format!(
+                    "R {} has no repositories file, ignoring repository names in --with-repos.",
+                    rver
+                ));
+            }
+            let mut repos = url_repos;
+            if !over.is_some_and(|o| o.is_empty_base()) {
+                repos.extend(PkgRepo::from_feeds(bioc.feeds(rver, cutoff)));
+            }
+            if repos.is_empty() {
+                OUTPUT.warn(&format!(
+                    "No package repositories are configured for R {}.",
+                    rver
+                ));
+            }
+            return Ok(repos);
         }
     };
-    let entries: Vec<(String, String)> = configured.into_iter().map(|r| (r.name, r.url)).collect();
 
     let metadata = repo_metadata_urls().unwrap_or_else(|e| {
         log::debug!("Cannot read the repository configuration: {}", e);
@@ -100,14 +182,19 @@ pub(crate) fn pkg_repos(rver: &str, bioc: &BiocSetting, cutoff: Option<&str>) ->
     } else {
         None
     };
-    let repos = repos_from_entries(&entries, &metadata, bioc.enabled, bioc_version.as_deref());
+    let mut repos = url_repos;
+    for repo in repos_from_entries(&entries, &metadata, bioc.enabled, bioc_version.as_deref()) {
+        if !repos.iter().any(|r| same_repo(r, &repo)) {
+            repos.push(repo);
+        }
+    }
     if repos.is_empty() {
         OUTPUT.warn(&format!(
             "No package repositories are configured for R {}.",
             rver
         ));
     }
-    repos
+    Ok(repos)
 }
 
 /// Whether a `repositories` entry is a Bioconductor repository.
@@ -149,16 +236,20 @@ fn repos_from_entries(
                 PkgRepo::Cranlike(CranlikeRepo::new(name, url))
             }
         };
-        let dup = out.iter().any(|r| match (r, &repo) {
-            (PkgRepo::Extended(a), PkgRepo::Extended(b)) => a == b,
-            (PkgRepo::Cranlike(a), PkgRepo::Cranlike(b)) => a.url == b.url,
-            _ => false,
-        });
-        if !dup {
+        if !out.iter().any(|r| same_repo(r, &repo)) {
             out.push(repo);
         }
     }
     out
+}
+
+// Whether two repositories are the same feed, or have the same URL.
+fn same_repo(a: &PkgRepo, b: &PkgRepo) -> bool {
+    match (a, b) {
+        (PkgRepo::Extended(a), PkgRepo::Extended(b)) => a == b,
+        (PkgRepo::Cranlike(a), PkgRepo::Cranlike(b)) => a.url == b.url,
+        _ => false,
+    }
 }
 
 /// The metadata feeds for the default R version with `bioc`: CRAN, and the
