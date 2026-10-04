@@ -1,5 +1,5 @@
 ## rig repositories start
-## rig repositories version 2
+## rig repositories version 3
 
 invisible(local({
     # this is to undo the default set by earlier versions of rig
@@ -37,10 +37,6 @@ invisible(local({
                 reposdf <- tools:::.get_repositories()
                 reposdf <- reposdf[reposdf$default, , drop = FALSE]
                 repos <- structure(reposdf$URL, names = row.names(reposdf))
-                # this should not happen, nevertheless...
-                if (is.na(match("CRAN", names(repos)))) {
-                    repos <- c(CRAN = "@CRAN@", repos)
-                }
                 options(repos = repos)
             })
         } else if ((rstudio || positron) && rver >= "4.3.0") {

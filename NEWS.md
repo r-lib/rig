@@ -40,6 +40,9 @@
   only has x86_64 Windows binaries. Use
   `--without-repos=p3m` or `rig repos disable p3m` to turn it off.
 
+* `--without-repos=cran` (and `rig repos disable cran`) now turns off CRAN
+  completely.
+
 ## Bioconductor
 
 * `rig proj` and `rig pkg` now install Bioconductor packages, besides CRAN

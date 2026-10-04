@@ -221,7 +221,7 @@ pub fn repos_setup(vers: Option<Vec<String>>, setup: ReposSetupArgs) -> Result<(
         let setup = state.to_args();
 
         debug!("Updating repositories file at {}", repositories);
-        let repos = build_repositories(&orig, &config, &rig_names, &rdata, &setup, false)?;
+        let repos = build_repositories(&orig, &config, &rig_names, &rdata, &setup)?;
         write_repositories_file(repos, &repositories)?;
 
         let profile = profile_file(&ver)?;
@@ -287,24 +287,21 @@ fn stored_setup_state(
 
 // The contents of the `repositories` file for `setup`: the original file
 // `orig`, with R's own repositories turned on or off, and the selected rig
-// repositories added. With `strict`, the entries of the original file that
-// are rig repositories, e.g. R's `@CRAN@`, are off unless they are selected.
-// Otherwise they keep R's setting.
+// repositories added. The entries of the original file that are rig
+// repositories, e.g. R's `@CRAN@`, are off, so `--without-repos=cran` turns
+// off CRAN. If CRAN is selected, rig adds its own entry for it.
 fn build_repositories(
     orig: &str,
     config: &[Repository],
     rig_names: &[String],
     rdata: &RData,
     setup: &ReposSetupArgs,
-    strict: bool,
 ) -> Result<RepositoriesContents, Box<dyn Error>> {
     let mut repos = read_repositories_file(orig)?;
     set_r_own_repos(&mut repos, rig_names, setup);
-    if strict {
-        for entry in repos.data.iter_mut() {
-            if !is_r_own_repo(entry, rig_names) {
-                entry.default = false;
-            }
+    for entry in repos.data.iter_mut() {
+        if !is_r_own_repo(entry, rig_names) {
+            entry.default = false;
         }
     }
 
@@ -349,8 +346,7 @@ pub(crate) fn repos_with_setup(
     let stored = stored_setup_state(&ver, &config, &rdata, &repositories, &orig)?;
     let setup = stored.merge(setup).to_args();
     let rig_names = rig_entry_names(&config);
-    // Strict: `--without-repos=cran` should not use R's own `@CRAN@` entry.
-    let mut repos = build_repositories(&orig, &config, &rig_names, &rdata, &setup, true)?.data;
+    let mut repos = build_repositories(&orig, &config, &rig_names, &rdata, &setup)?.data;
     repos.retain(|x| x.default);
     Ok(Some(repos))
 }
@@ -1353,7 +1349,8 @@ mod tests {
 
     #[test]
     fn infer_r_default_cran_is_not_rigs() {
-        // `--without-repos=cran`: R's own `@CRAN@` entry stays in the file.
+        // `--without-repos=cran` by an older rig: R's own `@CRAN@` entry
+        // stayed on in the file.
         let current = rig_file(vec![
             file_entry("CRAN", "@CRAN@", true),
             file_entry("P3M", "https://p3m.dev/cran/latest", true),
