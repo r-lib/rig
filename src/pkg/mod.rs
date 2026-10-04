@@ -70,44 +70,16 @@ pub(crate) fn pkg_bioc_setting(args: &ArgMatches) -> BiocSetting {
 /// version, see [`pkg_repos`]. The R version is `--r-version`, if the command
 /// has it, or else the default R version. Without any R version it is CRAN,
 /// and Bioconductor unless it is turned off, see [`default_r_feeds`].
-///
-/// `need_bioc`: the command refers to a Bioconductor package explicitly
-/// (`bioc::<pkg>`), so Bioconductor is searched even if it is not configured.
-pub(crate) fn pkg_repos_for(
-    args: &ArgMatches,
-    need_bioc: bool,
-) -> Result<Vec<PkgRepo>, Box<dyn Error>> {
+pub(crate) fn pkg_repos_for(args: &ArgMatches) -> Result<Vec<PkgRepo>, Box<dyn Error>> {
     let bioc = pkg_bioc_setting(args);
     let rver = match args.try_get_one::<String>("r-version").ok().flatten() {
         Some(_) => Some(crate::library::library_rver(args)?),
         None => sc_get_default().ok().flatten(),
     };
     Ok(match rver {
-        Some(rver) => {
-            let mut repos = pkg_repos(&rver, &bioc, None);
-            if need_bioc {
-                add_bioc_feed(&mut repos, &rver, &bioc, None);
-            }
-            repos
-        }
+        Some(rver) => pkg_repos(&rver, &bioc, None),
         None => PkgRepo::from_feeds(default_r_feeds(&bioc)),
     })
-}
-
-/// Add the Bioconductor feed of R version `rver` to `repos`, at the end, if
-/// they do not have one yet. For an explicit `bioc::<pkg>` reference.
-pub(crate) fn add_bioc_feed(
-    repos: &mut Vec<PkgRepo>,
-    rver: &str,
-    bioc: &BiocSetting,
-    cutoff: Option<&str>,
-) {
-    if repos.iter().any(|r| r.repo_id().is_bioc()) {
-        return;
-    }
-    if let Some(v) = bioc.bioc_version(rver, cutoff) {
-        repos.push(PkgRepo::Extended(MetadataFeed::bioc(&v)));
-    }
 }
 
 /// The repositories configured for R installation `rver`, in the order of
@@ -225,7 +197,7 @@ fn sc_pkg_available(
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
     let include_archived = args.get_flag("include-archived");
-    let repos = pkg_repos_for(args, false)?;
+    let repos = pkg_repos_for(args)?;
     let mut packages = cranlike_metadata::all_available_packages(&repos, include_archived)?;
     // Order the listing case-insensitively by package name, breaking ties by
     // version, so the output is stable regardless of how the metadata was
@@ -394,7 +366,7 @@ fn sc_pkg_info(
 /// command, as the solver sees them. If several repositories have the same
 /// version, the first one wins.
 fn repo_versions(args: &ArgMatches, package: &str) -> Result<Vec<Package>, Box<dyn Error>> {
-    let repos = pkg_repos_for(args, false)?;
+    let repos = pkg_repos_for(args)?;
     let loader = crate::repos::DbSourcePackageLoader::new_for_repos(&repos)?;
     crate::solver::PackageVersionLoader::load_versions(&loader, package)
 }

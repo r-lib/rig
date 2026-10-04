@@ -26,7 +26,7 @@
 
 * `rig pkg` commands now only use Bioconductor packages if the
   Bioconductor repositories are enabled for the R version, e.g. with
-  `rig repos enable bioconductor`, or for a `bioc::<package>` reference.
+  `rig repos enable bioconductor`.
 
 * rig now sets up P3M by default on macOS, and on the Linux
   distributions P3M has no binary packages for, where P3M is a CRAN
@@ -38,7 +38,9 @@
 
 * `rig proj` and `rig pkg` now install Bioconductor packages, besides CRAN
   packages, from the Bioconductor release that belongs to the R version.
-  `bioc::<package>` references work, too. A `bioc` entry in the
+  CRAN and Bioconductor share one package namespace, so a `bioc::<package>`
+  entry in `Remotes:` or `Config/Needs/*` is the same as `<package>`. A
+  `bioc` entry in the
   `[[repository]]` array of `rproj.toml` pins the Bioconductor release, or
   turns Bioconductor off. `rig pkg` commands have a new `--no-bioc` option
   to use CRAN only. `rproj.lock` is now version 5, and records the

@@ -476,9 +476,6 @@ pub struct DbSourcePackageLoader {
     /// `--exclude-newer` cutoff day, `YYYY-MM-DD`: versions whose snapshot
     /// date is after it are hidden from the solver.
     exclude_newer: Option<String>,
-    /// Packages whose CRAN versions are hidden, because they must come from
-    /// Bioconductor.
-    bioc_only: std::collections::BTreeSet<String>,
 }
 
 impl DbSourcePackageLoader {
@@ -506,7 +503,6 @@ impl DbSourcePackageLoader {
             repo_ids,
             repos: repos.iter().map(|r| r.repo_id()).collect(),
             exclude_newer: None,
-            bioc_only: Default::default(),
         })
     }
 
@@ -525,16 +521,7 @@ impl DbSourcePackageLoader {
             repo_ids,
             repos: keys.iter().map(|(_, repo)| repo.clone()).collect(),
             exclude_newer: None,
-            bioc_only: Default::default(),
         }
-    }
-
-    /// Hide the CRAN versions of `packages`, see [`BiocSetting::only`].
-    ///
-    /// [`BiocSetting::only`]: crate::repos::feed::BiocSetting::only
-    pub fn with_bioc_only(mut self, packages: std::collections::BTreeSet<String>) -> Self {
-        self.bioc_only = packages;
-        self
     }
 
     /// Hide the versions published after `cutoff` (`YYYY-MM-DD`), see
@@ -668,9 +655,6 @@ impl PackageVersionLoader for DbSourcePackageLoader {
             let Some((rank, repo)) = self.repo_of(repo_id) else {
                 continue; // row from a repo we do not source from
             };
-            if !repo.is_bioc() && self.bioc_only.contains(package) {
-                continue; // must come from Bioconductor
-            }
             if !published_by(download_url.as_deref(), self.exclude_newer.as_deref()) {
                 continue; // published after the --exclude-newer cutoff
             }

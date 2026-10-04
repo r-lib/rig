@@ -435,12 +435,17 @@ fn sc_proj_import(
     // `Remotes:` names the git/GitHub/GitLab/url source for packages that are
     // also listed in `Depends`/`Imports`/`Suggests` above; only `git`/
     // `github`/`gitlab`/`url` remotes are understood, other remote types
-    // (`bioc::`, `bitbucket::`, `local::`, `svn::`, ...) are warned about and
-    // skipped rather than failing the whole import.
+    // (`bitbucket::`, `local::`, `svn::`, ...) are warned about and skipped
+    // rather than failing the whole import. A `bioc::<package>` remote is the
+    // same as `<package>`, which is a dependency already, so it is ignored.
     if let Some(remotes) = paragraph.get("Remotes") {
         for entry in reflow(remotes).split(',') {
             let entry = entry.trim();
             if entry.is_empty() {
+                continue;
+            }
+            if entry.starts_with("bioc::") {
+                debug!("Ignoring Remotes entry `{}`", entry);
                 continue;
             }
             match crate::pkgsource::parse_pkg_source(entry) {
@@ -489,37 +494,6 @@ fn sc_proj_import(
                         info!("{}", msg);
                     }
                 },
-                // `bioc::<package>`: the package comes from Bioconductor.
-                Ok(crate::pkgsource::PkgSource::Bioc) => {
-                    let body = crate::pkgsource::strip_bioc_prefix(entry);
-                    match crate::rproj::parse_add_spec(body) {
-                        // Only a dependency the package has comes from
-                        // Bioconductor, the entry does not add one.
-                        Ok((name, _)) if manifest.has_dependency(&name) => {
-                            let dev = manifest
-                                .dependency_groups
-                                .get("dev")
-                                .is_some_and(|g| g.dependencies.contains_key(&name))
-                                && !manifest.dependencies.contains_key(&name);
-                            manifest.add_bioc_dependency(&name, None, dev);
-                        }
-                        Ok(_) => {
-                            let msg = format!(
-                                "Remotes entry `{}` is not a dependency of the package, \
-                                 skipping it",
-                                entry
-                            );
-                            OUTPUT.warn(&msg);
-                            info!("{}", msg);
-                        }
-                        Err(_) => {
-                            let msg =
-                                format!("Cannot parse Remotes entry `{}`, skipping it", entry);
-                            OUTPUT.warn(&msg);
-                            info!("{}", msg);
-                        }
-                    }
-                }
                 Ok(crate::pkgsource::PkgSource::Cran)
                 | Ok(crate::pkgsource::PkgSource::Local(_))
                 | Err(_) => {
@@ -728,8 +702,6 @@ fn write_description_to(path: &Path, manifest: &Rproj) -> Result<(), Box<dyn Err
 /// differ from the repository name) and pinned commit.
 pub(crate) enum AddSpec {
     Cran(String, String),
-    /// `bioc::<package>[@<requirement>]`, see [`Rproj::add_bioc_dependency`].
-    Bioc(String, String),
     Remote(String, Box<DepTable>),
 }
 
@@ -737,7 +709,6 @@ impl AddSpec {
     pub(crate) fn name(&self) -> &str {
         match self {
             AddSpec::Cran(name, _) => name,
-            AddSpec::Bioc(name, _) => name,
             AddSpec::Remote(name, _) => name,
         }
     }
@@ -753,10 +724,6 @@ pub(crate) fn parse_add_arg(spec: &str, root: &Path) -> Result<AddSpec, Box<dyn 
         crate::pkgsource::PkgSource::Cran => {
             let (name, version) = parse_add_spec(spec)?;
             Ok(AddSpec::Cran(name, version))
-        }
-        crate::pkgsource::PkgSource::Bioc => {
-            let (name, version) = parse_add_spec(crate::pkgsource::strip_bioc_prefix(spec))?;
-            Ok(AddSpec::Bioc(name, version))
         }
         crate::pkgsource::PkgSource::Remote(r) => {
             let table = dep_table_from_remote(&r, spec);
@@ -818,18 +785,6 @@ pub(crate) fn add_spec_to_manifest(
             ),
             None => format!("Added {} ({}) to {}", name, version, target),
         },
-        AddSpec::Bioc(name, version) => {
-            match manifest.add_bioc_dependency(name, Some(version), dev) {
-                Some(previous) if previous == *version => {
-                    format!("Kept {} ({}, Bioconductor) in {}", name, version, target)
-                }
-                Some(previous) => format!(
-                    "Updated {} in {}, {} -> {}, Bioconductor",
-                    name, target, previous, version
-                ),
-                None => format!("Added {} ({}, Bioconductor) to {}", name, version, target),
-            }
-        }
         AddSpec::Remote(name, table) => {
             manifest.add_remote_dependency(name, (**table).clone(), dev);
             let source = table
@@ -1704,8 +1659,7 @@ pub(crate) fn sc_proj_solve_deps(
         None => PkgRepo::from_feeds(bioc.feeds(r_version, exclude_newer)),
     };
     let loader = DbSourcePackageLoader::new_for_repos(&repos)?
-        .with_exclude_newer(exclude_newer.map(|c| c.to_string()))
-        .with_bioc_only(bioc.only.clone());
+        .with_exclude_newer(exclude_newer.map(|c| c.to_string()));
     // A repository that failed to load is not searched.
     let repositories = loader.repositories();
     let repos: Vec<PkgRepo> = repos
@@ -2331,9 +2285,8 @@ pub(crate) fn resolve_git_sources(
                     }
                     // A `Remotes:` entry that is a path on whoever's
                     // machine wrote it means nothing here. A `bioc::` one
-                    // is found in Bioconductor anyway.
+                    // (an `Err` here) is the same as the plain package name.
                     Ok(crate::pkgsource::PkgSource::Cran)
-                    | Ok(crate::pkgsource::PkgSource::Bioc)
                     | Ok(crate::pkgsource::PkgSource::Local(_))
                     | Err(_) => {}
                 }

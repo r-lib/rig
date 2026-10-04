@@ -27,9 +27,7 @@ use crate::dcf::{DepVersionSpec, RDepType, RPackageVersion, DEP_TYPES_SOFT};
 use crate::output::OUTPUT;
 use crate::pkg::pkg_repos_for;
 use crate::pkgsource::local::resolve_local_path;
-use crate::pkgsource::{
-    parse_pkg_source, strip_bioc_prefix, LocalSource, PkgSource, RemoteSource, UrlSource,
-};
+use crate::pkgsource::{parse_pkg_source, LocalSource, PkgSource, RemoteSource, UrlSource};
 use crate::proj::{
     dep_table_from_remote, dep_table_from_url, fetch_and_read_git_package,
     fetch_and_read_url_package, github_owner_repo, read_local_package,
@@ -58,7 +56,7 @@ pub fn sc_pkg_tree(
     let source = parse_pkg_source(&package).inspect_err(|err| {
         OUTPUT.error(&err.to_string());
     })?;
-    let repos = pkg_repos_for(args, package.starts_with("bioc::"))?;
+    let repos = pkg_repos_for(args)?;
     let tree = match source {
         PkgSource::Remote(r) => remote_root_tree(&package, &r, &repos, dev, no_base)?,
         PkgSource::Url(u) => url_root_tree(&u, &repos, dev, no_base)?,
@@ -66,14 +64,6 @@ pub fn sc_pkg_tree(
         PkgSource::Cran => {
             let loader = DbSourcePackageLoader::new_for_repos(&repos)?;
             dep_tree(&loader, &package, &ver, dev, no_base).inspect_err(|err| {
-                OUTPUT.error(&err.to_string());
-            })?
-        }
-        PkgSource::Bioc => {
-            let name = strip_bioc_prefix(&package).to_string();
-            let loader = DbSourcePackageLoader::new_for_repos(&repos)?
-                .with_bioc_only([name.clone()].into_iter().collect());
-            dep_tree(&loader, &name, &ver, dev, no_base).inspect_err(|err| {
                 OUTPUT.error(&err.to_string());
             })?
         }
@@ -454,7 +444,7 @@ fn parse_remotes_field(remotes_field: &str) -> HashMap<String, DepTable> {
             }
             // A `Remotes:` entry that is a path on whoever's machine
             // wrote it means nothing here.
-            Ok(PkgSource::Cran) | Ok(PkgSource::Bioc) | Ok(PkgSource::Local(_)) | Err(_) => {}
+            Ok(PkgSource::Cran) | Ok(PkgSource::Local(_)) | Err(_) => {}
         }
     }
     out

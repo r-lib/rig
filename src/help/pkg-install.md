@@ -33,9 +33,8 @@ A CRAN-like repository has binary packages for macOS and Windows, if it has
 rig installs Bioconductor packages if the Bioconductor repositories are
 enabled for the R version, see [`rig repos enable`](repos.qmd#rig-repos-enable), from the
 Bioconductor release of the R version, e.g. Bioconductor 3.23 for R 4.6.
-Then `rig pkg install limma` works like `rig pkg install dplyr`. The `bioc::`
-prefix, e.g. `rig pkg install bioc::limma`, uses Bioconductor even if it is
-not enabled. Use `--no-bioc` to leave out Bioconductor. `R_BIOC_VERSION`
+Then `rig pkg install limma` works like `rig pkg install dplyr`. Use
+`--no-bioc` to leave out Bioconductor. `R_BIOC_VERSION`
 selects another Bioconductor release. See "Bioconductor packages" in
 [`rig proj lock`](proj.qmd#rig-proj-lock).
 

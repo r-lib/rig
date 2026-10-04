@@ -508,11 +508,11 @@ teardown() {
     grep -q 'rev = "main"' rproj.toml
     # The version requirement from Imports is kept alongside the git source.
     grep -q 'version = ">= 1.5.0"' rproj.toml
-    # A `bioc::` remote of a dependency: it comes from Bioconductor.
-    grep -q '^limma = { version = "\*", repository = "bioc" }$' rproj.toml
-    # A `bioc::` remote of a package that is not a dependency: warned about,
-    # and not added.
-    echo "$output" | grep -q "bioc::biocpkg"
+    # A `bioc::` remote is the same as the plain package name: ignored,
+    # without a warning, whether the package is a dependency or not.
+    grep -q '^limma = "\*"$' rproj.toml
+    ! grep -q 'repository = "bioc"' rproj.toml
+    ! echo "$output" | grep -q "bioc::"
     ! grep -q 'biocpkg' rproj.toml
     # Unsupported remote type: warned about, not written as a git source, and
     # does not fail the import.

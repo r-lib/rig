@@ -37,8 +37,7 @@ so older and archived versions are available, too. Any other repository, e.g.
 CRAN itself, an r-universe, or one added with [`rig repos add`](repos.qmd#rig-repos-add), is read
 from its `PACKAGES` files, so only its current packages are available.
 Bioconductor packages are included if the Bioconductor repositories are
-enabled for the R version, or for a `bioc::` package. `--no-bioc` leaves them
-out.
+enabled for the R version. `--no-bioc` leaves them out.
 
 ## Reading the tree
 

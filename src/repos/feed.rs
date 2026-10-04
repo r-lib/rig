@@ -222,9 +222,6 @@ pub struct BiocSetting {
     pub enabled: bool,
     /// A pinned release, instead of the one that belongs to the R version.
     pub version: Option<String>,
-    /// Packages that must come from Bioconductor, e.g. from a `bioc::`
-    /// reference, even if CRAN has them, too.
-    pub only: std::collections::BTreeSet<String>,
 }
 
 impl Default for BiocSetting {
@@ -239,7 +236,6 @@ impl Default for BiocSetting {
         BiocSetting {
             enabled,
             version: None,
-            only: Default::default(),
         }
     }
 }
@@ -249,7 +245,6 @@ impl BiocSetting {
         BiocSetting {
             enabled: false,
             version: None,
-            only: Default::default(),
         }
     }
 

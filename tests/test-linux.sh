@@ -241,18 +241,15 @@ teardown() {
     [[ "$deps_status" -eq 0 ]]
     echo "$deps_output" | grep -q "metadata of repository rigtest"
 
-    # Bioconductor is only used if it is enabled, or for a bioc:: package.
+    # Bioconductor is only used if it is enabled.
     # (Not limma: an old version of it was on CRAN.)
     run rig pkg deps BiocGenerics --r-version 4.5.1
     no_bioc_status=$status
-    run rig pkg deps bioc::BiocGenerics --r-version 4.5.1
-    bioc_ref_status=$status
     rig repos enable bioconductor -r 4.5.1
     run rig pkg deps BiocGenerics --r-version 4.5.1
     bioc_status=$status
     rig repos disable bioconductor -r 4.5.1
     [[ ! "$no_bioc_status" -eq 0 ]]
-    [[ "$bioc_ref_status" -eq 0 ]]
     [[ "$bioc_status" -eq 0 ]]
 }
 

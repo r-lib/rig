@@ -48,7 +48,7 @@ use crate::install::{
 };
 use crate::library::library_rver;
 use crate::output::OUTPUT;
-use crate::pkg::{add_bioc_feed, pkg_bioc_setting, pkg_repos};
+use crate::pkg::{pkg_bioc_setting, pkg_repos};
 use crate::pkgsource::local::resolve_local_path;
 use crate::pkgsource::{parse_pkg_source, PkgSource};
 use crate::proj::{
@@ -105,19 +105,13 @@ pub fn sc_pkg_install(
         Some(rver) => rver.clone(),
         None => library_rver(args)?,
     };
-    let mut bioc = pkg_bioc_setting(args);
-    bioc.only = bioc_names(&names);
-    // The repositories configured for the R version, and Bioconductor for
-    // `bioc::<pkg>` references, even if it is not configured.
-    let mut repos = pkg_repos(&rver, &bioc, exclude_newer.as_deref());
-    if !bioc.only.is_empty() {
-        add_bioc_feed(&mut repos, &rver, &bioc, exclude_newer.as_deref());
-    }
+    let bioc = pkg_bioc_setting(args);
+    // The repositories configured for the R version.
+    let repos = pkg_repos(&rver, &bioc, exclude_newer.as_deref());
 
     if dev {
-        let loader = DbSourcePackageLoader::new_for_repos(&repos)?
-            .with_exclude_newer(exclude_newer.clone())
-            .with_bioc_only(bioc.only.clone());
+        let loader =
+            DbSourcePackageLoader::new_for_repos(&repos)?.with_exclude_newer(exclude_newer.clone());
         add_dev_deps(
             &loader,
             &cran_names,
@@ -272,17 +266,6 @@ type RequestedDeps = (
     Vec<Package>,
 );
 
-/// The names of the `bioc::` references in `names`, which must come from
-/// Bioconductor.
-fn bioc_names(names: &[String]) -> std::collections::BTreeSet<String> {
-    names
-        .iter()
-        .filter(|n| matches!(parse_pkg_source(n), Ok(PkgSource::Bioc)))
-        .filter_map(|n| crate::rproj::parse_add_spec(crate::pkgsource::strip_bioc_prefix(n)).ok())
-        .map(|(name, _)| name)
-        .collect()
-}
-
 fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
     let mut deps = PackageDependencies::new();
     let mut git_deps: Vec<(String, DepTable)> = vec![];
@@ -304,9 +287,8 @@ fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
         })?;
         let mut constraints: Vec<crate::dcf::VersionConstraint> = vec![];
         let resolved_name = match source {
-            PkgSource::Cran | PkgSource::Bioc => {
-                let spec = crate::pkgsource::strip_bioc_prefix(name);
-                let (cran_name, version) = crate::rproj::parse_add_spec(spec)?;
+            PkgSource::Cran => {
+                let (cran_name, version) = crate::rproj::parse_add_spec(name)?;
                 cran_names.push(cran_name.clone());
                 constraints = crate::rproj::parse_constraints(&version)?;
                 cran_name
