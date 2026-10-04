@@ -2832,44 +2832,127 @@ pub fn rig_app() -> Command {
                 .num_args(0)
                 .required(false),
         )
-        // .subcommand(
-        //     Command::new("add")
-        //         .about("Add an R package repository")
-        //         .display_order(0)
-        //         .arg(
-        //             Arg::new("enable")
-        //                 .help("Enable the repository after adding it")
-        //                 .long("enable")
-        //                 .num_args(0)
-        //                 .required(false),
-        //         )
-        //         .arg(
-        //             Arg::new("name")
-        //                 .help("name of the repository, e.g. 'CRAN'")
-        //                 .required(true),
-        //         )
-        //         .arg(Arg::new("url").help("URL of the repository").required(true)),
-        // )
-        // .subcommand(
-        //     Command::new("disable")
-        //         .about("Disable an R package repository")
-        //         .display_order(0)
-        //         .arg(
-        //             Arg::new("name")
-        //                 .help("name of the repository, e.g. 'CRAN'")
-        //                 .required(true),
-        //         ),
-        // )
-        // .subcommand(
-        //     Command::new("enable")
-        //         .about("Enable an R package repository")
-        //         .display_order(0)
-        //         .arg(
-        //             Arg::new("name")
-        //                 .help("name of the repository, e.g. 'CRAN'")
-        //                 .required(true),
-        //         ),
-        // )
+        .subcommand(
+            Command::new("add")
+                .about(ABOUT_REPOS_ADD)
+                .long_about(HELP_REPOS_ADD)
+                .display_order(0)
+                .arg(
+                    Arg::new("name")
+                        .help("Name of the repository, e.g. 'acme'")
+                        .required(true),
+                )
+                .arg(
+                    Arg::new("url")
+                        .help("URL of the repository, e.g. 'https://cran.acme.com'")
+                        .required(true),
+                )
+                .arg(
+                    Arg::new("title")
+                        .help("Short title of the repository")
+                        .long("title")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("description")
+                        .help("Longer description of the repository")
+                        .long("description")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("force")
+                        .help("Replace the repository if it already exists")
+                        .long("force")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("enable")
+                        .help("Also enable the repository, see `rig repos enable`")
+                        .long("enable")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("With --enable, R version to enable the repository for (default: the default R version), can be repeated")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .action(clap::ArgAction::Append)
+                        .requires("enable")
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("all-versions")
+                        .help("With --enable, enable the repository for all R versions, also the ones installed later")
+                        .long("all-versions")
+                        .num_args(0)
+                        .conflicts_with("r-version")
+                        .requires("enable")
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("disable")
+                .about(ABOUT_REPOS_DISABLE)
+                .long_about(HELP_REPOS_DISABLE)
+                .display_order(0)
+                .arg(
+                    Arg::new("name")
+                        .help("Name(s) of the repositories, e.g. 'P3M' (case insensitive)")
+                        .num_args(1..)
+                        .required(true),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version to disable the repositories for (default: the default R version), can be repeated")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .action(clap::ArgAction::Append)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("all-versions")
+                        .help("Disable the repositories for all installed R versions")
+                        .long("all-versions")
+                        .num_args(0)
+                        .conflicts_with("r-version")
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("enable")
+                .about(ABOUT_REPOS_ENABLE)
+                .long_about(HELP_REPOS_ENABLE)
+                .display_order(0)
+                .arg(
+                    Arg::new("name")
+                        .help("Name(s) of the repositories, e.g. 'Bioconductor' (case insensitive)")
+                        .num_args(1..)
+                        .required(true),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version to enable the repositories for (default: the default R version), can be repeated")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .action(clap::ArgAction::Append)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("all-versions")
+                        .help("Enable the repositories for all installed R versions")
+                        .long("all-versions")
+                        .num_args(0)
+                        .conflicts_with("r-version")
+                        .required(false),
+                ),
+        )
         .subcommand(
             Command::new("list")
                 .about(ABOUT_REPOS_LIST)
@@ -2958,16 +3041,18 @@ pub fn rig_app() -> Command {
                         .required(false),
                 ),
         )
-        // .subcommand(
-        //     Command::new("reset")
-        //         .about("Reset R package repositories to rig or R default")
-        //         .display_order(0),
-        // )
-        // .subcommand(
-        //     Command::new("rm")
-        //         .about("Remove an R package repository")
-        //         .display_order(0),
-        // )
+        .subcommand(
+            Command::new("rm")
+                .about(ABOUT_REPOS_RM)
+                .long_about(HELP_REPOS_RM)
+                .display_order(0)
+                .arg(
+                    Arg::new("name")
+                        .help("Name(s) of the repositories to remove (case insensitive)")
+                        .num_args(1..)
+                        .required(true),
+                ),
+        )
         .subcommand(cmd_repos_setup);
 
     rig = rig.subcommand(cmd_repos);
@@ -3917,6 +4002,93 @@ mod tests {
         assert!(rig_app()
             .try_get_matches_from(["rig", "pkg", "search", "cli", "--from", "0"])
             .is_err());
+    }
+
+    #[test]
+    fn test_repos_edit_args() {
+        let sub = |args: &[&str], name: &str| {
+            let m = rig_app().try_get_matches_from(args).unwrap();
+            m.subcommand_matches("repos")
+                .unwrap()
+                .subcommand_matches(name)
+                .unwrap()
+                .clone()
+        };
+
+        let add = sub(
+            &[
+                "rig",
+                "repos",
+                "add",
+                "acme",
+                "https://cran.acme.com",
+                "--title",
+                "Acme",
+            ],
+            "add",
+        );
+        assert_eq!(add.get_one::<String>("name").unwrap(), "acme");
+        assert_eq!(
+            add.get_one::<String>("url").unwrap(),
+            "https://cran.acme.com"
+        );
+        assert_eq!(add.get_one::<String>("title").unwrap(), "Acme");
+        assert!(!add.get_flag("enable"));
+
+        let add = sub(
+            &[
+                "rig",
+                "repos",
+                "add",
+                "acme",
+                "https://x",
+                "--enable",
+                "-r",
+                "4.5",
+                "-r",
+                "4.4",
+            ],
+            "add",
+        );
+        assert!(add.get_flag("enable"));
+        let vers: Vec<&String> = add.get_many::<String>("r-version").unwrap().collect();
+        assert_eq!(vers, vec!["4.5", "4.4"]);
+
+        // -r and --all-versions only make sense with --enable.
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "repos", "add", "acme", "https://x", "-r", "4.5"])
+            .is_err());
+
+        let enable = sub(
+            &["rig", "repos", "enable", "bioconductor", "acme"],
+            "enable",
+        );
+        let names: Vec<&String> = enable.get_many::<String>("name").unwrap().collect();
+        assert_eq!(names, vec!["bioconductor", "acme"]);
+        assert!(!enable.get_flag("all-versions"));
+
+        let disable = sub(
+            &["rig", "repos", "disable", "p3m", "--all-versions"],
+            "disable",
+        );
+        assert!(disable.get_flag("all-versions"));
+        assert!(rig_app()
+            .try_get_matches_from([
+                "rig",
+                "repos",
+                "disable",
+                "p3m",
+                "--all-versions",
+                "-r",
+                "4.5"
+            ])
+            .is_err());
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "repos", "enable"])
+            .is_err());
+
+        let rm = sub(&["rig", "repos", "rm", "acme"], "rm");
+        assert_eq!(rm.get_one::<String>("name").unwrap(), "acme");
     }
 
     #[test]

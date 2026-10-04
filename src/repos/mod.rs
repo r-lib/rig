@@ -3,7 +3,10 @@ use std::error::Error;
 
 use clap::ArgMatches;
 
+use crate::common::{check_installed, sc_get_default_or_fail};
+use crate::escalate::escalate;
 use crate::hardcoded::*;
+use log::debug;
 
 #[cfg(target_os = "macos")]
 use crate::macos::*;
@@ -18,6 +21,13 @@ mod config;
 pub use config::{get_repos_config, RepoEntry, Repository};
 mod configured;
 mod interpret_repos_args;
+mod repos_add;
+use repos_add::sc_repos_add;
+mod repos_enable;
+use repos_enable::{sc_repos_disable, sc_repos_enable};
+mod repos_rm;
+use repos_rm::sc_repos_rm;
+pub mod state;
 pub use interpret_repos_args::interpret_repos_args;
 mod repos_available;
 use repos_available::sc_repos_available;
@@ -34,13 +44,12 @@ pub use setup::repos_setup;
 
 pub fn sc_repos(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
-        // Some(("add", s)) => sc_repos_add(s, args, mainargs),
+        Some(("add", s)) => sc_repos_add(s, args, mainargs),
         Some(("available", s)) => sc_repos_available(s, args, mainargs),
-        // Some(("disable", s)) => sc_repos_disable(s, args, mainargs),
-        // Some(("enable", s)) => sc_repos_enable(s, args, mainargs),
+        Some(("disable", s)) => sc_repos_disable(s, args, mainargs),
+        Some(("enable", s)) => sc_repos_enable(s, args, mainargs),
         Some(("list", s)) => sc_repos_list(s, args, mainargs),
-        // Some(("reset", s)) => sc_repos_reset(s, args, mainargs),
-        // Some(("rm", s)) => sc_repos_rm(s, args, mainargs),
+        Some(("rm", s)) => sc_repos_rm(s, args, mainargs),
         Some(("setup", s)) => sc_repos_setup(s, args, mainargs),
         Some(("status", s)) => sc_repos_status(s, args, mainargs),
         _ => Ok(()), // unreachable
@@ -127,50 +136,54 @@ fn today() -> String {
     jiff::Zoned::now().date().to_string()
 }
 
-// pub fn sc_repos_add(
-//     args: &ArgMatches,
-//     _libargs: &ArgMatches,
-//     _mainargs: &ArgMatches,
-// ) -> Result<(), Box<dyn Error>> {
-//     panic!("TODO: implement sc_repos_add");
-//     Ok(())
-// }
+/// The repository names given on the command line, lowercase, the way
+/// `--with-repos` matches them.
+fn repo_names_arg(args: &ArgMatches) -> Vec<String> {
+    let mut names: Vec<String> = vec![];
+    for name in args.get_many::<String>("name").into_iter().flatten() {
+        let name = name.trim().to_lowercase();
+        if !name.is_empty() && !names.contains(&name) {
+            names.push(name);
+        }
+    }
+    names
+}
 
-// pub fn sc_repos_disable(
-//     args: &ArgMatches,
-//     _libargs: &ArgMatches,
-//     _mainargs: &ArgMatches,
-// ) -> Result<(), Box<dyn Error>> {
-//     panic!("TODO: implement sc_repos_disable");
-//     Ok(())
-// }
+/// The R installations a command applies to: `--all-versions`, the
+/// `--r-version` options, or the default installation.
+fn target_versions(args: &ArgMatches) -> Result<Vec<String>, Box<dyn Error>> {
+    if args.get_flag("all-versions") {
+        return sc_get_list();
+    }
+    match args.get_many::<String>("r-version") {
+        Some(vers) => {
+            let mut result: Vec<String> = vec![];
+            for ver in vers {
+                let ver = check_installed(ver)?;
+                if !result.contains(&ver) {
+                    result.push(ver);
+                }
+            }
+            Ok(result)
+        }
+        None => Ok(vec![sc_get_default_or_fail()?]),
+    }
+}
 
-// pub fn sc_repos_enable(
-//     args: &ArgMatches,
-//     _libargs: &ArgMatches,
-//     _mainargs: &ArgMatches,
-// ) -> Result<(), Box<dyn Error>> {
-//     panic!("TODO: implement sc_repos_enable");
-//     Ok(())
-// }
-
-// pub fn sc_repos_reset(
-//     args: &ArgMatches,
-//     _libargs: &ArgMatches,
-//     _mainargs: &ArgMatches,
-// ) -> Result<(), Box<dyn Error>> {
-//     panic!("TODO: implement sc_repos_reset");
-//     Ok(())
-// }
-
-// pub fn sc_repos_rm(
-//     args: &ArgMatches,
-//     _libargs: &ArgMatches,
-//     _mainargs: &ArgMatches,
-// ) -> Result<(), Box<dyn Error>> {
-//     panic!("TODO: implement sc_repos_rm");
-//     Ok(())
-// }
+/// Ask for administrator rights if the R installations `vers` have files
+/// that [`repos_setup`] needs to update, but the current user cannot write.
+/// This is typical for admin mode installations on Linux and Windows. On
+/// macOS admin users can usually update them without `sudo`.
+fn escalate_if_needed(vers: &[String], task: &str) -> Result<(), Box<dyn Error>> {
+    let unwritable = setup::repos_setup_unwritable(vers)?;
+    if !unwritable.is_empty() {
+        for path in unwritable.iter() {
+            debug!("Cannot write {}", path.display());
+        }
+        escalate(task)?;
+    }
+    Ok(())
+}
 
 fn sc_repos_setup(
     args: &ArgMatches,
@@ -184,6 +197,7 @@ fn sc_repos_setup(
     };
 
     let setup = interpret_repos_args(args, false);
+    escalate_if_needed(&vers, "setting up package repositories")?;
     repos_setup(Some(vers), setup)
 }
 

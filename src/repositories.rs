@@ -142,7 +142,7 @@ pub fn add_repository(repos: &mut RepositoriesContents, entry: &RepoEntry) {
     comment_out_repository(repos, &entry.name);
     let new_entry = RepoFileEntry {
         name: entry.name.clone(),
-        description: entry.name.clone(),
+        description: entry.title.clone().unwrap_or_else(|| entry.name.clone()),
         url: entry.url.clone(),
         default: true,
         source: true,
