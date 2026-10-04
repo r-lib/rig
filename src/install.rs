@@ -883,7 +883,6 @@ where
             remaining.join(", ")
         );
 
-        OUTPUT.error(&err_msg);
         error!("{}: {:?}", err_msg, remaining);
 
         return Err(err_msg.into());
@@ -891,11 +890,10 @@ where
 
     if final_failed > 0 {
         let err_msg = format!(
-            "Installation completed with {} failures ({}  succeeded)",
+            "Installation completed with {} failures ({} succeeded)",
             final_failed, final_installed
         );
 
-        OUTPUT.error(&err_msg);
         error!(
             "Installation completed: {} succeeded, {} failed",
             final_installed, final_failed

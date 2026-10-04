@@ -21,8 +21,11 @@ package history, from <https://ppm.r-pkg.org> and <https://ppm-bioc.r-pkg.org>,
 so older and archived versions are available, too. Any other repository, e.g.
 CRAN itself, an r-universe, or one added with [`rig repos add`](repos.qmd#rig-repos-add), is read
 from its `PACKAGES` files, so only its current packages are available.
-For a package version in such a repository rig only knows the fields of its
-`PACKAGES` file: its version, its dependencies and where to download it.
+
+rig shows the full `DESCRIPTION` file only for a package version that comes
+from P3M. For a package version from any other repository, including
+Bioconductor, rig only knows the fields of the repository's index: its
+version, its dependencies and where to download it.
 
 ## README of a package
 

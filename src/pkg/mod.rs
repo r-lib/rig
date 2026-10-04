@@ -24,7 +24,7 @@ use crate::output::OUTPUT;
 use crate::proj::BASE_PKGS;
 use crate::repos::configured_repos;
 use crate::repos::cranlike_metadata::{self, ArchivedPackage};
-use crate::repos::feed::{BiocSetting, CranlikeRepo, MetadataFeed, PkgRepo};
+use crate::repos::feed::{BiocSetting, CranlikeRepo, MetadataFeed, PkgRepo, RepoId};
 use crate::repos::get_repos_config;
 use crate::textfmt::{reflow, wrap, write_field};
 
@@ -349,21 +349,34 @@ fn sc_pkg_info(
         "latest".to_string()
     };
 
-    // A version from a CRAN-like repository, if that is the one to show.
-    let all = solver_versions(args, &package)?;
+    // The version to show, from the configured repositories. For a CRAN
+    // version P3M's manifests have the full DESCRIPTION, for any other
+    // repository we only know the fields of its index.
+    let all = repo_versions(args, &package)?;
     let shown = if ver == "latest" {
         all.iter().max_by(|a, b| a.version.cmp(&b.version))
     } else {
         all.iter().find(|p| p.version.original == ver)
     };
-    let mut info = match shown.filter(|p| is_cranlike(p)) {
+    let mut info = match shown {
+        None if all.is_empty() => bail!(
+            "Could not find package '{}' in the package repositories.",
+            package
+        ),
+        None => bail!(
+            "Could not find version '{}' of package '{}' in the package repositories.",
+            ver,
+            package
+        ),
+        Some(pkg) if is_cran(pkg) => {
+            manifest::get_package_description(&package, &pkg.version.original)?
+        }
         Some(pkg) => manifest::PackageInfo {
-            description: cranlike_description(pkg),
+            description: index_description(pkg),
             readme: None,
             readme_type: None,
             archived: None,
         },
-        None => manifest::get_package_description(&package, &ver)?,
     };
 
     if args.get_flag("readme") {
@@ -383,25 +396,24 @@ fn sc_pkg_info(
 }
 
 /// The versions of `package` in the repositories of a `rig pkg info`
-/// command, as the solver sees them, if any of them is a CRAN-like
-/// repository. Otherwise nothing: the CRAN and Bioconductor metadata is
-/// read from P3M's manifests instead.
-fn solver_versions(args: &ArgMatches, package: &str) -> Result<Vec<Package>, Box<dyn Error>> {
+/// command, as the solver sees them. If several repositories have the same
+/// version, the first one wins.
+fn repo_versions(args: &ArgMatches, package: &str) -> Result<Vec<Package>, Box<dyn Error>> {
     let repos = pkg_repos_for(args, false)?;
-    if PkgRepo::cranlike(&repos).is_empty() {
-        return Ok(vec![]);
-    }
     let loader = crate::repos::DbSourcePackageLoader::new_for_repos(&repos)?;
     crate::solver::PackageVersionLoader::load_versions(&loader, package)
 }
 
-fn is_cranlike(pkg: &Package) -> bool {
-    pkg.repository.as_ref().is_some_and(|r| r.is_cranlike())
+/// Whether `pkg` comes from CRAN's metadata feed, so P3M's manifests have
+/// its full DESCRIPTION.
+fn is_cran(pkg: &Package) -> bool {
+    pkg.repository == Some(RepoId::Cran)
 }
 
-/// The DESCRIPTION fields we know of a package version in a CRAN-like
-/// repository, from its `PACKAGES` index, as a JSON object.
-fn cranlike_description(pkg: &Package) -> serde_json::Value {
+/// The DESCRIPTION fields we know of a package version from the index of
+/// its repository, i.e. a `PACKAGES` file or Bioconductor's metadata, as a
+/// JSON object.
+fn index_description(pkg: &Package) -> serde_json::Value {
     let mut desc = serde_json::Map::new();
     let mut set = |k: &str, v: String| {
         desc.insert(k.to_string(), serde_json::Value::String(v));
@@ -615,16 +627,21 @@ fn format_deps(value: &serde_json::Value) -> Option<String> {
 
 /// `rig pkg info --versions`: every version of a package ever published.
 fn pkg_info_versions(args: &ArgMatches, package: &str) -> Result<(), Box<dyn Error>> {
-    let mut versions = manifest::get_package_versions(package)?;
-    // The versions of CRAN-like repositories, unless CRAN has them, too.
-    for pkg in solver_versions(args, package)?
-        .iter()
-        .filter(|p| is_cranlike(p))
-    {
+    let all = repo_versions(args, package)?;
+    // The CRAN history from P3M's manifests, if CRAN is configured and has
+    // the package.
+    let on_cran = all.iter().any(is_cran);
+    let mut versions = if on_cran {
+        manifest::get_package_versions(package)?
+    } else {
+        vec![]
+    };
+    // The versions of the other repositories, unless CRAN has them, too.
+    for pkg in all.iter().filter(|p| !is_cran(p)) {
         if !versions.iter().any(|v| v.version == pkg.version) {
             versions.push(manifest::PackageVersion {
                 version: pkg.version.clone(),
-                description: cranlike_description(pkg),
+                description: index_description(pkg),
                 dependencies: pkg.dependencies.clone(),
             });
         }
@@ -637,7 +654,11 @@ fn pkg_info_versions(args: &ArgMatches, package: &str) -> Result<(), Box<dyn Err
         );
     }
 
-    let archived = cranlike_metadata::archived_package(package)?;
+    let archived = if on_cran {
+        cranlike_metadata::archived_package(package)?
+    } else {
+        None
+    };
 
     // `--json` dumps the full DESCRIPTION of every version, mirroring
     // `rig pkg info --json`.
