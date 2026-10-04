@@ -9,7 +9,7 @@ serves, and how fresh its package index is.
 rig checks the same repositories that [`rig repos list`](repos.qmd#rig-repos-list) shows, in the same
 order. By default these are the repositories of the default R version; use
 `--r-version` to pick another one. Add `--all` to include repositories that are
-not enabled by default.
+not enabled.
 
 ## The report
 
@@ -54,7 +54,7 @@ command.
 # Check the repositories of the default R version
 rig repos status
 
-# Include repositories that are not enabled by default
+# Include repositories that are not enabled
 rig repos status --all
 
 # Check the repositories of another R version

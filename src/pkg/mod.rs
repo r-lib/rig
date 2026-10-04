@@ -25,7 +25,7 @@ use crate::proj::BASE_PKGS;
 use crate::repos::configured_repos;
 use crate::repos::cranlike_metadata::{self, ArchivedPackage};
 use crate::repos::feed::{BiocSetting, CranlikeRepo, MetadataFeed, PkgRepo, RepoId};
-use crate::repos::get_repos_config;
+use crate::repos::repo_metadata_urls;
 use crate::textfmt::{reflow, wrap, write_field};
 
 pub(crate) mod deps;
@@ -129,17 +129,10 @@ pub(crate) fn pkg_repos(rver: &str, bioc: &BiocSetting, cutoff: Option<&str>) ->
     };
     let entries: Vec<(String, String)> = configured.into_iter().map(|r| (r.name, r.url)).collect();
 
-    let mut metadata: std::collections::HashMap<String, String> = Default::default();
-    match get_repos_config() {
-        Ok(config) => {
-            for entry in config.iter().flat_map(|r| r.repos.iter()) {
-                if let Some(m) = &entry.metadata {
-                    metadata.insert(entry.name.to_lowercase(), m.clone());
-                }
-            }
-        }
-        Err(e) => log::debug!("Cannot read the repository configuration: {}", e),
-    }
+    let metadata = repo_metadata_urls().unwrap_or_else(|e| {
+        log::debug!("Cannot read the repository configuration: {}", e);
+        Default::default()
+    });
 
     let bioc_version = if entries.iter().any(|(n, u)| is_bioc_entry(n, u)) {
         bioc.bioc_version(rver, cutoff)

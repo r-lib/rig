@@ -2986,7 +2986,7 @@ pub fn rig_app() -> Command {
                 )
                 .arg(
                     Arg::new("all")
-                        .help("Show all repositories, not just the default ones")
+                        .help("Show all repositories, not just the enabled ones")
                         .long("all")
                         .num_args(0)
                         .required(false),
@@ -3039,7 +3039,7 @@ pub fn rig_app() -> Command {
                 )
                 .arg(
                     Arg::new("all")
-                        .help("Check all repositories, not just the default ones")
+                        .help("Check all repositories, not just the enabled ones")
                         .long("all")
                         .num_args(0)
                         .required(false),

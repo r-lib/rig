@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::error::Error;
 
 use serde::{Deserialize, Serialize};
@@ -98,6 +99,20 @@ pub fn get_repos_config() -> Result<Vec<Repository>, Box<dyn Error>> {
     let mut config = HC_REPOS.to_vec();
     config.extend(get_custom_repos()?.iter().map(|r| r.to_repository()));
     Ok(config)
+}
+
+/// The base URLs of the extended metadata of the repositories that have one,
+/// by lowercase repository entry name, e.g. `p3m` and `biocsoft`. This is
+/// how an entry of an R installation's `repositories` file is matched to its
+/// extended metadata.
+pub fn repo_metadata_urls() -> Result<HashMap<String, String>, Box<dyn Error>> {
+    let mut metadata = HashMap::new();
+    for entry in get_repos_config()?.iter().flat_map(|r| r.repos.iter()) {
+        if let Some(m) = &entry.metadata {
+            metadata.insert(entry.name.to_lowercase(), m.clone());
+        }
+    }
+    Ok(metadata)
 }
 
 pub fn builtin_repo_names() -> Vec<String> {

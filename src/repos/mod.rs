@@ -18,7 +18,7 @@ use crate::windows::*;
 use crate::linux::*;
 
 mod config;
-pub use config::{get_repos_config, RepoEntry, Repository};
+pub use config::{get_repos_config, repo_metadata_urls, RepoEntry, Repository};
 mod configured;
 pub(crate) use configured::configured_repos;
 mod interpret_repos_args;
