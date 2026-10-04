@@ -18,6 +18,11 @@ pub struct RepoEntry {
     pub title: Option<String>,
     pub description: Option<String>,
     pub url: String,
+    /// Base URL of the extended metadata of this repository
+    /// (`ALLPACKAGES.zst`, `ARCHIVEDPACKAGES.zst` and `binaries/`), if it has
+    /// one. May contain `%v`, the Bioconductor version.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<String>,
     pub platforms: Option<Vec<String>>,
     pub archs: Option<Vec<String>>,
     pub rversions: Option<Vec<String>>,
@@ -69,6 +74,7 @@ impl CustomRepo {
                 title: self.title.clone(),
                 description: self.description.clone(),
                 url: self.url.clone(),
+                metadata: None,
                 platforms: None,
                 archs: None,
                 rversions: None,

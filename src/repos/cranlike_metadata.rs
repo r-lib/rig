@@ -17,10 +17,13 @@ use zstd::stream::read::Decoder as ZstdDecoder;
 
 use crate::cache::get_cache_dir;
 use crate::dcf::*;
-use crate::download::{download_first_available_, fetch_range_suffix_, RangeFetch};
+use crate::download::{
+    download_first_available_, fetch_optional_if_modified_, fetch_range_suffix_, ConditionalFetch,
+    RangeFetch,
+};
 use crate::output::OUTPUT;
 use crate::rds::*;
-use crate::repos::feed::{MetadataFeed, RepoId};
+use crate::repos::feed::{CranlikeRepo, MetadataFeed, PkgRepo, RepoId};
 use crate::solver::PackageVersionLoader;
 use crate::utils::{calculate_hash, create_parent_dir_if_needed};
 
@@ -197,6 +200,236 @@ pub(crate) fn ensure_feeds_fresh(
     Ok(out)
 }
 
+/// The database key of the `PACKAGES` index at `path` (e.g. `src/contrib`)
+/// in a CRAN-like repository: its full URL, which is unique per repository,
+/// package type and R version.
+pub(crate) fn cranlike_key(repo: &CranlikeRepo, path: &str) -> String {
+    format!("{}/{}", repo.url, path)
+}
+
+/// Ensure the source index of each of `repos` is fresh in the database, and
+/// return the repositories that are usable. A repository whose index cannot
+/// be loaded is dropped with a warning.
+fn ensure_cranlike_sources_fresh(repos: &[PkgRepo]) -> Vec<PkgRepo> {
+    let mut out = vec![];
+    for repo in repos {
+        let PkgRepo::Cranlike(cranlike) = repo else {
+            out.push(repo.clone());
+            continue;
+        };
+        let key = cranlike_key(cranlike, "src/contrib");
+        if FAILED_FEEDS.lock().unwrap().contains(&key) {
+            continue;
+        }
+        match ensure_cranlike_index(cranlike, "src/contrib", "source", None, ".tar.gz") {
+            Ok(()) => out.push(repo.clone()),
+            Err(e) => {
+                warn!("Cannot load package metadata from {}: {}", key, e);
+                OUTPUT.warn(&format!(
+                    "Cannot load package metadata from repository {}, skipping it.",
+                    cranlike.name
+                ));
+                FAILED_FEEDS.lock().unwrap().insert(key);
+            }
+        }
+    }
+    out
+}
+
+/// Ensure the `PACKAGES` index at `path` of a CRAN-like repository is in the
+/// database and fresh (24h), downloading it if needed.
+///
+/// `pkg_type` is `source` or a binary type, e.g. `mac.binary.big-sur-arm64`,
+/// `r_version` the minor R version of a binary index, and `ext` the file
+/// extension of the packages, used to build their download URLs.
+///
+/// A repository without this index (404 for both `PACKAGES.gz` and
+/// `PACKAGES`) is stored as an empty index, so that a repository without
+/// binaries is not asked again for a day. Unlike ALLPACKAGES, a `PACKAGES`
+/// file is rewritten, not appended to, so it is always downloaded in full.
+pub(crate) fn ensure_cranlike_index(
+    repo: &CranlikeRepo,
+    path: &str,
+    pkg_type: &str,
+    r_version: Option<&str>,
+    ext: &str,
+) -> Result<(), Box<dyn Error>> {
+    let key = cranlike_key(repo, path);
+    let db = metadata_db_file()?;
+    ensure_db_schema(&db)?;
+    if is_repo_cache_recent(&db, &key, pkg_type).unwrap_or(false) {
+        debug!("Metadata of {} is up to date (cached)", key);
+        return Ok(());
+    }
+
+    OUTPUT.status(&format!("Updating metadata of repository {}", repo.name));
+    let etag = get_repo_etag(&db, &key, pkg_type).ok();
+    for file in ["PACKAGES.gz", "PACKAGES"] {
+        let url = format!("{}/{}", key, file);
+        match fetch_optional_if_modified_(&url, etag.as_deref(), None)? {
+            ConditionalFetch::NotFound => continue,
+            ConditionalFetch::NotModified => {
+                touch_repo_last_updated(&db, &key, pkg_type)?;
+                return Ok(());
+            }
+            ConditionalFetch::Fetched { bytes, etag } => {
+                let data = decompress_gzip_maybe(bytes)?;
+                let packages = parse_cranlike_packages(&data, repo, path, ext)?;
+                info!("Parsed {} packages from {}", packages.len(), url);
+                save_packages_to_db(
+                    &packages,
+                    &db,
+                    &key,
+                    r_version,
+                    pkg_type,
+                    path,
+                    etag.as_deref(),
+                    true,
+                    None,
+                )?;
+                return Ok(());
+            }
+        }
+    }
+
+    debug!("No PACKAGES file at {}", key);
+    save_packages_to_db(
+        &vec![],
+        &db,
+        &key,
+        r_version,
+        pkg_type,
+        path,
+        None,
+        true,
+        None,
+    )?;
+    Ok(())
+}
+
+fn decompress_gzip_maybe(bytes: Vec<u8>) -> Result<Vec<u8>, Box<dyn Error>> {
+    if bytes.len() >= 2 && bytes[0..2] == [0x1f, 0x8b] {
+        let mut data = Vec::new();
+        GzDecoder::new(bytes.as_slice()).read_to_end(&mut data)?;
+        Ok(data)
+    } else {
+        Ok(bytes)
+    }
+}
+
+/// Parse the `PACKAGES` file of a CRAN-like repository, at `path` in `repo`.
+///
+/// The packages get a download URL, unless the index has one (`DownloadURL`):
+/// `File` or `<package>_<version><ext>` in the directory of the index, or in
+/// its `Path` subdirectory. Their `sha256sum` is the `SHA256` checksum of the
+/// file, or else its `MD5sum`: there is no upstream CRAN tarball here, so the
+/// file itself is the identity of the package. If it changes, the package is
+/// reinstalled, even if its version is the same. A package without either
+/// checksum has no hash, and an installed package of the same version counts
+/// as up to date.
+fn parse_cranlike_packages(
+    data: &[u8],
+    repo: &CranlikeRepo,
+    path: &str,
+    ext: &str,
+) -> Result<Vec<Package>, Box<dyn Error>> {
+    let paragraphs = parse_dcf_reader(data)?;
+    let mut packages = vec![];
+    for para in paragraphs.iter() {
+        let mut pkg = match Package::from_dcf_paragraph(para) {
+            Ok(pkg) => pkg,
+            Err(e) => {
+                debug!(
+                    "Skipping unparseable package metadata in {}: {}",
+                    repo.url, e
+                );
+                continue;
+            }
+        };
+        if pkg.download_url.is_none() {
+            let file = pkg
+                .file
+                .clone()
+                .unwrap_or_else(|| format!("{}_{}{}", pkg.name, pkg.version.original, ext));
+            let dir = match &pkg.path {
+                Some(sub) => format!("{}/{}/{}", repo.url, path, sub.trim_matches('/')),
+                None => format!("{}/{}", repo.url, path),
+            };
+            pkg.download_url = Some(format!("{}/{}", dir, file));
+        }
+        if pkg.sha256sum.is_none() {
+            pkg.sha256sum = para
+                .get("SHA256")
+                .or_else(|| para.get("MD5sum"))
+                .map(|s| s.trim().to_string());
+        }
+        packages.push(pkg);
+    }
+    Ok(packages)
+}
+
+/// One package version in the `PACKAGES` index of a CRAN-like repository.
+#[derive(Debug, Clone)]
+pub(crate) struct CranlikeRow {
+    pub version: RPackageVersion,
+    pub download_url: Option<String>,
+    pub checksum: Option<String>,
+    /// The timestamp of the `Built` field, e.g. `2025-06-20 10:00:00 UTC`.
+    pub built: Option<String>,
+}
+
+/// The timestamp of a `Built` field, as stored in the database, as JSON.
+fn built_timestamp(json: Option<&str>) -> Option<String> {
+    let built: DCFBuilt = serde_json::from_str(json?).ok()?;
+    Some(built.timestamp).filter(|t| !t.is_empty())
+}
+
+/// The versions of `package` in the index with database key `key` (see
+/// [`cranlike_key`]), from the cache, without refreshing it.
+pub(crate) fn cranlike_index_rows(
+    conn: &Connection,
+    key: &str,
+    pkg_type: &str,
+    package: &str,
+) -> Result<Vec<CranlikeRow>, Box<dyn Error>> {
+    let repo_ids = source_repo_ids(conn, key, pkg_type)?;
+    let mut stmt = conn.prepare_cached(
+        "SELECT version, download_url, sha256sum, repo_id, built FROM packages WHERE name = ?1",
+    )?;
+    let rows = stmt.query_map(params![package], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, Option<String>>(1)?,
+            row.get::<_, Option<String>>(2)?,
+            row.get::<_, i64>(3)?,
+            row.get::<_, Option<String>>(4)?,
+        ))
+    })?;
+    let mut out = vec![];
+    for row in rows {
+        let (ver, download_url, checksum, repo_id, built) = row?;
+        if !repo_ids.contains(&repo_id) {
+            continue;
+        }
+        out.push(CranlikeRow {
+            version: RPackageVersion::from_str(&ver)?,
+            download_url,
+            checksum,
+            built: built_timestamp(built.as_deref()),
+        });
+    }
+    Ok(out)
+}
+
+/// The database key and package type of the source index of a repository,
+/// as stored by [`ensure_feeds_fresh`] or [`ensure_cranlike_index`].
+fn source_index_key(repo: &PkgRepo) -> String {
+    match repo {
+        PkgRepo::Extended(feed) => feed.allpackages_url.clone(),
+        PkgRepo::Cranlike(cranlike) => cranlike_key(cranlike, "src/contrib"),
+    }
+}
+
 /// A [`PackageVersionLoader`] backed by the shared SQLite database. It queries a
 /// single package's versions on demand from the ALLPACKAGES histories of its
 /// feeds (CRAN, and possibly a Bioconductor release), so the solver only
@@ -209,9 +442,12 @@ pub(crate) fn ensure_feeds_fresh(
 /// between the last ALLPACKAGES rebuild and now.
 pub struct DbSourcePackageLoader {
     conn: Connection,
-    /// repo ids of the ALLPACKAGES histories to search, with the repository
-    /// each belongs to.
-    repo_ids: Vec<(i64, RepoId)>,
+    /// repo ids of the indices to search, with the position of the
+    /// repository they belong to in [`DbSourcePackageLoader::repos`].
+    repo_ids: Vec<(i64, usize)>,
+    /// The repositories to search, in order: if several of them have the same
+    /// version of a package, the first one wins.
+    repos: Vec<RepoId>,
     /// `--exclude-newer` cutoff day, `YYYY-MM-DD`: versions whose snapshot
     /// date is after it are hidden from the solver.
     exclude_newer: Option<String>,
@@ -225,15 +461,47 @@ impl DbSourcePackageLoader {
     /// then open a connection ready to serve per-package queries. See
     /// [`ensure_feeds_fresh`] for the feeds that fail to load.
     pub fn new_for(feeds: &[MetadataFeed]) -> Result<Self, Box<dyn Error>> {
-        let feeds = ensure_feeds_fresh(feeds)?;
+        DbSourcePackageLoader::new_for_repos(&PkgRepo::from_feeds(feeds.to_vec()))
+    }
+
+    /// A loader for `repos`, extended feeds and CRAN-like repositories, in
+    /// order of precedence. A repository that fails to load is not searched,
+    /// except for CRAN's feed, which must load.
+    pub fn new_for_repos(repos: &[PkgRepo]) -> Result<Self, Box<dyn Error>> {
+        let repos = ensure_repos_fresh(repos)?;
         let conn = open_metadata_db()?;
-        let repo_ids = feed_repo_ids(&conn, &feeds)?;
+        let mut repo_ids = vec![];
+        for (idx, repo) in repos.iter().enumerate() {
+            for id in source_repo_ids(&conn, &source_index_key(repo), "source")? {
+                repo_ids.push((id, idx));
+            }
+        }
         Ok(DbSourcePackageLoader {
             conn,
             repo_ids,
+            repos: repos.iter().map(|r| r.repo_id()).collect(),
             exclude_newer: None,
             bioc_only: Default::default(),
         })
+    }
+
+    /// A loader for the indices with database keys `keys`, in order of
+    /// precedence, on an open connection, without refreshing anything.
+    #[cfg(test)]
+    fn from_conn(conn: Connection, keys: &[(&str, RepoId)]) -> Self {
+        let mut repo_ids = vec![];
+        for (idx, (key, _)) in keys.iter().enumerate() {
+            for id in source_repo_ids(&conn, key, "source").unwrap() {
+                repo_ids.push((id, idx));
+            }
+        }
+        DbSourcePackageLoader {
+            conn,
+            repo_ids,
+            repos: keys.iter().map(|(_, repo)| repo.clone()).collect(),
+            exclude_newer: None,
+            bioc_only: Default::default(),
+        }
     }
 
     /// Hide the CRAN versions of `packages`, see [`BiocSetting::only`].
@@ -251,43 +519,43 @@ impl DbSourcePackageLoader {
         self
     }
 
-    /// The repositories this loader searches.
+    /// The repositories this loader searches, in order.
     pub fn repositories(&self) -> Vec<RepoId> {
-        let mut out: Vec<RepoId> = vec![];
-        for (_, repo) in &self.repo_ids {
-            if !out.contains(repo) {
-                out.push(repo.clone());
-            }
-        }
-        out
+        self.repos.clone()
     }
 
-    fn repo_of(&self, repo_id: i64) -> Option<&RepoId> {
+    /// The position and the repository of a database repo id.
+    fn repo_of(&self, repo_id: i64) -> Option<(usize, &RepoId)> {
         self.repo_ids
             .iter()
             .find(|(id, _)| *id == repo_id)
-            .map(|(_, repo)| repo)
+            .map(|(_, idx)| (*idx, &self.repos[*idx]))
     }
+}
+
+/// Ensure the metadata of `repos` is fresh, and return the usable ones, in
+/// order, see [`ensure_feeds_fresh`] and [`ensure_cranlike_sources_fresh`].
+pub(crate) fn ensure_repos_fresh(repos: &[PkgRepo]) -> Result<Vec<PkgRepo>, Box<dyn Error>> {
+    let usable_feeds = ensure_feeds_fresh(&PkgRepo::feeds(repos))?;
+    let repos: Vec<PkgRepo> = repos
+        .iter()
+        .filter(|r| match r {
+            PkgRepo::Extended(feed) => usable_feeds.contains(feed),
+            PkgRepo::Cranlike(_) => true,
+        })
+        .cloned()
+        .collect();
+    Ok(ensure_cranlike_sources_fresh(&repos))
 }
 
 /// The shared metadata database, the same file every feed is cached in.
-fn open_metadata_db() -> Result<Connection, Box<dyn Error>> {
-    let repo_local = repo_local_file(&MetadataFeed::cran().allpackages_url)?;
-    open_db(repo_db_file(&repo_local)?)
+pub(crate) fn open_metadata_db() -> Result<Connection, Box<dyn Error>> {
+    open_db(metadata_db_file()?)
 }
 
-/// The repo ids of the ALLPACKAGES histories of `feeds`.
-fn feed_repo_ids(
-    conn: &Connection,
-    feeds: &[MetadataFeed],
-) -> Result<Vec<(i64, RepoId)>, Box<dyn Error>> {
-    let mut out = vec![];
-    for feed in feeds {
-        for id in source_repo_ids(conn, &feed.allpackages_url, "source")? {
-            out.push((id, feed.repo.clone()));
-        }
-    }
-    Ok(out)
+fn metadata_db_file() -> Result<PathBuf, Box<dyn Error>> {
+    let repo_local = repo_local_file(&MetadataFeed::cran().allpackages_url)?;
+    repo_db_file(&repo_local)
 }
 
 /// The P3M snapshot date, `YYYY-MM-DD`, in an ALLPACKAGES `DownloadURL`, e.g.
@@ -337,20 +605,27 @@ impl PackageVersionLoader for DbSourcePackageLoader {
         // `system_requirements` too: the lockfile records it, so that
         // `rig proj sync` can install the OS packages a Linux install needs.
         //
-        // A package may be in both CRAN and Bioconductor: the solver sees the
-        // versions of both, and if the same version is in both, the
-        // Bioconductor row wins.
+        // A package may be in several repositories: the solver sees the
+        // versions of all of them, and if the same version is in several, the
+        // row of the first repository wins.
         struct Row {
             deps_json: String,
             sha256sum: Option<String>,
             download_url: Option<String>,
             system_requirements: Option<String>,
+            // Only for a CRAN-like repository, to reinstall a newer build.
+            built: Option<String>,
             repo: RepoId,
+            rank: usize,
         }
         let mut best: HashMap<String, Row> = HashMap::new();
+        // The `SystemRequirements` of each version, from any repository. A
+        // CRAN-like `PACKAGES` file, e.g. CRAN's own, usually does not have
+        // them, so a version from there takes them from P3M's metadata.
+        let mut sysreqs_any: HashMap<String, String> = HashMap::new();
         let mut stmt = self.conn.prepare_cached(
             "SELECT version, dependencies, sha256sum, repo_id, download_url, \
-             system_requirements FROM packages WHERE name = ?1",
+             system_requirements, built FROM packages WHERE name = ?1",
         )?;
         let rows = stmt.query_map(params![package], |row| {
             Ok((
@@ -360,11 +635,12 @@ impl PackageVersionLoader for DbSourcePackageLoader {
                 row.get::<_, i64>(3)?,
                 row.get::<_, Option<String>>(4)?,
                 row.get::<_, Option<String>>(5)?,
+                row.get::<_, Option<String>>(6)?,
             ))
         })?;
         for row in rows {
-            let (ver, deps_json, sha256sum, repo_id, download_url, sysreqs) = row?;
-            let Some(repo) = self.repo_of(repo_id) else {
+            let (ver, deps_json, sha256sum, repo_id, download_url, sysreqs, built) = row?;
+            let Some((rank, repo)) = self.repo_of(repo_id) else {
                 continue; // row from a repo we do not source from
             };
             if !repo.is_bioc() && self.bioc_only.contains(package) {
@@ -373,10 +649,10 @@ impl PackageVersionLoader for DbSourcePackageLoader {
             if !published_by(download_url.as_deref(), self.exclude_newer.as_deref()) {
                 continue; // published after the --exclude-newer cutoff
             }
-            if best
-                .get(&ver)
-                .is_some_and(|b| b.repo.is_bioc() || !repo.is_bioc())
-            {
+            if let Some(s) = &sysreqs {
+                sysreqs_any.entry(ver.clone()).or_insert_with(|| s.clone());
+            }
+            if best.get(&ver).is_some_and(|b| b.rank <= rank) {
                 continue;
             }
             best.insert(
@@ -386,7 +662,9 @@ impl PackageVersionLoader for DbSourcePackageLoader {
                     sha256sum,
                     download_url,
                     system_requirements: sysreqs,
+                    built: built.filter(|_| repo.is_cranlike()),
                     repo: repo.clone(),
+                    rank,
                 },
             );
         }
@@ -398,7 +676,12 @@ impl PackageVersionLoader for DbSourcePackageLoader {
             let mut pkg = Package::from_crandb(package.to_string(), version, deps.dependencies);
             pkg.sha256sum = row.sha256sum;
             pkg.download_url = row.download_url;
-            pkg.system_requirements = row.system_requirements;
+            pkg.built = row
+                .built
+                .and_then(|b| serde_json::from_str::<DCFBuilt>(&b).ok());
+            pkg.system_requirements = row
+                .system_requirements
+                .or_else(|| sysreqs_any.get(&ver).cloned());
             pkg.repository = Some(row.repo);
             out.push(pkg);
         }
@@ -483,30 +766,31 @@ pub fn allpackages_versions(package: &str) -> Result<Vec<AllPackagesVersion>, Bo
     Ok(out)
 }
 
-/// Every package of `feeds` (CRAN, and possibly a Bioconductor release), at
-/// its latest version, from the shared ALLPACKAGES histories, refreshing the
-/// metadata first if the cache is stale.
+/// Every package of `repos`, at its latest version, from the shared metadata
+/// database, refreshing the metadata first if the cache is stale.
 ///
 /// ALLPACKAGES keeps the full history of every version ever published,
 /// archived or not, so packages a feed has archived are omitted by cross
 /// referencing its ARCHIVEDPACKAGES, unless `include_archived` is set. A
 /// package archived in one feed is still listed if it is alive in another
-/// one. A package in several feeds is listed at its highest version, and on a
-/// tie with its Bioconductor version.
+/// repository. The `PACKAGES` index of a CRAN-like repository only lists its
+/// current packages. A package in several repositories is listed at its
+/// highest version, and on a tie with the version of the first repository.
 pub fn all_available_packages(
-    feeds: &[MetadataFeed],
+    repos: &[PkgRepo],
     include_archived: bool,
 ) -> Result<Vec<Package>, Box<dyn Error>> {
-    let feeds = ensure_feeds_fresh(feeds)?;
+    let repos = ensure_repos_fresh(repos)?;
     let conn = open_metadata_db()?;
 
     let mut best: HashMap<String, (RPackageVersion, String, RepoId)> = HashMap::new();
-    for feed in &feeds {
-        let feed_best = feed_latest_packages(&conn, &feed.allpackages_url)?;
-        let archived = if include_archived {
-            std::collections::HashSet::new()
-        } else {
-            feed_archived_names(&conn, &feed.archived_url)?
+    for repo in &repos {
+        let feed_best = feed_latest_packages(&conn, &source_index_key(repo))?;
+        let archived = match repo {
+            PkgRepo::Extended(feed) if !include_archived => {
+                feed_archived_names(&conn, &feed.archived_url)?
+            }
+            _ => std::collections::HashSet::new(),
         };
         for (name, (version, deps_json)) in feed_best {
             if archived.contains(&name) {
@@ -514,10 +798,10 @@ pub fn all_available_packages(
             }
             let better = match best.get(&name) {
                 None => true,
-                Some((v, _, repo)) => version > *v || (version == *v && !repo.is_bioc()),
+                Some((v, _, _)) => version > *v,
             };
             if better {
-                best.insert(name, (version, deps_json, feed.repo.clone()));
+                best.insert(name, (version, deps_json, repo.repo_id()));
             }
         }
     }
@@ -1929,18 +2213,8 @@ DownloadURL: https://p3m.dev/cran/2020-01-09/src/contrib/cli_2.0.1.tar.gz
 
         let loader = |cutoff: Option<&str>| {
             let conn = open_db(&db).unwrap();
-            let repo_ids = source_repo_ids(&conn, url, "source")
-                .unwrap()
-                .into_iter()
-                .map(|id| (id, RepoId::Cran))
-                .collect();
-            DbSourcePackageLoader {
-                conn,
-                repo_ids,
-                exclude_newer: None,
-                bioc_only: Default::default(),
-            }
-            .with_exclude_newer(cutoff.map(|c| c.to_string()))
+            DbSourcePackageLoader::from_conn(conn, &[(url, RepoId::Cran)])
+                .with_exclude_newer(cutoff.map(|c| c.to_string()))
         };
         let versions = |cutoff: Option<&str>| {
             let mut vers: Vec<String> = loader(cutoff)
@@ -2018,18 +2292,11 @@ DownloadURL: https://p3m.dev/bioconductor/2025-10-30/packages/3.22/bioc/src/cont
 
         let conn = open_db(&db).unwrap();
         let bioc = RepoId::Bioc("3.22".to_string());
-        let mut repo_ids: Vec<(i64, RepoId)> = vec![];
-        for (url, repo) in [(cran_url, RepoId::Cran), (bioc_url, bioc.clone())] {
-            for id in source_repo_ids(&conn, url, "source").unwrap() {
-                repo_ids.push((id, repo.clone()));
-            }
-        }
-        let loader = DbSourcePackageLoader {
+        // Bioconductor first, the way `MetadataFeed::for_target` orders them.
+        let loader = DbSourcePackageLoader::from_conn(
             conn,
-            repo_ids,
-            exclude_newer: None,
-            bioc_only: Default::default(),
-        };
+            &[(bioc_url, bioc.clone()), (cran_url, RepoId::Cran)],
+        );
 
         let versions = |name: &str| {
             let mut out: Vec<(String, RepoId, String)> = loader
@@ -2062,6 +2329,129 @@ DownloadURL: https://p3m.dev/bioconductor/2025-10-30/packages/3.22/bioc/src/cont
         assert!(versions("nope").is_empty());
 
         let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
+    fn the_first_repository_wins_a_tie() {
+        let cran_url = "https://example.com/cran/ALLPACKAGES.zst";
+        let acme = CranlikeRepo::new("acme", "https://cran.acme.com/");
+        let acme_key = cranlike_key(&acme, "src/contrib");
+        let mut db = std::env::temp_dir();
+        db.push(format!("rig-test-repo-rank-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&db);
+        ensure_db_schema(&db).unwrap();
+        store_feed(
+            &db,
+            cran_url,
+            "Package: cli\nVersion: 3.6.0\nSystemRequirements: libfoo\n\n\
+             Package: cli\nVersion: 3.5.0\n",
+        );
+        let packages = parse_cranlike_packages(
+            b"Package: cli\nVersion: 3.6.0\nMD5sum: abc\n",
+            &acme,
+            "src/contrib",
+            ".tar.gz",
+        )
+        .unwrap();
+        save_packages_to_db(
+            &packages,
+            &db,
+            &acme_key,
+            None,
+            "source",
+            "src/contrib",
+            None,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let versions = |keys: &[(&str, RepoId)]| {
+            let loader = DbSourcePackageLoader::from_conn(open_db(&db).unwrap(), keys);
+            let mut out: Vec<(String, RepoId)> = loader
+                .load_versions("cli")
+                .unwrap()
+                .into_iter()
+                .map(|p| (p.version.to_string(), p.repository.unwrap()))
+                .collect();
+            out.sort();
+            out
+        };
+
+        let acme_first = versions(&[(&acme_key, acme.repo_id()), (cran_url, RepoId::Cran)]);
+        assert_eq!(acme_first[0], ("3.5.0".to_string(), RepoId::Cran));
+        assert_eq!(acme_first[1], ("3.6.0".to_string(), acme.repo_id()));
+
+        // acme's `PACKAGES` has no `SystemRequirements`, CRAN's metadata does.
+        let loader = DbSourcePackageLoader::from_conn(
+            open_db(&db).unwrap(),
+            &[(&acme_key, acme.repo_id()), (cran_url, RepoId::Cran)],
+        );
+        let cli = loader.load_versions("cli").unwrap();
+        let v360 = cli.iter().find(|p| p.version.original == "3.6.0").unwrap();
+        assert_eq!(v360.repository, Some(acme.repo_id()));
+        assert_eq!(v360.system_requirements.as_deref(), Some("libfoo"));
+
+        let cran_first = versions(&[(cran_url, RepoId::Cran), (&acme_key, acme.repo_id())]);
+        assert_eq!(cran_first[1], ("3.6.0".to_string(), RepoId::Cran));
+
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
+    fn cranlike_packages_get_download_urls_and_checksums() {
+        let repo = CranlikeRepo::new("acme", "https://cran.acme.com/");
+        let dcf = "\
+Package: pkgA
+Version: 1.0.0
+Imports: pkgB
+MD5sum: 0123
+
+Package: pkgB
+Version: 2.1-3
+SHA256: abcd
+MD5sum: 0123
+Path: old
+
+Package: pkgC
+Version: 0.1
+File: pkgC-custom.tar.gz
+
+Package: pkgD
+Version: 0.2
+DownloadURL: https://elsewhere.com/pkgD.tar.gz
+";
+        let pkgs =
+            parse_cranlike_packages(dcf.as_bytes(), &repo, "src/contrib", ".tar.gz").unwrap();
+        let url = |i: usize| pkgs[i].download_url.clone().unwrap();
+        assert_eq!(
+            url(0),
+            "https://cran.acme.com/src/contrib/pkgA_1.0.0.tar.gz"
+        );
+        assert_eq!(
+            url(1),
+            "https://cran.acme.com/src/contrib/old/pkgB_2.1-3.tar.gz"
+        );
+        assert_eq!(
+            url(2),
+            "https://cran.acme.com/src/contrib/pkgC-custom.tar.gz"
+        );
+        assert_eq!(url(3), "https://elsewhere.com/pkgD.tar.gz");
+        assert_eq!(pkgs[0].sha256sum.as_deref(), Some("0123"));
+        assert_eq!(pkgs[1].sha256sum.as_deref(), Some("abcd"));
+        assert_eq!(pkgs[2].sha256sum, None);
+
+        let gz = {
+            use std::io::Write;
+            let mut enc = flate2::write::GzEncoder::new(vec![], flate2::Compression::default());
+            enc.write_all(dcf.as_bytes()).unwrap();
+            enc.finish().unwrap()
+        };
+        assert_eq!(decompress_gzip_maybe(gz).unwrap(), dcf.as_bytes());
+        assert_eq!(
+            decompress_gzip_maybe(dcf.as_bytes().to_vec()).unwrap(),
+            dcf.as_bytes()
+        );
     }
 
     #[test]

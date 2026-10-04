@@ -225,6 +225,20 @@ teardown() {
     [[ ! "$status" -eq 0 ]]
 }
 
+@test "rig pkg uses the configured repositories" {
+    # Clean up before checking anything, so a failure does not leave the
+    # repository setup changed for the other tests.
+    run rig repos add rigtest https://cran.r-project.org --enable -r 4.1
+    add_status=$status
+    run rig pkg deps cli --r-version 4.1
+    deps_status=$status
+    deps_output=$output
+    rig repos rm rigtest
+    [[ "$add_status" -eq 0 ]]
+    [[ "$deps_status" -eq 0 ]]
+    echo "$deps_output" | grep -q "metadata of repository rigtest"
+}
+
 @test "add --json" {
     # Already installed, so nothing is installed, only reported.
     run bash -c "rig add --json 4.0.5 -a x86_64 2>/dev/null"

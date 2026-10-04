@@ -647,6 +647,7 @@ mod tests {
             title: None,
             description: None,
             url: "https://example.com".to_string(),
+            metadata: None,
             platforms: None,
             archs: None,
             rversions: None,

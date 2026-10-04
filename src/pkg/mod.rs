@@ -20,9 +20,12 @@ use crate::macos::sc_get_default;
 use crate::windows::sc_get_default;
 
 use crate::dcf::{Package, RDepType, RPackageVersion};
+use crate::output::OUTPUT;
 use crate::proj::BASE_PKGS;
+use crate::repos::configured_repos;
 use crate::repos::cranlike_metadata::{self, ArchivedPackage};
-use crate::repos::feed::{BiocSetting, MetadataFeed};
+use crate::repos::feed::{BiocSetting, CranlikeRepo, MetadataFeed, PkgRepo};
+use crate::repos::get_repos_config;
 use crate::textfmt::{reflow, wrap, write_field};
 
 pub(crate) mod deps;
@@ -54,18 +57,153 @@ pub fn sc_pkg(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Er
 /// The Bioconductor setting of a `rig pkg` command: on, unless `--no-bioc`
 /// or `RIG_BIOCONDUCTOR=false`.
 pub(crate) fn pkg_bioc_setting(args: &ArgMatches) -> BiocSetting {
-    if args.get_flag("no-bioc") {
+    // `rig pkg info` has no `--no-bioc`.
+    if args.try_get_one::<bool>("no-bioc").ok().flatten() == Some(&true) {
         BiocSetting::disabled()
     } else {
         BiocSetting::default()
     }
 }
 
-/// The metadata feeds of a `rig pkg` command without an R version of its
-/// own: CRAN, and the Bioconductor release of the default R version, or the
-/// newest release if there is no default R version.
-pub(crate) fn pkg_feeds(args: &ArgMatches) -> Vec<MetadataFeed> {
-    default_r_feeds(&pkg_bioc_setting(args))
+/// The repositories of a `rig pkg` command: the ones configured for its R
+/// version, see [`pkg_repos`]. The R version is `--r-version`, if the command
+/// has it, or else the default R version. Without any R version it is CRAN,
+/// and Bioconductor unless it is turned off, see [`default_r_feeds`].
+///
+/// `need_bioc`: the command refers to a Bioconductor package explicitly
+/// (`bioc::<pkg>`), so Bioconductor is searched even if it is not configured.
+pub(crate) fn pkg_repos_for(
+    args: &ArgMatches,
+    need_bioc: bool,
+) -> Result<Vec<PkgRepo>, Box<dyn Error>> {
+    let bioc = pkg_bioc_setting(args);
+    let rver = match args.try_get_one::<String>("r-version").ok().flatten() {
+        Some(_) => Some(crate::library::library_rver(args)?),
+        None => sc_get_default().ok().flatten(),
+    };
+    Ok(match rver {
+        Some(rver) => {
+            let mut repos = pkg_repos(&rver, &bioc, None);
+            if need_bioc {
+                add_bioc_feed(&mut repos, &rver, &bioc, None);
+            }
+            repos
+        }
+        None => PkgRepo::from_feeds(default_r_feeds(&bioc)),
+    })
+}
+
+/// Add the Bioconductor feed of R version `rver` to `repos`, at the end, if
+/// they do not have one yet. For an explicit `bioc::<pkg>` reference.
+pub(crate) fn add_bioc_feed(
+    repos: &mut Vec<PkgRepo>,
+    rver: &str,
+    bioc: &BiocSetting,
+    cutoff: Option<&str>,
+) {
+    if repos.iter().any(|r| r.repo_id().is_bioc()) {
+        return;
+    }
+    if let Some(v) = bioc.bioc_version(rver, cutoff) {
+        repos.push(PkgRepo::Extended(MetadataFeed::bioc(&v)));
+    }
+}
+
+/// The repositories configured for R installation `rver`, in the order of
+/// its `repositories` file, see [`repos_from_entries`].
+///
+/// If the `repositories` file cannot be read, e.g. for a very old R version,
+/// it is CRAN, and Bioconductor unless it is turned off.
+pub(crate) fn pkg_repos(rver: &str, bioc: &BiocSetting, cutoff: Option<&str>) -> Vec<PkgRepo> {
+    let configured = match configured_repos(Some(rver), false, true) {
+        Ok(c) => c.repos,
+        Err(e) => {
+            log::debug!(
+                "Cannot read the repositories of R {}, using CRAN and Bioconductor: {}",
+                rver,
+                e
+            );
+            return PkgRepo::from_feeds(bioc.feeds(rver, cutoff));
+        }
+    };
+    let entries: Vec<(String, String)> = configured.into_iter().map(|r| (r.name, r.url)).collect();
+
+    let mut metadata: std::collections::HashMap<String, String> = Default::default();
+    match get_repos_config() {
+        Ok(config) => {
+            for entry in config.iter().flat_map(|r| r.repos.iter()) {
+                if let Some(m) = &entry.metadata {
+                    metadata.insert(entry.name.to_lowercase(), m.clone());
+                }
+            }
+        }
+        Err(e) => log::debug!("Cannot read the repository configuration: {}", e),
+    }
+
+    let bioc_version = if entries.iter().any(|(n, u)| is_bioc_entry(n, u)) {
+        bioc.bioc_version(rver, cutoff)
+    } else {
+        None
+    };
+    let repos = repos_from_entries(&entries, &metadata, bioc.enabled, bioc_version.as_deref());
+    if repos.is_empty() {
+        OUTPUT.warn(&format!(
+            "No package repositories are configured for R {}.",
+            rver
+        ));
+    }
+    repos
+}
+
+/// Whether a `repositories` entry is a Bioconductor repository.
+fn is_bioc_entry(name: &str, url: &str) -> bool {
+    name.to_lowercase().starts_with("bioc") || url.contains("bioconductor.org/packages")
+}
+
+/// The repositories of the `(name, url)` entries of a `repositories` file,
+/// in the same order.
+///
+/// An entry whose name has extended metadata in `metadata` (by lowercase
+/// name, e.g. P3M and BioCsoft) is that feed. Every other entry is a plain
+/// CRAN-like repository, including CRAN itself; R's `@CRAN@` placeholder is
+/// the CRAN cloud mirror. Bioconductor entries are dropped if `bioc_enabled`
+/// is false. A Bioconductor feed needs `bioc_version`, without it the entry
+/// is a CRAN-like repository, too. Repeated feeds and URLs are dropped.
+fn repos_from_entries(
+    entries: &[(String, String)],
+    metadata: &std::collections::HashMap<String, String>,
+    bioc_enabled: bool,
+    bioc_version: Option<&str>,
+) -> Vec<PkgRepo> {
+    let mut out: Vec<PkgRepo> = vec![];
+    for (name, url) in entries {
+        if !bioc_enabled && is_bioc_entry(name, url) {
+            continue;
+        }
+        let feed = metadata
+            .get(&name.to_lowercase())
+            .and_then(|m| MetadataFeed::from_metadata_url(m, bioc_version));
+        let repo = match feed {
+            Some(feed) => PkgRepo::Extended(feed),
+            None => {
+                let url = if url == "@CRAN@" {
+                    "https://cloud.r-project.org"
+                } else {
+                    url.as_str()
+                };
+                PkgRepo::Cranlike(CranlikeRepo::new(name, url))
+            }
+        };
+        let dup = out.iter().any(|r| match (r, &repo) {
+            (PkgRepo::Extended(a), PkgRepo::Extended(b)) => a == b,
+            (PkgRepo::Cranlike(a), PkgRepo::Cranlike(b)) => a.url == b.url,
+            _ => false,
+        });
+        if !dup {
+            out.push(repo);
+        }
+    }
+    out
 }
 
 /// The metadata feeds for the default R version with `bioc`: CRAN, and the
@@ -93,8 +231,8 @@ fn sc_pkg_available(
     mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
     let include_archived = args.get_flag("include-archived");
-    let feeds = pkg_feeds(args);
-    let mut packages = cranlike_metadata::all_available_packages(&feeds, include_archived)?;
+    let repos = pkg_repos_for(args, false)?;
+    let mut packages = cranlike_metadata::all_available_packages(&repos, include_archived)?;
     // Order the listing case-insensitively by package name, breaking ties by
     // version, so the output is stable regardless of how the metadata was
     // stored or downloaded.
@@ -211,7 +349,22 @@ fn sc_pkg_info(
         "latest".to_string()
     };
 
-    let mut info = manifest::get_package_description(&package, &ver)?;
+    // A version from a CRAN-like repository, if that is the one to show.
+    let all = solver_versions(args, &package)?;
+    let shown = if ver == "latest" {
+        all.iter().max_by(|a, b| a.version.cmp(&b.version))
+    } else {
+        all.iter().find(|p| p.version.original == ver)
+    };
+    let mut info = match shown.filter(|p| is_cranlike(p)) {
+        Some(pkg) => manifest::PackageInfo {
+            description: cranlike_description(pkg),
+            readme: None,
+            readme_type: None,
+            archived: None,
+        },
+        None => manifest::get_package_description(&package, &ver)?,
+    };
 
     if args.get_flag("readme") {
         return pkg_info_readme(&info, args.get_flag("json"));
@@ -227,6 +380,64 @@ fn sc_pkg_info(
     }
 
     Ok(())
+}
+
+/// The versions of `package` in the repositories of a `rig pkg info`
+/// command, as the solver sees them, if any of them is a CRAN-like
+/// repository. Otherwise nothing: the CRAN and Bioconductor metadata is
+/// read from P3M's manifests instead.
+fn solver_versions(args: &ArgMatches, package: &str) -> Result<Vec<Package>, Box<dyn Error>> {
+    let repos = pkg_repos_for(args, false)?;
+    if PkgRepo::cranlike(&repos).is_empty() {
+        return Ok(vec![]);
+    }
+    let loader = crate::repos::DbSourcePackageLoader::new_for_repos(&repos)?;
+    crate::solver::PackageVersionLoader::load_versions(&loader, package)
+}
+
+fn is_cranlike(pkg: &Package) -> bool {
+    pkg.repository.as_ref().is_some_and(|r| r.is_cranlike())
+}
+
+/// The DESCRIPTION fields we know of a package version in a CRAN-like
+/// repository, from its `PACKAGES` index, as a JSON object.
+fn cranlike_description(pkg: &Package) -> serde_json::Value {
+    let mut desc = serde_json::Map::new();
+    let mut set = |k: &str, v: String| {
+        desc.insert(k.to_string(), serde_json::Value::String(v));
+    };
+    set("Package", pkg.name.clone());
+    set("Version", pkg.version.original.clone());
+    for dep_type in RDepType::all() {
+        let deps: Vec<String> = pkg
+            .dependencies
+            .dependencies
+            .iter()
+            .filter(|d| d.types.contains(dep_type))
+            .map(|d| {
+                if d.constraints.is_empty() {
+                    d.name.clone()
+                } else {
+                    let cons: Vec<String> = d
+                        .constraints
+                        .iter()
+                        .map(|c| format!("{} {}", c.constraint_type, c.version))
+                        .collect();
+                    format!("{} ({})", d.name, cons.join(", "))
+                }
+            })
+            .collect();
+        if !deps.is_empty() {
+            set(&dep_type.to_string(), deps.join(", "));
+        }
+    }
+    if let Some(repo) = &pkg.repository {
+        set("Repository", repo.to_string());
+    }
+    if let Some(url) = &pkg.download_url {
+        set("DownloadURL", url.clone());
+    }
+    serde_json::Value::Object(desc)
 }
 
 /// `--readme`: the README of the package, as the repository stores it, i.e.
@@ -405,8 +616,25 @@ fn format_deps(value: &serde_json::Value) -> Option<String> {
 /// `rig pkg info --versions`: every version of a package ever published.
 fn pkg_info_versions(args: &ArgMatches, package: &str) -> Result<(), Box<dyn Error>> {
     let mut versions = manifest::get_package_versions(package)?;
+    // The versions of CRAN-like repositories, unless CRAN has them, too.
+    for pkg in solver_versions(args, package)?
+        .iter()
+        .filter(|p| is_cranlike(p))
+    {
+        if !versions.iter().any(|v| v.version == pkg.version) {
+            versions.push(manifest::PackageVersion {
+                version: pkg.version.clone(),
+                description: cranlike_description(pkg),
+                dependencies: pkg.dependencies.clone(),
+            });
+        }
+    }
+    versions.sort_by(|a, b| a.version.cmp(&b.version));
     if versions.is_empty() {
-        bail!("Could not find package '{}' on CRAN.", package);
+        bail!(
+            "Could not find package '{}' in the package repositories.",
+            package
+        );
     }
 
     let archived = cranlike_metadata::archived_package(package)?;
@@ -605,6 +833,90 @@ fn print_package_versions(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn entries(x: &[(&str, &str)]) -> Vec<(String, String)> {
+        x.iter()
+            .map(|(n, u)| (n.to_string(), u.to_string()))
+            .collect()
+    }
+
+    fn metadata() -> std::collections::HashMap<String, String> {
+        [
+            ("p3m", "https://ppm.r-pkg.org"),
+            ("biocsoft", "https://ppm-bioc.r-pkg.org/%v"),
+        ]
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect()
+    }
+
+    #[test]
+    fn configured_repos_map_to_their_kind() {
+        let repos = repos_from_entries(
+            &entries(&[
+                ("BioCsoft", "https://bioconductor.org/packages/3.22/bioc"),
+                (
+                    "BioCann",
+                    "https://bioconductor.org/packages/3.22/data/annotation",
+                ),
+                ("P3M", "https://packagemanager.posit.co/cran/latest"),
+                ("CRAN", "@CRAN@"),
+                ("acme", "https://cran.acme.com/"),
+                ("acme2", "https://cran.acme.com"),
+            ]),
+            &metadata(),
+            true,
+            Some("3.22"),
+        );
+        assert_eq!(
+            repos,
+            vec![
+                PkgRepo::Extended(MetadataFeed::bioc("3.22")),
+                PkgRepo::Cranlike(CranlikeRepo::new(
+                    "BioCann",
+                    "https://bioconductor.org/packages/3.22/data/annotation"
+                )),
+                PkgRepo::Extended(MetadataFeed::cran()),
+                PkgRepo::Cranlike(CranlikeRepo::new("CRAN", "https://cloud.r-project.org")),
+                PkgRepo::Cranlike(CranlikeRepo::new("acme", "https://cran.acme.com")),
+            ]
+        );
+    }
+
+    #[test]
+    fn bioc_entries_can_be_turned_off() {
+        let es = entries(&[
+            ("P3M", "https://packagemanager.posit.co/cran/latest"),
+            ("BioCsoft", "https://bioconductor.org/packages/3.22/bioc"),
+            (
+                "BioCexp",
+                "https://bioconductor.org/packages/3.22/data/experiment",
+            ),
+        ]);
+        let repos = repos_from_entries(&es, &metadata(), false, None);
+        assert_eq!(repos, vec![PkgRepo::Extended(MetadataFeed::cran())]);
+        // No Bioconductor version: BioCsoft is a plain CRAN-like repository.
+        let repos = repos_from_entries(&es, &metadata(), true, None);
+        assert_eq!(repos.len(), 3);
+        assert!(matches!(&repos[1], PkgRepo::Cranlike(r) if r.name == "BioCsoft"));
+    }
+
+    #[test]
+    fn duplicate_feeds_are_dropped() {
+        let repos = repos_from_entries(
+            &entries(&[
+                ("P3M", "https://packagemanager.posit.co/cran/latest"),
+                (
+                    "P3M",
+                    "https://packagemanager.posit.co/cran/__linux__/noble/latest",
+                ),
+            ]),
+            &metadata(),
+            true,
+            None,
+        );
+        assert_eq!(repos, vec![PkgRepo::Extended(MetadataFeed::cran())]);
+    }
     use crate::dcf::{DepVersionSpec, RPackageVersion};
 
     fn dep(name: &str, ty: RDepType) -> DepVersionSpec {

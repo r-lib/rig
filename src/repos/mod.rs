@@ -20,6 +20,7 @@ use crate::linux::*;
 mod config;
 pub use config::{get_repos_config, RepoEntry, Repository};
 mod configured;
+pub(crate) use configured::configured_repos;
 mod interpret_repos_args;
 mod repos_add;
 use repos_add::sc_repos_add;

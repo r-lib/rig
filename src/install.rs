@@ -19,6 +19,13 @@ use crate::output::OUTPUT;
 /// from: the sha256 of the upstream CRAN source tarball of its version.
 pub const REMOTE_HASH_FIELD: &str = "RemoteHash";
 
+/// The lock metadata field holding when a package of a CRAN-like repository
+/// was built, from the `Built` field of the repository's `PACKAGES` file. It
+/// is not written into the installed package: R writes its own `Built` field,
+/// which is the same for a binary package. `rig pkg install` reinstalls a
+/// package if the repository has a newer build of it.
+pub const REPO_BUILT_FIELD: &str = "Built";
+
 /// The `DESCRIPTION` field recording what the package was compiled against:
 /// its `LinkingTo` dependencies as `pkg@version=sha256`, the same syntax P3M's
 /// binary index uses.

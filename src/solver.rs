@@ -347,6 +347,9 @@ pub struct BinaryArtifact {
     /// with the builds of the repository the solver took it from. `None`
     /// matches any repository.
     pub repository: Option<RepoId>,
+    /// When the build was made, from the `Built` field of a CRAN-like
+    /// repository's `PACKAGES` file, e.g. `2025-06-20 10:00:00 UTC`.
+    pub built: Option<String>,
 }
 
 /// Everything a binary index knows about one package, for one build target.
@@ -439,6 +442,10 @@ pub struct RPackageRegistry {
     // writes it into the installed package's DESCRIPTION, as `RemoteHash`, to
     // recognize later what an installed package came from.
     sha256: RefCell<HashMap<(RPackageName, RegistryPackageVersion), String>>,
+    // When an artifact of a CRAN-like repository was built, from its `Built`
+    // field, if the repository has one. `rig pkg install` reinstalls a
+    // package if the repository has a newer build of it.
+    built: RefCell<HashMap<(RPackageName, RegistryPackageVersion), String>>,
     // Build provenance of every *binary* artifact we offered: the `LinkingTo`
     // dependency versions it was compiled against, with their own hashes, as
     // `(package, version, sha256)`. Empty for source artifacts, which have no
@@ -632,6 +639,19 @@ impl RPackageRegistry {
             .cloned()
     }
 
+    /// When a resolved artifact of a CRAN-like repository was built, if the
+    /// repository says.
+    pub fn artifact_built(
+        &self,
+        package: &RPackageName,
+        version: &RegistryPackageVersion,
+    ) -> Option<String> {
+        self.built
+            .borrow()
+            .get(&(package.clone(), version.clone()))
+            .cloned()
+    }
+
     /// The upstream-CRAN hash of a resolved artifact, when we know one.
     ///
     /// This identifies the CRAN artifact the version was built from. It is *not*
@@ -796,13 +816,17 @@ impl RPackageRegistry {
                             version: package.version.clone(),
                             artifact: Artifact::Source,
                         };
+                        // The binary indices are keyed by version only, so
+                        // a version from a CRAN-like repository must not take
+                        // the source URL or hash of the same version in P3M.
+                        let cranlike = package.repository.as_ref().is_some_and(|r| r.is_cranlike());
                         // The index's source URL, else the source metadata's own
                         // `DownloadURL`, both snapshot-pinned.
-                        if let Some(url) = artifacts
+                        let index_url = artifacts
                             .source_urls
                             .get(&package.version)
-                            .or(package.download_url.as_ref())
-                        {
+                            .filter(|_| !cranlike);
+                        if let Some(url) = index_url.or(package.download_url.as_ref()) {
                             self.urls
                                 .borrow_mut()
                                 .insert((pkg.clone(), src.clone()), url.clone());
@@ -819,12 +843,18 @@ impl RPackageRegistry {
                         if let Some(sha) = artifacts
                             .source_sha256
                             .get(&package.version)
+                            .filter(|_| !cranlike)
                             .cloned()
                             .or_else(|| package.sha256sum.clone())
                         {
                             self.sha256
                                 .borrow_mut()
                                 .insert((pkg.clone(), src.clone()), sha);
+                        }
+                        if let Some(built) = package.built.as_ref().filter(|_| cranlike) {
+                            self.built
+                                .borrow_mut()
+                                .insert((pkg.clone(), src.clone()), built.timestamp.clone());
                         }
                         if !lt_names.is_empty() {
                             self.linkingto_names
@@ -851,13 +881,21 @@ impl RPackageRegistry {
                                     self.urls
                                         .borrow_mut()
                                         .insert((pkg.clone(), v.clone()), bin.url.clone());
-                                    self.sha256
-                                        .borrow_mut()
-                                        .insert((pkg.clone(), v.clone()), bin.sha256.clone());
+                                    // A binary of a CRAN-like repository has no hash.
+                                    if !bin.sha256.is_empty() {
+                                        self.sha256
+                                            .borrow_mut()
+                                            .insert((pkg.clone(), v.clone()), bin.sha256.clone());
+                                    }
                                     if let Some(repo) = &package.repository {
                                         self.repositories
                                             .borrow_mut()
                                             .insert((pkg.clone(), v.clone()), repo.clone());
+                                    }
+                                    if let Some(built) = &bin.built {
+                                        self.built
+                                            .borrow_mut()
+                                            .insert((pkg.clone(), v.clone()), built.clone());
                                     }
                                     if !bin.linkingto.is_empty() {
                                         let prov: Vec<(String, String, String)> = bin
@@ -1378,6 +1416,7 @@ mod tests {
                         })
                         .collect(),
                     repository: None,
+                    built: None,
                 })
                 .collect();
             Ok(PackageArtifacts {

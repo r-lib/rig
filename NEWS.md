@@ -18,6 +18,16 @@
   for administrator rights if the current user cannot update the files of
   the R installations, e.g. in admin mode on Linux and Windows.
 
+* `rig pkg install`, `rig pkg deps`, `rig pkg tree`, `rig pkg available`
+  and `rig pkg info` now use the repositories configured for the R
+  version, including custom ones. `rig pkg deps`, `rig pkg tree`,
+  `rig pkg available` and `rig pkg info` have a new `--r-version` option.
+  `rig pkg search` still searches CRAN only.
+
+* `rig pkg` commands now only use Bioconductor packages if the
+  Bioconductor repositories are enabled for the R version, e.g. with
+  `rig repos enable bioconductor`, or for a `bioc::<package>` reference.
+
 ## Bioconductor
 
 * `rig proj` and `rig pkg` now install Bioconductor packages, besides CRAN

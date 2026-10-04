@@ -74,6 +74,21 @@ fn no_bioc_arg() -> Arg {
         .required(false)
 }
 
+/// `--r-version` for the `rig pkg` commands that read the repositories
+/// configured for an R version. `short`: whether `-r` is free for it.
+fn pkg_r_version_arg(short: bool) -> Arg {
+    let arg = Arg::new("r-version")
+        .help("R version whose repositories to use, instead of the default")
+        .long("r-version")
+        .num_args(1)
+        .required(false);
+    if short {
+        arg.short('r')
+    } else {
+        arg
+    }
+}
+
 /// `--sysreqs` and `--no-sysreqs`, for the commands that install packages.
 /// Linux only: elsewhere there are no system requirements to install.
 fn sysreqs_args() -> [Arg; 2] {
@@ -2189,6 +2204,7 @@ pub fn rig_app() -> Command {
                 .about(ABOUT_PKG_AVAILABLE)
                 .long_about(HELP_PKG_AVAILABLE)
                 .display_order(0)
+                .arg(pkg_r_version_arg(true))
                 .arg(no_bioc_arg())
                 .arg(
                     Arg::new("json")
@@ -2210,6 +2226,7 @@ pub fn rig_app() -> Command {
                 .about(ABOUT_PKG_DEPS)
                 .long_about(HELP_PKG_DEPS)
                 .display_order(0)
+                .arg(pkg_r_version_arg(false))
                 .arg(no_bioc_arg())
                 .arg(
                     Arg::new("package")
@@ -2303,6 +2320,7 @@ pub fn rig_app() -> Command {
                 .about(ABOUT_PKG_INFO)
                 .long_about(HELP_PKG_INFO)
                 .display_order(0)
+                .arg(pkg_r_version_arg(true))
                 .arg(Arg::new("package").help("package to show").required(true))
                 .arg(
                     Arg::new("version")
@@ -2583,6 +2601,7 @@ pub fn rig_app() -> Command {
                 .about(ABOUT_PKG_TREE)
                 .long_about(HELP_PKG_TREE)
                 .display_order(0)
+                .arg(pkg_r_version_arg(true))
                 .arg(no_bioc_arg())
                 .arg(
                     Arg::new("package")

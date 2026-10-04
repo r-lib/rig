@@ -38,9 +38,11 @@ use crate::pkg::list::{read_installed, InstalledPackage};
 use crate::pkg::remove::remove_package;
 use crate::pkg::tree::proj_tree;
 use crate::platform::{detect_platform, parse_platform_string};
-use crate::repos::binaries::loader::{BinaryTarget, P3mBinaryLoader};
+use crate::repos::binaries::loader::{
+    BinaryTarget, ChainedBinaryLoader, CranlikeBinaryLoader, P3mBinaryLoader,
+};
 use crate::repos::cranlike_metadata::{ensure_feeds_fresh, minor_r_version};
-use crate::repos::feed::{BiocSetting, MetadataFeed, RepoId};
+use crate::repos::feed::{BiocSetting, MetadataFeed, PkgRepo, RepoId};
 use crate::repos::*;
 use crate::resolve::resolve_versions;
 use crate::rproj::{
@@ -1522,7 +1524,7 @@ fn sc_proj_tree(
         &version,
         &pkg_deps.dependencies,
         git_deps.into_iter().collect(),
-        &feeds,
+        &PkgRepo::from_feeds(feeds),
         dev,
         no_base,
         why,
@@ -1642,6 +1644,7 @@ pub(crate) fn sc_proj_solve_project_deps(
         prefer_binary,
         None,
         &BiocSetting::default(),
+        None,
         &SolvePins::default(),
         report_status,
     )
@@ -1679,6 +1682,7 @@ pub(crate) fn sc_proj_solve_deps(
     prefer_binary: Option<usize>,
     exclude_newer: Option<&str>,
     bioc: &BiocSetting,
+    repos: Option<&[PkgRepo]>,
     pins: &SolvePins,
     report_status: bool,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
@@ -1693,26 +1697,43 @@ pub(crate) fn sc_proj_solve_deps(
     // (the full ALLPACKAGES histories of CRAN and the R version's
     // Bioconductor release) as the solver visits them, instead of preloading
     // the entire version history.
-    let feeds = bioc.feeds(r_version, exclude_newer);
-    let loader = DbSourcePackageLoader::new_for(&feeds)?
+    // `rig pkg` passes the repositories of the R installation, `rig proj`
+    // uses CRAN and the R version's Bioconductor release.
+    let repos: Vec<PkgRepo> = match repos {
+        Some(repos) => repos.to_vec(),
+        None => PkgRepo::from_feeds(bioc.feeds(r_version, exclude_newer)),
+    };
+    let loader = DbSourcePackageLoader::new_for_repos(&repos)?
         .with_exclude_newer(exclude_newer.map(|c| c.to_string()))
         .with_bioc_only(bioc.only.clone());
-    // A Bioconductor feed that failed to load is not searched.
+    // A repository that failed to load is not searched.
     let repositories = loader.repositories();
-    let feeds: Vec<MetadataFeed> = feeds
+    let repos: Vec<PkgRepo> = repos
         .into_iter()
-        .filter(|f| repositories.contains(&f.repo))
+        .filter(|r| repositories.contains(&r.repo_id()))
         .collect();
+    let feeds = PkgRepo::feeds(&repos);
+    let cranlike = PkgRepo::cranlike(&repos);
     let bioc_version = feeds.iter().find_map(|f| match &f.repo {
         RepoId::Bioc(v) => Some(v.clone()),
-        RepoId::Cran => None,
+        _ => None,
     });
     // Binary builds are candidates alongside the source tarball, so that the
     // `LinkingTo` versions a build was compiled against become constraints the
-    // solver can backtrack over. Their indices are fetched lazily too, one
-    // request per package the solve visits.
-    let binaries: Option<Box<dyn BinaryIndexLoader>> =
-        target.map(|t| Box::new(P3mBinaryLoader::new_for(t, &feeds)) as Box<dyn BinaryIndexLoader>);
+    // solver can backtrack over. Their P3M indices are fetched lazily too, one
+    // request per package the solve visits. CRAN-like repositories have one
+    // binary index each.
+    let binaries: Option<Box<dyn BinaryIndexLoader>> = target.map(|t| {
+        let p3m = Box::new(P3mBinaryLoader::new_for(t.clone(), &feeds));
+        if cranlike.is_empty() {
+            p3m as Box<dyn BinaryIndexLoader>
+        } else {
+            Box::new(ChainedBinaryLoader::new(vec![
+                p3m,
+                Box::new(CranlikeBinaryLoader::new_for(t, &cranlike)),
+            ]))
+        }
+    });
     let reg: RPackageRegistry = RPackageRegistry::with_loaders(Box::new(loader), binaries)
         .with_bioc_version(bioc_version)
         .prefer_binary(prefer_binary)
@@ -3777,6 +3798,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
                 lock_options.prefer_binary,
                 lock_options.exclude_newer.as_deref(),
                 &solve.bioc,
+                None,
                 &pins,
                 false,
             )

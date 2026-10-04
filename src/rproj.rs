@@ -34,7 +34,7 @@ use crate::exclude_newer::ExcludeNewerSpec;
 use crate::install::{
     format_linkingto, REMOTE_HASH_FIELD, REMOTE_HOST_FIELD, REMOTE_LINKINGTO_FIELD,
     REMOTE_REF_FIELD, REMOTE_REPO_FIELD, REMOTE_SHA_FIELD, REMOTE_SUBDIR_FIELD, REMOTE_TYPE_FIELD,
-    REMOTE_URL_FIELD, REMOTE_USERNAME_FIELD,
+    REMOTE_URL_FIELD, REMOTE_USERNAME_FIELD, REPO_BUILT_FIELD,
 };
 use crate::proj::BASE_PKGS;
 use crate::repos::cranlike_metadata::minor_r_version;
@@ -2784,6 +2784,9 @@ impl RprojLockTarget {
             if let Some(sha) = registry.artifact_sha256(k, v) {
                 metadata.insert(REMOTE_HASH_FIELD.to_string(), sha);
             }
+            if let Some(built) = registry.artifact_built(k, v) {
+                metadata.insert(REPO_BUILT_FIELD.to_string(), built);
+            }
             let linkingto = if binary {
                 registry.artifact_linkingto(k, v)
             } else {
@@ -2820,8 +2823,18 @@ impl RprojLockTarget {
             };
             // The cache file name has to tell two builds of one version apart,
             // and the repository path does not: several binaries share it.
+            // A package of a CRAN-like repository without checksums has no
+            // hash, so its URL tells it apart from the same version in
+            // another repository.
+            let cranlike_url = repository
+                .as_ref()
+                .filter(|r| r.is_cranlike())
+                .map(|_| sources[0].as_str());
             let key = artifact_cache_key(
-                metadata.get(REMOTE_HASH_FIELD).map(|s| s.as_str()),
+                metadata
+                    .get(REMOTE_HASH_FIELD)
+                    .map(|s| s.as_str())
+                    .or(cranlike_url),
                 if binary {
                     metadata.get(REMOTE_LINKINGTO_FIELD).map(|s| s.as_str())
                 } else {

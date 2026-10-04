@@ -168,6 +168,11 @@ fn binary_index_dir(feed: &MetadataFeed) -> Result<PathBuf, Box<dyn Error>> {
     Ok(match &feed.repo {
         RepoId::Cran => dir,
         RepoId::Bioc(v) => dir.join(format!("bioc-{}", v)),
+        // A CRAN-like repository has no per-package binary indices, its
+        // binaries are in its `PACKAGES` files instead.
+        RepoId::Cranlike { url, .. } => {
+            dir.join(format!("cranlike-{}", crate::utils::calculate_hash(url)))
+        }
     })
 }
 

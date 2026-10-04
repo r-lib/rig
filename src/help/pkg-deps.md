@@ -1,19 +1,30 @@
 Dependencies of a package in the repositories
 
-## Note
-
-This command currently only uses PPM (Posit Public Package Manager) and
-ignores the configured repositories.
-
 ## Description
 
 Show what a package needs, in a table: every package it depends on, the
-version of that package currently on CRAN, the dependency type (`Depends`,
+latest version of that package in the repositories, the dependency type (`Depends`,
 `Imports`, `LinkingTo`) and the version requirement, if it has one.
 
 By default the dependencies of the latest version of the package are shown;
 use `--version` to ask about a specific one, including versions that CRAN has
 archived. Use `--json` for machine readable output.
+
+## Repositories
+
+rig uses the repositories configured for the R version, i.e. the
+[`rig repos list`](repos.qmd#rig-repos-list) output for the default R version, or for
+the one selected with `--r-version`. If two repositories have the same version
+of a package, the one listed first wins.
+
+For P3M and for Bioconductor's software repository rig reads their full
+package history, from <https://ppm.r-pkg.org> and <https://ppm-bioc.r-pkg.org>,
+so older and archived versions are available, too. Any other repository, e.g.
+CRAN itself, an r-universe, or one added with [`rig repos add`](repos.qmd#rig-repos-add), is read
+from its `PACKAGES` files, so only its current packages are available.
+Bioconductor packages are included if the Bioconductor repositories are
+enabled for the R version, or for a `bioc::` package. `--no-bioc` leaves them
+out.
 
 ## Dependency types
 
