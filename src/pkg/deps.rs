@@ -16,11 +16,9 @@ use tabular::*;
 
 use crate::dcf::{DepVersionSpec, Package, RDepType, RPackageVersion, DEP_TYPES_SOFT};
 use crate::output::OUTPUT;
-use crate::pkg::pkg_feeds;
+use crate::pkg::pkg_repos_for;
 use crate::pkgsource::local::resolve_local_path;
-use crate::pkgsource::{
-    parse_pkg_source, strip_bioc_prefix, LocalSource, PkgSource, RemoteSource, UrlSource,
-};
+use crate::pkgsource::{parse_pkg_source, LocalSource, PkgSource, RemoteSource, UrlSource};
 use crate::proj::{
     dep_table_from_remote, dep_table_from_url, fetch_and_read_git_package,
     fetch_and_read_url_package, read_local_package,
@@ -43,7 +41,7 @@ pub fn sc_pkg_deps(
     let recursive = args.get_flag("recursive");
     let json = args.get_flag("json") || pkgargs.get_flag("json") || mainargs.get_flag("json");
 
-    let feeds = pkg_feeds(args);
+    let repos = pkg_repos_for(args)?;
     let source = parse_pkg_source(&package).inspect_err(|err| {
         OUTPUT.error(&err.to_string());
     })?;
@@ -52,7 +50,7 @@ pub fn sc_pkg_deps(
         PkgSource::Url(u) => url_root(&u)?,
         PkgSource::Local(l) => local_root(&l)?,
         PkgSource::Cran => {
-            let loader = DbSourcePackageLoader::new_for(&feeds)?;
+            let loader = DbSourcePackageLoader::new_for_repos(&repos)?;
             let root = root_package(&loader, &package, &ver)?;
             (
                 package.clone(),
@@ -60,16 +58,9 @@ pub fn sc_pkg_deps(
                 root.dependencies.dependencies,
             )
         }
-        PkgSource::Bioc => {
-            let name = strip_bioc_prefix(&package).to_string();
-            let loader = DbSourcePackageLoader::new_for(&feeds)?
-                .with_bioc_only([name.clone()].into_iter().collect());
-            let root = root_package(&loader, &name, &ver)?;
-            (name, root.version, root.dependencies.dependencies)
-        }
     };
 
-    let loader = DbSourcePackageLoader::new_for(&feeds)?;
+    let loader = DbSourcePackageLoader::new_for_repos(&repos)?;
     if recursive {
         let (rows, num_direct) = walk_deps(&loader, &name, &deps, dev);
         if json {

@@ -28,21 +28,7 @@ above.
 
 Bioconductor packages are added the same way as CRAN packages, e.g.
 `rig proj add limma`, see "Bioconductor packages" in
-[`rig proj lock`](#rig-proj-lock). The `bioc::` prefix of pak's package
-references works, too:
-
-```
-rig proj add bioc::limma
-rig proj add 'bioc::limma@>= 3.60'
-```
-
-This writes `repository = "bioc"` into the package's entry in `rproj.toml`,
-and the package is only looked up in Bioconductor:
-
-```toml
-[dependencies]
-limma = { version = "*", repository = "bioc" }
-```
+[`rig proj lock`](#rig-proj-lock).
 
 ## Git, GitHub, GitLab and URL sources
 

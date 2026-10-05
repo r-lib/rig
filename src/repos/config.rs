@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::error::Error;
 
 use serde::{Deserialize, Serialize};
@@ -18,10 +19,20 @@ pub struct RepoEntry {
     pub title: Option<String>,
     pub description: Option<String>,
     pub url: String,
+    /// Base URL of the extended metadata of this repository
+    /// (`ALLPACKAGES.zst`, `ARCHIVEDPACKAGES.zst` and `binaries/`), if it has
+    /// one. May contain `%v`, the Bioconductor version.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<String>,
     pub platforms: Option<Vec<String>>,
     pub archs: Option<Vec<String>>,
     pub rversions: Option<Vec<String>>,
     pub enabled: Option<Enabled>,
+    /// Use this URL only if no other URL with the same `metadata` is set up,
+    /// from any repository. E.g. P3M's source package URL is for the
+    /// platforms that P3M has no binary packages for.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub fallback: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -69,10 +80,12 @@ impl CustomRepo {
                 title: self.title.clone(),
                 description: self.description.clone(),
                 url: self.url.clone(),
+                metadata: None,
                 platforms: None,
                 archs: None,
                 rversions: None,
                 enabled: None,
+                fallback: false,
             }],
             custom: true,
         }
@@ -86,6 +99,20 @@ pub fn get_repos_config() -> Result<Vec<Repository>, Box<dyn Error>> {
     let mut config = HC_REPOS.to_vec();
     config.extend(get_custom_repos()?.iter().map(|r| r.to_repository()));
     Ok(config)
+}
+
+/// The base URLs of the extended metadata of the repositories that have one,
+/// by lowercase repository entry name, e.g. `p3m` and `biocsoft`. This is
+/// how an entry of an R installation's `repositories` file is matched to its
+/// extended metadata.
+pub fn repo_metadata_urls() -> Result<HashMap<String, String>, Box<dyn Error>> {
+    let mut metadata = HashMap::new();
+    for entry in get_repos_config()?.iter().flat_map(|r| r.repos.iter()) {
+        if let Some(m) = &entry.metadata {
+            metadata.insert(entry.name.to_lowercase(), m.clone());
+        }
+    }
+    Ok(metadata)
 }
 
 pub fn builtin_repo_names() -> Vec<String> {

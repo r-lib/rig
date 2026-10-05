@@ -66,12 +66,52 @@ fn exclude_newer_arg() -> Arg {
         .required(false)
 }
 
-fn no_bioc_arg() -> Arg {
-    Arg::new("no-bioc")
-        .help("Use CRAN packages only, not Bioconductor packages.")
-        .long("no-bioc")
-        .num_args(0)
-        .required(false)
+/// `--r-version` for the `rig pkg` commands that read the repositories
+/// configured for an R version. `short`: whether `-r` is free for it.
+fn pkg_r_version_arg(short: bool) -> Arg {
+    let arg = Arg::new("r-version")
+        .help("R version whose repositories to use, instead of the default")
+        .long("r-version")
+        .num_args(1)
+        .required(false);
+    if short {
+        arg.short('r')
+    } else {
+        arg
+    }
+}
+
+/// `--with-repos` (`--index`) and `--without-repos` (`--no-index`), for the
+/// `rig pkg` commands that use repositories. They only apply to the command
+/// at hand, the repository setup of the R version does not change.
+fn pkg_repos_args() -> [Arg; 2] {
+    [
+        Arg::new("with-repos")
+            .help(
+                "Also use these repositories, a comma-separated list of\n\
+                repository names, URLs or name=URL pairs. Can be repeated.",
+            )
+            .long("with-repos")
+            .visible_alias("index")
+            .value_name("REPOS")
+            .num_args(1)
+            .action(clap::ArgAction::Append)
+            .required(false),
+        Arg::new("without-repos")
+            .help(
+                "Do not use these repositories, a comma-separated list.\n\
+                Without a value, do not use any of the configured repositories,\n\
+                only the ones in --with-repos. Can be repeated.",
+            )
+            .long("without-repos")
+            .visible_alias("no-index")
+            .value_name("REPOS")
+            .num_args(0..=1)
+            .require_equals(true)
+            .default_missing_value("ALL REPOSITORIES")
+            .action(clap::ArgAction::Append)
+            .required(false),
+    ]
 }
 
 /// `--sysreqs` and `--no-sysreqs`, for the commands that install packages.
@@ -406,7 +446,7 @@ pub fn rig_app() -> Command {
             Arg::new("without-p3m")
                 .aliases(["without-rspm"])
                 .help(
-                    "Do not set up P3M. This is the default on macOS.\n\
+                    "Do not set up P3M.\n\
                     Deprecated in favor of --without-repos=p3m. \n\
                     [alias: --without-rspm]",
                 )
@@ -2189,7 +2229,8 @@ pub fn rig_app() -> Command {
                 .about(ABOUT_PKG_AVAILABLE)
                 .long_about(HELP_PKG_AVAILABLE)
                 .display_order(0)
-                .arg(no_bioc_arg())
+                .arg(pkg_r_version_arg(true))
+                .args(pkg_repos_args())
                 .arg(
                     Arg::new("json")
                         .help("JSON output")
@@ -2210,7 +2251,8 @@ pub fn rig_app() -> Command {
                 .about(ABOUT_PKG_DEPS)
                 .long_about(HELP_PKG_DEPS)
                 .display_order(0)
-                .arg(no_bioc_arg())
+                .arg(pkg_r_version_arg(false))
+                .args(pkg_repos_args())
                 .arg(
                     Arg::new("package")
                         .help("package to show the dependencies of")
@@ -2303,6 +2345,8 @@ pub fn rig_app() -> Command {
                 .about(ABOUT_PKG_INFO)
                 .long_about(HELP_PKG_INFO)
                 .display_order(0)
+                .arg(pkg_r_version_arg(true))
+                .args(pkg_repos_args())
                 .arg(Arg::new("package").help("package to show").required(true))
                 .arg(
                     Arg::new("version")
@@ -2340,7 +2384,6 @@ pub fn rig_app() -> Command {
                 .about(ABOUT_PKG_INSTALL)
                 .long_about(HELP_PKG_INSTALL)
                 .display_order(0)
-                .arg(no_bioc_arg())
                 .arg(
                     Arg::new("package")
                         .help("packages to install")
@@ -2435,6 +2478,7 @@ pub fn rig_app() -> Command {
                         .required(false),
                 )
                 .arg(exclude_newer_arg())
+                .args(pkg_repos_args())
                 .arg(
                     Arg::new("json")
                         .help("JSON output")
@@ -2583,7 +2627,8 @@ pub fn rig_app() -> Command {
                 .about(ABOUT_PKG_TREE)
                 .long_about(HELP_PKG_TREE)
                 .display_order(0)
-                .arg(no_bioc_arg())
+                .arg(pkg_r_version_arg(true))
+                .args(pkg_repos_args())
                 .arg(
                     Arg::new("package")
                         .help("package to show the dependency tree of")
@@ -2967,7 +3012,7 @@ pub fn rig_app() -> Command {
                 )
                 .arg(
                     Arg::new("all")
-                        .help("Show all repositories, not just the default ones")
+                        .help("Show all repositories, not just the enabled ones")
                         .long("all")
                         .num_args(0)
                         .required(false),
@@ -3020,7 +3065,7 @@ pub fn rig_app() -> Command {
                 )
                 .arg(
                     Arg::new("all")
-                        .help("Check all repositories, not just the default ones")
+                        .help("Check all repositories, not just the enabled ones")
                         .long("all")
                         .num_args(0)
                         .required(false),

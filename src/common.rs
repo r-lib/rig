@@ -58,8 +58,6 @@ pub fn check_installed(x: &String) -> Result<String, Box<dyn Error>> {
         return Ok(name);
     }
 
-    OUTPUT.error(&format!("R version {} is not installed", x));
-    error!("R version {} is not installed", x);
     bail!("R version {} is not installed", &x);
 }
 

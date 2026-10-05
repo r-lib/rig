@@ -44,10 +44,11 @@ use crate::dcf::{
 use crate::exclude_newer::exclude_newer_arg;
 use crate::install::{
     install_packages, PackageInfo, REMOTE_HASH_FIELD, REMOTE_SHA_FIELD, REMOTE_TYPE_FIELD,
+    REPO_BUILT_FIELD,
 };
 use crate::library::library_rver;
 use crate::output::OUTPUT;
-use crate::pkg::pkg_bioc_setting;
+use crate::pkg::pkg_repos;
 use crate::pkgsource::local::resolve_local_path;
 use crate::pkgsource::{parse_pkg_source, PkgSource};
 use crate::proj::{
@@ -56,6 +57,8 @@ use crate::proj::{
     proj_binary_target, read_local_package, resolve_git_sources, sc_proj_solve_deps, SolvePins,
     BASE_PKGS,
 };
+use crate::repos::feed::BiocSetting;
+use crate::repos::interpret_pkg_repos_args;
 use crate::repos::DbSourcePackageLoader;
 use crate::rproj::{DepTable, RprojLockPackage, RprojLockTarget};
 use crate::solver::{is_base_package, PackageVersionLoader, SolveRoot};
@@ -104,14 +107,15 @@ pub fn sc_pkg_install(
         Some(rver) => rver.clone(),
         None => library_rver(args)?,
     };
-    let mut bioc = pkg_bioc_setting(args);
-    bioc.only = bioc_names(&names);
+    let bioc = BiocSetting::default();
+    // The repositories configured for the R version, changed by
+    // `--with-repos` and `--without-repos`.
+    let over = interpret_pkg_repos_args(args)?;
+    let repos = pkg_repos(&rver, &bioc, exclude_newer.as_deref(), over.as_ref())?;
 
     if dev {
-        let feeds = bioc.feeds(&rver, exclude_newer.as_deref());
-        let loader = DbSourcePackageLoader::new_for(&feeds)?
-            .with_exclude_newer(exclude_newer.clone())
-            .with_bioc_only(bioc.only.clone());
+        let loader =
+            DbSourcePackageLoader::new_for_repos(&repos)?.with_exclude_newer(exclude_newer.clone());
         add_dev_deps(
             &loader,
             &cran_names,
@@ -139,6 +143,7 @@ pub fn sc_pkg_install(
         prefer_binary,
         exclude_newer.as_deref(),
         &bioc,
+        Some(&repos),
         &SolvePins::default(),
         true,
     )?;
@@ -265,17 +270,6 @@ type RequestedDeps = (
     Vec<Package>,
 );
 
-/// The names of the `bioc::` references in `names`, which must come from
-/// Bioconductor.
-fn bioc_names(names: &[String]) -> std::collections::BTreeSet<String> {
-    names
-        .iter()
-        .filter(|n| matches!(parse_pkg_source(n), Ok(PkgSource::Bioc)))
-        .filter_map(|n| crate::rproj::parse_add_spec(crate::pkgsource::strip_bioc_prefix(n)).ok())
-        .map(|(name, _)| name)
-        .collect()
-}
-
 fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
     let mut deps = PackageDependencies::new();
     let mut git_deps: Vec<(String, DepTable)> = vec![];
@@ -297,9 +291,8 @@ fn requested_deps(names: &[String]) -> Result<RequestedDeps, Box<dyn Error>> {
         })?;
         let mut constraints: Vec<crate::dcf::VersionConstraint> = vec![];
         let resolved_name = match source {
-            PkgSource::Cran | PkgSource::Bioc => {
-                let spec = crate::pkgsource::strip_bioc_prefix(name);
-                let (cran_name, version) = crate::rproj::parse_add_spec(spec)?;
+            PkgSource::Cran => {
+                let (cran_name, version) = crate::rproj::parse_add_spec(name)?;
                 cran_names.push(cran_name.clone());
                 constraints = crate::rproj::parse_constraints(&version)?;
                 cran_name
@@ -626,6 +619,13 @@ pub(crate) fn plan_installs<'a>(
     plan
 }
 
+/// A `Built` timestamp, e.g. `2025-06-20 10:00:00 UTC`, in a form that sorts
+/// by time: its date and time, without the time zone, which is always UTC.
+fn built_key(timestamp: &str) -> &str {
+    let t = timestamp.trim();
+    t.get(..19).unwrap_or(t)
+}
+
 /// Why a solved package has to be installed, or `None` if the installed one
 /// already is that package.
 fn needs_install(
@@ -673,16 +673,25 @@ fn needs_install(
 
     let want = solved.metadata.get(REMOTE_HASH_FIELD);
     match (&installed.hash, want) {
-        // Nothing recorded on either side: the version is all we have to go on,
-        // and it matches. This is what a source-only repository without hashes
-        // looks like, and reinstalling on every run would be worse.
-        (None, None) => {}
+        // The solved package has no hash, e.g. it is from a CRAN-like
+        // repository without checksums: the version is all we have to go on,
+        // and it matches.
+        (_, None) => {}
         (None, Some(_)) => return Some("no recorded hash".to_string()),
-        (Some(_), None) => return Some("solved artifact has no hash".to_string()),
         (Some(have), Some(want)) if have != want => {
             return Some("built from a different tarball".to_string())
         }
         (Some(_), Some(_)) => {}
+    }
+
+    // A CRAN-like repository can rebuild a package without changing its
+    // version, e.g. CRAN's Windows binaries, which have no checksums but a
+    // `Built` field. A source package built here is newer than the
+    // repository's build, so it is not affected.
+    if let (Some(want), Some(have)) = (solved.metadata.get(REPO_BUILT_FIELD), &installed.built_at) {
+        if built_key(want) > built_key(have) {
+            return Some("a newer build is available".to_string());
+        }
     }
 
     // What the installed package was compiled against has to be what the
@@ -978,6 +987,49 @@ mod tests {
         let out = plan(
             &[solved("cli", "3.6.3", None)],
             &[inst("cli", "3.6.3", None, &[])],
+            false,
+        );
+        assert!(!out["cli"].0);
+    }
+
+    /// A solved package with a `Built` time, and an installed one built at
+    /// `installed`.
+    fn built_plan(repo: &str, installed: Option<&str>) -> (bool, String) {
+        let mut s = solved("cli", "3.6.3", None);
+        s.metadata
+            .insert(REPO_BUILT_FIELD.to_string(), repo.to_string());
+        let mut i = inst("cli", "3.6.3", None, &[]);
+        i.built_at = installed.map(|x| x.to_string());
+        plan(&[s], &[i], false)["cli"].clone()
+    }
+
+    /// A CRAN-like repository rebuilt the package, e.g. a CRAN Windows binary
+    /// without a checksum, so it is installed again.
+    #[test]
+    fn a_newer_build_is_installed() {
+        let out = built_plan("2025-06-20 10:00:00 UTC", Some("2025-06-01 08:00:00 UTC"));
+        assert!(out.0);
+        assert_eq!(out.1, "a newer build is available");
+    }
+
+    /// The same build, or an older one, e.g. a package built here from
+    /// source, is up to date.
+    #[test]
+    fn the_same_or_an_older_build_is_up_to_date() {
+        let t = "2025-06-20 10:00:00 UTC";
+        assert!(!built_plan(t, Some(t)).0);
+        assert!(!built_plan(t, Some("2025-07-01 12:00:00 UTC")).0);
+        assert!(!built_plan(t, Some("2025-06-20 10:00:00")).0);
+        assert!(!built_plan(t, None).0);
+    }
+
+    /// A package of a CRAN-like repository without checksums has no hash, so
+    /// the same version is up to date, whatever it was installed from.
+    #[test]
+    fn a_solved_package_without_a_hash_keeps_the_same_version() {
+        let out = plan(
+            &[solved("cli", "3.6.3", None)],
+            &[inst("cli", "3.6.3", Some("aa"), &[])],
             false,
         );
         assert!(!out["cli"].0);

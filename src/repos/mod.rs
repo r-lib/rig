@@ -18,9 +18,10 @@ use crate::windows::*;
 use crate::linux::*;
 
 mod config;
-pub use config::{get_repos_config, RepoEntry, Repository};
+pub use config::{get_repos_config, repo_metadata_urls, RepoEntry, Repository};
 mod configured;
-mod interpret_repos_args;
+pub(crate) use configured::{configured_repos, resolve_bioc_vars};
+pub(crate) mod interpret_repos_args;
 mod repos_add;
 use repos_add::sc_repos_add;
 mod repos_enable;
@@ -28,7 +29,7 @@ use repos_enable::{sc_repos_disable, sc_repos_enable};
 mod repos_rm;
 use repos_rm::sc_repos_rm;
 pub mod state;
-pub use interpret_repos_args::interpret_repos_args;
+pub use interpret_repos_args::{interpret_pkg_repos_args, interpret_repos_args, PkgReposArgs};
 mod repos_available;
 use repos_available::sc_repos_available;
 mod repos_list;
@@ -41,6 +42,7 @@ pub use cranlike_metadata::DbSourcePackageLoader;
 pub mod binaries;
 mod setup;
 pub use setup::repos_setup;
+pub(crate) use setup::repos_with_setup;
 
 pub fn sc_repos(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     match args.subcommand() {
@@ -54,6 +56,14 @@ pub fn sc_repos(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn 
         Some(("status", s)) => sc_repos_status(s, args, mainargs),
         _ => Ok(()), // unreachable
     }
+}
+
+/// The Bioconductor mirror: `R_BIOC_MIRROR` if set, like R itself, else
+/// <https://bioconductor.org>. Without a trailing `/`.
+pub fn bioc_mirror() -> String {
+    env::var("R_BIOC_MIRROR")
+        .map(|m| m.trim_end_matches('/').to_string())
+        .unwrap_or_else(|_| "https://bioconductor.org".to_string())
 }
 
 pub fn r_version_to_bioc_version(rver: &str) -> Result<String, Box<dyn Error>> {

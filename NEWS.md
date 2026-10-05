@@ -18,15 +18,45 @@
   for administrator rights if the current user cannot update the files of
   the R installations, e.g. in admin mode on Linux and Windows.
 
+* `rig pkg install`, `rig pkg deps`, `rig pkg tree`, `rig pkg available`
+  and `rig pkg info` now use the repositories configured for the R
+  version, including custom ones. `rig pkg deps`, `rig pkg tree`,
+  `rig pkg available` and `rig pkg info` have a new `--r-version` option.
+  `rig pkg search` still searches CRAN only.
+
+* `rig pkg install`, `rig pkg deps`, `rig pkg tree`, `rig pkg available`
+  and `rig pkg info` have new `--with-repos` and `--without-repos`
+  options, with aliases `--index` and `--no-index`, to use other
+  repositories for one command, without changing the setup of the R
+  version. `--with-repos` also takes repository URLs, or `name=URL`.
+
+* `rig pkg` commands now only use Bioconductor packages if the
+  Bioconductor repositories are enabled for the R version, e.g. with
+  `rig repos enable bioconductor`.
+
+* rig now sets up P3M by default on macOS, and on the Linux
+  distributions P3M has no binary packages for, where P3M is a CRAN
+  mirror of source packages. P3M stays off on aarch64 Windows, because it
+  only has x86_64 Windows binaries. Use
+  `--without-repos=p3m` or `rig repos disable p3m` to turn it off.
+
+* `--without-repos=cran` (and `rig repos disable cran`) now turns off CRAN
+  completely.
+
 ## Bioconductor
 
 * `rig proj` and `rig pkg` now install Bioconductor packages, besides CRAN
   packages, from the Bioconductor release that belongs to the R version.
-  `bioc::<package>` references work, too. A `bioc` entry in the
+  CRAN and Bioconductor share one package namespace, so a `bioc::<package>`
+  entry in `Remotes:` or `Config/Needs/*` is the same as `<package>`. A
+  `bioc` entry in the
   `[[repository]]` array of `rproj.toml` pins the Bioconductor release, or
-  turns Bioconductor off. `rig pkg` commands have a new `--no-bioc` option
-  to use CRAN only. `rproj.lock` is now version 5, and records the
+  turns Bioconductor off. `rproj.lock` is now version 5, and records the
   Bioconductor release of every target.
+
+* `rig pkg info` now shows the full `DESCRIPTION` of the current version
+  of a Bioconductor package, e.g. its title, description and maintainer,
+  from the `VIEWS` file of its Bioconductor repository.
 
 ## Inline scripts
 

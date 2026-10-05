@@ -1,10 +1,5 @@
 Install packages from the repositories
 
-## Note
-
-This command currently only uses PPM (Posit Public Package Manager) and
-ignores the configured repositories.
-
 ## Description
 
 Install one or more R packages, and everything they need, into an R package
@@ -16,13 +11,42 @@ needs can be installed with it, at versions that work together. `--dry-run`
 runs the resolution and reports what it would install, without installing
 anything.
 
+## Repositories
+
+rig installs from the repositories configured for the R version, i.e. the
+[`rig repos list`](repos.qmd#rig-repos-list) output for the default R version, or for
+the one selected with `--r-version`. If two repositories have the same version
+of a package, the one listed first wins.
+
+`--with-repos` (or `--index`) and `--without-repos` (or `--no-index`) change
+the repositories for this command only, the setup of the R version stays the
+same. Both take a comma-separated list and can be repeated. `--with-repos`
+adds repositories, by name, like [`rig repos enable`](repos.qmd#rig-repos-enable),
+by URL, or as `name=URL`, e.g. `--index=rlib=https://r-lib.r-universe.dev`.
+A repository given by URL is a CRAN-like repository and comes before the
+others. `--without-repos=<names>` leaves out repositories, and
+`--without-repos` without names leaves out all configured repositories, so
+only the ones in `--with-repos` are used, e.g.
+`--no-index --index=https://r-lib.r-universe.dev`. URLs cannot contain commas.
+
+For P3M and for Bioconductor's software repository rig reads their full
+package history, from <https://ppm.r-pkg.org> and <https://ppm-bioc.r-pkg.org>,
+so older and archived versions are available, too. Any other repository, e.g.
+CRAN itself, an r-universe, or one added with [`rig repos add`](repos.qmd#rig-repos-add), is read
+from its `PACKAGES` files, so only its current packages are available.
+
+A CRAN-like repository has binary packages for macOS and Windows, if it has
+`PACKAGES` files for them in the standard place, e.g.
+`bin/macosx/big-sur-arm64/contrib/4.5`. On Linux it has source packages only.
+
 ## Bioconductor packages
 
-rig installs from CRAN and from the Bioconductor release of the R version,
-e.g. Bioconductor 3.23 for R 4.6, so `rig pkg install limma` works like
-`rig pkg install dplyr`. The `bioc::` prefix works, too, e.g.
-`rig pkg install bioc::limma`. Use `--no-bioc` to use CRAN only. `R_BIOC_VERSION` selects another Bioconductor
-release. See "Bioconductor packages" in [`rig proj lock`](proj.qmd#rig-proj-lock).
+rig installs Bioconductor packages if the Bioconductor repositories are
+enabled for the R version, see [`rig repos enable`](repos.qmd#rig-repos-enable), from the
+Bioconductor release of the R version, e.g. Bioconductor 3.23 for R 4.6.
+Then `rig pkg install limma` works like `rig pkg install dplyr`.
+`R_BIOC_VERSION` selects another Bioconductor release. See "Bioconductor packages" in
+[`rig proj lock`](proj.qmd#rig-proj-lock).
 
 ## Git, GitHub, GitLab and URL sources
 
@@ -174,7 +198,8 @@ entry to `print` to always only show them. See [`rig config`](config.qmd) for th
 after a date, e.g.
 `--exclude-newer 2025-06-01`, or after a span back from today, e.g.
 `--exclude-newer "7 days"`. See [`rig proj lock`](proj.qmd#rig-proj-lock)
-for the accepted formats and details.
+for the accepted formats and details. The `PACKAGES` files of other
+repositories have no publication dates, so their versions are never excluded.
 
 ## Caching package builds
 

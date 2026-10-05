@@ -34,7 +34,7 @@ use crate::exclude_newer::ExcludeNewerSpec;
 use crate::install::{
     format_linkingto, REMOTE_HASH_FIELD, REMOTE_HOST_FIELD, REMOTE_LINKINGTO_FIELD,
     REMOTE_REF_FIELD, REMOTE_REPO_FIELD, REMOTE_SHA_FIELD, REMOTE_SUBDIR_FIELD, REMOTE_TYPE_FIELD,
-    REMOTE_URL_FIELD, REMOTE_USERNAME_FIELD,
+    REMOTE_URL_FIELD, REMOTE_USERNAME_FIELD, REPO_BUILT_FIELD,
 };
 use crate::proj::BASE_PKGS;
 use crate::repos::cranlike_metadata::minor_r_version;
@@ -579,7 +579,7 @@ pub struct DepTable {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
     // The package reference, kept verbatim, in whatever syntax it was written
-    // in (`tidyverse/tidytemplate`, `bioc::S4Vectors`, `url::https://...`).
+    // in (`tidyverse/tidytemplate`, `gitlab::group/project`, `url::https://...`).
     // Written by the `Config/Needs/*` import, which has no way to tell what
     // kind of reference an entry is, and written back out unchanged by
     // `rig proj export`.
@@ -838,31 +838,7 @@ impl Rproj {
             setting.enabled = setting.enabled && repo.enabled.unwrap_or(true);
             setting.version = repo.version.clone();
         }
-        setting.only = self.bioc_dependency_names();
         setting
-    }
-
-    /// The dependencies with `repository = "bioc"`, which must come from
-    /// Bioconductor, in every dependency table.
-    pub fn bioc_dependency_names(&self) -> std::collections::BTreeSet<String> {
-        let tables = std::iter::once(&self.dependencies)
-            .chain(std::iter::once(&self.linking_dependencies))
-            .chain(self.dependency_groups.values().map(|g| &g.dependencies))
-            .chain(self.optional_dependencies.values());
-        let mut out = std::collections::BTreeSet::new();
-        for table in tables {
-            for (name, dep) in table {
-                if let Dependency::Detailed(t) = dep {
-                    if t.repository
-                        .as_deref()
-                        .is_some_and(|r| r.eq_ignore_ascii_case(BIOC_REPOSITORY_NAME))
-                    {
-                        out.insert(name.clone());
-                    }
-                }
-            }
-        }
-        out
     }
 
     pub fn exclude_newer(&self) -> Result<Option<ExcludeNewerSpec>, Box<dyn Error>> {
@@ -924,7 +900,9 @@ impl Rproj {
     /// A `git`/GitHub reference (the same syntax `Remotes:` uses, see
     /// [`crate::pkgsource::parse_pkg_source`]) becomes a [`DepTable`] with a
     /// `git` field, exactly like [`crate::proj::dep_table_from_remote`] builds
-    /// for a `Remotes:` entry. Anything else (`bioc::`, `bitbucket::`,
+    /// for a `Remotes:` entry. A `bioc::<package>` entry is the same as
+    /// `<package>`, see [`crate::pkgsource::strip_bioc_prefix`]. Anything
+    /// else (`bitbucket::`,
     /// `gitlab::`, ...) is not a reference this crate resolves, so it is kept
     /// verbatim in [`DepTable::ref_`], and [`Rproj::to_description`] writes it
     /// back unchanged.
@@ -1046,52 +1024,6 @@ impl Rproj {
         };
 
         table.insert(name.to_string(), value);
-        previous
-    }
-
-    /// Add (or update) a dependency that must come from Bioconductor: a
-    /// [`DepTable`] with `repository = "bioc"`, see
-    /// [`Rproj::bioc_setting`]. Mirrors [`Rproj::add_dependency`]'s dev
-    /// placement. `version` replaces the existing version requirement, if
-    /// given. A git/url/path source of an existing entry is dropped, its
-    /// `attach`/`enhances`/`vignette-builder` flags are kept.
-    ///
-    /// Returns the previous version requirement, if the manifest already
-    /// listed the package.
-    pub fn add_bioc_dependency(
-        &mut self,
-        name: &str,
-        version: Option<&str>,
-        dev: bool,
-    ) -> Option<String> {
-        let group = if dev {
-            &mut self
-                .dependency_groups
-                .entry("dev".to_string())
-                .or_default()
-                .dependencies
-        } else {
-            &mut self.dependencies
-        };
-        let mut table = DepTable {
-            repository: Some(BIOC_REPOSITORY_NAME.to_string()),
-            ..Default::default()
-        };
-        let previous = match group.get(name) {
-            Some(Dependency::Version(old)) => Some(old.clone()),
-            Some(Dependency::Detailed(old)) => {
-                table.attach = old.attach;
-                table.enhances = old.enhances;
-                table.vignette_builder = old.vignette_builder;
-                Some(old.version.clone().unwrap_or_else(|| "*".to_string()))
-            }
-            None => None,
-        };
-        table.version = version
-            .map(|v| v.to_string())
-            .or_else(|| previous.clone())
-            .or_else(|| Some("*".to_string()));
-        group.insert(name.to_string(), Dependency::Detailed(Box::new(table)));
         previous
     }
 
@@ -2124,6 +2056,7 @@ fn format_config_value(value: &toml::Value) -> String {
 }
 
 fn config_needs_entry(entry: &str) -> (String, Dependency) {
+    let entry = crate::pkgsource::strip_bioc_prefix(entry);
     if let Ok(spec) = DepVersionSpec::parse(entry, "Suggests") {
         if is_r_package_name(&spec.name) {
             return (
@@ -2151,21 +2084,6 @@ fn config_needs_entry(entry: &str) -> (String, Dependency) {
                 return (
                     name.clone(),
                     Dependency::Detailed(Box::new(crate::proj::dep_table_from_url(&u))),
-                );
-            }
-        }
-        // Kept verbatim in `ref`, for the round trip to `DESCRIPTION`, and
-        // solved from Bioconductor.
-        Ok(crate::pkgsource::PkgSource::Bioc) => {
-            let body = crate::pkgsource::strip_bioc_prefix(entry);
-            if let Ok((name, _)) = parse_add_spec(body) {
-                return (
-                    name,
-                    Dependency::Detailed(Box::new(DepTable {
-                        repository: Some(BIOC_REPOSITORY_NAME.to_string()),
-                        ref_: Some(entry.to_string()),
-                        ..Default::default()
-                    })),
                 );
             }
         }
@@ -2784,6 +2702,9 @@ impl RprojLockTarget {
             if let Some(sha) = registry.artifact_sha256(k, v) {
                 metadata.insert(REMOTE_HASH_FIELD.to_string(), sha);
             }
+            if let Some(built) = registry.artifact_built(k, v) {
+                metadata.insert(REPO_BUILT_FIELD.to_string(), built);
+            }
             let linkingto = if binary {
                 registry.artifact_linkingto(k, v)
             } else {
@@ -2820,8 +2741,18 @@ impl RprojLockTarget {
             };
             // The cache file name has to tell two builds of one version apart,
             // and the repository path does not: several binaries share it.
+            // A package of a CRAN-like repository without checksums has no
+            // hash, so its URL tells it apart from the same version in
+            // another repository.
+            let cranlike_url = repository
+                .as_ref()
+                .filter(|r| r.is_cranlike())
+                .map(|_| sources[0].as_str());
             let key = artifact_cache_key(
-                metadata.get(REMOTE_HASH_FIELD).map(|s| s.as_str()),
+                metadata
+                    .get(REMOTE_HASH_FIELD)
+                    .map(|s| s.as_str())
+                    .or(cranlike_url),
                 if binary {
                     metadata.get(REMOTE_LINKINGTO_FIELD).map(|s| s.as_str())
                 } else {
@@ -4915,26 +4846,6 @@ foo = "bar"
     }
 
     #[test]
-    fn bioc_dependencies_are_bioc_only() {
-        let mut m = Rproj::minimal("mypkg");
-        assert_eq!(m.add_bioc_dependency("limma", Some(">= 3.60"), false), None);
-        m.add_dependency("cli", "*", false);
-        assert_eq!(
-            m.bioc_setting().only.into_iter().collect::<Vec<_>>(),
-            vec!["limma".to_string()]
-        );
-        // Re-adding keeps the requirement, unless a new one is given.
-        assert_eq!(
-            m.add_bioc_dependency("limma", None, false).as_deref(),
-            Some(">= 3.60")
-        );
-        match &m.dependencies["limma"] {
-            Dependency::Detailed(t) => assert_eq!(t.version.as_deref(), Some(">= 3.60")),
-            other => panic!("{:?}", other),
-        }
-    }
-
-    #[test]
     fn config_needs_roundtrips_through_the_manifest() {
         let mut m = Rproj::minimal("mypkg");
         let field = "tidyverse/tidytemplate, pkgdown (>= 2.0), \
@@ -4947,10 +4858,10 @@ foo = "bar"
 
         let (desc, _) = m.to_description().unwrap();
         // Entries are sorted by package name, each written back verbatim as
-        // it came in (`ref_`), `bioc::S4Vectors` and `jsonlite=...`'s
-        // redundant name override alike.
+        // it came in (`ref_`), `jsonlite=...`'s redundant name override
+        // included. `bioc::S4Vectors` is a plain `S4Vectors` dependency.
         assert!(desc.contains(
-            "Config/Needs/website:\n    bioc::S4Vectors,\n    \
+            "Config/Needs/website:\n    S4Vectors,\n    \
              jsonlite=jeroen/jsonlite@v1.8.0,\n    pkgdown (>= 2.0),\n    \
              tidyverse/tidytemplate\n"
         ));
@@ -5089,18 +5000,10 @@ foo = "bar"
             assert_eq!(dep, Dependency::Detailed(Box::new(table)), "{}", entry);
         }
 
-        // `bioc::S4Vectors` is not a `git`/GitHub reference, so it is kept
-        // verbatim in `ref`, and it comes from Bioconductor.
+        // `bioc::S4Vectors` is the same as `S4Vectors`.
         let (key, dep) = config_needs_entry("bioc::S4Vectors");
         assert_eq!(key, "S4Vectors");
-        assert_eq!(
-            dep,
-            Dependency::Detailed(Box::new(DepTable {
-                repository: Some("bioc".to_string()),
-                ref_: Some("bioc::S4Vectors".to_string()),
-                ..Default::default()
-            }))
-        );
+        assert_eq!(dep, Dependency::Version("*".to_string()));
 
         // A reference with no package name in it is kept under the reference
         // itself, rather than being dropped.
