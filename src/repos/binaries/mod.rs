@@ -1219,8 +1219,18 @@ impl PpmStatus {
     /// resolves to `opensuse156` rather than to the `15` release. The
     /// major-version pass is what maps RHEL 9.4 onto the `9` release, since P3M
     /// records only the release it built for.
+    ///
+    /// A distro without a version is taken as P3M's own name for the target,
+    /// e.g. `noble` from the `noble-x86_64` spelling lockfiles use.
     fn find_linux(&self, distro: Option<&str>, version: Option<&str>) -> Option<&PpmDistro> {
-        let distribution = ppm_distribution(distro?)?;
+        let distro = distro?;
+        if version.is_none() {
+            return self
+                .distros
+                .iter()
+                .find(|d| d.binaries && d.os == "linux" && d.platform() == distro);
+        }
+        let distribution = ppm_distribution(distro)?;
         let version = version?;
         let version = if distribution == "opensuse" || distribution == "sle" {
             suse_version_with_dot(version)
@@ -1921,6 +1931,33 @@ mod tests {
         // pointing at binaries that do not exist.
         assert_eq!(
             platform_of("aarch64", "linux", Some("ubuntu"), Some("22.04")),
+            expect(MANYLINUX, "arm64")
+        );
+    }
+
+    /// The `<platform>-<arch>` spelling of lockfiles (and `--platform`) names
+    /// the P3M target directly, with no distro version.
+    #[test]
+    fn matches_p3m_target_names() {
+        assert_eq!(
+            platform_of("x86_64", "linux", Some("noble"), None),
+            expect("noble", "x86_64")
+        );
+        assert_eq!(
+            platform_of("arm64", "linux", Some("noble"), None),
+            expect("noble", "arm64")
+        );
+        assert_eq!(
+            platform_of("x86_64", "linux", Some("opensuse156"), None),
+            expect("opensuse156", "x86_64")
+        );
+        assert_eq!(
+            platform_of("x86_64", "linux", Some(MANYLINUX), None),
+            expect(MANYLINUX, "x86_64")
+        );
+        // jammy is x86_64 only, as above.
+        assert_eq!(
+            platform_of("arm64", "linux", Some("jammy"), None),
             expect(MANYLINUX, "arm64")
         );
     }

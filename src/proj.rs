@@ -42,6 +42,7 @@ use crate::proj_repos::ProjRepos;
 use crate::repos::binaries::loader::{
     BinaryTarget, ChainedBinaryLoader, CranlikeBinaryLoader, P3mBinaryLoader,
 };
+use crate::repos::binaries::MANYLINUX;
 use crate::repos::cranlike_metadata::{ensure_repos_fresh, minor_r_version};
 use crate::repos::feed::{BiocSetting, PkgRepo, RepoFilter, RepoId};
 use crate::repos::interpret_repos_args::{interpret_pkg_repos_args, PkgReposArgs};
@@ -1691,26 +1692,26 @@ pub(crate) fn proj_binary_target(
     platform: Option<&String>,
     r_version: &str,
 ) -> Result<Option<BinaryTarget>, Box<dyn Error>> {
-    let (target, no_binaries) = proj_binary_target_quiet(platform, r_version)?;
-    if let Some(name) = no_binaries {
-        OUTPUT.warn(&format!(
-            "No binary packages for {}, using source packages",
-            name
-        ));
+    let (target, note) = proj_binary_target_quiet(platform, r_version)?;
+    if let Some(note) = note {
+        note.report();
     }
     Ok(target)
 }
 
-/// [`proj_binary_target`] without the "no binary packages" warning.
+/// [`proj_binary_target`] without the "no binary packages" warning and the
+/// "generic Linux binaries" message.
 ///
-/// Instead of warning, it returns the platform name that has no binaries, for
-/// callers that resolve several targets at once ([`proj_lock`]): every R
-/// version they resolve the platform for would repeat the same warning, so
-/// they collect the names and warn once per platform.
+/// Instead of printing them, it returns them, for callers that resolve
+/// several targets at once ([`proj_lock`]): every R version they resolve the
+/// platform for would repeat the same message, so they collect them and
+/// print each one once.
 pub(crate) fn proj_binary_target_quiet(
     platform: Option<&String>,
     r_version: &str,
-) -> Result<(Option<BinaryTarget>, Option<String>), Box<dyn Error>> {
+) -> Result<(Option<BinaryTarget>, Option<TargetNote>), Box<dyn Error>> {
+    // As the user spelled it, for messages.
+    let spec = platform;
     let platform = match platform {
         Some(p) if p == "source" => {
             info!("Solving for source packages only");
@@ -1736,20 +1737,62 @@ pub(crate) fn proj_binary_target_quiet(
         }
     };
 
-    let no_binaries = match &target {
+    let requested = || match (
+        spec,
+        &platform.rig_platform,
+        &platform.distro,
+        &platform.version,
+    ) {
+        (Some(p), _, _, _) | (None, Some(p), _, _) => p.clone(),
+        (None, None, Some(d), Some(v)) => format!("{}-{}", d, v),
+        (None, None, Some(d), None) => d.clone(),
+        (None, None, None, _) => platform.os.clone(),
+    };
+    let note = match &target {
         Some(target) => {
             info!("Solving for binary target {}", target.name());
-            None
+            // A specific distro P3M has no build for (or not for this arch)
+            // gets the generic glibc build, see `PpmStatus::ppm_platform`. A
+            // plain glibc Linux platform asks for exactly that.
+            let specific = platform.distro.as_deref().is_some_and(|d| d != MANYLINUX);
+            (specific && target.platform == MANYLINUX).then(|| TargetNote::Generic {
+                requested: requested(),
+                target: target.name(),
+            })
         }
-        None => Some(
-            platform
-                .rig_platform
-                .as_deref()
-                .unwrap_or(&platform.os)
-                .to_string(),
-        ),
+        None => Some(TargetNote::NoBinaries(requested())),
     };
-    Ok((target, no_binaries))
+    Ok((target, note))
+}
+
+/// Something worth telling the user about how a platform resolved to a
+/// binary target, see [`proj_binary_target_quiet`].
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum TargetNote {
+    /// No binaries at all for this platform, source packages only.
+    NoBinaries(String),
+    /// No specific binaries for this platform, P3M's generic glibc build.
+    Generic { requested: String, target: String },
+}
+
+impl TargetNote {
+    pub(crate) fn report(&self) {
+        match self {
+            TargetNote::NoBinaries(name) => {
+                let msg = format!("No binary packages for {}, using source packages", name);
+                OUTPUT.warn(&msg);
+                info!("{}", msg);
+            }
+            TargetNote::Generic { requested, target } => {
+                let msg = format!(
+                    "No specific binary packages for {}, using generic Linux binaries ({})",
+                    requested, target
+                );
+                OUTPUT.info(&msg);
+                info!("{}", msg);
+            }
+        }
+    }
 }
 
 /// Solve the dependencies of one project for one R version and one binary
@@ -3727,13 +3770,13 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     let mut solve_targets: Vec<SolveTarget> = vec![];
     let mut seen: HashSet<(String, String)> = HashSet::new();
     // Warned about once each below, not once per (R version, platform) pair.
-    let mut no_binaries: BTreeSet<String> = BTreeSet::new();
+    let mut target_notes: BTreeSet<TargetNote> = BTreeSet::new();
 
     for rver in &rvers {
         for platform in &platform_specs {
-            let (target, missing) = proj_binary_target_quiet(platform.as_ref(), rver)?;
-            if let Some(name) = missing {
-                no_binaries.insert(name);
+            let (target, note) = proj_binary_target_quiet(platform.as_ref(), rver)?;
+            if let Some(note) = note {
+                target_notes.insert(note);
             }
 
             // Mirrors how `RprojLockTarget::from_solution` derives the
@@ -3761,6 +3804,11 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
                 bioc_version: None,
             });
         }
+    }
+    // Even if the lock turns out to be up to date: e.g. an `--add-platform`
+    // falling back to the generic Linux build that is already locked.
+    for note in &target_notes {
+        note.report();
     }
 
     // The manifest's own direct dependencies, i.e. what a target's lock has
@@ -3939,13 +3987,6 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
             }
         }
         ensure_repos_fresh(&all_repos)?;
-
-        for name in &no_binaries {
-            OUTPUT.warn(&format!(
-                "No binary packages for {}, using source packages",
-                name
-            ));
-        }
 
         let source_only = solve_targets.iter().all(|t| t.target.is_none());
         if opts.prefer_binary.is_some_and(|n| n > 0) && source_only {
