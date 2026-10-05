@@ -166,7 +166,7 @@ pub fn interpret_pkg_repos_args(
 }
 
 // The items of a comma-separated list, trimmed, without empty ones.
-fn split_repos_list(value: &str) -> Vec<String> {
+pub(crate) fn split_repos_list(value: &str) -> Vec<String> {
     value
         .split(',')
         .map(|s| s.trim().to_string())
@@ -176,7 +176,9 @@ fn split_repos_list(value: &str) -> Vec<String> {
 
 // `Some((name, url))` if `item` is a URL or `name=URL`, `None` if it is a
 // repository name. A URL is named after its host.
-fn parse_repo_url(item: &str) -> Result<Option<(String, String)>, Box<dyn std::error::Error>> {
+pub(crate) fn parse_repo_url(
+    item: &str,
+) -> Result<Option<(String, String)>, Box<dyn std::error::Error>> {
     let Some(pos) = item.find("://") else {
         return Ok(None);
     };

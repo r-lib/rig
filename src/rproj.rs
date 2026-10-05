@@ -38,7 +38,7 @@ use crate::install::{
 };
 use crate::proj::BASE_PKGS;
 use crate::repos::cranlike_metadata::minor_r_version;
-use crate::repos::feed::BiocSetting;
+use crate::repos::feed::RepoId;
 use crate::rvenv::RPROJ_LOCK_FILE;
 use crate::solver::{RPackageRegistry, RegistryPackageVersion};
 
@@ -629,10 +629,14 @@ pub struct Group {
 
 /// One `[[repository]]`. Array order is precedence (first = highest).
 ///
-/// An entry is a package repository at `url`, or the built-in Bioconductor
-/// repository, named [`BIOC_REPOSITORY_NAME`], which has no `url`. Bioconductor
-/// is on without an entry, the entry only pins its `version` or turns it off
-/// with `enabled = false`. See [`Rproj::check_repositories`].
+/// An entry is a CRAN-like package repository at `url`, or one of the two
+/// built-in repositories, which have no `url`: CRAN, named
+/// [`CRAN_REPOSITORY_NAME`], and Bioconductor, named
+/// [`BIOC_REPOSITORY_NAME`]. Both are on without an entry, an entry turns
+/// one off with `enabled = false`, pins Bioconductor's `version`, or puts the
+/// built-in repository at its place in the order. `explicit = true` makes a
+/// repository serve only the dependencies pinned to it with
+/// `{ repository = "<name>" }`. See [`Rproj::check_repositories`].
 #[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
 pub struct Repository {
     pub name: String,
@@ -642,14 +646,18 @@ pub struct Repository {
     pub version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub explicit: Option<bool>,
 }
 
 /// The name of the built-in Bioconductor entry of `[[repository]]`.
 pub const BIOC_REPOSITORY_NAME: &str = "bioc";
 
+/// The name of the built-in CRAN entry of `[[repository]]`.
+pub const CRAN_REPOSITORY_NAME: &str = "cran";
+
 impl Repository {
     /// A package repository at `url`.
-    #[cfg(test)]
     pub fn at_url(name: &str, url: &str) -> Repository {
         Repository {
             name: name.to_string(),
@@ -658,9 +666,37 @@ impl Repository {
         }
     }
 
+    /// The entry of a built-in repository, with no settings.
+    pub fn builtin(name: &str) -> Repository {
+        Repository {
+            name: name.to_string(),
+            ..Default::default()
+        }
+    }
+
     /// Whether this is the built-in Bioconductor entry.
     pub fn is_bioc(&self) -> bool {
         self.name.eq_ignore_ascii_case(BIOC_REPOSITORY_NAME)
+    }
+
+    /// Whether this is the built-in CRAN entry.
+    pub fn is_cran(&self) -> bool {
+        self.name.eq_ignore_ascii_case(CRAN_REPOSITORY_NAME)
+    }
+
+    /// Whether this is one of the built-in entries, CRAN or Bioconductor.
+    pub fn is_builtin(&self) -> bool {
+        self.is_cran() || self.is_bioc()
+    }
+
+    /// Whether the repository is used, i.e. not turned off.
+    pub fn is_enabled(&self) -> bool {
+        self.enabled.unwrap_or(true)
+    }
+
+    /// Whether the repository only serves the dependencies pinned to it.
+    pub fn is_explicit(&self) -> bool {
+        self.explicit.unwrap_or(false)
     }
 }
 
@@ -791,27 +827,35 @@ impl Rproj {
         }
     }
 
-    /// The `exclude-newer` setting of `[tool.rig]`: hide CRAN versions
-    /// published after this date (or span) from the solver, see
-    /// [`crate::exclude_newer`].
     /// Check the `[[repository]]` entries: the built-in
-    /// [`BIOC_REPOSITORY_NAME`] entry has no `url`, and appears at most once,
-    /// every other entry has a `url`, and no `version` or `enabled`.
+    /// [`CRAN_REPOSITORY_NAME`] and [`BIOC_REPOSITORY_NAME`] entries have no
+    /// `url`, only the Bioconductor entry has a `version`, every other entry
+    /// has a `url` and no `version` or `enabled`. Names are unique. A
+    /// dependency with a `repository` pin has no git, URL or local source.
+    /// Whether the pinned repository exists is checked later, see
+    /// [`crate::proj_repos::ProjRepos`]: in a workspace the repositories are
+    /// the root's.
     pub fn check_repositories(&self) -> Result<(), Box<dyn Error>> {
-        let mut seen_bioc = false;
+        let mut seen: Vec<&str> = vec![];
         for repo in &self.repository {
-            if repo.is_bioc() {
+            if seen.iter().any(|n| n.eq_ignore_ascii_case(&repo.name)) {
+                bail!("`[[repository]]` `{}` appears more than once", repo.name);
+            }
+            seen.push(&repo.name);
+            if repo.is_builtin() {
                 if repo.url.is_some() {
                     bail!(
-                        "`[[repository]]` `{}` is the built-in Bioconductor repository, \
-                         it cannot have a `url`",
+                        "`[[repository]]` `{}` is a built-in repository, it cannot have a `url`",
                         repo.name
                     );
                 }
-                if seen_bioc {
-                    bail!("`[[repository]]` `{}` appears more than once", repo.name);
+                if repo.is_cran() && repo.version.is_some() {
+                    bail!(
+                        "`[[repository]]` `{}` cannot have a `version`, only the `{}` entry can",
+                        repo.name,
+                        BIOC_REPOSITORY_NAME
+                    );
                 }
-                seen_bioc = true;
             } else {
                 if repo.url.is_none() {
                     bail!("`[[repository]]` `{}` needs a `url`", repo.name);
@@ -819,28 +863,73 @@ impl Rproj {
                 if repo.version.is_some() || repo.enabled.is_some() {
                     bail!(
                         "`[[repository]]` `{}` cannot have a `version` or `enabled`, \
-                         only the `{}` entry can",
+                         only the `{}` and `{}` entries can",
                         repo.name,
+                        CRAN_REPOSITORY_NAME,
                         BIOC_REPOSITORY_NAME
                     );
                 }
             }
         }
+        for (pkg, table) in self.dependency_tables() {
+            if table.repository.is_none() {
+                continue;
+            }
+            if table.git.is_some() || table.url.is_some() || table.path.is_some() {
+                bail!(
+                    "Dependency `{}` has both a `repository` and a git, URL or local source",
+                    pkg
+                );
+            }
+        }
         Ok(())
     }
 
-    /// The manifest's Bioconductor setting, from its
-    /// [`BIOC_REPOSITORY_NAME`] `[[repository]]` entry. `RIG_BIOCONDUCTOR`
-    /// turns Bioconductor off for every project.
-    pub fn bioc_setting(&self) -> BiocSetting {
-        let mut setting = BiocSetting::default();
-        if let Some(repo) = self.repository.iter().find(|r| r.is_bioc()) {
-            setting.enabled = setting.enabled && repo.enabled.unwrap_or(true);
-            setting.version = repo.version.clone();
-        }
-        setting
+    /// Every dependency table of the manifest, with the name of its package:
+    /// `[dependencies]`, `[linking-dependencies]`, every
+    /// `[dependency-groups.*]` and every `[optional-dependencies.*]`. Only the
+    /// table form, a bare version string has no settings.
+    fn dependency_tables(&self) -> Vec<(&String, &DepTable)> {
+        std::iter::once(&self.dependencies)
+            .chain(std::iter::once(&self.linking_dependencies))
+            .chain(self.dependency_groups.values().map(|g| &g.dependencies))
+            .chain(self.optional_dependencies.values())
+            .flat_map(|deps| deps.iter())
+            .filter_map(|(name, dep)| match dep {
+                Dependency::Detailed(table) => Some((name, &**table)),
+                Dependency::Version(_) => None,
+            })
+            .collect()
     }
 
+    /// The dependencies pinned to a repository with `{ repository = "<name>" }`,
+    /// package name to repository name. A package pinned in more than one
+    /// table to different repositories is an error.
+    pub fn repository_pins(&self) -> Result<BTreeMap<String, String>, Box<dyn Error>> {
+        let mut pins: BTreeMap<String, String> = BTreeMap::new();
+        for (pkg, table) in self.dependency_tables() {
+            let Some(name) = &table.repository else {
+                continue;
+            };
+            if let Some(other) = pins.get(pkg) {
+                if !other.eq_ignore_ascii_case(name) {
+                    bail!(
+                        "Dependency `{}` is pinned to two repositories, `{}` and `{}`",
+                        pkg,
+                        other,
+                        name
+                    );
+                }
+                continue;
+            }
+            pins.insert(pkg.clone(), name.clone());
+        }
+        Ok(pins)
+    }
+
+    /// The `exclude-newer` setting of `[tool.rig]`: hide CRAN versions
+    /// published after this date (or span) from the solver, see
+    /// [`crate::exclude_newer`].
     pub fn exclude_newer(&self) -> Result<Option<ExcludeNewerSpec>, Box<dyn Error>> {
         let Some(value) = self.tool.get("rig").and_then(|t| t.get("exclude-newer")) else {
             return Ok(None);
@@ -1061,6 +1150,57 @@ impl Rproj {
             None => {}
         }
         group.insert(name.to_string(), Dependency::Detailed(Box::new(table)));
+    }
+
+    /// Pin the dependency `name` to repository `repository`, see
+    /// [`DepTable::repository`]. `dev` is the same as for
+    /// [`Rproj::add_dependency`]. Nothing happens if there is no such
+    /// dependency.
+    pub fn pin_dependency(&mut self, name: &str, dev: bool, repository: &str) {
+        let table = if dev {
+            match self.dependency_groups.get_mut("dev") {
+                Some(group) => &mut group.dependencies,
+                None => return,
+            }
+        } else {
+            &mut self.dependencies
+        };
+        if let Some(dep) = table.get_mut(name) {
+            let mut new = match dep {
+                Dependency::Version(v) => DepTable {
+                    version: Some(v.clone()),
+                    ..Default::default()
+                },
+                Dependency::Detailed(t) => (**t).clone(),
+            };
+            new.repository = Some(repository.to_string());
+            *dep = Dependency::Detailed(Box::new(new));
+        }
+    }
+
+    /// Append `repo` to the `[[repository]]` entries of the ORIGINAL on-disk
+    /// document, mirroring a push to [`Rproj::repository`], so that the rest
+    /// of the file stays as it is.
+    pub fn doc_add_repository(
+        doc: &mut toml_edit::DocumentMut,
+        repo: &Repository,
+    ) -> Result<(), Box<dyn Error>> {
+        let item =
+            doc.as_table_mut()
+                .entry("repository")
+                .or_insert(toml_edit::Item::ArrayOfTables(
+                    toml_edit::ArrayOfTables::new(),
+                ));
+        let Some(array) = item.as_array_of_tables_mut() else {
+            bail!("`repository` must be an array of tables, `[[repository]]`");
+        };
+        let mut table = toml_edit::Table::new();
+        table.insert("name", toml_edit::value(repo.name.clone()));
+        if let Some(url) = &repo.url {
+            table.insert("url", toml_edit::value(url.clone()));
+        }
+        array.push(table);
+        Ok(())
     }
 
     /// Whether the manifest lists a dependency by this name anywhere:
@@ -2463,6 +2603,23 @@ pub struct RprojLockOptions {
         skip_serializing_if = "Option::is_none"
     )]
     pub prefer_binary: Option<usize>,
+    /// The repositories the lock was solved with, in order, after the
+    /// `--with-repos` and `--without-repos` arguments. Empty for the default,
+    /// Bioconductor and CRAN, so lock files of projects without repository
+    /// settings do not have it.
+    #[serde(rename = "repository", default, skip_serializing_if = "Vec::is_empty")]
+    pub repositories: Vec<LockRepository>,
+}
+
+/// One repository of [`RprojLockOptions::repositories`].
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+pub struct LockRepository {
+    pub name: String,
+    /// Absent for the built-in repositories.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub explicit: bool,
 }
 
 impl RprojLockOptions {
@@ -2554,7 +2711,8 @@ pub struct RprojLockPackage {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_project: bool,
     /// The repository the package comes from, `bioc/<version>` for a
-    /// Bioconductor package. Absent for CRAN and non-repository (git, URL,
+    /// Bioconductor package, the name of the repository for a package of a
+    /// CRAN-like repository. Absent for CRAN and non-repository (git, URL,
     /// local) packages.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repository: Option<String>,
@@ -2779,7 +2937,9 @@ impl RprojLockTarget {
                 groups: vec![],
                 extra_groups: vec![],
                 is_project: false,
-                repository: repository.filter(|r| r.is_bioc()).map(|r| r.to_string()),
+                repository: repository
+                    .filter(|r| *r != RepoId::Cran)
+                    .map(|r| r.to_string()),
                 system_requirements,
             });
         }
@@ -4821,11 +4981,35 @@ foo = "bar"
         };
         let ok = parse("[[repository]]\nname = \"bioc\"\nversion = \"3.24\"\n");
         assert!(ok.check_repositories().is_ok());
-        let setting = ok.bioc_setting();
+        let setting = crate::proj_repos::ProjRepos::from_manifest(&ok)
+            .unwrap()
+            .bioc_setting();
         assert_eq!(setting.version.as_deref(), Some("3.24"));
 
         let off = parse("[[repository]]\nname = \"bioc\"\nenabled = false\n");
-        assert!(!off.bioc_setting().enabled);
+        assert!(
+            !crate::proj_repos::ProjRepos::from_manifest(&off)
+                .unwrap()
+                .bioc_setting()
+                .enabled
+        );
+
+        // The built-in CRAN entry: no `url` or `version`, `enabled` is fine.
+        let cran_off = parse("[[repository]]\nname = \"cran\"\nenabled = false\n");
+        assert!(cran_off.check_repositories().is_ok());
+        let cran_url = parse("[[repository]]\nname = \"cran\"\nurl = \"https://x\"\n");
+        assert!(cran_url.check_repositories().is_err());
+        let cran_version = parse("[[repository]]\nname = \"CRAN\"\nversion = \"1\"\n");
+        assert!(cran_version.check_repositories().is_err());
+        let explicit =
+            parse("[[repository]]\nname = \"acme\"\nurl = \"https://x\"\nexplicit = true\n");
+        assert!(explicit.check_repositories().is_ok());
+        assert!(explicit.repository[0].is_explicit());
+        let twice = parse(
+            "[[repository]]\nname = \"acme\"\nurl = \"https://x\"\n\n\
+             [[repository]]\nname = \"ACME\"\nurl = \"https://y\"\n",
+        );
+        assert!(twice.check_repositories().is_err());
 
         let with_url = parse("[[repository]]\nname = \"bioc\"\nurl = \"https://x\"\n");
         assert!(with_url.check_repositories().is_err());
@@ -4843,6 +5027,36 @@ foo = "bar"
         let text = toml::to_string_pretty(&both).unwrap();
         assert_eq!(toml::from_str::<Rproj>(&text).unwrap(), both);
         assert!(both.repository[1].is_bioc());
+    }
+
+    #[test]
+    fn repository_pins_are_read_and_checked() {
+        let parse = |text: &str| -> Rproj {
+            toml::from_str(&format!(
+                "[project]\nname = \"p\"\nversion = \"1.0.0\"\n{}",
+                text
+            ))
+            .unwrap()
+        };
+        let m = parse(
+            "[dependencies]\ncli = { version = \"*\", repository = \"acme\" }\npak = \"*\"\n\n\
+             [dependency-groups.dev]\nlimma = { repository = \"bioc\" }\n",
+        );
+        let pins = m.repository_pins().unwrap();
+        assert_eq!(pins.len(), 2);
+        assert_eq!(pins["cli"], "acme");
+        assert_eq!(pins["limma"], "bioc");
+
+        let two = parse(
+            "[dependencies]\ncli = { repository = \"acme\" }\n\n\
+             [dependency-groups.dev]\ncli = { repository = \"cran\" }\n",
+        );
+        assert!(two.repository_pins().is_err());
+
+        let git = parse(
+            "[dependencies]\ncli = { git = \"https://github.com/r-lib/cli\", repository = \"cran\" }\n",
+        );
+        assert!(git.check_repositories().is_err());
     }
 
     #[test]

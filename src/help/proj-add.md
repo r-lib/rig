@@ -30,6 +30,33 @@ Bioconductor packages are added the same way as CRAN packages, e.g.
 `rig proj add limma`, see "Bioconductor packages" in
 [`rig proj lock`](#rig-proj-lock).
 
+## Packages from other repositories
+
+`--with-repos` (`--index`) adds the packages from a repository other than CRAN
+and Bioconductor:
+
+```
+rig proj add --with-repos rlib=https://r-lib.r-universe.dev cli
+```
+
+A URL, or `name=URL`, that `rproj.toml` does not have yet is added to its
+`[[repository]]` entries. A URL without a name is named after its host. The
+name of a repository that `rproj.toml` already has, or `cran` or `bioc`, works
+too. The added packages are pinned to the repository, the first one if
+`--with-repos` names more than one:
+
+```toml
+[dependencies]
+cli = { version = "*", repository = "rlib" }
+
+[[repository]]
+name = "rlib"
+url = "https://r-lib.r-universe.dev"
+```
+
+See "Repositories" in [`rig proj lock`](#rig-proj-lock). A git, GitHub, URL or local package
+cannot be added with `--with-repos`.
+
 ## Git, GitHub, GitLab and URL sources
 
 A package can also be added straight from a git repository, [pak's package

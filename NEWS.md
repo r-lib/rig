@@ -43,6 +43,11 @@
 * `--without-repos=cran` (and `rig repos disable cran`) now turns off CRAN
   completely.
 
+* `rig proj` now implements `[[repository]]` entries of `rproj.toml` and repository
+  pinning. `rig proj lock`, `rig proj sync`, `rig proj deps` and `rig proj tree`
+  have new `--with-repos` and `--without-repos` options to add and remove
+  repositories for one command.
+
 ## Bioconductor
 
 * `rig proj` and `rig pkg` now install Bioconductor packages, besides CRAN

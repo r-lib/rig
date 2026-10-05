@@ -1042,7 +1042,11 @@ fn repositories_contents(
     // main repository `CRAN` is the usual R idiom for this, the same thing
     // `options(repos = c(CRAN = ...))` does.
     let mut data = vec![];
-    match ppm_repo_url(platform) {
+    // The manifest's `cran` entry can turn CRAN off, then the first of the
+    // project's own repositories is the main one.
+    let cran_enabled = !repos.iter().any(|r| r.is_cran() && !r.is_enabled());
+    let url_repos: Vec<&ManifestRepository> = repos.iter().filter(|r| r.url.is_some()).collect();
+    match ppm_repo_url(platform).filter(|_| cran_enabled) {
         // `rig proj sync` installs P3M binaries for the lock file's target,
         // so an `install.packages()` in the environment should reach the
         // same packages. That means P3M first, at the target's own binary
@@ -1051,7 +1055,7 @@ fn repositories_contents(
         Some(url) => data.push(entry(RVENV_CRAN_NAME, &url, PPM_MENU_NAME)),
         // A source-only lock file has no P3M target, so there is nothing to
         // prefer over what the project asks for.
-        None if repos.is_empty() => {
+        None if url_repos.is_empty() && cran_enabled => {
             data.push(entry(RVENV_CRAN_NAME, RVENV_DEFAULT_REPO_URL, "CRAN"))
         }
         None => {}
@@ -1070,7 +1074,6 @@ fn repositories_contents(
             .unwrap_or_default()
     };
     let has_bioc_entry = repos.iter().any(|r| r.is_bioc());
-    let url_repos: Vec<&ManifestRepository> = repos.iter().filter(|r| r.url.is_some()).collect();
     for r in repos {
         if r.is_bioc() {
             data.extend(bioc_entries());
@@ -2063,6 +2066,36 @@ mod tests {
         // Without a Bioconductor release, the entry writes nothing.
         rvenv_sync(root, &test_cfg_for("macos-arm64"), &repos, None).unwrap();
         assert_eq!(written_repositories(root).len(), 2);
+    }
+
+    #[test]
+    fn a_disabled_cran_entry_drops_ppm() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let repos = vec![
+            ManifestRepository::at_url("internal", "https://example.com/internal"),
+            ManifestRepository {
+                name: "cran".to_string(),
+                enabled: Some(false),
+                ..Default::default()
+            },
+        ];
+        rvenv_sync(root, &test_cfg_for("macos-arm64"), &repos, None).unwrap();
+        let written = written_repositories(root);
+        assert_eq!(written.len(), 1);
+        assert_eq!(written[0].0, "CRAN");
+        assert_eq!(written[0].2, "https://example.com/internal");
+
+        // Only the built-in entries, and CRAN is off: no CRAN entry at all.
+        let repos = vec![ManifestRepository {
+            name: "cran".to_string(),
+            enabled: Some(false),
+            ..Default::default()
+        }];
+        rvenv_sync(root, &test_cfg_for("macos-arm64"), &repos, Some("3.23")).unwrap();
+        let written = written_repositories(root);
+        assert!(written.iter().all(|(name, _, _)| name != "CRAN"));
+        assert!(!written.is_empty());
     }
 
     #[test]

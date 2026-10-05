@@ -114,6 +114,39 @@ fn pkg_repos_args() -> [Arg; 2] {
     ]
 }
 
+/// `--with-repos` (`--index`) and `--without-repos` (`--no-index`) of the
+/// `rig proj` commands that solve. They change the project's repositories,
+/// the ones in rproj.toml, for this command only.
+pub(crate) fn proj_repos_args() -> [Arg; 2] {
+    [
+        Arg::new("with-repos")
+            .help(
+                "Also use these repositories, a comma-separated list of\n\
+                repository names, URLs or name=URL pairs. Can be repeated.",
+            )
+            .long("with-repos")
+            .visible_alias("index")
+            .value_name("REPOS")
+            .num_args(1)
+            .action(clap::ArgAction::Append)
+            .required(false),
+        Arg::new("without-repos")
+            .help(
+                "Do not use these repositories, a comma-separated list, e.g.\n\
+                cran,bioc. Without a value, do not use any of the project's\n\
+                repositories, only the ones in --with-repos. Can be repeated.",
+            )
+            .long("without-repos")
+            .visible_alias("no-index")
+            .value_name("REPOS")
+            .num_args(0..=1)
+            .require_equals(true)
+            .default_missing_value("ALL REPOSITORIES")
+            .action(clap::ArgAction::Append)
+            .required(false),
+    ]
+}
+
 /// `--sysreqs` and `--no-sysreqs`, for the commands that install packages.
 /// Linux only: elsewhere there are no system requirements to install.
 fn sysreqs_args() -> [Arg; 2] {
@@ -1760,6 +1793,21 @@ pub fn rig_app() -> Command {
                         .num_args(0)
                         .required(false)
                         .conflicts_with("no-lock"),
+                )
+                .arg(
+                    Arg::new("with-repos")
+                        .help(
+                            "Add the packages from this repository: a repository\n\
+                            name, URL or name=URL pair. A new repository is added\n\
+                            to rproj.toml, and the packages are pinned to the first\n\
+                            one. Comma-separated, and can be repeated.",
+                        )
+                        .long("with-repos")
+                        .visible_alias("index")
+                        .value_name("REPOS")
+                        .num_args(1)
+                        .action(clap::ArgAction::Append)
+                        .required(false),
                 ),
         )
         .subcommand(
@@ -1825,7 +1873,8 @@ pub fn rig_app() -> Command {
                         .long("dev")
                         .num_args(0)
                         .required(false),
-                ),
+                )
+                .args(proj_repos_args()),
         )
         .subcommand(
             Command::new("tree")
@@ -1861,7 +1910,8 @@ pub fn rig_app() -> Command {
                         .long("json")
                         .num_args(0)
                         .required(false),
-                ),
+                )
+                .args(proj_repos_args()),
         )
         .subcommand(
             Command::new("lock")
@@ -1977,7 +2027,8 @@ pub fn rig_app() -> Command {
                         .action(clap::ArgAction::Append)
                         .required(false)
                         .conflicts_with("upgrade"),
-                ),
+                )
+                .args(proj_repos_args()),
         )
         .subcommand(
             Command::new("status")
@@ -2127,6 +2178,7 @@ pub fn rig_app() -> Command {
                         .required(false),
                 )
                 .arg(exclude_newer_arg().conflicts_with("frozen"))
+                .args(proj_repos_args().map(|a| a.conflicts_with("frozen")))
                 .arg(
                     Arg::new("dry-run")
                         .help(
@@ -3512,6 +3564,37 @@ mod tests {
     fn proj_lock_upgrade_and_upgrade_package_conflict() {
         assert!(rig_app()
             .try_get_matches_from(["rig", "proj", "lock", "-U", "-P", "cli"])
+            .is_err());
+    }
+
+    #[test]
+    fn proj_repos_args() {
+        let sub = |argv: &[&str]| -> ArgMatches {
+            let matches = rig_app().try_get_matches_from(argv).unwrap();
+            let (_, proj) = matches.subcommand().unwrap();
+            let (_, sub) = proj.subcommand().unwrap();
+            sub.clone()
+        };
+        let lock = sub(&["rig", "proj", "lock", "--index", "cran", "--no-index=bioc"]);
+        let with: Vec<&String> = lock.get_many::<String>("with-repos").unwrap().collect();
+        assert_eq!(with, vec!["cran"]);
+        let without: Vec<&String> = lock.get_many::<String>("without-repos").unwrap().collect();
+        assert_eq!(without, vec!["bioc"]);
+        for cmd in ["deps", "tree", "sync"] {
+            assert!(rig_app()
+                .try_get_matches_from(["rig", "proj", cmd, "--without-repos"])
+                .is_ok());
+        }
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "proj", "sync", "--frozen", "--with-repos", "cran"])
+            .is_err());
+
+        // `rig proj add` only has `--with-repos`.
+        let add = sub(&["rig", "proj", "add", "--index", "acme=https://x.org", "cli"]);
+        let with: Vec<&String> = add.get_many::<String>("with-repos").unwrap().collect();
+        assert_eq!(with, vec!["acme=https://x.org"]);
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "proj", "add", "--without-repos", "cli"])
             .is_err());
     }
 

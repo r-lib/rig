@@ -57,7 +57,7 @@ use crate::proj::{
     proj_binary_target, read_local_package, resolve_git_sources, sc_proj_solve_deps, SolvePins,
     BASE_PKGS,
 };
-use crate::repos::feed::BiocSetting;
+use crate::repos::feed::{BiocSetting, RepoFilter};
 use crate::repos::interpret_pkg_repos_args;
 use crate::repos::DbSourcePackageLoader;
 use crate::rproj::{DepTable, RprojLockPackage, RprojLockTarget};
@@ -142,8 +142,8 @@ pub fn sc_pkg_install(
         target,
         prefer_binary,
         exclude_newer.as_deref(),
-        &bioc,
-        Some(&repos),
+        &repos,
+        &RepoFilter::default(),
         &SolvePins::default(),
         true,
     )?;

@@ -18,7 +18,10 @@ myproject 0.1.0 — 3 direct, 24 total
 └── testthat 3.2.3 (>= 3.1.5)
 ```
 
-rig reads the project manifest, `rproj.toml`, in the current directory.
+rig reads the project manifest, `rproj.toml`, in the current directory, and
+the package metadata of the project's repositories. `--with-repos` (`--index`)
+and `--without-repos` (`--no-index`) change the repositories for this command,
+see "Repositories" in [`rig proj lock`](#rig-proj-lock).
 
 ## Reading the tree
 

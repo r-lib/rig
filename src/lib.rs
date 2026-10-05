@@ -35,6 +35,7 @@ mod pkg;
 mod pkgsource;
 mod platform;
 mod proj;
+mod proj_repos;
 mod rds;
 mod renv;
 mod repos;

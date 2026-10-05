@@ -10,6 +10,7 @@
 //! * Plain CRAN-like repositories, with `PACKAGES` files for the current
 //!   packages only, at `src/contrib` and `bin/<os>/.../contrib/<R version>`.
 
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 /// Default base URL of CRAN's extended metadata.
@@ -120,6 +121,30 @@ impl PkgRepo {
                 PkgRepo::Cranlike(repo) => Some(repo.clone()),
             })
             .collect()
+    }
+}
+
+/// Which repositories a package may come from, on top of the list of
+/// repositories of a solve. `rig proj` pins dependencies to a repository with
+/// `{ repository = "<name>" }`, and an `explicit` repository only serves the
+/// packages pinned to it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RepoFilter {
+    /// Package name to the only repository it may come from. `None` if that
+    /// repository is not part of the solve, e.g. Bioconductor for an R
+    /// version without a Bioconductor release: then there are no versions.
+    pub pins: HashMap<String, Option<RepoId>>,
+    /// The repositories that only serve the packages pinned to them.
+    pub explicit: HashSet<RepoId>,
+}
+
+impl RepoFilter {
+    /// Whether `package` may come from `repo`.
+    pub fn allows(&self, package: &str, repo: &RepoId) -> bool {
+        match self.pins.get(package) {
+            Some(pin) => pin.as_ref() == Some(repo),
+            None => !self.explicit.contains(repo),
+        }
     }
 }
 
