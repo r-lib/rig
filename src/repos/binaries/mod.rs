@@ -237,6 +237,39 @@ fn etag_file_in(feed: &MetadataFeed, package: &str) -> Result<PathBuf, Box<dyn E
     Ok(binary_index_dir(feed)?.join(format!("{}.v{}.etag", package, blob::FORMAT_VERSION)))
 }
 
+/// Cache path of the marker that says P3M has no index for a package,
+/// `<cache>/metadata/binaries/<package>.missing`.
+///
+/// Many packages have no index in a feed, e.g. a Bioconductor package in
+/// CRAN's, or a Bioconductor annotation package, which has no binaries. Without
+/// this marker every solve would ask about them again. Its mtime is when the
+/// server last answered 404, and it is trusted for the same TTL as a blob.
+fn missing_file_in(feed: &MetadataFeed, package: &str) -> Result<PathBuf, Box<dyn Error>> {
+    validate_package_name(package)?;
+    Ok(binary_index_dir(feed)?.join(format!("{}.missing", package)))
+}
+
+/// Whether the server answered 404 for `package` less than `ttl` ago.
+fn known_missing(feed: &MetadataFeed, package: &str, ttl: Duration) -> bool {
+    missing_file_in(feed, package)
+        .ok()
+        .and_then(|path| file_age(&path))
+        .is_some_and(|age| age < ttl)
+}
+
+/// Remember that the server has no index for `package`. Not being able to
+/// write it only costs a request next time.
+fn mark_missing(feed: &MetadataFeed, package: &str) {
+    if let Ok(path) = missing_file_in(feed, package) {
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if let Err(err) = fs::write(&path, b"") {
+            debug!("Could not write {}: {}", path.display(), err);
+        }
+    }
+}
+
 /// Sidecar holding the ETag of a cached file.
 fn etag_file(path: &Path) -> PathBuf {
     let mut name = path.as_os_str().to_os_string();
@@ -344,6 +377,11 @@ pub fn load_binary_index_in(
         }));
     }
 
+    if known_missing(feed, package, ttl) {
+        debug!("No binary index for package '{}' (cached)", package);
+        return Ok(None);
+    }
+
     // Only ask for a 304 if we still hold the content one would refer to.
     let etag = cached
         .as_ref()
@@ -354,6 +392,7 @@ pub fn load_binary_index_in(
     match fetch_optional_if_modified_(&url, etag.as_deref(), None)? {
         ConditionalFetch::NotFound => {
             debug!("No binary index for package '{}'", package);
+            mark_missing(feed, package);
             Ok(None)
         }
 
@@ -405,6 +444,9 @@ fn store_index(
             if let Err(err) = write_atomically(&etag_path, etag.unwrap_or_default().as_bytes()) {
                 debug!("Could not write {}: {}", etag_path.display(), err);
             }
+            if let Ok(missing) = missing_file_in(feed, package) {
+                let _ = fs::remove_file(missing);
+            }
         }
         Err(err) => {
             debug!("Could not write {}: {}", blob_path.display(), err);
@@ -445,6 +487,9 @@ fn prefetch_plan(
     let etag_path = etag_file_in(feed, package)?;
     if !blob_path.exists() {
         let _ = fs::remove_file(&etag_path);
+        if known_missing(feed, package, ttl) {
+            return Ok(Prefetch::Cached);
+        }
         return Ok(Prefetch::Fetch(None));
     }
     if file_age(&etag_path).is_some_and(|age| age < ttl) {
@@ -517,7 +562,8 @@ async fn prefetch_all(
             match fetch_optional_if_modified(client, &url, etag.as_deref()).await {
                 Err(err) => debug!("Could not prefetch {}: {}", url, err),
                 Ok(ConditionalFetch::NotFound) => {
-                    debug!("No binary index for package '{}'", package)
+                    debug!("No binary index for package '{}'", package);
+                    mark_missing(feed, package);
                 }
                 Ok(ConditionalFetch::NotModified) => restart_ttl(feed, package),
                 Ok(ConditionalFetch::Fetched { bytes, etag }) => {
