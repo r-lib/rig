@@ -583,6 +583,28 @@ teardown() {
     echo "$output" | grep -q "Unknown repository"
 }
 
+@test "proj lock uses the platforms of the manifest" {
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf platproj && mkdir platproj && cd platproj
+    run rig proj init -r 4.1
+    [[ "$status" -eq 0 ]]
+    run rig proj add --no-lock cli
+    [[ "$status" -eq 0 ]]
+    printf '\n[tool.rig]\nplatforms = ["macos-arm64", "ubuntu-24.04-x86_64", "source"]\n' >> rproj.toml
+
+    run rig proj lock
+    [[ "$status" -eq 0 ]]
+    grep -q '^platform = "aarch64-apple-darwin"$' rproj.lock
+    grep -q '^platform = "x86_64-unknown-linux-gnu-ubuntu-24.04"$' rproj.lock
+    grep -q '^platform = "source"$' rproj.lock
+    ! grep -q '^platform = "x86_64-w64-mingw32"$' rproj.lock
+
+    # --add-platform adds to the manifest's platforms
+    run rig proj lock --add-platform windows-x86_64
+    [[ "$status" -eq 0 ]]
+    grep -q '^platform = "x86_64-w64-mingw32"$' rproj.lock
+}
+
 @test "run script with inline dependencies" {
     cd "$BATS_TEST_TMPDIR"
     rm -rf scriptdir && mkdir scriptdir && cd scriptdir

@@ -1948,8 +1948,9 @@ pub fn rig_app() -> Command {
                             with --r-version as a cross product, one target per\n\
                             combination. Use --platform source to solve for source\n\
                             packages only.\n\
-                            Default: this machine, windows, generic glibc Linux (x86_64),\n\
-                            macos-arm64 and source.",
+                            Default: platforms in [tool.rig] of rproj.toml, or this\n\
+                            machine, x86_64-w64-mingw32, x86_64-unknown-linux-gnu,\n\
+                            aarch64-apple-darwin and source.",
                         )
                         .long("platform")
                         .num_args(1)
@@ -1959,9 +1960,9 @@ pub fn rig_app() -> Command {
                 .arg(
                     Arg::new("add-platform")
                         .help(
-                            "Add platform(s) to the set --platform would otherwise\n\
-                            solve for, instead of replacing it. Comma-separated, and\n\
-                            can be repeated.",
+                            "Add platform(s) to the set rig would otherwise solve for\n\
+                            (rproj.toml's platforms or the default set), instead of\n\
+                            replacing it. Comma-separated, and can be repeated.",
                         )
                         .long("add-platform")
                         .num_args(1)
@@ -2151,7 +2152,8 @@ pub fn rig_app() -> Command {
                         .help(
                             "Which of rproj.lock's targets to sync, when more than one\n\
                             matches this machine. Selects among the targets already in\n\
-                            rproj.lock, does not trigger a new solve.",
+                            rproj.lock, does not trigger a new solve. Any spelling of the\n\
+                            platform works, e.g. macos for aarch64-apple-darwin.",
                         )
                         .long("platform")
                         .num_args(1)

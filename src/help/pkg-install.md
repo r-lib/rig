@@ -157,8 +157,11 @@ compile. The output of the compilation goes into a log file per package, in
 a `_logs` directory inside the library, and rig points at the log when an
 installation fails.
 
-`--platform` installs for a platform other than this machine's, and
-`--platform source` installs source packages only.
+`--platform` installs for a platform other than this machine's, e.g.
+`--platform x86_64-unknown-linux-gnu-ubuntu-24.04` (see
+[`rig system detect-platform`](system.qmd#rig-system-detect-platform) for
+the platform strings rig takes), and `--platform source` installs source
+packages only.
 
 `--prefer-binary` trades a newer version for an older one that has a binary
 build, which is useful when compiling is expensive; it takes the number of

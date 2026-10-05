@@ -128,12 +128,19 @@ simply inert, which is what makes locking for a Linux deployment target
 from a macOS laptop work: each machine's `rig proj sync` picks its own entry
 from the same file.
 
+On Linux the distro has to match, too: a target for a specific distro and
+release, e.g. `x86_64-unknown-linux-gnu-ubuntu-22.04`, is only used on that
+distro and release. The generic glibc target, `x86_64-unknown-linux-gnu`,
+fits any glibc Linux, but rig prefers the target for this distro if the lock
+file has both. glibc and musl (Alpine) targets do not mix.
+
 If more than one target matches this machine's OS (typically because the
 project locks for several R versions), rig picks the highest R version
 among them, with no need for extra flags. Pass `--r-version` and/or
-`--platform` to pick a different one of the matching targets instead. `rig
-proj sync` fails if none of the lock file's targets match this machine at
-all.
+`--platform` to pick a different one of the matching targets instead.
+`--platform` takes any spelling of the platform, e.g. `macos` picks the
+`aarch64-apple-darwin` target on an arm64 Mac. `rig proj sync` fails if none
+of the lock file's targets match this machine at all.
 
 ## What sync writes
 

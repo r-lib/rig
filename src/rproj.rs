@@ -42,7 +42,13 @@ use crate::repos::feed::RepoId;
 use crate::rvenv::RPROJ_LOCK_FILE;
 use crate::solver::{RPackageRegistry, RegistryPackageVersion};
 
-pub const RPROJ_LOCK_VERSION: usize = 5;
+pub const RPROJ_LOCK_VERSION: usize = 6;
+
+/// The last lockfile version that names platforms by their P3M target
+/// (`macos-arm64`, `jammy-x86_64`) instead of their canonical platform string
+/// (`aarch64-apple-darwin`, `x86_64-unknown-linux-gnu-ubuntu-22.04`). rig
+/// still reads it, see [`RprojLock::parse`].
+const RPROJ_LOCK_VERSION_P3M_PLATFORMS: usize = 5;
 
 // `rproj.toml`: the project/package manifest (see the design doc). This is the
 // *requirements* file a human edits, as opposed to `rproj.lock` (the solved
@@ -938,6 +944,33 @@ impl Rproj {
             bail!("`exclude-newer` in `[tool.rig]` must be a string, e.g. \"2025-06-01\"");
         };
         Ok(Some(value.parse()?))
+    }
+
+    /// The `platforms` setting of `[tool.rig]`: the platforms `rig proj lock`
+    /// solves for, instead of the default set. Each one is a platform string,
+    /// see [`crate::platform::parse_platform_string`], or `source`.
+    pub fn platforms(&self) -> Result<Option<Vec<String>>, Box<dyn Error>> {
+        let Some(value) = self.tool.get("rig").and_then(|t| t.get("platforms")) else {
+            return Ok(None);
+        };
+        let must = "`platforms` in `[tool.rig]` must be a list of platform \
+                    strings, e.g. [\"aarch64-apple-darwin\", \"x86_64-w64-mingw32\"]";
+        let Some(list) = value.as_array() else {
+            bail!("{}", must);
+        };
+        let mut platforms = vec![];
+        for item in list {
+            let Some(platform) = item.as_str() else {
+                bail!("{}", must);
+            };
+            if platform != "source" {
+                if let Err(e) = crate::platform::parse_platform_string(platform) {
+                    bail!("Invalid platform in `platforms` in `[tool.rig]`: {}", e);
+                }
+            }
+            platforms.push(platform.to_string());
+        }
+        Ok(Some(platforms))
     }
 
     /// The `prefer-binary` setting of `[tool.rig]`, as the number of newest
@@ -2736,10 +2769,14 @@ pub struct RprojLockPackage {
 /// solved on Linux. A source-only target can be installed anywhere, Linux
 /// included, so it keeps the field.
 pub fn lock_needs_system_requirements(target_platform: Option<&str>, binary: bool) -> bool {
-    match target_platform {
-        None => true,
-        Some(p) if p.starts_with("macos") || p.starts_with("windows") => false,
-        Some(p) => !(binary && p.starts_with(crate::repos::binaries::MANYLINUX)),
+    let Some(platform) = target_platform else {
+        return true;
+    };
+    match crate::platform::parse_platform_string(platform) {
+        Ok(p) if p.os.starts_with("darwin") || p.os.ends_with("mingw32") => false,
+        // The generic glibc Linux target, with no distro.
+        Ok(p) if p.os.starts_with("linux") && p.distro.is_none() => !binary,
+        _ => true,
     }
 }
 
@@ -2964,6 +3001,54 @@ struct RprojLockVersion {
 }
 
 impl RprojLock {
+    /// Parse the text of `rproj.lock`, after checking its version, see
+    /// [`RprojLock::check_version`].
+    ///
+    /// A version 5 lockfile is read too: it only differs in how it spells
+    /// platforms, which are brought into their canonical spelling here, in
+    /// memory. The next `rig proj lock` writes the current version.
+    pub fn parse(text: &str) -> Result<RprojLock, Box<dyn Error>> {
+        let found: RprojLockVersion = toml::from_str(text)?;
+        if found.version == RPROJ_LOCK_VERSION_P3M_PLATFORMS {
+            let mut lock: RprojLock = toml::from_str(text)?;
+            if let Err(e) = lock.normalize_platforms() {
+                bail!(
+                    "This {} is version {}, written by an older rig, and its \
+                     platforms cannot be read: {}. Run `rig proj lock` to \
+                     write it again.",
+                    RPROJ_LOCK_FILE,
+                    found.version,
+                    e
+                );
+            }
+            lock.version = RPROJ_LOCK_VERSION;
+            return Ok(lock);
+        }
+        Self::check_version(text)?;
+        Ok(toml::from_str(text)?)
+    }
+
+    /// Rewrite the platform of every target and package into its canonical
+    /// spelling, see [`crate::platform::normalize_platform`].
+    fn normalize_platforms(&mut self) -> Result<(), Box<dyn Error>> {
+        let mut seen: HashMap<String, String> = HashMap::new();
+        let mut normalize = |platform: &mut String| -> Result<(), Box<dyn Error>> {
+            if !seen.contains_key(platform.as_str()) {
+                let canonical = crate::platform::normalize_platform(platform)?;
+                seen.insert(platform.clone(), canonical);
+            }
+            *platform = seen[platform.as_str()].clone();
+            Ok(())
+        };
+        for target in &mut self.targets {
+            normalize(&mut target.platform)?;
+            for package in &mut target.packages {
+                normalize(&mut package.platform)?;
+            }
+        }
+        Ok(())
+    }
+
     /// Fail on lockfile text that is not the version rig reads.
     ///
     /// Every field of a package entry is required, so a lockfile of another
@@ -4535,6 +4620,72 @@ foo = "bar"
         assert!(read("-1").is_err());
         assert!(read("\"yes\"").is_err());
         assert!(Rproj::minimal("p").prefer_binary().unwrap().is_none());
+    }
+
+    #[test]
+    fn platforms_are_read_from_tool_rig() {
+        let read = |value: &str| {
+            let text = format!(
+                "[project]\nname = \"p\"\nversion = \"1.0\"\n\n\
+                 [tool.rig]\nplatforms = {}\n",
+                value
+            );
+            toml::from_str::<Rproj>(&text).unwrap().platforms()
+        };
+        assert_eq!(
+            read("[\"aarch64-apple-darwin\", \"jammy-x86_64\", \"source\"]").unwrap(),
+            Some(vec![
+                "aarch64-apple-darwin".to_string(),
+                "jammy-x86_64".to_string(),
+                "source".to_string(),
+            ])
+        );
+        assert!(read("\"aarch64-apple-darwin\"").is_err());
+        assert!(read("[1]").is_err());
+        assert!(read("[\"x86_64\"]").is_err());
+        assert!(Rproj::minimal("p").platforms().unwrap().is_none());
+    }
+
+    /// A version 5 lockfile names platforms by their P3M target, and is read
+    /// with canonical platform strings.
+    #[test]
+    fn reads_a_version_5_lockfile() {
+        let lock = RprojLock {
+            version: RPROJ_LOCK_VERSION_P3M_PLATFORMS,
+            tool: Default::default(),
+            targets: ["macos-arm64", "manylinux_2_28-x86_64", "source"]
+                .iter()
+                .map(|platform| RprojLockTarget {
+                    r_version: "4.6".to_string(),
+                    platform: platform.to_string(),
+                    direct_dependencies: vec![],
+                    bioc_version: None,
+                    packages: vec![RprojLockPackage {
+                        platform: platform.to_string(),
+                        ..sample_package()
+                    }],
+                })
+                .collect(),
+        };
+        let text = toml::to_string_pretty(&lock).unwrap();
+        let parsed = RprojLock::parse(&text).unwrap();
+        assert_eq!(parsed.version, RPROJ_LOCK_VERSION);
+        let platforms: Vec<(&str, &str)> = parsed
+            .targets
+            .iter()
+            .map(|t| (t.platform.as_str(), t.packages[0].platform.as_str()))
+            .collect();
+        assert_eq!(
+            platforms,
+            vec![
+                ("aarch64-apple-darwin", "aarch64-apple-darwin"),
+                ("x86_64-unknown-linux-gnu", "x86_64-unknown-linux-gnu"),
+                ("source", "source"),
+            ]
+        );
+        // Older versions are still refused.
+        let old = text.replace("version = 5", "version = 4");
+        assert!(RprojLock::parse(&old).is_err());
     }
 
     #[test]

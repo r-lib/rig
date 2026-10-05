@@ -1162,14 +1162,57 @@ fn ppm_arch(arch: &str) -> &str {
     }
 }
 
-/// Resolve a candidate target to a `(platform, arch)` pair, if it actually
-/// builds binaries for that arch.
-fn usable(distro: Option<&PpmDistro>, arch: &str) -> Option<(String, String)> {
+/// A P3M build target for one arch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PpmTarget {
+    /// P3M's name for the target, e.g. `macos`, `windows`, `jammy`.
+    pub platform: String,
+    /// `x86_64` or `arm64`.
+    pub arch: String,
+    /// The canonical rig platform string of the target, e.g.
+    /// `aarch64-apple-darwin` or `x86_64-unknown-linux-gnu-ubuntu-22.04`, see
+    /// [`crate::platform::parse_platform_string`].
+    pub triple: String,
+}
+
+/// The rig distro name for a P3M `distribution`, the reverse of
+/// [`ppm_distribution`].
+fn rig_distribution(distribution: &str) -> &str {
+    match distribution {
+        "redhat" | "rockylinux" => "rhel",
+        "sle" => "sles",
+        other => other,
+    }
+}
+
+/// The canonical rig platform string of a P3M target and arch.
+fn target_triple(distro: &PpmDistro, arch: &str) -> String {
+    let arch = if arch == "arm64" { "aarch64" } else { arch };
+    match distro.os.as_str() {
+        "macos" => format!("{}-apple-darwin", arch),
+        "windows" => format!("{}-w64-mingw32", arch),
+        _ if distro.platform() == MANYLINUX => format!("{}-unknown-linux-gnu", arch),
+        _ => format!(
+            "{}-unknown-linux-gnu-{}-{}",
+            arch,
+            rig_distribution(&distro.distribution),
+            distro.release
+        ),
+    }
+}
+
+/// Resolve a candidate target to a [`PpmTarget`], if it actually builds
+/// binaries for that arch.
+fn usable(distro: Option<&PpmDistro>, arch: &str) -> Option<PpmTarget> {
     let distro = distro?;
     if !distro.binaries || !distro.arch.iter().any(|a| a == arch) {
         return None;
     }
-    Some((distro.platform().to_string(), arch.to_string()))
+    Some(PpmTarget {
+        platform: distro.platform().to_string(),
+        arch: arch.to_string(),
+        triple: target_triple(distro, arch),
+    })
 }
 
 impl PpmStatus {
@@ -1258,6 +1301,12 @@ impl PpmStatus {
     /// the target exists but not for this arch (P3M builds `jammy` for x86_64
     /// only, for instance).
     pub fn ppm_platform(&self, platform: &OsVersion) -> Option<(String, String)> {
+        self.ppm_target(platform).map(|t| (t.platform, t.arch))
+    }
+
+    /// Like [`PpmStatus::ppm_platform`], but also with the target's canonical
+    /// rig platform string.
+    pub fn ppm_target(&self, platform: &OsVersion) -> Option<PpmTarget> {
         let arch = ppm_arch(&platform.arch);
 
         if platform.os.starts_with("darwin") {
@@ -2001,5 +2050,64 @@ mod tests {
                 platform
             );
         }
+    }
+
+    /// Every target P3M builds binaries for has a canonical platform string
+    /// that parses back to the same target.
+    #[test]
+    fn target_triples_round_trip() {
+        let s = status();
+        for distro in s.distros.iter().filter(|d| d.binaries) {
+            for arch in &distro.arch {
+                let triple = target_triple(distro, arch);
+                let parsed = crate::platform::parse_platform_string(&triple).unwrap();
+                let target = s.ppm_target(&parsed).unwrap();
+                assert_eq!(
+                    (target.platform.as_str(), target.arch.as_str()),
+                    (distro.platform(), arch.as_str()),
+                    "{} ({}) -> {}",
+                    distro.name,
+                    arch,
+                    triple
+                );
+                assert_eq!(target.triple, triple);
+            }
+        }
+    }
+
+    #[test]
+    fn targets_have_canonical_names() {
+        let s = status();
+        let triple = |p: &str| {
+            let parsed = crate::platform::parse_platform_string(p).unwrap();
+            s.ppm_target(&parsed).map(|t| t.triple)
+        };
+        assert_eq!(triple("macos-arm64").unwrap(), "aarch64-apple-darwin");
+        assert_eq!(triple("windows-x86_64").unwrap(), "x86_64-w64-mingw32");
+        assert_eq!(
+            triple("jammy-x86_64").unwrap(),
+            "x86_64-unknown-linux-gnu-ubuntu-22.04"
+        );
+        assert_eq!(
+            triple("x86_64-unknown-linux-gnu-rocky-9.4").unwrap(),
+            "x86_64-unknown-linux-gnu-rhel-9"
+        );
+        assert_eq!(
+            triple("x86_64-unknown-linux-gnu-opensuse-156").unwrap(),
+            "x86_64-unknown-linux-gnu-opensuse-15.6"
+        );
+        assert_eq!(
+            triple("manylinux_2_28-arm64").unwrap(),
+            "aarch64-unknown-linux-gnu"
+        );
+        // No arm64 build for jammy, so the generic one.
+        assert_eq!(
+            triple("aarch64-unknown-linux-gnu-ubuntu-22.04").unwrap(),
+            "aarch64-unknown-linux-gnu"
+        );
+        assert_eq!(
+            triple("x86_64-unknown-linux-gnu-fedora-42").unwrap(),
+            "x86_64-unknown-linux-gnu"
+        );
     }
 }

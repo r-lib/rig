@@ -78,6 +78,32 @@ package versions, each with the URL it downloads from. It never runs R.
 Both files are meant to be committed, `rig proj add`/`remove` update both
 for you.
 
+## Platforms
+
+`rproj.lock` has one target for each R version and platform it was solved
+for. By default `rig proj lock` solves for this machine, macOS on arm64
+(`aarch64-apple-darwin`), Windows (`x86_64-w64-mingw32`), any glibc Linux
+(`x86_64-unknown-linux-gnu`), and source packages (`source`), so the same
+lock file works for everyone on the project. `rig proj sync` picks the
+target that matches the machine it runs on.
+
+To lock for a different set of platforms, list them in `rproj.toml`:
+
+```toml
+[tool.rig]
+platforms = [
+  "aarch64-apple-darwin",
+  "x86_64-unknown-linux-gnu-ubuntu-24.04",
+  "source",
+]
+```
+
+Platforms are written as target triples, with a distribution and version
+for a specific Linux distribution. Shorter forms such as `macos`,
+`windows`, `ubuntu-24.04` or `macos-arm64` work too. See [`rig proj
+lock`](reference/proj.qmd#rig-proj-lock) for the details, and
+`--platform` / `--add-platform` to change the platforms for one lock.
+
 ## Syncing the project environment
 
 `rig proj sync` installs the versions `rproj.lock` resolved into the
