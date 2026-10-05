@@ -44,7 +44,7 @@ use crate::proj_repos::ProjRepos;
 use crate::repos::binaries::loader::{
     BinaryTarget, ChainedBinaryLoader, CranlikeBinaryLoader, P3mBinaryLoader,
 };
-use crate::repos::binaries::MANYLINUX;
+use crate::repos::binaries::{PpmStatus, MANYLINUX};
 use crate::repos::cranlike_metadata::{ensure_repos_fresh, minor_r_version};
 use crate::repos::feed::{BiocSetting, PkgRepo, RepoFilter, RepoId};
 use crate::repos::interpret_repos_args::{interpret_pkg_repos_args, PkgReposArgs};
@@ -62,6 +62,7 @@ use crate::rvenv::{
     rvenv_init, rvenv_sync, rvenv_sync_needed, workspace_members, write_sync_stamp, RvenvCfg,
     RPROJ_LOCK_FILE, RVENV_CFG_FILE, RVENV_DIR,
 };
+use crate::rversion::OsVersion;
 use crate::script_meta::{script_lock_env, script_lock_path};
 use crate::solver::*;
 use crate::textfmt::{dcf_field_to_text, reflow};
@@ -4792,45 +4793,146 @@ fn this_os_family() -> &'static str {
     }
 }
 
-/// The lock file target `rig proj sync` installs: the one whose platform's OS
-/// and CPU arch match this machine (or name none), further narrowed by
-/// `--r-version`/`--platform` if the caller gave them. Several matches are
-/// not an error --
+/// The Linux system a lock file target has to be for, see [`SyncHost`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LinuxHost {
+    /// musl (Alpine) instead of glibc.
+    musl: bool,
+    /// The distro and release, spelled the way `rig proj lock` writes them
+    /// in a platform, e.g. `("ubuntu", "22.04")` or `("rhel", "9")`, if
+    /// P3M builds binaries for this distro specifically. `None` if it does
+    /// not, so only the generic glibc target fits.
+    distro: Option<(String, String)>,
+}
+
+impl LinuxHost {
+    /// This machine's Linux system. P3M's status document translates the
+    /// distro into the spelling of the lock file, e.g. Rocky Linux 9.4 into
+    /// `rhel-9`. Without it, the distro is used as `/etc/os-release` names
+    /// it, which is the same for Debian and Ubuntu.
+    fn detect() -> LinuxHost {
+        let host = match detect_platform() {
+            Ok(host) => host,
+            Err(_) => {
+                return LinuxHost {
+                    musl: false,
+                    distro: None,
+                }
+            }
+        };
+        let musl = linux_is_musl(&host);
+        let distro = match PpmStatus::load(None) {
+            Ok(status) => status
+                .ppm_target(&host)
+                .and_then(|t| parse_platform_string(&t.triple).ok())
+                .and_then(|p| p.distro.zip(p.version)),
+            Err(_) => host.distro.clone().zip(host.version.clone()),
+        };
+        LinuxHost { musl, distro }
+    }
+
+    /// Whether a Linux target's platform fits this system, and if so, how
+    /// well: 2 for a target for this distro and release, 1 for the generic
+    /// glibc one.
+    fn fit(&self, platform: &OsVersion) -> Option<u8> {
+        if linux_is_musl(platform) != self.musl {
+            return None;
+        }
+        match (&platform.distro, &platform.version) {
+            (None, _) => Some(1),
+            (Some(distro), Some(version)) => self
+                .distro
+                .as_ref()
+                .is_some_and(|(d, v)| d == distro && v == version)
+                .then_some(2),
+            // A P3M target name, which lock files do not have.
+            (Some(_), None) => None,
+        }
+    }
+}
+
+/// Whether a Linux platform is musl based, the same way
+/// [`platform_string`] decides it.
+fn linux_is_musl(platform: &OsVersion) -> bool {
+    platform.os == "linux-musl" || platform.distro.as_deref() == Some("alpine")
+}
+
+/// The machine `rig proj sync` picks a lock file target for: its OS family,
+/// in [`target_os_family`]'s terms, the R arch, in [`native_arch_name`]'s,
+/// and on Linux, the distro.
+#[derive(Debug, Clone)]
+struct SyncHost {
+    os: &'static str,
+    arch: String,
+    linux: Option<LinuxHost>,
+}
+
+impl SyncHost {
+    /// This machine, for an R of architecture `arch` instead of the
+    /// machine's own, if `arch` is given, see [`ProjSyncOptions::arch`].
+    fn detect(arch: Option<&str>) -> SyncHost {
+        let os = this_os_family();
+        SyncHost {
+            os,
+            arch: native_arch_name(arch.unwrap_or(std::env::consts::ARCH)),
+            linux: (os == "linux").then(LinuxHost::detect),
+        }
+    }
+
+    /// How well a lock file target's platform fits this machine, or `None`
+    /// if it does not fit at all: 0 for a source-only target, which fits
+    /// every machine, 2 for a target for this Linux distro and release, and
+    /// 1 for the rest, a target for this OS that names no distro.
+    fn fit(&self, platform: &str) -> Option<u8> {
+        if let Some(os) = target_os_family(platform) {
+            if os != self.os {
+                return None;
+            }
+        }
+        if let Some(arch) = platform_arch(platform) {
+            if native_arch_name(arch) != self.arch {
+                return None;
+            }
+        }
+        match (target_os_family(platform), &self.linux) {
+            (None, _) => Some(0),
+            (Some("linux"), Some(linux)) => linux.fit(&parse_platform_string(platform).ok()?),
+            _ => Some(1),
+        }
+    }
+
+    /// This machine, for messages, e.g. `linux, ubuntu-22.04`.
+    fn describe(&self) -> String {
+        match self.linux.as_ref() {
+            Some(LinuxHost {
+                distro: Some((d, v)),
+                ..
+            }) => format!("{}, {}-{}", self.os, d, v),
+            _ => self.os.to_string(),
+        }
+    }
+}
+
+/// The lock file target `rig proj sync` installs: the one whose platform
+/// fits this machine, see [`SyncHost::fit`], further narrowed by
+/// `--r-version`/`--platform` if the caller gave them. A target for one
+/// Linux distro does not fit another one. Several matches are not an error --
 /// the highest R version among them wins, so locking for several R versions
 /// just works without extra flags; only zero matches is a hard error. For the
-/// same R version a target for this OS wins over a source-only one, which
-/// matches every machine.
-#[cfg(test)]
+/// same R version a target for this distro wins over the generic Linux one,
+/// and a target for this OS wins over a source-only one, which matches every
+/// machine.
 fn select_sync_target<'a>(
     targets: &'a [RprojLockTarget],
     r_version: Option<&str>,
     platform: Option<&str>,
+    host: &SyncHost,
 ) -> Result<&'a RprojLockTarget, Box<dyn Error>> {
-    select_sync_target_for_arch(targets, r_version, platform, None)
-}
-
-/// [`select_sync_target`], for an R of architecture `arch` instead of the
-/// machine's own, if `arch` is given, see [`ProjSyncOptions::arch`].
-fn select_sync_target_for_arch<'a>(
-    targets: &'a [RprojLockTarget],
-    r_version: Option<&str>,
-    platform: Option<&str>,
-    arch: Option<&str>,
-) -> Result<&'a RprojLockTarget, Box<dyn Error>> {
-    let this_os = this_os_family();
-    let this_arch = native_arch_name(arch.unwrap_or(std::env::consts::ARCH));
-    let mut candidates: Vec<&RprojLockTarget> = targets
+    let mut candidates: Vec<(&RprojLockTarget, u8)> = targets
         .iter()
-        .filter(|t| match target_os_family(&t.platform) {
-            Some(os) => os == this_os,
-            None => true,
-        })
-        .filter(|t| match platform_arch(&t.platform) {
-            Some(arch) => native_arch_name(arch) == this_arch,
-            None => true,
-        })
         .filter(|t| platform.is_none_or(|p| t.platform == p))
         .filter(|t| r_version.is_none_or(|rv| r_version_matches(rv, &t.r_version)))
+        .filter_map(|t| host.fit(&t.platform).map(|fit| (t, fit)))
         .collect();
 
     if candidates.is_empty() {
@@ -4841,7 +4943,7 @@ fn select_sync_target_for_arch<'a>(
         let msg = format!(
             "No target in rproj.lock matches this machine ({}{}{}). Available: {}. \
              Run `rig proj lock` for this machine, or check --r-version/--platform.",
-            this_os,
+            host.describe(),
             r_version.map(|v| format!(", R {}", v)).unwrap_or_default(),
             platform
                 .map(|p| format!(", platform {}", p))
@@ -4857,13 +4959,8 @@ fn select_sync_target_for_arch<'a>(
         bail!("{}", msg);
     }
 
-    candidates.sort_by_key(|t| {
-        (
-            r_components(&t.r_version).unwrap_or_default(),
-            target_os_family(&t.platform).is_some(),
-        )
-    });
-    Ok(candidates.pop().unwrap())
+    candidates.sort_by_key(|(t, fit)| (r_components(&t.r_version).unwrap_or_default(), *fit));
+    Ok(candidates.pop().unwrap().0)
 }
 
 /// Whether an installed R version is the one the lock file asks for: the same
@@ -5172,11 +5269,11 @@ pub(crate) fn proj_sync(
         .as_deref()
         .map(normalize_platform)
         .transpose()?;
-    let target = select_sync_target_for_arch(
+    let target = select_sync_target(
         &lock.targets,
         opts.r_version.as_deref(),
         platform.as_deref(),
-        opts.arch.as_deref(),
+        &SyncHost::detect(opts.arch.as_deref()),
     )?;
 
     let wanted: Vec<RprojLockPackage> = sync_wanted_packages(&target.packages, opts);
@@ -6774,17 +6871,105 @@ mod tests {
         assert!(!lock_target_git_sources_fresh(&t, &sources));
     }
 
+    /// This machine, for an R of architecture `arch`, as a glibc Linux with
+    /// no specific P3M build if it runs Linux, so the tests do not depend on
+    /// the distro they run on, nor on P3M's status document.
+    fn this_host_for_arch(arch: &str) -> SyncHost {
+        let os = this_os_family();
+        SyncHost {
+            os,
+            arch: native_arch_name(arch),
+            linux: (os == "linux").then_some(LinuxHost {
+                musl: false,
+                distro: None,
+            }),
+        }
+    }
+
+    fn this_host() -> SyncHost {
+        this_host_for_arch(std::env::consts::ARCH)
+    }
+
+    /// An x86_64 Linux machine, with `distro` as P3M's build for it.
+    fn linux_host(musl: bool, distro: Option<(&str, &str)>) -> SyncHost {
+        SyncHost {
+            os: "linux",
+            arch: native_arch_name("x86_64"),
+            linux: Some(LinuxHost {
+                musl,
+                distro: distro.map(|(d, v)| (d.to_string(), v.to_string())),
+            }),
+        }
+    }
+
+    #[test]
+    fn select_sync_target_ignores_other_linux_distros() {
+        let fedora = linux_host(false, None);
+        let targets = vec![target("4.6.1", "x86_64-unknown-linux-gnu-ubuntu-22.04")];
+        assert!(select_sync_target(&targets, None, None, &fedora).is_err());
+        let noble = linux_host(false, Some(("ubuntu", "24.04")));
+        assert!(select_sync_target(&targets, None, None, &noble).is_err());
+        let jammy = linux_host(false, Some(("ubuntu", "22.04")));
+        let picked = select_sync_target(&targets, None, None, &jammy).unwrap();
+        assert_eq!(picked.platform, "x86_64-unknown-linux-gnu-ubuntu-22.04");
+
+        // The generic glibc target is used instead.
+        let targets = vec![
+            target("4.6.1", "x86_64-unknown-linux-gnu-ubuntu-22.04"),
+            target("4.6.1", "x86_64-unknown-linux-gnu"),
+            target("4.6.1", "source"),
+        ];
+        for host in [&fedora, &noble] {
+            let picked = select_sync_target(&targets, None, None, host).unwrap();
+            assert_eq!(picked.platform, "x86_64-unknown-linux-gnu");
+        }
+    }
+
+    #[test]
+    fn select_sync_target_prefers_this_distro_over_generic_linux() {
+        let jammy = linux_host(false, Some(("ubuntu", "22.04")));
+        let specific = target("4.6.1", "x86_64-unknown-linux-gnu-ubuntu-22.04");
+        let generic = target("4.6.1", "x86_64-unknown-linux-gnu");
+        for targets in [
+            vec![specific.clone(), generic.clone()],
+            vec![generic.clone(), specific.clone()],
+        ] {
+            let picked = select_sync_target(&targets, None, None, &jammy).unwrap();
+            assert_eq!(picked.platform, specific.platform);
+        }
+
+        // A higher R version still wins.
+        let targets = vec![specific, target("4.6.2", "x86_64-unknown-linux-gnu")];
+        let picked = select_sync_target(&targets, None, None, &jammy).unwrap();
+        assert_eq!(picked.platform, "x86_64-unknown-linux-gnu");
+    }
+
+    #[test]
+    fn select_sync_target_keeps_glibc_and_musl_apart() {
+        let alpine = linux_host(true, None);
+        let targets = vec![
+            target("4.6.1", "x86_64-unknown-linux-gnu"),
+            target("4.6.1", "x86_64-unknown-linux-gnu-ubuntu-22.04"),
+        ];
+        assert!(select_sync_target(&targets, None, None, &alpine).is_err());
+        let targets = vec![target("4.6.1", "x86_64-unknown-linux-musl")];
+        let picked = select_sync_target(&targets, None, None, &alpine).unwrap();
+        assert_eq!(picked.platform, "x86_64-unknown-linux-musl");
+        let glibc = linux_host(false, None);
+        assert!(select_sync_target(&targets, None, None, &glibc).is_err());
+    }
+
     #[test]
     fn select_sync_target_is_a_noop_with_a_single_target() {
         let this_os = this_os_family();
         let platform = format!("{}-{}", this_os, std::env::consts::ARCH);
         let targets = vec![target("4.6.1", &platform)];
-        let picked = select_sync_target(&targets, None, None).unwrap();
+        let picked = select_sync_target(&targets, None, None, &this_host()).unwrap();
         assert_eq!(picked.r_version, "4.6.1");
     }
 
     #[test]
-    fn select_sync_target_for_arch_picks_the_requested_arch() {
+    fn select_sync_target_picks_the_requested_arch() {
         let this_os = this_os_family();
         let native = native_arch_name(std::env::consts::ARCH);
         // "arm64" on macOS, "aarch64" on Linux and Windows
@@ -6797,15 +6982,14 @@ mod tests {
             target("4.6.1", &format!("{}-{}", this_os, native)),
             target("4.6.1", &format!("{}-{}", this_os, other)),
         ];
-        let picked =
-            select_sync_target_for_arch(&targets, None, None, Some(other.as_str())).unwrap();
+        let picked = select_sync_target(&targets, None, None, &this_host_for_arch(&other)).unwrap();
         assert_eq!(
             platform_arch(&picked.platform)
                 .map(native_arch_name)
                 .as_deref(),
             Some(other.as_str())
         );
-        let picked = select_sync_target(&targets, None, None).unwrap();
+        let picked = select_sync_target(&targets, None, None, &this_host()).unwrap();
         assert_eq!(
             platform_arch(&picked.platform)
                 .map(native_arch_name)
@@ -6828,7 +7012,7 @@ mod tests {
             target("4.6.1", &format!("{}-{}", other_os, std::env::consts::ARCH)),
             target("4.5.0", &format!("{}-{}", this_os, std::env::consts::ARCH)),
         ];
-        let picked = select_sync_target(&targets, None, None).unwrap();
+        let picked = select_sync_target(&targets, None, None, &this_host()).unwrap();
         assert_eq!(picked.r_version, "4.5.0");
     }
 
@@ -6838,10 +7022,10 @@ mod tests {
         // matches this machine regardless of OS. Older lock files used the
         // bare CPU arch, which also has no OS marker.
         let targets = vec![target("4.6.1", "source")];
-        let picked = select_sync_target(&targets, None, None).unwrap();
+        let picked = select_sync_target(&targets, None, None, &this_host()).unwrap();
         assert_eq!(picked.r_version, "4.6.1");
         let targets = vec![target("4.6.1", std::env::consts::ARCH)];
-        let picked = select_sync_target(&targets, None, None).unwrap();
+        let picked = select_sync_target(&targets, None, None, &this_host()).unwrap();
         assert_eq!(picked.r_version, "4.6.1");
     }
 
@@ -6852,13 +7036,13 @@ mod tests {
             vec![target("4.6.1", &platform), target("4.6.1", "source")],
             vec![target("4.6.1", "source"), target("4.6.1", &platform)],
         ] {
-            let picked = select_sync_target(&targets, None, None).unwrap();
+            let picked = select_sync_target(&targets, None, None, &this_host()).unwrap();
             assert_eq!(picked.platform, platform);
         }
 
         // A higher R version still wins, even if it is source-only.
         let targets = vec![target("4.5.0", &platform), target("4.6.1", "source")];
-        let picked = select_sync_target(&targets, None, None).unwrap();
+        let picked = select_sync_target(&targets, None, None, &this_host()).unwrap();
         assert_eq!(picked.platform, "source");
     }
 
@@ -6874,7 +7058,7 @@ mod tests {
             target("4.6.1", &format!("{}-{}", this_os, other_arch)),
             target("4.5.0", &format!("{}-{}", this_os, std::env::consts::ARCH)),
         ];
-        let picked = select_sync_target(&targets, None, None).unwrap();
+        let picked = select_sync_target(&targets, None, None, &this_host()).unwrap();
         assert_eq!(picked.r_version, "4.5.0");
     }
 
@@ -6887,7 +7071,7 @@ mod tests {
             target("4.6.1", &platform),
             target("4.4.2", &platform),
         ];
-        let picked = select_sync_target(&targets, None, None).unwrap();
+        let picked = select_sync_target(&targets, None, None, &this_host()).unwrap();
         assert_eq!(picked.r_version, "4.6.1");
     }
 
@@ -6896,7 +7080,7 @@ mod tests {
         let this_os = this_os_family();
         let platform = format!("{}-{}", this_os, std::env::consts::ARCH);
         let targets = vec![target("4.5.0", &platform), target("4.6.1", &platform)];
-        let picked = select_sync_target(&targets, Some("4.5.0"), None).unwrap();
+        let picked = select_sync_target(&targets, Some("4.5.0"), None, &this_host()).unwrap();
         assert_eq!(picked.r_version, "4.5.0");
     }
 
@@ -6908,7 +7092,7 @@ mod tests {
             "linux"
         };
         let targets = vec![target("4.6.1", &format!("{}-x86_64", other_os))];
-        assert!(select_sync_target(&targets, None, None).is_err());
+        assert!(select_sync_target(&targets, None, None, &this_host()).is_err());
     }
 
     #[test]
