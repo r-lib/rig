@@ -37,6 +37,7 @@ use crate::pkg::install::{plan_installs, print_plan};
 use crate::pkg::list::{read_installed, InstalledPackage};
 use crate::pkg::remove::remove_package;
 use crate::pkg::tree::proj_tree;
+use crate::pkgsource::lock::LockSource;
 use crate::platform::{
     detect_platform, normalize_arch, normalize_platform, parse_platform_string, platform_string,
 };
@@ -2253,10 +2254,13 @@ fn lock_target_git_sources_fresh(
 /// entry to go stale. `self_sha` is the project's current content digest
 /// (`compute_dir_stat_digest`), recomputed once per `rig proj lock` run the
 /// same way `git_sources` resolves a real `path` dependency's digest fresh
-/// every time.
+/// every time. The entry's `sources` must also be the `file://` URL of
+/// `root_abs`, see [`project_source_url`], so a lock written before it was
+/// recorded is updated.
 fn project_entry_fresh(
     target: &RprojLockTarget,
     self_alias: Option<&SolveRoot>,
+    root_abs: &Path,
     self_sha: Option<&String>,
 ) -> bool {
     let Some(alias) = self_alias else {
@@ -2268,6 +2272,21 @@ fn project_entry_fresh(
     pkg.package == alias.name
         && pkg.version == alias.version.to_string()
         && pkg.metadata.get(REMOTE_SHA_FIELD) == self_sha
+        && pkg.sources == project_sources(root_abs)
+}
+
+/// The `file://` URL of the project root `root_abs`, e.g.
+/// `file:///home/user/mypkg/`. `None` if `root_abs` is not absolute.
+fn project_source_url(root_abs: &Path) -> Option<String> {
+    reqwest::Url::from_directory_path(root_abs)
+        .ok()
+        .map(|url| url.to_string())
+}
+
+/// The `sources` of the project's own lock entry: its `file://` URL, see
+/// [`project_source_url`].
+fn project_sources(root_abs: &Path) -> Vec<String> {
+    project_source_url(root_abs).into_iter().collect()
 }
 
 /// The [`RprojLockPackage`] entry for the project's own package -- `alias` is
@@ -2276,9 +2295,10 @@ fn project_entry_fresh(
 /// be computed). Mirrors the "local" `RemoteType` case
 /// [`RprojLockTarget::from_solution`] already writes for a real `path`
 /// dependency, so [`lockfile_package_info`]/[`fetch_git_lockfile_packages`]
-/// handle it with no changes: `sources`/`target` are empty, since the
-/// installer reads `RemoteUrl` directly instead of downloading or caching
-/// anything.
+/// handle it with no changes: `target` is empty, since the installer reads
+/// `RemoteUrl` directly instead of downloading or caching anything.
+/// `sources` holds the project's `file://` URL, see [`project_source_url`],
+/// but nothing downloads from it.
 fn project_lock_package(
     alias: &SolveRoot,
     root_abs: &Path,
@@ -2314,7 +2334,7 @@ fn project_lock_package(
         platform: "source".to_string(),
         dependencies,
         metadata,
-        sources: vec![],
+        sources: project_sources(root_abs),
         target: String::new(),
         groups: vec!["main".to_string()],
         extra_groups: vec![],
@@ -3983,7 +4003,12 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         .map(|_| compute_dir_stat_digest(&root_abs, true).unwrap_or_default());
 
     let project_fresh = |target: &RprojLockTarget| {
-        project_entry_fresh(target, solve.self_alias.as_ref(), self_sha.as_ref())
+        project_entry_fresh(
+            target,
+            solve.self_alias.as_ref(),
+            &root_abs,
+            self_sha.as_ref(),
+        )
     };
 
     // Every target the existing lock already satisfies, reused byte-for-byte
@@ -5700,25 +5725,21 @@ pub(crate) fn lockfile_package_info(
             remote.insert(field.to_string(), value.clone());
         }
     }
-    // A local package is never fetched and never cached: it is installed from
-    // where it already is, which `RemoteUrl` holds as an absolute path.
-    let local = pkg.metadata.get(REMOTE_TYPE_FIELD).map(|t| t.as_str()) == Some("local");
-    // A git/GitHub package's `target` is the fetched directory (a tarball
-    // unpacked, or a git checkout); a subdirectory source lives at
-    // `<target>/<subdir>` within it. An ordinary CRAN/PPM package's `target`
-    // is the downloaded file itself.
-    let file_path = if local {
-        PathBuf::from(
-            pkg.metadata
-                .get(crate::install::REMOTE_URL_FIELD)
-                .cloned()
-                .unwrap_or_default(),
-        )
-    } else {
-        let base = cache_dir.join("packages").join(&pkg.target);
-        match pkg.metadata.get(REMOTE_SUBDIR_FIELD) {
-            Some(subdir) => base.join(subdir),
-            None => base,
+    // Where to install from comes from `sources` alone, see `LockSource`: a
+    // local package is installed from where it already is; a git/GitHub/url
+    // package from its fetched directory (a git checkout or an extracted
+    // archive), or `<target>/<subdir>` within it; an ordinary CRAN/PPM
+    // package from the downloaded file itself.
+    let source = lock_package_source(pkg);
+    let local = matches!(source, Some(LockSource::Local { .. }));
+    let file_path = match &source {
+        Some(LockSource::Local { path }) => PathBuf::from(path),
+        _ => {
+            let base = cache_dir.join("packages").join(&pkg.target);
+            match source.as_ref().and_then(|s| s.subdir()) {
+                Some(subdir) => base.join(subdir),
+                None => base,
+            }
         }
     };
     let mut info = PackageInfo {
@@ -5766,31 +5787,45 @@ pub(crate) fn download_lockfile_packages(
     // checking out a git worktree or downloading and extracting an archive,
     // not a plain HTTP download to a file -- handled separately, see
     // `fetch_git_lockfile_packages`.
-    let (git_packages, http_packages): (Vec<&RprojLockPackage>, Vec<&RprojLockPackage>) = packages
-        .iter()
-        .partition(|pkg| pkg.metadata.contains_key(REMOTE_TYPE_FIELD));
+    let (git_packages, http_packages): (Vec<&RprojLockPackage>, Vec<&RprojLockPackage>) =
+        packages.iter().partition(|pkg| {
+            !matches!(
+                lock_package_source(pkg),
+                None | Some(LockSource::Http { .. })
+            )
+        });
 
     fetch_git_lockfile_packages(&git_packages, &cache_dir)?;
     download_http_lockfile_packages(&http_packages, &cache_dir)
 }
 
+/// The parsed `sources` entry of a lockfile package, see [`LockSource`].
+/// `None` if it has no sources, or its first one does not parse.
+fn lock_package_source(pkg: &RprojLockPackage) -> Option<LockSource> {
+    pkg.sources.first().and_then(|s| LockSource::parse(s).ok())
+}
+
 /// Fetch every git/GitHub/url package in `packages` into its cache
-/// directory: a shallow (`--depth 1`), sparse-checkout-scoped `git` fetch
-/// (see [`crate::pkgsource::git::fetch_git_checkout`]) for a git/GitHub
-/// source, or a cached archive download and extraction (see
-/// [`crate::pkgsource::url::fetch_url_checkout`]) for a `url` source, both
-/// reusing the `RemoteUrl`/`RemoteRef`/`RemoteSubdir`/`RemoteSha` recorded at
-/// lock time. Skipped entirely when the target directory already exists --
-/// the target is keyed by the resolved commit sha (or archive sha256), so an
-/// existing one is always the right content.
+/// directory: a shallow (`--depth 1`), sparse-checkout-scoped `git` fetch of
+/// the locked commit (see [`crate::pkgsource::git::fetch_git_checkout`]) for
+/// a git/GitHub source, or a cached archive download, verified against its
+/// sha256, and extraction (see [`crate::pkgsource::url::fetch_url_checkout`])
+/// for a `url` source. Everything comes from the package's `sources` entry,
+/// see [`LockSource`], not from its `metadata`. Skipped entirely when the
+/// target directory already exists -- the target is keyed by the commit sha
+/// (or archive sha256), so an existing one is always the right content.
 fn fetch_git_lockfile_packages(
     packages: &[&RprojLockPackage],
     cache_dir: &Path,
 ) -> Result<(), Box<dyn Error>> {
     for pkg in packages {
+        let source = match pkg.sources.first() {
+            Some(s) => LockSource::parse(s)?,
+            None => bail!("{} has no sources in the lockfile", pkg.package),
+        };
         // A local source is already on disk, where the user pointed rig at
         // it, so there is nothing to fetch and nothing to cache.
-        if pkg.metadata.get(REMOTE_TYPE_FIELD).map(|s| s.as_str()) == Some("local") {
+        if matches!(source, LockSource::Local { .. }) {
             continue;
         }
         let target_dir = cache_dir.join("packages").join(&pkg.target);
@@ -5804,43 +5839,25 @@ fn fetch_git_lockfile_packages(
         }
         create_parent_dir_if_needed(&target_dir)?;
 
-        match pkg.metadata.get(REMOTE_TYPE_FIELD).map(|s| s.as_str()) {
-            Some("github") | Some("git") => {
-                let url = pkg
-                    .metadata
-                    .get(crate::install::REMOTE_URL_FIELD)
-                    .ok_or_else(|| SimpleError::new(format!("{} has no RemoteUrl", pkg.package)))?;
-                let refspec = pkg.metadata.get(crate::install::REMOTE_REF_FIELD).cloned();
-                let subdir = pkg
-                    .metadata
-                    .get(crate::install::REMOTE_SUBDIR_FIELD)
-                    .cloned();
+        match &source {
+            LockSource::Git {
+                url,
+                commit,
+                subdir,
+            } => {
                 OUTPUT.status(&format!("Fetching {} from {}", pkg.package, url));
                 crate::pkgsource::git::fetch_git_checkout(
                     url,
-                    refspec.as_deref(),
+                    Some(commit),
                     subdir.as_deref(),
                     &target_dir,
                 )?;
             }
-            Some("url") => {
-                let url = pkg
-                    .metadata
-                    .get(crate::install::REMOTE_URL_FIELD)
-                    .ok_or_else(|| SimpleError::new(format!("{} has no RemoteUrl", pkg.package)))?;
-                let expected_sha256 = pkg.metadata.get(crate::install::REMOTE_SHA_FIELD).cloned();
+            LockSource::Archive { url, sha256, .. } => {
                 OUTPUT.status(&format!("Fetching {} from {}", pkg.package, url));
-                crate::pkgsource::url::fetch_url_checkout(
-                    url,
-                    expected_sha256.as_deref(),
-                    &target_dir,
-                )?;
+                crate::pkgsource::url::fetch_url_checkout(url, Some(sha256), &target_dir)?;
             }
-            other => bail!(
-                "{} has an unknown RemoteType `{}`",
-                pkg.package,
-                other.unwrap_or("<none>")
-            ),
+            LockSource::Local { .. } | LockSource::Http { .. } => unreachable!(),
         }
         OUTPUT.success(&format!("Fetched {}", pkg.package));
     }
@@ -6758,6 +6775,37 @@ mod tests {
         pkg
     }
 
+    /// Where to install from comes from `sources`, not from `metadata`: a
+    /// git package's subdir, and a local package's path.
+    #[test]
+    fn lockfile_package_info_reads_the_install_location_from_sources() {
+        let cache = Path::new("/cache");
+        let mut git = locked("mypkg", &[]);
+        git.metadata.clear();
+        git.sources = vec!["git+https://example.com/repo.git#commit=3f2a&subdir=pkgs/mypkg".into()];
+        git.target = "git/git/3f2a".to_string();
+        assert_eq!(
+            lockfile_package_info(&git, cache, None).file_path,
+            cache
+                .join("packages")
+                .join("git/git/3f2a")
+                .join("pkgs/mypkg")
+        );
+
+        let mut local = locked("lpkg", &[]);
+        local.metadata.clear();
+        let dir = std::env::temp_dir().join("lpkg");
+        local.sources = vec![reqwest::Url::from_directory_path(&dir).unwrap().to_string()];
+        local.target = String::new();
+        assert_eq!(
+            lockfile_package_info(&local, cache, None)
+                .file_path
+                .components()
+                .collect::<Vec<_>>(),
+            dir.components().collect::<Vec<_>>()
+        );
+    }
+
     fn resolved_git_source(name: &str, url: &str, sha: &str) -> ResolvedGitSource {
         ResolvedGitSource {
             name: name.to_string(),
@@ -7351,7 +7399,9 @@ mod tests {
         );
         assert_eq!(pkg.groups, vec!["main".to_string()]);
         assert!(pkg.extra_groups.is_empty());
-        assert!(pkg.sources.is_empty());
+        assert_eq!(pkg.sources, project_sources(root));
+        #[cfg(unix)]
+        assert_eq!(pkg.sources, vec!["file:///tmp/mypkg/".to_string()]);
         assert!(pkg.target.is_empty());
         assert_eq!(
             pkg.metadata.get(REMOTE_TYPE_FIELD),
@@ -7378,7 +7428,7 @@ mod tests {
     #[test]
     fn project_entry_fresh_with_no_self_alias_always_passes() {
         let t = target("4.6.1", "testos");
-        assert!(project_entry_fresh(&t, None, None));
+        assert!(project_entry_fresh(&t, None, Path::new("/tmp/mypkg"), None));
     }
 
     #[test]
@@ -7388,6 +7438,7 @@ mod tests {
         assert!(!project_entry_fresh(
             &t,
             Some(&alias),
+            Path::new("/tmp/mypkg"),
             Some(&"abc".to_string())
         ));
     }
@@ -7404,13 +7455,28 @@ mod tests {
         assert!(!project_entry_fresh(
             &t,
             Some(&alias),
+            Path::new("/tmp/mypkg"),
             Some(&"new-sha".to_string())
         ));
         assert!(project_entry_fresh(
             &t,
             Some(&alias),
+            Path::new("/tmp/mypkg"),
             Some(&"old-sha".to_string())
         ));
+    }
+
+    #[test]
+    fn project_entry_fresh_requires_the_file_url_source() {
+        let alias = self_alias("mypkg", "1.0.0", &[]);
+        let root = Path::new("/tmp/mypkg");
+        let mut t = target("4.6.1", "testos");
+        t.packages = vec![project_lock_package(&alias, root, Some("sha"))];
+        let sha = "sha".to_string();
+        assert!(project_entry_fresh(&t, Some(&alias), root, Some(&sha)));
+        // A lock written before `sources` was recorded.
+        t.packages[0].sources.clear();
+        assert!(!project_entry_fresh(&t, Some(&alias), root, Some(&sha)));
     }
 
     #[test]
@@ -7426,6 +7492,7 @@ mod tests {
         assert!(!project_entry_fresh(
             &t,
             Some(&bumped),
+            Path::new("/tmp/mypkg"),
             Some(&"sha".to_string())
         ));
     }

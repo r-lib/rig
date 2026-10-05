@@ -23,6 +23,7 @@ use std::error::Error;
 
 pub mod git;
 pub mod local;
+pub mod lock;
 pub mod url;
 
 /// A parsed, not yet fetched, package source. `Cran` means "not a

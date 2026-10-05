@@ -139,9 +139,9 @@
   files.
 
 * If the root project is a package, `rig proj lock` now includes it in the
-  solution. It also calls `rig proj export` to (re)create its `DESCRIPTION`
-  file and `rig proj sync` now installs the root project if it is a
-  package.
+  solution, with a `file://` URL.It also calls `rig proj export` to
+  (re)create its `DESCRIPTION` file and `rig proj sync` now installs the
+  root project if it is a package.
 
 * `rig pkg install --no-install-project` installs only the dependencies of
   the named packages, like `rig proj sync --no-install-project`.

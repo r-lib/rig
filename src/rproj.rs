@@ -36,19 +36,26 @@ use crate::install::{
     REMOTE_REF_FIELD, REMOTE_REPO_FIELD, REMOTE_SHA_FIELD, REMOTE_SUBDIR_FIELD, REMOTE_TYPE_FIELD,
     REMOTE_URL_FIELD, REMOTE_USERNAME_FIELD, REPO_BUILT_FIELD,
 };
+use crate::pkgsource::lock::LockSource;
 use crate::proj::BASE_PKGS;
 use crate::repos::cranlike_metadata::minor_r_version;
 use crate::repos::feed::RepoId;
 use crate::rvenv::RPROJ_LOCK_FILE;
 use crate::solver::{RPackageRegistry, RegistryPackageVersion};
 
-pub const RPROJ_LOCK_VERSION: usize = 6;
+pub const RPROJ_LOCK_VERSION: usize = 7;
 
 /// The last lockfile version that names platforms by their P3M target
 /// (`macos-arm64`, `jammy-x86_64`) instead of their canonical platform string
 /// (`aarch64-apple-darwin`, `x86_64-unknown-linux-gnu-ubuntu-22.04`). rig
 /// still reads it, see [`RprojLock::parse`].
 const RPROJ_LOCK_VERSION_P3M_PLATFORMS: usize = 5;
+
+/// The last lockfile version whose git/GitHub/url/local packages are
+/// installed from their `Remote*` `metadata`, instead of from a `sources`
+/// entry that names the commit (or archive sha256) and subdir, see
+/// [`LockSource`]. rig still reads it, see [`RprojLock::parse`].
+const RPROJ_LOCK_VERSION_METADATA_SOURCES: usize = 6;
 
 // `rproj.toml`: the project/package manifest (see the design doc). This is the
 // *requirements* file a human edits, as opposed to `rproj.lock` (the solved
@@ -2862,34 +2869,28 @@ impl RprojLockTarget {
                     metadata.insert(REMOTE_SHA_FIELD.to_string(), git.sha.clone());
                 }
 
-                // Both are directories: a github tarball is unpacked, and a
-                // git:: clone is a worktree checkout. `sources` still carries
-                // the real download URL for the github case, so the existing
-                // HTTP downloader can fetch it unchanged; `RemoteType` is what
-                // tells `download_lockfile_packages` these need extra
-                // handling instead of "download this URL to this file path".
-                let (sources, target) = if git.remote_type == "github" {
-                    let repo = git.repo.clone().unwrap_or_default();
-                    (
-                        vec![format!(
-                            "https://codeload.github.com/{}/tar.gz/{}",
-                            repo, git.sha
-                        )],
-                        format!("git/github/{}/{}", repo, git.sha),
-                    )
-                } else if git.remote_type == "url" {
-                    (vec![git.url.clone()], format!("url/{}", git.sha))
-                } else if git.remote_type == "local" {
-                    // Nothing to download, and nothing in the cache: the
-                    // installer reads `RemoteUrl` (the absolute path) instead
-                    // of a `target` under the cache directory, see
-                    // `lockfile_package_info`.
-                    (vec![], String::new())
-                } else {
-                    (
-                        vec![format!("git+{}#{}", git.url, git.sha)],
-                        format!("git/git/{}", git.sha),
-                    )
+                // `sources` holds everything the installer needs: where to
+                // fetch from, the pinned commit or archive sha256, and the
+                // subdir, see `LockSource`. `metadata` above is provenance
+                // only. `target` is a directory for all of these: a git
+                // checkout or an extracted archive. A local source has no
+                // `target`, it is installed from where it is.
+                let source = LockSource::from_remote(
+                    git.remote_type,
+                    &git.url,
+                    &git.sha,
+                    git.subdir.as_deref(),
+                );
+                let sources = source.iter().map(|s| s.to_string()).collect();
+                let target = match git.remote_type {
+                    "github" => format!(
+                        "git/github/{}/{}",
+                        git.repo.clone().unwrap_or_default(),
+                        git.sha
+                    ),
+                    "url" => format!("url/{}", git.sha),
+                    "local" => String::new(),
+                    _ => format!("git/git/{}", git.sha),
                 };
 
                 let system_requirements = registry
@@ -3031,28 +3032,65 @@ impl RprojLock {
     /// Parse the text of `rproj.lock`, after checking its version, see
     /// [`RprojLock::check_version`].
     ///
-    /// A version 5 lockfile is read too: it only differs in how it spells
-    /// platforms, which are brought into their canonical spelling here, in
-    /// memory. The next `rig proj lock` writes the current version.
+    /// Version 5 and 6 lockfiles are read too. Version 5 spells platforms
+    /// differently, and they are brought into their canonical spelling here,
+    /// in memory. Both versions keep what is needed to install a remote
+    /// package in its `metadata`, and its `sources` are rebuilt from that,
+    /// see [`RprojLock::upgrade_remote_sources`]. The next `rig proj lock`
+    /// writes the current version.
     pub fn parse(text: &str) -> Result<RprojLock, Box<dyn Error>> {
         let found: RprojLockVersion = toml::from_str(text)?;
-        if found.version == RPROJ_LOCK_VERSION_P3M_PLATFORMS {
+        if found.version == RPROJ_LOCK_VERSION_P3M_PLATFORMS
+            || found.version == RPROJ_LOCK_VERSION_METADATA_SOURCES
+        {
             let mut lock: RprojLock = toml::from_str(text)?;
-            if let Err(e) = lock.normalize_platforms() {
-                bail!(
-                    "This {} is version {}, written by an older rig, and its \
-                     platforms cannot be read: {}. Run `rig proj lock` to \
-                     write it again.",
-                    RPROJ_LOCK_FILE,
-                    found.version,
-                    e
-                );
+            if found.version == RPROJ_LOCK_VERSION_P3M_PLATFORMS {
+                if let Err(e) = lock.normalize_platforms() {
+                    bail!(
+                        "This {} is version {}, written by an older rig, and its \
+                         platforms cannot be read: {}. Run `rig proj lock` to \
+                         write it again.",
+                        RPROJ_LOCK_FILE,
+                        found.version,
+                        e
+                    );
+                }
             }
+            lock.upgrade_remote_sources();
             lock.version = RPROJ_LOCK_VERSION;
             return Ok(lock);
         }
         Self::check_version(text)?;
         Ok(toml::from_str(text)?)
+    }
+
+    /// Rebuild the `sources` of every git/GitHub/url package from its
+    /// `Remote*` `metadata`, see [`LockSource::from_remote`]. An older
+    /// lockfile wrote `sources` that the installer never read for these
+    /// packages (a codeload tarball for GitHub, `git+<url>#<sha>` without
+    /// the subdir, the bare URL of an archive). A local package keeps its
+    /// `sources` if it has any: the project's own entry already holds its
+    /// `file://` URL.
+    fn upgrade_remote_sources(&mut self) {
+        for package in self.targets.iter_mut().flat_map(|t| t.packages.iter_mut()) {
+            let get = |field: &str| package.metadata.get(field).map(|s| s.as_str());
+            let Some(remote_type) = get(REMOTE_TYPE_FIELD) else {
+                continue;
+            };
+            let url = get(REMOTE_URL_FIELD).unwrap_or_default();
+            let sha = get(REMOTE_SHA_FIELD).unwrap_or_default();
+            if remote_type == "local" {
+                if !package.sources.is_empty() {
+                    continue;
+                }
+            } else if url.is_empty() || sha.is_empty() {
+                continue;
+            }
+            let source = LockSource::from_remote(remote_type, url, sha, get(REMOTE_SUBDIR_FIELD));
+            if let Some(source) = source {
+                package.sources = vec![source.to_string()];
+            }
+        }
     }
 
     /// Rewrite the platform of every target and package into its canonical
@@ -4738,6 +4776,89 @@ foo = "bar"
         // Older versions are still refused.
         let old = text.replace("version = 5", "version = 4");
         assert!(RprojLock::parse(&old).is_err());
+    }
+
+    /// A version 6 lockfile keeps what is needed to install a remote package
+    /// in its `metadata`; its `sources` are rebuilt from that on read.
+    #[test]
+    fn reads_a_version_6_lockfile() {
+        let remote = |pkg: &str, fields: &[(&str, &str)], sources: Vec<String>| RprojLockPackage {
+            package: pkg.to_string(),
+            binary: false,
+            platform: "source".to_string(),
+            metadata: fields
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+            sources,
+            ..sample_package()
+        };
+        let packages = vec![
+            sample_package(),
+            remote(
+                "gh",
+                &[
+                    ("RemoteType", "github"),
+                    ("RemoteUrl", "https://github.com/o/r.git"),
+                    ("RemoteSha", "3f2a"),
+                    ("RemoteSubdir", "pkg"),
+                ],
+                vec!["https://codeload.github.com/o/r/tar.gz/3f2a".to_string()],
+            ),
+            remote(
+                "gt",
+                &[
+                    ("RemoteType", "git"),
+                    ("RemoteUrl", "https://example.com/repo.git"),
+                    ("RemoteSha", "9b1c"),
+                ],
+                vec!["git+https://example.com/repo.git#9b1c".to_string()],
+            ),
+            remote(
+                "ar",
+                &[
+                    ("RemoteType", "url"),
+                    ("RemoteUrl", "https://example.com/ar.tar.gz"),
+                    ("RemoteSha", "abcd"),
+                    ("RemoteSubdir", "ar-1.0"),
+                ],
+                vec!["https://example.com/ar.tar.gz".to_string()],
+            ),
+            remote(
+                "proj",
+                &[("RemoteType", "local"), ("RemoteUrl", "/me/proj")],
+                vec!["file:///me/proj/".to_string()],
+            ),
+        ];
+        let lock = RprojLock {
+            version: RPROJ_LOCK_VERSION_METADATA_SOURCES,
+            tool: Default::default(),
+            targets: vec![RprojLockTarget {
+                r_version: "4.6".to_string(),
+                platform: "source".to_string(),
+                direct_dependencies: vec![],
+                bioc_version: None,
+                packages,
+            }],
+        };
+        let text = toml::to_string_pretty(&lock).unwrap();
+        let parsed = RprojLock::parse(&text).unwrap();
+        assert_eq!(parsed.version, RPROJ_LOCK_VERSION);
+        let sources: Vec<&str> = parsed.targets[0]
+            .packages
+            .iter()
+            .map(|p| p.sources[0].as_str())
+            .collect();
+        assert_eq!(
+            sources,
+            vec![
+                "https://example.com/cli.tgz",
+                "git+https://github.com/o/r.git#commit=3f2a&subdir=pkg",
+                "git+https://example.com/repo.git#commit=9b1c",
+                "https://example.com/ar.tar.gz#sha256=abcd&subdir=ar-1.0",
+                "file:///me/proj/",
+            ]
+        );
     }
 
     #[test]
