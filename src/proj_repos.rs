@@ -249,37 +249,34 @@ impl ProjRepos {
         filter
     }
 
-    /// Whether the repositories are the default ones: Bioconductor and CRAN,
-    /// in this order, without settings, except for a Bioconductor version.
-    fn is_default(&self) -> bool {
-        self.lock_repositories_all() == ProjRepos::default().lock_repositories_all()
-    }
-
-    fn lock_repositories_all(&self) -> Vec<LockRepository> {
+    /// The repositories to record in the lock file, the ones that are on, in
+    /// order of precedence, see
+    /// [`crate::rproj::RprojLockOptions::repositories`]. The built-in ones
+    /// have the URL of their extended metadata.
+    pub fn lock_repositories(&self) -> Vec<LockRepository> {
         self.enabled()
-            .map(|repo| LockRepository {
-                name: if repo.is_cran() {
-                    CRAN_REPOSITORY_NAME.to_string()
+            .map(|repo| {
+                let (name, metadata) = if repo.is_cran() {
+                    (
+                        CRAN_REPOSITORY_NAME.to_string(),
+                        Some(MetadataFeed::cran_metadata_url()),
+                    )
                 } else if repo.is_bioc() {
-                    BIOC_REPOSITORY_NAME.to_string()
+                    (
+                        BIOC_REPOSITORY_NAME.to_string(),
+                        Some(MetadataFeed::bioc_metadata_url()),
+                    )
                 } else {
-                    repo.name.clone()
-                },
-                url: repo.url.clone(),
-                explicit: repo.is_explicit(),
+                    (repo.name.clone(), None)
+                };
+                LockRepository {
+                    name,
+                    url: repo.url.clone(),
+                    metadata,
+                    explicit: repo.is_explicit(),
+                }
             })
             .collect()
-    }
-
-    /// The repositories to record in the lock file, see
-    /// [`crate::rproj::RprojLockOptions::repositories`]. Empty for the
-    /// default repositories.
-    pub fn lock_repositories(&self) -> Vec<LockRepository> {
-        if self.is_default() {
-            vec![]
-        } else {
-            self.lock_repositories_all()
-        }
     }
 
     /// Whether the package of a lock file entry with repository `locked`
@@ -345,17 +342,34 @@ mod tests {
     }
 
     #[test]
-    fn default_repositories_are_not_recorded() {
-        assert!(ProjRepos::default().lock_repositories().is_empty());
-        let mut bioc = Repository::builtin("bioc");
-        bioc.version = Some("3.22".to_string());
-        assert!(ProjRepos::new(&[bioc], BTreeMap::new())
-            .lock_repositories()
-            .is_empty());
-        let repos = ProjRepos::new(&[acme()], BTreeMap::new());
+    fn all_repositories_are_recorded() {
+        let lock = ProjRepos::default().lock_repositories();
+        let names: Vec<&str> = lock.iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(names, vec!["bioc", "cran"]);
+        assert_eq!(lock[0].url, None);
+        assert_eq!(
+            lock[0].metadata.as_deref(),
+            Some(MetadataFeed::bioc_metadata_url().as_str())
+        );
+        assert_eq!(
+            lock[1].metadata.as_deref(),
+            Some(MetadataFeed::cran_metadata_url().as_str())
+        );
+
+        let mut cran = Repository::builtin("CRAN");
+        cran.enabled = Some(true);
+        let repos = ProjRepos::new(&[cran, acme()], BTreeMap::new());
         let lock = repos.lock_repositories();
-        assert_eq!(lock.len(), 3);
-        assert_eq!(lock[0].url.as_deref(), Some("https://cran.acme.com/"));
+        let names: Vec<&str> = lock.iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(names, vec!["cran", "acme", "bioc"]);
+        assert_eq!(lock[1].url.as_deref(), Some("https://cran.acme.com/"));
+        assert_eq!(lock[1].metadata, None);
+
+        let mut off = Repository::builtin("bioc");
+        off.enabled = Some(false);
+        let lock = ProjRepos::new(&[off], BTreeMap::new()).lock_repositories();
+        let names: Vec<&str> = lock.iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(names, vec!["cran"]);
     }
 
     #[test]

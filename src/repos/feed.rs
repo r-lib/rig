@@ -188,6 +188,26 @@ impl MetadataFeed {
         MetadataFeed::bioc_at(&base, version)
     }
 
+    /// The base URL of CRAN's extended metadata, see [`MetadataFeed::cran`].
+    /// The URL of `ALLPACKAGES.zst` if `RIG_ALLPACKAGES_URL` is not under a
+    /// base URL.
+    pub fn cran_metadata_url() -> String {
+        let url = MetadataFeed::cran().allpackages_url;
+        match url.strip_suffix("/ALLPACKAGES.zst") {
+            Some(base) => base.to_string(),
+            None => url,
+        }
+    }
+
+    /// The base URL of the Bioconductor releases' extended metadata, with
+    /// `%v` for the version, see [`MetadataFeed::bioc`].
+    pub fn bioc_metadata_url() -> String {
+        match std::env::var("RIG_BIOC_METADATA_URL") {
+            Ok(base) => format!("{}/%v", base.trim_end_matches('/')),
+            Err(_) => BIOC_METADATA_URL.to_string(),
+        }
+    }
+
     fn bioc_at(base: &str, version: &str) -> MetadataFeed {
         let base = format!("{}/{}", base.trim_end_matches('/'), version);
         MetadataFeed::at(RepoId::Bioc(version.to_string()), &base)

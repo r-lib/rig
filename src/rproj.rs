@@ -2603,10 +2603,9 @@ pub struct RprojLockOptions {
         skip_serializing_if = "Option::is_none"
     )]
     pub prefer_binary: Option<usize>,
-    /// The repositories the lock was solved with, in order, after the
-    /// `--with-repos` and `--without-repos` arguments. Empty for the default,
-    /// Bioconductor and CRAN, so lock files of projects without repository
-    /// settings do not have it.
+    /// The repositories the lock was solved with, in order of precedence,
+    /// after the `--with-repos` and `--without-repos` arguments. Only the
+    /// ones that are on.
     #[serde(rename = "repository", default, skip_serializing_if = "Vec::is_empty")]
     pub repositories: Vec<LockRepository>,
 }
@@ -2618,6 +2617,10 @@ pub struct LockRepository {
     /// Absent for the built-in repositories.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+    /// The base URL of the extended metadata of the built-in repositories,
+    /// with `%v` for the Bioconductor version. Absent for the others.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub explicit: bool,
 }

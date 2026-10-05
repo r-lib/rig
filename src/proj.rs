@@ -6179,7 +6179,13 @@ mod tests {
         };
         let opts =
             resolve_lock_options(None, None, &ProjRepos::default(), Some(&existing)).unwrap();
-        assert!(opts.is_empty());
+        assert_eq!(
+            opts,
+            RprojLockOptions {
+                repositories: ProjRepos::default().lock_repositories(),
+                ..Default::default()
+            }
+        );
     }
 
     #[test]
@@ -6258,7 +6264,7 @@ mod tests {
             exclude_newer: Some("2020-01-01".to_string()),
             exclude_newer_span: Some("7 days".to_string()),
             prefer_binary: None,
-            ..Default::default()
+            repositories: ProjRepos::default().lock_repositories(),
         };
         let opts = resolve_lock_options(Some(&spec), None, &ProjRepos::default(), Some(&existing))
             .unwrap();
@@ -6514,7 +6520,12 @@ mod tests {
         }];
         let lock = RprojLock {
             version: RPROJ_LOCK_VERSION,
-            tool: Default::default(),
+            tool: RprojLockTool {
+                rig: RprojLockOptions {
+                    repositories: ProjRepos::default().lock_repositories(),
+                    ..Default::default()
+                },
+            },
             targets: vec![t],
         };
         fs::write(dir.join(RPROJ_LOCK_FILE), lock.to_toml().unwrap()).unwrap();

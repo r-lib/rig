@@ -110,8 +110,9 @@ Bioconductor, and keep the project's own repositories:
 rig proj lock --without-repos=cran,bioc --with-repos https://cran.example.com
 ```
 
-`rproj.lock` records the repositories in its `[tool.rig]` table, unless they are
-the default ones, and `repository = "<name>"` for each package of a CRAN-like
+`rproj.lock` records the repositories that are on in its `[tool.rig]` table, in
+order of precedence, with the URL of the extended metadata for CRAN and
+Bioconductor, and `repository = "<name>"` for each package of a CRAN-like
 repository. A lock solved with other repositories is solved again, and so
 is a lock with a package from another repository than its pin says. Both
 keep the pinned versions where they fit, see "Sticky lock files" below.
