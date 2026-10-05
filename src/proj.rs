@@ -1339,6 +1339,9 @@ pub(crate) struct ProjectSolve {
     /// The root manifest's `platforms` setting, see [`Rproj::platforms`]. A
     /// workspace takes it from its root only.
     pub platforms: Option<Vec<String>>,
+    /// The root manifest's `r-versions` setting, see [`Rproj::r_versions`].
+    /// A workspace takes it from its root only.
+    pub r_versions: Option<Vec<String>>,
 }
 
 /// Read the project or workspace rooted at `root` and turn it into the roots
@@ -1392,6 +1395,7 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
                 repos: ProjRepos::from_manifest(&manifest)?,
                 prefer_binary: manifest.prefer_binary()?,
                 platforms: manifest.platforms()?,
+                r_versions: manifest.r_versions()?,
             });
         }
     };
@@ -1488,6 +1492,7 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
         repos,
         prefer_binary: manifest.prefer_binary()?,
         platforms: manifest.platforms()?,
+        r_versions: manifest.r_versions()?,
     })
 }
 
@@ -3151,7 +3156,8 @@ pub(crate) fn lock_file_label(lock_path: &Path) -> String {
 /// `--upgrade` / `--upgrade-package`. R versions the manifest's `R`
 /// requirement does not allow any more are dropped. If none is left, or there
 /// is no lock, the default R version and platform set are used, as for
-/// `rig proj lock`.
+/// `rig proj lock`. The manifest's `r-versions` and `platforms` settings win
+/// over the lock's.
 pub(crate) fn proj_lock_keep_targets(
     root: &Path,
     upgrade: bool,
@@ -3174,10 +3180,13 @@ pub(crate) fn proj_lock_keep_targets(
             }
         }
     }
-    // The manifest's own `platforms` win over the lock's, `proj_lock` uses
-    // them when no platforms are given.
+    // The manifest's own `platforms` and `r-versions` win over the lock's,
+    // `proj_lock` uses them when none are given.
     if r_versions.is_empty() || solve.platforms.is_some() {
         platforms.clear();
+    }
+    if solve.r_versions.is_some() {
+        r_versions.clear();
     }
     let opts = ProjLockOptions {
         r_versions,
@@ -3214,6 +3223,11 @@ pub(crate) fn lock_fits_manifest(root: &Path) -> Result<bool, Box<dyn Error>> {
     }
     if let Some(platforms) = &solve.platforms {
         if !lock_has_platforms(&lock, platforms) {
+            return Ok(false);
+        }
+    }
+    if let Some(r_versions) = &solve.r_versions {
+        if !lock_has_r_versions(&lock, r_versions) {
             return Ok(false);
         }
     }
@@ -3259,6 +3273,27 @@ fn lock_has_platforms(lock: &RprojLock, platforms: &[String]) -> bool {
         }
     }
     have == want
+}
+
+/// Whether `lock` has targets for exactly the R versions of the manifest's
+/// `r-versions`: each of them is in the lock, and the lock has no other.
+/// `4.5` names any `4.5.x`, see [`r_version_matches`], and `release` and
+/// other names are looked up the same way as for `rig proj lock`, see
+/// [`resolve_binary_target_r_version`].
+fn lock_has_r_versions(lock: &RprojLock, r_versions: &[String]) -> bool {
+    let have: HashSet<&str> = lock.targets.iter().map(|t| t.r_version.as_str()).collect();
+    let mut want: Vec<String> = vec![];
+    for version in r_versions {
+        let Ok(version) = resolve_binary_target_r_version(version) else {
+            return false;
+        };
+        want.push(version);
+    }
+    want.iter()
+        .all(|w| have.iter().any(|h| r_version_matches(w, h)))
+        && have
+            .iter()
+            .all(|h| want.iter().any(|w| r_version_matches(w, h)))
 }
 
 /// Whether every package of a lock target comes from the repository the
@@ -3732,6 +3767,18 @@ fn lock_platform_specs(opts: &ProjLockOptions, manifest: Option<&[String]>) -> V
     specs
 }
 
+/// The R versions `proj_lock` solves for: `--r-version`, or else the
+/// manifest's `r-versions` setting in `[tool.rig]` (`manifest`, see
+/// [`Rproj::r_versions`]). `None` if neither is given, then
+/// `proj_lock_r_version` picks one.
+fn lock_r_versions(opts: &ProjLockOptions, manifest: Option<&[String]>) -> Option<Vec<String>> {
+    if !opts.r_versions.is_empty() {
+        Some(opts.r_versions.clone())
+    } else {
+        manifest.map(|versions| versions.to_vec())
+    }
+}
+
 /// Solve the dependencies of the project in `root` for every `(R version,
 /// platform)` combination `opts` asks for (a cross product of
 /// `opts.r_versions` and the platforms from [`lock_platform_specs`]), and
@@ -3769,13 +3816,13 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
 
     // Each R version has to satisfy the manifest's own `R` requirement,
     // otherwise the solve either fails or produces a lock file for an R the
-    // project rules out. An `--r-version` is taken as given, the solver
-    // reports the conflict if there is one. With none given, the default
-    // logic in `proj_lock_r_version` picks the one version to solve for.
-    let rvers: Vec<String> = if opts.r_versions.is_empty() {
-        vec![proj_lock_r_version(pkg_deps, args)?]
-    } else {
-        opts.r_versions.clone()
+    // project rules out. An `--r-version` (or the manifest's `r-versions`) is
+    // taken as given, the solver reports the conflict if there is one. With
+    // none given, the default logic in `proj_lock_r_version` picks the one
+    // version to solve for.
+    let rvers: Vec<String> = match lock_r_versions(opts, solve.r_versions.as_deref()) {
+        Some(rvers) => rvers,
+        None => vec![proj_lock_r_version(pkg_deps, args)?],
     };
     let platform_specs = lock_platform_specs(opts, solve.platforms.as_deref());
 
@@ -6570,6 +6617,60 @@ mod tests {
             lock_platform_specs(&opts, Some(&manifest)),
             vec![Some("windows".to_string())]
         );
+    }
+
+    #[test]
+    fn manifest_r_versions_are_used_unless_given() {
+        let manifest = vec!["4.5".to_string(), "4.6".to_string()];
+        let opts = ProjLockOptions::default();
+        assert_eq!(lock_r_versions(&opts, None), None);
+        assert_eq!(
+            lock_r_versions(&opts, Some(&manifest)),
+            Some(manifest.clone())
+        );
+        // `--r-version` wins over the manifest.
+        let opts = ProjLockOptions {
+            r_versions: vec!["4.4".to_string()],
+            ..Default::default()
+        };
+        assert_eq!(
+            lock_r_versions(&opts, Some(&manifest)),
+            Some(vec!["4.4".to_string()])
+        );
+    }
+
+    #[test]
+    fn lock_has_r_versions_matches_the_manifest() {
+        let lock = |versions: &[&str]| RprojLock {
+            version: RPROJ_LOCK_VERSION,
+            tool: Default::default(),
+            targets: versions
+                .iter()
+                .map(|v| RprojLockTarget {
+                    r_version: v.to_string(),
+                    platform: "source".to_string(),
+                    direct_dependencies: vec![],
+                    bioc_version: None,
+                    packages: vec![],
+                })
+                .collect(),
+        };
+        let want =
+            |versions: &[&str]| -> Vec<String> { versions.iter().map(|v| v.to_string()).collect() };
+        assert!(lock_has_r_versions(
+            &lock(&["4.5", "4.6"]),
+            &want(&["4.6", "4.5"])
+        ));
+        assert!(lock_has_r_versions(&lock(&["4.5.2"]), &want(&["4.5"])));
+        assert!(!lock_has_r_versions(
+            &lock(&["4.5"]),
+            &want(&["4.5", "4.6"])
+        ));
+        assert!(!lock_has_r_versions(
+            &lock(&["4.5", "4.6"]),
+            &want(&["4.5"])
+        ));
+        assert!(!lock_has_r_versions(&lock(&["4.50"]), &want(&["4.5"])));
     }
 
     #[test]

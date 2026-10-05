@@ -973,6 +973,33 @@ impl Rproj {
         Ok(Some(platforms))
     }
 
+    /// The `r-versions` setting of `[tool.rig]`: the R versions `rig proj
+    /// lock` solves for, instead of picking one. Each one is anything
+    /// `--r-version` takes, e.g. `4.5`, `4.5.1` or `release`.
+    pub fn r_versions(&self) -> Result<Option<Vec<String>>, Box<dyn Error>> {
+        let Some(value) = self.tool.get("rig").and_then(|t| t.get("r-versions")) else {
+            return Ok(None);
+        };
+        let must = "`r-versions` in `[tool.rig]` must be a non-empty list of R \
+                    versions, e.g. [\"4.5\", \"4.6\"]";
+        let Some(list) = value.as_array() else {
+            bail!("{}", must);
+        };
+        let mut versions = vec![];
+        for item in list {
+            match item.as_str() {
+                Some(version) if !version.trim().is_empty() => {
+                    versions.push(version.trim().to_string())
+                }
+                _ => bail!("{}", must),
+            }
+        }
+        if versions.is_empty() {
+            bail!("{}", must);
+        }
+        Ok(Some(versions))
+    }
+
     /// The `prefer-binary` setting of `[tool.rig]`, as the number of newest
     /// versions the solver considers, like `--prefer-binary=<n>`: `true` is
     /// the default number, [`PREFER_BINARY_DEFAULT`], `false` or `0` turns it
@@ -4644,6 +4671,31 @@ foo = "bar"
         assert!(read("[1]").is_err());
         assert!(read("[\"x86_64\"]").is_err());
         assert!(Rproj::minimal("p").platforms().unwrap().is_none());
+    }
+
+    #[test]
+    fn r_versions_are_read_from_tool_rig() {
+        let read = |value: &str| {
+            let text = format!(
+                "[project]\nname = \"p\"\nversion = \"1.0\"\n\n\
+                 [tool.rig]\nr-versions = {}\n",
+                value
+            );
+            toml::from_str::<Rproj>(&text).unwrap().r_versions()
+        };
+        assert_eq!(
+            read("[\"4.5\", \"4.6.1\", \"release\"]").unwrap(),
+            Some(vec![
+                "4.5".to_string(),
+                "4.6.1".to_string(),
+                "release".to_string(),
+            ])
+        );
+        assert!(read("\"4.5\"").is_err());
+        assert!(read("[4.5]").is_err());
+        assert!(read("[\"\"]").is_err());
+        assert!(read("[]").is_err());
+        assert!(Rproj::minimal("p").r_versions().unwrap().is_none());
     }
 
     /// A version 5 lockfile names platforms by their P3M target, and is read

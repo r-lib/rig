@@ -159,6 +159,11 @@
   `rig proj init` and `rig proj import` have a new `--prefer-binary`
   option, to write the setting into the manifest.
 
+* Projects can now set the platforms and R versions `rig proj lock` solves
+  for in `rproj.toml`, with `platforms` and `r-versions` in `[tool.rig]`,
+  e.g. `r-versions = ["4.5", "4.6"]`. `--platform` and `--r-version`
+  override them.
+
 * `rig proj lock` now also solves for source packages by default
   `rig proj sync` uses this target only if no other target matches the
   machine.

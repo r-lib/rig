@@ -40,6 +40,18 @@ newest installed R version that does, and failing that the current R
 release. The version it picks does not have to be installed: `rig proj lock`
 never runs R, and [`rig proj sync`](#rig-proj-sync) installs the R version the lock file names.
 
+To always solve for the same R versions, list them in `rproj.toml`. rig
+solves for each of them, for every platform, and `--r-version` replaces the
+list:
+
+```toml
+[tool.rig]
+r-versions = ["4.5", "4.6"]
+```
+
+Each entry takes the same values as `--r-version`. A minor version, e.g.
+`4.5`, matches any patch release of it.
+
 ## Repositories
 
 By default a project solves from two built-in repositories: CRAN, with the

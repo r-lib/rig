@@ -1930,7 +1930,9 @@ pub fn rig_app() -> Command {
                         .help(
                             "R version(s) to solve dependencies for, comma-separated to\n\
                             solve for several (e.g. --r-version 4.5,4.6). Combined with\n\
-                            --platform as a cross product, one target per combination.",
+                            --platform as a cross product, one target per combination.\n\
+                            Default: r-versions in [tool.rig] of rproj.toml, or one R\n\
+                            version, see --help.",
                         )
                         .long("r-version")
                         .short('r')

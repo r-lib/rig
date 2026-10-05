@@ -509,6 +509,27 @@ teardown() {
     grep -q '^platform = "x86_64-w64-mingw32"$' rproj.lock
 }
 
+@test "proj lock uses the R versions of the manifest" {
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf rverproj && mkdir rverproj && cd rverproj
+    run rig proj init -r 4.1
+    [[ "$status" -eq 0 ]]
+    run rig proj add --no-lock cli
+    [[ "$status" -eq 0 ]]
+    printf '\n[tool.rig]\nr-versions = ["4.4", "4.5"]\nplatforms = ["source"]\n' >> rproj.toml
+
+    run rig proj lock
+    [[ "$status" -eq 0 ]]
+    grep -q '^r_version = "4.4"$' rproj.lock
+    grep -q '^r_version = "4.5"$' rproj.lock
+
+    # --r-version replaces the manifest's R versions
+    run rig proj lock --r-version 4.5
+    [[ "$status" -eq 0 ]]
+    ! grep -q '^r_version = "4.4"$' rproj.lock
+    grep -q '^r_version = "4.5"$' rproj.lock
+}
+
 @test "run script with inline dependencies" {
     cd "$BATS_TEST_TMPDIR"
     rm -rf scriptdir && mkdir scriptdir && cd scriptdir
