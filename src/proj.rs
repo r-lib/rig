@@ -37,7 +37,9 @@ use crate::pkg::install::{plan_installs, print_plan};
 use crate::pkg::list::{read_installed, InstalledPackage};
 use crate::pkg::remove::remove_package;
 use crate::pkg::tree::proj_tree;
-use crate::platform::{detect_platform, parse_platform_string};
+use crate::platform::{
+    detect_platform, normalize_arch, normalize_platform, parse_platform_string, platform_string,
+};
 use crate::proj_repos::ProjRepos;
 use crate::repos::binaries::loader::{
     BinaryTarget, ChainedBinaryLoader, CranlikeBinaryLoader, P3mBinaryLoader,
@@ -1333,6 +1335,9 @@ pub(crate) struct ProjectSolve {
     /// The root manifest's `prefer-binary` setting, see
     /// [`Rproj::prefer_binary`]. A workspace takes it from its root only.
     pub prefer_binary: Option<usize>,
+    /// The root manifest's `platforms` setting, see [`Rproj::platforms`]. A
+    /// workspace takes it from its root only.
+    pub platforms: Option<Vec<String>>,
 }
 
 /// Read the project or workspace rooted at `root` and turn it into the roots
@@ -1385,6 +1390,7 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
                 exclude_newer: manifest.exclude_newer()?,
                 repos: ProjRepos::from_manifest(&manifest)?,
                 prefer_binary: manifest.prefer_binary()?,
+                platforms: manifest.platforms()?,
             });
         }
     };
@@ -1480,6 +1486,7 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
         exclude_newer: manifest.exclude_newer()?,
         repos,
         prefer_binary: manifest.prefer_binary()?,
+        platforms: manifest.platforms()?,
     })
 }
 
@@ -1737,17 +1744,7 @@ pub(crate) fn proj_binary_target_quiet(
         }
     };
 
-    let requested = || match (
-        spec,
-        &platform.rig_platform,
-        &platform.distro,
-        &platform.version,
-    ) {
-        (Some(p), _, _, _) | (None, Some(p), _, _) => p.clone(),
-        (None, None, Some(d), Some(v)) => format!("{}-{}", d, v),
-        (None, None, Some(d), None) => d.clone(),
-        (None, None, None, _) => platform.os.clone(),
-    };
+    let requested = || spec.cloned().unwrap_or_else(|| platform_string(&platform));
     let note = match &target {
         Some(target) => {
             info!("Solving for binary target {}", target.name());
@@ -2056,8 +2053,7 @@ type GitSourceKey = (String, Option<String>, Option<String>);
 /// so a `proj_lock` run parses the file once instead of twice.
 fn read_existing_lock(root: &Path) -> Option<RprojLock> {
     let text = fs::read_to_string(root.join(RPROJ_LOCK_FILE)).ok()?;
-    RprojLock::check_version(&text).ok()?;
-    toml::from_str::<RprojLock>(&text).ok()
+    RprojLock::parse(&text).ok()
 }
 
 /// The `[tool.rig]` options a `rig proj lock` run solves with, given the effective
@@ -3011,7 +3007,7 @@ fn report_solve_failure(msg: &str) {
 /// Mirrors how `RprojLockTarget::from_solution` derives the target's `platform`
 /// field (src/rproj.rs), so the two never disagree.
 fn solve_platform_key(target_name: Option<String>) -> String {
-    target_name.unwrap_or_else(|| std::env::consts::ARCH.to_string())
+    target_name.unwrap_or_else(|| "source".to_string())
 }
 
 fn solution_to_sorted_vec(
@@ -3177,7 +3173,9 @@ pub(crate) fn proj_lock_keep_targets(
             }
         }
     }
-    if r_versions.is_empty() {
+    // The manifest's own `platforms` win over the lock's, `proj_lock` uses
+    // them when no platforms are given.
+    if r_versions.is_empty() || solve.platforms.is_some() {
         platforms.clear();
     }
     let opts = ProjLockOptions {
@@ -3213,6 +3211,11 @@ pub(crate) fn lock_fits_manifest(root: &Path) -> Result<bool, Box<dyn Error>> {
     if lock.tool.rig != lock_options {
         return Ok(false);
     }
+    if let Some(platforms) = &solve.platforms {
+        if !lock_has_platforms(&lock, platforms) {
+            return Ok(false);
+        }
+    }
     let req = solve.merged.dependencies.iter().find(|d| d.name == "R");
     let direct_deps: Vec<DepVersionSpec> = solve
         .merged
@@ -3234,6 +3237,27 @@ pub(crate) fn lock_fits_manifest(root: &Path) -> Result<bool, Box<dyn Error>> {
                 && lock_target_git_sources_fresh(target, &git_sources)
                 && lock_target_repos_fit(target, &solve.repos)
         }))
+}
+
+/// Whether `lock` has exactly the targets that the manifest's `platforms`
+/// resolve to, for each R version of the lock, see [`lock_platform_specs`].
+/// A platform that cannot be resolved means it does not.
+fn lock_has_platforms(lock: &RprojLock, platforms: &[String]) -> bool {
+    let have: HashSet<(String, String)> = lock
+        .targets
+        .iter()
+        .map(|t| (t.r_version.clone(), t.platform.clone()))
+        .collect();
+    let mut want: HashSet<(String, String)> = HashSet::new();
+    for (rver, _) in &have {
+        for platform in platforms {
+            let Ok((target, _)) = proj_binary_target_quiet(Some(platform), rver) else {
+                return false;
+            };
+            want.insert((rver.clone(), solve_platform_key(target.map(|t| t.name()))));
+        }
+    }
+    have == want
 }
 
 /// Whether every package of a lock target comes from the repository the
@@ -3349,10 +3373,8 @@ fn sc_proj_status(
     let lock: Option<RprojLock> = if lock_path.exists() {
         match fs::read_to_string(&lock_path)
             .map_err(|e| e.to_string())
-            .and_then(|text| {
-                RprojLock::check_version(&text).map_err(|e| e.to_string())?;
-                toml::from_str::<RprojLock>(&text).map_err(|e| e.to_string())
-            }) {
+            .and_then(|text| RprojLock::parse(&text).map_err(|e| e.to_string()))
+        {
             Ok(lock) => Some(lock),
             Err(e) => {
                 warnings.push(format!("Could not read {}: {}", RPROJ_LOCK_FILE, e));
@@ -3684,12 +3706,18 @@ fn r_requirement(req: Option<&DepVersionSpec>) -> String {
 /// being macOS arm64, or a redundant `--add-platform`) are dropped before
 /// solving, by the resolved-target dedup in `proj_lock`, so a redundant
 /// solve is never dispatched in the first place.
-fn lock_platform_specs(opts: &ProjLockOptions) -> Vec<Option<String>> {
+///
+/// The manifest's `platforms` setting in `[tool.rig]` (`manifest`, see
+/// [`Rproj::platforms`]) replaces the default set, and `--platform` replaces
+/// both. The manifest's list is taken as is, this machine is not added to it.
+fn lock_platform_specs(opts: &ProjLockOptions, manifest: Option<&[String]>) -> Vec<Option<String>> {
     if opts.host_only {
         return vec![None];
     }
     let mut specs: Vec<Option<String>> = if !opts.platforms.is_empty() {
         opts.platforms.iter().cloned().map(Some).collect()
+    } else if let Some(platforms) = manifest {
+        platforms.iter().cloned().map(Some).collect()
     } else {
         vec![
             None,
@@ -3748,7 +3776,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     } else {
         opts.r_versions.clone()
     };
-    let platform_specs = lock_platform_specs(opts);
+    let platform_specs = lock_platform_specs(opts, solve.platforms.as_deref());
 
     // Resolve and dedup every `(rver, platform)` pair up front, sequentially,
     // before any solving starts. This does two things: it decides the dedup
@@ -4715,19 +4743,15 @@ fn find_r_installation(r_version: &str, arch: &str) -> Result<Option<String>, Bo
     Ok(matching.pop().map(|v| v.name.clone()))
 }
 
-/// The raw CPU arch a lock target's platform string names (`arm64`,
-/// `aarch64`, `x86_64`), whether it is the whole string (a `--platform
-/// source` solve's bare-arch platform) or its last `-`-separated component
-/// (`manylinux_2_28-arm64`, `macos-x86_64`). `None` if the platform names no
-/// arch rig recognizes.
-fn platform_arch(platform: &str) -> Option<&str> {
-    let candidate = platform
-        .rsplit_once('-')
-        .map_or(platform, |(_, suffix)| suffix);
-    match candidate {
-        "arm64" | "aarch64" | "x86_64" => Some(candidate),
-        _ => None,
+/// The CPU arch a lock target's platform string names, `aarch64` or
+/// `x86_64`, or `None` for `source`, or anything else that is not a platform
+/// string, see [`parse_platform_string`].
+fn platform_arch(platform: &str) -> Option<&'static str> {
+    if platform == "source" {
+        return None;
     }
+    let parsed = parse_platform_string(platform).ok()?;
+    normalize_arch(&parsed.arch)
 }
 
 /// The architecture the lock file's target platform needs, in the form
@@ -4741,16 +4765,21 @@ fn target_r_arch(platform: &str) -> String {
 }
 
 /// The OS family a lock target's platform string implies, or `None` if it
-/// names none -- a `--platform source` solve's `platform` field is `source`
-/// (see `RprojLockTarget::from_solution`), which carries no OS marker and so
-/// matches any machine. (Older lock files used the bare CPU arch, e.g.
-/// `"aarch64"`, which also has no OS marker.)
+/// names none: `source` (see `RprojLockTarget::from_solution`) matches any
+/// machine.
 fn target_os_family(platform: &str) -> Option<&'static str> {
-    match platform.rsplit_once('-') {
-        Some(("macos", _)) => Some("macos"),
-        Some(("windows", _)) => Some("windows"),
-        Some((prefix, _)) if !prefix.is_empty() => Some("linux"),
-        _ => None,
+    if platform == "source" {
+        return None;
+    }
+    let parsed = parse_platform_string(platform).ok()?;
+    if parsed.os.starts_with("darwin") {
+        Some("macos")
+    } else if parsed.os.ends_with("mingw32") {
+        Some("windows")
+    } else if parsed.os.starts_with("linux") {
+        Some("linux")
+    } else {
+        None
     }
 }
 
@@ -5135,12 +5164,18 @@ pub(crate) fn proj_sync(
     }
 
     let lock_content = fs::read_to_string(&lock_path)?;
-    RprojLock::check_version(&lock_content)?;
-    let lock: RprojLock = toml::from_str(&lock_content)?;
+    let lock = RprojLock::parse(&lock_content)?;
+    // The lock file has canonical platform strings, so `--platform macos`
+    // has to be brought into that form to match.
+    let platform = opts
+        .platform
+        .as_deref()
+        .map(normalize_platform)
+        .transpose()?;
     let target = select_sync_target_for_arch(
         &lock.targets,
         opts.r_version.as_deref(),
-        opts.platform.as_deref(),
+        platform.as_deref(),
         opts.arch.as_deref(),
     )?;
 
@@ -6188,11 +6223,17 @@ mod tests {
         let native = native_arch_name(std::env::consts::ARCH);
         assert_eq!(target_r_arch("macos-x86_64"), "x86_64");
         assert_eq!(target_r_arch("linux-ubuntu-24.04-x86_64"), "x86_64");
-        assert_eq!(target_r_arch("windows"), native);
+        assert_eq!(target_r_arch("x86_64-apple-darwin"), "x86_64");
+        assert_eq!(
+            target_r_arch("x86_64-unknown-linux-gnu-ubuntu-24.04"),
+            "x86_64"
+        );
+        assert_eq!(target_r_arch("not-a-platform"), native);
         assert_eq!(target_r_arch("source"), native);
         if cfg!(target_os = "macos") {
             assert_eq!(target_r_arch("macos-arm64"), "arm64");
             assert_eq!(target_r_arch("macos-aarch64"), "arm64");
+            assert_eq!(target_r_arch("aarch64-apple-darwin"), "arm64");
         } else {
             assert_eq!(target_r_arch("linux-ubuntu-24.04-aarch64"), "aarch64");
         }
@@ -6369,7 +6410,7 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            lock_platform_specs(&opts),
+            lock_platform_specs(&opts, None),
             vec![
                 None,
                 Some("x86_64-w64-mingw32".to_string()),
@@ -6388,7 +6429,7 @@ mod tests {
             add_platforms: vec!["windows".to_string()],
             ..Default::default()
         };
-        assert_eq!(lock_platform_specs(&opts), vec![None]);
+        assert_eq!(lock_platform_specs(&opts, None), vec![None]);
     }
 
     #[test]
@@ -6399,12 +6440,38 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            lock_platform_specs(&opts),
+            lock_platform_specs(&opts, None),
             vec![
                 Some("macos".to_string()),
                 Some("windows".to_string()),
                 Some("linux".to_string()),
             ]
+        );
+    }
+
+    #[test]
+    fn manifest_platforms_replace_the_default_set() {
+        let manifest = vec!["aarch64-apple-darwin".to_string(), "source".to_string()];
+        let opts = ProjLockOptions {
+            add_platforms: vec!["x86_64-w64-mingw32".to_string()],
+            ..Default::default()
+        };
+        assert_eq!(
+            lock_platform_specs(&opts, Some(&manifest)),
+            vec![
+                Some("aarch64-apple-darwin".to_string()),
+                Some("source".to_string()),
+                Some("x86_64-w64-mingw32".to_string()),
+            ]
+        );
+        // `--platform` wins over the manifest.
+        let opts = ProjLockOptions {
+            platforms: vec!["windows".to_string()],
+            ..Default::default()
+        };
+        assert_eq!(
+            lock_platform_specs(&opts, Some(&manifest)),
+            vec![Some("windows".to_string())]
         );
     }
 
@@ -6434,6 +6501,13 @@ mod tests {
         assert_eq!(target_os_family("windows-x86_64"), Some("windows"));
         assert_eq!(target_os_family("jammy-x86_64"), Some("linux"));
         assert_eq!(target_os_family("linux-ubuntu-24.04-x86_64"), Some("linux"));
+        assert_eq!(target_os_family("aarch64-apple-darwin"), Some("macos"));
+        assert_eq!(target_os_family("x86_64-w64-mingw32"), Some("windows"));
+        assert_eq!(target_os_family("x86_64-unknown-linux-gnu"), Some("linux"));
+        assert_eq!(
+            target_os_family("aarch64-unknown-linux-gnu-ubuntu-24.04"),
+            Some("linux")
+        );
         // A `--platform source` solve's platform has no OS. (Older lock
         // files used the bare CPU arch.)
         assert_eq!(target_os_family("source"), None);

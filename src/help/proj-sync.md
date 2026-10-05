@@ -131,9 +131,10 @@ from the same file.
 If more than one target matches this machine's OS (typically because the
 project locks for several R versions), rig picks the highest R version
 among them, with no need for extra flags. Pass `--r-version` and/or
-`--platform` to pick a different one of the matching targets instead. `rig
-proj sync` fails if none of the lock file's targets match this machine at
-all.
+`--platform` to pick a different one of the matching targets instead.
+`--platform` takes any spelling of the platform, e.g. `macos` picks the
+`aarch64-apple-darwin` target on an arm64 Mac. `rig proj sync` fails if none
+of the lock file's targets match this machine at all.
 
 ## What sync writes
 

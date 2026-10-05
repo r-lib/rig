@@ -28,6 +28,7 @@ use crate::platform::*;
 use crate::alias::*;
 use crate::download::download_json_sync;
 use crate::output::OUTPUT;
+use crate::platform::{normalize_arch, parse_platform_string};
 use crate::renv;
 use crate::run::*;
 use crate::rversion::*;
@@ -872,6 +873,47 @@ pub(crate) fn normalize_rig_platform(rp: &str) -> String {
     }
 }
 
+/// A platform string that names its arch, e.g. `aarch64-apple-darwin` or
+/// `x86_64-unknown-linux-gnu-ubuntu-24.04` (see [`parse_platform_string`]),
+/// in the form the R versions API takes, and its arch. `None` for anything
+/// else, e.g. `macos` or `linux-ubuntu-24.04`, which are already in that
+/// form, and for P3M target names like `jammy-x86_64`, which have no API
+/// form.
+fn rversions_platform(platform: &str) -> Option<(String, &'static str)> {
+    let pieces: Vec<&str> = platform.split('-').collect();
+    let names_arch = (pieces.len() >= 3 && normalize_arch(pieces[0]).is_some())
+        || (pieces.len() >= 2 && normalize_arch(pieces[pieces.len() - 1]).is_some());
+    if !names_arch {
+        return None;
+    }
+    let parsed = parse_platform_string(platform).ok()?;
+    let arch = normalize_arch(&parsed.arch)?;
+    let api = if parsed.os.starts_with("darwin") {
+        "macos".to_string()
+    } else if parsed.os.ends_with("mingw32") {
+        "windows".to_string()
+    } else if parsed.os.starts_with("linux") {
+        match (&parsed.distro, &parsed.version) {
+            (Some(distro), Some(version)) => format!("linux-{}-{}", distro, version),
+            (None, _) => "linux-portable".to_string(),
+            (Some(_), None) => return None,
+        }
+    } else {
+        return None;
+    };
+    Some((api, arch))
+}
+
+/// The platform the user gave, with `--platform` or `RIG_PLATFORM`, if any.
+fn requested_platform(args: &ArgMatches) -> Option<String> {
+    if args.try_contains_id("platform").is_ok() {
+        if let Some(x) = args.get_one::<String>("platform") {
+            return Some(x.to_string());
+        }
+    }
+    env::var("RIG_PLATFORM").ok()
+}
+
 // Whether the platform was chosen explicitly via --platform or RIG_PLATFORM
 #[cfg(target_os = "linux")]
 pub fn platform_explicitly_set(args: &ArgMatches) -> bool {
@@ -890,12 +932,16 @@ pub fn get_platform(args: &ArgMatches) -> Result<String, Box<dyn Error>> {
     if args.try_contains_id("platform").is_ok() {
         let platform = args.get_one::<String>("platform");
         if let Some(x) = platform {
-            return finalize_platform(x.to_string());
+            let x = rversions_platform(x).map_or_else(|| x.to_string(), |(api, _)| api);
+            return finalize_platform(x);
         }
     };
 
     if let Ok(rp) = env::var("RIG_PLATFORM") {
-        let rp = normalize_rig_platform(&rp);
+        let rp = match rversions_platform(&rp) {
+            Some((api, _)) => api,
+            None => normalize_rig_platform(&rp),
+        };
         debug!("Using RIG_PLATFORM: {}.", rp);
         return finalize_platform(rp);
     }
@@ -941,9 +987,17 @@ pub fn get_arch(platform: &str, args: &ArgMatches) -> String {
         Err(_) => None,
     };
 
-    let arch = match arch {
-        Some(x) => x.to_string(),
-        None => env::consts::ARCH.to_string(),
+    // A platform string with an arch, e.g. `x86_64-apple-darwin`, also
+    // decides the arch, unless `--arch` is given explicitly, not just its
+    // default.
+    let explicit_arch = arch.is_some()
+        && args.value_source("arch") != Some(clap::parser::ValueSource::DefaultValue);
+    let platform_arch = requested_platform(args).and_then(|p| rversions_platform(&p));
+    let arch = match (arch, platform_arch) {
+        (Some(x), _) if explicit_arch => x.to_string(),
+        (_, Some((_, a))) => a.to_string(),
+        (Some(x), None) => x.to_string(),
+        (None, None) => env::consts::ARCH.to_string(),
     };
 
     // Prefer 'arm64' on macos, but 'aarch64' on linux and windows
@@ -1398,6 +1452,33 @@ mod tests {
             normalize_rig_platform("linux-ubuntu-22.04"),
             "linux-ubuntu-22.04"
         );
+    }
+
+    #[test]
+    fn test_rversions_platform() {
+        let api = |p: &str| rversions_platform(p);
+        assert_eq!(
+            api("x86_64-apple-darwin"),
+            Some(("macos".to_string(), "x86_64"))
+        );
+        assert_eq!(api("macos-arm64"), Some(("macos".to_string(), "aarch64")));
+        assert_eq!(
+            api("x86_64-w64-mingw32"),
+            Some(("windows".to_string(), "x86_64"))
+        );
+        assert_eq!(
+            api("aarch64-unknown-linux-gnu-ubuntu-24.04"),
+            Some(("linux-ubuntu-24.04".to_string(), "aarch64"))
+        );
+        assert_eq!(
+            api("x86_64-unknown-linux-gnu"),
+            Some(("linux-portable".to_string(), "x86_64"))
+        );
+        // Already in the API's form, or no API form.
+        assert_eq!(api("macos"), None);
+        assert_eq!(api("linux-ubuntu-24.04"), None);
+        assert_eq!(api("linux-portable"), None);
+        assert_eq!(api("jammy-x86_64"), None);
     }
 
     #[test]

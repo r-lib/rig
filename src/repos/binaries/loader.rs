@@ -35,6 +35,9 @@ pub struct BinaryTarget {
     pub arch: String,
     /// Minor R version, e.g. `4.5`.
     pub r_version: String,
+    /// The canonical rig platform string of the target, e.g.
+    /// `aarch64-apple-darwin`, see [`crate::platform::parse_platform_string`].
+    pub triple: String,
 }
 
 impl BinaryTarget {
@@ -51,18 +54,18 @@ impl BinaryTarget {
     ) -> Result<Option<BinaryTarget>, Box<dyn Error>> {
         let status = PpmStatus::load(None)?;
         let r_version = minor_r_version(r_version)?;
-        Ok(status
-            .ppm_platform(platform)
-            .map(|(platform, arch)| BinaryTarget {
-                platform,
-                arch,
-                r_version,
-            }))
+        Ok(status.ppm_target(platform).map(|t| BinaryTarget {
+            platform: t.platform,
+            arch: t.arch,
+            r_version,
+            triple: t.triple,
+        }))
     }
 
-    /// How the target is spelled in a lockfile, e.g. `macos-arm64`.
+    /// How the target is spelled in a lockfile and in messages: its
+    /// canonical platform string, e.g. `aarch64-apple-darwin`.
     pub fn name(&self) -> String {
-        format!("{}-{}", self.platform, self.arch)
+        self.triple.clone()
     }
 }
 
@@ -412,6 +415,7 @@ mod tests {
             platform: platform.to_string(),
             arch: arch.to_string(),
             r_version: r_version.to_string(),
+            triple: format!("{}-{}", platform, arch),
         }
     }
 

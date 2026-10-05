@@ -177,34 +177,57 @@ with a different one is solved again, keeping the pinned versions where they
 fit, see "Sticky lock files" below.
 
 By default rig solves for this machine plus the three other common
-platforms (macOS arm64, Windows x86_64 and GNU Linux x86_64), and for
-source packages only, so the lock file also works on platforms without
+platforms (`aarch64-apple-darwin`, `x86_64-w64-mingw32` and
+`x86_64-unknown-linux-gnu`, which is any glibc Linux), and for source
+packages only (`source`), so the lock file also works on platforms without
 binary packages. `rig proj sync` only uses the source target if no other
-target matches the machine. Use
-`--platform` to solve for a different set instead, e.g. a single specific
-distro:
+target matches the machine.
+
+To use a different set of platforms for a project, list them in
+`rproj.toml`. This replaces the default set, so include this machine's
+platform if you want it:
+
+```toml
+[tool.rig]
+platforms = [
+  "aarch64-apple-darwin",
+  "x86_64-w64-mingw32",
+  "x86_64-unknown-linux-gnu-ubuntu-24.04",
+  "source",
+]
+```
+
+Use `--platform` to solve for a different set instead of the manifest's
+list or the default set, e.g. a single specific distro:
 
 ```sh
 rig proj lock --platform ubuntu-24.04
 ```
 
-Use `--add-platform` instead to add a platform to that default set rather
-than replacing it, e.g. to also solve for one extra distro on top of the
-usual five. `--add-platform` can be repeated:
+Use `--add-platform` to add a platform to the manifest's list or the default
+set rather than replacing it. `--add-platform` can be repeated:
 
 ```sh
 rig proj lock --add-platform ubuntu-24.04 --add-platform linux-fedora-42
 ```
 
-`--platform`/`--add-platform` accept:
+`rproj.lock` writes each platform as a target triple, e.g.
+`aarch64-apple-darwin`, `x86_64-w64-mingw32`, `x86_64-unknown-linux-gnu` or
+`x86_64-unknown-linux-gnu-ubuntu-24.04`, or `source`. `platforms`,
+`--platform` and `--add-platform` take the same strings, and shorter forms
+too:
 
-- `macos-arm64`, `windows-x86_64` -- an OS plus arch, for the two
-  non-Linux platforms.
+- `macos`, `windows`, `linux`, or with an arch: `macos-arm64`,
+  `windows-x86_64`, `linux-aarch64`.
 - `ubuntu-24.04`, `fedora-42`, `opensuse-15.6` -- a Linux distro and version,
   matched against P3M's build list.
-- `manylinux_2_28-arm64`, `jammy-x86_64` -- a P3M platform name and arch
-  directly, e.g. copied from another `rproj.lock`'s `platform` field.
+- `manylinux_2_28-arm64`, `jammy-x86_64` -- a P3M platform name and arch.
 - `source` -- source packages only, for any platform.
+
+Without an arch, the platform has this machine's arch if it runs the same
+OS, otherwise `aarch64` for macOS and `x86_64` for Windows and Linux. See
+[`rig system detect-platform`](system.qmd#rig-system-detect-platform) for
+more about platform strings.
 
 A Linux distro/version or platform name P3M has no specific build for falls
 back to its generic manylinux build for the given arch, rather than failing.

@@ -792,7 +792,7 @@ fn lock_r_versions_arg(lock_path: &Path, requested: Option<&str>) -> String {
     };
     let mut versions: Vec<String> = fs::read_to_string(lock_path)
         .ok()
-        .and_then(|text| toml::from_str::<RprojLock>(&text).ok())
+        .and_then(|text| RprojLock::parse(&text).ok())
         .map(|lock| lock.targets.into_iter().map(|t| t.r_version).collect())
         .unwrap_or_default();
     versions.push(requested.to_string());

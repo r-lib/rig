@@ -70,7 +70,8 @@ use crate::hardcoded::{
     HC_RVENV_PKG_CODE, HC_RVENV_PKG_DESCRIPTION, HC_RVENV_PKG_LICENSE, HC_RVENV_PKG_META,
     HC_RVENV_PKG_NAMESPACE,
 };
-use crate::repos::binaries::ppm_url;
+use crate::platform::parse_platform_string;
+use crate::repos::binaries::{ppm_url, PpmStatus, MANYLINUX};
 use crate::repositories::{write_repositories_file, RepoFileEntry, RepositoriesContents};
 use crate::rproj::{Repository as ManifestRepository, Rproj, Workspace, RPROJ_MANIFEST_FILE};
 use crate::utils::write_atomically;
@@ -107,28 +108,48 @@ const RVENV_CRAN_NAME: &str = "CRAN";
 /// The menu name of the P3M entry in the repositories file.
 const PPM_MENU_NAME: &str = "Posit Public Package Manager";
 
-/// The P3M repository a lock file target installs from, or `None` for a
-/// source-only lock file, which has no P3M target.
+/// Where a lock file target's P3M binaries live: `Some(None)` for macOS and
+/// Windows, which are served from the top-level repository, `Some(Some(name))`
+/// for Linux, with P3M's name for the target, e.g. `jammy`, which goes into
+/// the binary URL. `None` for a source-only lock file (`source`), which has
+/// no P3M target.
 ///
-/// The lock file's platform is a P3M target name, `<platform>-<arch>`, e.g.
-/// `macos-arm64` or `jammy-x86_64`, and the platform part is exactly what
-/// goes into a Linux binary URL. macOS and Windows have no such path
-/// component: their binaries are served from the top-level repository. A
-/// source-only solve records the machine's architecture instead, e.g.
-/// `x86_64`, with no P3M target in it.
+/// The lock file's platform is a canonical platform string, e.g.
+/// `x86_64-unknown-linux-gnu-ubuntu-22.04`, so a specific Linux distro is
+/// looked up in P3M's status document. If that fails, the top-level
+/// repository is used, which has source packages for Linux. A P3M target
+/// name, e.g. `jammy-x86_64`, is used as is.
+fn ppm_binary_path(platform: &str) -> Option<Option<String>> {
+    if platform == "source" {
+        return None;
+    }
+    let parsed = parse_platform_string(platform).ok()?;
+    if !parsed.os.starts_with("linux") {
+        return Some(None);
+    }
+    match (&parsed.distro, &parsed.version) {
+        (None, _) => Some(Some(MANYLINUX.to_string())),
+        (Some(name), None) => Some(Some(name.clone())),
+        (Some(_), Some(_)) => Some(
+            PpmStatus::load(None)
+                .ok()
+                .and_then(|status| status.ppm_target(&parsed))
+                .map(|target| target.platform),
+        ),
+    }
+}
+
+/// The P3M repository a lock file target installs from, or `None` for a
+/// source-only lock file, which has no P3M target, see [`ppm_binary_path`].
 ///
 /// The URL is the `latest` snapshot rather than the dated snapshot the lock
 /// file's package URLs point at: an `install.packages()` in the environment
 /// is by definition installing something the lock file does not have, so it
 /// should see current versions.
 fn ppm_repo_url(platform: &str) -> Option<String> {
-    let target = platform
-        .strip_suffix("-x86_64")
-        .or_else(|| platform.strip_suffix("-arm64"))?;
-    match target {
-        "" => None,
-        "macos" | "windows" => Some(format!("{}/cran/latest", ppm_url())),
-        linux => Some(format!("{}/cran/__linux__/{}/latest", ppm_url(), linux)),
+    match ppm_binary_path(platform)? {
+        None => Some(format!("{}/cran/latest", ppm_url())),
+        Some(linux) => Some(format!("{}/cran/__linux__/{}/latest", ppm_url(), linux)),
     }
 }
 
@@ -137,13 +158,9 @@ fn ppm_repo_url(platform: &str) -> Option<String> {
 /// [`ppm_repo_url`], the `latest` snapshot, and on Linux the binary URL of
 /// the lock file's platform.
 fn bioc_repo_urls(platform: &str, bioc_version: &str) -> Vec<(&'static str, String)> {
-    let target = platform
-        .strip_suffix("-x86_64")
-        .or_else(|| platform.strip_suffix("-arm64"))
-        .unwrap_or("");
-    let base = match target {
-        "" | "macos" | "windows" => format!("{}/bioconductor/latest", ppm_url()),
-        linux => format!("{}/bioconductor/__linux__/{}/latest", ppm_url(), linux),
+    let base = match ppm_binary_path(platform).flatten() {
+        None => format!("{}/bioconductor/latest", ppm_url()),
+        Some(linux) => format!("{}/bioconductor/__linux__/{}/latest", ppm_url(), linux),
     };
     [
         ("BioCsoft", "bioc"),
@@ -1975,6 +1992,22 @@ mod tests {
                 RVENV_DEFAULT_REPO_URL.to_string()
             )]
         );
+    }
+
+    #[test]
+    fn ppm_urls_for_canonical_platforms() {
+        let latest = format!("{}/cran/latest", ppm_url());
+        assert_eq!(ppm_repo_url("aarch64-apple-darwin"), Some(latest.clone()));
+        assert_eq!(ppm_repo_url("x86_64-w64-mingw32"), Some(latest));
+        assert_eq!(
+            ppm_repo_url("x86_64-unknown-linux-gnu"),
+            Some(format!("{}/cran/__linux__/{}/latest", ppm_url(), MANYLINUX))
+        );
+        assert_eq!(
+            ppm_repo_url("jammy-x86_64"),
+            Some(format!("{}/cran/__linux__/jammy/latest", ppm_url()))
+        );
+        assert_eq!(ppm_repo_url("source"), None);
     }
 
     #[test]

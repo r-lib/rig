@@ -11,7 +11,7 @@ use clap::ArgMatches;
 use owo_colors::OwoColorize;
 
 use crate::common::get_default_r_version;
-use crate::platform::detect_platform;
+use crate::platform::{detect_platform, parse_platform_string};
 use crate::ppm::{use_color, want_json};
 use crate::repos::binaries::{ppm_url, validate_package_name, PpmStatus};
 use crate::rversion::OsVersion;
@@ -51,6 +51,23 @@ pub fn sc_ppm_build_log(
 
     let explicit_platform = args.get_one::<String>("platform").map(|s| s.as_str());
     let explicit_arch = args.get_one::<String>("arch").map(|s| s.as_str());
+    // A rig platform string, e.g. `x86_64-unknown-linux-gnu-ubuntu-22.04`,
+    // names a P3M target and its arch. P3M's own names have no `-`.
+    let (explicit_platform, explicit_arch) = match explicit_platform {
+        Some(p) if p.contains('-') => {
+            let os = parse_platform_string(p)?;
+            let (platform, arch) = PpmStatus::load(None)?
+                .ppm_platform(&os)
+                .ok_or_else(|| format!("P3M has no build target for {}", p))?;
+            (
+                Some(platform),
+                Some(explicit_arch.map_or(arch, str::to_string)),
+            )
+        }
+        p => (p.map(str::to_string), explicit_arch.map(str::to_string)),
+    };
+    let explicit_platform = explicit_platform.as_deref();
+    let explicit_arch = explicit_arch.as_deref();
     let (platform, arch) = match (explicit_platform, explicit_arch) {
         (Some(platform), Some(arch)) => (platform.to_string(), arch.to_string()),
         (platform, arch) => {
