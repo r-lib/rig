@@ -7,7 +7,8 @@ versions, and write the result to `rproj.lock`.
 
 rig reads the project manifest, `rproj.toml`, in the current directory, and
 uses its built-in solver to find a compatible set of package versions from
-the configured repositories.
+the project's repositories: CRAN and Bioconductor by default, see
+"Repositories" below.
 
 `rig proj solve` does not run R.
 
@@ -39,6 +40,82 @@ newest installed R version that does, and failing that the current R
 release. The version it picks does not have to be installed: `rig proj lock`
 never runs R, and [`rig proj sync`](#rig-proj-sync) installs the R version the lock file names.
 
+## Repositories
+
+By default a project solves from two built-in repositories: CRAN, with the
+metadata of Posit Package Manager, which has every version ever published,
+and Bioconductor, see below. rig does not use the repositories of your R
+installations, or the ones you set up with `rig repos`: a project only uses
+the repositories in its `rproj.toml`, so it locks the same way on every
+machine.
+
+Add a CRAN-like repository with a `[[repository]]` entry:
+
+```toml
+[[repository]]
+name = "rlib"
+url = "https://r-lib.r-universe.dev"
+```
+
+rig only sees the package versions in the `PACKAGES` files of a CRAN-like
+repository, usually the current version of each package.
+
+The order of the entries is the order of precedence: if two repositories
+have the same version of a package, the first one wins. The built-in
+repositories come after the entries of `rproj.toml`, Bioconductor first,
+unless they have an entry of their own. A `cran` or `bioc` entry has no `url`. It
+puts the repository at its place in the order, and `enabled = false` turns it
+off:
+
+```toml
+[[repository]]
+name = "cran"
+enabled = false
+```
+
+Pin a dependency to a repository with `repository`, and rig only takes the
+package from there:
+
+```toml
+[dependencies]
+cli = { version = ">= 3.6", repository = "rlib" }
+```
+
+A pin can name any repository of the project, `cran` and `bioc` included. It
+applies to the package itself, not to its dependencies.
+[`rig proj add --with-repos`](#rig-proj-add) adds the repository and the pin in one step.
+
+`explicit = true` makes a repository serve only the packages pinned to it,
+e.g. a private repository that must not replace CRAN packages of the same
+name:
+
+```toml
+[[repository]]
+name = "internal"
+url = "https://cran.example.com"
+explicit = true
+```
+
+`--with-repos` (`--index`) and `--without-repos` (`--no-index`) change the
+repositories for one `rig proj lock` run, without editing `rproj.toml`. Both
+take a comma-separated list, and can be repeated. An item of `--with-repos`
+is the name of a repository, which turns it on if `rproj.toml` turns it off,
+or a URL or `name=URL`: an extra repository that comes before all the others.
+`--without-repos=cran,bioc` turns those two off, and a bare `--without-repos`
+turns off all repositories of the project, so only the ones in `--with-repos`
+are used. E.g. to solve from one repository instead of CRAN and
+Bioconductor, and keep the project's own repositories:
+
+```sh
+rig proj lock --without-repos=cran,bioc --with-repos https://cran.example.com
+```
+
+`rproj.lock` records the repositories in its `[tool.rig]` table, unless they are
+the default ones, and `repository = "<name>"` for each package of a CRAN-like
+repository. A lock solved with other repositories is solved again, and so
+is a lock with a package from another repository than its pin says. Both
+keep the pinned versions where they fit, see "Sticky lock files" below.
+
 ## Bioconductor packages
 
 rig solves from CRAN and from the Bioconductor release that belongs to the
@@ -63,9 +140,8 @@ name = "bioc"
 enabled = false
 ```
 
-The `bioc` entry has no `url`. The `R_BIOC_VERSION` environment variable
-also pins the release, and `RIG_BIOCONDUCTOR=false` turns Bioconductor off
-for every project.
+The `R_BIOC_VERSION` environment variable also pins the release, and
+`RIG_BIOCONDUCTOR=false` turns Bioconductor off for every project.
 
 `rproj.lock` records the Bioconductor release of each target as
 `bioc-version`, and `repository = "bioc/<version>"` for each Bioconductor

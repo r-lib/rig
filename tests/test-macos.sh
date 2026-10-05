@@ -555,6 +555,34 @@ teardown() {
     grep -q '^praise = "\*"$' rproj.toml
 }
 
+@test "proj repositories" {
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf repoproj && mkdir repoproj && cd repoproj
+    run rig proj init -r 4.1
+    [[ "$status" -eq 0 ]]
+
+    # --with-repos adds the repository and pins the package to it
+    run rig proj add --no-lock --with-repos rlib=https://r-lib.r-universe.dev cli
+    [[ "$status" -eq 0 ]]
+    grep -q '^cli = { version = "\*", repository = "rlib" }$' rproj.toml
+    grep -q '^url = "https://r-lib.r-universe.dev"$' rproj.toml
+
+    run rig proj lock --platform source
+    [[ "$status" -eq 0 ]]
+    grep -q '^repository = "rlib"$' rproj.lock
+    grep -q '^\[\[tool.rig.repository\]\]$' rproj.lock
+
+    # a pin to a repository that is turned off is an error
+    run rig proj lock --platform source --without-repos=rlib
+    [[ "$status" -ne 0 ]]
+    echo "$output" | grep -q "turned off"
+
+    # so is an unknown repository name
+    run rig proj lock --platform source --with-repos=nope
+    [[ "$status" -ne 0 ]]
+    echo "$output" | grep -q "Unknown repository"
+}
+
 @test "run script with inline dependencies" {
     cd "$BATS_TEST_TMPDIR"
     rm -rf scriptdir && mkdir scriptdir && cd scriptdir

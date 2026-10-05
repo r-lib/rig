@@ -33,9 +33,10 @@ use crate::cache::get_cache_dir;
 use crate::common::get_r_version_data_version;
 use crate::output::OUTPUT;
 use crate::proj::{
-    add_spec_to_manifest, is_foreign_arch, lock_file_label, lock_fits_manifest, parse_add_arg,
-    parse_upgrade_packages, proj_lock_host, proj_lock_keep_targets, proj_sync,
-    requested_r_installation, resolve_project_r_version, rvenv_r_arch, AddSpec, ProjSyncOptions,
+    add_repos_to_manifest, add_spec_to_manifest, is_foreign_arch, lock_file_label,
+    lock_fits_manifest, parse_add_arg, parse_add_repos, parse_upgrade_packages, proj_lock_host,
+    proj_lock_keep_targets, proj_sync, requested_r_installation, resolve_project_r_version,
+    rvenv_r_arch, AddSpec, ProjSyncOptions,
 };
 use crate::repos::cranlike_metadata::minor_r_version;
 use crate::rproj::{
@@ -957,11 +958,25 @@ pub fn sc_proj_add_script(script: &Path, args: &ArgMatches) -> Result<(), Box<dy
     let mut doc: DocumentMut = block.as_ref().map_or("", |b| b.body.as_str()).parse()?;
     let mut manifest = Rproj {
         dependencies: meta.dependencies,
+        repository: meta.repository,
         ..Default::default()
     };
     let mut messages: Vec<String> = Vec::new();
+    let add_repos = parse_add_repos(args, &manifest.repository)?;
+    if let Some(add) = &add_repos {
+        messages.extend(add_repos_to_manifest(
+            &mut manifest,
+            Some(&mut doc),
+            add,
+            &specs,
+            &target,
+        )?);
+    }
     for spec in specs.iter() {
         messages.push(add_spec_to_manifest(&mut manifest, spec, false, &target));
+        if let Some(add) = &add_repos {
+            manifest.pin_dependency(spec.name(), false, &add.pin);
+        }
         let value = manifest
             .dependencies
             .get(spec.name())

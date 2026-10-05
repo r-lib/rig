@@ -32,7 +32,7 @@ use crate::proj::{
     dep_table_from_remote, dep_table_from_url, fetch_and_read_git_package,
     fetch_and_read_url_package, github_owner_repo, read_local_package,
 };
-use crate::repos::feed::PkgRepo;
+use crate::repos::feed::{PkgRepo, RepoFilter};
 use crate::repos::DbSourcePackageLoader;
 use crate::rproj::{pak_ref_name, DepTable};
 use crate::solver::{is_base_package, GitSourceInfo, PackageVersionLoader};
@@ -95,12 +95,13 @@ pub(crate) fn proj_tree(
     root_deps: &[DepVersionSpec],
     root_remotes: HashMap<String, DepTable>,
     repos: &[PkgRepo],
+    filter: RepoFilter,
     dev: bool,
     no_base: bool,
     why: Option<&str>,
     json: bool,
 ) -> Result<(), Box<dyn Error>> {
-    let loader = DbSourcePackageLoader::new_for_repos(repos)?;
+    let loader = DbSourcePackageLoader::new_for_repos(repos)?.with_repo_filter(filter);
     let tree = tree_from_deps(
         &loader,
         root_name,

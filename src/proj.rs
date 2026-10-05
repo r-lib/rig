@@ -38,11 +38,13 @@ use crate::pkg::list::{read_installed, InstalledPackage};
 use crate::pkg::remove::remove_package;
 use crate::pkg::tree::proj_tree;
 use crate::platform::{detect_platform, parse_platform_string};
+use crate::proj_repos::ProjRepos;
 use crate::repos::binaries::loader::{
     BinaryTarget, ChainedBinaryLoader, CranlikeBinaryLoader, P3mBinaryLoader,
 };
-use crate::repos::cranlike_metadata::{ensure_feeds_fresh, minor_r_version};
-use crate::repos::feed::{BiocSetting, MetadataFeed, PkgRepo, RepoId};
+use crate::repos::cranlike_metadata::{ensure_repos_fresh, minor_r_version};
+use crate::repos::feed::{BiocSetting, PkgRepo, RepoFilter, RepoId};
+use crate::repos::interpret_repos_args::{interpret_pkg_repos_args, PkgReposArgs};
 use crate::repos::*;
 use crate::resolve::resolve_versions;
 use crate::rproj::{
@@ -765,6 +767,124 @@ pub(crate) fn parse_add_arg(spec: &str, root: &Path) -> Result<AddSpec, Box<dyn 
     }
 }
 
+/// The repositories of `rig proj add --with-repos`: the ones to add to the
+/// manifest, and the name of the one to pin the added packages to, the
+/// first one given.
+pub(crate) struct AddRepos {
+    pub new: Vec<Repository>,
+    pub pin: String,
+}
+
+/// Interpret `rig proj add --with-repos`, against the repositories the
+/// manifest already has, `existing`. An item is the name of one of these, or
+/// of a built-in repository, `cran` or `bioc`, or a URL or `name=URL`, a
+/// new repository, unless the manifest already has it at the same URL.
+/// `None` without `--with-repos`.
+pub(crate) fn parse_add_repos(
+    args: &ArgMatches,
+    existing: &[Repository],
+) -> Result<Option<AddRepos>, Box<dyn Error>> {
+    use crate::repos::interpret_repos_args::{parse_repo_url, split_repos_list};
+    let items: Vec<String> = args
+        .try_get_many::<String>("with-repos")
+        .ok()
+        .flatten()
+        .map(|vs| vs.flat_map(|v| split_repos_list(v)).collect())
+        .unwrap_or_default();
+    let mut new: Vec<Repository> = vec![];
+    let mut pin: Option<String> = None;
+    for item in items {
+        let name = match parse_repo_url(&item)? {
+            Some((name, url)) => {
+                let known = existing
+                    .iter()
+                    .chain(new.iter())
+                    .find(|r| r.name.eq_ignore_ascii_case(&name));
+                match known {
+                    Some(repo) if repo.is_builtin() => bail!(
+                        "Repository `{}` is a built-in repository, it cannot have a URL",
+                        name
+                    ),
+                    Some(repo) => {
+                        let same = repo
+                            .url
+                            .as_deref()
+                            .is_some_and(|u| u.trim_end_matches('/') == url);
+                        if !same {
+                            bail!(
+                                "Repository `{}` is already in {}, with another URL",
+                                name,
+                                RPROJ_MANIFEST_FILE
+                            );
+                        }
+                        repo.name.clone()
+                    }
+                    None if Repository::builtin(&name).is_builtin() => bail!(
+                        "Repository `{}` is a built-in repository, it cannot have a URL",
+                        name
+                    ),
+                    None => {
+                        new.push(Repository::at_url(&name, &url));
+                        name
+                    }
+                }
+            }
+            None => match existing.iter().find(|r| r.name.eq_ignore_ascii_case(&item)) {
+                Some(repo) if !repo.is_enabled() => bail!(
+                    "Repository `{}` is turned off in {}",
+                    repo.name,
+                    RPROJ_MANIFEST_FILE
+                ),
+                Some(repo) => repo.name.clone(),
+                None if Repository::builtin(&item).is_builtin() => item.to_lowercase(),
+                None => bail!(
+                    "Unknown repository `{}`, give its URL, as `{}=<url>`",
+                    item,
+                    item
+                ),
+            },
+        };
+        pin.get_or_insert(name);
+    }
+    Ok(pin.map(|pin| AddRepos { new, pin }))
+}
+
+/// Add the repositories of `add` to `manifest`, and to its on-disk
+/// document `doc`, if any, and return the messages about them. `target` is
+/// the file that lists the repositories. A package added from a repository
+/// has to come from a repository: a git, URL or local reference in `specs`
+/// is an error.
+pub(crate) fn add_repos_to_manifest(
+    manifest: &mut Rproj,
+    doc: Option<&mut DocumentMut>,
+    add: &AddRepos,
+    specs: &[AddSpec],
+    target: &str,
+) -> Result<Vec<String>, Box<dyn Error>> {
+    if let Some(spec) = specs.iter().find(|s| matches!(s, AddSpec::Remote(..))) {
+        bail!(
+            "{} is not a package of a repository, it cannot be added with --with-repos",
+            spec.name()
+        );
+    }
+    let mut messages = vec![];
+    if let Some(doc) = doc {
+        for repo in &add.new {
+            Rproj::doc_add_repository(doc, repo)?;
+        }
+    }
+    for repo in &add.new {
+        manifest.repository.push(repo.clone());
+        messages.push(format!(
+            "Added repository {} ({}) to {}",
+            repo.name,
+            repo.url.as_deref().unwrap_or_default(),
+            target
+        ));
+    }
+    Ok(messages)
+}
+
 /// Add the package of `spec` to `manifest`, see [`Rproj::add_dependency`]
 /// and [`Rproj::add_remote_dependency`], and return the message that tells
 /// the user what happened to `target`, the file that lists the dependencies.
@@ -842,6 +962,16 @@ fn sc_proj_add(
     }
 
     let mut messages: Vec<String> = Vec::new();
+    let add_repos = parse_add_repos(args, &manifest.repository)?;
+    if let Some(add) = &add_repos {
+        messages.extend(add_repos_to_manifest(
+            &mut manifest,
+            original_doc.as_mut(),
+            add,
+            &specs,
+            RPROJ_MANIFEST_FILE,
+        )?);
+    }
     for spec in specs.iter() {
         // A dev dependency of a package the project already depends on
         // directly is installed either way, so `--dev` does not do what it
@@ -861,6 +991,9 @@ fn sc_proj_add(
             dev,
             RPROJ_MANIFEST_FILE,
         ));
+        if let Some(add) = &add_repos {
+            manifest.pin_dependency(name, dev, &add.pin);
+        }
 
         if let Some(doc) = original_doc.as_mut() {
             let path: &[&str] = if dev {
@@ -1192,9 +1325,10 @@ pub(crate) struct ProjectSolve {
     /// The root manifest's `exclude-newer` setting, see
     /// [`Rproj::exclude_newer`]. A workspace takes it from its root only.
     pub exclude_newer: Option<ExcludeNewerSpec>,
-    /// The root manifest's Bioconductor setting, see [`Rproj::bioc_setting`].
-    /// A workspace takes it from its root only.
-    pub bioc: BiocSetting,
+    /// The root manifest's repositories, see [`ProjRepos`], with the
+    /// dependency pins of every member. A workspace takes the repositories
+    /// from its root only.
+    pub repos: ProjRepos,
     /// The root manifest's `prefer-binary` setting, see
     /// [`Rproj::prefer_binary`]. A workspace takes it from its root only.
     pub prefer_binary: Option<usize>,
@@ -1248,7 +1382,7 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
                 extra_roots,
                 git_deps,
                 exclude_newer: manifest.exclude_newer()?,
-                bioc: manifest.bioc_setting(),
+                repos: ProjRepos::from_manifest(&manifest)?,
                 prefer_binary: manifest.prefer_binary()?,
             });
         }
@@ -1270,12 +1404,27 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
     let mut extra_roots: HashMap<String, Vec<String>> = HashMap::new();
     let mut seen: HashMap<String, PathBuf> = HashMap::new();
     let mut git_deps: Vec<(String, crate::rproj::DepTable)> = vec![];
+    let mut pins: BTreeMap<String, String> = BTreeMap::new();
 
     for dir in &dirs {
         let mut member = proj_read_manifest(dir)?;
         member.inherit_workspace_deps(ws, &dir.join(RPROJ_MANIFEST_FILE))?;
         let name = member.project.name.clone();
         git_deps.extend(member.git_dependencies(dir));
+        for (pkg, repo) in member.repository_pins()? {
+            match pins.get(&pkg) {
+                Some(other) if !other.eq_ignore_ascii_case(&repo) => bail!(
+                    "Dependency `{}` is pinned to two repositories in the workspace, \
+                     `{}` and `{}`",
+                    pkg,
+                    other,
+                    repo
+                ),
+                _ => {
+                    pins.insert(pkg, repo);
+                }
+            }
+        }
 
         // The solver equates R and the base packages with the R version
         // itself, so a member of one of those names would be resolved against
@@ -1316,6 +1465,9 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
     // what makes the merged `R` requirement the intersection of the members'.
     merged.simplify();
 
+    let mut repos = ProjRepos::from_manifest(&manifest)?;
+    repos.set_pins(pins);
+
     Ok(ProjectSolve {
         members: dirs,
         roots,
@@ -1325,7 +1477,7 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
         extra_roots,
         git_deps,
         exclude_newer: manifest.exclude_newer()?,
-        bioc: manifest.bioc_setting(),
+        repos,
         prefer_binary: manifest.prefer_binary()?,
     })
 }
@@ -1341,8 +1493,9 @@ fn sc_proj_deps(
     let (name, version, pkg_deps) = proj_read_manifest_deps(Path::new("."), dev)?;
 
     if args.get_flag("recursive") {
-        let feeds = default_r_feeds(&proj_read_manifest(Path::new("."))?.bioc_setting());
-        return proj_deps_recursive(&name, &version, &pkg_deps, &feeds, json);
+        let manifest = proj_read_manifest(Path::new("."))?;
+        let (repos, filter) = default_r_proj_repos(&ProjRepos::for_args(&manifest, args)?);
+        return proj_deps_recursive(&name, &version, &pkg_deps, &repos, filter, json);
     }
 
     let mut deps = pkg_deps.dependencies.clone();
@@ -1437,10 +1590,11 @@ fn proj_deps_recursive(
     name: &str,
     version: &RPackageVersion,
     deps: &PackageDependencies,
-    feeds: &[MetadataFeed],
+    repos: &[PkgRepo],
+    filter: RepoFilter,
     json: bool,
 ) -> Result<(), Box<dyn Error>> {
-    let loader = DbSourcePackageLoader::new_for(feeds)?;
+    let loader = DbSourcePackageLoader::new_for_repos(repos)?.with_repo_filter(filter);
     let (rows, num_direct) = walk_deps(&loader, name, &deps.dependencies, true);
 
     if json {
@@ -1473,17 +1627,36 @@ fn sc_proj_tree(
     let (name, version, pkg_deps, git_deps) =
         proj_read_manifest_deps_with_remotes(Path::new("."), dev)?;
 
-    let feeds = default_r_feeds(&proj_read_manifest(Path::new("."))?.bioc_setting());
+    let manifest = proj_read_manifest(Path::new("."))?;
+    let (repos, filter) = default_r_proj_repos(&ProjRepos::for_args(&manifest, args)?);
     proj_tree(
         &name,
         &version,
         &pkg_deps.dependencies,
         git_deps.into_iter().collect(),
-        &PkgRepo::from_feeds(feeds),
+        &repos,
+        filter,
         dev,
         no_base,
         why,
         json,
+    )
+}
+
+/// The repositories of a project for the commands that do not solve for a
+/// particular R version, `rig proj deps --recursive` and `rig proj tree`:
+/// with the Bioconductor release of the default R version, see
+/// [`default_r_feeds`].
+fn default_r_proj_repos(repos: &ProjRepos) -> (Vec<PkgRepo>, RepoFilter) {
+    let bioc_version = default_r_feeds(&repos.bioc_setting())
+        .into_iter()
+        .find_map(|f| match f.repo {
+            RepoId::Bioc(v) => Some(v),
+            _ => None,
+        });
+    (
+        repos.pkg_repos(bioc_version.as_deref()),
+        repos.repo_filter(bioc_version.as_deref()),
     )
 }
 
@@ -1590,6 +1763,8 @@ pub(crate) fn sc_proj_solve_project_deps(
     report_status: bool,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
     let roots = [SolveRoot::project(deps.clone())?];
+    let bioc_version = solve_bioc_version(&BiocSetting::default(), r_version, None);
+    let repos = ProjRepos::default();
     sc_proj_solve_deps(
         r_version,
         &roots,
@@ -1598,11 +1773,56 @@ pub(crate) fn sc_proj_solve_project_deps(
         target,
         prefer_binary,
         None,
-        &BiocSetting::default(),
-        None,
+        &repos.pkg_repos(bioc_version.as_deref()),
+        &RepoFilter::default(),
         &SolvePins::default(),
         report_status,
     )
+}
+
+/// How the message about a package that is not available names the
+/// repositories of a solve: `None` if they are CRAN, and maybe a
+/// Bioconductor release, the solver's default message covers those. Also
+/// the repository of every pinned package.
+fn describe_solve_repos(
+    repos: &[PkgRepo],
+    filter: &RepoFilter,
+) -> (Option<String>, HashMap<String, String>) {
+    let name = |id: &RepoId| match id {
+        RepoId::Cran => "CRAN".to_string(),
+        RepoId::Bioc(v) => format!("Bioconductor {}", v),
+        RepoId::Cranlike { name, .. } => name.clone(),
+    };
+    // An explicit repository only serves the packages pinned to it, so it
+    // does not count for the others.
+    let ids: Vec<RepoId> = repos
+        .iter()
+        .map(|r| r.repo_id())
+        .filter(|id| !filter.explicit.contains(id))
+        .collect();
+    let default = ids.contains(&RepoId::Cran) && ids.iter().all(|id| !id.is_cranlike());
+    let description = if default {
+        None
+    } else {
+        let names: Vec<String> = ids.iter().map(name).collect();
+        Some(match names.split_last() {
+            None => "any repository".to_string(),
+            Some((last, [])) => last.clone(),
+            Some((last, rest)) => format!("{} or {}", rest.join(", "), last),
+        })
+    };
+    let pinned = filter
+        .pins
+        .iter()
+        .map(|(pkg, id)| {
+            let repo = id
+                .as_ref()
+                .map(name)
+                .unwrap_or_else(|| "Bioconductor".to_string());
+            (pkg.clone(), repo)
+        })
+        .collect();
+    (description, pinned)
 }
 
 /// What a solve keeps from an existing lock file, and the extra constraints
@@ -1636,8 +1856,8 @@ pub(crate) fn sc_proj_solve_deps(
     target: Option<BinaryTarget>,
     prefer_binary: Option<usize>,
     exclude_newer: Option<&str>,
-    bioc: &BiocSetting,
-    repos: Option<&[PkgRepo]>,
+    repos: &[PkgRepo],
+    filter: &RepoFilter,
     pins: &SolvePins,
     report_status: bool,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
@@ -1653,19 +1873,19 @@ pub(crate) fn sc_proj_solve_deps(
     // Bioconductor release) as the solver visits them, instead of preloading
     // the entire version history.
     // `rig pkg` passes the repositories of the R installation, `rig proj`
-    // uses CRAN and the R version's Bioconductor release.
-    let repos: Vec<PkgRepo> = match repos {
-        Some(repos) => repos.to_vec(),
-        None => PkgRepo::from_feeds(bioc.feeds(r_version, exclude_newer)),
-    };
-    let loader = DbSourcePackageLoader::new_for_repos(&repos)?
-        .with_exclude_newer(exclude_newer.map(|c| c.to_string()));
+    // the project's, see `ProjRepos`. `filter` limits the repositories of
+    // the packages pinned to one, and of the explicit repositories.
+    let loader = DbSourcePackageLoader::new_for_repos(repos)?
+        .with_exclude_newer(exclude_newer.map(|c| c.to_string()))
+        .with_repo_filter(filter.clone());
     // A repository that failed to load is not searched.
     let repositories = loader.repositories();
     let repos: Vec<PkgRepo> = repos
-        .into_iter()
+        .iter()
         .filter(|r| repositories.contains(&r.repo_id()))
+        .cloned()
         .collect();
+    let (repos_description, pinned) = describe_solve_repos(&repos, filter);
     let feeds = PkgRepo::feeds(&repos);
     let cranlike = PkgRepo::cranlike(&repos);
     let bioc_version = feeds.iter().find_map(|f| match &f.repo {
@@ -1690,6 +1910,7 @@ pub(crate) fn sc_proj_solve_deps(
     });
     let reg: RPackageRegistry = RPackageRegistry::with_loaders(Box::new(loader), binaries)
         .with_bioc_version(bioc_version)
+        .with_repo_description(repos_description, pinned)
         .prefer_binary(prefer_binary)
         .with_preferences(pins.preferred.clone())
         .with_overrides(&pins.overrides);
@@ -1807,10 +2028,12 @@ fn read_existing_lock(root: &Path) -> Option<RprojLock> {
 fn resolve_lock_options(
     exclude_newer: Option<&ExcludeNewerSpec>,
     prefer_binary: Option<usize>,
+    repos: &ProjRepos,
     existing: Option<&RprojLockOptions>,
 ) -> Result<RprojLockOptions, Box<dyn Error>> {
     let mut options = RprojLockOptions {
         prefer_binary,
+        repositories: repos.lock_repositories(),
         ..Default::default()
     };
     let Some(spec) = exclude_newer else {
@@ -2813,6 +3036,9 @@ struct ProjLockOptions {
     /// `rig proj lock --script` locks in the script's cache environment and
     /// copies the result next to the script, as `<script>.lock`.
     lockfile_label: Option<String>,
+    /// `--with-repos` and `--without-repos`: change the project's
+    /// repositories for this lock, see [`ProjRepos::apply_args`].
+    repos: Option<PkgReposArgs>,
 }
 
 fn sc_proj_lock(
@@ -2839,6 +3065,7 @@ fn sc_proj_lock(
         upgrade_packages: parse_upgrade_packages(args)?,
         host_only: false,
         lockfile_label: None,
+        repos: interpret_pkg_repos_args(args)?,
     };
     if let Some(script) = args.get_one::<String>("script") {
         return proj_lock_script(Path::new(script), opts, args);
@@ -2937,6 +3164,7 @@ pub(crate) fn lock_fits_manifest(root: &Path) -> Result<bool, Box<dyn Error>> {
     let lock_options = resolve_lock_options(
         solve.exclude_newer.as_ref(),
         solve.prefer_binary,
+        &solve.repos,
         Some(&lock.tool.rig),
     )?;
     if lock.tool.rig != lock_options {
@@ -2961,7 +3189,21 @@ pub(crate) fn lock_fits_manifest(root: &Path) -> Result<bool, Box<dyn Error>> {
             req.is_none_or(|r| r.satisfies(&target.r_version).unwrap_or(false))
                 && lock_target_satisfies(target, &direct_deps)
                 && lock_target_git_sources_fresh(target, &git_sources)
+                && lock_target_repos_fit(target, &solve.repos)
         }))
+}
+
+/// Whether every package of a lock target comes from the repository the
+/// project's pins say, and none of the unpinned ones from an explicit
+/// repository, see [`ProjRepos::locked_repository_fits`]. Packages that do
+/// not come from a repository, git, URL and local ones, and the project
+/// itself, always fit.
+fn lock_target_repos_fit(target: &RprojLockTarget, repos: &ProjRepos) -> bool {
+    target.packages.iter().all(|pkg| {
+        pkg.is_project
+            || pkg.metadata.contains_key(REMOTE_TYPE_FIELD)
+            || repos.locked_repository_fits(&pkg.package, pkg.repository.as_deref())
+    })
 }
 
 /// The `--upgrade-package` arguments, as package name and version
@@ -3427,6 +3669,11 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     // Do this first, to report local errors early
     let solve = proj_read_solve_roots(root)?;
     let pkg_deps = &solve.merged;
+    let mut repos = solve.repos.clone();
+    if let Some(over) = &opts.repos {
+        repos.apply_args(over)?;
+    }
+    repos.check()?;
 
     // Lock itself never reads `.Renviron`/`.rvenvlib` -- they only matter for
     // R started directly -- but fill them in if missing, same as sync/run.
@@ -3555,6 +3802,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     let lock_options = resolve_lock_options(
         exclude_newer,
         prefer_binary,
+        &repos,
         existing_lock.as_ref().map(|l| &l.tool.rig),
     )?;
     let options_match = existing_lock
@@ -3566,9 +3814,10 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         info!("{}", msg);
     }
     // The cutoff can choose between the Bioconductor releases of an R version.
+    let bioc = repos.bioc_setting();
     for st in &mut solve_targets {
         st.bioc_version =
-            solve_bioc_version(&solve.bioc, &st.rver, lock_options.exclude_newer.as_deref());
+            solve_bioc_version(&bioc, &st.rver, lock_options.exclude_newer.as_deref());
     }
 
     // Resolve every git/GitHub dependency once, up front, instead of letting
@@ -3638,6 +3887,8 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
                 .filter(project_fresh)
                 // Solved with another Bioconductor release, or without one.
                 .filter(|t| t.bioc_version == st.bioc_version)
+                // A package from another repository than its pin says.
+                .filter(|t| lock_target_repos_fit(t, &repos))
             });
         match existing {
             Some(target) => reused.push(target),
@@ -3679,15 +3930,15 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         // `DbSourcePackageLoader::new()` would otherwise do this too, but
         // finding it already fresh, it becomes a cheap read instead of every
         // thread racing to update the same on-disk cache at once.
-        let mut feeds: Vec<MetadataFeed> = vec![];
+        let mut all_repos: Vec<PkgRepo> = vec![];
         for st in &to_solve {
-            for feed in MetadataFeed::for_target(st.bioc_version.as_deref()) {
-                if !feeds.contains(&feed) {
-                    feeds.push(feed);
+            for repo in repos.pkg_repos(st.bioc_version.as_deref()) {
+                if !all_repos.contains(&repo) {
+                    all_repos.push(repo);
                 }
             }
         }
-        ensure_feeds_fresh(&feeds)?;
+        ensure_repos_fresh(&all_repos)?;
 
         for name in &no_binaries {
             OUTPUT.warn(&format!(
@@ -3742,6 +3993,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         .par_iter()
         .map(|st| {
             let pins = pins_of(st);
+            let bioc_version = st.bioc_version.as_deref();
             let result = sc_proj_solve_deps(
                 &st.rver,
                 &solve.roots,
@@ -3750,8 +4002,8 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
                 st.target.clone(),
                 lock_options.prefer_binary,
                 lock_options.exclude_newer.as_deref(),
-                &solve.bioc,
-                None,
+                &repos.pkg_repos(bioc_version),
+                &repos.repo_filter(bioc_version),
                 &pins,
                 false,
             )
@@ -4657,6 +4909,9 @@ pub(crate) struct ProjSyncOptions {
     /// the R packages need, overriding the `sysreqs` setting. `None` goes by
     /// the setting.
     pub sysreqs: Option<bool>,
+    /// `--with-repos` and `--without-repos`: lock again, with the project's
+    /// repositories changed, see [`ProjRepos::apply_args`].
+    pub repos: Option<PkgReposArgs>,
 }
 
 impl Default for ProjSyncOptions {
@@ -4678,6 +4933,7 @@ impl Default for ProjSyncOptions {
             exclude_newer: None,
             arch: None,
             sysreqs: None,
+            repos: None,
         }
     }
 }
@@ -4716,6 +4972,7 @@ fn sc_proj_sync(
         exclude_newer: exclude_newer_arg(args)?,
         arch: None,
         sysreqs: crate::sysreqs::cli_flag(args),
+        repos: interpret_pkg_repos_args(args)?,
     };
 
     proj_sync(&root, &opts, args)
@@ -4798,6 +5055,7 @@ pub(crate) fn proj_sync(
     let lock_path = root.join(RPROJ_LOCK_FILE);
     let lock_opts = ProjLockOptions {
         exclude_newer: opts.exclude_newer.clone(),
+        repos: opts.repos.clone(),
         ..Default::default()
     };
     if !lock_path.exists() {
@@ -4823,12 +5081,13 @@ pub(crate) fn proj_sync(
         ));
         info!("No {}, running `rig proj lock` first", RPROJ_LOCK_FILE);
         proj_lock(root, &lock_opts, args)?;
-    } else if opts.exclude_newer.is_some() {
-        // Re-lock with the new cutoff. `proj_lock` keeps the lock as it is if
-        // it was already solved with the same one. (`--frozen` conflicts with
-        // `--exclude-newer`.)
+    } else if opts.exclude_newer.is_some() || opts.repos.is_some() {
+        // Re-lock with the new cutoff or repositories. `proj_lock` keeps the
+        // lock as it is if it was already solved with the same ones.
+        // (`--frozen` conflicts with `--exclude-newer` and the repository
+        // arguments.)
         if opts.dry_run {
-            OUTPUT.info("`rig proj sync` would run `rig proj lock --exclude-newer` first");
+            OUTPUT.info("`rig proj sync` would run `rig proj lock` first");
         } else {
             proj_lock(root, &lock_opts, args)?;
         }
@@ -5916,14 +6175,16 @@ mod tests {
             exclude_newer: Some("2020-01-01".to_string()),
             exclude_newer_span: None,
             prefer_binary: Some(3),
+            ..Default::default()
         };
-        let opts = resolve_lock_options(None, None, Some(&existing)).unwrap();
+        let opts =
+            resolve_lock_options(None, None, &ProjRepos::default(), Some(&existing)).unwrap();
         assert!(opts.is_empty());
     }
 
     #[test]
     fn lock_options_record_prefer_binary() {
-        let opts = resolve_lock_options(None, Some(5), None).unwrap();
+        let opts = resolve_lock_options(None, Some(5), &ProjRepos::default(), None).unwrap();
         assert_eq!(opts.prefer_binary, Some(5));
         assert_eq!(opts.exclude_newer, None);
 
@@ -5933,8 +6194,11 @@ mod tests {
             exclude_newer: Some("2020-01-01".to_string()),
             exclude_newer_span: Some("7 days".to_string()),
             prefer_binary: None,
+            ..Default::default()
         };
-        let opts = resolve_lock_options(Some(&spec), Some(3), Some(&existing)).unwrap();
+        let opts =
+            resolve_lock_options(Some(&spec), Some(3), &ProjRepos::default(), Some(&existing))
+                .unwrap();
         assert_eq!(opts.exclude_newer.as_deref(), Some("2020-01-01"));
         assert_eq!(opts.prefer_binary, Some(3));
         assert_ne!(opts, existing);
@@ -5943,9 +6207,48 @@ mod tests {
     #[test]
     fn lock_options_record_an_absolute_cutoff() {
         let spec: ExcludeNewerSpec = "2020-01-01".parse().unwrap();
-        let opts = resolve_lock_options(Some(&spec), None, None).unwrap();
+        let opts = resolve_lock_options(Some(&spec), None, &ProjRepos::default(), None).unwrap();
         assert_eq!(opts.exclude_newer.as_deref(), Some("2020-01-01"));
         assert_eq!(opts.exclude_newer_span, None);
+    }
+
+    #[test]
+    fn lock_options_record_the_repositories() {
+        let repos = ProjRepos::new(
+            &[Repository::at_url("acme", "https://cran.acme.com")],
+            BTreeMap::new(),
+        );
+        let opts = resolve_lock_options(None, None, &repos, None).unwrap();
+        let names: Vec<&str> = opts.repositories.iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(names, vec!["acme", "bioc", "cran"]);
+        assert!(!opts.is_empty());
+
+        let lock = RprojLock {
+            version: RPROJ_LOCK_VERSION,
+            tool: RprojLockTool { rig: opts.clone() },
+            targets: vec![],
+        };
+        let text = lock.to_toml().unwrap();
+        assert!(text.contains("[[tool.rig.repository]]"), "{}", text);
+        let back: RprojLock = toml::from_str(&text).unwrap();
+        assert_eq!(back.tool.rig, opts);
+    }
+
+    #[test]
+    fn lock_target_repos_fit_checks_pins() {
+        let mut pins = BTreeMap::new();
+        pins.insert("cli".to_string(), "acme".to_string());
+        let repos = ProjRepos::new(&[Repository::at_url("acme", "https://cran.acme.com")], pins);
+        let mut target = RprojLockTarget {
+            r_version: "4.5.1".to_string(),
+            platform: "source".to_string(),
+            direct_dependencies: vec![],
+            bioc_version: None,
+            packages: vec![locked_in("cli", &["main"], &[])],
+        };
+        assert!(!lock_target_repos_fit(&target, &repos));
+        target.packages[0].repository = Some("acme".to_string());
+        assert!(lock_target_repos_fit(&target, &repos));
     }
 
     #[test]
@@ -5955,13 +6258,16 @@ mod tests {
             exclude_newer: Some("2020-01-01".to_string()),
             exclude_newer_span: Some("7 days".to_string()),
             prefer_binary: None,
+            ..Default::default()
         };
-        let opts = resolve_lock_options(Some(&spec), None, Some(&existing)).unwrap();
+        let opts = resolve_lock_options(Some(&spec), None, &ProjRepos::default(), Some(&existing))
+            .unwrap();
         assert_eq!(opts, existing);
 
         // A different span resolves afresh, from today.
         let spec: ExcludeNewerSpec = "8 days".parse().unwrap();
-        let opts = resolve_lock_options(Some(&spec), None, Some(&existing)).unwrap();
+        let opts = resolve_lock_options(Some(&spec), None, &ProjRepos::default(), Some(&existing))
+            .unwrap();
         assert_eq!(opts.exclude_newer_span.as_deref(), Some("8 days"));
         assert_ne!(opts.exclude_newer.as_deref(), Some("2020-01-01"));
     }
@@ -5975,6 +6281,7 @@ mod tests {
                     exclude_newer: Some("2020-01-01".to_string()),
                     exclude_newer_span: Some("7 days".to_string()),
                     prefer_binary: Some(5),
+                    ..Default::default()
                 },
             },
             targets: vec![],

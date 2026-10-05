@@ -23,7 +23,9 @@ the project needs directly, but also the packages *those* need, and so on.
 Each package appears once, with the version currently on CRAN, the `Depth`
 column giving its distance from the project, and the `Needed by` column
 naming the packages that pull it in. This needs the package metadata of the
-repositories, which rig downloads if it does not have it yet.
+project's repositories, which rig downloads if it does not have it yet.
+`--with-repos` (`--index`) and `--without-repos` (`--no-index`) change the
+repositories for this command, see "Repositories" in [`rig proj lock`](#rig-proj-lock).
 
 See [`rig proj tree`](#rig-proj-tree) to show the dependency tree of the project.
 

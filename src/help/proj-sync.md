@@ -14,6 +14,10 @@ URL, so nothing but the lock file is needed to install from it. The one
 exception is `.rvenv/etc/repositories` (see below), which still comes from
 `rproj.toml` when one is present, and is skipped otherwise.
 
+`--with-repos` (`--index`) and `--without-repos` (`--no-index`) lock again first,
+with the project's repositories changed, see "Repositories" in
+[`rig proj lock`](#rig-proj-lock). They do not work with `--frozen`.
+
 By default sync installs `[dependencies]` (`main`) plus the `dev`
 [dependency group](#rig-proj-lock), and nothing else: no other
 `[dependency-groups.*]` table, and no `[optional-dependencies.*]` extra.
@@ -149,8 +153,10 @@ lives, by default or centralized), and the rest is rewritten on every sync:
 - `.rvenv/rvenv.cfg`, which records the R version, the platform and the
   architecture the environment was built for. rig warns when it syncs an
   environment that was built for a different R.
-- `.rvenv/etc/repositories`, which the wrappers point `R_REPOSITORIES` at.
-  Reposirories to set up for the project.
+- `.rvenv/etc/repositories`, which the wrappers point `R_REPOSITORIES` at. The
+  repositories of the project: Posit Package Manager's CRAN for the lock
+  file's target, unless `rproj.toml` turns `cran` off, then the `[[repository]]`
+  entries, and the Bioconductor release of the target.
 
 After a successful sync rig records the lock file it installed from in
 `.synced`, inside the project library (`.rvenv/lib` by default, or the

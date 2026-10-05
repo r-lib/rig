@@ -472,6 +472,12 @@ pub struct RPackageRegistry {
     repositories: RefCell<HashMap<(RPackageName, RegistryPackageVersion), RepoId>>,
     // The Bioconductor release the loader searches besides CRAN, if any.
     bioc_version: Option<String>,
+    // The repositories of the solve, for the message about a package none of
+    // them has, if they are not just CRAN and Bioconductor. See
+    // `with_repo_description`.
+    repos_description: Option<String>,
+    // Package to the repository it is pinned to, for the same message.
+    pinned: HashMap<RPackageName, String>,
     // The `SystemRequirements` of every package version we know one for, by
     // version rather than by artifact: the source and binary builds of a
     // version share it. Never read by the solver itself, only by the lockfile
@@ -508,6 +514,19 @@ impl RPackageRegistry {
     /// [`Self::bioc_version`].
     pub fn with_bioc_version(mut self, bioc_version: Option<String>) -> Self {
         self.bioc_version = bioc_version;
+        self
+    }
+
+    /// Name the repositories of the solve, e.g. `CRAN or acme`, and the
+    /// repository each pinned package is pinned to, for the message about a
+    /// package that is not available.
+    pub fn with_repo_description(
+        mut self,
+        description: Option<String>,
+        pinned: HashMap<RPackageName, String>,
+    ) -> Self {
+        self.repos_description = description;
+        self.pinned = pinned;
         self
     }
 
@@ -1173,6 +1192,15 @@ pub fn format_solver_error(err: PubGrubError<RPackageRegistry>, reg: &RPackageRe
             package,
             source: ProviderError::UnknownPackage,
         } => {
+            if let Some(repo) = reg.pinned.get(&package) {
+                return format!(
+                    "  Package {} is not available in {}, the repository it is pinned to.",
+                    package, repo
+                );
+            }
+            if let Some(repos) = &reg.repos_description {
+                return format!("  Package {} is not available in {}.", package, repos);
+            }
             return match reg.bioc_version() {
                 Some(bioc) => format!(
                     "  Package {} is not available on CRAN or Bioconductor {}.",
@@ -1182,7 +1210,7 @@ pub fn format_solver_error(err: PubGrubError<RPackageRegistry>, reg: &RPackageRe
                     "  Package {} is not available in the configured repositories.",
                     package
                 ),
-            }
+            };
         }
         other => return other.to_string(),
     };
@@ -1576,6 +1604,34 @@ mod tests {
         let msg = format_solver_error(err, &reg);
         assert!(
             msg.contains("Package nope is not available on CRAN or Bioconductor 3.23."),
+            "{}",
+            msg
+        );
+    }
+
+    #[test]
+    fn an_unknown_package_names_the_repositories() {
+        let mut pinned = HashMap::new();
+        pinned.insert("pinned".to_string(), "acme".to_string());
+        let reg = RPackageRegistry::with_loaders(Box::new(StubSource { packages: vec![] }), None)
+            .with_repo_description(Some("acme or CRAN".to_string()), pinned);
+        let root = RegistryPackageVersion::new("_project", "1.0.0").unwrap();
+        reg.add_package_version("_project".to_string(), root.clone(), ranges("nope"));
+        let err = resolve(&reg, "_project".to_string(), root.clone()).unwrap_err();
+        let msg = format_solver_error(err, &reg);
+        assert!(
+            msg.contains("Package nope is not available in acme or CRAN."),
+            "{}",
+            msg
+        );
+        let root2 = RegistryPackageVersion::new("_project2", "1.0.0").unwrap();
+        reg.add_package_version("_project2".to_string(), root2.clone(), ranges("pinned"));
+        let err = resolve(&reg, "_project2".to_string(), root2).unwrap_err();
+        let msg = format_solver_error(err, &reg);
+        assert!(
+            msg.contains(
+                "Package pinned is not available in acme, the repository it is pinned to."
+            ),
             "{}",
             msg
         );

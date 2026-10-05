@@ -23,7 +23,7 @@ use crate::download::{
 };
 use crate::output::OUTPUT;
 use crate::rds::*;
-use crate::repos::feed::{CranlikeRepo, MetadataFeed, PkgRepo, RepoId};
+use crate::repos::feed::{CranlikeRepo, MetadataFeed, PkgRepo, RepoFilter, RepoId};
 use crate::solver::PackageVersionLoader;
 use crate::utils::{calculate_hash, create_parent_dir_if_needed};
 
@@ -476,16 +476,11 @@ pub struct DbSourcePackageLoader {
     /// `--exclude-newer` cutoff day, `YYYY-MM-DD`: versions whose snapshot
     /// date is after it are hidden from the solver.
     exclude_newer: Option<String>,
+    /// The repositories each package may come from, see [`RepoFilter`].
+    filter: RepoFilter,
 }
 
 impl DbSourcePackageLoader {
-    /// A loader for `feeds`. Ensure their metadata is fresh in the database,
-    /// then open a connection ready to serve per-package queries. See
-    /// [`ensure_feeds_fresh`] for the feeds that fail to load.
-    pub fn new_for(feeds: &[MetadataFeed]) -> Result<Self, Box<dyn Error>> {
-        DbSourcePackageLoader::new_for_repos(&PkgRepo::from_feeds(feeds.to_vec()))
-    }
-
     /// A loader for `repos`, extended feeds and CRAN-like repositories, in
     /// order of precedence. A repository that fails to load is not searched,
     /// except for CRAN's feed, which must load.
@@ -503,6 +498,7 @@ impl DbSourcePackageLoader {
             repo_ids,
             repos: repos.iter().map(|r| r.repo_id()).collect(),
             exclude_newer: None,
+            filter: RepoFilter::default(),
         })
     }
 
@@ -521,6 +517,7 @@ impl DbSourcePackageLoader {
             repo_ids,
             repos: keys.iter().map(|(_, repo)| repo.clone()).collect(),
             exclude_newer: None,
+            filter: RepoFilter::default(),
         }
     }
 
@@ -528,6 +525,13 @@ impl DbSourcePackageLoader {
     /// [`crate::exclude_newer`]. `None` keeps every version.
     pub fn with_exclude_newer(mut self, cutoff: Option<String>) -> Self {
         self.exclude_newer = cutoff;
+        self
+    }
+
+    /// Limit the repositories each package may come from, see
+    /// [`RepoFilter`].
+    pub fn with_repo_filter(mut self, filter: RepoFilter) -> Self {
+        self.filter = filter;
         self
     }
 
@@ -660,6 +664,9 @@ impl PackageVersionLoader for DbSourcePackageLoader {
             }
             if let Some(s) = &sysreqs {
                 sysreqs_any.entry(ver.clone()).or_insert_with(|| s.clone());
+            }
+            if !self.filter.allows(package, repo) {
+                continue; // pinned to another repo, or an explicit repo
             }
             if best.get(&ver).is_some_and(|b| b.rank <= rank) {
                 continue;
@@ -2405,6 +2412,41 @@ DownloadURL: https://p3m.dev/bioconductor/2025-10-30/packages/3.22/bioc/src/cont
 
         let cran_first = versions(&[(cran_url, RepoId::Cran), (&acme_key, acme.repo_id())]);
         assert_eq!(cran_first[1], ("3.6.0".to_string(), RepoId::Cran));
+
+        // A package pinned to a repository only comes from there, an
+        // explicit repository serves only the packages pinned to it.
+        let filtered = |filter: RepoFilter| {
+            let loader = DbSourcePackageLoader::from_conn(
+                open_db(&db).unwrap(),
+                &[(cran_url, RepoId::Cran), (&acme_key, acme.repo_id())],
+            )
+            .with_repo_filter(filter);
+            let mut out: Vec<(String, RepoId)> = loader
+                .load_versions("cli")
+                .unwrap()
+                .into_iter()
+                .map(|p| (p.version.to_string(), p.repository.unwrap()))
+                .collect();
+            out.sort();
+            out
+        };
+        let mut pinned = RepoFilter::default();
+        pinned.pins.insert("cli".to_string(), Some(acme.repo_id()));
+        assert_eq!(
+            filtered(pinned),
+            vec![("3.6.0".to_string(), acme.repo_id())]
+        );
+        let mut nowhere = RepoFilter::default();
+        nowhere.pins.insert("cli".to_string(), None);
+        assert!(filtered(nowhere).is_empty());
+        let mut explicit = RepoFilter::default();
+        explicit.explicit.insert(RepoId::Cran);
+        assert_eq!(
+            filtered(explicit.clone()),
+            vec![("3.6.0".to_string(), acme.repo_id())]
+        );
+        explicit.pins.insert("cli".to_string(), Some(RepoId::Cran));
+        assert_eq!(filtered(explicit).len(), 2);
 
         let _ = std::fs::remove_file(&db);
     }
