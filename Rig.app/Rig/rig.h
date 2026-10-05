@@ -9,7 +9,21 @@
  */
 #define FORMAT_VERSION 1
 
-#define RPROJ_LOCK_VERSION 4
+#define RPROJ_LOCK_VERSION 6
+
+/**
+ * How many of the newest versions of a package `--prefer-binary` (and
+ * `prefer-binary = true` in `[tool.rig]`) considers, if not given.
+ */
+#define PREFER_BINARY_DEFAULT 3
+
+#define STD_OUTPUT_HANDLE (uint32_t)-11
+
+#define STD_ERROR_HANDLE (uint32_t)-12
+
+typedef void *Handle;
+
+#define INVALID_HANDLE_VALUE (Handle)-1
 
 int rig_last_error(char *ptr, size_t size);
 
