@@ -95,166 +95,184 @@
 Please open an issue in our issue tracker at https://github.com/r-lib/rig/issues
     </description>
     <releaseNotes>
-# rig 0.10.0
+# rig 0.11.0-beta
 
-## Web site
+## Custom repositories
 
-* rig has a new documentation website at &lt;https://rig.r-lib.org/>,
-  including a full CLI reference and a guide to admin vs. user mode.
+* New `rig repos add` and `rig repos rm` commands to add and remove your
+  own CRAN-like package repositories, e.g. an internal CRAN mirror or an
+  r-universe. rig stores them in its configuration file, and they work like
+  the built-in repositories, e.g. with `--with-repos`.
+  `rig repos add --enable --all-versions` enables a repository for all
+  R versions, including the ones you install later.
 
-## User mode
+* New `rig repos enable` and `rig repos disable` commands to turn
+  repositories, built-in or custom, on and off for each R version.
 
-* rig now supports a **user mode** on all platforms, in addition to the
-  default admin mode. In user mode rig installs everything into the user's
-  home directory and never needs `sudo` or administrator privileges. R goes
-  into `~/.local/share/rig/r` (`%APPDATA%\rig\data\r` on Windows) and quick
-  links into `~/.local/bin` (`%USERPROFILE%\.local\bin` on Windows). Select
-  the mode with the `--user` / `--admin` global flags, the `RIG_MODE`
-  environment variable, or the `mode` key in the rig config file. The new
-  `rig system user-mode` command switches an existing admin-mode setup to
-  user mode.
+* rig now remembers the repositories enabled and disabled for each R
+  version, with these commands or with `--with-repos` / `--without-repos`,
+  and applies them again on `rig repos setup`. `rig repos setup` now asks
+  for administrator rights if the current user cannot update the files of
+  the R installations, e.g. in admin mode on Linux and Windows.
 
-* On Linux, rig can now install portable R builds, for glibc- and
-  musl-based Linux distros. If there is no distro-specific build for your
-  platform, rig falls back to a portable build automatically.
+* `rig pkg install`, `rig pkg deps`, `rig pkg tree`, `rig pkg available`
+  and `rig pkg info` now use the repositories configured for the R
+  version, including custom ones. `rig pkg deps`, `rig pkg tree`,
+  `rig pkg available` and `rig pkg info` have a new `--r-version` option.
+  `rig pkg search` still searches CRAN only.
 
-## R package management
+* `rig pkg install`, `rig pkg deps`, `rig pkg tree`, `rig pkg available`
+  and `rig pkg info` have new `--with-repos` and `--without-repos`
+  options, with aliases `--index` and `--no-index`, to use other
+  repositories for one command, without changing the setup of the R
+  version. `--with-repos` also takes repository URLs, or `name=URL`.
 
-* New `rig pkg` subcommand to query and manage R packages. Two subcommands
-  from `rig repos` moved to `rig pkg`: `rig pkg available` and
-  `rig pkg info`. `rig pkg deps` lists the packages a package needs, in a
-  table, and `rig pkg tree` shows the same dependencies as a tree.
-  `rig pkg list` lists the packages installed in a library,
-  `rig pkg remove` deletes packages from a library, and
-  `rig pkg install` installs packages, and their dependencies, into a
-  library.
+* `rig pkg` commands now only use Bioconductor packages if the
+  Bioconductor repositories are enabled for the R version, e.g. with
+  `rig repos enable bioconductor`.
 
-## Projects
+* rig now sets up P3M by default on macOS, and on the Linux
+  distributions P3M has no binary packages for, where P3M is a CRAN
+  mirror of source packages. P3M stays off on aarch64 Windows, because it
+  only has x86_64 Windows binaries. Use
+  `--without-repos=p3m` or `rig repos disable p3m` to turn it off.
 
-* New and redesigned `rig proj` commands to manage isolated R projects and
-  virtual environments: `rig proj init`, `rig proj import`, `rig proj add`,
-  `rig proj remove`, `rig proj lock`, `rig proj sync`, `rig proj status`.
+* `--without-repos=cran` (and `rig repos disable cran`) now turns off CRAN
+  completely.
 
-* New `rig proj tree` shows the dependency closure of a project as a tree.
+* `rig proj` now implements `[[repository]]` entries of `rproj.toml` and repository
+  pinning. `rig proj lock`, `rig proj sync`, `rig proj deps` and `rig proj tree`
+  have new `--with-repos` and `--without-repos` options to add and remove
+  repositories for one command.
 
-* `rig run` now uses the project environment, if you call it in a project
-  directory: it starts `.rvenv/bin/R`, with the project's package library
-  and the R version the project's lock file names, and it syncs the project
-  first if the environment is missing or out of date. Use `--no-project`
-  (or `--r-version`) to run the default R version instead.
+## Bioconductor
 
-* `rig run &lt;name>` now runs a script the project declares in a `[[bin]]`
-  table of its `rproj.toml`, passing the remaining arguments on to the
-  script. `rig run --list` lists the declared scripts.
+* `rig proj` and `rig pkg` now install Bioconductor packages, besides CRAN
+  packages, from the Bioconductor release that belongs to the R version.
+  CRAN and Bioconductor share one package namespace, so a `bioc::<package>`
+  entry in `Remotes:` or `Config/Needs/*` is the same as `<package>`. A
+  `bioc` entry in the
+  `[[repository]]` array of `rproj.toml` pins the Bioconductor release, or
+  turns Bioconductor off. `rproj.lock` is now version 5, and records the
+  Bioconductor release of every target.
 
-* `rig proj sync` can now centralize project package libraries outside the
-  project directory: set the `RIG_PROJ_LIBRARY_ROOT` environment variable or
-  the `proj-library-root` config key to a root directory, and each project
-  gets its own library under it, keyed by project name and location. A
-  compatibility symlink is left at the project's usual `.rvenv/lib`. `rig
-  system dirs --library-root` reports the effective root (#372).
+* `rig pkg info` now shows the full `DESCRIPTION` of the current version
+  of a Bioconductor package, e.g. its title, description and maintainer,
+  from the `VIEWS` file of its Bioconductor repository.
 
-## Windows specific
+## Inline scripts
 
-* Windows builds of rig are now signed, thanks to the SignPath Foundation,
-  https://signpath.org/.
+* `rig run` now support self-contained scripts, that declare the packages
+  and the R version they need in a `# /// script` comment block. rig then
+  runs the script in its own environment, in the cache directory, and
+  installs R and the packages as needed. `rig run --upgrade` and
+  `rig run --upgrade-package` upgrade the packages of a script's
+  environment.
 
-* On Windows rig now creates `.exe` shims instead of `bat` shims.
-  With `.exe` shims it is easier to pass command line arguments to
-  `R` and `Rscript`. In particular, `Rscript -e &lt;code>` now works if
-  `&lt;code>` has line breaks. Call `rig system make-links` to create all
-  `.exe` shims and remove the `.bat` shims. If you hardcoded shims with
-  a `.bat` extension, change them to `.exe` or remove the extension
-  completely (#362).
+* New `rig proj lock --upgrade-package` (`-P`) option, to upgrade only
+  some packages, and keep the versions `rproj.lock` pins for the rest. It
+  also takes a version requirement, e.g. `-P 'cli@>= 3.6.4'`, for this
+  run only (#410).
 
-* New `rig system fix-r-alias` subcommand.
+* `rig proj lock` now keeps the versions `rproj.lock` pins when it has to
+  solve the dependencies again, e.g. after `rig proj add`, as long as they
+  still fit `rproj.toml`. Use `--upgrade` to pick the latest versions.
 
-* `rig rtools` is now a top-level command (it used to be `rig system
-  rtools`).
+* `rig proj init`, `rig proj add` and `rig proj remove` have a new
+  `--script` option, to create and edit the `# /// script` block of an R
+  script, instead of a project's `rproj.toml` (#414).
 
-* On Windows, `R CMD config` now works without manually putting Rtools on
-  the `PATH`. So do `R CMD sh`, `R CMD make` and `rig run --cmd config`.
+* New `rig proj lock --script script.R` to lock the dependencies of a
+  script with a `# /// script` block into `script.R.lock`, next to the
+  script. `rig run` then installs the R and package versions of the lock
+  file, and updates it if the block changes. `rig run --locked` fails
+  instead of updating it (#422).
 
-## macOS specific
+* New `rig system script-assoc` command on Windows, to run `.R` files with
+  rig from `cmd` and PowerShell, e.g. `hello.R a b`.
 
-* `rig sysreqs` has been removed. It did not reliably set up a working
-  Fortran toolchain (#262). Install gfortran from
-  &lt;https://mac.r-project.org/tools> instead.
+## System requirements
+
+* `rig pkg install`, `rig proj sync` and `rig run` now install the system
+  requirements of R packages on Linux, like pak does. rig matches each
+  package's `SystemRequirements` field against the
+  [r-system-requirements](https://github.com/r-hub/r-system-requirements)
+  rules, and installs the missing OS packages if it runs as root or if
+  `sudo` needs no password. Otherwise it prints the commands to run.
+  Source packages and distribution-specific binaries need this, manylinux
+  binaries do not. `--no-sysreqs` turns this off for one run; the new
+  `sysreqs`, `sysreqs-sudo`, `sysreqs-update` and `sysreqs-rules-url`
+  config entries configure it; `sysreqs = "print"` only shows the commands.
+
+* `rproj.lock` now records the `SystemRequirements` of each package, so it
+  is version 5. Run `rig proj lock` to update an older lock file.
 
 ## Other new features
 
-* `rig add` no longer reinstalls a version that is already installed,
-  except for R-devel and R-next. Use `--reinstall` for force a re-install
-  (#293).
+* `rig add` now has a `--json` option. It prints information about the
+  installed R version (or the already installed version that was kept),
+  including whether it is a new installation and whether it is the default.
 
-* `rig add` can now install the R version an `renv.lock` file requires,
-  e.g. `rig add renv.lock` or `rig add path/to/renv.lock` (#294).
+* `rig rtools add` now has a `--json` option. It prints information about
+  the installed (or already installed) Rtools versions, including whether
+  each one is a new installation.
 
-* New `rig system blas` commands, to check and switch which BLAS/LAPACK
-  library an installed R version uses on macOS, e.g. to switch to Apple's
-  faster Accelerate/vecLib BLAS (#212).
+* New `rig pkg search` command to search CRAN packages, using the same
+  web service as the pkgsearch R package.
 
-* New `rig self update` to update rig, new `rig self uninstall` to remove
-  rig, if it was installed via the install script.
+* New `rig pkg doctor` command to find problems with the packages in a
+  library: missing or too old dependencies, and packages compiled against
+  another version of a `LinkingTo` dependency (#393).
 
-* New `rig cache` command to inspect and manage rig's download and build
-  caches. rig now reflinks or hardlinks packages from the cache when
-  possible, instead of copying them, to save disk space and time.
+* `rig proj` commands now support `path` dependencies.
 
-* New `rig ppm` command queries Posit Package Manager. New `rig ppm
-  build-log` shows the build log of a package on Posit Package Manager.
+* `rig pkg install <path>` is now supported. `<path>` can be a directory,
+  of a source or binary package file.
 
-* New `rig repos status` checks the configured package repositories.
+* `rig pkg install` now supports constraints. E.g. to install a specific
+  version of a package use `rig pkg install '<pkg>@=<ver>'`.
 
-* New `rig system fix-aliases` to update `R-release`, `R-oldrel` etc.
-  aliases (#234).
+* `rig proj import --force` now correctly overwrites the existing project
+  files.
 
-* `rig library add`, `rig library default`, `rig library list` and
-  `rig library rm` have a new `--r-version` (`-r`) option, to operate on
-  the libraries of an R version other than the default one.
+* If the root project is a package, `rig proj lock` now includes it in the
+  solution. It also calls `rig proj export` to (re)create its `DESCRIPTION`
+  file and `rig proj sync` now installs the root project if it is a
+  package.
 
-* New `rig system dirs` command to show the directories rig uses. With
-  `--r`, `--binary`, `--data`, `--cache`, `--download`, `--log`, `--rtools`
-  (Windows only) or `--fonts` (Linux only) it prints a single path, for use
-  in scripts.
+* `rig pkg install --no-install-project` installs only the dependencies of
+  the named packages, like `rig proj sync --no-install-project`.
 
-* New `rig config` command to manage the rig configuration file.
+* `rig proj lock` now rewrites the lock file if the list of R versions to
+  solve for changes.
 
-* `rig run --cmd &lt;command> [args...]` now runs `R CMD &lt;command> [args...]`
-  with the selected R version.
+* New `--exclude-newer` option for `rig proj lock`, `rig proj sync` and
+  `rig pkg install`, to ignore CRAN package versions published after a
+  date, e.g. `--exclude-newer 2025-06-01`, or in the last few days, e.g.
+  `--exclude-newer "7 days"`. Projects can set it in `rproj.toml`, with
+  `exclude-newer` in `[tool.rig]`.
 
-* `rig run -- &lt;flags>` now passes raw arguments straight to the R process,
-  e.g. `rig run -- --vanilla` or `rig run -e '1+1' -- --vanilla` (#249).
+* Projects and scripts can now set `prefer-binary` in `[tool.rig]`.
+  `rig proj init` and `rig proj import` have a new `--prefer-binary`
+  option, to write the setting into the manifest.
 
-* Plain `rig run` (i.e. without `-e`/`-f`/an app/`--cmd`) now defaults to
-  `--no-save --no-restore`, so it no longer shows the "Save workspace
-  image?" prompt on exit. Use `rig run -- --save --restore` to get the old
-  behavior back (#249).
+* `rig proj lock` now also solves for source packages by default
+  `rig proj sync` uses this target only if no other target matches the
+  machine.
 
-## Other changes
+* `rig run <script>` now passes every argument after the script on to the
+  script, including the ones starting with `-`, and `--`. A script that
+  starts with `#!`, e.g. `#!/usr/bin/env -S rig run`, does not need an
+  `.R` extension any more (#413).
 
-* `rig add --without-p3m` works correctly again (#369).
+* `rig run --rscript` does not pass an extra `--args` argument to scripts
+  and `-e` expressions any more, so `commandArgs(TRUE)` only has the
+  arguments you gave.
 
-* macOS user mode: `rig default` now sets the default R version correctly
-  for newer RStudio versions. Also, `rig system allow-debugger-rstudio`
-  now works for newer RStudio versions.
+## Windows specific changes
 
-* rig now uses a user-dependent download directory, to avoid interference
-  between users.
-
-* rig now does not edit the shell startup files in admin mode,
-  like rig 0.8.1 did on macOS. rig now only does this in user mode.
-
-* `rig repos available` now prints a compact table. New
-  `rig repos available &lt;name>` shows complete information about a single
-  repository.
-
-* `rig system setup-user-lib` (and its `create-lib` alias) now works again.
-
-* `rig rstudio --config-path` is now implemented on Linux and macOS.
-
-* rig now warns instead of failing when it encounters a broken R
-  installation (#346).
+* The rig binaries themselves are now signed on Windows, not only the
+  rig installer.
     </releaseNotes>
   </metadata>
 </package>

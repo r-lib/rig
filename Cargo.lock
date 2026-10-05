@@ -2126,7 +2126,7 @@ dependencies = [
 
 [[package]]
 name = "rig"
-version = "0.10.1-dev"
+version = "0.11.0-beta"
 dependencies = [
  "assert_cmd",
  "clap",

@@ -1,4 +1,4 @@
-# Development version
+# rig 0.11.0-beta
 
 ## Custom repositories
 
