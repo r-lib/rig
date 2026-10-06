@@ -12,16 +12,11 @@ use std::path::PathBuf;
 use std::time::Duration;
 use std::time::SystemTime;
 
-#[cfg(target_os = "windows")]
-use clap::ArgMatches;
-
 use filetime::FileTime;
 use log::*;
 use reqwest::StatusCode;
 
 use crate::output::OUTPUT;
-#[cfg(target_os = "windows")]
-use crate::resolve::get_resolve;
 #[cfg(target_os = "windows")]
 use crate::rversion::Rversion;
 use crate::utils::get_concurrent_downloads;
@@ -35,9 +30,10 @@ use crate::utils::*;
 // synchronous API
 // ------------------------------------------------------------------------
 
+// `etag` is the current ETag of an R-devel/R-next installer, see
+// `download_installer()`.
 #[cfg(target_os = "windows")]
-pub fn download_r(args: &ArgMatches) -> Result<(Rversion, OsString), Box<dyn Error>> {
-    let version = get_resolve(args)?;
+pub fn download_r(version: &Rversion, etag: Option<&str>) -> Result<OsString, Box<dyn Error>> {
     let version2 = version.to_owned();
     let ver = version2.version;
     let url: String = match &version.url {
@@ -61,28 +57,103 @@ pub fn download_r(args: &ArgMatches) -> Result<(Rversion, OsString), Box<dyn Err
     filename.push(version2.arch.unwrap_or("".to_string()));
     filename.push("-");
     filename.push(basename(&url).unwrap_or("foo"));
-    let filename_path = Path::new(&filename);
     let tmp_dir = crate::cache::ensure_download_dir()?;
     let target = tmp_dir.join(&filename);
-    if target.exists() && not_too_old(&target) {
-        OUTPUT.success(&format!(
-            "{} is cached at {}",
-            filename_path.display(),
-            target.display()
-        ));
-        info!(
-            "{} is cached at {}",
-            filename_path.display(),
-            target.display()
-        );
+    download_installer(&url, &target, etag)?;
+
+    Ok(target.into_os_string())
+}
+
+/// Download the R installer at `url` into `target`, or reuse the copy that
+/// is already there, if it is less than a day old.
+///
+/// `etag` is the current ETag of an R-devel/R-next installer (see
+/// [`get_etag_`]), `None` for other installers. R-devel/R-next are rebuilt
+/// daily under the same URL, so for these the copy is only reused if it was
+/// downloaded with the same ETag, which is kept in `<target>.etag`.
+pub fn download_installer(
+    url: &str,
+    target: &Path,
+    etag: Option<&str>,
+) -> Result<(), Box<dyn Error>> {
+    let filename = target
+        .file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let mut etag_path = target.as_os_str().to_os_string();
+    etag_path.push(".etag");
+    let etag_path = PathBuf::from(etag_path);
+    let same_build = match etag {
+        Some(etag) => read_etag_file(&etag_path).as_deref() == Some(etag),
+        None => true,
+    };
+    if target.exists() && crate::utils::not_too_old(&target.to_path_buf()) && same_build {
+        OUTPUT.success(&format!("{} is cached at {}", filename, target.display()));
+        info!("{} is cached at {}", filename, target.display());
     } else {
         OUTPUT.status(&format!("Downloading {} -> {}", url, target.display()));
         info!("Downloading {} -> {}", url, target.display());
         let client = &http_client();
-        download_file(client, &url, target.as_os_str())?;
+        download_file(client, url, target.as_os_str())?;
+        write_etag_file(&etag_path, etag);
     }
 
-    Ok((version, target.into_os_string()))
+    Ok(())
+}
+
+/// Read an ETag stored by [`write_etag_file`]. `None` if there is none.
+pub fn read_etag_file(path: &Path) -> Option<String> {
+    let etag = fs::read_to_string(path).ok()?;
+    let etag = etag.trim();
+    if etag.is_empty() {
+        None
+    } else {
+        Some(etag.to_string())
+    }
+}
+
+/// Store an ETag in `path`, or remove the stored one if `etag` is `None`.
+/// Best-effort: failing to store an ETag only means a re-download or a
+/// reinstall later.
+pub fn write_etag_file(path: &Path, etag: Option<&str>) {
+    let res = match etag {
+        Some(etag) => write_atomically(path, etag.as_bytes()),
+        None => match fs::remove_file(path) {
+            Err(err) if err.kind() != std::io::ErrorKind::NotFound => Err(err.into()),
+            _ => Ok(()),
+        },
+    };
+    if let Err(err) = res {
+        debug!("Cannot update ETag file {}: {}", path.display(), err);
+    }
+}
+
+/// The current ETag of `url`, from a `HEAD` request.
+///
+/// `None` if the server does not send one, or cannot be reached: then
+/// `rig add devel`/`rig add next` simply reinstall, and the actual download
+/// reports any network problem.
+#[tokio::main]
+pub async fn get_etag_(url: &str) -> Option<String> {
+    let client = http_client();
+    let resp = match client.head(url).send().await {
+        Ok(resp) => resp,
+        Err(err) => {
+            debug!("Cannot get the ETag of {}: {}", url, err);
+            return None;
+        }
+    };
+    if !resp.status().is_success() {
+        debug!("Cannot get the ETag of {}: HTTP {}", url, resp.status());
+        return None;
+    }
+    let etag = resp
+        .headers()
+        .get("etag")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    debug!("ETag of {} is {:?}", url, etag);
+    etag
 }
 
 #[tokio::main]

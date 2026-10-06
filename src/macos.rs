@@ -130,17 +130,21 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
     let mode = get_mode()?;
     let alias = get_alias(args);
     let reinstall = args.get_flag("reinstall");
-    // `devel`/`next` are rebuilt daily under the same directory name, so
-    // "already installed" never means "up to date" for them.
+    // `devel`/`next` are rebuilt daily under the same version number, so
+    // they are reinstalled, unless the installer's ETag says that the
+    // installed build is the current one. Everything else only matches an
+    // installed released version, never a devel/next build of the same
+    // version.
     let rolling = str == "devel" || str == "next";
+    let check_existing = !reinstall && !rolling;
 
     // Fast path: a fully pinned version's exact version number is already
     // known without resolving anything over the network (and, since pinned
     // versions never get an alias, without escalating privileges either).
-    if !reinstall && !rolling && is_pinned_version_string(str) {
+    if check_existing && is_pinned_version_string(str) {
         let platform = get_platform(args)?;
         let arch = get_arch(&platform, args);
-        if let Some(name) = find_installed_version_arch(str, &arch)? {
+        if let Some(name) = find_installed_version_arch(str, &arch, None)? {
             return report_already_installed(&name, alias_with_arch_suffix(alias, &arch));
         }
     }
@@ -154,10 +158,10 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
     // General check: for requests that don't pin a full version (`release`,
     // `oldrel(/n)`, bare/partial version numbers), the concrete version is
     // only known once resolved. Skip here if it's already installed.
-    if !reinstall && !rolling {
+    if check_existing {
         if let Some(ref v) = ver {
             let arch = version.arch.clone().unwrap_or_default();
-            if let Some(name) = find_installed_version_arch(v, &arch)? {
+            if let Some(name) = find_installed_version_arch(v, &arch, None)? {
                 return report_already_installed(&name, alias_with_arch_suffix(alias, &arch));
             }
         }
@@ -186,6 +190,19 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
         }
     };
     let arch = version.arch.to_owned();
+
+    let etag = if rolling { get_etag_(&url) } else { None };
+    if rolling && !reinstall && etag.is_some() {
+        if let (Some(v), Some(a)) = (&ver, &arch) {
+            if let Some(name) = find_installed_version_arch(v, a, Some(str))? {
+                if installed_etag_matches(&name, etag.as_deref()) {
+                    info!("The R-{} installer at {} has not changed", str, url);
+                    return report_already_installed(&name, alias_with_arch_suffix(alias, a));
+                }
+            }
+        }
+    }
+
     let prefix = match arch {
         Some(ref x) => x.to_owned(),
         None => calculate_hash(&url),
@@ -193,18 +210,8 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
     let filename = prefix + "-" + basename(&url).unwrap_or("foo");
     let tmp_dir = ensure_download_dir()?;
     let target = tmp_dir.join(&filename);
-    let cache = target.exists() && not_too_old(&target);
     let target_str = target.to_owned().into_os_string();
-    let target_dsp = target.display();
-    if cache {
-        OUTPUT.success(&format!("{} is cached at {}", filename, target_dsp));
-        info!("{} is cached at {}", filename, target_dsp);
-    } else {
-        OUTPUT.status(&format!("Downloading {} -> {}", url, target_dsp));
-        info!("Downloading {} -> {}", url, target_dsp);
-        let client = &http_client();
-        download_file(client, &url, &target_str)?;
-    }
+    download_installer(&url, &target, etag.as_deref())?;
 
     sc_system_forget()?;
 
@@ -236,6 +243,9 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
         safe_install(target, &dirname, arch)?;
         dirname
     };
+    if rolling {
+        record_installed_etag(&dirname, etag.as_deref());
+    }
 
     // This should not happen currently on macOS, a .pkg installer
     // sets the default, but prepare for the future
@@ -1175,7 +1185,7 @@ pub fn sc_system_fix_aliases(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             continue;
         };
 
-        match find_installed_version_arch(version, &arch)? {
+        match find_installed_version_arch(version, &arch, None)? {
             None => {
                 OUTPUT.warn(&format!(
                     "R-{} should point to R {} ({}), but it is not installed. Removing the stale alias.",
@@ -2465,10 +2475,13 @@ fn get_minor_version(ver: &str) -> Result<String, Box<dyn Error>> {
 // mode it only encodes the major.minor version, e.g. `4.3`, and can't tell
 // `4.3.2` from `4.3.3`; see `read_built_version_arch`), so this reads the
 // exact version and architecture every installed R actually reports,
-// regardless of what its directory happens to be named.
+// regardless of what its directory happens to be named. `kind` is the kind of
+// development build to look for (see `installed_dev_kind`), None for a
+// released version.
 fn find_installed_version_arch(
     version: &str,
     arch: &str,
+    kind: Option<&str>,
 ) -> Result<Option<String>, Box<dyn Error>> {
     // `get_arch()` and the resolver may say `aarch64`, while
     // `read_built_version_arch()` always says `arm64`.
@@ -2478,7 +2491,10 @@ fn find_installed_version_arch(
             continue;
         };
         if let Ok((installed_version, installed_arch)) = read_built_version_arch(Path::new(path)) {
-            if installed_version == version && installed_arch == arch {
+            if installed_version == version
+                && installed_arch == arch
+                && is_installed_dev_kind(&ver, kind)
+            {
                 return Ok(Some(ver.name));
             }
         }

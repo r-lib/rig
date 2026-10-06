@@ -26,7 +26,7 @@ use crate::linux::*;
 use crate::platform::*;
 
 use crate::alias::*;
-use crate::download::download_json_sync;
+use crate::download::{download_json_sync, read_etag_file, write_etag_file};
 use crate::output::OUTPUT;
 use crate::platform::{normalize_arch, parse_platform_string};
 use crate::renv;
@@ -62,17 +62,57 @@ pub fn check_installed(x: &String) -> Result<String, Box<dyn Error>> {
     bail!("R version {} is not installed", &x);
 }
 
+// The R home directory (`R.home()`) of the R installation at `path`, i.e.
+// the `path` of `rig list --json`: the directory itself on Windows and in
+// macOS user mode, `lib/R` under it on Linux, `Resources` under it in macOS
+// admin mode. Recognized by its `include/Rversion.h`.
+pub fn installed_r_home(path: &str) -> Option<PathBuf> {
+    ["", "lib/R", "Resources"]
+        .iter()
+        .map(|sub| Path::new(path).join(sub))
+        .find(|home| home.join("include").join("Rversion.h").is_file())
+}
+
+// The kind of development build the R installation at `path` is: `devel`,
+// `next`, or None for a released version (also if its `Rversion.h` cannot be
+// read). See `user_mode_dev_dirname`. `rig add` uses this so that `release`
+// or a version number never matches an installed devel/next build (which
+// report the same version number as the release they will become).
+pub fn installed_dev_kind(path: &str) -> Option<String> {
+    let home = installed_r_home(path)?;
+    let text = std::fs::read_to_string(home.join("include").join("Rversion.h")).ok()?;
+    let re = Regex::new(r#"(?m)^\s*#define\s+R_STATUS\s+"(.*)"\s*$"#).ok()?;
+    let status = re
+        .captures(&text)
+        .and_then(|caps| caps.get(1))
+        .map(|m| m.as_str().to_string())
+        .unwrap_or_default();
+    user_mode_dev_dirname(Some(&status))
+}
+
+// Whether `ver` is a development build of kind `kind` (`devel`/`next`), or
+// a released version if `kind` is None.
+pub fn is_installed_dev_kind(ver: &InstalledVersion, kind: Option<&str>) -> bool {
+    let actual = ver.path.as_deref().and_then(installed_dev_kind);
+    actual.as_deref() == kind
+}
+
 // Used by `rig add` to check whether `version` is already installed,
 // without erroring. Matches on the actual R version reported by each
 // installation (as `rig list` does), not on its directory name, since the
 // directory naming scheme is not guaranteed to encode the exact version
 // (e.g. macOS admin-mode directories only encode the major.minor version).
+// `kind` is the kind of development build to look for (see
+// `installed_dev_kind`), None for a released version.
 #[cfg(target_os = "linux")]
-pub fn find_installed_by_version(version: &str) -> Result<Option<String>, Box<dyn Error>> {
+pub fn find_installed_by_version(
+    version: &str,
+    kind: Option<&str>,
+) -> Result<Option<String>, Box<dyn Error>> {
     let inst = sc_get_list_details()?;
 
     for ver in inst {
-        if ver.version.as_deref() == Some(version) {
+        if ver.version.as_deref() == Some(version) && is_installed_dev_kind(&ver, kind) {
             return Ok(Some(ver.name));
         }
     }
@@ -82,7 +122,8 @@ pub fn find_installed_by_version(version: &str) -> Result<Option<String>, Box<dy
 
 // Same as `find_installed_by_version`, but also requires the candidate
 // directory name to be one of `names` (used on platforms where the version
-// alone doesn't disambiguate installs of different architectures).
+// alone doesn't disambiguate installs of different architectures). Only
+// released versions match, never a devel/next build of the same version.
 #[cfg(target_os = "windows")]
 pub fn find_installed_matching(
     names: &[String],
@@ -91,12 +132,46 @@ pub fn find_installed_matching(
     let inst = sc_get_list_details()?;
 
     for ver in inst {
-        if names.iter().any(|n| n == &ver.name) && ver.version.as_deref() == Some(version) {
+        if names.iter().any(|n| n == &ver.name)
+            && ver.version.as_deref() == Some(version)
+            && is_installed_dev_kind(&ver, None)
+        {
             return Ok(Some(ver.name));
         }
     }
 
     Ok(None)
+}
+
+// `rig add devel`/`rig add next`: R-devel and R-next are rebuilt daily under
+// the same URL and version number, so the version number cannot tell whether
+// the installed build is the current one. The installer's ETag can: `rig add`
+// stores it in `R_HOME/etc/etag` after installing such a build. This is the
+// path of that file for the installed R version `name`.
+fn installed_etag_file(name: &str) -> Option<PathBuf> {
+    let ver = get_r_version_data(name, &[]).ok()?;
+    Some(
+        installed_r_home(ver.path.as_deref()?)?
+            .join("etc")
+            .join("etag"),
+    )
+}
+
+// Whether the installed R version `name` was installed from the installer
+// with ETag `etag`, the installer's current ETag. See `installed_etag_file`.
+pub fn installed_etag_matches(name: &str, etag: Option<&str>) -> bool {
+    match (etag, installed_etag_file(name)) {
+        (Some(etag), Some(path)) => read_etag_file(&path).as_deref() == Some(etag),
+        _ => false,
+    }
+}
+
+// Record the ETag of the R-devel/R-next installer `rig add` just installed
+// as `name`, see `installed_etag_file`.
+pub fn record_installed_etag(name: &str, etag: Option<&str>) {
+    if let Some(path) = installed_etag_file(name) {
+        write_etag_file(&path, etag);
+    }
 }
 
 // What `rig add` did: the name of the R version it installed, or of the
@@ -1307,6 +1382,60 @@ mod tests {
             user_mode_dev_dirname(Some("Prerelease")),
             Some("next".to_string())
         );
+    }
+
+    #[test]
+    fn test_installed_dev_kind() {
+        let write = |rel: &str, status: &str| {
+            let dir = tempfile::tempdir().unwrap();
+            let header = dir.path().join(rel);
+            std::fs::create_dir_all(header.parent().unwrap()).unwrap();
+            std::fs::write(&header, format!("#define R_STATUS \"{}\"\n", status)).unwrap();
+            dir
+        };
+        let kind = |dir: &tempfile::TempDir| installed_dev_kind(dir.path().to_str().unwrap());
+
+        let d = write("include/Rversion.h", "");
+        assert_eq!(kind(&d), None);
+        let d = write("lib/R/include/Rversion.h", "Under development (unstable)");
+        assert_eq!(kind(&d), Some("devel".to_string()));
+        let d = write("Resources/include/Rversion.h", "RC");
+        assert_eq!(kind(&d), Some("next".to_string()));
+
+        let empty = tempfile::tempdir().unwrap();
+        assert_eq!(kind(&empty), None);
+    }
+
+    #[test]
+    fn test_installed_r_home() {
+        for sub in ["", "lib/R", "Resources"] {
+            let dir = tempfile::tempdir().unwrap();
+            let home = dir.path().join(sub);
+            std::fs::create_dir_all(home.join("include")).unwrap();
+            std::fs::write(home.join("include").join("Rversion.h"), "").unwrap();
+            assert_eq!(
+                installed_r_home(dir.path().to_str().unwrap()),
+                Some(dir.path().join(sub))
+            );
+        }
+        let empty = tempfile::tempdir().unwrap();
+        assert_eq!(installed_r_home(empty.path().to_str().unwrap()), None);
+    }
+
+    #[test]
+    fn test_etag_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("etc").join("etag");
+        assert_eq!(read_etag_file(&path), None);
+        write_etag_file(&path, Some("\"6ac2d33a-63f2aa6\""));
+        assert_eq!(
+            read_etag_file(&path).as_deref(),
+            Some("\"6ac2d33a-63f2aa6\"")
+        );
+        write_etag_file(&path, None);
+        assert!(!path.exists());
+        // removing a missing file is fine
+        write_etag_file(&path, None);
     }
 
     #[test]

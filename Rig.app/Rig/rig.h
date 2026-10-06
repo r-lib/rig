@@ -9,7 +9,7 @@
  */
 #define FORMAT_VERSION 1
 
-#define RPROJ_LOCK_VERSION 6
+#define RPROJ_LOCK_VERSION 7
 
 /**
  * How many of the newest versions of a package `--prefer-binary` (and

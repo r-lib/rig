@@ -368,17 +368,21 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
 
     let alias = get_alias(args);
     let reinstall = args.get_flag("reinstall");
-    // `devel`/`next` are rebuilt daily under the same directory name, so
-    // "already installed" never means "up to date" for them.
+    // `devel`/`next` are rebuilt daily under the same version number, so
+    // they are reinstalled, unless the installer's ETag says that the
+    // installed build is the current one. Everything else only matches an
+    // installed released version, never a devel/next build of the same
+    // version.
     let rolling = str == "devel" || str == "next";
     let is_rtools = str.len() >= 6 && &str[0..6] == "rtools";
+    let check_existing = !reinstall && !rolling && !is_rtools;
 
     // Fast path: a fully pinned version's install directory name is
     // deterministic from the version and arch alone, so we can check
     // whether it's already installed before resolving anything over the
     // network (and, since pinned versions never get an alias, without
     // escalating privileges either).
-    if !reinstall && !rolling && !is_rtools && is_pinned_version_string(str) {
+    if check_existing && is_pinned_version_string(str) {
         let platform = get_platform(args)?;
         let arch = get_arch(&platform, args);
         let candidate = rig_name_for_arch(str, &arch);
@@ -408,26 +412,43 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
     // `oldrel(/n)`, bare/partial version numbers), the concrete version is
     // only known once resolved. Skip here if it's already installed, before
     // downloading the installer.
-    if !reinstall && !rolling {
-        let version = get_resolve(args)?;
-        if let Some(ref v) = version.version {
-            let arch = version
-                .arch
-                .clone()
-                .unwrap_or_else(|| get_native_arch().to_string());
-            let candidate = rig_name_for_arch(v, &arch);
-            if let Some(name) = find_installed_matching(&[candidate], v)? {
-                return report_already_installed(&name, alias_with_arch_suffix(alias, &arch));
-            }
-        }
-    }
-
-    let (version_info, target) = download_r(args)?;
-    let target_for_cleanup = std::path::PathBuf::from(&target);
+    let version_info = get_resolve(args)?;
     let installed_arch = version_info
         .arch
         .clone()
         .unwrap_or_else(|| get_native_arch().to_string());
+    if check_existing {
+        if let Some(ref v) = version_info.version {
+            let candidate = rig_name_for_arch(v, &installed_arch);
+            if let Some(name) = find_installed_matching(&[candidate], v)? {
+                return report_already_installed(
+                    &name,
+                    alias_with_arch_suffix(alias, &installed_arch),
+                );
+            }
+        }
+    }
+
+    let etag = match (rolling, &version_info.url) {
+        (true, Some(url)) => get_etag_(url),
+        _ => None,
+    };
+    if rolling && !reinstall && etag.is_some() {
+        if let (Some(url), Some(v)) = (&version_info.url, &version_info.version) {
+            if let Some(name) = find_installed_dev_build(str, v, &installed_arch)? {
+                if installed_etag_matches(&name, etag.as_deref()) {
+                    info!("The R-{} installer at {} has not changed", str, url);
+                    return report_already_installed(
+                        &name,
+                        alias_with_arch_suffix(alias, &installed_arch),
+                    );
+                }
+            }
+        }
+    }
+
+    let target = download_r(&version_info, etag.as_deref())?;
+    let target_for_cleanup = std::path::PathBuf::from(&target);
     let target_path = Path::new(&target);
 
     OUTPUT.status(&format!("Installing {}", target_path.display()));
@@ -521,6 +542,11 @@ pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
             }
         }
     };
+    if rolling {
+        if let Some(ref dirname) = dirname {
+            record_installed_etag(dirname, etag.as_deref());
+        }
+    }
 
     crate::cache::remove_download_if_no_cache(&target_for_cleanup);
 
@@ -1638,6 +1664,28 @@ fn fix_next_alias(al: &Alias, platform: &str, arch: &str) -> Result<(), Box<dyn 
     ));
     remove_alias(&al.alias)?;
     Ok(())
+}
+
+// Used by `rig add devel`/`rig add next`: find the installed devel/next
+// (`kind`) build of `version` and `arch`. Unlike for released versions, the
+// directory name is not known in advance (`devel`/`next` in user mode, the
+// installer's choice in admin mode), so this goes by R_STATUS and the arch
+// suffix of the name instead.
+fn find_installed_dev_build(
+    kind: &str,
+    version: &str,
+    arch: &str,
+) -> Result<Option<String>, Box<dyn Error>> {
+    let suffixed = !rig_name_for_arch("", arch).is_empty();
+    for ver in sc_get_list_details()? {
+        if ver.name.ends_with("-x86_64") == suffixed
+            && ver.version.as_deref() == Some(version)
+            && is_installed_dev_kind(&ver, Some(kind))
+        {
+            return Ok(Some(ver.name));
+        }
+    }
+    Ok(None)
 }
 
 fn is_current_next_build(install_dir: &Path, resolved_version: &str) -> bool {
