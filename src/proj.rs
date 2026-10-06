@@ -7469,9 +7469,13 @@ mod tests {
     #[test]
     fn project_entry_fresh_requires_the_file_url_source() {
         let alias = self_alias("mypkg", "1.0.0", &[]);
-        let root = Path::new("/tmp/mypkg");
+        // Must be absolute on every platform (`/tmp/mypkg` is not, on
+        // Windows), otherwise there is no `file://` URL to compare.
+        let root_buf = std::env::temp_dir().join("mypkg");
+        let root = root_buf.as_path();
         let mut t = target("4.6.1", "testos");
         t.packages = vec![project_lock_package(&alias, root, Some("sha"))];
+        assert!(!t.packages[0].sources.is_empty());
         let sha = "sha".to_string();
         assert!(project_entry_fresh(&t, Some(&alias), root, Some(&sha)));
         // A lock written before `sources` was recorded.
