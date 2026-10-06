@@ -20,6 +20,13 @@ type RPackageName = String;
 /// package is unknown.
 pub trait PackageVersionLoader: Send {
     fn load_versions(&self, package: &str) -> Result<Vec<crate::dcf::Package>, Box<dyn Error>>;
+
+    /// The `OS_type` of `package`, if [`Self::load_versions`] found no
+    /// version of it only because they do not work on the OS of the solve.
+    /// For the message about the missing package.
+    fn os_type_hidden(&self, _package: &str) -> Option<String> {
+        None
+    }
 }
 
 /// Which artifact of a package version gets installed.
@@ -483,6 +490,10 @@ pub struct RPackageRegistry {
     // version share it. Never read by the solver itself, only by the lockfile
     // writer, see `RprojLockTarget::from_solution`.
     system_requirements: RefCell<HashMap<(RPackageName, RPackageVersion), String>>,
+    // The `OS_type` of every package version that has one, for the
+    // lockfile, like `system_requirements`, so that `rig proj sync` can skip
+    // the packages of a source-only lock that do not work on its OS.
+    os_type: RefCell<HashMap<(RPackageName, RPackageVersion), String>>,
     // How many newest binaries win. Can be None.
     prefer_binary: Option<usize>,
     // Passed over newer version that does not have a binary.
@@ -773,6 +784,33 @@ impl RPackageRegistry {
             .cloned()
     }
 
+    /// The message about `pkg` having no versions because they only work on
+    /// another OS, according to their `OS_type`.
+    fn os_type_hint(&self, pkg: &RPackageName) -> Option<String> {
+        let os_type = self.loader.as_ref()?.os_type_hidden(pkg)?;
+        Some(format!(
+            "Package {} only works on {} (OS_type: {}).",
+            pkg,
+            crate::dcf::describe_os_type(&os_type),
+            os_type
+        ))
+    }
+
+    /// Record the `OS_type` of `pkg` `version`.
+    pub fn set_os_type(&self, pkg: &RPackageName, version: &RPackageVersion, os_type: String) {
+        self.os_type
+            .borrow_mut()
+            .insert((pkg.clone(), version.clone()), os_type);
+    }
+
+    /// The `OS_type` of `pkg` `version`, when it has one.
+    pub fn os_type(&self, pkg: &RPackageName, version: &RPackageVersion) -> Option<String> {
+        self.os_type
+            .borrow()
+            .get(&(pkg.clone(), version.clone()))
+            .cloned()
+    }
+
     pub fn add_package_version(
         &self,
         pkg: RPackageName,
@@ -882,6 +920,9 @@ impl RPackageRegistry {
                         }
                         if let Some(sysreqs) = &package.system_requirements {
                             self.set_system_requirements(pkg, &package.version, sysreqs.clone());
+                        }
+                        if let Some(os_type) = &package.os_type {
+                            self.set_os_type(pkg, &package.version, os_type.clone());
                         }
                         self.add_package_version(pkg.clone(), src, ranges.clone());
                         for bin in artifacts.binaries.iter().filter(|b| {
@@ -1192,6 +1233,9 @@ pub fn format_solver_error(err: PubGrubError<RPackageRegistry>, reg: &RPackageRe
             package,
             source: ProviderError::UnknownPackage,
         } => {
+            if let Some(hint) = reg.os_type_hint(&package) {
+                return format!("  {}", hint);
+            }
             if let Some(repo) = reg.pinned.get(&package) {
                 return format!(
                     "  Package {} is not available in {}, the repository it is pinned to.",
@@ -1221,6 +1265,11 @@ pub fn format_solver_error(err: PubGrubError<RPackageRegistry>, reg: &RPackageRe
     let mut hints: Vec<String> = Vec::new();
     for (pkg, range) in requirements {
         if is_base_package(pkg) || reg.is_local(pkg) || hinted.contains(pkg) {
+            continue;
+        }
+        if let Some(hint) = reg.os_type_hint(pkg) {
+            hinted.insert(pkg);
+            hints.push(hint);
             continue;
         }
         let Some((below, above)) = reg.nearest_versions(pkg, range) else {
@@ -1606,6 +1655,37 @@ mod tests {
             msg.contains("Package nope is not available on CRAN or Bioconductor 3.23."),
             "{}",
             msg
+        );
+    }
+
+    /// A loader with no versions of `RDesk`, because it only works on
+    /// Windows.
+    struct WindowsOnlySource;
+
+    impl PackageVersionLoader for WindowsOnlySource {
+        fn load_versions(
+            &self,
+            _package: &str,
+        ) -> Result<Vec<crate::dcf::Package>, Box<dyn Error>> {
+            Ok(vec![])
+        }
+
+        fn os_type_hidden(&self, package: &str) -> Option<String> {
+            (package == "RDesk").then(|| "windows".to_string())
+        }
+    }
+
+    #[test]
+    fn a_package_of_another_os_names_its_os_type() {
+        let reg = RPackageRegistry::with_loaders(Box::new(WindowsOnlySource), None)
+            .with_repo_description(Some("CRAN".to_string()), HashMap::new());
+        let root = RegistryPackageVersion::new("_project", "1.0.0").unwrap();
+        reg.add_package_version("_project".to_string(), root.clone(), ranges("RDesk"));
+        let err = resolve(&reg, "_project".to_string(), root).unwrap_err();
+        let msg = format_solver_error(err, &reg);
+        assert_eq!(
+            msg,
+            "  Package RDesk only works on Windows (OS_type: windows)."
         );
     }
 

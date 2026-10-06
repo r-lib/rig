@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
@@ -478,6 +479,13 @@ pub struct DbSourcePackageLoader {
     exclude_newer: Option<String>,
     /// The repositories each package may come from, see [`RepoFilter`].
     filter: RepoFilter,
+    /// The OS the solve is for: versions whose `OS_type` does not work on
+    /// it are hidden from the solver. `None` keeps every version, e.g. for a
+    /// source-only lock, which may be installed on any OS.
+    os_type: Option<OsType>,
+    /// The packages `os_type` hid every version of, with their `OS_type`,
+    /// see [`PackageVersionLoader::os_type_hidden`].
+    os_type_hidden: RefCell<HashMap<String, String>>,
 }
 
 impl DbSourcePackageLoader {
@@ -499,6 +507,8 @@ impl DbSourcePackageLoader {
             repos: repos.iter().map(|r| r.repo_id()).collect(),
             exclude_newer: None,
             filter: RepoFilter::default(),
+            os_type: None,
+            os_type_hidden: RefCell::new(HashMap::new()),
         })
     }
 
@@ -518,6 +528,8 @@ impl DbSourcePackageLoader {
             repos: keys.iter().map(|(_, repo)| repo.clone()).collect(),
             exclude_newer: None,
             filter: RepoFilter::default(),
+            os_type: None,
+            os_type_hidden: RefCell::new(HashMap::new()),
         }
     }
 
@@ -525,6 +537,13 @@ impl DbSourcePackageLoader {
     /// [`crate::exclude_newer`]. `None` keeps every version.
     pub fn with_exclude_newer(mut self, cutoff: Option<String>) -> Self {
         self.exclude_newer = cutoff;
+        self
+    }
+
+    /// Hide the versions that do not work on `os_type`, according to their
+    /// `OS_type` field. `None` keeps every version.
+    pub fn with_os_type(mut self, os_type: Option<OsType>) -> Self {
+        self.os_type = os_type;
         self
     }
 
@@ -631,6 +650,7 @@ impl PackageVersionLoader for DbSourcePackageLoader {
             system_requirements: Option<String>,
             // Only for a CRAN-like repository, to reinstall a newer build.
             built: Option<String>,
+            os_type: Option<String>,
             repo: RepoId,
             rank: usize,
         }
@@ -639,9 +659,11 @@ impl PackageVersionLoader for DbSourcePackageLoader {
         // CRAN-like `PACKAGES` file, e.g. CRAN's own, usually does not have
         // them, so a version from there takes them from P3M's metadata.
         let mut sysreqs_any: HashMap<String, String> = HashMap::new();
+        // The `OS_type` of a version hidden because of it, if any.
+        let mut hidden_os_type: Option<String> = None;
         let mut stmt = self.conn.prepare_cached(
             "SELECT version, dependencies, sha256sum, repo_id, download_url, \
-             system_requirements, built FROM packages WHERE name = ?1",
+             system_requirements, built, os_type FROM packages WHERE name = ?1",
         )?;
         let rows = stmt.query_map(params![package], |row| {
             Ok((
@@ -652,13 +674,21 @@ impl PackageVersionLoader for DbSourcePackageLoader {
                 row.get::<_, Option<String>>(4)?,
                 row.get::<_, Option<String>>(5)?,
                 row.get::<_, Option<String>>(6)?,
+                row.get::<_, Option<String>>(7)?,
             ))
         })?;
         for row in rows {
-            let (ver, deps_json, sha256sum, repo_id, download_url, sysreqs, built) = row?;
+            let (ver, deps_json, sha256sum, repo_id, download_url, sysreqs, built, os_type) = row?;
             let Some((rank, repo)) = self.repo_of(repo_id) else {
                 continue; // row from a repo we do not source from
             };
+            if self
+                .os_type
+                .is_some_and(|os| !os.allows(os_type.as_deref()))
+            {
+                hidden_os_type = os_type;
+                continue; // does not work on the target OS
+            }
             if !published_by(download_url.as_deref(), self.exclude_newer.as_deref()) {
                 continue; // published after the --exclude-newer cutoff
             }
@@ -679,6 +709,7 @@ impl PackageVersionLoader for DbSourcePackageLoader {
                     download_url,
                     system_requirements: sysreqs,
                     built: built.filter(|_| repo.is_cranlike()),
+                    os_type,
                     repo: repo.clone(),
                     rank,
                 },
@@ -698,10 +729,20 @@ impl PackageVersionLoader for DbSourcePackageLoader {
             pkg.system_requirements = row
                 .system_requirements
                 .or_else(|| sysreqs_any.get(&ver).cloned());
+            pkg.os_type = row.os_type;
             pkg.repository = Some(row.repo);
             out.push(pkg);
         }
+        if let (true, Some(os_type)) = (out.is_empty(), hidden_os_type) {
+            self.os_type_hidden
+                .borrow_mut()
+                .insert(package.to_string(), os_type);
+        }
         Ok(out)
+    }
+
+    fn os_type_hidden(&self, package: &str) -> Option<String> {
+        self.os_type_hidden.borrow().get(package).cloned()
     }
 }
 
@@ -795,13 +836,14 @@ pub fn allpackages_versions(package: &str) -> Result<Vec<AllPackagesVersion>, Bo
 pub fn all_available_packages(
     repos: &[PkgRepo],
     include_archived: bool,
+    os_type: Option<OsType>,
 ) -> Result<Vec<Package>, Box<dyn Error>> {
     let repos = ensure_repos_fresh(repos)?;
     let conn = open_metadata_db()?;
 
     let mut best: HashMap<String, (RPackageVersion, String, RepoId)> = HashMap::new();
     for repo in &repos {
-        let feed_best = feed_latest_packages(&conn, &source_index_key(repo))?;
+        let feed_best = feed_latest_packages(&conn, &source_index_key(repo), os_type)?;
         let archived = match repo {
             PkgRepo::Extended(feed) if !include_archived => {
                 feed_archived_names(&conn, &feed.archived_url)?
@@ -833,16 +875,17 @@ pub fn all_available_packages(
 }
 
 /// `name -> (latest version, dependencies JSON)` of the ALLPACKAGES feed at
-/// `url`.
+/// `url`, of the versions that work on `os_type`, if given.
 fn feed_latest_packages(
     conn: &Connection,
     url: &str,
+    os_type: Option<OsType>,
 ) -> Result<HashMap<String, (RPackageVersion, String)>, Box<dyn Error>> {
     let repo_ids = source_repo_ids(conn, url, "source")?;
     let mut best: HashMap<String, (RPackageVersion, String)> = HashMap::new();
     let placeholders = repo_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
     let sql = format!(
-        "SELECT name, version, dependencies FROM packages WHERE repo_id IN ({})",
+        "SELECT name, version, dependencies, os_type FROM packages WHERE repo_id IN ({})",
         placeholders
     );
     let mut stmt = conn.prepare(&sql)?;
@@ -855,10 +898,14 @@ fn feed_latest_packages(
             row.get::<_, String>(0)?,
             row.get::<_, String>(1)?,
             row.get::<_, String>(2)?,
+            row.get::<_, Option<String>>(3)?,
         ))
     })?;
     for row in rows {
-        let (name, ver, deps_json) = row?;
+        let (name, ver, deps_json, pkg_os_type) = row?;
+        if os_type.is_some_and(|os| !os.allows(pkg_os_type.as_deref())) {
+            continue;
+        }
         let version = RPackageVersion::from_str(&ver)?;
         match best.get(&name) {
             Some((best_version, _)) if *best_version >= version => {}
@@ -1581,6 +1628,7 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
         "Filesize",
         "SHA256Original",
         "SystemRequirements",
+        "OS_type",
     ];
     let mut cols: HashMap<&str, Vec<Arc<str>>> = HashMap::new();
     let nacol: Vec<Arc<str>> = vec!["NA".into(); dim.0];
@@ -1629,6 +1677,7 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
         let filesize = cols.get("Filesize").unwrap()[i].clone();
         let sha256sum = cols.get("SHA256Original").unwrap()[i].clone();
         let system_requirements = cols.get("SystemRequirements").unwrap()[i].clone();
+        let os_type = cols.get("OS_type").unwrap()[i].clone();
 
         let pkg = Package {
             name: name.to_string(),
@@ -1651,6 +1700,7 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
             archived: None,
             repository: None,
             system_requirements: normalize_system_requirements(&system_requirements),
+            os_type: normalize_os_type(&os_type),
         };
         packages.push(pkg);
     }
@@ -1712,31 +1762,34 @@ fn ensure_db_schema(db_path: &PathBuf) -> Result<(), Box<dyn Error>> {
             sha256sum TEXT,
             repo_id INTEGER NOT NULL,
             system_requirements TEXT,
+            os_type TEXT,
             FOREIGN KEY (repo_id) REFERENCES repos(id)
         )",
         [],
     )?;
 
-    // Databases created before rig stored `SystemRequirements` lack the
-    // column. Their rows have no system requirements, so after adding it,
+    // Databases created before rig stored `SystemRequirements` or `OS_type`
+    // lack the column. Their rows have no value for it, so after adding it,
     // forget every repo's cache state: the next lookup then downloads and
     // parses each feed again, in full, instead of a trailing-only refresh
     // that would only fill in the new rows.
-    match conn.execute(
-        "ALTER TABLE packages ADD COLUMN system_requirements TEXT",
-        [],
-    ) {
-        Ok(_) => {
-            info!("Added system_requirements column, invalidating cached metadata");
-            conn.execute(
-                "UPDATE repos SET etag = NULL, parsed_len = NULL, tail_hash = NULL,
-                 last_updated = '1970-01-01 00:00:00'",
-                [],
-            )?;
-        }
-        Err(e) => {
-            if !e.to_string().contains("duplicate column") {
-                return Err(e.into());
+    for column in ["system_requirements", "os_type"] {
+        match conn.execute(
+            &format!("ALTER TABLE packages ADD COLUMN {} TEXT", column),
+            [],
+        ) {
+            Ok(_) => {
+                info!("Added {} column, invalidating cached metadata", column);
+                conn.execute(
+                    "UPDATE repos SET etag = NULL, parsed_len = NULL, tail_hash = NULL,
+                     last_updated = '1970-01-01 00:00:00'",
+                    [],
+                )?;
+            }
+            Err(e) => {
+                if !e.to_string().contains("duplicate column") {
+                    return Err(e.into());
+                }
             }
         }
     }
@@ -1880,8 +1933,8 @@ fn save_packages_to_db(
         "INSERT INTO packages
          (name, version, dependencies, download_url, file, path, built,
           license, platform, arch, graphics_api_version, internals_id, filesize,
-          sha256sum, repo_id, system_requirements)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+          sha256sum, repo_id, system_requirements, os_type)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
     )?;
 
     for pkg in packages {
@@ -1908,6 +1961,7 @@ fn save_packages_to_db(
             &pkg.sha256sum,
             repo_id,
             &pkg.system_requirements,
+            &pkg.os_type,
         ])?;
     }
 
@@ -2268,6 +2322,144 @@ DownloadURL: https://p3m.dev/cran/2020-01-09/src/contrib/cli_2.0.1.tar.gz
             None,
         )
         .unwrap();
+    }
+
+    #[test]
+    fn loader_filters_by_os_type() {
+        let url = "https://example.com/cran/ALLPACKAGES.zst";
+        let mut db = std::env::temp_dir();
+        db.push(format!("rig-test-os-type-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&db);
+        ensure_db_schema(&db).unwrap();
+        store_feed(
+            &db,
+            url,
+            "\
+Package: unixonly
+Version: 1.0.0
+OS_type: unix
+
+Package: winonly
+Version: 1.0.0
+OS_type: windows
+
+Package: plain
+Version: 1.0.0
+",
+        );
+
+        let names = |os_type: Option<OsType>| {
+            let loader =
+                DbSourcePackageLoader::from_conn(open_db(&db).unwrap(), &[(url, RepoId::Cran)])
+                    .with_os_type(os_type);
+            ["unixonly", "winonly", "plain"]
+                .into_iter()
+                .filter(|name| !loader.load_versions(name).unwrap().is_empty())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(names(None), vec!["unixonly", "winonly", "plain"]);
+        assert_eq!(names(Some(OsType::Unix)), vec!["unixonly", "plain"]);
+        assert_eq!(names(Some(OsType::Windows)), vec!["winonly", "plain"]);
+
+        // The loader remembers why a package has no versions, for the error.
+        let loader =
+            DbSourcePackageLoader::from_conn(open_db(&db).unwrap(), &[(url, RepoId::Cran)])
+                .with_os_type(Some(OsType::Unix));
+        assert!(loader.load_versions("winonly").unwrap().is_empty());
+        assert!(loader.load_versions("nosuch").unwrap().is_empty());
+        assert_eq!(loader.os_type_hidden("winonly").as_deref(), Some("windows"));
+        assert_eq!(loader.os_type_hidden("nosuch"), None);
+        assert_eq!(loader.os_type_hidden("plain"), None);
+
+        // The loaded version keeps its `OS_type`, for the lockfile.
+        let loader =
+            DbSourcePackageLoader::from_conn(open_db(&db).unwrap(), &[(url, RepoId::Cran)]);
+        let pkg = loader.load_versions("winonly").unwrap().remove(0);
+        assert_eq!(pkg.os_type.as_deref(), Some("windows"));
+
+        let conn = open_db(&db).unwrap();
+        let latest = |os_type| {
+            let mut names: Vec<String> = feed_latest_packages(&conn, url, os_type)
+                .unwrap()
+                .into_keys()
+                .collect();
+            names.sort();
+            names
+        };
+        assert_eq!(latest(None), vec!["plain", "unixonly", "winonly"]);
+        assert_eq!(latest(Some(OsType::Unix)), vec!["plain", "unixonly"]);
+        assert_eq!(latest(Some(OsType::Windows)), vec!["plain", "winonly"]);
+
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
+    fn adding_os_type_column_invalidates_cached_metadata() {
+        let mut db = std::env::temp_dir();
+        db.push(format!(
+            "rig-test-os-type-migration-{}.db",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&db);
+        // A database from before rig stored `OS_type`.
+        {
+            let conn = open_db(&db).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE repos (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    url TEXT NOT NULL,
+                    pkg_type TEXT NOT NULL,
+                    r_version TEXT,
+                    path TEXT NOT NULL,
+                    etag TEXT,
+                    last_updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    parsed_len INTEGER,
+                    tail_hash TEXT
+                );
+                CREATE TABLE packages (
+                    name TEXT NOT NULL,
+                    version TEXT NOT NULL,
+                    dependencies TEXT NOT NULL,
+                    download_url TEXT,
+                    file TEXT,
+                    path TEXT,
+                    built TEXT,
+                    license TEXT,
+                    platform TEXT,
+                    arch TEXT,
+                    graphics_api_version TEXT,
+                    internals_id TEXT,
+                    filesize INTEGER,
+                    sha256sum TEXT,
+                    repo_id INTEGER NOT NULL,
+                    system_requirements TEXT
+                );
+                INSERT INTO repos (url, pkg_type, path, etag, parsed_len, tail_hash)
+                VALUES ('https://example.com', 'source', 'ALLPACKAGES', 'abc', 10, 'h');",
+            )
+            .unwrap();
+        }
+        ensure_db_schema(&db).unwrap();
+
+        let conn = open_db(&db).unwrap();
+        let (etag, parsed_len): (Option<String>, Option<i64>) = conn
+            .query_row("SELECT etag, parsed_len FROM repos", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(etag, None);
+        assert_eq!(parsed_len, None);
+        conn.prepare("SELECT os_type FROM packages").unwrap();
+
+        // A second run finds the column and keeps the cache state.
+        conn.execute("UPDATE repos SET etag = 'def'", []).unwrap();
+        ensure_db_schema(&db).unwrap();
+        let etag: Option<String> = conn
+            .query_row("SELECT etag FROM repos", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(etag.as_deref(), Some("def"));
+
+        let _ = std::fs::remove_file(&db);
     }
 
     #[test]

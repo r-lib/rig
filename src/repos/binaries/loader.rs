@@ -67,6 +67,11 @@ impl BinaryTarget {
     pub fn name(&self) -> String {
         self.triple.clone()
     }
+
+    /// The OS family of the target, to filter packages by their `OS_type`.
+    pub fn os_type(&self) -> crate::dcf::OsType {
+        crate::dcf::OsType::from_rig_os(&self.platform)
+    }
 }
 
 /// A [`BinaryIndexLoader`] backed by the P3M per-package indices of one or

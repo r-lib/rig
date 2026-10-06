@@ -247,4 +247,5 @@ Package {
     archived: None,
     repository: None,
     system_requirements: None,
+    os_type: None,
 }

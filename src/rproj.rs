@@ -2792,6 +2792,12 @@ pub struct RprojLockPackage {
     /// matter, see [`lock_needs_system_requirements`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub system_requirements: Option<String>,
+    /// The package's `OS_type`, `unix` or `windows`, if it only works on
+    /// that OS. `rig proj sync` skips it on the other OS. This matters for a
+    /// source-only target, which may be installed anywhere; the solve of a
+    /// platform's target already left out the packages of the other OS.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub os_type: Option<String>,
 }
 
 /// Whether a lockfile entry records its `SystemRequirements`.
@@ -2914,6 +2920,7 @@ impl RprojLockTarget {
                     is_project: false,
                     repository: None,
                     system_requirements,
+                    os_type: registry.os_type(k, &v.version),
                 });
                 continue;
             }
@@ -3009,6 +3016,7 @@ impl RprojLockTarget {
                     .filter(|r| *r != RepoId::Cran)
                     .map(|r| r.to_string()),
                 system_requirements,
+                os_type: registry.os_type(k, &v.version),
             });
         }
 
@@ -3224,6 +3232,7 @@ mod tests {
             is_project: false,
             repository: None,
             system_requirements: None,
+            os_type: None,
         }
     }
 
@@ -3373,6 +3382,30 @@ mod tests {
             parsed.targets[0].packages[0].metadata.get("RemoteSha"),
             Some(&"abc123".to_string())
         );
+    }
+
+    #[test]
+    fn os_type_roundtrips_and_is_omitted_when_unset() {
+        let mut rdesk = sample_package();
+        rdesk.package = "RDesk".to_string();
+        rdesk.os_type = Some("windows".to_string());
+        let lock = RprojLock {
+            version: RPROJ_LOCK_VERSION,
+            tool: Default::default(),
+            targets: vec![RprojLockTarget {
+                r_version: "4.6".to_string(),
+                platform: "source".to_string(),
+                direct_dependencies: vec![],
+                bioc_version: None,
+                packages: vec![sample_package(), rdesk],
+            }],
+        };
+        let text = lock.to_toml().unwrap();
+        assert_eq!(text.matches("os_type").count(), 1);
+        let parsed: RprojLock = toml::from_str(&text).unwrap();
+        let packages = &parsed.targets[0].packages;
+        assert_eq!(packages[0].os_type, None);
+        assert_eq!(packages[1].os_type.as_deref(), Some("windows"));
     }
 
     #[test]

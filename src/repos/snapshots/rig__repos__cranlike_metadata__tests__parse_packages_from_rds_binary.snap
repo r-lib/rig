@@ -259,6 +259,7 @@ expression: packages
         archived: None,
         repository: None,
         system_requirements: None,
+        os_type: None,
     },
     Package {
         name: "dplyr",
@@ -678,6 +679,7 @@ expression: packages
         archived: None,
         repository: None,
         system_requirements: None,
+        os_type: None,
     },
     Package {
         name: "rlang",
@@ -915,5 +917,6 @@ expression: packages
         archived: None,
         repository: None,
         system_requirements: None,
+        os_type: None,
     },
 ]

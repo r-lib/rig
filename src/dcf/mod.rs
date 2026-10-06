@@ -413,6 +413,67 @@ pub struct Package {
     // r-system-requirements rules to find the OS packages a Linux install
     // needs.
     pub system_requirements: Option<String>,
+    // the `OS_type` field, `unix` or `windows`, for a package that only
+    // works on that OS, see [`OsType`].
+    pub os_type: Option<String>,
+}
+
+/// The two operating system families of the `OS_type` field of a package:
+/// `unix` is macOS and Linux.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OsType {
+    Unix,
+    Windows,
+}
+
+impl OsType {
+    /// The OS family rig runs on.
+    pub fn host() -> Self {
+        if cfg!(windows) {
+            OsType::Windows
+        } else {
+            OsType::Unix
+        }
+    }
+
+    /// The OS family of a rig platform's `os`, e.g. `mingw32` or `darwin`.
+    pub fn from_rig_os(os: &str) -> Self {
+        if os.contains("mingw") || os == "windows" {
+            OsType::Windows
+        } else {
+            OsType::Unix
+        }
+    }
+
+    /// Whether a package with `OS_type` `os_type` works on this OS. A
+    /// package without the field works everywhere, and so does one with an
+    /// unknown value, rather than hiding it because of bad metadata.
+    pub fn allows(&self, os_type: Option<&str>) -> bool {
+        match os_type.map(str::trim) {
+            Some("unix") => *self == OsType::Unix,
+            Some("windows") => *self == OsType::Windows,
+            _ => true,
+        }
+    }
+}
+
+/// The OS an `OS_type` field value means, for messages.
+pub fn describe_os_type(os_type: &str) -> String {
+    match os_type.trim() {
+        "windows" => "Windows".to_string(),
+        "unix" => "Unix (macOS and Linux)".to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// The `OS_type` field value `text`, `None` if it is empty or `NA`.
+pub fn normalize_os_type(text: &str) -> Option<String> {
+    let text = text.trim();
+    if text.is_empty() || text == "NA" {
+        None
+    } else {
+        Some(text.to_string())
+    }
 }
 
 /// Collapse the whitespace of a `SystemRequirements` field, including the
@@ -454,6 +515,7 @@ impl Package {
             archived: None,
             repository: None,
             system_requirements: None,
+            os_type: None,
         }
     }
 
@@ -488,6 +550,7 @@ impl Package {
         let system_requirements = pkg
             .get("SystemRequirements")
             .and_then(normalize_system_requirements);
+        let os_type = pkg.get("OS_type").and_then(normalize_os_type);
 
         Ok(Package {
             name,
@@ -507,6 +570,7 @@ impl Package {
             archived,
             repository: None,
             system_requirements,
+            os_type,
         })
     }
 }
@@ -528,6 +592,7 @@ mod tests {
 
         let para = parse_dcf(&crlf).unwrap().into_iter().next().unwrap();
         let pkg = Package::from_dcf_paragraph(&para).unwrap();
+        assert_eq!(pkg.os_type, None);
         assert_eq!(
             pkg.version,
             RPackageVersion::from_str("0.2.0.9000").unwrap()
@@ -634,5 +699,28 @@ mod tests {
         let input = "R 4.3.0; ; 2024-01-15 10:30:00 UTC; unix; extra";
         let result = DCFBuilt::from_str(input);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn from_dcf_paragraph_reads_os_type() {
+        let text = "Package: unix\nVersion: 1.5.9\nOS_type: unix\n";
+        let para = parse_dcf(text).unwrap().into_iter().next().unwrap();
+        let pkg = Package::from_dcf_paragraph(&para).unwrap();
+        assert_eq!(pkg.os_type.as_deref(), Some("unix"));
+    }
+
+    #[test]
+    fn os_type_allows() {
+        assert!(OsType::Unix.allows(None));
+        assert!(OsType::Windows.allows(None));
+        assert!(OsType::Unix.allows(Some("unix")));
+        assert!(!OsType::Windows.allows(Some("unix")));
+        assert!(OsType::Windows.allows(Some("windows")));
+        assert!(!OsType::Unix.allows(Some("windows")));
+        assert!(OsType::Unix.allows(Some("whatever")));
+        assert_eq!(OsType::from_rig_os("mingw32"), OsType::Windows);
+        assert_eq!(OsType::from_rig_os("w64-mingw32"), OsType::Windows);
+        assert_eq!(OsType::from_rig_os("darwin"), OsType::Unix);
+        assert_eq!(OsType::from_rig_os("linux-gnu"), OsType::Unix);
     }
 }

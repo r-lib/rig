@@ -112,6 +112,10 @@
 
 ## Other new features
 
+* rig now honors the `OS_type` field of packages: a Unix-only package is
+  not used on Windows, and a Windows-only package is not used on macOS and
+  Linux.
+
 * `rig add` now has a `--json` option. It prints information about the
   installed R version (or the already installed version that was kept),
   including whether it is a new installation and whether it is the default.

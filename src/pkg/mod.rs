@@ -278,7 +278,11 @@ fn sc_pkg_available(
 ) -> Result<(), Box<dyn Error>> {
     let include_archived = args.get_flag("include-archived");
     let repos = pkg_repos_for(args)?;
-    let mut packages = cranlike_metadata::all_available_packages(&repos, include_archived)?;
+    let mut packages = cranlike_metadata::all_available_packages(
+        &repos,
+        include_archived,
+        Some(crate::dcf::OsType::host()),
+    )?;
     // Order the listing case-insensitively by package name, breaking ties by
     // version, so the output is stable regardless of how the metadata was
     // stored or downloaded.

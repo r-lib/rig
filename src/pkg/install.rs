@@ -39,7 +39,8 @@ use crate::linux::get_r_binary;
 use crate::built::BuiltCache;
 use crate::cache::get_cache_dir;
 use crate::dcf::{
-    DepVersionSpec, Package, PackageDependencies, RDepType, VersionConstraintType, DEP_TYPES_SOFT,
+    DepVersionSpec, OsType, Package, PackageDependencies, RDepType, VersionConstraintType,
+    DEP_TYPES_SOFT,
 };
 use crate::exclude_newer::exclude_newer_arg;
 use crate::install::{
@@ -114,8 +115,9 @@ pub fn sc_pkg_install(
     let repos = pkg_repos(&rver, &bioc, exclude_newer.as_deref(), over.as_ref())?;
 
     if dev {
-        let loader =
-            DbSourcePackageLoader::new_for_repos(&repos)?.with_exclude_newer(exclude_newer.clone());
+        let loader = DbSourcePackageLoader::new_for_repos(&repos)?
+            .with_exclude_newer(exclude_newer.clone())
+            .with_os_type(Some(OsType::host()));
         add_dev_deps(
             &loader,
             &cran_names,
@@ -140,6 +142,8 @@ pub fn sc_pkg_install(
         None,
         &git_sources,
         target,
+        // Installing into a library on this machine.
+        Some(OsType::host()),
         prefer_binary,
         exclude_newer.as_deref(),
         &repos,
@@ -805,6 +809,7 @@ mod tests {
             is_project: false,
             repository: None,
             system_requirements: None,
+            os_type: None,
         }
     }
 

@@ -1812,12 +1812,14 @@ pub(crate) fn sc_proj_solve_project_deps(
     let roots = [SolveRoot::project(deps.clone())?];
     let bioc_version = solve_bioc_version(&BiocSetting::default(), r_version, None);
     let repos = ProjRepos::default();
+    let os_type = target.as_ref().map(BinaryTarget::os_type);
     sc_proj_solve_deps(
         r_version,
         &roots,
         None,
         &[],
         target,
+        os_type,
         prefer_binary,
         None,
         &repos.pkg_repos(bioc_version.as_deref()),
@@ -1901,6 +1903,7 @@ pub(crate) fn sc_proj_solve_deps(
     self_alias: Option<&SolveRoot>,
     git_sources: &[ResolvedGitSource],
     target: Option<BinaryTarget>,
+    os_type: Option<OsType>,
     prefer_binary: Option<usize>,
     exclude_newer: Option<&str>,
     repos: &[PkgRepo],
@@ -1922,9 +1925,13 @@ pub(crate) fn sc_proj_solve_deps(
     // `rig pkg` passes the repositories of the R installation, `rig proj`
     // the project's, see `ProjRepos`. `filter` limits the repositories of
     // the packages pinned to one, and of the explicit repositories.
+    // `os_type` hides the packages that do not work on the OS of the solve,
+    // see the `OS_type` field. A source-only lock may be installed on any OS,
+    // so it keeps them, and `rig proj sync` skips them instead.
     let loader = DbSourcePackageLoader::new_for_repos(repos)?
         .with_exclude_newer(exclude_newer.map(|c| c.to_string()))
-        .with_repo_filter(filter.clone());
+        .with_repo_filter(filter.clone())
+        .with_os_type(os_type);
     // A repository that failed to load is not searched.
     let repositories = loader.repositories();
     let repos: Vec<PkgRepo> = repos
@@ -2342,6 +2349,7 @@ fn project_lock_package(
         repository: None,
         // `rproj.toml` has no `SystemRequirements` of its own yet.
         system_requirements: None,
+        os_type: None,
     }
 }
 
@@ -2463,6 +2471,7 @@ pub(crate) struct ResolvedGitSource {
     git_source: GitSourceInfo,
     /// The `SystemRequirements` of the fetched `DESCRIPTION`.
     system_requirements: Option<String>,
+    os_type: Option<String>,
 }
 
 /// Fetch every git/GitHub-sourced dependency in `git_deps`, and every
@@ -2551,6 +2560,7 @@ pub(crate) fn resolve_git_sources(
                 ranges,
                 git_source,
                 system_requirements: pkg.system_requirements.clone(),
+                os_type: pkg.os_type.clone(),
             });
 
             for entry in remotes.split(',') {
@@ -2604,6 +2614,9 @@ fn register_git_sources(reg: &RPackageRegistry, git_sources: &[ResolvedGitSource
             source.version.clone(),
             source.git_source.clone(),
         );
+        if let Some(os_type) = &source.os_type {
+            reg.set_os_type(&source.name, &source.version.version, os_type.clone());
+        }
         if let Some(sysreqs) = &source.system_requirements {
             reg.set_system_requirements(&source.name, &source.version.version, sysreqs.clone());
         }
@@ -4142,6 +4155,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
                 solve.self_alias.as_ref(),
                 &git_sources,
                 st.target.clone(),
+                st.target.as_ref().map(BinaryTarget::os_type),
                 lock_options.prefer_binary,
                 lock_options.exclude_newer.as_deref(),
                 &repos.pkg_repos(bioc_version),
@@ -5274,6 +5288,79 @@ fn sync_wanted_packages(
         .collect()
 }
 
+/// What [`sync_os_compatible`] leaves out of a sync.
+#[derive(Debug, Default)]
+struct SyncOsSkipped {
+    /// The packages that do not work on the OS, by their `OS_type`.
+    incompatible: Vec<String>,
+    /// The packages that only those packages need.
+    unneeded: Vec<String>,
+}
+
+/// The packages of `packages` to install on `os`: without the ones whose
+/// `OS_type` does not work on it, and without the ones that only those need.
+/// Only a source-only lock target has packages for the other OS, a
+/// platform's target was solved without them.
+///
+/// `roots` are the project's direct dependencies. A package is needed if
+/// a root, the project's own package, or a package that no other package
+/// depends on (a root of a lock that does not list its roots) needs it,
+/// without going through a package that does not work on `os`.
+fn sync_os_compatible(
+    packages: Vec<RprojLockPackage>,
+    roots: &HashSet<&str>,
+    os: OsType,
+) -> (Vec<RprojLockPackage>, SyncOsSkipped) {
+    let (compatible, incompatible): (Vec<_>, Vec<_>) = packages
+        .into_iter()
+        .partition(|p| os.allows(p.os_type.as_deref()));
+    if incompatible.is_empty() {
+        return (compatible, SyncOsSkipped::default());
+    }
+
+    let dependents: HashSet<&str> = compatible
+        .iter()
+        .chain(incompatible.iter())
+        .flat_map(|p| p.dependencies.iter().map(|d| d.as_str()))
+        .collect();
+    let by_name: HashMap<&str, &RprojLockPackage> =
+        compatible.iter().map(|p| (p.package.as_str(), p)).collect();
+    let mut todo: Vec<&str> = compatible
+        .iter()
+        .filter(|p| {
+            roots.contains(p.package.as_str())
+                || p.is_project
+                || !dependents.contains(p.package.as_str())
+        })
+        .map(|p| p.package.as_str())
+        .collect();
+    let mut needed: HashSet<String> = HashSet::new();
+    while let Some(name) = todo.pop() {
+        // A package that is not here is R, a base package, or one that does
+        // not work on `os`.
+        let Some(pkg) = by_name.get(name) else {
+            continue;
+        };
+        if needed.insert(name.to_string()) {
+            todo.extend(pkg.dependencies.iter().map(|d| d.as_str()));
+        }
+    }
+
+    let (keep, unneeded): (Vec<_>, Vec<_>) = compatible
+        .into_iter()
+        .partition(|p| needed.contains(&p.package));
+    let sorted = |packages: Vec<RprojLockPackage>| {
+        let mut names: Vec<String> = packages.into_iter().map(|p| p.package).collect();
+        names.sort_by_key(|n| n.to_lowercase());
+        names
+    };
+    let skipped = SyncOsSkipped {
+        incompatible: sorted(incompatible),
+        unneeded: sorted(unneeded),
+    };
+    (keep, skipped)
+}
+
 /// Install the project's locked dependencies into its environment, creating
 /// the machine-specific part of `.rvenv` on the way: `rig proj sync`, and the
 /// automatic sync of `rig run`.
@@ -5349,6 +5436,38 @@ pub(crate) fn proj_sync(
     )?;
 
     let wanted: Vec<RprojLockPackage> = sync_wanted_packages(&target.packages, opts);
+    let host_os = OsType::host();
+    let roots: HashSet<&str> = target
+        .direct_dependencies
+        .iter()
+        .map(|d| d.name.as_str())
+        .collect();
+    let (wanted, skipped) = sync_os_compatible(wanted, &roots, host_os);
+    let os_name = if host_os == OsType::Windows {
+        "Windows"
+    } else {
+        "Unix"
+    };
+    for name in &skipped.incompatible {
+        let msg = format!("Skipping {}, it does not work on {}", name, os_name);
+        OUTPUT.info(&msg);
+        info!("{}", msg);
+    }
+    if !skipped.unneeded.is_empty() {
+        let msg = format!(
+            "Skipping {} package{} only needed by {}: {}",
+            skipped.unneeded.len(),
+            if skipped.unneeded.len() == 1 { "" } else { "s" },
+            if skipped.incompatible.len() == 1 {
+                "it"
+            } else {
+                "them"
+            },
+            skipped.unneeded.join(", ")
+        );
+        OUTPUT.info(&msg);
+        info!("{}", msg);
+    }
     let wanted: &[RprojLockPackage] = &wanted;
 
     // The project's own package needs a real `DESCRIPTION` on disk: rig's
@@ -6223,6 +6342,7 @@ mod tests {
             is_project: false,
             repository: None,
             system_requirements: None,
+            os_type: None,
         }
     }
 
@@ -6324,6 +6444,67 @@ mod tests {
             names(&sync_wanted_packages(&packages, &opts)),
             vec!["cli", "devtools", "pkgdown"]
         );
+    }
+
+    #[test]
+    fn sync_os_compatible_skips_the_other_os() {
+        let os_typed = |name: &str, os_type: Option<&str>| {
+            let mut pkg = locked(name, &[]);
+            pkg.os_type = os_type.map(|s| s.to_string());
+            pkg
+        };
+        let packages = vec![
+            os_typed("cli", None),
+            os_typed("unix", Some("unix")),
+            os_typed("RDesk", Some("windows")),
+        ];
+
+        let roots = HashSet::from(["cli", "unix", "RDesk"]);
+
+        let (keep, skip) = sync_os_compatible(packages.clone(), &roots, OsType::Unix);
+        assert_eq!(names(&keep), vec!["cli", "unix"]);
+        assert_eq!(skip.incompatible, vec!["RDesk"]);
+        assert!(skip.unneeded.is_empty());
+
+        let (keep, skip) = sync_os_compatible(packages, &roots, OsType::Windows);
+        assert_eq!(names(&keep), vec!["RDesk", "cli"]);
+        assert_eq!(skip.incompatible, vec!["unix"]);
+    }
+
+    fn windows_only(name: &str, deps: &[&str]) -> RprojLockPackage {
+        let mut pkg = locked(name, deps);
+        pkg.os_type = Some("windows".to_string());
+        pkg
+    }
+
+    #[test]
+    fn sync_os_compatible_skips_what_only_skipped_packages_need() {
+        let packages = vec![
+            locked("cli", &["jsonlite"]),
+            windows_only("RDesk", &["mirai", "jsonlite", "R6"]),
+            locked("mirai", &["nanonext"]),
+            locked("nanonext", &[]),
+            locked("jsonlite", &[]),
+            locked("R6", &[]),
+        ];
+        // `R6` is a direct dependency itself, `jsonlite` is also needed by
+        // `cli`.
+        let roots = HashSet::from(["cli", "RDesk", "R6"]);
+        let (keep, skip) = sync_os_compatible(packages.clone(), &roots, OsType::Unix);
+        assert_eq!(names(&keep), vec!["R6", "cli", "jsonlite"]);
+        assert_eq!(skip.incompatible, vec!["RDesk"]);
+        assert_eq!(skip.unneeded, vec!["mirai", "nanonext"]);
+
+        // A lock without its roots: `cli` has no dependents, so it is one,
+        // but `R6` is only reached through `RDesk`.
+        let (keep, skip) = sync_os_compatible(packages.clone(), &HashSet::new(), OsType::Unix);
+        assert_eq!(names(&keep), vec!["cli", "jsonlite"]);
+        assert_eq!(skip.unneeded, vec!["mirai", "nanonext", "R6"]);
+
+        // Nothing to skip on Windows, everything stays.
+        let (keep, skip) = sync_os_compatible(packages, &roots, OsType::Windows);
+        assert_eq!(keep.len(), 6);
+        assert!(skip.incompatible.is_empty() && skip.unneeded.is_empty());
     }
 
     #[test]
@@ -6823,6 +7004,7 @@ mod tests {
                 binary: false,
             },
             system_requirements: None,
+            os_type: None,
         }
     }
 
