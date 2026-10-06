@@ -1,4 +1,4 @@
-# rig 0.11.0-beta
+# rig 0.11.0-beta-2
 
 ## Custom repositories
 
