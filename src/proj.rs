@@ -14,7 +14,7 @@ use simple_error::SimpleError;
 use tabular::*;
 
 use crate::args::rig_app;
-use crate::built::BuiltCache;
+use crate::built::{r_platform, BuiltCache};
 use crate::cache::get_cache_dir;
 use crate::common::{
     find_installed, get_arch, get_default_r_version, get_platform, get_r_version_data_version,
@@ -1675,17 +1675,43 @@ fn default_r_proj_repos(repos: &ProjRepos) -> (Vec<PkgRepo>, RepoFilter) {
     )
 }
 
-/// Turns a symbolic, installed R name (e.g. `"devel"`, `"next"`) into the
-/// numeric R version P3M's binary repo paths need. Names that already look
-/// like a version are passed through unchanged.
+/// Whether `r_version` is a plain numeric version, e.g. `4.5` or `4.5.1`, as
+/// opposed to the name of an installed R, e.g. `devel` or `4.0.5-x86_64`.
+fn is_numeric_r_version(r_version: &str) -> bool {
+    !r_version.is_empty()
+        && r_version
+            .split('.')
+            .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
+}
+
+/// Turns a symbolic, installed R name (e.g. `"devel"`, `"next"`,
+/// `"4.0.5-x86_64"`) into the numeric R version P3M's binary repo paths need.
+/// Plain numeric versions are passed through unchanged.
 fn resolve_binary_target_r_version(r_version: &str) -> Result<String, Box<dyn Error>> {
-    if r_version.starts_with(|c: char| c.is_ascii_digit()) {
+    if is_numeric_r_version(r_version) {
         return Ok(r_version.to_string());
     }
     match find_installed(r_version)? {
         Some(name) => get_r_version_data_version(&name),
         None => Ok(r_version.to_string()),
     }
+}
+
+/// The arch of the installed R `r_version` names, from its `R_PLATFORM`, or
+/// `None` for a plain numeric version or an R that is not installed. An
+/// x86_64 R on an arm64 Mac needs x86_64 binaries, not the host's.
+fn installed_r_arch(r_version: &str) -> Option<&'static str> {
+    if is_numeric_r_version(r_version) {
+        return None;
+    }
+    let name = find_installed(r_version).ok()??;
+    let binary = sc_get_list_details()
+        .ok()?
+        .into_iter()
+        .find(|v| v.name == name)?
+        .binary?;
+    let platform = r_platform(&binary)?;
+    normalize_arch(platform.split('-').next()?)
 }
 
 /// The Bioconductor release a solve for `r_version` uses with `bioc`, see
@@ -1732,7 +1758,13 @@ pub(crate) fn proj_binary_target_quiet(
             return Ok((None, None));
         }
         Some(p) => parse_platform_string(p)?,
-        None => detect_platform()?,
+        None => {
+            let mut platform = detect_platform()?;
+            if let Some(arch) = installed_r_arch(r_version) {
+                platform.arch = arch.to_string();
+            }
+            platform
+        }
     };
 
     let r_version = &resolve_binary_target_r_version(r_version)?;
@@ -6066,6 +6098,18 @@ mod tests {
     use crate::dcf::RDepType;
     use crate::rproj::{Dependency, Group, Workspace};
     use std::collections::BTreeMap;
+
+    #[test]
+    fn numeric_r_versions_are_not_installed_r_names() {
+        assert!(is_numeric_r_version("4"));
+        assert!(is_numeric_r_version("4.5"));
+        assert!(is_numeric_r_version("4.5.1"));
+        assert!(!is_numeric_r_version(""));
+        assert!(!is_numeric_r_version("4."));
+        assert!(!is_numeric_r_version("devel"));
+        assert!(!is_numeric_r_version("4.0.5-x86_64"));
+        assert!(!is_numeric_r_version("4.5-arm64"));
+    }
 
     /// One target's rows for [`solution_table`], from `(package, version,
     /// kind, held back from)` tuples.
