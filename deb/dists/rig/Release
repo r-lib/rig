@@ -1,0 +1,30 @@
+Origin: https://github.com/r-lib/rig
+Label: https://github.com/r-lib/rig
+Suite: rig
+Codename: rig
+Version: 1.0.0
+Architectures: amd64 arm64 i386
+Components: main
+Description: Packages from https://github.com/r-lib/rig.
+Date: Wed, 07 Oct 2026 21:15:22 +0000
+MD5Sum:
+ 8fa49ed7b28dd08b6b67700b922c6f44 507 main/binary-amd64/Packages
+ 3d209a182a37458c275a0996ce08e13d 382 main/binary-amd64/Packages.gz
+ d41d8cd98f00b204e9800998ecf8427e 0 main/binary-i386/Packages
+ d8768cab880ddffbd24fcb995b9dcc03 29 main/binary-i386/Packages.gz
+ a370eb0f86b721d203c77113b10881a4 507 main/binary-arm64/Packages
+ 076942ec4d3e705400383e48b3373417 381 main/binary-arm64/Packages.gz
+SHA1:
+ 54409cc51d1b31661f4858e7481ee2b54847dae2 507 main/binary-amd64/Packages
+ 1ef8b6c5be3c93e7fec534ccda8b782abd26d39c 382 main/binary-amd64/Packages.gz
+ da39a3ee5e6b4b0d3255bfef95601890afd80709 0 main/binary-i386/Packages
+ 70460553ceee69c5303b6ed59dc76efe20926c49 29 main/binary-i386/Packages.gz
+ 4561b9439963aed1632afb60046960f59b673a2f 507 main/binary-arm64/Packages
+ 49bcc1ba924a32ab3c735a00e005206deacfd944 381 main/binary-arm64/Packages.gz
+SHA256:
+ 5b565571f2d123d50fc095df26d50c2389c2f5d42f13798c0ca062b792b3cc6c 507 main/binary-amd64/Packages
+ 3c911c786c9e9db0e3f715906a420d099f669fa5f5d736d505f9dcf6d26f3b78 382 main/binary-amd64/Packages.gz
+ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 0 main/binary-i386/Packages
+ b2e5e9ddc22492a19c9d8322f30f9763d6893fa8fc968db8b9f38f47da406af3 29 main/binary-i386/Packages.gz
+ 3e683ad9052bf50f71acb2be5ec234a4dd9de7f0cf463144964a781af3b88e0d 507 main/binary-arm64/Packages
+ 347504667c8615cad077689338fa94a3e80b356065209320e8ddadfc45833370 381 main/binary-arm64/Packages.gz
