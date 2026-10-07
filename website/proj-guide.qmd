@@ -13,15 +13,6 @@ an exact, reproducible set of versions in `rproj.lock`.
 format may still change.
 :::
 
-::: {.callout-note}
-## Repositories
-
-`rig proj` uses CRAN, with the metadata of P3M (Posit Public Package
-Manager), Bioconductor, and the CRAN-like repositories in the `[[repository]]`
-entries of `rproj.toml`. It ignores the repositories configured via
-[`rig repos`](reference/repos.qmd). See "Repositories" and "Bioconductor packages" in [`rig proj lock`](reference/proj.qmd#rig-proj-lock).
-:::
-
 `rig proj` is a companion to [`rig pkg`](pkg-guide.qmd): use `rig pkg
 install` for one-off packages in a library, and `rig proj` when you want a
 project's dependencies to be declared, locked and reproducible on every
