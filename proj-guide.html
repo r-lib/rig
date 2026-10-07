@@ -612,19 +612,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p><code>rig proj</code> is experimental. Its commands, manifest format and lock file format may still change.</p>
 </div>
 </div>
-<div class="callout callout-style-default callout-note callout-titled">
-<div class="callout-header d-flex align-content-center">
-<div class="callout-icon-container">
-<i class="callout-icon"></i>
-</div>
-<div class="callout-title-container flex-fill">
-<span class="screen-reader-only">Note</span>Repositories
-</div>
-</div>
-<div class="callout-body-container callout-body">
-<p><code>rig proj</code> uses CRAN, with the metadata of P3M (Posit Public Package Manager), Bioconductor, and the CRAN-like repositories in the <code>[[repository]]</code> entries of <code>rproj.toml</code>. It ignores the repositories configured via <a href="./reference/repos.html"><code>rig repos</code></a>. See “Repositories” and “Bioconductor packages” in <a href="./reference/proj.html#rig-proj-lock"><code>rig proj lock</code></a>.</p>
-</div>
-</div>
 <p><code>rig proj</code> is a companion to <a href="./pkg-guide.html"><code>rig pkg</code></a>: use <code>rig pkg install</code> for one-off packages in a library, and <code>rig proj</code> when you want a project’s dependencies to be declared, locked and reproducible on every machine that syncs it.</p>
 <section id="quick-start" class="level2">
 <h2 class="anchored" data-anchor-id="quick-start">Quick start</h2>
