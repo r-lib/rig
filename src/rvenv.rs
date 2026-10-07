@@ -187,12 +187,18 @@ pub fn write_sync_stamp(lib: &Path, lock_file: &Path) -> Result<(), Box<dyn Erro
     write_atomically(&lib.join(RVENV_SYNC_STAMP), &lock)
 }
 
-const GITIGNORE_START: &str = "# rig rvenv start";
-const GITIGNORE_END: &str = "# rig rvenv end";
+/// The markers of the block rig manages in the project's `.gitignore` and
+/// `.Renviron`. Both files use `#` for comments.
+const BLOCK_START: &str = "# rig rvenv start";
+const BLOCK_END: &str = "# rig rvenv end";
+
+/// The first line of the project `.Renviron` older rig versions wrote, which
+/// was all rig's, without block markers.
+const LEGACY_RENVIRON_HEADER: &str = "# Managed by rig (rig proj init).";
 
 // -------------------------------------------------------------- file bodies --
 
-/// The tracked project `.Renviron`.
+/// The block rig manages in the tracked project `.Renviron`.
 ///
 /// This is the "in-session activation" leg: IDEs (RStudio, Positron, VS Code)
 /// start R themselves, so there is no wrapper script and no `PATH` entry to
@@ -201,12 +207,20 @@ const GITIGNORE_END: &str = "# rig rvenv end";
 /// complained-about behavior. A project `.Renviron` shadows `~/.Renviron` the
 /// same way, but the shim package restores it with `readRenviron()`.
 ///
+/// The project `.Renviron` may have the user's own settings as well, so rig
+/// only manages a marked block in it, see [`update_project_renviron`].
+///
 /// `R_DEFAULT_PACKAGES` *replaces* the default package list rather than
 /// prepending to it, so the whole list has to be spelled out here; leaving
 /// out e.g. `stats` would silently drop it from `search()`.
-fn renviron_body() -> &'static str {
-    "\
-# Managed by rig (rig proj init).
+fn renviron_block() -> String {
+    format!(
+        "\
+{}
+# Managed by rig (rig proj init). rig rewrites the lines between the
+# `rig rvenv` markers, put your own settings outside of them. Settings after
+# this block that set R_LIBS_USER or R_DEFAULT_PACKAGES break the project
+# setup.
 #
 # R_LIBS_USER names rig's own library, not the project library: it only has to
 # get R far enough to load the `rvenv` package below. That package points
@@ -223,10 +237,13 @@ fn renviron_body() -> &'static str {
 # it, so the whole list has to be spelled out.
 #
 # Note that `R --vanilla` ignores this file entirely.
-RVENV_R_LIBS_USER=${R_LIBS_USER}
+RVENV_R_LIBS_USER=${{R_LIBS_USER}}
 R_LIBS_USER=.rvenvlib
 R_DEFAULT_PACKAGES=rvenv,datasets,utils,grDevices,graphics,stats,methods
-"
+{}
+",
+        BLOCK_START, BLOCK_END
+    )
 }
 
 /// The block rig manages in the project's root `.gitignore`. Everything in
@@ -243,7 +260,7 @@ fn root_gitignore_block() -> String {
 /.rvenv/
 {}
 ",
-        GITIGNORE_START, GITIGNORE_END
+        BLOCK_START, BLOCK_END
     )
 }
 
@@ -717,34 +734,36 @@ pub fn init_targets(root: &Path) -> Vec<PathBuf> {
 /// The paths from [`init_targets`] that are already there, so that the
 /// caller can name all of them at once instead of failing on the first.
 ///
-/// The root `.gitignore` is special: rig only ever merges a marked block into
-/// it (see [`update_root_gitignore`]), never overwrites the rest of the
-/// file, so an existing `.gitignore` -- with or without rig's block -- is
+/// The root `.gitignore` and `.Renviron` are special: rig only ever merges a
+/// marked block into them (see [`update_root_gitignore`] and
+/// [`update_project_renviron`]), never overwrites the rest of the file, so an
+/// existing `.gitignore` or `.Renviron` -- with or without rig's block -- is
 /// never a conflict.
 pub fn existing_targets(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
     let gitignore = root.join(RVENV_GITIGNORE_FILE);
+    let renviron = root.join(RVENV_RENVIRON_FILE);
     Ok(init_targets(root)
         .into_iter()
         .filter(|p| p.exists())
-        .filter(|p| *p != gitignore)
+        .filter(|p| *p != gitignore && *p != renviron)
         .collect())
 }
 
-// --------------------------------------------------------------- .gitignore --
+// ----------------------------------------------------- .gitignore, .Renviron --
 
-/// The line range of rig's block in a `.gitignore` file, if it has one.
-fn gitignore_block(path: &Path) -> Result<Option<(usize, usize)>, Box<dyn Error>> {
-    let text = fs::read_to_string(path)?;
+/// The line range of rig's block in `text`, the contents of `path`, if it has
+/// one.
+fn marked_block(path: &Path, text: &str) -> Result<Option<(usize, usize)>, Box<dyn Error>> {
     let starts: Vec<usize> = text
         .lines()
         .enumerate()
-        .filter(|(_, l)| l.trim() == GITIGNORE_START)
+        .filter(|(_, l)| l.trim() == BLOCK_START)
         .map(|(i, _)| i)
         .collect();
     let ends: Vec<usize> = text
         .lines()
         .enumerate()
-        .filter(|(_, l)| l.trim() == GITIGNORE_END)
+        .filter(|(_, l)| l.trim() == BLOCK_END)
         .map(|(i, _)| i)
         .collect();
     match (starts.len(), ends.len()) {
@@ -753,8 +772,8 @@ fn gitignore_block(path: &Path) -> Result<Option<(usize, usize)>, Box<dyn Error>
         _ => bail!(
             "{} has a malformed `{}` / `{}` block, fix it by hand",
             path.display(),
-            GITIGNORE_START,
-            GITIGNORE_END
+            BLOCK_START,
+            BLOCK_END
         ),
     }
 }
@@ -767,22 +786,46 @@ fn gitignore_block(path: &Path) -> Result<Option<(usize, usize)>, Box<dyn Error>
 /// `library_update_rprofile` uses for `Rprofile.site`. Running this twice is
 /// a no-op.
 pub fn update_root_gitignore(root: &Path) -> Result<(), Box<dyn Error>> {
-    let path = root.join(RVENV_GITIGNORE_FILE);
-    let block = root_gitignore_block();
+    update_marked_block(&root.join(RVENV_GITIGNORE_FILE), &root_gitignore_block())
+}
+
+/// Create the project's `.Renviron`, or add rig's block to it.
+///
+/// Like [`update_root_gitignore`], this keeps the user's own settings. The
+/// block goes to the end of a file that does not have it yet, so that it
+/// overrides an `R_LIBS_USER` set earlier in the file, and records that in
+/// `RVENV_R_LIBS_USER`. A `.Renviron` written by an older rig, which was all
+/// rig's and had no markers, is replaced.
+pub fn update_project_renviron(root: &Path) -> Result<(), Box<dyn Error>> {
+    let path = root.join(RVENV_RENVIRON_FILE);
+    let block = renviron_block();
+    if path.exists() {
+        let text = fs::read_to_string(&path)?;
+        let legacy = text.lines().next().map(str::trim) == Some(LEGACY_RENVIRON_HEADER);
+        if legacy && marked_block(&path, &text)?.is_none() {
+            return write_atomically(&path, block.as_bytes());
+        }
+    }
+    update_marked_block(&path, &block)
+}
+
+/// Create `path` with `block`, or replace rig's block in it with `block`, or
+/// append `block` to it, keeping everything else.
+fn update_marked_block(path: &Path, block: &str) -> Result<(), Box<dyn Error>> {
     if !path.exists() {
-        write_atomically(&path, block.as_bytes())?;
+        write_atomically(path, block.as_bytes())?;
         return Ok(());
     }
 
-    let text = fs::read_to_string(&path)?;
-    let new = match gitignore_block(&path)? {
+    let text = fs::read_to_string(path)?;
+    let new = match marked_block(path, &text)? {
         Some((start, end)) => {
             let lines: Vec<&str> = text.lines().collect();
             let mut out = lines[..start].join("\n");
             if start > 0 {
                 out.push('\n');
             }
-            out.push_str(&block);
+            out.push_str(block);
             if end + 1 < lines.len() {
                 out.push_str(&lines[end + 1..].join("\n"));
                 out.push('\n');
@@ -797,11 +840,11 @@ pub fn update_root_gitignore(root: &Path) -> Result<(), Box<dyn Error>> {
             if !out.is_empty() {
                 out.push('\n');
             }
-            out.push_str(&block);
+            out.push_str(block);
             out
         }
     };
-    write_atomically(&path, new.as_bytes())
+    write_atomically(path, new.as_bytes())
 }
 
 // -------------------------------------------------------------- shim package --
@@ -854,7 +897,7 @@ pub fn rvenv_init(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
     let shim_lib = project_shim_library(root);
 
     let renviron = root.join(RVENV_RENVIRON_FILE);
-    write_atomically(&renviron, renviron_body().as_bytes())?;
+    update_project_renviron(root)?;
 
     update_root_gitignore(root)?;
 
@@ -1342,8 +1385,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn renviron_body_is_what_the_shim_expects() {
-        let body = renviron_body();
+    fn renviron_block_is_what_the_shim_expects() {
+        let body = renviron_block();
+        assert!(body.starts_with(&format!("{}\n", BLOCK_START)));
+        assert!(body.ends_with(&format!("\n{}\n", BLOCK_END)));
         // Not the project library: this is the library the shim itself is
         // loaded from, the shim switches to the project library.
         assert!(body.contains("\nR_LIBS_USER=.rvenvlib\n"));
@@ -1404,7 +1449,7 @@ mod tests {
             &path,
             format!(
                 "before\n{}\nstale content\n{}\nafter\n",
-                GITIGNORE_START, GITIGNORE_END
+                BLOCK_START, BLOCK_END
             ),
         )
         .unwrap();
@@ -1413,15 +1458,99 @@ mod tests {
         assert!(text.starts_with("before\n"));
         assert!(text.ends_with("after\n"));
         assert!(!text.contains("stale content"));
-        assert_eq!(text.matches(GITIGNORE_START).count(), 1);
+        assert_eq!(text.matches(BLOCK_START).count(), 1);
     }
 
     #[test]
     fn gitignore_with_a_broken_block_is_an_error() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join(".gitignore");
-        fs::write(&path, format!("{}\nno end marker\n", GITIGNORE_START)).unwrap();
+        fs::write(&path, format!("{}\nno end marker\n", BLOCK_START)).unwrap();
         assert!(update_root_gitignore(tmp.path()).is_err());
+    }
+
+    #[test]
+    fn renviron_is_created_when_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        update_project_renviron(tmp.path()).unwrap();
+        let text = fs::read_to_string(tmp.path().join(".Renviron")).unwrap();
+        assert_eq!(text, renviron_block());
+    }
+
+    #[test]
+    fn renviron_keeps_user_settings() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join(".Renviron");
+        fs::write(&path, "GITHUB_PAT=secret\nR_LIBS_USER=~/mylib").unwrap();
+        update_project_renviron(tmp.path()).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        // rig's block comes last, so that it overrides the user's
+        // R_LIBS_USER, and records it in RVENV_R_LIBS_USER.
+        assert_eq!(
+            text,
+            format!(
+                "GITHUB_PAT=secret\nR_LIBS_USER=~/mylib\n\n{}",
+                renviron_block()
+            )
+        );
+    }
+
+    #[test]
+    fn renviron_update_is_idempotent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join(".Renviron");
+        fs::write(&path, "FOO=bar\n").unwrap();
+        update_project_renviron(tmp.path()).unwrap();
+        let once = fs::read_to_string(&path).unwrap();
+        update_project_renviron(tmp.path()).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), once);
+    }
+
+    #[test]
+    fn renviron_block_is_replaced_in_place() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join(".Renviron");
+        fs::write(
+            &path,
+            format!(
+                "BEFORE=1\n{}\nR_LIBS_USER=stale\n{}\nAFTER=1\n",
+                BLOCK_START, BLOCK_END
+            ),
+        )
+        .unwrap();
+        update_project_renviron(tmp.path()).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.starts_with("BEFORE=1\n"));
+        assert!(text.ends_with("AFTER=1\n"));
+        assert!(!text.contains("stale"));
+        assert!(text.contains("\nR_LIBS_USER=.rvenvlib\n"));
+        assert_eq!(text.matches(BLOCK_START).count(), 1);
+    }
+
+    #[test]
+    fn a_legacy_renviron_is_replaced() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join(".Renviron");
+        fs::write(
+            &path,
+            format!(
+                "{}\nRVENV_R_LIBS_USER=${{R_LIBS_USER}}\nR_LIBS_USER=.rvenvlib\n",
+                LEGACY_RENVIRON_HEADER
+            ),
+        )
+        .unwrap();
+        update_project_renviron(tmp.path()).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert_eq!(text, renviron_block());
+    }
+
+    #[test]
+    fn a_renviron_is_never_a_conflict() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(tmp.path().join(".Renviron"), "FOO=bar\n").unwrap();
+        assert!(existing_targets(tmp.path()).unwrap().is_empty());
+        update_project_renviron(tmp.path()).unwrap();
+        assert!(existing_targets(tmp.path()).unwrap().is_empty());
     }
 
     #[test]

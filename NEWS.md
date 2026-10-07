@@ -1,4 +1,10 @@
-# rig 0.11.0-beta-2
+# rig 0.11.0 (Unreleased)
+
+* `rig proj init` and `rig proj import` do not overwrite the project's
+  `.Renviron` file any more. rig now only manages a marked block in it,
+  and keeps the rest of the file, so you can add your own environment
+  variables to it. An existing `.Renviron` is not a conflict any more,
+  either (#440).
 
 ## Custom repositories
 

@@ -68,6 +68,7 @@ older version with a binary package over a newer one without, see
 three.
 
 rig refuses to overwrite any of the files above; pass `--force` to replace
-them. The `.gitignore` block is the exception: rig never refuses on an
-existing `.gitignore`, it just merges its block into it (or adds one),
-leaving the rest of the file alone, and `--force` does not change that.
+them. `.Renviron` and `.gitignore` are the exceptions: rig never refuses on
+an existing `.Renviron` or `.gitignore`, it just merges its block into them
+(or adds one), leaving the rest of the file alone, and `--force` does not
+change that.

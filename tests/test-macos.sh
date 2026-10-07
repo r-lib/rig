@@ -430,12 +430,16 @@ teardown() {
     echo "$output" | grep -q "rproj.toml"
     echo "$output" | grep -q -- "--force"
 
-    # --force keeps the user's own ignore rules, rig only manages its block
+    # --force keeps the user's own ignore rules and environment variables,
+    # rig only manages its block
     echo "*.log" >> .gitignore
+    echo "MY_PROJECT_VAR=1" >> .Renviron
     run rig proj init -r 4.1 --force
     [[ "$status" -eq 0 ]]
     grep -q '^[*].log$' .gitignore
     [[ "$(grep -c '^# rig rvenv start$' .gitignore)" -eq 1 ]]
+    grep -q '^MY_PROJECT_VAR=1$' .Renviron
+    [[ "$(grep -c '^# rig rvenv start$' .Renviron)" -eq 1 ]]
 }
 
 @test "proj import" {
@@ -472,7 +476,7 @@ teardown() {
     rm rproj.toml
     run rig proj import
     [[ "$status" -ne 0 ]]
-    echo "$output" | grep -q ".Renviron"
+    echo "$output" | grep -q ".rvenvlib"
     echo "$output" | grep -q -- "--force"
 
     run rig proj import --force
