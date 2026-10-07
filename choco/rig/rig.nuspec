@@ -1,14 +1,14 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
     <id>rig</id>
-    <version>0.10.0</version>
+    <version>0.11.0</version>
     <packageSourceUrl>https://github.com/r-lib/rig</packageSourceUrl>
     <owners>Gábor Csárdi</owners>
     <title>rig</title>
     <authors>Gábor Csárdi</authors>
     <projectUrl>https://github.com/r-lib/rig</projectUrl>
-    <copyright>2025, Posit Software, PBC</copyright>
+    <copyright>2026, Posit Software, PBC</copyright>
     <licenseUrl>https://github.com/r-lib/rig/blob/main/LICENSE</licenseUrl>
     <projectSourceUrl>https://github.com/r-lib/rig</projectSourceUrl>
     <docsUrl>http://rig.r-lib.org/</docsUrl>
@@ -27,8 +27,7 @@
 * Select versions by symbolic name: `release`, `devel`, `next`, `oldrel`,
   or by exact version.
 * Run several versions _at the same time_ via quick links: `R-4.5` or
-  `R-4.5.1` starts the matching R. Quick links are added to your path
-  automatically.
+  `R-4.5.1` starts the matching R.
 * List the versions you have installed, and the versions available to
   install.
 * On arm64 macs and Windows, choose between x86_64 and arm64 builds of R,
@@ -36,61 +35,58 @@
 
 ### Cross-platform and self-contained
 
-* Works on macOS, Windows and Linux. Has native builds for many
-  [Linux distributions](install.qmd#id-supported-linux-distributions), and
-  portable builds that run on any glibc- or musl-based Linux.
-* A single standalone tool with no system requirements. Easy to install
-  and update on every platform.
-* Two [installation modes](admin-vs-user-mode.qmd): the default
-  *admin mode* installs R system-wide (elevating to root/administrator only
-  when needed), while the newer *user mode* installs everything into your
-  home directory with no `sudo` or administrator rights.
-* On Linux, installs distro-specific builds where available, and otherwise
-  falls back to portable glibc/musl builds automatically.
+* Works on macOS, Windows and Linux, with native builds for many Linux
+  distributions and portable builds for any glibc- or musl-based Linux.
+* A single standalone tool with no system requirements.
+* Two [installation modes](https://rig.r-lib.org/admin-vs-user-mode.html):
+  the default *admin mode* installs R system-wide, while *user mode*
+  installs everything into your home directory, with no `sudo` or
+  administrator rights.
 
 ### Package management, set up for you
 
 * Configures the default CRAN mirror and
-  [PPM](https://packagemanager.posit.co/) binary repositories.
-* Installs [pak](https://pak.r-lib.org) and enables automatic
-  [system requirements installation](https://pak.r-lib.org/dev/reference/sysreqs.html).
+  [P3M](https://packagemanager.posit.co/) binary repositories.
+* Installs [pak](https://pak.r-lib.org) and enables automatic system
+  requirements installation.
 * Creates and configures per-user package libraries.
-* [`rig repos`](reference/repos.qmd) manages package repositories across
-  all your R versions.
-* [`rig pkg`](reference/pkg.qmd) (experimental) installs, removes and lists
-  packages in a library, and looks up package info, dependencies and
-  dependency trees from the repositories, all without running R.
+* `rig repos` manages package repositories across all your R versions,
+  including your own CRAN-like repositories.
+* `rig pkg` (experimental) installs, removes and lists packages, and looks
+  up package info and dependencies, all without running R. It installs
+  from CRAN, Bioconductor, your own repositories and local paths.
 
 ### Project dependency management (experimental)
 
-* [`rig proj`](reference/proj.qmd) manages an R project through an
-  `rproj.toml` manifest: add or remove dependencies, resolve them with
-  rig's built-in solver into an `rproj.lock` lockfile, and sync a project
-  library to match, all without running R.
+* `rig proj` manages an R project through an `rproj.toml` manifest: add or
+  remove dependencies, resolve them into an `rproj.lock` lockfile with
+  rig's built-in solver, and sync a project library to match, all without
+  running R.
 * Import a project from, or export it to, a `DESCRIPTION` file or an
-  [renv](https://rstudio.github.io/renv/) `renv.lock` file, to interoperate
-  with existing R package and project tooling.
-* Inspect a project's dependencies and dependency tree before installing.
+  [renv](https://rstudio.github.io/renv/) `renv.lock` file.
 
 ### Run R, scripts and apps
 
-* `rig run` starts R, runs a script or expression, or launches an app:
-  Shiny apps, Plumber APIs, Quarto and R Markdown documents, and static
-  sites, with the R version you choose.
+* `rig run` starts R, runs a script or expression, or launches an app
+  (Shiny, Plumber, Quarto, R Markdown, static sites), with the R version
+  you choose.
+* Self-contained scripts declare their R version and packages in a
+  `# /// script` comment block, and `rig run` installs them.
+* On Windows, `rig system script-assoc` lets you run `.R` files directly
+  from `cmd` and PowerShell.
 
 ### Platform niceties
 
-* A [macOS menu bar app](macos-app.qmd) shows the default R version and
-  lets you switch it interactively.
-* Installs and configures the right Rtools versions on Windows, and cleans
-  up stale R entries from the Windows registry.
+* A macOS menu bar app shows the default R version and lets you switch it.
+* Installs and configures the right Rtools versions on Windows.
 * Shell auto-completion for `zsh` and `bash` on macOS and Linux, and for
   PowerShell on Windows.
-* On macOS, sets up R for debugging with `lldb` and enables core dumps.
 * JSON output for scripting, and a `rig config` command to manage rig's
   own configuration.
 
-## Feedback
+## Documentation and feedback
+
+Documentation: https://rig.r-lib.org/
 
 Please open an issue in our issue tracker at https://github.com/r-lib/rig/issues
     </description>
@@ -149,8 +145,8 @@ Please open an issue in our issue tracker at https://github.com/r-lib/rig/issues
 
 * `rig proj` and `rig pkg` now install Bioconductor packages, besides CRAN
   packages, from the Bioconductor release that belongs to the R version.
-  CRAN and Bioconductor share one package namespace, so a `bioc::<package>`
-  entry in `Remotes:` or `Config/Needs/*` is the same as `<package>`. A
+  CRAN and Bioconductor share one package namespace, so a `bioc::&lt;package>`
+  entry in `Remotes:` or `Config/Needs/*` is the same as `&lt;package>`. A
   `bioc` entry in the
   `[[repository]]` array of `rproj.toml` pins the Bioconductor release, or
   turns Bioconductor off. `rproj.lock` is now version 5, and records the
@@ -236,11 +232,11 @@ Please open an issue in our issue tracker at https://github.com/r-lib/rig/issues
   variables to it. An existing `.Renviron` is not a conflict any more,
   either (#440).
 
-* `rig pkg install <path>` is now supported. `<path>` can be a directory,
+* `rig pkg install &lt;path>` is now supported. `&lt;path>` can be a directory,
   of a source or binary package file.
 
 * `rig pkg install` now supports constraints. E.g. to install a specific
-  version of a package use `rig pkg install '<pkg>@=<ver>'`.
+  version of a package use `rig pkg install '&lt;pkg>@=&lt;ver>'`.
 
 * `rig proj import --force` now correctly overwrites the existing project
   files.
@@ -275,7 +271,7 @@ Please open an issue in our issue tracker at https://github.com/r-lib/rig/issues
   `rig proj sync` uses this target only if no other target matches the
   machine.
 
-* `rig run <script>` now passes every argument after the script on to the
+* `rig run &lt;script>` now passes every argument after the script on to the
   script, including the ones starting with `-`, and `--`. A script that
   starts with `#!`, e.g. `#!/usr/bin/env -S rig run`, does not need an
   `.R` extension any more (#413).
