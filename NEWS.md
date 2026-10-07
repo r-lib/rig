@@ -1,10 +1,4 @@
-# rig 0.11.0 (Unreleased)
-
-* `rig proj init` and `rig proj import` do not overwrite the project's
-  `.Renviron` file any more. rig now only manages a marked block in it,
-  and keeps the rest of the file, so you can add your own environment
-  variables to it. An existing `.Renviron` is not a conflict any more,
-  either (#440).
+# rig 0.11.0
 
 ## Custom repositories
 
@@ -138,6 +132,12 @@
   another version of a `LinkingTo` dependency (#393).
 
 * `rig proj` commands now support `path` dependencies.
+
+* `rig proj init` and `rig proj import` do not overwrite the project's
+  `.Renviron` file any more. rig now only manages a marked block in it,
+  and keeps the rest of the file, so you can add your own environment
+  variables to it. An existing `.Renviron` is not a conflict any more,
+  either (#440).
 
 * `rig pkg install <path>` is now supported. `<path>` can be a directory,
   of a source or binary package file.

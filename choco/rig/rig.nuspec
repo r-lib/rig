@@ -95,7 +95,7 @@
 Please open an issue in our issue tracker at https://github.com/r-lib/rig/issues
     </description>
     <releaseNotes>
-# rig 0.11.0-beta-2
+# rig 0.11.0
 
 ## Custom repositories
 
@@ -209,6 +209,10 @@ Please open an issue in our issue tracker at https://github.com/r-lib/rig/issues
 
 ## Other new features
 
+* rig now honors the `OS_type` field of packages: a Unix-only package is
+  not used on Windows, and a Windows-only package is not used on macOS and
+  Linux.
+
 * `rig add` now has a `--json` option. It prints information about the
   installed R version (or the already installed version that was kept),
   including whether it is a new installation and whether it is the default.
@@ -225,6 +229,12 @@ Please open an issue in our issue tracker at https://github.com/r-lib/rig/issues
   another version of a `LinkingTo` dependency (#393).
 
 * `rig proj` commands now support `path` dependencies.
+
+* `rig proj init` and `rig proj import` do not overwrite the project's
+  `.Renviron` file any more. rig now only manages a marked block in it,
+  and keeps the rest of the file, so you can add your own environment
+  variables to it. An existing `.Renviron` is not a conflict any more,
+  either (#440).
 
 * `rig pkg install <path>` is now supported. `<path>` can be a directory,
   of a source or binary package file.
