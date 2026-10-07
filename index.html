@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.10.18">
+<meta name="generator" content="quarto-1.10.19">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -78,9 +78,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="site_libs/quarto-html/anchor.min.js"></script>
 <link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-dark-b85bc7c33db8c58e0ec93c3465666fed.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-dark-b626d73c4c936ccc3cb08be7d45d1df6.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="site_libs/bootstrap/bootstrap-ecd6a5e2185bdd9e56d000ef38c02e23.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
@@ -404,6 +404,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="./scripts.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Scripts</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="./macos-app.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">macOS menu bar app</span></a>
   </div>
@@ -585,7 +591,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 </div><div class="column hero-install" style="width:35%;">
 <div class="install-cta">
-<p>Latest version <a href="./news.html" class="install-version"><strong>0.10.0</strong></a></p>
+<p>Latest version <a href="./news.html" class="install-version"><strong>0.11.0</strong></a></p>
 <a id="install-cta-button" class="btn btn-primary btn-lg" href="install.html">Install rig</a>
 <p class="install-cta-links">
   or view install instructions for
@@ -642,21 +648,26 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </ul>
 <p><strong>Package management, set up for you</strong></p>
 <ul>
-<li>Configures the default CRAN mirror and <a href="https://packagemanager.posit.co/">PPM</a> binary repositories.</li>
+<li>Configures the default CRAN mirror and <a href="https://packagemanager.posit.co/">P3M</a> binary repositories.</li>
 <li>Installs <a href="https://pak.r-lib.org">pak</a> and enables automatic <a href="https://pak.r-lib.org/dev/reference/sysreqs.html">system requirements installation</a>.</li>
 <li>Creates and configures per-user package libraries.</li>
-<li><a href="./reference/repos.html"><code>rig repos</code></a> manages package repositories across all your R versions.</li>
-<li><a href="./reference/pkg.html"><code>rig pkg</code></a> (experimental) installs, removes and lists packages in a library, and looks up package info, dependencies and dependency trees from the repositories, all without running R.</li>
+<li><a href="./reference/repos.html"><code>rig repos</code></a> manages package repositories across all your R versions. Add your own CRAN-like repositories, e.g.&nbsp;an internal CRAN mirror or an r-universe, and turn repositories on and off for each R version. rig remembers the setup.</li>
+<li><a href="./pkg-guide.html"><code>rig pkg</code></a> (experimental) installs, removes and lists packages in a library, and looks up package info, dependencies and dependency trees from the repositories, all without running R. It also searches CRAN, and finds problems in a library, e.g.&nbsp;missing or too old dependencies.</li>
+<li>Installs packages from CRAN, Bioconductor (the release that belongs to your R version), your own repositories and local paths, with version constraints, e.g.&nbsp;<code>rig pkg install 'cli@=3.6.4'</code>.</li>
+<li>On Linux, <code>rig pkg</code>, <code>rig proj</code> and <code>rig run</code> install the system requirements of R packages, or print the commands to install them if rig cannot run them as root.</li>
 </ul>
 <p><strong>Project dependency management (experimental)</strong></p>
 <ul>
-<li><a href="./reference/proj.html"><code>rig proj</code></a> manages an R project through an <code>rproj.toml</code> manifest: add or remove dependencies, resolve them with rig’s built-in solver into an <code>rproj.lock</code> lockfile, and sync a project library to match, all without running R.</li>
+<li><a href="./proj-guide.html"><code>rig proj</code></a> manages an R project through an <code>rproj.toml</code> manifest: add or remove dependencies, resolve them with rig’s built-in solver into an <code>rproj.lock</code> lockfile, and sync a project library to match, all without running R.</li>
+<li>Lock for several R versions and platforms at once, pin repositories and Bioconductor releases, ignore package versions newer than a date with <code>--exclude-newer</code>, and upgrade only some packages while keeping the rest pinned.</li>
 <li>Import a project from, or export it to, a <code>DESCRIPTION</code> file or an <a href="https://rstudio.github.io/renv/">renv</a> <code>renv.lock</code> file, to interoperate with existing R package and project tooling.</li>
 <li>Inspect a project’s dependencies and dependency tree before installing.</li>
 </ul>
 <p><strong>Run R, scripts and apps</strong></p>
 <ul>
 <li><code>rig run</code> starts R, runs a script or expression, or launches an app: Shiny apps, Plumber APIs, Quarto and R Markdown documents, and static sites, with the R version you choose.</li>
+<li><a href="./scripts.html">Self-contained scripts</a>: declare the R version and the packages a script needs in a <code># /// script</code> comment block, and <code>rig run</code> installs them into the script’s own environment. Lock the versions next to the script with <code>rig proj lock --script</code>.</li>
+<li>On Windows, <code>rig system script-assoc</code> lets you run <code>.R</code> files directly from <code>cmd</code> and PowerShell.</li>
 </ul>
 <p><strong>Platform niceties</strong></p>
 <ul>
@@ -664,7 +675,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <li>Installs and configures the right Rtools versions on Windows, and cleans up stale R entries from the Windows registry.</li>
 <li>Shell auto-completion for <code>zsh</code> and <code>bash</code> on macOS and Linux, and for PowerShell on Windows.</li>
 <li>On macOS, sets up R for debugging with <code>lldb</code> and enables core dumps.</li>
-<li>JSON output for scripting, and a <code>rig config</code> command to manage rig’s own configuration.</li>
+<li>JSON output for scripting, e.g.&nbsp;from <code>rig list</code>, <code>rig add</code> and <code>rig rtools add</code>, and a <code>rig config</code> command to manage rig’s own configuration.</li>
 </ul>
 </section>
 <section id="sponsors" class="level2">

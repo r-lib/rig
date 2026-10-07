@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.10.18">
+<meta name="generator" content="quarto-1.10.19">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -78,9 +78,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-b85bc7c33db8c58e0ec93c3465666fed.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-b626d73c4c936ccc3cb08be7d45d1df6.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="../site_libs/bootstrap/bootstrap-ecd6a5e2185bdd9e56d000ef38c02e23.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
@@ -404,6 +404,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../scripts.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Scripts</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../macos-app.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">macOS menu bar app</span></a>
   </div>
@@ -663,7 +669,7 @@ Print the Posit Package Manager URL
 <section id="rig-ppm-build-log" class="level2">
 <h2 class="anchored" data-anchor-id="rig-ppm-build-log"><code>rig ppm build-log</code></h2>
 <p>Fetch Posit Package Manager’s build log for one CRAN package.</p>
-<p><code>--platform</code> and <code>--arch</code> name the build target to look up: <code>--platform</code> is a PPM target name such as <code>macos</code>, <code>windows</code>, or a Linux codename like <code>jammy</code> (run <a href="../reference/ppm.html#rig-ppm-platforms"><code>rig ppm platforms</code></a> or <a href="../reference/ppm.html#rig-ppm-builds"><code>rig ppm builds</code></a> to see the names PPM uses).</p>
+<p><code>--platform</code> and <code>--arch</code> name the build target to look up: <code>--platform</code> is a PPM target name such as <code>macos</code>, <code>windows</code>, or a Linux codename like <code>jammy</code> (run <a href="../reference/ppm.html#rig-ppm-platforms"><code>rig ppm platforms</code></a> or <a href="../reference/ppm.html#rig-ppm-builds"><code>rig ppm builds</code></a> to see the names PPM uses). <code>--platform</code> also takes a rig platform string, e.g. <code>x86_64-unknown-linux-gnu-ubuntu-22.04</code>, which names the arch, too (see <a href="../reference/system.html#rig-system-detect-platform"><code>rig system detect-platform</code></a>).</p>
 <p><code>--r-version</code> defaults to rig’s default R version (<code>rig default</code>), trimmed to a minor version (<code>4.6.1</code> becomes <code>4.6</code>) since that is all PPM accepts; pass it explicitly to ask about a different one. <code>--version</code> restricts the log to one package version; without it PPM reports the log for the latest version it knows.</p>
 <p>Currently PPM has no way to ask for the log of a specific historical build. If package version has multiple builds, then the log of the last one is shown.</p>
 <section id="usage" class="level3">

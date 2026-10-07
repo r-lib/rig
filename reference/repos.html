@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.10.18">
+<meta name="generator" content="quarto-1.10.19">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -78,9 +78,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-b85bc7c33db8c58e0ec93c3465666fed.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-b626d73c4c936ccc3cb08be7d45d1df6.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="../site_libs/bootstrap/bootstrap-ecd6a5e2185bdd9e56d000ef38c02e23.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
@@ -404,6 +404,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../scripts.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Scripts</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../macos-app.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">macOS menu bar app</span></a>
   </div>
@@ -558,29 +564,57 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
    
   <ul>
   <li><a href="#subcommands" id="toc-subcommands" class="nav-link active" data-scroll-target="#subcommands">Subcommands</a></li>
-  <li><a href="#rig-repos-available" id="toc-rig-repos-available" class="nav-link" data-scroll-target="#rig-repos-available"><code>rig repos available</code></a>
+  <li><a href="#rig-repos-add" id="toc-rig-repos-add" class="nav-link" data-scroll-target="#rig-repos-add"><code>rig repos add</code></a>
   <ul class="collapse">
   <li><a href="#usage" id="toc-usage" class="nav-link" data-scroll-target="#usage">Usage</a></li>
   <li><a href="#arguments" id="toc-arguments" class="nav-link" data-scroll-target="#arguments">Arguments</a></li>
   <li><a href="#options" id="toc-options" class="nav-link" data-scroll-target="#options">Options</a></li>
   <li><a href="#examples" id="toc-examples" class="nav-link" data-scroll-target="#examples">Examples</a></li>
   </ul></li>
-  <li><a href="#rig-repos-list" id="toc-rig-repos-list" class="nav-link" data-scroll-target="#rig-repos-list"><code>rig repos list</code></a>
+  <li><a href="#rig-repos-available" id="toc-rig-repos-available" class="nav-link" data-scroll-target="#rig-repos-available"><code>rig repos available</code></a>
   <ul class="collapse">
   <li><a href="#usage-1" id="toc-usage-1" class="nav-link" data-scroll-target="#usage-1">Usage</a></li>
+  <li><a href="#arguments-1" id="toc-arguments-1" class="nav-link" data-scroll-target="#arguments-1">Arguments</a></li>
   <li><a href="#options-1" id="toc-options-1" class="nav-link" data-scroll-target="#options-1">Options</a></li>
+  <li><a href="#examples-1" id="toc-examples-1" class="nav-link" data-scroll-target="#examples-1">Examples</a></li>
+  </ul></li>
+  <li><a href="#rig-repos-disable" id="toc-rig-repos-disable" class="nav-link" data-scroll-target="#rig-repos-disable"><code>rig repos disable</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-2" id="toc-usage-2" class="nav-link" data-scroll-target="#usage-2">Usage</a></li>
+  <li><a href="#arguments-2" id="toc-arguments-2" class="nav-link" data-scroll-target="#arguments-2">Arguments</a></li>
+  <li><a href="#options-2" id="toc-options-2" class="nav-link" data-scroll-target="#options-2">Options</a></li>
+  <li><a href="#examples-2" id="toc-examples-2" class="nav-link" data-scroll-target="#examples-2">Examples</a></li>
+  </ul></li>
+  <li><a href="#rig-repos-enable" id="toc-rig-repos-enable" class="nav-link" data-scroll-target="#rig-repos-enable"><code>rig repos enable</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-3" id="toc-usage-3" class="nav-link" data-scroll-target="#usage-3">Usage</a></li>
+  <li><a href="#arguments-3" id="toc-arguments-3" class="nav-link" data-scroll-target="#arguments-3">Arguments</a></li>
+  <li><a href="#options-3" id="toc-options-3" class="nav-link" data-scroll-target="#options-3">Options</a></li>
+  <li><a href="#examples-3" id="toc-examples-3" class="nav-link" data-scroll-target="#examples-3">Examples</a></li>
+  </ul></li>
+  <li><a href="#rig-repos-list" id="toc-rig-repos-list" class="nav-link" data-scroll-target="#rig-repos-list"><code>rig repos list</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-4" id="toc-usage-4" class="nav-link" data-scroll-target="#usage-4">Usage</a></li>
+  <li><a href="#options-4" id="toc-options-4" class="nav-link" data-scroll-target="#options-4">Options</a></li>
+  </ul></li>
+  <li><a href="#rig-repos-rm" id="toc-rig-repos-rm" class="nav-link" data-scroll-target="#rig-repos-rm"><code>rig repos rm</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-5" id="toc-usage-5" class="nav-link" data-scroll-target="#usage-5">Usage</a></li>
+  <li><a href="#arguments-4" id="toc-arguments-4" class="nav-link" data-scroll-target="#arguments-4">Arguments</a></li>
+  <li><a href="#options-5" id="toc-options-5" class="nav-link" data-scroll-target="#options-5">Options</a></li>
+  <li><a href="#examples-4" id="toc-examples-4" class="nav-link" data-scroll-target="#examples-4">Examples</a></li>
   </ul></li>
   <li><a href="#rig-repos-setup" id="toc-rig-repos-setup" class="nav-link" data-scroll-target="#rig-repos-setup"><code>rig repos setup</code></a>
   <ul class="collapse">
-  <li><a href="#usage-2" id="toc-usage-2" class="nav-link" data-scroll-target="#usage-2">Usage</a></li>
-  <li><a href="#options-2" id="toc-options-2" class="nav-link" data-scroll-target="#options-2">Options</a></li>
+  <li><a href="#usage-6" id="toc-usage-6" class="nav-link" data-scroll-target="#usage-6">Usage</a></li>
+  <li><a href="#options-6" id="toc-options-6" class="nav-link" data-scroll-target="#options-6">Options</a></li>
   </ul></li>
   <li><a href="#rig-repos-status" id="toc-rig-repos-status" class="nav-link" data-scroll-target="#rig-repos-status"><code>rig repos status</code></a>
   <ul class="collapse">
   <li><a href="#the-report" id="toc-the-report" class="nav-link" data-scroll-target="#the-report">The report</a></li>
-  <li><a href="#usage-3" id="toc-usage-3" class="nav-link" data-scroll-target="#usage-3">Usage</a></li>
-  <li><a href="#options-3" id="toc-options-3" class="nav-link" data-scroll-target="#options-3">Options</a></li>
-  <li><a href="#examples-1" id="toc-examples-1" class="nav-link" data-scroll-target="#examples-1">Examples</a></li>
+  <li><a href="#usage-7" id="toc-usage-7" class="nav-link" data-scroll-target="#usage-7">Usage</a></li>
+  <li><a href="#options-7" id="toc-options-7" class="nav-link" data-scroll-target="#options-7">Options</a></li>
+  <li><a href="#examples-5" id="toc-examples-5" class="nav-link" data-scroll-target="#examples-5">Examples</a></li>
   </ul></li>
   </ul>
 </nav>
@@ -610,18 +644,36 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <!-- Generated by website/gen-cli-reference.sh. Do not edit by hand. -->
 <p>Manage the R package repositories that rig configures for your R installations.</p>
-<p>rig sets up the repositories R uses to install packages (the <code>repos</code> option in R), typically a CRAN mirror and the Posit Public Package Manager (P3M). These are configured per R version, and you can control them when installing R (see the <code>--with-repos</code> and <code>--without-repos</code> options of <code>rig add</code>) or afterwards with the subcommands here.</p>
+<p>rig sets up the repositories R uses to install packages (the <code>repos</code> option in R), typically a CRAN mirror and the Posit Public Package Manager (P3M). These are configured per R version, and you can control them when installing R (see the <code>--with-repos</code> and <code>--without-repos</code> options of <code>rig add</code>) or afterwards with the subcommands here: <a href="#rig-repos-enable"><code>rig repos enable</code></a> and <a href="#rig-repos-disable"><code>rig repos disable</code></a> turn repositories on and off for an R version.</p>
+<p>Besides the repositories built into rig, you can add your own CRAN-like repositories with <a href="#rig-repos-add"><code>rig repos add</code></a>, and enable them for the R versions that need them.</p>
+<p>Changing the repositories of an R version updates the files of the R installation. In <a href="../admin-vs-user-mode.html">admin mode</a> on Linux and Windows these belong to the administrator, so rig asks for administrator rights; in user mode, and usually for admin users on macOS, it does not.</p>
 <p>To look up the packages the repositories offer, see <a href="../reference/pkg.html"><code>rig pkg</code></a> .</p>
 <section id="subcommands" class="level2">
 <h2 class="anchored" data-anchor-id="subcommands">Subcommands</h2>
 <dl>
+<dt><a href="#rig-repos-add"><code>add</code></a></dt>
+<dd>
+Add a custom R package repository
+</dd>
 <dt><a href="#rig-repos-available"><code>available</code></a></dt>
 <dd>
 List available R package repositories
 </dd>
+<dt><a href="#rig-repos-disable"><code>disable</code></a></dt>
+<dd>
+Disable R package repositories for an R version
+</dd>
+<dt><a href="#rig-repos-enable"><code>enable</code></a></dt>
+<dd>
+Enable R package repositories for an R version
+</dd>
 <dt><a href="#rig-repos-list"><code>list</code></a></dt>
 <dd>
 List configured R package repositories
+</dd>
+<dt><a href="#rig-repos-rm"><code>rm</code></a></dt>
+<dd>
+Remove a custom R package repository
 </dd>
 <dt><a href="#rig-repos-setup"><code>setup</code></a></dt>
 <dd>
@@ -633,18 +685,99 @@ Check the configured R package repositories
 </dd>
 </dl>
 </section>
-<section id="rig-repos-available" class="level2">
-<h2 class="anchored" data-anchor-id="rig-repos-available"><code>rig repos available</code></h2>
-<p>List the package repositories that rig knows about and can set up.</p>
-<p>These are the repositories you can enable with <code>--with-repos</code> when running <code>rig add</code> or <code>rig repos setup</code>.</p>
-<p>Without arguments rig prints one row per repository: its name, whether it is part of the default repository set, and its title.</p>
-<p>Pass a repository name to see its description and its URLs, together with the platforms, architectures and R versions each URL applies to. Repository names are matched case insensitively.</p>
+<section id="rig-repos-add" class="level2">
+<h2 class="anchored" data-anchor-id="rig-repos-add"><code>rig repos add</code></h2>
+<p>Add a CRAN-like package repository to rig, e.g.&nbsp;your company’s internal CRAN mirror, or the r-universe of your organization.</p>
+<p>rig stores the repository in its configuration file, so you only need to add it once. It is not used by any R version until you enable it, either with <code>--enable</code> here or later with <a href="#rig-repos-enable"><code>rig repos enable</code></a>. After that it is just like the repositories built into rig: it shows up in <a href="#rig-repos-available"><code>rig repos available</code></a>, and you can enable it with <code>--with-repos</code> when you install a new R version with <a href="../reference/add.html"><code>rig add</code></a> or call <a href="#rig-repos-setup"><code>rig repos setup</code></a>.</p>
+<p>The name of the repository must start with a letter or a number, and can contain letters, numbers and <code>.</code>, <code>_</code>, <code>/</code>, <code>-</code>. It cannot be the name of a repository that is built into rig. Use <code>--force</code> to replace a custom repository of the same name.</p>
+<p>The URL must start with <code>https://</code>, <code>http://</code> or <code>file://</code>. It is the URL that you would put into the <code>repos</code> option in R, i.e.&nbsp;the directory that has the <code>src/contrib</code> directory in it, and the <code>bin</code> directory, if the repository has binary packages.</p>
+<p>With <code>--enable</code> rig enables the repository for the default R version, or the R versions you list with <code>--r-version</code>, or all of them with <code>--all-versions</code>. <code>--enable --all-versions</code> also enables the repository for the R versions you install later, the same way as CRAN. To undo this, add the repository again with <code>--force</code>, without <code>--all-versions</code>. You can still turn it off for some R versions with <a href="#rig-repos-disable"><code>rig repos disable</code></a>, or for a new R version with <code>--without-repos</code> when installing it.</p>
+<p>rig updates the files of the R installation. If you cannot write them, which is typical in <a href="../admin-vs-user-mode.html">admin mode</a> on Linux and Windows, rig asks for administrator rights, e.g.&nbsp;your password for <code>sudo</code>.</p>
 <section id="usage" class="level3">
 <h3 class="anchored" data-anchor-id="usage">Usage</h3>
-<pre class="text"><code>rig repos available [OPTIONS] [name]</code></pre>
+<pre class="text"><code>rig repos add [OPTIONS] &lt;name&gt; &lt;url&gt;</code></pre>
 </section>
 <section id="arguments" class="level3">
 <h3 class="anchored" data-anchor-id="arguments">Arguments</h3>
+<dl>
+<dt><code>&lt;name&gt;</code></dt>
+<dd>
+Name of the repository, e.g.&nbsp;‘acme’
+</dd>
+<dt><code>&lt;url&gt;</code></dt>
+<dd>
+URL of the repository, e.g.&nbsp;‘https://cran.acme.com’
+</dd>
+</dl>
+</section>
+<section id="options" class="level3">
+<h3 class="anchored" data-anchor-id="options">Options</h3>
+<dl>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--all-versions</code></dt>
+<dd>
+With <code>--enable</code>, enable the repository for all R versions, also the ones installed later
+</dd>
+<dt><code>--description &lt;description&gt;</code></dt>
+<dd>
+Longer description of the repository
+</dd>
+<dt><code>--enable</code></dt>
+<dd>
+Also enable the repository, see <code>rig repos enable</code>
+</dd>
+<dt><code>--force</code></dt>
+<dd>
+Replace the repository if it already exists
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+<dt><code>--no-cache</code></dt>
+<dd>
+Do not read or write rig’s cache (overrides RIG_NO_CACHE and config)
+</dd>
+<dt><code>-r, --r-version &lt;r-version&gt;</code></dt>
+<dd>
+With <code>--enable</code>, R version to enable the repository for (default: the default R version), can be repeated
+</dd>
+<dt><code>--title &lt;title&gt;</code></dt>
+<dd>
+Short title of the repository
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+</dl>
+</section>
+<section id="examples" class="level3">
+<h3 class="anchored" data-anchor-id="examples">Examples</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Add a repository, without enabling it</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> repos add acme https://cran.acme.com <span class="at">--title</span> <span class="st">"Acme CRAN mirror"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Add a repository and enable it for the default R version</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> repos add acme-universe https://acme.r-universe.dev <span class="at">--enable</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Add a repository and enable it for all R versions, also the ones</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="co"># installed later</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> repos add acme https://cran.acme.com <span class="at">--enable</span> <span class="at">--all-versions</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+</section>
+<section id="rig-repos-available" class="level2">
+<h2 class="anchored" data-anchor-id="rig-repos-available"><code>rig repos available</code></h2>
+<p>List the package repositories that rig knows about and can set up.</p>
+<p>These are the repositories built into rig, plus the ones you added with <a href="#rig-repos-add"><code>rig repos add</code></a>. You can enable them with <code>--with-repos</code> when running <code>rig add</code> or <code>rig repos setup</code>, or with <a href="#rig-repos-enable"><code>rig repos enable</code></a>.</p>
+<p>Without arguments rig prints one row per repository: its name, whether it is part of the default repository set, whether it is built in or custom, and its title. A custom repository is part of the default set, i.e.&nbsp;new R versions get it, if you added it with <code>rig repos add --enable --all-versions</code>.</p>
+<p>Pass a repository name to see its description and its URLs, together with the platforms, architectures and R versions each URL applies to. Repository names are matched case insensitively.</p>
+<section id="usage-1" class="level3">
+<h3 class="anchored" data-anchor-id="usage-1">Usage</h3>
+<pre class="text"><code>rig repos available [OPTIONS] [name]</code></pre>
+</section>
+<section id="arguments-1" class="level3">
+<h3 class="anchored" data-anchor-id="arguments-1">Arguments</h3>
 <dl>
 <dt><code>[name]</code></dt>
 <dd>
@@ -652,8 +785,8 @@ Repository to show in detail, e.g.&nbsp;‘P3M’ (case insensitive)
 </dd>
 </dl>
 </section>
-<section id="options" class="level3">
-<h3 class="anchored" data-anchor-id="options">Options</h3>
+<section id="options-1" class="level3">
+<h3 class="anchored" data-anchor-id="options-1">Options</h3>
 <dl>
 <dt><code>--admin</code></dt>
 <dd>
@@ -677,24 +810,143 @@ Run in user mode (overrides RIG_MODE and config)
 </dd>
 </dl>
 </section>
-<section id="examples" class="level3">
-<h3 class="anchored" data-anchor-id="examples">Examples</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># List all repositories rig knows about</span></span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> repos available</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Show the URLs of one repository</span></span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> repos available P3M</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<section id="examples-1" class="level3">
+<h3 class="anchored" data-anchor-id="examples-1">Examples</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># List all repositories rig knows about</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> repos available</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Show the URLs of one repository</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> repos available P3M</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+</section>
+<section id="rig-repos-disable" class="level2">
+<h2 class="anchored" data-anchor-id="rig-repos-disable"><code>rig repos disable</code></h2>
+<p>Disable one or more package repositories for R versions, so R does not use them to install packages. This works both for the repositories built into rig, e.g. <code>P3M</code> or <code>CRAN</code>, for the ones you added with <a href="#rig-repos-add"><code>rig repos add</code></a>, and for the repositories that come with R itself, e.g.&nbsp;<code>CRANextra</code> or <code>R-Forge</code>. Repository names are matched case insensitively. Disabling a custom repository keeps it in rig, use <a href="#rig-repos-rm"><code>rig repos rm</code></a> to remove it completely.</p>
+<p>By default rig disables the repositories for the default R version. Use <code>--r-version</code> (possibly more than once) to pick other R versions, or <code>--all-versions</code> for all of them.</p>
+<p>rig remembers which repositories you enabled and disabled for each R version, and keeps them when it sets up the repositories again, e.g.&nbsp;with <a href="#rig-repos-setup"><code>rig repos setup</code></a>.</p>
+<p>rig updates the files of the R installation. If you cannot write them, which is typical in <a href="../admin-vs-user-mode.html">admin mode</a> on Linux and Windows, rig asks for administrator rights, e.g.&nbsp;your password for <code>sudo</code>.</p>
+<section id="usage-2" class="level3">
+<h3 class="anchored" data-anchor-id="usage-2">Usage</h3>
+<pre class="text"><code>rig repos disable [OPTIONS] &lt;name&gt;...</code></pre>
+</section>
+<section id="arguments-2" class="level3">
+<h3 class="anchored" data-anchor-id="arguments-2">Arguments</h3>
+<dl>
+<dt><code>&lt;name&gt;...</code></dt>
+<dd>
+Name(s) of the repositories, e.g.&nbsp;‘P3M’ (case insensitive)
+</dd>
+</dl>
+</section>
+<section id="options-2" class="level3">
+<h3 class="anchored" data-anchor-id="options-2">Options</h3>
+<dl>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--all-versions</code></dt>
+<dd>
+Disable the repositories for all installed R versions
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+<dt><code>--no-cache</code></dt>
+<dd>
+Do not read or write rig’s cache (overrides RIG_NO_CACHE and config)
+</dd>
+<dt><code>-r, --r-version &lt;r-version&gt;</code></dt>
+<dd>
+R version to disable the repositories for (default: the default R version), can be repeated
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+</dl>
+</section>
+<section id="examples-2" class="level3">
+<h3 class="anchored" data-anchor-id="examples-2">Examples</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Stop using P3M for the default R version</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> repos disable p3m</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Stop using a custom repository for R 4.4</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> repos disable acme <span class="at">-r</span> 4.4</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+</section>
+<section id="rig-repos-enable" class="level2">
+<h2 class="anchored" data-anchor-id="rig-repos-enable"><code>rig repos enable</code></h2>
+<p>Enable one or more package repositories for R versions. This works both for the repositories built into rig, e.g.&nbsp;<code>Bioconductor</code> or <code>RHUB</code>, and for the ones you added with <a href="#rig-repos-add"><code>rig repos add</code></a>. See <a href="#rig-repos-available"><code>rig repos available</code></a> for the list. It also works for the repositories that come with R itself, e.g.&nbsp;<code>CRANextra</code> or <code>R-Forge</code>, see <a href="#rig-repos-list"><code>rig repos list --all</code></a>. Repository names are matched case insensitively.</p>
+<p>By default rig enables the repositories for the default R version. Use <code>--r-version</code> (possibly more than once) to pick other R versions, or <code>--all-versions</code> for all of them. Each R version has its own set of repositories, so enabling a repository for one R version does not change the others.</p>
+<p>rig remembers which repositories you enabled and disabled for each R version, and keeps them when it sets up the repositories again, e.g.&nbsp;with <a href="#rig-repos-setup"><code>rig repos setup</code></a>.</p>
+<p>Some built-in repositories only have URLs for certain platforms, architectures or R versions, and rig fails if a repository cannot be used with an R version.</p>
+<p>rig updates the files of the R installation. If you cannot write them, which is typical in <a href="../admin-vs-user-mode.html">admin mode</a> on Linux and Windows, rig asks for administrator rights, e.g.&nbsp;your password for <code>sudo</code>.</p>
+<section id="usage-3" class="level3">
+<h3 class="anchored" data-anchor-id="usage-3">Usage</h3>
+<pre class="text"><code>rig repos enable [OPTIONS] &lt;name&gt;...</code></pre>
+</section>
+<section id="arguments-3" class="level3">
+<h3 class="anchored" data-anchor-id="arguments-3">Arguments</h3>
+<dl>
+<dt><code>&lt;name&gt;...</code></dt>
+<dd>
+Name(s) of the repositories, e.g.&nbsp;‘Bioconductor’ (case insensitive)
+</dd>
+</dl>
+</section>
+<section id="options-3" class="level3">
+<h3 class="anchored" data-anchor-id="options-3">Options</h3>
+<dl>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>--all-versions</code></dt>
+<dd>
+Enable the repositories for all installed R versions
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+<dt><code>--no-cache</code></dt>
+<dd>
+Do not read or write rig’s cache (overrides RIG_NO_CACHE and config)
+</dd>
+<dt><code>-r, --r-version &lt;r-version&gt;</code></dt>
+<dd>
+R version to enable the repositories for (default: the default R version), can be repeated
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+</dl>
+</section>
+<section id="examples-3" class="level3">
+<h3 class="anchored" data-anchor-id="examples-3">Examples</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Enable Bioconductor for the default R version</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> repos enable bioconductor</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Enable a custom repository for two R versions</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> repos enable acme <span class="at">-r</span> 4.5 <span class="at">-r</span> 4.4</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Enable R-Forge, one of R's own repositories</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> repos enable r-forge</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb15"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Enable a custom repository for every R version</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> repos enable acme <span class="at">--all-versions</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 </section>
 <section id="rig-repos-list" class="level2">
 <h2 class="anchored" data-anchor-id="rig-repos-list"><code>rig repos list</code></h2>
 <p>List the package repositories configured for an R version.</p>
-<p>By default rig shows the repositories of the default R version; use <code>--r-version</code> to pick another. Add <code>--all</code> to include repositories that are not enabled by default, and <code>--raw</code> to show repository URLs without resolving the <code>%</code> variables in them.</p>
-<section id="usage-1" class="level3">
-<h3 class="anchored" data-anchor-id="usage-1">Usage</h3>
+<p>By default rig shows the repositories of the default R version; use <code>--r-version</code> to pick another. Add <code>--all</code> to include repositories that are not enabled, and <code>--raw</code> to show repository URLs without resolving the <code>%</code> variables in them.</p>
+<p>The <code>name</code> column is the name that <a href="#rig-repos-enable"><code>rig repos enable</code></a>, <a href="#rig-repos-disable"><code>rig repos disable</code></a> and <a href="#rig-repos-available"><code>rig repos available</code></a> use. Some of these, e.g.&nbsp;<code>Bioconductor</code>, have several entries in R’s <code>repositories</code> file; then the <code>repo</code> column shows the name of the entry. The <code>E</code> column marks the enabled repositories. The <code>M</code> column marks the repositories that have extended metadata: the full history of their packages, including archived versions, and binary package indices. rig uses these to resolve package versions and to find binary packages. In <code>--json</code> output <code>name</code> is the entry name, the <code>group</code> field is the name of the rig repository, or <code>null</code>, and the <code>metadata</code> field holds the base URL of the extended metadata, or <code>null</code>.</p>
+<p>The list includes the custom repositories (see <a href="#rig-repos-add"><code>rig repos add</code></a>) that are enabled for the R version, and the repositories that come with R itself, e.g.&nbsp;<code>CRANextra</code> and <code>R-Forge</code>; with <code>--all</code> also the ones that are not enabled. Use <a href="#rig-repos-enable"><code>rig repos enable</code></a> and <a href="#rig-repos-disable"><code>rig repos disable</code></a> to change it.</p>
+<section id="usage-4" class="level3">
+<h3 class="anchored" data-anchor-id="usage-4">Usage</h3>
 <pre class="text"><code>rig repos list [OPTIONS]</code></pre>
 </section>
-<section id="options-1" class="level3">
-<h3 class="anchored" data-anchor-id="options-1">Options</h3>
+<section id="options-4" class="level3">
+<h3 class="anchored" data-anchor-id="options-4">Options</h3>
 <dl>
 <dt><code>--admin</code></dt>
 <dd>
@@ -702,7 +954,7 @@ Run in admin mode (overrides RIG_MODE and config)
 </dd>
 <dt><code>--all</code></dt>
 <dd>
-Show all repositories, not just the default ones
+Show all repositories, not just the enabled ones
 </dd>
 <dt><code>-h, --help</code></dt>
 <dd>
@@ -731,16 +983,62 @@ Run in user mode (overrides RIG_MODE and config)
 </dl>
 </section>
 </section>
+<section id="rig-repos-rm" class="level2">
+<h2 class="anchored" data-anchor-id="rig-repos-rm"><code>rig repos rm</code></h2>
+<p>Remove one or more repositories that you added with <a href="#rig-repos-add"><code>rig repos add</code></a>. rig also removes them from every R version that uses them.</p>
+<p>The repositories that are built into rig cannot be removed, use <a href="#rig-repos-disable"><code>rig repos disable</code></a> to stop using them.</p>
+<p>If some R versions use the repositories, rig updates their files. If you cannot write them, which is typical in <a href="../admin-vs-user-mode.html">admin mode</a> on Linux and Windows, rig asks for administrator rights, e.g.&nbsp;your password for <code>sudo</code>.</p>
+<section id="usage-5" class="level3">
+<h3 class="anchored" data-anchor-id="usage-5">Usage</h3>
+<pre class="text"><code>rig repos rm [OPTIONS] &lt;name&gt;...</code></pre>
+</section>
+<section id="arguments-4" class="level3">
+<h3 class="anchored" data-anchor-id="arguments-4">Arguments</h3>
+<dl>
+<dt><code>&lt;name&gt;...</code></dt>
+<dd>
+Name(s) of the repositories to remove (case insensitive)
+</dd>
+</dl>
+</section>
+<section id="options-5" class="level3">
+<h3 class="anchored" data-anchor-id="options-5">Options</h3>
+<dl>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+<dt><code>--no-cache</code></dt>
+<dd>
+Do not read or write rig’s cache (overrides RIG_NO_CACHE and config)
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+</dl>
+</section>
+<section id="examples-4" class="level3">
+<h3 class="anchored" data-anchor-id="examples-4">Examples</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb18"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> repos rm acme</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+</section>
 <section id="rig-repos-setup" class="level2">
 <h2 class="anchored" data-anchor-id="rig-repos-setup"><code>rig repos setup</code></h2>
 <p>Set up the package repositories for installed R versions.</p>
 <p>By default rig configures the repositories for all installed R versions; use <code>--r-version</code> to restrict it to one. Use <code>--with-repos</code> and <code>--without-repos</code> to control which repositories are enabled, the same way as for <code>rig add</code>.</p>
-<section id="usage-2" class="level3">
-<h3 class="anchored" data-anchor-id="usage-2">Usage</h3>
+<p>rig remembers the repositories enabled and disabled for each R version, with <code>--with-repos</code>, <code>--without-repos</code>, <a href="#rig-repos-enable"><code>rig repos enable</code></a> and <a href="#rig-repos-disable"><code>rig repos disable</code></a>, and applies them again every time. So <code>rig repos setup</code> without options keeps your choices, <code>--with-repos=&lt;names&gt;</code> and <code>--without-repos=&lt;names&gt;</code> add to them, and <code>--without-repos</code> without names starts over with no repositories (plus the ones in <code>--with-repos</code>).</p>
+<p>rig updates the files of the R installation. If you cannot write them, which is typical in <a href="../admin-vs-user-mode.html">admin mode</a> on Linux and Windows, rig asks for administrator rights, e.g.&nbsp;your password for <code>sudo</code>.</p>
+<section id="usage-6" class="level3">
+<h3 class="anchored" data-anchor-id="usage-6">Usage</h3>
 <pre class="text"><code>rig repos setup [OPTIONS]</code></pre>
 </section>
-<section id="options-2" class="level3">
-<h3 class="anchored" data-anchor-id="options-2">Options</h3>
+<section id="options-6" class="level3">
+<h3 class="anchored" data-anchor-id="options-6">Options</h3>
 <dl>
 <dt><code>--admin</code></dt>
 <dd>
@@ -776,7 +1074,7 @@ Do not set up package repositories. Alternatively, specify which ones to skip, a
 <section id="rig-repos-status" class="level2">
 <h2 class="anchored" data-anchor-id="rig-repos-status"><code>rig repos status</code></h2>
 <p>Check the package repositories configured for an R version: how quickly each one responds, whether it responds at all, what kinds of packages it serves, and how fresh its package index is.</p>
-<p>rig checks the same repositories that <a href="../reference/repos.html#rig-repos-list"><code>rig repos list</code></a> shows, in the same order. By default these are the repositories of the default R version; use <code>--r-version</code> to pick another one. Add <code>--all</code> to include repositories that are not enabled by default.</p>
+<p>rig checks the same repositories that <a href="../reference/repos.html#rig-repos-list"><code>rig repos list</code></a> shows, in the same order. By default these are the repositories of the default R version; use <code>--r-version</code> to pick another one. Add <code>--all</code> to include repositories that are not enabled.</p>
 <section id="the-report" class="level3">
 <h3 class="anchored" data-anchor-id="the-report">The report</h3>
 <p>For each repository rig prints:</p>
@@ -790,12 +1088,12 @@ Do not set up package repositories. Alternatively, specify which ones to skip, a
 <p>A repository whose <code>types</code> column ends in <code>*</code> serves prebuilt <strong>Linux binaries</strong> as source packages. Linux binaries have no package type of their own in R, so a Posit Package Manager repository offers them from a distribution-specific URL instead, and rig recognizes those URLs.</p>
 <p>The repositories are checked in parallel, so the command takes about as long as the slowest repository, not as long as all of them together. An unreachable repository is reported in its row; it does not fail the command.</p>
 </section>
-<section id="usage-3" class="level3">
-<h3 class="anchored" data-anchor-id="usage-3">Usage</h3>
+<section id="usage-7" class="level3">
+<h3 class="anchored" data-anchor-id="usage-7">Usage</h3>
 <pre class="text"><code>rig repos status [OPTIONS]</code></pre>
 </section>
-<section id="options-3" class="level3">
-<h3 class="anchored" data-anchor-id="options-3">Options</h3>
+<section id="options-7" class="level3">
+<h3 class="anchored" data-anchor-id="options-7">Options</h3>
 <dl>
 <dt><code>--admin</code></dt>
 <dd>
@@ -803,7 +1101,7 @@ Run in admin mode (overrides RIG_MODE and config)
 </dd>
 <dt><code>--all</code></dt>
 <dd>
-Check all repositories, not just the default ones
+Check all repositories, not just the enabled ones
 </dd>
 <dt><code>-h, --help</code></dt>
 <dd>
@@ -831,16 +1129,16 @@ Run in user mode (overrides RIG_MODE and config)
 </dd>
 </dl>
 </section>
-<section id="examples-1" class="level3">
-<h3 class="anchored" data-anchor-id="examples-1">Examples</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Check the repositories of the default R version</span></span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> repos status</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Include repositories that are not enabled by default</span></span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> repos status <span class="at">--all</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Check the repositories of another R version</span></span>
-<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> repos status <span class="at">--r-version</span> 4.4.1</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Machine readable output, with the exact URLs, statuses and timings</span></span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> repos status <span class="at">--json</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<section id="examples-5" class="level3">
+<h3 class="anchored" data-anchor-id="examples-5">Examples</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb21"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Check the repositories of the default R version</span></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> repos status</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb22"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Include repositories that are not enabled</span></span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> repos status <span class="at">--all</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb23"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Check the repositories of another R version</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> repos status <span class="at">--r-version</span> 4.4.1</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb24"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Machine readable output, with the exact URLs, statuses and timings</span></span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> repos status <span class="at">--json</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 
 
 </section>

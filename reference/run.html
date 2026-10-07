@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.10.18">
+<meta name="generator" content="quarto-1.10.19">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -78,9 +78,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-b85bc7c33db8c58e0ec93c3465666fed.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-b626d73c4c936ccc3cb08be7d45d1df6.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="../site_libs/bootstrap/bootstrap-ecd6a5e2185bdd9e56d000ef38c02e23.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
@@ -404,6 +404,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../scripts.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Scripts</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../macos-app.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">macOS menu bar app</span></a>
   </div>
@@ -560,6 +566,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#supported-apps" id="toc-supported-apps" class="nav-link active" data-scroll-target="#supported-apps">Supported apps</a></li>
   <li><a href="#r-arguments" id="toc-r-arguments" class="nav-link" data-scroll-target="#r-arguments">R arguments</a></li>
   <li><a href="#projects" id="toc-projects" class="nav-link" data-scroll-target="#projects">Projects</a></li>
+  <li><a href="#scripts" id="toc-scripts" class="nav-link" data-scroll-target="#scripts">Scripts</a></li>
+  <li><a href="#scripts-with-inline-dependencies" id="toc-scripts-with-inline-dependencies" class="nav-link" data-scroll-target="#scripts-with-inline-dependencies">Scripts with inline dependencies</a></li>
+  <li><a href="#script-lock-files" id="toc-script-lock-files" class="nav-link" data-scroll-target="#script-lock-files">Script lock files</a></li>
   <li><a href="#project-scripts" id="toc-project-scripts" class="nav-link" data-scroll-target="#project-scripts">Project scripts</a></li>
   <li><a href="#activation" id="toc-activation" class="nav-link" data-scroll-target="#activation">Activation</a></li>
   <li><a href="#rscript" id="toc-rscript" class="nav-link" data-scroll-target="#rscript">Rscript</a></li>
@@ -596,17 +605,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p>Run R, an R script or an R project, using the selected R version.</p>
 <p>All of these examples allow an <code>--r-version</code> argument, to use a specific R version.</p>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run                    <span class="co"># start R</span></span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">-f</span> <span class="op">&lt;</span>script-file<span class="op">&gt;</span>   <span class="co"># run an R script</span></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">-e</span> <span class="op">&lt;</span>expression<span class="op">&gt;</span>    <span class="co"># evaluate an R expression</span></span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="op">&lt;</span>pkg<span class="op">&gt;</span>::<span class="op">&lt;</span>script<span class="op">&gt;</span>    <span class="co"># run a script from a package's exec directory</span></span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="op">&lt;</span>name<span class="op">&gt;</span>             <span class="co"># run a script the project declares</span></span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">--list</span>             <span class="co"># list the scripts the project declares</span></span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="op">&lt;</span>path-to-app<span class="op">&gt;</span>      <span class="co"># run an R app</span></span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">--cmd</span> <span class="op">&lt;</span>command<span class="op">&gt;</span>    <span class="co"># run `R CMD &lt;command&gt;`</span></span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">--activate</span>         <span class="co"># start R with the selected version on PATH</span></span>
-<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">--shell</span>            <span class="co"># start a shell with the selected version on PATH</span></span>
-<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">--rscript</span> ...      <span class="co"># run `Rscript` instead of `R`</span></span>
-<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">--</span> <span class="at">--vanilla</span>       <span class="co"># pass flags to R/Rscript</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="op">&lt;</span>script.R<span class="op">&gt;</span>         <span class="co"># run an R script</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">-f</span> <span class="op">&lt;</span>script-file<span class="op">&gt;</span>   <span class="co"># run an R script</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">-e</span> <span class="op">&lt;</span>expression<span class="op">&gt;</span>    <span class="co"># evaluate an R expression</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="op">&lt;</span>pkg<span class="op">&gt;</span>::<span class="op">&lt;</span>script<span class="op">&gt;</span>    <span class="co"># run a script from a package's exec directory</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="op">&lt;</span>name<span class="op">&gt;</span>             <span class="co"># run a script the project declares</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">--list</span>             <span class="co"># list the scripts the project declares</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="op">&lt;</span>path-to-app<span class="op">&gt;</span>      <span class="co"># run an R app</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">--cmd</span> <span class="op">&lt;</span>command<span class="op">&gt;</span>    <span class="co"># run `R CMD &lt;command&gt;`</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">--activate</span>         <span class="co"># start R with the selected version on PATH</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">--shell</span>            <span class="co"># start a shell with the selected version on PATH</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">--rscript</span> ...      <span class="co"># run `Rscript` instead of `R`</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">--</span> <span class="at">--vanilla</span>       <span class="co"># pass flags to R/Rscript</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <section id="supported-apps" class="level2">
 <h2 class="anchored" data-anchor-id="supported-apps">Supported apps</h2>
 <p>Currently supported apps are:</p>
@@ -622,7 +632,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="r-arguments" class="level2">
 <h2 class="anchored" data-anchor-id="r-arguments">R arguments</h2>
-<p>Anything after a literal <code>--</code> is passed straight to the R (or <code>Rscript</code>) process as its own command-line flags, e.g.&nbsp;<code>rig run -- --vanilla</code>.</p>
+<p>Anything after a literal <code>--</code> is passed straight to the R (or <code>Rscript</code>) process as its own command-line flags, e.g.&nbsp;<code>rig run -- --vanilla</code>. This does not work for R scripts: everything after a script goes to the script, see “Scripts” below.</p>
 <p>Plain <code>rig run</code> (no <code>-e</code>/<code>-f</code>/app/<code>--cmd</code>) defaults to <code>--no-save --no-restore</code>, so it never shows the “Save workspace image?” prompt on exit. Override with <code>rig run -- --save --restore</code>.</p>
 </section>
 <section id="projects" class="level2">
@@ -630,13 +640,47 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p>If the current directory is inside a <a href="../reference/proj.html">project</a>, then <code>rig run</code> uses the project’s own environment instead of the default R version: it runs <code>.rvenv/bin/R</code>. It also runs <code>rig proj lock</code> and <code>rig proj sync</code> as needed.</p>
 <p>Use <code>--no-project</code> to ignore a project, or <code>--r-version</code> to select an R version directly.</p>
 </section>
+<section id="scripts" class="level2">
+<h2 class="anchored" data-anchor-id="scripts">Scripts</h2>
+<p><code>rig run &lt;script.R&gt; [args...]</code> and <code>rig run -f &lt;script&gt; [args...]</code> pass every argument after the script on to the script, unchanged, where <code>commandArgs(TRUE)</code> picks them up. This includes arguments that look like rig’s own flags, and <code>--</code>. rig’s own flags go before the script: <code>rig run -r 4.5 script.R --verbose</code>.</p>
+<p>A script can start with a <code>#!/usr/bin/env -S rig run</code> line, and then you can run it directly, after making it executable with <code>chmod +x</code>. A file that starts with <code>#!</code> is a script for <code>rig run</code>, whatever its name, so the script does not need an <code>.R</code> extension.</p>
+<p>On Windows, <code>#!</code> lines do not work. Use <a href="../reference/system.html#rig-system-script-assoc"><code>rig system script-assoc</code></a> to run <code>.R</code> files with rig from <code>cmd</code> and PowerShell instead.</p>
+</section>
+<section id="scripts-with-inline-dependencies" class="level2">
+<h2 class="anchored" data-anchor-id="scripts-with-inline-dependencies">Scripts with inline dependencies</h2>
+<p><code>rig run -f script.R</code> runs an R script (the <code>-f</code> can be omitted). A script can declare the packages and the R version it needs in a comment block at its top, so it runs anywhere without a project:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># /// script</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="co"># [dependencies]</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="co"># R = "&gt;= 4.4"</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co"># cli = "*"</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="co"># dplyr = "&gt;= 1.1"</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="co"># [tool.rig]</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="co"># exclude-newer = "2026-06-01"</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="co"># ///</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(dplyr)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The block starts with a <code># /// script</code> line and ends with a <code># ///</code> line. In between, every line is a comment, and without the leading <code>#</code> they form a TOML document. The block takes the <code>[dependencies]</code>, <code>[[repository]]</code> and <code>[tool.rig]</code> tables of <code>rproj.toml</code>, with the same meaning.</p>
+<p>rig creates an environment for the script in its cache directory, and runs the script there, isolated from your own package library. It picks an installed R version that fits the <code>R</code> requirement, or installs one, then locks and installs the packages, the same way <code>rig proj sync</code> does for a project. Later runs reuse the environment. Scripts with the same block share one environment, and changing the block creates a new one. A script with a block always uses its own environment, even inside a project. <code>--r-version</code> selects the R version, which must fit the <code>R</code> requirement.</p>
+<p><code>rig proj init --script script.R</code> adds a block with an <code>R</code> requirement to a script (or creates the script), and <code>rig proj add --script script.R &lt;package&gt;</code> and <code>rig proj remove --script script.R &lt;package&gt;</code> edit its <code>[dependencies]</code>, so you do not have to write the block by hand.</p>
+<p>Like a project’s lock file, the environment keeps the package versions it was created with. Use <code>--upgrade</code> to solve the dependencies again, with the latest versions that fit, or <code>--upgrade-package</code> to upgrade only some packages, the same way as for <a href="../reference/proj.html#rig-proj-lock"><code>rig proj lock</code></a>:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">--upgrade</span> script.R</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">--upgrade-package</span> cli script.R</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="script-lock-files" class="level2">
+<h2 class="anchored" data-anchor-id="script-lock-files">Script lock files</h2>
+<p>For a script you share or rerun later, a lock file pins the exact R and package versions, the same way <code>rproj.lock</code> does for a project. <code>rig proj lock --script script.R</code> writes it next to the script, as <code>script.R.lock</code>:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> proj lock <span class="at">--script</span> script.R</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>By default it covers this machine and the other common platforms, like <a href="../reference/proj.html#rig-proj-lock"><code>rig proj lock</code></a>, so the script and its lock file work on other machines, too. It takes the same options, e.g.&nbsp;<code>--r-version</code>, <code>--platform</code> and <code>--exclude-newer</code>.</p>
+<p>When <code>script.R.lock</code> exists, <code>rig run script.R</code> installs the R version and the package versions it names. If you change the block, and the lock file does not fit it any more, <code>rig run</code> locks the dependencies again, for the same R versions and platforms, keeps the pinned versions where they still fit, and updates <code>script.R.lock</code>. Use <code>--locked</code> to fail instead, e.g.&nbsp;in CI. <code>--upgrade</code> and <code>--upgrade-package</code> also update the lock file, and so do <code>rig proj add --script</code> and <code>rig proj remove --script</code>. With a lock file, <code>--r-version</code> selects one of the R versions in the lock file, so it must be a version number like <code>4.6</code> or <code>4.6.1</code>.</p>
+<p><code>rig cache clean --category scripts</code> deletes all script environments. A script’s lock file stays, and the next <code>rig run</code> sets up the environment from it again.</p>
+</section>
 <section id="project-scripts" class="level2">
 <h2 class="anchored" data-anchor-id="project-scripts">Project scripts</h2>
 <p>A project can give its own scripts a name, in the <code>[[bin]]</code> tables of its <code>rproj.toml</code>:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">[[bin]]</span></span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="dt">name</span> <span class="op">=</span> <span class="st">"report"</span></span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="dt">path</span> <span class="op">=</span> <span class="st">"scripts/report.R"</span></span>
-<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="dt">description</span> <span class="op">=</span> <span class="st">"Build the report"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode toml code-with-copy"><code class="sourceCode toml"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">[[bin]]</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="dt">name</span> <span class="op">=</span> <span class="st">"report"</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="dt">path</span> <span class="op">=</span> <span class="st">"scripts/report.R"</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="dt">description</span> <span class="op">=</span> <span class="st">"Build the report"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p><code>rig run report --format pdf</code> then runs <code>scripts/report.R</code> in the project’s environment, and passes <code>--format pdf</code> on to the script, where <code>commandArgs(TRUE)</code> picks it up. <code>path</code> is relative to the project directory, so a declared script works the same from anywhere within the project. <code>rig run --list</code> lists the declared scripts, and <code>--json</code> prints them as JSON.</p>
 <p>A declared name wins over a directory of the same name. Arguments that look like a path rather than a name are never script names: anything containing a slash or <code>::</code>, anything ending in <code>.R</code>, <code>.r</code>, <code>.Rmd</code> or <code>.qmd</code>, and <code>.</code> and <code>..</code>. Use <code>./name</code> to run an app in a directory whose name a script has taken.</p>
 </section>
@@ -648,7 +692,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="rscript" class="level2">
 <h2 class="anchored" data-anchor-id="rscript">Rscript</h2>
 <p><code>rig run --rscript</code> runs the selected R version’s <code>Rscript</code> instead of <code>R</code>. Unlike <code>R -e</code>/<code>R -f</code>, <code>Rscript</code> never echoes back the code it runs, which fits scripts and pipelines better than <code>R</code>’s interactive-style echo.</p>
-<p><code>--rscript</code> works with <code>-e</code>/<code>-f</code>, project scripts, apps and <code>--activate</code>, but not with <code>--cmd</code> (<code>R CMD</code> only exists as part of the <code>R</code> front-end) or <code>--shell</code> (which never runs the R binary at all).</p>
+<p><code>--rscript</code> works with <code>-e</code>/<code>-f</code>, scripts, project scripts, apps and <code>--activate</code>, but not with <code>--cmd</code> (<code>R CMD</code> only exists as part of the <code>R</code> front-end) or <code>--shell</code> (which never runs the R binary at all).</p>
 </section>
 <section id="usage" class="level2">
 <h2 class="anchored" data-anchor-id="usage">Usage</h2>
@@ -707,6 +751,12 @@ JSON output
 <dd>
 List the scripts the project declares
 </dd>
+<dt><code>--locked</code></dt>
+<dd>
+Fail if the lock file of a script (
+<script>
+.lock) does not fit its <code># /// script</code> block, instead of updating the lock file
+</dd>
 <dt><code>--no-cache</code></dt>
 <dd>
 Do not read or write rig’s cache (overrides RIG_NO_CACHE and config)
@@ -729,7 +779,7 @@ R version to use
 </dd>
 <dt><code>--rscript</code></dt>
 <dd>
-Run with Rscript instead of R, e.g.&nbsp;for scripts (no echoing of input)
+Run with Rscript instead of R, e.g. for scripts (no echoing of input)
 </dd>
 <dt><code>-f, --script &lt;script&gt;</code></dt>
 <dd>
@@ -743,13 +793,70 @@ Run a shell instead of R, with the selected R version on PATH
 <dd>
 Print R startup message
 </dd>
+<dt><code>-U, --upgrade</code></dt>
+<dd>
+Re-resolve every dependency of a script with a <code># /// script</code> block, instead of keeping the versions its environment has
+</dd>
+<dt><code>-P, --upgrade-package &lt;PACKAGE&gt;</code></dt>
+<dd>
+Upgrade only these packages in the environment of a script with a <code># /// script</code> block. As <package> or <package>@<version>. Comma-separated, and can be repeated.
+</dd>
 <dt><code>--user</code></dt>
 <dd>
 Run in user mode (overrides RIG_MODE and config)
 </dd>
 </dl>
-
-
+<div id="quarto-navigation-envelope" class="hidden">
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyLXRpdGxl">rig</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1uYXZiYXItdGl0bGU=">rig</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1uZXh0">rig self</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1wcmV2">rig rtools</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOnF1YXJ0by1zaWRlYmFyLXNlY3Rpb24tMQ==">Tutorials</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi90dXRvcmlhbC11c2VyLmh0bWxVc2VyLW1vZGU=">User mode</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi90dXRvcmlhbC1hZG1pbi5odG1sQWRtaW4tbW9kZQ==">Admin mode</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi90dXRvcmlhbC1taWdyYXRlLmh0bWxNaWdyYXRlLXRvLXVzZXItbW9kZQ==">Migrate to user mode</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOnF1YXJ0by1zaWRlYmFyLXNlY3Rpb24tMg==">Guide</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi9pbnN0YWxsLmh0bWxJbnN0YWxsaW5nLXJpZw==">Installing rig</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi9hZG1pbi12cy11c2VyLW1vZGUuaHRtbEFkbWluLW1vZGUtdnMtdXNlci1tb2Rl">Admin mode vs user mode</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi9wa2ctZ3VpZGUuaHRtbE1hbmFnaW5nLVItcGFja2FnZXM=">Managing R packages</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi9wcm9qLWd1aWRlLmh0bWxSLXByb2plY3Rz">R projects</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi9zY3JpcHRzLmh0bWxTY3JpcHRz">Scripts</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi9tYWNvcy1hcHAuaHRtbG1hY09TLW1lbnUtYmFyLWFwcA==">macOS menu bar app</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi9kb2NrZXIuaHRtbERvY2tlci1jb250YWluZXJz">Docker containers</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi9mYXEuaHRtbEZBUQ==">FAQ</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOnF1YXJ0by1zaWRlYmFyLXNlY3Rpb24tMw==">Reference</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi9yZWZlcmVuY2UvYWRkLmh0bWxyaWctYWRk">rig add</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi9yZWZlcmVuY2UvYXZhaWxhYmxlLmh0bWxyaWctYXZhaWxhYmxl">rig available</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi9yZWZlcmVuY2UvY2FjaGUuaHRtbHJpZy1jYWNoZQ==">rig cache</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi9yZWZlcmVuY2UvY29uZmlnLmh0bWxyaWctY29uZmln">rig config</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi9yZWZlcmVuY2UvZGVmYXVsdC5odG1scmlnLWRlZmF1bHQ=">rig default</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi9yZWZlcmVuY2UvbGlicmFyeS5odG1scmlnLWxpYnJhcnk=">rig library</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi9yZWZlcmVuY2UvbGlzdC5odG1scmlnLWxpc3Q=">rig list</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi9yZWZlcmVuY2UvcGtnLmh0bWxyaWctcGtn">rig pkg</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi9yZWZlcmVuY2UvcHBtLmh0bWxyaWctcHBt">rig ppm</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi9yZWZlcmVuY2UvcHJvai5odG1scmlnLXByb2o=">rig proj</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi9yZWZlcmVuY2UvcmVwb3MuaHRtbHJpZy1yZXBvcw==">rig repos</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi9yZWZlcmVuY2UvcmVzb2x2ZS5odG1scmlnLXJlc29sdmU=">rig resolve</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi9yZWZlcmVuY2Uvcm0uaHRtbHJpZy1ybQ==">rig rm</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi9yZWZlcmVuY2UvcnN0dWRpby5odG1scmlnLXJzdHVkaW8=">rig rstudio</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi9yZWZlcmVuY2UvcnRvb2xzLmh0bWxyaWctcnRvb2xz">rig rtools</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi9yZWZlcmVuY2UvcnVuLmh0bWxyaWctcnVu">rig run</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi9yZWZlcmVuY2Uvc2VsZi5odG1scmlnLXNlbGY=">rig self</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi9yZWZlcmVuY2Uvc3lzdGVtLmh0bWxyaWctc3lzdGVt">rig system</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWludC1zaWRlYmFyOi9uZXdzLmh0bWxDaGFuZ2Vsb2c=">Changelog</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLW5hdmJhci10b29sczpodHRwczovL2dpdGh1Yi5jb20vci1saWIvcmln">https://github.com/r-lib/rig</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWJyZWFkY3J1bWJzLVJlZmVyZW5jZQ==">Reference</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLWJyZWFkY3J1bWJzLXJpZy1ydW4=">rig run</span></p>
+</div>
+<div id="quarto-meta-markdown" class="hidden">
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLW1ldGF0aXRsZQ==">rig run – rig</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLXR3aXR0ZXJjYXJkdGl0bGU=">rig run – rig</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLW9nY2FyZHRpdGxl">rig run – rig</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLW1ldGFzaXRlbmFtZQ==">rig</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLXR3aXR0ZXJjYXJkZGVzYw==">The R Installation Manager</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLW9nY2FyZGRkZXNj">The R Installation Manager</span></p>
+<p><span class="hidden quarto-markdown-envelope-contents" data-render-id="cXVhcnRvLW1ldGFzaXRlZGVzYw==">The R Installation Manager</span></p>
+</div>
 </section>
 
 </main> <!-- /main -->
@@ -1310,7 +1417,7 @@ the highlighting is maintained by the handler installed here.
     }
   });
   </script>
-</div> <!-- /content -->
+</dd></dl></section></main></div> <!-- /content -->
 
 
 

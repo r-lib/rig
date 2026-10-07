@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.10.18">
+<meta name="generator" content="quarto-1.10.19">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -43,9 +43,9 @@ ul.task-list li input[type="checkbox"] {
 <script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-b85bc7c33db8c58e0ec93c3465666fed.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-b626d73c4c936ccc3cb08be7d45d1df6.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="../site_libs/bootstrap/bootstrap-ecd6a5e2185bdd9e56d000ef38c02e23.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
@@ -369,6 +369,12 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../scripts.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Scripts</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../macos-app.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">macOS menu bar app</span></a>
   </div>
@@ -587,6 +593,17 @@ ul.task-list li input[type="checkbox"] {
 <li><p><code>no-cache</code> (<code>RIG_NO_CACHE</code>): set it to <code>true</code> to stop rig from using its cache, the same as passing <code>--no-cache</code>. rig then neither reads nor writes the cache directory: it downloads the repository metadata, the binary package indices and the package files again, compiles a source package instead of unpacking a build it made earlier, and downloads an R or Rtools installer again instead of reusing the one in the download directory. What it downloads and builds goes into a temporary directory that is removed when rig exits, so the cache is left exactly as it was. Defaults to <code>false</code>. This is meant for debugging and for the occasional run that must not trust anything cached; it makes rig considerably slower, so it is a poor thing to turn on permanently.</p></li>
 <li><p><code>concurrent-downloads</code> (<code>RIG_CONCURRENT_DOWNLOADS</code>): the maximum number of downloads rig performs at the same time, e.g.&nbsp;when downloading package files for a project. Defaults to <code>50</code>.</p></li>
 <li><p><code>concurrent-installs</code> (<code>RIG_CONCURRENT_INSTALLS</code>): the maximum number of packages <a href="../reference/proj.html#rig-proj-sync"><code>rig proj sync</code></a> installs at the same time, unless overridden with its own <code>--max-concurrent</code> flag. Defaults to the number of CPU cores.</p></li>
+<li><p><code>sysreqs</code> (<code>RIG_SYSREQS</code>): Linux only. What <a href="../reference/pkg.html#rig-pkg-install"><code>rig pkg install</code></a> and <a href="../reference/proj.html#rig-proj-sync"><code>rig proj sync</code></a> do with the OS packages that the R packages need, see their help:</p>
+<ul>
+<li><code>auto</code>, the default: install them on the Linux distributions that the system requirements rules know, and quietly skip them on others.</li>
+<li><code>true</code>: the same, but also warn on other distributions.</li>
+<li><code>print</code>: show the missing OS packages and the commands that install them, but do not run the commands.</li>
+<li><code>false</code>: do nothing.</li>
+</ul>
+<p>If neither this entry nor <code>RIG_SYSREQS</code> is set, rig also respects pak’s <code>PKG_SYSREQS=false</code> environment variable.</p></li>
+<li><p><code>sysreqs-sudo</code> (<code>RIG_SYSREQS_SUDO</code>): how rig installs OS packages when it does not run as <code>root</code>. <code>auto</code>, the default, uses <code>sudo</code> if it works without a password, and otherwise prints the commands for you to run; <code>true</code> always uses <code>sudo</code>, even if it asks for a password; <code>false</code> never uses it.</p></li>
+<li><p><code>sysreqs-update</code> (<code>RIG_SYSREQS_UPDATE</code>): whether to update the package index (<code>apt-get update</code>, <code>zypper refresh</code>, <code>apk update</code>) before installing OS packages. Defaults to <code>true</code>.</p></li>
+<li><p><code>sysreqs-rules-url</code> (<code>RIG_SYSREQS_RULES_URL</code>): where rig downloads the <a href="https://github.com/r-hub/r-system-requirements">system requirements rules</a> from, a gzipped tarball of the repository. rig downloads them at most once a day, and uses the copy built into rig if it cannot download them.</p></li>
 <li><p><code>positron-setup</code>: <a href="../admin-vs-user-mode.html">user mode</a> only. Set it to <code>false</code> to stop rig from updating Positron’s settings: adding its R installation root to <code>positron.r.customRootFolders</code>, and pointing <code>positron.r.interpreters.default</code> at the <a href="../reference/default.html">default</a> R version. Any other value, and the default, keep the Positron setup on.</p></li>
 <li><p><code>userlibrary</code>: a JSON object that maps R versions to user library paths. rig maintains this entry itself, as a cache for the <code>rig library</code> commands; you don’t normally need to edit or set it.</p></li>
 </ul>

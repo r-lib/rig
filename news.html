@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.10.18">
+<meta name="generator" content="quarto-1.10.19">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -43,9 +43,9 @@ ul.task-list li input[type="checkbox"] {
 <script src="site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="site_libs/quarto-html/anchor.min.js"></script>
 <link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-dark-b85bc7c33db8c58e0ec93c3465666fed.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-dark-b626d73c4c936ccc3cb08be7d45d1df6.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="site_libs/bootstrap/bootstrap-ecd6a5e2185bdd9e56d000ef38c02e23.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
@@ -369,6 +369,12 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="./scripts.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Scripts</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="./macos-app.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">macOS menu bar app</span></a>
   </div>
@@ -522,7 +528,16 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#rig-0.10.0" id="toc-rig-0.10.0" class="nav-link active" data-scroll-target="#rig-0.10.0">rig 0.10.0</a>
+  <li><a href="#rig-0.11.0" id="toc-rig-0.11.0" class="nav-link active" data-scroll-target="#rig-0.11.0">rig 0.11.0</a>
+  <ul class="collapse">
+  <li><a href="#custom-repositories" id="toc-custom-repositories" class="nav-link" data-scroll-target="#custom-repositories">Custom repositories</a></li>
+  <li><a href="#bioconductor" id="toc-bioconductor" class="nav-link" data-scroll-target="#bioconductor">Bioconductor</a></li>
+  <li><a href="#inline-scripts" id="toc-inline-scripts" class="nav-link" data-scroll-target="#inline-scripts">Inline scripts</a></li>
+  <li><a href="#system-requirements" id="toc-system-requirements" class="nav-link" data-scroll-target="#system-requirements">System requirements</a></li>
+  <li><a href="#other-new-features" id="toc-other-new-features" class="nav-link" data-scroll-target="#other-new-features">Other new features</a></li>
+  <li><a href="#windows-specific-changes" id="toc-windows-specific-changes" class="nav-link" data-scroll-target="#windows-specific-changes">Windows specific changes</a></li>
+  </ul></li>
+  <li><a href="#rig-0.10.0" id="toc-rig-0.10.0" class="nav-link" data-scroll-target="#rig-0.10.0">rig 0.10.0</a>
   <ul class="collapse">
   <li><a href="#web-site" id="toc-web-site" class="nav-link" data-scroll-target="#web-site">Web site</a></li>
   <li><a href="#user-mode" id="toc-user-mode" class="nav-link" data-scroll-target="#user-mode">User mode</a></li>
@@ -530,7 +545,7 @@ ul.task-list li input[type="checkbox"] {
   <li><a href="#projects" id="toc-projects" class="nav-link" data-scroll-target="#projects">Projects</a></li>
   <li><a href="#windows-specific" id="toc-windows-specific" class="nav-link" data-scroll-target="#windows-specific">Windows specific</a></li>
   <li><a href="#macos-specific" id="toc-macos-specific" class="nav-link" data-scroll-target="#macos-specific">macOS specific</a></li>
-  <li><a href="#other-new-features" id="toc-other-new-features" class="nav-link" data-scroll-target="#other-new-features">Other new features</a></li>
+  <li><a href="#other-new-features-1" id="toc-other-new-features-1" class="nav-link" data-scroll-target="#other-new-features-1">Other new features</a></li>
   <li><a href="#other-changes" id="toc-other-changes" class="nav-link" data-scroll-target="#other-changes">Other changes</a></li>
   </ul></li>
   <li><a href="#rig-0.8.1" id="toc-rig-0.8.1" class="nav-link" data-scroll-target="#rig-0.8.1">rig 0.8.1</a></li>
@@ -598,6 +613,78 @@ ul.task-list li input[type="checkbox"] {
 </header>
 
 
+<section id="rig-0.11.0" class="level1">
+<h1>rig 0.11.0</h1>
+<section id="custom-repositories" class="level2">
+<h2 class="anchored" data-anchor-id="custom-repositories">Custom repositories</h2>
+<ul>
+<li><p>New <code>rig repos add</code> and <code>rig repos rm</code> commands to add and remove your own CRAN-like package repositories, e.g.&nbsp;an internal CRAN mirror or an r-universe. rig stores them in its configuration file, and they work like the built-in repositories, e.g.&nbsp;with <code>--with-repos</code>. <code>rig repos add --enable --all-versions</code> enables a repository for all R versions, including the ones you install later.</p></li>
+<li><p>New <code>rig repos enable</code> and <code>rig repos disable</code> commands to turn repositories, built-in or custom, on and off for each R version.</p></li>
+<li><p>rig now remembers the repositories enabled and disabled for each R version, with these commands or with <code>--with-repos</code> / <code>--without-repos</code>, and applies them again on <code>rig repos setup</code>. <code>rig repos setup</code> now asks for administrator rights if the current user cannot update the files of the R installations, e.g.&nbsp;in admin mode on Linux and Windows.</p></li>
+<li><p><code>rig pkg install</code>, <code>rig pkg deps</code>, <code>rig pkg tree</code>, <code>rig pkg available</code> and <code>rig pkg info</code> now use the repositories configured for the R version, including custom ones. <code>rig pkg deps</code>, <code>rig pkg tree</code>, <code>rig pkg available</code> and <code>rig pkg info</code> have a new <code>--r-version</code> option. <code>rig pkg search</code> still searches CRAN only.</p></li>
+<li><p><code>rig pkg install</code>, <code>rig pkg deps</code>, <code>rig pkg tree</code>, <code>rig pkg available</code> and <code>rig pkg info</code> have new <code>--with-repos</code> and <code>--without-repos</code> options, with aliases <code>--index</code> and <code>--no-index</code>, to use other repositories for one command, without changing the setup of the R version. <code>--with-repos</code> also takes repository URLs, or <code>name=URL</code>.</p></li>
+<li><p><code>rig pkg</code> commands now only use Bioconductor packages if the Bioconductor repositories are enabled for the R version, e.g.&nbsp;with <code>rig repos enable bioconductor</code>.</p></li>
+<li><p>rig now sets up P3M by default on macOS, and on the Linux distributions P3M has no binary packages for, where P3M is a CRAN mirror of source packages. P3M stays off on aarch64 Windows, because it only has x86_64 Windows binaries. Use <code>--without-repos=p3m</code> or <code>rig repos disable p3m</code> to turn it off.</p></li>
+<li><p><code>--without-repos=cran</code> (and <code>rig repos disable cran</code>) now turns off CRAN completely.</p></li>
+<li><p><code>rig proj</code> now implements <code>[[repository]]</code> entries of <code>rproj.toml</code> and repository pinning. <code>rig proj lock</code>, <code>rig proj sync</code>, <code>rig proj deps</code> and <code>rig proj tree</code> have new <code>--with-repos</code> and <code>--without-repos</code> options to add and remove repositories for one command.</p></li>
+</ul>
+</section>
+<section id="bioconductor" class="level2">
+<h2 class="anchored" data-anchor-id="bioconductor">Bioconductor</h2>
+<ul>
+<li><p><code>rig proj</code> and <code>rig pkg</code> now install Bioconductor packages, besides CRAN packages, from the Bioconductor release that belongs to the R version. CRAN and Bioconductor share one package namespace, so a <code>bioc::&lt;package&gt;</code> entry in <code>Remotes:</code> or <code>Config/Needs/*</code> is the same as <code>&lt;package&gt;</code>. A <code>bioc</code> entry in the <code>[[repository]]</code> array of <code>rproj.toml</code> pins the Bioconductor release, or turns Bioconductor off. <code>rproj.lock</code> is now version 5, and records the Bioconductor release of every target.</p></li>
+<li><p><code>rig pkg info</code> now shows the full <code>DESCRIPTION</code> of the current version of a Bioconductor package, e.g.&nbsp;its title, description and maintainer, from the <code>VIEWS</code> file of its Bioconductor repository.</p></li>
+</ul>
+</section>
+<section id="inline-scripts" class="level2">
+<h2 class="anchored" data-anchor-id="inline-scripts">Inline scripts</h2>
+<ul>
+<li><p><code>rig run</code> now support self-contained scripts, that declare the packages and the R version they need in a <code># /// script</code> comment block. rig then runs the script in its own environment, in the cache directory, and installs R and the packages as needed. <code>rig run --upgrade</code> and <code>rig run --upgrade-package</code> upgrade the packages of a script’s environment.</p></li>
+<li><p>New <code>rig proj lock --upgrade-package</code> (<code>-P</code>) option, to upgrade only some packages, and keep the versions <code>rproj.lock</code> pins for the rest. It also takes a version requirement, e.g.&nbsp;<code>-P 'cli@&gt;= 3.6.4'</code>, for this run only (#410).</p></li>
+<li><p><code>rig proj lock</code> now keeps the versions <code>rproj.lock</code> pins when it has to solve the dependencies again, e.g.&nbsp;after <code>rig proj add</code>, as long as they still fit <code>rproj.toml</code>. Use <code>--upgrade</code> to pick the latest versions.</p></li>
+<li><p><code>rig proj init</code>, <code>rig proj add</code> and <code>rig proj remove</code> have a new <code>--script</code> option, to create and edit the <code># /// script</code> block of an R script, instead of a project’s <code>rproj.toml</code> (#414).</p></li>
+<li><p>New <code>rig proj lock --script script.R</code> to lock the dependencies of a script with a <code># /// script</code> block into <code>script.R.lock</code>, next to the script. <code>rig run</code> then installs the R and package versions of the lock file, and updates it if the block changes. <code>rig run --locked</code> fails instead of updating it (#422).</p></li>
+<li><p>New <code>rig system script-assoc</code> command on Windows, to run <code>.R</code> files with rig from <code>cmd</code> and PowerShell, e.g.&nbsp;<code>hello.R a b</code>.</p></li>
+</ul>
+</section>
+<section id="system-requirements" class="level2">
+<h2 class="anchored" data-anchor-id="system-requirements">System requirements</h2>
+<ul>
+<li><p><code>rig pkg install</code>, <code>rig proj sync</code> and <code>rig run</code> now install the system requirements of R packages on Linux, like pak does. rig matches each package’s <code>SystemRequirements</code> field against the <a href="https://github.com/r-hub/r-system-requirements">r-system-requirements</a> rules, and installs the missing OS packages if it runs as root or if <code>sudo</code> needs no password. Otherwise it prints the commands to run. Source packages and distribution-specific binaries need this, manylinux binaries do not. <code>--no-sysreqs</code> turns this off for one run; the new <code>sysreqs</code>, <code>sysreqs-sudo</code>, <code>sysreqs-update</code> and <code>sysreqs-rules-url</code> config entries configure it; <code>sysreqs = "print"</code> only shows the commands.</p></li>
+<li><p><code>rproj.lock</code> now records the <code>SystemRequirements</code> of each package, so it is version 5. Run <code>rig proj lock</code> to update an older lock file.</p></li>
+</ul>
+</section>
+<section id="other-new-features" class="level2">
+<h2 class="anchored" data-anchor-id="other-new-features">Other new features</h2>
+<ul>
+<li><p>rig now honors the <code>OS_type</code> field of packages: a Unix-only package is not used on Windows, and a Windows-only package is not used on macOS and Linux.</p></li>
+<li><p><code>rig add</code> now has a <code>--json</code> option. It prints information about the installed R version (or the already installed version that was kept), including whether it is a new installation and whether it is the default.</p></li>
+<li><p><code>rig rtools add</code> now has a <code>--json</code> option. It prints information about the installed (or already installed) Rtools versions, including whether each one is a new installation.</p></li>
+<li><p>New <code>rig pkg search</code> command to search CRAN packages, using the same web service as the pkgsearch R package.</p></li>
+<li><p>New <code>rig pkg doctor</code> command to find problems with the packages in a library: missing or too old dependencies, and packages compiled against another version of a <code>LinkingTo</code> dependency (#393).</p></li>
+<li><p><code>rig proj</code> commands now support <code>path</code> dependencies.</p></li>
+<li><p><code>rig proj init</code> and <code>rig proj import</code> do not overwrite the project’s <code>.Renviron</code> file any more. rig now only manages a marked block in it, and keeps the rest of the file, so you can add your own environment variables to it. An existing <code>.Renviron</code> is not a conflict any more, either (#440).</p></li>
+<li><p><code>rig pkg install &lt;path&gt;</code> is now supported. <code>&lt;path&gt;</code> can be a directory, of a source or binary package file.</p></li>
+<li><p><code>rig pkg install</code> now supports constraints. E.g. to install a specific version of a package use <code>rig pkg install '&lt;pkg&gt;@=&lt;ver&gt;'</code>.</p></li>
+<li><p><code>rig proj import --force</code> now correctly overwrites the existing project files.</p></li>
+<li><p>If the root project is a package, <code>rig proj lock</code> now includes it in the solution, with a <code>file://</code> URL.It also calls <code>rig proj export</code> to (re)create its <code>DESCRIPTION</code> file and <code>rig proj sync</code> now installs the root project if it is a package.</p></li>
+<li><p><code>rig pkg install --no-install-project</code> installs only the dependencies of the named packages, like <code>rig proj sync --no-install-project</code>.</p></li>
+<li><p><code>rig proj lock</code> now rewrites the lock file if the list of R versions to solve for changes.</p></li>
+<li><p>New <code>--exclude-newer</code> option for <code>rig proj lock</code>, <code>rig proj sync</code> and <code>rig pkg install</code>, to ignore CRAN package versions published after a date, e.g.&nbsp;<code>--exclude-newer 2025-06-01</code>, or in the last few days, e.g. <code>--exclude-newer "7 days"</code>. Projects can set it in <code>rproj.toml</code>, with <code>exclude-newer</code> in <code>[tool.rig]</code>.</p></li>
+<li><p>Projects and scripts can now set <code>prefer-binary</code> in <code>[tool.rig]</code>. <code>rig proj init</code> and <code>rig proj import</code> have a new <code>--prefer-binary</code> option, to write the setting into the manifest.</p></li>
+<li><p>Projects can now set the platforms and R versions <code>rig proj lock</code> solves for in <code>rproj.toml</code>, with <code>platforms</code> and <code>r-versions</code> in <code>[tool.rig]</code>, e.g.&nbsp;<code>r-versions = ["4.5", "4.6"]</code>. <code>--platform</code> and <code>--r-version</code> override them.</p></li>
+<li><p><code>rig proj lock</code> now also solves for source packages by default <code>rig proj sync</code> uses this target only if no other target matches the machine.</p></li>
+<li><p><code>rig run &lt;script&gt;</code> now passes every argument after the script on to the script, including the ones starting with <code>-</code>, and <code>--</code>. A script that starts with <code>#!</code>, e.g.&nbsp;<code>#!/usr/bin/env -S rig run</code>, does not need an <code>.R</code> extension any more (#413).</p></li>
+<li><p><code>rig run --rscript</code> does not pass an extra <code>--args</code> argument to scripts and <code>-e</code> expressions any more, so <code>commandArgs(TRUE)</code> only has the arguments you gave.</p></li>
+</ul>
+</section>
+<section id="windows-specific-changes" class="level2">
+<h2 class="anchored" data-anchor-id="windows-specific-changes">Windows specific changes</h2>
+<ul>
+<li>The rig binaries themselves are now signed on Windows, not only the rig installer.</li>
+</ul>
+</section>
+</section>
 <section id="rig-0.10.0" class="level1">
 <h1>rig 0.10.0</h1>
 <section id="web-site" class="level2">
@@ -624,6 +711,7 @@ ul.task-list li input[type="checkbox"] {
 <ul>
 <li><p>New and redesigned <code>rig proj</code> commands to manage isolated R projects and virtual environments: <code>rig proj init</code>, <code>rig proj import</code>, <code>rig proj add</code>, <code>rig proj remove</code>, <code>rig proj lock</code>, <code>rig proj sync</code>, <code>rig proj status</code>.</p></li>
 <li><p>New <code>rig proj tree</code> shows the dependency closure of a project as a tree.</p></li>
+<li><p>When no version of a package matches a version requirement, e.g. <code>dplyr = "0.13.0"</code>, which means <code>&gt;= 0.13.0, &lt; 0.14.0</code>, the error message now says so, and lists the nearest versions that do exist. An unknown package is now reported as not available, and the error is not printed twice any more (#423).</p></li>
 <li><p><code>rig run</code> now uses the project environment, if you call it in a project directory: it starts <code>.rvenv/bin/R</code>, with the project’s package library and the R version the project’s lock file names, and it syncs the project first if the environment is missing or out of date. Use <code>--no-project</code> (or <code>--r-version</code>) to run the default R version instead.</p></li>
 <li><p><code>rig run &lt;name&gt;</code> now runs a script the project declares in a <code>[[bin]]</code> table of its <code>rproj.toml</code>, passing the remaining arguments on to the script. <code>rig run --list</code> lists the declared scripts.</p></li>
 <li><p><code>rig proj sync</code> can now centralize project package libraries outside the project directory: set the <code>RIG_PROJ_LIBRARY_ROOT</code> environment variable or the <code>proj-library-root</code> config key to a root directory, and each project gets its own library under it, keyed by project name and location. A compatibility symlink is left at the project’s usual <code>.rvenv/lib</code>. <code>rig system dirs --library-root</code> reports the effective root (#372).</p></li>
@@ -645,8 +733,8 @@ ul.task-list li input[type="checkbox"] {
 <li><code>rig sysreqs</code> has been removed. It did not reliably set up a working Fortran toolchain (#262). Install gfortran from <a href="https://mac.r-project.org/tools" class="uri">https://mac.r-project.org/tools</a> instead.</li>
 </ul>
 </section>
-<section id="other-new-features" class="level2">
-<h2 class="anchored" data-anchor-id="other-new-features">Other new features</h2>
+<section id="other-new-features-1" class="level2">
+<h2 class="anchored" data-anchor-id="other-new-features-1">Other new features</h2>
 <ul>
 <li><p><code>rig add</code> no longer reinstalls a version that is already installed, except for R-devel and R-next. Use <code>--reinstall</code> for force a re-install (#293).</p></li>
 <li><p><code>rig add</code> can now install the R version an <code>renv.lock</code> file requires, e.g.&nbsp;<code>rig add renv.lock</code> or <code>rig add path/to/renv.lock</code> (#294).</p></li>

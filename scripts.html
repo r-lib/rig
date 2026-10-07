@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>rig self – rig</title>
+<title>Scripts – rig</title>
 <style>
 /* Default styles provided by pandoc.
 ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
@@ -26,31 +26,66 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
 </style>
 
 
-<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
-<script src="../site_libs/quarto-nav/headroom.min.js"></script>
-<script src="../site_libs/clipboard/clipboard.min.js"></script>
-<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
-<script src="../site_libs/quarto-search/fuse.min.js"></script>
-<script src="../site_libs/quarto-search/quarto-search.js"></script>
-<meta name="quarto:offset" content="../">
-<link href="../assets/rig-app.png" rel="icon" type="image/png">
-<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
-<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
-<script src="../site_libs/quarto-html/popper.min.js"></script>
-<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
-<script src="../site_libs/quarto-html/anchor.min.js"></script>
-<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-b626d73c4c936ccc3cb08be7d45d1df6.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
-<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
-<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-ecd6a5e2185bdd9e56d000ef38c02e23.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="../site_libs/bootstrap/bootstrap-dark-8e8a4020426ad3c23d73f4a0e1562579.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
-<link href="../site_libs/bootstrap/bootstrap-ecd6a5e2185bdd9e56d000ef38c02e23.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<link href="./assets/rig-app.png" rel="icon" type="image/png">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-dark-b626d73c4c936ccc3cb08be7d45d1df6.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-ecd6a5e2185bdd9e56d000ef38c02e23.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-dark-8e8a4020426ad3c23d73f4a0e1562579.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<link href="site_libs/bootstrap/bootstrap-ecd6a5e2185bdd9e56d000ef38c02e23.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -269,7 +304,7 @@ ul.task-list li input[type="checkbox"] {
     <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
       <div class="navbar-container container-fluid">
       <div class="navbar-brand-container mx-auto">
-    <a class="navbar-brand" href="../index.html">
+    <a class="navbar-brand" href="./index.html">
     <span class="navbar-title">rig</span>
     </a>
   </div>
@@ -285,7 +320,7 @@ ul.task-list li input[type="checkbox"] {
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../reference/self.html">rig self</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./install.html">Guide</a></li><li class="breadcrumb-item"><a href="./scripts.html">Scripts</a></li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
       <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
@@ -307,7 +342,7 @@ ul.task-list li input[type="checkbox"] {
     <ul class="list-unstyled mt-1">
         <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
-            <a href="../tutorial.html" class="sidebar-item-text sidebar-link">
+            <a href="./tutorial.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Tutorials</span></a>
           <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
             <i class="bi bi-chevron-right ms-2"></i>
@@ -316,19 +351,19 @@ ul.task-list li input[type="checkbox"] {
       <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../tutorial-user.html" class="sidebar-item-text sidebar-link">
+  <a href="./tutorial-user.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">User mode</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../tutorial-admin.html" class="sidebar-item-text sidebar-link">
+  <a href="./tutorial-admin.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Admin mode</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../tutorial-migrate.html" class="sidebar-item-text sidebar-link">
+  <a href="./tutorial-migrate.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Migrate to user mode</span></a>
   </div>
 </li>
@@ -345,49 +380,49 @@ ul.task-list li input[type="checkbox"] {
       <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../install.html" class="sidebar-item-text sidebar-link">
+  <a href="./install.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Installing rig</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../admin-vs-user-mode.html" class="sidebar-item-text sidebar-link">
+  <a href="./admin-vs-user-mode.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Admin mode vs user mode</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../pkg-guide.html" class="sidebar-item-text sidebar-link">
+  <a href="./pkg-guide.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Managing R packages</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../proj-guide.html" class="sidebar-item-text sidebar-link">
+  <a href="./proj-guide.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">R projects</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../scripts.html" class="sidebar-item-text sidebar-link">
+  <a href="./scripts.html" class="sidebar-item-text sidebar-link active">
  <span class="menu-text">Scripts</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../macos-app.html" class="sidebar-item-text sidebar-link">
+  <a href="./macos-app.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">macOS menu bar app</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../docker.html" class="sidebar-item-text sidebar-link">
+  <a href="./docker.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Docker containers</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../faq.html" class="sidebar-item-text sidebar-link">
+  <a href="./faq.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">FAQ</span></a>
   </div>
 </li>
@@ -395,7 +430,7 @@ ul.task-list li input[type="checkbox"] {
   </li>
         <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
-            <a href="../reference/index.html" class="sidebar-item-text sidebar-link">
+            <a href="./reference/index.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Reference</span></a>
           <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true" aria-label="Toggle section">
             <i class="bi bi-chevron-right ms-2"></i>
@@ -404,109 +439,109 @@ ul.task-list li input[type="checkbox"] {
       <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/add.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/add.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig add</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/available.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/available.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig available</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/cache.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/cache.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig cache</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/config.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/config.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig config</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/default.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/default.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig default</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/library.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/library.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig library</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/list.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/list.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig list</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/pkg.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/pkg.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig pkg</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/ppm.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/ppm.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig ppm</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/proj.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/proj.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig proj</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/repos.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/repos.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig repos</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/resolve.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/resolve.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig resolve</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/rm.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/rm.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig rm</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/rstudio.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/rstudio.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig rstudio</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/rtools.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/rtools.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig rtools</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/run.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/run.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig run</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/self.html" class="sidebar-item-text sidebar-link active">
+  <a href="./reference/self.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig self</span></a>
   </div>
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/system.html" class="sidebar-item-text sidebar-link">
+  <a href="./reference/system.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">rig system</span></a>
   </div>
 </li>
@@ -514,7 +549,7 @@ ul.task-list li input[type="checkbox"] {
   </li>
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../news.html" class="sidebar-item-text sidebar-link">
+  <a href="./news.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Changelog</span></a>
   </div>
 </li>
@@ -528,17 +563,20 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#subcommands" id="toc-subcommands" class="nav-link active" data-scroll-target="#subcommands">Subcommands</a></li>
-  <li><a href="#rig-self-uninstall" id="toc-rig-self-uninstall" class="nav-link" data-scroll-target="#rig-self-uninstall"><code>rig self uninstall</code></a>
+  <li><a href="#running-a-script" id="toc-running-a-script" class="nav-link active" data-scroll-target="#running-a-script">Running a script</a></li>
+  <li><a href="#inline-dependencies" id="toc-inline-dependencies" class="nav-link" data-scroll-target="#inline-dependencies">Inline dependencies</a></li>
+  <li><a href="#creating-and-editing-the-block" id="toc-creating-and-editing-the-block" class="nav-link" data-scroll-target="#creating-and-editing-the-block">Creating and editing the block</a></li>
+  <li><a href="#the-scripts-environment" id="toc-the-scripts-environment" class="nav-link" data-scroll-target="#the-scripts-environment">The script’s environment</a></li>
+  <li><a href="#upgrading-packages" id="toc-upgrading-packages" class="nav-link" data-scroll-target="#upgrading-packages">Upgrading packages</a></li>
+  <li><a href="#reproducible-scripts" id="toc-reproducible-scripts" class="nav-link" data-scroll-target="#reproducible-scripts">Reproducible scripts</a>
   <ul class="collapse">
-  <li><a href="#usage" id="toc-usage" class="nav-link" data-scroll-target="#usage">Usage</a></li>
-  <li><a href="#options" id="toc-options" class="nav-link" data-scroll-target="#options">Options</a></li>
+  <li><a href="#excluding-newer-packages" id="toc-excluding-newer-packages" class="nav-link" data-scroll-target="#excluding-newer-packages">Excluding newer packages</a></li>
+  <li><a href="#lock-files" id="toc-lock-files" class="nav-link" data-scroll-target="#lock-files">Lock files</a></li>
   </ul></li>
-  <li><a href="#rig-self-update" id="toc-rig-self-update" class="nav-link" data-scroll-target="#rig-self-update"><code>rig self update</code></a>
-  <ul class="collapse">
-  <li><a href="#usage-1" id="toc-usage-1" class="nav-link" data-scroll-target="#usage-1">Usage</a></li>
-  <li><a href="#options-1" id="toc-options-1" class="nav-link" data-scroll-target="#options-1">Options</a></li>
-  </ul></li>
+  <li><a href="#executable-scripts" id="toc-executable-scripts" class="nav-link" data-scroll-target="#executable-scripts">Executable scripts</a></li>
+  <li><a href="#scripts-from-packages-and-projects" id="toc-scripts-from-packages-and-projects" class="nav-link" data-scroll-target="#scripts-from-packages-and-projects">Scripts from packages and projects</a></li>
+  <li><a href="#cleaning-up" id="toc-cleaning-up" class="nav-link" data-scroll-target="#cleaning-up">Cleaning up</a></li>
+  <li><a href="#see-also" id="toc-see-also" class="nav-link" data-scroll-target="#see-also">See also</a></li>
   </ul>
 </nav>
     </div>
@@ -546,9 +584,9 @@ ul.task-list li input[type="checkbox"] {
 <main class="content" id="quarto-document-content">
 
 
-<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">Reference</a></li><li class="breadcrumb-item"><a href="../reference/self.html">rig self</a></li></ol></nav>
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="./install.html">Guide</a></li><li class="breadcrumb-item"><a href="./scripts.html">Scripts</a></li></ol></nav>
 <div class="quarto-title">
-<h1 class="title">rig self</h1>
+<h1 class="title">Scripts</h1>
 </div>
 
 
@@ -565,102 +603,147 @@ ul.task-list li input[type="checkbox"] {
 </header>
 
 
-<!-- Generated by website/gen-cli-reference.sh. Do not edit by hand. -->
-<p>Commands for updating or removing rig itself, as opposed to the R versions it manages. See <code>rig self update --help</code> and <code>rig self uninstall --help</code> for details.</p>
-<section id="subcommands" class="level2">
-<h2 class="anchored" data-anchor-id="subcommands">Subcommands</h2>
-<dl>
-<dt><a href="#rig-self-uninstall"><code>uninstall</code></a></dt>
-<dd>
-Remove the rig installation
-</dd>
-<dt><a href="#rig-self-update"><code>update</code></a></dt>
-<dd>
-Update rig to the latest release
-</dd>
-</dl>
+<p><code>rig run</code> runs R scripts with any installed R version. A script can also declare the R version and the packages it needs in a comment block at its top. rig then installs R and the packages if needed, and runs the script in its own environment, so you can share a single <code>.R</code> file and it runs the same way on every machine, without a project or any setup. A lock file next to the script can pin the exact R and package versions, too.</p>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+<span class="screen-reader-only">Note</span>Experimental
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>Scripts with inline dependencies use the same machinery as <a href="./proj-guide.html"><code>rig proj</code></a>, which is experimental. The format of the comment block may still change.</p>
+</div>
+</div>
+<section id="running-a-script" class="level2">
+<h2 class="anchored" data-anchor-id="running-a-script">Running a script</h2>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run script.R              <span class="co"># run with the default R version</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">-r</span> 4.5 script.R       <span class="co"># run with R 4.5</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">--rscript</span> script.R    <span class="co"># run with Rscript instead of R</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run script.R <span class="at">--verbose</span> 3  <span class="co"># pass arguments to the script</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Every argument after the script goes to the script, unchanged, where <code>commandArgs(TRUE)</code> picks it up. This includes arguments that look like rig’s own flags, and <code>--</code>. rig’s own flags go before the script.</p>
+<p><code>rig run -f script.R</code> is the same as <code>rig run script.R</code>. Without <code>-f</code>, rig treats a file as a script if its name ends in <code>.R</code> or <code>.r</code>, or if it starts with <code>#!</code>. Use <code>-f</code> for other files.</p>
+<p>Inside an <a href="./proj-guide.html">R project</a>, <code>rig run script.R</code> runs the script in the project’s environment, unless the script has its own inline dependencies, see below. Use <code>--no-project</code> to ignore the project.</p>
 </section>
-<section id="rig-self-uninstall" class="level2">
-<h2 class="anchored" data-anchor-id="rig-self-uninstall"><code>rig self uninstall</code></h2>
-<p>Removes the <code>rig</code> binary, its shell completions, and the PATH entry the install script added, then deletes itself.</p>
-<p>This only works if rig was installed with the install script (<code>install.sh</code> on macOS/Linux, <code>install.ps1</code> on Windows).</p>
-<p><code>rig self uninstall</code> only removes rig itself. It does not remove rig’s configuration, its download/build cache, or any R version it installed. Use <code>rig rm</code> to remove R version and <code>rig cache clean</code> to clean the cache.</p>
-<p>Without <code>--force</code>, it only prints what it would remove. Use <code>--dry-run</code> for the same preview, or <code>--force</code> to actually remove rig.</p>
-<section id="usage" class="level3">
-<h3 class="anchored" data-anchor-id="usage">Usage</h3>
-<pre class="text"><code>rig self uninstall [OPTIONS]</code></pre>
+<section id="inline-dependencies" class="level2">
+<h2 class="anchored" data-anchor-id="inline-dependencies">Inline dependencies</h2>
+<p>A script can declare what it needs in a <code># /// script</code> comment block:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># /// script</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="co"># [dependencies]</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="co"># R = "&gt;= 4.4"</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co"># cli = "*"</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="co"># dplyr = "&gt;= 1.1"</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="co"># ///</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(dplyr)</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>cli<span class="sc">::</span><span class="fu">cli_text</span>(<span class="st">"Hello from {.pkg cli}!"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The block starts with a <code># /// script</code> line and ends with a <code># ///</code> line. Every line in between must be a comment. Without the leading <code>#</code>, these lines form a TOML document. A block can also use <code>##</code> instead of <code>#</code>, but then every line of the block must start with <code>##</code>. A script can have at most one block.</p>
+<p>The block takes these tables of <a href="./proj-guide.html#the-manifest-and-the-lock-file"><code>rproj.toml</code></a>, with the same meaning:</p>
+<ul>
+<li><code>[dependencies]</code>: the packages the script needs, with optional version requirements (<code>^1.2.3</code>, <code>~1.2.3</code>, <code>&gt;= 1.0, &lt; 2.0</code>, or <code>*</code> for any version). <code>R</code> is the R version. A dependency can also come from git, GitHub, GitLab, a URL or a local path, see <a href="./reference/proj.html#rig-proj-add"><code>rig proj add</code></a> for the syntax. A relative <code>path</code> is relative to the directory of the script.</li>
+<li><code>[[repository]]</code>: extra package repositories.</li>
+<li><code>[tool.rig]</code>: rig settings, e.g.&nbsp;<code>exclude-newer</code>, see below, and <code>prefer-binary</code>, see <a href="./reference/proj.html#rig-proj-lock"><code>rig proj lock</code></a>.</li>
+</ul>
+<p>Any other table is an error, so typos do not go unnoticed.</p>
 </section>
-<section id="options" class="level3">
-<h3 class="anchored" data-anchor-id="options">Options</h3>
-<dl>
-<dt><code>--admin</code></dt>
-<dd>
-Run in admin mode (overrides RIG_MODE and config)
-</dd>
-<dt><code>--dry-run</code></dt>
-<dd>
-Show what would be removed, without removing anything
-</dd>
-<dt><code>--force</code></dt>
-<dd>
-Actually remove rig, instead of just showing what would be removed
-</dd>
-<dt><code>-h, --help</code></dt>
-<dd>
-Print help (see a summary with ‘-h’)
-</dd>
-<dt><code>--no-cache</code></dt>
-<dd>
-Do not read or write rig’s cache (overrides RIG_NO_CACHE and config)
-</dd>
-<dt><code>--user</code></dt>
-<dd>
-Run in user mode (overrides RIG_MODE and config)
-</dd>
-</dl>
+<section id="creating-and-editing-the-block" class="level2">
+<h2 class="anchored" data-anchor-id="creating-and-editing-the-block">Creating and editing the block</h2>
+<p>You can write the block by hand, or let rig manage it:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> proj init <span class="at">--script</span> script.R           <span class="co"># add a block, or create the script</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> proj add <span class="at">--script</span> script.R cli dplyr  <span class="co"># add packages to the block</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> proj remove <span class="at">--script</span> script.R dplyr   <span class="co"># remove packages from the block</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><a href="./reference/proj.html#rig-proj-init"><code>rig proj init --script</code></a> adds a block with an <code>R</code> requirement to the top of the script, after the <code>#!</code> line if there is one. If the script does not exist yet, it creates it. It does not replace a block that is already there, unless you pass <code>--force</code>.</p>
+<p><a href="./reference/proj.html#rig-proj-add"><code>rig proj add --script</code></a> adds packages to the block, and creates the block if the script has none. You give the packages the same way as for a project, e.g.&nbsp;<code>'dplyr@&gt;= 1.1'</code> or <code>r-lib/cli</code>, and a local path is recorded relative to the script’s directory. <a href="./reference/proj.html#rig-proj-remove"><code>rig proj remove --script</code></a> removes packages from the block.</p>
+<p>Both commands then set up the script’s environment, so the next <code>rig run script.R</code> starts right away. If the script has a <a href="#lock-files">lock file</a>, they update it, too. <code>--no-sync</code> and <code>--no-lock</code> work the same way as for a project. If resolving the dependencies fails, <code>rig proj add --script</code> restores the script, and its lock file, to what they were.</p>
+</section>
+<section id="the-scripts-environment" class="level2">
+<h2 class="anchored" data-anchor-id="the-scripts-environment">The script’s environment</h2>
+<p>When you run a script with a block, rig:</p>
+<ol type="1">
+<li>picks an installed R version that fits the <code>R</code> requirement, or installs one,</li>
+<li>resolves the dependencies to exact package versions, like <a href="./reference/proj.html#rig-proj-lock"><code>rig proj lock</code></a>,</li>
+<li>installs the packages into a library of their own, like <a href="./reference/proj.html#rig-proj-sync"><code>rig proj sync</code></a>,</li>
+<li>runs the script with that R version and library.</li>
+</ol>
+<p>If the script has a <a href="#lock-files">lock file</a>, rig skips the first two steps, and installs the R version and the package versions the lock file names instead.</p>
+<p>The environment lives in rig’s cache directory, isolated from your own package libraries, so running a script never changes them. Later runs reuse the environment and start right away. Scripts with the same block share one environment, and changing the block creates a new one. A script with a lock file always gets an environment of its own.</p>
+<p>A script with a block always uses its own environment, even inside a project. <code>--r-version</code> (<code>-r</code>) selects the R version, which must fit the <code>R</code> requirement. For a script with a lock file, it must be one of the R versions in the lock file.</p>
+<p>While rig sets up the environment, it writes its messages to standard error, so standard output belongs to the script, and you can redirect it:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run report.R <span class="op">&gt;</span> report.csv</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Scripts with inline dependencies work the same way in <a href="./admin-vs-user-mode.html">admin and user mode</a>. If rig needs to install R for a script, it installs it the way the current mode does.</p>
+</section>
+<section id="upgrading-packages" class="level2">
+<h2 class="anchored" data-anchor-id="upgrading-packages">Upgrading packages</h2>
+<p>Like a project’s lock file, a script’s environment keeps the package versions it was created with, even if newer versions come out. To solve the dependencies again with the latest versions that fit, use <code>--upgrade</code>, or <code>--upgrade-package</code> to upgrade only some packages:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">--upgrade</span> script.R</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">--upgrade-package</span> cli script.R</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>For a script with a <a href="#lock-files">lock file</a>, these also update the lock file.</p>
+</section>
+<section id="reproducible-scripts" class="level2">
+<h2 class="anchored" data-anchor-id="reproducible-scripts">Reproducible scripts</h2>
+<p>There are two ways to make a script use the same package versions every time: a cutoff date for CRAN packages, and a lock file.</p>
+<section id="excluding-newer-packages" class="level3">
+<h3 class="anchored" data-anchor-id="excluding-newer-packages">Excluding newer packages</h3>
+<p>Set <code>exclude-newer</code> in the script’s <code>[tool.rig]</code> table. The solver then ignores CRAN package versions published after that date:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># /// script</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="co"># [dependencies]</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="co"># R = "&gt;= 4.4"</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="co"># dplyr = "*"</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="co"># [tool.rig]</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="co"># exclude-newer = "2026-06-01"</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="co"># ///</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><code>exclude-newer</code> also takes a time interval back from today, e.g.&nbsp;<code>"7 days"</code>, to skip packages released in the last few days. See <a href="./reference/proj.html#rig-proj-lock"><code>rig proj lock</code></a> for the details.</p>
+<p>This keeps everything in the script itself, but it only fixes the CRAN packages. The R version and git, GitHub and URL dependencies can still change.</p>
+</section>
+<section id="lock-files" class="level3">
+<h3 class="anchored" data-anchor-id="lock-files">Lock files</h3>
+<p>A lock file pins everything: the R version, and the exact version, build and download URL of every package. Lock the script with:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> proj lock <span class="at">--script</span> script.R</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>This writes <code>script.R.lock</code> next to the script, with the exact R and package versions, for this machine and the other common platforms. Keep the two files together, e.g.&nbsp;commit both to git. <code>rig proj lock --script</code> takes the same options as <a href="./reference/proj.html#rig-proj-lock"><code>rig proj lock</code></a>, e.g.&nbsp;<code>--r-version</code> or <code>--platform</code>.</p>
+<p>When <code>script.R.lock</code> exists, <code>rig run script.R</code> installs the R version and the package versions it names, on any machine it has a target for.</p>
+<p>If you change the block, e.g.&nbsp;with <code>rig proj add --script</code>, so the lock file does not fit it any more, rig locks the dependencies again, for the same R versions and platforms, keeps the versions the lock file pins where they still fit, and updates <code>script.R.lock</code>. To fail instead, e.g.&nbsp;in CI, use <code>--locked</code>:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> run <span class="at">--locked</span> script.R</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>On a machine, or with an <code>--r-version</code>, that the lock file has no target for, <code>rig run</code> fails, and tells you how to add one with <code>rig proj lock --script</code>.</p>
 </section>
 </section>
-<section id="rig-self-update" class="level2">
-<h2 class="anchored" data-anchor-id="rig-self-update"><code>rig self update</code></h2>
-<p>Downloads the latest rig release and replaces the currently running <code>rig</code> binary with it.</p>
-<p>This only works if rig was installed with the install script (<code>install.sh</code> on macOS/Linux, <code>install.ps1</code> on Windows), because that is the only install method where rig fully controls the binary’s location. If rig was installed via the <code>.pkg</code>/<code>.deb</code>/<code>.rpm</code> package, Chocolatey, WinGet, Scoop, or Homebrew, <code>rig self update</code> refuses and tells you which tool to use instead.</p>
-<p>This works the same way in <a href="../admin-vs-user-mode.html">admin mode and user mode</a>: <code>rig self update</code> only ever replaces the rig binary itself, not any installed R version.</p>
-<p>Use <code>--dry-run</code> to check whether a new version is available without installing it, and <code>--pre-release</code> to also consider pre-release versions when looking for the latest one.</p>
-<section id="usage-1" class="level3">
-<h3 class="anchored" data-anchor-id="usage-1">Usage</h3>
-<pre class="text"><code>rig self update [OPTIONS]</code></pre>
+<section id="executable-scripts" class="level2">
+<h2 class="anchored" data-anchor-id="executable-scripts">Executable scripts</h2>
+<p>On macOS and Linux, a script can start with a <code>#!</code> line that runs it with rig:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co">#!/usr/bin/env -S rig run</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="co"># /// script</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="co"># [dependencies]</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="co"># cli = "*"</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="co"># ///</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>cli<span class="sc">::</span><span class="fu">cli_text</span>(<span class="st">"Hello from {.pkg cli}!"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Make it executable, and then run it directly, like any other command:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="fu">chmod</span> +x hello</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="ex">./hello</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>A file that starts with <code>#!</code> is a script for <code>rig run</code>, whatever its name, so it does not need an <code>.R</code> extension. You can also put rig’s own flags in the <code>#!</code> line, e.g.&nbsp;<code>#!/usr/bin/env -S rig run --rscript</code>.</p>
+<p>On Windows, <code>rig system script-assoc</code> makes <code>.R</code> files run with rig from <code>cmd</code> and PowerShell, e.g.&nbsp;<code>hello.R a b</code>, or just <code>hello a b</code> if the script is on the <code>PATH</code>. It changes how <code>.R</code> files open for the current user, and double-clicking a <code>.R</code> file then runs it, instead of opening it in your editor. <code>rig system script-assoc --undo</code> restores the old association.</p>
 </section>
-<section id="options-1" class="level3">
-<h3 class="anchored" data-anchor-id="options-1">Options</h3>
-<dl>
-<dt><code>--admin</code></dt>
-<dd>
-Run in admin mode (overrides RIG_MODE and config)
-</dd>
-<dt><code>--dry-run</code></dt>
-<dd>
-Check for a new version without downloading or installing it
-</dd>
-<dt><code>-h, --help</code></dt>
-<dd>
-Print help (see a summary with ‘-h’)
-</dd>
-<dt><code>--no-cache</code></dt>
-<dd>
-Do not read or write rig’s cache (overrides RIG_NO_CACHE and config)
-</dd>
-<dt><code>--pre-release</code></dt>
-<dd>
-Include pre-releases when looking for the latest version
-</dd>
-<dt><code>--user</code></dt>
-<dd>
-Run in user mode (overrides RIG_MODE and config)
-</dd>
-</dl>
+<section id="scripts-from-packages-and-projects" class="level2">
+<h2 class="anchored" data-anchor-id="scripts-from-packages-and-projects">Scripts from packages and projects</h2>
+<p><code>rig run &lt;pkg&gt;::&lt;script&gt;</code> runs a script from the <code>exec</code> directory of an installed package, e.g.&nbsp;a command line tool that a package ships.</p>
+<p>A project can give its own scripts a name, in the <code>[[bin]]</code> tables of <code>rproj.toml</code>, and then <code>rig run &lt;name&gt;</code> runs them in the project’s environment. See <a href="./proj-guide.html#named-scripts">Named scripts</a>.</p>
+</section>
+<section id="cleaning-up" class="level2">
+<h2 class="anchored" data-anchor-id="cleaning-up">Cleaning up</h2>
+<p><code>rig cache info</code> shows how much space the script environments take, and</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> cache clean <span class="at">--category</span> scripts</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>deletes all of them. rig creates them again the next time you run the scripts. Lock files next to the scripts are not touched.</p>
+</section>
+<section id="see-also" class="level2">
+<h2 class="anchored" data-anchor-id="see-also">See also</h2>
+<ul>
+<li>The <a href="./reference/run.html"><code>rig run</code> reference</a> for every option.</li>
+<li><a href="./proj-guide.html">R projects</a>, for code that needs more than a single file.</li>
+</ul>
 
 
-</section>
 </section>
 
 </main> <!-- /main -->

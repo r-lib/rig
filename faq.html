@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.10.18">
+<meta name="generator" content="quarto-1.10.19">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -78,9 +78,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="site_libs/quarto-html/anchor.min.js"></script>
 <link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-dark-b85bc7c33db8c58e0ec93c3465666fed.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-dark-b626d73c4c936ccc3cb08be7d45d1df6.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="site_libs/bootstrap/bootstrap-ecd6a5e2185bdd9e56d000ef38c02e23.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
@@ -404,6 +404,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="./scripts.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Scripts</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="./macos-app.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">macOS menu bar app</span></a>
   </div>
@@ -633,6 +639,7 @@ Why does rig set up P3M?
 <p>P3M (<a href="https://packagemanager.posit.co/client/#/">Posit Public Package Manager</a>) is generally superior to a regular CRAN mirror on Windows and many Linux systems.</p>
 <p>On Linux it includes binary packages for many popular distributions.</p>
 <p>On Windows, it includes up to date binary packages for older R versions as well.</p>
+<p>rig sets up P3M on macOS, x86_64 Windows and Linux. Where P3M has no binary packages, e.g.&nbsp;on some Linux distributions, it is a CRAN mirror of source packages. rig does not set up P3M on aarch64 Windows, because P3M only has x86_64 Windows binaries.</p>
 <p>To avoid P3M use the <code>--without-repos=p3m</code> option of <code>rig add</code>.</p>
 </blockquote>
 </details>
@@ -646,6 +653,23 @@ Can rig install R without admin permissions
 <p>Use <code>rig config set mode=user</code> and <code>rig config set mode=admin</code> to switch between user and admin mode.</p>
 <p>Alternatively, switch to user mode temporarily by setting the <code>RIG_MODE=user</code> environment variable, or by passing the <code>--user</code> flag to any rig command.</p>
 <p>The default is still <em>admin mode</em>, which installs R system-wide and needs <code>sudo</code> (or an administrator account on Windows). Admin mode is also the older and better tested mode, especially on Linux, where user mode installs portable (manylinux or musl) R builds and uses manylinux R packages, both of which are newer and less widely used than the distro-specific builds and packages of admin mode. If you do have an administrator account, and no reason to keep R in your home directory, stay in admin mode for now.</p>
+</blockquote>
+</details>
+<details>
+<summary>
+Can an R script declare the packages it needs?
+</summary>
+<blockquote class="blockquote">
+<p>Yes. Put a <code># /// script</code> comment block at the top of the script, with the packages and the R version it needs, and run it with <code>rig run script.R</code>:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># /// script</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="co"># [dependencies]</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="co"># R = "&gt;= 4.4"</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="co"># cli = "*"</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="co"># ///</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>cli<span class="sc">::</span><span class="fu">cli_text</span>(<span class="st">"Hello from {.pkg cli}!"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>rig creates an environment for the script in its cache directory, installs R and the packages if needed, and runs the script there. Later runs reuse the environment. This works the same in admin and user mode; if rig needs to install R, it installs it the way the current mode does. See <a href="./reference/run.html"><code>rig run</code></a> for the details.</p>
+<p>You do not have to write the block by hand: <code>rig proj init --script script.R</code> adds one, and <code>rig proj add --script script.R cli</code> and <code>rig proj remove --script script.R cli</code> edit it.</p>
+<p>To pin the exact R and package versions, run <code>rig proj lock --script script.R</code>. It writes <code>script.R.lock</code> next to the script, and <code>rig run</code> installs the versions it names. See <a href="./scripts.html#lock-files">Scripts</a>.</p>
 </blockquote>
 </details>
 <details>
@@ -675,18 +699,18 @@ How do I install my own fonts, without administrator rights?
 <blockquote class="blockquote">
 <p>You never need to touch rig’s font configuration for this. On all three platforms there is a per-user font directory that R (and rig’s font configuration on Linux) already looks at, and installing a font is just a matter of copying the font file there. Do <em>not</em> edit the <code>fonts.conf</code> files that rig writes: rig rewrites them on every install, so your changes would be lost.</p>
 <p><strong>Linux.</strong> Copy the font files into <code>~/.local/share/fonts</code> (or <code>~/.fonts</code>):</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mkdir</span> <span class="at">-p</span> ~/.local/share/fonts</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">cp</span> MyFont-<span class="pp">*</span>.ttf ~/.local/share/fonts/</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mkdir</span> <span class="at">-p</span> ~/.local/share/fonts</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="fu">cp</span> MyFont-<span class="pp">*</span>.ttf ~/.local/share/fonts/</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>The <code>fonts.conf</code> that rig writes for the portable R builds lists both directories, so every R version rig installed picks the new fonts up. You do not need to run <code>fc-cache</code>: fontconfig notices that the font directory is newer than its cache and rescans it at startup. (You <em>can</em> run the host’s <code>fc-cache</code> if it has one, but it might write a cache in a different format version than the fontconfig bundled in the R build, in which case it has no effect.)</p>
 <p>Do not put your own fonts into rig’s own font directory (<code>rig system dirs --fonts</code>): rig deletes and re-extracts that directory when it re-downloads the fallback fonts.</p>
 <p><strong>macOS.</strong> Copy the font files into <code>~/Library/Fonts</code>, or open them in Font Book and install them “for this user only”:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cp</span> MyFont-<span class="pp">*</span>.ttf ~/Library/Fonts/</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cp</span> MyFont-<span class="pp">*</span>.ttf ~/Library/Fonts/</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>This works for the quartz devices (which use CoreText, and see <code>~/Library/Fonts</code> automatically) and for the cairo and X11 devices: the <code>fonts.conf</code> in the R installation lists <code>~/Library/Fonts</code>, <code>~/.local/share/fonts</code> and <code>~/.fonts</code>. If a new font does not show up in a cairo device, refresh the fontconfig cache with the <code>fc-cache</code> in the R installation, which knows where R’s configuration is:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="st">"</span><span class="va">$(</span><span class="ex">R</span> RHOME<span class="va">)</span><span class="st">/bin/fc-cache"</span> <span class="at">-f</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="st">"</span><span class="va">$(</span><span class="ex">R</span> RHOME<span class="va">)</span><span class="st">/bin/fc-cache"</span> <span class="at">-f</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p><strong>Windows.</strong> R uses the system font list on Windows, not fontconfig, and rig does not configure fonts at all there. To install a font for yourself only, right-click the font file in Explorer and choose <em>Install for current user</em> (or open it and click <em>Install</em>. Windows installs it into <code>%LOCALAPPDATA%\Microsoft\Windows\Fonts</code> for your user, without administrator rights).</p>
 <p>Then map it to an R font family before using it in the <code>windows()</code> device, using the font’s real family name:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">windowsFonts</span>(<span class="at">myfont =</span> <span class="fu">windowsFont</span>(<span class="st">"My Font"</span>))</span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(<span class="dv">1</span>, <span class="at">family =</span> <span class="st">"myfont"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">windowsFonts</span>(<span class="at">myfont =</span> <span class="fu">windowsFont</span>(<span class="st">"My Font"</span>))</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(<span class="dv">1</span>, <span class="at">family =</span> <span class="st">"myfont"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>The <a href="https://ragg.r-lib.org/">ragg</a> and <a href="https://systemfonts.r-lib.org/">systemfonts</a> packages find per-user fonts without this extra step on all three platforms; use <code>systemfonts::system_fonts()</code> to check that a font was installed correctly.</p>
 </blockquote>
 </details>

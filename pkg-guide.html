@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.10.18">
+<meta name="generator" content="quarto-1.10.19">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -78,9 +78,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="site_libs/quarto-html/anchor.min.js"></script>
 <link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-dark-b85bc7c33db8c58e0ec93c3465666fed.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-dark-b626d73c4c936ccc3cb08be7d45d1df6.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="site_libs/bootstrap/bootstrap-ecd6a5e2185bdd9e56d000ef38c02e23.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
@@ -404,6 +404,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="./scripts.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Scripts</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="./macos-app.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">macOS menu bar app</span></a>
   </div>
@@ -612,7 +618,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p><code>rig pkg</code> commands currently only use P3M (Posit Public Package Manager) and ignore your configured repositories.</p>
+<p><code>rig pkg</code> commands currently only use P3M (Posit Public Package Manager), for CRAN and Bioconductor packages, and ignore your configured repositories.</p>
 </div>
 </div>
 <p><code>rig pkg</code> operates on packages, inside a library. It is a companion to two other command families:</p>
@@ -644,19 +650,26 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <li><code>--prefer-binary[=N]</code> trades a newer version for an older one that already has a binary build, useful when compiling from source is expensive.</li>
 <li>Packages can also be installed from git, GitHub or GitLab, not just the repositories. See <a href="./reference/pkg.html#rig-pkg-install"><code>rig pkg install</code></a> for the full syntax.</li>
 </ul>
+<p>A package on your own machine is installed by path:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> pkg install .                    <span class="co"># the package in the current directory</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> pkg install ./mypkg</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> pkg install mypkg_1.0.0.tar.gz   <span class="co"># a source tarball</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> pkg install mypkg_1.0.0.tgz      <span class="co"># a binary package file</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>A path is a package source directory, a source tarball, or a binary package built with <code>R CMD INSTALL --build</code>; its dependencies are resolved and installed as usual. An argument is a path when it is <code>.</code>, starts with <code>./</code>, <code>../</code>, <code>~/</code> or <code>/</code>, or names a package file that exists, so <code>mypkg</code> still means the repositories’ <code>mypkg</code>.</p>
+<p>On Linux, rig also installs the system libraries and tools that the packages need, e.g.&nbsp;<code>libcurl4-openssl-dev</code> for curl on Ubuntu, from their <code>SystemRequirements</code> fields. It does this itself if it runs as <code>root</code> or if <code>sudo</code> works without a password, and otherwise prints the commands to run. <code>--no-sysreqs</code> turns this off. See <a href="./reference/pkg.html#rig-pkg-install"><code>rig pkg install</code></a> for the details.</p>
 </section>
 <section id="listing-and-removing-packages" class="level2">
 <h2 class="anchored" data-anchor-id="listing-and-removing-packages">Listing and removing packages</h2>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> pkg list                 <span class="co"># list packages in a library</span></span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> pkg remove cli glue      <span class="co"># remove package(s) from a library</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> pkg list                 <span class="co"># list packages in a library</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> pkg remove cli glue      <span class="co"># remove package(s) from a library</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Neither command starts R. <code>rig pkg remove</code> refuses to remove a base package (<code>base</code>, <code>stats</code>, <code>utils</code>, …) unless <code>--force</code> is given, since R does not work without them. On the other hand it does not check whether another installed package still needs the one being removed.</p>
 </section>
 <section id="choosing-a-library" class="level2">
 <h2 class="anchored" data-anchor-id="choosing-a-library">Choosing a library</h2>
 <p>By default <code>rig pkg install</code>, <code>rig pkg list</code> and <code>rig pkg remove</code> all operate on the default library of the default R version. Use <code>--library</code> (<code>-l</code>) to target another library by name or path, and <code>--r-version</code> (<code>-r</code>) to target a library of another R version:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> pkg install <span class="at">--library</span> myproject cli</span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> pkg install <span class="at">--library</span> /usr/lib/R/site-library cli</span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> pkg list <span class="at">--r-version</span> 4.4.1</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> pkg install <span class="at">--library</span> myproject cli</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> pkg install <span class="at">--library</span> /usr/lib/R/site-library cli</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="ex">rig</span> pkg list <span class="at">--r-version</span> 4.4.1</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>See <a href="./reference/library.html"><code>rig library</code></a> for how libraries are named and how the default one is chosen. In <a href="./admin-vs-user-mode.html">admin mode</a>, the site and system libraries belong to the administrator, so installing into or removing from them needs <code>sudo</code> (an administrator account on Windows), your own user libraries never do.</p>
 </section>
 <section id="see-also" class="level2">

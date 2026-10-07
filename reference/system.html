@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.10.18">
+<meta name="generator" content="quarto-1.10.19">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -26,6 +26,41 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
 </style>
 
 
@@ -43,9 +78,9 @@ ul.task-list li input[type="checkbox"] {
 <script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-b85bc7c33db8c58e0ec93c3465666fed.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-b626d73c4c936ccc3cb08be7d45d1df6.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="../site_libs/bootstrap/bootstrap-ecd6a5e2185bdd9e56d000ef38c02e23.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
@@ -369,6 +404,12 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../scripts.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Scripts</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../macos-app.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">macOS menu bar app</span></a>
   </div>
@@ -606,26 +647,31 @@ ul.task-list li input[type="checkbox"] {
   <li><a href="#arguments-7" id="toc-arguments-7" class="nav-link" data-scroll-target="#arguments-7">Arguments</a></li>
   <li><a href="#options-15" id="toc-options-15" class="nav-link" data-scroll-target="#options-15">Options</a></li>
   </ul></li>
-  <li><a href="#rig-system-setup-user-lib" id="toc-rig-system-setup-user-lib" class="nav-link" data-scroll-target="#rig-system-setup-user-lib"><code>rig system setup-user-lib</code></a>
+  <li><a href="#rig-system-script-assoc" id="toc-rig-system-script-assoc" class="nav-link" data-scroll-target="#rig-system-script-assoc"><code>rig system script-assoc</code> <span class="rig-platform">Windows only</span></a>
   <ul class="collapse">
   <li><a href="#usage-16" id="toc-usage-16" class="nav-link" data-scroll-target="#usage-16">Usage</a></li>
-  <li><a href="#arguments-8" id="toc-arguments-8" class="nav-link" data-scroll-target="#arguments-8">Arguments</a></li>
   <li><a href="#options-16" id="toc-options-16" class="nav-link" data-scroll-target="#options-16">Options</a></li>
   </ul></li>
-  <li><a href="#rig-system-update-certs" id="toc-rig-system-update-certs" class="nav-link" data-scroll-target="#rig-system-update-certs"><code>rig system update-certs</code> <span class="rig-platform">Linux only</span></a>
+  <li><a href="#rig-system-setup-user-lib" id="toc-rig-system-setup-user-lib" class="nav-link" data-scroll-target="#rig-system-setup-user-lib"><code>rig system setup-user-lib</code></a>
   <ul class="collapse">
   <li><a href="#usage-17" id="toc-usage-17" class="nav-link" data-scroll-target="#usage-17">Usage</a></li>
+  <li><a href="#arguments-8" id="toc-arguments-8" class="nav-link" data-scroll-target="#arguments-8">Arguments</a></li>
   <li><a href="#options-17" id="toc-options-17" class="nav-link" data-scroll-target="#options-17">Options</a></li>
   </ul></li>
-  <li><a href="#rig-system-update-rtools40" id="toc-rig-system-update-rtools40" class="nav-link" data-scroll-target="#rig-system-update-rtools40"><code>rig system update-rtools40</code> <span class="rig-platform">Windows only</span></a>
+  <li><a href="#rig-system-update-certs" id="toc-rig-system-update-certs" class="nav-link" data-scroll-target="#rig-system-update-certs"><code>rig system update-certs</code> <span class="rig-platform">Linux only</span></a>
   <ul class="collapse">
   <li><a href="#usage-18" id="toc-usage-18" class="nav-link" data-scroll-target="#usage-18">Usage</a></li>
   <li><a href="#options-18" id="toc-options-18" class="nav-link" data-scroll-target="#options-18">Options</a></li>
   </ul></li>
-  <li><a href="#rig-system-user-mode" id="toc-rig-system-user-mode" class="nav-link" data-scroll-target="#rig-system-user-mode"><code>rig system user-mode</code></a>
+  <li><a href="#rig-system-update-rtools40" id="toc-rig-system-update-rtools40" class="nav-link" data-scroll-target="#rig-system-update-rtools40"><code>rig system update-rtools40</code> <span class="rig-platform">Windows only</span></a>
   <ul class="collapse">
   <li><a href="#usage-19" id="toc-usage-19" class="nav-link" data-scroll-target="#usage-19">Usage</a></li>
   <li><a href="#options-19" id="toc-options-19" class="nav-link" data-scroll-target="#options-19">Options</a></li>
+  </ul></li>
+  <li><a href="#rig-system-user-mode" id="toc-rig-system-user-mode" class="nav-link" data-scroll-target="#rig-system-user-mode"><code>rig system user-mode</code></a>
+  <ul class="collapse">
+  <li><a href="#usage-20" id="toc-usage-20" class="nav-link" data-scroll-target="#usage-20">Usage</a></li>
+  <li><a href="#options-20" id="toc-options-20" class="nav-link" data-scroll-target="#options-20">Options</a></li>
   </ul></li>
   </ul>
 </nav>
@@ -717,6 +763,10 @@ Make installed versions orthogonal
 <dt><a href="#rig-system-no-openmp"><code>no-openmp</code></a> <span class="rig-platform">macOS only</span></dt>
 <dd>
 Remove OpenMP (-fopenmp) option for Apple compilers
+</dd>
+<dt><a href="#rig-system-script-assoc"><code>script-assoc</code></a> <span class="rig-platform">Windows only</span></dt>
+<dd>
+Run .R files with rig from the Windows command line
 </dd>
 <dt><a href="#rig-system-setup-user-lib"><code>setup-user-lib</code></a></dt>
 <dd>
@@ -1053,6 +1103,16 @@ Run in user mode (overrides RIG_MODE and config)
 <h2 class="anchored" data-anchor-id="rig-system-detect-platform"><code>rig system detect-platform</code></h2>
 <p>Detect and print the operating system version and distribution.</p>
 <p>rig uses this information to choose the right R builds and package repositories. Use <code>--json</code> for machine-readable output.</p>
+<p>The first line is the platform string of this machine. rig writes platform strings as target triples, with <code>aarch64</code> or <code>x86_64</code> as the arch:</p>
+<ul>
+<li><code>aarch64-apple-darwin</code>, <code>x86_64-apple-darwin</code> – macOS.</li>
+<li><code>x86_64-w64-mingw32</code>, <code>aarch64-w64-mingw32</code> – Windows.</li>
+<li><code>x86_64-unknown-linux-gnu</code> – any Linux with glibc.</li>
+<li><code>x86_64-unknown-linux-gnu-ubuntu-24.04</code> – a specific Linux distribution and version.</li>
+</ul>
+<p>This is the form <code>rproj.lock</code> uses, and that rig prints in messages. Commands that take a platform, e.g.&nbsp;<code>rig proj lock --platform</code> or the <code>RIG_PLATFORM</code> environment variable, also take shorter forms: <code>macos</code>, <code>windows</code>, <code>linux</code>, <code>macos-arm64</code>, <code>ubuntu-24.04</code>, <code>linux-ubuntu-24.04</code>, and P3M platform names like <code>jammy-x86_64</code>. <code>arm64</code> and <code>amd64</code> work as arch names, too.</p>
+<p>Set <code>RIG_PLATFORM</code> to make rig act as if it ran on another platform, e.g.:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode sh code-with-copy"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="va">RIG_PLATFORM</span><span class="op">=</span>ubuntu-22.04 <span class="ex">rig</span> system detect-platform</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <section id="usage-7" class="level3">
 <h3 class="anchored" data-anchor-id="usage-7">Usage</h3>
 <pre class="text"><code>rig system detect-platform [OPTIONS]</code></pre>
@@ -1428,13 +1488,52 @@ Run in user mode (overrides RIG_MODE and config)
 </dl>
 </section>
 </section>
+<section id="rig-system-script-assoc" class="level2">
+<h2 class="anchored" data-anchor-id="rig-system-script-assoc"><code>rig system script-assoc</code> <span class="rig-platform">Windows only</span></h2>
+<p>Run <code>.R</code> files with rig from the Windows command line, e.g.&nbsp;<code>hello.R a b</code> instead of <code>rig run hello.R a b</code>, in <code>cmd</code> and PowerShell.</p>
+<p>This command associates <code>.R</code> files with rig, for the current user, and adds <code>.R</code> to the user’s <code>PATHEXT</code>, so Windows also finds <code>hello.R</code> on the <code>PATH</code> as <code>hello</code>. It runs <code>rig run -f &lt;file&gt;</code> for a <code>.R</code> file.</p>
+<p>This also changes what happens when you double-click a <code>.R</code> file: it runs the script, instead of opening it in RStudio, Positron, RGui or another editor.</p>
+<p>If you chose an app for <code>.R</code> files in the <em>Open with</em> dialog of Windows, then Windows uses that app, and rig cannot change it. rig warns about this. To use rig, choose <em>R script (runs with rig)</em> in <em>Open with</em> &gt; <em>Choose another app</em>, with <em>Always</em>.</p>
+<p>Open a new terminal for the <code>PATHEXT</code> change to take effect.</p>
+<p>Use the <code>--undo</code> flag to remove the association, restore the previous default app of <code>.R</code> files, and remove <code>.R</code> from <code>PATHEXT</code>.</p>
+<p>This command does nothing on macOS and Linux.</p>
+<section id="usage-16" class="level3">
+<h3 class="anchored" data-anchor-id="usage-16">Usage</h3>
+<pre class="text"><code>rig system script-assoc [OPTIONS]</code></pre>
+</section>
+<section id="options-16" class="level3">
+<h3 class="anchored" data-anchor-id="options-16">Options</h3>
+<dl>
+<dt><code>--admin</code></dt>
+<dd>
+Run in admin mode (overrides RIG_MODE and config)
+</dd>
+<dt><code>-h, --help</code></dt>
+<dd>
+Print help (see a summary with ‘-h’)
+</dd>
+<dt><code>--no-cache</code></dt>
+<dd>
+Do not read or write rig’s cache (overrides RIG_NO_CACHE and config)
+</dd>
+<dt><code>--undo</code></dt>
+<dd>
+Remove the association, and restore the previous one.
+</dd>
+<dt><code>--user</code></dt>
+<dd>
+Run in user mode (overrides RIG_MODE and config)
+</dd>
+</dl>
+</section>
+</section>
 <section id="rig-system-setup-user-lib" class="level2">
 <h2 class="anchored" data-anchor-id="rig-system-setup-user-lib"><code>rig system setup-user-lib</code></h2>
 <p>Alias: <code>rig system create-lib</code></p>
 <p>Set up R to create user package libraries when started, by default for installed R versions.</p>
 <p><code>rig add</code> runs <code>rig system setup-user-lib</code>, so if you only use rig to install R, then you do not need to run it manually.</p>
-<section id="usage-16" class="level3">
-<h3 class="anchored" data-anchor-id="usage-16">Usage</h3>
+<section id="usage-17" class="level3">
+<h3 class="anchored" data-anchor-id="usage-17">Usage</h3>
 <pre class="text"><code>rig system setup-user-lib [OPTIONS] [version]...</code></pre>
 </section>
 <section id="arguments-8" class="level3">
@@ -1446,8 +1545,8 @@ R versions (default: all)
 </dd>
 </dl>
 </section>
-<section id="options-16" class="level3">
-<h3 class="anchored" data-anchor-id="options-16">Options</h3>
+<section id="options-17" class="level3">
+<h3 class="anchored" data-anchor-id="options-17">Options</h3>
 <dl>
 <dt><code>--admin</code></dt>
 <dd>
@@ -1472,12 +1571,12 @@ Run in user mode (overrides RIG_MODE and config)
 <h2 class="anchored" data-anchor-id="rig-system-update-certs"><code>rig system update-certs</code> <span class="rig-platform">Linux only</span></h2>
 <p>Download the CA certificate bundle and configure R to use it (Linux only).</p>
 <p>This helps R make HTTPS connections on systems where the default certificate store is missing or out of date.</p>
-<section id="usage-17" class="level3">
-<h3 class="anchored" data-anchor-id="usage-17">Usage</h3>
+<section id="usage-18" class="level3">
+<h3 class="anchored" data-anchor-id="usage-18">Usage</h3>
 <pre class="text"><code>rig system update-certs [OPTIONS]</code></pre>
 </section>
-<section id="options-17" class="level3">
-<h3 class="anchored" data-anchor-id="options-17">Options</h3>
+<section id="options-18" class="level3">
+<h3 class="anchored" data-anchor-id="options-18">Options</h3>
 <dl>
 <dt><code>--admin</code></dt>
 <dd>
@@ -1503,12 +1602,12 @@ Run in user mode (overrides RIG_MODE and config)
 <p>Update Rtools40 compilers and libraries to the latest builds by updating the MSYS2 packages in Rtools40 on Windows.</p>
 <p>This command does nothing on macOS and Linux.</p>
 <p>In admin mode this command needs an administrator account.</p>
-<section id="usage-18" class="level3">
-<h3 class="anchored" data-anchor-id="usage-18">Usage</h3>
+<section id="usage-19" class="level3">
+<h3 class="anchored" data-anchor-id="usage-19">Usage</h3>
 <pre class="text"><code>rig system update-rtools40 [OPTIONS]</code></pre>
 </section>
-<section id="options-18" class="level3">
-<h3 class="anchored" data-anchor-id="options-18">Options</h3>
+<section id="options-19" class="level3">
+<h3 class="anchored" data-anchor-id="options-19">Options</h3>
 <dl>
 <dt><code>--admin</code></dt>
 <dd>
@@ -1543,12 +1642,12 @@ Run in user mode (overrides RIG_MODE and config)
 <p>Note that admin mode is rig’s default and the better tested mode, so there is no need to switch a working admin-mode setup. On Linux in particular, user mode uses portable (manylinux or musl) R builds and manylinux R packages, which are newer and less tested than the distro-specific builds and packages of admin mode. To go back to admin mode, run <code>rig config set mode=admin</code> and reinstall the R versions you want.</p>
 <p>Use <code>--keep-install</code> to leave the admin-mode R installations in place (skipping step 3), and <code>--keep-links</code> to leave the system-wide links in place (skipping step 4). With both, nothing outside your home directory is touched and no administrator account or <code>sudo</code> is needed.</p>
 <p>If you use Positron, it caches the list of R interpreters, so it may keep showing the old admin-mode installations and miss the new user-mode ones. Clear its interpreter cache, re-discover interpreters, and restart Positron to pick up the change.</p>
-<section id="usage-19" class="level3">
-<h3 class="anchored" data-anchor-id="usage-19">Usage</h3>
+<section id="usage-20" class="level3">
+<h3 class="anchored" data-anchor-id="usage-20">Usage</h3>
 <pre class="text"><code>rig system user-mode [OPTIONS]</code></pre>
 </section>
-<section id="options-19" class="level3">
-<h3 class="anchored" data-anchor-id="options-19">Options</h3>
+<section id="options-20" class="level3">
+<h3 class="anchored" data-anchor-id="options-20">Options</h3>
 <dl>
 <dt><code>-h, --help</code></dt>
 <dd>

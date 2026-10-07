@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.10.18">
+<meta name="generator" content="quarto-1.10.19">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -43,9 +43,9 @@ ul.task-list li input[type="checkbox"] {
 <script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-b85bc7c33db8c58e0ec93c3465666fed.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-64a204ab8560d761af7679ceaba22944.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-b626d73c4c936ccc3cb08be7d45d1df6.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-bf27225e3a48a9273f3daa8f8e829971.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="../site_libs/bootstrap/bootstrap-ecd6a5e2185bdd9e56d000ef38c02e23.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
@@ -369,6 +369,12 @@ ul.task-list li input[type="checkbox"] {
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../scripts.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Scripts</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../macos-app.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">macOS menu bar app</span></a>
   </div>
@@ -577,7 +583,7 @@ Show cache size and contents
 </section>
 <section id="rig-cache-clean" class="level2">
 <h2 class="anchored" data-anchor-id="rig-cache-clean"><code>rig cache clean</code></h2>
-<p>Deletes files from rig’s cache directory. With no options, deletes the whole cache. Use <code>--category</code> to delete only one category of cached files (<code>built</code>, <code>packages</code>, <code>metadata</code>, <code>p3m</code>, <code>git-mirrors</code> or <code>url-pkgs</code>), leaving the rest in place. See <a href="../reference/cache.html#rig-cache-info"><code>rig cache info</code></a> for what each category contains.</p>
+<p>Deletes files from rig’s cache directory. With no options, deletes the whole cache. Use <code>--category</code> to delete only one category of cached files (<code>built</code>, <code>packages</code>, <code>metadata</code>, <code>p3m</code>, <code>git-mirrors</code>, <code>url-pkgs</code> or <code>scripts</code>), leaving the rest in place. See <a href="../reference/cache.html#rig-cache-info"><code>rig cache info</code></a> for what each category contains.</p>
 <section id="usage" class="level3">
 <h3 class="anchored" data-anchor-id="usage">Usage</h3>
 <pre class="text"><code>rig cache clean [OPTIONS]</code></pre>
@@ -592,7 +598,7 @@ Run in admin mode (overrides RIG_MODE and config)
 <dt><code>--category &lt;category&gt;</code></dt>
 <dd>
 Only delete this category of cached files
-<em>[possible values: built, packages, metadata, p3m, git-mirrors, url-pkgs]</em>
+<em>[possible values: built, packages, metadata, p3m, git-mirrors, url-pkgs, scripts]</em>
 </dd>
 <dt><code>-h, --help</code></dt>
 <dd>
@@ -611,7 +617,7 @@ Run in user mode (overrides RIG_MODE and config)
 </section>
 <section id="rig-cache-info" class="level2">
 <h2 class="anchored" data-anchor-id="rig-cache-info"><code>rig cache info</code></h2>
-<p>Prints the total size of rig’s cache directory, broken down into categories: packages rig built from source, downloaded package files, package metadata (binary package indexes, CRAN-like package databases, package manifests, and repository data), the cached PPM status document, the persistent git mirrors kept for git/GitHub dependency resolution (<code>rig proj lock</code>), and the downloaded archives kept for <code>url</code> dependency resolution.</p>
+<p>Prints the total size of rig’s cache directory, broken down into categories: packages rig built from source, downloaded package files, package metadata (binary package indexes, CRAN-like package databases, package manifests, and repository data), the cached PPM status document, the persistent git mirrors kept for git/GitHub dependency resolution (<code>rig proj lock</code>), the downloaded archives kept for <code>url</code> dependency resolution, and the environments of scripts with inline dependencies (<code>rig run script.R</code>).</p>
 <p>Use <code>--json</code> for machine-readable output.</p>
 <section id="usage-1" class="level3">
 <h3 class="anchored" data-anchor-id="usage-1">Usage</h3>
