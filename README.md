@@ -40,23 +40,37 @@ Install, remove, configure R versions. Manage R packages and projects.
 **Package management, set up for you**
 
 - Configures the default CRAN mirror and
-  [PPM](https://packagemanager.posit.co/) binary repositories.
+  [P3M](https://packagemanager.posit.co/) binary repositories.
 - Installs [pak](https://pak.r-lib.org) and enables automatic [system
   requirements
   installation](https://pak.r-lib.org/dev/reference/sysreqs.html).
 - Creates and configures per-user package libraries.
 - [`rig repos`](https://r-lib.github.io/rig/reference/repos.html) manages package repositories across
-  all your R versions.
-- [`rig pkg`](https://r-lib.github.io/rig/reference/pkg.html) (experimental) installs, removes and
-  lists packages in a library, and looks up package info, dependencies
-  and dependency trees from the repositories, all without running R.
+  all your R versions. Add your own CRAN-like repositories, e.g. an
+  internal CRAN mirror or an r-universe, and turn repositories on and
+  off for each R version. rig remembers the setup.
+- [`rig pkg`](https://r-lib.github.io/rig/pkg-guide.html) (experimental) installs, removes and lists
+  packages in a library, and looks up package info, dependencies and
+  dependency trees from the repositories, all without running R. It also
+  searches CRAN, and finds problems in a library, e.g. missing or too
+  old dependencies.
+- Installs packages from CRAN, Bioconductor (the release that belongs to
+  your R version), your own repositories and local paths, with version
+  constraints, e.g. `rig pkg install 'cli@=3.6.4'`.
+- On Linux, `rig pkg`, `rig proj` and `rig run` install the system
+  requirements of R packages, or print the commands to install them if
+  rig cannot run them as root.
 
 **Project dependency management (experimental)**
 
-- [`rig proj`](https://r-lib.github.io/rig/reference/proj.html) manages an R project through an
+- [`rig proj`](https://r-lib.github.io/rig/proj-guide.html) manages an R project through an
   `rproj.toml` manifest: add or remove dependencies, resolve them with
   rig’s built-in solver into an `rproj.lock` lockfile, and sync a
   project library to match, all without running R.
+- Lock for several R versions and platforms at once, pin repositories
+  and Bioconductor releases, ignore package versions newer than a date
+  with `--exclude-newer`, and upgrade only some packages while keeping
+  the rest pinned.
 - Import a project from, or export it to, a `DESCRIPTION` file or an
   [renv](https://rstudio.github.io/renv/) `renv.lock` file, to
   interoperate with existing R package and project tooling.
@@ -68,6 +82,12 @@ Install, remove, configure R versions. Manage R packages and projects.
 - `rig run` starts R, runs a script or expression, or launches an app:
   Shiny apps, Plumber APIs, Quarto and R Markdown documents, and static
   sites, with the R version you choose.
+- [Self-contained scripts](https://r-lib.github.io/rig/scripts.html): declare the R version and the
+  packages a script needs in a `# /// script` comment block, and
+  `rig run` installs them into the script’s own environment. Lock the
+  versions next to the script with `rig proj lock --script`.
+- On Windows, `rig system script-assoc` lets you run `.R` files directly
+  from `cmd` and PowerShell.
 
 **Platform niceties**
 
@@ -78,8 +98,9 @@ Install, remove, configure R versions. Manage R packages and projects.
 - Shell auto-completion for `zsh` and `bash` on macOS and Linux, and for
   PowerShell on Windows.
 - On macOS, sets up R for debugging with `lldb` and enables core dumps.
-- JSON output for scripting, and a `rig config` command to manage rig’s
-  own configuration.
+- JSON output for scripting, e.g. from `rig list`, `rig add` and
+  `rig rtools add`, and a `rig config` command to manage rig’s own
+  configuration.
 
 ## 📖 Documentation
 
