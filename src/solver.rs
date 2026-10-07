@@ -145,6 +145,11 @@ pub const PROJECT_ROOT_PKG: &str = "_project";
 /// satisfy all of them at once.
 pub const WORKSPACE_ROOT_PKG: &str = "_workspace";
 
+/// The synthetic package a one-off `rig pkg install` solve is rooted at. Its
+/// dependencies are the packages on the command line. There is no project
+/// here, so [`format_solver_error`] calls them "the requested packages".
+pub const REQUEST_ROOT_PKG: &str = "_request";
+
 /// One root of a solve: a project, or one member of a workspace. Its
 /// dependencies are requirements the solution has to satisfy, and its name and
 /// version are what other members see when they depend on it.
@@ -160,6 +165,16 @@ impl SolveRoot {
     pub fn project(deps: PackageDependencies) -> Result<Self, Box<dyn Error>> {
         Ok(SolveRoot {
             name: PROJECT_ROOT_PKG.to_string(),
+            version: RPackageVersion::from_str("1.0.0")?,
+            deps,
+        })
+    }
+
+    /// The single root of a `rig pkg install` solve, named
+    /// [`REQUEST_ROOT_PKG`]: `deps` are the packages the user asked for.
+    pub fn request(deps: PackageDependencies) -> Result<Self, Box<dyn Error>> {
+        Ok(SolveRoot {
+            name: REQUEST_ROOT_PKG.to_string(),
             version: RPackageVersion::from_str("1.0.0")?,
             deps,
         })
@@ -1299,7 +1314,18 @@ pub fn format_solver_error(err: PubGrubError<RPackageRegistry>, reg: &RPackageRe
     // The root packages are ours, not the user's; they should not show up in
     // output. Workspace members do: they are the user's own packages, and
     // which member wants what is the point of the report.
+    // A one-off install has no project, so its root reads as the user's
+    // request: "you requested a >=1.0", and the conclusion that the root is
+    // forbidden as "the requested packages cannot be installed".
+    let request = format!("{} 1.0.0", REQUEST_ROOT_PKG);
     let report = report
+        .replace(&format!("{} depends on ", request), "you requested ")
+        .replace(
+            &format!("{} is forbidden", request),
+            "the requested packages cannot be installed",
+        )
+        .replace(&request, "your request")
+        .replace(REQUEST_ROOT_PKG, "your request")
         .replace(&format!("{} 1.0.0", PROJECT_ROOT_PKG), "this project")
         .replace(PROJECT_ROOT_PKG, "this project")
         .replace(&format!("{} 1.0.0", WORKSPACE_ROOT_PKG), "this workspace")
@@ -1582,6 +1608,32 @@ mod tests {
             "{}",
             msg
         );
+    }
+
+    #[test]
+    fn a_failed_request_is_not_called_a_project() {
+        let source = StubSource {
+            packages: vec![("a", "1.0.0", "R (>= 4.1.0)")],
+        };
+        let reg = RPackageRegistry::with_loaders(Box::new(source), None);
+        reg.add_package_version(
+            "R".to_string(),
+            RegistryPackageVersion::new("R", "4.0.5").unwrap(),
+            ranges(""),
+        );
+        let root = RegistryPackageVersion::new(REQUEST_ROOT_PKG, "1.0.0").unwrap();
+        reg.add_package_version(REQUEST_ROOT_PKG.to_string(), root.clone(), ranges("a"));
+        let err = resolve(&reg, REQUEST_ROOT_PKG.to_string(), root).unwrap_err();
+
+        let msg = format_solver_error(err, &reg);
+        assert!(msg.contains("you requested a"), "{}", msg);
+        assert!(
+            msg.contains("the requested packages cannot be installed"),
+            "{}",
+            msg
+        );
+        assert!(!msg.contains("project"), "{}", msg);
+        assert!(!msg.contains(REQUEST_ROOT_PKG), "{}", msg);
     }
 
     /// The solver error for a project that depends on `deps`, which are

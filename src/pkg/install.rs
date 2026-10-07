@@ -134,7 +134,7 @@ pub fn sc_pkg_install(
         info!("Ignoring --prefer-binary: solving for source packages only");
     }
 
-    let roots = [SolveRoot::project(deps.clone())?];
+    let roots = [SolveRoot::request(deps.clone())?];
     let git_sources = resolve_git_sources(&git_deps, &HashMap::new(), &HashMap::new())?;
     let (registry, solution) = sc_proj_solve_deps(
         &rver,
