@@ -213,6 +213,12 @@ const LEGACY_RENVIRON_HEADER: &str = "# Managed by rig (rig proj init).";
 /// `R_DEFAULT_PACKAGES` *replaces* the default package list rather than
 /// prepending to it, so the whole list has to be spelled out here; leaving
 /// out e.g. `stats` would silently drop it from `search()`.
+///
+/// `RVENV_R_LIBS_USER` is quoted: R expands `${R_LIBS_USER}` first and then
+/// removes backslashes outside of quotes, turning `D:\a\_temp\Library` into
+/// the drive-relative `D:a_tempLibrary`. A value that ends with a backslash
+/// still breaks, because that escapes the closing quote, but R does not set
+/// such a value itself.
 fn renviron_block() -> String {
     format!(
         "\
@@ -231,13 +237,14 @@ fn renviron_block() -> String {
 # RVENV_R_LIBS_USER keeps the R_LIBS_USER this R installation had set by the
 # time this file is read, so that the `rvenv` package can put it back if the
 # project has no library yet. It is still unexpanded at this point, e.g. `%U`;
-# R expands the %-specs later, and so does the package.
+# R expands the %-specs later, and so does the package. The value is quoted
+# because R drops unquoted backslashes, which would break Windows paths.
 #
 # R_DEFAULT_PACKAGES replaces R's default package list rather than adding to
 # it, so the whole list has to be spelled out.
 #
 # Note that `R --vanilla` ignores this file entirely.
-RVENV_R_LIBS_USER=${{R_LIBS_USER}}
+RVENV_R_LIBS_USER=\"${{R_LIBS_USER}}\"
 R_LIBS_USER=.rvenvlib
 R_DEFAULT_PACKAGES=rvenv,datasets,utils,grDevices,graphics,stats,methods
 {}
@@ -833,7 +840,7 @@ fn update_marked_block(path: &Path, block: &str) -> Result<(), Box<dyn Error>> {
             out
         }
         None => {
-            let mut out = text;
+            let mut out = text.clone();
             if !out.is_empty() && !out.ends_with('\n') {
                 out.push('\n');
             }
@@ -844,6 +851,9 @@ fn update_marked_block(path: &Path, block: &str) -> Result<(), Box<dyn Error>> {
             out
         }
     };
+    if new == text {
+        return Ok(());
+    }
     write_atomically(path, new.as_bytes())
 }
 
@@ -918,15 +928,48 @@ pub fn rvenv_init(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
 /// project calls this, so that R started directly (terminal, RStudio,
 /// Positron) keeps working: those commands never read either file
 /// themselves, they set `R_LIBS_USER` on their own. A no-op if the manifest
-/// is missing (nothing to fill in) or the shim package is already there.
+/// is missing (nothing to fill in).
+///
+/// If the shim package is already there, this still creates or updates
+/// rig's block in `.Renviron`, so that a deleted `.Renviron` comes back and
+/// projects set up by an older rig pick up fixes to it, e.g. quoting
+/// `RVENV_R_LIBS_USER` for Windows paths.
 pub fn ensure_rvenv_files(root: &Path) -> Result<(), Box<dyn Error>> {
-    if root.join(RPROJ_MANIFEST_FILE).exists() && !project_shim_package(root).exists() {
+    if !root.join(RPROJ_MANIFEST_FILE).exists() {
+        return Ok(());
+    }
+    if !project_shim_package(root).exists() {
         rvenv_init(root)?;
         OUTPUT.info("Filled in missing .Renviron/.rvenvlib for this project");
         info!(
             "Filled in missing .Renviron/.rvenvlib in {}",
             root.display()
         );
+        return Ok(());
+    }
+    refresh_project_renviron(root)
+}
+
+/// Create the project's `.Renviron`, or add or update rig's block in it, and
+/// say so if anything changed.
+fn refresh_project_renviron(root: &Path) -> Result<(), Box<dyn Error>> {
+    let path = root.join(RVENV_RENVIRON_FILE);
+    let old = if path.exists() {
+        Some(fs::read_to_string(&path)?)
+    } else {
+        None
+    };
+    update_project_renviron(root)?;
+    match old {
+        None => {
+            OUTPUT.info("Created missing .Renviron for this project");
+            info!("Created missing {}", path.display());
+        }
+        Some(old) if fs::read_to_string(&path)? != old => {
+            OUTPUT.info("Updated rig's settings in the project .Renviron");
+            info!("Updated rig's block in {}", path.display());
+        }
+        Some(_) => {}
     }
     Ok(())
 }
@@ -1393,8 +1436,9 @@ mod tests {
         // loaded from, the shim switches to the project library.
         assert!(body.contains("\nR_LIBS_USER=.rvenvlib\n"));
         // Recorded before R_LIBS_USER is overwritten, so that the shim can
-        // restore it for a project that has no library yet.
-        assert!(body.contains("\nRVENV_R_LIBS_USER=${R_LIBS_USER}\nR_LIBS_USER="));
+        // restore it for a project that has no library yet. Quoted, because
+        // R drops unquoted backslashes, which breaks Windows paths.
+        assert!(body.contains("\nRVENV_R_LIBS_USER=\"${R_LIBS_USER}\"\nR_LIBS_USER="));
         // The shim package has to come first, and the rest of R's default
         // package list has to be spelled out.
         assert!(body.contains(
@@ -1551,6 +1595,38 @@ mod tests {
         assert!(existing_targets(tmp.path()).unwrap().is_empty());
         update_project_renviron(tmp.path()).unwrap();
         assert!(existing_targets(tmp.path()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn ensure_rvenv_files_recreates_a_deleted_renviron() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(root.join(RPROJ_MANIFEST_FILE), "").unwrap();
+        rvenv_init(root).unwrap();
+        fs::remove_file(root.join(".Renviron")).unwrap();
+        ensure_rvenv_files(root).unwrap();
+        let text = fs::read_to_string(root.join(".Renviron")).unwrap();
+        assert_eq!(text, renviron_block());
+    }
+
+    #[test]
+    fn ensure_rvenv_files_updates_an_old_renviron_block() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(root.join(RPROJ_MANIFEST_FILE), "").unwrap();
+        rvenv_init(root).unwrap();
+        let path = root.join(".Renviron");
+        fs::write(
+            &path,
+            format!(
+                "FOO=bar\n{}\nRVENV_R_LIBS_USER=${{R_LIBS_USER}}\nR_LIBS_USER=.rvenvlib\n{}\n",
+                BLOCK_START, BLOCK_END
+            ),
+        )
+        .unwrap();
+        ensure_rvenv_files(root).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert_eq!(text, format!("FOO=bar\n{}", renviron_block()));
     }
 
     #[test]

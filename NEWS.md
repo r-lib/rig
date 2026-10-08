@@ -1,5 +1,9 @@
 # rig 0.11.1-dev (development version)
 
+* The project `.Renviron` now quotes the saved `R_LIBS_USER` value, so it
+  works with Windows paths. Delete `.Renviron` and call `rig proj lock`
+  to recreate it with the fixed version in existing projects.
+
 # rig 0.11.0
 
 ## Custom repositories
