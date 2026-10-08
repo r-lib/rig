@@ -6,6 +6,8 @@
 //!   gen-rvenv-shim            Rebuild the committed shim R packages in
 //!                             src/data/rvenv-shim from src/data/rvenv-pkg
 //!   gen-rvenv-shim --check    Verify they match the source (CI guard)
+//!   gen-sysreqs-rules <dir>   Regenerate src/data/sysreqs-rules.json from an
+//!                             r-system-requirements checkout
 //!
 //! The help prose for each command lives in `src/help/*.md`: the lead paragraph
 //! (before the first heading) is the short `about`, and the rest is the long
@@ -20,9 +22,10 @@
 
 mod render;
 mod rvenv_shim;
+mod sysreqs_rules;
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use render::{md_to_ansi_impl, md_to_ansi_inline};
@@ -140,10 +143,18 @@ fn main() -> ExitCode {
             let check = args[1..].iter().any(|a| a == "--check");
             rvenv_shim::gen_rvenv_shim(&workspace_root(), check)
         }
+        Some("gen-sysreqs-rules") => match args.get(1) {
+            Some(dir) => sysreqs_rules::gen_sysreqs_rules(&workspace_root(), Path::new(dir)),
+            None => {
+                eprintln!("Usage: cargo xtask gen-sysreqs-rules <r-system-requirements dir>");
+                ExitCode::FAILURE
+            }
+        },
         other => {
             eprintln!(
                 "unknown task: {}\n\nUsage:\n  cargo xtask gen-help [--check]\n  \
-                 cargo xtask gen-rvenv-shim [--check]",
+                 cargo xtask gen-rvenv-shim [--check]\n  \
+                 cargo xtask gen-sysreqs-rules <dir>",
                 other.unwrap_or("(none)")
             );
             ExitCode::FAILURE

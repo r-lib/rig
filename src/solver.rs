@@ -3,13 +3,14 @@ use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::error::Error;
 use std::fmt;
+use std::ops::Bound;
 
 use log::debug;
 use pubgrub::*;
 use serde::{Deserialize, Serialize};
-use simple_error::bail;
 
 use crate::dcf::*;
+use crate::repos::feed::RepoId;
 
 type RPackageName = String;
 
@@ -19,6 +20,13 @@ type RPackageName = String;
 /// package is unknown.
 pub trait PackageVersionLoader: Send {
     fn load_versions(&self, package: &str) -> Result<Vec<crate::dcf::Package>, Box<dyn Error>>;
+
+    /// The `OS_type` of `package`, if [`Self::load_versions`] found no
+    /// version of it only because they do not work on the OS of the solve.
+    /// For the message about the missing package.
+    fn os_type_hidden(&self, _package: &str) -> Option<String> {
+        None
+    }
 }
 
 /// Which artifact of a package version gets installed.
@@ -137,6 +145,11 @@ pub const PROJECT_ROOT_PKG: &str = "_project";
 /// satisfy all of them at once.
 pub const WORKSPACE_ROOT_PKG: &str = "_workspace";
 
+/// The synthetic package a one-off `rig pkg install` solve is rooted at. Its
+/// dependencies are the packages on the command line. There is no project
+/// here, so [`format_solver_error`] calls them "the requested packages".
+pub const REQUEST_ROOT_PKG: &str = "_request";
+
 /// One root of a solve: a project, or one member of a workspace. Its
 /// dependencies are requirements the solution has to satisfy, and its name and
 /// version are what other members see when they depend on it.
@@ -152,6 +165,16 @@ impl SolveRoot {
     pub fn project(deps: PackageDependencies) -> Result<Self, Box<dyn Error>> {
         Ok(SolveRoot {
             name: PROJECT_ROOT_PKG.to_string(),
+            version: RPackageVersion::from_str("1.0.0")?,
+            deps,
+        })
+    }
+
+    /// The single root of a `rig pkg install` solve, named
+    /// [`REQUEST_ROOT_PKG`]: `deps` are the packages the user asked for.
+    pub fn request(deps: PackageDependencies) -> Result<Self, Box<dyn Error>> {
+        Ok(SolveRoot {
+            name: REQUEST_ROOT_PKG.to_string(),
             version: RPackageVersion::from_str("1.0.0")?,
             deps,
         })
@@ -342,6 +365,13 @@ pub struct BinaryArtifact {
     /// their own upstream-CRAN hashes. This, not [`BinaryArtifact::sha256`], is
     /// what tells two builds of the same version apart.
     pub linkingto: Vec<(RPackageName, RPackageVersion, String)>,
+    /// The repository whose index has this build. A version is only offered
+    /// with the builds of the repository the solver took it from. `None`
+    /// matches any repository.
+    pub repository: Option<RepoId>,
+    /// When the build was made, from the `Built` field of a CRAN-like
+    /// repository's `PACKAGES` file, e.g. `2025-06-20 10:00:00 UTC`.
+    pub built: Option<String>,
 }
 
 /// Everything a binary index knows about one package, for one build target.
@@ -434,6 +464,10 @@ pub struct RPackageRegistry {
     // writes it into the installed package's DESCRIPTION, as `RemoteHash`, to
     // recognize later what an installed package came from.
     sha256: RefCell<HashMap<(RPackageName, RegistryPackageVersion), String>>,
+    // When an artifact of a CRAN-like repository was built, from its `Built`
+    // field, if the repository has one. `rig pkg install` reinstalls a
+    // package if the repository has a newer build of it.
+    built: RefCell<HashMap<(RPackageName, RegistryPackageVersion), String>>,
     // Build provenance of every *binary* artifact we offered: the `LinkingTo`
     // dependency versions it was compiled against, with their own hashes, as
     // `(package, version, sha256)`. Empty for source artifacts, which have no
@@ -455,10 +489,36 @@ pub struct RPackageRegistry {
     // `GitSourceInfo`. Populated by `set_git_source`, read by the lockfile
     // writer (`RprojLockTarget::from_solution`) in place of `urls`/`sha256`.
     git_sources: RefCell<HashMap<(RPackageName, RegistryPackageVersion), GitSourceInfo>>,
+    // The repository (CRAN or a Bioconductor release) of every artifact we
+    // offered from a repository, for the lockfile writers.
+    repositories: RefCell<HashMap<(RPackageName, RegistryPackageVersion), RepoId>>,
+    // The Bioconductor release the loader searches besides CRAN, if any.
+    bioc_version: Option<String>,
+    // The repositories of the solve, for the message about a package none of
+    // them has, if they are not just CRAN and Bioconductor. See
+    // `with_repo_description`.
+    repos_description: Option<String>,
+    // Package to the repository it is pinned to, for the same message.
+    pinned: HashMap<RPackageName, String>,
+    // The `SystemRequirements` of every package version we know one for, by
+    // version rather than by artifact: the source and binary builds of a
+    // version share it. Never read by the solver itself, only by the lockfile
+    // writer, see `RprojLockTarget::from_solution`.
+    system_requirements: RefCell<HashMap<(RPackageName, RPackageVersion), String>>,
+    // The `OS_type` of every package version that has one, for the
+    // lockfile, like `system_requirements`, so that `rig proj sync` can skip
+    // the packages of a source-only lock that do not work on its OS.
+    os_type: RefCell<HashMap<(RPackageName, RPackageVersion), String>>,
     // How many newest binaries win. Can be None.
     prefer_binary: Option<usize>,
     // Passed over newer version that does not have a binary.
     held_back: RefCell<HashMap<(RPackageName, RegistryPackageVersion), RPackageVersion>>,
+    // The version to pick for a package, if it is still allowed, typically
+    // the one an existing lock file pins. See `with_preferences`.
+    preferred: HashMap<RPackageName, RPackageVersion>,
+    // Extra version ranges, on top of what the dependencies ask for, for
+    // this solve only. See `with_overrides`.
+    overrides: HashMap<RPackageName, RPackageVersionRanges, rustc_hash::FxBuildHasher>,
 }
 
 impl RPackageRegistry {
@@ -476,10 +536,66 @@ impl RPackageRegistry {
         }
     }
 
+    /// Record the Bioconductor release the loader searches, see
+    /// [`Self::bioc_version`].
+    pub fn with_bioc_version(mut self, bioc_version: Option<String>) -> Self {
+        self.bioc_version = bioc_version;
+        self
+    }
+
+    /// Name the repositories of the solve, e.g. `CRAN or acme`, and the
+    /// repository each pinned package is pinned to, for the message about a
+    /// package that is not available.
+    pub fn with_repo_description(
+        mut self,
+        description: Option<String>,
+        pinned: HashMap<RPackageName, String>,
+    ) -> Self {
+        self.repos_description = description;
+        self.pinned = pinned;
+        self
+    }
+
+    /// The Bioconductor release the solve searched besides CRAN, if any.
+    pub fn bioc_version(&self) -> Option<&str> {
+        self.bioc_version.as_deref()
+    }
+
     /// Let an older binary win against the most recent version.
     pub fn prefer_binary(mut self, lookback: Option<usize>) -> Self {
         self.prefer_binary = lookback;
         self
+    }
+
+    /// Pick these versions when they are still allowed, instead of the newest
+    /// one. This is how a re-solve keeps the versions an existing lock file
+    /// pins: a preferred version that conflicts with something is passed over
+    /// the usual way, when pubgrub backtracks.
+    pub fn with_preferences(mut self, preferred: HashMap<RPackageName, RPackageVersion>) -> Self {
+        self.preferred = preferred;
+        self
+    }
+
+    /// Only allow the versions that satisfy these constraints, in addition to
+    /// whatever the dependencies of the solve ask for. Used for the
+    /// requirements of `--upgrade-package <pkg>@<version>`, which are not
+    /// written to the manifest. A package that nothing depends on is not
+    /// pulled in by this.
+    pub fn with_overrides(mut self, overrides: &PackageDependencies) -> Self {
+        self.overrides = rpackage_version_ranges_from_constraints(overrides, true);
+        self
+    }
+
+    /// `range` narrowed by the override of `package`, if it has one.
+    fn effective_range(
+        &self,
+        package: &RPackageName,
+        range: &RPackageVersionRanges,
+    ) -> RPackageVersionRanges {
+        match self.overrides.get(package) {
+            Some(extra) => range.intersection(extra),
+            None => range.clone(),
+        }
     }
 
     /// Record that `pkg` is solved from a local directory, or is a synthetic
@@ -492,6 +608,43 @@ impl RPackageRegistry {
     /// whether the lockfile writers should skip it.
     pub fn is_local(&self, pkg: &str) -> bool {
         self.locals.borrow().contains(pkg)
+    }
+
+    /// The nearest versions of `pkg` below and above `range`, for a range that
+    /// no version of `pkg` is in. `None` if some version is in `range`, i.e.
+    /// when the range is not the problem.
+    fn nearest_versions(
+        &self,
+        pkg: &RPackageName,
+        range: &RPackageVersionRanges,
+    ) -> Option<(Option<RPackageVersion>, Option<RPackageVersion>)> {
+        self.ensure_loaded(pkg);
+        let versions = self.versions.borrow();
+        let versions = versions.get(pkg).map(|v| v.as_slice()).unwrap_or(&[]);
+        if versions.iter().any(|v| range.contains(v)) {
+            return None;
+        }
+        let Some((lower, upper)) = range.bounding_range() else {
+            // An empty range: no version could ever match, there is nothing
+            // nearer than any other.
+            return None;
+        };
+        let below_range = |v: &RegistryPackageVersion| match lower {
+            Bound::Included(b) => v < b,
+            Bound::Excluded(b) => v <= b,
+            Bound::Unbounded => false,
+        };
+        let above_range = |v: &RegistryPackageVersion| match upper {
+            Bound::Included(b) => v > b,
+            Bound::Excluded(b) => v >= b,
+            Bound::Unbounded => false,
+        };
+        let below = versions.iter().filter(|v| below_range(v)).max();
+        let above = versions.iter().filter(|v| above_range(v)).min();
+        Some((
+            below.map(|v| v.version.clone()),
+            above.map(|v| v.version.clone()),
+        ))
     }
 
     /// The version `choose_version` passed over when it picked `version` for
@@ -514,6 +667,31 @@ impl RPackageRegistry {
         version: &RegistryPackageVersion,
     ) -> Option<String> {
         self.urls
+            .borrow()
+            .get(&(package.clone(), version.clone()))
+            .cloned()
+    }
+
+    /// The repository of a resolved artifact, when it came from one.
+    pub fn artifact_repository(
+        &self,
+        package: &RPackageName,
+        version: &RegistryPackageVersion,
+    ) -> Option<RepoId> {
+        self.repositories
+            .borrow()
+            .get(&(package.clone(), version.clone()))
+            .cloned()
+    }
+
+    /// When a resolved artifact of a CRAN-like repository was built, if the
+    /// repository says.
+    pub fn artifact_built(
+        &self,
+        package: &RPackageName,
+        version: &RegistryPackageVersion,
+    ) -> Option<String> {
+        self.built
             .borrow()
             .get(&(package.clone(), version.clone()))
             .cloned()
@@ -597,6 +775,57 @@ impl RPackageRegistry {
             .cloned()
     }
 
+    /// Record the `SystemRequirements` of `pkg` `version`.
+    pub fn set_system_requirements(
+        &self,
+        pkg: &RPackageName,
+        version: &RPackageVersion,
+        text: String,
+    ) {
+        self.system_requirements
+            .borrow_mut()
+            .insert((pkg.clone(), version.clone()), text);
+    }
+
+    /// The `SystemRequirements` of `pkg` `version`, when it has any.
+    pub fn system_requirements(
+        &self,
+        pkg: &RPackageName,
+        version: &RPackageVersion,
+    ) -> Option<String> {
+        self.system_requirements
+            .borrow()
+            .get(&(pkg.clone(), version.clone()))
+            .cloned()
+    }
+
+    /// The message about `pkg` having no versions because they only work on
+    /// another OS, according to their `OS_type`.
+    fn os_type_hint(&self, pkg: &RPackageName) -> Option<String> {
+        let os_type = self.loader.as_ref()?.os_type_hidden(pkg)?;
+        Some(format!(
+            "Package {} only works on {} (OS_type: {}).",
+            pkg,
+            crate::dcf::describe_os_type(&os_type),
+            os_type
+        ))
+    }
+
+    /// Record the `OS_type` of `pkg` `version`.
+    pub fn set_os_type(&self, pkg: &RPackageName, version: &RPackageVersion, os_type: String) {
+        self.os_type
+            .borrow_mut()
+            .insert((pkg.clone(), version.clone()), os_type);
+    }
+
+    /// The `OS_type` of `pkg` `version`, when it has one.
+    pub fn os_type(&self, pkg: &RPackageName, version: &RPackageVersion) -> Option<String> {
+        self.os_type
+            .borrow()
+            .get(&(pkg.clone(), version.clone()))
+            .cloned()
+    }
+
     pub fn add_package_version(
         &self,
         pkg: RPackageName,
@@ -659,10 +888,25 @@ impl RPackageRegistry {
                             version: package.version.clone(),
                             artifact: Artifact::Source,
                         };
-                        if let Some(url) = artifacts.source_urls.get(&package.version) {
+                        // The binary indices are keyed by version only, so
+                        // a version from a CRAN-like repository must not take
+                        // the source URL or hash of the same version in P3M.
+                        let cranlike = package.repository.as_ref().is_some_and(|r| r.is_cranlike());
+                        // The index's source URL, else the source metadata's own
+                        // `DownloadURL`, both snapshot-pinned.
+                        let index_url = artifacts
+                            .source_urls
+                            .get(&package.version)
+                            .filter(|_| !cranlike);
+                        if let Some(url) = index_url.or(package.download_url.as_ref()) {
                             self.urls
                                 .borrow_mut()
                                 .insert((pkg.clone(), src.clone()), url.clone());
+                        }
+                        if let Some(repo) = &package.repository {
+                            self.repositories
+                                .borrow_mut()
+                                .insert((pkg.clone(), src.clone()), repo.clone());
                         }
                         // The index's source row is authoritative when we have
                         // one; the source metadata's own `SHA256Original` is the
@@ -671,6 +915,7 @@ impl RPackageRegistry {
                         if let Some(sha) = artifacts
                             .source_sha256
                             .get(&package.version)
+                            .filter(|_| !cranlike)
                             .cloned()
                             .or_else(|| package.sha256sum.clone())
                         {
@@ -678,17 +923,29 @@ impl RPackageRegistry {
                                 .borrow_mut()
                                 .insert((pkg.clone(), src.clone()), sha);
                         }
+                        if let Some(built) = package.built.as_ref().filter(|_| cranlike) {
+                            self.built
+                                .borrow_mut()
+                                .insert((pkg.clone(), src.clone()), built.timestamp.clone());
+                        }
                         if !lt_names.is_empty() {
                             self.linkingto_names
                                 .borrow_mut()
                                 .insert((pkg.clone(), src.clone()), lt_names.clone());
                         }
+                        if let Some(sysreqs) = &package.system_requirements {
+                            self.set_system_requirements(pkg, &package.version, sysreqs.clone());
+                        }
+                        if let Some(os_type) = &package.os_type {
+                            self.set_os_type(pkg, &package.version, os_type.clone());
+                        }
                         self.add_package_version(pkg.clone(), src, ranges.clone());
-                        for bin in artifacts
-                            .binaries
-                            .iter()
-                            .filter(|b| b.version == package.version)
-                        {
+                        for bin in artifacts.binaries.iter().filter(|b| {
+                            b.version == package.version
+                                && (b.repository.is_none()
+                                    || package.repository.is_none()
+                                    || b.repository == package.repository)
+                        }) {
                             match binary_artifact_deps(&ranges, bin) {
                                 Some(deps) => {
                                     let v = RegistryPackageVersion {
@@ -699,9 +956,22 @@ impl RPackageRegistry {
                                     self.urls
                                         .borrow_mut()
                                         .insert((pkg.clone(), v.clone()), bin.url.clone());
-                                    self.sha256
-                                        .borrow_mut()
-                                        .insert((pkg.clone(), v.clone()), bin.sha256.clone());
+                                    // A binary of a CRAN-like repository has no hash.
+                                    if !bin.sha256.is_empty() {
+                                        self.sha256
+                                            .borrow_mut()
+                                            .insert((pkg.clone(), v.clone()), bin.sha256.clone());
+                                    }
+                                    if let Some(repo) = &package.repository {
+                                        self.repositories
+                                            .borrow_mut()
+                                            .insert((pkg.clone(), v.clone()), repo.clone());
+                                    }
+                                    if let Some(built) = &bin.built {
+                                        self.built
+                                            .borrow_mut()
+                                            .insert((pkg.clone(), v.clone()), built.clone());
+                                    }
                                     if !bin.linkingto.is_empty() {
                                         let prov: Vec<(String, String, String)> = bin
                                             .linkingto
@@ -866,6 +1136,7 @@ impl DependencyProvider for RPackageRegistry {
         _stats: &PackageResolutionStatistics,
     ) -> Self::Priority {
         self.ensure_loaded(package);
+        let range = self.effective_range(package, range);
         let count = self
             .versions
             .borrow()
@@ -888,8 +1159,21 @@ impl DependencyProvider for RPackageRegistry {
             Some(vlist) => vlist,
             None => return Err(ProviderError::UnknownPackage),
         };
+        let range = self.effective_range(package, range);
         let in_range: Vec<&RegistryPackageVersion> =
             vlist.iter().filter(|v| range.contains(v)).collect();
+
+        // The preferred version, if it is still allowed, best artifact first.
+        if let Some(preferred) = self.preferred.get(package) {
+            if let Some(best) = in_range
+                .iter()
+                .copied()
+                .filter(|v| &v.version == preferred)
+                .max()
+            {
+                return Ok(Some(best.clone()));
+            }
+        }
 
         // Choice without a binary preference.
         let latest = match in_range.iter().copied().max() {
@@ -950,11 +1234,75 @@ impl DependencyProvider for RPackageRegistry {
 /// solution": the whole explanation is in the derivation tree it carries, and
 /// rendering that tree is what this does. The other variants carry a message
 /// already.
-pub fn format_solver_error(err: PubGrubError<RPackageRegistry>) -> String {
+///
+/// The report says which requirement failed, but not that the reason is that
+/// no version of the package matches it, e.g. a `dplyr = "0.13.0"` that is
+/// really `>= 0.13.0, < 0.14.0`, when there is no 0.13.x. So for every
+/// requirement in the tree that no version of the package satisfies, a hint
+/// after the report names the nearest versions that do exist.
+pub fn format_solver_error(err: PubGrubError<RPackageRegistry>, reg: &RPackageRegistry) -> String {
     let mut tree = match err {
         PubGrubError::NoSolution(tree) => tree,
+        // `choose_version` fails only for a package with no versions at all.
+        PubGrubError::ErrorChoosingVersion {
+            package,
+            source: ProviderError::UnknownPackage,
+        } => {
+            if let Some(hint) = reg.os_type_hint(&package) {
+                return format!("  {}", hint);
+            }
+            if let Some(repo) = reg.pinned.get(&package) {
+                return format!(
+                    "  Package {} is not available in {}, the repository it is pinned to.",
+                    package, repo
+                );
+            }
+            if let Some(repos) = &reg.repos_description {
+                return format!("  Package {} is not available in {}.", package, repos);
+            }
+            return match reg.bioc_version() {
+                Some(bioc) => format!(
+                    "  Package {} is not available on CRAN or Bioconductor {}.",
+                    package, bioc
+                ),
+                None => format!(
+                    "  Package {} is not available in the configured repositories.",
+                    package
+                ),
+            };
+        }
         other => return other.to_string(),
     };
+
+    let mut requirements = Vec::new();
+    collect_requirements(&tree, &mut requirements);
+    let mut hinted: HashSet<&RPackageName> = HashSet::new();
+    let mut hints: Vec<String> = Vec::new();
+    for (pkg, range) in requirements {
+        if is_base_package(pkg) || reg.is_local(pkg) || hinted.contains(pkg) {
+            continue;
+        }
+        if let Some(hint) = reg.os_type_hint(pkg) {
+            hinted.insert(pkg);
+            hints.push(hint);
+            continue;
+        }
+        let Some((below, above)) = reg.nearest_versions(pkg, range) else {
+            continue;
+        };
+        hinted.insert(pkg);
+        hints.push(format!("No version of {} matches {}.", pkg, range));
+        let nearest: Vec<String> = [(below, "below"), (above, "above")]
+            .into_iter()
+            .filter_map(|(v, side)| v.map(|v| format!("{} ({})", v, side)))
+            .collect();
+        if !nearest.is_empty() {
+            hints.push(format!(
+                "Nearest available versions: {}.",
+                nearest.join(", ")
+            ));
+        }
+    }
 
     // The registry is not offline — it loads every known version of a package
     // from the local package database — so a "no versions" node really means
@@ -966,7 +1314,18 @@ pub fn format_solver_error(err: PubGrubError<RPackageRegistry>) -> String {
     // The root packages are ours, not the user's; they should not show up in
     // output. Workspace members do: they are the user's own packages, and
     // which member wants what is the point of the report.
+    // A one-off install has no project, so its root reads as the user's
+    // request: "you requested a >=1.0", and the conclusion that the root is
+    // forbidden as "the requested packages cannot be installed".
+    let request = format!("{} 1.0.0", REQUEST_ROOT_PKG);
     let report = report
+        .replace(&format!("{} depends on ", request), "you requested ")
+        .replace(
+            &format!("{} is forbidden", request),
+            "the requested packages cannot be installed",
+        )
+        .replace(&request, "your request")
+        .replace(REQUEST_ROOT_PKG, "your request")
         .replace(&format!("{} 1.0.0", PROJECT_ROOT_PKG), "this project")
         .replace(PROJECT_ROOT_PKG, "this project")
         .replace(&format!("{} 1.0.0", WORKSPACE_ROOT_PKG), "this workspace")
@@ -974,9 +1333,31 @@ pub fn format_solver_error(err: PubGrubError<RPackageRegistry>) -> String {
 
     report
         .lines()
+        .map(String::from)
+        .chain(hints)
         .map(|line| format!("  {}", line))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// Every `(package, range)` requirement in a derivation tree, i.e. the ranges
+/// the dependencies ask for. Not the ranges of the `NoVersions` nodes: pubgrub
+/// also derives those itself, e.g. "a, but not 1.0.0" once it ruled out
+/// a 1.0.0, and no version of `a` matching that range is not news to anybody.
+fn collect_requirements<'a, M: Eq + Clone + fmt::Debug + fmt::Display>(
+    tree: &'a DerivationTree<RPackageName, RPackageVersionRanges, M>,
+    out: &mut Vec<(&'a RPackageName, &'a RPackageVersionRanges)>,
+) {
+    match tree {
+        DerivationTree::External(External::FromDependencyOf(_, _, pkg, range)) => {
+            out.push((pkg, range))
+        }
+        DerivationTree::External(_) => {}
+        DerivationTree::Derived(derived) => {
+            collect_requirements(&derived.cause1, out);
+            collect_requirements(&derived.cause2, out);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1137,6 +1518,8 @@ mod tests {
                             )
                         })
                         .collect(),
+                    repository: None,
+                    built: None,
                 })
                 .collect();
             Ok(PackageArtifacts {
@@ -1212,12 +1595,207 @@ mod tests {
         )
         .unwrap_err();
 
-        let msg = format_solver_error(err);
+        let msg = format_solver_error(err, &reg);
         // Not pubgrub's own `Display`, which is only "There is no solution".
         assert!(msg.contains("b >=2.0.0"), "{}", msg);
         assert!(msg.contains("this project"), "{}", msg);
         assert!(!msg.contains("_project"), "{}", msg);
         assert!(msg.lines().all(|l| l.starts_with("  ")), "{}", msg);
+        // No b version is >= 2.0.0, so the nearest one is named.
+        assert!(msg.contains("No version of b matches >=2.0.0."), "{}", msg);
+        assert!(
+            msg.contains("Nearest available versions: 1.0.0 (below)."),
+            "{}",
+            msg
+        );
+    }
+
+    #[test]
+    fn a_failed_request_is_not_called_a_project() {
+        let source = StubSource {
+            packages: vec![("a", "1.0.0", "R (>= 4.1.0)")],
+        };
+        let reg = RPackageRegistry::with_loaders(Box::new(source), None);
+        reg.add_package_version(
+            "R".to_string(),
+            RegistryPackageVersion::new("R", "4.0.5").unwrap(),
+            ranges(""),
+        );
+        let root = RegistryPackageVersion::new(REQUEST_ROOT_PKG, "1.0.0").unwrap();
+        reg.add_package_version(REQUEST_ROOT_PKG.to_string(), root.clone(), ranges("a"));
+        let err = resolve(&reg, REQUEST_ROOT_PKG.to_string(), root).unwrap_err();
+
+        let msg = format_solver_error(err, &reg);
+        assert!(msg.contains("you requested a"), "{}", msg);
+        assert!(
+            msg.contains("the requested packages cannot be installed"),
+            "{}",
+            msg
+        );
+        assert!(!msg.contains("project"), "{}", msg);
+        assert!(!msg.contains(REQUEST_ROOT_PKG), "{}", msg);
+    }
+
+    /// The solver error for a project that depends on `deps`, which are
+    /// version ranges keyed by package name.
+    fn solve_error(
+        source: StubSource,
+        deps: HashMap<RPackageName, RPackageVersionRanges, rustc_hash::FxBuildHasher>,
+    ) -> String {
+        let reg = RPackageRegistry::with_loaders(Box::new(source), None);
+        reg.add_package_version(
+            "_project".to_string(),
+            RegistryPackageVersion::new("_project", "1.0.0").unwrap(),
+            deps,
+        );
+        let err = resolve(
+            &reg,
+            "_project".to_string(),
+            RegistryPackageVersion::new("_project", "1.0.0").unwrap(),
+        )
+        .unwrap_err();
+        format_solver_error(err, &reg)
+    }
+
+    #[test]
+    fn a_range_with_no_versions_names_the_nearest_ones() {
+        // `^0.13.0`, i.e. `>= 0.13.0, < 0.14.0`, with no 0.13.x.
+        let range = Range::higher_than(RegistryPackageVersion::bound(
+            "a",
+            &version("0.13.0"),
+            Artifact::LowerBound,
+        ))
+        .intersection(&Range::strictly_lower_than(RegistryPackageVersion::bound(
+            "a",
+            &version("0.14.0"),
+            Artifact::LowerBound,
+        )));
+        let mut deps = HashMap::with_hasher(rustc_hash::FxBuildHasher);
+        deps.insert("a".to_string(), range);
+        let msg = solve_error(
+            StubSource {
+                packages: vec![
+                    ("a", "0.8.0", ""),
+                    ("a", "0.8.5", ""),
+                    ("a", "1.0.0", ""),
+                    ("a", "1.1.0", ""),
+                ],
+            },
+            deps,
+        );
+        assert!(
+            msg.contains("No version of a matches >=0.13.0, <0.14.0."),
+            "{}",
+            msg
+        );
+        assert!(
+            msg.contains("Nearest available versions: 0.8.5 (below), 1.0.0 (above)."),
+            "{}",
+            msg
+        );
+    }
+
+    #[test]
+    fn an_unknown_package_names_the_bioc_release() {
+        let reg = RPackageRegistry::with_loaders(Box::new(StubSource { packages: vec![] }), None)
+            .with_bioc_version(Some("3.23".to_string()));
+        let root = RegistryPackageVersion::new("_project", "1.0.0").unwrap();
+        reg.add_package_version("_project".to_string(), root.clone(), ranges("nope"));
+        let err = resolve(&reg, "_project".to_string(), root).unwrap_err();
+        let msg = format_solver_error(err, &reg);
+        assert!(
+            msg.contains("Package nope is not available on CRAN or Bioconductor 3.23."),
+            "{}",
+            msg
+        );
+    }
+
+    /// A loader with no versions of `RDesk`, because it only works on
+    /// Windows.
+    struct WindowsOnlySource;
+
+    impl PackageVersionLoader for WindowsOnlySource {
+        fn load_versions(
+            &self,
+            _package: &str,
+        ) -> Result<Vec<crate::dcf::Package>, Box<dyn Error>> {
+            Ok(vec![])
+        }
+
+        fn os_type_hidden(&self, package: &str) -> Option<String> {
+            (package == "RDesk").then(|| "windows".to_string())
+        }
+    }
+
+    #[test]
+    fn a_package_of_another_os_names_its_os_type() {
+        let reg = RPackageRegistry::with_loaders(Box::new(WindowsOnlySource), None)
+            .with_repo_description(Some("CRAN".to_string()), HashMap::new());
+        let root = RegistryPackageVersion::new("_project", "1.0.0").unwrap();
+        reg.add_package_version("_project".to_string(), root.clone(), ranges("RDesk"));
+        let err = resolve(&reg, "_project".to_string(), root).unwrap_err();
+        let msg = format_solver_error(err, &reg);
+        assert_eq!(
+            msg,
+            "  Package RDesk only works on Windows (OS_type: windows)."
+        );
+    }
+
+    #[test]
+    fn an_unknown_package_names_the_repositories() {
+        let mut pinned = HashMap::new();
+        pinned.insert("pinned".to_string(), "acme".to_string());
+        let reg = RPackageRegistry::with_loaders(Box::new(StubSource { packages: vec![] }), None)
+            .with_repo_description(Some("acme or CRAN".to_string()), pinned);
+        let root = RegistryPackageVersion::new("_project", "1.0.0").unwrap();
+        reg.add_package_version("_project".to_string(), root.clone(), ranges("nope"));
+        let err = resolve(&reg, "_project".to_string(), root.clone()).unwrap_err();
+        let msg = format_solver_error(err, &reg);
+        assert!(
+            msg.contains("Package nope is not available in acme or CRAN."),
+            "{}",
+            msg
+        );
+        let root2 = RegistryPackageVersion::new("_project2", "1.0.0").unwrap();
+        reg.add_package_version("_project2".to_string(), root2.clone(), ranges("pinned"));
+        let err = resolve(&reg, "_project2".to_string(), root2).unwrap_err();
+        let msg = format_solver_error(err, &reg);
+        assert!(
+            msg.contains(
+                "Package pinned is not available in acme, the repository it is pinned to."
+            ),
+            "{}",
+            msg
+        );
+    }
+
+    #[test]
+    fn an_unknown_package_is_reported_as_not_available() {
+        let msg = solve_error(StubSource { packages: vec![] }, ranges("nope"));
+        assert!(
+            msg.contains("Package nope is not available in the configured repositories."),
+            "{}",
+            msg
+        );
+        assert!(!msg.contains("Nearest"), "{}", msg);
+    }
+
+    #[test]
+    fn a_conflict_between_existing_versions_gets_no_hint() {
+        // Both c versions exist, they just cannot both be picked.
+        let msg = solve_error(
+            StubSource {
+                packages: vec![
+                    ("a", "1.0.0", "c (< 2.0.0)"),
+                    ("b", "1.0.0", "c (>= 2.0.0)"),
+                    ("c", "1.0.0", ""),
+                    ("c", "2.0.0", ""),
+                ],
+            },
+            ranges("a, b"),
+        );
+        assert!(!msg.contains("No version of"), "{}", msg);
+        assert!(!msg.contains("Nearest"), "{}", msg);
     }
 
     #[test]
@@ -1619,7 +2197,8 @@ mod tests {
         let (root_pkg, root_version) = register_roots(&reg, &roots, None).unwrap();
         // The failure is the rendered report, which is what a caller shows,
         // rather than `NoSolution`'s own fixed "There is no solution".
-        let solution = resolve(&reg, root_pkg, root_version).map_err(format_solver_error);
+        let solution =
+            resolve(&reg, root_pkg, root_version).map_err(|e| format_solver_error(e, &reg));
         (reg, solution)
     }
 
@@ -1760,5 +2339,100 @@ mod tests {
     fn solving_nothing_is_an_error() {
         let reg = RPackageRegistry::with_loaders(Box::new(StubSource { packages: vec![] }), None);
         assert!(register_roots(&reg, &[], None).is_err());
+    }
+
+    // ---------------------------------------------------------------------
+    // Preferred versions and overrides
+
+    /// The solution, or `None` if there is none.
+    fn solve_with(
+        reg: RPackageRegistry,
+        deps: &str,
+    ) -> Option<HashMap<String, RegistryPackageVersion, rustc_hash::FxBuildHasher>> {
+        reg.add_package_version(
+            "_project".to_string(),
+            RegistryPackageVersion::new("_project", "1.0.0").unwrap(),
+            ranges(deps),
+        );
+        resolve(
+            &reg,
+            "_project".to_string(),
+            RegistryPackageVersion::new("_project", "1.0.0").unwrap(),
+        )
+        .ok()
+    }
+
+    fn three_versions() -> StubSource {
+        StubSource {
+            packages: vec![("a", "1.0.0", ""), ("a", "2.0.0", ""), ("a", "3.0.0", "")],
+        }
+    }
+
+    fn prefer(name: &str, version: &str) -> HashMap<String, RPackageVersion> {
+        HashMap::from([(
+            name.to_string(),
+            RPackageVersion::from_str(version).unwrap(),
+        )])
+    }
+
+    #[test]
+    fn a_preferred_version_wins_over_the_newest() {
+        let reg = RPackageRegistry::with_loaders(Box::new(three_versions()), None)
+            .with_preferences(prefer("a", "2.0.0"));
+        let solution = solve_with(reg, "a").unwrap();
+        assert_eq!(solution["a"], source("a", "2.0.0"));
+    }
+
+    #[test]
+    fn a_preferred_version_out_of_range_falls_back_to_the_newest() {
+        let reg = RPackageRegistry::with_loaders(Box::new(three_versions()), None)
+            .with_preferences(prefer("a", "1.0.0"));
+        let solution = solve_with(reg, "a (>= 2.0.0)").unwrap();
+        assert_eq!(solution["a"], source("a", "3.0.0"));
+    }
+
+    #[test]
+    fn a_preferred_version_prefers_its_binary() {
+        let binaries = StubBinaries {
+            builds: vec![("a", "2.0.0", 1, "")],
+            ..Default::default()
+        };
+        let reg =
+            RPackageRegistry::with_loaders(Box::new(three_versions()), Some(Box::new(binaries)))
+                .with_preferences(prefer("a", "2.0.0"));
+        let solution = solve_with(reg, "a").unwrap();
+        assert_eq!(solution["a"], binary("a", "2.0.0", 1));
+    }
+
+    #[test]
+    fn an_override_narrows_the_choice() {
+        let reg = RPackageRegistry::with_loaders(Box::new(three_versions()), None)
+            .with_overrides(&imports("a (< 3.0.0)"));
+        let solution = solve_with(reg, "a").unwrap();
+        assert_eq!(solution["a"], source("a", "2.0.0"));
+    }
+
+    #[test]
+    fn an_override_beats_a_preferred_version() {
+        let reg = RPackageRegistry::with_loaders(Box::new(three_versions()), None)
+            .with_preferences(prefer("a", "1.0.0"))
+            .with_overrides(&imports("a (>= 2.0.0)"));
+        let solution = solve_with(reg, "a").unwrap();
+        assert_eq!(solution["a"], source("a", "3.0.0"));
+    }
+
+    #[test]
+    fn an_override_that_conflicts_with_the_dependencies_fails() {
+        let reg = RPackageRegistry::with_loaders(Box::new(three_versions()), None)
+            .with_overrides(&imports("a (< 2.0.0)"));
+        assert!(solve_with(reg, "a (>= 2.0.0)").is_none());
+    }
+
+    #[test]
+    fn an_override_does_not_pull_a_package_in() {
+        let reg = RPackageRegistry::with_loaders(Box::new(three_versions()), None)
+            .with_overrides(&imports("b (>= 1.0.0)"));
+        let solution = solve_with(reg, "a").unwrap();
+        assert!(!solution.contains_key("b"));
     }
 }

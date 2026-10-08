@@ -257,6 +257,9 @@ expression: packages
         filesize: None,
         sha256sum: None,
         archived: None,
+        repository: None,
+        system_requirements: None,
+        os_type: None,
     },
     Package {
         name: "dplyr",
@@ -674,6 +677,9 @@ expression: packages
         filesize: None,
         sha256sum: None,
         archived: None,
+        repository: None,
+        system_requirements: None,
+        os_type: None,
     },
     Package {
         name: "rlang",
@@ -909,5 +915,8 @@ expression: packages
         filesize: None,
         sha256sum: None,
         archived: None,
+        repository: None,
+        system_requirements: None,
+        os_type: None,
     },
 ]

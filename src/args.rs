@@ -32,6 +32,144 @@ fn pak_version_values() -> clap::builder::PossibleValuesParser {
     ])
 }
 
+// `--exclude-newer` of the commands that solve dependencies. A plain string:
+// this file is also compiled into the build script, so it cannot use
+// `crate::exclude_newer` to parse it. `exclude_newer::exclude_newer_arg()` does.
+// `--prefer-binary` of `rig proj init` and `rig proj import`, which write it
+// into the manifest's `[tool.rig]` table instead of solving with it.
+fn init_prefer_binary_arg() -> Arg {
+    Arg::new("prefer-binary")
+        .help(
+            "Write `prefer-binary` into the [tool.rig] table of the manifest,\n\
+            see `rig proj lock --prefer-binary`. Optionally give how many of\n\
+            the newest versions to consider, e.g. --prefer-binary=5\n\
+            (default: 3). --prefer-binary=0 writes `prefer-binary = false`.",
+        )
+        .long("prefer-binary")
+        .num_args(0..=1)
+        .require_equals(true)
+        .default_missing_value("3")
+        .value_parser(clap::value_parser!(usize))
+        .required(false)
+}
+
+fn exclude_newer_arg() -> Arg {
+    Arg::new("exclude-newer")
+        .help(
+            "Ignore package versions published after this date.\n\
+            A date (2025-06-01), an RFC 3339 timestamp, or a span back\n\
+            from today (7 days, 2 weeks, P1M). Not before 2017-10-10.",
+        )
+        .long("exclude-newer")
+        .value_name("DATE")
+        .num_args(1)
+        .required(false)
+}
+
+/// `--r-version` for the `rig pkg` commands that read the repositories
+/// configured for an R version. `short`: whether `-r` is free for it.
+fn pkg_r_version_arg(short: bool) -> Arg {
+    let arg = Arg::new("r-version")
+        .help("R version whose repositories to use, instead of the default")
+        .long("r-version")
+        .num_args(1)
+        .required(false);
+    if short {
+        arg.short('r')
+    } else {
+        arg
+    }
+}
+
+/// `--with-repos` (`--index`) and `--without-repos` (`--no-index`), for the
+/// `rig pkg` commands that use repositories. They only apply to the command
+/// at hand, the repository setup of the R version does not change.
+fn pkg_repos_args() -> [Arg; 2] {
+    [
+        Arg::new("with-repos")
+            .help(
+                "Also use these repositories, a comma-separated list of\n\
+                repository names, URLs or name=URL pairs. Can be repeated.",
+            )
+            .long("with-repos")
+            .visible_alias("index")
+            .value_name("REPOS")
+            .num_args(1)
+            .action(clap::ArgAction::Append)
+            .required(false),
+        Arg::new("without-repos")
+            .help(
+                "Do not use these repositories, a comma-separated list.\n\
+                Without a value, do not use any of the configured repositories,\n\
+                only the ones in --with-repos. Can be repeated.",
+            )
+            .long("without-repos")
+            .visible_alias("no-index")
+            .value_name("REPOS")
+            .num_args(0..=1)
+            .require_equals(true)
+            .default_missing_value("ALL REPOSITORIES")
+            .action(clap::ArgAction::Append)
+            .required(false),
+    ]
+}
+
+/// `--with-repos` (`--index`) and `--without-repos` (`--no-index`) of the
+/// `rig proj` commands that solve. They change the project's repositories,
+/// the ones in rproj.toml, for this command only.
+pub(crate) fn proj_repos_args() -> [Arg; 2] {
+    [
+        Arg::new("with-repos")
+            .help(
+                "Also use these repositories, a comma-separated list of\n\
+                repository names, URLs or name=URL pairs. Can be repeated.",
+            )
+            .long("with-repos")
+            .visible_alias("index")
+            .value_name("REPOS")
+            .num_args(1)
+            .action(clap::ArgAction::Append)
+            .required(false),
+        Arg::new("without-repos")
+            .help(
+                "Do not use these repositories, a comma-separated list, e.g.\n\
+                cran,bioc. Without a value, do not use any of the project's\n\
+                repositories, only the ones in --with-repos. Can be repeated.",
+            )
+            .long("without-repos")
+            .visible_alias("no-index")
+            .value_name("REPOS")
+            .num_args(0..=1)
+            .require_equals(true)
+            .default_missing_value("ALL REPOSITORIES")
+            .action(clap::ArgAction::Append)
+            .required(false),
+    ]
+}
+
+/// `--sysreqs` and `--no-sysreqs`, for the commands that install packages.
+/// Linux only: elsewhere there are no system requirements to install.
+fn sysreqs_args() -> [Arg; 2] {
+    [
+        Arg::new("sysreqs")
+            .help(
+                "Install the system packages the R packages need, even if the\n\
+                sysreqs setting turns this off",
+            )
+            .long("sysreqs")
+            .num_args(0)
+            .required(false)
+            .conflicts_with("no-sysreqs")
+            .platform("linux"),
+        Arg::new("no-sysreqs")
+            .help("Do not install the system packages the R packages need")
+            .long("no-sysreqs")
+            .num_args(0)
+            .required(false)
+            .platform("linux"),
+    ]
+}
+
 fn reference_mode() -> bool {
     std::env::var_os("RIG_GEN_REFERENCE").is_some()
 }
@@ -142,6 +280,13 @@ fn cmd_rtools() -> Command {
                 .long("arch")
                 .required(false)
                 .value_parser(["x86_64", "aarch64", "arm64"]),
+        )
+        .arg(
+            Arg::new("json")
+                .help("JSON output")
+                .long("json")
+                .num_args(0)
+                .required(false),
         );
     let cmd_rtools_rm = Command::new("rm")
         .about(ABOUT_RTOOLS_RM)
@@ -334,7 +479,7 @@ pub fn rig_app() -> Command {
             Arg::new("without-p3m")
                 .aliases(["without-rspm"])
                 .help(
-                    "Do not set up P3M. This is the default on macOS.\n\
+                    "Do not set up P3M.\n\
                     Deprecated in favor of --without-repos=p3m. \n\
                     [alias: --without-rspm]",
                 )
@@ -362,6 +507,13 @@ pub fn rig_app() -> Command {
             Arg::new("reinstall")
                 .help("Reinstall, even if this R version is already installed.")
                 .long("reinstall")
+                .num_args(0)
+                .required(false),
+        )
+        .arg(
+            Arg::new("json")
+                .help("JSON output")
+                .long("json")
                 .num_args(0)
                 .required(false),
         );
@@ -663,9 +815,10 @@ pub fn rig_app() -> Command {
         );
 
     {
-        // `clean-registry`, `update-rtools40` and `rtools` are real commands on
-        // Windows, but hidden no-ops on macOS and Linux, so that they are
-        // always available (e.g. in scripts).
+        // `clean-registry`, `update-rtools40`, `rtools`, `fix-r-alias` and
+        // `script-assoc` are real commands on Windows, but hidden no-ops on
+        // macOS and Linux, so that they are always available (e.g. in
+        // scripts).
         let cmd_system_cleanreg = Command::new("clean-registry")
             .about(ABOUT_SYSTEM_CLEAN_REGISTRY)
             .display_order(0)
@@ -699,6 +852,20 @@ pub fn rig_app() -> Command {
                     .required(false),
             );
         cmd_system = cmd_system.subcommand(cmd_system_fix_r_alias);
+
+        let cmd_system_script_assoc = Command::new("script-assoc")
+            .about(ABOUT_SYSTEM_SCRIPT_ASSOC)
+            .display_order(0)
+            .platform("windows")
+            .long_about(HELP_SYSTEM_SCRIPT_ASSOC)
+            .arg(
+                Arg::new("undo")
+                    .help("Remove the association, and restore the previous one.")
+                    .long("undo")
+                    .num_args(0)
+                    .required(false),
+            );
+        cmd_system = cmd_system.subcommand(cmd_system_script_assoc);
     }
 
     {
@@ -1231,6 +1398,7 @@ pub fn rig_app() -> Command {
                             "p3m",
                             "git-mirrors",
                             "url-pkgs",
+                            "scripts",
                         ]),
                 ),
         );
@@ -1425,6 +1593,53 @@ pub fn rig_app() -> Command {
                 .conflicts_with_all(["cmd", "shell"]),
         )
         .arg(
+            Arg::new("upgrade")
+                .help(
+                    "Re-resolve every dependency of a script with a `# /// script`\n\
+                    block, instead of keeping the versions its environment has",
+                )
+                .long("upgrade")
+                .short('U')
+                .action(clap::ArgAction::SetTrue)
+                .required(false)
+                .conflicts_with_all(["eval", "cmd", "list", "shell", "app-type"]),
+        )
+        .arg(
+            Arg::new("upgrade-package")
+                .help(
+                    "Upgrade only these packages in the environment of a script\n\
+                    with a `# /// script` block. As <package> or\n\
+                    <package>@<version>. Comma-separated, and can be repeated.",
+                )
+                .long("upgrade-package")
+                .short('P')
+                .value_name("PACKAGE")
+                .num_args(1)
+                .value_delimiter(',')
+                .action(clap::ArgAction::Append)
+                .required(false)
+                .conflicts_with_all(["upgrade", "eval", "cmd", "list", "shell", "app-type"]),
+        )
+        .arg(
+            Arg::new("locked")
+                .help(
+                    "Fail if the lock file of a script (<script>.lock) does not fit\n\
+                    its `# /// script` block, instead of updating the lock file",
+                )
+                .long("locked")
+                .action(clap::ArgAction::SetTrue)
+                .required(false)
+                .conflicts_with_all([
+                    "upgrade",
+                    "upgrade-package",
+                    "eval",
+                    "cmd",
+                    "list",
+                    "shell",
+                    "app-type",
+                ]),
+        )
+        .arg(
             Arg::new("command")
                 .help("R script, project script name, project or R CMD command to run, with parameters")
                 .required(false)
@@ -1463,7 +1678,16 @@ pub fn rig_app() -> Command {
                         .short('r')
                         .num_args(1)
                         .required(false),
-                ),
+                )
+                .arg(
+                    Arg::new("script")
+                        .help("Create the inline metadata block of this R script, instead of a project")
+                        .long("script")
+                        .value_name("SCRIPT")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(init_prefer_binary_arg()),
         )
         .subcommand(
             Command::new("import")
@@ -1499,7 +1723,8 @@ pub fn rig_app() -> Command {
                         .short('r')
                         .num_args(1)
                         .required(false),
-                ),
+                )
+                .arg(init_prefer_binary_arg()),
         )
         .subcommand(
             Command::new("export")
@@ -1543,6 +1768,15 @@ pub fn rig_app() -> Command {
                         .help("Add as a dev (development) dependency")
                         .long("dev")
                         .num_args(0)
+                        .required(false)
+                        .conflicts_with("script"),
+                )
+                .arg(
+                    Arg::new("script")
+                        .help("Add the packages to the inline metadata of this R script, instead of rproj.toml")
+                        .long("script")
+                        .value_name("SCRIPT")
+                        .num_args(1)
                         .required(false),
                 )
                 .arg(
@@ -1559,6 +1793,21 @@ pub fn rig_app() -> Command {
                         .num_args(0)
                         .required(false)
                         .conflicts_with("no-lock"),
+                )
+                .arg(
+                    Arg::new("with-repos")
+                        .help(
+                            "Add the packages from this repository: a repository\n\
+                            name, URL or name=URL pair. A new repository is added\n\
+                            to rproj.toml, and the packages are pinned to the first\n\
+                            one. Comma-separated, and can be repeated.",
+                        )
+                        .long("with-repos")
+                        .visible_alias("index")
+                        .value_name("REPOS")
+                        .num_args(1)
+                        .action(clap::ArgAction::Append)
+                        .required(false),
                 ),
         )
         .subcommand(
@@ -1573,6 +1822,14 @@ pub fn rig_app() -> Command {
                         .value_name("PACKAGE")
                         .required(true)
                         .num_args(1..),
+                )
+                .arg(
+                    Arg::new("script")
+                        .help("Remove the packages from the inline metadata of this R script, instead of rproj.toml")
+                        .long("script")
+                        .value_name("SCRIPT")
+                        .num_args(1)
+                        .required(false),
                 )
                 .arg(
                     Arg::new("no-lock")
@@ -1616,7 +1873,8 @@ pub fn rig_app() -> Command {
                         .long("dev")
                         .num_args(0)
                         .required(false),
-                ),
+                )
+                .args(proj_repos_args()),
         )
         .subcommand(
             Command::new("tree")
@@ -1652,7 +1910,8 @@ pub fn rig_app() -> Command {
                         .long("json")
                         .num_args(0)
                         .required(false),
-                ),
+                )
+                .args(proj_repos_args()),
         )
         .subcommand(
             Command::new("lock")
@@ -1671,7 +1930,9 @@ pub fn rig_app() -> Command {
                         .help(
                             "R version(s) to solve dependencies for, comma-separated to\n\
                             solve for several (e.g. --r-version 4.5,4.6). Combined with\n\
-                            --platform as a cross product, one target per combination.",
+                            --platform as a cross product, one target per combination.\n\
+                            Default: r-versions in [tool.rig] of rproj.toml, or one R\n\
+                            version, see --help.",
                         )
                         .long("r-version")
                         .short('r')
@@ -1689,8 +1950,9 @@ pub fn rig_app() -> Command {
                             with --r-version as a cross product, one target per\n\
                             combination. Use --platform source to solve for source\n\
                             packages only.\n\
-                            Default: this machine, windows, generic glibc Linux (x86_64),\n\
-                            and macos-arm64.",
+                            Default: platforms in [tool.rig] of rproj.toml, or this\n\
+                            machine, x86_64-w64-mingw32, x86_64-unknown-linux-gnu,\n\
+                            aarch64-apple-darwin and source.",
                         )
                         .long("platform")
                         .num_args(1)
@@ -1700,9 +1962,9 @@ pub fn rig_app() -> Command {
                 .arg(
                     Arg::new("add-platform")
                         .help(
-                            "Add platform(s) to the set --platform would otherwise\n\
-                            solve for, instead of replacing it. Comma-separated, and\n\
-                            can be repeated.",
+                            "Add platform(s) to the set rig would otherwise solve for\n\
+                            (rproj.toml's platforms or the default set), instead of\n\
+                            replacing it. Comma-separated, and can be repeated.",
                         )
                         .long("add-platform")
                         .num_args(1)
@@ -1711,12 +1973,24 @@ pub fn rig_app() -> Command {
                         .required(false),
                 )
                 .arg(
+                    Arg::new("script")
+                        .help(
+                            "Lock the inline metadata of this R script into <SCRIPT>.lock,\n\
+                            instead of locking the project",
+                        )
+                        .long("script")
+                        .value_name("SCRIPT")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
                     Arg::new("prefer-binary")
                         .help(
                             "Prefer an older version that has a binary package over a\n\
                             newer one that does not. Optionally give how many of the\n\
                             newest versions to consider, e.g. --prefer-binary=5\n\
-                            (default: 3).",
+                            (default: 3). Overrides `prefer-binary` in rproj.toml,\n\
+                            --prefer-binary=0 turns it off.",
                         )
                         .long("prefer-binary")
                         .num_args(0..=1)
@@ -1725,6 +1999,7 @@ pub fn rig_app() -> Command {
                         .value_parser(clap::value_parser!(usize))
                         .required(false),
                 )
+                .arg(exclude_newer_arg())
                 .arg(
                     Arg::new("upgrade")
                         .help(
@@ -1737,7 +2012,26 @@ pub fn rig_app() -> Command {
                         .short('U')
                         .num_args(0)
                         .required(false),
-                ),
+                )
+                .arg(
+                    Arg::new("upgrade-package")
+                        .help(
+                            "Upgrade only these packages, and keep the versions\n\
+                            rproj.lock pins for the rest, where they still fit.\n\
+                            As <package> or <package>@<version>, e.g. cli or\n\
+                            'cli@>= 3.6.4'. The version is not written to\n\
+                            rproj.toml. Comma-separated, and can be repeated.",
+                        )
+                        .long("upgrade-package")
+                        .short('P')
+                        .value_name("PACKAGE")
+                        .num_args(1)
+                        .value_delimiter(',')
+                        .action(clap::ArgAction::Append)
+                        .required(false)
+                        .conflicts_with("upgrade"),
+                )
+                .args(proj_repos_args()),
         )
         .subcommand(
             Command::new("status")
@@ -1860,7 +2154,8 @@ pub fn rig_app() -> Command {
                         .help(
                             "Which of rproj.lock's targets to sync, when more than one\n\
                             matches this machine. Selects among the targets already in\n\
-                            rproj.lock, does not trigger a new solve.",
+                            rproj.lock, does not trigger a new solve. Any spelling of the\n\
+                            platform works, e.g. macos for aarch64-apple-darwin.",
                         )
                         .long("platform")
                         .num_args(1)
@@ -1886,6 +2181,8 @@ pub fn rig_app() -> Command {
                         .num_args(0)
                         .required(false),
                 )
+                .arg(exclude_newer_arg().conflicts_with("frozen"))
+                .args(proj_repos_args().map(|a| a.conflicts_with("frozen")))
                 .arg(
                     Arg::new("dry-run")
                         .help(
@@ -1895,7 +2192,8 @@ pub fn rig_app() -> Command {
                         .long("dry-run")
                         .num_args(0)
                         .required(false),
-                ),
+                )
+                .args(sysreqs_args()),
         );
     let cmd_renv = Command::new("renv")
         .about(ABOUT_PROJ_RENV)
@@ -1987,6 +2285,8 @@ pub fn rig_app() -> Command {
                 .about(ABOUT_PKG_AVAILABLE)
                 .long_about(HELP_PKG_AVAILABLE)
                 .display_order(0)
+                .arg(pkg_r_version_arg(true))
+                .args(pkg_repos_args())
                 .arg(
                     Arg::new("json")
                         .help("JSON output")
@@ -2007,6 +2307,8 @@ pub fn rig_app() -> Command {
                 .about(ABOUT_PKG_DEPS)
                 .long_about(HELP_PKG_DEPS)
                 .display_order(0)
+                .arg(pkg_r_version_arg(false))
+                .args(pkg_repos_args())
                 .arg(
                     Arg::new("package")
                         .help("package to show the dependencies of")
@@ -2043,10 +2345,64 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("doctor")
+                .about(ABOUT_PKG_DOCTOR)
+                .long_about(HELP_PKG_DOCTOR)
+                .display_order(0)
+                .arg(
+                    Arg::new("package")
+                        .help("packages to report on (default: all)")
+                        .required(false)
+                        .num_args(0..),
+                )
+                .arg(
+                    Arg::new("library")
+                        .help("Library name or path, instead of the default library")
+                        .long("library")
+                        .short('l')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version to operate on, instead of the default")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("dev")
+                        .help("Also check the Suggests and Enhances dependencies")
+                        .long("dev")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("stale")
+                        .help(
+                            "Warn about packages that rig did not install, if a LinkingTo\n\
+                            dependency was built after them",
+                        )
+                        .long("stale")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                ),
+        )
+        .subcommand(
             Command::new("info")
                 .about(ABOUT_PKG_INFO)
                 .long_about(HELP_PKG_INFO)
                 .display_order(0)
+                .arg(pkg_r_version_arg(true))
+                .args(pkg_repos_args())
                 .arg(Arg::new("package").help("package to show").required(true))
                 .arg(
                     Arg::new("version")
@@ -2120,6 +2476,7 @@ pub fn rig_app() -> Command {
                         .num_args(0)
                         .required(false),
                 )
+                .args(sysreqs_args())
                 .arg(
                     Arg::new("dev")
                         .help("Include dev (development) dependencies")
@@ -2136,6 +2493,17 @@ pub fn rig_app() -> Command {
                         .long("ignore-unavailable")
                         .num_args(0)
                         .requires("dev")
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("no-install-project")
+                        .help(
+                            "Do not install the packages named on the command line, only\n\
+                            their dependencies. A named package is still installed if\n\
+                            another package that is installed depends on it.",
+                        )
+                        .long("no-install-project")
+                        .num_args(0)
                         .required(false),
                 )
                 .arg(
@@ -2165,6 +2533,8 @@ pub fn rig_app() -> Command {
                         .value_parser(clap::value_parser!(usize))
                         .required(false),
                 )
+                .arg(exclude_newer_arg())
+                .args(pkg_repos_args())
                 .arg(
                     Arg::new("json")
                         .help("JSON output")
@@ -2281,6 +2651,68 @@ pub fn rig_app() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("search")
+                .about(ABOUT_PKG_SEARCH)
+                .long_about(HELP_PKG_SEARCH)
+                .display_order(0)
+                .arg(
+                    Arg::new("query")
+                        .help("search terms")
+                        .required(true)
+                        .num_args(1..),
+                )
+                .arg(
+                    Arg::new("short")
+                        .help("Short output, one line per package")
+                        .long("short")
+                        .short('s')
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("from")
+                        .help("Rank of the first result to show")
+                        .long("from")
+                        .num_args(1)
+                        .value_parser(clap::value_parser!(u32).range(1..))
+                        .default_value("1")
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("size")
+                        .help("Number of results to show [default: 8, or 20 with --short]")
+                        .long("size")
+                        .short('n')
+                        .num_args(1)
+                        .value_parser(clap::value_parser!(u32))
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("json")
+                        .help("JSON output")
+                        .long("json")
+                        .num_args(0)
+                        .required(false),
+                )
+                // The search does not depend on the installation mode, so
+                // override the global --user/--admin flags with hidden versions
+                // to keep them out of the help.
+                .arg(
+                    Arg::new("user")
+                        .long("user")
+                        .global(false)
+                        .action(clap::ArgAction::SetTrue)
+                        .hide(true),
+                )
+                .arg(
+                    Arg::new("admin")
+                        .long("admin")
+                        .global(false)
+                        .action(clap::ArgAction::SetTrue)
+                        .hide(true),
+                ),
+        )
+        .subcommand(
             Command::new("unlink")
                 .about(ABOUT_PKG_UNLINK)
                 .long_about(HELP_PKG_UNLINK)
@@ -2320,6 +2752,8 @@ pub fn rig_app() -> Command {
                 .about(ABOUT_PKG_TREE)
                 .long_about(HELP_PKG_TREE)
                 .display_order(0)
+                .arg(pkg_r_version_arg(true))
+                .args(pkg_repos_args())
                 .arg(
                     Arg::new("package")
                         .help("package to show the dependency tree of")
@@ -2568,44 +3002,127 @@ pub fn rig_app() -> Command {
                 .num_args(0)
                 .required(false),
         )
-        // .subcommand(
-        //     Command::new("add")
-        //         .about("Add an R package repository")
-        //         .display_order(0)
-        //         .arg(
-        //             Arg::new("enable")
-        //                 .help("Enable the repository after adding it")
-        //                 .long("enable")
-        //                 .num_args(0)
-        //                 .required(false),
-        //         )
-        //         .arg(
-        //             Arg::new("name")
-        //                 .help("name of the repository, e.g. 'CRAN'")
-        //                 .required(true),
-        //         )
-        //         .arg(Arg::new("url").help("URL of the repository").required(true)),
-        // )
-        // .subcommand(
-        //     Command::new("disable")
-        //         .about("Disable an R package repository")
-        //         .display_order(0)
-        //         .arg(
-        //             Arg::new("name")
-        //                 .help("name of the repository, e.g. 'CRAN'")
-        //                 .required(true),
-        //         ),
-        // )
-        // .subcommand(
-        //     Command::new("enable")
-        //         .about("Enable an R package repository")
-        //         .display_order(0)
-        //         .arg(
-        //             Arg::new("name")
-        //                 .help("name of the repository, e.g. 'CRAN'")
-        //                 .required(true),
-        //         ),
-        // )
+        .subcommand(
+            Command::new("add")
+                .about(ABOUT_REPOS_ADD)
+                .long_about(HELP_REPOS_ADD)
+                .display_order(0)
+                .arg(
+                    Arg::new("name")
+                        .help("Name of the repository, e.g. 'acme'")
+                        .required(true),
+                )
+                .arg(
+                    Arg::new("url")
+                        .help("URL of the repository, e.g. 'https://cran.acme.com'")
+                        .required(true),
+                )
+                .arg(
+                    Arg::new("title")
+                        .help("Short title of the repository")
+                        .long("title")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("description")
+                        .help("Longer description of the repository")
+                        .long("description")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("force")
+                        .help("Replace the repository if it already exists")
+                        .long("force")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("enable")
+                        .help("Also enable the repository, see `rig repos enable`")
+                        .long("enable")
+                        .num_args(0)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("With --enable, R version to enable the repository for (default: the default R version), can be repeated")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .action(clap::ArgAction::Append)
+                        .requires("enable")
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("all-versions")
+                        .help("With --enable, enable the repository for all R versions, also the ones installed later")
+                        .long("all-versions")
+                        .num_args(0)
+                        .conflicts_with("r-version")
+                        .requires("enable")
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("disable")
+                .about(ABOUT_REPOS_DISABLE)
+                .long_about(HELP_REPOS_DISABLE)
+                .display_order(0)
+                .arg(
+                    Arg::new("name")
+                        .help("Name(s) of the repositories, e.g. 'P3M' (case insensitive)")
+                        .num_args(1..)
+                        .required(true),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version to disable the repositories for (default: the default R version), can be repeated")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .action(clap::ArgAction::Append)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("all-versions")
+                        .help("Disable the repositories for all installed R versions")
+                        .long("all-versions")
+                        .num_args(0)
+                        .conflicts_with("r-version")
+                        .required(false),
+                ),
+        )
+        .subcommand(
+            Command::new("enable")
+                .about(ABOUT_REPOS_ENABLE)
+                .long_about(HELP_REPOS_ENABLE)
+                .display_order(0)
+                .arg(
+                    Arg::new("name")
+                        .help("Name(s) of the repositories, e.g. 'Bioconductor' (case insensitive)")
+                        .num_args(1..)
+                        .required(true),
+                )
+                .arg(
+                    Arg::new("r-version")
+                        .help("R version to enable the repositories for (default: the default R version), can be repeated")
+                        .long("r-version")
+                        .short('r')
+                        .num_args(1)
+                        .action(clap::ArgAction::Append)
+                        .required(false),
+                )
+                .arg(
+                    Arg::new("all-versions")
+                        .help("Enable the repositories for all installed R versions")
+                        .long("all-versions")
+                        .num_args(0)
+                        .conflicts_with("r-version")
+                        .required(false),
+                ),
+        )
         .subcommand(
             Command::new("list")
                 .about(ABOUT_REPOS_LIST)
@@ -2620,7 +3137,7 @@ pub fn rig_app() -> Command {
                 )
                 .arg(
                     Arg::new("all")
-                        .help("Show all repositories, not just the default ones")
+                        .help("Show all repositories, not just the enabled ones")
                         .long("all")
                         .num_args(0)
                         .required(false),
@@ -2673,7 +3190,7 @@ pub fn rig_app() -> Command {
                 )
                 .arg(
                     Arg::new("all")
-                        .help("Check all repositories, not just the default ones")
+                        .help("Check all repositories, not just the enabled ones")
                         .long("all")
                         .num_args(0)
                         .required(false),
@@ -2694,16 +3211,18 @@ pub fn rig_app() -> Command {
                         .required(false),
                 ),
         )
-        // .subcommand(
-        //     Command::new("reset")
-        //         .about("Reset R package repositories to rig or R default")
-        //         .display_order(0),
-        // )
-        // .subcommand(
-        //     Command::new("rm")
-        //         .about("Remove an R package repository")
-        //         .display_order(0),
-        // )
+        .subcommand(
+            Command::new("rm")
+                .about(ABOUT_REPOS_RM)
+                .long_about(HELP_REPOS_RM)
+                .display_order(0)
+                .arg(
+                    Arg::new("name")
+                        .help("Name(s) of the repositories to remove (case insensitive)")
+                        .num_args(1..)
+                        .required(true),
+                ),
+        )
         .subcommand(cmd_repos_setup);
 
     rig = rig.subcommand(cmd_repos);
@@ -2871,20 +3390,62 @@ where
     out
 }
 
+/// Whether `arg` is an existing file that `rig run <arg>` runs as a script,
+/// same as `rig run -f <arg>`: a `.R` file, or any file that starts with
+/// `#!`, so a script with a `#!/usr/bin/env -S rig run` line can have any
+/// name.
+pub fn is_r_script_file(arg: &str) -> bool {
+    use std::io::Read;
+    let path = std::path::Path::new(arg);
+    if !path.is_file() {
+        return false;
+    }
+    if path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("r"))
+    {
+        return true;
+    }
+    let mut start = [0u8; 2];
+    std::fs::File::open(path)
+        .and_then(|mut f| f.read_exact(&mut start))
+        .is_ok_and(|_| &start == b"#!")
+}
+
+// `rig run` options that take a value, in a separate argument unless they
+// are written as `--opt=value` or `-oVALUE`.
+const RUN_VALUE_OPTS: [&str; 8] = [
+    "-r",
+    "--r-version",
+    "-t",
+    "--app-type",
+    "-e",
+    "--eval",
+    "-f",
+    "--script",
+];
+
 // Splits `rig`'s raw arguments before clap sees them.
 //
 // `rig run --cmd <command> [args...]`: unchanged, delegates to
 // `rcmd_argv()` -- a literal `--` is auto-inserted right after `--cmd` so
 // clap doesn't reinterpret the R CMD command's own flags as rig's.
 //
-// `rig run [...] -- <r-args...>` (without `--cmd`): a literal `--`
-// separates rig's own arguments (an eval/script/app name and its own
-// arguments) from raw R/`Rscript` engine flags, e.g. `rig run -- --vanilla`
-// or `rig run report --format pdf -- --vanilla`. Everything from that `--`
-// onward is pulled out *here*, before clap ever sees it, so it can never
-// collide with rig's own flags (not even the built-in `--help`/`--version`),
-// and returned separately for `sc_run()` to forward straight to the R
-// process. `--` is not otherwise meaningful to any rig command.
+// `rig run [...] <script> [args...]` and `rig run [...] -f <script>
+// [args...]`: every argument after the script goes to the script as is,
+// even if it looks like a flag of rig, or it is a `--`. This is what a
+// script with a `#!/usr/bin/env -S rig run` line needs. A `--` is inserted
+// before these arguments, so clap puts them into `command` unchanged.
+//
+// `rig run [...] -- <r-args...>` (otherwise): a literal `--` separates rig's
+// own arguments (an eval expression, or an app or project script name and
+// its own arguments) from raw R/`Rscript` engine flags, e.g.
+// `rig run -- --vanilla` or `rig run report --format pdf -- --vanilla`.
+// Everything from that `--` onward is pulled out *here*, before clap ever
+// sees it, so it can never collide with rig's own flags (not even the
+// built-in `--help`/`--version`), and returned separately for `sc_run()` to
+// forward straight to the R process. `--` is not otherwise meaningful to
+// any rig command.
 fn split_run_args<I>(argv: I) -> (Vec<std::ffi::OsString>, Vec<String>)
 where
     I: IntoIterator<Item = std::ffi::OsString>,
@@ -2896,6 +3457,23 @@ where
     }
     let mut out = Vec::new();
     let mut iter = argv.into_iter();
+    // argv[0], then global flags (none of them takes a value) up to the
+    // subcommand.
+    let mut is_run = false;
+    if let Some(arg0) = iter.next() {
+        out.push(arg0);
+    }
+    for arg in iter.by_ref() {
+        let flag = arg.to_string_lossy().starts_with('-');
+        is_run = arg.as_os_str() == OsStr::new("run");
+        out.push(arg);
+        if !flag {
+            break;
+        }
+    }
+    // Only scripts given before the first non-script positional argument
+    // count, the arguments of an app or a project script are not checked.
+    let mut seen_positional = false;
     while let Some(arg) = iter.next() {
         if arg.as_os_str() == OsStr::new("--") {
             return (
@@ -2903,7 +3481,37 @@ where
                 iter.map(|a| a.to_string_lossy().into_owned()).collect(),
             );
         }
+        let s = arg.to_string_lossy().into_owned();
         out.push(arg);
+        if !is_run || seen_positional {
+            continue;
+        }
+        let script = if s == "-f" || s == "--script" {
+            match iter.next() {
+                Some(file) => {
+                    out.push(file);
+                    true
+                }
+                None => false,
+            }
+        } else if s.starts_with("--script=") || (s.starts_with("-f") && s.len() > 2) {
+            true
+        } else if RUN_VALUE_OPTS.contains(&s.as_str()) {
+            if let Some(value) = iter.next() {
+                out.push(value);
+            }
+            false
+        } else if s.starts_with('-') {
+            false
+        } else {
+            seen_positional = true;
+            is_r_script_file(&s)
+        };
+        if script {
+            out.push(std::ffi::OsString::from("--"));
+            out.extend(iter);
+            return (out, vec![]);
+        }
     }
     (out, vec![])
 }
@@ -3007,6 +3615,79 @@ mod tests {
     }
 
     #[test]
+    fn proj_lock_upgrade_package_is_repeatable_and_comma_separated() {
+        let matches = rig_app()
+            .try_get_matches_from([
+                "rig",
+                "proj",
+                "lock",
+                "-P",
+                "cli,glue",
+                "--upgrade-package",
+                "rlang@>= 1.1",
+            ])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        let pkgs: Vec<&String> = sub.get_many::<String>("upgrade-package").unwrap().collect();
+        assert_eq!(pkgs, vec!["cli", "glue", "rlang@>= 1.1"]);
+    }
+
+    #[test]
+    fn proj_lock_upgrade_and_upgrade_package_conflict() {
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "proj", "lock", "-U", "-P", "cli"])
+            .is_err());
+    }
+
+    #[test]
+    fn proj_repos_args() {
+        let sub = |argv: &[&str]| -> ArgMatches {
+            let matches = rig_app().try_get_matches_from(argv).unwrap();
+            let (_, proj) = matches.subcommand().unwrap();
+            let (_, sub) = proj.subcommand().unwrap();
+            sub.clone()
+        };
+        let lock = sub(&["rig", "proj", "lock", "--index", "cran", "--no-index=bioc"]);
+        let with: Vec<&String> = lock.get_many::<String>("with-repos").unwrap().collect();
+        assert_eq!(with, vec!["cran"]);
+        let without: Vec<&String> = lock.get_many::<String>("without-repos").unwrap().collect();
+        assert_eq!(without, vec!["bioc"]);
+        for cmd in ["deps", "tree", "sync"] {
+            assert!(rig_app()
+                .try_get_matches_from(["rig", "proj", cmd, "--without-repos"])
+                .is_ok());
+        }
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "proj", "sync", "--frozen", "--with-repos", "cran"])
+            .is_err());
+
+        // `rig proj add` only has `--with-repos`.
+        let add = sub(&["rig", "proj", "add", "--index", "acme=https://x.org", "cli"]);
+        let with: Vec<&String> = add.get_many::<String>("with-repos").unwrap().collect();
+        assert_eq!(with, vec!["acme=https://x.org"]);
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "proj", "add", "--without-repos", "cli"])
+            .is_err());
+    }
+
+    #[test]
+    fn run_upgrade_flags_are_for_scripts() {
+        let matches = rig_app()
+            .try_get_matches_from(["rig", "run", "-P", "cli", "script.R"])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let pkgs: Vec<&String> = sub.get_many::<String>("upgrade-package").unwrap().collect();
+        assert_eq!(pkgs, vec!["cli"]);
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "run", "-U", "script.R"])
+            .is_ok());
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "run", "-U", "-e", "1"])
+            .is_err());
+    }
+
+    #[test]
     fn proj_lock_add_platform_is_repeatable_and_comma_separated() {
         let matches = rig_app()
             .try_get_matches_from([
@@ -3045,6 +3726,27 @@ mod tests {
         let (_name, sub) = sub.subcommand().unwrap();
         assert_eq!(sub.get_one::<String>("r-version").unwrap(), "4.6.1");
         assert_eq!(sub.get_one::<String>("platform").unwrap(), "macos-arm64");
+    }
+
+    #[test]
+    fn proj_init_add_remove_take_a_script() {
+        for cmd in [
+            vec!["rig", "proj", "init", "--script", "a.R"],
+            vec!["rig", "proj", "add", "--script", "a.R", "cli"],
+            vec!["rig", "proj", "remove", "--script", "a.R", "cli"],
+        ] {
+            let matches = rig_app().try_get_matches_from(&cmd).unwrap();
+            let (_name, sub) = matches.subcommand().unwrap();
+            let (_name, sub) = sub.subcommand().unwrap();
+            assert_eq!(
+                sub.get_one::<String>("script").map(String::as_str),
+                Some("a.R")
+            );
+        }
+        // script blocks have no dependency groups
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "proj", "add", "--script", "a.R", "--dev", "cli"])
+            .is_err());
     }
 
     #[test]
@@ -3218,6 +3920,142 @@ mod tests {
     }
 
     #[test]
+    fn test_is_r_script_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let upper = dir.path().join("a.R");
+        let lower = dir.path().join("b.r");
+        let other = dir.path().join("c.Rmd");
+        let shebang = dir.path().join("d");
+        let plain = dir.path().join("e");
+        let short = dir.path().join("f");
+        for f in [&upper, &lower, &other, &plain] {
+            std::fs::write(f, "1\n").unwrap();
+        }
+        std::fs::write(&shebang, "#!/usr/bin/env -S rig run\n1\n").unwrap();
+        std::fs::write(&short, "#").unwrap();
+        assert!(is_r_script_file(upper.to_str().unwrap()));
+        assert!(is_r_script_file(lower.to_str().unwrap()));
+        assert!(is_r_script_file(shebang.to_str().unwrap()));
+        assert!(!is_r_script_file(other.to_str().unwrap()));
+        assert!(!is_r_script_file(plain.to_str().unwrap()));
+        assert!(!is_r_script_file(short.to_str().unwrap()));
+        assert!(!is_r_script_file(
+            dir.path().join("missing.R").to_str().unwrap()
+        ));
+        assert!(!is_r_script_file(dir.path().to_str().unwrap()));
+    }
+
+    // A directory with an `s.R` script and an `s` script without an
+    // extension, but with a `#!` line.
+    fn script_dir() -> (tempfile::TempDir, String, String) {
+        let dir = tempfile::tempdir().unwrap();
+        let r = dir.path().join("s.R");
+        let sh = dir.path().join("s");
+        std::fs::write(&r, "1\n").unwrap();
+        std::fs::write(&sh, "#!/usr/bin/env -S rig run\n1\n").unwrap();
+        let r = r.to_string_lossy().into_owned();
+        let sh = sh.to_string_lossy().into_owned();
+        (dir, r, sh)
+    }
+
+    #[test]
+    fn test_split_run_args_script_args() {
+        let (_dir, r, _) = script_dir();
+        let (out, r_args) = split(&["rig", "run", &r, "a", "--foo", "-x"]);
+        assert_eq!(out, ["rig", "run", &r, "--", "a", "--foo", "-x"]);
+        assert!(r_args.is_empty());
+    }
+
+    #[test]
+    fn test_split_run_args_script_gets_separator() {
+        let (_dir, r, _) = script_dir();
+        let (out, r_args) = split(&["rig", "run", &r, "a", "--", "b"]);
+        assert_eq!(out, ["rig", "run", &r, "--", "a", "--", "b"]);
+        assert!(r_args.is_empty());
+    }
+
+    #[test]
+    fn test_split_run_args_shebang_script() {
+        let (_dir, _, sh) = script_dir();
+        let (out, r_args) = split(&["rig", "run", &sh, "--help"]);
+        assert_eq!(out, ["rig", "run", &sh, "--", "--help"]);
+        assert!(r_args.is_empty());
+    }
+
+    #[test]
+    fn test_split_run_args_script_flag() {
+        let (_dir, _, sh) = script_dir();
+        let (out, _) = split(&["rig", "run", "-f", &sh, "a", "--help"]);
+        assert_eq!(out, ["rig", "run", "-f", &sh, "--", "a", "--help"]);
+        let opt = format!("--script={}", sh);
+        let (out, _) = split(&["rig", "run", &opt, "-r", "4.4"]);
+        assert_eq!(out, ["rig", "run", &opt, "--", "-r", "4.4"]);
+    }
+
+    #[test]
+    fn test_split_run_args_rig_options_before_script() {
+        let (_dir, r, _) = script_dir();
+        let (out, _) = split(&[
+            "rig",
+            "--user",
+            "run",
+            "-r",
+            "4.4",
+            "--rscript",
+            &r,
+            "--dry-run",
+        ]);
+        assert_eq!(
+            out,
+            [
+                "rig",
+                "--user",
+                "run",
+                "-r",
+                "4.4",
+                "--rscript",
+                &r,
+                "--",
+                "--dry-run"
+            ]
+        );
+        // `-e` takes a value, which is not a script, even if it names a file.
+        let (out, r_args) = split(&["rig", "run", "-e", &r, "--", "--vanilla"]);
+        assert_eq!(out, ["rig", "run", "-e", &r]);
+        assert_eq!(r_args, ["--vanilla"]);
+    }
+
+    #[test]
+    fn test_split_run_args_script_only_first_positional() {
+        // The arguments of an app are not scripts.
+        let (_dir, r, _) = script_dir();
+        let (out, r_args) = split(&["rig", "run", "myapp", &r, "--", "--vanilla"]);
+        assert_eq!(out, ["rig", "run", "myapp", &r]);
+        assert_eq!(r_args, ["--vanilla"]);
+    }
+
+    #[test]
+    fn test_run_script_args() {
+        let (_dir, r, sh) = script_dir();
+        let matches = |argv: &[&str]| {
+            let (out, _) = split(argv);
+            rig_app().try_get_matches_from(out).unwrap()
+        };
+        let m = matches(&["rig", "run", &r, "a", "--dry-run", "--", "-x"]);
+        let run = m.subcommand_matches("run").unwrap();
+        assert!(!run.get_flag("dry-run"));
+        let cmdargs: Vec<&String> = run.get_many::<String>("command").unwrap().collect();
+        assert_eq!(cmdargs, [&r, "a", "--dry-run", "--", "-x"]);
+
+        let m = matches(&["rig", "run", "--dry-run", "-f", &sh, "--help"]);
+        let run = m.subcommand_matches("run").unwrap();
+        assert!(run.get_flag("dry-run"));
+        assert_eq!(run.get_one::<String>("script"), Some(&sh));
+        let cmdargs: Vec<&String> = run.get_many::<String>("command").unwrap().collect();
+        assert_eq!(cmdargs, ["--help"]);
+    }
+
+    #[test]
     fn test_split_run_args_cmd_untouched() {
         // Any `--cmd` in the argv delegates entirely to `rcmd_argv()`, and no
         // raw R args are extracted, even if the user also typed a `--`.
@@ -3324,6 +4162,134 @@ mod tests {
         assert!(rig_app()
             .try_get_matches_from(["rig", "system", "dirs", "--arch", "amd64"])
             .is_err());
+    }
+
+    #[test]
+    fn test_pkg_search_args() {
+        let m = rig_app()
+            .try_get_matches_from(["rig", "pkg", "search", "permutation", "test"])
+            .unwrap();
+        let search = m
+            .subcommand_matches("pkg")
+            .unwrap()
+            .subcommand_matches("search")
+            .unwrap();
+        let query: Vec<&String> = search.get_many::<String>("query").unwrap().collect();
+        assert_eq!(query, ["permutation", "test"]);
+        assert!(!search.get_flag("short"));
+        assert!(!search.get_flag("json"));
+        assert_eq!(search.get_one::<u32>("from"), Some(&1));
+        assert_eq!(search.get_one::<u32>("size"), None);
+
+        let m = rig_app()
+            .try_get_matches_from([
+                "rig", "pkg", "search", "cli", "-s", "--from", "11", "-n", "5", "--json",
+            ])
+            .unwrap();
+        let search = m
+            .subcommand_matches("pkg")
+            .unwrap()
+            .subcommand_matches("search")
+            .unwrap();
+        assert!(search.get_flag("short"));
+        assert!(search.get_flag("json"));
+        assert_eq!(search.get_one::<u32>("from"), Some(&11));
+        assert_eq!(search.get_one::<u32>("size"), Some(&5));
+
+        // A query is required, and --from starts at 1.
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "pkg", "search"])
+            .is_err());
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "pkg", "search", "cli", "--from", "0"])
+            .is_err());
+    }
+
+    #[test]
+    fn test_repos_edit_args() {
+        let sub = |args: &[&str], name: &str| {
+            let m = rig_app().try_get_matches_from(args).unwrap();
+            m.subcommand_matches("repos")
+                .unwrap()
+                .subcommand_matches(name)
+                .unwrap()
+                .clone()
+        };
+
+        let add = sub(
+            &[
+                "rig",
+                "repos",
+                "add",
+                "acme",
+                "https://cran.acme.com",
+                "--title",
+                "Acme",
+            ],
+            "add",
+        );
+        assert_eq!(add.get_one::<String>("name").unwrap(), "acme");
+        assert_eq!(
+            add.get_one::<String>("url").unwrap(),
+            "https://cran.acme.com"
+        );
+        assert_eq!(add.get_one::<String>("title").unwrap(), "Acme");
+        assert!(!add.get_flag("enable"));
+
+        let add = sub(
+            &[
+                "rig",
+                "repos",
+                "add",
+                "acme",
+                "https://x",
+                "--enable",
+                "-r",
+                "4.5",
+                "-r",
+                "4.4",
+            ],
+            "add",
+        );
+        assert!(add.get_flag("enable"));
+        let vers: Vec<&String> = add.get_many::<String>("r-version").unwrap().collect();
+        assert_eq!(vers, vec!["4.5", "4.4"]);
+
+        // -r and --all-versions only make sense with --enable.
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "repos", "add", "acme", "https://x", "-r", "4.5"])
+            .is_err());
+
+        let enable = sub(
+            &["rig", "repos", "enable", "bioconductor", "acme"],
+            "enable",
+        );
+        let names: Vec<&String> = enable.get_many::<String>("name").unwrap().collect();
+        assert_eq!(names, vec!["bioconductor", "acme"]);
+        assert!(!enable.get_flag("all-versions"));
+
+        let disable = sub(
+            &["rig", "repos", "disable", "p3m", "--all-versions"],
+            "disable",
+        );
+        assert!(disable.get_flag("all-versions"));
+        assert!(rig_app()
+            .try_get_matches_from([
+                "rig",
+                "repos",
+                "disable",
+                "p3m",
+                "--all-versions",
+                "-r",
+                "4.5"
+            ])
+            .is_err());
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "repos", "enable"])
+            .is_err());
+
+        let rm = sub(&["rig", "repos", "rm", "acme"], "rm");
+        assert_eq!(rm.get_one::<String>("name").unwrap(), "acme");
     }
 
     #[test]

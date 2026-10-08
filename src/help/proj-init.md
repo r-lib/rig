@@ -35,13 +35,40 @@ deleted and rebuilt at any time.
 Note that `R --vanilla` ignores `.Renviron`, and so does not use the project
 library.
 
+## Scripts
+
+`rig proj init --script script.R` sets up a single script instead of a project:
+it adds a `# /// script` block with an R requirement to the top of the script,
+or creates the script, if it does not exist yet:
+
+```r
+# /// script
+# [dependencies]
+# R = ">= 4.6"
+# ///
+```
+
+The block goes after a `#!` line, if the script has one. It does not create any
+other file. Add packages to the block with [`rig proj add --script`](#rig-proj-add), and run the
+script with [`rig run`](run.qmd), which sets up an environment for it, see [scripts with
+inline dependencies](run.qmd#scripts-with-inline-dependencies). rig refuses to replace a block that is already there, pass
+`--force` to replace it.
+
 ## Options
 
 `--r-version` sets the R version the project is for. It does not have to be
 installed. Defaults to the current default R version, or the current R
 release if there is no default.
 
+`--prefer-binary` writes `prefer-binary = true` into the manifest's
+`[tool.rig]` table (or the script's block), so `rig proj lock` prefers an
+older version with a binary package over a newer one without, see
+[`rig proj lock`](#rig-proj-lock). `--prefer-binary=5` writes
+`prefer-binary = 5`, to consider the five newest versions instead of
+three.
+
 rig refuses to overwrite any of the files above; pass `--force` to replace
-them. The `.gitignore` block is the exception: rig never refuses on an
-existing `.gitignore`, it just merges its block into it (or adds one),
-leaving the rest of the file alone, and `--force` does not change that.
+them. `.Renviron` and `.gitignore` are the exceptions: rig never refuses on
+an existing `.Renviron` or `.gitignore`, it just merges its block into them
+(or adds one), leaving the rest of the file alone, and `--force` does not
+change that.

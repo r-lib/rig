@@ -1,10 +1,5 @@
 Install packages from the repositories
 
-## Note
-
-This command currently only uses PPM (Posit Public Package Manager) and
-ignores the configured repositories.
-
 ## Description
 
 Install one or more R packages, and everything they need, into an R package
@@ -15,6 +10,43 @@ does for a project, so a package is only installed if every package it
 needs can be installed with it, at versions that work together. `--dry-run`
 runs the resolution and reports what it would install, without installing
 anything.
+
+## Repositories
+
+rig installs from the repositories configured for the R version, i.e. the
+[`rig repos list`](repos.qmd#rig-repos-list) output for the default R version, or for
+the one selected with `--r-version`. If two repositories have the same version
+of a package, the one listed first wins.
+
+`--with-repos` (or `--index`) and `--without-repos` (or `--no-index`) change
+the repositories for this command only, the setup of the R version stays the
+same. Both take a comma-separated list and can be repeated. `--with-repos`
+adds repositories, by name, like [`rig repos enable`](repos.qmd#rig-repos-enable),
+by URL, or as `name=URL`, e.g. `--index=rlib=https://r-lib.r-universe.dev`.
+A repository given by URL is a CRAN-like repository and comes before the
+others. `--without-repos=<names>` leaves out repositories, and
+`--without-repos` without names leaves out all configured repositories, so
+only the ones in `--with-repos` are used, e.g.
+`--no-index --index=https://r-lib.r-universe.dev`. URLs cannot contain commas.
+
+For P3M and for Bioconductor's software repository rig reads their full
+package history, from <https://ppm.r-pkg.org> and <https://ppm-bioc.r-pkg.org>,
+so older and archived versions are available, too. Any other repository, e.g.
+CRAN itself, an r-universe, or one added with [`rig repos add`](repos.qmd#rig-repos-add), is read
+from its `PACKAGES` files, so only its current packages are available.
+
+A CRAN-like repository has binary packages for macOS and Windows, if it has
+`PACKAGES` files for them in the standard place, e.g.
+`bin/macosx/big-sur-arm64/contrib/4.5`. On Linux it has source packages only.
+
+## Bioconductor packages
+
+rig installs Bioconductor packages if the Bioconductor repositories are
+enabled for the R version, see [`rig repos enable`](repos.qmd#rig-repos-enable), from the
+Bioconductor release of the R version, e.g. Bioconductor 3.23 for R 4.6.
+Then `rig pkg install limma` works like `rig pkg install dplyr`.
+`R_BIOC_VERSION` selects another Bioconductor release. See "Bioconductor packages" in
+[`rig proj lock`](proj.qmd#rig-proj-lock).
 
 ## Git, GitHub, GitLab and URL sources
 
@@ -88,6 +120,19 @@ An argument counts as a path when it is `.` or `..`, starts with `./`, `../`,
 name of a package file that exists. The `local::` prefix forces a path,
 whatever it looks like.
 
+## Installing only the dependencies
+
+`--no-install-project` installs the dependencies of the named packages, but
+not the named packages themselves, e.g. to set up a library for working on a
+package from its source directory:
+
+```
+rig pkg install --no-install-project --dev .
+```
+
+A named package is still installed if another package that is being
+installed depends on it.
+
 ## Dev dependencies
 
 By default rig installs the hard dependencies only: `Depends`, `Imports` and
@@ -112,12 +157,52 @@ compile. The output of the compilation goes into a log file per package, in
 a `_logs` directory inside the library, and rig points at the log when an
 installation fails.
 
-`--platform` installs for a platform other than this machine's, and
-`--platform source` installs source packages only.
+`--platform` installs for a platform other than this machine's, e.g.
+`--platform x86_64-unknown-linux-gnu-ubuntu-24.04` (see
+[`rig system detect-platform`](system.qmd#rig-system-detect-platform) for
+the platform strings rig takes), and `--platform source` installs source
+packages only.
 
 `--prefer-binary` trades a newer version for an older one that has a binary
 build, which is useful when compiling is expensive; it takes the number of
 versions to look back through, e.g. `--prefer-binary=5`, and defaults to 3.
+
+## System requirements
+
+On Linux, many R packages need system libraries and tools, e.g. `libcurl` for the
+curl package, and a source package needs their development files to compile. A
+package lists these in the `SystemRequirements` field of its `DESCRIPTION`. Before
+installing, rig matches this field against the [r-system-requirements](https://github.com/r-hub/r-system-requirements) rules for
+your Linux distribution, checks which of the needed OS packages are installed
+already, and installs the missing ones with the distribution's package manager
+(`apt-get`, `dnf`, `yum`, `zypper` or `apk`).
+
+This is only needed for source packages and for binaries built for one
+distribution. A `manylinux` binary has its libraries built in, so rig does not
+look at its system requirements. On macOS and Windows there are no system
+requirements to install.
+
+rig installs the OS packages itself if it runs as `root`, or if `sudo` works without
+a password. Otherwise it prints the commands that would install them, and
+carries on: the R packages may still install, and if one fails, rig names the
+system packages it was missing. This is the same in [admin mode and in user mode](../admin-vs-user-mode.qmd):
+OS packages always need administrator rights, even if rig does not need them for
+anything else.
+
+`--no-sysreqs` turns this off for one run, and `--sysreqs` turns it on even if the
+`sysreqs` [config](config.qmd) entry turns it off. With `--dry-run`, rig shows the missing OS
+packages and the commands, and installs nothing. Set the `sysreqs` [config](config.qmd)
+entry to `print` to always only show them. See [`rig config`](config.qmd) for the `sysreqs`,
+`sysreqs-sudo`, `sysreqs-update` and `sysreqs-rules-url` entries.
+
+## Excluding newer package versions
+
+`--exclude-newer` ignores CRAN and Bioconductor package versions published
+after a date, e.g.
+`--exclude-newer 2025-06-01`, or after a span back from today, e.g.
+`--exclude-newer "7 days"`. See [`rig proj lock`](proj.qmd#rig-proj-lock)
+for the accepted formats and details. The `PACKAGES` files of other
+repositories have no publication dates, so their versions are never excluded.
 
 ## Caching package builds
 

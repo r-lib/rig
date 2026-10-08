@@ -65,6 +65,11 @@
 > On Windows, it includes up to date binary packages for older R versions as
 > well.
 >
+> rig sets up P3M on macOS, x86_64 Windows and Linux. Where P3M has no
+> binary packages, e.g. on some Linux distributions, it is a CRAN mirror of
+> source packages. rig does not set up P3M on aarch64 Windows, because P3M
+> only has x86_64 Windows binaries.
+>
 > To avoid P3M use the `--without-repos=p3m` option of `rig add`.
 >
 </details>
@@ -98,6 +103,38 @@
 > administrator account, and no reason to keep R in your home directory,
 > stay in admin mode for now.
 >
+</details>
+
+<details>
+<summary>Can an R script declare the packages it needs?</summary>
+>
+> Yes. Put a `# /// script` comment block at the top of the script, with
+> the packages and the R version it needs, and run it with
+> `rig run script.R`:
+>
+> ```r
+> # /// script
+> # [dependencies]
+> # R = ">= 4.4"
+> # cli = "*"
+> # ///
+> cli::cli_text("Hello from {.pkg cli}!")
+> ```
+>
+> rig creates an environment for the script in its cache directory,
+> installs R and the packages if needed, and runs the script there. Later
+> runs reuse the environment. This works the same in admin and user mode;
+> if rig needs to install R, it installs it the way the current mode does.
+> See [`rig run`](reference/run.qmd) for the details.
+>
+> You do not have to write the block by hand: `rig proj init --script
+> script.R` adds one, and `rig proj add --script script.R cli` and
+> `rig proj remove --script script.R cli` edit it.
+>
+> To pin the exact R and package versions, run
+> `rig proj lock --script script.R`. It writes `script.R.lock` next to the
+> script, and `rig run` installs the versions it names. See
+> [Scripts](scripts.qmd#lock-files).
 </details>
 
 <details>

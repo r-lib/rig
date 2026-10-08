@@ -11,7 +11,9 @@ use std::sync::Mutex;
 static GLOBAL: System = System;
 
 use lazy_static::lazy_static;
-use simple_error::bail;
+
+#[macro_use]
+mod macros;
 
 mod alias;
 mod args;
@@ -22,6 +24,7 @@ mod config;
 mod dcf;
 mod download;
 mod escalate;
+mod exclude_newer;
 mod hardcoded;
 mod install;
 mod library;
@@ -32,6 +35,7 @@ mod pkg;
 mod pkgsource;
 mod platform;
 mod proj;
+mod proj_repos;
 mod rds;
 mod renv;
 mod repos;
@@ -41,7 +45,10 @@ mod rproj;
 mod run;
 mod rvenv;
 mod rversion;
+mod script_meta;
 mod solver;
+mod stdout_redirect;
+mod sysreqs;
 mod textfmt;
 mod utils;
 use common::*;

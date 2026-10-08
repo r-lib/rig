@@ -4,7 +4,7 @@ Create rproj.toml from an renv.lock file
 
 Read an `renv.lock` file and create `rproj.toml`, rig's project manifest, from
 it: one dependency per locked package (with a `^`-pinned version
-requirement), and an `R` requirement from the lockfile's R version. Fails if
+requirement), and an `R` requirement from the lock file's R version. Fails if
 `rproj.toml` already exists; use `--dependencies` to merge into an existing
 file instead.
 

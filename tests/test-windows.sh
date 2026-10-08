@@ -199,6 +199,18 @@ teardown() {
     echo "$output" | grep -q "^  4.4.3"
 }
 
+@test "add --json" {
+    # Already installed, so nothing is installed, only reported.
+    run bash -c "rig add --json 4.5.0 2>/dev/null"
+    echo "status = ${status}"
+    echo "output = ${output}"
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q '"name": "4.5.0"'
+    echo "$output" | grep -q '"version": "4.5.0"'
+    echo "$output" | grep -q '"default": true\(,\|$\)'
+    echo "$output" | grep -q '"new-install": false\(,\|$\)'
+}
+
 @test "resolve" {
     run rig resolve devel
     echo "status = ${status}"
@@ -254,6 +266,23 @@ teardown() {
 
 # For the output we take the last line, in case there are warnings at
 # startup. (This does happen in bash for R 4.1.1.)
+
+@test "rtools add --json" {
+    # Only if x86_64 Rtools 4.5 is already there (e.g. on the GHA runner),
+    # so nothing is installed, only reported. `-a x86_64` because on arm64
+    # machines the native Rtools is a different one, in C:\rtools45-aarch64.
+    if [[ ! -d /c/rtools45 ]]; then
+        skip "Rtools 4.5 (x86_64) is not installed"
+    fi
+    run bash -c "rig rtools add 45 -a x86_64 --json 2>/dev/null"
+    echo "status = ${status}"
+    echo "output = ${output}"
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q '"name": "45"'
+    echo "$output" | grep -q '"version": "4.5"'
+    echo "$output" | grep -q '"arch": "x86_64"'
+    echo "$output" | grep -q '"new-install": false\(,\|$\)'
+}
 
 @test "system create-lib" {
     # Must already exist
@@ -349,12 +378,16 @@ teardown() {
     echo "$output" | grep -q "rproj.toml"
     echo "$output" | grep -q -- "--force"
 
-    # --force keeps the user's own ignore rules, rig only manages its block
+    # --force keeps the user's own ignore rules and environment variables,
+    # rig only manages its block
     echo "*.log" >> .gitignore
+    echo "MY_PROJECT_VAR=1" >> .Renviron
     run rig proj init -r 4.5.0 --force
     [[ "$status" -eq 0 ]]
     grep -q '^[*].log$' .gitignore
     [[ "$(grep -c '^# rig rvenv start$' .gitignore)" -eq 1 ]]
+    grep -q '^MY_PROJECT_VAR=1$' .Renviron
+    [[ "$(grep -c '^# rig rvenv start$' .Renviron)" -eq 1 ]]
 }
 
 @test "proj add" {

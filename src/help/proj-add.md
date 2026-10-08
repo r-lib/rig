@@ -24,6 +24,39 @@ Because `@` and the comparison operators are meaningful to most shells, quote
 a specification that contains a space or a `>` character, as in the examples
 above.
 
+## Bioconductor packages
+
+Bioconductor packages are added the same way as CRAN packages, e.g.
+`rig proj add limma`, see "Bioconductor packages" in
+[`rig proj lock`](#rig-proj-lock).
+
+## Packages from other repositories
+
+`--with-repos` (`--index`) adds the packages from a repository other than CRAN
+and Bioconductor:
+
+```
+rig proj add --with-repos rlib=https://r-lib.r-universe.dev cli
+```
+
+A URL, or `name=URL`, that `rproj.toml` does not have yet is added to its
+`[[repository]]` entries. A URL without a name is named after its host. The
+name of a repository that `rproj.toml` already has, or `cran` or `bioc`, works
+too. The added packages are pinned to the repository, the first one if
+`--with-repos` names more than one:
+
+```toml
+[dependencies]
+cli = { version = "*", repository = "rlib" }
+
+[[repository]]
+name = "rlib"
+url = "https://r-lib.r-universe.dev"
+```
+
+See "Repositories" in [`rig proj lock`](#rig-proj-lock). A git, GitHub, URL or local package
+cannot be added with `--with-repos`.
+
 ## Git, GitHub, GitLab and URL sources
 
 A package can also be added straight from a git repository, [pak's package
@@ -105,6 +138,19 @@ The caret and tilde forms bump one component of the version and zero the
 ones after it: the leftmost non-zero component for `^` (`^0.2.3` is `>= 0.2.3, <
 0.3.0`), the second component for `~`. R versions can have any number of
 components, so `^1.1.0.9000` is `>= 1.1.0.9000, < 2.0.0.0`.
+
+## Scripts
+
+`--script script.R` adds the packages to the `# /// script` block of an R
+script, instead of `rproj.toml`, see [scripts with inline dependencies](run.qmd#scripts-with-inline-dependencies). It
+creates the block if the script has none. The packages are given the same way as
+for a project, and a local path is recorded relative to the script's directory.
+A script has no dependency groups, so `--script` does not work with `--dev`.
+
+Then rig sets up the script's environment in its cache directory, the same way
+`rig run script.R` would, so the next `rig run` can start right away.
+`--no-sync` and `--no-lock` work the same way as for a project. If resolving the
+dependencies fails, the script is restored to what it was.
 
 ## Options
 

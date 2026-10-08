@@ -12,7 +12,6 @@ use std::path::PathBuf;
 
 use clap::ArgMatches;
 use log::info;
-use simple_error::*;
 
 use crate::output::OUTPUT;
 

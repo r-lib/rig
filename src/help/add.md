@@ -58,8 +58,17 @@ In user mode there is no such restriction.
 If the requested version is already installed, `rig add` does nothing
 (other than making sure any implied alias, e.g. `release`, still points at
 it) instead of reinstalling it. Use `--reinstall` to reinstall anyway.
-`rig add devel` and `rig add next` are always reinstalled, since these are
-rebuilt daily under the same name.
+R-devel and R-next are rebuilt daily under the same version number, so
+`rig add devel` and `rig add next` reinstall them, unless the installer
+has not changed (has the same HTTP ETag) since rig last installed it.
+
+With `--json`, `rig add` prints a JSON object to the standard output about
+the R version it installed, or about the already installed version it kept.
+The fields are the same as in `rig list --json` (`name`, `default`,
+`version`, `aliases`, `path`, `binary`), plus `new-install`, which is `true`
+if rig installed R now and `false` if it kept an existing installation.
+`default` tells whether this version is the default one after `rig add`
+finished. All other messages go to the standard error.
 
 You can use `rig add` to install Rtools:
 
@@ -69,7 +78,8 @@ rig add rtools
 
 will install all Rtools versions that are needed for the currently
 installed R versions. You can also request a specific Rtools version, e.g.
-`rig add rtools45`.
+`rig add rtools45`. `rig add rtools` does not support `--json`, use
+`rig rtools add --json` instead.
 
 In user mode rig installs R and Rtools into your user profile, without
 administrator rights. In admin mode you need an administrator account to
@@ -86,6 +96,9 @@ rig add release
 
 # Install specific version
 rig add 4.6.1
+
+# Install a version and print information about it as JSON
+rig add --json release
 
 # Install latest version within a minor branch
 rig add 4.6

@@ -56,7 +56,6 @@ use std::process::Command;
 
 use clap::ArgMatches;
 use rds2rust::RObject;
-use simple_error::*;
 
 #[cfg(target_os = "macos")]
 use crate::macos::get_r_binary;

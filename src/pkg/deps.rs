@@ -12,11 +12,11 @@ use std::io::IsTerminal;
 
 use clap::ArgMatches;
 use log::debug;
-use simple_error::*;
 use tabular::*;
 
 use crate::dcf::{DepVersionSpec, Package, RDepType, RPackageVersion, DEP_TYPES_SOFT};
 use crate::output::OUTPUT;
+use crate::pkg::pkg_repos_for;
 use crate::pkgsource::local::resolve_local_path;
 use crate::pkgsource::{parse_pkg_source, LocalSource, PkgSource, RemoteSource, UrlSource};
 use crate::proj::{
@@ -41,6 +41,7 @@ pub fn sc_pkg_deps(
     let recursive = args.get_flag("recursive");
     let json = args.get_flag("json") || pkgargs.get_flag("json") || mainargs.get_flag("json");
 
+    let repos = pkg_repos_for(args)?;
     let source = parse_pkg_source(&package).inspect_err(|err| {
         OUTPUT.error(&err.to_string());
     })?;
@@ -49,7 +50,7 @@ pub fn sc_pkg_deps(
         PkgSource::Url(u) => url_root(&u)?,
         PkgSource::Local(l) => local_root(&l)?,
         PkgSource::Cran => {
-            let loader = DbSourcePackageLoader::new()?;
+            let loader = DbSourcePackageLoader::new_for_repos(&repos)?;
             let root = root_package(&loader, &package, &ver)?;
             (
                 package.clone(),
@@ -59,7 +60,7 @@ pub fn sc_pkg_deps(
         }
     };
 
-    let loader = DbSourcePackageLoader::new()?;
+    let loader = DbSourcePackageLoader::new_for_repos(&repos)?;
     if recursive {
         let (rows, num_direct) = walk_deps(&loader, &name, &deps, dev);
         if json {

@@ -17,7 +17,6 @@ use std::error::Error;
 use std::path::{Path, PathBuf};
 
 use log::debug;
-use simple_error::bail;
 
 use crate::cache::{artifact_cache_key, get_cache_dir};
 use crate::install::{format_linkingto, PackageInfo, REMOTE_SHA_FIELD};
@@ -266,7 +265,7 @@ fn built_file_name(kind: BuiltKind, name: &str, version: &str, r_platform: Optio
 ///
 /// `$R_HOME/etc/Renviron` sets it, as `R_PLATFORM=${R_PLATFORM-'<triple>'}`, and
 /// `$R_HOME` is where the `R` binary is: `<R_HOME>/bin/R`.
-fn r_platform(r_binary: &str) -> Option<String> {
+pub(crate) fn r_platform(r_binary: &str) -> Option<String> {
     let bin = Path::new(r_binary).parent()?;
     let renviron = bin.parent()?.join("etc").join("Renviron");
     let text = std::fs::read_to_string(&renviron).ok()?;

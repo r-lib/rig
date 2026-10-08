@@ -7,8 +7,8 @@ use std::process::Command;
 use clap::ArgMatches;
 use log::{error, info, trace, warn};
 use regex::Regex;
-use simple_error::*;
 
+use crate::args::is_r_script_file;
 use crate::common::*;
 use crate::output::OUTPUT;
 use crate::proj::{proj_read_manifest_opt, proj_sync, ProjSyncOptions};
@@ -16,7 +16,10 @@ use crate::rproj::Bin;
 use crate::rproj::RPROJ_MANIFEST_FILE;
 use crate::rvenv::{
     ensure_rvenv_files, find_project_root, project_r_wrapper, rscript_of, rvenv_sync_needed,
+    rvenv_wrapper_target, WrapperTarget,
 };
+use crate::script_meta::script_r_binary;
+use crate::stdout_redirect::StdoutToStderr;
 
 #[cfg(target_os = "macos")]
 use crate::macos::*;
@@ -42,11 +45,50 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
         return sc_run_list(args);
     }
 
-    let rbin = run_r_binary(args, dry_run)?;
+    let eval = args.get_one::<String>("eval");
+    let script = args.get_one::<String>("script");
+    let shell_or_cmd = args.get_flag("shell") || args.get_flag("cmd");
+
+    // `rig run script.R` is the same as `rig run -f script.R`.
+    let positional_script = !shell_or_cmd
+        && eval.is_none()
+        && script.is_none()
+        && cmdargs.first().is_some_and(|a| is_r_script_file(a));
+
+    // A script with inline metadata runs in its own environment, whether or
+    // not there is a project here.
+    let script_path = if shell_or_cmd || eval.is_some() {
+        None
+    } else if positional_script {
+        Some(cmdargs[0].clone())
+    } else {
+        script.cloned()
+    };
+    let script_rbin = match &script_path {
+        Some(path) => script_r_binary(Path::new(path), args, dry_run)?,
+        None => None,
+    };
+    if script_rbin.is_none() && (args.get_flag("upgrade") || args.contains_id("upgrade-package")) {
+        bail!("--upgrade and --upgrade-package only work for scripts with a `# /// script` block");
+    }
+    if script_rbin.is_none() && args.get_flag("locked") {
+        bail!("--locked only works for scripts with a `# /// script` block");
+    }
+
+    let (rbin, renviron_user) = match script_rbin {
+        Some(rbin) => (rscript_if_asked(args, rbin)?, user_renviron()),
+        None => (run_r_binary(args, dry_run)?, no_project_renviron_user(args)),
+    };
     let path_prepend = activate_path_prepend(args, &rbin);
+    let direct = if dry_run {
+        None
+    } else {
+        rvenv_wrapper_target(Path::new(&rbin))?
+    };
     let env = RunEnv {
         rbin,
-        renviron_user: no_project_renviron_user(args),
+        direct,
+        renviron_user,
         path_prepend,
     };
 
@@ -58,9 +100,6 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
     if args.get_flag("cmd") {
         return sc_run_cmd(env, cmdargs, dry_run);
     }
-
-    let eval = args.get_one::<String>("eval");
-    let script = args.get_one::<String>("script");
 
     // `Rscript` rejects `-q`/`--slave`: it already behaves as if they were
     // given (and always suppresses startup messages/echo), so passing them
@@ -80,9 +119,12 @@ pub fn sc_run(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<i32, Box<dyn 
     rargs.extend(crate::args::run_r_args().iter().cloned());
 
     if let Some(eval) = eval {
-        sc_run_eval(env, rargs, eval.to_string(), cmdargs, dry_run)
+        sc_run_eval(env, rargs, eval.to_string(), cmdargs, rscript, dry_run)
     } else if let Some(script) = script {
         sc_run_script(env, rargs, script.to_string(), cmdargs, rscript, dry_run)
+    } else if positional_script {
+        let script = cmdargs[0].clone();
+        sc_run_script(env, rargs, script, cmdargs[1..].to_vec(), rscript, dry_run)
     } else if !cmdargs.is_empty() {
         let app_type: Option<&String> = args.get_one("app-type");
         if cmdargs[0].contains("::") {
@@ -150,6 +192,14 @@ fn no_project_renviron_user(args: &ArgMatches) -> Option<PathBuf> {
     if !args.get_flag("no-project") {
         return None;
     }
+    user_renviron()
+}
+
+/// `~/.Renviron`, to use as `R_ENVIRON_USER` instead of a `.Renviron` in the
+/// current directory, which could belong to a project. `None` if
+/// `R_ENVIRON_USER` is already set (never override an explicit choice), or if
+/// the home directory cannot be determined.
+fn user_renviron() -> Option<PathBuf> {
     if std::env::var_os("R_ENVIRON_USER").is_some() {
         return None;
     }
@@ -158,10 +208,15 @@ fn no_project_renviron_user(args: &ArgMatches) -> Option<PathBuf> {
 }
 
 /// The R binary to run and the environment to run it in, bundled together
-/// because every `sc_run_*` execution path needs all three to build its
+/// because every `sc_run_*` execution path needs all of them to build its
 /// `Command`.
 struct RunEnv {
     rbin: String,
+    /// If `rbin` is an environment's `.rvenv/bin` wrapper, the real R binary
+    /// it forwards to and the variables it sets (see
+    /// `rvenv_wrapper_target`). Running these directly skips starting the
+    /// wrapper, `rbin` is still what dry runs and logs show.
+    direct: Option<WrapperTarget>,
     /// `R_ENVIRON_USER` override for `--no-project` (see
     /// `no_project_renviron_user`).
     renviron_user: Option<PathBuf>,
@@ -171,13 +226,20 @@ struct RunEnv {
 }
 
 impl RunEnv {
-    /// A `Command` for `rbin`, with `R_ENVIRON_USER` and `PATH` set as
+    /// A `Command` for `rbin` (or its `direct` target), with `R_ENVIRON_USER` and `PATH` set as
     /// configured. The `PATH` change is set on this one `Command` only: it
     /// never touches the parent shell's environment, but it is inherited by
     /// this process and anything it spawns (a nested shell, or R's own
     /// `system("R ...")`).
     fn command(&self) -> Command {
-        let mut cmd = Command::new(&self.rbin);
+        let mut cmd = match &self.direct {
+            Some((target, vars)) => {
+                let mut cmd = Command::new(target);
+                cmd.envs(vars.iter().map(|(k, v)| (k, v)));
+                cmd
+            }
+            None => Command::new(&self.rbin),
+        };
         if let Some(renviron) = &self.renviron_user {
             cmd.env("R_ENVIRON_USER", renviron);
         }
@@ -227,7 +289,11 @@ fn run_r_binary(args: &ArgMatches, dry_run: bool) -> Result<String, Box<dyn Erro
             get_r_binary(&rver)?.to_string_lossy().into_owned()
         }
     };
+    rscript_if_asked(args, rbin)
+}
 
+/// `Rscript` next to `rbin` under `--rscript`, otherwise `rbin` itself.
+fn rscript_if_asked(args: &ArgMatches, rbin: String) -> Result<String, Box<dyn Error>> {
     if args.get_flag("rscript") {
         Ok(rscript_of(Path::new(&rbin))
             .to_str()
@@ -301,6 +367,8 @@ fn project_r_binary(args: &ArgMatches, dry_run: bool) -> Result<Option<String>, 
             let msg = format!("Syncing the project in {}, because {}", root.display(), why);
             OUTPUT.info(&msg);
             info!("{}", msg);
+            // stdout belongs to what `rig run` runs, not to the sync.
+            let _stdout_guard = StdoutToStderr::new();
             proj_sync(&root, &ProjSyncOptions::default(), args)?;
         }
     }
@@ -586,12 +654,17 @@ fn sc_run_eval(
     args: Vec<String>,
     expr: String,
     cmdargs: Vec<String>,
+    rscript: bool,
     dry_run: bool,
 ) -> Result<i32, Box<dyn Error>> {
     let mut args2: Vec<String> = args;
     args2.push("-e".to_string());
     args2.push(expr);
-    args2.push("--args".to_string());
+    // `Rscript` passes everything after the expression to it, and it would
+    // pass `--args` on as well.
+    if !rscript {
+        args2.push("--args".to_string());
+    }
     for a in cmdargs {
         args2.push(a.to_string());
     }
@@ -625,7 +698,11 @@ fn sc_run_script(
         args2.push("-f".to_string());
     }
     args2.push(script);
-    args2.push("--args".to_string());
+    // `Rscript` passes everything after the script to it, and it would pass
+    // `--args` on as well.
+    if !rscript {
+        args2.push("--args".to_string());
+    }
     for a in cmdargs {
         args2.push(a.to_string());
     }
@@ -1129,7 +1206,11 @@ fn sc_run_package_script(
         allargs.push("-f".into());
     }
     allargs.push(script.into_os_string());
-    allargs.push("--args".into());
+    // `Rscript` passes everything after the script to it, and it would pass
+    // `--args` on as well.
+    if !rscript {
+        allargs.push("--args".into());
+    }
     for a in &cmdargs[1..] {
         allargs.push(a.into());
     }

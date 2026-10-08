@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
@@ -12,15 +13,18 @@ use rds2rust::RObject::*;
 use rds2rust::VectorData;
 use rusqlite::{params, Connection};
 use sha2::{Digest, Sha256};
-use simple_error::bail;
 use xz2::read::XzDecoder;
 use zstd::stream::read::Decoder as ZstdDecoder;
 
 use crate::cache::get_cache_dir;
 use crate::dcf::*;
-use crate::download::{download_first_available_, fetch_range_suffix_, RangeFetch};
+use crate::download::{
+    download_first_available_, fetch_optional_if_modified_, fetch_range_suffix_, ConditionalFetch,
+    RangeFetch,
+};
 use crate::output::OUTPUT;
 use crate::rds::*;
+use crate::repos::feed::{CranlikeRepo, MetadataFeed, PkgRepo, RepoFilter, RepoId};
 use crate::solver::PackageVersionLoader;
 use crate::utils::{calculate_hash, create_parent_dir_if_needed};
 
@@ -115,44 +119,348 @@ pub(crate) fn cranlike_urls(repo_url: &str, path: &str) -> [String; 3] {
     ]
 }
 
-/// Downloads/refreshes the shared ALLPACKAGES cache if stale. `rig proj lock`
-/// calls this once, sequentially, before fanning solves for several targets
-/// out to threads, so those threads only ever read the cache (via
-/// `DbSourcePackageLoader::new`, which also calls this but then finds
-/// nothing to download).
-pub(crate) fn ensure_allpackages_fresh() -> Result<(), Box<dyn Error>> {
-    let url = allpackages_url();
+/// Downloads/refreshes the ALLPACKAGES and ARCHIVEDPACKAGES caches of `feed`
+/// if stale.
+fn ensure_feed_fresh(feed: &MetadataFeed) -> Result<(), Box<dyn Error>> {
+    let url = feed.allpackages_url.as_str();
     ensure_packages_cached(
-        &[url.as_str()],
-        &url,
-        &url,
+        &[url],
+        url,
+        url,
         "source",
         None,
         "ALLPACKAGES",
         Feed::Cranlike,
+        &feed_display_name(feed),
     )?;
-    ensure_archived_fresh()?;
+    ensure_archived_fresh(feed)?;
     Ok(())
 }
 
-fn ensure_archived_fresh() -> Result<(), Box<dyn Error>> {
-    let url = archivedpackages_url();
+fn ensure_archived_fresh(feed: &MetadataFeed) -> Result<(), Box<dyn Error>> {
+    let url = feed.archived_url.as_str();
     ensure_packages_cached(
-        &[url.as_str()],
-        &url,
-        &url,
+        &[url],
+        url,
+        url,
         "source",
         None,
         "ARCHIVEDPACKAGES",
         Feed::Archived,
+        &feed_display_name(feed),
     )?;
     Ok(())
 }
 
+/// The name of `feed` in status messages.
+fn feed_display_name(feed: &MetadataFeed) -> String {
+    match &feed.repo {
+        RepoId::Cran => "P3M".to_string(),
+        RepoId::Bioc(v) => format!("Bioconductor {}", v),
+        RepoId::Cranlike { name, .. } => name.clone(),
+    }
+}
+
+lazy_static::lazy_static! {
+    /// The Bioconductor feeds that failed to load in this process. They are
+    /// not tried again, so that the solves of several targets do not each
+    /// download (and warn about) the same missing feed.
+    static ref FAILED_FEEDS: std::sync::Mutex<std::collections::HashSet<String>> =
+        std::sync::Mutex::new(std::collections::HashSet::new());
+
+    /// The repositories whose metadata update was already reported in this
+    /// process, see [`announce_update`].
+    static ref ANNOUNCED_REPOS: std::sync::Mutex<std::collections::HashSet<String>> =
+        std::sync::Mutex::new(std::collections::HashSet::new());
+}
+
+/// Report that the metadata of repository `name` is being updated, once per
+/// process. A repository has several metadata files (e.g. a source and a
+/// binary index), and they should not each print a line.
+fn announce_update(name: &str) {
+    if ANNOUNCED_REPOS.lock().unwrap().insert(name.to_string()) {
+        OUTPUT.status(&format!("Updating metadata of repository {}", name));
+    }
+}
+
+/// Downloads/refreshes the caches of `feeds` if stale, and returns the feeds
+/// that are usable. `rig proj lock` calls this once, sequentially, before
+/// fanning solves for several targets out to threads, so those threads only
+/// ever read the cache (via [`DbSourcePackageLoader::new_for`], which also
+/// calls this but then finds nothing to download).
+///
+/// CRAN's feed must load. A Bioconductor feed that fails to load (e.g. a
+/// release older than the metadata server has) is dropped with a warning, and
+/// the solve goes on with CRAN only.
+pub(crate) fn ensure_feeds_fresh(
+    feeds: &[MetadataFeed],
+) -> Result<Vec<MetadataFeed>, Box<dyn Error>> {
+    let mut out = vec![];
+    for feed in feeds {
+        if !feed.repo.is_bioc() {
+            ensure_feed_fresh(feed)?;
+            out.push(feed.clone());
+            continue;
+        }
+        if FAILED_FEEDS.lock().unwrap().contains(&feed.allpackages_url) {
+            continue;
+        }
+        match ensure_feed_fresh(feed) {
+            Ok(()) => out.push(feed.clone()),
+            Err(e) => {
+                warn!(
+                    "Cannot load Bioconductor metadata from {}, using CRAN only: {}",
+                    feed.allpackages_url, e
+                );
+                OUTPUT.warn(&format!(
+                    "Cannot load Bioconductor {} metadata, using CRAN packages only.",
+                    feed.repo
+                ));
+                FAILED_FEEDS
+                    .lock()
+                    .unwrap()
+                    .insert(feed.allpackages_url.clone());
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// The database key of the `PACKAGES` index at `path` (e.g. `src/contrib`)
+/// in a CRAN-like repository: its full URL, which is unique per repository,
+/// package type and R version.
+pub(crate) fn cranlike_key(repo: &CranlikeRepo, path: &str) -> String {
+    format!("{}/{}", repo.url, path)
+}
+
+/// Ensure the source index of each of `repos` is fresh in the database, and
+/// return the repositories that are usable. A repository whose index cannot
+/// be loaded is dropped with a warning.
+fn ensure_cranlike_sources_fresh(repos: &[PkgRepo]) -> Vec<PkgRepo> {
+    let mut out = vec![];
+    for repo in repos {
+        let PkgRepo::Cranlike(cranlike) = repo else {
+            out.push(repo.clone());
+            continue;
+        };
+        let key = cranlike_key(cranlike, "src/contrib");
+        if FAILED_FEEDS.lock().unwrap().contains(&key) {
+            continue;
+        }
+        match ensure_cranlike_index(cranlike, "src/contrib", "source", None, ".tar.gz") {
+            Ok(()) => out.push(repo.clone()),
+            Err(e) => {
+                warn!("Cannot load package metadata from {}: {}", key, e);
+                OUTPUT.warn(&format!(
+                    "Cannot load package metadata from repository {}, skipping it.",
+                    cranlike.name
+                ));
+                FAILED_FEEDS.lock().unwrap().insert(key);
+            }
+        }
+    }
+    out
+}
+
+/// Ensure the `PACKAGES` index at `path` of a CRAN-like repository is in the
+/// database and fresh (24h), downloading it if needed.
+///
+/// `pkg_type` is `source` or a binary type, e.g. `mac.binary.big-sur-arm64`,
+/// `r_version` the minor R version of a binary index, and `ext` the file
+/// extension of the packages, used to build their download URLs.
+///
+/// A repository without this index (404 for both `PACKAGES.gz` and
+/// `PACKAGES`) is stored as an empty index, so that a repository without
+/// binaries is not asked again for a day. Unlike ALLPACKAGES, a `PACKAGES`
+/// file is rewritten, not appended to, so it is always downloaded in full.
+pub(crate) fn ensure_cranlike_index(
+    repo: &CranlikeRepo,
+    path: &str,
+    pkg_type: &str,
+    r_version: Option<&str>,
+    ext: &str,
+) -> Result<(), Box<dyn Error>> {
+    let key = cranlike_key(repo, path);
+    let db = metadata_db_file()?;
+    ensure_db_schema(&db)?;
+    if is_repo_cache_recent(&db, &key, pkg_type).unwrap_or(false) {
+        debug!("Metadata of {} is up to date (cached)", key);
+        return Ok(());
+    }
+
+    announce_update(&repo.name);
+    let etag = get_repo_etag(&db, &key, pkg_type).ok();
+    for file in ["PACKAGES.gz", "PACKAGES"] {
+        let url = format!("{}/{}", key, file);
+        match fetch_optional_if_modified_(&url, etag.as_deref(), None)? {
+            ConditionalFetch::NotFound => continue,
+            ConditionalFetch::NotModified => {
+                touch_repo_last_updated(&db, &key, pkg_type)?;
+                return Ok(());
+            }
+            ConditionalFetch::Fetched { bytes, etag } => {
+                let data = decompress_gzip_maybe(bytes)?;
+                let packages = parse_cranlike_packages(&data, repo, path, ext)?;
+                info!("Parsed {} packages from {}", packages.len(), url);
+                save_packages_to_db(
+                    &packages,
+                    &db,
+                    &key,
+                    r_version,
+                    pkg_type,
+                    path,
+                    etag.as_deref(),
+                    true,
+                    None,
+                )?;
+                return Ok(());
+            }
+        }
+    }
+
+    debug!("No PACKAGES file at {}", key);
+    save_packages_to_db(
+        &vec![],
+        &db,
+        &key,
+        r_version,
+        pkg_type,
+        path,
+        None,
+        true,
+        None,
+    )?;
+    Ok(())
+}
+
+fn decompress_gzip_maybe(bytes: Vec<u8>) -> Result<Vec<u8>, Box<dyn Error>> {
+    if bytes.len() >= 2 && bytes[0..2] == [0x1f, 0x8b] {
+        let mut data = Vec::new();
+        GzDecoder::new(bytes.as_slice()).read_to_end(&mut data)?;
+        Ok(data)
+    } else {
+        Ok(bytes)
+    }
+}
+
+/// Parse the `PACKAGES` file of a CRAN-like repository, at `path` in `repo`.
+///
+/// The packages get a download URL, unless the index has one (`DownloadURL`):
+/// `File` or `<package>_<version><ext>` in the directory of the index, or in
+/// its `Path` subdirectory. Their `sha256sum` is the `SHA256` checksum of the
+/// file, or else its `MD5sum`: there is no upstream CRAN tarball here, so the
+/// file itself is the identity of the package. If it changes, the package is
+/// reinstalled, even if its version is the same. A package without either
+/// checksum has no hash, and an installed package of the same version counts
+/// as up to date.
+fn parse_cranlike_packages(
+    data: &[u8],
+    repo: &CranlikeRepo,
+    path: &str,
+    ext: &str,
+) -> Result<Vec<Package>, Box<dyn Error>> {
+    let paragraphs = parse_dcf_reader(data)?;
+    let mut packages = vec![];
+    for para in paragraphs.iter() {
+        let mut pkg = match Package::from_dcf_paragraph(para) {
+            Ok(pkg) => pkg,
+            Err(e) => {
+                debug!(
+                    "Skipping unparseable package metadata in {}: {}",
+                    repo.url, e
+                );
+                continue;
+            }
+        };
+        if pkg.download_url.is_none() {
+            let file = pkg
+                .file
+                .clone()
+                .unwrap_or_else(|| format!("{}_{}{}", pkg.name, pkg.version.original, ext));
+            let dir = match &pkg.path {
+                Some(sub) => format!("{}/{}/{}", repo.url, path, sub.trim_matches('/')),
+                None => format!("{}/{}", repo.url, path),
+            };
+            pkg.download_url = Some(format!("{}/{}", dir, file));
+        }
+        if pkg.sha256sum.is_none() {
+            pkg.sha256sum = para
+                .get("SHA256")
+                .or_else(|| para.get("MD5sum"))
+                .map(|s| s.trim().to_string());
+        }
+        packages.push(pkg);
+    }
+    Ok(packages)
+}
+
+/// One package version in the `PACKAGES` index of a CRAN-like repository.
+#[derive(Debug, Clone)]
+pub(crate) struct CranlikeRow {
+    pub version: RPackageVersion,
+    pub download_url: Option<String>,
+    pub checksum: Option<String>,
+    /// The timestamp of the `Built` field, e.g. `2025-06-20 10:00:00 UTC`.
+    pub built: Option<String>,
+}
+
+/// The timestamp of a `Built` field, as stored in the database, as JSON.
+fn built_timestamp(json: Option<&str>) -> Option<String> {
+    let built: DCFBuilt = serde_json::from_str(json?).ok()?;
+    Some(built.timestamp).filter(|t| !t.is_empty())
+}
+
+/// The versions of `package` in the index with database key `key` (see
+/// [`cranlike_key`]), from the cache, without refreshing it.
+pub(crate) fn cranlike_index_rows(
+    conn: &Connection,
+    key: &str,
+    pkg_type: &str,
+    package: &str,
+) -> Result<Vec<CranlikeRow>, Box<dyn Error>> {
+    let repo_ids = source_repo_ids(conn, key, pkg_type)?;
+    let mut stmt = conn.prepare_cached(
+        "SELECT version, download_url, sha256sum, repo_id, built FROM packages WHERE name = ?1",
+    )?;
+    let rows = stmt.query_map(params![package], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, Option<String>>(1)?,
+            row.get::<_, Option<String>>(2)?,
+            row.get::<_, i64>(3)?,
+            row.get::<_, Option<String>>(4)?,
+        ))
+    })?;
+    let mut out = vec![];
+    for row in rows {
+        let (ver, download_url, checksum, repo_id, built) = row?;
+        if !repo_ids.contains(&repo_id) {
+            continue;
+        }
+        out.push(CranlikeRow {
+            version: RPackageVersion::from_str(&ver)?,
+            download_url,
+            checksum,
+            built: built_timestamp(built.as_deref()),
+        });
+    }
+    Ok(out)
+}
+
+/// The database key and package type of the source index of a repository,
+/// as stored by [`ensure_feeds_fresh`] or [`ensure_cranlike_index`].
+fn source_index_key(repo: &PkgRepo) -> String {
+    match repo {
+        PkgRepo::Extended(feed) => feed.allpackages_url.clone(),
+        PkgRepo::Cranlike(cranlike) => cranlike_key(cranlike, "src/contrib"),
+    }
+}
+
 /// A [`PackageVersionLoader`] backed by the shared SQLite database. It queries a
-/// single package's versions on demand from the ALLPACKAGES history, so the
-/// solver only materializes the packages it actually visits instead of the whole
-/// CRAN version history.
+/// single package's versions on demand from the ALLPACKAGES histories of its
+/// feeds (CRAN, and possibly a Bioconductor release), so the solver only
+/// materializes the packages it actually visits instead of the whole version
+/// history.
 ///
 /// ALLPACKAGES already lists every version of every package ever published on
 /// CRAN, including the current ones, so the current `PACKAGES` file of a CRAN
@@ -160,24 +468,149 @@ fn ensure_archived_fresh() -> Result<(), Box<dyn Error>> {
 /// between the last ALLPACKAGES rebuild and now.
 pub struct DbSourcePackageLoader {
     conn: Connection,
-    /// repo ids of the ALLPACKAGES history to search.
-    repo_ids: Vec<i64>,
+    /// repo ids of the indices to search, with the position of the
+    /// repository they belong to in [`DbSourcePackageLoader::repos`].
+    repo_ids: Vec<(i64, usize)>,
+    /// The repositories to search, in order: if several of them have the same
+    /// version of a package, the first one wins.
+    repos: Vec<RepoId>,
+    /// `--exclude-newer` cutoff day, `YYYY-MM-DD`: versions whose snapshot
+    /// date is after it are hidden from the solver.
+    exclude_newer: Option<String>,
+    /// The repositories each package may come from, see [`RepoFilter`].
+    filter: RepoFilter,
+    /// The OS the solve is for: versions whose `OS_type` does not work on
+    /// it are hidden from the solver. `None` keeps every version, e.g. for a
+    /// source-only lock, which may be installed on any OS.
+    os_type: Option<OsType>,
+    /// The packages `os_type` hid every version of, with their `OS_type`,
+    /// see [`PackageVersionLoader::os_type_hidden`].
+    os_type_hidden: RefCell<HashMap<String, String>>,
 }
 
 impl DbSourcePackageLoader {
-    /// Ensure the metadata is fresh in the database, then open a connection
-    /// ready to serve per-package queries.
-    pub fn new() -> Result<Self, Box<dyn Error>> {
-        ensure_allpackages_fresh()?;
-
-        let repo_local = repo_local_file(&allpackages_url())?;
-        let repo_db = repo_db_file(&repo_local)?;
-        let conn = open_db(&repo_db)?;
-
-        let repo_ids = source_repo_ids(&conn, &allpackages_url(), "source")?;
-
-        Ok(DbSourcePackageLoader { conn, repo_ids })
+    /// A loader for `repos`, extended feeds and CRAN-like repositories, in
+    /// order of precedence. A repository that fails to load is not searched,
+    /// except for CRAN's feed, which must load.
+    pub fn new_for_repos(repos: &[PkgRepo]) -> Result<Self, Box<dyn Error>> {
+        let repos = ensure_repos_fresh(repos)?;
+        let conn = open_metadata_db()?;
+        let mut repo_ids = vec![];
+        for (idx, repo) in repos.iter().enumerate() {
+            for id in source_repo_ids(&conn, &source_index_key(repo), "source")? {
+                repo_ids.push((id, idx));
+            }
+        }
+        Ok(DbSourcePackageLoader {
+            conn,
+            repo_ids,
+            repos: repos.iter().map(|r| r.repo_id()).collect(),
+            exclude_newer: None,
+            filter: RepoFilter::default(),
+            os_type: None,
+            os_type_hidden: RefCell::new(HashMap::new()),
+        })
     }
+
+    /// A loader for the indices with database keys `keys`, in order of
+    /// precedence, on an open connection, without refreshing anything.
+    #[cfg(test)]
+    fn from_conn(conn: Connection, keys: &[(&str, RepoId)]) -> Self {
+        let mut repo_ids = vec![];
+        for (idx, (key, _)) in keys.iter().enumerate() {
+            for id in source_repo_ids(&conn, key, "source").unwrap() {
+                repo_ids.push((id, idx));
+            }
+        }
+        DbSourcePackageLoader {
+            conn,
+            repo_ids,
+            repos: keys.iter().map(|(_, repo)| repo.clone()).collect(),
+            exclude_newer: None,
+            filter: RepoFilter::default(),
+            os_type: None,
+            os_type_hidden: RefCell::new(HashMap::new()),
+        }
+    }
+
+    /// Hide the versions published after `cutoff` (`YYYY-MM-DD`), see
+    /// [`crate::exclude_newer`]. `None` keeps every version.
+    pub fn with_exclude_newer(mut self, cutoff: Option<String>) -> Self {
+        self.exclude_newer = cutoff;
+        self
+    }
+
+    /// Hide the versions that do not work on `os_type`, according to their
+    /// `OS_type` field. `None` keeps every version.
+    pub fn with_os_type(mut self, os_type: Option<OsType>) -> Self {
+        self.os_type = os_type;
+        self
+    }
+
+    /// Limit the repositories each package may come from, see
+    /// [`RepoFilter`].
+    pub fn with_repo_filter(mut self, filter: RepoFilter) -> Self {
+        self.filter = filter;
+        self
+    }
+
+    /// The repositories this loader searches, in order.
+    pub fn repositories(&self) -> Vec<RepoId> {
+        self.repos.clone()
+    }
+
+    /// The position and the repository of a database repo id.
+    fn repo_of(&self, repo_id: i64) -> Option<(usize, &RepoId)> {
+        self.repo_ids
+            .iter()
+            .find(|(id, _)| *id == repo_id)
+            .map(|(_, idx)| (*idx, &self.repos[*idx]))
+    }
+}
+
+/// Ensure the metadata of `repos` is fresh, and return the usable ones, in
+/// order, see [`ensure_feeds_fresh`] and [`ensure_cranlike_sources_fresh`].
+pub(crate) fn ensure_repos_fresh(repos: &[PkgRepo]) -> Result<Vec<PkgRepo>, Box<dyn Error>> {
+    let usable_feeds = ensure_feeds_fresh(&PkgRepo::feeds(repos))?;
+    let repos: Vec<PkgRepo> = repos
+        .iter()
+        .filter(|r| match r {
+            PkgRepo::Extended(feed) => usable_feeds.contains(feed),
+            PkgRepo::Cranlike(_) => true,
+        })
+        .cloned()
+        .collect();
+    Ok(ensure_cranlike_sources_fresh(&repos))
+}
+
+/// The shared metadata database, the same file every feed is cached in.
+pub(crate) fn open_metadata_db() -> Result<Connection, Box<dyn Error>> {
+    open_db(metadata_db_file()?)
+}
+
+fn metadata_db_file() -> Result<PathBuf, Box<dyn Error>> {
+    let repo_local = repo_local_file(&MetadataFeed::cran().allpackages_url)?;
+    repo_db_file(&repo_local)
+}
+
+/// The P3M snapshot date, `YYYY-MM-DD`, in an ALLPACKAGES `DownloadURL`, e.g.
+/// `2026-06-08` for
+/// `https://p3m.dev/cran/2026-06-08/src/contrib/pak_0.10.0.tar.gz`. This is
+/// the date the version was first published in a snapshot.
+pub fn snapshot_date(url: &str) -> Option<&str> {
+    lazy_static::lazy_static! {
+        static ref SNAPSHOT: regex::Regex = regex::Regex::new(r"/(\d{4}-\d{2}-\d{2})/").unwrap();
+    }
+    Some(SNAPSHOT.captures(url)?.get(1)?.as_str())
+}
+
+/// Whether a version with `download_url` is published on or before `cutoff`
+/// (`YYYY-MM-DD`). Versions without a snapshot date are kept.
+fn published_by(download_url: Option<&str>, cutoff: Option<&str>) -> bool {
+    let (Some(cutoff), Some(date)) = (cutoff, download_url.and_then(snapshot_date)) else {
+        return true;
+    };
+    date <= cutoff
 }
 
 /// Resolve the repo id(s) for a given `(url, pkg_type)` in the shared database.
@@ -204,9 +637,33 @@ impl PackageVersionLoader for DbSourcePackageLoader {
         // upstream CRAN tarball, which `rig pkg install` records in the
         // installed package as `RemoteHash`. It is the only source of that hash
         // on a source-only solve, where no binary index is loaded at all.
-        let mut best: HashMap<String, (String, Option<String>)> = HashMap::new();
+        // `system_requirements` too: the lockfile records it, so that
+        // `rig proj sync` can install the OS packages a Linux install needs.
+        //
+        // A package may be in several repositories: the solver sees the
+        // versions of all of them, and if the same version is in several, the
+        // row of the first repository wins.
+        struct Row {
+            deps_json: String,
+            sha256sum: Option<String>,
+            download_url: Option<String>,
+            system_requirements: Option<String>,
+            // Only for a CRAN-like repository, to reinstall a newer build.
+            built: Option<String>,
+            os_type: Option<String>,
+            repo: RepoId,
+            rank: usize,
+        }
+        let mut best: HashMap<String, Row> = HashMap::new();
+        // The `SystemRequirements` of each version, from any repository. A
+        // CRAN-like `PACKAGES` file, e.g. CRAN's own, usually does not have
+        // them, so a version from there takes them from P3M's metadata.
+        let mut sysreqs_any: HashMap<String, String> = HashMap::new();
+        // The `OS_type` of a version hidden because of it, if any.
+        let mut hidden_os_type: Option<String> = None;
         let mut stmt = self.conn.prepare_cached(
-            "SELECT version, dependencies, sha256sum, repo_id FROM packages WHERE name = ?1",
+            "SELECT version, dependencies, sha256sum, repo_id, download_url, \
+             system_requirements, built, os_type FROM packages WHERE name = ?1",
         )?;
         let rows = stmt.query_map(params![package], |row| {
             Ok((
@@ -214,26 +671,96 @@ impl PackageVersionLoader for DbSourcePackageLoader {
                 row.get::<_, String>(1)?,
                 row.get::<_, Option<String>>(2)?,
                 row.get::<_, i64>(3)?,
+                row.get::<_, Option<String>>(4)?,
+                row.get::<_, Option<String>>(5)?,
+                row.get::<_, Option<String>>(6)?,
+                row.get::<_, Option<String>>(7)?,
             ))
         })?;
         for row in rows {
-            let (ver, deps_json, sha256sum, repo_id) = row?;
-            if !self.repo_ids.contains(&repo_id) {
+            let (ver, deps_json, sha256sum, repo_id, download_url, sysreqs, built, os_type) = row?;
+            let Some((rank, repo)) = self.repo_of(repo_id) else {
                 continue; // row from a repo we do not source from
+            };
+            if self
+                .os_type
+                .is_some_and(|os| !os.allows(os_type.as_deref()))
+            {
+                hidden_os_type = os_type;
+                continue; // does not work on the target OS
             }
-            best.entry(ver).or_insert((deps_json, sha256sum));
+            if !published_by(download_url.as_deref(), self.exclude_newer.as_deref()) {
+                continue; // published after the --exclude-newer cutoff
+            }
+            if let Some(s) = &sysreqs {
+                sysreqs_any.entry(ver.clone()).or_insert_with(|| s.clone());
+            }
+            if !self.filter.allows(package, repo) {
+                continue; // pinned to another repo, or an explicit repo
+            }
+            if best.get(&ver).is_some_and(|b| b.rank <= rank) {
+                continue;
+            }
+            best.insert(
+                ver,
+                Row {
+                    deps_json,
+                    sha256sum,
+                    download_url,
+                    system_requirements: sysreqs,
+                    built: built.filter(|_| repo.is_cranlike()),
+                    os_type,
+                    repo: repo.clone(),
+                    rank,
+                },
+            );
         }
 
         let mut out: Vec<Package> = Vec::with_capacity(best.len());
-        for (ver, (deps_json, sha256sum)) in best {
+        for (ver, row) in best {
             let version = RPackageVersion::from_str(&ver)?;
-            let deps: PackageDependencies = serde_json::from_str(&deps_json)?;
+            let deps: PackageDependencies = serde_json::from_str(&row.deps_json)?;
             let mut pkg = Package::from_crandb(package.to_string(), version, deps.dependencies);
-            pkg.sha256sum = sha256sum;
+            pkg.sha256sum = row.sha256sum;
+            pkg.download_url = row.download_url;
+            pkg.built = row
+                .built
+                .and_then(|b| serde_json::from_str::<DCFBuilt>(&b).ok());
+            pkg.system_requirements = row
+                .system_requirements
+                .or_else(|| sysreqs_any.get(&ver).cloned());
+            pkg.os_type = row.os_type;
+            pkg.repository = Some(row.repo);
             out.push(pkg);
+        }
+        if let (true, Some(os_type)) = (out.is_empty(), hidden_os_type) {
+            self.os_type_hidden
+                .borrow_mut()
+                .insert(package.to_string(), os_type);
         }
         Ok(out)
     }
+
+    fn os_type_hidden(&self, package: &str) -> Option<String> {
+        self.os_type_hidden.borrow().get(package).cloned()
+    }
+}
+
+/// The names of the packages in `feed`'s ALLPACKAGES history, from the
+/// cache, without refreshing it.
+pub fn feed_package_names(
+    feed: &MetadataFeed,
+) -> Result<std::collections::HashSet<String>, Box<dyn Error>> {
+    let conn = open_metadata_db()?;
+    let repo_ids = source_repo_ids(&conn, &feed.allpackages_url, "source")?;
+    let mut out = std::collections::HashSet::new();
+    let mut stmt = conn.prepare_cached("SELECT DISTINCT name FROM packages WHERE repo_id = ?1")?;
+    for id in repo_ids {
+        for name in stmt.query_map(params![id], |row| row.get::<_, String>(0))? {
+            out.insert(name?);
+        }
+    }
+    Ok(out)
 }
 
 /// One version of a package in the ALLPACKAGES history, with the fields that
@@ -252,21 +779,18 @@ impl AllPackagesVersion {
     /// The P3M snapshot date the version was published in, as `YYYY-MM-DD`,
     /// taken from the date component of [`Self::download_url`].
     pub fn snapshot(&self) -> Option<String> {
-        let url = self.download_url.as_deref()?;
-        let re = regex::Regex::new(r"/(\d{4}-\d{2}-\d{2})/").ok()?;
-        Some(re.captures(url)?.get(1)?.as_str().to_string())
+        snapshot_date(self.download_url.as_deref()?).map(|s| s.to_string())
     }
 }
 
 /// Every version of `package` in the ALLPACKAGES history, refreshing the
 /// metadata first if the cache is stale.
 pub fn allpackages_versions(package: &str) -> Result<Vec<AllPackagesVersion>, Box<dyn Error>> {
-    ensure_allpackages_fresh()?;
+    let feed = MetadataFeed::cran();
+    ensure_feed_fresh(&feed)?;
 
-    let repo_local = repo_local_file(&allpackages_url())?;
-    let repo_db = repo_db_file(&repo_local)?;
-    let conn = open_db(&repo_db)?;
-    let repo_ids = source_repo_ids(&conn, &allpackages_url(), "source")?;
+    let conn = open_metadata_db()?;
+    let repo_ids = source_repo_ids(&conn, &feed.allpackages_url, "source")?;
 
     // Query by name only, for the same reason as `load_versions()` above: it
     // keeps SQLite on the `(name, ...)` index instead of scanning the whole
@@ -299,24 +823,69 @@ pub fn allpackages_versions(package: &str) -> Result<Vec<AllPackagesVersion>, Bo
     Ok(out)
 }
 
-/// Every package on CRAN, at its latest version, from the shared ALLPACKAGES
-/// history, refreshing the metadata first if the cache is stale.
+/// Every package of `repos`, at its latest version, from the shared metadata
+/// database, refreshing the metadata first if the cache is stale.
 ///
 /// ALLPACKAGES keeps the full history of every version ever published,
-/// archived or not, so packages CRAN has archived are omitted by cross
-/// referencing ARCHIVEDPACKAGES, unless `include_archived` is set.
-pub fn all_available_packages(include_archived: bool) -> Result<Vec<Package>, Box<dyn Error>> {
-    ensure_allpackages_fresh()?;
+/// archived or not, so packages a feed has archived are omitted by cross
+/// referencing its ARCHIVEDPACKAGES, unless `include_archived` is set. A
+/// package archived in one feed is still listed if it is alive in another
+/// repository. The `PACKAGES` index of a CRAN-like repository only lists its
+/// current packages. A package in several repositories is listed at its
+/// highest version, and on a tie with the version of the first repository.
+pub fn all_available_packages(
+    repos: &[PkgRepo],
+    include_archived: bool,
+    os_type: Option<OsType>,
+) -> Result<Vec<Package>, Box<dyn Error>> {
+    let repos = ensure_repos_fresh(repos)?;
+    let conn = open_metadata_db()?;
 
-    let repo_local = repo_local_file(&allpackages_url())?;
-    let repo_db = repo_db_file(&repo_local)?;
-    let conn = open_db(&repo_db)?;
-    let repo_ids = source_repo_ids(&conn, &allpackages_url(), "source")?;
+    let mut best: HashMap<String, (RPackageVersion, String, RepoId)> = HashMap::new();
+    for repo in &repos {
+        let feed_best = feed_latest_packages(&conn, &source_index_key(repo), os_type)?;
+        let archived = match repo {
+            PkgRepo::Extended(feed) if !include_archived => {
+                feed_archived_names(&conn, &feed.archived_url)?
+            }
+            _ => std::collections::HashSet::new(),
+        };
+        for (name, (version, deps_json)) in feed_best {
+            if archived.contains(&name) {
+                continue;
+            }
+            let better = match best.get(&name) {
+                None => true,
+                Some((v, _, _)) => version > *v,
+            };
+            if better {
+                best.insert(name, (version, deps_json, repo.repo_id()));
+            }
+        }
+    }
 
+    let mut out = Vec::with_capacity(best.len());
+    for (name, (version, deps_json, repo)) in best {
+        let deps: PackageDependencies = serde_json::from_str(&deps_json)?;
+        let mut pkg = Package::from_crandb(name, version, deps.dependencies);
+        pkg.repository = Some(repo);
+        out.push(pkg);
+    }
+    Ok(out)
+}
+
+/// `name -> (latest version, dependencies JSON)` of the ALLPACKAGES feed at
+/// `url`, of the versions that work on `os_type`, if given.
+fn feed_latest_packages(
+    conn: &Connection,
+    url: &str,
+    os_type: Option<OsType>,
+) -> Result<HashMap<String, (RPackageVersion, String)>, Box<dyn Error>> {
+    let repo_ids = source_repo_ids(conn, url, "source")?;
     let mut best: HashMap<String, (RPackageVersion, String)> = HashMap::new();
     let placeholders = repo_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
     let sql = format!(
-        "SELECT name, version, dependencies FROM packages WHERE repo_id IN ({})",
+        "SELECT name, version, dependencies, os_type FROM packages WHERE repo_id IN ({})",
         placeholders
     );
     let mut stmt = conn.prepare(&sql)?;
@@ -329,10 +898,14 @@ pub fn all_available_packages(include_archived: bool) -> Result<Vec<Package>, Bo
             row.get::<_, String>(0)?,
             row.get::<_, String>(1)?,
             row.get::<_, String>(2)?,
+            row.get::<_, Option<String>>(3)?,
         ))
     })?;
     for row in rows {
-        let (name, ver, deps_json) = row?;
+        let (name, ver, deps_json, pkg_os_type) = row?;
+        if os_type.is_some_and(|os| !os.allows(pkg_os_type.as_deref())) {
+            continue;
+        }
         let version = RPackageVersion::from_str(&ver)?;
         match best.get(&name) {
             Some((best_version, _)) if *best_version >= version => {}
@@ -341,50 +914,31 @@ pub fn all_available_packages(include_archived: bool) -> Result<Vec<Package>, Bo
             }
         }
     }
-
-    let archived: std::collections::HashSet<String> = if include_archived {
-        std::collections::HashSet::new()
-    } else {
-        let archived_repo_ids = source_repo_ids(&conn, &archivedpackages_url(), "source")?;
-        let placeholders = archived_repo_ids
-            .iter()
-            .map(|_| "?")
-            .collect::<Vec<_>>()
-            .join(",");
-        let sql = format!(
-            "SELECT DISTINCT name FROM archived_packages WHERE repo_id IN ({})",
-            placeholders
-        );
-        let mut stmt = conn.prepare(&sql)?;
-        let sql_params: Vec<&dyn rusqlite::ToSql> = archived_repo_ids
-            .iter()
-            .map(|id| id as &dyn rusqlite::ToSql)
-            .collect();
-        let rows = stmt.query_map(sql_params.as_slice(), |row| row.get::<_, String>(0))?;
-        rows.collect::<Result<_, _>>()?
-    };
-
-    let mut out = Vec::with_capacity(best.len());
-    for (name, (version, deps_json)) in best {
-        if archived.contains(&name) {
-            continue;
-        }
-        let deps: PackageDependencies = serde_json::from_str(&deps_json)?;
-        out.push(Package::from_crandb(name, version, deps.dependencies));
-    }
-    Ok(out)
+    Ok(best)
 }
 
-/// URL of the CRAN-wide ALLPACKAGES metadata (every version of every package
-/// ever published on CRAN), overridable via the `RIG_ALLPACKAGES_URL` env var.
-fn allpackages_url() -> String {
-    std::env::var("RIG_ALLPACKAGES_URL")
-        .unwrap_or_else(|_| "https://ppm.r-pkg.org/ALLPACKAGES.zst".to_string())
-}
-
-fn archivedpackages_url() -> String {
-    std::env::var("RIG_ARCHIVEDPACKAGES_URL")
-        .unwrap_or_else(|_| "https://ppm.r-pkg.org/ARCHIVEDPACKAGES.zst".to_string())
+/// The names of the packages in the ARCHIVEDPACKAGES feed at `url`.
+fn feed_archived_names(
+    conn: &Connection,
+    url: &str,
+) -> Result<std::collections::HashSet<String>, Box<dyn Error>> {
+    let archived_repo_ids = source_repo_ids(conn, url, "source")?;
+    let placeholders = archived_repo_ids
+        .iter()
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(",");
+    let sql = format!(
+        "SELECT DISTINCT name FROM archived_packages WHERE repo_id IN ({})",
+        placeholders
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let sql_params: Vec<&dyn rusqlite::ToSql> = archived_repo_ids
+        .iter()
+        .map(|id| id as &dyn rusqlite::ToSql)
+        .collect();
+    let rows = stmt.query_map(sql_params.as_slice(), |row| row.get::<_, String>(0))?;
+    Ok(rows.collect::<Result<_, _>>()?)
 }
 
 #[derive(Debug, Clone)]
@@ -395,11 +949,12 @@ pub struct ArchivedPackage {
 
 /// Whether CRAN has archived `package`, and if so when.
 pub fn archived_package(package: &str) -> Result<Option<ArchivedPackage>, Box<dyn Error>> {
-    ensure_archived_fresh()?;
+    let feed = MetadataFeed::cran();
+    ensure_archived_fresh(&feed)?;
 
-    let repo_local = repo_local_file(&archivedpackages_url())?;
+    let repo_local = repo_local_file(&feed.archived_url)?;
     let repo_db = repo_db_file(&repo_local)?;
-    archived_package_in_db(&repo_db, &archivedpackages_url(), package)
+    archived_package_in_db(&repo_db, &feed.archived_url, package)
 }
 
 /// The `archived_packages` row of `package` for the feed at `feed_url`, without
@@ -663,6 +1218,7 @@ fn ensure_packages_cached(
     r_version: Option<&str>,
     path: &str,
     feed: Feed,
+    display_name: &str,
 ) -> Result<CacheState, Box<dyn Error>> {
     // Use a temporary file for downloads (will be deleted after parsing)
     let repo_local = repo_local_file(cache_key)?;
@@ -681,7 +1237,6 @@ fn ensure_packages_cached(
         }
         Err(_) => {
             // No database entry, need to download
-            OUTPUT.status("Updating repository metadata");
             info!("No database cache found, will download");
             true
         }
@@ -694,10 +1249,16 @@ fn ensure_packages_cached(
         // storing it: the cached download file then looks fresh while the
         // database is empty. Recover by forcing a fresh download rather than
         // dead-ending on a "database is corrupt" error.
-        if repo_has_packages(&repo_db, repo_url_key, pkg_type, feed)? {
+        // A recorded parse progress also counts: it is written in the same
+        // transaction as the rows, and a feed may have no rows at all (e.g.
+        // the ARCHIVEDPACKAGES of an old Bioconductor release).
+        if repo_has_packages(&repo_db, repo_url_key, pkg_type, feed)?
+            || get_repo_progress(&repo_db, repo_url_key, pkg_type).is_some()
+        {
             return Ok(CacheState::Cached);
         }
         info!("Cached metadata missing from database, forcing a fresh download");
+        announce_update(display_name);
         return force_full_download(
             candidate_urls,
             &repo_local,
@@ -711,6 +1272,7 @@ fn ensure_packages_cached(
         );
     }
 
+    announce_update(display_name);
     if let Some((parsed_len, tail_hash)) = get_repo_progress(&repo_db, repo_url_key, pkg_type) {
         let plain_url = candidate_urls[0].trim_end_matches(".zst");
         match try_trailing_refresh(plain_url, parsed_len, &tail_hash) {
@@ -1065,6 +1627,8 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
         "InternalsID",
         "Filesize",
         "SHA256Original",
+        "SystemRequirements",
+        "OS_type",
     ];
     let mut cols: HashMap<&str, Vec<Arc<str>>> = HashMap::new();
     let nacol: Vec<Arc<str>> = vec!["NA".into(); dim.0];
@@ -1112,6 +1676,8 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
         let internals_id = cols.get("InternalsID").unwrap()[i].clone();
         let filesize = cols.get("Filesize").unwrap()[i].clone();
         let sha256sum = cols.get("SHA256Original").unwrap()[i].clone();
+        let system_requirements = cols.get("SystemRequirements").unwrap()[i].clone();
+        let os_type = cols.get("OS_type").unwrap()[i].clone();
 
         let pkg = Package {
             name: name.to_string(),
@@ -1132,6 +1698,9 @@ fn parse_packages_from_rds_object(robj: RObject) -> Result<Vec<Package>, Box<dyn
             sha256sum: na_to_none(&sha256sum),
             // Only the ARCHIVEDPACKAGES DCF feed has this, no RDS repo does.
             archived: None,
+            repository: None,
+            system_requirements: normalize_system_requirements(&system_requirements),
+            os_type: normalize_os_type(&os_type),
         };
         packages.push(pkg);
     }
@@ -1192,10 +1761,38 @@ fn ensure_db_schema(db_path: &PathBuf) -> Result<(), Box<dyn Error>> {
             filesize INTEGER,
             sha256sum TEXT,
             repo_id INTEGER NOT NULL,
+            system_requirements TEXT,
+            os_type TEXT,
             FOREIGN KEY (repo_id) REFERENCES repos(id)
         )",
         [],
     )?;
+
+    // Databases created before rig stored `SystemRequirements` or `OS_type`
+    // lack the column. Their rows have no value for it, so after adding it,
+    // forget every repo's cache state: the next lookup then downloads and
+    // parses each feed again, in full, instead of a trailing-only refresh
+    // that would only fill in the new rows.
+    for column in ["system_requirements", "os_type"] {
+        match conn.execute(
+            &format!("ALTER TABLE packages ADD COLUMN {} TEXT", column),
+            [],
+        ) {
+            Ok(_) => {
+                info!("Added {} column, invalidating cached metadata", column);
+                conn.execute(
+                    "UPDATE repos SET etag = NULL, parsed_len = NULL, tail_hash = NULL,
+                     last_updated = '1970-01-01 00:00:00'",
+                    [],
+                )?;
+            }
+            Err(e) => {
+                if !e.to_string().contains("duplicate column") {
+                    return Err(e.into());
+                }
+            }
+        }
+    }
 
     // Create index for fast lookups by name, version, platform, arch
     conn.execute(
@@ -1336,8 +1933,8 @@ fn save_packages_to_db(
         "INSERT INTO packages
          (name, version, dependencies, download_url, file, path, built,
           license, platform, arch, graphics_api_version, internals_id, filesize,
-          sha256sum, repo_id)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+          sha256sum, repo_id, system_requirements, os_type)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
     )?;
 
     for pkg in packages {
@@ -1363,6 +1960,8 @@ fn save_packages_to_db(
             pkg.filesize,
             &pkg.sha256sum,
             repo_id,
+            &pkg.system_requirements,
+            &pkg.os_type,
         ])?;
     }
 
@@ -1621,6 +2220,483 @@ Version: 2.1.0
             .is_none());
 
         let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
+    fn snapshot_date_is_read_from_the_download_url() {
+        assert_eq!(
+            snapshot_date("https://p3m.dev/cran/2026-06-08/src/contrib/pak_0.10.0.tar.gz"),
+            Some("2026-06-08")
+        );
+        assert_eq!(
+            snapshot_date("https://cran.r-project.org/src/contrib/pak_0.10.0.tar.gz"),
+            None
+        );
+    }
+
+    #[test]
+    fn published_by_compares_the_snapshot_date_to_the_cutoff() {
+        let url = Some("https://p3m.dev/cran/2020-01-09/src/contrib/cli_2.0.1.tar.gz");
+        assert!(published_by(url, None));
+        assert!(published_by(url, Some("2020-01-09")));
+        assert!(published_by(url, Some("2020-01-10")));
+        assert!(!published_by(url, Some("2020-01-08")));
+        // No snapshot date to go by: kept.
+        assert!(published_by(None, Some("2020-01-08")));
+    }
+
+    #[test]
+    fn exclude_newer_hides_versions_published_after_the_cutoff() {
+        use std::io::Write;
+
+        let url = "https://example.com/ALLPACKAGES.zst";
+        let dcf = "\
+Package: cli
+Version: 2.0.0
+DownloadURL: https://p3m.dev/cran/2019-12-10/src/contrib/cli_2.0.0.tar.gz
+
+Package: cli
+Version: 2.0.1
+DownloadURL: https://p3m.dev/cran/2020-01-09/src/contrib/cli_2.0.1.tar.gz
+";
+        let compressed = zstd::stream::encode_all(dcf.as_bytes(), 0).unwrap();
+        let mut path = std::env::temp_dir();
+        path.push(format!("rig-test-exclude-newer-{}.zst", std::process::id()));
+        File::create(&path).unwrap().write_all(&compressed).unwrap();
+        let (packages, _data) = parse_packages(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+
+        let mut db = std::env::temp_dir();
+        db.push(format!("rig-test-exclude-newer-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&db);
+        ensure_db_schema(&db).unwrap();
+        save_packages_to_db(
+            &packages,
+            &db,
+            url,
+            None,
+            "source",
+            "ALLPACKAGES",
+            None,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let loader = |cutoff: Option<&str>| {
+            let conn = open_db(&db).unwrap();
+            DbSourcePackageLoader::from_conn(conn, &[(url, RepoId::Cran)])
+                .with_exclude_newer(cutoff.map(|c| c.to_string()))
+        };
+        let versions = |cutoff: Option<&str>| {
+            let mut vers: Vec<String> = loader(cutoff)
+                .load_versions("cli")
+                .unwrap()
+                .iter()
+                .map(|p| p.version.to_string())
+                .collect();
+            vers.sort();
+            vers
+        };
+
+        assert_eq!(versions(None), vec!["2.0.0", "2.0.1"]);
+        assert_eq!(versions(Some("2020-01-09")), vec!["2.0.0", "2.0.1"]);
+        assert_eq!(versions(Some("2020-01-01")), vec!["2.0.0"]);
+        assert!(versions(Some("2019-01-01")).is_empty());
+
+        let _ = std::fs::remove_file(&db);
+    }
+
+    /// Store `dcf` as the ALLPACKAGES feed at `url` in the database `db`.
+    fn store_feed(db: &PathBuf, url: &str, dcf: &str) {
+        let packages = parse_dcf_bytes(dcf.as_bytes()).unwrap();
+        save_packages_to_db(
+            &packages,
+            db,
+            url,
+            None,
+            "source",
+            "ALLPACKAGES",
+            None,
+            true,
+            None,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn loader_filters_by_os_type() {
+        let url = "https://example.com/cran/ALLPACKAGES.zst";
+        let mut db = std::env::temp_dir();
+        db.push(format!("rig-test-os-type-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&db);
+        ensure_db_schema(&db).unwrap();
+        store_feed(
+            &db,
+            url,
+            "\
+Package: unixonly
+Version: 1.0.0
+OS_type: unix
+
+Package: winonly
+Version: 1.0.0
+OS_type: windows
+
+Package: plain
+Version: 1.0.0
+",
+        );
+
+        let names = |os_type: Option<OsType>| {
+            let loader =
+                DbSourcePackageLoader::from_conn(open_db(&db).unwrap(), &[(url, RepoId::Cran)])
+                    .with_os_type(os_type);
+            ["unixonly", "winonly", "plain"]
+                .into_iter()
+                .filter(|name| !loader.load_versions(name).unwrap().is_empty())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(names(None), vec!["unixonly", "winonly", "plain"]);
+        assert_eq!(names(Some(OsType::Unix)), vec!["unixonly", "plain"]);
+        assert_eq!(names(Some(OsType::Windows)), vec!["winonly", "plain"]);
+
+        // The loader remembers why a package has no versions, for the error.
+        let loader =
+            DbSourcePackageLoader::from_conn(open_db(&db).unwrap(), &[(url, RepoId::Cran)])
+                .with_os_type(Some(OsType::Unix));
+        assert!(loader.load_versions("winonly").unwrap().is_empty());
+        assert!(loader.load_versions("nosuch").unwrap().is_empty());
+        assert_eq!(loader.os_type_hidden("winonly").as_deref(), Some("windows"));
+        assert_eq!(loader.os_type_hidden("nosuch"), None);
+        assert_eq!(loader.os_type_hidden("plain"), None);
+
+        // The loaded version keeps its `OS_type`, for the lockfile.
+        let loader =
+            DbSourcePackageLoader::from_conn(open_db(&db).unwrap(), &[(url, RepoId::Cran)]);
+        let pkg = loader.load_versions("winonly").unwrap().remove(0);
+        assert_eq!(pkg.os_type.as_deref(), Some("windows"));
+
+        let conn = open_db(&db).unwrap();
+        let latest = |os_type| {
+            let mut names: Vec<String> = feed_latest_packages(&conn, url, os_type)
+                .unwrap()
+                .into_keys()
+                .collect();
+            names.sort();
+            names
+        };
+        assert_eq!(latest(None), vec!["plain", "unixonly", "winonly"]);
+        assert_eq!(latest(Some(OsType::Unix)), vec!["plain", "unixonly"]);
+        assert_eq!(latest(Some(OsType::Windows)), vec!["plain", "winonly"]);
+
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
+    fn adding_os_type_column_invalidates_cached_metadata() {
+        let mut db = std::env::temp_dir();
+        db.push(format!(
+            "rig-test-os-type-migration-{}.db",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&db);
+        // A database from before rig stored `OS_type`.
+        {
+            let conn = open_db(&db).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE repos (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    url TEXT NOT NULL,
+                    pkg_type TEXT NOT NULL,
+                    r_version TEXT,
+                    path TEXT NOT NULL,
+                    etag TEXT,
+                    last_updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    parsed_len INTEGER,
+                    tail_hash TEXT
+                );
+                CREATE TABLE packages (
+                    name TEXT NOT NULL,
+                    version TEXT NOT NULL,
+                    dependencies TEXT NOT NULL,
+                    download_url TEXT,
+                    file TEXT,
+                    path TEXT,
+                    built TEXT,
+                    license TEXT,
+                    platform TEXT,
+                    arch TEXT,
+                    graphics_api_version TEXT,
+                    internals_id TEXT,
+                    filesize INTEGER,
+                    sha256sum TEXT,
+                    repo_id INTEGER NOT NULL,
+                    system_requirements TEXT
+                );
+                INSERT INTO repos (url, pkg_type, path, etag, parsed_len, tail_hash)
+                VALUES ('https://example.com', 'source', 'ALLPACKAGES', 'abc', 10, 'h');",
+            )
+            .unwrap();
+        }
+        ensure_db_schema(&db).unwrap();
+
+        let conn = open_db(&db).unwrap();
+        let (etag, parsed_len): (Option<String>, Option<i64>) = conn
+            .query_row("SELECT etag, parsed_len FROM repos", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(etag, None);
+        assert_eq!(parsed_len, None);
+        conn.prepare("SELECT os_type FROM packages").unwrap();
+
+        // A second run finds the column and keeps the cache state.
+        conn.execute("UPDATE repos SET etag = 'def'", []).unwrap();
+        ensure_db_schema(&db).unwrap();
+        let etag: Option<String> = conn
+            .query_row("SELECT etag FROM repos", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(etag.as_deref(), Some("def"));
+
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
+    fn cran_and_bioc_versions_are_merged() {
+        let cran_url = "https://example.com/cran/ALLPACKAGES.zst";
+        let bioc_url = "https://example.com/bioc/3.22/ALLPACKAGES.zst";
+        let mut db = std::env::temp_dir();
+        db.push(format!("rig-test-cran-bioc-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&db);
+        ensure_db_schema(&db).unwrap();
+        store_feed(
+            &db,
+            cran_url,
+            "\
+Package: RBGL
+Version: 1.0.0
+DownloadURL: https://p3m.dev/cran/2020-01-01/src/contrib/RBGL_1.0.0.tar.gz
+
+Package: RBGL
+Version: 1.86.0
+DownloadURL: https://p3m.dev/cran/2025-11-01/src/contrib/RBGL_1.86.0.tar.gz
+
+Package: cli
+Version: 3.6.0
+",
+        );
+        store_feed(
+            &db,
+            bioc_url,
+            "\
+Package: RBGL
+Version: 1.86.0
+DownloadURL: https://p3m.dev/bioconductor/2025-11-04/packages/3.22/bioc/src/contrib/RBGL_1.86.0.tar.gz
+
+Package: limma
+Version: 3.66.0
+DownloadURL: https://p3m.dev/bioconductor/2025-10-30/packages/3.22/bioc/src/contrib/limma_3.66.0.tar.gz
+",
+        );
+
+        let conn = open_db(&db).unwrap();
+        let bioc = RepoId::Bioc("3.22".to_string());
+        // Bioconductor first, the way `MetadataFeed::for_target` orders them.
+        let loader = DbSourcePackageLoader::from_conn(
+            conn,
+            &[(bioc_url, bioc.clone()), (cran_url, RepoId::Cran)],
+        );
+
+        let versions = |name: &str| {
+            let mut out: Vec<(String, RepoId, String)> = loader
+                .load_versions(name)
+                .unwrap()
+                .into_iter()
+                .map(|p| {
+                    (
+                        p.version.to_string(),
+                        p.repository.unwrap(),
+                        p.download_url.unwrap_or_default(),
+                    )
+                })
+                .collect();
+            out.sort();
+            out
+        };
+
+        // In both: the versions of both, the Bioconductor one on a tie.
+        let rbgl = versions("RBGL");
+        assert_eq!(rbgl.len(), 2);
+        assert_eq!(rbgl[0].0, "1.0.0");
+        assert_eq!(rbgl[0].1, RepoId::Cran);
+        assert_eq!(rbgl[1].0, "1.86.0");
+        assert_eq!(rbgl[1].1, bioc);
+        assert!(rbgl[1].2.contains("/bioconductor/"));
+
+        assert_eq!(versions("limma")[0].1, bioc);
+        assert_eq!(versions("cli")[0].1, RepoId::Cran);
+        assert!(versions("nope").is_empty());
+
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
+    fn the_first_repository_wins_a_tie() {
+        let cran_url = "https://example.com/cran/ALLPACKAGES.zst";
+        let acme = CranlikeRepo::new("acme", "https://cran.acme.com/");
+        let acme_key = cranlike_key(&acme, "src/contrib");
+        let mut db = std::env::temp_dir();
+        db.push(format!("rig-test-repo-rank-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&db);
+        ensure_db_schema(&db).unwrap();
+        store_feed(
+            &db,
+            cran_url,
+            "Package: cli\nVersion: 3.6.0\nSystemRequirements: libfoo\n\n\
+             Package: cli\nVersion: 3.5.0\n",
+        );
+        let packages = parse_cranlike_packages(
+            b"Package: cli\nVersion: 3.6.0\nMD5sum: abc\n",
+            &acme,
+            "src/contrib",
+            ".tar.gz",
+        )
+        .unwrap();
+        save_packages_to_db(
+            &packages,
+            &db,
+            &acme_key,
+            None,
+            "source",
+            "src/contrib",
+            None,
+            true,
+            None,
+        )
+        .unwrap();
+
+        let versions = |keys: &[(&str, RepoId)]| {
+            let loader = DbSourcePackageLoader::from_conn(open_db(&db).unwrap(), keys);
+            let mut out: Vec<(String, RepoId)> = loader
+                .load_versions("cli")
+                .unwrap()
+                .into_iter()
+                .map(|p| (p.version.to_string(), p.repository.unwrap()))
+                .collect();
+            out.sort();
+            out
+        };
+
+        let acme_first = versions(&[(&acme_key, acme.repo_id()), (cran_url, RepoId::Cran)]);
+        assert_eq!(acme_first[0], ("3.5.0".to_string(), RepoId::Cran));
+        assert_eq!(acme_first[1], ("3.6.0".to_string(), acme.repo_id()));
+
+        // acme's `PACKAGES` has no `SystemRequirements`, CRAN's metadata does.
+        let loader = DbSourcePackageLoader::from_conn(
+            open_db(&db).unwrap(),
+            &[(&acme_key, acme.repo_id()), (cran_url, RepoId::Cran)],
+        );
+        let cli = loader.load_versions("cli").unwrap();
+        let v360 = cli.iter().find(|p| p.version.original == "3.6.0").unwrap();
+        assert_eq!(v360.repository, Some(acme.repo_id()));
+        assert_eq!(v360.system_requirements.as_deref(), Some("libfoo"));
+
+        let cran_first = versions(&[(cran_url, RepoId::Cran), (&acme_key, acme.repo_id())]);
+        assert_eq!(cran_first[1], ("3.6.0".to_string(), RepoId::Cran));
+
+        // A package pinned to a repository only comes from there, an
+        // explicit repository serves only the packages pinned to it.
+        let filtered = |filter: RepoFilter| {
+            let loader = DbSourcePackageLoader::from_conn(
+                open_db(&db).unwrap(),
+                &[(cran_url, RepoId::Cran), (&acme_key, acme.repo_id())],
+            )
+            .with_repo_filter(filter);
+            let mut out: Vec<(String, RepoId)> = loader
+                .load_versions("cli")
+                .unwrap()
+                .into_iter()
+                .map(|p| (p.version.to_string(), p.repository.unwrap()))
+                .collect();
+            out.sort();
+            out
+        };
+        let mut pinned = RepoFilter::default();
+        pinned.pins.insert("cli".to_string(), Some(acme.repo_id()));
+        assert_eq!(
+            filtered(pinned),
+            vec![("3.6.0".to_string(), acme.repo_id())]
+        );
+        let mut nowhere = RepoFilter::default();
+        nowhere.pins.insert("cli".to_string(), None);
+        assert!(filtered(nowhere).is_empty());
+        let mut explicit = RepoFilter::default();
+        explicit.explicit.insert(RepoId::Cran);
+        assert_eq!(
+            filtered(explicit.clone()),
+            vec![("3.6.0".to_string(), acme.repo_id())]
+        );
+        explicit.pins.insert("cli".to_string(), Some(RepoId::Cran));
+        assert_eq!(filtered(explicit).len(), 2);
+
+        let _ = std::fs::remove_file(&db);
+    }
+
+    #[test]
+    fn cranlike_packages_get_download_urls_and_checksums() {
+        let repo = CranlikeRepo::new("acme", "https://cran.acme.com/");
+        let dcf = "\
+Package: pkgA
+Version: 1.0.0
+Imports: pkgB
+MD5sum: 0123
+
+Package: pkgB
+Version: 2.1-3
+SHA256: abcd
+MD5sum: 0123
+Path: old
+
+Package: pkgC
+Version: 0.1
+File: pkgC-custom.tar.gz
+
+Package: pkgD
+Version: 0.2
+DownloadURL: https://elsewhere.com/pkgD.tar.gz
+";
+        let pkgs =
+            parse_cranlike_packages(dcf.as_bytes(), &repo, "src/contrib", ".tar.gz").unwrap();
+        let url = |i: usize| pkgs[i].download_url.clone().unwrap();
+        assert_eq!(
+            url(0),
+            "https://cran.acme.com/src/contrib/pkgA_1.0.0.tar.gz"
+        );
+        assert_eq!(
+            url(1),
+            "https://cran.acme.com/src/contrib/old/pkgB_2.1-3.tar.gz"
+        );
+        assert_eq!(
+            url(2),
+            "https://cran.acme.com/src/contrib/pkgC-custom.tar.gz"
+        );
+        assert_eq!(url(3), "https://elsewhere.com/pkgD.tar.gz");
+        assert_eq!(pkgs[0].sha256sum.as_deref(), Some("0123"));
+        assert_eq!(pkgs[1].sha256sum.as_deref(), Some("abcd"));
+        assert_eq!(pkgs[2].sha256sum, None);
+
+        let gz = {
+            use std::io::Write;
+            let mut enc = flate2::write::GzEncoder::new(vec![], flate2::Compression::default());
+            enc.write_all(dcf.as_bytes()).unwrap();
+            enc.finish().unwrap()
+        };
+        assert_eq!(decompress_gzip_maybe(gz).unwrap(), dcf.as_bytes());
+        assert_eq!(
+            decompress_gzip_maybe(dcf.as_bytes().to_vec()).unwrap(),
+            dcf.as_bytes()
+        );
     }
 
     #[test]

@@ -23,24 +23,39 @@ use std::path::Path;
 
 use log::warn;
 use serde::{Deserialize, Serialize};
-use simple_error::*;
+use simple_error::SimpleError;
 
 use crate::cache::{artifact_cache_key, target_path};
 use crate::dcf::{
     DepVersionSpec, Package as DcfPackage, PackageDependencies, RDepType, RPackageVersion,
     VersionConstraint, VersionConstraintType, DEP_TYPES_SOFT,
 };
+use crate::exclude_newer::ExcludeNewerSpec;
 use crate::install::{
     format_linkingto, REMOTE_HASH_FIELD, REMOTE_HOST_FIELD, REMOTE_LINKINGTO_FIELD,
     REMOTE_REF_FIELD, REMOTE_REPO_FIELD, REMOTE_SHA_FIELD, REMOTE_SUBDIR_FIELD, REMOTE_TYPE_FIELD,
-    REMOTE_URL_FIELD, REMOTE_USERNAME_FIELD,
+    REMOTE_URL_FIELD, REMOTE_USERNAME_FIELD, REPO_BUILT_FIELD,
 };
+use crate::pkgsource::lock::LockSource;
 use crate::proj::BASE_PKGS;
 use crate::repos::cranlike_metadata::minor_r_version;
+use crate::repos::feed::RepoId;
 use crate::rvenv::RPROJ_LOCK_FILE;
 use crate::solver::{RPackageRegistry, RegistryPackageVersion};
 
-pub const RPROJ_LOCK_VERSION: usize = 4;
+pub const RPROJ_LOCK_VERSION: usize = 7;
+
+/// The last lockfile version that names platforms by their P3M target
+/// (`macos-arm64`, `jammy-x86_64`) instead of their canonical platform string
+/// (`aarch64-apple-darwin`, `x86_64-unknown-linux-gnu-ubuntu-22.04`). rig
+/// still reads it, see [`RprojLock::parse`].
+const RPROJ_LOCK_VERSION_P3M_PLATFORMS: usize = 5;
+
+/// The last lockfile version whose git/GitHub/url/local packages are
+/// installed from their `Remote*` `metadata`, instead of from a `sources`
+/// entry that names the commit (or archive sha256) and subdir, see
+/// [`LockSource`]. rig still reads it, see [`RprojLock::parse`].
+const RPROJ_LOCK_VERSION_METADATA_SOURCES: usize = 6;
 
 // `rproj.toml`: the project/package manifest (see the design doc). This is the
 // *requirements* file a human edits, as opposed to `rproj.lock` (the solved
@@ -60,6 +75,26 @@ pub const DESCRIPTION_RIG_NOTE_FIELD: &str = "Config/rig/note";
 /// group is a `Config/Needs/<group>` field (see
 /// [`Rproj::merge_config_needs`]).
 const DESCRIPTION_DEP_GROUPS: [&str; 2] = ["dev", "enhances"];
+
+/// How many of the newest versions of a package `--prefer-binary` (and
+/// `prefer-binary = true` in `[tool.rig]`) considers, if not given.
+pub const PREFER_BINARY_DEFAULT: usize = 3;
+
+/// A `--prefer-binary=<n>` / `prefer-binary = <n>` number as the solver's
+/// lookback: `0` turns it off, so it can override a manifest's setting.
+pub fn prefer_binary_lookback(n: usize) -> Option<usize> {
+    (n > 0).then_some(n)
+}
+
+/// The `prefer-binary` value of `[tool.rig]` for a `--prefer-binary=<n>`
+/// number: `true` for the default, `false` for `0`, the number otherwise.
+pub fn prefer_binary_toml_value(n: usize) -> toml::Value {
+    match n {
+        0 => toml::Value::Boolean(false),
+        PREFER_BINARY_DEFAULT => toml::Value::Boolean(true),
+        n => toml::Value::Integer(n as i64),
+    }
+}
 
 /// A parsed `rproj.toml` manifest.
 ///
@@ -103,6 +138,11 @@ pub struct Rproj {
     pub description: toml::Table,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace: Option<Workspace>,
+    // `[tool.<name>]`: settings of a specific tool, e.g. `[tool.rig]`, kept
+    // out of the generic manifest. Never written to DESCRIPTION. Tables of
+    // other tools are passed through verbatim.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub tool: BTreeMap<String, toml::Table>,
 }
 
 /// `[project]` — identity/metadata. Scalar fields serialize before `urls`
@@ -552,7 +592,7 @@ pub struct DepTable {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
     // The package reference, kept verbatim, in whatever syntax it was written
-    // in (`tidyverse/tidytemplate`, `bioc::S4Vectors`, `url::https://...`).
+    // in (`tidyverse/tidytemplate`, `gitlab::group/project`, `url::https://...`).
     // Written by the `Config/Needs/*` import, which has no way to tell what
     // kind of reference an entry is, and written back out unchanged by
     // `rig proj export`.
@@ -601,10 +641,76 @@ pub struct Group {
 }
 
 /// One `[[repository]]`. Array order is precedence (first = highest).
-#[derive(Serialize, Deserialize, Debug, Default, PartialEq)]
+///
+/// An entry is a CRAN-like package repository at `url`, or one of the two
+/// built-in repositories, which have no `url`: CRAN, named
+/// [`CRAN_REPOSITORY_NAME`], and Bioconductor, named
+/// [`BIOC_REPOSITORY_NAME`]. Both are on without an entry, an entry turns
+/// one off with `enabled = false`, pins Bioconductor's `version`, or puts the
+/// built-in repository at its place in the order. `explicit = true` makes a
+/// repository serve only the dependencies pinned to it with
+/// `{ repository = "<name>" }`. See [`Rproj::check_repositories`].
+#[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
 pub struct Repository {
     pub name: String,
-    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub explicit: Option<bool>,
+}
+
+/// The name of the built-in Bioconductor entry of `[[repository]]`.
+pub const BIOC_REPOSITORY_NAME: &str = "bioc";
+
+/// The name of the built-in CRAN entry of `[[repository]]`.
+pub const CRAN_REPOSITORY_NAME: &str = "cran";
+
+impl Repository {
+    /// A package repository at `url`.
+    pub fn at_url(name: &str, url: &str) -> Repository {
+        Repository {
+            name: name.to_string(),
+            url: Some(url.to_string()),
+            ..Default::default()
+        }
+    }
+
+    /// The entry of a built-in repository, with no settings.
+    pub fn builtin(name: &str) -> Repository {
+        Repository {
+            name: name.to_string(),
+            ..Default::default()
+        }
+    }
+
+    /// Whether this is the built-in Bioconductor entry.
+    pub fn is_bioc(&self) -> bool {
+        self.name.eq_ignore_ascii_case(BIOC_REPOSITORY_NAME)
+    }
+
+    /// Whether this is the built-in CRAN entry.
+    pub fn is_cran(&self) -> bool {
+        self.name.eq_ignore_ascii_case(CRAN_REPOSITORY_NAME)
+    }
+
+    /// Whether this is one of the built-in entries, CRAN or Bioconductor.
+    pub fn is_builtin(&self) -> bool {
+        self.is_cran() || self.is_bioc()
+    }
+
+    /// Whether the repository is used, i.e. not turned off.
+    pub fn is_enabled(&self) -> bool {
+        self.enabled.unwrap_or(true)
+    }
+
+    /// Whether the repository only serves the dependencies pinned to it.
+    pub fn is_explicit(&self) -> bool {
+        self.explicit.unwrap_or(false)
+    }
 }
 
 /// `[build]` — package build flags.
@@ -734,6 +840,208 @@ impl Rproj {
         }
     }
 
+    /// Check the `[[repository]]` entries: the built-in
+    /// [`CRAN_REPOSITORY_NAME`] and [`BIOC_REPOSITORY_NAME`] entries have no
+    /// `url`, only the Bioconductor entry has a `version`, every other entry
+    /// has a `url` and no `version` or `enabled`. Names are unique. A
+    /// dependency with a `repository` pin has no git, URL or local source.
+    /// Whether the pinned repository exists is checked later, see
+    /// [`crate::proj_repos::ProjRepos`]: in a workspace the repositories are
+    /// the root's.
+    pub fn check_repositories(&self) -> Result<(), Box<dyn Error>> {
+        let mut seen: Vec<&str> = vec![];
+        for repo in &self.repository {
+            if seen.iter().any(|n| n.eq_ignore_ascii_case(&repo.name)) {
+                bail!("`[[repository]]` `{}` appears more than once", repo.name);
+            }
+            seen.push(&repo.name);
+            if repo.is_builtin() {
+                if repo.url.is_some() {
+                    bail!(
+                        "`[[repository]]` `{}` is a built-in repository, it cannot have a `url`",
+                        repo.name
+                    );
+                }
+                if repo.is_cran() && repo.version.is_some() {
+                    bail!(
+                        "`[[repository]]` `{}` cannot have a `version`, only the `{}` entry can",
+                        repo.name,
+                        BIOC_REPOSITORY_NAME
+                    );
+                }
+            } else {
+                if repo.url.is_none() {
+                    bail!("`[[repository]]` `{}` needs a `url`", repo.name);
+                }
+                if repo.version.is_some() || repo.enabled.is_some() {
+                    bail!(
+                        "`[[repository]]` `{}` cannot have a `version` or `enabled`, \
+                         only the `{}` and `{}` entries can",
+                        repo.name,
+                        CRAN_REPOSITORY_NAME,
+                        BIOC_REPOSITORY_NAME
+                    );
+                }
+            }
+        }
+        for (pkg, table) in self.dependency_tables() {
+            if table.repository.is_none() {
+                continue;
+            }
+            if table.git.is_some() || table.url.is_some() || table.path.is_some() {
+                bail!(
+                    "Dependency `{}` has both a `repository` and a git, URL or local source",
+                    pkg
+                );
+            }
+        }
+        Ok(())
+    }
+
+    /// Every dependency table of the manifest, with the name of its package:
+    /// `[dependencies]`, `[linking-dependencies]`, every
+    /// `[dependency-groups.*]` and every `[optional-dependencies.*]`. Only the
+    /// table form, a bare version string has no settings.
+    fn dependency_tables(&self) -> Vec<(&String, &DepTable)> {
+        std::iter::once(&self.dependencies)
+            .chain(std::iter::once(&self.linking_dependencies))
+            .chain(self.dependency_groups.values().map(|g| &g.dependencies))
+            .chain(self.optional_dependencies.values())
+            .flat_map(|deps| deps.iter())
+            .filter_map(|(name, dep)| match dep {
+                Dependency::Detailed(table) => Some((name, &**table)),
+                Dependency::Version(_) => None,
+            })
+            .collect()
+    }
+
+    /// The dependencies pinned to a repository with `{ repository = "<name>" }`,
+    /// package name to repository name. A package pinned in more than one
+    /// table to different repositories is an error.
+    pub fn repository_pins(&self) -> Result<BTreeMap<String, String>, Box<dyn Error>> {
+        let mut pins: BTreeMap<String, String> = BTreeMap::new();
+        for (pkg, table) in self.dependency_tables() {
+            let Some(name) = &table.repository else {
+                continue;
+            };
+            if let Some(other) = pins.get(pkg) {
+                if !other.eq_ignore_ascii_case(name) {
+                    bail!(
+                        "Dependency `{}` is pinned to two repositories, `{}` and `{}`",
+                        pkg,
+                        other,
+                        name
+                    );
+                }
+                continue;
+            }
+            pins.insert(pkg.clone(), name.clone());
+        }
+        Ok(pins)
+    }
+
+    /// The `exclude-newer` setting of `[tool.rig]`: hide CRAN versions
+    /// published after this date (or span) from the solver, see
+    /// [`crate::exclude_newer`].
+    pub fn exclude_newer(&self) -> Result<Option<ExcludeNewerSpec>, Box<dyn Error>> {
+        let Some(value) = self.tool.get("rig").and_then(|t| t.get("exclude-newer")) else {
+            return Ok(None);
+        };
+        let Some(value) = value.as_str() else {
+            bail!("`exclude-newer` in `[tool.rig]` must be a string, e.g. \"2025-06-01\"");
+        };
+        Ok(Some(value.parse()?))
+    }
+
+    /// The `platforms` setting of `[tool.rig]`: the platforms `rig proj lock`
+    /// solves for, instead of the default set. Each one is a platform string,
+    /// see [`crate::platform::parse_platform_string`], or `source`.
+    pub fn platforms(&self) -> Result<Option<Vec<String>>, Box<dyn Error>> {
+        let Some(value) = self.tool.get("rig").and_then(|t| t.get("platforms")) else {
+            return Ok(None);
+        };
+        let must = "`platforms` in `[tool.rig]` must be a list of platform \
+                    strings, e.g. [\"aarch64-apple-darwin\", \"x86_64-w64-mingw32\"]";
+        let Some(list) = value.as_array() else {
+            bail!("{}", must);
+        };
+        let mut platforms = vec![];
+        for item in list {
+            let Some(platform) = item.as_str() else {
+                bail!("{}", must);
+            };
+            if platform != "source" {
+                if let Err(e) = crate::platform::parse_platform_string(platform) {
+                    bail!("Invalid platform in `platforms` in `[tool.rig]`: {}", e);
+                }
+            }
+            platforms.push(platform.to_string());
+        }
+        Ok(Some(platforms))
+    }
+
+    /// The `r-versions` setting of `[tool.rig]`: the R versions `rig proj
+    /// lock` solves for, instead of picking one. Each one is anything
+    /// `--r-version` takes, e.g. `4.5`, `4.5.1` or `release`.
+    pub fn r_versions(&self) -> Result<Option<Vec<String>>, Box<dyn Error>> {
+        let Some(value) = self.tool.get("rig").and_then(|t| t.get("r-versions")) else {
+            return Ok(None);
+        };
+        let must = "`r-versions` in `[tool.rig]` must be a non-empty list of R \
+                    versions, e.g. [\"4.5\", \"4.6\"]";
+        let Some(list) = value.as_array() else {
+            bail!("{}", must);
+        };
+        let mut versions = vec![];
+        for item in list {
+            match item.as_str() {
+                Some(version) if !version.trim().is_empty() => {
+                    versions.push(version.trim().to_string())
+                }
+                _ => bail!("{}", must),
+            }
+        }
+        if versions.is_empty() {
+            bail!("{}", must);
+        }
+        Ok(Some(versions))
+    }
+
+    /// The `prefer-binary` setting of `[tool.rig]`, as the number of newest
+    /// versions the solver considers, like `--prefer-binary=<n>`: `true` is
+    /// the default number, [`PREFER_BINARY_DEFAULT`], `false` or `0` turns it
+    /// off (`None`).
+    pub fn prefer_binary(&self) -> Result<Option<usize>, Box<dyn Error>> {
+        let Some(value) = self.tool.get("rig").and_then(|t| t.get("prefer-binary")) else {
+            return Ok(None);
+        };
+        match value {
+            toml::Value::Boolean(true) => Ok(Some(PREFER_BINARY_DEFAULT)),
+            toml::Value::Boolean(false) => Ok(None),
+            toml::Value::Integer(n) if *n >= 0 => Ok(prefer_binary_lookback(*n as usize)),
+            _ => bail!(
+                "`prefer-binary` in `[tool.rig]` must be `true`, `false` or a \
+                 non-negative number, e.g. 5"
+            ),
+        }
+    }
+
+    /// Set `prefer-binary` in `[tool.rig]`, from a `--prefer-binary=<n>`
+    /// number, see [`prefer_binary_toml_value`].
+    pub fn set_prefer_binary(&mut self, n: usize) {
+        self.tool
+            .entry("rig".to_string())
+            .or_default()
+            .insert("prefer-binary".to_string(), prefer_binary_toml_value(n));
+    }
+
+    /// [`Rproj::set_prefer_binary`] on the ORIGINAL on-disk document, see
+    /// [`Rproj::doc_set_dependency`].
+    pub fn doc_set_prefer_binary(doc: &mut toml_edit::DocumentMut, n: usize) {
+        let item = Self::config_value_to_item(&prefer_binary_toml_value(n));
+        Self::doc_get_or_create_table(doc, &["tool", "rig"]).insert("prefer-binary", item);
+    }
+
     /// Merge a DESCRIPTION's `Config/Needs/*` fields into this manifest's
     /// dependency groups: `Config/Needs/website` becomes
     /// `[dependency-groups.website]`. `needs` holds one `(group name, raw
@@ -748,7 +1056,9 @@ impl Rproj {
     /// A `git`/GitHub reference (the same syntax `Remotes:` uses, see
     /// [`crate::pkgsource::parse_pkg_source`]) becomes a [`DepTable`] with a
     /// `git` field, exactly like [`crate::proj::dep_table_from_remote`] builds
-    /// for a `Remotes:` entry. Anything else (`bioc::`, `bitbucket::`,
+    /// for a `Remotes:` entry. A `bioc::<package>` entry is the same as
+    /// `<package>`, see [`crate::pkgsource::strip_bioc_prefix`]. Anything
+    /// else (`bitbucket::`,
     /// `gitlab::`, ...) is not a reference this crate resolves, so it is kept
     /// verbatim in [`DepTable::ref_`], and [`Rproj::to_description`] writes it
     /// back unchanged.
@@ -907,6 +1217,57 @@ impl Rproj {
             None => {}
         }
         group.insert(name.to_string(), Dependency::Detailed(Box::new(table)));
+    }
+
+    /// Pin the dependency `name` to repository `repository`, see
+    /// [`DepTable::repository`]. `dev` is the same as for
+    /// [`Rproj::add_dependency`]. Nothing happens if there is no such
+    /// dependency.
+    pub fn pin_dependency(&mut self, name: &str, dev: bool, repository: &str) {
+        let table = if dev {
+            match self.dependency_groups.get_mut("dev") {
+                Some(group) => &mut group.dependencies,
+                None => return,
+            }
+        } else {
+            &mut self.dependencies
+        };
+        if let Some(dep) = table.get_mut(name) {
+            let mut new = match dep {
+                Dependency::Version(v) => DepTable {
+                    version: Some(v.clone()),
+                    ..Default::default()
+                },
+                Dependency::Detailed(t) => (**t).clone(),
+            };
+            new.repository = Some(repository.to_string());
+            *dep = Dependency::Detailed(Box::new(new));
+        }
+    }
+
+    /// Append `repo` to the `[[repository]]` entries of the ORIGINAL on-disk
+    /// document, mirroring a push to [`Rproj::repository`], so that the rest
+    /// of the file stays as it is.
+    pub fn doc_add_repository(
+        doc: &mut toml_edit::DocumentMut,
+        repo: &Repository,
+    ) -> Result<(), Box<dyn Error>> {
+        let item =
+            doc.as_table_mut()
+                .entry("repository")
+                .or_insert(toml_edit::Item::ArrayOfTables(
+                    toml_edit::ArrayOfTables::new(),
+                ));
+        let Some(array) = item.as_array_of_tables_mut() else {
+            bail!("`repository` must be an array of tables, `[[repository]]`");
+        };
+        let mut table = toml_edit::Table::new();
+        table.insert("name", toml_edit::value(repo.name.clone()));
+        if let Some(url) = &repo.url {
+            table.insert("url", toml_edit::value(url.clone()));
+        }
+        array.push(table);
+        Ok(())
     }
 
     /// Whether the manifest lists a dependency by this name anywhere:
@@ -1902,6 +2263,7 @@ fn format_config_value(value: &toml::Value) -> String {
 }
 
 fn config_needs_entry(entry: &str) -> (String, Dependency) {
+    let entry = crate::pkgsource::strip_bioc_prefix(entry);
     if let Ok(spec) = DepVersionSpec::parse(entry, "Suggests") {
         if is_r_package_name(&spec.name) {
             return (
@@ -2257,7 +2619,83 @@ pub(crate) fn format_constraints(constraints: &[VersionConstraint]) -> String {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RprojLock {
     pub version: usize,
+    /// Tool-specific settings, e.g. the solver options rig solved with.
+    /// Absent (default) in a lockfile solved without any, including every one
+    /// written before this field existed.
+    #[serde(default, skip_serializing_if = "RprojLockTool::is_empty")]
+    pub tool: RprojLockTool,
     pub targets: Vec<RprojLockTarget>,
+}
+
+/// `[tool.<name>]` of `rproj.lock`: tool-specific settings, kept out of the
+/// generic lock format, like `[tool.<name>]` in `rproj.toml`. Only rig's own
+/// table is read; rig rewrites the whole lock file, so it does not keep other
+/// tools' tables.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+pub struct RprojLockTool {
+    #[serde(default, skip_serializing_if = "RprojLockOptions::is_empty")]
+    pub rig: RprojLockOptions,
+}
+
+impl RprojLockTool {
+    pub fn is_empty(&self) -> bool {
+        self.rig.is_empty()
+    }
+}
+
+/// `[tool.rig]` of `rproj.lock`: the solver options that change which
+/// versions a solve can pick, so that a later `rig proj lock` re-solves when
+/// they change instead of reusing the lock.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+pub struct RprojLockOptions {
+    /// The `--exclude-newer` cutoff day, `YYYY-MM-DD`.
+    #[serde(
+        rename = "exclude-newer",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub exclude_newer: Option<String>,
+    /// The `--exclude-newer` span, as written, if it was a relative one, e.g.
+    /// `7 days`. `exclude_newer` is the day it resolved to at lock time.
+    #[serde(
+        rename = "exclude-newer-span",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub exclude_newer_span: Option<String>,
+    /// The `--prefer-binary` lookback, see [`Rproj::prefer_binary`].
+    #[serde(
+        rename = "prefer-binary",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub prefer_binary: Option<usize>,
+    /// The repositories the lock was solved with, in order of precedence,
+    /// after the `--with-repos` and `--without-repos` arguments. Only the
+    /// ones that are on.
+    #[serde(rename = "repository", default, skip_serializing_if = "Vec::is_empty")]
+    pub repositories: Vec<LockRepository>,
+}
+
+/// One repository of [`RprojLockOptions::repositories`].
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+pub struct LockRepository {
+    pub name: String,
+    /// Absent for the built-in repositories.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// The base URL of the extended metadata of the built-in repositories,
+    /// with `%v` for the Bioconductor version. Absent for the others.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub explicit: bool,
+}
+
+impl RprojLockOptions {
+    pub fn is_empty(&self) -> bool {
+        *self == RprojLockOptions::default()
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -2280,6 +2718,14 @@ pub struct RprojLockTarget {
     /// version actually pinned in `packages` (catches a tightened
     /// constraint) -- see `lock_target_satisfies` in `src/proj.rs`.
     pub direct_dependencies: Vec<LockDirectDependency>,
+    /// The Bioconductor release this target was solved with, besides CRAN,
+    /// e.g. `3.22`. Absent if it was solved with CRAN only.
+    #[serde(
+        rename = "bioc-version",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub bioc_version: Option<String>,
     pub packages: Vec<RprojLockPackage>,
 }
 
@@ -2334,6 +2780,44 @@ pub struct RprojLockPackage {
     /// lockfile written before this existed.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_project: bool,
+    /// The repository the package comes from, `bioc/<version>` for a
+    /// Bioconductor package, the name of the repository for a package of a
+    /// CRAN-like repository. Absent for CRAN and non-repository (git, URL,
+    /// local) packages.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repository: Option<String>,
+    /// The package's `SystemRequirements`, with its whitespace collapsed.
+    /// `rig proj sync` matches it against the r-system-requirements rules to
+    /// install the OS packages it needs on Linux. Only recorded where it can
+    /// matter, see [`lock_needs_system_requirements`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system_requirements: Option<String>,
+    /// The package's `OS_type`, `unix` or `windows`, if it only works on
+    /// that OS. `rig proj sync` skips it on the other OS. This matters for a
+    /// source-only target, which may be installed anywhere; the solve of a
+    /// platform's target already left out the packages of the other OS.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub os_type: Option<String>,
+}
+
+/// Whether a lockfile entry records its `SystemRequirements`.
+///
+/// A package needs OS packages only on Linux, and not when it is a manylinux
+/// binary, which bundles its libraries. This goes by the lock *target's*
+/// platform, `None` for a source-only target, not by the machine rig runs
+/// on, so a lockfile solved on macOS for a Linux target is the same as one
+/// solved on Linux. A source-only target can be installed anywhere, Linux
+/// included, so it keeps the field.
+pub fn lock_needs_system_requirements(target_platform: Option<&str>, binary: bool) -> bool {
+    let Some(platform) = target_platform else {
+        return true;
+    };
+    match crate::platform::parse_platform_string(platform) {
+        Ok(p) if p.os.starts_with("darwin") || p.os.ends_with("mingw32") => false,
+        // The generic glibc Linux target, with no distro.
+        Ok(p) if p.os.starts_with("linux") && p.distro.is_none() => !binary,
+        _ => true,
+    }
 }
 
 impl RprojLockTarget {
@@ -2391,36 +2875,33 @@ impl RprojLockTarget {
                     metadata.insert(REMOTE_SHA_FIELD.to_string(), git.sha.clone());
                 }
 
-                // Both are directories: a github tarball is unpacked, and a
-                // git:: clone is a worktree checkout. `sources` still carries
-                // the real download URL for the github case, so the existing
-                // HTTP downloader can fetch it unchanged; `RemoteType` is what
-                // tells `download_lockfile_packages` these need extra
-                // handling instead of "download this URL to this file path".
-                let (sources, target) = if git.remote_type == "github" {
-                    let repo = git.repo.clone().unwrap_or_default();
-                    (
-                        vec![format!(
-                            "https://codeload.github.com/{}/tar.gz/{}",
-                            repo, git.sha
-                        )],
-                        format!("git/github/{}/{}", repo, git.sha),
-                    )
-                } else if git.remote_type == "url" {
-                    (vec![git.url.clone()], format!("url/{}", git.sha))
-                } else if git.remote_type == "local" {
-                    // Nothing to download, and nothing in the cache: the
-                    // installer reads `RemoteUrl` (the absolute path) instead
-                    // of a `target` under the cache directory, see
-                    // `lockfile_package_info`.
-                    (vec![], String::new())
-                } else {
-                    (
-                        vec![format!("git+{}#{}", git.url, git.sha)],
-                        format!("git/git/{}", git.sha),
-                    )
+                // `sources` holds everything the installer needs: where to
+                // fetch from, the pinned commit or archive sha256, and the
+                // subdir, see `LockSource`. `metadata` above is provenance
+                // only. `target` is a directory for all of these: a git
+                // checkout or an extracted archive. A local source has no
+                // `target`, it is installed from where it is.
+                let source = LockSource::from_remote(
+                    git.remote_type,
+                    &git.url,
+                    &git.sha,
+                    git.subdir.as_deref(),
+                );
+                let sources = source.iter().map(|s| s.to_string()).collect();
+                let target = match git.remote_type {
+                    "github" => format!(
+                        "git/github/{}/{}",
+                        git.repo.clone().unwrap_or_default(),
+                        git.sha
+                    ),
+                    "url" => format!("url/{}", git.sha),
+                    "local" => String::new(),
+                    _ => format!("git/git/{}", git.sha),
                 };
 
+                let system_requirements = registry
+                    .system_requirements(k, &v.version)
+                    .filter(|_| lock_needs_system_requirements(platform.as_deref(), git.binary));
                 pkgs.push(RprojLockPackage {
                     package: k.to_string(),
                     version: v.version.to_string(),
@@ -2437,6 +2918,9 @@ impl RprojLockTarget {
                     groups: vec![],
                     extra_groups: vec![],
                     is_project: false,
+                    repository: None,
+                    system_requirements,
+                    os_type: registry.os_type(k, &v.version),
                 });
                 continue;
             }
@@ -2450,6 +2934,9 @@ impl RprojLockTarget {
             let mut metadata: HashMap<String, String> = HashMap::new();
             if let Some(sha) = registry.artifact_sha256(k, v) {
                 metadata.insert(REMOTE_HASH_FIELD.to_string(), sha);
+            }
+            if let Some(built) = registry.artifact_built(k, v) {
+                metadata.insert(REPO_BUILT_FIELD.to_string(), built);
             }
             let linkingto = if binary {
                 registry.artifact_linkingto(k, v)
@@ -2470,10 +2957,11 @@ impl RprojLockTarget {
                     format_linkingto(&linkingto),
                 );
             }
-            // The index's URL is snapshot-pinned; the CRAN ones are guesses, and
-            // there are two of them because a version that has been superseded
-            // has moved into the archive.
+            // The index's (or the metadata's) URL is snapshot-pinned; the CRAN
+            // ones are guesses, and there are two of them because a version
+            // that has been superseded has moved into the archive.
             let filename = format!("{}_{}.tar.gz", k, v.version);
+            let repository = registry.artifact_repository(k, v);
             let sources = match registry.artifact_url(k, v) {
                 Some(url) => vec![url],
                 None => vec![
@@ -2486,8 +2974,18 @@ impl RprojLockTarget {
             };
             // The cache file name has to tell two builds of one version apart,
             // and the repository path does not: several binaries share it.
+            // A package of a CRAN-like repository without checksums has no
+            // hash, so its URL tells it apart from the same version in
+            // another repository.
+            let cranlike_url = repository
+                .as_ref()
+                .filter(|r| r.is_cranlike())
+                .map(|_| sources[0].as_str());
             let key = artifact_cache_key(
-                metadata.get(REMOTE_HASH_FIELD).map(|s| s.as_str()),
+                metadata
+                    .get(REMOTE_HASH_FIELD)
+                    .map(|s| s.as_str())
+                    .or(cranlike_url),
                 if binary {
                     metadata.get(REMOTE_LINKINGTO_FIELD).map(|s| s.as_str())
                 } else {
@@ -2495,6 +2993,9 @@ impl RprojLockTarget {
                 },
             );
             let target = target_path(&sources[0], &format!("src/{}", filename), key.as_deref());
+            let system_requirements = registry
+                .system_requirements(k, &v.version)
+                .filter(|_| lock_needs_system_requirements(platform.as_deref(), binary));
             pkgs.push(RprojLockPackage {
                 package: k.to_string(),
                 version: v.version.to_string(),
@@ -2511,6 +3012,11 @@ impl RprojLockTarget {
                 groups: vec![],
                 extra_groups: vec![],
                 is_project: false,
+                repository: repository
+                    .filter(|r| *r != RepoId::Cran)
+                    .map(|r| r.to_string()),
+                system_requirements,
+                os_type: registry.os_type(k, &v.version),
             });
         }
 
@@ -2518,6 +3024,7 @@ impl RprojLockTarget {
             r_version,
             platform: platform.unwrap_or_else(|| "source".to_string()),
             direct_dependencies: vec![],
+            bioc_version: registry.bioc_version().map(|v| v.to_string()),
             packages: pkgs,
         }
     }
@@ -2530,6 +3037,91 @@ struct RprojLockVersion {
 }
 
 impl RprojLock {
+    /// Parse the text of `rproj.lock`, after checking its version, see
+    /// [`RprojLock::check_version`].
+    ///
+    /// Version 5 and 6 lockfiles are read too. Version 5 spells platforms
+    /// differently, and they are brought into their canonical spelling here,
+    /// in memory. Both versions keep what is needed to install a remote
+    /// package in its `metadata`, and its `sources` are rebuilt from that,
+    /// see [`RprojLock::upgrade_remote_sources`]. The next `rig proj lock`
+    /// writes the current version.
+    pub fn parse(text: &str) -> Result<RprojLock, Box<dyn Error>> {
+        let found: RprojLockVersion = toml::from_str(text)?;
+        if found.version == RPROJ_LOCK_VERSION_P3M_PLATFORMS
+            || found.version == RPROJ_LOCK_VERSION_METADATA_SOURCES
+        {
+            let mut lock: RprojLock = toml::from_str(text)?;
+            if found.version == RPROJ_LOCK_VERSION_P3M_PLATFORMS {
+                if let Err(e) = lock.normalize_platforms() {
+                    bail!(
+                        "This {} is version {}, written by an older rig, and its \
+                         platforms cannot be read: {}. Run `rig proj lock` to \
+                         write it again.",
+                        RPROJ_LOCK_FILE,
+                        found.version,
+                        e
+                    );
+                }
+            }
+            lock.upgrade_remote_sources();
+            lock.version = RPROJ_LOCK_VERSION;
+            return Ok(lock);
+        }
+        Self::check_version(text)?;
+        Ok(toml::from_str(text)?)
+    }
+
+    /// Rebuild the `sources` of every git/GitHub/url package from its
+    /// `Remote*` `metadata`, see [`LockSource::from_remote`]. An older
+    /// lockfile wrote `sources` that the installer never read for these
+    /// packages (a codeload tarball for GitHub, `git+<url>#<sha>` without
+    /// the subdir, the bare URL of an archive). A local package keeps its
+    /// `sources` if it has any: the project's own entry already holds its
+    /// `file://` URL.
+    fn upgrade_remote_sources(&mut self) {
+        for package in self.targets.iter_mut().flat_map(|t| t.packages.iter_mut()) {
+            let get = |field: &str| package.metadata.get(field).map(|s| s.as_str());
+            let Some(remote_type) = get(REMOTE_TYPE_FIELD) else {
+                continue;
+            };
+            let url = get(REMOTE_URL_FIELD).unwrap_or_default();
+            let sha = get(REMOTE_SHA_FIELD).unwrap_or_default();
+            if remote_type == "local" {
+                if !package.sources.is_empty() {
+                    continue;
+                }
+            } else if url.is_empty() || sha.is_empty() {
+                continue;
+            }
+            let source = LockSource::from_remote(remote_type, url, sha, get(REMOTE_SUBDIR_FIELD));
+            if let Some(source) = source {
+                package.sources = vec![source.to_string()];
+            }
+        }
+    }
+
+    /// Rewrite the platform of every target and package into its canonical
+    /// spelling, see [`crate::platform::normalize_platform`].
+    fn normalize_platforms(&mut self) -> Result<(), Box<dyn Error>> {
+        let mut seen: HashMap<String, String> = HashMap::new();
+        let mut normalize = |platform: &mut String| -> Result<(), Box<dyn Error>> {
+            if !seen.contains_key(platform.as_str()) {
+                let canonical = crate::platform::normalize_platform(platform)?;
+                seen.insert(platform.clone(), canonical);
+            }
+            *platform = seen[platform.as_str()].clone();
+            Ok(())
+        };
+        for target in &mut self.targets {
+            normalize(&mut target.platform)?;
+            for package in &mut target.packages {
+                normalize(&mut package.platform)?;
+            }
+        }
+        Ok(())
+    }
+
     /// Fail on lockfile text that is not the version rig reads.
     ///
     /// Every field of a package entry is required, so a lockfile of another
@@ -2638,6 +3230,9 @@ mod tests {
             groups: vec!["main".to_string()],
             extra_groups: vec![],
             is_project: false,
+            repository: None,
+            system_requirements: None,
+            os_type: None,
         }
     }
 
@@ -2733,10 +3328,7 @@ mod tests {
             },
         );
 
-        m.repository = vec![Repository {
-            name: "CRAN".to_string(),
-            url: "https://cran.r-project.org".to_string(),
-        }];
+        m.repository = vec![Repository::at_url("CRAN", "https://cran.r-project.org")];
         m.build = Some(Build {
             byte_compile: Some(true),
             needs_compilation: Some(true),
@@ -2771,10 +3363,12 @@ mod tests {
     fn roundtrips_through_toml() {
         let lock = RprojLock {
             version: RPROJ_LOCK_VERSION,
+            tool: Default::default(),
             targets: vec![RprojLockTarget {
                 r_version: "4.6".to_string(),
                 platform: "aarch64-apple-darwin".to_string(),
                 direct_dependencies: vec![],
+                bioc_version: None,
                 packages: vec![sample_package()],
             }],
         };
@@ -2791,23 +3385,50 @@ mod tests {
     }
 
     #[test]
+    fn os_type_roundtrips_and_is_omitted_when_unset() {
+        let mut rdesk = sample_package();
+        rdesk.package = "RDesk".to_string();
+        rdesk.os_type = Some("windows".to_string());
+        let lock = RprojLock {
+            version: RPROJ_LOCK_VERSION,
+            tool: Default::default(),
+            targets: vec![RprojLockTarget {
+                r_version: "4.6".to_string(),
+                platform: "source".to_string(),
+                direct_dependencies: vec![],
+                bioc_version: None,
+                packages: vec![sample_package(), rdesk],
+            }],
+        };
+        let text = lock.to_toml().unwrap();
+        assert_eq!(text.matches("os_type").count(), 1);
+        let parsed: RprojLock = toml::from_str(&text).unwrap();
+        let packages = &parsed.targets[0].packages;
+        assert_eq!(packages[0].os_type, None);
+        assert_eq!(packages[1].os_type.as_deref(), Some("windows"));
+    }
+
+    #[test]
     fn roundtrips_several_targets_through_toml() {
         let mut linux_package = sample_package();
         linux_package.platform = "x86_64-pc-linux-gnu".to_string();
 
         let lock = RprojLock {
             version: RPROJ_LOCK_VERSION,
+            tool: Default::default(),
             targets: vec![
                 RprojLockTarget {
                     r_version: "4.5".to_string(),
                     platform: "x86_64-pc-linux-gnu".to_string(),
                     direct_dependencies: vec![],
+                    bioc_version: None,
                     packages: vec![linux_package],
                 },
                 RprojLockTarget {
                     r_version: "4.6".to_string(),
                     platform: "aarch64-apple-darwin".to_string(),
                     direct_dependencies: vec![],
+                    bioc_version: None,
                     packages: vec![sample_package()],
                 },
             ],
@@ -2831,10 +3452,12 @@ mod tests {
         ]);
         let lock = RprojLock {
             version: RPROJ_LOCK_VERSION,
+            tool: Default::default(),
             targets: vec![RprojLockTarget {
                 r_version: "4.6".to_string(),
                 platform: "aarch64-apple-darwin".to_string(),
                 direct_dependencies: vec![],
+                bioc_version: None,
                 packages: vec![package],
             }],
         };
@@ -4051,6 +4674,279 @@ foo = "bar"
     }
 
     #[test]
+    fn exclude_newer_is_read_from_tool_rig() {
+        let m: Rproj = toml::from_str(
+            "[project]\nname = \"p\"\nversion = \"1.0\"\n\n\
+             [tool.rig]\nexclude-newer = \"2020-01-01\"\n",
+        )
+        .unwrap();
+        let spec = m.exclude_newer().unwrap().unwrap();
+        assert_eq!(spec.cutoff().unwrap(), "2020-01-01");
+
+        assert!(Rproj::minimal("p").exclude_newer().unwrap().is_none());
+
+        // `[config.rig]` is a DESCRIPTION `Config/rig/*` field, not a setting.
+        let m: Rproj = toml::from_str(
+            "[project]\nname = \"p\"\nversion = \"1.0\"\n\n\
+             [config.rig]\nexclude-newer = \"2020-01-01\"\n",
+        )
+        .unwrap();
+        assert!(m.exclude_newer().unwrap().is_none());
+
+        let m: Rproj = toml::from_str(
+            "[project]\nname = \"p\"\nversion = \"1.0\"\n\n\
+             [tool.rig]\nexclude-newer = 2020\n",
+        )
+        .unwrap();
+        assert!(m.exclude_newer().is_err());
+    }
+
+    #[test]
+    fn prefer_binary_is_read_from_tool_rig() {
+        let read = |value: &str| {
+            let text = format!(
+                "[project]\nname = \"p\"\nversion = \"1.0\"\n\n\
+                 [tool.rig]\nprefer-binary = {}\n",
+                value
+            );
+            toml::from_str::<Rproj>(&text).unwrap().prefer_binary()
+        };
+        assert_eq!(read("true").unwrap(), Some(PREFER_BINARY_DEFAULT));
+        assert_eq!(read("false").unwrap(), None);
+        assert_eq!(read("5").unwrap(), Some(5));
+        assert_eq!(read("0").unwrap(), None);
+        assert!(read("-1").is_err());
+        assert!(read("\"yes\"").is_err());
+        assert!(Rproj::minimal("p").prefer_binary().unwrap().is_none());
+    }
+
+    #[test]
+    fn platforms_are_read_from_tool_rig() {
+        let read = |value: &str| {
+            let text = format!(
+                "[project]\nname = \"p\"\nversion = \"1.0\"\n\n\
+                 [tool.rig]\nplatforms = {}\n",
+                value
+            );
+            toml::from_str::<Rproj>(&text).unwrap().platforms()
+        };
+        assert_eq!(
+            read("[\"aarch64-apple-darwin\", \"jammy-x86_64\", \"source\"]").unwrap(),
+            Some(vec![
+                "aarch64-apple-darwin".to_string(),
+                "jammy-x86_64".to_string(),
+                "source".to_string(),
+            ])
+        );
+        assert!(read("\"aarch64-apple-darwin\"").is_err());
+        assert!(read("[1]").is_err());
+        assert!(read("[\"x86_64\"]").is_err());
+        assert!(Rproj::minimal("p").platforms().unwrap().is_none());
+    }
+
+    #[test]
+    fn r_versions_are_read_from_tool_rig() {
+        let read = |value: &str| {
+            let text = format!(
+                "[project]\nname = \"p\"\nversion = \"1.0\"\n\n\
+                 [tool.rig]\nr-versions = {}\n",
+                value
+            );
+            toml::from_str::<Rproj>(&text).unwrap().r_versions()
+        };
+        assert_eq!(
+            read("[\"4.5\", \"4.6.1\", \"release\"]").unwrap(),
+            Some(vec![
+                "4.5".to_string(),
+                "4.6.1".to_string(),
+                "release".to_string(),
+            ])
+        );
+        assert!(read("\"4.5\"").is_err());
+        assert!(read("[4.5]").is_err());
+        assert!(read("[\"\"]").is_err());
+        assert!(read("[]").is_err());
+        assert!(Rproj::minimal("p").r_versions().unwrap().is_none());
+    }
+
+    /// A version 5 lockfile names platforms by their P3M target, and is read
+    /// with canonical platform strings.
+    #[test]
+    fn reads_a_version_5_lockfile() {
+        let lock = RprojLock {
+            version: RPROJ_LOCK_VERSION_P3M_PLATFORMS,
+            tool: Default::default(),
+            targets: ["macos-arm64", "manylinux_2_28-x86_64", "source"]
+                .iter()
+                .map(|platform| RprojLockTarget {
+                    r_version: "4.6".to_string(),
+                    platform: platform.to_string(),
+                    direct_dependencies: vec![],
+                    bioc_version: None,
+                    packages: vec![RprojLockPackage {
+                        platform: platform.to_string(),
+                        ..sample_package()
+                    }],
+                })
+                .collect(),
+        };
+        let text = toml::to_string_pretty(&lock).unwrap();
+        let parsed = RprojLock::parse(&text).unwrap();
+        assert_eq!(parsed.version, RPROJ_LOCK_VERSION);
+        let platforms: Vec<(&str, &str)> = parsed
+            .targets
+            .iter()
+            .map(|t| (t.platform.as_str(), t.packages[0].platform.as_str()))
+            .collect();
+        assert_eq!(
+            platforms,
+            vec![
+                ("aarch64-apple-darwin", "aarch64-apple-darwin"),
+                ("x86_64-unknown-linux-gnu", "x86_64-unknown-linux-gnu"),
+                ("source", "source"),
+            ]
+        );
+        // Older versions are still refused.
+        let old = text.replace("version = 5", "version = 4");
+        assert!(RprojLock::parse(&old).is_err());
+    }
+
+    /// A version 6 lockfile keeps what is needed to install a remote package
+    /// in its `metadata`; its `sources` are rebuilt from that on read.
+    #[test]
+    fn reads_a_version_6_lockfile() {
+        let remote = |pkg: &str, fields: &[(&str, &str)], sources: Vec<String>| RprojLockPackage {
+            package: pkg.to_string(),
+            binary: false,
+            platform: "source".to_string(),
+            metadata: fields
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+            sources,
+            ..sample_package()
+        };
+        let packages = vec![
+            sample_package(),
+            remote(
+                "gh",
+                &[
+                    ("RemoteType", "github"),
+                    ("RemoteUrl", "https://github.com/o/r.git"),
+                    ("RemoteSha", "3f2a"),
+                    ("RemoteSubdir", "pkg"),
+                ],
+                vec!["https://codeload.github.com/o/r/tar.gz/3f2a".to_string()],
+            ),
+            remote(
+                "gt",
+                &[
+                    ("RemoteType", "git"),
+                    ("RemoteUrl", "https://example.com/repo.git"),
+                    ("RemoteSha", "9b1c"),
+                ],
+                vec!["git+https://example.com/repo.git#9b1c".to_string()],
+            ),
+            remote(
+                "ar",
+                &[
+                    ("RemoteType", "url"),
+                    ("RemoteUrl", "https://example.com/ar.tar.gz"),
+                    ("RemoteSha", "abcd"),
+                    ("RemoteSubdir", "ar-1.0"),
+                ],
+                vec!["https://example.com/ar.tar.gz".to_string()],
+            ),
+            remote(
+                "proj",
+                &[("RemoteType", "local"), ("RemoteUrl", "/me/proj")],
+                vec!["file:///me/proj/".to_string()],
+            ),
+        ];
+        let lock = RprojLock {
+            version: RPROJ_LOCK_VERSION_METADATA_SOURCES,
+            tool: Default::default(),
+            targets: vec![RprojLockTarget {
+                r_version: "4.6".to_string(),
+                platform: "source".to_string(),
+                direct_dependencies: vec![],
+                bioc_version: None,
+                packages,
+            }],
+        };
+        let text = toml::to_string_pretty(&lock).unwrap();
+        let parsed = RprojLock::parse(&text).unwrap();
+        assert_eq!(parsed.version, RPROJ_LOCK_VERSION);
+        let sources: Vec<&str> = parsed.targets[0]
+            .packages
+            .iter()
+            .map(|p| p.sources[0].as_str())
+            .collect();
+        assert_eq!(
+            sources,
+            vec![
+                "https://example.com/cli.tgz",
+                "git+https://github.com/o/r.git#commit=3f2a&subdir=pkg",
+                "git+https://example.com/repo.git#commit=9b1c",
+                "https://example.com/ar.tar.gz#sha256=abcd&subdir=ar-1.0",
+                "file:///me/proj/",
+            ]
+        );
+    }
+
+    #[test]
+    fn prefer_binary_is_written_to_tool_rig() {
+        for (n, written, read) in [
+            (3, "prefer-binary = true", Some(3)),
+            (5, "prefer-binary = 5", Some(5)),
+            (0, "prefer-binary = false", None),
+        ] {
+            let mut m = Rproj::minimal("p");
+            m.set_prefer_binary(n);
+            let out = m.to_toml().unwrap();
+            assert!(
+                out.contains(&format!("[tool.rig]\n{}\n", written)),
+                "{}",
+                out
+            );
+            let back: Rproj = toml::from_str(&out).unwrap();
+            assert_eq!(back.prefer_binary().unwrap(), read);
+
+            let mut doc: toml_edit::DocumentMut =
+                "# keep me\n[project]\nname = \"p\"\n".parse().unwrap();
+            Rproj::doc_set_prefer_binary(&mut doc, n);
+            let out = doc.to_string();
+            assert!(out.starts_with("# keep me\n"), "{}", out);
+            assert!(
+                out.contains(&format!("[tool.rig]\n{}\n", written)),
+                "{}",
+                out
+            );
+        }
+    }
+
+    #[test]
+    fn tool_tables_round_trip_and_stay_out_of_description() {
+        let text = "[project]\nname = \"p\"\nversion = \"1.0\"\n\n\
+                    [tool.rig]\nexclude-newer = \"2020-01-01\"\n\n\
+                    [tool.other]\nkey = \"x\"\n";
+        let m: Rproj = toml::from_str(text).unwrap();
+        let out = m.to_toml().unwrap();
+        assert!(
+            out.contains("[tool.rig]\nexclude-newer = \"2020-01-01\"\n"),
+            "{}",
+            out
+        );
+        assert!(out.contains("[tool.other]\nkey = \"x\"\n"), "{}", out);
+        let back: Rproj = toml::from_str(&out).unwrap();
+        assert_eq!(back, m);
+
+        let (desc, _) = m.to_description().unwrap();
+        assert!(!desc.contains("exclude-newer"), "{}", desc);
+        assert!(!desc.contains("other"), "{}", desc);
+    }
+
+    #[test]
     fn to_toml_writes_multiline_description_as_literal_string() {
         let mut m = Rproj::minimal("mypkg");
         m.project.description = Some("First paragraph.\n\nSecond paragraph.".to_string());
@@ -4434,6 +5330,96 @@ foo = "bar"
     }
 
     #[test]
+    fn bioc_repository_entry_is_checked() {
+        let parse = |text: &str| -> Rproj {
+            let m: Rproj = toml::from_str(&format!(
+                "[project]\nname = \"p\"\nversion = \"1.0.0\"\n{}",
+                text
+            ))
+            .unwrap();
+            m
+        };
+        let ok = parse("[[repository]]\nname = \"bioc\"\nversion = \"3.24\"\n");
+        assert!(ok.check_repositories().is_ok());
+        let setting = crate::proj_repos::ProjRepos::from_manifest(&ok)
+            .unwrap()
+            .bioc_setting();
+        assert_eq!(setting.version.as_deref(), Some("3.24"));
+
+        let off = parse("[[repository]]\nname = \"bioc\"\nenabled = false\n");
+        assert!(
+            !crate::proj_repos::ProjRepos::from_manifest(&off)
+                .unwrap()
+                .bioc_setting()
+                .enabled
+        );
+
+        // The built-in CRAN entry: no `url` or `version`, `enabled` is fine.
+        let cran_off = parse("[[repository]]\nname = \"cran\"\nenabled = false\n");
+        assert!(cran_off.check_repositories().is_ok());
+        let cran_url = parse("[[repository]]\nname = \"cran\"\nurl = \"https://x\"\n");
+        assert!(cran_url.check_repositories().is_err());
+        let cran_version = parse("[[repository]]\nname = \"CRAN\"\nversion = \"1\"\n");
+        assert!(cran_version.check_repositories().is_err());
+        let explicit =
+            parse("[[repository]]\nname = \"acme\"\nurl = \"https://x\"\nexplicit = true\n");
+        assert!(explicit.check_repositories().is_ok());
+        assert!(explicit.repository[0].is_explicit());
+        let twice = parse(
+            "[[repository]]\nname = \"acme\"\nurl = \"https://x\"\n\n\
+             [[repository]]\nname = \"ACME\"\nurl = \"https://y\"\n",
+        );
+        assert!(twice.check_repositories().is_err());
+
+        let with_url = parse("[[repository]]\nname = \"bioc\"\nurl = \"https://x\"\n");
+        assert!(with_url.check_repositories().is_err());
+        let no_url = parse("[[repository]]\nname = \"other\"\n");
+        assert!(no_url.check_repositories().is_err());
+        let url_version =
+            parse("[[repository]]\nname = \"other\"\nurl = \"https://x\"\nversion = \"1\"\n");
+        assert!(url_version.check_repositories().is_err());
+
+        // Round trip keeps the entry and its place.
+        let both = parse(
+            "[[repository]]\nname = \"other\"\nurl = \"https://x\"\n\n\
+             [[repository]]\nname = \"bioc\"\nversion = \"3.24\"\n",
+        );
+        let text = toml::to_string_pretty(&both).unwrap();
+        assert_eq!(toml::from_str::<Rproj>(&text).unwrap(), both);
+        assert!(both.repository[1].is_bioc());
+    }
+
+    #[test]
+    fn repository_pins_are_read_and_checked() {
+        let parse = |text: &str| -> Rproj {
+            toml::from_str(&format!(
+                "[project]\nname = \"p\"\nversion = \"1.0.0\"\n{}",
+                text
+            ))
+            .unwrap()
+        };
+        let m = parse(
+            "[dependencies]\ncli = { version = \"*\", repository = \"acme\" }\npak = \"*\"\n\n\
+             [dependency-groups.dev]\nlimma = { repository = \"bioc\" }\n",
+        );
+        let pins = m.repository_pins().unwrap();
+        assert_eq!(pins.len(), 2);
+        assert_eq!(pins["cli"], "acme");
+        assert_eq!(pins["limma"], "bioc");
+
+        let two = parse(
+            "[dependencies]\ncli = { repository = \"acme\" }\n\n\
+             [dependency-groups.dev]\ncli = { repository = \"cran\" }\n",
+        );
+        assert!(two.repository_pins().is_err());
+
+        let git = parse(
+            "[dependencies]\ncli = { git = \"https://github.com/r-lib/cli\", repository = \"cran\" }\n",
+        );
+        assert!(git.check_repositories().is_err());
+    }
+
+    #[test]
     fn config_needs_roundtrips_through_the_manifest() {
         let mut m = Rproj::minimal("mypkg");
         let field = "tidyverse/tidytemplate, pkgdown (>= 2.0), \
@@ -4446,10 +5432,10 @@ foo = "bar"
 
         let (desc, _) = m.to_description().unwrap();
         // Entries are sorted by package name, each written back verbatim as
-        // it came in (`ref_`), `bioc::S4Vectors` and `jsonlite=...`'s
-        // redundant name override alike.
+        // it came in (`ref_`), `jsonlite=...`'s redundant name override
+        // included. `bioc::S4Vectors` is a plain `S4Vectors` dependency.
         assert!(desc.contains(
-            "Config/Needs/website:\n    bioc::S4Vectors,\n    \
+            "Config/Needs/website:\n    S4Vectors,\n    \
              jsonlite=jeroen/jsonlite@v1.8.0,\n    pkgdown (>= 2.0),\n    \
              tidyverse/tidytemplate\n"
         ));
@@ -4588,17 +5574,10 @@ foo = "bar"
             assert_eq!(dep, Dependency::Detailed(Box::new(table)), "{}", entry);
         }
 
-        // `bioc::S4Vectors` is not a `git`/GitHub reference, so it is kept
-        // verbatim in `ref`.
+        // `bioc::S4Vectors` is the same as `S4Vectors`.
         let (key, dep) = config_needs_entry("bioc::S4Vectors");
         assert_eq!(key, "S4Vectors");
-        assert_eq!(
-            dep,
-            Dependency::Detailed(Box::new(DepTable {
-                ref_: Some("bioc::S4Vectors".to_string()),
-                ..Default::default()
-            }))
-        );
+        assert_eq!(dep, Dependency::Version("*".to_string()));
 
         // A reference with no package name in it is kept under the reference
         // itself, rather than being dropped.

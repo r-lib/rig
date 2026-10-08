@@ -10,11 +10,11 @@ use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use log::{debug, error, info};
 use pubgrub::{resolve, SelectedDependencies};
 use rayon::prelude::*;
-use simple_error::*;
+use simple_error::SimpleError;
 use tabular::*;
 
 use crate::args::rig_app;
-use crate::built::BuiltCache;
+use crate::built::{r_platform, BuiltCache};
 use crate::cache::get_cache_dir;
 use crate::common::{
     find_installed, get_arch, get_default_r_version, get_platform, get_r_version_data_version,
@@ -22,12 +22,14 @@ use crate::common::{
 };
 use crate::dcf::*;
 use crate::download::download_multiple_first_available_with_progress;
+use crate::exclude_newer::{exclude_newer_arg, ExcludeNewerSpec};
 use crate::install::{
     install_packages, parse_linkingto, PackageInfo, REMOTE_GIT_FIELDS, REMOTE_HASH_FIELD,
     REMOTE_LINKINGTO_FIELD, REMOTE_SHA_FIELD, REMOTE_SUBDIR_FIELD, REMOTE_TYPE_FIELD,
 };
 use crate::library::get_library_path;
-use crate::output::OUTPUT;
+use crate::output::{ReportedError, OUTPUT};
+use crate::pkg::default_r_feeds;
 use crate::pkg::deps::{
     dep_count, print_deps_json, print_deps_recursive, print_header, type_list, walk_deps,
 };
@@ -35,14 +37,24 @@ use crate::pkg::install::{linked_conflict, plan_installs, print_plan};
 use crate::pkg::list::{read_installed, InstalledPackage};
 use crate::pkg::remove::remove_package;
 use crate::pkg::tree::proj_tree;
-use crate::platform::{detect_platform, parse_platform_string};
-use crate::repos::binaries::loader::{BinaryTarget, P3mBinaryLoader};
-use crate::repos::cranlike_metadata::{ensure_allpackages_fresh, minor_r_version};
+use crate::pkgsource::lock::LockSource;
+use crate::platform::{
+    detect_platform, normalize_arch, normalize_platform, parse_platform_string, platform_string,
+};
+use crate::proj_repos::ProjRepos;
+use crate::repos::binaries::loader::{
+    BinaryTarget, ChainedBinaryLoader, CranlikeBinaryLoader, P3mBinaryLoader,
+};
+use crate::repos::binaries::{PpmStatus, MANYLINUX};
+use crate::repos::cranlike_metadata::{ensure_repos_fresh, minor_r_version};
+use crate::repos::feed::{BiocSetting, PkgRepo, RepoFilter, RepoId};
+use crate::repos::interpret_repos_args::{interpret_pkg_repos_args, PkgReposArgs};
 use crate::repos::*;
 use crate::resolve::resolve_versions;
 use crate::rproj::{
-    format_constraints, parse_add_spec, Author, DepTable, LockDirectDependency, Repository, Rproj,
-    RprojLock, RprojLockPackage, RprojLockTarget, DESCRIPTION_RIG_NOTE_FIELD, RPROJ_LOCK_VERSION,
+    format_constraints, parse_add_spec, prefer_binary_lookback, Author, DepTable,
+    LockDirectDependency, Repository, Rproj, RprojLock, RprojLockOptions, RprojLockPackage,
+    RprojLockTarget, RprojLockTool, DESCRIPTION_RIG_NOTE_FIELD, RPROJ_LOCK_VERSION,
     RPROJ_MANIFEST_FILE,
 };
 use crate::rvenv::{
@@ -51,9 +63,11 @@ use crate::rvenv::{
     rvenv_init, rvenv_sync, rvenv_sync_needed, workspace_members, write_sync_stamp, RvenvCfg,
     RPROJ_LOCK_FILE, RVENV_CFG_FILE, RVENV_DIR,
 };
+use crate::rversion::OsVersion;
+use crate::script_meta::{script_lock_env, script_lock_path};
 use crate::solver::*;
 use crate::textfmt::{dcf_field_to_text, reflow};
-use crate::utils::create_parent_dir_if_needed;
+use crate::utils::{create_parent_dir_if_needed, write_atomically};
 use toml_edit::DocumentMut;
 
 #[cfg(target_os = "macos")]
@@ -106,6 +120,9 @@ fn sc_proj_init(
     _projargs: &ArgMatches,
     _mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
+    if let Some(script) = args.get_one::<String>("script") {
+        return crate::script_meta::sc_proj_init_script(Path::new(script), args);
+    }
     let root = std::env::current_dir()?;
     let force = args.get_flag("force");
 
@@ -127,7 +144,10 @@ fn sc_proj_init(
         .filter(|n| !n.is_empty())
         .unwrap_or_else(|| "myproject".to_string());
 
-    let manifest = Rproj::minimal_for_r(&name, &rver)?;
+    let mut manifest = Rproj::minimal_for_r(&name, &rver)?;
+    if let Some(n) = args.get_one::<usize>("prefer-binary") {
+        manifest.set_prefer_binary(*n);
+    }
     let manifest_path = root.join(RPROJ_MANIFEST_FILE);
     fs::write(&manifest_path, manifest.to_toml()?)?;
 
@@ -204,7 +224,7 @@ pub fn init_rvenv_for_manifest(
 /// what the project is set up for should be the R it will be locked and synced
 /// against, see [`proj_lock_r_version`]. Nothing in the committed `.rvenv`
 /// layout is tied to an R version.
-fn resolve_project_r_version(args: &ArgMatches) -> Result<String, Box<dyn Error>> {
+pub(crate) fn resolve_project_r_version(args: &ArgMatches) -> Result<String, Box<dyn Error>> {
     if let Some(rv) = args.get_one::<String>("r-version") {
         return Ok(rv.to_string());
     }
@@ -422,12 +442,17 @@ fn sc_proj_import(
     // `Remotes:` names the git/GitHub/GitLab/url source for packages that are
     // also listed in `Depends`/`Imports`/`Suggests` above; only `git`/
     // `github`/`gitlab`/`url` remotes are understood, other remote types
-    // (`bioc::`, `bitbucket::`, `local::`, `svn::`, ...) are warned about and
-    // skipped rather than failing the whole import.
+    // (`bitbucket::`, `local::`, `svn::`, ...) are warned about and skipped
+    // rather than failing the whole import. A `bioc::<package>` remote is the
+    // same as `<package>`, which is a dependency already, so it is ignored.
     if let Some(remotes) = paragraph.get("Remotes") {
         for entry in reflow(remotes).split(',') {
             let entry = entry.trim();
             if entry.is_empty() {
+                continue;
+            }
+            if entry.starts_with("bioc::") {
+                debug!("Ignoring Remotes entry `{}`", entry);
                 continue;
             }
             match crate::pkgsource::parse_pkg_source(entry) {
@@ -529,8 +554,15 @@ fn sc_proj_import(
         })
         .collect();
     manifest.merge_config(&config);
+    let prefer_binary = args.get_one::<usize>("prefer-binary").copied();
+    if let Some(n) = prefer_binary {
+        manifest.set_prefer_binary(n);
+    }
 
     if let Some(doc) = original_doc.as_mut() {
+        if let Some(n) = prefer_binary {
+            Rproj::doc_set_prefer_binary(doc, n);
+        }
         for (name, dep) in manifest.dependencies.iter() {
             if before_dependencies.get(name) != Some(dep) {
                 Rproj::doc_set_dependency(doc, &["dependencies"], name, dep)?;
@@ -675,13 +707,13 @@ fn write_description_to(path: &Path, manifest: &Rproj) -> Result<(), Box<dyn Err
 /// `<package>@<version>`, or a git/GitHub reference, already fetched to learn
 /// its real package name (from `DESCRIPTION`'s `Package:` field, which may
 /// differ from the repository name) and pinned commit.
-enum AddSpec {
+pub(crate) enum AddSpec {
     Cran(String, String),
     Remote(String, Box<DepTable>),
 }
 
 impl AddSpec {
-    fn name(&self) -> &str {
+    pub(crate) fn name(&self) -> &str {
         match self {
             AddSpec::Cran(name, _) => name,
             AddSpec::Remote(name, _) => name,
@@ -694,7 +726,7 @@ impl AddSpec {
 /// is written to `rproj.toml` -- see [`fetch_and_read_git_package`]. `root`
 /// is the project's own directory, against which a local path is made
 /// relative -- see [`relativize_to_root`].
-fn parse_add_arg(spec: &str, root: &Path) -> Result<AddSpec, Box<dyn Error>> {
+pub(crate) fn parse_add_arg(spec: &str, root: &Path) -> Result<AddSpec, Box<dyn Error>> {
     match crate::pkgsource::parse_pkg_source(spec)? {
         crate::pkgsource::PkgSource::Cran => {
             let (name, version) = parse_add_spec(spec)?;
@@ -740,6 +772,157 @@ fn parse_add_arg(spec: &str, root: &Path) -> Result<AddSpec, Box<dyn Error>> {
     }
 }
 
+/// The repositories of `rig proj add --with-repos`: the ones to add to the
+/// manifest, and the name of the one to pin the added packages to, the
+/// first one given.
+pub(crate) struct AddRepos {
+    pub new: Vec<Repository>,
+    pub pin: String,
+}
+
+/// Interpret `rig proj add --with-repos`, against the repositories the
+/// manifest already has, `existing`. An item is the name of one of these, or
+/// of a built-in repository, `cran` or `bioc`, or a URL or `name=URL`, a
+/// new repository, unless the manifest already has it at the same URL.
+/// `None` without `--with-repos`.
+pub(crate) fn parse_add_repos(
+    args: &ArgMatches,
+    existing: &[Repository],
+) -> Result<Option<AddRepos>, Box<dyn Error>> {
+    use crate::repos::interpret_repos_args::{parse_repo_url, split_repos_list};
+    let items: Vec<String> = args
+        .try_get_many::<String>("with-repos")
+        .ok()
+        .flatten()
+        .map(|vs| vs.flat_map(|v| split_repos_list(v)).collect())
+        .unwrap_or_default();
+    let mut new: Vec<Repository> = vec![];
+    let mut pin: Option<String> = None;
+    for item in items {
+        let name = match parse_repo_url(&item)? {
+            Some((name, url)) => {
+                let known = existing
+                    .iter()
+                    .chain(new.iter())
+                    .find(|r| r.name.eq_ignore_ascii_case(&name));
+                match known {
+                    Some(repo) if repo.is_builtin() => bail!(
+                        "Repository `{}` is a built-in repository, it cannot have a URL",
+                        name
+                    ),
+                    Some(repo) => {
+                        let same = repo
+                            .url
+                            .as_deref()
+                            .is_some_and(|u| u.trim_end_matches('/') == url);
+                        if !same {
+                            bail!(
+                                "Repository `{}` is already in {}, with another URL",
+                                name,
+                                RPROJ_MANIFEST_FILE
+                            );
+                        }
+                        repo.name.clone()
+                    }
+                    None if Repository::builtin(&name).is_builtin() => bail!(
+                        "Repository `{}` is a built-in repository, it cannot have a URL",
+                        name
+                    ),
+                    None => {
+                        new.push(Repository::at_url(&name, &url));
+                        name
+                    }
+                }
+            }
+            None => match existing.iter().find(|r| r.name.eq_ignore_ascii_case(&item)) {
+                Some(repo) if !repo.is_enabled() => bail!(
+                    "Repository `{}` is turned off in {}",
+                    repo.name,
+                    RPROJ_MANIFEST_FILE
+                ),
+                Some(repo) => repo.name.clone(),
+                None if Repository::builtin(&item).is_builtin() => item.to_lowercase(),
+                None => bail!(
+                    "Unknown repository `{}`, give its URL, as `{}=<url>`",
+                    item,
+                    item
+                ),
+            },
+        };
+        pin.get_or_insert(name);
+    }
+    Ok(pin.map(|pin| AddRepos { new, pin }))
+}
+
+/// Add the repositories of `add` to `manifest`, and to its on-disk
+/// document `doc`, if any, and return the messages about them. `target` is
+/// the file that lists the repositories. A package added from a repository
+/// has to come from a repository: a git, URL or local reference in `specs`
+/// is an error.
+pub(crate) fn add_repos_to_manifest(
+    manifest: &mut Rproj,
+    doc: Option<&mut DocumentMut>,
+    add: &AddRepos,
+    specs: &[AddSpec],
+    target: &str,
+) -> Result<Vec<String>, Box<dyn Error>> {
+    if let Some(spec) = specs.iter().find(|s| matches!(s, AddSpec::Remote(..))) {
+        bail!(
+            "{} is not a package of a repository, it cannot be added with --with-repos",
+            spec.name()
+        );
+    }
+    let mut messages = vec![];
+    if let Some(doc) = doc {
+        for repo in &add.new {
+            Rproj::doc_add_repository(doc, repo)?;
+        }
+    }
+    for repo in &add.new {
+        manifest.repository.push(repo.clone());
+        messages.push(format!(
+            "Added repository {} ({}) to {}",
+            repo.name,
+            repo.url.as_deref().unwrap_or_default(),
+            target
+        ));
+    }
+    Ok(messages)
+}
+
+/// Add the package of `spec` to `manifest`, see [`Rproj::add_dependency`]
+/// and [`Rproj::add_remote_dependency`], and return the message that tells
+/// the user what happened to `target`, the file that lists the dependencies.
+pub(crate) fn add_spec_to_manifest(
+    manifest: &mut Rproj,
+    spec: &AddSpec,
+    dev: bool,
+    target: &str,
+) -> String {
+    match spec {
+        AddSpec::Cran(name, version) => match manifest.add_dependency(name, version, dev) {
+            Some(previous) if previous == *version => {
+                format!("Kept {} ({}) in {}", name, version, target)
+            }
+            Some(previous) => format!(
+                "Updated {} in {}, {} -> {}",
+                name, target, previous, version
+            ),
+            None => format!("Added {} ({}) to {}", name, version, target),
+        },
+        AddSpec::Remote(name, table) => {
+            manifest.add_remote_dependency(name, (**table).clone(), dev);
+            let source = table
+                .git
+                .as_deref()
+                .or(table.url.as_deref())
+                .or(table.path.as_deref())
+                .unwrap_or_default();
+            format!("Added {} ({}) to {}", name, source, target)
+        }
+    }
+}
+
 /// Add dependencies to `rproj.toml`, then update the lockfile and install
 /// them: `rig proj add`.
 fn sc_proj_add(
@@ -747,6 +930,9 @@ fn sc_proj_add(
     _projargs: &ArgMatches,
     _mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
+    if let Some(script) = args.get_one::<String>("script") {
+        return crate::script_meta::sc_proj_add_script(Path::new(script), args);
+    }
     // The project is the nearest one at or above the current directory, like
     // `rig proj sync`, so that `rig proj add` works from a subdirectory.
     let cwd = std::env::current_dir()?;
@@ -781,6 +967,16 @@ fn sc_proj_add(
     }
 
     let mut messages: Vec<String> = Vec::new();
+    let add_repos = parse_add_repos(args, &manifest.repository)?;
+    if let Some(add) = &add_repos {
+        messages.extend(add_repos_to_manifest(
+            &mut manifest,
+            original_doc.as_mut(),
+            add,
+            &specs,
+            RPROJ_MANIFEST_FILE,
+        )?);
+    }
     for spec in specs.iter() {
         // A dev dependency of a package the project already depends on
         // directly is installed either way, so `--dev` does not do what it
@@ -794,31 +990,15 @@ fn sc_proj_add(
             ));
         }
 
-        messages.push(match spec {
-            AddSpec::Cran(name, version) => {
-                let previous = manifest.add_dependency(name, version, dev);
-                match previous {
-                    Some(previous) if previous == *version => {
-                        format!("Kept {} ({}) in {}", name, version, RPROJ_MANIFEST_FILE)
-                    }
-                    Some(previous) => format!(
-                        "Updated {} in {}, {} -> {}",
-                        name, RPROJ_MANIFEST_FILE, previous, version
-                    ),
-                    None => format!("Added {} ({}) to {}", name, version, RPROJ_MANIFEST_FILE),
-                }
-            }
-            AddSpec::Remote(name, table) => {
-                manifest.add_remote_dependency(name, (**table).clone(), dev);
-                let source = table
-                    .git
-                    .as_deref()
-                    .or(table.url.as_deref())
-                    .or(table.path.as_deref())
-                    .unwrap_or_default();
-                format!("Added {} ({}) to {}", name, source, RPROJ_MANIFEST_FILE)
-            }
-        });
+        messages.push(add_spec_to_manifest(
+            &mut manifest,
+            spec,
+            dev,
+            RPROJ_MANIFEST_FILE,
+        ));
+        if let Some(add) = &add_repos {
+            manifest.pin_dependency(name, dev, &add.pin);
+        }
 
         if let Some(doc) = original_doc.as_mut() {
             let path: &[&str] = if dev {
@@ -885,6 +1065,9 @@ fn sc_proj_remove(
     _projargs: &ArgMatches,
     _mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
+    if let Some(script) = args.get_one::<String>("script") {
+        return crate::script_meta::sc_proj_remove_script(Path::new(script), args);
+    }
     let cwd = std::env::current_dir()?;
     let root = find_project_root(&cwd).unwrap_or(cwd);
     let path = root.join(RPROJ_MANIFEST_FILE);
@@ -1040,6 +1223,12 @@ fn proj_read_manifest(root: &Path) -> Result<Rproj, Box<dyn Error>> {
         error!("Cannot parse {}: {}", RPROJ_MANIFEST_FILE, e);
         e
     })?;
+    if let Err(e) = manifest.check_repositories() {
+        let msg = format!("Invalid {}: {}", RPROJ_MANIFEST_FILE, e);
+        OUTPUT.error(&msg);
+        error!("{}", msg);
+        bail!(ReportedError(msg));
+    }
     Ok(manifest)
 }
 
@@ -1138,6 +1327,22 @@ pub(crate) struct ProjectSolve {
     /// [`Rproj::git_dependencies`]. Fetched and registered with the solver by
     /// [`register_git_sources`] before it runs.
     pub git_deps: Vec<(String, crate::rproj::DepTable)>,
+    /// The root manifest's `exclude-newer` setting, see
+    /// [`Rproj::exclude_newer`]. A workspace takes it from its root only.
+    pub exclude_newer: Option<ExcludeNewerSpec>,
+    /// The root manifest's repositories, see [`ProjRepos`], with the
+    /// dependency pins of every member. A workspace takes the repositories
+    /// from its root only.
+    pub repos: ProjRepos,
+    /// The root manifest's `prefer-binary` setting, see
+    /// [`Rproj::prefer_binary`]. A workspace takes it from its root only.
+    pub prefer_binary: Option<usize>,
+    /// The root manifest's `platforms` setting, see [`Rproj::platforms`]. A
+    /// workspace takes it from its root only.
+    pub platforms: Option<Vec<String>>,
+    /// The root manifest's `r-versions` setting, see [`Rproj::r_versions`].
+    /// A workspace takes it from its root only.
+    pub r_versions: Option<Vec<String>>,
 }
 
 /// Read the project or workspace rooted at `root` and turn it into the roots
@@ -1187,6 +1392,11 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
                 group_roots,
                 extra_roots,
                 git_deps,
+                exclude_newer: manifest.exclude_newer()?,
+                repos: ProjRepos::from_manifest(&manifest)?,
+                prefer_binary: manifest.prefer_binary()?,
+                platforms: manifest.platforms()?,
+                r_versions: manifest.r_versions()?,
             });
         }
     };
@@ -1207,12 +1417,27 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
     let mut extra_roots: HashMap<String, Vec<String>> = HashMap::new();
     let mut seen: HashMap<String, PathBuf> = HashMap::new();
     let mut git_deps: Vec<(String, crate::rproj::DepTable)> = vec![];
+    let mut pins: BTreeMap<String, String> = BTreeMap::new();
 
     for dir in &dirs {
         let mut member = proj_read_manifest(dir)?;
         member.inherit_workspace_deps(ws, &dir.join(RPROJ_MANIFEST_FILE))?;
         let name = member.project.name.clone();
         git_deps.extend(member.git_dependencies(dir));
+        for (pkg, repo) in member.repository_pins()? {
+            match pins.get(&pkg) {
+                Some(other) if !other.eq_ignore_ascii_case(&repo) => bail!(
+                    "Dependency `{}` is pinned to two repositories in the workspace, \
+                     `{}` and `{}`",
+                    pkg,
+                    other,
+                    repo
+                ),
+                _ => {
+                    pins.insert(pkg, repo);
+                }
+            }
+        }
 
         // The solver equates R and the base packages with the R version
         // itself, so a member of one of those names would be resolved against
@@ -1253,6 +1478,9 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
     // what makes the merged `R` requirement the intersection of the members'.
     merged.simplify();
 
+    let mut repos = ProjRepos::from_manifest(&manifest)?;
+    repos.set_pins(pins);
+
     Ok(ProjectSolve {
         members: dirs,
         roots,
@@ -1261,6 +1489,11 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
         group_roots,
         extra_roots,
         git_deps,
+        exclude_newer: manifest.exclude_newer()?,
+        repos,
+        prefer_binary: manifest.prefer_binary()?,
+        platforms: manifest.platforms()?,
+        r_versions: manifest.r_versions()?,
     })
 }
 
@@ -1275,7 +1508,9 @@ fn sc_proj_deps(
     let (name, version, pkg_deps) = proj_read_manifest_deps(Path::new("."), dev)?;
 
     if args.get_flag("recursive") {
-        return proj_deps_recursive(&name, &version, &pkg_deps, json);
+        let manifest = proj_read_manifest(Path::new("."))?;
+        let (repos, filter) = default_r_proj_repos(&ProjRepos::for_args(&manifest, args)?);
+        return proj_deps_recursive(&name, &version, &pkg_deps, &repos, filter, json);
     }
 
     let mut deps = pkg_deps.dependencies.clone();
@@ -1370,9 +1605,11 @@ fn proj_deps_recursive(
     name: &str,
     version: &RPackageVersion,
     deps: &PackageDependencies,
+    repos: &[PkgRepo],
+    filter: RepoFilter,
     json: bool,
 ) -> Result<(), Box<dyn Error>> {
-    let loader = DbSourcePackageLoader::new()?;
+    let loader = DbSourcePackageLoader::new_for_repos(repos)?.with_repo_filter(filter);
     let (rows, num_direct) = walk_deps(&loader, name, &deps.dependencies, true);
 
     if json {
@@ -1405,11 +1642,15 @@ fn sc_proj_tree(
     let (name, version, pkg_deps, git_deps) =
         proj_read_manifest_deps_with_remotes(Path::new("."), dev)?;
 
+    let manifest = proj_read_manifest(Path::new("."))?;
+    let (repos, filter) = default_r_proj_repos(&ProjRepos::for_args(&manifest, args)?);
     proj_tree(
         &name,
         &version,
         &pkg_deps.dependencies,
         git_deps.into_iter().collect(),
+        &repos,
+        filter,
         dev,
         no_base,
         why,
@@ -1417,17 +1658,68 @@ fn sc_proj_tree(
     )
 }
 
-/// Turns a symbolic, installed R name (e.g. `"devel"`, `"next"`) into the
-/// numeric R version P3M's binary repo paths need. Names that already look
-/// like a version are passed through unchanged.
+/// The repositories of a project for the commands that do not solve for a
+/// particular R version, `rig proj deps --recursive` and `rig proj tree`:
+/// with the Bioconductor release of the default R version, see
+/// [`default_r_feeds`].
+fn default_r_proj_repos(repos: &ProjRepos) -> (Vec<PkgRepo>, RepoFilter) {
+    let bioc_version = default_r_feeds(&repos.bioc_setting())
+        .into_iter()
+        .find_map(|f| match f.repo {
+            RepoId::Bioc(v) => Some(v),
+            _ => None,
+        });
+    (
+        repos.pkg_repos(bioc_version.as_deref()),
+        repos.repo_filter(bioc_version.as_deref()),
+    )
+}
+
+/// Whether `r_version` is a plain numeric version, e.g. `4.5` or `4.5.1`, as
+/// opposed to the name of an installed R, e.g. `devel` or `4.0.5-x86_64`.
+fn is_numeric_r_version(r_version: &str) -> bool {
+    !r_version.is_empty()
+        && r_version
+            .split('.')
+            .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
+}
+
+/// Turns a symbolic, installed R name (e.g. `"devel"`, `"next"`,
+/// `"4.0.5-x86_64"`) into the numeric R version P3M's binary repo paths need.
+/// Plain numeric versions are passed through unchanged.
 fn resolve_binary_target_r_version(r_version: &str) -> Result<String, Box<dyn Error>> {
-    if r_version.starts_with(|c: char| c.is_ascii_digit()) {
+    if is_numeric_r_version(r_version) {
         return Ok(r_version.to_string());
     }
     match find_installed(r_version)? {
         Some(name) => get_r_version_data_version(&name),
         None => Ok(r_version.to_string()),
     }
+}
+
+/// The arch of the installed R `r_version` names, from its `R_PLATFORM`, or
+/// `None` for a plain numeric version or an R that is not installed. An
+/// x86_64 R on an arm64 Mac needs x86_64 binaries, not the host's.
+fn installed_r_arch(r_version: &str) -> Option<&'static str> {
+    if is_numeric_r_version(r_version) {
+        return None;
+    }
+    let name = find_installed(r_version).ok()??;
+    let binary = sc_get_list_details()
+        .ok()?
+        .into_iter()
+        .find(|v| v.name == name)?
+        .binary?;
+    let platform = r_platform(&binary)?;
+    normalize_arch(platform.split('-').next()?)
+}
+
+/// The Bioconductor release a solve for `r_version` uses with `bioc`, see
+/// [`BiocSetting::bioc_version`]. `r_version` may be a symbolic, installed R
+/// name, like for [`sc_proj_solve_deps`].
+fn solve_bioc_version(bioc: &BiocSetting, r_version: &str, cutoff: Option<&str>) -> Option<String> {
+    let r_version = resolve_binary_target_r_version(r_version).ok()?;
+    bioc.bioc_version(&r_version, cutoff)
 }
 
 /// The P3M build target to resolve binary packages for.
@@ -1440,33 +1732,39 @@ pub(crate) fn proj_binary_target(
     platform: Option<&String>,
     r_version: &str,
 ) -> Result<Option<BinaryTarget>, Box<dyn Error>> {
-    let (target, no_binaries) = proj_binary_target_quiet(platform, r_version)?;
-    if let Some(name) = no_binaries {
-        OUTPUT.warn(&format!(
-            "No binary packages for {}, using source packages",
-            name
-        ));
+    let (target, note) = proj_binary_target_quiet(platform, r_version)?;
+    if let Some(note) = note {
+        note.report();
     }
     Ok(target)
 }
 
-/// [`proj_binary_target`] without the "no binary packages" warning.
+/// [`proj_binary_target`] without the "no binary packages" warning and the
+/// "generic Linux binaries" message.
 ///
-/// Instead of warning, it returns the platform name that has no binaries, for
-/// callers that resolve several targets at once ([`proj_lock`]): every R
-/// version they resolve the platform for would repeat the same warning, so
-/// they collect the names and warn once per platform.
+/// Instead of printing them, it returns them, for callers that resolve
+/// several targets at once ([`proj_lock`]): every R version they resolve the
+/// platform for would repeat the same message, so they collect them and
+/// print each one once.
 pub(crate) fn proj_binary_target_quiet(
     platform: Option<&String>,
     r_version: &str,
-) -> Result<(Option<BinaryTarget>, Option<String>), Box<dyn Error>> {
+) -> Result<(Option<BinaryTarget>, Option<TargetNote>), Box<dyn Error>> {
+    // As the user spelled it, for messages.
+    let spec = platform;
     let platform = match platform {
         Some(p) if p == "source" => {
             info!("Solving for source packages only");
             return Ok((None, None));
         }
         Some(p) => parse_platform_string(p)?,
-        None => detect_platform()?,
+        None => {
+            let mut platform = detect_platform()?;
+            if let Some(arch) = installed_r_arch(r_version) {
+                platform.arch = arch.to_string();
+            }
+            platform
+        }
     };
 
     let r_version = &resolve_binary_target_r_version(r_version)?;
@@ -1485,20 +1783,52 @@ pub(crate) fn proj_binary_target_quiet(
         }
     };
 
-    let no_binaries = match &target {
+    let requested = || spec.cloned().unwrap_or_else(|| platform_string(&platform));
+    let note = match &target {
         Some(target) => {
             info!("Solving for binary target {}", target.name());
-            None
+            // A specific distro P3M has no build for (or not for this arch)
+            // gets the generic glibc build, see `PpmStatus::ppm_platform`. A
+            // plain glibc Linux platform asks for exactly that.
+            let specific = platform.distro.as_deref().is_some_and(|d| d != MANYLINUX);
+            (specific && target.platform == MANYLINUX).then(|| TargetNote::Generic {
+                requested: requested(),
+                target: target.name(),
+            })
         }
-        None => Some(
-            platform
-                .rig_platform
-                .as_deref()
-                .unwrap_or(&platform.os)
-                .to_string(),
-        ),
+        None => Some(TargetNote::NoBinaries(requested())),
     };
-    Ok((target, no_binaries))
+    Ok((target, note))
+}
+
+/// Something worth telling the user about how a platform resolved to a
+/// binary target, see [`proj_binary_target_quiet`].
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum TargetNote {
+    /// No binaries at all for this platform, source packages only.
+    NoBinaries(String),
+    /// No specific binaries for this platform, P3M's generic glibc build.
+    Generic { requested: String, target: String },
+}
+
+impl TargetNote {
+    pub(crate) fn report(&self) {
+        match self {
+            TargetNote::NoBinaries(name) => {
+                let msg = format!("No binary packages for {}, using source packages", name);
+                OUTPUT.warn(&msg);
+                info!("{}", msg);
+            }
+            TargetNote::Generic { requested, target } => {
+                let msg = format!(
+                    "No specific binary packages for {}, using generic Linux binaries ({})",
+                    requested, target
+                );
+                OUTPUT.info(&msg);
+                info!("{}", msg);
+            }
+        }
+    }
 }
 
 /// Solve the dependencies of one project for one R version and one binary
@@ -1512,15 +1842,80 @@ pub(crate) fn sc_proj_solve_project_deps(
     report_status: bool,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
     let roots = [SolveRoot::project(deps.clone())?];
+    let bioc_version = solve_bioc_version(&BiocSetting::default(), r_version, None);
+    let repos = ProjRepos::default();
+    let os_type = target.as_ref().map(BinaryTarget::os_type);
     sc_proj_solve_deps(
         r_version,
         &roots,
         None,
         &[],
         target,
+        os_type,
         prefer_binary,
+        None,
+        &repos.pkg_repos(bioc_version.as_deref()),
+        &RepoFilter::default(),
+        &SolvePins::default(),
         report_status,
     )
+}
+
+/// How the message about a package that is not available names the
+/// repositories of a solve: `None` if they are CRAN, and maybe a
+/// Bioconductor release, the solver's default message covers those. Also
+/// the repository of every pinned package.
+fn describe_solve_repos(
+    repos: &[PkgRepo],
+    filter: &RepoFilter,
+) -> (Option<String>, HashMap<String, String>) {
+    let name = |id: &RepoId| match id {
+        RepoId::Cran => "CRAN".to_string(),
+        RepoId::Bioc(v) => format!("Bioconductor {}", v),
+        RepoId::Cranlike { name, .. } => name.clone(),
+    };
+    // An explicit repository only serves the packages pinned to it, so it
+    // does not count for the others.
+    let ids: Vec<RepoId> = repos
+        .iter()
+        .map(|r| r.repo_id())
+        .filter(|id| !filter.explicit.contains(id))
+        .collect();
+    let default = ids.contains(&RepoId::Cran) && ids.iter().all(|id| !id.is_cranlike());
+    let description = if default {
+        None
+    } else {
+        let names: Vec<String> = ids.iter().map(name).collect();
+        Some(match names.split_last() {
+            None => "any repository".to_string(),
+            Some((last, [])) => last.clone(),
+            Some((last, rest)) => format!("{} or {}", rest.join(", "), last),
+        })
+    };
+    let pinned = filter
+        .pins
+        .iter()
+        .map(|(pkg, id)| {
+            let repo = id
+                .as_ref()
+                .map(name)
+                .unwrap_or_else(|| "Bioconductor".to_string());
+            (pkg.clone(), repo)
+        })
+        .collect();
+    (description, pinned)
+}
+
+/// What a solve keeps from an existing lock file, and the extra constraints
+/// `--upgrade-package <pkg>@<version>` adds, see
+/// [`RPackageRegistry::with_preferences`] and
+/// [`RPackageRegistry::with_overrides`]. Empty for a fresh solve.
+#[derive(Default)]
+pub(crate) struct SolvePins {
+    /// The version to pick for a package, if it is still allowed.
+    pub preferred: HashMap<String, RPackageVersion>,
+    /// Extra version constraints, for this solve only.
+    pub overrides: PackageDependencies,
 }
 
 /// Solve the dependencies of every root in `roots` for one R version and one
@@ -1533,13 +1928,19 @@ pub(crate) fn sc_proj_solve_project_deps(
 /// the per-solve lines here would only be N interleaved, unlabelled copies of
 /// them. Single-target callers pass `true` and get the progress reported as
 /// each phase starts. The log file gets the messages either way.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn sc_proj_solve_deps(
     r_version: &str,
     roots: &[SolveRoot],
     self_alias: Option<&SolveRoot>,
     git_sources: &[ResolvedGitSource],
     target: Option<BinaryTarget>,
+    os_type: Option<OsType>,
     prefer_binary: Option<usize>,
+    exclude_newer: Option<&str>,
+    repos: &[PkgRepo],
+    filter: &RepoFilter,
+    pins: &SolvePins,
     report_status: bool,
 ) -> Result<(RPackageRegistry, SelectedDependencies<RPackageRegistry>), Box<dyn Error>> {
     info!("Solving dependencies");
@@ -1550,17 +1951,55 @@ pub(crate) fn sc_proj_solve_deps(
     let r_version = &resolve_binary_target_r_version(r_version)?;
 
     // The registry lazily loads each package's versions from the local database
-    // (the full ALLPACKAGES history) as the solver visits them, instead of
-    // preloading the entire CRAN version history.
-    let loader = DbSourcePackageLoader::new()?;
+    // (the full ALLPACKAGES histories of CRAN and the R version's
+    // Bioconductor release) as the solver visits them, instead of preloading
+    // the entire version history.
+    // `rig pkg` passes the repositories of the R installation, `rig proj`
+    // the project's, see `ProjRepos`. `filter` limits the repositories of
+    // the packages pinned to one, and of the explicit repositories.
+    // `os_type` hides the packages that do not work on the OS of the solve,
+    // see the `OS_type` field. A source-only lock may be installed on any OS,
+    // so it keeps them, and `rig proj sync` skips them instead.
+    let loader = DbSourcePackageLoader::new_for_repos(repos)?
+        .with_exclude_newer(exclude_newer.map(|c| c.to_string()))
+        .with_repo_filter(filter.clone())
+        .with_os_type(os_type);
+    // A repository that failed to load is not searched.
+    let repositories = loader.repositories();
+    let repos: Vec<PkgRepo> = repos
+        .iter()
+        .filter(|r| repositories.contains(&r.repo_id()))
+        .cloned()
+        .collect();
+    let (repos_description, pinned) = describe_solve_repos(&repos, filter);
+    let feeds = PkgRepo::feeds(&repos);
+    let cranlike = PkgRepo::cranlike(&repos);
+    let bioc_version = feeds.iter().find_map(|f| match &f.repo {
+        RepoId::Bioc(v) => Some(v.clone()),
+        _ => None,
+    });
     // Binary builds are candidates alongside the source tarball, so that the
     // `LinkingTo` versions a build was compiled against become constraints the
-    // solver can backtrack over. Their indices are fetched lazily too, one
-    // request per package the solve visits.
-    let binaries: Option<Box<dyn BinaryIndexLoader>> =
-        target.map(|t| Box::new(P3mBinaryLoader::new(t)) as Box<dyn BinaryIndexLoader>);
-    let reg: RPackageRegistry =
-        RPackageRegistry::with_loaders(Box::new(loader), binaries).prefer_binary(prefer_binary);
+    // solver can backtrack over. Their P3M indices are fetched lazily too, one
+    // request per package the solve visits. CRAN-like repositories have one
+    // binary index each.
+    let binaries: Option<Box<dyn BinaryIndexLoader>> = target.map(|t| {
+        let p3m = Box::new(P3mBinaryLoader::new_for(t.clone(), &feeds));
+        if cranlike.is_empty() {
+            p3m as Box<dyn BinaryIndexLoader>
+        } else {
+            Box::new(ChainedBinaryLoader::new(vec![
+                p3m,
+                Box::new(CranlikeBinaryLoader::new_for(t, &cranlike)),
+            ]))
+        }
+    });
+    let reg: RPackageRegistry = RPackageRegistry::with_loaders(Box::new(loader), binaries)
+        .with_bioc_version(bioc_version)
+        .with_repo_description(repos_description, pinned)
+        .prefer_binary(prefer_binary)
+        .with_preferences(pins.preferred.clone())
+        .with_overrides(&pins.overrides);
 
     let (root_pkg, root_version) = register_roots(&reg, roots, self_alias)?;
 
@@ -1626,14 +2065,15 @@ pub(crate) fn sc_proj_solve_deps(
                 "Cannot resolve dependencies for R {} / {}:\n{}",
                 r_version,
                 solve_platform_key(reg.binary_target()),
-                format_solver_error(e)
+                format_solver_error(e, &reg)
             );
             // Parallel callers print the one failure that aborts the command
             // themselves; N copies of the same report would say less, not more.
+            error!("{}", msg);
             if report_status {
                 report_solve_failure(&msg);
+                bail!(ReportedError(msg))
             }
-            error!("{}", msg);
             bail!("{}", msg)
         }
     }
@@ -1659,8 +2099,45 @@ type GitSourceKey = (String, Option<String>, Option<String>);
 /// so a `proj_lock` run parses the file once instead of twice.
 fn read_existing_lock(root: &Path) -> Option<RprojLock> {
     let text = fs::read_to_string(root.join(RPROJ_LOCK_FILE)).ok()?;
-    RprojLock::check_version(&text).ok()?;
-    toml::from_str::<RprojLock>(&text).ok()
+    RprojLock::parse(&text).ok()
+}
+
+/// The `[tool.rig]` options a `rig proj lock` run solves with, given the effective
+/// `exclude-newer` and `prefer-binary` settings and the options of the
+/// existing lock, if any.
+///
+/// A relative span, e.g. `7 days`, keeps the cutoff day the existing lock
+/// resolved it to, as long as the span itself is unchanged. Otherwise the
+/// cutoff would move every day and the lock would never be reused. `--upgrade`
+/// ignores the existing lock, so it resolves the span afresh.
+fn resolve_lock_options(
+    exclude_newer: Option<&ExcludeNewerSpec>,
+    prefer_binary: Option<usize>,
+    repos: &ProjRepos,
+    existing: Option<&RprojLockOptions>,
+) -> Result<RprojLockOptions, Box<dyn Error>> {
+    let mut options = RprojLockOptions {
+        prefer_binary,
+        repositories: repos.lock_repositories(),
+        ..Default::default()
+    };
+    let Some(spec) = exclude_newer else {
+        return Ok(options);
+    };
+    match (spec.span(), existing) {
+        (Some(span), Some(existing))
+            if existing.exclude_newer_span.as_deref() == Some(span)
+                && existing.exclude_newer.is_some() =>
+        {
+            options.exclude_newer = existing.exclude_newer.clone();
+            options.exclude_newer_span = existing.exclude_newer_span.clone();
+        }
+        _ => {
+            options.exclude_newer = Some(spec.cutoff()?);
+            options.exclude_newer_span = spec.span().map(|s| s.to_string());
+        }
+    }
+    Ok(options)
 }
 
 /// Every git/GitHub dependency's previously resolved commit, read from an
@@ -1671,12 +2148,14 @@ fn read_existing_lock(root: &Path) -> Option<RprojLock> {
 /// unchanged, instead of re-fetching a possibly-moved branch/tag/PR every
 /// time -- the same "a lockfile is sticky until you ask to upgrade" behavior
 /// `Cargo.lock`/`uv.lock` have (see the `--upgrade` flag, which skips calling
-/// this instead, forcing every git dependency to resolve fresh).
-fn existing_git_shas(lock: &RprojLock) -> HashMap<GitSourceKey, String> {
+/// this instead, forcing every git dependency to resolve fresh). The packages
+/// in `skip`, the ones `--upgrade-package` names, are left out, so they
+/// resolve fresh, too.
+fn existing_git_shas(lock: &RprojLock, skip: &HashSet<String>) -> HashMap<GitSourceKey, String> {
     let mut map = HashMap::new();
     for target in &lock.targets {
         for pkg in &target.packages {
-            if !pkg.metadata.contains_key(REMOTE_TYPE_FIELD) {
+            if !pkg.metadata.contains_key(REMOTE_TYPE_FIELD) || skip.contains(&pkg.package) {
                 continue;
             }
             let url = pkg.metadata.get(crate::install::REMOTE_URL_FIELD);
@@ -1701,11 +2180,15 @@ fn existing_git_shas(lock: &RprojLock) -> HashMap<GitSourceKey, String> {
 /// resolved tag as-is instead of asking GitHub which release is latest every
 /// time. `--upgrade` skips calling this, same as [`existing_git_shas`], so a
 /// release dependency always re-resolves to whatever is actually latest.
-fn existing_release_refs(lock: &RprojLock) -> HashMap<(String, Option<String>), (String, String)> {
+/// `skip` is the same as for [`existing_git_shas`].
+fn existing_release_refs(
+    lock: &RprojLock,
+    skip: &HashSet<String>,
+) -> HashMap<(String, Option<String>), (String, String)> {
     let mut map = HashMap::new();
     for target in &lock.targets {
         for pkg in &target.packages {
-            if !pkg.metadata.contains_key(REMOTE_TYPE_FIELD) {
+            if !pkg.metadata.contains_key(REMOTE_TYPE_FIELD) || skip.contains(&pkg.package) {
                 continue;
             }
             let url = pkg.metadata.get(crate::install::REMOTE_URL_FIELD);
@@ -1810,10 +2293,13 @@ fn lock_target_git_sources_fresh(
 /// entry to go stale. `self_sha` is the project's current content digest
 /// (`compute_dir_stat_digest`), recomputed once per `rig proj lock` run the
 /// same way `git_sources` resolves a real `path` dependency's digest fresh
-/// every time.
+/// every time. The entry's `sources` must also be the `file://` URL of
+/// `root_abs`, see [`project_source_url`], so a lock written before it was
+/// recorded is updated.
 fn project_entry_fresh(
     target: &RprojLockTarget,
     self_alias: Option<&SolveRoot>,
+    root_abs: &Path,
     self_sha: Option<&String>,
 ) -> bool {
     let Some(alias) = self_alias else {
@@ -1825,6 +2311,21 @@ fn project_entry_fresh(
     pkg.package == alias.name
         && pkg.version == alias.version.to_string()
         && pkg.metadata.get(REMOTE_SHA_FIELD) == self_sha
+        && pkg.sources == project_sources(root_abs)
+}
+
+/// The `file://` URL of the project root `root_abs`, e.g.
+/// `file:///home/user/mypkg/`. `None` if `root_abs` is not absolute.
+fn project_source_url(root_abs: &Path) -> Option<String> {
+    reqwest::Url::from_directory_path(root_abs)
+        .ok()
+        .map(|url| url.to_string())
+}
+
+/// The `sources` of the project's own lock entry: its `file://` URL, see
+/// [`project_source_url`].
+fn project_sources(root_abs: &Path) -> Vec<String> {
+    project_source_url(root_abs).into_iter().collect()
 }
 
 /// The [`RprojLockPackage`] entry for the project's own package -- `alias` is
@@ -1833,9 +2334,10 @@ fn project_entry_fresh(
 /// be computed). Mirrors the "local" `RemoteType` case
 /// [`RprojLockTarget::from_solution`] already writes for a real `path`
 /// dependency, so [`lockfile_package_info`]/[`fetch_git_lockfile_packages`]
-/// handle it with no changes: `sources`/`target` are empty, since the
-/// installer reads `RemoteUrl` directly instead of downloading or caching
-/// anything.
+/// handle it with no changes: `target` is empty, since the installer reads
+/// `RemoteUrl` directly instead of downloading or caching anything.
+/// `sources` holds the project's `file://` URL, see [`project_source_url`],
+/// but nothing downloads from it.
 fn project_lock_package(
     alias: &SolveRoot,
     root_abs: &Path,
@@ -1871,11 +2373,15 @@ fn project_lock_package(
         platform: "source".to_string(),
         dependencies,
         metadata,
-        sources: vec![],
+        sources: project_sources(root_abs),
         target: String::new(),
         groups: vec!["main".to_string()],
         extra_groups: vec![],
         is_project: true,
+        repository: None,
+        // `rproj.toml` has no `SystemRequirements` of its own yet.
+        system_requirements: None,
+        os_type: None,
     }
 }
 
@@ -1906,6 +2412,87 @@ fn existing_lock_satisfies(
     Some(target.clone())
 }
 
+/// The extra version constraints of `--upgrade-package <pkg>@<requirement>`,
+/// for [`RPackageRegistry::with_overrides`]. A plain `<pkg>` adds none.
+fn upgrade_overrides(
+    upgrade_packages: &[(String, String)],
+) -> Result<PackageDependencies, Box<dyn Error>> {
+    let mut overrides = PackageDependencies::new();
+    for (name, req) in upgrade_packages {
+        let constraints = crate::rproj::parse_constraints(req)?;
+        if constraints.is_empty() {
+            continue;
+        }
+        overrides.dependencies.push(DepVersionSpec {
+            name: name.clone(),
+            types: vec![RDepType::Imports],
+            constraints,
+        });
+    }
+    Ok(overrides)
+}
+
+/// Warn about the `--upgrade-package` packages that are neither dependencies
+/// of the project nor in its lock file: they have no effect.
+fn warn_unknown_upgrade_packages(
+    upgrade_packages: &[(String, String)],
+    deps: &PackageDependencies,
+    lock: Option<&RprojLock>,
+) {
+    for (name, _) in upgrade_packages {
+        let in_deps = deps.dependencies.iter().any(|d| &d.name == name);
+        let in_lock = lock.is_some_and(|l| {
+            l.targets
+                .iter()
+                .any(|t| t.packages.iter().any(|p| &p.package == name))
+        });
+        if !in_deps && !in_lock {
+            let msg = format!(
+                "`{}` is not a dependency of the project, ignoring it in --upgrade-package",
+                name
+            );
+            OUTPUT.warn(&msg);
+            info!("{}", msg);
+        }
+    }
+}
+
+/// The versions the existing lock target for `rver` / `platform_key` pins, for
+/// the solver to keep where they still fit, see
+/// [`RPackageRegistry::with_preferences`]. Leaves out R and the base packages,
+/// git/GitHub/URL/local packages, which have their own sticky logic, and the
+/// packages in `skip`, the ones `--upgrade-package` names.
+///
+/// A target the lock does not have yet, e.g. a new platform, uses another
+/// target for the same R version instead, so that it gets the same versions
+/// as the rest. Empty if there is no target for this R version either.
+fn lock_target_preferences(
+    lock: &RprojLock,
+    rver: &str,
+    platform_key: &str,
+    skip: &HashSet<String>,
+) -> HashMap<String, RPackageVersion> {
+    let target = lock
+        .targets
+        .iter()
+        .find(|t| t.r_version == rver && t.platform == platform_key)
+        .or_else(|| lock.targets.iter().find(|t| t.r_version == rver));
+    let Some(target) = target else {
+        return HashMap::new();
+    };
+    target
+        .packages
+        .iter()
+        .filter(|p| !is_base_package(&p.package) && !skip.contains(&p.package))
+        .filter(|p| !p.metadata.contains_key(REMOTE_TYPE_FIELD))
+        .filter_map(|p| {
+            RPackageVersion::from_str(&p.version)
+                .ok()
+                .map(|v| (p.package.clone(), v))
+        })
+        .collect()
+}
+
 /// One git/GitHub-sourced dependency, already fetched and turned into
 /// everything [`register_git_sources`] needs to hand it to a solver's
 /// registry: no I/O left to do, just three lookups/inserts.
@@ -1914,6 +2501,9 @@ pub(crate) struct ResolvedGitSource {
     version: RegistryPackageVersion,
     ranges: HashMap<String, RPackageVersionRanges, rustc_hash::FxBuildHasher>,
     git_source: GitSourceInfo,
+    /// The `SystemRequirements` of the fetched `DESCRIPTION`.
+    system_requirements: Option<String>,
+    os_type: Option<String>,
 }
 
 /// Fetch every git/GitHub-sourced dependency in `git_deps`, and every
@@ -2001,6 +2591,8 @@ pub(crate) fn resolve_git_sources(
                 version,
                 ranges,
                 git_source,
+                system_requirements: pkg.system_requirements.clone(),
+                os_type: pkg.os_type.clone(),
             });
 
             for entry in remotes.split(',') {
@@ -2022,7 +2614,8 @@ pub(crate) fn resolve_git_sources(
                         next_frontier.push((dep_name, dep_table_from_url(&u)));
                     }
                     // A `Remotes:` entry that is a path on whoever's
-                    // machine wrote it means nothing here.
+                    // machine wrote it means nothing here. A `bioc::` one
+                    // (an `Err` here) is the same as the plain package name.
                     Ok(crate::pkgsource::PkgSource::Cran)
                     | Ok(crate::pkgsource::PkgSource::Local(_))
                     | Err(_) => {}
@@ -2053,6 +2646,12 @@ fn register_git_sources(reg: &RPackageRegistry, git_sources: &[ResolvedGitSource
             source.version.clone(),
             source.git_source.clone(),
         );
+        if let Some(os_type) = &source.os_type {
+            reg.set_os_type(&source.name, &source.version.version, os_type.clone());
+        }
+        if let Some(sysreqs) = &source.system_requirements {
+            reg.set_system_requirements(&source.name, &source.version.version, sysreqs.clone());
+        }
     }
 }
 
@@ -2479,7 +3078,7 @@ fn report_solve_failure(msg: &str) {
 /// Mirrors how `RprojLockTarget::from_solution` derives the target's `platform`
 /// field (src/rproj.rs), so the two never disagree.
 fn solve_platform_key(target_name: Option<String>) -> String {
-    target_name.unwrap_or_else(|| std::env::consts::ARCH.to_string())
+    target_name.unwrap_or_else(|| "source".to_string())
 }
 
 fn solution_to_sorted_vec(
@@ -2523,6 +3122,9 @@ struct ProjLockOptions {
     /// `--add-platform`'s comma-separated, repeatable list.
     add_platforms: Vec<String>,
     prefer_binary: Option<usize>,
+    /// `--exclude-newer`: hide CRAN versions published after this date (or
+    /// span). Overrides the manifest's `exclude-newer` setting.
+    exclude_newer: Option<ExcludeNewerSpec>,
     /// `--upgrade`: re-resolve every dependency instead of reusing an
     /// existing `rproj.lock`: re-check every git/GitHub dependency's ref
     /// against its remote instead of reusing the commit already pinned (see
@@ -2530,6 +3132,23 @@ struct ProjLockOptions {
     /// dependencies instead of keeping a pin that already satisfies
     /// `rproj.toml` (see [`existing_lock_satisfies`]).
     upgrade: bool,
+    /// `--upgrade-package`: re-solve every target, and let these packages
+    /// move to the newest version allowed, while the rest keep the versions
+    /// the existing lock pins, if they still fit. Each entry is a package
+    /// name and an extra version requirement for this solve only, `"*"` if
+    /// none was given, see [`parse_upgrade_packages`].
+    upgrade_packages: Vec<(String, String)>,
+    /// Solve for this machine only, instead of the default platform set.
+    /// Used for the environments of scripts with inline metadata, which only
+    /// ever run where they are created.
+    host_only: bool,
+    /// The name of the lock file in messages, if it is not `rproj.lock`.
+    /// `rig proj lock --script` locks in the script's cache environment and
+    /// copies the result next to the script, as `<script>.lock`.
+    lockfile_label: Option<String>,
+    /// `--with-repos` and `--without-repos`: change the project's
+    /// repositories for this lock, see [`ProjRepos::apply_args`].
+    repos: Option<PkgReposArgs>,
 }
 
 fn sc_proj_lock(
@@ -2551,9 +3170,253 @@ fn sc_proj_lock(
             .map(|vs| vs.cloned().collect())
             .unwrap_or_default(),
         prefer_binary: args.get_one::<usize>("prefer-binary").copied(),
+        exclude_newer: exclude_newer_arg(args)?,
         upgrade: args.get_flag("upgrade"),
+        upgrade_packages: parse_upgrade_packages(args)?,
+        host_only: false,
+        lockfile_label: None,
+        repos: interpret_pkg_repos_args(args)?,
     };
+    if let Some(script) = args.get_one::<String>("script") {
+        return proj_lock_script(Path::new(script), opts, args);
+    }
     proj_lock(&proj_lock_root()?, &opts, args)
+}
+
+/// `rig proj lock --script`: lock the dependencies in the `# /// script`
+/// block of `script` into `<script>.lock`, next to the script. The solve
+/// happens in the script's cache environment, the same one `rig run` uses,
+/// with an existing `<script>.lock` as the starting point, so the targets
+/// that still fit are kept.
+fn proj_lock_script(
+    script: &Path,
+    mut opts: ProjLockOptions,
+    args: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+    let lock_path = script_lock_path(script);
+    let envdir = script_lock_env(script)?;
+    let env_lock = envdir.join(RPROJ_LOCK_FILE);
+    if lock_path.exists() {
+        write_atomically(&env_lock, &fs::read(&lock_path)?)?;
+    } else if env_lock.exists() {
+        fs::remove_file(&env_lock)?;
+    }
+    opts.lockfile_label = Some(lock_file_label(&lock_path));
+    proj_lock(&envdir, &opts, args)?;
+    write_atomically(&lock_path, &fs::read(&env_lock)?)?;
+    Ok(())
+}
+
+/// How a script's lock file is named in messages: its file name.
+pub(crate) fn lock_file_label(lock_path: &Path) -> String {
+    lock_path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| lock_path.display().to_string())
+}
+
+/// Lock the project in `root` again, for the same R versions and platforms
+/// its existing lock has. This is how `rig run` updates the lock file of a
+/// script, when the script's `# /// script` block changed, or for
+/// `--upgrade` / `--upgrade-package`. R versions the manifest's `R`
+/// requirement does not allow any more are dropped. If none is left, or there
+/// is no lock, the default R version and platform set are used, as for
+/// `rig proj lock`. The manifest's `r-versions` and `platforms` settings win
+/// over the lock's.
+pub(crate) fn proj_lock_keep_targets(
+    root: &Path,
+    upgrade: bool,
+    upgrade_packages: Vec<(String, String)>,
+    lockfile_label: &str,
+    args: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+    let solve = proj_read_solve_roots(root)?;
+    let req = solve.merged.dependencies.iter().find(|d| d.name == "R");
+    let mut r_versions: Vec<String> = vec![];
+    let mut platforms: Vec<String> = vec![];
+    if let Some(lock) = read_existing_lock(root) {
+        for target in &lock.targets {
+            let allowed = req.is_none_or(|r| r.satisfies(&target.r_version).unwrap_or(false));
+            if allowed && !r_versions.contains(&target.r_version) {
+                r_versions.push(target.r_version.clone());
+            }
+            if !platforms.contains(&target.platform) {
+                platforms.push(target.platform.clone());
+            }
+        }
+    }
+    // The manifest's own `platforms` and `r-versions` win over the lock's,
+    // `proj_lock` uses them when none are given.
+    if r_versions.is_empty() || solve.platforms.is_some() {
+        platforms.clear();
+    }
+    if solve.r_versions.is_some() {
+        r_versions.clear();
+    }
+    let opts = ProjLockOptions {
+        r_versions,
+        platforms,
+        upgrade,
+        upgrade_packages,
+        lockfile_label: Some(lockfile_label.to_string()),
+        ..Default::default()
+    };
+    proj_lock(root, &opts, args)
+}
+
+/// Whether the existing lock of the project in `root` still fits its
+/// manifest, without solving anything: the lock was solved with the same
+/// options, and every target pins every direct dependency at an allowed
+/// version, for an allowed R version. `false` if there is no usable lock.
+///
+/// This is the check `rig proj lock` makes to reuse a target, for every
+/// target of the lock. `rig run` uses it to decide whether a script's lock
+/// file needs updating.
+pub(crate) fn lock_fits_manifest(root: &Path) -> Result<bool, Box<dyn Error>> {
+    let Some(lock) = read_existing_lock(root) else {
+        return Ok(false);
+    };
+    let solve = proj_read_solve_roots(root)?;
+    let lock_options = resolve_lock_options(
+        solve.exclude_newer.as_ref(),
+        solve.prefer_binary,
+        &solve.repos,
+        Some(&lock.tool.rig),
+    )?;
+    if lock.tool.rig != lock_options {
+        return Ok(false);
+    }
+    if let Some(platforms) = &solve.platforms {
+        if !lock_has_platforms(&lock, platforms) {
+            return Ok(false);
+        }
+    }
+    if let Some(r_versions) = &solve.r_versions {
+        if !lock_has_r_versions(&lock, r_versions) {
+            return Ok(false);
+        }
+    }
+    let req = solve.merged.dependencies.iter().find(|d| d.name == "R");
+    let direct_deps: Vec<DepVersionSpec> = solve
+        .merged
+        .dependencies
+        .iter()
+        .filter(|d| d.name != "R" && !BASE_PKGS.contains(&d.name.as_str()))
+        .cloned()
+        .collect();
+    let no_upgrades = HashSet::new();
+    let git_sources = resolve_git_sources(
+        &solve.git_deps,
+        &existing_git_shas(&lock, &no_upgrades),
+        &existing_release_refs(&lock, &no_upgrades),
+    )?;
+    Ok(!lock.targets.is_empty()
+        && lock.targets.iter().all(|target| {
+            req.is_none_or(|r| r.satisfies(&target.r_version).unwrap_or(false))
+                && lock_target_satisfies(target, &direct_deps)
+                && lock_target_git_sources_fresh(target, &git_sources)
+                && lock_target_repos_fit(target, &solve.repos)
+        }))
+}
+
+/// Whether `lock` has exactly the targets that the manifest's `platforms`
+/// resolve to, for each R version of the lock, see [`lock_platform_specs`].
+/// A platform that cannot be resolved means it does not.
+fn lock_has_platforms(lock: &RprojLock, platforms: &[String]) -> bool {
+    let have: HashSet<(String, String)> = lock
+        .targets
+        .iter()
+        .map(|t| (t.r_version.clone(), t.platform.clone()))
+        .collect();
+    let mut want: HashSet<(String, String)> = HashSet::new();
+    for (rver, _) in &have {
+        for platform in platforms {
+            let Ok((target, _)) = proj_binary_target_quiet(Some(platform), rver) else {
+                return false;
+            };
+            want.insert((rver.clone(), solve_platform_key(target.map(|t| t.name()))));
+        }
+    }
+    have == want
+}
+
+/// Whether `lock` has targets for exactly the R versions of the manifest's
+/// `r-versions`: each of them is in the lock, and the lock has no other.
+/// `4.5` names any `4.5.x`, see [`r_version_matches`], and `release` and
+/// other names are looked up the same way as for `rig proj lock`, see
+/// [`resolve_binary_target_r_version`].
+fn lock_has_r_versions(lock: &RprojLock, r_versions: &[String]) -> bool {
+    let have: HashSet<&str> = lock.targets.iter().map(|t| t.r_version.as_str()).collect();
+    let mut want: Vec<String> = vec![];
+    for version in r_versions {
+        let Ok(version) = resolve_binary_target_r_version(version) else {
+            return false;
+        };
+        want.push(version);
+    }
+    want.iter()
+        .all(|w| have.iter().any(|h| r_version_matches(w, h)))
+        && have
+            .iter()
+            .all(|h| want.iter().any(|w| r_version_matches(w, h)))
+}
+
+/// Whether every package of a lock target comes from the repository the
+/// project's pins say, and none of the unpinned ones from an explicit
+/// repository, see [`ProjRepos::locked_repository_fits`]. Packages that do
+/// not come from a repository, git, URL and local ones, and the project
+/// itself, always fit.
+fn lock_target_repos_fit(target: &RprojLockTarget, repos: &ProjRepos) -> bool {
+    target.packages.iter().all(|pkg| {
+        pkg.is_project
+            || pkg.metadata.contains_key(REMOTE_TYPE_FIELD)
+            || repos.locked_repository_fits(&pkg.package, pkg.repository.as_deref())
+    })
+}
+
+/// The `--upgrade-package` arguments, as package name and version
+/// requirement pairs. They have the same `<package>@<requirement>` syntax as
+/// `rig proj add`'s, see [`parse_add_spec`].
+pub(crate) fn parse_upgrade_packages(
+    args: &ArgMatches,
+) -> Result<Vec<(String, String)>, Box<dyn Error>> {
+    args.get_many::<String>("upgrade-package")
+        .map(|vs| vs.map(|v| parse_add_spec(v)).collect())
+        .unwrap_or_else(|| Ok(vec![]))
+}
+
+/// Lock the project in `root` for this machine only, for `r_version` if
+/// given, else for the R version `proj_lock_r_version` picks. This is what
+/// the environment of a script with inline metadata needs: it is created
+/// and used on the same machine, so the other platforms would only make the
+/// first run slower.
+///
+/// `arch` is the architecture of the R to lock for, if it is not the
+/// machine's own. Only macOS has R builds for more than one architecture.
+///
+/// `upgrade` and `upgrade_packages` are `rig run`'s `--upgrade` and
+/// `--upgrade-package`, with the same meaning as for `rig proj lock`.
+pub(crate) fn proj_lock_host(
+    root: &Path,
+    r_version: Option<String>,
+    arch: Option<&str>,
+    upgrade: bool,
+    upgrade_packages: Vec<(String, String)>,
+    args: &ArgMatches,
+) -> Result<(), Box<dyn Error>> {
+    let platforms = match arch {
+        Some(arch) if is_foreign_arch(arch) => vec![macos_platform_for_arch(arch)],
+        _ => vec![],
+    };
+    let opts = ProjLockOptions {
+        r_versions: r_version.into_iter().collect(),
+        upgrade,
+        upgrade_packages,
+        host_only: platforms.is_empty(),
+        platforms,
+        ..Default::default()
+    };
+    proj_lock(root, &opts, args)
 }
 
 /// The directory `rig proj lock` and `rig proj sync` work on: the workspace a
@@ -2611,10 +3474,8 @@ fn sc_proj_status(
     let lock: Option<RprojLock> = if lock_path.exists() {
         match fs::read_to_string(&lock_path)
             .map_err(|e| e.to_string())
-            .and_then(|text| {
-                RprojLock::check_version(&text).map_err(|e| e.to_string())?;
-                toml::from_str::<RprojLock>(&text).map_err(|e| e.to_string())
-            }) {
+            .and_then(|text| RprojLock::parse(&text).map_err(|e| e.to_string()))
+        {
             Ok(lock) => Some(lock),
             Err(e) => {
                 warnings.push(format!("Could not read {}: {}", RPROJ_LOCK_FILE, e));
@@ -2936,7 +3797,9 @@ fn r_requirement(req: Option<&DepVersionSpec>) -> String {
 /// three other platforms a project typically needs to run on: Windows, a
 /// generic glibc Linux build (P3M's "manylinux" distro-independent build,
 /// covering any glibc-based x86_64 distro P3M has no specific build for),
-/// and macOS on arm64. Each platform string is fully explicit
+/// and macOS on arm64, plus a source-only target (`source`), so the lock
+/// file also works on platforms with no binaries. Each platform string is
+/// fully explicit
 /// (arch-vendor-os), so it resolves the same regardless of which OS `rig
 /// proj lock` itself runs on; only "this machine" (`None`) depends on the
 /// host. `--add-platform` extends that set (or an explicit `--platform`
@@ -2944,19 +3807,41 @@ fn r_requirement(req: Option<&DepVersionSpec>) -> String {
 /// being macOS arm64, or a redundant `--add-platform`) are dropped before
 /// solving, by the resolved-target dedup in `proj_lock`, so a redundant
 /// solve is never dispatched in the first place.
-fn lock_platform_specs(opts: &ProjLockOptions) -> Vec<Option<String>> {
+///
+/// The manifest's `platforms` setting in `[tool.rig]` (`manifest`, see
+/// [`Rproj::platforms`]) replaces the default set, and `--platform` replaces
+/// both. The manifest's list is taken as is, this machine is not added to it.
+fn lock_platform_specs(opts: &ProjLockOptions, manifest: Option<&[String]>) -> Vec<Option<String>> {
+    if opts.host_only {
+        return vec![None];
+    }
     let mut specs: Vec<Option<String>> = if !opts.platforms.is_empty() {
         opts.platforms.iter().cloned().map(Some).collect()
+    } else if let Some(platforms) = manifest {
+        platforms.iter().cloned().map(Some).collect()
     } else {
         vec![
             None,
             Some("x86_64-w64-mingw32".to_string()),
             Some("x86_64-unknown-linux-gnu".to_string()),
             Some("aarch64-apple-darwin".to_string()),
+            Some("source".to_string()),
         ]
     };
     specs.extend(opts.add_platforms.iter().cloned().map(Some));
     specs
+}
+
+/// The R versions `proj_lock` solves for: `--r-version`, or else the
+/// manifest's `r-versions` setting in `[tool.rig]` (`manifest`, see
+/// [`Rproj::r_versions`]). `None` if neither is given, then
+/// `proj_lock_r_version` picks one.
+fn lock_r_versions(opts: &ProjLockOptions, manifest: Option<&[String]>) -> Option<Vec<String>> {
+    if !opts.r_versions.is_empty() {
+        Some(opts.r_versions.clone())
+    } else {
+        manifest.map(|versions| versions.to_vec())
+    }
 }
 
 /// Solve the dependencies of the project in `root` for every `(R version,
@@ -2968,6 +3853,11 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     // Do this first, to report local errors early
     let solve = proj_read_solve_roots(root)?;
     let pkg_deps = &solve.merged;
+    let mut repos = solve.repos.clone();
+    if let Some(over) = &opts.repos {
+        repos.apply_args(over)?;
+    }
+    repos.check()?;
 
     // Lock itself never reads `.Renviron`/`.rvenvlib` -- they only matter for
     // R started directly -- but fill them in if missing, same as sync/run.
@@ -2991,15 +3881,15 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
 
     // Each R version has to satisfy the manifest's own `R` requirement,
     // otherwise the solve either fails or produces a lock file for an R the
-    // project rules out. An `--r-version` is taken as given, the solver
-    // reports the conflict if there is one. With none given, the default
-    // logic in `proj_lock_r_version` picks the one version to solve for.
-    let rvers: Vec<String> = if opts.r_versions.is_empty() {
-        vec![proj_lock_r_version(pkg_deps, args)?]
-    } else {
-        opts.r_versions.clone()
+    // project rules out. An `--r-version` (or the manifest's `r-versions`) is
+    // taken as given, the solver reports the conflict if there is one. With
+    // none given, the default logic in `proj_lock_r_version` picks the one
+    // version to solve for.
+    let rvers: Vec<String> = match lock_r_versions(opts, solve.r_versions.as_deref()) {
+        Some(rvers) => rvers,
+        None => vec![proj_lock_r_version(pkg_deps, args)?],
     };
-    let platform_specs = lock_platform_specs(opts);
+    let platform_specs = lock_platform_specs(opts, solve.platforms.as_deref());
 
     // Resolve and dedup every `(rver, platform)` pair up front, sequentially,
     // before any solving starts. This does two things: it decides the dedup
@@ -3015,34 +3905,30 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         rver: String,
         target: Option<BinaryTarget>,
         platform_key: String,
+        /// The Bioconductor release the target solves with, if any.
+        bioc_version: Option<String>,
     }
     let mut solve_targets: Vec<SolveTarget> = vec![];
     let mut seen: HashSet<(String, String)> = HashSet::new();
     // Warned about once each below, not once per (R version, platform) pair.
-    let mut no_binaries: BTreeSet<String> = BTreeSet::new();
-    let mut source_only = false;
+    let mut target_notes: BTreeSet<TargetNote> = BTreeSet::new();
 
     for rver in &rvers {
         for platform in &platform_specs {
-            let (target, missing) = proj_binary_target_quiet(platform.as_ref(), rver)?;
-            source_only = source_only || target.is_none();
-            if let Some(name) = missing {
-                no_binaries.insert(name);
+            let (target, note) = proj_binary_target_quiet(platform.as_ref(), rver)?;
+            if let Some(note) = note {
+                target_notes.insert(note);
             }
 
             // Mirrors how `RprojLockTarget::from_solution` derives the
-            // target's `platform` field (src/rproj.rs), so this pre-solve key
-            // matches the key the old post-solve dedup used.
-            let platform_key = target.as_ref().map(|t| t.name()).unwrap_or_else(|| {
-                // "This machine" (no `--platform` spec) still keys on the
-                // host arch, so it can dedup against a fixed default
-                // platform that resolves to the same target. Two distinct
-                // named `--platform` specs that both fail to resolve must
-                // not collapse onto that same key.
-                platform
-                    .clone()
-                    .unwrap_or_else(|| std::env::consts::ARCH.to_string())
-            });
+            // target's `platform` field (src/rproj.rs): every source-only
+            // solve is recorded as `source`, so they all dedup onto one
+            // target, e.g. "this machine" having no binaries and the default
+            // `source` platform.
+            let platform_key = target
+                .as_ref()
+                .map(|t| t.name())
+                .unwrap_or_else(|| "source".to_string());
             let key = (rver.clone(), platform_key.clone());
             if !seen.insert(key.clone()) {
                 // Not worth a warning: with the default platform set, "this
@@ -3056,8 +3942,14 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
                 rver: rver.clone(),
                 target,
                 platform_key,
+                bioc_version: None,
             });
         }
+    }
+    // Even if the lock turns out to be up to date: e.g. an `--add-platform`
+    // falling back to the generic Linux build that is already locked.
+    for note in &target_notes {
+        note.report();
     }
 
     // The manifest's own direct dependencies, i.e. what a target's lock has
@@ -3081,6 +3973,42 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         read_existing_lock(root)
     };
 
+    warn_unknown_upgrade_packages(
+        &opts.upgrade_packages,
+        &solve.merged,
+        existing_lock.as_ref(),
+    );
+
+    // `--exclude-newer` and `--prefer-binary` win over the manifest's
+    // settings, `--prefer-binary=0` turns a manifest's `prefer-binary` off.
+    // A lock solved with different options cannot be reused, see
+    // `resolve_lock_options`.
+    let exclude_newer = opts.exclude_newer.as_ref().or(solve.exclude_newer.as_ref());
+    let prefer_binary = match opts.prefer_binary {
+        Some(n) => prefer_binary_lookback(n),
+        None => solve.prefer_binary,
+    };
+    let lock_options = resolve_lock_options(
+        exclude_newer,
+        prefer_binary,
+        &repos,
+        existing_lock.as_ref().map(|l| &l.tool.rig),
+    )?;
+    let options_match = existing_lock
+        .as_ref()
+        .is_some_and(|l| l.tool.rig == lock_options);
+    if let Some(cutoff) = &lock_options.exclude_newer {
+        let msg = format!("Ignoring package versions published after {}", cutoff);
+        OUTPUT.info(&msg);
+        info!("{}", msg);
+    }
+    // The cutoff can choose between the Bioconductor releases of an R version.
+    let bioc = repos.bioc_setting();
+    for st in &mut solve_targets {
+        st.bioc_version =
+            solve_bioc_version(&bioc, &st.rver, lock_options.exclude_newer.as_deref());
+    }
+
     // Resolve every git/GitHub dependency once, up front, instead of letting
     // each solve target fetch it on its own -- see `resolve_git_sources`.
     // `--upgrade` (folded into `existing_lock` above) skips `existing_git_shas`
@@ -3088,8 +4016,18 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     // re-resolves against its remote instead of reusing whatever commit (or,
     // for a `release = true` dependency, whatever tag) the existing lock file
     // already pinned it to.
+    // `--upgrade-package` leaves the packages it names out, so a git
+    // dependency among them re-resolves, too.
+    let upgrade_names: HashSet<String> = opts
+        .upgrade_packages
+        .iter()
+        .map(|(n, _)| n.clone())
+        .collect();
     let (known_shas, known_releases) = match &existing_lock {
-        Some(lock) => (existing_git_shas(lock), existing_release_refs(lock)),
+        Some(lock) => (
+            existing_git_shas(lock, &upgrade_names),
+            existing_release_refs(lock, &upgrade_names),
+        ),
         None => (HashMap::new(), HashMap::new()),
     };
     let git_sources = resolve_git_sources(&solve.git_deps, &known_shas, &known_releases)?;
@@ -3110,20 +4048,42 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         .map(|_| compute_dir_stat_digest(&root_abs, true).unwrap_or_default());
 
     let project_fresh = |target: &RprojLockTarget| {
-        project_entry_fresh(target, solve.self_alias.as_ref(), self_sha.as_ref())
+        project_entry_fresh(
+            target,
+            solve.self_alias.as_ref(),
+            &root_abs,
+            self_sha.as_ref(),
+        )
     };
 
     // Every target the existing lock already satisfies, reused byte-for-byte
     // instead of solved again -- the "a lockfile is sticky until you ask to
     // upgrade" behavior `Cargo.lock`/`uv.lock` have, now covering CRAN/PPM
     // dependencies too (git/GitHub already got it via `known_shas` above).
+    // Only if the lock was solved with the same options, though: e.g. a new
+    // `--exclude-newer` cutoff can rule out versions the lock pins.
+    // `--upgrade-package` re-solves every target, with the existing lock's
+    // versions as preferences, so only the named packages move.
     let mut reused: Vec<RprojLockTarget> = vec![];
     let mut to_solve: Vec<&SolveTarget> = vec![];
     for st in &solve_targets {
-        let existing = existing_lock.as_ref().and_then(|lock| {
-            existing_lock_satisfies(lock, &st.rver, &st.platform_key, &direct_deps, &git_sources)
+        let existing = existing_lock
+            .as_ref()
+            .filter(|_| options_match && opts.upgrade_packages.is_empty())
+            .and_then(|lock| {
+                existing_lock_satisfies(
+                    lock,
+                    &st.rver,
+                    &st.platform_key,
+                    &direct_deps,
+                    &git_sources,
+                )
                 .filter(project_fresh)
-        });
+                // Solved with another Bioconductor release, or without one.
+                .filter(|t| t.bioc_version == st.bioc_version)
+                // A package from another repository than its pin says.
+                .filter(|t| lock_target_repos_fit(t, &repos))
+            });
         match existing {
             Some(target) => reused.push(target),
             None => to_solve.push(st),
@@ -3136,9 +4096,10 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     // 4.3,4.4` narrowed to `--r-version 4.3`) -- those have to be dropped, so
     // the file gets rewritten even though nothing needed solving.
     let existing_count = existing_lock.as_ref().map_or(0, |l| l.targets.len());
+    let label = opts.lockfile_label.as_deref().unwrap_or(RPROJ_LOCK_FILE);
     if to_solve.is_empty() && reused.len() == existing_count {
-        OUTPUT.success("rproj.lock is already up to date");
-        info!("rproj.lock is already up to date, nothing to solve");
+        OUTPUT.success(&format!("{} is already up to date", label));
+        info!("{} is already up to date, nothing to solve", label);
         return Ok(());
     }
 
@@ -3163,16 +4124,18 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
         // `DbSourcePackageLoader::new()` would otherwise do this too, but
         // finding it already fresh, it becomes a cheap read instead of every
         // thread racing to update the same on-disk cache at once.
-        ensure_allpackages_fresh()?;
-
-        for name in &no_binaries {
-            OUTPUT.warn(&format!(
-                "No binary packages for {}, using source packages",
-                name
-            ));
+        let mut all_repos: Vec<PkgRepo> = vec![];
+        for st in &to_solve {
+            for repo in repos.pkg_repos(st.bioc_version.as_deref()) {
+                if !all_repos.contains(&repo) {
+                    all_repos.push(repo);
+                }
+            }
         }
+        ensure_repos_fresh(&all_repos)?;
 
-        if opts.prefer_binary.is_some() && source_only {
+        let source_only = solve_targets.iter().all(|t| t.target.is_none());
+        if opts.prefer_binary.is_some_and(|n| n > 0) && source_only {
             OUTPUT.warn("There are no binary packages to prefer, ignoring --prefer-binary");
             info!("Ignoring --prefer-binary: solving for source packages only");
         }
@@ -3199,18 +4162,37 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
     // one. Independent targets (different R versions and/or platforms) don't
     // share any solver state, so they solve in parallel, one thread per
     // target.
+    //
+    // A target that has to be solved again still keeps the versions the
+    // existing lock pins for it, where they fit, so e.g. adding a dependency
+    // does not upgrade everything else. Only `--upgrade` (and `--no-cache`),
+    // which ignore the existing lock, solve from scratch.
+    let overrides = upgrade_overrides(&opts.upgrade_packages)?;
+    let pins_of = |st: &SolveTarget| SolvePins {
+        preferred: existing_lock
+            .as_ref()
+            .map(|lock| lock_target_preferences(lock, &st.rver, &st.platform_key, &upgrade_names))
+            .unwrap_or_default(),
+        overrides: overrides.clone(),
+    };
     type SolveResult = (RPackageRegistry, SelectedDependencies<RPackageRegistry>);
-    let prefer_binary = opts.prefer_binary;
     let solved: Vec<(String, String, Result<SolveResult, String>)> = to_solve
         .par_iter()
         .map(|st| {
+            let pins = pins_of(st);
+            let bioc_version = st.bioc_version.as_deref();
             let result = sc_proj_solve_deps(
                 &st.rver,
                 &solve.roots,
                 solve.self_alias.as_ref(),
                 &git_sources,
                 st.target.clone(),
-                prefer_binary,
+                st.target.as_ref().map(BinaryTarget::os_type),
+                lock_options.prefer_binary,
+                lock_options.exclude_newer.as_deref(),
+                &repos.pkg_repos(bioc_version),
+                &repos.repo_filter(bioc_version),
+                &pins,
                 false,
             )
             .map_err(|e| e.to_string());
@@ -3232,7 +4214,7 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
             // reaches the log file in interactive mode.
             Err(msg) => {
                 report_solve_failure(&msg);
-                bail!("{}", msg);
+                bail!(ReportedError(msg));
             }
         };
 
@@ -3321,11 +4303,12 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
 
     let rproj_lock = RprojLock {
         version: RPROJ_LOCK_VERSION,
+        tool: RprojLockTool { rig: lock_options },
         targets,
     };
     fs::write(root.join(RPROJ_LOCK_FILE), rproj_lock.to_toml()?)?;
-    OUTPUT.success("Written project lockfile to rproj.lock");
-    info!("Written project lockfile to rproj.lock");
+    OUTPUT.success(&format!("Written project lockfile to {}", label));
+    info!("Written project lockfile to {}", label);
 
     Ok(())
 }
@@ -3532,6 +4515,20 @@ fn solution_table_rows(targets: &[TargetSolution]) -> Vec<SolutionTableRow> {
             .enumerate()
             .filter_map(|(i, t)| t.rows.get(pkg).map(|r| (i, r)))
             .collect();
+        // A source-only target always solves to source packages, so saying so
+        // adds nothing, unless it picked a version no other target did.
+        let is_source = |i: usize| targets[i].platform == "source";
+        let have: Vec<(usize, &SolvedRow)> = have
+            .iter()
+            .filter(|(i, r)| {
+                !(is_source(*i)
+                    && r.kind == "source"
+                    && have
+                        .iter()
+                        .any(|(j, o)| !is_source(*j) && o.version == r.version))
+            })
+            .copied()
+            .collect();
 
         // The targets a package is missing from are said on its first row.
         let missing: Vec<usize> = targets
@@ -3704,22 +4701,7 @@ fn rvenv_r_installation(
         bail!("{}", msg);
     }
 
-    OUTPUT.status(&format!(
-        "R {} ({}) is not installed, installing it now",
-        r_version, arch
-    ));
-    info!(
-        "R {} ({}) is not installed, installing it now",
-        r_version, arch
-    );
-    // `rig add` is a subcommand, not a function that takes a version, so go
-    // through clap. It escalates on its own in admin mode.
-    let matches = rig_app().try_get_matches_from(add_args)?;
-    let (_name, addargs) = match matches.subcommand() {
-        Some(x) => x,
-        None => bail!("Internal error: `rig add` did not parse"),
-    };
-    sc_add(addargs)?;
+    install_r_with_rig_add(r_version, arch)?;
 
     match find_r_installation(r_version, arch)? {
         Some(name) => {
@@ -3736,6 +4718,87 @@ fn rvenv_r_installation(
             bail!("{}", msg)
         }
     }
+}
+
+/// Whether `arch` (as rig names it, see [`native_arch_name`]) is not this
+/// machine's own architecture.
+pub(crate) fn is_foreign_arch(arch: &str) -> bool {
+    native_arch_name(arch) != native_arch_name(std::env::consts::ARCH)
+}
+
+/// The platform string of macOS on `arch`, in the form `proj_lock` takes.
+fn macos_platform_for_arch(arch: &str) -> String {
+    let arch = if arch == "arm64" { "aarch64" } else { arch };
+    format!("{}-apple-darwin", arch)
+}
+
+/// Install `r_version` for `arch` with `rig add`.
+fn install_r_with_rig_add(r_version: &str, arch: &str) -> Result<(), Box<dyn Error>> {
+    OUTPUT.status(&format!(
+        "R {} ({}) is not installed, installing it now",
+        r_version, arch
+    ));
+    info!(
+        "R {} ({}) is not installed, installing it now",
+        r_version, arch
+    );
+    // `rig add` is a subcommand, not a function that takes a version, so go
+    // through clap. It escalates on its own in admin mode.
+    let matches = rig_app().try_get_matches_from(r_add_args(r_version, arch))?;
+    let (_name, addargs) = match matches.subcommand() {
+        Some(x) => x,
+        None => bail!("Internal error: `rig add` did not parse"),
+    };
+    sc_add(addargs)?;
+    Ok(())
+}
+
+/// The installed R that `r_version` (an `--r-version` argument) selects: an
+/// installation of that name or alias (`4.6.1`, `release`), else the newest
+/// installation of that version on this machine's architecture (`4.5` for
+/// `4.5.3`). Installs it with `rig add` if there is none, or, with `dry_run`,
+/// only says so and returns `None`.
+///
+/// Returns the installation's R version and architecture, e.g. `("4.6.1",
+/// "arm64")`. These identify the R build the way an alias or a short version
+/// cannot: `release` and `4.6` mean different builds over time.
+pub(crate) fn requested_r_installation(
+    r_version: &str,
+    dry_run: bool,
+) -> Result<Option<(String, String)>, Box<dyn Error>> {
+    let arch = native_arch_name(std::env::consts::ARCH);
+    let find = || -> Result<Option<String>, Box<dyn Error>> {
+        if let Some(name) = find_installed(r_version)? {
+            return Ok(Some(name));
+        }
+        find_r_installation(r_version, &arch)
+    };
+
+    let name = match find()? {
+        Some(name) => name,
+        None if dry_run => {
+            let msg = format!(
+                "R {} is not installed, would install it with `rig {}`",
+                r_version,
+                r_add_args(r_version, &arch)[1..].join(" ")
+            );
+            OUTPUT.info(&msg);
+            info!("{}", msg);
+            return Ok(None);
+        }
+        None => {
+            install_r_with_rig_add(r_version, &arch)?;
+            match find()? {
+                Some(name) => name,
+                None => bail!("Installed R {}, but cannot find it now", r_version),
+            }
+        }
+    };
+
+    Ok(Some((
+        get_r_version_data_version(&name)?,
+        rvenv_r_arch(&name),
+    )))
 }
 
 /// The `rig add` command line that installs `r_version` for `arch`. Only
@@ -3784,28 +4847,30 @@ fn find_r_installation(r_version: &str, arch: &str) -> Result<Option<String>, Bo
             }
         })
         .collect();
+    // For the same version, prefer an installation named after its version
+    // (`4.6.1-x86_64`) over a symbolic one (`next-x86_64`), which can point
+    // at another version later.
     matching.sort_by_key(|c| {
-        c.version
-            .as_deref()
-            .and_then(r_components)
-            .unwrap_or_default()
+        (
+            c.version
+                .as_deref()
+                .and_then(r_components)
+                .unwrap_or_default(),
+            c.name.starts_with(|ch: char| ch.is_ascii_digit()),
+        )
     });
     Ok(matching.pop().map(|v| v.name.clone()))
 }
 
-/// The raw CPU arch a lock target's platform string names (`arm64`,
-/// `aarch64`, `x86_64`), whether it is the whole string (a `--platform
-/// source` solve's bare-arch platform) or its last `-`-separated component
-/// (`manylinux_2_28-arm64`, `macos-x86_64`). `None` if the platform names no
-/// arch rig recognizes.
-fn platform_arch(platform: &str) -> Option<&str> {
-    let candidate = platform
-        .rsplit_once('-')
-        .map_or(platform, |(_, suffix)| suffix);
-    match candidate {
-        "arm64" | "aarch64" | "x86_64" => Some(candidate),
-        _ => None,
+/// The CPU arch a lock target's platform string names, `aarch64` or
+/// `x86_64`, or `None` for `source`, or anything else that is not a platform
+/// string, see [`parse_platform_string`].
+fn platform_arch(platform: &str) -> Option<&'static str> {
+    if platform == "source" {
+        return None;
     }
+    let parsed = parse_platform_string(platform).ok()?;
+    normalize_arch(&parsed.arch)
 }
 
 /// The architecture the lock file's target platform needs, in the form
@@ -3819,15 +4884,21 @@ fn target_r_arch(platform: &str) -> String {
 }
 
 /// The OS family a lock target's platform string implies, or `None` if it
-/// names none -- a `--platform source` solve's `platform` field is just the
-/// bare CPU arch (e.g. `"aarch64"`, see `RprojLockTarget::from_solution`), which
-/// carries no OS marker and so matches any machine with the right arch.
+/// names none: `source` (see `RprojLockTarget::from_solution`) matches any
+/// machine.
 fn target_os_family(platform: &str) -> Option<&'static str> {
-    match platform.rsplit_once('-') {
-        Some(("macos", _)) => Some("macos"),
-        Some(("windows", _)) => Some("windows"),
-        Some((prefix, _)) if !prefix.is_empty() => Some("linux"),
-        _ => None,
+    if platform == "source" {
+        return None;
+    }
+    let parsed = parse_platform_string(platform).ok()?;
+    if parsed.os.starts_with("darwin") {
+        Some("macos")
+    } else if parsed.os.ends_with("mingw32") {
+        Some("windows")
+    } else if parsed.os.starts_with("linux") {
+        Some("linux")
+    } else {
+        None
     }
 }
 
@@ -3840,31 +4911,146 @@ fn this_os_family() -> &'static str {
     }
 }
 
-/// The lock file target `rig proj sync` installs: the one whose platform's OS
-/// and CPU arch match this machine (or name none), further narrowed by
-/// `--r-version`/`--platform` if the caller gave them. Several matches are
-/// not an error --
+/// The Linux system a lock file target has to be for, see [`SyncHost`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LinuxHost {
+    /// musl (Alpine) instead of glibc.
+    musl: bool,
+    /// The distro and release, spelled the way `rig proj lock` writes them
+    /// in a platform, e.g. `("ubuntu", "22.04")` or `("rhel", "9")`, if
+    /// P3M builds binaries for this distro specifically. `None` if it does
+    /// not, so only the generic glibc target fits.
+    distro: Option<(String, String)>,
+}
+
+impl LinuxHost {
+    /// This machine's Linux system. P3M's status document translates the
+    /// distro into the spelling of the lock file, e.g. Rocky Linux 9.4 into
+    /// `rhel-9`. Without it, the distro is used as `/etc/os-release` names
+    /// it, which is the same for Debian and Ubuntu.
+    fn detect() -> LinuxHost {
+        let host = match detect_platform() {
+            Ok(host) => host,
+            Err(_) => {
+                return LinuxHost {
+                    musl: false,
+                    distro: None,
+                }
+            }
+        };
+        let musl = linux_is_musl(&host);
+        let distro = match PpmStatus::load(None) {
+            Ok(status) => status
+                .ppm_target(&host)
+                .and_then(|t| parse_platform_string(&t.triple).ok())
+                .and_then(|p| p.distro.zip(p.version)),
+            Err(_) => host.distro.clone().zip(host.version.clone()),
+        };
+        LinuxHost { musl, distro }
+    }
+
+    /// Whether a Linux target's platform fits this system, and if so, how
+    /// well: 2 for a target for this distro and release, 1 for the generic
+    /// glibc one.
+    fn fit(&self, platform: &OsVersion) -> Option<u8> {
+        if linux_is_musl(platform) != self.musl {
+            return None;
+        }
+        match (&platform.distro, &platform.version) {
+            (None, _) => Some(1),
+            (Some(distro), Some(version)) => self
+                .distro
+                .as_ref()
+                .is_some_and(|(d, v)| d == distro && v == version)
+                .then_some(2),
+            // A P3M target name, which lock files do not have.
+            (Some(_), None) => None,
+        }
+    }
+}
+
+/// Whether a Linux platform is musl based, the same way
+/// [`platform_string`] decides it.
+fn linux_is_musl(platform: &OsVersion) -> bool {
+    platform.os == "linux-musl" || platform.distro.as_deref() == Some("alpine")
+}
+
+/// The machine `rig proj sync` picks a lock file target for: its OS family,
+/// in [`target_os_family`]'s terms, the R arch, in [`native_arch_name`]'s,
+/// and on Linux, the distro.
+#[derive(Debug, Clone)]
+struct SyncHost {
+    os: &'static str,
+    arch: String,
+    linux: Option<LinuxHost>,
+}
+
+impl SyncHost {
+    /// This machine, for an R of architecture `arch` instead of the
+    /// machine's own, if `arch` is given, see [`ProjSyncOptions::arch`].
+    fn detect(arch: Option<&str>) -> SyncHost {
+        let os = this_os_family();
+        SyncHost {
+            os,
+            arch: native_arch_name(arch.unwrap_or(std::env::consts::ARCH)),
+            linux: (os == "linux").then(LinuxHost::detect),
+        }
+    }
+
+    /// How well a lock file target's platform fits this machine, or `None`
+    /// if it does not fit at all: 0 for a source-only target, which fits
+    /// every machine, 2 for a target for this Linux distro and release, and
+    /// 1 for the rest, a target for this OS that names no distro.
+    fn fit(&self, platform: &str) -> Option<u8> {
+        if let Some(os) = target_os_family(platform) {
+            if os != self.os {
+                return None;
+            }
+        }
+        if let Some(arch) = platform_arch(platform) {
+            if native_arch_name(arch) != self.arch {
+                return None;
+            }
+        }
+        match (target_os_family(platform), &self.linux) {
+            (None, _) => Some(0),
+            (Some("linux"), Some(linux)) => linux.fit(&parse_platform_string(platform).ok()?),
+            _ => Some(1),
+        }
+    }
+
+    /// This machine, for messages, e.g. `linux, ubuntu-22.04`.
+    fn describe(&self) -> String {
+        match self.linux.as_ref() {
+            Some(LinuxHost {
+                distro: Some((d, v)),
+                ..
+            }) => format!("{}, {}-{}", self.os, d, v),
+            _ => self.os.to_string(),
+        }
+    }
+}
+
+/// The lock file target `rig proj sync` installs: the one whose platform
+/// fits this machine, see [`SyncHost::fit`], further narrowed by
+/// `--r-version`/`--platform` if the caller gave them. A target for one
+/// Linux distro does not fit another one. Several matches are not an error --
 /// the highest R version among them wins, so locking for several R versions
-/// just works without extra flags; only zero matches is a hard error.
+/// just works without extra flags; only zero matches is a hard error. For the
+/// same R version a target for this distro wins over the generic Linux one,
+/// and a target for this OS wins over a source-only one, which matches every
+/// machine.
 fn select_sync_target<'a>(
     targets: &'a [RprojLockTarget],
     r_version: Option<&str>,
     platform: Option<&str>,
+    host: &SyncHost,
 ) -> Result<&'a RprojLockTarget, Box<dyn Error>> {
-    let this_os = this_os_family();
-    let this_arch = native_arch_name(std::env::consts::ARCH);
-    let mut candidates: Vec<&RprojLockTarget> = targets
+    let mut candidates: Vec<(&RprojLockTarget, u8)> = targets
         .iter()
-        .filter(|t| match target_os_family(&t.platform) {
-            Some(os) => os == this_os,
-            None => true,
-        })
-        .filter(|t| match platform_arch(&t.platform) {
-            Some(arch) => native_arch_name(arch) == this_arch,
-            None => true,
-        })
         .filter(|t| platform.is_none_or(|p| t.platform == p))
         .filter(|t| r_version.is_none_or(|rv| r_version_matches(rv, &t.r_version)))
+        .filter_map(|t| host.fit(&t.platform).map(|fit| (t, fit)))
         .collect();
 
     if candidates.is_empty() {
@@ -3875,7 +5061,7 @@ fn select_sync_target<'a>(
         let msg = format!(
             "No target in rproj.lock matches this machine ({}{}{}). Available: {}. \
              Run `rig proj lock` for this machine, or check --r-version/--platform.",
-            this_os,
+            host.describe(),
             r_version.map(|v| format!(", R {}", v)).unwrap_or_default(),
             platform
                 .map(|p| format!(", platform {}", p))
@@ -3891,8 +5077,8 @@ fn select_sync_target<'a>(
         bail!("{}", msg);
     }
 
-    candidates.sort_by_key(|t| r_components(&t.r_version).unwrap_or_default());
-    Ok(candidates.pop().unwrap())
+    candidates.sort_by_key(|(t, fit)| (r_components(&t.r_version).unwrap_or_default(), *fit));
+    Ok(candidates.pop().unwrap().0)
 }
 
 /// Whether an installed R version is the one the lock file asks for: the same
@@ -3925,7 +5111,7 @@ fn r_components(version: &str) -> Option<Vec<u32>> {
 
 /// The architecture of an R installation, from its name (`4.6-arm64`), or the
 /// machine's own if the name does not say.
-fn rvenv_r_arch(name: &str) -> String {
+pub(crate) fn rvenv_r_arch(name: &str) -> String {
     match name.rsplit_once('-') {
         Some((_, arch)) if arch == "arm64" || arch == "x86_64" => arch.to_string(),
         _ => native_arch_name(std::env::consts::ARCH),
@@ -3995,6 +5181,22 @@ pub(crate) struct ProjSyncOptions {
     /// Report what sync would install, remove or write, without actually
     /// doing any of it (`--dry-run`).
     pub dry_run: bool,
+    /// `--exclude-newer`: (re)lock with this cutoff before syncing, see
+    /// `ProjLockOptions::exclude_newer`.
+    pub exclude_newer: Option<ExcludeNewerSpec>,
+    /// Sync for an R of this architecture (`arm64`, `x86_64`), instead of the
+    /// machine's own: pick a lock target for it, and run an R build for it.
+    /// Not a `rig proj sync` option, the environments of scripts with inline
+    /// metadata use it, for an `--r-version` like `4.6.1-x86_64` on an arm64
+    /// Mac.
+    pub arch: Option<String>,
+    /// `--sysreqs` / `--no-sysreqs`: whether to install the system packages
+    /// the R packages need, overriding the `sysreqs` setting. `None` goes by
+    /// the setting.
+    pub sysreqs: Option<bool>,
+    /// `--with-repos` and `--without-repos`: lock again, with the project's
+    /// repositories changed, see [`ProjRepos::apply_args`].
+    pub repos: Option<PkgReposArgs>,
 }
 
 impl Default for ProjSyncOptions {
@@ -4013,6 +5215,10 @@ impl Default for ProjSyncOptions {
             inexact: false,
             frozen: false,
             dry_run: false,
+            exclude_newer: None,
+            arch: None,
+            sysreqs: None,
+            repos: None,
         }
     }
 }
@@ -4048,6 +5254,10 @@ fn sc_proj_sync(
         inexact: args.get_flag("inexact"),
         frozen: args.get_flag("frozen"),
         dry_run: args.get_flag("dry-run"),
+        exclude_newer: exclude_newer_arg(args)?,
+        arch: None,
+        sysreqs: crate::sysreqs::cli_flag(args),
+        repos: interpret_pkg_repos_args(args)?,
     };
 
     proj_sync(&root, &opts, args)
@@ -4110,6 +5320,79 @@ fn sync_wanted_packages(
         .collect()
 }
 
+/// What [`sync_os_compatible`] leaves out of a sync.
+#[derive(Debug, Default)]
+struct SyncOsSkipped {
+    /// The packages that do not work on the OS, by their `OS_type`.
+    incompatible: Vec<String>,
+    /// The packages that only those packages need.
+    unneeded: Vec<String>,
+}
+
+/// The packages of `packages` to install on `os`: without the ones whose
+/// `OS_type` does not work on it, and without the ones that only those need.
+/// Only a source-only lock target has packages for the other OS, a
+/// platform's target was solved without them.
+///
+/// `roots` are the project's direct dependencies. A package is needed if
+/// a root, the project's own package, or a package that no other package
+/// depends on (a root of a lock that does not list its roots) needs it,
+/// without going through a package that does not work on `os`.
+fn sync_os_compatible(
+    packages: Vec<RprojLockPackage>,
+    roots: &HashSet<&str>,
+    os: OsType,
+) -> (Vec<RprojLockPackage>, SyncOsSkipped) {
+    let (compatible, incompatible): (Vec<_>, Vec<_>) = packages
+        .into_iter()
+        .partition(|p| os.allows(p.os_type.as_deref()));
+    if incompatible.is_empty() {
+        return (compatible, SyncOsSkipped::default());
+    }
+
+    let dependents: HashSet<&str> = compatible
+        .iter()
+        .chain(incompatible.iter())
+        .flat_map(|p| p.dependencies.iter().map(|d| d.as_str()))
+        .collect();
+    let by_name: HashMap<&str, &RprojLockPackage> =
+        compatible.iter().map(|p| (p.package.as_str(), p)).collect();
+    let mut todo: Vec<&str> = compatible
+        .iter()
+        .filter(|p| {
+            roots.contains(p.package.as_str())
+                || p.is_project
+                || !dependents.contains(p.package.as_str())
+        })
+        .map(|p| p.package.as_str())
+        .collect();
+    let mut needed: HashSet<String> = HashSet::new();
+    while let Some(name) = todo.pop() {
+        // A package that is not here is R, a base package, or one that does
+        // not work on `os`.
+        let Some(pkg) = by_name.get(name) else {
+            continue;
+        };
+        if needed.insert(name.to_string()) {
+            todo.extend(pkg.dependencies.iter().map(|d| d.as_str()));
+        }
+    }
+
+    let (keep, unneeded): (Vec<_>, Vec<_>) = compatible
+        .into_iter()
+        .partition(|p| needed.contains(&p.package));
+    let sorted = |packages: Vec<RprojLockPackage>| {
+        let mut names: Vec<String> = packages.into_iter().map(|p| p.package).collect();
+        names.sort_by_key(|n| n.to_lowercase());
+        names
+    };
+    let skipped = SyncOsSkipped {
+        incompatible: sorted(incompatible),
+        unneeded: sorted(unneeded),
+    };
+    (keep, skipped)
+}
+
 /// Install the project's locked dependencies into its environment, creating
 /// the machine-specific part of `.rvenv` on the way: `rig proj sync`, and the
 /// automatic sync of `rig run`.
@@ -4128,6 +5411,11 @@ pub(crate) fn proj_sync(
     // of erroring out. `rig proj lock` reads the project's `rproj.toml`, and
     // errors out itself if there is none.
     let lock_path = root.join(RPROJ_LOCK_FILE);
+    let lock_opts = ProjLockOptions {
+        exclude_newer: opts.exclude_newer.clone(),
+        repos: opts.repos.clone(),
+        ..Default::default()
+    };
     if !lock_path.exists() {
         if opts.frozen {
             let msg = format!(
@@ -4150,19 +5438,68 @@ pub(crate) fn proj_sync(
             RPROJ_LOCK_FILE
         ));
         info!("No {}, running `rig proj lock` first", RPROJ_LOCK_FILE);
-        proj_lock(root, &ProjLockOptions::default(), args)?;
+        proj_lock(root, &lock_opts, args)?;
+    } else if opts.exclude_newer.is_some() || opts.repos.is_some() {
+        // Re-lock with the new cutoff or repositories. `proj_lock` keeps the
+        // lock as it is if it was already solved with the same ones.
+        // (`--frozen` conflicts with `--exclude-newer` and the repository
+        // arguments.)
+        if opts.dry_run {
+            OUTPUT.info("`rig proj sync` would run `rig proj lock` first");
+        } else {
+            proj_lock(root, &lock_opts, args)?;
+        }
     }
 
     let lock_content = fs::read_to_string(&lock_path)?;
-    RprojLock::check_version(&lock_content)?;
-    let lock: RprojLock = toml::from_str(&lock_content)?;
+    let lock = RprojLock::parse(&lock_content)?;
+    // The lock file has canonical platform strings, so `--platform macos`
+    // has to be brought into that form to match.
+    let platform = opts
+        .platform
+        .as_deref()
+        .map(normalize_platform)
+        .transpose()?;
     let target = select_sync_target(
         &lock.targets,
         opts.r_version.as_deref(),
-        opts.platform.as_deref(),
+        platform.as_deref(),
+        &SyncHost::detect(opts.arch.as_deref()),
     )?;
 
     let wanted: Vec<RprojLockPackage> = sync_wanted_packages(&target.packages, opts);
+    let host_os = OsType::host();
+    let roots: HashSet<&str> = target
+        .direct_dependencies
+        .iter()
+        .map(|d| d.name.as_str())
+        .collect();
+    let (wanted, skipped) = sync_os_compatible(wanted, &roots, host_os);
+    let os_name = if host_os == OsType::Windows {
+        "Windows"
+    } else {
+        "Unix"
+    };
+    for name in &skipped.incompatible {
+        let msg = format!("Skipping {}, it does not work on {}", name, os_name);
+        OUTPUT.info(&msg);
+        info!("{}", msg);
+    }
+    if !skipped.unneeded.is_empty() {
+        let msg = format!(
+            "Skipping {} package{} only needed by {}: {}",
+            skipped.unneeded.len(),
+            if skipped.unneeded.len() == 1 { "" } else { "s" },
+            if skipped.incompatible.len() == 1 {
+                "it"
+            } else {
+                "them"
+            },
+            skipped.unneeded.join(", ")
+        );
+        OUTPUT.info(&msg);
+        info!("{}", msg);
+    }
     let wanted: &[RprojLockPackage] = &wanted;
 
     // The project's own package needs a real `DESCRIPTION` on disk: rig's
@@ -4213,7 +5550,11 @@ pub(crate) fn proj_sync(
     // The architecture comes from the lock file's platform, not from the
     // machine: a lock file solved for macos-x86_64 needs an x86_64 R even on
     // an arm64 Mac.
-    let r_arch = target_r_arch(&target.platform);
+    // A source-only target names no arch, then `opts.arch` decides, if given.
+    let r_arch = match (platform_arch(&target.platform), &opts.arch) {
+        (None, Some(arch)) => native_arch_name(arch),
+        _ => target_r_arch(&target.platform),
+    };
     let (r_name, r_binary) = rvenv_r_installation(
         &target.r_version,
         &r_arch,
@@ -4319,7 +5660,7 @@ pub(crate) fn proj_sync(
                 r_binary.display()
             ));
         } else {
-            let written = rvenv_sync(root, &cfg, repos)?;
+            let written = rvenv_sync(root, &cfg, repos, target.bioc_version.as_deref())?;
             if written.is_empty() {
                 info!(
                     "Project environment for R {} ({}) is already up to date",
@@ -4456,6 +5797,10 @@ pub(crate) fn proj_sync(
         return Ok(());
     }
 
+    // The OS packages the R packages need, on Linux, before downloading
+    // anything: a dry run shows them too.
+    crate::sysreqs::ensure(&todo, opts.sysreqs, opts.dry_run)?;
+
     if opts.dry_run {
         OUTPUT.info(&format!(
             "Would install {} of {} packages to {}",
@@ -4542,25 +5887,21 @@ pub(crate) fn lockfile_package_info(
             remote.insert(field.to_string(), value.clone());
         }
     }
-    // A local package is never fetched and never cached: it is installed from
-    // where it already is, which `RemoteUrl` holds as an absolute path.
-    let local = pkg.metadata.get(REMOTE_TYPE_FIELD).map(|t| t.as_str()) == Some("local");
-    // A git/GitHub package's `target` is the fetched directory (a tarball
-    // unpacked, or a git checkout); a subdirectory source lives at
-    // `<target>/<subdir>` within it. An ordinary CRAN/PPM package's `target`
-    // is the downloaded file itself.
-    let file_path = if local {
-        PathBuf::from(
-            pkg.metadata
-                .get(crate::install::REMOTE_URL_FIELD)
-                .cloned()
-                .unwrap_or_default(),
-        )
-    } else {
-        let base = cache_dir.join("packages").join(&pkg.target);
-        match pkg.metadata.get(REMOTE_SUBDIR_FIELD) {
-            Some(subdir) => base.join(subdir),
-            None => base,
+    // Where to install from comes from `sources` alone, see `LockSource`: a
+    // local package is installed from where it already is; a git/GitHub/url
+    // package from its fetched directory (a git checkout or an extracted
+    // archive), or `<target>/<subdir>` within it; an ordinary CRAN/PPM
+    // package from the downloaded file itself.
+    let source = lock_package_source(pkg);
+    let local = matches!(source, Some(LockSource::Local { .. }));
+    let file_path = match &source {
+        Some(LockSource::Local { path }) => PathBuf::from(path),
+        _ => {
+            let base = cache_dir.join("packages").join(&pkg.target);
+            match source.as_ref().and_then(|s| s.subdir()) {
+                Some(subdir) => base.join(subdir),
+                None => base,
+            }
         }
     };
     let mut info = PackageInfo {
@@ -4608,31 +5949,45 @@ pub(crate) fn download_lockfile_packages(
     // checking out a git worktree or downloading and extracting an archive,
     // not a plain HTTP download to a file -- handled separately, see
     // `fetch_git_lockfile_packages`.
-    let (git_packages, http_packages): (Vec<&RprojLockPackage>, Vec<&RprojLockPackage>) = packages
-        .iter()
-        .partition(|pkg| pkg.metadata.contains_key(REMOTE_TYPE_FIELD));
+    let (git_packages, http_packages): (Vec<&RprojLockPackage>, Vec<&RprojLockPackage>) =
+        packages.iter().partition(|pkg| {
+            !matches!(
+                lock_package_source(pkg),
+                None | Some(LockSource::Http { .. })
+            )
+        });
 
     fetch_git_lockfile_packages(&git_packages, &cache_dir)?;
     download_http_lockfile_packages(&http_packages, &cache_dir)
 }
 
+/// The parsed `sources` entry of a lockfile package, see [`LockSource`].
+/// `None` if it has no sources, or its first one does not parse.
+fn lock_package_source(pkg: &RprojLockPackage) -> Option<LockSource> {
+    pkg.sources.first().and_then(|s| LockSource::parse(s).ok())
+}
+
 /// Fetch every git/GitHub/url package in `packages` into its cache
-/// directory: a shallow (`--depth 1`), sparse-checkout-scoped `git` fetch
-/// (see [`crate::pkgsource::git::fetch_git_checkout`]) for a git/GitHub
-/// source, or a cached archive download and extraction (see
-/// [`crate::pkgsource::url::fetch_url_checkout`]) for a `url` source, both
-/// reusing the `RemoteUrl`/`RemoteRef`/`RemoteSubdir`/`RemoteSha` recorded at
-/// lock time. Skipped entirely when the target directory already exists --
-/// the target is keyed by the resolved commit sha (or archive sha256), so an
-/// existing one is always the right content.
+/// directory: a shallow (`--depth 1`), sparse-checkout-scoped `git` fetch of
+/// the locked commit (see [`crate::pkgsource::git::fetch_git_checkout`]) for
+/// a git/GitHub source, or a cached archive download, verified against its
+/// sha256, and extraction (see [`crate::pkgsource::url::fetch_url_checkout`])
+/// for a `url` source. Everything comes from the package's `sources` entry,
+/// see [`LockSource`], not from its `metadata`. Skipped entirely when the
+/// target directory already exists -- the target is keyed by the commit sha
+/// (or archive sha256), so an existing one is always the right content.
 fn fetch_git_lockfile_packages(
     packages: &[&RprojLockPackage],
     cache_dir: &Path,
 ) -> Result<(), Box<dyn Error>> {
     for pkg in packages {
+        let source = match pkg.sources.first() {
+            Some(s) => LockSource::parse(s)?,
+            None => bail!("{} has no sources in the lockfile", pkg.package),
+        };
         // A local source is already on disk, where the user pointed rig at
         // it, so there is nothing to fetch and nothing to cache.
-        if pkg.metadata.get(REMOTE_TYPE_FIELD).map(|s| s.as_str()) == Some("local") {
+        if matches!(source, LockSource::Local { .. }) {
             continue;
         }
         let target_dir = cache_dir.join("packages").join(&pkg.target);
@@ -4646,43 +6001,25 @@ fn fetch_git_lockfile_packages(
         }
         create_parent_dir_if_needed(&target_dir)?;
 
-        match pkg.metadata.get(REMOTE_TYPE_FIELD).map(|s| s.as_str()) {
-            Some("github") | Some("git") => {
-                let url = pkg
-                    .metadata
-                    .get(crate::install::REMOTE_URL_FIELD)
-                    .ok_or_else(|| SimpleError::new(format!("{} has no RemoteUrl", pkg.package)))?;
-                let refspec = pkg.metadata.get(crate::install::REMOTE_REF_FIELD).cloned();
-                let subdir = pkg
-                    .metadata
-                    .get(crate::install::REMOTE_SUBDIR_FIELD)
-                    .cloned();
+        match &source {
+            LockSource::Git {
+                url,
+                commit,
+                subdir,
+            } => {
                 OUTPUT.status(&format!("Fetching {} from {}", pkg.package, url));
                 crate::pkgsource::git::fetch_git_checkout(
                     url,
-                    refspec.as_deref(),
+                    Some(commit),
                     subdir.as_deref(),
                     &target_dir,
                 )?;
             }
-            Some("url") => {
-                let url = pkg
-                    .metadata
-                    .get(crate::install::REMOTE_URL_FIELD)
-                    .ok_or_else(|| SimpleError::new(format!("{} has no RemoteUrl", pkg.package)))?;
-                let expected_sha256 = pkg.metadata.get(crate::install::REMOTE_SHA_FIELD).cloned();
+            LockSource::Archive { url, sha256, .. } => {
                 OUTPUT.status(&format!("Fetching {} from {}", pkg.package, url));
-                crate::pkgsource::url::fetch_url_checkout(
-                    url,
-                    expected_sha256.as_deref(),
-                    &target_dir,
-                )?;
+                crate::pkgsource::url::fetch_url_checkout(url, Some(sha256), &target_dir)?;
             }
-            other => bail!(
-                "{} has an unknown RemoteType `{}`",
-                pkg.package,
-                other.unwrap_or("<none>")
-            ),
+            LockSource::Local { .. } | LockSource::Http { .. } => unreachable!(),
         }
         OUTPUT.success(&format!("Fetched {}", pkg.package));
     }
@@ -4773,6 +6110,18 @@ mod tests {
     use crate::rproj::{Dependency, Group, Workspace};
     use std::collections::BTreeMap;
 
+    #[test]
+    fn numeric_r_versions_are_not_installed_r_names() {
+        assert!(is_numeric_r_version("4"));
+        assert!(is_numeric_r_version("4.5"));
+        assert!(is_numeric_r_version("4.5.1"));
+        assert!(!is_numeric_r_version(""));
+        assert!(!is_numeric_r_version("4."));
+        assert!(!is_numeric_r_version("devel"));
+        assert!(!is_numeric_r_version("4.0.5-x86_64"));
+        assert!(!is_numeric_r_version("4.5-arm64"));
+    }
+
     /// One target's rows for [`solution_table`], from `(package, version,
     /// kind, held back from)` tuples.
     fn solved_target(
@@ -4843,6 +6192,36 @@ mod tests {
             ),
         ]);
         assert_eq!(rows, vec!["cli 3.6.5 binary"]);
+    }
+
+    #[test]
+    fn the_source_target_is_left_unsaid_unless_its_version_differs() {
+        let rows = table_rows(&[
+            solved_target(
+                "4.5.1",
+                "macos-arm64",
+                &[
+                    ("cli", "3.6.5", "binary", None),
+                    ("glue", "1.8.0", "binary", None),
+                ],
+            ),
+            solved_target(
+                "4.5.1",
+                "source",
+                &[
+                    ("cli", "3.6.5", "source", None),
+                    ("glue", "1.8.1", "source", None),
+                ],
+            ),
+        ]);
+        assert_eq!(
+            rows,
+            vec![
+                "cli 3.6.5 binary",
+                "glue 1.8.0 binary",
+                "1.8.1 source source"
+            ]
+        );
     }
 
     #[test]
@@ -5016,6 +6395,9 @@ mod tests {
             groups: vec![],
             extra_groups: vec![],
             is_project: false,
+            repository: None,
+            system_requirements: None,
+            os_type: None,
         }
     }
 
@@ -5120,6 +6502,67 @@ mod tests {
     }
 
     #[test]
+    fn sync_os_compatible_skips_the_other_os() {
+        let os_typed = |name: &str, os_type: Option<&str>| {
+            let mut pkg = locked(name, &[]);
+            pkg.os_type = os_type.map(|s| s.to_string());
+            pkg
+        };
+        let packages = vec![
+            os_typed("cli", None),
+            os_typed("unix", Some("unix")),
+            os_typed("RDesk", Some("windows")),
+        ];
+
+        let roots = HashSet::from(["cli", "unix", "RDesk"]);
+
+        let (keep, skip) = sync_os_compatible(packages.clone(), &roots, OsType::Unix);
+        assert_eq!(names(&keep), vec!["cli", "unix"]);
+        assert_eq!(skip.incompatible, vec!["RDesk"]);
+        assert!(skip.unneeded.is_empty());
+
+        let (keep, skip) = sync_os_compatible(packages, &roots, OsType::Windows);
+        assert_eq!(names(&keep), vec!["RDesk", "cli"]);
+        assert_eq!(skip.incompatible, vec!["unix"]);
+    }
+
+    fn windows_only(name: &str, deps: &[&str]) -> RprojLockPackage {
+        let mut pkg = locked(name, deps);
+        pkg.os_type = Some("windows".to_string());
+        pkg
+    }
+
+    #[test]
+    fn sync_os_compatible_skips_what_only_skipped_packages_need() {
+        let packages = vec![
+            locked("cli", &["jsonlite"]),
+            windows_only("RDesk", &["mirai", "jsonlite", "R6"]),
+            locked("mirai", &["nanonext"]),
+            locked("nanonext", &[]),
+            locked("jsonlite", &[]),
+            locked("R6", &[]),
+        ];
+        // `R6` is a direct dependency itself, `jsonlite` is also needed by
+        // `cli`.
+        let roots = HashSet::from(["cli", "RDesk", "R6"]);
+        let (keep, skip) = sync_os_compatible(packages.clone(), &roots, OsType::Unix);
+        assert_eq!(names(&keep), vec!["R6", "cli", "jsonlite"]);
+        assert_eq!(skip.incompatible, vec!["RDesk"]);
+        assert_eq!(skip.unneeded, vec!["mirai", "nanonext"]);
+
+        // A lock without its roots: `cli` has no dependents, so it is one,
+        // but `R6` is only reached through `RDesk`.
+        let (keep, skip) = sync_os_compatible(packages.clone(), &HashSet::new(), OsType::Unix);
+        assert_eq!(names(&keep), vec!["cli", "jsonlite"]);
+        assert_eq!(skip.unneeded, vec!["mirai", "nanonext", "R6"]);
+
+        // Nothing to skip on Windows, everything stays.
+        let (keep, skip) = sync_os_compatible(packages, &roots, OsType::Windows);
+        assert_eq!(keep.len(), 6);
+        assert!(skip.incompatible.is_empty() && skip.unneeded.is_empty());
+    }
+
+    #[test]
     fn sync_wanted_packages_extra_installs_only_that_extra() {
         let packages = vec![
             locked_in("cli", &["main"], &[]),
@@ -5177,11 +6620,17 @@ mod tests {
         let native = native_arch_name(std::env::consts::ARCH);
         assert_eq!(target_r_arch("macos-x86_64"), "x86_64");
         assert_eq!(target_r_arch("linux-ubuntu-24.04-x86_64"), "x86_64");
-        assert_eq!(target_r_arch("windows"), native);
+        assert_eq!(target_r_arch("x86_64-apple-darwin"), "x86_64");
+        assert_eq!(
+            target_r_arch("x86_64-unknown-linux-gnu-ubuntu-24.04"),
+            "x86_64"
+        );
+        assert_eq!(target_r_arch("not-a-platform"), native);
         assert_eq!(target_r_arch("source"), native);
         if cfg!(target_os = "macos") {
             assert_eq!(target_r_arch("macos-arm64"), "arm64");
             assert_eq!(target_r_arch("macos-aarch64"), "arm64");
+            assert_eq!(target_r_arch("aarch64-apple-darwin"), "arm64");
         } else {
             assert_eq!(target_r_arch("linux-ubuntu-24.04-aarch64"), "aarch64");
         }
@@ -5200,21 +6649,184 @@ mod tests {
     }
 
     #[test]
+    fn lock_options_are_empty_without_exclude_newer() {
+        let existing = RprojLockOptions {
+            exclude_newer: Some("2020-01-01".to_string()),
+            exclude_newer_span: None,
+            prefer_binary: Some(3),
+            ..Default::default()
+        };
+        let opts =
+            resolve_lock_options(None, None, &ProjRepos::default(), Some(&existing)).unwrap();
+        assert_eq!(
+            opts,
+            RprojLockOptions {
+                repositories: ProjRepos::default().lock_repositories(),
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
+    fn lock_options_record_prefer_binary() {
+        let opts = resolve_lock_options(None, Some(5), &ProjRepos::default(), None).unwrap();
+        assert_eq!(opts.prefer_binary, Some(5));
+        assert_eq!(opts.exclude_newer, None);
+
+        // An unchanged span keeps its cutoff, but takes the new lookback.
+        let spec: ExcludeNewerSpec = "7 days".parse().unwrap();
+        let existing = RprojLockOptions {
+            exclude_newer: Some("2020-01-01".to_string()),
+            exclude_newer_span: Some("7 days".to_string()),
+            prefer_binary: None,
+            ..Default::default()
+        };
+        let opts =
+            resolve_lock_options(Some(&spec), Some(3), &ProjRepos::default(), Some(&existing))
+                .unwrap();
+        assert_eq!(opts.exclude_newer.as_deref(), Some("2020-01-01"));
+        assert_eq!(opts.prefer_binary, Some(3));
+        assert_ne!(opts, existing);
+    }
+
+    #[test]
+    fn lock_options_record_an_absolute_cutoff() {
+        let spec: ExcludeNewerSpec = "2020-01-01".parse().unwrap();
+        let opts = resolve_lock_options(Some(&spec), None, &ProjRepos::default(), None).unwrap();
+        assert_eq!(opts.exclude_newer.as_deref(), Some("2020-01-01"));
+        assert_eq!(opts.exclude_newer_span, None);
+    }
+
+    #[test]
+    fn lock_options_record_the_repositories() {
+        let repos = ProjRepos::new(
+            &[Repository::at_url("acme", "https://cran.acme.com")],
+            BTreeMap::new(),
+        );
+        let opts = resolve_lock_options(None, None, &repos, None).unwrap();
+        let names: Vec<&str> = opts.repositories.iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(names, vec!["acme", "bioc", "cran"]);
+        assert!(!opts.is_empty());
+
+        let lock = RprojLock {
+            version: RPROJ_LOCK_VERSION,
+            tool: RprojLockTool { rig: opts.clone() },
+            targets: vec![],
+        };
+        let text = lock.to_toml().unwrap();
+        assert!(text.contains("[[tool.rig.repository]]"), "{}", text);
+        let back: RprojLock = toml::from_str(&text).unwrap();
+        assert_eq!(back.tool.rig, opts);
+    }
+
+    #[test]
+    fn lock_target_repos_fit_checks_pins() {
+        let mut pins = BTreeMap::new();
+        pins.insert("cli".to_string(), "acme".to_string());
+        let repos = ProjRepos::new(&[Repository::at_url("acme", "https://cran.acme.com")], pins);
+        let mut target = RprojLockTarget {
+            r_version: "4.5.1".to_string(),
+            platform: "source".to_string(),
+            direct_dependencies: vec![],
+            bioc_version: None,
+            packages: vec![locked_in("cli", &["main"], &[])],
+        };
+        assert!(!lock_target_repos_fit(&target, &repos));
+        target.packages[0].repository = Some("acme".to_string());
+        assert!(lock_target_repos_fit(&target, &repos));
+    }
+
+    #[test]
+    fn lock_options_keep_the_cutoff_of_an_unchanged_span() {
+        let spec: ExcludeNewerSpec = "7 days".parse().unwrap();
+        let existing = RprojLockOptions {
+            exclude_newer: Some("2020-01-01".to_string()),
+            exclude_newer_span: Some("7 days".to_string()),
+            prefer_binary: None,
+            repositories: ProjRepos::default().lock_repositories(),
+        };
+        let opts = resolve_lock_options(Some(&spec), None, &ProjRepos::default(), Some(&existing))
+            .unwrap();
+        assert_eq!(opts, existing);
+
+        // A different span resolves afresh, from today.
+        let spec: ExcludeNewerSpec = "8 days".parse().unwrap();
+        let opts = resolve_lock_options(Some(&spec), None, &ProjRepos::default(), Some(&existing))
+            .unwrap();
+        assert_eq!(opts.exclude_newer_span.as_deref(), Some("8 days"));
+        assert_ne!(opts.exclude_newer.as_deref(), Some("2020-01-01"));
+    }
+
+    #[test]
+    fn lock_options_round_trip_through_the_lock_file() {
+        let lock = RprojLock {
+            version: RPROJ_LOCK_VERSION,
+            tool: RprojLockTool {
+                rig: RprojLockOptions {
+                    exclude_newer: Some("2020-01-01".to_string()),
+                    exclude_newer_span: Some("7 days".to_string()),
+                    prefer_binary: Some(5),
+                    ..Default::default()
+                },
+            },
+            targets: vec![],
+        };
+        let text = lock.to_toml().unwrap();
+        assert!(
+            text.contains("[tool.rig]\nexclude-newer = \"2020-01-01\"\n"),
+            "{}",
+            text
+        );
+        let back: RprojLock = toml::from_str(&text).unwrap();
+        assert_eq!(back.tool, lock.tool);
+
+        // No options, no `[tool]` table, as in older lock files.
+        let lock = RprojLock {
+            version: RPROJ_LOCK_VERSION,
+            tool: Default::default(),
+            targets: vec![],
+        };
+        let text = lock.to_toml().unwrap();
+        assert!(!text.contains("[tool"), "{}", text);
+        let back: RprojLock = toml::from_str(&text).unwrap();
+        assert!(back.tool.is_empty());
+
+        // Other tools' tables in a lock file are ignored, not an error.
+        let text = format!(
+            "version = {}\ntargets = []\n\n[tool.other]\nkey = 1\n\n[tool.rig]\nexclude-newer = \"2020-01-01\"\n",
+            RPROJ_LOCK_VERSION
+        );
+        let back: RprojLock = toml::from_str(&text).unwrap();
+        assert_eq!(back.tool.rig.exclude_newer.as_deref(), Some("2020-01-01"));
+    }
+
+    #[test]
     fn add_platform_extends_the_default_platform_set() {
         let opts = ProjLockOptions {
             add_platforms: vec!["ubuntu-24.04".to_string()],
             ..Default::default()
         };
         assert_eq!(
-            lock_platform_specs(&opts),
+            lock_platform_specs(&opts, None),
             vec![
                 None,
                 Some("x86_64-w64-mingw32".to_string()),
                 Some("x86_64-unknown-linux-gnu".to_string()),
                 Some("aarch64-apple-darwin".to_string()),
+                Some("source".to_string()),
                 Some("ubuntu-24.04".to_string()),
             ]
         );
+    }
+
+    #[test]
+    fn host_only_locks_for_this_machine_only() {
+        let opts = ProjLockOptions {
+            host_only: true,
+            add_platforms: vec!["windows".to_string()],
+            ..Default::default()
+        };
+        assert_eq!(lock_platform_specs(&opts, None), vec![None]);
     }
 
     #[test]
@@ -5225,13 +6837,93 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            lock_platform_specs(&opts),
+            lock_platform_specs(&opts, None),
             vec![
                 Some("macos".to_string()),
                 Some("windows".to_string()),
                 Some("linux".to_string()),
             ]
         );
+    }
+
+    #[test]
+    fn manifest_platforms_replace_the_default_set() {
+        let manifest = vec!["aarch64-apple-darwin".to_string(), "source".to_string()];
+        let opts = ProjLockOptions {
+            add_platforms: vec!["x86_64-w64-mingw32".to_string()],
+            ..Default::default()
+        };
+        assert_eq!(
+            lock_platform_specs(&opts, Some(&manifest)),
+            vec![
+                Some("aarch64-apple-darwin".to_string()),
+                Some("source".to_string()),
+                Some("x86_64-w64-mingw32".to_string()),
+            ]
+        );
+        // `--platform` wins over the manifest.
+        let opts = ProjLockOptions {
+            platforms: vec!["windows".to_string()],
+            ..Default::default()
+        };
+        assert_eq!(
+            lock_platform_specs(&opts, Some(&manifest)),
+            vec![Some("windows".to_string())]
+        );
+    }
+
+    #[test]
+    fn manifest_r_versions_are_used_unless_given() {
+        let manifest = vec!["4.5".to_string(), "4.6".to_string()];
+        let opts = ProjLockOptions::default();
+        assert_eq!(lock_r_versions(&opts, None), None);
+        assert_eq!(
+            lock_r_versions(&opts, Some(&manifest)),
+            Some(manifest.clone())
+        );
+        // `--r-version` wins over the manifest.
+        let opts = ProjLockOptions {
+            r_versions: vec!["4.4".to_string()],
+            ..Default::default()
+        };
+        assert_eq!(
+            lock_r_versions(&opts, Some(&manifest)),
+            Some(vec!["4.4".to_string()])
+        );
+    }
+
+    #[test]
+    fn lock_has_r_versions_matches_the_manifest() {
+        let lock = |versions: &[&str]| RprojLock {
+            version: RPROJ_LOCK_VERSION,
+            tool: Default::default(),
+            targets: versions
+                .iter()
+                .map(|v| RprojLockTarget {
+                    r_version: v.to_string(),
+                    platform: "source".to_string(),
+                    direct_dependencies: vec![],
+                    bioc_version: None,
+                    packages: vec![],
+                })
+                .collect(),
+        };
+        let want =
+            |versions: &[&str]| -> Vec<String> { versions.iter().map(|v| v.to_string()).collect() };
+        assert!(lock_has_r_versions(
+            &lock(&["4.5", "4.6"]),
+            &want(&["4.6", "4.5"])
+        ));
+        assert!(lock_has_r_versions(&lock(&["4.5.2"]), &want(&["4.5"])));
+        assert!(!lock_has_r_versions(
+            &lock(&["4.5"]),
+            &want(&["4.5", "4.6"])
+        ));
+        assert!(!lock_has_r_versions(
+            &lock(&["4.5", "4.6"]),
+            &want(&["4.5"])
+        ));
+        assert!(!lock_has_r_versions(&lock(&["4.50"]), &want(&["4.5"])));
     }
 
     #[test]
@@ -5260,7 +6952,16 @@ mod tests {
         assert_eq!(target_os_family("windows-x86_64"), Some("windows"));
         assert_eq!(target_os_family("jammy-x86_64"), Some("linux"));
         assert_eq!(target_os_family("linux-ubuntu-24.04-x86_64"), Some("linux"));
-        // A `--platform source` solve's platform is a bare CPU arch: no OS.
+        assert_eq!(target_os_family("aarch64-apple-darwin"), Some("macos"));
+        assert_eq!(target_os_family("x86_64-w64-mingw32"), Some("windows"));
+        assert_eq!(target_os_family("x86_64-unknown-linux-gnu"), Some("linux"));
+        assert_eq!(
+            target_os_family("aarch64-unknown-linux-gnu-ubuntu-24.04"),
+            Some("linux")
+        );
+        // A `--platform source` solve's platform has no OS. (Older lock
+        // files used the bare CPU arch.)
+        assert_eq!(target_os_family("source"), None);
         assert_eq!(target_os_family("aarch64"), None);
         assert_eq!(target_os_family("x86_64"), None);
     }
@@ -5270,6 +6971,7 @@ mod tests {
             r_version: r_version.to_string(),
             platform: platform.to_string(),
             direct_dependencies: vec![],
+            bioc_version: None,
             packages: vec![],
         }
     }
@@ -5309,6 +7011,37 @@ mod tests {
         pkg
     }
 
+    /// Where to install from comes from `sources`, not from `metadata`: a
+    /// git package's subdir, and a local package's path.
+    #[test]
+    fn lockfile_package_info_reads_the_install_location_from_sources() {
+        let cache = Path::new("/cache");
+        let mut git = locked("mypkg", &[]);
+        git.metadata.clear();
+        git.sources = vec!["git+https://example.com/repo.git#commit=3f2a&subdir=pkgs/mypkg".into()];
+        git.target = "git/git/3f2a".to_string();
+        assert_eq!(
+            lockfile_package_info(&git, cache, None).file_path,
+            cache
+                .join("packages")
+                .join("git/git/3f2a")
+                .join("pkgs/mypkg")
+        );
+
+        let mut local = locked("lpkg", &[]);
+        local.metadata.clear();
+        let dir = std::env::temp_dir().join("lpkg");
+        local.sources = vec![reqwest::Url::from_directory_path(&dir).unwrap().to_string()];
+        local.target = String::new();
+        assert_eq!(
+            lockfile_package_info(&local, cache, None)
+                .file_path
+                .components()
+                .collect::<Vec<_>>(),
+            dir.components().collect::<Vec<_>>()
+        );
+    }
+
     fn resolved_git_source(name: &str, url: &str, sha: &str) -> ResolvedGitSource {
         ResolvedGitSource {
             name: name.to_string(),
@@ -5325,6 +7058,8 @@ mod tests {
                 sha: sha.to_string(),
                 binary: false,
             },
+            system_requirements: None,
+            os_type: None,
         }
     }
 
@@ -5339,9 +7074,10 @@ mod tests {
         t.packages = vec![pkg];
         let lock = RprojLock {
             version: RPROJ_LOCK_VERSION,
+            tool: Default::default(),
             targets: vec![t],
         };
-        let refs = existing_release_refs(&lock);
+        let refs = existing_release_refs(&lock, &HashSet::new());
         assert_eq!(
             refs.get(&("https://github.com/me/mypkg.git".to_string(), None)),
             Some(&("v1.2.0".to_string(), "abc123".to_string()))
@@ -5358,6 +7094,70 @@ mod tests {
         }];
         let direct_deps = vec![direct_dep("dplyr", ">= 1.0.0")];
         assert!(lock_target_satisfies(&t, &direct_deps));
+    }
+
+    /// A project in `dir` with the manifest dependencies `deps`, and a lock
+    /// with one R 4.6.1 target that pins dplyr 1.1.0.
+    fn write_dplyr_project(dir: &Path, deps: &[(&str, &str)]) {
+        let mut manifest = Rproj::minimal("test");
+        for (name, req) in deps {
+            manifest
+                .dependencies
+                .insert(name.to_string(), Dependency::Version(req.to_string()));
+        }
+        fs::write(
+            dir.join(RPROJ_MANIFEST_FILE),
+            toml::to_string(&manifest).unwrap(),
+        )
+        .unwrap();
+        let mut t = target("4.6.1", "source");
+        t.packages = vec![locked_version("dplyr", "1.1.0", &[])];
+        t.direct_dependencies = vec![LockDirectDependency {
+            name: "dplyr".to_string(),
+            constraint: "*".to_string(),
+        }];
+        let lock = RprojLock {
+            version: RPROJ_LOCK_VERSION,
+            tool: RprojLockTool {
+                rig: RprojLockOptions {
+                    repositories: ProjRepos::default().lock_repositories(),
+                    ..Default::default()
+                },
+            },
+            targets: vec![t],
+        };
+        fs::write(dir.join(RPROJ_LOCK_FILE), lock.to_toml().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn lock_fits_an_unchanged_manifest() {
+        let dir = tempfile::tempdir().unwrap();
+        write_dplyr_project(dir.path(), &[("R", "*"), ("dplyr", "*")]);
+        assert!(lock_fits_manifest(dir.path()).unwrap());
+    }
+
+    #[test]
+    fn lock_does_not_fit_a_changed_manifest() {
+        let dir = tempfile::tempdir().unwrap();
+        write_dplyr_project(dir.path(), &[("dplyr", "*"), ("cli", "*")]);
+        assert!(!lock_fits_manifest(dir.path()).unwrap());
+
+        let dir = tempfile::tempdir().unwrap();
+        write_dplyr_project(dir.path(), &[("dplyr", ">= 2.0.0")]);
+        assert!(!lock_fits_manifest(dir.path()).unwrap());
+
+        // The lock is for R 4.6.1, which the manifest does not allow.
+        let dir = tempfile::tempdir().unwrap();
+        write_dplyr_project(dir.path(), &[("R", ">= 4.7"), ("dplyr", "*")]);
+        assert!(!lock_fits_manifest(dir.path()).unwrap());
+    }
+
+    #[test]
+    fn no_lock_does_not_fit() {
+        let dir = tempfile::tempdir().unwrap();
+        write_dplyr_project(dir.path(), &[("dplyr", "*")]);
+        fs::remove_file(dir.path().join(RPROJ_LOCK_FILE)).unwrap();
+        assert!(!lock_fits_manifest(dir.path()).unwrap());
     }
 
     #[test]
@@ -5457,13 +7257,137 @@ mod tests {
         assert!(!lock_target_git_sources_fresh(&t, &sources));
     }
 
+    /// This machine, for an R of architecture `arch`, as a glibc Linux with
+    /// no specific P3M build if it runs Linux, so the tests do not depend on
+    /// the distro they run on, nor on P3M's status document.
+    fn this_host_for_arch(arch: &str) -> SyncHost {
+        let os = this_os_family();
+        SyncHost {
+            os,
+            arch: native_arch_name(arch),
+            linux: (os == "linux").then_some(LinuxHost {
+                musl: false,
+                distro: None,
+            }),
+        }
+    }
+
+    fn this_host() -> SyncHost {
+        this_host_for_arch(std::env::consts::ARCH)
+    }
+
+    /// An x86_64 Linux machine, with `distro` as P3M's build for it.
+    fn linux_host(musl: bool, distro: Option<(&str, &str)>) -> SyncHost {
+        SyncHost {
+            os: "linux",
+            arch: native_arch_name("x86_64"),
+            linux: Some(LinuxHost {
+                musl,
+                distro: distro.map(|(d, v)| (d.to_string(), v.to_string())),
+            }),
+        }
+    }
+
+    #[test]
+    fn select_sync_target_ignores_other_linux_distros() {
+        let fedora = linux_host(false, None);
+        let targets = vec![target("4.6.1", "x86_64-unknown-linux-gnu-ubuntu-22.04")];
+        assert!(select_sync_target(&targets, None, None, &fedora).is_err());
+        let noble = linux_host(false, Some(("ubuntu", "24.04")));
+        assert!(select_sync_target(&targets, None, None, &noble).is_err());
+        let jammy = linux_host(false, Some(("ubuntu", "22.04")));
+        let picked = select_sync_target(&targets, None, None, &jammy).unwrap();
+        assert_eq!(picked.platform, "x86_64-unknown-linux-gnu-ubuntu-22.04");
+
+        // The generic glibc target is used instead.
+        let targets = vec![
+            target("4.6.1", "x86_64-unknown-linux-gnu-ubuntu-22.04"),
+            target("4.6.1", "x86_64-unknown-linux-gnu"),
+            target("4.6.1", "source"),
+        ];
+        for host in [&fedora, &noble] {
+            let picked = select_sync_target(&targets, None, None, host).unwrap();
+            assert_eq!(picked.platform, "x86_64-unknown-linux-gnu");
+        }
+    }
+
+    #[test]
+    fn select_sync_target_prefers_this_distro_over_generic_linux() {
+        let jammy = linux_host(false, Some(("ubuntu", "22.04")));
+        let specific = target("4.6.1", "x86_64-unknown-linux-gnu-ubuntu-22.04");
+        let generic = target("4.6.1", "x86_64-unknown-linux-gnu");
+        for targets in [
+            vec![specific.clone(), generic.clone()],
+            vec![generic.clone(), specific.clone()],
+        ] {
+            let picked = select_sync_target(&targets, None, None, &jammy).unwrap();
+            assert_eq!(picked.platform, specific.platform);
+        }
+
+        // A higher R version still wins.
+        let targets = vec![specific, target("4.6.2", "x86_64-unknown-linux-gnu")];
+        let picked = select_sync_target(&targets, None, None, &jammy).unwrap();
+        assert_eq!(picked.platform, "x86_64-unknown-linux-gnu");
+    }
+
+    #[test]
+    fn select_sync_target_keeps_glibc_and_musl_apart() {
+        let alpine = linux_host(true, None);
+        let targets = vec![
+            target("4.6.1", "x86_64-unknown-linux-gnu"),
+            target("4.6.1", "x86_64-unknown-linux-gnu-ubuntu-22.04"),
+        ];
+        assert!(select_sync_target(&targets, None, None, &alpine).is_err());
+        let targets = vec![target("4.6.1", "x86_64-unknown-linux-musl")];
+        let picked = select_sync_target(&targets, None, None, &alpine).unwrap();
+        assert_eq!(picked.platform, "x86_64-unknown-linux-musl");
+        let glibc = linux_host(false, None);
+        assert!(select_sync_target(&targets, None, None, &glibc).is_err());
+    }
+
     #[test]
     fn select_sync_target_is_a_noop_with_a_single_target() {
         let this_os = this_os_family();
         let platform = format!("{}-{}", this_os, std::env::consts::ARCH);
         let targets = vec![target("4.6.1", &platform)];
-        let picked = select_sync_target(&targets, None, None).unwrap();
+        let picked = select_sync_target(&targets, None, None, &this_host()).unwrap();
         assert_eq!(picked.r_version, "4.6.1");
+    }
+
+    #[test]
+    fn select_sync_target_picks_the_requested_arch() {
+        let this_os = this_os_family();
+        let native = native_arch_name(std::env::consts::ARCH);
+        // "arm64" on macOS, "aarch64" on Linux and Windows
+        let other = native_arch_name(if native == "x86_64" {
+            "arm64"
+        } else {
+            "x86_64"
+        });
+        let targets = vec![
+            target("4.6.1", &format!("{}-{}", this_os, native)),
+            target("4.6.1", &format!("{}-{}", this_os, other)),
+        ];
+        let picked = select_sync_target(&targets, None, None, &this_host_for_arch(&other)).unwrap();
+        assert_eq!(
+            platform_arch(&picked.platform)
+                .map(native_arch_name)
+                .as_deref(),
+            Some(other.as_str())
+        );
+        let picked = select_sync_target(&targets, None, None, &this_host()).unwrap();
+        assert_eq!(
+            platform_arch(&picked.platform)
+                .map(native_arch_name)
+                .as_deref(),
+            Some(native.as_str())
+        );
+    }
+
+    #[test]
+    fn macos_platform_for_arch_uses_lock_platform_names() {
+        assert_eq!(macos_platform_for_arch("x86_64"), "x86_64-apple-darwin");
+        assert_eq!(macos_platform_for_arch("arm64"), "aarch64-apple-darwin");
     }
 
     #[test]
@@ -5474,17 +7398,38 @@ mod tests {
             target("4.6.1", &format!("{}-{}", other_os, std::env::consts::ARCH)),
             target("4.5.0", &format!("{}-{}", this_os, std::env::consts::ARCH)),
         ];
-        let picked = select_sync_target(&targets, None, None).unwrap();
+        let picked = select_sync_target(&targets, None, None, &this_host()).unwrap();
         assert_eq!(picked.r_version, "4.5.0");
     }
 
     #[test]
     fn select_sync_target_matches_a_source_only_target_on_any_os() {
-        // A `--platform source` solve's platform is a bare CPU arch, with no
-        // OS marker, so it matches this machine regardless of OS.
-        let targets = vec![target("4.6.1", std::env::consts::ARCH)];
-        let picked = select_sync_target(&targets, None, None).unwrap();
+        // A `--platform source` solve's platform has no OS marker, so it
+        // matches this machine regardless of OS. Older lock files used the
+        // bare CPU arch, which also has no OS marker.
+        let targets = vec![target("4.6.1", "source")];
+        let picked = select_sync_target(&targets, None, None, &this_host()).unwrap();
         assert_eq!(picked.r_version, "4.6.1");
+        let targets = vec![target("4.6.1", std::env::consts::ARCH)];
+        let picked = select_sync_target(&targets, None, None, &this_host()).unwrap();
+        assert_eq!(picked.r_version, "4.6.1");
+    }
+
+    #[test]
+    fn select_sync_target_prefers_this_os_over_source() {
+        let platform = format!("{}-{}", this_os_family(), std::env::consts::ARCH);
+        for targets in [
+            vec![target("4.6.1", &platform), target("4.6.1", "source")],
+            vec![target("4.6.1", "source"), target("4.6.1", &platform)],
+        ] {
+            let picked = select_sync_target(&targets, None, None, &this_host()).unwrap();
+            assert_eq!(picked.platform, platform);
+        }
+
+        // A higher R version still wins, even if it is source-only.
+        let targets = vec![target("4.5.0", &platform), target("4.6.1", "source")];
+        let picked = select_sync_target(&targets, None, None, &this_host()).unwrap();
+        assert_eq!(picked.platform, "source");
     }
 
     #[test]
@@ -5499,7 +7444,7 @@ mod tests {
             target("4.6.1", &format!("{}-{}", this_os, other_arch)),
             target("4.5.0", &format!("{}-{}", this_os, std::env::consts::ARCH)),
         ];
-        let picked = select_sync_target(&targets, None, None).unwrap();
+        let picked = select_sync_target(&targets, None, None, &this_host()).unwrap();
         assert_eq!(picked.r_version, "4.5.0");
     }
 
@@ -5512,7 +7457,7 @@ mod tests {
             target("4.6.1", &platform),
             target("4.4.2", &platform),
         ];
-        let picked = select_sync_target(&targets, None, None).unwrap();
+        let picked = select_sync_target(&targets, None, None, &this_host()).unwrap();
         assert_eq!(picked.r_version, "4.6.1");
     }
 
@@ -5521,7 +7466,7 @@ mod tests {
         let this_os = this_os_family();
         let platform = format!("{}-{}", this_os, std::env::consts::ARCH);
         let targets = vec![target("4.5.0", &platform), target("4.6.1", &platform)];
-        let picked = select_sync_target(&targets, Some("4.5.0"), None).unwrap();
+        let picked = select_sync_target(&targets, Some("4.5.0"), None, &this_host()).unwrap();
         assert_eq!(picked.r_version, "4.5.0");
     }
 
@@ -5533,7 +7478,7 @@ mod tests {
             "linux"
         };
         let targets = vec![target("4.6.1", &format!("{}-x86_64", other_os))];
-        assert!(select_sync_target(&targets, None, None).is_err());
+        assert!(select_sync_target(&targets, None, None, &this_host()).is_err());
     }
 
     #[test]
@@ -5691,7 +7636,9 @@ mod tests {
         );
         assert_eq!(pkg.groups, vec!["main".to_string()]);
         assert!(pkg.extra_groups.is_empty());
-        assert!(pkg.sources.is_empty());
+        assert_eq!(pkg.sources, project_sources(root));
+        #[cfg(unix)]
+        assert_eq!(pkg.sources, vec!["file:///tmp/mypkg/".to_string()]);
         assert!(pkg.target.is_empty());
         assert_eq!(
             pkg.metadata.get(REMOTE_TYPE_FIELD),
@@ -5718,7 +7665,7 @@ mod tests {
     #[test]
     fn project_entry_fresh_with_no_self_alias_always_passes() {
         let t = target("4.6.1", "testos");
-        assert!(project_entry_fresh(&t, None, None));
+        assert!(project_entry_fresh(&t, None, Path::new("/tmp/mypkg"), None));
     }
 
     #[test]
@@ -5728,6 +7675,7 @@ mod tests {
         assert!(!project_entry_fresh(
             &t,
             Some(&alias),
+            Path::new("/tmp/mypkg"),
             Some(&"abc".to_string())
         ));
     }
@@ -5744,13 +7692,32 @@ mod tests {
         assert!(!project_entry_fresh(
             &t,
             Some(&alias),
+            Path::new("/tmp/mypkg"),
             Some(&"new-sha".to_string())
         ));
         assert!(project_entry_fresh(
             &t,
             Some(&alias),
+            Path::new("/tmp/mypkg"),
             Some(&"old-sha".to_string())
         ));
+    }
+
+    #[test]
+    fn project_entry_fresh_requires_the_file_url_source() {
+        let alias = self_alias("mypkg", "1.0.0", &[]);
+        // Must be absolute on every platform (`/tmp/mypkg` is not, on
+        // Windows), otherwise there is no `file://` URL to compare.
+        let root_buf = std::env::temp_dir().join("mypkg");
+        let root = root_buf.as_path();
+        let mut t = target("4.6.1", "testos");
+        t.packages = vec![project_lock_package(&alias, root, Some("sha"))];
+        assert!(!t.packages[0].sources.is_empty());
+        let sha = "sha".to_string();
+        assert!(project_entry_fresh(&t, Some(&alias), root, Some(&sha)));
+        // A lock written before `sources` was recorded.
+        t.packages[0].sources.clear();
+        assert!(!project_entry_fresh(&t, Some(&alias), root, Some(&sha)));
     }
 
     #[test]
@@ -5766,6 +7733,7 @@ mod tests {
         assert!(!project_entry_fresh(
             &t,
             Some(&bumped),
+            Path::new("/tmp/mypkg"),
             Some(&"sha".to_string())
         ));
     }
@@ -5797,6 +7765,31 @@ mod tests {
             names(&sync_wanted_packages(&packages, &opts)),
             vec!["mypkg", "otherpkg"]
         );
+    }
+
+    #[test]
+    fn sync_wanted_packages_no_install_project_keeps_it_for_a_dev_dependency() {
+        let mut project = locked_in("mypkg", &["main"], &[]);
+        project.is_project = true;
+        let mut dependent = locked_in("otherpkg", &["dev"], &[]);
+        dependent.dependencies = vec!["mypkg".to_string()];
+        let packages = vec![dependent, project];
+        let opts = ProjSyncOptions {
+            install_project: false,
+            ..sync_opts()
+        };
+        assert_eq!(
+            names(&sync_wanted_packages(&packages, &opts)),
+            vec!["mypkg", "otherpkg"]
+        );
+        // With `--no-dev` the dev dependency is not wanted, so neither is
+        // the project package.
+        let opts = ProjSyncOptions {
+            install_project: false,
+            dev: false,
+            ..sync_opts()
+        };
+        assert!(names(&sync_wanted_packages(&packages, &opts)).is_empty());
     }
 
     #[test]

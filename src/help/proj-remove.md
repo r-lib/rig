@@ -11,6 +11,12 @@ Naming a package that is not a dependency in `rproj.toml` is an error, and
 none of the named packages are removed if any of them is not found, so a
 typo cannot silently remove the wrong set of packages.
 
+## Scripts
+
+`--script script.R` removes the packages from the `# /// script` block of an R
+script, instead of `rproj.toml`, see [scripts with inline dependencies](run.qmd#scripts-with-inline-dependencies). Then rig
+sets up the script's new environment, the same way [`rig proj add --script`](#rig-proj-add) does.
+
 ## Options
 
 `--no-sync` updates `rproj.toml` and `rproj.lock`, but does not touch the project

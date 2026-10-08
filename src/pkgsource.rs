@@ -21,10 +21,9 @@
 
 use std::error::Error;
 
-use simple_error::bail;
-
 pub mod git;
 pub mod local;
+pub mod lock;
 pub mod url;
 
 /// A parsed, not yet fetched, package source. `Cran` means "not a
@@ -161,6 +160,15 @@ pub fn parse_pkg_source(spec: &str) -> Result<PkgSource, Box<dyn Error>> {
     }
 
     Ok(PkgSource::Cran)
+}
+
+/// `spec` without its `bioc::` prefix, e.g. `S4Vectors` for
+/// `bioc::S4Vectors`. Other specs are returned unchanged. CRAN and
+/// Bioconductor share one package namespace, so in `Remotes:` and
+/// `Config/Needs/*` fields `bioc::<package>` is the same as `<package>`.
+pub fn strip_bioc_prefix(spec: &str) -> &str {
+    let spec = spec.trim();
+    spec.strip_prefix("bioc::").unwrap_or(spec)
 }
 
 /// Split off an optional `<name>=` override prefix, the way `pak` refs allow
@@ -520,6 +528,8 @@ mod tests {
     #[test]
     fn a_bare_name_or_owner_repo_is_never_local() {
         assert_eq!(parse_pkg_source("mypkg").unwrap(), PkgSource::Cran);
+        assert!(parse_pkg_source("bioc::limma").is_err());
+        assert_eq!(strip_bioc_prefix("bioc::S4Vectors"), "S4Vectors");
         assert_eq!(
             remote("r-lib/crayon").git,
             "https://github.com/r-lib/crayon.git"

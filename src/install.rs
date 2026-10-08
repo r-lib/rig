@@ -9,7 +9,6 @@ use std::sync::Arc;
 use futures::stream::{FuturesUnordered, StreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, error, info};
-use simple_error::bail;
 use tokio::fs::create_dir_all;
 use tokio::process::Command;
 use tokio::sync::Mutex;
@@ -19,6 +18,13 @@ use crate::output::OUTPUT;
 /// The `DESCRIPTION` field recording which artifact an installed package came
 /// from: the sha256 of the upstream CRAN source tarball of its version.
 pub const REMOTE_HASH_FIELD: &str = "RemoteHash";
+
+/// The lock metadata field holding when a package of a CRAN-like repository
+/// was built, from the `Built` field of the repository's `PACKAGES` file. It
+/// is not written into the installed package: R writes its own `Built` field,
+/// which is the same for a binary package. `rig pkg install` reinstalls a
+/// package if the repository has a newer build of it.
+pub const REPO_BUILT_FIELD: &str = "Built";
 
 /// The `DESCRIPTION` field recording what the package was compiled against:
 /// its `LinkingTo` dependencies as `pkg@version=sha256`, the same syntax P3M's
@@ -598,10 +604,19 @@ where
         Ok(())
     } else {
         // User output: Always use OUTPUT for errors (they should be visible)
+        // A missing system library is the most common reason a source
+        // package fails to compile.
+        let missing = crate::sysreqs::still_missing(package_name);
+        let hint = if missing.is_empty() {
+            String::new()
+        } else {
+            format!("\n  Missing system packages: {}", missing.join(", "))
+        };
         OUTPUT.error(&format!(
-            "Failed to install {}\n  See log: {}",
+            "Failed to install {}\n  See log: {}{}",
             package_name,
-            log_file_path.display()
+            log_file_path.display(),
+            hint
         ));
 
         error!(
@@ -868,7 +883,6 @@ where
             remaining.join(", ")
         );
 
-        OUTPUT.error(&err_msg);
         error!("{}: {:?}", err_msg, remaining);
 
         return Err(err_msg.into());
@@ -876,11 +890,10 @@ where
 
     if final_failed > 0 {
         let err_msg = format!(
-            "Installation completed with {} failures ({}  succeeded)",
+            "Installation completed with {} failures ({} succeeded)",
             final_failed, final_installed
         );
 
-        OUTPUT.error(&err_msg);
         error!(
             "Installation completed: {} succeeded, {} failed",
             final_installed, final_failed

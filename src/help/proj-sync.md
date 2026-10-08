@@ -14,6 +14,10 @@ URL, so nothing but the lock file is needed to install from it. The one
 exception is `.rvenv/etc/repositories` (see below), which still comes from
 `rproj.toml` when one is present, and is skipped otherwise.
 
+`--with-repos` (`--index`) and `--without-repos` (`--no-index`) lock again first,
+with the project's repositories changed, see "Repositories" in
+[`rig proj lock`](#rig-proj-lock). They do not work with `--frozen`.
+
 By default sync installs `[dependencies]` (`main`) plus the `dev`
 [dependency group](#rig-proj-lock), and nothing else: no other
 `[dependency-groups.*]` table, and no `[optional-dependencies.*]` extra.
@@ -45,6 +49,39 @@ Pass `--inexact` to leave those packages alone instead.
 
 Pass `--dry-run` to print what sync would install, remove or write, without
 touching the R installation, the project library or `.rvenv`.
+
+`--exclude-newer` runs [`rig proj lock`](#rig-proj-lock) with the same
+option first, even if there is an `rproj.lock` already, to ignore CRAN
+package versions published after a date. The existing lock is kept if it
+was solved with the same cutoff. It cannot be combined with `--frozen`.
+
+## System requirements
+
+On Linux, many R packages need system libraries and tools, e.g. `libcurl` for the
+curl package, and a source package needs their development files to compile. A
+package lists these in the `SystemRequirements` field of its `DESCRIPTION`. Before
+installing, rig matches this field against the [r-system-requirements](https://github.com/r-hub/r-system-requirements) rules for
+your Linux distribution, checks which of the needed OS packages are installed
+already, and installs the missing ones with the distribution's package manager
+(`apt-get`, `dnf`, `yum`, `zypper` or `apk`).
+
+This is only needed for source packages and for binaries built for one
+distribution. A `manylinux` binary has its libraries built in, so rig does not
+look at its system requirements. On macOS and Windows there are no system
+requirements to install.
+
+rig installs the OS packages itself if it runs as `root`, or if `sudo` works without
+a password. Otherwise it prints the commands that would install them, and
+carries on: the R packages may still install, and if one fails, rig names the
+system packages it was missing. This is the same in [admin mode and in user mode](../admin-vs-user-mode.qmd):
+OS packages always need administrator rights, even if rig does not need them for
+anything else.
+
+`--no-sysreqs` turns this off for one run, and `--sysreqs` turns it on even if the
+`sysreqs` [config](config.qmd) entry turns it off. With `--dry-run`, rig shows the missing OS
+packages and the commands, and installs nothing. Set the `sysreqs` [config](config.qmd)
+entry to `print` to always only show them. See [`rig config`](config.qmd) for the `sysreqs`,
+`sysreqs-sudo`, `sysreqs-update` and `sysreqs-rules-url` entries.
 
 ## The project's own package
 
@@ -94,12 +131,19 @@ simply inert, which is what makes locking for a Linux deployment target
 from a macOS laptop work: each machine's `rig proj sync` picks its own entry
 from the same file.
 
+On Linux the distro has to match, too: a target for a specific distro and
+release, e.g. `x86_64-unknown-linux-gnu-ubuntu-22.04`, is only used on that
+distro and release. The generic glibc target, `x86_64-unknown-linux-gnu`,
+fits any glibc Linux, but rig prefers the target for this distro if the lock
+file has both. glibc and musl (Alpine) targets do not mix.
+
 If more than one target matches this machine's OS (typically because the
 project locks for several R versions), rig picks the highest R version
 among them, with no need for extra flags. Pass `--r-version` and/or
-`--platform` to pick a different one of the matching targets instead. `rig
-proj sync` fails if none of the lock file's targets match this machine at
-all.
+`--platform` to pick a different one of the matching targets instead.
+`--platform` takes any spelling of the platform, e.g. `macos` picks the
+`aarch64-apple-darwin` target on an arm64 Mac. `rig proj sync` fails if none
+of the lock file's targets match this machine at all.
 
 ## What sync writes
 
@@ -119,8 +163,10 @@ lives, by default or centralized), and the rest is rewritten on every sync:
 - `.rvenv/rvenv.cfg`, which records the R version, the platform and the
   architecture the environment was built for. rig warns when it syncs an
   environment that was built for a different R.
-- `.rvenv/etc/repositories`, which the wrappers point `R_REPOSITORIES` at.
-  Reposirories to set up for the project.
+- `.rvenv/etc/repositories`, which the wrappers point `R_REPOSITORIES` at. The
+  repositories of the project: Posit Package Manager's CRAN for the lock
+  file's target, unless `rproj.toml` turns `cran` off, then the `[[repository]]`
+  entries, and the Bioconductor release of the target.
 
 After a successful sync rig records the lock file it installed from in
 `.synced`, inside the project library (`.rvenv/lib` by default, or the

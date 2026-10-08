@@ -28,7 +28,7 @@ jobs:
       image-uri: "ghcr.io/r-lib/rig/${{ fromJSON(inputs.config).name}}-${{ inputs.platform }}:latest"
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
 
     - name: Login to GitHub Container Registry
       uses: docker/login-action@v4

@@ -13,13 +13,6 @@ an exact, reproducible set of versions in `rproj.lock`.
 format may still change.
 :::
 
-::: {.callout-note}
-## P3M only
-
-`rig proj` commands currently only use P3M (Posit Public Package Manager)
-and ignore the repositories configured in the manifest and also the ones configured via [`rig repos`](reference/repos.qmd).
-:::
-
 `rig proj` is a companion to [`rig pkg`](pkg-guide.qmd): use `rig pkg
 install` for one-off packages in a library, and `rig proj` when you want a
 project's dependencies to be declared, locked and reproducible on every
@@ -75,6 +68,43 @@ resolves it with rig's built-in solver into an exact, reproducible set of
 package versions, each with the URL it downloads from. It never runs R.
 Both files are meant to be committed, `rig proj add`/`remove` update both
 for you.
+
+## Platforms and R versions
+
+`rproj.lock` has one target for each R version and platform it was solved
+for. By default `rig proj lock` solves for this machine, macOS on arm64
+(`aarch64-apple-darwin`), Windows (`x86_64-w64-mingw32`), any glibc Linux
+(`x86_64-unknown-linux-gnu`), and source packages (`source`), so the same
+lock file works for everyone on the project. `rig proj sync` picks the
+target that matches the machine it runs on.
+
+To lock for a different set of platforms, list them in `rproj.toml`:
+
+```toml
+[tool.rig]
+platforms = [
+  "aarch64-apple-darwin",
+  "x86_64-unknown-linux-gnu-ubuntu-24.04",
+  "source",
+]
+```
+
+Platforms are written as target triples, with a distribution and version
+for a specific Linux distribution. Shorter forms such as `macos`,
+`windows`, `ubuntu-24.04` or `macos-arm64` work too. See [`rig proj
+lock`](reference/proj.qmd#rig-proj-lock) for the details, and
+`--platform` / `--add-platform` to change the platforms for one lock.
+
+By default `rig proj lock` solves for one R version: the default R version,
+if the project's `R` requirement allows it. To lock for several R versions,
+list them in `rproj.toml` as well:
+
+```toml
+[tool.rig]
+r-versions = ["4.5", "4.6"]
+```
+
+`rig proj lock --r-version` changes the R versions for one lock.
 
 ## Syncing the project environment
 

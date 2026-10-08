@@ -201,6 +201,70 @@ teardown() {
     echo "$output" | grep -q "^  4.4.3"
 }
 
+@test "repos add/enable/disable/rm" {
+    run rig repos add rigtest https://cloud.r-project.org --title "rig test repo"
+    [[ "$status" -eq 0 ]]
+    run rig repos available
+    echo "$output" | grep -q "^rigtest .*custom"
+    run rig repos enable rigtest -r 4.5.1
+    [[ "$status" -eq 0 ]]
+    run rig repos list -r 4.5.1
+    echo "$output" | grep -q "^rigtest "
+    # choices survive a new setup
+    run rig repos setup -r 4.5.1
+    [[ "$status" -eq 0 ]]
+    run rig repos list -r 4.5.1
+    echo "$output" | grep -q "^rigtest "
+    run rig repos disable rigtest -r 4.5.1
+    [[ "$status" -eq 0 ]]
+    run rig repos list -r 4.5.1
+    ! echo "$output" | grep -q "^rigtest "
+    run rig repos enable rigtest -r 4.5.1
+    run rig repos rm rigtest
+    [[ "$status" -eq 0 ]]
+    run rig repos list -r 4.5.1
+    ! echo "$output" | grep -q "^rigtest "
+    run rig repos rm cran
+    [[ ! "$status" -eq 0 ]]
+}
+
+@test "rig pkg uses the configured repositories" {
+    # Clean up before checking anything, so a failure does not leave the
+    # repository setup changed for the other tests.
+    run rig repos add rigtest https://cran.r-project.org --enable -r 4.5.1
+    add_status=$status
+    run rig pkg deps cli --r-version 4.5.1
+    deps_status=$status
+    deps_output=$output
+    rig repos rm rigtest
+    [[ "$add_status" -eq 0 ]]
+    [[ "$deps_status" -eq 0 ]]
+    echo "$deps_output" | grep -q "metadata of repository rigtest"
+
+    # Bioconductor is only used if it is enabled.
+    # (Not limma: an old version of it was on CRAN.)
+    run rig pkg deps BiocGenerics --r-version 4.5.1
+    no_bioc_status=$status
+    rig repos enable bioconductor -r 4.5.1
+    run rig pkg deps BiocGenerics --r-version 4.5.1
+    bioc_status=$status
+    rig repos disable bioconductor -r 4.5.1
+    [[ ! "$no_bioc_status" -eq 0 ]]
+    [[ "$bioc_status" -eq 0 ]]
+}
+
+@test "add --json" {
+    # Already installed, so nothing is installed, only reported.
+    run bash -c "rig add --json 4.5.1 2>/dev/null"
+    echo "status = ${status}"
+    echo "output = ${output}"
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q '"name": "4.5.1"'
+    echo "$output" | grep -q '"version": "4.5.1"'
+    echo "$output" | grep -q '"default": true\(,\|$\)'
+    echo "$output" | grep -q '"new-install": false\(,\|$\)'
+}
+
 @test "resolve" {
     run rig resolve devel
     [[ "$status" -eq 0 ]]
@@ -279,6 +343,62 @@ teardown() {
     [[ "$uid" -eq "`id -u`" ]]
 }
 
+@test "pkg install system requirements" {
+    if ! rig ls | grep -q '^[* ] 4.5.1'; then
+	run rig -v add 4.5.1
+	[[ "$status" -eq 0 ]]
+    fi
+    lib="$BATS_TEST_TMPDIR/sysreqs-lib"
+    rm -rf "$lib"
+
+    # A source build of XML needs the libxml2 development files. XML has no
+    # R package dependencies, and any libxml2 will do, so it compiles on every
+    # distro. A dry run names the OS packages, and the command that installs
+    # them, but installs nothing.
+    run rig pkg install -r 4.5.1 --library "$lib" --platform source --dry-run XML
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "Checking system requirements"
+    # Whether anything is missing depends on the image.
+    echo "$output" | grep -qE "Missing [0-9]+ system package|All .* required system package"
+    [[ ! -d "$lib" ]]
+
+    # --no-sysreqs skips the check
+    run rig pkg install -r 4.5.1 --library "$lib" --platform source --dry-run --no-sysreqs XML
+    [[ "$status" -eq 0 ]]
+    [[ "$output" != *"Checking system requirements"* ]]
+
+    # The tests run as root, so rig installs the OS packages itself, and then
+    # XML compiles. Not on openSUSE Leap 15.6: its repositories cannot install
+    # libxml2-devel at all, because its readline-devel dependency conflicts
+    # with the image's newer libncurses6. Plain `zypper install` fails the
+    # same way.
+    source /etc/os-release
+    if [[ "$ID" != opensuse* ]]; then
+        run $SUDO `which rig` pkg install -r 4.5.1 --library "$lib" --platform source XML
+        [[ "$status" -eq 0 ]]
+        echo "$output" | grep -qE "Installed [0-9]+ system package|All .* required system package"
+        run R-4.5.1 -q -s -e "library(XML, lib.loc = '$lib'); cat(xmlValue(xmlRoot(xmlParse('<a>ok</a>'))))"
+        [[ "$status" -eq 0 ]]
+        [[ "$output" == *"ok"* ]]
+
+        # rig pkg doctor finds nothing missing now
+        run rig pkg doctor -r 4.5.1 --library "$lib"
+        [[ "$status" -eq 0 ]]
+        echo "$output" | grep -q "No problems found"
+    fi
+
+    # A package that needs libsodium, which none of the test images have. A
+    # missing system package is a warning, so doctor still succeeds.
+    mkdir -p "$lib/needsodium"
+    printf 'Package: needsodium\nVersion: 1.0.0\nSystemRequirements: libsodium\n' \
+        > "$lib/needsodium/DESCRIPTION"
+    run rig pkg doctor -r 4.5.1 --library "$lib"
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -qE "needsodium .* warning .* sysreqs .* needs libsodium-dev(el)?, not installed"
+    echo "$output" | grep -q "To install the missing system packages, run:"
+    echo "$output" | grep -qE "install .*libsodium-dev"
+}
+
 @test "proj init" {
     cd "$BATS_TEST_TMPDIR"
     rm -rf myproj && mkdir myproj && cd myproj
@@ -324,12 +444,16 @@ teardown() {
     echo "$output" | grep -q "rproj.toml"
     echo "$output" | grep -q -- "--force"
 
-    # --force keeps the user's own ignore rules, rig only manages its block
+    # --force keeps the user's own ignore rules and environment variables,
+    # rig only manages its block
     echo "*.log" >> .gitignore
+    echo "MY_PROJECT_VAR=1" >> .Renviron
     run rig proj init -r 4.5.1 --force
     [[ "$status" -eq 0 ]]
     grep -q '^[*].log$' .gitignore
     [[ "$(grep -c '^# rig rvenv start$' .gitignore)" -eq 1 ]]
+    grep -q '^MY_PROJECT_VAR=1$' .Renviron
+    [[ "$(grep -c '^# rig rvenv start$' .Renviron)" -eq 1 ]]
 }
 
 @test "proj add" {
@@ -365,4 +489,248 @@ teardown() {
     run rig proj add 'praise@nope' --no-lock
     [[ "$status" -ne 0 ]]
     grep -q '^praise = "\*"$' rproj.toml
+}
+
+@test "proj lock uses the platforms of the manifest" {
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf platproj && mkdir platproj && cd platproj
+    run rig proj init -r 4.1
+    [[ "$status" -eq 0 ]]
+    run rig proj add --no-lock cli
+    [[ "$status" -eq 0 ]]
+    printf '\n[tool.rig]\nplatforms = ["macos-arm64", "ubuntu-24.04-x86_64", "source"]\n' >> rproj.toml
+
+    run rig proj lock
+    [[ "$status" -eq 0 ]]
+    grep -q '^platform = "aarch64-apple-darwin"$' rproj.lock
+    grep -q '^platform = "x86_64-unknown-linux-gnu-ubuntu-24.04"$' rproj.lock
+    grep -q '^platform = "source"$' rproj.lock
+    ! grep -q '^platform = "x86_64-w64-mingw32"$' rproj.lock
+
+    # --add-platform adds to the manifest's platforms
+    run rig proj lock --add-platform windows-x86_64
+    [[ "$status" -eq 0 ]]
+    grep -q '^platform = "x86_64-w64-mingw32"$' rproj.lock
+}
+
+@test "proj lock uses the R versions of the manifest" {
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf rverproj && mkdir rverproj && cd rverproj
+    run rig proj init -r 4.1
+    [[ "$status" -eq 0 ]]
+    run rig proj add --no-lock cli
+    [[ "$status" -eq 0 ]]
+    printf '\n[tool.rig]\nr-versions = ["4.4", "4.5"]\nplatforms = ["source"]\n' >> rproj.toml
+
+    run rig proj lock
+    [[ "$status" -eq 0 ]]
+    grep -q '^r_version = "4.4"$' rproj.lock
+    grep -q '^r_version = "4.5"$' rproj.lock
+
+    # --r-version replaces the manifest's R versions
+    run rig proj lock --r-version 4.5
+    [[ "$status" -eq 0 ]]
+    ! grep -q '^r_version = "4.4"$' rproj.lock
+    grep -q '^r_version = "4.5"$' rproj.lock
+}
+
+@test "run script with inline dependencies" {
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf scriptdir && mkdir scriptdir && cd scriptdir
+
+    # a plain script runs like `rig run -f`
+    printf 'cat(commandArgs(TRUE), "\\n")\n' > plain.R
+    run rig run plain.R a b
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "^a b"
+
+    # Rscript gets the arguments without an extra `--args`
+    run rig run --rscript plain.R a b
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "^a b"
+    run rig run --rscript -e 'cat(commandArgs(TRUE), "\n")' a b
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "^a b"
+
+    # a script with a #! line can have any name, and gets all arguments
+    # after it, even the ones that look like flags
+    printf '#!/usr/bin/env -S rig run\ncat(commandArgs(TRUE), "\\n")\n' > shebang
+    chmod +x shebang
+    run ./shebang --foo -- bar --help
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q -- "^--foo -- bar --help"
+
+    cat > deps.R <<'SCRIPT'
+# /// script
+# [dependencies]
+# R = ">= 4.1"
+# praise = "*"
+# ///
+cat("praise", format(packageVersion("praise")), "\n")
+cat("libpath", .libPaths()[1], "\n")
+cat("args", commandArgs(TRUE), "\n")
+SCRIPT
+    run rig run deps.R x
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "^praise "
+    echo "$output" | grep -q "^libpath .*scripts"
+    echo "$output" | grep -q "^args x"
+
+    # the second run reuses the environment
+    run rig run deps.R
+    [[ "$status" -eq 0 ]]
+    ! echo "$output" | grep -q "Setting up the environment"
+
+    # --upgrade-package solves the environment again
+    run rig run -P praise deps.R
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "Re-locking the environment"
+    echo "$output" | grep -q "^praise "
+
+    # the upgrade flags only work for scripts with a block
+    run rig run --upgrade plain.R
+    [[ "$status" -ne 0 ]]
+    echo "$output" | grep -q "only work for scripts"
+
+    # setting up the environment writes nothing to stdout, that is the
+    # script's. --no-cache forces a new environment.
+    printf '# /// script\n# [dependencies]\n# praise = "*"\n# ///\ncat("only this\\n")\n' > quiet.R
+    out="$(rig --no-cache run quiet.R 2>/dev/null)"
+    [[ "$out" == "only this" ]]
+
+    # a broken block is an error
+    printf '# /// script\n# [dependencies]\n1\n' > bad.R
+    run rig run bad.R
+    [[ "$status" -ne 0 ]]
+    echo "$output" | grep -q "does not start with"
+}
+
+@test "proj repositories" {
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf repoproj && mkdir repoproj && cd repoproj
+    run rig proj init -r 4.1
+    [[ "$status" -eq 0 ]]
+
+    # --with-repos adds the repository and pins the package to it
+    run rig proj add --no-lock --with-repos rlib=https://r-lib.r-universe.dev cli
+    [[ "$status" -eq 0 ]]
+    grep -q '^cli = { version = "\*", repository = "rlib" }$' rproj.toml
+    grep -q '^url = "https://r-lib.r-universe.dev"$' rproj.toml
+
+    run rig proj lock --platform source
+    [[ "$status" -eq 0 ]]
+    grep -q '^repository = "rlib"$' rproj.lock
+    grep -q '^\[\[tool.rig.repository\]\]$' rproj.lock
+
+    # a pin to a repository that is turned off is an error
+    run rig proj lock --platform source --without-repos=rlib
+    [[ "$status" -ne 0 ]]
+    echo "$output" | grep -q "turned off"
+
+    # so is an unknown repository name
+    run rig proj lock --platform source --with-repos=nope
+    [[ "$status" -ne 0 ]]
+    echo "$output" | grep -q "Unknown repository"
+}
+
+@test "proj init/add/remove --script" {
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf scriptedit && mkdir scriptedit && cd scriptedit
+
+    # init adds a block after the shebang, and refuses to replace it
+    printf '#!/usr/bin/env -S rig run\ncat("praise", format(packageVersion("praise")), "\\n")\n' > s.R
+    run rig proj init --script s.R
+    [[ "$status" -eq 0 ]]
+    [[ "$(sed -n 2p s.R)" == "# /// script" ]]
+    grep -q '^# R = ">= ' s.R
+    run rig proj init --script s.R
+    [[ "$status" -ne 0 ]]
+    echo "$output" | grep -q "already has"
+    [[ ! -e rproj.toml ]]
+
+    # init creates a missing script
+    run rig proj init --script new.R
+    [[ "$status" -eq 0 ]]
+    [[ "$(head -1 new.R)" == "# /// script" ]]
+
+    # add edits the block and sets up the environment
+    run rig proj add --script s.R praise
+    [[ "$status" -eq 0 ]]
+    grep -q '^# praise = "\*"$' s.R
+    run rig run s.R
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "^praise "
+    ! echo "$output" | grep -q "Setting up the environment"
+
+    # a package that does not exist leaves the script alone
+    cp s.R s.R.orig
+    run rig proj add --script s.R notapackageatall
+    [[ "$status" -ne 0 ]]
+    [[ "$(< s.R)" == "$(< s.R.orig)" ]]
+
+    # remove edits the block, a missing name is an error
+    run rig proj remove --script s.R praise --no-lock
+    [[ "$status" -eq 0 ]]
+    ! grep -q 'praise = ' s.R
+    run rig proj remove --script s.R praise --no-lock
+    [[ "$status" -ne 0 ]]
+    echo "$output" | grep -q "Not a dependency"
+}
+
+@test "script lock files" {
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf scriptlock && mkdir scriptlock && cd scriptlock
+
+    # a script without a block cannot be locked
+    printf 'cat("hi\\n")\n' > plain.R
+    run rig proj lock --script plain.R
+    [[ "$status" -ne 0 ]]
+    echo "$output" | grep -q "has no"
+    [[ ! -e plain.R.lock ]]
+
+    cat > s.R <<'SCRIPT'
+# /// script
+# [dependencies]
+# praise = "*"
+# ///
+cat("praise", format(packageVersion("praise")), "\n")
+SCRIPT
+    run rig proj lock --script s.R
+    [[ "$status" -eq 0 ]]
+    grep -q 'package = "praise"' s.R.lock
+    [[ "$(grep -c '^\[\[targets\]\]' s.R.lock)" -gt 1 ]]
+
+    # run uses the lock file, and does not change it
+    cp s.R.lock s.R.lock.orig
+    run rig run s.R
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "^praise "
+    [[ "$(< s.R.lock)" == "$(< s.R.lock.orig)" ]]
+    run rig run --locked s.R
+    [[ "$status" -eq 0 ]]
+
+    # a changed block does not fit the lock file any more: --locked fails,
+    # a plain run updates the lock file
+    cat > s.R <<'SCRIPT'
+# /// script
+# [dependencies]
+# praise = "*"
+# glue = "*"
+# ///
+cat("praise", format(packageVersion("praise")), "\n")
+SCRIPT
+    run rig run --locked s.R
+    [[ "$status" -ne 0 ]]
+    echo "$output" | grep -q "does not fit"
+    [[ "$(< s.R.lock)" == "$(< s.R.lock.orig)" ]]
+    run rig run s.R
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "^praise "
+    grep -q 'package = "glue"' s.R.lock
+    run rig run --locked s.R
+    [[ "$status" -eq 0 ]]
+
+    # --locked only works for scripts with a block
+    run rig run --locked plain.R
+    [[ "$status" -ne 0 ]]
 }

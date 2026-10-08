@@ -8,6 +8,7 @@
             {
                 "name": "P3M",
                 "url": "https://packagemanager.posit.co/cran/latest",
+                "metadata": "https://ppm.r-pkg.org",
                 "platforms": [
                     "windows",
                     "*-mingw32"
@@ -19,19 +20,18 @@
             {
                 "name": "P3M",
                 "url": "https://packagemanager.posit.co/cran/latest",
-                "enabled": false,
+                "metadata": "https://ppm.r-pkg.org",
+                "fallback": true,
                 "platforms": [
                     "macos",
-                    "*-apple-*"
-                ],
-                "archs": [
-                    "x86_64",
-                    "aarch64"
+                    "*-apple-*",
+                    "*-linux-*"
                 ]
             },
             {
                 "name": "P3M",
                 "url": "https://packagemanager.posit.co/cran/__linux__/centos7/latest",
+                "metadata": "https://ppm.r-pkg.org",
                 "platforms": [
                     "*-linux-gnu-centos-7",
                     "*-linux-gnu-rhel-7.*"
@@ -43,6 +43,7 @@
             {
                 "name": "P3M",
                 "url": "https://packagemanager.posit.co/cran/__linux__/centos8/latest",
+                "metadata": "https://ppm.r-pkg.org",
                 "platforms": [
                     "*-linux-gnu-centos-8",
                     "*-linux-gnu-rhel-8.*"
@@ -54,6 +55,7 @@
             {
                 "name": "P3M",
                 "url": "https://packagemanager.posit.co/cran/__linux__/rhel9/latest",
+                "metadata": "https://ppm.r-pkg.org",
                 "platforms": [
                     "*-linux-gnu-rhel-9.*"
                 ],
@@ -65,6 +67,7 @@
             {
                 "name": "P3M",
                 "url": "https://packagemanager.posit.co/cran/__linux__/rhel10/latest",
+                "metadata": "https://ppm.r-pkg.org",
                 "platforms": [
                     "*-linux-gnu-rhel-10.*"
                 ],
@@ -76,6 +79,7 @@
             {
                 "name": "P3M",
                 "url": "https://packagemanager.posit.co/cran/__linux__/opensuse15/latest",
+                "metadata": "https://ppm.r-pkg.org",
                 "platforms": [
                     "*-linux-gnu-opensuse-15",
                     "*-linux-gnu-opensuse-leap-15",
@@ -93,6 +97,7 @@
             {
                 "name": "P3M",
                 "url": "https://packagemanager.posit.co/cran/__linux__/opensuse152/latest",
+                "metadata": "https://ppm.r-pkg.org",
                 "platforms": [
                     "*-linux-gnu-opensuse-15.2",
                     "*-linux-gnu-opensuse-leap-15.2",
@@ -105,6 +110,7 @@
             {
                 "name": "P3M",
                 "url": "https://packagemanager.posit.co/cran/__linux__/opensuse153/latest",
+                "metadata": "https://ppm.r-pkg.org",
                 "platforms": [
                     "*-linux-gnu-opensuse-15.3",
                     "*-linux-gnu-opensuse-leap-15.3",
@@ -117,6 +123,7 @@
             {
                 "name": "P3M",
                 "url": "https://packagemanager.posit.co/cran/__linux__/opensuse154/latest",
+                "metadata": "https://ppm.r-pkg.org",
                 "platforms": [
                     "*-linux-gnu-opensuse-15.4",
                     "*-linux-gnu-opensuse-leap-15.4",
@@ -129,6 +136,7 @@
             {
                 "name": "P3M",
                 "url": "https://packagemanager.posit.co/cran/__linux__/opensuse155/latest",
+                "metadata": "https://ppm.r-pkg.org",
                 "platforms": [
                     "*-linux-gnu-opensuse-15.5",
                     "*-linux-gnu-opensuse-leap-15.5",
@@ -141,6 +149,7 @@
             {
                 "name": "P3M",
                 "url": "https://packagemanager.posit.co/cran/__linux__/opensuse156/latest",
+                "metadata": "https://ppm.r-pkg.org",
                 "platforms": [
                     "*-linux-gnu-opensuse-15.6",
                     "*-linux-gnu-opensuse-leap-15.6",
@@ -154,6 +163,7 @@
             {
                 "name": "P3M",
                 "url": "https://packagemanager.posit.co/cran/__linux__/opensuse42/latest",
+                "metadata": "https://ppm.r-pkg.org",
                 "platforms": [
                     "*-linux-gnu-opensuse-42",
                     "*-linux-gnu-opensuse-42.*"
@@ -165,6 +175,7 @@
             {
                 "name": "P3M",
                 "url": "https://packagemanager.posit.co/cran/__linux__/xenial/latest",
+                "metadata": "https://ppm.r-pkg.org",
                 "platforms": [
                     "*-linux-gnu-ubuntu-16.04"
                 ],
@@ -175,6 +186,7 @@
             {
                 "name": "P3M",
                 "url": "https://packagemanager.posit.co/cran/__linux__/bionic/latest",
+                "metadata": "https://ppm.r-pkg.org",
                 "platforms": [
                     "*-linux-gnu-ubuntu-18.04"
                 ],
@@ -185,6 +197,7 @@
             {
                 "name": "P3M",
                 "url": "https://packagemanager.posit.co/cran/__linux__/focal/latest",
+                "metadata": "https://ppm.r-pkg.org",
                 "platforms": [
                     "*-linux-gnu-ubuntu-20.04"
                 ],
@@ -195,6 +208,7 @@
             {
                 "name": "P3M",
                 "url": "https://packagemanager.posit.co/cran/__linux__/jammy/latest",
+                "metadata": "https://ppm.r-pkg.org",
                 "platforms": [
                     "*-linux-gnu-ubuntu-22.04"
                 ],
@@ -205,6 +219,7 @@
             {
                 "name": "P3M",
                 "url": "https://packagemanager.posit.co/cran/__linux__/noble/latest",
+                "metadata": "https://ppm.r-pkg.org",
                 "platforms": [
                     "*-linux-gnu-ubuntu-24.04"
                 ],
@@ -216,6 +231,7 @@
             {
                 "name": "P3M",
                 "url": "https://packagemanager.posit.co/cran/__linux__/resolute/latest",
+                "metadata": "https://ppm.r-pkg.org",
                 "platforms": [
                     "*-linux-gnu-ubuntu-26.04"
                 ],
@@ -227,6 +243,7 @@
             {
                 "name": "P3M",
                 "url": "https://packagemanager.posit.co/cran/__linux__/bullseye/latest",
+                "metadata": "https://ppm.r-pkg.org",
                 "platforms": [
                     "*-linux-gnu-debian-11"
                 ],
@@ -237,6 +254,7 @@
             {
                 "name": "P3M",
                 "url": "https://packagemanager.posit.co/cran/__linux__/bookworm/latest",
+                "metadata": "https://ppm.r-pkg.org",
                 "platforms": [
                     "*-linux-gnu-debian-12"
                 ],
@@ -247,6 +265,7 @@
             {
                 "name": "P3M",
                 "url": "https://packagemanager.posit.co/cran/__linux__/trixie/latest",
+                "metadata": "https://ppm.r-pkg.org",
                 "platforms": [
                     "*-linux-gnu-debian-13"
                 ],
@@ -269,6 +288,7 @@
             {
                 "name": "P3M-manylinux",
                 "url": "https://packagemanager.posit.co/cran/__linux__/manylinux_2_28/latest",
+                "metadata": "https://ppm.r-pkg.org",
                 "platforms": [
                     "*-linux-gnu-*"
                 ],
@@ -435,7 +455,8 @@
         "repos": [
             {
                 "name": "BioCsoft",
-                "url": "%bm/packages/%v/bioc"
+                "url": "%bm/packages/%v/bioc",
+                "metadata": "https://ppm-bioc.r-pkg.org/%v"
             },
             {
                 "name": "BioCann",

@@ -25,7 +25,6 @@ use std::io::ErrorKind;
 
 use clap::ArgMatches;
 use log::{debug, info};
-use simple_error::*;
 use tabular::*;
 
 #[cfg(target_os = "macos")]
@@ -40,20 +39,27 @@ use crate::linux::get_r_binary;
 use crate::built::BuiltCache;
 use crate::cache::get_cache_dir;
 use crate::dcf::{
-    DepVersionSpec, Package, PackageDependencies, RDepType, VersionConstraintType, DEP_TYPES_SOFT,
+    DepVersionSpec, OsType, Package, PackageDependencies, RDepType, VersionConstraintType,
+    DEP_TYPES_SOFT,
 };
+use crate::exclude_newer::exclude_newer_arg;
 use crate::install::{
     install_packages, PackageInfo, REMOTE_HASH_FIELD, REMOTE_SHA_FIELD, REMOTE_TYPE_FIELD,
+    REPO_BUILT_FIELD,
 };
 use crate::library::library_rver;
 use crate::output::OUTPUT;
+use crate::pkg::pkg_repos;
 use crate::pkgsource::local::resolve_local_path;
 use crate::pkgsource::{parse_pkg_source, PkgSource};
 use crate::proj::{
     dep_table_from_local, dep_table_from_remote, dep_table_from_url, download_lockfile_packages,
     fetch_and_read_git_package, fetch_and_read_url_package, lockfile_package_info,
-    proj_binary_target, read_local_package, resolve_git_sources, sc_proj_solve_deps, BASE_PKGS,
+    proj_binary_target, read_local_package, resolve_git_sources, sc_proj_solve_deps, SolvePins,
+    BASE_PKGS,
 };
+use crate::repos::feed::{BiocSetting, RepoFilter};
+use crate::repos::interpret_pkg_repos_args;
 use crate::repos::DbSourcePackageLoader;
 use crate::rproj::{DepTable, RprojLockPackage, RprojLockTarget};
 use crate::solver::{is_base_package, PackageVersionLoader, SolveRoot};
@@ -81,8 +87,37 @@ pub fn sc_pkg_install(
         .collect();
     let dev = args.get_flag("dev");
     let (mut deps, git_deps, cran_names, dev_packages) = requested_deps(&names)?;
+    // The packages named on the command line, by their real names, before
+    // `--dev` adds their dev dependencies to `deps`.
+    let named: HashSet<String> = deps.dependencies.iter().map(|d| d.name.clone()).collect();
+    let exclude_newer = match exclude_newer_arg(args)? {
+        Some(spec) => {
+            let cutoff = spec.cutoff()?;
+            let msg = format!("Ignoring package versions published after {}", cutoff);
+            OUTPUT.info(&msg);
+            info!("{}", msg);
+            Some(cutoff)
+        }
+        None => None,
+    };
+    let lib = resolve_library(args)?;
+    // Installing needs an R version even when `--library` is a plain path: it
+    // selects which binary builds are usable, and provides the `R` that installs
+    // a source package. It also selects the Bioconductor release.
+    let rver = match &lib.rversion {
+        Some(rver) => rver.clone(),
+        None => library_rver(args)?,
+    };
+    let bioc = BiocSetting::default();
+    // The repositories configured for the R version, changed by
+    // `--with-repos` and `--without-repos`.
+    let over = interpret_pkg_repos_args(args)?;
+    let repos = pkg_repos(&rver, &bioc, exclude_newer.as_deref(), over.as_ref())?;
+
     if dev {
-        let loader = DbSourcePackageLoader::new()?;
+        let loader = DbSourcePackageLoader::new_for_repos(&repos)?
+            .with_exclude_newer(exclude_newer.clone())
+            .with_os_type(Some(OsType::host()));
         add_dev_deps(
             &loader,
             &cran_names,
@@ -92,15 +127,6 @@ pub fn sc_pkg_install(
         )?;
     }
 
-    let lib = resolve_library(args)?;
-    // Installing needs an R version even when `--library` is a plain path: it
-    // selects which binary builds are usable, and provides the `R` that installs
-    // a source package.
-    let rver = match &lib.rversion {
-        Some(rver) => rver.clone(),
-        None => library_rver(args)?,
-    };
-
     let target = proj_binary_target(args.get_one::<String>("platform"), &rver)?;
     let prefer_binary = args.get_one::<usize>("prefer-binary").copied();
     if prefer_binary.is_some() && target.is_none() {
@@ -108,7 +134,7 @@ pub fn sc_pkg_install(
         info!("Ignoring --prefer-binary: solving for source packages only");
     }
 
-    let roots = [SolveRoot::project(deps.clone())?];
+    let roots = [SolveRoot::request(deps.clone())?];
     let git_sources = resolve_git_sources(&git_deps, &HashMap::new(), &HashMap::new())?;
     let (registry, solution) = sc_proj_solve_deps(
         &rver,
@@ -116,7 +142,13 @@ pub fn sc_pkg_install(
         None,
         &git_sources,
         target,
+        // Installing into a library on this machine.
+        Some(OsType::host()),
         prefer_binary,
+        exclude_newer.as_deref(),
+        &repos,
+        &RepoFilter::default(),
+        &SolvePins::default(),
         true,
     )?;
     OUTPUT.success("Solved dependencies");
@@ -127,7 +159,10 @@ pub fn sc_pkg_install(
     // dependency lists with R and the base packages filtered out, and the
     // provenance hashes. `rig pkg install` builds one in memory and never
     // writes it.
-    let lockfile = RprojLockTarget::from_solution(&registry, &solution);
+    let mut lockfile = RprojLockTarget::from_solution(&registry, &solution);
+    if args.get_flag("no-install-project") {
+        lockfile.packages = drop_named_packages(lockfile.packages, &named);
+    }
 
     // A library that does not exist yet holds nothing; rig creates it below,
     // but only once it knows there is something to put in it, so that a
@@ -156,16 +191,18 @@ pub fn sc_pkg_install(
         print_plan(&lib.tag(), &plan);
     }
 
-    if dry_run {
-        info!("--dry-run, not installing anything");
-        return Ok(());
-    }
-
     let todo: Vec<&RprojLockPackage> = plan
         .iter()
         .filter(|p| p.install)
         .map(|p| p.package)
         .collect();
+    let sysreqs = crate::sysreqs::cli_flag(args);
+
+    if dry_run {
+        crate::sysreqs::ensure(&todo, sysreqs, true)?;
+        info!("--dry-run, not installing anything");
+        return Ok(());
+    }
 
     if todo.is_empty() {
         if !json {
@@ -179,6 +216,8 @@ pub fn sc_pkg_install(
     if let Err(err) = fs::create_dir_all(&lib.path) {
         bail!("{}", library_error(&lib, err));
     }
+
+    crate::sysreqs::ensure(&todo, sysreqs, false)?;
 
     let to_download: Vec<RprojLockPackage> = todo.iter().map(|p| (*p).clone()).collect();
     download_lockfile_packages(&to_download)?;
@@ -448,6 +487,43 @@ fn add_dev_deps_of_package(
     Ok(())
 }
 
+/// `--no-install-project`: leave the packages named on the command line out
+/// of the solution, keeping only their dependencies -- the same thing
+/// `rig proj sync --no-install-project` does for a project's own package.
+///
+/// A named package still stays if some package that stays depends on it,
+/// e.g. `rig pkg install --no-install-project cli pkgA` where `pkgA` imports
+/// `cli`, or a `--dev` dependency that imports the named package. That is
+/// iterated to a fixpoint, since a named package kept that way can in turn
+/// depend on another named package.
+fn drop_named_packages(
+    packages: Vec<RprojLockPackage>,
+    named: &HashSet<String>,
+) -> Vec<RprojLockPackage> {
+    let mut keep: HashSet<&str> = packages
+        .iter()
+        .filter(|p| !named.contains(&p.package))
+        .map(|p| p.package.as_str())
+        .collect();
+    loop {
+        let needed: HashSet<&str> = packages
+            .iter()
+            .filter(|p| keep.contains(p.package.as_str()))
+            .flat_map(|p| p.dependencies.iter().map(|d| d.as_str()))
+            .filter(|d| named.contains(*d) && !keep.contains(*d))
+            .collect();
+        if needed.is_empty() {
+            break;
+        }
+        keep.extend(needed);
+    }
+    let keep: HashSet<String> = keep.into_iter().map(|s| s.to_string()).collect();
+    packages
+        .into_iter()
+        .filter(|p| keep.contains(&p.package))
+        .collect()
+}
+
 // ------------------------------------------------------------------------
 // What has to be installed
 
@@ -573,6 +649,13 @@ pub(crate) fn plan_installs<'a>(
     plan
 }
 
+/// A `Built` timestamp, e.g. `2025-06-20 10:00:00 UTC`, in a form that sorts
+/// by time: its date and time, without the time zone, which is always UTC.
+fn built_key(timestamp: &str) -> &str {
+    let t = timestamp.trim();
+    t.get(..19).unwrap_or(t)
+}
+
 /// Why a solved package has to be installed, or `None` if the installed one
 /// already is that package.
 fn needs_install(
@@ -620,16 +703,25 @@ fn needs_install(
 
     let want = solved.metadata.get(REMOTE_HASH_FIELD);
     match (&installed.hash, want) {
-        // Nothing recorded on either side: the version is all we have to go on,
-        // and it matches. This is what a source-only repository without hashes
-        // looks like, and reinstalling on every run would be worse.
-        (None, None) => {}
+        // The solved package has no hash, e.g. it is from a CRAN-like
+        // repository without checksums: the version is all we have to go on,
+        // and it matches.
+        (_, None) => {}
         (None, Some(_)) => return Some("no recorded hash".to_string()),
-        (Some(_), None) => return Some("solved artifact has no hash".to_string()),
         (Some(have), Some(want)) if have != want => {
             return Some("built from a different tarball".to_string())
         }
         (Some(_), Some(_)) => {}
+    }
+
+    // A CRAN-like repository can rebuild a package without changing its
+    // version, e.g. CRAN's Windows binaries, which have no checksums but a
+    // `Built` field. A source package built here is newer than the
+    // repository's build, so it is not affected.
+    if let (Some(want), Some(have)) = (solved.metadata.get(REPO_BUILT_FIELD), &installed.built_at) {
+        if built_key(want) > built_key(have) {
+            return Some("a newer build is available".to_string());
+        }
     }
 
     // What the installed package was compiled against has to be what the
@@ -741,6 +833,9 @@ mod tests {
             groups: vec![],
             extra_groups: vec![],
             is_project: false,
+            repository: None,
+            system_requirements: None,
+            os_type: None,
         }
     }
 
@@ -928,6 +1023,49 @@ mod tests {
         assert!(!out["cli"].0);
     }
 
+    /// A solved package with a `Built` time, and an installed one built at
+    /// `installed`.
+    fn built_plan(repo: &str, installed: Option<&str>) -> (bool, String) {
+        let mut s = solved("cli", "3.6.3", None);
+        s.metadata
+            .insert(REPO_BUILT_FIELD.to_string(), repo.to_string());
+        let mut i = inst("cli", "3.6.3", None, &[]);
+        i.built_at = installed.map(|x| x.to_string());
+        plan(&[s], &[i], false)["cli"].clone()
+    }
+
+    /// A CRAN-like repository rebuilt the package, e.g. a CRAN Windows binary
+    /// without a checksum, so it is installed again.
+    #[test]
+    fn a_newer_build_is_installed() {
+        let out = built_plan("2025-06-20 10:00:00 UTC", Some("2025-06-01 08:00:00 UTC"));
+        assert!(out.0);
+        assert_eq!(out.1, "a newer build is available");
+    }
+
+    /// The same build, or an older one, e.g. a package built here from
+    /// source, is up to date.
+    #[test]
+    fn the_same_or_an_older_build_is_up_to_date() {
+        let t = "2025-06-20 10:00:00 UTC";
+        assert!(!built_plan(t, Some(t)).0);
+        assert!(!built_plan(t, Some("2025-07-01 12:00:00 UTC")).0);
+        assert!(!built_plan(t, Some("2025-06-20 10:00:00")).0);
+        assert!(!built_plan(t, None).0);
+    }
+
+    /// A package of a CRAN-like repository without checksums has no hash, so
+    /// the same version is up to date, whatever it was installed from.
+    #[test]
+    fn a_solved_package_without_a_hash_keeps_the_same_version() {
+        let out = plan(
+            &[solved("cli", "3.6.3", None)],
+            &[inst("cli", "3.6.3", Some("aa"), &[])],
+            false,
+        );
+        assert!(!out["cli"].0);
+    }
+
     /// The installed package was compiled against a cpp11 the resolution does
     /// not have, so it has to be rebuilt even though its own hash is fine.
     #[test]
@@ -1038,6 +1176,52 @@ mod tests {
         assert_eq!(deps.dependencies.len(), 1);
         assert_eq!(deps.dependencies[0].name, "cli");
         assert!(deps.dependencies[0].constraints.is_empty());
+    }
+
+    // ------------------------------------------------------------------
+    // --no-install-project
+
+    /// The names `drop_named_packages` keeps, sorted. `solution` is
+    /// `(package, dependencies)`.
+    fn dropped(solution: &[(&str, &[&str])], named: &[&str]) -> Vec<String> {
+        let packages: Vec<RprojLockPackage> = solution
+            .iter()
+            .map(|(name, deps)| {
+                let mut p = solved(name, "1.0.0", None);
+                p.dependencies = deps.iter().map(|d| d.to_string()).collect();
+                p
+            })
+            .collect();
+        let named: HashSet<String> = named.iter().map(|s| s.to_string()).collect();
+        let mut out: Vec<String> = drop_named_packages(packages, &named)
+            .into_iter()
+            .map(|p| p.package)
+            .collect();
+        out.sort();
+        out
+    }
+
+    #[test]
+    fn no_install_project_keeps_only_the_dependencies() {
+        let out = dropped(
+            &[("mypkg", &["cli", "rlang"]), ("cli", &[]), ("rlang", &[])],
+            &["mypkg"],
+        );
+        assert_eq!(out, vec!["cli", "rlang"]);
+    }
+
+    #[test]
+    fn no_install_project_keeps_a_named_package_another_one_needs() {
+        let out = dropped(
+            &[("pkga", &["cli"]), ("cli", &[]), ("rlang", &[])],
+            &["pkga", "cli", "rlang"],
+        );
+        assert_eq!(out, Vec::<String>::new());
+        let out = dropped(
+            &[("dep", &["pkga"]), ("pkga", &["pkgb"]), ("pkgb", &[])],
+            &["pkga", "pkgb"],
+        );
+        assert_eq!(out, vec!["dep", "pkga", "pkgb"]);
     }
 
     // ------------------------------------------------------------------

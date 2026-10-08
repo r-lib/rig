@@ -6,13 +6,18 @@ use std::sync::{Arc, Mutex};
 use clap::ArgMatches;
 use log::{error, info, Level, LevelFilter};
 use owo_colors::OwoColorize;
-use simple_error::*;
+use simple_error::SimpleError;
 use tabular::*;
+
+#[macro_use]
+mod macros;
 
 mod args;
 use args::*;
 
+mod script_meta;
 mod scrun;
+mod stdout_redirect;
 use scrun::*;
 
 #[cfg(target_os = "macos")]
@@ -45,6 +50,7 @@ mod config;
 mod dcf;
 mod dirs;
 mod download;
+mod exclude_newer;
 mod hardcoded;
 mod install;
 mod install_receipt;
@@ -56,6 +62,7 @@ mod pkgsource;
 mod platform;
 mod ppm;
 mod proj;
+mod proj_repos;
 mod rds;
 mod renv;
 mod repos;
@@ -68,6 +75,7 @@ mod rversion;
 mod self_uninstall;
 mod self_update;
 mod solver;
+mod sysreqs;
 mod test;
 mod textfmt;
 mod utils;
@@ -271,7 +279,9 @@ fn main_() -> i32 {
             exitcode
         }
         Err(err) => {
-            OUTPUT.error(&format!("{}", err));
+            if err.downcast_ref::<output::ReportedError>().is_none() {
+                OUTPUT.error(&format!("{}", err));
+            }
             error!("{}", err);
             info!("RIG END [pid:{}] {}", pid, cmdline);
             1
@@ -286,7 +296,7 @@ fn main_() -> i32 {
 fn main__(args: &ArgMatches) -> Result<i32, Box<dyn Error>> {
     let mut retval: i32 = 0;
     match args.subcommand() {
-        Some(("add", sub)) => sc_add(sub)?,
+        Some(("add", sub)) => sc_add_cmd(sub, args)?,
         Some(("default", sub)) => sc_default(sub, args)?,
         Some(("list", sub)) => sc_list(sub, args)?,
         Some(("proj", sub)) => sc_proj(sub, args)?,
@@ -347,6 +357,7 @@ fn sc_system(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Err
         Some(("user-mode", s)) => sc_system_user_mode(s),
         Some(("clean-admin-r", s)) => sc_system_clean_admin_r(s),
         Some(("fix-r-alias", s)) => sc_system_fix_r_alias(s),
+        Some(("script-assoc", s)) => sc_system_script_assoc(s),
         Some(("update-certs", _)) => sc_system_update_certs(),
         Some(("update-rtools40", _)) => sc_system_update_rtools40(),
         Some(("detect-platform", s)) => sc_system_detect_platform(s, mainargs),
@@ -403,6 +414,62 @@ fn sc_resolve(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Er
 }
 
 // ------------------------------------------------------------------------
+
+fn sc_add_cmd(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    #[derive(serde::Serialize)]
+    struct AddedVersion<'a> {
+        name: &'a str,
+        default: bool,
+        version: &'a Option<String>,
+        aliases: &'a Vec<String>,
+        path: &'a Option<String>,
+        binary: &'a Option<String>,
+        #[serde(rename = "new-install")]
+        new_install: bool,
+    }
+
+    let json = args.get_flag("json") || mainargs.get_flag("json");
+
+    #[cfg(target_os = "windows")]
+    {
+        let str: &String = args.get_one("str").unwrap();
+        if json && str.starts_with("rtools") {
+            let msg = "--json is not supported for `rig add rtools`, use `rig rtools add --json`";
+            OUTPUT.error(msg);
+            error!("{}", msg);
+            bail!("{}", msg);
+        }
+    }
+
+    let res = sc_add(args)?;
+    if !json {
+        return Ok(());
+    }
+    let res = match res {
+        Some(r) => r,
+        None => bail!("Cannot determine the installed R version"),
+    };
+
+    let vers = sc_get_list_details()?;
+    let ver = match vers.iter().find(|v| v.name == res.name) {
+        Some(v) => v,
+        None => bail!("Cannot find the installed R version '{}'", res.name),
+    };
+    let def = sc_get_default()?.unwrap_or_default();
+
+    let out = AddedVersion {
+        name: &ver.name,
+        default: def == ver.name,
+        version: &ver.version,
+        aliases: &ver.aliases,
+        path: &ver.path,
+        binary: &ver.binary,
+        new_install: res.new_install,
+    };
+    println!("{}", serde_json::to_string_pretty(&out)?);
+
+    Ok(())
+}
 
 fn sc_list(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
     #[derive(serde::Serialize)]

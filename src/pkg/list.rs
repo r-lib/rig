@@ -18,10 +18,9 @@ use std::path::{Path, PathBuf};
 
 use clap::ArgMatches;
 use log::debug;
-use simple_error::*;
 use tabular::*;
 
-use crate::dcf::{parse_dcf_reader, DCFBuilt};
+use crate::dcf::{normalize_system_requirements, parse_dcf_reader, DCFBuilt, DepVersionSpec};
 use crate::install::{
     parse_linkingto, REMOTE_HASH_FIELD, REMOTE_LINKINGTO_FIELD, REMOTE_SHA_FIELD,
 };
@@ -173,8 +172,11 @@ pub(crate) struct InstalledPackage {
     /// `DESCRIPTION`. Usually named after the package, but the `Package` field
     /// of the `DESCRIPTION` is what `package` reports, so the two can differ.
     pub(crate) path: PathBuf,
-    built_r: Option<String>,
-    platform: Option<String>,
+    pub(crate) built_r: Option<String>,
+    pub(crate) platform: Option<String>,
+    /// When the package was built, from its `Built` field, e.g.
+    /// `2024-06-21 20:16:33 UTC`.
+    pub(crate) built_at: Option<String>,
     /// Where the package came from: the repository name (`CRAN`) for a
     /// repository install, otherwise the remote type (`github`, `git`, …).
     source: Option<String>,
@@ -196,6 +198,20 @@ pub(crate) struct InstalledPackage {
     /// The `RigLink` field: the source directory this package loads from live,
     /// for a `rig pkg link` editable install. `None` for a normal install.
     pub(crate) link_source: Option<String>,
+    /// The `Depends`, `Imports`, `LinkingTo`, `Suggests` and `Enhances` entries, one per
+    /// entry, each with the single type of the field it came from.
+    pub(crate) deps: Vec<DepVersionSpec>,
+    /// The dependency entries that could not be parsed, as error messages.
+    /// They are left out of `deps`.
+    pub(crate) deps_errors: Vec<String>,
+    /// The `SystemRequirements` field, with its whitespace collapsed.
+    pub(crate) system_requirements: Option<String>,
+    /// Whether the package bundles the system libraries it links to, i.e. it
+    /// is a P3M manylinux (or musllinux) binary. Those have a `Platform`
+    /// field like `x86_64-pc-linux-gnu-manylinux_2_27`, and list the bundled
+    /// libraries in `Built/SystemLibs`. Such a package needs none of its
+    /// `SystemRequirements` installed.
+    pub(crate) bundles_libs: bool,
 }
 
 #[cfg(test)]
@@ -226,12 +242,17 @@ impl InstalledPackage {
             path: PathBuf::from(package),
             built_r: None,
             platform: None,
+            built_at: None,
             source: None,
             remote: None,
             hash: hash.map(|x| x.to_string()),
             linkingto,
             remote_sha: remote_sha.map(|x| x.to_string()),
             link_source: None,
+            deps: vec![],
+            deps_errors: vec![],
+            system_requirements: None,
+            bundles_libs: false,
         }
     }
 
@@ -250,6 +271,27 @@ impl InstalledPackage {
 /// directory, and a package whose installation was interrupted has no
 /// `DESCRIPTION` yet.
 pub(crate) fn read_installed(path: &Path) -> Result<Vec<InstalledPackage>, Box<dyn Error>> {
+    Ok(read_library(path)?.pkgs)
+}
+
+/// Everything [`read_library`] found in a library directory.
+#[derive(Debug)]
+pub(crate) struct LibraryContents {
+    /// The library directory itself.
+    pub(crate) path: PathBuf,
+    /// The readable packages, unordered.
+    pub(crate) pkgs: Vec<InstalledPackage>,
+    /// The names of the `00LOCK*` directories R leaves behind when an
+    /// installation is interrupted.
+    pub(crate) locks: Vec<String>,
+    /// The directories that look like packages but cannot be read, as
+    /// `(directory name, reason)`.
+    pub(crate) broken: Vec<(String, String)>,
+}
+
+/// Read the library at `path`, like [`read_installed`], but also keep what
+/// it skips, for `rig pkg doctor`.
+pub(crate) fn read_library(path: &Path) -> Result<LibraryContents, Box<dyn Error>> {
     debug!("Listing packages in {}", path.display());
 
     let entries = match std::fs::read_dir(path) {
@@ -257,7 +299,12 @@ pub(crate) fn read_installed(path: &Path) -> Result<Vec<InstalledPackage>, Box<d
         Err(err) => bail!("Cannot read library at {}: {}", path.display(), err),
     };
 
-    let mut pkgs = Vec::new();
+    let mut contents = LibraryContents {
+        path: path.to_path_buf(),
+        pkgs: Vec::new(),
+        locks: Vec::new(),
+        broken: Vec::new(),
+    };
 
     for entry in entries {
         let entry = entry?;
@@ -273,14 +320,27 @@ pub(crate) fn read_installed(path: &Path) -> Result<Vec<InstalledPackage>, Box<d
             _ => continue,
         };
 
+        if name.starts_with("00LOCK") {
+            debug!("Skipping lock directory {}", dir.display());
+            contents.locks.push(name);
+            continue;
+        }
+
         match read_package(&dir, &name) {
-            Ok(Some(pkg)) => pkgs.push(pkg),
-            Ok(None) => {}
-            Err(err) => debug!("Skipping {}: {}", dir.display(), err),
+            Ok(Some(pkg)) => contents.pkgs.push(pkg),
+            Ok(None) => contents
+                .broken
+                .push((name, "no DESCRIPTION file".to_string())),
+            Err(err) => {
+                debug!("Skipping {}: {}", dir.display(), err);
+                contents
+                    .broken
+                    .push((name, format!("cannot read DESCRIPTION: {}", err)));
+            }
         }
     }
 
-    Ok(pkgs)
+    Ok(contents)
 }
 
 /// Read the `DESCRIPTION` of the package installed at `dir`.
@@ -338,11 +398,41 @@ fn read_package(dir: &Path, dir_name: &str) -> Result<Option<InstalledPackage>, 
     let remote_sha = para.get(REMOTE_SHA_FIELD).map(reflow);
     let link_source = para.get(RIG_LINK_FIELD).map(reflow);
 
+    // One bad entry should not hide the others, so the entries are parsed
+    // one by one, and the ones that fail are kept as errors.
+    let mut deps = Vec::new();
+    let mut deps_errors = Vec::new();
+    for field in ["Depends", "Imports", "LinkingTo", "Suggests", "Enhances"] {
+        let value = match para.get(field) {
+            Some(x) => reflow(x),
+            None => continue,
+        };
+        for dep in value.split(',') {
+            let dep = dep.trim();
+            if dep.is_empty() {
+                continue;
+            }
+            match DepVersionSpec::parse(dep, field) {
+                Ok(spec) => deps.push(spec),
+                Err(err) => deps_errors.push(format!("{} entry '{}': {}", field, dep, err)),
+            }
+        }
+    }
+
+    let system_requirements = para
+        .get("SystemRequirements")
+        .and_then(normalize_system_requirements);
+    let bundles_libs = para.get("Built/SystemLibs").is_some()
+        || para
+            .get("Platform")
+            .is_some_and(|p| p.contains("manylinux") || p.contains("musllinux"));
+
     Ok(Some(InstalledPackage {
         package,
         version,
         path: dir.to_path_buf(),
         built_r: built.as_ref().map(|x| x.r.clone()),
+        built_at: built.as_ref().map(|x| x.timestamp.clone()),
         platform: built.and_then(|x| x.platform),
         source,
         remote,
@@ -350,6 +440,10 @@ fn read_package(dir: &Path, dir_name: &str) -> Result<Option<InstalledPackage>, 
         linkingto,
         remote_sha,
         link_source,
+        deps,
+        deps_errors,
+        system_requirements,
+        bundles_libs,
     }))
 }
 
@@ -512,7 +606,7 @@ fn print_installed(lib: &ResolvedLibrary, pkgs: &[InstalledPackage]) {
 /// The five columns here are wide and their widths only known once `tabular`
 /// has laid them out, so the rule is measured from the rendered table rather
 /// than being added as a fixed-width heading row.
-fn print_table(tab: &Table) {
+pub(super) fn print_table(tab: &Table) {
     let rendered = tab.to_string();
     let width = rendered
         .lines()

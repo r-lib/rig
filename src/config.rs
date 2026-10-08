@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use clap::ArgMatches;
 
-use simple_error::{bail, SimpleError};
+use simple_error::SimpleError;
 
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
@@ -25,7 +25,31 @@ fn empty_stringmap() -> HashMap<String, String> {
 }
 
 fn rig_config_dir() -> Result<PathBuf, Box<dyn Error>> {
+    if let Some(dir) = escalated_config_dir() {
+        return Ok(dir);
+    }
     get_data_dir()
+}
+
+// When rig re-runs itself with `sudo` (see `escalate()`), HOME may point to
+// root's home directory, but the configuration belongs to the user who ran
+// rig. `escalate()` records that user's home in RIG_HOME, use it.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn escalated_config_dir() -> Option<PathBuf> {
+    if sudo::check() != sudo::RunningAs::Root {
+        return None;
+    }
+    let home = PathBuf::from(std::env::var_os("RIG_HOME")?);
+    #[cfg(target_os = "macos")]
+    let dir = home.join("Library/Application Support/com.gaborcsardi.rig");
+    #[cfg(target_os = "linux")]
+    let dir = home.join(".local/share/rig");
+    Some(dir)
+}
+
+#[cfg(target_os = "windows")]
+fn escalated_config_dir() -> Option<PathBuf> {
+    None
 }
 
 fn rig_config_file() -> Result<PathBuf, Box<dyn Error>> {
@@ -60,7 +84,8 @@ impl Config {
             .parent()
             .ok_or(SimpleError::new("Invalid config file directory"))?;
         std::fs::create_dir_all(parent)?;
-        std::fs::write(config_file, str)?;
+        std::fs::write(&config_file, str)?;
+        give_back_to_user(&config_file)?;
         Ok(())
     }
 
@@ -169,7 +194,39 @@ fn save_raw_config(map: &serde_json::Map<String, serde_json::Value>) -> Result<(
         .parent()
         .ok_or(SimpleError::new("Invalid config file directory"))?;
     std::fs::create_dir_all(parent)?;
-    std::fs::write(config_file, serde_json::to_string_pretty(map)?)?;
+    std::fs::write(&config_file, serde_json::to_string_pretty(map)?)?;
+    give_back_to_user(&config_file)?;
+    Ok(())
+}
+
+// After `sudo` the config file is written by root, into the user's home
+// directory. Give it, and the directories created for it, back to the user,
+// so rig can still update it without `sudo`.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn give_back_to_user(config_file: &std::path::Path) -> Result<(), Box<dyn Error>> {
+    use std::os::unix::fs::MetadataExt;
+    if escalated_config_dir().is_none() {
+        return Ok(());
+    }
+    let home = match std::env::var_os("RIG_HOME") {
+        Some(h) => PathBuf::from(h),
+        None => return Ok(()),
+    };
+    let meta = std::fs::metadata(&home)?;
+    let (uid, gid) = (meta.uid(), meta.gid());
+    let mut path = Some(config_file);
+    while let Some(p) = path {
+        if p == home || !p.starts_with(&home) {
+            break;
+        }
+        std::os::unix::fs::chown(p, Some(uid), Some(gid))?;
+        path = p.parent();
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn give_back_to_user(_config_file: &std::path::Path) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
@@ -179,6 +236,29 @@ pub fn get_global_config_value(key: &str) -> Result<Option<String>, Box<dyn Erro
         Some(serde_json::Value::String(s)) => Ok(Some(s.clone())),
         _ => Ok(None),
     }
+}
+
+/// A configuration entry, as JSON, e.g. a list or an object.
+pub fn get_global_config_json(key: &str) -> Result<Option<serde_json::Value>, Box<dyn Error>> {
+    let map = load_raw_config()?;
+    Ok(map.get(key).cloned())
+}
+
+/// Set (or with `None` remove) a JSON configuration entry. The file is only
+/// written if the entry changes.
+pub fn set_global_config_json(
+    key: &str,
+    value: Option<serde_json::Value>,
+) -> Result<(), Box<dyn Error>> {
+    let mut map = load_raw_config()?;
+    if map.get(key) == value.as_ref() {
+        return Ok(());
+    }
+    match value {
+        Some(v) => map.insert(key.to_string(), v),
+        None => map.remove(key),
+    };
+    save_raw_config(&map)
 }
 
 /// A boolean configuration entry.

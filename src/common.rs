@@ -10,7 +10,7 @@ use jsonc_parser::cst::{CstInputValue, CstObject, CstRootNode};
 use jsonc_parser::ParseOptions;
 use log::{debug, error, info, warn};
 use semver::Version;
-use simple_error::*;
+use simple_error::SimpleError;
 use tabular::*;
 
 #[cfg(target_os = "macos")]
@@ -26,8 +26,9 @@ use crate::linux::*;
 use crate::platform::*;
 
 use crate::alias::*;
-use crate::download::download_json_sync;
+use crate::download::{download_json_sync, read_etag_file, write_etag_file};
 use crate::output::OUTPUT;
+use crate::platform::{normalize_arch, parse_platform_string};
 use crate::renv;
 use crate::run::*;
 use crate::rversion::*;
@@ -58,9 +59,42 @@ pub fn check_installed(x: &String) -> Result<String, Box<dyn Error>> {
         return Ok(name);
     }
 
-    OUTPUT.error(&format!("R version {} is not installed", x));
-    error!("R version {} is not installed", x);
     bail!("R version {} is not installed", &x);
+}
+
+// The R home directory (`R.home()`) of the R installation at `path`, i.e.
+// the `path` of `rig list --json`: the directory itself on Windows and in
+// macOS user mode, `lib/R` under it on Linux, `Resources` under it in macOS
+// admin mode. Recognized by its `include/Rversion.h`.
+pub fn installed_r_home(path: &str) -> Option<PathBuf> {
+    ["", "lib/R", "Resources"]
+        .iter()
+        .map(|sub| Path::new(path).join(sub))
+        .find(|home| home.join("include").join("Rversion.h").is_file())
+}
+
+// The kind of development build the R installation at `path` is: `devel`,
+// `next`, or None for a released version (also if its `Rversion.h` cannot be
+// read). See `user_mode_dev_dirname`. `rig add` uses this so that `release`
+// or a version number never matches an installed devel/next build (which
+// report the same version number as the release they will become).
+pub fn installed_dev_kind(path: &str) -> Option<String> {
+    let home = installed_r_home(path)?;
+    let text = std::fs::read_to_string(home.join("include").join("Rversion.h")).ok()?;
+    let re = Regex::new(r#"(?m)^\s*#define\s+R_STATUS\s+"(.*)"\s*$"#).ok()?;
+    let status = re
+        .captures(&text)
+        .and_then(|caps| caps.get(1))
+        .map(|m| m.as_str().to_string())
+        .unwrap_or_default();
+    user_mode_dev_dirname(Some(&status))
+}
+
+// Whether `ver` is a development build of kind `kind` (`devel`/`next`), or
+// a released version if `kind` is None.
+pub fn is_installed_dev_kind(ver: &InstalledVersion, kind: Option<&str>) -> bool {
+    let actual = ver.path.as_deref().and_then(installed_dev_kind);
+    actual.as_deref() == kind
 }
 
 // Used by `rig add` to check whether `version` is already installed,
@@ -68,12 +102,17 @@ pub fn check_installed(x: &String) -> Result<String, Box<dyn Error>> {
 // installation (as `rig list` does), not on its directory name, since the
 // directory naming scheme is not guaranteed to encode the exact version
 // (e.g. macOS admin-mode directories only encode the major.minor version).
+// `kind` is the kind of development build to look for (see
+// `installed_dev_kind`), None for a released version.
 #[cfg(target_os = "linux")]
-pub fn find_installed_by_version(version: &str) -> Result<Option<String>, Box<dyn Error>> {
+pub fn find_installed_by_version(
+    version: &str,
+    kind: Option<&str>,
+) -> Result<Option<String>, Box<dyn Error>> {
     let inst = sc_get_list_details()?;
 
     for ver in inst {
-        if ver.version.as_deref() == Some(version) {
+        if ver.version.as_deref() == Some(version) && is_installed_dev_kind(&ver, kind) {
             return Ok(Some(ver.name));
         }
     }
@@ -83,7 +122,8 @@ pub fn find_installed_by_version(version: &str) -> Result<Option<String>, Box<dy
 
 // Same as `find_installed_by_version`, but also requires the candidate
 // directory name to be one of `names` (used on platforms where the version
-// alone doesn't disambiguate installs of different architectures).
+// alone doesn't disambiguate installs of different architectures). Only
+// released versions match, never a devel/next build of the same version.
 #[cfg(target_os = "windows")]
 pub fn find_installed_matching(
     names: &[String],
@@ -92,7 +132,10 @@ pub fn find_installed_matching(
     let inst = sc_get_list_details()?;
 
     for ver in inst {
-        if names.iter().any(|n| n == &ver.name) && ver.version.as_deref() == Some(version) {
+        if names.iter().any(|n| n == &ver.name)
+            && ver.version.as_deref() == Some(version)
+            && is_installed_dev_kind(&ver, None)
+        {
             return Ok(Some(ver.name));
         }
     }
@@ -100,16 +143,60 @@ pub fn find_installed_matching(
     Ok(None)
 }
 
+// `rig add devel`/`rig add next`: R-devel and R-next are rebuilt daily under
+// the same URL and version number, so the version number cannot tell whether
+// the installed build is the current one. The installer's ETag can: `rig add`
+// stores it in `R_HOME/etc/etag` after installing such a build. This is the
+// path of that file for the installed R version `name`.
+fn installed_etag_file(name: &str) -> Option<PathBuf> {
+    let ver = get_r_version_data(name, &[]).ok()?;
+    Some(
+        installed_r_home(ver.path.as_deref()?)?
+            .join("etc")
+            .join("etag"),
+    )
+}
+
+// Whether the installed R version `name` was installed from the installer
+// with ETag `etag`, the installer's current ETag. See `installed_etag_file`.
+pub fn installed_etag_matches(name: &str, etag: Option<&str>) -> bool {
+    match (etag, installed_etag_file(name)) {
+        (Some(etag), Some(path)) => read_etag_file(&path).as_deref() == Some(etag),
+        _ => false,
+    }
+}
+
+// Record the ETag of the R-devel/R-next installer `rig add` just installed
+// as `name`, see `installed_etag_file`.
+pub fn record_installed_etag(name: &str, etag: Option<&str>) {
+    if let Some(path) = installed_etag_file(name) {
+        write_etag_file(&path, etag);
+    }
+}
+
+// What `rig add` did: the name of the R version it installed, or of the
+// already-installed version it kept, and which of these two happened.
+pub struct AddResult {
+    pub name: String,
+    pub new_install: bool,
+}
+
 // Used by `rig add` when it decides to skip installing an already-installed
 // version: makes sure any alias the request implies (e.g. `rig add release`)
 // still ends up on that version, then reports the skip.
-pub fn report_already_installed(name: &str, alias: Option<String>) -> Result<(), Box<dyn Error>> {
+pub fn report_already_installed(
+    name: &str,
+    alias: Option<String>,
+) -> Result<Option<AddResult>, Box<dyn Error>> {
     if let Some(alias) = alias {
         add_alias(name, &alias)?;
     }
     OUTPUT.success(&format!("R version {} is already installed", name));
     info!("R version {} is already installed", name);
-    Ok(())
+    Ok(Some(AddResult {
+        name: name.to_string(),
+        new_install: false,
+    }))
 }
 
 // -- rig default ---------------------------------------------------------
@@ -206,6 +293,13 @@ pub fn restore_user_mode_default(map: &[(String, String)], default: &Option<Stri
     }
 }
 
+/// The system library of an installed R version, i.e. `.Library`, where the
+/// base and recommended packages are.
+pub fn get_r_syslib_dir(name: &str) -> Result<PathBuf, Box<dyn Error>> {
+    Ok(Path::new(&get_r_root_for(name)?)
+        .join(get_r_syslibpath()?.replace("{}", &version_dir_key(name))))
+}
+
 pub fn get_default_r_version() -> Result<Option<String>, Box<dyn Error>> {
     let default = sc_get_default()?;
     let re = Regex::new("^Version:[ ]?")?;
@@ -213,9 +307,7 @@ pub fn get_default_r_version() -> Result<Option<String>, Box<dyn Error>> {
         None => Ok(None),
         Some(d) => {
             let name = check_installed(&d)?;
-            let desc = Path::new(&get_r_root_for(&name)?)
-                .join(get_r_syslibpath()?.replace("{}", &version_dir_key(&name)))
-                .join("base/DESCRIPTION");
+            let desc = get_r_syslib_dir(&name)?.join("base/DESCRIPTION");
             let lines = read_lines(&desc).unwrap_or_default();
             let idx = grep_lines(&re, &lines);
             let version: Option<String> = if idx.is_empty() {
@@ -233,9 +325,7 @@ pub fn get_default_r_version() -> Result<Option<String>, Box<dyn Error>> {
 
 pub fn get_r_version_data_version(name: &str) -> Result<String, Box<dyn Error>> {
     let re = Regex::new("^Version:[ ]?").expect("Invalid regex pattern");
-    let desc = Path::new(&get_r_root_for(name)?)
-        .join(get_r_syslibpath()?.replace("{}", &version_dir_key(name)))
-        .join("base/DESCRIPTION");
+    let desc = get_r_syslib_dir(name)?.join("base/DESCRIPTION");
     let lines = read_lines(&desc).unwrap_or_default();
     let idx = grep_lines(&re, &lines);
     if idx.is_empty() {
@@ -858,6 +948,47 @@ pub(crate) fn normalize_rig_platform(rp: &str) -> String {
     }
 }
 
+/// A platform string that names its arch, e.g. `aarch64-apple-darwin` or
+/// `x86_64-unknown-linux-gnu-ubuntu-24.04` (see [`parse_platform_string`]),
+/// in the form the R versions API takes, and its arch. `None` for anything
+/// else, e.g. `macos` or `linux-ubuntu-24.04`, which are already in that
+/// form, and for P3M target names like `jammy-x86_64`, which have no API
+/// form.
+fn rversions_platform(platform: &str) -> Option<(String, &'static str)> {
+    let pieces: Vec<&str> = platform.split('-').collect();
+    let names_arch = (pieces.len() >= 3 && normalize_arch(pieces[0]).is_some())
+        || (pieces.len() >= 2 && normalize_arch(pieces[pieces.len() - 1]).is_some());
+    if !names_arch {
+        return None;
+    }
+    let parsed = parse_platform_string(platform).ok()?;
+    let arch = normalize_arch(&parsed.arch)?;
+    let api = if parsed.os.starts_with("darwin") {
+        "macos".to_string()
+    } else if parsed.os.ends_with("mingw32") {
+        "windows".to_string()
+    } else if parsed.os.starts_with("linux") {
+        match (&parsed.distro, &parsed.version) {
+            (Some(distro), Some(version)) => format!("linux-{}-{}", distro, version),
+            (None, _) => "linux-portable".to_string(),
+            (Some(_), None) => return None,
+        }
+    } else {
+        return None;
+    };
+    Some((api, arch))
+}
+
+/// The platform the user gave, with `--platform` or `RIG_PLATFORM`, if any.
+fn requested_platform(args: &ArgMatches) -> Option<String> {
+    if args.try_contains_id("platform").is_ok() {
+        if let Some(x) = args.get_one::<String>("platform") {
+            return Some(x.to_string());
+        }
+    }
+    env::var("RIG_PLATFORM").ok()
+}
+
 // Whether the platform was chosen explicitly via --platform or RIG_PLATFORM
 #[cfg(target_os = "linux")]
 pub fn platform_explicitly_set(args: &ArgMatches) -> bool {
@@ -876,12 +1007,16 @@ pub fn get_platform(args: &ArgMatches) -> Result<String, Box<dyn Error>> {
     if args.try_contains_id("platform").is_ok() {
         let platform = args.get_one::<String>("platform");
         if let Some(x) = platform {
-            return finalize_platform(x.to_string());
+            let x = rversions_platform(x).map_or_else(|| x.to_string(), |(api, _)| api);
+            return finalize_platform(x);
         }
     };
 
     if let Ok(rp) = env::var("RIG_PLATFORM") {
-        let rp = normalize_rig_platform(&rp);
+        let rp = match rversions_platform(&rp) {
+            Some((api, _)) => api,
+            None => normalize_rig_platform(&rp),
+        };
         debug!("Using RIG_PLATFORM: {}.", rp);
         return finalize_platform(rp);
     }
@@ -927,9 +1062,17 @@ pub fn get_arch(platform: &str, args: &ArgMatches) -> String {
         Err(_) => None,
     };
 
-    let arch = match arch {
-        Some(x) => x.to_string(),
-        None => env::consts::ARCH.to_string(),
+    // A platform string with an arch, e.g. `x86_64-apple-darwin`, also
+    // decides the arch, unless `--arch` is given explicitly, not just its
+    // default.
+    let explicit_arch = arch.is_some()
+        && args.value_source("arch") != Some(clap::parser::ValueSource::DefaultValue);
+    let platform_arch = requested_platform(args).and_then(|p| rversions_platform(&p));
+    let arch = match (arch, platform_arch) {
+        (Some(x), _) if explicit_arch => x.to_string(),
+        (_, Some((_, a))) => a.to_string(),
+        (Some(x), None) => x.to_string(),
+        (None, None) => env::consts::ARCH.to_string(),
     };
 
     // Prefer 'arm64' on macos, but 'aarch64' on linux and windows
@@ -1242,6 +1385,60 @@ mod tests {
     }
 
     #[test]
+    fn test_installed_dev_kind() {
+        let write = |rel: &str, status: &str| {
+            let dir = tempfile::tempdir().unwrap();
+            let header = dir.path().join(rel);
+            std::fs::create_dir_all(header.parent().unwrap()).unwrap();
+            std::fs::write(&header, format!("#define R_STATUS \"{}\"\n", status)).unwrap();
+            dir
+        };
+        let kind = |dir: &tempfile::TempDir| installed_dev_kind(dir.path().to_str().unwrap());
+
+        let d = write("include/Rversion.h", "");
+        assert_eq!(kind(&d), None);
+        let d = write("lib/R/include/Rversion.h", "Under development (unstable)");
+        assert_eq!(kind(&d), Some("devel".to_string()));
+        let d = write("Resources/include/Rversion.h", "RC");
+        assert_eq!(kind(&d), Some("next".to_string()));
+
+        let empty = tempfile::tempdir().unwrap();
+        assert_eq!(kind(&empty), None);
+    }
+
+    #[test]
+    fn test_installed_r_home() {
+        for sub in ["", "lib/R", "Resources"] {
+            let dir = tempfile::tempdir().unwrap();
+            let home = dir.path().join(sub);
+            std::fs::create_dir_all(home.join("include")).unwrap();
+            std::fs::write(home.join("include").join("Rversion.h"), "").unwrap();
+            assert_eq!(
+                installed_r_home(dir.path().to_str().unwrap()),
+                Some(dir.path().join(sub))
+            );
+        }
+        let empty = tempfile::tempdir().unwrap();
+        assert_eq!(installed_r_home(empty.path().to_str().unwrap()), None);
+    }
+
+    #[test]
+    fn test_etag_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("etc").join("etag");
+        assert_eq!(read_etag_file(&path), None);
+        write_etag_file(&path, Some("\"6ac2d33a-63f2aa6\""));
+        assert_eq!(
+            read_etag_file(&path).as_deref(),
+            Some("\"6ac2d33a-63f2aa6\"")
+        );
+        write_etag_file(&path, None);
+        assert!(!path.exists());
+        // removing a missing file is fine
+        write_etag_file(&path, None);
+    }
+
+    #[test]
     fn test_json_array_new_key() {
         assert_eq!(
             add_root("{}").unwrap(),
@@ -1384,6 +1581,33 @@ mod tests {
             normalize_rig_platform("linux-ubuntu-22.04"),
             "linux-ubuntu-22.04"
         );
+    }
+
+    #[test]
+    fn test_rversions_platform() {
+        let api = |p: &str| rversions_platform(p);
+        assert_eq!(
+            api("x86_64-apple-darwin"),
+            Some(("macos".to_string(), "x86_64"))
+        );
+        assert_eq!(api("macos-arm64"), Some(("macos".to_string(), "aarch64")));
+        assert_eq!(
+            api("x86_64-w64-mingw32"),
+            Some(("windows".to_string(), "x86_64"))
+        );
+        assert_eq!(
+            api("aarch64-unknown-linux-gnu-ubuntu-24.04"),
+            Some(("linux-ubuntu-24.04".to_string(), "aarch64"))
+        );
+        assert_eq!(
+            api("x86_64-unknown-linux-gnu"),
+            Some(("linux-portable".to_string(), "x86_64"))
+        );
+        // Already in the API's form, or no API form.
+        assert_eq!(api("macos"), None);
+        assert_eq!(api("linux-ubuntu-24.04"), None);
+        assert_eq!(api("linux-portable"), None);
+        assert_eq!(api("jammy-x86_64"), None);
     }
 
     #[test]

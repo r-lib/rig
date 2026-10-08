@@ -12,13 +12,6 @@ repositories, all without starting R.
 `rig pkg` is experimental. Its commands and output may still change.
 :::
 
-::: {.callout-note}
-## P3M only
-
-`rig pkg` commands currently only use P3M (Posit Public Package Manager)
-and ignore your configured repositories.
-:::
-
 `rig pkg` operates on packages, inside a library. It is a companion to two
 other command families:
 
@@ -90,6 +83,13 @@ built with `R CMD INSTALL --build`; its dependencies are resolved and
 installed as usual. An argument is a path when it is `.`, starts with `./`,
 `../`, `~/` or `/`, or names a package file that exists, so `mypkg` still
 means the repositories' `mypkg`.
+
+On Linux, rig also installs the system libraries and tools that the
+packages need, e.g. `libcurl4-openssl-dev` for curl on Ubuntu, from their
+`SystemRequirements` fields. It does this itself if it runs as `root` or if
+`sudo` works without a password, and otherwise prints the commands to run.
+`--no-sysreqs` turns this off. See
+[`rig pkg install`](reference/pkg.qmd#rig-pkg-install) for the details.
 
 ## Listing and removing packages
 

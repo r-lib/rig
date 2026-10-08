@@ -63,7 +63,6 @@ use std::time::{Duration, SystemTime};
 use futures::stream::StreamExt;
 use log::*;
 use serde::{Deserialize, Serialize};
-use simple_error::bail;
 use zstd::stream::read::Decoder as ZstdDecoder;
 
 use crate::cache::get_cache_dir;
@@ -71,12 +70,13 @@ use crate::download::{
     download_optional_if_newer_, fetch_optional_if_modified, fetch_optional_if_modified_,
     ConditionalFetch,
 };
+use crate::repos::feed::{MetadataFeed, RepoId};
 
 /// How long a cached index or status document is used without asking the
 /// server, matching the default in `crate::download`.
 const DEFAULT_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 
-/// How many indices [`prefetch_binary_indices`] has in flight at once. There is
+/// How many indices [`prefetch_binary_indices_in`] has in flight at once. There is
 /// one request per package and they are small, so the whole batch is round-trip
 /// bound; the limit is there to be a good citizen towards P3M rather than to
 /// protect us.
@@ -107,7 +107,7 @@ const REQUIRED_COLUMNS: [&str; 7] = [
 /// P3M's generic glibc Linux build, used for any Linux without a specific
 /// target. This is the one target name we have to know by name, because P3M
 /// lists it against the distro it is built on rather than the ones it serves.
-const MANYLINUX: &str = "manylinux_2_28";
+pub(crate) const MANYLINUX: &str = "manylinux_2_28";
 
 /// One `pkg@version=sha256` entry from the `linkingto` column: a dependency
 /// source version this binary was compiled against.
@@ -149,19 +149,31 @@ pub struct CachedIndex {
     pub downloaded: bool,
 }
 
-/// Base URL for the per-package indices, overridable with `RIG_BINARIES_URL`.
-pub fn binaries_base_url() -> String {
-    std::env::var("RIG_BINARIES_URL")
-        .unwrap_or_else(|_| "https://ppm.r-pkg.org/binaries".to_string())
+/// URL of a package's CRAN binary index.
+pub fn binary_index_url(package: &str) -> String {
+    binary_index_url_in(&MetadataFeed::cran(), package)
 }
 
-/// URL of a package's binary index.
-pub fn binary_index_url(package: &str) -> String {
-    format!(
-        "{}/{}.tsv.zst",
-        binaries_base_url().trim_end_matches('/'),
-        package
-    )
+/// URL of a package's binary index in `feed`.
+pub fn binary_index_url_in(feed: &MetadataFeed, package: &str) -> String {
+    format!("{}/{}.tsv.zst", feed.binaries_url, package)
+}
+
+/// The cache directory of `feed`'s binary indices: CRAN's are in
+/// `<cache>/metadata/binaries`, a Bioconductor release's in a subdirectory
+/// of it, e.g. `bioc-3.22`, because the same package name may have an index
+/// in both.
+fn binary_index_dir(feed: &MetadataFeed) -> Result<PathBuf, Box<dyn Error>> {
+    let dir = get_cache_dir()?.join("metadata").join("binaries");
+    Ok(match &feed.repo {
+        RepoId::Cran => dir,
+        RepoId::Bioc(v) => dir.join(format!("bioc-{}", v)),
+        // A CRAN-like repository has no per-package binary indices, its
+        // binaries are in its `PACKAGES` files instead.
+        RepoId::Cranlike { url, .. } => {
+            dir.join(format!("cranlike-{}", crate::utils::calculate_hash(url)))
+        }
+    })
 }
 
 /// Reject anything that is not a plain R package name.
@@ -190,11 +202,12 @@ pub fn validate_package_name(package: &str) -> Result<(), Box<dyn Error>> {
 /// layout does not find the old file at all rather than reading one it would
 /// have to reject.
 pub fn binary_index_blob_file(package: &str) -> Result<PathBuf, Box<dyn Error>> {
+    blob_file_in(&MetadataFeed::cran(), package)
+}
+
+fn blob_file_in(feed: &MetadataFeed, package: &str) -> Result<PathBuf, Box<dyn Error>> {
     validate_package_name(package)?;
-    Ok(get_cache_dir()?
-        .join("metadata")
-        .join("binaries")
-        .join(format!("{}.v{}.rbi", package, blob::FORMAT_VERSION)))
+    Ok(binary_index_dir(feed)?.join(format!("{}.v{}.rbi", package, blob::FORMAT_VERSION)))
 }
 
 /// Cache path of a blob's marker file,
@@ -216,11 +229,45 @@ pub fn binary_index_blob_file(package: &str) -> Result<PathBuf, Box<dyn Error>> 
 /// An empty file means the response carried no `ETag`: still a valid marker,
 /// just nothing to revalidate with.
 pub fn binary_index_etag_file(package: &str) -> Result<PathBuf, Box<dyn Error>> {
+    etag_file_in(&MetadataFeed::cran(), package)
+}
+
+fn etag_file_in(feed: &MetadataFeed, package: &str) -> Result<PathBuf, Box<dyn Error>> {
     validate_package_name(package)?;
-    Ok(get_cache_dir()?
-        .join("metadata")
-        .join("binaries")
-        .join(format!("{}.v{}.etag", package, blob::FORMAT_VERSION)))
+    Ok(binary_index_dir(feed)?.join(format!("{}.v{}.etag", package, blob::FORMAT_VERSION)))
+}
+
+/// Cache path of the marker that says P3M has no index for a package,
+/// `<cache>/metadata/binaries/<package>.missing`.
+///
+/// Many packages have no index in a feed, e.g. a Bioconductor package in
+/// CRAN's, or a Bioconductor annotation package, which has no binaries. Without
+/// this marker every solve would ask about them again. Its mtime is when the
+/// server last answered 404, and it is trusted for the same TTL as a blob.
+fn missing_file_in(feed: &MetadataFeed, package: &str) -> Result<PathBuf, Box<dyn Error>> {
+    validate_package_name(package)?;
+    Ok(binary_index_dir(feed)?.join(format!("{}.missing", package)))
+}
+
+/// Whether the server answered 404 for `package` less than `ttl` ago.
+fn known_missing(feed: &MetadataFeed, package: &str, ttl: Duration) -> bool {
+    missing_file_in(feed, package)
+        .ok()
+        .and_then(|path| file_age(&path))
+        .is_some_and(|age| age < ttl)
+}
+
+/// Remember that the server has no index for `package`. Not being able to
+/// write it only costs a request next time.
+fn mark_missing(feed: &MetadataFeed, package: &str) {
+    if let Ok(path) = missing_file_in(feed, package) {
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if let Err(err) = fs::write(&path, b"") {
+            debug!("Could not write {}: {}", path.display(), err);
+        }
+    }
 }
 
 /// Sidecar holding the ETag of a cached file.
@@ -300,10 +347,19 @@ pub fn load_binary_index(
     package: &str,
     ttl: Option<Duration>,
 ) -> Result<Option<CachedIndex>, Box<dyn Error>> {
-    let etag_path = binary_index_etag_file(package)?;
+    load_binary_index_in(&MetadataFeed::cran(), package, ttl)
+}
+
+/// [`load_binary_index`] for the index of `package` in `feed`.
+pub fn load_binary_index_in(
+    feed: &MetadataFeed,
+    package: &str,
+    ttl: Option<Duration>,
+) -> Result<Option<CachedIndex>, Box<dyn Error>> {
+    let etag_path = etag_file_in(feed, package)?;
     let ttl = ttl.unwrap_or(DEFAULT_TTL);
 
-    let cached = read_cached_blob(&binary_index_blob_file(package)?);
+    let cached = read_cached_blob(&blob_file_in(feed, package)?);
     if cached.is_none() {
         // A marker without a usable blob would suppress the download, or ask
         // for a 304 we could not use.
@@ -321,22 +377,28 @@ pub fn load_binary_index(
         }));
     }
 
+    if known_missing(feed, package, ttl) {
+        debug!("No binary index for package '{}' (cached)", package);
+        return Ok(None);
+    }
+
     // Only ask for a 304 if we still hold the content one would refer to.
     let etag = cached
         .as_ref()
         .and_then(|_| fs::read_to_string(&etag_path).ok())
         .filter(|e| !e.is_empty());
 
-    let url = binary_index_url(package);
+    let url = binary_index_url_in(feed, package);
     match fetch_optional_if_modified_(&url, etag.as_deref(), None)? {
         ConditionalFetch::NotFound => {
             debug!("No binary index for package '{}'", package);
+            mark_missing(feed, package);
             Ok(None)
         }
 
         ConditionalFetch::NotModified => match cached {
             Some(index) => {
-                restart_ttl(package);
+                restart_ttl(feed, package);
                 Ok(Some(CachedIndex {
                     index,
                     downloaded: false,
@@ -348,7 +410,7 @@ pub fn load_binary_index(
         },
 
         ConditionalFetch::Fetched { bytes, etag } => Ok(Some(CachedIndex {
-            index: BinaryIndex::open_blob(&store_index(package, &bytes, etag)?)?,
+            index: BinaryIndex::open_blob(&store_index(feed, package, &bytes, etag)?)?,
             downloaded: true,
         })),
     }
@@ -361,7 +423,12 @@ pub fn load_binary_index(
 /// beside it is complete. A cache we cannot write is a slow next run, not a
 /// failure of this one, so neither write is fatal — but the marker must not
 /// outlive a blob that never landed.
-fn store_index(package: &str, tsv: &[u8], etag: Option<String>) -> Result<Vec<u8>, Box<dyn Error>> {
+fn store_index(
+    feed: &MetadataFeed,
+    package: &str,
+    tsv: &[u8],
+    etag: Option<String>,
+) -> Result<Vec<u8>, Box<dyn Error>> {
     let rows = parse_binaries_tsv(tsv)?;
     let built = blob::build(package, &rows)?;
     debug!(
@@ -370,12 +437,15 @@ fn store_index(package: &str, tsv: &[u8], etag: Option<String>) -> Result<Vec<u8
         rows.len(),
         built.len()
     );
-    let blob_path = binary_index_blob_file(package)?;
-    let etag_path = binary_index_etag_file(package)?;
+    let blob_path = blob_file_in(feed, package)?;
+    let etag_path = etag_file_in(feed, package)?;
     match write_atomically(&blob_path, &built) {
         Ok(()) => {
             if let Err(err) = write_atomically(&etag_path, etag.unwrap_or_default().as_bytes()) {
                 debug!("Could not write {}: {}", etag_path.display(), err);
+            }
+            if let Ok(missing) = missing_file_in(feed, package) {
+                let _ = fs::remove_file(missing);
             }
         }
         Err(err) => {
@@ -388,8 +458,8 @@ fn store_index(package: &str, tsv: &[u8], etag: Option<String>) -> Result<Vec<u8
 
 /// Note that a cached blob was just confirmed current, so the TTL is measured
 /// from now instead of from when it was downloaded.
-fn restart_ttl(package: &str) {
-    if let Ok(etag_path) = binary_index_etag_file(package) {
+fn restart_ttl(feed: &MetadataFeed, package: &str) {
+    if let Ok(etag_path) = etag_file_in(feed, package) {
         let _ = filetime::set_file_mtime(&etag_path, filetime::FileTime::now());
     }
 }
@@ -408,11 +478,18 @@ enum Prefetch {
 /// Unlike [`load_binary_index`] this only checks that a blob is *there*, it
 /// does not open it: prefetching is a head start, and a blob that turns out to
 /// be unusable is `load_binary_index`'s problem when it gets to it.
-fn prefetch_plan(package: &str, ttl: Duration) -> Result<Prefetch, Box<dyn Error>> {
-    let blob_path = binary_index_blob_file(package)?;
-    let etag_path = binary_index_etag_file(package)?;
+fn prefetch_plan(
+    feed: &MetadataFeed,
+    package: &str,
+    ttl: Duration,
+) -> Result<Prefetch, Box<dyn Error>> {
+    let blob_path = blob_file_in(feed, package)?;
+    let etag_path = etag_file_in(feed, package)?;
     if !blob_path.exists() {
         let _ = fs::remove_file(&etag_path);
+        if known_missing(feed, package, ttl) {
+            return Ok(Prefetch::Cached);
+        }
         return Ok(Prefetch::Fetch(None));
     }
     if file_age(&etag_path).is_some_and(|age| age < ttl) {
@@ -425,9 +502,10 @@ fn prefetch_plan(package: &str, ttl: Duration) -> Result<Prefetch, Box<dyn Error
     ))
 }
 
-/// Fill the cache for many packages at once, with several requests in flight.
+/// Fill the cache of `feed`'s indices for many packages at once, with several
+/// requests in flight.
 ///
-/// [`load_binary_index`] makes one blocking request per package, so a solve
+/// [`load_binary_index_in`] makes one blocking request per package, so a solve
 /// that walks a hundred packages pays a hundred round trips end to end. Given
 /// the packages up front, this pays them concurrently instead, and leaves
 /// exactly what `load_binary_index` would have written.
@@ -436,7 +514,7 @@ fn prefetch_plan(package: &str, ttl: Duration) -> Result<Prefetch, Box<dyn Error
 /// one that `load_binary_index` fetches itself later. Packages whose cached
 /// index is still fresh cost nothing here, so calling this with more packages
 /// than the solve turns out to need is cheap on a warm cache.
-pub fn prefetch_binary_indices(packages: &[String], ttl: Option<Duration>) {
+pub fn prefetch_binary_indices_in(feed: &MetadataFeed, packages: &[String], ttl: Option<Duration>) {
     let ttl = ttl.unwrap_or(DEFAULT_TTL);
     let mut seen: HashSet<&str> = HashSet::new();
     let mut todo: Vec<(String, Option<String>)> = vec![];
@@ -444,7 +522,7 @@ pub fn prefetch_binary_indices(packages: &[String], ttl: Option<Duration>) {
         if !seen.insert(package.as_str()) {
             continue;
         }
-        match prefetch_plan(package, ttl) {
+        match prefetch_plan(feed, package, ttl) {
             Ok(Prefetch::Cached) => {}
             Ok(Prefetch::Fetch(etag)) => todo.push((package.clone(), etag)),
             Err(err) => debug!("Not prefetching binary index of '{}': {}", package, err),
@@ -461,33 +539,38 @@ pub fn prefetch_binary_indices(packages: &[String], ttl: Option<Duration>) {
         seen.len(),
         PREFETCH_CONCURRENCY
     );
-    if let Err(err) = prefetch_all(&todo) {
+    if let Err(err) = prefetch_all(feed, &todo) {
         debug!("Could not prefetch binary indices: {}", err);
     }
 }
 
-/// The request half of [`prefetch_binary_indices`], on its own runtime.
+/// The request half of [`prefetch_binary_indices_in`], on its own runtime.
 ///
 /// Parsing an index and building its blob takes a couple of milliseconds, which
 /// is why it happens on the blocking pool: it overlaps with the requests still
 /// in flight instead of being tacked onto the end of them.
 #[tokio::main]
-async fn prefetch_all(todo: &[(String, Option<String>)]) -> Result<(), Box<dyn Error>> {
+async fn prefetch_all(
+    feed: &MetadataFeed,
+    todo: &[(String, Option<String>)],
+) -> Result<(), Box<dyn Error>> {
     let client = http_client();
     futures::stream::iter(todo.iter().map(|(package, etag)| {
         let client = &client;
         async move {
-            let url = binary_index_url(package);
+            let url = binary_index_url_in(feed, package);
             match fetch_optional_if_modified(client, &url, etag.as_deref()).await {
                 Err(err) => debug!("Could not prefetch {}: {}", url, err),
                 Ok(ConditionalFetch::NotFound) => {
-                    debug!("No binary index for package '{}'", package)
+                    debug!("No binary index for package '{}'", package);
+                    mark_missing(feed, package);
                 }
-                Ok(ConditionalFetch::NotModified) => restart_ttl(package),
+                Ok(ConditionalFetch::NotModified) => restart_ttl(feed, package),
                 Ok(ConditionalFetch::Fetched { bytes, etag }) => {
                     let package = package.clone();
+                    let feed = feed.clone();
                     let stored = tokio::task::spawn_blocking(move || {
-                        store_index(&package, &bytes, etag)
+                        store_index(&feed, &package, &bytes, etag)
                             .map(|_| ())
                             .map_err(|e| {
                                 format!("Could not store binary index of '{}': {}", package, e)
@@ -886,8 +969,9 @@ const DEFAULT_PPM_URL: &str = "https://packagemanager.posit.co";
 /// private P3M, so rig honors that rather than inventing a name for the same
 /// thing.
 ///
-/// Note that this does *not* affect [`binaries_base_url`]: the per-package
-/// indices are rig's own derived data, and no P3M instance serves them.
+/// Note that this does *not* affect the binary index URLs of
+/// [`MetadataFeed`]: the per-package indices are rig's own derived data, and
+/// no P3M instance serves them.
 pub fn ppm_url() -> String {
     ppm_url_from(std::env::var("PACKAGEMANAGER_ADDRESS").ok().as_deref())
 }
@@ -1106,7 +1190,7 @@ fn ppm_distribution(distro: &str) -> Option<&'static str> {
 /// Undo `detect_platform()`'s dot-stripping for SUSE versions, which reports
 /// openSUSE 15.6 as `156` (see the workaround in `platform.rs`). P3M spells the
 /// release `15.6`.
-fn suse_version_with_dot(version: &str) -> String {
+pub(crate) fn suse_version_with_dot(version: &str) -> String {
     if !version.contains('.') && version.len() >= 3 && version.chars().all(|c| c.is_ascii_digit()) {
         format!("{}.{}", &version[..2], &version[2..])
     } else {
@@ -1124,14 +1208,57 @@ fn ppm_arch(arch: &str) -> &str {
     }
 }
 
-/// Resolve a candidate target to a `(platform, arch)` pair, if it actually
-/// builds binaries for that arch.
-fn usable(distro: Option<&PpmDistro>, arch: &str) -> Option<(String, String)> {
+/// A P3M build target for one arch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PpmTarget {
+    /// P3M's name for the target, e.g. `macos`, `windows`, `jammy`.
+    pub platform: String,
+    /// `x86_64` or `arm64`.
+    pub arch: String,
+    /// The canonical rig platform string of the target, e.g.
+    /// `aarch64-apple-darwin` or `x86_64-unknown-linux-gnu-ubuntu-22.04`, see
+    /// [`crate::platform::parse_platform_string`].
+    pub triple: String,
+}
+
+/// The rig distro name for a P3M `distribution`, the reverse of
+/// [`ppm_distribution`].
+fn rig_distribution(distribution: &str) -> &str {
+    match distribution {
+        "redhat" | "rockylinux" => "rhel",
+        "sle" => "sles",
+        other => other,
+    }
+}
+
+/// The canonical rig platform string of a P3M target and arch.
+fn target_triple(distro: &PpmDistro, arch: &str) -> String {
+    let arch = if arch == "arm64" { "aarch64" } else { arch };
+    match distro.os.as_str() {
+        "macos" => format!("{}-apple-darwin", arch),
+        "windows" => format!("{}-w64-mingw32", arch),
+        _ if distro.platform() == MANYLINUX => format!("{}-unknown-linux-gnu", arch),
+        _ => format!(
+            "{}-unknown-linux-gnu-{}-{}",
+            arch,
+            rig_distribution(&distro.distribution),
+            distro.release
+        ),
+    }
+}
+
+/// Resolve a candidate target to a [`PpmTarget`], if it actually builds
+/// binaries for that arch.
+fn usable(distro: Option<&PpmDistro>, arch: &str) -> Option<PpmTarget> {
     let distro = distro?;
     if !distro.binaries || !distro.arch.iter().any(|a| a == arch) {
         return None;
     }
-    Some((distro.platform().to_string(), arch.to_string()))
+    Some(PpmTarget {
+        platform: distro.platform().to_string(),
+        arch: arch.to_string(),
+        triple: target_triple(distro, arch),
+    })
 }
 
 impl PpmStatus {
@@ -1181,8 +1308,18 @@ impl PpmStatus {
     /// resolves to `opensuse156` rather than to the `15` release. The
     /// major-version pass is what maps RHEL 9.4 onto the `9` release, since P3M
     /// records only the release it built for.
+    ///
+    /// A distro without a version is taken as P3M's own name for the target,
+    /// e.g. `noble` from the `noble-x86_64` spelling lockfiles use.
     fn find_linux(&self, distro: Option<&str>, version: Option<&str>) -> Option<&PpmDistro> {
-        let distribution = ppm_distribution(distro?)?;
+        let distro = distro?;
+        if version.is_none() {
+            return self
+                .distros
+                .iter()
+                .find(|d| d.binaries && d.os == "linux" && d.platform() == distro);
+        }
+        let distribution = ppm_distribution(distro)?;
         let version = version?;
         let version = if distribution == "opensuse" || distribution == "sle" {
             suse_version_with_dot(version)
@@ -1210,6 +1347,12 @@ impl PpmStatus {
     /// the target exists but not for this arch (P3M builds `jammy` for x86_64
     /// only, for instance).
     pub fn ppm_platform(&self, platform: &OsVersion) -> Option<(String, String)> {
+        self.ppm_target(platform).map(|t| (t.platform, t.arch))
+    }
+
+    /// Like [`PpmStatus::ppm_platform`], but also with the target's canonical
+    /// rig platform string.
+    pub fn ppm_target(&self, platform: &OsVersion) -> Option<PpmTarget> {
         let arch = ppm_arch(&platform.arch);
 
         if platform.os.starts_with("darwin") {
@@ -1887,6 +2030,33 @@ mod tests {
         );
     }
 
+    /// The `<platform>-<arch>` spelling of lockfiles (and `--platform`) names
+    /// the P3M target directly, with no distro version.
+    #[test]
+    fn matches_p3m_target_names() {
+        assert_eq!(
+            platform_of("x86_64", "linux", Some("noble"), None),
+            expect("noble", "x86_64")
+        );
+        assert_eq!(
+            platform_of("arm64", "linux", Some("noble"), None),
+            expect("noble", "arm64")
+        );
+        assert_eq!(
+            platform_of("x86_64", "linux", Some("opensuse156"), None),
+            expect("opensuse156", "x86_64")
+        );
+        assert_eq!(
+            platform_of("x86_64", "linux", Some(MANYLINUX), None),
+            expect(MANYLINUX, "x86_64")
+        );
+        // jammy is x86_64 only, as above.
+        assert_eq!(
+            platform_of("arm64", "linux", Some("jammy"), None),
+            expect(MANYLINUX, "arm64")
+        );
+    }
+
     /// The generic build is listed against CentOS 8, the distro it is built on.
     /// CentOS 8 itself must still resolve to `centos8`.
     #[test]
@@ -1926,5 +2096,64 @@ mod tests {
                 platform
             );
         }
+    }
+
+    /// Every target P3M builds binaries for has a canonical platform string
+    /// that parses back to the same target.
+    #[test]
+    fn target_triples_round_trip() {
+        let s = status();
+        for distro in s.distros.iter().filter(|d| d.binaries) {
+            for arch in &distro.arch {
+                let triple = target_triple(distro, arch);
+                let parsed = crate::platform::parse_platform_string(&triple).unwrap();
+                let target = s.ppm_target(&parsed).unwrap();
+                assert_eq!(
+                    (target.platform.as_str(), target.arch.as_str()),
+                    (distro.platform(), arch.as_str()),
+                    "{} ({}) -> {}",
+                    distro.name,
+                    arch,
+                    triple
+                );
+                assert_eq!(target.triple, triple);
+            }
+        }
+    }
+
+    #[test]
+    fn targets_have_canonical_names() {
+        let s = status();
+        let triple = |p: &str| {
+            let parsed = crate::platform::parse_platform_string(p).unwrap();
+            s.ppm_target(&parsed).map(|t| t.triple)
+        };
+        assert_eq!(triple("macos-arm64").unwrap(), "aarch64-apple-darwin");
+        assert_eq!(triple("windows-x86_64").unwrap(), "x86_64-w64-mingw32");
+        assert_eq!(
+            triple("jammy-x86_64").unwrap(),
+            "x86_64-unknown-linux-gnu-ubuntu-22.04"
+        );
+        assert_eq!(
+            triple("x86_64-unknown-linux-gnu-rocky-9.4").unwrap(),
+            "x86_64-unknown-linux-gnu-rhel-9"
+        );
+        assert_eq!(
+            triple("x86_64-unknown-linux-gnu-opensuse-156").unwrap(),
+            "x86_64-unknown-linux-gnu-opensuse-15.6"
+        );
+        assert_eq!(
+            triple("manylinux_2_28-arm64").unwrap(),
+            "aarch64-unknown-linux-gnu"
+        );
+        // No arm64 build for jammy, so the generic one.
+        assert_eq!(
+            triple("aarch64-unknown-linux-gnu-ubuntu-22.04").unwrap(),
+            "aarch64-unknown-linux-gnu"
+        );
+        assert_eq!(
+            triple("x86_64-unknown-linux-gnu-fedora-42").unwrap(),
+            "x86_64-unknown-linux-gnu"
+        );
     }
 }

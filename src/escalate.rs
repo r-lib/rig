@@ -5,12 +5,6 @@ use log::*;
 #[cfg(target_os = "windows")]
 use std::path::{Path, PathBuf};
 
-#[cfg(target_os = "windows")]
-use simple_error::bail;
-
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-use simple_error::bail;
-
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use sudo::with_env;
 

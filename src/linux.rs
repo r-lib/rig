@@ -11,7 +11,7 @@ use std::process::{Command, Stdio};
 
 use clap::ArgMatches;
 use log::{debug, error, info, trace, warn};
-use simple_error::*;
+use simple_error::SimpleError;
 
 use crate::rversion::*;
 
@@ -254,7 +254,7 @@ pub fn maybe_expand_portable(platform: &str) -> Result<String, Box<dyn Error>> {
     }
 }
 
-pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
     if args.value_source("arch") == Some(clap::parser::ValueSource::CommandLine) {
         OUTPUT.error("`--arch` is not supported on Linux.");
         error!("`--arch` is not supported on Linux");
@@ -267,15 +267,19 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let mode = get_mode()?;
     let alias = get_alias(args);
     let reinstall = args.get_flag("reinstall");
-    // `devel`/`next` are rebuilt daily under the same directory name, so
-    // "already installed" never means "up to date" for them.
+    // `devel`/`next` are rebuilt daily under the same version number, so
+    // they are reinstalled, unless the installer's ETag says that the
+    // installed build is the current one. Everything else only matches an
+    // installed released version, never a devel/next build of the same
+    // version.
     let rolling = str == "devel" || str == "next";
+    let check_existing = !reinstall && !rolling;
 
     // Fast path: a fully pinned version's exact version number is already
     // known without resolving anything over the network (and, since pinned
     // versions never get an alias, without escalating privileges either).
-    if !reinstall && !rolling && is_pinned_version_string(str) {
-        if let Some(name) = find_installed_by_version(str)? {
+    if check_existing && is_pinned_version_string(str) {
+        if let Some(name) = find_installed_by_version(str, None)? {
             return report_already_installed(&name, alias);
         }
     }
@@ -322,9 +326,9 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     // General check: for requests that don't pin a full version (`release`,
     // `oldrel(/n)`, bare/partial version numbers), the concrete version is
     // only known once resolved. Skip here if it's already installed.
-    if !reinstall && !rolling {
+    if check_existing {
         if let Some(ref v) = ver {
-            if let Some(name) = find_installed_by_version(v)? {
+            if let Some(name) = find_installed_by_version(v, None)? {
                 return report_already_installed(&name, alias);
             }
         }
@@ -347,18 +351,22 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         }
     };
 
+    let etag = if rolling { get_etag_(&url) } else { None };
+    if rolling && !reinstall && etag.is_some() {
+        if let Some(ref v) = ver {
+            if let Some(name) = find_installed_by_version(v, Some(str))? {
+                if installed_etag_matches(&name, etag.as_deref()) {
+                    info!("The R-{} installer at {} has not changed", str, url);
+                    return report_already_installed(&name, alias);
+                }
+            }
+        }
+    }
+
     let filename = basename(&url).unwrap_or("foo");
     let tmp_dir = ensure_download_dir()?;
     let target = tmp_dir.join(filename);
-    if target.exists() && not_too_old(&target) {
-        OUTPUT.success(&format!("{} is cached at {}", filename, target.display()));
-        info!("{} is cached at {}", filename, target.display());
-    } else {
-        OUTPUT.status(&format!("Downloading {} -> {}", url, target.display()));
-        info!("Downloading {} -> {}", url, target.display());
-        let client = &http_client();
-        download_file(client, &url, target.as_os_str())?;
-    }
+    download_installer(&url, &target, etag.as_deref())?;
 
     let portable = is_portable_archive(&target);
     let dirname = if portable {
@@ -370,6 +378,9 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         let platform = parse_platform_string(&install_platform)?;
         add_package(target.as_os_str(), &platform)?
     };
+    if rolling {
+        record_installed_etag(&dirname, etag.as_deref());
+    }
 
     crate::cache::remove_download_if_no_cache(&target);
 
@@ -427,7 +438,10 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         )?;
     }
 
-    Ok(())
+    Ok(Some(AddResult {
+        name: dirname.to_string(),
+        new_install: true,
+    }))
 }
 
 fn select_linux_tools(platform: &OsVersion) -> Result<LinuxTools, Box<dyn Error>> {
@@ -1499,6 +1513,11 @@ pub fn sc_system_fix_r_alias(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+pub fn sc_system_script_assoc(_args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    // Nothing to do on Linux
+    Ok(())
+}
+
 pub fn sc_system_fix_aliases(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
     let platform = get_platform(args)?;
     let arch = get_arch(&platform, args);
@@ -1516,7 +1535,11 @@ pub fn sc_system_fix_aliases(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             continue;
         };
 
-        match find_installed_by_version(version)? {
+        let kind = match al.alias.as_str() {
+            "devel" | "next" => Some(al.alias.as_str()),
+            _ => None,
+        };
+        match find_installed_by_version(version, kind)? {
             None => {
                 OUTPUT.warn(&format!(
                     "R-{} should point to R {}, but it is not installed. Removing the stale alias.",

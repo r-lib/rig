@@ -1,9 +1,11 @@
 mod registry;
 pub use registry::sc_clean_registry;
+pub use registry::sc_system_script_assoc;
 use registry::{
     add_user_bin_to_path, admin_rtools_paths, clean_admin_registry, clean_admin_rtools_registry,
-    get_latest_install_path, list_admin_rtools, maybe_update_registry_default, sc_rtools_ls,
-    unset_registry_default, update_registry_default, LegacyRtoolsRegRelocation,
+    get_latest_install_path, list_admin_rtools, list_rtools, maybe_update_registry_default,
+    sc_rtools_ls, unset_registry_default, update_registry_default, LegacyRtoolsRegRelocation,
+    RtoolsVersion,
 };
 
 use regex::Regex;
@@ -20,7 +22,7 @@ use directories::BaseDirs;
 use log::{debug, error, info, trace, warn};
 use owo_colors::OwoColorize;
 use remove_dir_all::remove_dir_all;
-use simple_error::{bail, SimpleError};
+use simple_error::SimpleError;
 use whoami::{fallible::hostname, username};
 
 use crate::alias::*;
@@ -358,7 +360,7 @@ fn user_install_name(install_dir: &Path, arch: &str) -> Result<String, Box<dyn E
 }
 
 #[warn(unused_variables)]
-pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
+pub fn sc_add(args: &ArgMatches) -> Result<Option<AddResult>, Box<dyn Error>> {
     let str = args.get_one::<String>("str").unwrap();
     if !(str.len() >= 6 && &str[0..6] == "rtools") {
         validate_version_arg(str)?;
@@ -366,17 +368,21 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
 
     let alias = get_alias(args);
     let reinstall = args.get_flag("reinstall");
-    // `devel`/`next` are rebuilt daily under the same directory name, so
-    // "already installed" never means "up to date" for them.
+    // `devel`/`next` are rebuilt daily under the same version number, so
+    // they are reinstalled, unless the installer's ETag says that the
+    // installed build is the current one. Everything else only matches an
+    // installed released version, never a devel/next build of the same
+    // version.
     let rolling = str == "devel" || str == "next";
     let is_rtools = str.len() >= 6 && &str[0..6] == "rtools";
+    let check_existing = !reinstall && !rolling && !is_rtools;
 
     // Fast path: a fully pinned version's install directory name is
     // deterministic from the version and arch alone, so we can check
     // whether it's already installed before resolving anything over the
     // network (and, since pinned versions never get an alias, without
     // escalating privileges either).
-    if !reinstall && !rolling && !is_rtools && is_pinned_version_string(str) {
+    if check_existing && is_pinned_version_string(str) {
         let platform = get_platform(args)?;
         let arch = get_arch(&platform, args);
         let candidate = rig_name_for_arch(str, &arch);
@@ -398,33 +404,51 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         } else {
             None
         };
-        return add_rtools(str.to_string(), arch);
+        add_rtools(str.to_string(), arch)?;
+        return Ok(None);
     }
 
     // General check: for requests that don't pin a full version (`release`,
     // `oldrel(/n)`, bare/partial version numbers), the concrete version is
     // only known once resolved. Skip here if it's already installed, before
     // downloading the installer.
-    if !reinstall && !rolling {
-        let version = get_resolve(args)?;
-        if let Some(ref v) = version.version {
-            let arch = version
-                .arch
-                .clone()
-                .unwrap_or_else(|| get_native_arch().to_string());
-            let candidate = rig_name_for_arch(v, &arch);
-            if let Some(name) = find_installed_matching(&[candidate], v)? {
-                return report_already_installed(&name, alias_with_arch_suffix(alias, &arch));
-            }
-        }
-    }
-
-    let (version_info, target) = download_r(args)?;
-    let target_for_cleanup = std::path::PathBuf::from(&target);
+    let version_info = get_resolve(args)?;
     let installed_arch = version_info
         .arch
         .clone()
         .unwrap_or_else(|| get_native_arch().to_string());
+    if check_existing {
+        if let Some(ref v) = version_info.version {
+            let candidate = rig_name_for_arch(v, &installed_arch);
+            if let Some(name) = find_installed_matching(&[candidate], v)? {
+                return report_already_installed(
+                    &name,
+                    alias_with_arch_suffix(alias, &installed_arch),
+                );
+            }
+        }
+    }
+
+    let etag = match (rolling, &version_info.url) {
+        (true, Some(url)) => get_etag_(url),
+        _ => None,
+    };
+    if rolling && !reinstall && etag.is_some() {
+        if let (Some(url), Some(v)) = (&version_info.url, &version_info.version) {
+            if let Some(name) = find_installed_dev_build(str, v, &installed_arch)? {
+                if installed_etag_matches(&name, etag.as_deref()) {
+                    info!("The R-{} installer at {} has not changed", str, url);
+                    return report_already_installed(
+                        &name,
+                        alias_with_arch_suffix(alias, &installed_arch),
+                    );
+                }
+            }
+        }
+    }
+
+    let target = download_r(&version_info, etag.as_deref())?;
+    let target_for_cleanup = std::path::PathBuf::from(&target);
     let target_path = Path::new(&target);
 
     OUTPUT.status(&format!("Installing {}", target_path.display()));
@@ -518,6 +542,11 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
             }
         }
     };
+    if rolling {
+        if let Some(ref dirname) = dirname {
+            record_installed_etag(dirname, etag.as_deref());
+        }
+    }
 
     crate::cache::remove_download_if_no_cache(&target_for_cleanup);
 
@@ -581,7 +610,10 @@ pub fn sc_add(args: &ArgMatches) -> Result<(), Box<dyn Error>> {
         }
     }
 
-    Ok(())
+    Ok(dirname.map(|name| AddResult {
+        name,
+        new_install: true,
+    }))
 }
 
 pub(crate) fn normalize_arch(arch: &str) -> String {
@@ -814,7 +846,15 @@ fn patch_env_file(path: &Path, body: &str, pos: BlockPos) {
     }
 }
 
-fn add_rtools(version: String, arch: Option<String>) -> Result<(), Box<dyn Error>> {
+// What `add_rtools()` did with one Rtools version: installed it now, or kept
+// the already installed one.
+struct AddedRtools {
+    version: String,
+    arch: String,
+    new_install: bool,
+}
+
+fn add_rtools(version: String, arch: Option<String>) -> Result<Vec<AddedRtools>, Box<dyn Error>> {
     let needed: Vec<NeededRtools> = if version == "rtools" {
         get_rtools_needed(None, arch.as_deref())?
     } else {
@@ -826,6 +866,7 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<(), Box<dyn Error
         }]
     };
     let client = &reqwest::Client::new();
+    let mut added: Vec<AddedRtools> = vec![];
     for item in needed {
         let instdirpath = rtools_install_path(&item.version, &item.arch)?;
         if instdirpath.exists() {
@@ -837,6 +878,11 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<(), Box<dyn Error
                 "Rtools{} ({}) is already installed",
                 item.version, item.arch
             );
+            added.push(AddedRtools {
+                version: item.version,
+                arch: item.arch,
+                new_install: false,
+            });
             continue;
         }
         let rtver = get_rtools_version(&item.version, &item.arch)?;
@@ -889,6 +935,11 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<(), Box<dyn Error
         crate::cache::remove_download_if_no_cache(&target);
         OUTPUT.success(&format!("Installed Rtools{} ({})", item.version, item.arch));
         info!("Installed Rtools{} ({})", item.version, item.arch);
+        added.push(AddedRtools {
+            version: item.version,
+            arch: item.arch,
+            new_install: true,
+        });
     }
 
     // Re-run the patch now so an Rtools installed after R is picked up, and so that
@@ -897,7 +948,7 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<(), Box<dyn Error
     // and only acts on Rtools that is actually installed.
     patch_for_rtools()?;
 
-    Ok(())
+    Ok(added)
 }
 
 fn patch_for_rtools() -> Result<(), Box<dyn Error>> {
@@ -1613,6 +1664,28 @@ fn fix_next_alias(al: &Alias, platform: &str, arch: &str) -> Result<(), Box<dyn 
     ));
     remove_alias(&al.alias)?;
     Ok(())
+}
+
+// Used by `rig add devel`/`rig add next`: find the installed devel/next
+// (`kind`) build of `version` and `arch`. Unlike for released versions, the
+// directory name is not known in advance (`devel`/`next` in user mode, the
+// installer's choice in admin mode), so this goes by R_STATUS and the arch
+// suffix of the name instead.
+fn find_installed_dev_build(
+    kind: &str,
+    version: &str,
+    arch: &str,
+) -> Result<Option<String>, Box<dyn Error>> {
+    let suffixed = !rig_name_for_arch("", arch).is_empty();
+    for ver in sc_get_list_details()? {
+        if ver.name.ends_with("-x86_64") == suffixed
+            && ver.version.as_deref() == Some(version)
+            && is_installed_dev_kind(&ver, Some(kind))
+        {
+            return Ok(Some(ver.name));
+        }
+    }
+    Ok(None)
 }
 
 fn is_current_next_build(install_dir: &Path, resolved_version: &str) -> bool {
@@ -2345,19 +2418,66 @@ fn normalize_rtools_version(ver: &str) -> String {
     ver.replace('.', "")
 }
 
-fn sc_rtools_add(args: &ArgMatches, _mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
+fn sc_rtools_add(args: &ArgMatches, mainargs: &ArgMatches) -> Result<(), Box<dyn Error>> {
+    #[derive(serde::Serialize)]
+    struct AddedRtoolsJson {
+        #[serde(flatten)]
+        rtools: RtoolsVersion,
+        #[serde(rename = "new-install")]
+        new_install: bool,
+    }
+
     escalate("adding Rtools")?;
     let ver = args.get_one::<String>("version").unwrap();
     let arch = args.get_one::<String>("arch").map(|s| normalize_arch(s));
-    if ver == "all" {
-        add_rtools("rtools".to_string(), arch)
+    let added = if ver == "all" {
+        add_rtools("rtools".to_string(), arch)?
     } else if let Some(stripped) = ver.strip_prefix("rtools") {
         add_rtools(
             "rtools".to_string() + &normalize_rtools_version(stripped),
             arch,
-        )
+        )?
     } else {
-        add_rtools("rtools".to_string() + &normalize_rtools_version(ver), arch)
+        add_rtools("rtools".to_string() + &normalize_rtools_version(ver), arch)?
+    };
+
+    if args.get_flag("json") || mainargs.get_flag("json") {
+        let installed = list_rtools()?;
+        let mut out: Vec<AddedRtoolsJson> = vec![];
+        for item in added {
+            let rtools = match installed
+                .iter()
+                .find(|v| v.name == item.version && v.arch == item.arch)
+            {
+                Some(v) => v.clone(),
+                // Not in the registry, report what we know.
+                None => RtoolsVersion {
+                    name: item.version.clone(),
+                    version: rtools_dotted_version(&item.version),
+                    fullversion: "".to_string(),
+                    path: rtools_install_path(&item.version, &item.arch)?
+                        .display()
+                        .to_string(),
+                    arch: item.arch.clone(),
+                },
+            };
+            out.push(AddedRtoolsJson {
+                rtools,
+                new_install: item.new_install,
+            });
+        }
+        println!("{}", serde_json::to_string_pretty(&out)?);
+    }
+
+    Ok(())
+}
+
+// "43" -> "4.3", the `version` field of `rig rtools list --json`.
+fn rtools_dotted_version(name: &str) -> String {
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(first) => format!("{}.{}", first, chars.as_str()),
+        None => "".to_string(),
     }
 }
 

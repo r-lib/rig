@@ -1,13 +1,10 @@
 
-- [ ] Make sure README has the correct command list.
 - [ ] Make sure version number is updated everywhere:
   - Cargo.toml
   - Cargo.lock (run cargo build)
   - rig.iss
   - choco/rig/rig.nuspec
   - NEWS file
-  - website/install.ps1
-  - website/install.sh
 - [ ] If needed, commit to have a CI build with the right version number.
 - [ ] Make sure CI is OK
 - [ ] Build README:

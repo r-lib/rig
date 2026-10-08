@@ -7,7 +7,8 @@ versions, and write the result to `rproj.lock`.
 
 rig reads the project manifest, `rproj.toml`, in the current directory, and
 uses its built-in solver to find a compatible set of package versions from
-the configured repositories.
+the project's repositories: CRAN and Bioconductor by default, see
+"Repositories" below.
 
 `rig proj solve` does not run R.
 
@@ -39,6 +40,129 @@ newest installed R version that does, and failing that the current R
 release. The version it picks does not have to be installed: `rig proj lock`
 never runs R, and [`rig proj sync`](#rig-proj-sync) installs the R version the lock file names.
 
+To always solve for the same R versions, list them in `rproj.toml`. rig
+solves for each of them, for every platform, and `--r-version` replaces the
+list:
+
+```toml
+[tool.rig]
+r-versions = ["4.5", "4.6"]
+```
+
+Each entry takes the same values as `--r-version`. A minor version, e.g.
+`4.5`, matches any patch release of it.
+
+## Repositories
+
+By default a project solves from two built-in repositories: CRAN, with the
+metadata of Posit Package Manager, which has every version ever published,
+and Bioconductor, see below. rig does not use the repositories of your R
+installations, or the ones you set up with `rig repos`: a project only uses
+the repositories in its `rproj.toml`, so it locks the same way on every
+machine.
+
+Add a CRAN-like repository with a `[[repository]]` entry:
+
+```toml
+[[repository]]
+name = "rlib"
+url = "https://r-lib.r-universe.dev"
+```
+
+rig only sees the package versions in the `PACKAGES` files of a CRAN-like
+repository, usually the current version of each package.
+
+The order of the entries is the order of precedence: if two repositories
+have the same version of a package, the first one wins. The built-in
+repositories come after the entries of `rproj.toml`, Bioconductor first,
+unless they have an entry of their own. A `cran` or `bioc` entry has no `url`. It
+puts the repository at its place in the order, and `enabled = false` turns it
+off:
+
+```toml
+[[repository]]
+name = "cran"
+enabled = false
+```
+
+Pin a dependency to a repository with `repository`, and rig only takes the
+package from there:
+
+```toml
+[dependencies]
+cli = { version = ">= 3.6", repository = "rlib" }
+```
+
+A pin can name any repository of the project, `cran` and `bioc` included. It
+applies to the package itself, not to its dependencies.
+[`rig proj add --with-repos`](#rig-proj-add) adds the repository and the pin in one step.
+
+`explicit = true` makes a repository serve only the packages pinned to it,
+e.g. a private repository that must not replace CRAN packages of the same
+name:
+
+```toml
+[[repository]]
+name = "internal"
+url = "https://cran.example.com"
+explicit = true
+```
+
+`--with-repos` (`--index`) and `--without-repos` (`--no-index`) change the
+repositories for one `rig proj lock` run, without editing `rproj.toml`. Both
+take a comma-separated list, and can be repeated. An item of `--with-repos`
+is the name of a repository, which turns it on if `rproj.toml` turns it off,
+or a URL or `name=URL`: an extra repository that comes before all the others.
+`--without-repos=cran,bioc` turns those two off, and a bare `--without-repos`
+turns off all repositories of the project, so only the ones in `--with-repos`
+are used. E.g. to solve from one repository instead of CRAN and
+Bioconductor, and keep the project's own repositories:
+
+```sh
+rig proj lock --without-repos=cran,bioc --with-repos https://cran.example.com
+```
+
+`rproj.lock` records the repositories that are on in its `[tool.rig]` table, in
+order of precedence, with the URL of the extended metadata for CRAN and
+Bioconductor, and `repository = "<name>"` for each package of a CRAN-like
+repository. A lock solved with other repositories is solved again, and so
+is a lock with a package from another repository than its pin says. Both
+keep the pinned versions where they fit, see "Sticky lock files" below.
+
+## Bioconductor packages
+
+rig solves from CRAN and from the Bioconductor release that belongs to the
+target's R version, e.g. Bioconductor 3.23 for R 4.6. You do not need to set
+up anything: `rig proj add limma` works like `rig proj add dplyr`. Some R
+versions have two Bioconductor releases, e.g. 3.21 and 3.22 for R 4.5, and
+rig uses the newer one. With `--exclude-newer` it uses the release that was
+current on the cutoff day, see below.
+
+A `bioc` entry in `[[repository]]` pins the Bioconductor release, e.g. to use
+the development version, or turns Bioconductor off:
+
+```toml
+[[repository]]
+name = "bioc"
+version = "3.24"
+```
+
+```toml
+[[repository]]
+name = "bioc"
+enabled = false
+```
+
+The `R_BIOC_VERSION` environment variable also pins the release, and
+`RIG_BIOCONDUCTOR=false` turns Bioconductor off for every project.
+
+`rproj.lock` records the Bioconductor release of each target as
+`bioc-version`, and `repository = "bioc/<version>"` for each Bioconductor
+package. A target solved with another release is solved again.
+[`rig proj sync`](#rig-proj-sync) also adds the Bioconductor repositories of
+that release to the project environment, so `install.packages()` finds
+Bioconductor packages, too.
+
 ## Source and binary packages
 
 The solver considers binary packages as well as source packages, and
@@ -51,32 +175,71 @@ released so recently that it has not been built yet. Only the three newest
 versions of a package are considered; `--prefer-binary=5` considers five.
 Versions held back this way are marked in the output.
 
+To make it part of the project, set it in `rproj.toml`. `true` means the
+default of three versions, a number gives the number of versions:
+
+```toml
+[tool.rig]
+prefer-binary = true
+```
+
+`--prefer-binary` overrides it, and `--prefer-binary=0` turns it off.
+`rproj.lock` records the setting in its `[tool.rig]` table, and a lock solved
+with a different one is solved again, keeping the pinned versions where they
+fit, see "Sticky lock files" below.
+
 By default rig solves for this machine plus the three other common
-platforms (macOS arm64, Windows x86_64 and GNU Linux x86_64). Use
-`--platform` to solve for a different set instead, e.g. a single specific
-distro:
+platforms (`aarch64-apple-darwin`, `x86_64-w64-mingw32` and
+`x86_64-unknown-linux-gnu`, which is any glibc Linux), and for source
+packages only (`source`), so the lock file also works on platforms without
+binary packages. `rig proj sync` only uses the source target if no other
+target matches the machine.
+
+To use a different set of platforms for a project, list them in
+`rproj.toml`. This replaces the default set, so include this machine's
+platform if you want it:
+
+```toml
+[tool.rig]
+platforms = [
+  "aarch64-apple-darwin",
+  "x86_64-w64-mingw32",
+  "x86_64-unknown-linux-gnu-ubuntu-24.04",
+  "source",
+]
+```
+
+Use `--platform` to solve for a different set instead of the manifest's
+list or the default set, e.g. a single specific distro:
 
 ```sh
 rig proj lock --platform ubuntu-24.04
 ```
 
-Use `--add-platform` instead to add a platform to that default set rather
-than replacing it, e.g. to also solve for one extra distro on top of the
-usual four. `--add-platform` can be repeated:
+Use `--add-platform` to add a platform to the manifest's list or the default
+set rather than replacing it. `--add-platform` can be repeated:
 
 ```sh
 rig proj lock --add-platform ubuntu-24.04 --add-platform linux-fedora-42
 ```
 
-`--platform`/`--add-platform` accept:
+`rproj.lock` writes each platform as a target triple, e.g.
+`aarch64-apple-darwin`, `x86_64-w64-mingw32`, `x86_64-unknown-linux-gnu` or
+`x86_64-unknown-linux-gnu-ubuntu-24.04`, or `source`. `platforms`,
+`--platform` and `--add-platform` take the same strings, and shorter forms
+too:
 
-- `macos-arm64`, `windows-x86_64` -- an OS plus arch, for the two
-  non-Linux platforms.
+- `macos`, `windows`, `linux`, or with an arch: `macos-arm64`,
+  `windows-x86_64`, `linux-aarch64`.
 - `ubuntu-24.04`, `fedora-42`, `opensuse-15.6` -- a Linux distro and version,
   matched against P3M's build list.
-- `manylinux_2_28-arm64`, `jammy-x86_64` -- a P3M platform name and arch
-  directly, e.g. copied from another `rproj.lock`'s `platform` field.
+- `manylinux_2_28-arm64`, `jammy-x86_64` -- a P3M platform name and arch.
 - `source` -- source packages only, for any platform.
+
+Without an arch, the platform has this machine's arch if it runs the same
+OS, otherwise `aarch64` for macOS and `x86_64` for Windows and Linux. See
+[`rig system detect-platform`](system.qmd#rig-system-detect-platform) for
+more about platform strings.
 
 A Linux distro/version or platform name P3M has no specific build for falls
 back to its generic manylinux build for the given arch, rather than failing.
@@ -95,9 +258,77 @@ A `rig proj lock` run that finds an existing `rproj.lock` already satisfying
 anything. This applies to ordinary dependencies, an existing pin that still
 satisfies the manifest's version requirement is kept, even if a newer
 version has since been published, as well as to git/GitHub dependencies (see
-below). Use `rig proj lock --upgrade` to ignore the existing lock file and
+below).
+
+If `rproj.toml` changed, e.g. after `rig proj add`, rig solves the
+dependencies again, but it still keeps the versions `rproj.lock` pins, as
+long as they fit. So adding a package only changes the versions it needs
+changed, and does not upgrade the rest of the project. A platform or R
+version that is new to the lock file gets the same versions as the other
+platforms of the same R version, where possible.
+
+Use `rig proj lock --upgrade` to ignore the existing lock file and
 re-resolve every dependency instead, picking the latest version that still
 satisfies `rproj.toml`.
+
+Use `--upgrade-package` to upgrade only some packages, and keep the rest:
+
+```sh
+rig proj lock --upgrade-package cli
+rig proj lock -P cli,glue
+```
+
+The packages they depend on are only upgraded if they need to be. You can
+also give a version requirement, with the same `<package>@<version>` syntax
+as `rig proj add`, e.g. to upgrade or downgrade to a specific version:
+
+```sh
+rig proj lock -P 'cli@>= 3.6.4'
+rig proj lock -P 'cli@=3.6.2'
+```
+
+The requirement only applies to this run, it is not written to
+`rproj.toml`. Later `rig proj lock` runs keep the version it picked, as
+long as it fits `rproj.toml`. A git/GitHub dependency named in
+`--upgrade-package` is checked against its remote again, like with
+`--upgrade`.
+
+## Excluding newer package versions
+
+`--exclude-newer` makes the solver ignore CRAN and Bioconductor package
+versions published after a date, so you can lock the project as the
+repositories were on that day, or skip versions released in the last few
+days:
+
+```sh
+rig proj lock --exclude-newer 2025-06-01
+rig proj lock --exclude-newer "7 days"
+```
+
+It takes a date (`2025-06-01`), an RFC 3339 timestamp (only its UTC date is
+used), or a span back from today, e.g. `7 days`, `2 weeks` or `P1M`. A
+version's publication date is the day it first appeared in a Posit Package
+Manager snapshot, so the cutoff is a day, and it cannot be earlier than
+2017-10-10, the first snapshot. It only applies to CRAN and Bioconductor
+packages, not to git, GitHub, URL or local dependencies, and binary builds
+of a version are used no matter when they were built. If the target's R
+version has two Bioconductor releases, the cutoff also chooses between them:
+the newer one if it was released by the cutoff day, otherwise the older one.
+
+To make it part of the project, set it in `rproj.toml`; `--exclude-newer`
+overrides it:
+
+```toml
+[tool.rig]
+exclude-newer = "2025-06-01"
+```
+
+`rproj.lock` records the cutoff in its own `[tool.rig]` table, and a lock
+solved with a different one is solved again. This keeps the pinned versions
+that are not newer than the new cutoff, see "Sticky lock files" above. For a span, the lock records the
+span as well, and the lock is reused as long as the span stays the same, so
+the cutoff does not move every day. Use `--upgrade` to solve again with a
+fresh cutoff.
 
 ## Git, GitHub and URL dependencies
 
@@ -124,6 +355,15 @@ binary package and the URL it is downloaded from. It also records where the
 file is cached, which is per *build* rather than per version: a repository
 can offer several binaries of one version for one platform and R version,
 and they are cached side by side.
+
+## Scripts
+
+`rig proj lock --script script.R` locks the dependencies in the
+`# /// script` block of an R script, instead of a project, and writes them
+to `script.R.lock`, next to the script. It takes the same options as for a
+project, and an existing `script.R.lock` is sticky in the same way.
+`rig run script.R` then installs the versions the lock file names, see
+[`rig run`](run.qmd).
 
 ## Workspaces
 

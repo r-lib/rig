@@ -3,7 +3,6 @@ use std::error::Error;
 use std::io::IsTerminal;
 
 use clap::ArgMatches;
-use simple_error::*;
 use tabular::*;
 
 use super::config::{Enabled, RepoEntry, Repository};
@@ -178,6 +177,12 @@ fn entry_fields(repo: &Repository, entry: &RepoEntry) -> Vec<(&'static str, Stri
     if let Some(enabled) = &entry.enabled {
         fields.push(("Default", entry_default_detail(enabled)));
     }
+    if entry.fallback {
+        fields.push((
+            "Fallback",
+            "only if no other URL of the same packages applies".to_string(),
+        ));
+    }
     for (label, values) in [
         ("Platforms", &entry.platforms),
         ("Archs", &entry.archs),
@@ -222,8 +227,8 @@ fn print_repo_list(config: &[Repository]) {
     println!();
 
     // -- Table -------------------------------------------------------------
-    let mut tab: Table = Table::new("{:<}   {:<}   {:<}");
-    tab.add_row(row!("Name", "Default", "Title"));
+    let mut tab: Table = Table::new("{:<}   {:<}   {:<}   {:<}");
+    tab.add_row(row!("Name", "Default", "Type", "Title"));
     tab.add_heading(
         "-----------------------------------------------------------------------------",
     );
@@ -231,6 +236,7 @@ fn print_repo_list(config: &[Repository]) {
         tab.add_row(row!(
             &repo.name,
             default_column(repo),
+            if repo.custom { "custom" } else { "built-in" },
             repo.title.as_deref().unwrap_or("")
         ));
     }
@@ -325,6 +331,7 @@ mod tests {
             description: None,
             enabled,
             repos,
+            custom: false,
         }
     }
 
@@ -334,10 +341,12 @@ mod tests {
             title: None,
             description: None,
             url: "https://example.com".to_string(),
+            metadata: None,
             platforms: None,
             archs: None,
             rversions: None,
             enabled: None,
+            fallback: false,
         }
     }
 
@@ -448,8 +457,8 @@ mod tests {
     fn catalog_default_states() {
         // The catalog's own verdicts, so that the `Default` column cannot start
         // claiming that a conditional repository is a default everywhere. Only
-        // CRAN is: every P3M URL is limited to a platform and architecture, and
-        // CRAN-archive's is limited to Windows and macOS and R older than 4.0.0.
+        // CRAN is: P3M has no URL for aarch64 Windows, and CRAN-archive's is
+        // limited to Windows and macOS and R older than 4.0.0.
         let config = get_repos_config().unwrap();
         let states: Vec<(&str, &str)> = config
             .iter()

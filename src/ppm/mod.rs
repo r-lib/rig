@@ -19,7 +19,6 @@ use std::error::Error;
 use std::io::IsTerminal;
 
 use clap::ArgMatches;
-use simple_error::bail;
 use tabular::{Row, Table};
 
 use crate::repos::binaries::{ppm_url, PpmDistro, PpmStatus};
