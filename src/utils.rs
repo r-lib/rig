@@ -785,14 +785,21 @@ pub fn check_local_bin_path() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// A `reqwest::ClientBuilder` with a compiled-in Mozilla root CA bundle added
-/// as extra trust roots, so TLS still works on Linux systems/containers that
-/// have no system CA store (`rustls-platform-verifier` otherwise errors with
-/// "No CA certificates were loaded from the system"). On macOS and Windows
-/// the platform's own certificate store is always available, so this is a
-/// no-op passthrough there.
+/// `User-Agent` header sent with every HTTP request rig makes.
+pub const USER_AGENT: &str = concat!(
+    "rig/",
+    env!("CARGO_PKG_VERSION"),
+    " (+https://github.com/r-lib/rig)"
+);
+
+/// A `reqwest::ClientBuilder` that sets rig's `User-Agent` and, on Linux,
+/// adds a compiled-in Mozilla root CA bundle as extra trust roots, so TLS
+/// still works on Linux systems/containers that have no system CA store
+/// (`rustls-platform-verifier` otherwise errors with "No CA certificates were
+/// loaded from the system"). On macOS and Windows the platform's own
+/// certificate store is always available, so no extra roots are added there.
 pub fn http_client_builder() -> reqwest::ClientBuilder {
-    let builder = reqwest::Client::builder();
+    let builder = reqwest::Client::builder().user_agent(USER_AGENT);
     #[cfg(target_os = "linux")]
     let builder = {
         let mut builder = builder;

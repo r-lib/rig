@@ -865,7 +865,7 @@ fn add_rtools(version: String, arch: Option<String>) -> Result<Vec<AddedRtools>,
             arch: a,
         }]
     };
-    let client = &reqwest::Client::new();
+    let client = &http_client();
     let mut added: Vec<AddedRtools> = vec![];
     for item in needed {
         let instdirpath = rtools_install_path(&item.version, &item.arch)?;

@@ -4,6 +4,9 @@
   works with Windows paths. Delete `.Renviron` and call `rig proj lock`
   to recreate it with the fixed version in existing projects.
 
+* rig now sends a `User-Agent` header with its HTTP requests, e.g.
+  `rig/0.11.1 (+https://github.com/r-lib/rig)`.
+
 # rig 0.11.0
 
 ## Custom repositories

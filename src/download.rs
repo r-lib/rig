@@ -985,7 +985,7 @@ pub async fn download_json(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wiremock::matchers::{method, path};
+    use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[test]
@@ -1182,5 +1182,26 @@ mod tests {
 
         // Clean up
         let _ = std::fs::remove_file(&file1_path);
+    }
+
+    #[tokio::test]
+    async fn test_http_client_sends_user_agent() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/ua"))
+            .and(header("user-agent", crate::utils::USER_AGENT))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = crate::utils::http_client();
+        let resp = client
+            .get(format!("{}/ua", mock_server.uri()))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 200);
     }
 }
