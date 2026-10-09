@@ -167,6 +167,40 @@ pub fn write_executable(path: &Path, bytes: &[u8]) -> Result<(), Box<dyn Error>>
     Ok(())
 }
 
+/// Give everything below `dir` the modes R gives an installed package:
+/// directories are 0755, and files are readable by everyone and writable only
+/// by the owner, keeping whichever execute bits they have. This ignores the
+/// umask, and clears any setuid, setgid and sticky bits. Symbolic links are
+/// left alone, and not followed. `dir` itself is not changed.
+#[cfg(unix)]
+pub fn normalize_modes(dir: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        if file_type.is_symlink() {
+            continue;
+        }
+        let path = entry.path();
+        let mode = if file_type.is_dir() {
+            0o755
+        } else {
+            (entry.metadata()?.permissions().mode() | 0o644) & 0o755
+        };
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode))?;
+        if file_type.is_dir() {
+            normalize_modes(&path)?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+pub fn normalize_modes(_dir: &Path) -> std::io::Result<()> {
+    Ok(())
+}
+
 pub fn calculate_hash(s: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(s);
@@ -1164,5 +1198,42 @@ mod tests {
         use std::ffi::OsStr;
         let result = format_cmd_args(vec!["--help".to_string()], OsStr::new("anything"));
         assert_eq!(result[0], OsString::from("--help"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn modes_are_normalized_without_following_links() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("root");
+        std::fs::create_dir_all(root.join("sub")).unwrap();
+        let outside = tmp.path().join("outside");
+        std::fs::write(&outside, "x").unwrap();
+        for name in ["sub/plain", "sub/exec", "sub/private", "sub/setuid"] {
+            std::fs::write(root.join(name), "x").unwrap();
+        }
+        std::os::unix::fs::symlink(&outside, root.join("link")).unwrap();
+        let set = |p: &Path, mode| {
+            std::fs::set_permissions(p, std::fs::Permissions::from_mode(mode)).unwrap()
+        };
+        let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o7777;
+        set(&outside, 0o666);
+        set(&root.join("sub/plain"), 0o664);
+        set(&root.join("sub/exec"), 0o770);
+        set(&root.join("sub/private"), 0o400);
+        set(&root.join("sub/setuid"), 0o4777);
+        set(&root.join("sub"), 0o700);
+        set(&root, 0o700);
+
+        normalize_modes(&root).unwrap();
+        assert_eq!(mode(&root.join("sub/plain")), 0o644);
+        assert_eq!(mode(&root.join("sub/exec")), 0o754);
+        assert_eq!(mode(&root.join("sub/private")), 0o644);
+        assert_eq!(mode(&root.join("sub/setuid")), 0o755);
+        assert_eq!(mode(&root.join("sub")), 0o755);
+        // Not the directory it was pointed at.
+        assert_eq!(mode(&root), 0o700);
+        // Not what a link points to.
+        assert_eq!(mode(&outside), 0o666);
     }
 }
