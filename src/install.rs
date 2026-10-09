@@ -361,6 +361,7 @@ pub(crate) fn unpack_package(archive: &Path, dest: &Path) -> Result<(), Box<dyn 
     if header.starts_with(&[0x50, 0x4B]) {
         let mut ar = zip::ZipArchive::new(file)?;
         ar.extract(dest)?;
+        crate::utils::mask_tree(dest, PACKAGE_MODE_MASK)?;
     } else if header.starts_with(&[0x1F, 0x8B]) {
         unpack_tar(flate2::read::GzDecoder::new(file), dest)?;
     } else if header.starts_with(&[0x28, 0xB5, 0x2F, 0xFD]) {
@@ -373,9 +374,20 @@ pub(crate) fn unpack_package(archive: &Path, dest: &Path) -> Result<(), Box<dyn 
     Ok(())
 }
 
+/// Mask to apply to package archives. This drops anonymous access and
+/// group-write, and adds hardening against setuid, setgid, and sticky bits
+/// (which no package should ever have).
+///
+/// R's native installer gives a package the same modes, except that it keeps
+/// write for the group when the library it installs into allows it (an
+/// extremely rare configuration in modern times, and probably the wrong choice
+/// for rig anyway).
+const PACKAGE_MODE_MASK: u32 = 0o7022;
+
 fn unpack_tar<R: std::io::Read>(reader: R, dest: &Path) -> Result<(), Box<dyn Error>> {
     let mut ar = tar::Archive::new(reader);
     ar.set_preserve_permissions(true);
+    ar.set_mask(PACKAGE_MODE_MASK);
     ar.set_overwrite(true);
     ar.unpack(dest)?;
     Ok(())
@@ -1451,5 +1463,127 @@ mod tests {
     fn an_unparseable_linkingto_entry_is_dropped() {
         assert_eq!(parse_linkingto("cpp11, tzdb@0.4.0=bb").len(), 1);
         assert!(parse_linkingto("").is_empty());
+    }
+
+    // ----------------------------------------------------------------
+    // Modes
+
+    #[cfg(unix)]
+    fn mode_of(path: &Path) -> u32 {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o7777
+    }
+
+    /// A gzipped tarball of `pkg` with a `DESCRIPTION`, a `libs/pkg.so`, an
+    /// `R/pkg.rdb` and their directories, with the given modes.
+    #[cfg(unix)]
+    fn tarball_with_modes(path: &Path, pkg: &str, dir: u32, exe: u32, data: u32) {
+        let file = std::fs::File::create(path).unwrap();
+        let enc = flate2::write::GzEncoder::new(file, flate2::Compression::fast());
+        let mut ar = tar::Builder::new(enc);
+        let mut add = |name: String, content: &str, mode: u32, is_dir: bool| {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(content.len() as u64);
+            header.set_mode(mode);
+            if is_dir {
+                header.set_entry_type(tar::EntryType::Directory);
+            }
+            header.set_cksum();
+            ar.append_data(&mut header, name, content.as_bytes())
+                .unwrap();
+        };
+        add(format!("{}/", pkg), "", dir, true);
+        add(
+            format!("{}/DESCRIPTION", pkg),
+            &format!("Package: {}\nVersion: 1.0.0\nBuilt: R 4.4.0\n", pkg),
+            data,
+            false,
+        );
+        add(format!("{}/libs/", pkg), "", dir, true);
+        add(format!("{}/libs/{}.so", pkg, pkg), "so\n", exe, false);
+        add(format!("{}/R/", pkg), "", dir, true);
+        add(format!("{}/R/{}.rdb", pkg, pkg), "rdb\n", data, false);
+        ar.into_inner().unwrap().finish().unwrap();
+    }
+
+    /// A package archived with the group allowed to write comes out the way
+    /// R installs it, and what the packager did not allow stays unallowed.
+    #[cfg(unix)]
+    #[test]
+    fn an_unpacked_tarball_is_not_writable_by_the_group_or_others() {
+        let tmp = tempfile::tempdir().unwrap();
+        let archive = tmp.path().join("foo_1.0.0.tar.gz");
+        tarball_with_modes(&archive, "foo", 0o775, 0o777, 0o664);
+        let out = tmp.path().join("out");
+        std::fs::create_dir(&out).unwrap();
+        unpack_package(&archive, &out).unwrap();
+
+        assert_eq!(mode_of(&out.join("foo")), 0o755);
+        assert_eq!(mode_of(&out.join("foo/libs")), 0o755);
+        assert_eq!(mode_of(&out.join("foo/libs/foo.so")), 0o755);
+        assert_eq!(mode_of(&out.join("foo/DESCRIPTION")), 0o644);
+        assert_eq!(mode_of(&out.join("foo/R/foo.rdb")), 0o644);
+
+        // Modes that are already narrower are kept: this is not a umask.
+        let archive = tmp.path().join("bar_1.0.0.tar.gz");
+        tarball_with_modes(&archive, "bar", 0o750, 0o750, 0o640);
+        unpack_package(&archive, &out).unwrap();
+        assert_eq!(mode_of(&out.join("bar/libs/bar.so")), 0o750);
+        assert_eq!(mode_of(&out.join("bar/DESCRIPTION")), 0o640);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unpacked_tarball_has_no_setuid_or_sticky_bits() {
+        let tmp = tempfile::tempdir().unwrap();
+        let archive = tmp.path().join("foo_1.0.0.tar.gz");
+        tarball_with_modes(&archive, "foo", 0o1755, 0o4755, 0o644);
+        let out = tmp.path().join("out");
+        std::fs::create_dir(&out).unwrap();
+        unpack_package(&archive, &out).unwrap();
+        assert_eq!(mode_of(&out.join("foo/libs/foo.so")), 0o755);
+        assert_eq!(mode_of(&out.join("foo")), 0o755);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unpacked_zip_is_not_writable_by_the_group_or_others() {
+        let tmp = tempfile::tempdir().unwrap();
+        let archive = tmp.path().join("foo_1.0.0.zip");
+        let mut zw = zip::ZipWriter::new(std::fs::File::create(&archive).unwrap());
+        for (name, mode) in [("foo/DESCRIPTION", 0o664), ("foo/libs/foo.so", 0o775)] {
+            zw.start_file(
+                name,
+                zip::write::SimpleFileOptions::default().unix_permissions(mode),
+            )
+            .unwrap();
+            zw.write_all(b"x\n").unwrap();
+        }
+        zw.finish().unwrap();
+
+        let out = tmp.path().join("out");
+        std::fs::create_dir(&out).unwrap();
+        unpack_package(&archive, &out).unwrap();
+        assert_eq!(mode_of(&out.join("foo/DESCRIPTION")), 0o644);
+        assert_eq!(mode_of(&out.join("foo/libs/foo.so")), 0o755);
+        assert_eq!(mode_of(&out.join("foo/libs")) & 0o022, 0);
+    }
+
+    /// The library's files are links to the unpacked cache, so they have its
+    /// modes.
+    #[cfg(unix)]
+    #[test]
+    fn an_install_from_the_cache_is_not_writable_by_the_group_or_others() {
+        let tmp = tempfile::tempdir().unwrap();
+        let lib = tmp.path().join("lib");
+        std::fs::create_dir_all(&lib).unwrap();
+        let archive = tmp.path().join("foo_1.0.0.tgz");
+        tarball_with_modes(&archive, "foo", 0o775, 0o777, 0o666);
+
+        install_from_cache(&info("foo", &archive, None, &[]), &archive, "foo", &lib).unwrap();
+
+        assert_eq!(mode_of(&lib.join("foo/libs/foo.so")), 0o755);
+        assert_eq!(mode_of(&lib.join("foo/R/foo.rdb")), 0o644);
+        assert_eq!(mode_of(&lib.join("foo/DESCRIPTION")), 0o644);
     }
 }
