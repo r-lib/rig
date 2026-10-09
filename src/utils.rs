@@ -167,6 +167,36 @@ pub fn write_executable(path: &Path, bytes: &[u8]) -> Result<(), Box<dyn Error>>
     Ok(())
 }
 
+/// Clear the mode bits in `mask` from `root` and everything below it. Symbolic
+/// links are left alone, and not followed.
+#[cfg(unix)]
+pub fn mask_tree(root: &Path, mask: u32) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let metadata = std::fs::symlink_metadata(root)?;
+    if metadata.file_type().is_symlink() {
+        return Ok(());
+    }
+    let current = metadata.permissions().mode() & 0o7777;
+    if current & mask != 0 {
+        std::fs::set_permissions(root, std::fs::Permissions::from_mode(current & !mask))?;
+    }
+    if metadata.is_dir() {
+        for entry in std::fs::read_dir(root)? {
+            let entry = entry?;
+            if !entry.file_type()?.is_symlink() {
+                mask_tree(&entry.path(), mask)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+pub fn mask_tree(_root: &Path, _mask: u32) -> std::io::Result<()> {
+    Ok(())
+}
+
 pub fn calculate_hash(s: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(s);
@@ -1164,5 +1194,42 @@ mod tests {
         use std::ffi::OsStr;
         let result = format_cmd_args(vec!["--help".to_string()], OsStr::new("anything"));
         assert_eq!(result[0], OsString::from("--help"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_tree_is_masked_without_following_links() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("root");
+        std::fs::create_dir_all(root.join("sub")).unwrap();
+        let outside = tmp.path().join("outside");
+        std::fs::write(&outside, "x").unwrap();
+        std::fs::write(root.join("sub/file"), "x").unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("link")).unwrap();
+        let set = |p: &Path, mode| {
+            std::fs::set_permissions(p, std::fs::Permissions::from_mode(mode)).unwrap()
+        };
+        let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o7777;
+        set(&outside, 0o666);
+        set(&root.join("sub/file"), 0o777);
+        set(&root.join("sub"), 0o775);
+        set(&root, 0o777);
+
+        mask_tree(&root, 0o022).unwrap();
+        assert_eq!(mode(&root.join("sub/file")), 0o755);
+        assert_eq!(mode(&root.join("sub")), 0o755);
+        assert_eq!(mode(&root), 0o755);
+        // Not what a link points to.
+        assert_eq!(mode(&outside), 0o666);
+
+        // Nor when the root itself is a link.
+        let target = tmp.path().join("target");
+        std::fs::create_dir(&target).unwrap();
+        set(&target, 0o777);
+        let linked = tmp.path().join("linked");
+        std::os::unix::fs::symlink(&target, &linked).unwrap();
+        mask_tree(&linked, 0o022).unwrap();
+        assert_eq!(mode(&target), 0o777);
     }
 }

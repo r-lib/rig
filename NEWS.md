@@ -7,6 +7,9 @@
 * rig now sends a `User-Agent` header with its HTTP requests, e.g.
   `rig/0.11.1 (+https://github.com/r-lib/rig)`.
 
+* Packages are now installed with file modes more closely aligned with those
+  left by `R CMD INSTALL`. Existing packages in the cache are left unchanged.
+
 # rig 0.11.0
 
 ## Custom repositories
