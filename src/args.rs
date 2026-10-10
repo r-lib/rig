@@ -2184,6 +2184,19 @@ pub fn rig_app() -> Command {
                 .arg(exclude_newer_arg().conflicts_with("frozen"))
                 .args(proj_repos_args().map(|a| a.conflicts_with("frozen")))
                 .arg(
+                    Arg::new("library")
+                        .help(
+                            "Install into exactly this directory, instead of the\n\
+                            project library (default: .rvenv/lib, see\n\
+                            RIG_PROJ_LIBRARY_ROOT), and leave the project\n\
+                            environment alone. Implies --inexact.",
+                        )
+                        .long("library")
+                        .value_name("PATH")
+                        .num_args(1)
+                        .required(false),
+                )
+                .arg(
                     Arg::new("dry-run")
                         .help(
                             "Show what sync would do, without installing, removing or\n\
@@ -3688,6 +3701,20 @@ mod tests {
         let (_name, sub) = matches.subcommand().unwrap();
         let (_name, sub) = sub.subcommand().unwrap();
         assert!(sub.get_flag("frozen"));
+    }
+
+    #[test]
+    fn proj_sync_library_flag() {
+        let matches = rig_app()
+            .try_get_matches_from(["rig", "proj", "sync", "--library", "lib"])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        assert_eq!(sub.get_one::<String>("library").unwrap(), "lib");
+
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "proj", "sync", "--library"])
+            .is_err());
     }
 
     #[test]

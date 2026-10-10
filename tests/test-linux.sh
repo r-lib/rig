@@ -534,6 +534,45 @@ teardown() {
     grep -q '^r_version = "4.5"$' rproj.lock
 }
 
+@test "proj sync --library" {
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf libproj shared-lib dry-lib && mkdir libproj
+    cd libproj
+    run rig proj init -r 4.5
+    [[ "$status" -eq 0 ]]
+    run rig proj add --no-lock cli
+    [[ "$status" -eq 0 ]]
+    run rig proj lock
+    [[ "$status" -eq 0 ]]
+
+    # a dry run creates nothing
+    run rig proj sync --dry-run --library ../dry-lib --no-install-r --no-sysreqs
+    [[ "$status" -eq 0 ]]
+    [[ ! -e ../dry-lib && ! -e .rvenv/rvenv.cfg ]]
+
+    # only the library is written, the project environment is left alone,
+    # even when sync has to lock first
+    rm rproj.lock .Renviron
+    run rig proj sync --library ../shared-lib --no-install-r --no-sysreqs
+    [[ "$status" -eq 0 ]]
+    [[ -f rproj.lock && ! -e .Renviron ]]
+    [[ -d ../shared-lib/cli ]]
+    [[ ! -e .rvenv/rvenv.cfg && ! -e .rvenv/lib ]]
+
+    # packages already in the library are left alone, even if the lock file
+    # does not list them
+    mkdir ../shared-lib/extra
+    printf 'Package: extra\nVersion: 1.0\n' > ../shared-lib/extra/DESCRIPTION
+    run rig proj sync --library ../shared-lib --no-install-r --no-sysreqs
+    [[ "$status" -eq 0 ]]
+    [[ -d ../shared-lib/extra && -d ../shared-lib/cli ]]
+
+    # a sync without --library uses the project library
+    run rig proj sync --no-install-r --no-sysreqs
+    [[ "$status" -eq 0 ]]
+    [[ -d .rvenv/lib/cli && ! -L .rvenv/lib ]]
+}
+
 @test "run script with inline dependencies" {
     cd "$BATS_TEST_TMPDIR"
     rm -rf scriptdir && mkdir scriptdir && cd scriptdir

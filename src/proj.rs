@@ -3149,6 +3149,10 @@ struct ProjLockOptions {
     /// `--with-repos` and `--without-repos`: change the project's
     /// repositories for this lock, see [`ProjRepos::apply_args`].
     repos: Option<PkgReposArgs>,
+    /// Do not fill in `.Renviron` and `.rvenvlib`, for a `rig proj sync
+    /// --library` that locks first and must leave the project environment
+    /// alone.
+    no_env_files: bool,
 }
 
 fn sc_proj_lock(
@@ -3176,6 +3180,7 @@ fn sc_proj_lock(
         host_only: false,
         lockfile_label: None,
         repos: interpret_pkg_repos_args(args)?,
+        no_env_files: false,
     };
     if let Some(script) = args.get_one::<String>("script") {
         return proj_lock_script(Path::new(script), opts, args);
@@ -3861,7 +3866,9 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
 
     // Lock itself never reads `.Renviron`/`.rvenvlib` -- they only matter for
     // R started directly -- but fill them in if missing, same as sync/run.
-    ensure_rvenv_files(root)?;
+    if !opts.no_env_files {
+        ensure_rvenv_files(root)?;
+    }
 
     if solve.members.len() > 1 {
         let names = solve
@@ -5197,6 +5204,9 @@ pub(crate) struct ProjSyncOptions {
     /// `--with-repos` and `--without-repos`: lock again, with the project's
     /// repositories changed, see [`ProjRepos::apply_args`].
     pub repos: Option<PkgReposArgs>,
+    /// `--library`: the library to install into, instead of the project
+    /// library. Used exactly as given.
+    pub library: Option<PathBuf>,
 }
 
 impl Default for ProjSyncOptions {
@@ -5219,6 +5229,7 @@ impl Default for ProjSyncOptions {
             arch: None,
             sysreqs: None,
             repos: None,
+            library: None,
         }
     }
 }
@@ -5228,6 +5239,11 @@ fn sc_proj_sync(
     _libargs: &ArgMatches,
     _mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
+    let library = args
+        .get_one::<String>("library")
+        .map(std::path::absolute)
+        .transpose()?;
+
     // The project is the nearest one at or above the current directory, so
     // that `rig proj sync` works from a subdirectory, like `git` does. In a
     // workspace it is the workspace root, which owns the one library every
@@ -5251,13 +5267,14 @@ fn sc_proj_sync(
         max_concurrent: args.get_one::<usize>("max-concurrent").copied(),
         r_version: args.get_one::<String>("r-version").cloned(),
         platform: args.get_one::<String>("platform").cloned(),
-        inexact: args.get_flag("inexact"),
+        inexact: args.get_flag("inexact") || library.is_some(),
         frozen: args.get_flag("frozen"),
         dry_run: args.get_flag("dry-run"),
         exclude_newer: exclude_newer_arg(args)?,
         arch: None,
         sysreqs: crate::sysreqs::cli_flag(args),
         repos: interpret_pkg_repos_args(args)?,
+        library,
     };
 
     proj_sync(&root, &opts, args)
@@ -5414,6 +5431,7 @@ pub(crate) fn proj_sync(
     let lock_opts = ProjLockOptions {
         exclude_newer: opts.exclude_newer.clone(),
         repos: opts.repos.clone(),
+        no_env_files: opts.library.is_some(),
         ..Default::default()
     };
     if !lock_path.exists() {
@@ -5532,8 +5550,15 @@ pub(crate) fn proj_sync(
     // init` has already set up (there is an `rproj.toml`) -- but nothing
     // else here reads `.Renviron`/`.rvenvlib`, they only matter for R
     // started directly, so fill them in if missing rather than failing.
-    ensure_rvenv_files(root)?;
-    let library_path = project_library(root)?;
+    //
+    // None of that is touched for a `--library`, which only installs.
+    if opts.library.is_none() {
+        ensure_rvenv_files(root)?;
+    }
+    let library_path = match &opts.library {
+        Some(library) => library.clone(),
+        None => project_library(root)?,
+    };
 
     // `rig proj init` does not create the project library, this is where it
     // comes from. Create it now rather than just before the installs: an
@@ -5562,7 +5587,9 @@ pub(crate) fn proj_sync(
         opts.dry_run,
     )?;
 
-    {
+    // The project environment is for the project library, so a `--library`
+    // leaves it alone.
+    if opts.library.is_none() {
         // When the library is centralized, leave a compatibility symlink at
         // its default in-project location, `.rvenv/lib`, pointing at the real
         // (centralized) library -- mirroring uv's `.venv` junction for its

@@ -7,6 +7,9 @@
 * rig now sends a `User-Agent` header with its HTTP requests, e.g.
   `rig/0.11.1 (+https://github.com/r-lib/rig)`.
 
+* `rig proj sync --library <path>` can be used to install into a one-off
+  directory, without changing the project environment.
+
 # rig 0.11.0
 
 ## Custom repositories
