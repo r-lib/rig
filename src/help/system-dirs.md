@@ -11,6 +11,8 @@ centralizes project package libraries under, if configured.
 
 The directories themselves may not exist.
 
+The cache directory respects the `--cache-dir` flag.
+
 Use `--json` for machine-readable output.
 
 The output contains the directories in effect. They may be the defaults, or
