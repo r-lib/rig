@@ -66,6 +66,9 @@ pub struct CranlikeRepo {
 
 impl CranlikeRepo {
     pub fn new(name: &str, url: &str) -> CranlikeRepo {
+        // So that `RIG_REPO_<NAME>_*` apply to it. This also removes a
+        // password from the URL.
+        let url = crate::auth::register_repo(name, url);
         CranlikeRepo {
             name: name.to_string(),
             url: url.trim_end_matches('/').to_string(),

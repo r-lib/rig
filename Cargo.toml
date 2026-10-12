@@ -115,6 +115,10 @@ toml = "0.8"
 toml_edit = "0.22"
 # hash url to get target path, for macOS installers
 sha2 = "0.9.8"
+# read a password from the terminal without echo, for `rig auth login`
+rpassword = "7"
+# decode JWT payloads (PPM SSO tokens)
+base64 = "0.22"
 # expand ~ in paths, e.g. in R_LIBS env vars, env vars for RStudio
 shellexpand = "2.1.0"
 simple-error = "0.2.3"
@@ -136,7 +140,12 @@ reqwest = { version = "0.13", features = [
     "rustls-native-certs",
 ], default-features = false }
 
+# system credential store, for authenticated repositories
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3.6", features = ["apple-native"] }
+
 [target.'cfg(windows)'.dependencies]
+keyring = { version = "3.6", features = ["windows-native"] }
 reqwest = { version = "0.13", features = ["native-tls"], default-features = false }
 is_elevated = "0.1.2"
 remove_dir_all = "0.7.0"
@@ -147,6 +156,9 @@ winreg = "0.10"
 # roots on Linux so rig works in minimal containers without a system CA store.
 [target.'cfg(target_os = "linux")'.dependencies]
 webpki-root-certs = "1"
+# system credential store via a pure-Rust Secret Service client (zbus), so the
+# static musl build works
+keyring = { version = "3.6", features = ["async-secret-service", "crypto-rust", "async-io"] }
 
 [build-dependencies]
 clap = { version = "4.3.8", features = ["cargo", "color"] }

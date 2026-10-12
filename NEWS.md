@@ -7,6 +7,9 @@
 * rig now sends a `User-Agent` header with its HTTP requests, e.g.
   `rig/0.11.1 (+https://github.com/r-lib/rig)`.
 
+* rig now supports authenticated repositories and Posit Package Manager
+  instances. See the new "Authentication" guide.
+
 # rig 0.11.0
 
 ## Custom repositories

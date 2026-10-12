@@ -21,6 +21,11 @@ would put into the `repos` option in R, i.e. the directory that has the
 `src/contrib` directory in it, and the `bin` directory, if the repository has binary
 packages.
 
+If the repository needs a username and a password, put the username into
+the URL, e.g. `https://alice@cran.acme.com/cran`, but not the password: rig
+refuses URLs with a password. See [`rig auth`](auth.qmd) and the [authentication guide](../auth.qmd) for
+the ways to give rig the password.
+
 With `--enable` rig enables the repository for the default R version, or the R
 versions you list with `--r-version`, or all of them with `--all-versions`.
 `--enable --all-versions` also enables the repository for the R versions you

@@ -165,7 +165,9 @@ fn build_log_url(
 }
 
 async fn fetch_build_log(url: &reqwest::Url) -> Result<Option<String>, Box<dyn Error>> {
-    let resp = http_client().get(url.clone()).send().await?;
+    let resp = crate::auth::get(&http_client(), url.as_str())
+        .send()
+        .await?;
     // P3M's CDN reports a missing log as either status, per its own comment.
     if resp.status() == reqwest::StatusCode::NOT_FOUND
         || resp.status() == reqwest::StatusCode::FORBIDDEN
