@@ -11,6 +11,11 @@
   `cache-dir` configuration entry allow overriding the location of rig's cache.
   `--no-cache` still takes precedence.
 
+* An R session that runs a different R minor version than the one the
+  project was synced for now really leaves the project library alone.
+  Before, rig printed a warning, but still activated the library (#450).
+  Call `rig proj sync` in existing projects to update the activation code.
+
 # rig 0.11.0
 
 ## Custom repositories

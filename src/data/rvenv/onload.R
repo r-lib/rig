@@ -44,6 +44,9 @@ warn_wrong_r_version <- function(want, running) {
 # incompatible: its compiled packages may fail to load, or worse, load and
 # crash. So treat a mismatch the same way as a missing library -- back off
 # instead of attaching it -- rather than merely warning and continuing.
+# This must be an `if`/`else`, not an early `return()`: this file is run with
+# `source()`, where a top-level `return()` only ends the current expression,
+# and the activation code below it would still run.
 cfg <- read_rvenv_cfg(venv)
 running <- r_minor_version()
 if (!is.null(cfg[["r-minor"]]) && !identical(cfg[["r-minor"]], running)) {
@@ -57,42 +60,41 @@ if (!is.null(cfg[["r-minor"]]) && !identical(cfg[["r-minor"]], running)) {
   if (!activated && !warned) {
     warn_wrong_r_version(cfg[["r-minor"]], running)
   }
-  return(invisible())
-}
-
-# A project that was synced since the parent process started.
-Sys.unsetenv("RVENV_UNSYNCED")
-
-Sys.setenv(
-  R_LIBS_USER = lib,
-  # Setting this empty does not reliably disable the site library on all R
-  # versions, so point it at a path that does not exist.
-  R_LIBS_SITE = "/nonexistent/rvenv-no-site",
-  RVENV = venv
-)
-
-# Shared dev-tool library (devtools, usethis, roxygen2, ...), same for
-# every project on this R version. `rig proj sync` resolves it once, into
-# `rvenv.cfg`'s `tools-lib` -- not derived here from `RVENV_R_LIBS_USER`,
-# because `rig run`'s wrapper sets `R_LIBS_USER` to the project library
-# before R starts, and by the time R gets to snapshot its own default user
-# library into `RVENV_R_LIBS_USER`, it is already gone. Appended after the
-# project library, so project deps always resolve first; before `.Library`,
-# which `.libPaths()` adds itself. Fine if it does not exist yet, or if an
-# older `rig proj sync` never wrote it (empty string): `.libPaths()`
-# silently drops missing entries.
-paths <- lib
-tools <- cfg[["tools-lib"]]
-if (!is.null(tools) && nzchar(tools)) paths <- c(paths, tools)
-
-# `include.site` was added in R 4.2.0.
-if (getRversion() >= "4.2.0") {
-  .libPaths(paths, include.site = FALSE)
 } else {
-  .libPaths(paths)
+  # A project that was synced since the parent process started.
+  Sys.unsetenv("RVENV_UNSYNCED")
+
+  Sys.setenv(
+    R_LIBS_USER = lib,
+    # Setting this empty does not reliably disable the site library on all R
+    # versions, so point it at a path that does not exist.
+    R_LIBS_SITE = "/nonexistent/rvenv-no-site",
+    RVENV = venv
+  )
+
+  # Shared dev-tool library (devtools, usethis, roxygen2, ...), same for
+  # every project on this R version. `rig proj sync` resolves it once, into
+  # `rvenv.cfg`'s `tools-lib` -- not derived here from `RVENV_R_LIBS_USER`,
+  # because `rig run`'s wrapper sets `R_LIBS_USER` to the project library
+  # before R starts, and by the time R gets to snapshot its own default user
+  # library into `RVENV_R_LIBS_USER`, it is already gone. Appended after the
+  # project library, so project deps always resolve first; before `.Library`,
+  # which `.libPaths()` adds itself. Fine if it does not exist yet, or if an
+  # older `rig proj sync` never wrote it (empty string): `.libPaths()`
+  # silently drops missing entries.
+  paths <- lib
+  tools <- cfg[["tools-lib"]]
+  if (!is.null(tools) && nzchar(tools)) paths <- c(paths, tools)
+
+  # `include.site` was added in R 4.2.0.
+  if (getRversion() >= "4.2.0") {
+    .libPaths(paths, include.site = FALSE)
+  } else {
+    .libPaths(paths)
+  }
+
+  Sys.unsetenv("R_DEFAULT_PACKAGES")
+
+  # One warning per project is enough; child processes are quiet.
+  if (!activated) warn_unsynced(venv, lib)
 }
-
-Sys.unsetenv("R_DEFAULT_PACKAGES")
-
-# One warning per project is enough; child processes are quiet.
-if (!activated) warn_unsynced(venv, lib)

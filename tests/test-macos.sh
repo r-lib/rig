@@ -467,6 +467,15 @@ teardown() {
     run env -u RVENV R-4.1 -q -s -e 'cat(.libPaths()[1])'
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "myproj/[.]rvenv/lib"
+
+    # A library built for another R minor version is not attached: only a
+    # warning, and the library path stays as it was.
+    echo "r-minor = 0.0" > .rvenv/rvenv.cfg
+    run env -u RVENV R-4.1 -q -s -e 'cat(.libPaths()[1], Sys.getenv("RVENV"))'
+    [[ "$status" -eq 0 ]]
+    echo "$output" | grep -q "Project needs R 0.0"
+    [[ "$output" != *".rvenv"* ]]
+    rm .rvenv/rvenv.cfg
     rm .rvenv/onload.R
     rmdir .rvenv/lib
 
