@@ -11,6 +11,9 @@
   `cache-dir` configuration entry allow overriding the location of rig's cache.
   `--no-cache` still takes precedence.
 
+* Packages are now installed with file modes more closely aligned with those
+  left by `R CMD INSTALL`. Existing packages in the cache are left unchanged.
+
 * An R session that runs a different R minor version than the one the
   project was synced for now really leaves the project library alone.
   Before, rig printed a warning, but still activated the library (#450).
