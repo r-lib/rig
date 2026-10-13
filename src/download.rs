@@ -254,6 +254,42 @@ async fn download_if_newer(
     local_path: &PathBuf,
     etag: Option<&str>,
 ) -> Result<(bool, Option<String>), Box<dyn Error>> {
+    match download_if_newer_quiet(client, url, local_path, etag).await {
+        Err(err) if err.downcast_ref::<UnexpectedStatus>().is_some() => {
+            OUTPUT.error(&err.to_string());
+            error!("{}", err);
+            Err(err)
+        }
+        result => result,
+    }
+}
+
+#[derive(Debug)]
+struct UnexpectedStatus {
+    url: String,
+    status: StatusCode,
+}
+
+impl std::fmt::Display for UnexpectedStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Failed to download {}, status: {}",
+            self.url, self.status
+        )
+    }
+}
+
+impl Error for UnexpectedStatus {}
+
+/// [`download_if_newer`], which leaves it to the caller to report a response
+/// that is not a success, for a caller that has other URLs to try.
+async fn download_if_newer_quiet(
+    client: &reqwest::Client,
+    url: &str,
+    local_path: &PathBuf,
+    etag: Option<&str>,
+) -> Result<(bool, Option<String>), Box<dyn Error>> {
     let mut req = client.get(url);
     if local_path.exists() {
         if let Some(etag_value) = etag {
@@ -283,11 +319,10 @@ async fn download_if_newer(
             Ok((true, new_etag))
         }
 
-        status => {
-            OUTPUT.error(&format!("Failed to download {}, status: {}", url, status));
-            error!("Failed to download {}, status: {}", url, status);
-            bail!("Failed to download {}, status: {}", url, status);
-        }
+        status => Err(Box::new(UnexpectedStatus {
+            url: url.to_string(),
+            status,
+        })),
     }
 }
 
@@ -337,34 +372,38 @@ async fn download_first_available(
     local_path: &PathBuf,
     etag: Option<&str>,
 ) -> Result<(bool, Option<String>), Box<dyn Error>> {
-    let mut last_error = None;
+    let mut failures: Vec<String> = vec![];
 
-    for url in urls {
+    for (i, url) in urls.iter().enumerate() {
         info!("Trying to download from {}", url);
-        match download_if_newer(client, url, local_path, etag).await {
+        match download_if_newer_quiet(client, url, local_path, etag).await {
             Ok((downloaded, etag)) => {
                 info!("Successfully downloaded from {}", url);
                 return Ok((downloaded, etag));
             }
             Err(e) => {
-                warn!("Failed to download from {}: {}", url, e);
-                last_error = Some(e);
+                if i + 1 < urls.len() {
+                    info!("Cannot download from {}, trying the next URL: {}", url, e);
+                } else {
+                    debug!("Cannot download from {}: {}", url, e);
+                }
+                let reason = match e.downcast_ref::<UnexpectedStatus>() {
+                    Some(unexpected) => unexpected.status.to_string(),
+                    None => e.to_string(),
+                };
+                failures.push(format!("{} ({})", url, reason));
             }
         }
     }
 
-    match last_error {
-        Some(e) => {
-            OUTPUT.error("All download URLs failed.");
-            error!("All download URLs failed. Last error: {}", e);
-            bail!("All download URLs failed. Last error: {}", e)
-        }
-        None => {
-            OUTPUT.error("No URLs provided.");
-            error!("No URLs provided.");
-            bail!("No URLs provided")
-        }
+    if failures.is_empty() {
+        OUTPUT.error("No URLs provided.");
+        error!("No URLs provided.");
+        bail!("No URLs provided")
     }
+    let msg = format!("All download URLs failed: {}", failures.join("; "));
+    error!("{}", msg);
+    bail!("{}", msg)
 }
 
 /// Try to download from multiple URLs, using the first one that succeeds (sync wrapper).
@@ -1088,6 +1127,46 @@ mod tests {
 
         // Clean up
         let _ = std::fs::remove_file(&file1_path);
+    }
+
+    #[tokio::test]
+    async fn all_failed_urls_are_in_the_error() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/gone.txt"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&mock_server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/broken.txt"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&mock_server)
+            .await;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("out.txt");
+        let first = format!("{}/gone.txt", mock_server.uri());
+        let second = format!("{}/broken.txt", mock_server.uri());
+        let client = reqwest::Client::new();
+        let err = download_first_available(&client, &[&first, &second], &file, None)
+            .await
+            .unwrap_err()
+            .to_string();
+
+        assert!(err.starts_with("All download URLs failed"), "{}", err);
+        assert!(
+            err.contains(&format!("{} (404 Not Found)", first)),
+            "{}",
+            err
+        );
+        assert!(
+            err.contains(&format!("{} (500 Internal Server Error)", second)),
+            "{}",
+            err
+        );
+        assert!(!file.exists());
+        // The caller reports the failure, with its own context.
+        assert!(!OUTPUT.error_shown(&err), "{}", err);
     }
 
     #[tokio::test]
