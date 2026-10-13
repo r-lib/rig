@@ -48,16 +48,25 @@ configuration file takes precedence over rig's built-in default.
   not checked.
 
 - `no-cache` (`RIG_NO_CACHE`): set it to `true` to stop rig from using its cache,
-  the same as passing `--no-cache`. rig then neither reads nor writes the
-  cache directory: it downloads the repository metadata, the binary package
+  the same as passing `--no-cache`. rig then neither reads nor writes
+  cached files: it downloads the repository metadata, the binary package
   indices and the package files again, compiles a source package instead of
   unpacking a build it made earlier, and downloads an R or Rtools installer
   again instead of reusing the one in the download directory. What it
   downloads and builds goes into a temporary directory that is removed when
-  rig exits, so the cache is left exactly as it was. Defaults to `false`.
-  This is meant for debugging and for the occasional run that must not
-  trust anything cached; it makes rig considerably slower, so it is a poor
-  thing to turn on permanently.
+  rig exits, so the cached files are left exactly as they were. Log files are
+  the exception, see `cache-dir`. Defaults to `false`. This is meant for
+  debugging and for the occasional run that must not trust anything cached; it
+  makes rig considerably slower, so it is a poor thing to turn on permanently.
+
+- `cache-dir` (`RIG_CACHE_DIR`, `--cache-dir`): the directory rig keeps its
+  cache in: the downloaded repository metadata and package files, packages rig
+  built from source, git mirrors and the environments of scripts. Defaults to
+  the platform's per-user cache location, e.g. `~/.cache/rig` on Linux (or
+  `$XDG_CACHE_HOME/rig`), `~/Library/Caches/com.gaborcsardi.rig` on macOS and
+  `%LOCALAPPDATA%\gaborcsardi\rig\cache` on Windows. On Linux and Windows the
+  rig log files are also written into a `logs` directory inside it, even if
+  `no-cache` / `--no-cache` is in effect.
 
 - `concurrent-downloads` (`RIG_CONCURRENT_DOWNLOADS`): the maximum number of
   downloads rig performs at the same time, e.g. when downloading package
