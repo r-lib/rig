@@ -1885,7 +1885,14 @@ fn describe_solve_repos(
     let description = if default {
         None
     } else {
-        let names: Vec<String> = ids.iter().map(name).collect();
+        // Several repositories may have the same name, e.g. P3M, which has
+        // CRAN's extended metadata, and a plain CRAN entry. Name each once.
+        let mut names: Vec<String> = vec![];
+        for n in ids.iter().map(name) {
+            if !names.iter().any(|m| m.eq_ignore_ascii_case(&n)) {
+                names.push(n);
+            }
+        }
         Some(match names.split_last() {
             None => "any repository".to_string(),
             Some((last, [])) => last.clone(),
@@ -6125,6 +6132,27 @@ mod tests {
     use crate::dcf::RDepType;
     use crate::rproj::{Dependency, Group, Workspace};
     use std::collections::BTreeMap;
+
+    #[test]
+    fn solve_repos_description_names_each_repo_once() {
+        use crate::repos::feed::{CranlikeRepo, MetadataFeed};
+        // P3M has CRAN's extended metadata, so it is named CRAN, like the
+        // plain CRAN entry after it.
+        let repos = vec![
+            PkgRepo::Extended(MetadataFeed::cran()),
+            PkgRepo::Cranlike(CranlikeRepo::new("CRAN", "https://cloud.r-project.org")),
+        ];
+        let (description, _) = describe_solve_repos(&repos, &RepoFilter::default());
+        assert_eq!(description.as_deref(), Some("CRAN"));
+
+        let repos = vec![
+            PkgRepo::Extended(MetadataFeed::cran()),
+            PkgRepo::Cranlike(CranlikeRepo::new("acme", "https://cran.acme.com")),
+            PkgRepo::Cranlike(CranlikeRepo::new("CRAN", "https://cloud.r-project.org")),
+        ];
+        let (description, _) = describe_solve_repos(&repos, &RepoFilter::default());
+        assert_eq!(description.as_deref(), Some("CRAN or acme"));
+    }
 
     #[test]
     fn numeric_r_versions_are_not_installed_r_names() {
