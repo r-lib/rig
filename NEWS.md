@@ -10,6 +10,14 @@
 * rig now supports authenticated repositories and Posit Package Manager
   instances. See the new "Authentication" guide.
 
+* An R session that runs a different R minor version than the one the
+  project was synced for now really leaves the project library alone.
+  Before, rig printed a warning, but still activated the library (#450).
+  Call `rig proj sync` in existing projects to update the activation code.
+
+* The dependency solver now treats a dash in a package version the same as
+  a dot, like R does, so e.g. version `0.3-3` satisfies `>= 0.3.3` (#453).
+
 # rig 0.11.0
 
 ## Custom repositories
