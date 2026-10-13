@@ -3277,6 +3277,15 @@ pub fn rig_app() -> Command {
                 .long("no-cache")
                 .global(true)
                 .action(clap::ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("cache-dir")
+                .help("Path to the cache directory (overrides RIG_CACHE_DIR and config)")
+                .long("cache-dir")
+                .value_name("CACHE_DIR")
+                .global(true)
+                .num_args(1)
+                .value_parser(clap::builder::NonEmptyStringValueParser::new()),
         );
 
     rig = rig
@@ -3356,6 +3365,10 @@ pub fn is_r_script_file(arg: &str) -> bool {
         .is_ok_and(|_| &start == b"#!")
 }
 
+// Global options that take a value, in a separate argument unless they are
+// written as `--opt=value`.
+const GLOBAL_VALUE_OPTS: [&str; 1] = ["--cache-dir"];
+
 // `rig run` options that take a value, in a separate argument unless they
 // are written as `--opt=value` or `-oVALUE`.
 const RUN_VALUE_OPTS: [&str; 8] = [
@@ -3401,18 +3414,23 @@ where
     }
     let mut out = Vec::new();
     let mut iter = argv.into_iter();
-    // argv[0], then global flags (none of them takes a value) up to the
-    // subcommand.
+    // argv[0], then global flags up to the subcommand.
     let mut is_run = false;
     if let Some(arg0) = iter.next() {
         out.push(arg0);
     }
-    for arg in iter.by_ref() {
+    while let Some(arg) = iter.next() {
         let flag = arg.to_string_lossy().starts_with('-');
         is_run = arg.as_os_str() == OsStr::new("run");
+        let takes_value = GLOBAL_VALUE_OPTS.contains(&arg.to_string_lossy().as_ref());
         out.push(arg);
         if !flag {
             break;
+        }
+        if takes_value {
+            if let Some(value) = iter.next() {
+                out.push(value);
+            }
         }
     }
     // Only scripts given before the first non-script positional argument
@@ -3440,7 +3458,7 @@ where
             }
         } else if s.starts_with("--script=") || (s.starts_with("-f") && s.len() > 2) {
             true
-        } else if RUN_VALUE_OPTS.contains(&s.as_str()) {
+        } else if RUN_VALUE_OPTS.contains(&s.as_str()) || GLOBAL_VALUE_OPTS.contains(&s.as_str()) {
             if let Some(value) = iter.next() {
                 out.push(value);
             }
@@ -3922,6 +3940,31 @@ mod tests {
         let (out, r_args) = split(&["rig", "run", &r, "a", "--foo", "-x"]);
         assert_eq!(out, ["rig", "run", &r, "--", "a", "--foo", "-x"]);
         assert!(r_args.is_empty());
+    }
+
+    #[test]
+    fn test_split_run_args_cache_dir_before_run() {
+        let (_dir, r, _) = script_dir();
+        let (out, _) = split(&["rig", "--cache-dir", "/tmp/c", "run", &r, "--help"]);
+        assert_eq!(
+            out,
+            ["rig", "--cache-dir", "/tmp/c", "run", &r, "--", "--help"]
+        );
+        let (out, _) = split(&["rig", "--cache-dir=/tmp/c", "run", &r, "--help"]);
+        assert_eq!(
+            out,
+            ["rig", "--cache-dir=/tmp/c", "run", &r, "--", "--help"]
+        );
+    }
+
+    #[test]
+    fn test_split_run_args_cache_dir_after_run() {
+        let (_dir, r, _) = script_dir();
+        let (out, _) = split(&["rig", "run", "--cache-dir", &r, &r, "--help"]);
+        assert_eq!(out, ["rig", "run", "--cache-dir", &r, &r, "--", "--help"]);
+        let (out, r_args) = split(&["rig", "run", "--cache-dir", "/tmp/c", "--", "--vanilla"]);
+        assert_eq!(out, ["rig", "run", "--cache-dir", "/tmp/c"]);
+        assert_eq!(r_args, ["--vanilla"]);
     }
 
     #[test]

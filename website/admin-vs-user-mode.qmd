@@ -205,6 +205,11 @@ config key:
   by the platform installer (the Apple `.pkg`, the Windows installer, or a Linux
   distribution package) to its fixed system location and cannot be relocated.
 
+- **Cache directory**: `--cache-dir` flag, `RIG_CACHE_DIR` env var, or the
+  `cache-dir` config key. This applies in both modes, overriding the platform's per-user cache
+  location (`~/.cache/rig` on Linux, `~/Library/Caches/com.gaborcsardi.rig`
+  on macOS). `--no-cache` takes precedence.
+
 ## See also
 
 - The tutorials for step-by-step walkthroughs: getting started in [admin

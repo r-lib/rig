@@ -10,6 +10,13 @@
 * `rig proj sync --library <path>` can be used to install into a one-off
   directory, without changing the project environment.
 
+* A new `--cache-dir` flag, `RIG_CACHE_DIR` environment variable, and
+  `cache-dir` configuration entry allow overriding the location of rig's cache.
+  `--no-cache` still takes precedence.
+
+* Packages are now installed with file modes more closely aligned with those
+  left by `R CMD INSTALL`. Existing packages in the cache are left unchanged.
+
 * An R session that runs a different R minor version than the one the
   project was synced for now really leaves the project library alone.
   Before, rig printed a warning, but still activated the library (#450).
