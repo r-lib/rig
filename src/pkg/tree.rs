@@ -127,11 +127,70 @@ fn print_tree(tree: &DepTree, json: bool) -> Result<(), Box<dyn Error>> {
     if json {
         print_tree_json(tree)?;
     } else {
-        let color = std::io::stdout().is_terminal() && env::var_os("NO_COLOR").is_none();
+        let tty = std::io::stdout().is_terminal();
+        let color = tty && env::var_os("NO_COLOR").is_none();
         print!("{}", render_tree(tree, color));
+
+        // The legend is only a reading aid, so it is skipped when the output
+        // is redirected and scripts and saved listings get the tree alone.
+        if let Some(legend) = legend(tree).filter(|_| tty) {
+            use owo_colors::OwoColorize;
+            println!();
+            if color {
+                println!("{}", legend.dimmed());
+            } else {
+                println!("{}", legend);
+            }
+        }
     }
 
     Ok(())
+}
+
+/// Explain the marks that appear in the tree, on one line, in the order they
+/// are printed on a line. Marks that the tree does not use are left out, so a
+/// tree without marks has no legend.
+fn legend(tree: &DepTree) -> Option<String> {
+    fn walk(nodes: &[TreeNode], inverted: bool, marks: &mut HashSet<char>, repeat: &mut bool) {
+        for node in nodes {
+            if let Some(m) = type_marks(&node.types, inverted) {
+                marks.extend(m.chars().filter(|c| c.is_ascii_alphabetic()));
+            }
+            *repeat |= node.repeat;
+            walk(&node.children, inverted, marks, repeat);
+        }
+    }
+    let inverted = tree.why.is_some();
+    let mut marks = HashSet::new();
+    let mut repeat = false;
+    walk(&tree.root.children, inverted, &mut marks, &mut repeat);
+
+    let mut out = vec![];
+    for (mark, field) in [
+        ('D', "Depends"),
+        ('L', "LinkingTo"),
+        ('S', "Suggests"),
+        ('E', "Enhances"),
+    ] {
+        if marks.contains(&mark) {
+            out.push(format!("[{}]: {}", mark, field));
+        }
+    }
+    if repeat {
+        out.push(format!(
+            "(*): {} shown above",
+            if inverted {
+                "dependents"
+            } else {
+                "dependencies"
+            }
+        ));
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(out.join(", "))
+    }
 }
 
 // ------------------------------------------------------------------------
@@ -2246,6 +2305,58 @@ mod tests {
 
         // ... and nothing at all when color is off.
         assert!(!render_tree(&tree, false).contains('\u{1b}'));
+    }
+
+    #[test]
+    fn the_legend_explains_the_marks_in_the_tree() {
+        let stub = Stub {
+            packages: vec![
+                ("a", "1.0.0", "Depends: b; Imports: c; LinkingTo: c"),
+                ("b", "1.0.0", "Imports: d"),
+                ("c", "1.0.0", "Imports: d"),
+                ("d", "1.0.0", "Imports: e"),
+                ("e", "1.0.0", ""),
+            ],
+        };
+
+        let tree = dep_tree(&stub, "a", "latest", false, false).unwrap();
+        assert_eq!(
+            legend(&tree).as_deref(),
+            Some("[D]: Depends, [L]: LinkingTo, (*): dependencies shown above")
+        );
+    }
+
+    #[test]
+    fn the_legend_leaves_out_the_marks_not_in_the_tree() {
+        let stub = Stub {
+            packages: vec![
+                ("a", "1.0.0", "Imports: b; Suggests: s"),
+                ("b", "1.0.0", ""),
+                ("s", "1.0.0", ""),
+            ],
+        };
+
+        // Soft deps get a section, not a mark, in a forward tree.
+        let tree = dep_tree(&stub, "a", "latest", true, false).unwrap();
+        assert_eq!(legend(&tree), None);
+    }
+
+    #[test]
+    fn the_legend_of_an_inverted_tree_reads_upwards() {
+        let stub = Stub {
+            packages: vec![
+                ("a", "1.0.0", "Depends: b; Suggests: t"),
+                ("b", "1.0.0", "Imports: c, t"),
+                ("c", "1.0.0", "Imports: t"),
+                ("t", "1.0.0", ""),
+            ],
+        };
+
+        let tree = why_tree(&stub, "a", "t", true);
+        assert_eq!(
+            legend(&tree).as_deref(),
+            Some("[D]: Depends, [S]: Suggests, (*): dependents shown above")
+        );
     }
 
     #[test]
