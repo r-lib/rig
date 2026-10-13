@@ -29,6 +29,11 @@
   if `rproj.lock` is missing or out of date with `rproj.toml`, e.g. in CI
   (#411).
 
+* `rig pkg install` now calls its `--no-install-project` option
+  `--no-install-self`. The old name still works, as an alias (#442).
+  `rig proj sync` accepts `--no-install-self` as an alias of
+  `--no-install-project`.
+
 # rig 0.11.0
 
 ## Custom repositories

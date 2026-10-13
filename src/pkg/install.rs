@@ -477,12 +477,12 @@ fn add_dev_deps_of_package(
     Ok(())
 }
 
-/// `--no-install-project`: leave the packages named on the command line out
+/// `--no-install-self`: leave the packages named on the command line out
 /// of the solution, keeping only their dependencies -- the same thing
 /// `rig proj sync --no-install-project` does for a project's own package.
 ///
 /// A named package still stays if some package that stays depends on it,
-/// e.g. `rig pkg install --no-install-project cli pkgA` where `pkgA` imports
+/// e.g. `rig pkg install --no-install-self cli pkgA` where `pkgA` imports
 /// `cli`, or a `--dev` dependency that imports the named package. That is
 /// iterated to a fixpoint, since a named package kept that way can in turn
 /// depend on another named package.
@@ -1153,7 +1153,7 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // --no-install-project
+    // --no-install-self
 
     /// The names `drop_named_packages` keeps, sorted. `solution` is
     /// `(package, dependencies)`.

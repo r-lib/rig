@@ -97,8 +97,9 @@ the project directory, the same way it installs a `path` dependency. Sync
 updates an automatically generated `DESCRIPTION` at the project root from
 `rproj.toml` first, same as [`rig proj export`](#rig-proj-export) would.
 
-Pass `--no-install-project` to leave it out. It still gets installed if
-another package in the wanted set actually depends on it by name.
+Pass `--no-install-project` (or its alias, `--no-install-self`) to leave it
+out. It still gets installed if another package in the wanted set actually
+depends on it by name.
 
 ## Centralizing the project library
 

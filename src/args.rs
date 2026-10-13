@@ -2090,6 +2090,7 @@ pub fn rig_app() -> Command {
                             another package actually depends on it.",
                         )
                         .long("no-install-project")
+                        .visible_alias("no-install-self")
                         .num_args(0)
                         .required(false),
                 )
@@ -2547,7 +2548,8 @@ pub fn rig_app() -> Command {
                             their dependencies. A named package is still installed if\n\
                             another package that is installed depends on it.",
                         )
-                        .long("no-install-project")
+                        .long("no-install-self")
+                        .visible_alias("no-install-project")
                         .num_args(0)
                         .required(false),
                 )
