@@ -15,6 +15,9 @@
 * `rig proj sync --library <path>` can be used to install into a one-off
   directory, without changing the project environment.
 
+* `rig proj sync --lockfile <path>` installs from that lock file and does not
+  look for a project.
+
 * A new `--cache-dir` flag, `RIG_CACHE_DIR` environment variable, and
   `cache-dir` configuration entry allow overriding the location of rig's cache.
   `--no-cache` still takes precedence.

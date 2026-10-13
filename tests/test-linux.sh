@@ -649,6 +649,54 @@ is_retired() {
     [[ -d .rvenv/lib/cli && ! -L .rvenv/lib ]]
 }
 
+@test "proj sync --lockfile" {
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf lockonly lockonly-run && mkdir lockonly lockonly-run
+    cd lockonly
+    run rig proj init -r 4.5
+    [[ "$status" -eq 0 ]]
+    run rig proj add --no-lock cli
+    [[ "$status" -eq 0 ]]
+    run rig proj lock
+    [[ "$status" -eq 0 ]]
+    cp rproj.lock ../app.lock
+    cd ../lockonly-run
+
+    # a lock file that is not there is an error, and creates nothing
+    run rig proj sync --lockfile ../nope.lock --library ../lib --frozen
+    [[ "$status" -ne 0 ]]
+    [[ ! -e ../lib ]]
+    # a lock file is used as it is
+    run rig proj sync --lockfile ../app.lock --exclude-newer "7 days"
+    [[ "$status" -ne 0 ]]
+
+    # from a directory with no project files, only the library is written
+    run rig proj sync --lockfile ../app.lock --library ../lib \
+        --no-install-r --no-sysreqs
+    [[ "$status" -eq 0 ]]
+    [[ -z "$(ls -A .)" ]]
+    [[ -d ../lib/cli ]]
+    [[ "$(sha256sum < ../lib/.synced)" == "$(sha256sum < ../app.lock)" ]]
+
+    # a lock file with the project's own package needs the project here,
+    # whatever other DESCRIPTION is in the way
+    cd ../lockonly
+    sed -i 's/^type = "project"$/type = "package"/' rproj.toml
+    run rig proj lock
+    [[ "$status" -eq 0 ]]
+    cp rproj.lock ../pkg.lock
+    cd ../lockonly-run
+    printf 'Package: other\nVersion: 1.0\n' > DESCRIPTION
+    run rig proj sync --lockfile ../pkg.lock --library ../pkg-lib \
+        --no-install-r --no-sysreqs
+    [[ "$status" -ne 0 ]]
+    [[ ! -e ../pkg-lib ]]
+    run rig proj sync --lockfile ../pkg.lock --library ../pkg-lib \
+        --no-install-project --no-install-r --no-sysreqs
+    [[ "$status" -eq 0 ]]
+    [[ -d ../pkg-lib/cli ]]
+}
+
 @test "run script with inline dependencies" {
     cd "$BATS_TEST_TMPDIR"
     rm -rf scriptdir && mkdir scriptdir && cd scriptdir

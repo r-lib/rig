@@ -2214,8 +2214,23 @@ pub fn rig_app() -> Command {
                         .required(false)
                         .conflicts_with("frozen"),
                 )
-                .arg(exclude_newer_arg().conflicts_with_all(["frozen", "locked"]))
-                .args(proj_repos_args().map(|a| a.conflicts_with_all(["frozen", "locked"])))
+                .arg(
+                    Arg::new("lockfile")
+                        .help(
+                            "Install from this lock file, without looking for a\n\
+                            project. Implies --frozen.",
+                        )
+                        .long("lockfile")
+                        .value_name("PATH")
+                        .num_args(1)
+                        .required(false)
+                        .conflicts_with("locked"),
+                )
+                .arg(exclude_newer_arg().conflicts_with_all(["frozen", "locked", "lockfile"]))
+                .args(
+                    proj_repos_args()
+                        .map(|a| a.conflicts_with_all(["frozen", "locked", "lockfile"])),
+                )
                 .arg(
                     Arg::new("library")
                         .help(
@@ -3808,6 +3823,31 @@ mod tests {
         assert!(rig_app()
             .try_get_matches_from(["rig", "proj", "sync", "--library"])
             .is_err());
+    }
+
+    #[test]
+    fn proj_sync_lockfile_flag() {
+        let sync = |extra: &[&str]| {
+            let mut argv = vec!["rig", "proj", "sync"];
+            argv.extend_from_slice(extra);
+            rig_app().try_get_matches_from(argv)
+        };
+
+        let matches = sync(&["--lockfile", "a.lock", "--library", "lib"]).unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        assert_eq!(sub.get_one::<String>("lockfile").unwrap(), "a.lock");
+        assert_eq!(sub.get_one::<String>("library").unwrap(), "lib");
+
+        assert!(sync(&["--lockfile", "a.lock"]).is_ok());
+        assert!(sync(&["--lockfile"]).is_err());
+        assert!(sync(&["--lockfile", "a.lock", "--frozen"]).is_ok());
+
+        // A lock file is used as it is, so nothing that locks again or
+        // checks it against a manifest.
+        assert!(sync(&["--lockfile", "a.lock", "--locked"]).is_err());
+        assert!(sync(&["--lockfile", "a.lock", "--exclude-newer", "7 days"]).is_err());
+        assert!(sync(&["--lockfile", "a.lock", "--with-repos", "cran"]).is_err());
     }
 
     #[test]

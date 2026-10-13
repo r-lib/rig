@@ -18,11 +18,12 @@ If `rproj.lock` exists, `rig proj sync` installs from it, even if
 `rproj.toml` changed since. Pass `--locked` to fail instead if `rproj.lock`
 is missing or out of date, see "Checking the lock file" in
 [`rig proj lock`](#rig-proj-lock). This is useful in CI. `--locked` reads
-`rproj.toml`, so it does not work with `--frozen`.
+`rproj.toml`, so it does not work with `--frozen` or `--lockfile`.
 
 `--with-repos` (`--index`) and `--without-repos` (`--no-index`) lock again first,
 with the project's repositories changed, see "Repositories" in
-[`rig proj lock`](#rig-proj-lock). They do not work with `--frozen`.
+[`rig proj lock`](#rig-proj-lock). They do not work with `--frozen` or
+`--lockfile`.
 
 By default sync installs `[dependencies]` (`main`) plus the `dev`
 [dependency group](#rig-proj-lock), and nothing else: no other

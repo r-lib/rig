@@ -2349,6 +2349,26 @@ fn project_sources(root_abs: &Path) -> Vec<String> {
     project_source_url(root_abs).into_iter().collect()
 }
 
+/// Point the project's own package entry at `root_abs`, for a lock file that
+/// was written for the project in another directory. Its content digest is
+/// the one of `root_abs` now, or none if that cannot be computed, so that a
+/// build of the old directory is never reused for it.
+fn retarget_project_package(pkg: &mut RprojLockPackage, root_abs: &Path) {
+    pkg.metadata.insert(
+        crate::install::REMOTE_URL_FIELD.to_string(),
+        root_abs.display().to_string(),
+    );
+    match compute_dir_stat_digest(root_abs, true) {
+        Ok(sha) if !sha.is_empty() => {
+            pkg.metadata.insert(REMOTE_SHA_FIELD.to_string(), sha);
+        }
+        _ => {
+            pkg.metadata.remove(REMOTE_SHA_FIELD);
+        }
+    }
+    pkg.sources = project_sources(root_abs);
+}
+
 /// The [`RprojLockPackage`] entry for the project's own package -- `alias` is
 /// `solve.self_alias`, `root_abs` the project's canonicalized root, `self_sha`
 /// its content digest (`compute_dir_stat_digest`, empty/`None` if it could not
@@ -5283,6 +5303,9 @@ pub(crate) struct ProjSyncOptions {
     /// `--library`: the library to install into, instead of the project
     /// library. Used exactly as given.
     pub library: Option<PathBuf>,
+    /// `--lockfile`: the lock file to install from, instead of the project's
+    /// `rproj.lock`. Implies `--frozen`.
+    pub lockfile: Option<PathBuf>,
 }
 
 impl Default for ProjSyncOptions {
@@ -5307,6 +5330,7 @@ impl Default for ProjSyncOptions {
             sysreqs: None,
             repos: None,
             library: None,
+            lockfile: None,
         }
     }
 }
@@ -5320,12 +5344,21 @@ fn sc_proj_sync(
         .get_one::<String>("library")
         .map(std::path::absolute)
         .transpose()?;
+    let lockfile = args
+        .get_one::<String>("lockfile")
+        .map(std::path::absolute)
+        .transpose()?;
 
     // The project is the nearest one at or above the current directory, so
     // that `rig proj sync` works from a subdirectory, like `git` does. In a
     // workspace it is the workspace root, which owns the one library every
-    // member shares.
-    let root = proj_lock_root()?;
+    // member shares. With `--lockfile` there is no project to look for, the
+    // current directory stands in for it.
+    let root = if lockfile.is_some() {
+        std::env::current_dir()?
+    } else {
+        proj_lock_root()?
+    };
 
     let opts = ProjSyncOptions {
         dev: !args.get_flag("no-dev"),
@@ -5345,7 +5378,7 @@ fn sc_proj_sync(
         r_version: args.get_one::<String>("r-version").cloned(),
         platform: args.get_one::<String>("platform").cloned(),
         inexact: args.get_flag("inexact") || library.is_some(),
-        frozen: args.get_flag("frozen"),
+        frozen: args.get_flag("frozen") || lockfile.is_some(),
         locked: args.get_flag("locked"),
         dry_run: args.get_flag("dry-run"),
         exclude_newer: exclude_newer_arg(args)?,
@@ -5353,6 +5386,7 @@ fn sc_proj_sync(
         sysreqs: crate::sysreqs::cli_flag(args),
         repos: interpret_pkg_repos_args(args)?,
         library,
+        lockfile,
     };
 
     proj_sync(&root, &opts, args)
@@ -5505,13 +5539,27 @@ pub(crate) fn proj_sync(
     // No lockfile yet, so create one first, with the default options, instead
     // of erroring out. `rig proj lock` reads the project's `rproj.toml`, and
     // errors out itself if there is none.
-    let lock_path = root.join(RPROJ_LOCK_FILE);
+    let lock_path = match &opts.lockfile {
+        Some(path) => path.clone(),
+        None => root.join(RPROJ_LOCK_FILE),
+    };
     let lock_opts = ProjLockOptions {
         exclude_newer: opts.exclude_newer.clone(),
         repos: opts.repos.clone(),
         no_env_files: opts.library.is_some(),
         ..Default::default()
     };
+    if opts.lockfile.is_some() {
+        if opts.exclude_newer.is_some() || opts.repos.is_some() || opts.locked {
+            bail!("A lock file given with --lockfile is used as-is, it cannot be locked again");
+        }
+        if !lock_path.is_file() {
+            let msg = format!("Lock file {} does not exist", lock_path.display());
+            OUTPUT.error(&msg);
+            error!("{}", msg);
+            bail!("{}", msg);
+        }
+    }
     if opts.locked {
         proj_lock_check(root, RPROJ_LOCK_FILE, "rig proj lock")?;
     }
@@ -5599,6 +5647,15 @@ pub(crate) fn proj_sync(
         OUTPUT.info(&msg);
         info!("{}", msg);
     }
+    // A lock file from elsewhere has the project's package where it was
+    // locked, which is not necessarily where the project is now.
+    let mut wanted = wanted;
+    if opts.lockfile.is_some() {
+        let root_abs = root.canonicalize()?;
+        for pkg in wanted.iter_mut().filter(|p| p.is_project) {
+            retarget_project_package(pkg, &root_abs);
+        }
+    }
     let wanted: &[RprojLockPackage] = &wanted;
 
     // The project's own package needs a real `DESCRIPTION` on disk: rig's
@@ -5613,6 +5670,19 @@ pub(crate) fn proj_sync(
     // export` without `--force` would refuse to touch it.
     if wanted.iter().any(|p| p.is_project) {
         let description_path = root.join("DESCRIPTION");
+        // A lock file from elsewhere only says which package to install, the
+        // project to install it from has to be here.
+        if opts.lockfile.is_some() && !root.join(RPROJ_MANIFEST_FILE).exists() {
+            let msg = format!(
+                "{} installs the project's own package, which needs a {} in the \
+                 current directory. Use --no-install-project to leave it out",
+                lock_path.display(),
+                RPROJ_MANIFEST_FILE
+            );
+            OUTPUT.error(&msg);
+            error!("{}", msg);
+            bail!("{}", msg);
+        }
         if opts.dry_run {
             OUTPUT.info(&format!("Would write {}", description_path.display()));
         } else if description_path.exists() && !description_is_rig_generated(&description_path) {
@@ -7131,6 +7201,35 @@ mod tests {
 
     /// Where to install from comes from `sources`, not from `metadata`: a
     /// git package's subdir, and a local package's path.
+    #[test]
+    fn retarget_project_package_points_at_the_new_root() {
+        let old = Path::new("/tmp/old-checkout");
+        let new = Path::new("/tmp/new-checkout");
+        let alias = self_alias("mypkg", "1.0", &[]);
+        let mut pkg = project_lock_package(&alias, old, Some("abc"));
+        retarget_project_package(&mut pkg, new);
+        assert_eq!(pkg.sources, project_sources(new));
+        assert_eq!(
+            pkg.metadata.get(crate::install::REMOTE_URL_FIELD).unwrap(),
+            "/tmp/new-checkout"
+        );
+        // The digest of a directory that cannot be read is not kept.
+        assert!(!pkg.metadata.contains_key(REMOTE_SHA_FIELD));
+    }
+
+    #[test]
+    fn retarget_project_package_digests_the_new_root() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(tmp.path().join("NAMESPACE"), "").unwrap();
+        let alias = self_alias("mypkg", "1.0", &[]);
+        let mut pkg = project_lock_package(&alias, Path::new("/tmp/old-checkout"), Some("old"));
+        retarget_project_package(&mut pkg, tmp.path());
+        assert_eq!(
+            pkg.metadata.get(REMOTE_SHA_FIELD),
+            Some(&compute_dir_stat_digest(tmp.path(), true).unwrap())
+        );
+    }
+
     #[test]
     fn lockfile_package_info_reads_the_install_location_from_sources() {
         let cache = Path::new("/cache");
