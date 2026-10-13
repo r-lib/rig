@@ -7,6 +7,9 @@
 * rig now sends a `User-Agent` header with its HTTP requests, e.g.
   `rig/0.11.1 (+https://github.com/r-lib/rig)`.
 
+* Packages are now installed with file modes more closely aligned with those
+  left by `R CMD INSTALL`. Existing packages in the cache are left unchanged.
+
 * An R session that runs a different R minor version than the one the
   project was synced for now really leaves the project library alone.
   Before, rig printed a warning, but still activated the library (#450).
