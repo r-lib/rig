@@ -10,11 +10,11 @@ teardown() {
     true
 }
 
-# Retired distros (e.g. Debian 12) do not have R-devel builds any more,
-# only builds of released R versions.
-has_devel() {
+# Retired distros (e.g. Debian 12) do not get new R builds any more: there
+# is no R-devel and no build of the current R release, only of older ones.
+is_retired() {
     source /etc/os-release
-    ! [[ "$ID" = "debian" && "$VERSION_ID" = "12" ]]
+    [[ "$ID" = "debian" && "$VERSION_ID" = "12" ]]
 }
 
 @test "empty" {
@@ -169,7 +169,7 @@ has_devel() {
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^4[.]4[.]3$"
 
-    if ! has_devel; then
+    if is_retired; then
 	run rig resolve devel
 	[[ ! "$status" -eq 0 ]]
 	return
@@ -278,14 +278,19 @@ has_devel() {
 }
 
 @test "resolve" {
-    if has_devel; then
+    if is_retired; then
+	run rig resolve devel
+	[[ ! "$status" -eq 0 ]]
+	run rig resolve release
+	[[ ! "$status" -eq 0 ]]
+    else
 	run rig resolve devel
 	[[ "$status" -eq 0 ]]
 	echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
+	run rig resolve release
+	[[ "$status" -eq 0 ]]
+	echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
     fi
-    run rig resolve release
-    [[ "$status" -eq 0 ]]
-    echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
     run rig resolve oldrel
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
@@ -318,7 +323,7 @@ has_devel() {
     run R-4.5.1 -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
     [[ $status -eq 0 ]]
     [[ "$output" = "[1] TRUE" ]]
-    if has_devel; then
+    if ! is_retired; then
 	run R-devel -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
 	[[ $status -eq 0 ]]
 	[[ "$output" = "[1] TRUE" ]]
