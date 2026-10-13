@@ -279,8 +279,9 @@ fn main_() -> i32 {
             exitcode
         }
         Err(err) => {
-            if err.downcast_ref::<output::ReportedError>().is_none() {
-                OUTPUT.error(&format!("{}", err));
+            let msg = format!("{}", err);
+            if err.downcast_ref::<output::ReportedError>().is_none() && !OUTPUT.error_shown(&msg) {
+                OUTPUT.error(&msg);
             }
             error!("{}", err);
             info!("RIG END [pid:{}] {}", pid, cmdline);

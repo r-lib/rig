@@ -1610,6 +1610,19 @@ mod tests {
         );
     }
 
+    /// https://github.com/r-lib/rig/issues/453: `0.3-3` satisfies `>= 0.3.3`.
+    #[test]
+    fn a_dash_version_satisfies_a_dot_constraint() {
+        let source = StubSource {
+            packages: vec![
+                ("rphylopic", "1.7.0", "grImport2 (>= 0.3.3)"),
+                ("grImport2", "0.3-3", ""),
+            ],
+        };
+        let (_reg, solution) = solve(source, None, "rphylopic");
+        assert_eq!(solution["grImport2"].version.to_string(), "0.3-3");
+    }
+
     #[test]
     fn a_failed_request_is_not_called_a_project() {
         let source = StubSource {

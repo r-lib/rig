@@ -25,6 +25,9 @@ pub struct Output {
 struct OutputInner {
     interactive: bool,
     bar: RwLock<Option<ProgressBar>>,
+    // Error messages already shown, so `main` does not print them again
+    // when the same error propagates up to it.
+    errors: RwLock<Vec<String>>,
 }
 
 impl Output {
@@ -34,6 +37,7 @@ impl Output {
             inner: Arc::new(OutputInner {
                 interactive: std::io::stdout().is_terminal(),
                 bar: RwLock::new(None),
+                errors: RwLock::new(Vec::new()),
             }),
         }
     }
@@ -65,11 +69,17 @@ impl Output {
 
     /// Display an error message
     pub fn error(&self, msg: &str) {
+        self.inner.errors.write().unwrap().push(msg.to_string());
         if self.inner.interactive {
             self.emit(&format!("{} {}", "✗".red().bold(), msg.red().bold()));
         } else {
             self.emit(&format!("Error: {}", msg));
         }
+    }
+
+    /// Whether `msg` was already shown via `error()`
+    pub fn error_shown(&self, msg: &str) -> bool {
+        self.inner.errors.read().unwrap().iter().any(|e| e == msg)
     }
 
     /// Display a warning message
