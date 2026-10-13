@@ -2031,7 +2031,28 @@ pub fn rig_app() -> Command {
                         .required(false)
                         .conflicts_with("upgrade"),
                 )
-                .args(proj_repos_args()),
+                .args(proj_repos_args())
+                .arg(
+                    Arg::new("check")
+                        .help(
+                            "Check that rproj.lock is up to date with rproj.toml, without\n\
+                            writing it. Fails if it is missing or out of date.",
+                        )
+                        .long("check")
+                        .num_args(0)
+                        .required(false)
+                        .conflicts_with_all([
+                            "r-version",
+                            "platform",
+                            "add-platform",
+                            "prefer-binary",
+                            "exclude-newer",
+                            "upgrade",
+                            "upgrade-package",
+                            "with-repos",
+                            "without-repos",
+                        ]),
+                ),
         )
         .subcommand(
             Command::new("status")
@@ -2181,8 +2202,19 @@ pub fn rig_app() -> Command {
                         .num_args(0)
                         .required(false),
                 )
-                .arg(exclude_newer_arg().conflicts_with("frozen"))
-                .args(proj_repos_args().map(|a| a.conflicts_with("frozen")))
+                .arg(
+                    Arg::new("locked")
+                        .help(
+                            "Fail if rproj.lock is missing or out of date with\n\
+                            rproj.toml, instead of installing from it.",
+                        )
+                        .long("locked")
+                        .num_args(0)
+                        .required(false)
+                        .conflicts_with("frozen"),
+                )
+                .arg(exclude_newer_arg().conflicts_with_all(["frozen", "locked"]))
+                .args(proj_repos_args().map(|a| a.conflicts_with_all(["frozen", "locked"])))
                 .arg(
                     Arg::new("library")
                         .help(
@@ -3708,6 +3740,47 @@ mod tests {
         // script blocks have no dependency groups
         assert!(rig_app()
             .try_get_matches_from(["rig", "proj", "add", "--script", "a.R", "--dev", "cli"])
+            .is_err());
+    }
+
+    #[test]
+    fn proj_lock_check_flag() {
+        let matches = rig_app()
+            .try_get_matches_from(["rig", "proj", "lock", "--check"])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        assert!(sub.get_flag("check"));
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "proj", "lock", "--check", "--script", "a.R"])
+            .is_ok());
+        for extra in [&["--upgrade"][..], &["-r", "4.5"], &["--index", "cran"]] {
+            let mut argv = vec!["rig", "proj", "lock", "--check"];
+            argv.extend_from_slice(extra);
+            assert!(rig_app().try_get_matches_from(argv).is_err());
+        }
+    }
+
+    #[test]
+    fn proj_sync_locked_flag() {
+        let matches = rig_app()
+            .try_get_matches_from(["rig", "proj", "sync", "--locked"])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        assert!(sub.get_flag("locked"));
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "proj", "sync", "--locked", "--frozen"])
+            .is_err());
+        assert!(rig_app()
+            .try_get_matches_from([
+                "rig",
+                "proj",
+                "sync",
+                "--locked",
+                "--exclude-newer",
+                "7 days"
+            ])
             .is_err());
     }
 

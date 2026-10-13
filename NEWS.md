@@ -25,6 +25,10 @@
 * The dependency solver now treats a dash in a package version the same as
   a dot, like R does, so e.g. version `0.3-3` satisfies `>= 0.3.3` (#453).
 
+* New `rig proj lock --check` and `rig proj sync --locked` options, to fail
+  if `rproj.lock` is missing or out of date with `rproj.toml`, e.g. in CI
+  (#411).
+
 # rig 0.11.0
 
 ## Custom repositories

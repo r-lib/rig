@@ -3189,10 +3189,52 @@ fn sc_proj_lock(
         repos: interpret_pkg_repos_args(args)?,
         no_env_files: false,
     };
+    if args.get_flag("check") {
+        if let Some(script) = args.get_one::<String>("script") {
+            return proj_lock_check_script(Path::new(script));
+        }
+        let root = proj_lock_root()?;
+        return proj_lock_check(&root, RPROJ_LOCK_FILE, "rig proj lock");
+    }
     if let Some(script) = args.get_one::<String>("script") {
         return proj_lock_script(Path::new(script), opts, args);
     }
     proj_lock(&proj_lock_root()?, &opts, args)
+}
+
+/// `rig proj lock --check` and `rig proj sync --locked`: fail if the project
+/// in `root` has no lock file, or it does not fit the manifest any more, see
+/// [`lock_fits_manifest`]. `label` names the lock file and `update` the
+/// command that updates it, in the error message.
+fn proj_lock_check(root: &Path, label: &str, update: &str) -> Result<(), Box<dyn Error>> {
+    let msg = if !root.join(RPROJ_LOCK_FILE).exists() {
+        format!("No {} found, create it with `{}`", label, update)
+    } else if !lock_fits_manifest(root)? {
+        format!("{} is out of date, update it with `{}`", label, update)
+    } else {
+        OUTPUT.info(&format!("{} is up to date", label));
+        return Ok(());
+    };
+    OUTPUT.error(&msg);
+    error!("{}", msg);
+    bail!("{}", msg);
+}
+
+/// `rig proj lock --check --script`: check `<script>.lock` against the
+/// `# /// script` block of `script`, in the script's lock environment, like
+/// [`proj_lock_script`] does, but without writing the lock file.
+fn proj_lock_check_script(script: &Path) -> Result<(), Box<dyn Error>> {
+    let lock_path = script_lock_path(script);
+    let label = lock_file_label(&lock_path);
+    let update = format!("rig proj lock --script {}", script.display());
+    let envdir = script_lock_env(script)?;
+    let env_lock = envdir.join(RPROJ_LOCK_FILE);
+    if lock_path.exists() {
+        write_atomically(&env_lock, &fs::read(&lock_path)?)?;
+    } else if env_lock.exists() {
+        fs::remove_file(&env_lock)?;
+    }
+    proj_lock_check(&envdir, &label, &update)
 }
 
 /// `rig proj lock --script`: lock the dependencies in the `# /// script`
@@ -5192,6 +5234,9 @@ pub(crate) struct ProjSyncOptions {
     /// `rig proj lock` when it is missing (`--frozen`). Also skips the
     /// repositories file when there is no `rproj.toml` to build it from.
     pub frozen: bool,
+    /// Fail if `rproj.lock` is missing or does not fit `rproj.toml` any
+    /// more, instead of installing from it (`--locked`).
+    pub locked: bool,
     /// Report what sync would install, remove or write, without actually
     /// doing any of it (`--dry-run`).
     pub dry_run: bool,
@@ -5231,6 +5276,7 @@ impl Default for ProjSyncOptions {
             platform: None,
             inexact: false,
             frozen: false,
+            locked: false,
             dry_run: false,
             exclude_newer: None,
             arch: None,
@@ -5276,6 +5322,7 @@ fn sc_proj_sync(
         platform: args.get_one::<String>("platform").cloned(),
         inexact: args.get_flag("inexact") || library.is_some(),
         frozen: args.get_flag("frozen"),
+        locked: args.get_flag("locked"),
         dry_run: args.get_flag("dry-run"),
         exclude_newer: exclude_newer_arg(args)?,
         arch: None,
@@ -5441,6 +5488,9 @@ pub(crate) fn proj_sync(
         no_env_files: opts.library.is_some(),
         ..Default::default()
     };
+    if opts.locked {
+        proj_lock_check(root, RPROJ_LOCK_FILE, "rig proj lock")?;
+    }
     if !lock_path.exists() {
         if opts.frozen {
             let msg = format!(
@@ -7202,6 +7252,22 @@ mod tests {
         write_dplyr_project(dir.path(), &[("dplyr", "*")]);
         fs::remove_file(dir.path().join(RPROJ_LOCK_FILE)).unwrap();
         assert!(!lock_fits_manifest(dir.path()).unwrap());
+    }
+
+    #[test]
+    fn proj_lock_check_fails_for_a_missing_or_stale_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        write_dplyr_project(dir.path(), &[("dplyr", "*")]);
+        assert!(proj_lock_check(dir.path(), RPROJ_LOCK_FILE, "rig proj lock").is_ok());
+
+        let dir = tempfile::tempdir().unwrap();
+        write_dplyr_project(dir.path(), &[("dplyr", ">= 2.0.0")]);
+        let err = proj_lock_check(dir.path(), RPROJ_LOCK_FILE, "rig proj lock").unwrap_err();
+        assert!(err.to_string().contains("is out of date"));
+
+        fs::remove_file(dir.path().join(RPROJ_LOCK_FILE)).unwrap();
+        let err = proj_lock_check(dir.path(), RPROJ_LOCK_FILE, "rig proj lock").unwrap_err();
+        assert!(err.to_string().contains("No rproj.lock found"));
     }
 
     #[test]

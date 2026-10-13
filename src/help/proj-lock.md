@@ -293,6 +293,26 @@ long as it fits `rproj.toml`. A git/GitHub dependency named in
 `--upgrade-package` is checked against its remote again, like with
 `--upgrade`.
 
+## Checking the lock file
+
+`rig proj lock --check` checks that `rproj.lock` is up to date, i.e. that
+`rig proj lock` would keep it as it is, without writing anything. It fails
+if there is no `rproj.lock`, or if it does not fit `rproj.toml` any more,
+e.g. because someone edited `rproj.toml` and forgot to lock again. This is
+useful in CI:
+
+```sh
+rig proj lock --check
+```
+
+It does not check for newer package versions, a lock that pins older
+versions that still satisfy `rproj.toml` is up to date.
+`--check` works with `--script`, to check `script.R.lock`, but not with
+the options that change the solve, e.g. `--r-version` or `--upgrade`.
+
+[`rig proj sync --locked`](#rig-proj-sync) does the same check, before it
+installs anything.
+
 ## Excluding newer package versions
 
 `--exclude-newer` makes the solver ignore CRAN and Bioconductor package
