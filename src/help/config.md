@@ -77,6 +77,19 @@ configuration file takes precedence over rig's built-in default.
   unless overridden with its own `--max-concurrent` flag. Defaults to the
   number of CPU cores.
 
+- `prefer-binary` (`RIG_PREFER_BINARY`): the default for `--prefer-binary` in [`rig
+  pkg install`](pkg.qmd#rig-pkg-install) and the [`rig proj`](proj.qmd) commands: `true` looks back through the three
+  newest versions of a package for one with a binary build, a number gives
+  how many versions to look back through, and `false` or `0` turns it off. The
+  command line flag and `prefer-binary` in a project's `rproj.toml` take
+  precedence. Defaults to `false`.
+
+- `exclude-newer` (`RIG_EXCLUDE_NEWER`): the default for `--exclude-newer` in [`rig
+  pkg install`](pkg.qmd#rig-pkg-install) and the [`rig proj`](proj.qmd) commands: a date, e.g. `2025-06-01`, or a span
+  back from today, e.g. `7 days`. Package versions published after it are
+  ignored. The command line flag and `exclude-newer` in a project's
+  `rproj.toml` take precedence. Not set by default.
+
 - `sysreqs` (`RIG_SYSREQS`): Linux only. What
   [`rig pkg install`](pkg.qmd#rig-pkg-install) and
   [`rig proj sync`](proj.qmd#rig-proj-sync) do with the OS packages that the

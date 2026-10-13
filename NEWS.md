@@ -1,5 +1,10 @@
 # rig 0.11.1-dev (development version)
 
+* New `prefer-binary` and `exclude-newer` configuration entries (and
+  `RIG_PREFER_BINARY` and `RIG_EXCLUDE_NEWER` environment variables) set the
+  defaults of `--prefer-binary` and `--exclude-newer` for `rig pkg install`
+  and the `rig proj` commands (#441).
+
 * The project `.Renviron` now quotes the saved `R_LIBS_USER` value, so it
   works with Windows paths. Delete `.Renviron` and call `rig proj lock`
   to recreate it with the fixed version in existing projects.

@@ -86,6 +86,35 @@ pub fn prefer_binary_lookback(n: usize) -> Option<usize> {
     (n > 0).then_some(n)
 }
 
+/// The `prefer-binary` user setting, from `RIG_PREFER_BINARY` or the
+/// `prefer-binary` key of the rig config, as the solver's lookback. It is
+/// used if neither the command line nor the project manifest sets it.
+pub fn config_prefer_binary() -> Result<Option<usize>, Box<dyn Error>> {
+    match crate::config::get_setting("RIG_PREFER_BINARY", "prefer-binary")? {
+        Some(value) => parse_prefer_binary_setting(&value),
+        None => Ok(None),
+    }
+}
+
+/// Parse a `prefer-binary` user setting: `true` is the default number,
+/// [`PREFER_BINARY_DEFAULT`], `false` or `0` turns it off, a number is the
+/// lookback.
+fn parse_prefer_binary_setting(value: &str) -> Result<Option<usize>, Box<dyn Error>> {
+    match value.to_lowercase().as_str() {
+        "true" | "yes" | "on" => Ok(Some(PREFER_BINARY_DEFAULT)),
+        "false" | "no" | "off" => Ok(None),
+        other => match other.parse::<usize>() {
+            Ok(n) => Ok(prefer_binary_lookback(n)),
+            Err(_) => bail!(
+                "Invalid `prefer-binary` setting in RIG_PREFER_BINARY or the \
+                 rig config: '{}', expected `true`, `false` or a non-negative \
+                 number",
+                value
+            ),
+        },
+    }
+}
+
 /// The `prefer-binary` value of `[tool.rig]` for a `--prefer-binary=<n>`
 /// number: `true` for the default, `false` for `0`, the number otherwise.
 pub fn prefer_binary_toml_value(n: usize) -> toml::Value {
@@ -953,6 +982,15 @@ impl Rproj {
         Ok(Some(value.parse()?))
     }
 
+    /// The `exclude-newer` setting of `[tool.rig]` if it is set, else the
+    /// user setting, see [`crate::exclude_newer::config_exclude_newer`].
+    pub fn exclude_newer_or_config(&self) -> Result<Option<ExcludeNewerSpec>, Box<dyn Error>> {
+        match self.exclude_newer()? {
+            Some(spec) => Ok(Some(spec)),
+            None => crate::exclude_newer::config_exclude_newer(),
+        }
+    }
+
     /// The `platforms` setting of `[tool.rig]`: the platforms `rig proj lock`
     /// solves for, instead of the default set. Each one is a platform string,
     /// see [`crate::platform::parse_platform_string`], or `source`.
@@ -1023,6 +1061,25 @@ impl Rproj {
                 "`prefer-binary` in `[tool.rig]` must be `true`, `false` or a \
                  non-negative number, e.g. 5"
             ),
+        }
+    }
+
+    /// Whether `[tool.rig]` has a `prefer-binary` setting, even `false`.
+    pub fn sets_prefer_binary(&self) -> bool {
+        self.tool
+            .get("rig")
+            .and_then(|t| t.get("prefer-binary"))
+            .is_some()
+    }
+
+    /// The `prefer-binary` setting of `[tool.rig]` if it is set, else the
+    /// user setting, see [`config_prefer_binary`]. So `prefer-binary =
+    /// false` in the manifest turns off a user setting.
+    pub fn prefer_binary_or_config(&self) -> Result<Option<usize>, Box<dyn Error>> {
+        if self.sets_prefer_binary() {
+            self.prefer_binary()
+        } else {
+            config_prefer_binary()
         }
     }
 
@@ -4699,6 +4756,19 @@ foo = "bar"
         )
         .unwrap();
         assert!(m.exclude_newer().is_err());
+    }
+
+    #[test]
+    fn prefer_binary_user_setting_is_parsed() {
+        let parse = |v: &str| parse_prefer_binary_setting(v).unwrap();
+        assert_eq!(parse("true"), Some(PREFER_BINARY_DEFAULT));
+        assert_eq!(parse("Yes"), Some(PREFER_BINARY_DEFAULT));
+        assert_eq!(parse("false"), None);
+        assert_eq!(parse("off"), None);
+        assert_eq!(parse("0"), None);
+        assert_eq!(parse("5"), Some(5));
+        assert!(parse_prefer_binary_setting("maybe").is_err());
+        assert!(parse_prefer_binary_setting("-1").is_err());
     }
 
     #[test]

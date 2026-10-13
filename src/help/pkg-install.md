@@ -169,6 +169,8 @@ packages only.
 `--prefer-binary` trades a newer version for an older one that has a binary
 build, which is useful when compiling is expensive; it takes the number of
 versions to look back through, e.g. `--prefer-binary=5`, and defaults to 3.
+To turn it on by default, set the `prefer-binary` [config](config.qmd) entry;
+`--prefer-binary=0` turns it off for one run.
 
 ## System requirements
 
@@ -201,11 +203,11 @@ entry to `print` to always only show them. See [`rig config`](config.qmd) for th
 ## Excluding newer package versions
 
 `--exclude-newer` ignores CRAN and Bioconductor package versions published
-after a date, e.g.
-`--exclude-newer 2025-06-01`, or after a span back from today, e.g.
-`--exclude-newer "7 days"`. See [`rig proj lock`](proj.qmd#rig-proj-lock)
-for the accepted formats and details. The `PACKAGES` files of other
-repositories have no publication dates, so their versions are never excluded.
+after a date, e.g. `--exclude-newer 2025-06-01`, or after a span back from
+today, e.g. `--exclude-newer "7 days"`. See [`rig proj lock`](proj.qmd#rig-proj-lock) for the accepted
+formats and details. The `PACKAGES` files of other repositories have no
+publication dates, so their versions are never excluded. To use a cutoff by
+default, set the `exclude-newer` [config](config.qmd) entry.
 
 ## Caching package builds
 

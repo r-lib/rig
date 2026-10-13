@@ -42,7 +42,7 @@ use crate::dcf::{
     DepVersionSpec, OsType, Package, PackageDependencies, RDepType, VersionConstraintType,
     DEP_TYPES_SOFT,
 };
-use crate::exclude_newer::exclude_newer_arg;
+use crate::exclude_newer::{config_exclude_newer, exclude_newer_arg};
 use crate::install::{
     install_packages, PackageInfo, REMOTE_HASH_FIELD, REMOTE_SHA_FIELD, REMOTE_TYPE_FIELD,
     REPO_BUILT_FIELD,
@@ -61,7 +61,9 @@ use crate::proj::{
 use crate::repos::feed::{BiocSetting, RepoFilter};
 use crate::repos::interpret_pkg_repos_args;
 use crate::repos::DbSourcePackageLoader;
-use crate::rproj::{DepTable, RprojLockPackage, RprojLockTarget};
+use crate::rproj::{
+    config_prefer_binary, prefer_binary_lookback, DepTable, RprojLockPackage, RprojLockTarget,
+};
 use crate::solver::{is_base_package, PackageVersionLoader, SolveRoot};
 
 use super::deps::root_package;
@@ -90,16 +92,17 @@ pub fn sc_pkg_install(
     // The packages named on the command line, by their real names, before
     // `--dev` adds their dev dependencies to `deps`.
     let named: HashSet<String> = deps.dependencies.iter().map(|d| d.name.clone()).collect();
-    let exclude_newer = match exclude_newer_arg(args)? {
-        Some(spec) => {
-            let cutoff = spec.cutoff()?;
-            let msg = format!("Ignoring package versions published after {}", cutoff);
-            OUTPUT.info(&msg);
-            info!("{}", msg);
-            Some(cutoff)
-        }
-        None => None,
-    };
+    let exclude_newer =
+        match exclude_newer_arg(args)?.map_or_else(config_exclude_newer, |s| Ok(Some(s)))? {
+            Some(spec) => {
+                let cutoff = spec.cutoff()?;
+                let msg = format!("Ignoring package versions published after {}", cutoff);
+                OUTPUT.info(&msg);
+                info!("{}", msg);
+                Some(cutoff)
+            }
+            None => None,
+        };
     let lib = resolve_library(args)?;
     // Installing needs an R version even when `--library` is a plain path: it
     // selects which binary builds are usable, and provides the `R` that installs
@@ -128,10 +131,18 @@ pub fn sc_pkg_install(
     }
 
     let target = proj_binary_target(args.get_one::<String>("platform"), &rver)?;
-    let prefer_binary = args.get_one::<usize>("prefer-binary").copied();
+    // `--prefer-binary=<n>`, else the user setting.
+    let prefer_binary = match args.get_one::<usize>("prefer-binary") {
+        Some(n) => {
+            if *n > 0 && target.is_none() {
+                OUTPUT.warn("There are no binary packages to prefer, ignoring --prefer-binary");
+            }
+            prefer_binary_lookback(*n)
+        }
+        None => config_prefer_binary()?,
+    };
     if prefer_binary.is_some() && target.is_none() {
-        OUTPUT.warn("There are no binary packages to prefer, ignoring --prefer-binary");
-        info!("Ignoring --prefer-binary: solving for source packages only");
+        info!("Ignoring prefer-binary: solving for source packages only");
     }
 
     let roots = [SolveRoot::request(deps.clone())?];

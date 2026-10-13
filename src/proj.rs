@@ -1328,15 +1328,25 @@ pub(crate) struct ProjectSolve {
     /// [`register_git_sources`] before it runs.
     pub git_deps: Vec<(String, crate::rproj::DepTable)>,
     /// The root manifest's `exclude-newer` setting, see
-    /// [`Rproj::exclude_newer`]. A workspace takes it from its root only.
+    /// [`Rproj::exclude_newer`], or if it has none, the user setting, see
+    /// [`Rproj::exclude_newer_or_config`]. A workspace takes it from its root
+    /// only.
     pub exclude_newer: Option<ExcludeNewerSpec>,
+    /// Whether `exclude_newer` comes from the manifest, not from the user
+    /// setting. [`lock_fits_manifest`] only checks the lock against it then.
+    pub exclude_newer_in_manifest: bool,
     /// The root manifest's repositories, see [`ProjRepos`], with the
     /// dependency pins of every member. A workspace takes the repositories
     /// from its root only.
     pub repos: ProjRepos,
     /// The root manifest's `prefer-binary` setting, see
-    /// [`Rproj::prefer_binary`]. A workspace takes it from its root only.
+    /// [`Rproj::prefer_binary`], or if it has none, the user setting, see
+    /// [`Rproj::prefer_binary_or_config`]. A workspace takes it from its root
+    /// only.
     pub prefer_binary: Option<usize>,
+    /// Whether `prefer_binary` comes from the manifest, see
+    /// [`Self::exclude_newer_in_manifest`].
+    pub prefer_binary_in_manifest: bool,
     /// The root manifest's `platforms` setting, see [`Rproj::platforms`]. A
     /// workspace takes it from its root only.
     pub platforms: Option<Vec<String>>,
@@ -1392,9 +1402,11 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
                 group_roots,
                 extra_roots,
                 git_deps,
-                exclude_newer: manifest.exclude_newer()?,
+                exclude_newer: manifest.exclude_newer_or_config()?,
+                exclude_newer_in_manifest: manifest.exclude_newer()?.is_some(),
                 repos: ProjRepos::from_manifest(&manifest)?,
-                prefer_binary: manifest.prefer_binary()?,
+                prefer_binary: manifest.prefer_binary_or_config()?,
+                prefer_binary_in_manifest: manifest.sets_prefer_binary(),
                 platforms: manifest.platforms()?,
                 r_versions: manifest.r_versions()?,
             });
@@ -1489,9 +1501,11 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
         group_roots,
         extra_roots,
         git_deps,
-        exclude_newer: manifest.exclude_newer()?,
+        exclude_newer: manifest.exclude_newer_or_config()?,
+        exclude_newer_in_manifest: manifest.exclude_newer()?.is_some(),
         repos,
-        prefer_binary: manifest.prefer_binary()?,
+        prefer_binary: manifest.prefer_binary_or_config()?,
+        prefer_binary_in_manifest: manifest.sets_prefer_binary(),
         platforms: manifest.platforms()?,
         r_versions: manifest.r_versions()?,
     })
@@ -3331,12 +3345,22 @@ pub(crate) fn lock_fits_manifest(root: &Path) -> Result<bool, Box<dyn Error>> {
         return Ok(false);
     };
     let solve = proj_read_solve_roots(root)?;
-    let lock_options = resolve_lock_options(
+    let mut lock_options = resolve_lock_options(
         solve.exclude_newer.as_ref(),
         solve.prefer_binary,
         &solve.repos,
         Some(&lock.tool.rig),
     )?;
+    // A setting the manifest does not have may come from the user's own
+    // config, or the command line, of whoever made the lock. It changes how
+    // the lock was made, not what it has to satisfy, so any value fits.
+    if !solve.exclude_newer_in_manifest {
+        lock_options.exclude_newer = lock.tool.rig.exclude_newer.clone();
+        lock_options.exclude_newer_span = lock.tool.rig.exclude_newer_span.clone();
+    }
+    if !solve.prefer_binary_in_manifest {
+        lock_options.prefer_binary = lock.tool.rig.prefer_binary;
+    }
     if lock.tool.rig != lock_options {
         return Ok(false);
     }
@@ -7228,6 +7252,33 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         write_dplyr_project(dir.path(), &[("R", "*"), ("dplyr", "*")]);
         assert!(lock_fits_manifest(dir.path()).unwrap());
+    }
+
+    #[test]
+    fn lock_fits_settings_the_manifest_does_not_have() {
+        // E.g. from the user config of whoever made the lock.
+        let dir = tempfile::tempdir().unwrap();
+        write_dplyr_project(dir.path(), &[("dplyr", "*")]);
+        let mut lock = read_existing_lock(dir.path()).unwrap();
+        lock.tool.rig.prefer_binary = Some(5);
+        lock.tool.rig.exclude_newer = Some("2024-01-01".to_string());
+        fs::write(dir.path().join(RPROJ_LOCK_FILE), lock.to_toml().unwrap()).unwrap();
+        assert!(lock_fits_manifest(dir.path()).unwrap());
+
+        // But a setting in the manifest must match.
+        let manifest = dir.path().join(RPROJ_MANIFEST_FILE);
+        let text = fs::read_to_string(&manifest).unwrap();
+        let with_tool = |tool: &str| {
+            fs::write(&manifest, format!("{}\n[tool.rig]\n{}\n", text, tool)).unwrap();
+        };
+        with_tool("prefer-binary = 5");
+        assert!(lock_fits_manifest(dir.path()).unwrap());
+        with_tool("prefer-binary = false");
+        assert!(!lock_fits_manifest(dir.path()).unwrap());
+        with_tool("exclude-newer = \"2024-01-01\"");
+        assert!(lock_fits_manifest(dir.path()).unwrap());
+        with_tool("exclude-newer = \"2025-01-01\"");
+        assert!(!lock_fits_manifest(dir.path()).unwrap());
     }
 
     #[test]
