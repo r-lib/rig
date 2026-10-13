@@ -10,6 +10,13 @@ teardown() {
     true
 }
 
+# Retired distros (e.g. Debian 12) do not have R-devel builds any more,
+# only builds of released R versions.
+has_devel() {
+    source /etc/os-release
+    ! [[ "$ID" = "debian" && "$VERSION_ID" = "12" ]]
+}
+
 @test "empty" {
     run rig ls
     [[ "$status" -eq 0 ]]
@@ -162,6 +169,11 @@ teardown() {
     [[ "$status" -eq 0 ]]
     echo "$output" | grep -q "^4[.]4[.]3$"
 
+    if ! has_devel; then
+	run rig resolve devel
+	[[ ! "$status" -eq 0 ]]
+	return
+    fi
     devel=$(rig resolve devel | cut -f1 -d" ")
     if ! rig ls | grep -q '^[* ] devel$'; then
 	run rig add devel
@@ -266,9 +278,11 @@ teardown() {
 }
 
 @test "resolve" {
-    run rig resolve devel
-    [[ "$status" -eq 0 ]]
-    echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
+    if has_devel; then
+	run rig resolve devel
+	[[ "$status" -eq 0 ]]
+	echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
+    fi
     run rig resolve release
     [[ "$status" -eq 0 ]]
     echo $output | grep -q "[0-9][.][0-9][.][0-9] https://"
@@ -304,9 +318,11 @@ teardown() {
     run R-4.5.1 -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
     [[ $status -eq 0 ]]
     [[ "$output" = "[1] TRUE" ]]
-    run R-devel -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
-    [[ $status -eq 0 ]]
-    [[ "$output" = "[1] TRUE" ]]
+    if has_devel; then
+	run R-devel -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
+	[[ $status -eq 0 ]]
+	[[ "$output" = "[1] TRUE" ]]
+    fi
     run R-4.4.3 -q -s -e 'file.exists(Sys.getenv("R_LIBS_USER"))'
     [[ $status -eq 0 ]]
     [[ "$output" = "[1] TRUE" ]]
