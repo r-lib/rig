@@ -64,7 +64,8 @@ A few flags worth knowing:
   instead of failing.
 - `--prefer-binary[=N]` trades a newer version for an older one that
   already has a binary build, useful when compiling from source is
-  expensive.
+  expensive. Set the `prefer-binary` entry with
+  [`rig config`](reference/config.qmd) to turn it on by default.
 - Packages can also be installed from git, GitHub or GitLab, not just the
   repositories. See [`rig pkg install`](reference/pkg.qmd#rig-pkg-install)
   for the full syntax.

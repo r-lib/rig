@@ -121,6 +121,15 @@ fn main() {
 fn main_() -> i32 {
     let args = parse_args();
 
+    // The logs live in the cache directory, so this must come before the
+    // logger is set up.
+    if let Some(dir) = args.get_one::<String>("cache-dir") {
+        if let Err(e) = cache::set_cache_dir(dir) {
+            OUTPUT.error(&format!("{}", e));
+            return 1;
+        }
+    }
+
     // -- set up logger output --------------------------------------------
 
     let verbose_count = args.get_count("verbose");
@@ -152,7 +161,7 @@ fn main_() -> i32 {
     let log_file_writer: Option<Arc<Mutex<File>>> = if is_interactive {
         match get_logs_dir() {
             Ok(logs_dir) => {
-                if let Err(e) = std::fs::create_dir_all(&logs_dir) {
+                if let Err(e) = cache::create_logs_dir(&logs_dir) {
                     eprintln!("Warning: Could not create logs directory: {}", e);
                     None
                 } else {

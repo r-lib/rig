@@ -14,6 +14,12 @@ URL, so nothing but the lock file is needed to install from it. The one
 exception is `.rvenv/etc/repositories` (see below), which still comes from
 `rproj.toml` when one is present, and is skipped otherwise.
 
+If `rproj.lock` exists, `rig proj sync` installs from it, even if
+`rproj.toml` changed since. Pass `--locked` to fail instead if `rproj.lock`
+is missing or out of date, see "Checking the lock file" in
+[`rig proj lock`](#rig-proj-lock). This is useful in CI. `--locked` reads
+`rproj.toml`, so it does not work with `--frozen`.
+
 `--with-repos` (`--index`) and `--without-repos` (`--no-index`) lock again first,
 with the project's repositories changed, see "Repositories" in
 [`rig proj lock`](#rig-proj-lock). They do not work with `--frozen`.
@@ -91,8 +97,9 @@ the project directory, the same way it installs a `path` dependency. Sync
 updates an automatically generated `DESCRIPTION` at the project root from
 `rproj.toml` first, same as [`rig proj export`](#rig-proj-export) would.
 
-Pass `--no-install-project` to leave it out. It still gets installed if
-another package in the wanted set actually depends on it by name.
+Pass `--no-install-project` (or its alias, `--no-install-self`) to leave it
+out. It still gets installed if another package in the wanted set actually
+depends on it by name.
 
 ## Centralizing the project library
 
@@ -101,8 +108,8 @@ The project library defaults to `.rvenv/lib`, inside the project. Set the
 [configuration entry](config.qmd), to a directory to centralize every
 project's library under it instead, one subdirectory per project. `rig
 system dirs --library-root` reports the effective root, or that none is set.
-`--library` still wins outright when passed, for either a one-off location or
-a shared library across several projects.
+`--library` still wins outright when passed, to install to a one-off location
+without changing the project environment. It implies `--inexact`.
 
 When the library is centralized, sync still leaves a symlink at `.rvenv/lib`
 pointing at the real location, so anything that expects a library there

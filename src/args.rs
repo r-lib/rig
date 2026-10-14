@@ -2031,7 +2031,28 @@ pub fn rig_app() -> Command {
                         .required(false)
                         .conflicts_with("upgrade"),
                 )
-                .args(proj_repos_args()),
+                .args(proj_repos_args())
+                .arg(
+                    Arg::new("check")
+                        .help(
+                            "Check that rproj.lock is up to date with rproj.toml, without\n\
+                            writing it. Fails if it is missing or out of date.",
+                        )
+                        .long("check")
+                        .num_args(0)
+                        .required(false)
+                        .conflicts_with_all([
+                            "r-version",
+                            "platform",
+                            "add-platform",
+                            "prefer-binary",
+                            "exclude-newer",
+                            "upgrade",
+                            "upgrade-package",
+                            "with-repos",
+                            "without-repos",
+                        ]),
+                ),
         )
         .subcommand(
             Command::new("status")
@@ -2069,6 +2090,7 @@ pub fn rig_app() -> Command {
                             another package actually depends on it.",
                         )
                         .long("no-install-project")
+                        .visible_alias("no-install-self")
                         .num_args(0)
                         .required(false),
                 )
@@ -2181,8 +2203,32 @@ pub fn rig_app() -> Command {
                         .num_args(0)
                         .required(false),
                 )
-                .arg(exclude_newer_arg().conflicts_with("frozen"))
-                .args(proj_repos_args().map(|a| a.conflicts_with("frozen")))
+                .arg(
+                    Arg::new("locked")
+                        .help(
+                            "Fail if rproj.lock is missing or out of date with\n\
+                            rproj.toml, instead of installing from it.",
+                        )
+                        .long("locked")
+                        .num_args(0)
+                        .required(false)
+                        .conflicts_with("frozen"),
+                )
+                .arg(exclude_newer_arg().conflicts_with_all(["frozen", "locked"]))
+                .args(proj_repos_args().map(|a| a.conflicts_with_all(["frozen", "locked"])))
+                .arg(
+                    Arg::new("library")
+                        .help(
+                            "Install into exactly this directory, instead of the\n\
+                            project library (default: .rvenv/lib, see\n\
+                            RIG_PROJ_LIBRARY_ROOT), and leave the project\n\
+                            environment alone. Implies --inexact.",
+                        )
+                        .long("library")
+                        .value_name("PATH")
+                        .num_args(1)
+                        .required(false),
+                )
                 .arg(
                     Arg::new("dry-run")
                         .help(
@@ -2502,7 +2548,8 @@ pub fn rig_app() -> Command {
                             their dependencies. A named package is still installed if\n\
                             another package that is installed depends on it.",
                         )
-                        .long("no-install-project")
+                        .long("no-install-self")
+                        .visible_alias("no-install-project")
                         .num_args(0)
                         .required(false),
                 )
@@ -3351,6 +3398,15 @@ pub fn rig_app() -> Command {
                 .long("no-cache")
                 .global(true)
                 .action(clap::ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("cache-dir")
+                .help("Path to the cache directory (overrides RIG_CACHE_DIR and config)")
+                .long("cache-dir")
+                .value_name("CACHE_DIR")
+                .global(true)
+                .num_args(1)
+                .value_parser(clap::builder::NonEmptyStringValueParser::new()),
         );
 
     rig = rig
@@ -3430,6 +3486,10 @@ pub fn is_r_script_file(arg: &str) -> bool {
         .is_ok_and(|_| &start == b"#!")
 }
 
+// Global options that take a value, in a separate argument unless they are
+// written as `--opt=value`.
+const GLOBAL_VALUE_OPTS: [&str; 1] = ["--cache-dir"];
+
 // `rig run` options that take a value, in a separate argument unless they
 // are written as `--opt=value` or `-oVALUE`.
 const RUN_VALUE_OPTS: [&str; 8] = [
@@ -3475,18 +3535,23 @@ where
     }
     let mut out = Vec::new();
     let mut iter = argv.into_iter();
-    // argv[0], then global flags (none of them takes a value) up to the
-    // subcommand.
+    // argv[0], then global flags up to the subcommand.
     let mut is_run = false;
     if let Some(arg0) = iter.next() {
         out.push(arg0);
     }
-    for arg in iter.by_ref() {
+    while let Some(arg) = iter.next() {
         let flag = arg.to_string_lossy().starts_with('-');
         is_run = arg.as_os_str() == OsStr::new("run");
+        let takes_value = GLOBAL_VALUE_OPTS.contains(&arg.to_string_lossy().as_ref());
         out.push(arg);
         if !flag {
             break;
+        }
+        if takes_value {
+            if let Some(value) = iter.next() {
+                out.push(value);
+            }
         }
     }
     // Only scripts given before the first non-script positional argument
@@ -3514,7 +3579,7 @@ where
             }
         } else if s.starts_with("--script=") || (s.starts_with("-f") && s.len() > 2) {
             true
-        } else if RUN_VALUE_OPTS.contains(&s.as_str()) {
+        } else if RUN_VALUE_OPTS.contains(&s.as_str()) || GLOBAL_VALUE_OPTS.contains(&s.as_str()) {
             if let Some(value) = iter.next() {
                 out.push(value);
             }
@@ -3768,6 +3833,47 @@ mod tests {
     }
 
     #[test]
+    fn proj_lock_check_flag() {
+        let matches = rig_app()
+            .try_get_matches_from(["rig", "proj", "lock", "--check"])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        assert!(sub.get_flag("check"));
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "proj", "lock", "--check", "--script", "a.R"])
+            .is_ok());
+        for extra in [&["--upgrade"][..], &["-r", "4.5"], &["--index", "cran"]] {
+            let mut argv = vec!["rig", "proj", "lock", "--check"];
+            argv.extend_from_slice(extra);
+            assert!(rig_app().try_get_matches_from(argv).is_err());
+        }
+    }
+
+    #[test]
+    fn proj_sync_locked_flag() {
+        let matches = rig_app()
+            .try_get_matches_from(["rig", "proj", "sync", "--locked"])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        assert!(sub.get_flag("locked"));
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "proj", "sync", "--locked", "--frozen"])
+            .is_err());
+        assert!(rig_app()
+            .try_get_matches_from([
+                "rig",
+                "proj",
+                "sync",
+                "--locked",
+                "--exclude-newer",
+                "7 days"
+            ])
+            .is_err());
+    }
+
+    #[test]
     fn proj_sync_frozen_flag() {
         let matches = rig_app()
             .try_get_matches_from(["rig", "proj", "sync", "--frozen"])
@@ -3775,6 +3881,20 @@ mod tests {
         let (_name, sub) = matches.subcommand().unwrap();
         let (_name, sub) = sub.subcommand().unwrap();
         assert!(sub.get_flag("frozen"));
+    }
+
+    #[test]
+    fn proj_sync_library_flag() {
+        let matches = rig_app()
+            .try_get_matches_from(["rig", "proj", "sync", "--library", "lib"])
+            .unwrap();
+        let (_name, sub) = matches.subcommand().unwrap();
+        let (_name, sub) = sub.subcommand().unwrap();
+        assert_eq!(sub.get_one::<String>("library").unwrap(), "lib");
+
+        assert!(rig_app()
+            .try_get_matches_from(["rig", "proj", "sync", "--library"])
+            .is_err());
     }
 
     #[test]
@@ -3982,6 +4102,31 @@ mod tests {
         let (out, r_args) = split(&["rig", "run", &r, "a", "--foo", "-x"]);
         assert_eq!(out, ["rig", "run", &r, "--", "a", "--foo", "-x"]);
         assert!(r_args.is_empty());
+    }
+
+    #[test]
+    fn test_split_run_args_cache_dir_before_run() {
+        let (_dir, r, _) = script_dir();
+        let (out, _) = split(&["rig", "--cache-dir", "/tmp/c", "run", &r, "--help"]);
+        assert_eq!(
+            out,
+            ["rig", "--cache-dir", "/tmp/c", "run", &r, "--", "--help"]
+        );
+        let (out, _) = split(&["rig", "--cache-dir=/tmp/c", "run", &r, "--help"]);
+        assert_eq!(
+            out,
+            ["rig", "--cache-dir=/tmp/c", "run", &r, "--", "--help"]
+        );
+    }
+
+    #[test]
+    fn test_split_run_args_cache_dir_after_run() {
+        let (_dir, r, _) = script_dir();
+        let (out, _) = split(&["rig", "run", "--cache-dir", &r, &r, "--help"]);
+        assert_eq!(out, ["rig", "run", "--cache-dir", &r, &r, "--", "--help"]);
+        let (out, r_args) = split(&["rig", "run", "--cache-dir", "/tmp/c", "--", "--vanilla"]);
+        assert_eq!(out, ["rig", "run", "--cache-dir", "/tmp/c"]);
+        assert_eq!(r_args, ["--vanilla"]);
     }
 
     #[test]

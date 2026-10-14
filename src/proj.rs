@@ -1,4 +1,4 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::error::Error;
 use std::fs::{self, File};
@@ -1335,15 +1335,25 @@ pub(crate) struct ProjectSolve {
     /// [`register_git_sources`] before it runs.
     pub git_deps: Vec<(String, crate::rproj::DepTable)>,
     /// The root manifest's `exclude-newer` setting, see
-    /// [`Rproj::exclude_newer`]. A workspace takes it from its root only.
+    /// [`Rproj::exclude_newer`], or if it has none, the user setting, see
+    /// [`Rproj::exclude_newer_or_config`]. A workspace takes it from its root
+    /// only.
     pub exclude_newer: Option<ExcludeNewerSpec>,
+    /// Whether `exclude_newer` comes from the manifest, not from the user
+    /// setting. [`lock_fits_manifest`] only checks the lock against it then.
+    pub exclude_newer_in_manifest: bool,
     /// The root manifest's repositories, see [`ProjRepos`], with the
     /// dependency pins of every member. A workspace takes the repositories
     /// from its root only.
     pub repos: ProjRepos,
     /// The root manifest's `prefer-binary` setting, see
-    /// [`Rproj::prefer_binary`]. A workspace takes it from its root only.
+    /// [`Rproj::prefer_binary`], or if it has none, the user setting, see
+    /// [`Rproj::prefer_binary_or_config`]. A workspace takes it from its root
+    /// only.
     pub prefer_binary: Option<usize>,
+    /// Whether `prefer_binary` comes from the manifest, see
+    /// [`Self::exclude_newer_in_manifest`].
+    pub prefer_binary_in_manifest: bool,
     /// The root manifest's `platforms` setting, see [`Rproj::platforms`]. A
     /// workspace takes it from its root only.
     pub platforms: Option<Vec<String>>,
@@ -1399,9 +1409,11 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
                 group_roots,
                 extra_roots,
                 git_deps,
-                exclude_newer: manifest.exclude_newer()?,
+                exclude_newer: manifest.exclude_newer_or_config()?,
+                exclude_newer_in_manifest: manifest.exclude_newer()?.is_some(),
                 repos: ProjRepos::from_manifest(&manifest)?,
-                prefer_binary: manifest.prefer_binary()?,
+                prefer_binary: manifest.prefer_binary_or_config()?,
+                prefer_binary_in_manifest: manifest.sets_prefer_binary(),
                 platforms: manifest.platforms()?,
                 r_versions: manifest.r_versions()?,
             });
@@ -1496,9 +1508,11 @@ pub(crate) fn proj_read_solve_roots(root: &Path) -> Result<ProjectSolve, Box<dyn
         group_roots,
         extra_roots,
         git_deps,
-        exclude_newer: manifest.exclude_newer()?,
+        exclude_newer: manifest.exclude_newer_or_config()?,
+        exclude_newer_in_manifest: manifest.exclude_newer()?.is_some(),
         repos,
-        prefer_binary: manifest.prefer_binary()?,
+        prefer_binary: manifest.prefer_binary_or_config()?,
+        prefer_binary_in_manifest: manifest.sets_prefer_binary(),
         platforms: manifest.platforms()?,
         r_versions: manifest.r_versions()?,
     })
@@ -3163,6 +3177,10 @@ struct ProjLockOptions {
     /// `--with-repos` and `--without-repos`: change the project's
     /// repositories for this lock, see [`ProjRepos::apply_args`].
     repos: Option<PkgReposArgs>,
+    /// Do not fill in `.Renviron` and `.rvenvlib`, for a `rig proj sync
+    /// --library` that locks first and must leave the project environment
+    /// alone.
+    no_env_files: bool,
 }
 
 fn sc_proj_lock(
@@ -3190,11 +3208,54 @@ fn sc_proj_lock(
         host_only: false,
         lockfile_label: None,
         repos: interpret_pkg_repos_args(args)?,
+        no_env_files: false,
     };
+    if args.get_flag("check") {
+        if let Some(script) = args.get_one::<String>("script") {
+            return proj_lock_check_script(Path::new(script));
+        }
+        let root = proj_lock_root()?;
+        return proj_lock_check(&root, RPROJ_LOCK_FILE, "rig proj lock");
+    }
     if let Some(script) = args.get_one::<String>("script") {
         return proj_lock_script(Path::new(script), opts, args);
     }
     proj_lock(&proj_lock_root()?, &opts, args)
+}
+
+/// `rig proj lock --check` and `rig proj sync --locked`: fail if the project
+/// in `root` has no lock file, or it does not fit the manifest any more, see
+/// [`lock_fits_manifest`]. `label` names the lock file and `update` the
+/// command that updates it, in the error message.
+fn proj_lock_check(root: &Path, label: &str, update: &str) -> Result<(), Box<dyn Error>> {
+    let msg = if !root.join(RPROJ_LOCK_FILE).exists() {
+        format!("No {} found, create it with `{}`", label, update)
+    } else if !lock_fits_manifest(root)? {
+        format!("{} is out of date, update it with `{}`", label, update)
+    } else {
+        OUTPUT.info(&format!("{} is up to date", label));
+        return Ok(());
+    };
+    OUTPUT.error(&msg);
+    error!("{}", msg);
+    bail!("{}", msg);
+}
+
+/// `rig proj lock --check --script`: check `<script>.lock` against the
+/// `# /// script` block of `script`, in the script's lock environment, like
+/// [`proj_lock_script`] does, but without writing the lock file.
+fn proj_lock_check_script(script: &Path) -> Result<(), Box<dyn Error>> {
+    let lock_path = script_lock_path(script);
+    let label = lock_file_label(&lock_path);
+    let update = format!("rig proj lock --script {}", script.display());
+    let envdir = script_lock_env(script)?;
+    let env_lock = envdir.join(RPROJ_LOCK_FILE);
+    if lock_path.exists() {
+        write_atomically(&env_lock, &fs::read(&lock_path)?)?;
+    } else if env_lock.exists() {
+        fs::remove_file(&env_lock)?;
+    }
+    proj_lock_check(&envdir, &label, &update)
 }
 
 /// `rig proj lock --script`: lock the dependencies in the `# /// script`
@@ -3291,12 +3352,22 @@ pub(crate) fn lock_fits_manifest(root: &Path) -> Result<bool, Box<dyn Error>> {
         return Ok(false);
     };
     let solve = proj_read_solve_roots(root)?;
-    let lock_options = resolve_lock_options(
+    let mut lock_options = resolve_lock_options(
         solve.exclude_newer.as_ref(),
         solve.prefer_binary,
         &solve.repos,
         Some(&lock.tool.rig),
     )?;
+    // A setting the manifest does not have may come from the user's own
+    // config, or the command line, of whoever made the lock. It changes how
+    // the lock was made, not what it has to satisfy, so any value fits.
+    if !solve.exclude_newer_in_manifest {
+        lock_options.exclude_newer = lock.tool.rig.exclude_newer.clone();
+        lock_options.exclude_newer_span = lock.tool.rig.exclude_newer_span.clone();
+    }
+    if !solve.prefer_binary_in_manifest {
+        lock_options.prefer_binary = lock.tool.rig.prefer_binary;
+    }
     if lock.tool.rig != lock_options {
         return Ok(false);
     }
@@ -3875,7 +3946,9 @@ fn proj_lock(root: &Path, opts: &ProjLockOptions, args: &ArgMatches) -> Result<(
 
     // Lock itself never reads `.Renviron`/`.rvenvlib` -- they only matter for
     // R started directly -- but fill them in if missing, same as sync/run.
-    ensure_rvenv_files(root)?;
+    if !opts.no_env_files {
+        ensure_rvenv_files(root)?;
+    }
 
     if solve.members.len() > 1 {
         let names = solve
@@ -5192,6 +5265,9 @@ pub(crate) struct ProjSyncOptions {
     /// `rig proj lock` when it is missing (`--frozen`). Also skips the
     /// repositories file when there is no `rproj.toml` to build it from.
     pub frozen: bool,
+    /// Fail if `rproj.lock` is missing or does not fit `rproj.toml` any
+    /// more, instead of installing from it (`--locked`).
+    pub locked: bool,
     /// Report what sync would install, remove or write, without actually
     /// doing any of it (`--dry-run`).
     pub dry_run: bool,
@@ -5211,6 +5287,9 @@ pub(crate) struct ProjSyncOptions {
     /// `--with-repos` and `--without-repos`: lock again, with the project's
     /// repositories changed, see [`ProjRepos::apply_args`].
     pub repos: Option<PkgReposArgs>,
+    /// `--library`: the library to install into, instead of the project
+    /// library. Used exactly as given.
+    pub library: Option<PathBuf>,
 }
 
 impl Default for ProjSyncOptions {
@@ -5228,11 +5307,13 @@ impl Default for ProjSyncOptions {
             platform: None,
             inexact: false,
             frozen: false,
+            locked: false,
             dry_run: false,
             exclude_newer: None,
             arch: None,
             sysreqs: None,
             repos: None,
+            library: None,
         }
     }
 }
@@ -5242,6 +5323,11 @@ fn sc_proj_sync(
     _libargs: &ArgMatches,
     _mainargs: &ArgMatches,
 ) -> Result<(), Box<dyn Error>> {
+    let library = args
+        .get_one::<String>("library")
+        .map(std::path::absolute)
+        .transpose()?;
+
     // The project is the nearest one at or above the current directory, so
     // that `rig proj sync` works from a subdirectory, like `git` does. In a
     // workspace it is the workspace root, which owns the one library every
@@ -5265,13 +5351,15 @@ fn sc_proj_sync(
         max_concurrent: args.get_one::<usize>("max-concurrent").copied(),
         r_version: args.get_one::<String>("r-version").cloned(),
         platform: args.get_one::<String>("platform").cloned(),
-        inexact: args.get_flag("inexact"),
+        inexact: args.get_flag("inexact") || library.is_some(),
         frozen: args.get_flag("frozen"),
+        locked: args.get_flag("locked"),
         dry_run: args.get_flag("dry-run"),
         exclude_newer: exclude_newer_arg(args)?,
         arch: None,
         sysreqs: crate::sysreqs::cli_flag(args),
         repos: interpret_pkg_repos_args(args)?,
+        library,
     };
 
     proj_sync(&root, &opts, args)
@@ -5428,8 +5516,12 @@ pub(crate) fn proj_sync(
     let lock_opts = ProjLockOptions {
         exclude_newer: opts.exclude_newer.clone(),
         repos: opts.repos.clone(),
+        no_env_files: opts.library.is_some(),
         ..Default::default()
     };
+    if opts.locked {
+        proj_lock_check(root, RPROJ_LOCK_FILE, "rig proj lock")?;
+    }
     if !lock_path.exists() {
         if opts.frozen {
             let msg = format!(
@@ -5546,8 +5638,15 @@ pub(crate) fn proj_sync(
     // init` has already set up (there is an `rproj.toml`) -- but nothing
     // else here reads `.Renviron`/`.rvenvlib`, they only matter for R
     // started directly, so fill them in if missing rather than failing.
-    ensure_rvenv_files(root)?;
-    let library_path = project_library(root)?;
+    //
+    // None of that is touched for a `--library`, which only installs.
+    if opts.library.is_none() {
+        ensure_rvenv_files(root)?;
+    }
+    let library_path = match &opts.library {
+        Some(library) => library.clone(),
+        None => project_library(root)?,
+    };
 
     // `rig proj init` does not create the project library, this is where it
     // comes from. Create it now rather than just before the installs: an
@@ -5576,7 +5675,9 @@ pub(crate) fn proj_sync(
         opts.dry_run,
     )?;
 
-    {
+    // The project environment is for the project library, so a `--library`
+    // leaves it alone.
+    if opts.library.is_none() {
         // When the library is centralized, leave a compatibility symlink at
         // its default in-project location, `.rvenv/lib`, pointing at the real
         // (centralized) library -- mirroring uv's `.venv` junction for its
@@ -6060,7 +6161,7 @@ fn download_http_lockfile_packages(
     // Track results using Cell for interior mutability
     let success_count = Cell::new(0);
     let cached_count = Cell::new(0);
-    let error: Cell<Option<(usize, String)>> = Cell::new(None);
+    let errors: RefCell<Vec<(usize, String)>> = RefCell::new(Vec::new());
 
     // Download all packages concurrently with progress updates
     OUTPUT.status(&format!("Downloading {} packages", total));
@@ -6081,20 +6182,31 @@ fn download_http_lockfile_packages(
                 overall_pb.inc(1);
             }
             Err(e) => {
-                error.set(Some((idx, e.to_string())));
+                errors.borrow_mut().push((idx, e.to_string()));
                 overall_pb.finish_and_clear();
             }
         },
     )?;
 
-    // Check if there was an error
-    if let Some((idx, err)) = error.into_inner() {
-        OUTPUT.error(&format!(
-            "Failed to download {}: {}",
-            packages[idx].package, err
-        ));
-        error!("Failed to download {}: {}", packages[idx].package, err);
-        bail!("Failed to download {}: {}", packages[idx].package, err);
+    // Report every failure, in package order, before failing
+    let mut errors = errors.into_inner();
+    errors.sort_by_key(|(idx, _)| *idx);
+    let messages: Vec<String> = errors
+        .iter()
+        .map(|(idx, err)| format!("Failed to download {}: {}", packages[*idx].package, err))
+        .collect();
+    for msg in &messages {
+        error!("{}", msg);
+    }
+    match messages.len() {
+        0 => {}
+        1 => bail!("{}", messages[0]),
+        n => {
+            for msg in &messages {
+                OUTPUT.error(msg);
+            }
+            bail!("Failed to download {} packages", n);
+        }
     }
 
     overall_pb.finish_with_message(format!(
@@ -7161,6 +7273,33 @@ mod tests {
     }
 
     #[test]
+    fn lock_fits_settings_the_manifest_does_not_have() {
+        // E.g. from the user config of whoever made the lock.
+        let dir = tempfile::tempdir().unwrap();
+        write_dplyr_project(dir.path(), &[("dplyr", "*")]);
+        let mut lock = read_existing_lock(dir.path()).unwrap();
+        lock.tool.rig.prefer_binary = Some(5);
+        lock.tool.rig.exclude_newer = Some("2024-01-01".to_string());
+        fs::write(dir.path().join(RPROJ_LOCK_FILE), lock.to_toml().unwrap()).unwrap();
+        assert!(lock_fits_manifest(dir.path()).unwrap());
+
+        // But a setting in the manifest must match.
+        let manifest = dir.path().join(RPROJ_MANIFEST_FILE);
+        let text = fs::read_to_string(&manifest).unwrap();
+        let with_tool = |tool: &str| {
+            fs::write(&manifest, format!("{}\n[tool.rig]\n{}\n", text, tool)).unwrap();
+        };
+        with_tool("prefer-binary = 5");
+        assert!(lock_fits_manifest(dir.path()).unwrap());
+        with_tool("prefer-binary = false");
+        assert!(!lock_fits_manifest(dir.path()).unwrap());
+        with_tool("exclude-newer = \"2024-01-01\"");
+        assert!(lock_fits_manifest(dir.path()).unwrap());
+        with_tool("exclude-newer = \"2025-01-01\"");
+        assert!(!lock_fits_manifest(dir.path()).unwrap());
+    }
+
+    #[test]
     fn lock_does_not_fit_a_changed_manifest() {
         let dir = tempfile::tempdir().unwrap();
         write_dplyr_project(dir.path(), &[("dplyr", "*"), ("cli", "*")]);
@@ -7182,6 +7321,22 @@ mod tests {
         write_dplyr_project(dir.path(), &[("dplyr", "*")]);
         fs::remove_file(dir.path().join(RPROJ_LOCK_FILE)).unwrap();
         assert!(!lock_fits_manifest(dir.path()).unwrap());
+    }
+
+    #[test]
+    fn proj_lock_check_fails_for_a_missing_or_stale_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        write_dplyr_project(dir.path(), &[("dplyr", "*")]);
+        assert!(proj_lock_check(dir.path(), RPROJ_LOCK_FILE, "rig proj lock").is_ok());
+
+        let dir = tempfile::tempdir().unwrap();
+        write_dplyr_project(dir.path(), &[("dplyr", ">= 2.0.0")]);
+        let err = proj_lock_check(dir.path(), RPROJ_LOCK_FILE, "rig proj lock").unwrap_err();
+        assert!(err.to_string().contains("is out of date"));
+
+        fs::remove_file(dir.path().join(RPROJ_LOCK_FILE)).unwrap();
+        let err = proj_lock_check(dir.path(), RPROJ_LOCK_FILE, "rig proj lock").unwrap_err();
+        assert!(err.to_string().contains("No rproj.lock found"));
     }
 
     #[test]

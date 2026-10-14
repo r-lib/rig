@@ -238,6 +238,24 @@ pub fn get_global_config_value(key: &str) -> Result<Option<String>, Box<dyn Erro
     }
 }
 
+/// A setting from its environment variable, else from the rig config file.
+/// A config value may be a string, a boolean or a number; booleans and
+/// numbers are returned as strings, for the caller to parse.
+pub fn get_setting(env: &str, key: &str) -> Result<Option<String>, Box<dyn Error>> {
+    if let Ok(val) = std::env::var(env) {
+        if !val.trim().is_empty() {
+            return Ok(Some(val.trim().to_string()));
+        }
+    }
+    let map = load_raw_config()?;
+    match map.get(key) {
+        Some(serde_json::Value::String(s)) => Ok(Some(s.trim().to_string())),
+        Some(serde_json::Value::Bool(b)) => Ok(Some(b.to_string())),
+        Some(serde_json::Value::Number(n)) => Ok(Some(n.to_string())),
+        _ => Ok(None),
+    }
+}
+
 /// A configuration entry, as JSON, e.g. a list or an object.
 pub fn get_global_config_json(key: &str) -> Result<Option<serde_json::Value>, Box<dyn Error>> {
     let map = load_raw_config()?;

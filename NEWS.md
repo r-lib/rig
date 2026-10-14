@@ -1,5 +1,10 @@
 # rig 0.11.1-dev (development version)
 
+* New `prefer-binary` and `exclude-newer` configuration entries (and
+  `RIG_PREFER_BINARY` and `RIG_EXCLUDE_NEWER` environment variables) set the
+  defaults of `--prefer-binary` and `--exclude-newer` for `rig pkg install`
+  and the `rig proj` commands (#441).
+
 * The project `.Renviron` now quotes the saved `R_LIBS_USER` value, so it
   works with Windows paths. Delete `.Renviron` and call `rig proj lock`
   to recreate it with the fixed version in existing projects.
@@ -10,6 +15,16 @@
 * rig now supports authenticated repositories and Posit Package Manager
   instances. See the new "Authentication" guide.
 
+* `rig proj sync --library <path>` can be used to install into a one-off
+  directory, without changing the project environment.
+
+* A new `--cache-dir` flag, `RIG_CACHE_DIR` environment variable, and
+  `cache-dir` configuration entry allow overriding the location of rig's cache.
+  `--no-cache` still takes precedence.
+
+* Packages are now installed with file modes more closely aligned with those
+  left by `R CMD INSTALL`. Existing packages in the cache are left unchanged.
+
 * An R session that runs a different R minor version than the one the
   project was synced for now really leaves the project library alone.
   Before, rig printed a warning, but still activated the library (#450).
@@ -17,6 +32,15 @@
 
 * The dependency solver now treats a dash in a package version the same as
   a dot, like R does, so e.g. version `0.3-3` satisfies `>= 0.3.3` (#453).
+
+* New `rig proj lock --check` and `rig proj sync --locked` options, to fail
+  if `rproj.lock` is missing or out of date with `rproj.toml`, e.g. in CI
+  (#411).
+
+* `rig pkg install` now calls its `--no-install-project` option
+  `--no-install-self`. The old name still works, as an alias (#442).
+  `rig proj sync` accepts `--no-install-self` as an alias of
+  `--no-install-project`.
 
 # rig 0.11.0
 

@@ -122,6 +122,52 @@ is_retired() {
     [[ -z "$output" ]]
 }
 
+@test "RIG_CACHE_DIR" {
+    run env RIG_CACHE_DIR=/tmp/rig-cache rig -q system dirs --cache
+    [[ "$status" -eq 0 ]]
+    [[ "$output" = "/tmp/rig-cache" ]]
+    run env RIG_CACHE_DIR=/tmp/rig-cache rig -q system dirs --json
+    echo "$output" | grep -q "\"cache_dir\": \"/tmp/rig-cache\""
+
+    # --no-cache changes where this run keeps things, not what is reported
+    run env RIG_CACHE_DIR=/tmp/rig-cache rig -q --no-cache system dirs --cache
+    [[ "$output" = "/tmp/rig-cache" ]]
+
+    # an empty value is the same as an unset one
+    run env RIG_CACHE_DIR= rig -q system dirs --cache
+    [[ "$output" = "$(rig -q system dirs --cache)" ]]
+}
+
+@test "--cache-dir" {
+    run rig -q --cache-dir /tmp/rig-cache-flag system dirs --cache
+    [[ "$status" -eq 0 ]]
+    [[ "$output" = "/tmp/rig-cache-flag" ]]
+
+    # accepted after the subcommand, and beats the environment
+    run env RIG_CACHE_DIR=/tmp/rig-cache rig -q system dirs --cache --cache-dir /tmp/rig-cache-flag
+    [[ "$output" = "/tmp/rig-cache-flag" ]]
+
+    # an empty value is an error
+    run rig -q --cache-dir "" system dirs --cache
+    [[ "$status" -ne 0 ]]
+}
+
+@test "cache clean does not delete from a directory that is not rig's" {
+    dir="$(mktemp -d)"
+    echo keep > "$dir/mine.txt"
+    run rig -q --cache-dir "$dir" cache clean
+    [[ "$status" -ne 0 ]]
+    [[ -f "$dir/mine.txt" ]]
+
+    # with the tag it is allowed to
+    touch "$dir/CACHEDIR.TAG"
+    run rig -q --cache-dir "$dir" cache clean
+    [[ "$status" -eq 0 ]]
+    [[ ! -e "$dir/mine.txt" ]]
+    [[ -f "$dir/CACHEDIR.TAG" ]]
+    rm -rf "$dir"
+}
+
 @test "--no-cache" {
     # accepted before and after the subcommand, and from the environment
     run rig -q --no-cache system dirs --cache
@@ -562,6 +608,45 @@ is_retired() {
     [[ "$status" -eq 0 ]]
     ! grep -q '^r_version = "4.4"$' rproj.lock
     grep -q '^r_version = "4.5"$' rproj.lock
+}
+
+@test "proj sync --library" {
+    cd "$BATS_TEST_TMPDIR"
+    rm -rf libproj shared-lib dry-lib && mkdir libproj
+    cd libproj
+    run rig proj init -r 4.5
+    [[ "$status" -eq 0 ]]
+    run rig proj add --no-lock cli
+    [[ "$status" -eq 0 ]]
+    run rig proj lock
+    [[ "$status" -eq 0 ]]
+
+    # a dry run creates nothing
+    run rig proj sync --dry-run --library ../dry-lib --no-install-r --no-sysreqs
+    [[ "$status" -eq 0 ]]
+    [[ ! -e ../dry-lib && ! -e .rvenv/rvenv.cfg ]]
+
+    # only the library is written, the project environment is left alone,
+    # even when sync has to lock first
+    rm rproj.lock .Renviron
+    run rig proj sync --library ../shared-lib --no-install-r --no-sysreqs
+    [[ "$status" -eq 0 ]]
+    [[ -f rproj.lock && ! -e .Renviron ]]
+    [[ -d ../shared-lib/cli ]]
+    [[ ! -e .rvenv/rvenv.cfg && ! -e .rvenv/lib ]]
+
+    # packages already in the library are left alone, even if the lock file
+    # does not list them
+    mkdir ../shared-lib/extra
+    printf 'Package: extra\nVersion: 1.0\n' > ../shared-lib/extra/DESCRIPTION
+    run rig proj sync --library ../shared-lib --no-install-r --no-sysreqs
+    [[ "$status" -eq 0 ]]
+    [[ -d ../shared-lib/extra && -d ../shared-lib/cli ]]
+
+    # a sync without --library uses the project library
+    run rig proj sync --no-install-r --no-sysreqs
+    [[ "$status" -eq 0 ]]
+    [[ -d .rvenv/lib/cli && ! -L .rvenv/lib ]]
 }
 
 @test "run script with inline dependencies" {

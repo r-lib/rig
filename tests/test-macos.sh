@@ -101,6 +101,52 @@ teardown() {
     [[ -z "$output" ]]
 }
 
+@test "RIG_CACHE_DIR" {
+    run env RIG_CACHE_DIR=/tmp/rig-cache rig -q system dirs --cache
+    [[ "$status" -eq 0 ]]
+    [[ "$output" = "/tmp/rig-cache" ]]
+    run env RIG_CACHE_DIR=/tmp/rig-cache rig -q system dirs --json
+    echo "$output" | grep -q "\"cache_dir\": \"/tmp/rig-cache\""
+
+    # --no-cache changes where this run keeps things, not what is reported
+    run env RIG_CACHE_DIR=/tmp/rig-cache rig -q --no-cache system dirs --cache
+    [[ "$output" = "/tmp/rig-cache" ]]
+
+    # an empty value is the same as an unset one
+    run env RIG_CACHE_DIR= rig -q system dirs --cache
+    [[ "$output" = "$(rig -q system dirs --cache)" ]]
+}
+
+@test "--cache-dir" {
+    run rig -q --cache-dir /tmp/rig-cache-flag system dirs --cache
+    [[ "$status" -eq 0 ]]
+    [[ "$output" = "/tmp/rig-cache-flag" ]]
+
+    # accepted after the subcommand, and beats the environment
+    run env RIG_CACHE_DIR=/tmp/rig-cache rig -q system dirs --cache --cache-dir /tmp/rig-cache-flag
+    [[ "$output" = "/tmp/rig-cache-flag" ]]
+
+    # an empty value is an error
+    run rig -q --cache-dir "" system dirs --cache
+    [[ "$status" -ne 0 ]]
+}
+
+@test "cache clean does not delete from a directory that is not rig's" {
+    dir="$(mktemp -d)"
+    echo keep > "$dir/mine.txt"
+    run rig -q --cache-dir "$dir" cache clean
+    [[ "$status" -ne 0 ]]
+    [[ -f "$dir/mine.txt" ]]
+
+    # with the tag it is allowed to
+    touch "$dir/CACHEDIR.TAG"
+    run rig -q --cache-dir "$dir" cache clean
+    [[ "$status" -eq 0 ]]
+    [[ ! -e "$dir/mine.txt" ]]
+    [[ -f "$dir/CACHEDIR.TAG" ]]
+    rm -rf "$dir"
+}
+
 @test "--no-cache" {
     # accepted before and after the subcommand, and from the environment
     run rig -q --no-cache system dirs --cache
