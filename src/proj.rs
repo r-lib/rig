@@ -1,4 +1,4 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::error::Error;
 use std::fs::{self, File};
@@ -6154,7 +6154,7 @@ fn download_http_lockfile_packages(
     // Track results using Cell for interior mutability
     let success_count = Cell::new(0);
     let cached_count = Cell::new(0);
-    let error: Cell<Option<(usize, String)>> = Cell::new(None);
+    let errors: RefCell<Vec<(usize, String)>> = RefCell::new(Vec::new());
 
     // Download all packages concurrently with progress updates
     OUTPUT.status(&format!("Downloading {} packages", total));
@@ -6175,20 +6175,31 @@ fn download_http_lockfile_packages(
                 overall_pb.inc(1);
             }
             Err(e) => {
-                error.set(Some((idx, e.to_string())));
+                errors.borrow_mut().push((idx, e.to_string()));
                 overall_pb.finish_and_clear();
             }
         },
     )?;
 
-    // Check if there was an error
-    if let Some((idx, err)) = error.into_inner() {
-        OUTPUT.error(&format!(
-            "Failed to download {}: {}",
-            packages[idx].package, err
-        ));
-        error!("Failed to download {}: {}", packages[idx].package, err);
-        bail!("Failed to download {}: {}", packages[idx].package, err);
+    // Report every failure, in package order, before failing
+    let mut errors = errors.into_inner();
+    errors.sort_by_key(|(idx, _)| *idx);
+    let messages: Vec<String> = errors
+        .iter()
+        .map(|(idx, err)| format!("Failed to download {}: {}", packages[*idx].package, err))
+        .collect();
+    for msg in &messages {
+        error!("{}", msg);
+    }
+    match messages.len() {
+        0 => {}
+        1 => bail!("{}", messages[0]),
+        n => {
+            for msg in &messages {
+                OUTPUT.error(msg);
+            }
+            bail!("Failed to download {} packages", n);
+        }
     }
 
     overall_pb.finish_with_message(format!(
