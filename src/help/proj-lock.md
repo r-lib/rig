@@ -16,20 +16,20 @@ Use `--r-version` to solve for a specific R version.
 
 ## Optional dependencies and dependency groups
 
-Every `[dependency-groups.*]` table (`dev`, `enhances`, or any other name)
-and every `[optional-dependencies.*]` extra are optional dependencies:
-packages the project suggests or can take advantage of, but does not need to
-run. `rig proj lock` always solves all of them together with the project's
-hard dependencies, in one solve, so `rproj.lock` is complete -- a version
-picked for a shared package is the same whether it got pulled in as a hard
-or an optional dependency, and every group and extra is available to install
-without a new solve. A `[dependency-groups.*]` table can also `include-groups
-= [...]` other groups, pulling in their packages too; `rig proj lock` follows
+Every `[dependency-groups.*]` table (`dev`, `enhances`, or any other name) and
+every `[optional-dependencies.*]` extra are optional dependencies: packages
+the project suggests or can take advantage of, but does not need to run.
+`rig proj lock` always solves all of them together with the project's hard
+dependencies, in one solve, so `rproj.lock` is complete -- a version picked
+for a shared package is the same whether it got pulled in as a hard or an
+optional dependency, and every group and extra is available to install
+without a new solve. A `[dependency-groups.*]` table can also
+`include-groups = [...]` other groups, pulling in their packages too; `rig proj lock` follows
 this when solving, and rejects a cycle (a group that includes itself,
 directly or through others).
 
-[`rig proj sync`](#rig-proj-sync) is where a subset of this is picked for
-installation -- by default `main` plus the `dev` group, more with
+[`rig proj sync`](#rig-proj-sync) is where a subset of this is picked for installation -- by
+default `main` plus the `dev` group, more with
 `--group`/`--all-groups`/`--extra`/`--all-extras`.
 
 ## The R version
@@ -38,7 +38,8 @@ Without `--r-version` rig solves for the default R version, provided the
 manifest's own `R` requirement allows it. If it does not, rig takes the
 newest installed R version that does, and failing that the current R
 release. The version it picks does not have to be installed: `rig proj lock`
-never runs R, and [`rig proj sync`](#rig-proj-sync) installs the R version the lock file names.
+never runs R, and [`rig proj sync`](#rig-proj-sync) installs the R version the lock file
+names.
 
 To always solve for the same R versions, list them in `rproj.toml`. rig
 solves for each of them, for every platform, and `--r-version` replaces the
@@ -49,8 +50,8 @@ list:
 r-versions = ["4.5", "4.6"]
 ```
 
-Each entry takes the same values as `--r-version`. A minor version, e.g.
-`4.5`, matches any patch release of it.
+Each entry takes the same values as `--r-version`. A minor version, e.g. `4.5`,
+matches any patch release of it.
 
 ## Repositories
 
@@ -94,8 +95,8 @@ cli = { version = ">= 3.6", repository = "rlib" }
 ```
 
 A pin can name any repository of the project, `cran` and `bioc` included. It
-applies to the package itself, not to its dependencies.
-[`rig proj add --with-repos`](#rig-proj-add) adds the repository and the pin in one step.
+applies to the package itself, not to its dependencies. [`rig proj add
+--with-repos`](#rig-proj-add) adds the repository and the pin in one step.
 
 `explicit = true` makes a repository serve only the packages pinned to it,
 e.g. a private repository that must not replace CRAN packages of the same
@@ -132,8 +133,8 @@ keep the pinned versions where they fit, see "Sticky lock files" below.
 ## Bioconductor packages
 
 rig solves from CRAN and from the Bioconductor release that belongs to the
-target's R version, e.g. Bioconductor 3.23 for R 4.6. You do not need to set
-up anything: `rig proj add limma` works like `rig proj add dplyr`. Some R
+target's R version, e.g. Bioconductor 3.23 for R 4.6. You do not need to
+set up anything: `rig proj add limma` works like `rig proj add dplyr`. Some R
 versions have two Bioconductor releases, e.g. 3.21 and 3.22 for R 4.5, and
 rig uses the newer one. With `--exclude-newer` it uses the release that was
 current on the cutoff day, see below.
@@ -156,12 +157,11 @@ enabled = false
 The `R_BIOC_VERSION` environment variable also pins the release, and
 `RIG_BIOCONDUCTOR=false` turns Bioconductor off for every project.
 
-`rproj.lock` records the Bioconductor release of each target as
-`bioc-version`, and `repository = "bioc/<version>"` for each Bioconductor
-package. A target solved with another release is solved again.
-[`rig proj sync`](#rig-proj-sync) also adds the Bioconductor repositories of
-that release to the project environment, so `install.packages()` finds
-Bioconductor packages, too.
+`rproj.lock` records the Bioconductor release of each target as `bioc-version`,
+and `repository = "bioc/<version>"` for each Bioconductor package. A target
+solved with another release is solved again. [`rig proj sync`](#rig-proj-sync) also adds the
+Bioconductor repositories of that release to the project environment, so
+`install.packages()` finds Bioconductor packages, too.
 
 ## Source and binary packages
 
@@ -196,9 +196,9 @@ packages only (`source`), so the lock file also works on platforms without
 binary packages. `rig proj sync` only uses the source target if no other
 target matches the machine.
 
-To use a different set of platforms for a project, list them in
-`rproj.toml`. This replaces the default set, so include this machine's
-platform if you want it:
+To use a different set of platforms for a project, list them in `rproj.toml`.
+This replaces the default set, so include this machine's platform if you
+want it:
 
 ```toml
 [tool.rig]
@@ -210,8 +210,8 @@ platforms = [
 ]
 ```
 
-Use `--platform` to solve for a different set instead of the manifest's
-list or the default set, e.g. a single specific distro:
+Use `--platform` to solve for a different set instead of the manifest's list
+or the default set, e.g. a single specific distro:
 
 ```sh
 rig proj lock --platform ubuntu-24.04
@@ -226,24 +226,24 @@ rig proj lock --add-platform ubuntu-24.04 --add-platform linux-fedora-42
 
 `rproj.lock` writes each platform as a target triple, e.g.
 `aarch64-apple-darwin`, `x86_64-w64-mingw32`, `x86_64-unknown-linux-gnu` or
-`x86_64-unknown-linux-gnu-ubuntu-24.04`, or `source`. `platforms`,
-`--platform` and `--add-platform` take the same strings, and shorter forms
-too:
+`x86_64-unknown-linux-gnu-ubuntu-24.04`, or `source`. `platforms`, `--platform` and
+`--add-platform` take the same strings, and shorter forms too:
 
-- `macos`, `windows`, `linux`, or with an arch: `macos-arm64`,
-  `windows-x86_64`, `linux-aarch64`.
+- `macos`, `windows`, `linux`, or with an arch: `macos-arm64`, `windows-x86_64`,
+  `linux-aarch64`.
 - `ubuntu-24.04`, `fedora-42`, `opensuse-15.6` -- a Linux distro and version,
   matched against P3M's build list.
 - `manylinux_2_28-arm64`, `jammy-x86_64` -- a P3M platform name and arch.
 - `source` -- source packages only, for any platform.
 
 Without an arch, the platform has this machine's arch if it runs the same
-OS, otherwise `aarch64` for macOS and `x86_64` for Windows and Linux. See
-[`rig system detect-platform`](system.qmd#rig-system-detect-platform) for
-more about platform strings.
+OS, otherwise `aarch64` for macOS and `x86_64` for Windows and Linux. See [`rig
+system detect-platform`](system.qmd#rig-system-detect-platform) for more
+about platform strings.
 
 A Linux distro/version or platform name P3M has no specific build for falls
-back to its generic manylinux build for the given arch, rather than failing.
+back to its generic manylinux build for the given arch, rather than
+failing.
 
 rig also falls back to source packages when there are no binaries for a
 platform at all.
@@ -258,19 +258,19 @@ A `rig proj lock` run that finds an existing `rproj.lock` already satisfying
 `rproj.toml` reuses it as-is, for every package, instead of re-resolving
 anything. This applies to ordinary dependencies, an existing pin that still
 satisfies the manifest's version requirement is kept, even if a newer
-version has since been published, as well as to git/GitHub dependencies (see
-below).
+version has since been published, as well as to git/GitHub dependencies
+(see below).
 
-If `rproj.toml` changed, e.g. after `rig proj add`, rig solves the
-dependencies again, but it still keeps the versions `rproj.lock` pins, as
-long as they fit. So adding a package only changes the versions it needs
-changed, and does not upgrade the rest of the project. A platform or R
-version that is new to the lock file gets the same versions as the other
-platforms of the same R version, where possible.
+If `rproj.toml` changed, e.g. after `rig proj add`, rig solves the dependencies
+again, but it still keeps the versions `rproj.lock` pins, as long as they
+fit. So adding a package only changes the versions it needs changed, and
+does not upgrade the rest of the project. A platform or R version that is
+new to the lock file gets the same versions as the other platforms of the
+same R version, where possible.
 
-Use `rig proj lock --upgrade` to ignore the existing lock file and
-re-resolve every dependency instead, picking the latest version that still
-satisfies `rproj.toml`.
+Use `rig proj lock --upgrade` to ignore the existing lock file and re-resolve
+every dependency instead, picking the latest version that still satisfies
+`rproj.toml`.
 
 Use `--upgrade-package` to upgrade only some packages, and keep the rest:
 
@@ -288,19 +288,18 @@ rig proj lock -P 'cli@>= 3.6.4'
 rig proj lock -P 'cli@=3.6.2'
 ```
 
-The requirement only applies to this run, it is not written to
-`rproj.toml`. Later `rig proj lock` runs keep the version it picked, as
-long as it fits `rproj.toml`. A git/GitHub dependency named in
-`--upgrade-package` is checked against its remote again, like with
-`--upgrade`.
+The requirement only applies to this run, it is not written to `rproj.toml`.
+Later `rig proj lock` runs keep the version it picked, as long as it fits
+`rproj.toml`. A git/GitHub dependency named in `--upgrade-package` is checked
+against its remote again, like with `--upgrade`.
 
 ## Checking the lock file
 
-`rig proj lock --check` checks that `rproj.lock` is up to date, i.e. that
-`rig proj lock` would keep it as it is, without writing anything. It fails
-if there is no `rproj.lock`, or if it does not fit `rproj.toml` any more,
-e.g. because someone edited `rproj.toml` and forgot to lock again. This is
-useful in CI:
+`rig proj lock --check` checks that `rproj.lock` is up to date, i.e. that `rig
+proj lock` would keep it as it is, without writing anything. It fails if
+there is no `rproj.lock`, or if it does not fit `rproj.toml` any more, e.g.
+because someone edited `rproj.toml` and forgot to lock again. This is useful
+in CI:
 
 ```sh
 rig proj lock --check
@@ -308,14 +307,13 @@ rig proj lock --check
 
 It does not check for newer package versions, a lock that pins older
 versions that still satisfy `rproj.toml` is up to date. Likewise, if
-`rproj.toml` does not set `prefer-binary` or `exclude-newer`, then the lock
-is up to date whatever these were when it was made, e.g. from the
-`--prefer-binary` flag, or the [config](config.qmd) of whoever locked it.
-`--check` works with `--script`, to check `script.R.lock`, but not with
-the options that change the solve, e.g. `--r-version` or `--upgrade`.
+`rproj.toml` does not set `prefer-binary` or `exclude-newer`, then the lock is up
+to date whatever these were when it was made, e.g. from the `--prefer-binary`
+flag, or the [config](config.qmd) of whoever locked it. `--check` works with `--script`, to
+check `script.R.lock`, but not with the options that change the solve, e.g.
+`--r-version` or `--upgrade`.
 
-[`rig proj sync --locked`](#rig-proj-sync) does the same check, before it
-installs anything.
+[`rig proj sync --locked`](#rig-proj-sync) does the same check, before it installs anything.
 
 ## Excluding newer package versions
 
@@ -330,14 +328,14 @@ rig proj lock --exclude-newer "7 days"
 ```
 
 It takes a date (`2025-06-01`), an RFC 3339 timestamp (only its UTC date is
-used), or a span back from today, e.g. `7 days`, `2 weeks` or `P1M`. A
-version's publication date is the day it first appeared in a Posit Package
-Manager snapshot, so the cutoff is a day, and it cannot be earlier than
-2017-10-10, the first snapshot. It only applies to CRAN and Bioconductor
-packages, not to git, GitHub, URL or local dependencies, and binary builds
-of a version are used no matter when they were built. If the target's R
-version has two Bioconductor releases, the cutoff also chooses between them:
-the newer one if it was released by the cutoff day, otherwise the older one.
+used), or a span back from today, e.g. `7 days`, `2 weeks` or `P1M`. A version's
+publication date is the day it first appeared in a Posit Package Manager
+snapshot, so the cutoff is a day, and it cannot be earlier than 2017-10-10,
+the first snapshot. It only applies to CRAN and Bioconductor packages, not
+to git, GitHub, URL or local dependencies, and binary builds of a version
+are used no matter when they were built. If the target's R version has two
+Bioconductor releases, the cutoff also chooses between them: the newer one
+if it was released by the cutoff day, otherwise the older one.
 
 To make it part of the project, set it in `rproj.toml`; `--exclude-newer`
 overrides it. If `rproj.toml` does not set it, rig uses the `exclude-newer`
@@ -350,22 +348,22 @@ exclude-newer = "2025-06-01"
 
 `rproj.lock` records the cutoff in its own `[tool.rig]` table, and a lock
 solved with a different one is solved again. This keeps the pinned versions
-that are not newer than the new cutoff, see "Sticky lock files" above. For a span, the lock records the
-span as well, and the lock is reused as long as the span stays the same, so
-the cutoff does not move every day. Use `--upgrade` to solve again with a
-fresh cutoff.
+that are not newer than the new cutoff, see "Sticky lock files" above. For
+a span, the lock records the span as well, and the lock is reused as long
+as the span stays the same, so the cutoff does not move every day. Use
+`--upgrade` to solve again with a fresh cutoff.
 
 ## Git, GitHub and URL dependencies
 
 A `git::`/`github::` dependency pinned to a branch, a pull request, or no ref
 at all (the default branch's tip) is only resolved against its remote the
-first time it's locked. Once `rproj.lock` records a commit for it, later
-`rig proj lock` runs reuse that commit as-is rather than re-checking whether
-the branch moved on every lock. `rig proj lock --upgrade` re-checks every
+first time it's locked. Once `rproj.lock` records a commit for it, later `rig
+proj lock` runs reuse that commit as-is rather than re-checking whether the
+branch moved on every lock. `rig proj lock --upgrade` re-checks every
 git/GitHub dependency's ref and moves the pin forward if it changed. A
-`rev`/`tag` pins an exact commit already, so there's nothing for `--upgrade`
-to move. `release = true` is sticky the same way: once locked, later runs
-keep the release it pinned instead of asking GitHub which release is latest
+`rev`/`tag` pins an exact commit already, so there's nothing for `--upgrade` to
+move. `release = true` is sticky the same way: once locked, later runs keep
+the release it pinned instead of asking GitHub which release is latest
 every time. `rig proj lock --upgrade` re-checks and moves the pin forward if
 a newer release exists.
 
@@ -383,12 +381,12 @@ and they are cached side by side.
 
 ## Scripts
 
-`rig proj lock --script script.R` locks the dependencies in the
-`# /// script` block of an R script, instead of a project, and writes them
-to `script.R.lock`, next to the script. It takes the same options as for a
-project, and an existing `script.R.lock` is sticky in the same way.
-`rig run script.R` then installs the versions the lock file names, see
-[`rig run`](run.qmd).
+`rig proj lock --script script.R` locks the dependencies in the `# /// script`
+block of an R script, instead of a project, and writes them to
+`script.R.lock`, next to the script. It takes the same options as for a
+project, and an existing `script.R.lock` is sticky in the same way. `rig run
+script.R` then installs the versions the lock file names, see [`rig
+run`](run.qmd).
 
 ## Workspaces
 

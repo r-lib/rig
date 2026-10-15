@@ -38,6 +38,5 @@ prints a warning listing which packages were affected.
 By default rig writes `DESCRIPTION` in the current directory; use `--output` to
 write to a different file.
 
-rig refuses to overwrite an existing `DESCRIPTION` file that was not
-created by rig. Pass `--force` is given to overwrite an existing
-`DESCRIPTION` file.
+rig refuses to overwrite an existing `DESCRIPTION` file that was not created
+by rig. Pass `--force` is given to overwrite an existing `DESCRIPTION` file.

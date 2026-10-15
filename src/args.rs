@@ -214,10 +214,17 @@ fn add_name_headers(cmd: &mut Command, path: &str) {
 
     for sub in cmd.get_subcommands_mut() {
         let full = format!("{} {}", path, sub.get_name());
-        if let Some(about) = sub.get_about().map(|s| s.ansi().to_string()) {
+        if let Some(about) = sub.get_about() {
+            // clap does not wrap the template, so put the summary on its own
+            // line if `name - summary` does not fit on an 80 column screen.
+            let width = full.chars().count() + about.to_string().chars().count() + 5;
+            let sep = if width > 80 { " -\n    " } else { " - " };
             let template = format!(
-                "\u{1b}[1m\u{1b}[34mName:\u{1b}[39m\u{1b}[22m\n  {} - {}\n\n{}",
-                full, about, BODY
+                "\u{1b}[1m\u{1b}[34mName:\u{1b}[39m\u{1b}[22m\n  {}{}{}\n\n{}",
+                full,
+                sep,
+                about.ansi(),
+                BODY
             );
             let long = sub.get_long_about().map(|s| s.ansi().to_string());
             let mut updated = std::mem::take(sub).help_template(template);

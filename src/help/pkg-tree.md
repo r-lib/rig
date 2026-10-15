@@ -26,26 +26,26 @@ repositories, and the version requirement it is needed with, if it has one.
 
 ## Repositories
 
-rig uses the repositories configured for the R version, i.e. the
-[`rig repos list`](repos.qmd#rig-repos-list) output for the default R version, or for
-the one selected with `--r-version`. If two repositories have the same version
-of a package, the one listed first wins.
+rig uses the repositories configured for the R version, i.e. the [`rig repos
+list`](repos.qmd#rig-repos-list) output for the default R version, or for
+the one selected with `--r-version`. If two repositories have the same
+version of a package, the one listed first wins.
 
-`--with-repos` (or `--index`) and `--without-repos` (or `--no-index`) change
-the repositories for this command only, the setup of the R version stays the
+`--with-repos` (or `--index`) and `--without-repos` (or `--no-index`) change the
+repositories for this command only, the setup of the R version stays the
 same. Both take a comma-separated list and can be repeated. `--with-repos`
-adds repositories, by name, like [`rig repos enable`](repos.qmd#rig-repos-enable),
-by URL, or as `name=URL`, e.g. `--index=rlib=https://r-lib.r-universe.dev`.
-A repository given by URL is a CRAN-like repository and comes before the
-others. `--without-repos=<names>` leaves out repositories, and
-`--without-repos` without names leaves out all configured repositories, so
-only the ones in `--with-repos` are used, e.g.
-`--no-index --index=https://r-lib.r-universe.dev`. URLs cannot contain commas.
+adds repositories, by name, like [`rig repos enable`](repos.qmd#rig-repos-enable), by URL, or as
+`name=URL`, e.g. `--index=rlib=https://r-lib.r-universe.dev`. A repository
+given by URL is a CRAN-like repository and comes before the others.
+`--without-repos=<names>` leaves out repositories, and `--without-repos`
+without names leaves out all configured repositories, so only the ones in
+`--with-repos` are used, e.g. `--no-index
+--index=https://r-lib.r-universe.dev`. URLs cannot contain commas.
 
 For P3M and for Bioconductor's software repository rig reads their full
 package history, from <https://ppm.r-pkg.org> and <https://ppm-bioc.r-pkg.org>,
-so older and archived versions are available, too. Any other repository, e.g.
-CRAN itself, an r-universe, or one added with [`rig repos add`](repos.qmd#rig-repos-add), is read
+so older and archived versions are available, too. Any other repository,
+e.g. CRAN itself, an r-universe, or one added with [`rig repos add`](repos.qmd#rig-repos-add), is read
 from its `PACKAGES` files, so only its current packages are available.
 Bioconductor packages are included if the Bioconductor repositories are
 enabled for the R version.
@@ -67,8 +67,8 @@ Key for markers:
 By default rig follows the hard dependencies only. `--dev` adds `Suggests` and
 `Enhances`, in their own `[Suggests]` and `[Enhances]` sections.
 
-rig follows the dependencies of the *latest* version of every package in
-the tree, so a version requirement that would force an older version, with
+rig follows the dependencies of the *latest* version of every package in the
+tree, so a version requirement that would force an older version, with
 different dependencies, is not taken into account.
 
 ## Inverting the tree

@@ -2,8 +2,8 @@ Manage R projects (experimental)
 
 ## Description
 
-Manage R projects. `rig proj` is currently experimental, and might change
-in future versions. Feedback is appreciated.
+Manage R projects. `rig proj` is currently experimental, and might change in
+future versions. Feedback is appreciated.
 
 A project is a directory with an `rproj.toml` manifest file, that declares
 the R packages the project depends on.
@@ -26,9 +26,9 @@ the R packages the project depends on.
 
 ## The 'tools' package library
 
-Projects treat the package library named `tools` specially. This library
-is automatically added to the library path for every project.
+Projects treat the package library named `tools` specially. This library is
+automatically added to the library path for every project.
 
-Use this for `devtools`, `usethis`, `roxygen2`, and other R packages that
-you use for R development. You can use `rig pkg install -l tool <pkgs>` to
-install packages into this library.
+Use this for `devtools`, `usethis`, `roxygen2`, and other R packages that you use
+for R development. You can use `rig pkg install -l tool <pkgs>` to install
+packages into this library.
